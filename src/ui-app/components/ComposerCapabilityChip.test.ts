@@ -147,6 +147,24 @@ describe('ComposerCapabilityChip', () => {
     expect(screen.queryByTestId('capability-chip-chevron')).toBeNull()
   })
 
+  it('opens a custom menu slot without option items', async () => {
+    render(ComposerCapabilityChip, {
+      props: {
+        enabled: false,
+        label: 'Think',
+        options: [],
+      },
+      slots: {
+        menu: '<div data-testid="custom-chip-menu">Custom controls</div>',
+      },
+    })
+
+    await fireEvent.click(screen.getByTestId('capability-chip-chevron'))
+
+    expect(screen.getByTestId('custom-chip-menu')).toBeTruthy()
+    expect(screen.queryByTestId('capability-chip-option')).toBeNull()
+  })
+
   it('closes menu on escape key', async () => {
     mountChip({ enabled: false, options: ['low', 'high'] })
     const chevron = screen.getByTestId('capability-chip-chevron')

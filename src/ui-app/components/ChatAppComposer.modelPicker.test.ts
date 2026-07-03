@@ -50,6 +50,12 @@ async function openRecentsStrip(user: ComposerTestUser) {
   return await screen.findByTestId('favorites-strip')
 }
 
+async function openGoogleThinkingMenu() {
+  const chip = screen.getByTestId('google-thinking-chip')
+  await fireEvent.click(within(chip).getByTestId('capability-chip-chevron'))
+  return await screen.findByTestId('composer-google-thinking-controls')
+}
+
 describe('ChatAppComposer model picker integration', () => {
   const originalDbBridge = (globalThis as any).dbBridge
 
@@ -1333,6 +1339,9 @@ describe('ChatAppComposer model picker integration', () => {
       },
     })
 
+    expect(screen.queryByTestId('composer-google-thinking-controls')).not.toBeInTheDocument()
+    await openGoogleThinkingMenu()
+
     expect(screen.getByTestId('composer-google-thinking-budget')).toHaveValue(2048)
     expect(screen.queryByTestId('composer-google-thinking-level')).not.toBeInTheDocument()
     expect(screen.queryByTestId('reasoning-chip')).not.toBeInTheDocument()
@@ -1356,6 +1365,9 @@ describe('ChatAppComposer model picker integration', () => {
       },
     })
 
+    expect(screen.queryByTestId('composer-google-thinking-controls')).not.toBeInTheDocument()
+    await openGoogleThinkingMenu()
+
     expect(screen.getByTestId('composer-google-thinking-level')).toHaveValue('high')
     expect(screen.queryByTestId('composer-google-thinking-budget')).not.toBeInTheDocument()
 
@@ -1377,7 +1389,10 @@ describe('ChatAppComposer model picker integration', () => {
       },
     })
 
-    expect(screen.getByTestId('composer-google-thinking-unsupported')).toBeInTheDocument()
+    const chip = screen.getByTestId('google-thinking-chip')
+    expect(within(chip).getByTestId('capability-chip-body')).toBeDisabled()
+    expect(within(chip).getByTestId('capability-chip-chevron')).toBeDisabled()
+    expect(screen.queryByTestId('composer-google-thinking-controls')).not.toBeInTheDocument()
     expect(screen.queryByTestId('composer-google-thinking-budget')).not.toBeInTheDocument()
     expect(screen.queryByTestId('composer-google-thinking-level')).not.toBeInTheDocument()
   })

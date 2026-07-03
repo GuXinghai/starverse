@@ -918,11 +918,8 @@ onBeforeUnmount(() => {
             :active-label="googleThinkingActiveLabel"
             kind="reasoning"
             :disabled="disabled || googleThinkingCapability.kind === 'unsupported'"
-            :options="googleThinkingCapability.kind === 'level' ? ['minimal', 'low', 'medium', 'high'] : []"
-            :selected-option="googleThinkingConfig.thinkingLevel"
             data-test-id="google-thinking-chip"
             @toggle="onGoogleThinkingToggle"
-            @select-option="(v) => emit('updateGoogleAIStudioThinking', { mode: 'level', thinkingLevel: v as GeminiThinkingLevel })"
           >
             <template #icon>
               <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -931,6 +928,55 @@ onBeforeUnmount(() => {
                 <path d="M5 14h6" />
                 <path d="M6 12h4" />
               </svg>
+            </template>
+            <template #menu>
+              <div
+                class="w-52 space-y-2 px-3 py-2 text-[11px] text-gray-700"
+                data-testid="composer-google-thinking-controls"
+              >
+                <template v-if="googleThinkingCapability.kind === 'budget'">
+                  <label class="space-y-1">
+                    <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.thinkingBudget') }}</span>
+                    <input
+                      type="number"
+                      class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
+                      :min="googleThinkingCapability.minBudget"
+                      :max="googleThinkingCapability.maxBudget"
+                      :value="googleThinkingConfig.thinkingBudget"
+                      :disabled="disabled"
+                      data-testid="composer-google-thinking-budget"
+                      @input="onGoogleThinkingBudgetInput"
+                    />
+                  </label>
+                </template>
+                <template v-else-if="googleThinkingCapability.kind === 'level'">
+                  <label class="space-y-1">
+                    <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.thinkingLevel') }}</span>
+                    <select
+                      class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
+                      :value="googleThinkingConfig.thinkingLevel"
+                      :disabled="disabled"
+                      data-testid="composer-google-thinking-level"
+                      @change="onGoogleThinkingLevelInput"
+                    >
+                      <option v-for="level in googleThinkingCapability.levels" :key="level" :value="level">{{ level }}</option>
+                    </select>
+                  </label>
+                </template>
+                <label
+                  v-if="googleThinkingCapability.kind !== 'unsupported'"
+                  class="flex items-center gap-1.5"
+                >
+                  <input
+                    type="checkbox"
+                    :checked="googleThinkingConfig.includeThoughts === true"
+                    :disabled="disabled"
+                    data-testid="composer-google-thinking-include-thoughts"
+                    @change="onGoogleThinkingIncludeThoughtsInput"
+                  />
+                  <span>{{ t('chat.console.reasoning.includeThoughts') }}</span>
+                </label>
+              </div>
             </template>
           </ComposerCapabilityChip>
           <ComposerCapabilityChip
@@ -998,62 +1044,6 @@ onBeforeUnmount(() => {
             {{ t('composer.actions.send') }}
           </button>
         </div>
-      </div>
-
-      <div
-        v-if="isGoogleAIStudioSelected"
-        class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-600"
-        data-testid="composer-google-thinking-controls"
-      >
-        <template v-if="googleThinkingCapability.kind === 'budget'">
-          <label class="flex items-center gap-1">
-            <span>thinkingBudget</span>
-            <input
-              type="number"
-              class="w-28 rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
-              :min="googleThinkingCapability.minBudget"
-              :max="googleThinkingCapability.maxBudget"
-              :value="googleThinkingConfig.thinkingBudget"
-              :disabled="disabled"
-              data-testid="composer-google-thinking-budget"
-              @input="onGoogleThinkingBudgetInput"
-            />
-          </label>
-        </template>
-        <template v-else-if="googleThinkingCapability.kind === 'level'">
-          <label class="flex items-center gap-1">
-            <span>thinkingLevel</span>
-            <select
-              class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
-              :value="googleThinkingConfig.thinkingLevel"
-              :disabled="disabled"
-              data-testid="composer-google-thinking-level"
-              @change="onGoogleThinkingLevelInput"
-            >
-              <option v-for="level in googleThinkingCapability.levels" :key="level" :value="level">{{ level }}</option>
-            </select>
-          </label>
-        </template>
-        <span
-          v-else
-          class="text-gray-500"
-          data-testid="composer-google-thinking-unsupported"
-        >
-          Gemini thinking is not available for this model.
-        </span>
-        <label
-          v-if="googleThinkingCapability.kind !== 'unsupported'"
-          class="flex items-center gap-1"
-        >
-          <input
-            type="checkbox"
-            :checked="googleThinkingConfig.includeThoughts === true"
-            :disabled="disabled"
-            data-testid="composer-google-thinking-include-thoughts"
-            @change="onGoogleThinkingIncludeThoughtsInput"
-          />
-          include thoughts
-        </label>
       </div>
 
       <div
