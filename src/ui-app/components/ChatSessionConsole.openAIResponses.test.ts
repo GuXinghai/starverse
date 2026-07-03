@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import ChatSessionConsole from './ChatSessionConsole.vue'
+import { t, tf } from '@/shared/i18n'
 
 function defaultSessionConfig() {
   return {
@@ -48,10 +49,10 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
 
     expect(screen.getByTestId('openai-responses-chat-controls').textContent).toContain('Experimental')
     expect(screen.getByTestId('openai-responses-chat-controls').textContent).toContain('not OpenRouter')
-    expect(screen.getByTestId('openai-responses-chat-warning').textContent).toContain('Native OpenAI Responses API text-only')
-    expect(screen.getByTestId('openai-responses-chat-selected-status').textContent).toContain('OpenAI Responses chat is active')
-    expect(screen.getByTestId('openai-responses-chat-selected-status').textContent).toContain('Selected Responses model: gpt-4.1-mini')
-    expect(screen.getByTestId('openai-responses-chat-selected-status').textContent).toContain('does not expose API keys')
+    expect(screen.getByTestId('openai-responses-chat-warning').textContent).toContain(t('chat.console.provider.openAIResponses.warning'))
+    expect(screen.getByTestId('openai-responses-chat-selected-status').textContent).toContain(tf('chat.console.provider.openAIResponses.status', { status: t('chat.console.status.active') }))
+    expect(screen.getByTestId('openai-responses-chat-selected-status').textContent).toContain(tf('chat.console.provider.openAIResponses.selectedModel', { model: 'gpt-4.1-mini' }))
+    expect(screen.getByTestId('openai-responses-chat-selected-status').textContent).toContain(t('chat.console.provider.openAIResponses.credentialBridge'))
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
     expect(screen.queryByTestId('openai-responses-chat-model')).not.toBeInTheDocument()
@@ -132,17 +133,23 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
     })
 
     const diagnostics = screen.getByTestId('openai-responses-models-diagnostics')
-    expect(diagnostics.textContent).toContain('1 OpenAI model availability records')
+    expect(diagnostics.textContent).toContain(tf('chat.console.availability.records', {
+      count: 1,
+      source: t('chat.console.provider.openAIResponses.sourceName'),
+      observedAt: '2026-06-25T00:00:00.000Z',
+    }))
     expect(diagnostics.textContent).toContain('gpt-4.1-mini')
     expect(diagnostics.textContent).toContain('openai_models_api')
     expect(diagnostics.textContent).toContain('provider_reported')
-    expect(diagnostics.textContent).toContain('owned by system')
+    expect(diagnostics.textContent).toContain(tf('chat.console.common.ownedBy', { owner: 'system' }))
     expect(diagnostics.textContent).toContain('Responses API')
-    expect(diagnostics.textContent).toContain('structured output unknown')
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.structuredOutput', { value: 'unknown' }))
     expect(diagnostics.textContent).toContain('openai_list_models_api_docs')
     expect(diagnostics.textContent).toContain('availability/basic ownership')
+    expect((screen.getByTestId('openai-responses-models-list') as HTMLDetailsElement).open).toBe(false)
 
     await user.click(screen.getByTestId('openai-responses-models-refresh'))
+    await user.click(screen.getByTestId('openai-responses-models-toggle'))
     await user.click(screen.getByTestId('openai-responses-model-use'))
 
     expect(view.emitted('refreshOpenAIResponsesModels')).toHaveLength(1)

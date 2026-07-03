@@ -578,23 +578,12 @@ function onGoogleThinkingIncludeThoughtsChange(event: Event) {
   })
 }
 
+function formatModelCount(models: readonly unknown[], emptyLabel: string): string {
+  return models.length === 0 ? emptyLabel : tf('chat.console.common.modelCount', { count: models.length })
+}
+
 function formatLMStudioModels(models: any[]): string {
-  if (models.length === 0) return t('settings.lmStudio.none')
-  return models
-    .slice(0, 12)
-    .map((model) => {
-      const loaded = model.loaded
-        ? `${t('settings.lmStudio.loaded')}:${(model.loadedInstances ?? []).join(',') || model.key}`
-        : t('settings.lmStudio.unloaded')
-      const label = model.displayName && model.displayName !== model.key
-        ? `${model.displayName} (${model.key})`
-        : model.key
-      const meta = [model.type, model.quantization, model.paramsString, model.maxContextLength ? tf('settings.lmStudio.contextShort', { value: model.maxContextLength }) : null]
-        .filter(Boolean)
-        .join(' · ')
-      return `${label} (${loaded}${meta ? ` · ${meta}` : ''})`
-    })
-    .join(' | ')
+  return formatModelCount(models, t('settings.lmStudio.none'))
 }
 
 async function probeLMStudio(options: Readonly<{ clearAction?: boolean }> = {}) {
@@ -669,20 +658,7 @@ async function unloadLMStudioSelectedModel() {
 }
 
 function formatOllamaModels(models: any[]): string {
-  if (models.length === 0) return t('settings.ollama.none')
-  return models
-    .slice(0, 12)
-    .map((model) => {
-      const label = model.displayName && model.displayName !== model.key
-        ? `${model.displayName} (${model.key})`
-        : model.key
-      const status = model.running ? t('settings.ollama.running') : t('settings.ollama.installed')
-      const details = model.details && typeof model.details === 'object'
-        ? [model.details.family, model.details.parameterSize, model.details.quantizationLevel].filter(Boolean).join(' · ')
-        : ''
-      return `${label} (${status}${details ? ` · ${details}` : ''})`
-    })
-    .join(' | ')
+  return formatModelCount(models, t('settings.ollama.none'))
 }
 
 async function probeOllama(options: Readonly<{ clearAction?: boolean }> = {}) {
@@ -855,7 +831,7 @@ function chipClass(active: boolean): string {
 </script>
 
 <template>
-  <div class="h-full overflow-auto p-3">
+  <div class="h-full min-h-0 overflow-y-auto p-3" data-testid="chat-session-console-scroll">
     <div class="space-y-4">
       <section class="space-y-2 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.display') }}</div>
@@ -1017,41 +993,46 @@ function chipClass(active: boolean): string {
           <div v-for="warning in openAIResponsesAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="openai-responses-model-warning">
             {{ warning }}
           </div>
-          <div v-if="openAIResponsesAvailabilityModels.length > 0" class="space-y-1" data-testid="openai-responses-models-list">
-            <div
-              v-for="modelAvailability in openAIResponsesAvailabilityModels"
-              :key="modelAvailability.nativeModelId"
-              class="rounded border border-blue-50 bg-blue-50/60 px-2 py-1"
-              data-testid="openai-responses-model-row"
-            >
-              <div class="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
-                  <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-                  <div v-if="modelAvailability.ownedBy">{{ tf('chat.console.common.ownedBy', { owner: modelAvailability.ownedBy }) }}</div>
-                  <div v-if="modelAvailability.createdAtSec">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAtSec }) }}</div>
-                  <div>{{ formatOpenAICapabilitySeed(modelAvailability) }}</div>
-                </div>
-                <button
-                  type="button"
-                  class="rounded-md border border-blue-200 bg-white px-2 py-1 text-[11px] font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-50"
-                  :disabled="disabled"
-                  data-testid="openai-responses-model-use"
-                  @click="selectProviderModel('openai_responses', modelAvailability.nativeModelId)"
-                >
-                  {{ t('chat.console.common.useModelId') }}
-                </button>
-              </div>
+          <details v-if="openAIResponsesAvailabilityModels.length > 0" class="rounded border border-blue-100 bg-blue-50/40 px-2 py-1" data-testid="openai-responses-models-list">
+            <summary class="cursor-pointer font-medium text-blue-900" data-testid="openai-responses-models-toggle">
+              {{ tf('chat.console.common.modelListToggle', { count: openAIResponsesAvailabilityModels.length }) }}
+            </summary>
+            <div class="mt-2 space-y-1">
               <div
-                v-for="warning in modelAvailability.warnings"
-                :key="`${modelAvailability.nativeModelId}:${warning}`"
-                class="mt-1 text-amber-700"
-                data-testid="openai-responses-model-warning"
+                v-for="modelAvailability in openAIResponsesAvailabilityModels"
+                :key="modelAvailability.nativeModelId"
+                class="rounded border border-blue-50 bg-blue-50/60 px-2 py-1"
+                data-testid="openai-responses-model-row"
               >
-                {{ warning }}
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                    <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                    <div v-if="modelAvailability.ownedBy">{{ tf('chat.console.common.ownedBy', { owner: modelAvailability.ownedBy }) }}</div>
+                    <div v-if="modelAvailability.createdAtSec">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAtSec }) }}</div>
+                    <div>{{ formatOpenAICapabilitySeed(modelAvailability) }}</div>
+                  </div>
+                  <button
+                    type="button"
+                    class="rounded-md border border-blue-200 bg-white px-2 py-1 text-[11px] font-medium text-blue-800 hover:bg-blue-100 disabled:opacity-50"
+                    :disabled="disabled"
+                    data-testid="openai-responses-model-use"
+                    @click="selectProviderModel('openai_responses', modelAvailability.nativeModelId)"
+                  >
+                    {{ t('chat.console.common.useModelId') }}
+                  </button>
+                </div>
+                <div
+                  v-for="warning in modelAvailability.warnings"
+                  :key="`${modelAvailability.nativeModelId}:${warning}`"
+                  class="mt-1 text-amber-700"
+                  data-testid="openai-responses-model-warning"
+                >
+                  {{ warning }}
+                </div>
               </div>
             </div>
-          </div>
+          </details>
         </div>
         <div class="flex flex-wrap gap-2">
           <button
@@ -1128,41 +1109,46 @@ function chipClass(active: boolean): string {
           <div v-for="warning in anthropicAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="anthropic-model-warning">
             {{ warning }}
           </div>
-          <div v-if="anthropicAvailabilityModels.length > 0" class="space-y-1" data-testid="anthropic-models-list">
-            <div
-              v-for="modelAvailability in anthropicAvailabilityModels"
-              :key="modelAvailability.nativeModelId"
-              class="rounded border border-rose-50 bg-rose-50/60 px-2 py-1"
-              data-testid="anthropic-model-row"
-            >
-              <div class="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
-                  <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-                  <div v-if="modelAvailability.modelType">{{ tf('chat.console.common.type', { type: modelAvailability.modelType }) }}</div>
-                  <div v-if="modelAvailability.createdAt">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAt }) }}</div>
-                  <div>{{ formatAnthropicCapabilitySeed(modelAvailability) }}</div>
-                </div>
-                <button
-                  type="button"
-                  class="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-medium text-rose-800 hover:bg-rose-100 disabled:opacity-50"
-                  :disabled="disabled"
-                  data-testid="anthropic-model-use"
-                  @click="selectProviderModel('anthropic_messages', modelAvailability.nativeModelId)"
-                >
-                  {{ t('chat.console.common.useModelId') }}
-                </button>
-              </div>
+          <details v-if="anthropicAvailabilityModels.length > 0" class="rounded border border-rose-100 bg-rose-50/40 px-2 py-1" data-testid="anthropic-models-list">
+            <summary class="cursor-pointer font-medium text-rose-900" data-testid="anthropic-models-toggle">
+              {{ tf('chat.console.common.modelListToggle', { count: anthropicAvailabilityModels.length }) }}
+            </summary>
+            <div class="mt-2 space-y-1">
               <div
-                v-for="warning in modelAvailability.warnings"
-                :key="`${modelAvailability.nativeModelId}:${warning}`"
-                class="mt-1 text-amber-700"
-                data-testid="anthropic-model-warning"
+                v-for="modelAvailability in anthropicAvailabilityModels"
+                :key="modelAvailability.nativeModelId"
+                class="rounded border border-rose-50 bg-rose-50/60 px-2 py-1"
+                data-testid="anthropic-model-row"
               >
-                {{ warning }}
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                    <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                    <div v-if="modelAvailability.modelType">{{ tf('chat.console.common.type', { type: modelAvailability.modelType }) }}</div>
+                    <div v-if="modelAvailability.createdAt">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAt }) }}</div>
+                    <div>{{ formatAnthropicCapabilitySeed(modelAvailability) }}</div>
+                  </div>
+                  <button
+                    type="button"
+                    class="rounded-md border border-rose-200 bg-white px-2 py-1 text-[11px] font-medium text-rose-800 hover:bg-rose-100 disabled:opacity-50"
+                    :disabled="disabled"
+                    data-testid="anthropic-model-use"
+                    @click="selectProviderModel('anthropic_messages', modelAvailability.nativeModelId)"
+                  >
+                    {{ t('chat.console.common.useModelId') }}
+                  </button>
+                </div>
+                <div
+                  v-for="warning in modelAvailability.warnings"
+                  :key="`${modelAvailability.nativeModelId}:${warning}`"
+                  class="mt-1 text-amber-700"
+                  data-testid="anthropic-model-warning"
+                >
+                  {{ warning }}
+                </div>
               </div>
             </div>
-          </div>
+          </details>
         </div>
         <div class="flex flex-wrap gap-2">
           <button
@@ -1240,40 +1226,45 @@ function chipClass(active: boolean): string {
           <div v-for="warning in deepSeekAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="deepseek-model-warning">
             {{ warning }}
           </div>
-          <div v-if="deepSeekAvailabilityModels.length > 0" class="space-y-1" data-testid="deepseek-models-list">
-            <div
-              v-for="modelAvailability in deepSeekAvailabilityModels"
-              :key="modelAvailability.nativeModelId"
-              class="rounded border border-cyan-50 bg-cyan-50/60 px-2 py-1"
-              data-testid="deepseek-model-row"
-            >
-              <div class="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
-                  <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-                  <div>{{ formatDeepSeekCapabilitySeed(modelAvailability) }}</div>
-                  <div>{{ formatDeepSeekPricingSeed(modelAvailability) }}</div>
-                </div>
-                <button
-                  type="button"
-                  class="rounded-md border border-cyan-200 bg-white px-2 py-1 text-[11px] font-medium text-cyan-800 hover:bg-cyan-100 disabled:opacity-50"
-                  :disabled="disabled"
-                  data-testid="deepseek-model-use"
-                  @click="selectProviderModel('deepseek', modelAvailability.nativeModelId)"
-                >
-                  {{ t('chat.console.common.useModelId') }}
-                </button>
-              </div>
+          <details v-if="deepSeekAvailabilityModels.length > 0" class="rounded border border-cyan-100 bg-cyan-50/40 px-2 py-1" data-testid="deepseek-models-list">
+            <summary class="cursor-pointer font-medium text-cyan-900" data-testid="deepseek-models-toggle">
+              {{ tf('chat.console.common.modelListToggle', { count: deepSeekAvailabilityModels.length }) }}
+            </summary>
+            <div class="mt-2 space-y-1">
               <div
-                v-for="warning in modelAvailability.warnings"
-                :key="`${modelAvailability.nativeModelId}:${warning}`"
-                class="mt-1 text-amber-700"
-                data-testid="deepseek-model-warning"
+                v-for="modelAvailability in deepSeekAvailabilityModels"
+                :key="modelAvailability.nativeModelId"
+                class="rounded border border-cyan-50 bg-cyan-50/60 px-2 py-1"
+                data-testid="deepseek-model-row"
               >
-                {{ warning }}
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                    <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                    <div>{{ formatDeepSeekCapabilitySeed(modelAvailability) }}</div>
+                    <div>{{ formatDeepSeekPricingSeed(modelAvailability) }}</div>
+                  </div>
+                  <button
+                    type="button"
+                    class="rounded-md border border-cyan-200 bg-white px-2 py-1 text-[11px] font-medium text-cyan-800 hover:bg-cyan-100 disabled:opacity-50"
+                    :disabled="disabled"
+                    data-testid="deepseek-model-use"
+                    @click="selectProviderModel('deepseek', modelAvailability.nativeModelId)"
+                  >
+                    {{ t('chat.console.common.useModelId') }}
+                  </button>
+                </div>
+                <div
+                  v-for="warning in modelAvailability.warnings"
+                  :key="`${modelAvailability.nativeModelId}:${warning}`"
+                  class="mt-1 text-amber-700"
+                  data-testid="deepseek-model-warning"
+                >
+                  {{ warning }}
+                </div>
               </div>
             </div>
-          </div>
+          </details>
         </div>
         <div class="flex flex-wrap gap-2">
           <button
@@ -1350,40 +1341,45 @@ function chipClass(active: boolean): string {
           <div v-for="warning in googleAIStudioAvailabilityWarnings" :key="warning" class="text-amber-700" data-testid="google-ai-studio-model-warning">
             {{ warning }}
           </div>
-          <div v-if="googleAIStudioAvailabilityModels.length > 0" class="space-y-1" data-testid="google-ai-studio-models-list">
-            <div
-              v-for="modelAvailability in googleAIStudioAvailabilityModels"
-              :key="modelAvailability.nativeModelId"
-              class="rounded border border-emerald-50 bg-emerald-50/60 px-2 py-1"
-              data-testid="google-ai-studio-model-row"
-            >
-              <div class="flex flex-wrap items-start justify-between gap-2">
-                <div>
-                  <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
-                  <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-                  <div v-if="modelAvailability.providerModelName">{{ modelAvailability.providerModelName }}</div>
-                  <div>{{ formatGeminiCapabilitySeed(modelAvailability) }}</div>
-                </div>
-                <button
-                  type="button"
-                  class="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
-                  :disabled="disabled"
-                  data-testid="google-ai-studio-model-use"
-                  @click="selectProviderModel('google_ai_studio', modelAvailability.nativeModelId)"
-                >
-                  {{ t('chat.console.common.useModelId') }}
-                </button>
-              </div>
+          <details v-if="googleAIStudioAvailabilityModels.length > 0" class="rounded border border-emerald-100 bg-emerald-50/40 px-2 py-1" data-testid="google-ai-studio-models-list">
+            <summary class="cursor-pointer font-medium text-emerald-900" data-testid="google-ai-studio-models-toggle">
+              {{ tf('chat.console.common.modelListToggle', { count: googleAIStudioAvailabilityModels.length }) }}
+            </summary>
+            <div class="mt-2 space-y-1">
               <div
-                v-for="warning in modelAvailability.warnings"
-                :key="`${modelAvailability.nativeModelId}:${warning}`"
-                class="mt-1 text-amber-700"
-                data-testid="google-ai-studio-model-warning"
+                v-for="modelAvailability in googleAIStudioAvailabilityModels"
+                :key="modelAvailability.nativeModelId"
+                class="rounded border border-emerald-50 bg-emerald-50/60 px-2 py-1"
+                data-testid="google-ai-studio-model-row"
               >
-                {{ warning }}
+                <div class="flex flex-wrap items-start justify-between gap-2">
+                  <div>
+                    <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
+                    <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
+                    <div v-if="modelAvailability.providerModelName">{{ modelAvailability.providerModelName }}</div>
+                    <div>{{ formatGeminiCapabilitySeed(modelAvailability) }}</div>
+                  </div>
+                  <button
+                    type="button"
+                    class="rounded-md border border-emerald-200 bg-white px-2 py-1 text-[11px] font-medium text-emerald-800 hover:bg-emerald-100 disabled:opacity-50"
+                    :disabled="disabled"
+                    data-testid="google-ai-studio-model-use"
+                    @click="selectProviderModel('google_ai_studio', modelAvailability.nativeModelId)"
+                  >
+                    {{ t('chat.console.common.useModelId') }}
+                  </button>
+                </div>
+                <div
+                  v-for="warning in modelAvailability.warnings"
+                  :key="`${modelAvailability.nativeModelId}:${warning}`"
+                  class="mt-1 text-amber-700"
+                  data-testid="google-ai-studio-model-warning"
+                >
+                  {{ warning }}
+                </div>
               </div>
             </div>
-          </div>
+          </details>
         </div>
         <div class="flex flex-wrap gap-2">
           <button
@@ -1587,19 +1583,24 @@ function chipClass(active: boolean): string {
             <div data-testid="lm-studio-native-status">{{ t('settings.lmStudio.nativeRest') }}: {{ lmStudioProbeResult.diagnostics.nativeRestAvailable ? t('settings.lmStudio.available') : lmStudioProbeResult.diagnostics.nativeRest.message }}</div>
             <div data-testid="lm-studio-openai-status">{{ t('settings.lmStudio.openAICompatible') }}: {{ lmStudioProbeResult.diagnostics.openAICompatibleAvailable ? t('settings.lmStudio.available') : lmStudioProbeResult.diagnostics.openAICompatible.message }}</div>
             <div data-testid="lm-studio-models">{{ t('settings.lmStudio.models') }}: {{ formatLMStudioModels(lmStudioNativeModels) }}</div>
-            <div v-if="lmStudioNativeModels.length > 0" class="flex flex-wrap gap-1" data-testid="lm-studio-model-use-list">
-              <button
-                v-for="modelInfo in lmStudioNativeModels"
-                :key="modelInfo.key"
-                type="button"
-                class="rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-medium text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
-                :disabled="disabled"
-                data-testid="lm-studio-model-use"
-                @click="selectProviderModel('lm_studio', modelInfo.key)"
-              >
-                {{ modelInfo.displayName || modelInfo.key }}
-              </button>
-            </div>
+            <details v-if="lmStudioNativeModels.length > 0" class="rounded border border-indigo-100 bg-indigo-50/40 px-2 py-1" data-testid="lm-studio-model-use-list">
+              <summary class="cursor-pointer font-medium text-indigo-900" data-testid="lm-studio-model-use-toggle">
+                {{ tf('chat.console.common.modelListToggle', { count: lmStudioNativeModels.length }) }}
+              </summary>
+              <div class="mt-2 flex flex-wrap gap-1">
+                <button
+                  v-for="modelInfo in lmStudioNativeModels"
+                  :key="modelInfo.key"
+                  type="button"
+                  class="rounded-md border border-indigo-200 bg-white px-2 py-1 text-[11px] font-medium text-indigo-800 hover:bg-indigo-100 disabled:opacity-50"
+                  :disabled="disabled"
+                  data-testid="lm-studio-model-use"
+                  @click="selectProviderModel('lm_studio', modelInfo.key)"
+                >
+                  {{ modelInfo.displayName || modelInfo.key }}
+                </button>
+              </div>
+            </details>
           </div>
           <div v-else-if="lmStudioProbeResult && !lmStudioProbeResult.ok" class="text-red-700" data-testid="lm-studio-probe-error">
             {{ networkFailureMessage(lmStudioProbeResult) }}
@@ -1832,19 +1833,24 @@ function chipClass(active: boolean): string {
             <div data-testid="ollama-version">{{ t('settings.ollama.version') }}: {{ ollamaProbeResult.diagnostics.version.ok ? ollamaProbeResult.diagnostics.version.version : ollamaProbeResult.diagnostics.version.message }}</div>
             <div data-testid="ollama-local-models">{{ t('settings.ollama.localModels') }}: {{ formatOllamaModels(ollamaLocalModels) }}</div>
             <div data-testid="ollama-running-models">{{ t('settings.ollama.runningModels') }}: {{ formatOllamaModels(ollamaRunningModels) }}</div>
-            <div v-if="ollamaLocalModels.length > 0" class="flex flex-wrap gap-1" data-testid="ollama-model-use-list">
-              <button
-                v-for="modelInfo in ollamaLocalModels"
-                :key="modelInfo.key"
-                type="button"
-                class="rounded-md border border-green-200 bg-white px-2 py-1 text-[11px] font-medium text-green-800 hover:bg-green-100 disabled:opacity-50"
-                :disabled="disabled"
-                data-testid="ollama-model-use"
-                @click="selectProviderModel('ollama_local', modelInfo.key)"
-              >
-                {{ modelInfo.displayName || modelInfo.key }}
-              </button>
-            </div>
+            <details v-if="ollamaLocalModels.length > 0" class="rounded border border-green-100 bg-green-50/40 px-2 py-1" data-testid="ollama-model-use-list">
+              <summary class="cursor-pointer font-medium text-green-900" data-testid="ollama-model-use-toggle">
+                {{ tf('chat.console.common.modelListToggle', { count: ollamaLocalModels.length }) }}
+              </summary>
+              <div class="mt-2 flex flex-wrap gap-1">
+                <button
+                  v-for="modelInfo in ollamaLocalModels"
+                  :key="modelInfo.key"
+                  type="button"
+                  class="rounded-md border border-green-200 bg-white px-2 py-1 text-[11px] font-medium text-green-800 hover:bg-green-100 disabled:opacity-50"
+                  :disabled="disabled"
+                  data-testid="ollama-model-use"
+                  @click="selectProviderModel('ollama_local', modelInfo.key)"
+                >
+                  {{ modelInfo.displayName || modelInfo.key }}
+                </button>
+              </div>
+            </details>
           </div>
           <div v-else-if="ollamaProbeResult && !ollamaProbeResult.ok" class="text-red-700" data-testid="ollama-probe-error">
             {{ networkFailureMessage(ollamaProbeResult) }}

@@ -125,6 +125,8 @@
         "ownedBy": "owned by {owner}",
         "created": "created {createdAt}",
         "type": "type {type}",
+        "modelCount": "{count} models",
+        "modelListToggle": "Model list ({count})",
         "openGlobalSettings": "Open global settings"
       },
       "capability": {

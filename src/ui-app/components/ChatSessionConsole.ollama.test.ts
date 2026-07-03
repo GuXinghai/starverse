@@ -1,7 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { resetI18nForTests, t } from '@/shared/i18n'
+import { resetI18nForTests, t, tf } from '@/shared/i18n'
 import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
@@ -169,7 +169,10 @@ describe('ChatSessionConsole Ollama controls', () => {
     await user.type(screen.getByTestId('ollama-endpoint-url'), '1')
 
     await user.click(screen.getByTestId('ollama-probe'))
-    await waitFor(() => expect(screen.getByTestId('ollama-local-models').textContent).toContain('llama3.2:latest'))
+    await waitFor(() => expect(screen.getByTestId('ollama-local-models').textContent).toContain(tf('chat.console.common.modelCount', { count: 1 })))
+    expect(screen.getByTestId('ollama-local-models').textContent).not.toContain('llama3.2:latest')
+    expect((screen.getByTestId('ollama-model-use-list') as HTMLDetailsElement).open).toBe(false)
+    await user.click(screen.getByTestId('ollama-model-use-toggle'))
     await user.click(screen.getByTestId('ollama-model-use'))
     await user.click(screen.getByTestId('ollama-load-model'))
     await waitFor(() => expect(screen.getByTestId('ollama-action-result').textContent).toContain('llama3.2:latest'))

@@ -143,8 +143,10 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     expect(diagnostics.textContent).toContain(tf('chat.console.capability.thinking', { value: 'supported' }))
     expect(diagnostics.textContent).toContain('gemini_models_api_docs')
     expect(diagnostics.textContent).toContain('supplemental metadata')
+    expect((screen.getByTestId('google-ai-studio-models-list') as HTMLDetailsElement).open).toBe(false)
 
     await user.click(screen.getByTestId('google-ai-studio-models-refresh'))
+    await user.click(screen.getByTestId('google-ai-studio-models-toggle'))
     await user.click(screen.getByTestId('google-ai-studio-model-use'))
 
     expect(view.emitted('refreshGoogleAIStudioModels')).toHaveLength(1)

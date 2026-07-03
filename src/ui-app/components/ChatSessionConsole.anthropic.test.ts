@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import ChatSessionConsole from './ChatSessionConsole.vue'
+import { t, tf } from '@/shared/i18n'
 
 function defaultSessionConfig() {
   return {
@@ -48,11 +49,10 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
 
     expect(screen.getByTestId('anthropic-chat-controls').textContent).toContain('Experimental')
     expect(screen.getByTestId('anthropic-chat-controls').textContent).toContain('not OpenRouter')
-    expect(screen.getByTestId('anthropic-chat-warning').textContent).toContain('Native Anthropic Messages API text-only')
-    expect(screen.getByTestId('anthropic-chat-warning').textContent).toContain('Generic compatibility routing are disabled')
-    expect(screen.getByTestId('anthropic-chat-selected-status').textContent).toContain('Anthropic Messages chat is active')
-    expect(screen.getByTestId('anthropic-chat-selected-status').textContent).toContain('Selected Claude model: claude-sonnet-4-5')
-    expect(screen.getByTestId('anthropic-chat-selected-status').textContent).toContain('does not expose API keys')
+    expect(screen.getByTestId('anthropic-chat-warning').textContent).toContain(t('chat.console.provider.anthropic.warning'))
+    expect(screen.getByTestId('anthropic-chat-selected-status').textContent).toContain(tf('chat.console.provider.anthropic.status', { status: t('chat.console.status.active') }))
+    expect(screen.getByTestId('anthropic-chat-selected-status').textContent).toContain(tf('chat.console.provider.anthropic.selectedModel', { model: 'claude-sonnet-4-5' }))
+    expect(screen.getByTestId('anthropic-chat-selected-status').textContent).toContain(t('chat.console.provider.anthropic.credentialBridge'))
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
     expect(screen.queryByTestId('anthropic-chat-model')).not.toBeInTheDocument()
@@ -135,24 +135,30 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
     })
 
     const diagnostics = screen.getByTestId('anthropic-models-diagnostics')
-    expect(diagnostics.textContent).toContain('1 Anthropic model availability records')
+    expect(diagnostics.textContent).toContain(tf('chat.console.availability.records', {
+      count: 1,
+      source: t('chat.console.provider.anthropic.sourceName'),
+      observedAt: '2026-06-25T00:00:00.000Z',
+    }))
     expect(diagnostics.textContent).toContain('claude-sonnet-4-5')
     expect(diagnostics.textContent).toContain('anthropic_models_api')
     expect(diagnostics.textContent).toContain('provider_reported')
-    expect(diagnostics.textContent).toContain('type model')
-    expect(diagnostics.textContent).toContain('image input true')
-    expect(diagnostics.textContent).toContain('thinking supported')
-    expect(diagnostics.textContent).toContain('adaptive thinking true')
-    expect(diagnostics.textContent).toContain('max input 200000')
-    expect(diagnostics.textContent).toContain('max output 64000')
-    expect(diagnostics.textContent).toContain('tool use true')
-    expect(diagnostics.textContent).toContain('structured output unknown')
-    expect(diagnostics.textContent).toContain('raw capability keys adaptive_thinking, thinking, tool_use, vision')
+    expect(diagnostics.textContent).toContain(tf('chat.console.common.type', { type: 'model' }))
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.imageInput', { value: 'true' }))
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.thinking', { value: 'supported' }))
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.adaptiveThinking', { value: 'true' }))
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.maxInput', { value: '200000' }))
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.maxOutput', { value: '64000' }))
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.toolUse', { value: 'true' }))
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.structuredOutput', { value: 'unknown' }))
+    expect(diagnostics.textContent).toContain(tf('chat.console.capability.rawCapabilityKeys', { value: 'adaptive_thinking, thinking, tool_use, vision' }))
     expect(diagnostics.textContent).toContain('anthropic_list_models_api_docs')
     expect(diagnostics.textContent).toContain('bounded R5 page limit')
     expect(diagnostics.textContent).toContain('Starverse curated metadata')
+    expect((screen.getByTestId('anthropic-models-list') as HTMLDetailsElement).open).toBe(false)
 
     await user.click(screen.getByTestId('anthropic-models-refresh'))
+    await user.click(screen.getByTestId('anthropic-models-toggle'))
     await user.click(screen.getByTestId('anthropic-model-use'))
 
     expect(view.emitted('refreshAnthropicModels')).toHaveLength(1)
