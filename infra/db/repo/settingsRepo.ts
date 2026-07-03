@@ -1,5 +1,6 @@
 import BetterSqlite3 from 'better-sqlite3'
 import {
+  SETTINGS_KEY_CHAT_REASONING_PANEL_AUTO_COLLAPSE_AFTER_REASONING,
   SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED,
   SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE,
   SETTINGS_KEY_DFC_ATTACHMENT_DEFAULTS,
@@ -167,6 +168,16 @@ export class SettingsRepo {
   setChatReasoningPanelDefaultExpanded(value: boolean): void {
     if (typeof value !== 'boolean') throw new Error('value must be boolean')
     this.writeJson(SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED, value)
+  }
+
+  getChatReasoningPanelAutoCollapseAfterReasoning(): boolean {
+    const value = this.readJson(SETTINGS_KEY_CHAT_REASONING_PANEL_AUTO_COLLAPSE_AFTER_REASONING)
+    return value === true
+  }
+
+  setChatReasoningPanelAutoCollapseAfterReasoning(value: boolean): void {
+    if (typeof value !== 'boolean') throw new Error('value must be boolean')
+    this.writeJson(SETTINGS_KEY_CHAT_REASONING_PANEL_AUTO_COLLAPSE_AFTER_REASONING, value)
   }
 
   getNetworkProxySettings(): NetworkProxySettings {

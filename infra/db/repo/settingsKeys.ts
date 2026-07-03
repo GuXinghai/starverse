@@ -7,6 +7,7 @@ export const SETTINGS_KEY_DFC_ATTACHMENT_DEFAULTS = 'dfc.attachment.defaults.v1'
 export const SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS = 'sampling_params.defaults' as const
 export const SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE = 'chat.reasoning_display.mode' as const
 export const SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED = 'chat.reasoning_panel.default_expanded' as const
+export const SETTINGS_KEY_CHAT_REASONING_PANEL_AUTO_COLLAPSE_AFTER_REASONING = 'chat.reasoning_panel.auto_collapse_after_reasoning' as const
 export const SETTINGS_KEY_CHAT_DRAFT_PREFIX = 'chat.draft::' as const
 export const SETTINGS_KEY_NETWORK_PROXY = 'network.proxy' as const
 

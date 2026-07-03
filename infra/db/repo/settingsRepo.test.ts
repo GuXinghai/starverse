@@ -52,6 +52,20 @@ describe('SettingsRepo', () => {
     expect(repo.getChatReasoningPanelDefaultExpanded()).toBe(true)
   })
 
+  it('persists chat.reasoning_panel.auto_collapse_after_reasoning and defaults to false', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new SettingsRepo(db)
+
+    expect(repo.getChatReasoningPanelAutoCollapseAfterReasoning()).toBe(false)
+
+    repo.setChatReasoningPanelAutoCollapseAfterReasoning(true)
+    expect(repo.getChatReasoningPanelAutoCollapseAfterReasoning()).toBe(true)
+
+    repo.setChatReasoningPanelAutoCollapseAfterReasoning(false)
+    expect(repo.getChatReasoningPanelAutoCollapseAfterReasoning()).toBe(false)
+  })
+
   it('persists web_search.defaults and defaults to null', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)

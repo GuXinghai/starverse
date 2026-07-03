@@ -1228,6 +1228,10 @@ const chatReasoningPanelDefaultExpandedSchema = z.object({
   value: z.boolean(),
 })
 
+const chatReasoningPanelAutoCollapseAfterReasoningSchema = z.object({
+  value: z.boolean(),
+})
+
 const chatDraftSchema = z.object({
   value: z.string().nullable(),
 })
@@ -1751,6 +1755,10 @@ export function decodeChatReasoningDisplayModeResponse(raw: unknown): 'inline' |
 
 export function decodeChatReasoningPanelDefaultExpandedResponse(raw: unknown): boolean {
   return decodeWithSchema('settings.getChatReasoningPanelDefaultExpanded', chatReasoningPanelDefaultExpandedSchema, raw).value
+}
+
+export function decodeChatReasoningPanelAutoCollapseAfterReasoningResponse(raw: unknown): boolean {
+  return decodeWithSchema('settings.getChatReasoningPanelAutoCollapseAfterReasoning', chatReasoningPanelAutoCollapseAfterReasoningSchema, raw).value
 }
 
 export function decodeChatDraftResponse(raw: unknown): string | null {

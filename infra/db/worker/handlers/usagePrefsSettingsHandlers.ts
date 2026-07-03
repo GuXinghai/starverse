@@ -407,6 +407,19 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return { ok: true }
     })
 
+  register('settings.getChatReasoningPanelAutoCollapseAfterReasoning', () => {
+        return { value: rt.settingsRepo.getChatReasoningPanelAutoCollapseAfterReasoning() }
+    })
+
+  register('settings.setChatReasoningPanelAutoCollapseAfterReasoning', (raw) => {
+        const value = raw?.value
+        if (typeof value !== 'boolean') {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setChatReasoningPanelAutoCollapseAfterReasoning requires boolean value')
+        }
+        rt.settingsRepo.setChatReasoningPanelAutoCollapseAfterReasoning(value)
+        return { ok: true }
+    })
+
   register('settings.getNetworkProxySettings', () => {
         return { value: rt.settingsRepo.getNetworkProxySettings() }
     })
