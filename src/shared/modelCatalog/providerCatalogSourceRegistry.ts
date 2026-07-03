@@ -1,8 +1,10 @@
 import type { ProviderCatalogKnownProviderKey, ProviderCatalogSource } from './providerCatalogContracts'
+import { googleAIStudioCatalogSource } from './providers/google/googleAIStudioCatalogSource'
 import { openRouterCatalogSource } from './providers/openrouter/openRouterCatalogSource'
 
 const PROVIDER_CATALOG_SOURCE_BY_KEY = new Map<ProviderCatalogKnownProviderKey, ProviderCatalogSource>([
   ['openrouter', openRouterCatalogSource],
+  ['google_ai_studio', googleAIStudioCatalogSource],
 ])
 
 export function listProviderCatalogSources(): ReadonlyArray<ProviderCatalogSource> {
