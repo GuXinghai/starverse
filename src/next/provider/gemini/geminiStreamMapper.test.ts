@@ -326,6 +326,12 @@ describe('mapGeminiStreamChunkToStarverse', () => {
       if (metaEvents[0].type === 'meta.delta') {
         expect(metaEvents[0].meta.native_finish_reason).toBe('BLOCKED:SAFETY')
       }
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].terminal).toBe(true)
+        expect(errorEvents[0].error.code).toBe('prompt_blocked_safety')
+      }
     })
 
     it('promptFeedback without blockReason emits no meta', () => {

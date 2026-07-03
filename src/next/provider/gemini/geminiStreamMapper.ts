@@ -142,12 +142,25 @@ export function mapGeminiStreamChunkToStarverse(
 
   // Prompt feedback / block reason — does not become visible text
   if (chunk.promptFeedback?.blockReason) {
+    const blockReason = chunk.promptFeedback.blockReason
     events.push({
       type: 'meta.delta',
       meta: {
-        native_finish_reason: `BLOCKED:${chunk.promptFeedback.blockReason}`,
+        native_finish_reason: `BLOCKED:${blockReason}`,
       },
     })
+    events.push({
+      type: 'stream.error',
+      error: {
+        phase: 'stream',
+        provider: 'gemini',
+        category: 'provider_error',
+        message: `Google AI Studio prompt was blocked: ${blockReason}`,
+        code: `prompt_blocked_${String(blockReason).toLowerCase()}`,
+      },
+      terminal: true,
+    })
+    return events
   }
 
   // Process candidates (uses candidates[0])
