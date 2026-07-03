@@ -30,6 +30,7 @@ function requireApiKey(input: ProviderCatalogFetchInput): string {
 
 export function createOpenRouterCatalogSource(options: Readonly<{
   fetchImpl?: typeof fetch
+  enableCountProbe?: boolean
 }> = {}): ProviderCatalogSource {
   const client = new OpenRouterCatalogClient({ fetchImpl: options.fetchImpl })
 
@@ -38,15 +39,16 @@ export function createOpenRouterCatalogSource(options: Readonly<{
     adapter: client,
     async fetchSnapshot(input): Promise<ProviderCatalogSnapshot> {
       const apiKey = requireApiKey(input)
-      const baseUrl = String(input.baseUrl || OPENROUTER_PROVIDER_CATALOG_DESCRIPTOR.defaultBaseUrl).trim()
+      const baseUrl = String(input.baseUrl || OPENROUTER_PROVIDER_CATALOG_DESCRIPTOR.defaultBaseUrl).trim().replace(/\/+$/, '')
       const runtimeClient = input.fetchImpl && input.fetchImpl !== options.fetchImpl
         ? new OpenRouterCatalogClient({ fetchImpl: input.fetchImpl })
         : client
+      const degradedStages: Array<Readonly<{ stage: string; error: unknown }>> = []
 
       const modelResult = await runtimeClient.listModels({
         apiKey,
         baseUrl,
-        preferUserScopedModels: true,
+        preferUserScopedModels: input.preferUserScopedModels !== false,
         signal: input.signal ?? null,
       })
 
@@ -57,19 +59,22 @@ export function createOpenRouterCatalogSource(options: Readonly<{
           baseUrl,
           signal: input.signal ?? null,
         })
-      } catch {
+      } catch (error) {
+        degradedStages.push({ stage: 'fetch_providers', error })
         providers = undefined
       }
 
       let countProbe = null
       try {
-        countProbe = await runtimeClient.listModelsCount({
-          apiKey,
-          baseUrl,
-          signal: input.signal ?? null,
-        })
-      } catch {
-        countProbe = null
+        if (options.enableCountProbe === true) {
+          countProbe = await runtimeClient.listModelsCount({
+            apiKey,
+            baseUrl,
+            signal: input.signal ?? null,
+          })
+        }
+      } catch (error) {
+        degradedStages.push({ stage: 'probe_count', error })
       }
 
       return {
@@ -80,10 +85,10 @@ export function createOpenRouterCatalogSource(options: Readonly<{
         models: modelResult.models,
         ...(providers ? { providers, providerCount: providers.length } : {}),
         ...(countProbe ? { countProbe } : {}),
+        ...(degradedStages.length > 0 ? { degradedStages } : {}),
       }
     },
   }
 }
 
 export const openRouterCatalogSource = createOpenRouterCatalogSource()
-

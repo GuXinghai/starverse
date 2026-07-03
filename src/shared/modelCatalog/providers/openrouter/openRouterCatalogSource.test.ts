@@ -51,7 +51,7 @@ describe('openRouterCatalogSource', () => {
       }
       throw new Error(`unexpected URL: ${url}`)
     }) as unknown as typeof fetch
-    const source = createOpenRouterCatalogSource({ fetchImpl })
+    const source = createOpenRouterCatalogSource({ fetchImpl, enableCountProbe: true })
 
     const snapshot = await source.fetchSnapshot({
       providerKey: 'openrouter',
@@ -89,4 +89,3 @@ describe('openRouterCatalogSource', () => {
     })).rejects.toThrow('OpenRouter catalog source requires apiKey')
   })
 })
-

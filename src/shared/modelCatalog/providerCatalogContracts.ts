@@ -50,6 +50,7 @@ export type ProviderCatalogFetchInput = Readonly<{
   apiKey?: string
   fetchImpl?: typeof fetch
   signal?: AbortSignal | null
+  preferUserScopedModels?: boolean
 }>
 
 export type ProviderCatalogSnapshot = Readonly<{
@@ -61,6 +62,7 @@ export type ProviderCatalogSnapshot = Readonly<{
   providers?: ReadonlyArray<CatalogProvider>
   providerCount?: number | null
   countProbe?: Readonly<{ count: number; fetchedAtMs: CatalogTimestampMs }> | null
+  degradedStages?: ReadonlyArray<Readonly<{ stage: string; error: unknown }>>
 }>
 
 export type ProviderCatalogSource = Readonly<{
