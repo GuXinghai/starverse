@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import ChatSessionConsole from './ChatSessionConsole.vue'
 import { getRuntimeCapabilitySummaryLite, type CurrentRuntimeSelection } from '@/next/provider/runtimeSelection'
+import { t, tf } from '@/shared/i18n'
 
 function defaultSessionConfig() {
   return {
@@ -49,10 +50,10 @@ describe('ChatSessionConsole runtime selection controls', () => {
     })
 
     expect(screen.getByTestId('runtime-selection-status').textContent).toContain('No runtime provider selected')
-    expect(screen.getByTestId('runtime-selection-state').textContent).toContain('unset')
-    expect(screen.getByTestId('runtime-capability-summary').textContent).toContain('source unset')
-    expect(screen.getByTestId('openrouter-chat-selected-status').textContent).toContain('OpenRouter chat is inactive')
-    expect(screen.getByTestId('openrouter-chat-selected-status').textContent).toContain('not an implicit fallback')
+    expect(screen.getByTestId('runtime-selection-state').textContent).toContain(t('chat.console.status.unset'))
+    expect(screen.getByTestId('runtime-capability-summary').textContent).toContain(tf('chat.console.status.source', { source: 'unset' }))
+    expect(screen.getByTestId('openrouter-chat-selected-status').textContent).toContain(tf('chat.console.provider.openRouter.status', { status: t('chat.console.status.inactive') }))
+    expect(screen.getByTestId('openrouter-chat-selected-status').textContent).toContain(t('chat.console.provider.openRouter.notFallback'))
 
     await user.click(screen.getByTestId('openrouter-chat-enabled'))
 
@@ -96,8 +97,8 @@ describe('ChatSessionConsole runtime selection controls', () => {
     })
 
     expect(screen.getByTestId('runtime-selection-label').textContent).toContain('OpenRouter')
-    expect(screen.getByTestId('runtime-selection-state').textContent).toContain('selected')
-    expect(screen.getByTestId('runtime-capability-summary').textContent).toContain('source openrouter_existing')
-    expect(screen.getByTestId('openrouter-chat-selected-status').textContent).toContain('OpenRouter chat is active')
+    expect(screen.getByTestId('runtime-selection-state').textContent).toContain(t('chat.console.status.selected'))
+    expect(screen.getByTestId('runtime-capability-summary').textContent).toContain(tf('chat.console.status.source', { source: 'openrouter_existing' }))
+    expect(screen.getByTestId('openrouter-chat-selected-status').textContent).toContain(tf('chat.console.provider.openRouter.status', { status: t('chat.console.status.active') }))
   })
 })

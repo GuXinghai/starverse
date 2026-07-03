@@ -84,6 +84,174 @@
       "title": "Project Web Search",
       "titleWithTarget": "Project Web Search: {name}"
     },
+    "console": {
+      "section": {
+        "display": "Display",
+        "runtime": "Runtime",
+        "model": "Model",
+        "reasoning": "Reasoning",
+        "webSearch": "Web Search",
+        "sampling": "Sampling",
+        "imageGeneration": "Image Generation"
+      },
+      "display": {
+        "inlineReasoning": "Inline reasoning",
+        "rightRailReasoning": "Right rail reasoning",
+        "expandReasoningWhileThinking": "Expand reasoning while thinking",
+        "collapseReasoningWhenAnswerStarts": "Collapse reasoning when answer starts"
+      },
+      "status": {
+        "enabled": "enabled",
+        "use": "Use",
+        "active": "active",
+        "inactive": "inactive",
+        "selected": "selected",
+        "unset": "unset",
+        "none": "none",
+        "unknown": "unknown",
+        "source": "source {source}"
+      },
+      "runtime": {
+        "noProviderSelected": "No runtime provider selected",
+        "textChatBlocked": "text chat blocked",
+        "selectProviderAndModel": "Select a runtime provider and model before sending."
+      },
+      "common": {
+        "refreshing": "Refreshing...",
+        "refreshModels": "Refresh models",
+        "useModelId": "Use model id",
+        "sourceDocs": "Source docs:",
+        "sourceObserved": "{source} observed {observedAt}",
+        "ownedBy": "owned by {owner}",
+        "created": "created {createdAt}",
+        "type": "type {type}",
+        "openGlobalSettings": "Open global settings"
+      },
+      "capability": {
+        "unknown": "capability seed unknown",
+        "pricingUnknown": "pricing seed unknown",
+        "textChat": "text chat",
+        "textChatBlocked": "text chat blocked",
+        "responsesApi": "Responses API",
+        "responsesApiBlocked": "Responses API blocked",
+        "thinking": "thinking {value}",
+        "reasoning": "reasoning {value}",
+        "effort": "effort {value}",
+        "context": "context {value}",
+        "maxOutput": "max output {value}",
+        "maxInput": "max input {value}",
+        "input": "input {value}",
+        "output": "output {value}",
+        "methods": "methods {value}",
+        "functionCalling": "function calling {value}",
+        "hostedTools": "hosted tools {value}",
+        "structuredOutput": "structured output {value}",
+        "imageInput": "image input {value}",
+        "fileInput": "file input {value}",
+        "audioInput": "audio input {value}",
+        "adaptiveThinking": "adaptive thinking {value}",
+        "toolUse": "tool use {value}",
+        "files": "files {value}",
+        "citations": "citations {value}",
+        "vision": "vision {value}",
+        "rawCapabilityKeys": "raw capability keys {value}",
+        "pricing": "{currency}/1M input hit {hit} · miss {miss} · output {output}"
+      },
+      "availability": {
+        "refreshing": "Refreshing {source} models...",
+        "notRefreshed": "{source} models have not been refreshed in this session.",
+        "records": "{count} {source} model availability records. Observed {observedAt}."
+      },
+      "provider": {
+        "openRouter": {
+          "title": "OpenRouter Chat",
+          "providerLabelDefault": "OpenRouter · first-class provider",
+          "warning": "Explicit first-class provider selection. Existing OpenRouter Send Plan, attachments, web search, reasoning, image generation, and legacy-store credential source stay on the OpenRouter path.",
+          "status": "OpenRouter chat is {status}.",
+          "selectedModel": "Selected OpenRouter model: {model}",
+          "notFallback": "OpenRouter is not an implicit fallback; select it here before sending with OpenRouter.",
+          "disable": "Disable OpenRouter chat",
+          "clear": "Clear OpenRouter chat settings"
+        },
+        "openAIResponses": {
+          "title": "OpenAI Responses Chat",
+          "experimentalLabel": "Experimental · OpenAI Responses text-only · not OpenRouter",
+          "warning": "Native OpenAI Responses API text-only streaming. Attachments, web, tools, image generation, reasoning, and Generic compatibility routing are disabled.",
+          "status": "Experimental OpenAI Responses chat is {status}.",
+          "selectedModel": "Selected Responses model: {model}",
+          "credentialBridge": "OpenAI Responses chat uses a main-process credential bridge and does not expose API keys to this console.",
+          "sourceTitle": "OpenAI official model source",
+          "sourceName": "OpenAI official",
+          "disable": "Disable OpenAI Responses chat",
+          "clear": "Clear OpenAI Responses chat settings"
+        },
+        "anthropic": {
+          "title": "Anthropic Messages Chat",
+          "experimentalLabel": "Experimental · Anthropic Messages text-only · not OpenRouter",
+          "warning": "Native Anthropic Messages API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, signatures, and Generic compatibility routing are disabled.",
+          "status": "Experimental Anthropic Messages chat is {status}.",
+          "selectedModel": "Selected Claude model: {model}",
+          "credentialBridge": "Anthropic chat uses a main-process credential bridge and does not expose API keys to this console.",
+          "sourceTitle": "Anthropic official model source",
+          "sourceName": "Anthropic",
+          "disable": "Disable Anthropic Messages chat",
+          "clear": "Clear Anthropic Messages chat settings"
+        },
+        "deepSeek": {
+          "title": "DeepSeek Official Chat",
+          "experimentalLabel": "Experimental · DeepSeek official text-only · not OpenRouter",
+          "warning": "DeepSeek official API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, reasoning_content display, and Generic compatibility routing are disabled.",
+          "status": "Experimental DeepSeek official chat is {status}.",
+          "selectedModel": "Selected DeepSeek model: {model}",
+          "credentialBridge": "DeepSeek chat uses a main-process credential bridge and does not expose API keys to this console.",
+          "sourceTitle": "DeepSeek official model source",
+          "sourceName": "DeepSeek official",
+          "disable": "Disable DeepSeek official chat",
+          "clear": "Clear DeepSeek chat settings"
+        },
+        "googleAIStudio": {
+          "title": "Google AI Studio Chat",
+          "experimentalLabel": "Experimental · Google AI Studio Gemini text-only · not OpenRouter",
+          "warning": "Native Google AI Studio Gemini text-only streaming. Attachments, web, tools, image generation, reasoning, legacy Gemini runtime, and Generic compatibility routing are disabled.",
+          "status": "Experimental Google AI Studio chat is {status}.",
+          "selectedModel": "Selected Gemini model: {model}",
+          "credentialBridge": "Google AI Studio chat uses a main-process credential bridge and does not expose API keys to this console.",
+          "sourceTitle": "Gemini official model source",
+          "sourceName": "Gemini",
+          "disable": "Disable Google AI Studio chat",
+          "clear": "Clear Google AI Studio chat settings"
+        },
+        "localEndpoint": {
+          "title": "LocalEndpoint Chat",
+          "experimentalLabel": "Experimental · LocalEndpoint text-only · not OpenRouter",
+          "endpointUrl": "Loopback endpoint URL",
+          "warning": "Text-only loopback OpenAI-compatible streaming. Attachments, web, tools, image generation, reasoning, secrets, and model-picker publication are disabled.",
+          "status": "Experimental LocalEndpoint chat is {status}.",
+          "selectedEndpoint": "Selected endpoint: {endpoint}",
+          "selectedModel": "Selected local model: {model}",
+          "boundary": "Experimental local chat is separate from OpenRouter and does not use API keys or custom headers.",
+          "disable": "Disable LocalEndpoint chat",
+          "clear": "Clear LocalEndpoint chat settings"
+        }
+      },
+      "reasoning": {
+        "thinkingBudget": "thinkingBudget",
+        "thinkingLevel": "thinkingLevel",
+        "includeThoughts": "include thoughts",
+        "geminiUnsupported": "Gemini thinking is not available for this model.",
+        "effort": {
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High"
+        }
+      },
+      "webSearch": {
+        "level": {
+          "low": "Low",
+          "high": "High"
+        }
+      }
+    },
     "reasoning": {
       "title": "Reasoning",
       "emptyPayload": "No reasoning payload.",
