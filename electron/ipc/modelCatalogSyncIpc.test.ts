@@ -12,15 +12,15 @@ vi.mock('electron', () => ({
   },
 }))
 
-import { runCatalogSyncAtStartup } from '../jobs/catalogSyncStartup'
+import { runProviderCatalogSyncJob } from '../modelCatalog/providerCatalogSyncJob'
 import { deriveCatalogScopeFromStore } from '../modelCatalog/catalogScope'
 import { registerModelCatalogSyncIpc } from './modelCatalogSyncIpc'
 
-vi.mock('../jobs/catalogSyncStartup', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('../jobs/catalogSyncStartup')>()
+vi.mock('../modelCatalog/providerCatalogSyncJob', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../modelCatalog/providerCatalogSyncJob')>()
   return {
     ...actual,
-    runCatalogSyncAtStartup: vi.fn(),
+    runProviderCatalogSyncJob: vi.fn(),
   }
 })
 
@@ -45,9 +45,24 @@ function getScope(store: any) {
   }).catalogScopeKey
 }
 
+function getProviderScope(store: any, input: Readonly<{
+  providerKey: string
+  apiKey: string
+  baseUrl: string
+}>) {
+  return deriveCatalogScopeFromStore({
+    store,
+    providerKey: input.providerKey,
+    apiKey: input.apiKey,
+    baseUrl: input.baseUrl,
+    dataSource: 'models_user_primary',
+  }).catalogScopeKey
+}
+
 function registerHandlers(input?: {
   store?: any
   dbWorkerManager?: any
+  credentialService?: any
   notifyRenderer?: (channel: string, payload: unknown) => void
 }) {
   const registerInvoke = vi.fn()
@@ -60,6 +75,7 @@ function registerHandlers(input?: {
   registerModelCatalogSyncIpc({
     registerInvoke,
     store,
+    credentialService: input?.credentialService,
     dbWorkerManager,
     notifyRenderer,
   })
@@ -112,7 +128,7 @@ function makeScopedMeta(scope: string, partial: Record<string, unknown> = {}) {
 
 describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
   beforeEach(() => {
-    vi.mocked(runCatalogSyncAtStartup).mockReset()
+    vi.mocked(runProviderCatalogSyncJob).mockReset()
   })
 
   it('syncNow returns missing_api_key without DB or legacy fallback when current API key is absent', async () => {
@@ -134,7 +150,7 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
       failureReasonCode: 'missing_api_key',
     })
     expect(dbWorkerManager.call).not.toHaveBeenCalled()
-    expect(runCatalogSyncAtStartup).not.toHaveBeenCalled()
+    expect(runProviderCatalogSyncJob).not.toHaveBeenCalled()
   })
 
   it('repairCurrentScopedCache reuses forced scoped sync without renderer API key payload', async () => {
@@ -143,7 +159,7 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
       openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
     })
     const scope = getScope(store)
-    vi.mocked(runCatalogSyncAtStartup).mockResolvedValue(makeRunnerResult({ modelCountAfter: 3 }))
+    vi.mocked(runProviderCatalogSyncJob).mockResolvedValue(makeRunnerResult({ modelCountAfter: 3 }))
     const dbWorkerManager = {
       call: vi.fn(async (method: string) => {
         if (method === 'modelCatalog.getScopedMeta') {
@@ -168,7 +184,8 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
       modelCount: 3,
       catalogRevision: 'repair-checksum',
     })
-    expect(runCatalogSyncAtStartup).toHaveBeenCalledWith(expect.objectContaining({
+    expect(runProviderCatalogSyncJob).toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: 'openrouter',
       force: true,
     }))
     expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain('sk-ipc-a')
@@ -299,7 +316,7 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
   })
 
   it('syncNow treats current scoped cache_fresh as success without syncAttempted', async () => {
-    vi.mocked(runCatalogSyncAtStartup).mockResolvedValue(makeRunnerResult({
+    vi.mocked(runProviderCatalogSyncJob).mockResolvedValue(makeRunnerResult({
       syncAttempted: false,
       syncSucceeded: false,
       reason: 'cache_fresh',
@@ -320,7 +337,7 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
   })
 
   it('syncNow passes normalized catalog freshness to scoped runner', async () => {
-    vi.mocked(runCatalogSyncAtStartup).mockResolvedValue(makeRunnerResult())
+    vi.mocked(runProviderCatalogSyncJob).mockResolvedValue(makeRunnerResult())
     const { handlers } = registerHandlers({
       store: createStore({
         openRouterApiKey: 'sk-ipc-a',
@@ -335,7 +352,8 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
       reason: 'model_picker_opened',
     })
 
-    expect(runCatalogSyncAtStartup).toHaveBeenCalledWith(expect.objectContaining({
+    expect(runProviderCatalogSyncJob).toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: 'openrouter',
       force: false,
       freshnessMs: 15 * 60 * 1000,
     }))
@@ -343,7 +361,7 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
 
   it('syncNow emits sanitized sync event payload on scoped success', async () => {
     const rawApiKey = 'sk-ipc-a'
-    vi.mocked(runCatalogSyncAtStartup).mockResolvedValue(makeRunnerResult())
+    vi.mocked(runProviderCatalogSyncJob).mockResolvedValue(makeRunnerResult())
     const notifyRenderer = vi.fn()
     const { handlers, dbWorkerManager } = registerHandlers({
       store: createStore({
@@ -371,6 +389,90 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain(rawApiKey)
   })
 
+  it('syncNow derives non-OpenRouter scope from secure provider credentials', async () => {
+    const rawApiKey = 'sk-openai-catalog-ipc'
+    const store = createStore({
+      openRouterApiKey: 'sk-openrouter-should-not-scope-openai',
+      openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
+    })
+    const scope = getProviderScope(store, {
+      providerKey: 'openai_responses',
+      apiKey: rawApiKey,
+      baseUrl: 'https://api.openai.com/v1',
+    })
+    vi.mocked(runProviderCatalogSyncJob).mockResolvedValue(makeRunnerResult({
+      providerKey: 'openai_responses',
+      modelCountAfter: 2,
+      syncSnapshotId: 'snap-openai-ipc',
+    }))
+    const credentialService = {
+      readApiKey: vi.fn((providerKey: string) => providerKey === 'openai_responses'
+        ? {
+            ok: true,
+            providerKey: 'openai_responses',
+            apiKey: rawApiKey,
+            source: 'secure_store',
+            backend: 'electron_safe_storage',
+            migratedFromLegacy: false,
+            warnings: [],
+          }
+        : { ok: false, code: 'credential_missing', message: 'missing' }),
+      getLegacyStoreValue: vi.fn((key: string) => store.get(key)),
+    }
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'modelCatalog.getScopedMeta') {
+          expect(params).toMatchObject({ providerKey: 'openai_responses', catalogScopeKey: scope })
+          return makeScopedMeta(scope, {
+            providerKey: 'openai_responses',
+            baseUrl: 'https://api.openai.com/v1',
+            modelCount: 2,
+            visibleModelCount: 2,
+            hiddenModelCount: 0,
+            snapshotChecksum: 'openai-checksum',
+          })
+        }
+        if (method === 'modelCatalog.cleanupExpiredScopedCatalogCaches') {
+          expect(params).toMatchObject({ providerKey: 'openai_responses' })
+          return { deleted: {}, deletedScopeCount: 0 }
+        }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    }
+    const notifyRenderer = vi.fn()
+    const { handlers } = registerHandlers({ store, credentialService, dbWorkerManager, notifyRenderer })
+
+    const result = await handlers.get('modelCatalog.syncNow')?.({}, {
+      providerKey: 'openai_responses',
+      force: true,
+      reason: 'manual_refresh',
+    }) as any
+
+    expect(result).toMatchObject({
+      ok: true,
+      providerKey: 'openai_responses',
+      modelCount: 2,
+      visibleModelCount: 2,
+      catalogRevision: 'openai-checksum',
+    })
+    expect(credentialService.readApiKey).toHaveBeenCalledWith('openai_responses')
+    expect(runProviderCatalogSyncJob).toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: 'openai_responses',
+      credentialService,
+      force: true,
+    }))
+    expect(notifyRenderer).toHaveBeenCalledWith('db:modelCatalogSynced', {
+      routerSource: 'openai_responses',
+      modelCount: 2,
+      visibleModelCount: 2,
+      hiddenModelCount: 0,
+      lastSyncAtMs: 2,
+    })
+    expect(JSON.stringify(result)).not.toContain(rawApiKey)
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain(rawApiKey)
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain('sk-openrouter-should-not-scope-openai')
+  })
+
   it('uses one lock per current scope and does not serialize different credential scopes together', async () => {
     const store = createStore({
       openRouterApiKey: 'sk-ipc-a',
@@ -378,7 +480,7 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     })
     let resolveA: (value: any) => void = () => {}
     let resolveB: (value: any) => void = () => {}
-    vi.mocked(runCatalogSyncAtStartup)
+    vi.mocked(runProviderCatalogSyncJob)
       .mockImplementationOnce(() => new Promise((resolve) => {
         resolveA = resolve
       }))
@@ -389,11 +491,11 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
 
     const first = handlers.get('modelCatalog.syncNow')?.({}, { providerKey: 'openrouter', force: true, reason: 'manual_refresh' }) as Promise<any>
     const sameScope = handlers.get('modelCatalog.syncNow')?.({}, { providerKey: 'openrouter', force: true, reason: 'manual_refresh' }) as Promise<any>
-    expect(runCatalogSyncAtStartup).toHaveBeenCalledTimes(1)
+    expect(runProviderCatalogSyncJob).toHaveBeenCalledTimes(1)
 
     store.setValue('openRouterApiKey', 'sk-ipc-b')
     const otherScope = handlers.get('modelCatalog.syncNow')?.({}, { providerKey: 'openrouter', force: true, reason: 'manual_refresh' }) as Promise<any>
-    expect(runCatalogSyncAtStartup).toHaveBeenCalledTimes(2)
+    expect(runProviderCatalogSyncJob).toHaveBeenCalledTimes(2)
 
     resolveA(makeRunnerResult({ syncSnapshotId: 'snap-a' }))
     resolveB(makeRunnerResult({ syncSnapshotId: 'snap-b' }))
@@ -578,6 +680,97 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
       failureReasonCode: 'missing_api_key',
       items: [],
     })
+  })
+
+  it('status and query use non-OpenRouter provider scoped snapshots', async () => {
+    const rawApiKey = 'sk-anthropic-catalog-ipc'
+    const store = createStore({
+      openRouterApiKey: 'sk-openrouter-should-not-scope-anthropic',
+      openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
+    })
+    const scope = getProviderScope(store, {
+      providerKey: 'anthropic_messages',
+      apiKey: rawApiKey,
+      baseUrl: 'https://api.anthropic.com/v1',
+    })
+    const credentialService = {
+      readApiKey: vi.fn((providerKey: string) => providerKey === 'anthropic'
+        ? {
+            ok: true,
+            providerKey: 'anthropic_messages',
+            apiKey: rawApiKey,
+            source: 'secure_store',
+            backend: 'electron_safe_storage',
+            migratedFromLegacy: false,
+            warnings: [],
+          }
+        : { ok: false, code: 'credential_missing', message: 'missing' }),
+      getLegacyStoreValue: vi.fn((key: string) => store.get(key)),
+    }
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'modelCatalog.getScopedMeta') {
+          expect(params).toMatchObject({ providerKey: 'anthropic_messages', catalogScopeKey: scope })
+          return makeScopedMeta(scope, {
+            providerKey: 'anthropic_messages',
+            baseUrl: 'https://api.anthropic.com/v1',
+            modelCount: 1,
+            visibleModelCount: 1,
+            hiddenModelCount: 0,
+          })
+        }
+        if (method === 'modelCatalog.validateActiveScopedSnapshot') {
+          expect(params).toMatchObject({ providerKey: 'anthropic_messages', catalogScopeKey: scope })
+          return { ok: true, modelCount: 1 }
+        }
+        if (method === 'modelCatalog.queryScopedActive') {
+          expect(params).toMatchObject({
+            providerKey: 'anthropic_messages',
+            catalogScopeKey: scope,
+            searchText: 'claude',
+          })
+          return {
+            items: [{
+              providerKey: 'anthropic_messages',
+              modelId: 'claude-sonnet-4-5',
+              modelKey: 'anthropic_messages::claude-sonnet-4-5',
+              displayName: 'Claude Sonnet 4.5',
+              pricingJson: null,
+              capabilitiesJson: '{"reasoning":true}',
+            }],
+            nextCursor: null,
+          }
+        }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    }
+    const { handlers } = registerHandlers({ store, credentialService, dbWorkerManager })
+
+    const status = await handlers.get('modelCatalog.getSyncStatus')?.({}, { providerKey: 'anthropic_messages' }) as any
+    const query = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, {
+      providerKey: 'anthropic_messages',
+      searchText: 'claude',
+    }) as any
+
+    expect(status).toMatchObject({
+      providerKey: 'anthropic_messages',
+      status: 'synced',
+      modelCount: 1,
+    })
+    expect(query).toMatchObject({
+      providerKey: 'anthropic_messages',
+      status: 'synced',
+      items: [
+        expect.objectContaining({
+          modelId: 'claude-sonnet-4-5',
+          modelKey: 'anthropic_messages::claude-sonnet-4-5',
+        }),
+      ],
+    })
+    expect(credentialService.readApiKey).toHaveBeenCalledWith('anthropic')
+    expect(JSON.stringify(status)).not.toContain(rawApiKey)
+    expect(JSON.stringify(query)).not.toContain(rawApiKey)
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain('sk-openrouter-should-not-scope-anthropic')
   })
 
   it('queryScopedCurrent returns cache_corrupted and db_unavailable without legacy fallback', async () => {

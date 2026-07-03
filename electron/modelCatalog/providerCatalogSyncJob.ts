@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
-import type { ProviderCredentialKey, ProviderCredentialService } from '../credentials/providerCredentialService'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import type { OpenRouterCatalogCredentialStoreReader } from '../jobs/openRouterCatalogCredential'
 import { resolveOpenRouterCatalogCredentialFromLegacyStore } from '../jobs/openRouterCatalogCredential'
 import { mapErrorToSyncCode, mapMissingApiKeyToCode } from '../../src/shared/modelCatalog/catalogSyncErrorMapper'
@@ -14,7 +14,10 @@ import { requireProviderCatalogSource } from '../../src/shared/modelCatalog/prov
 import { requireProviderCatalogSourceDescriptor } from '../../src/shared/modelCatalog/providerCatalogRegistry'
 import type { ProviderCatalogKnownProviderKey } from '../../src/shared/modelCatalog/providerCatalogContracts'
 import { mapProviderCatalogSnapshotToScopedWriterInput } from '../../src/shared/modelCatalog/providerCatalogSnapshotMapper'
-import { resolveCurrentOpenRouterCatalogScope } from './providerCatalogScopeResolver'
+import {
+  providerCredentialKeyForCatalog,
+  resolveCurrentOpenRouterCatalogScope,
+} from './providerCatalogScopeResolver'
 import { deriveCatalogScopeFromStore } from './catalogScope'
 import { CatalogSyncRunner, type CatalogSyncRunnerMeta, type CatalogSyncRunnerResult } from './catalogSyncRunner'
 
@@ -99,14 +102,6 @@ type ResolvedProviderCatalogRuntime = Readonly<{
   catalogScopeKey: string
   scopeDataSource: CatalogSyncRunnerMeta['dataSource']
 }>
-
-function providerCredentialKeyForCatalog(providerKey: ProviderCatalogKnownProviderKey): ProviderCredentialKey | null {
-  if (providerKey === 'google_ai_studio') return 'google_ai_studio'
-  if (providerKey === 'openai_responses') return 'openai_responses'
-  if (providerKey === 'deepseek') return 'deepseek'
-  if (providerKey === 'anthropic_messages') return 'anthropic'
-  return null
-}
 
 function resolveProviderCatalogRuntime(
   input: ProviderCatalogSyncJobInput,
