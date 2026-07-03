@@ -78,12 +78,33 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'deepSeekApiKey',       // Experimental DeepSeek official API Key（main-process only）
   'openRouterBaseUrl',    // OpenRouter Base URL（自定义端点）
   'openRouterCatalogLocalSecret', // Internal: OpenRouter catalog scope HMAC secret（禁止 renderer 读取）
+  'providerCatalogLocalSecret', // Internal: provider catalog scope HMAC secret（禁止 renderer 读取）
   'openRouterCatalogStartupSyncPolicy', // OpenRouter 模型目录启动同步策略
   'openRouterCatalogPickerOpenSyncPolicy', // OpenRouter 模型选择器打开同步策略
   'openRouterCatalogListUpdateMode', // OpenRouter 模型目录列表更新应用方式
   'openRouterCatalogFreshnessMs', // OpenRouter 模型目录新鲜度
   'openRouterCatalogRetentionMs', // OpenRouter 模型目录缓存保留期
   'openRouterDeprecatedCatalogCacheClearedAtMs', // Internal: deprecated OpenRouter catalog cleanup marker
+  'googleAIStudioCatalogStartupSyncPolicy', // Google AI Studio 模型目录启动同步策略
+  'googleAIStudioCatalogPickerOpenSyncPolicy', // Google AI Studio 模型选择器打开同步策略
+  'googleAIStudioCatalogListUpdateMode', // Google AI Studio 模型目录列表更新应用方式
+  'googleAIStudioCatalogFreshnessMs', // Google AI Studio 模型目录新鲜度
+  'googleAIStudioCatalogRetentionMs', // Google AI Studio 模型目录缓存保留期
+  'anthropicCatalogStartupSyncPolicy', // Anthropic 模型目录启动同步策略
+  'anthropicCatalogPickerOpenSyncPolicy', // Anthropic 模型选择器打开同步策略
+  'anthropicCatalogListUpdateMode', // Anthropic 模型目录列表更新应用方式
+  'anthropicCatalogFreshnessMs', // Anthropic 模型目录新鲜度
+  'anthropicCatalogRetentionMs', // Anthropic 模型目录缓存保留期
+  'openAIResponsesCatalogStartupSyncPolicy', // OpenAI Responses 模型目录启动同步策略
+  'openAIResponsesCatalogPickerOpenSyncPolicy', // OpenAI Responses 模型选择器打开同步策略
+  'openAIResponsesCatalogListUpdateMode', // OpenAI Responses 模型目录列表更新应用方式
+  'openAIResponsesCatalogFreshnessMs', // OpenAI Responses 模型目录新鲜度
+  'openAIResponsesCatalogRetentionMs', // OpenAI Responses 模型目录缓存保留期
+  'deepSeekCatalogStartupSyncPolicy', // DeepSeek 模型目录启动同步策略
+  'deepSeekCatalogPickerOpenSyncPolicy', // DeepSeek 模型选择器打开同步策略
+  'deepSeekCatalogListUpdateMode', // DeepSeek 模型目录列表更新应用方式
+  'deepSeekCatalogFreshnessMs', // DeepSeek 模型目录新鲜度
+  'deepSeekCatalogRetentionMs', // DeepSeek 模型目录缓存保留期
   'apiKey',               // 向后兼容：旧版 API Key 字段
   
   // ========== Provider & Model ==========
