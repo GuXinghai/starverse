@@ -3,6 +3,11 @@ import type { RegisterInvoke } from './types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaGemini, type GeminiFetchFn } from '../../src/next/provider/gemini/geminiAdapter'
 import type { GeminiContent } from '../../src/next/provider/gemini/geminiRequestBuilder'
+import {
+  isGeminiThinkingLevel,
+  normalizeGeminiThinkingConfig,
+  type GeminiThinkingConfig,
+} from '../../src/next/provider/gemini/geminiThinkingPolicy'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import { sanitizeProviderNetworkError } from './providerNetworkError'
@@ -30,6 +35,7 @@ export type GoogleAIStudioTextChatPayload = Readonly<{
   model?: unknown
   messages?: unknown
   currentUserContentBlocks?: unknown
+  geminiThinking?: unknown
   timeoutMs?: unknown
 }>
 
@@ -61,6 +67,7 @@ type ValidatedTextChatSuccess = Readonly<{
   model: string
   messages: GoogleAIStudioTextChatMessage[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  geminiThinking?: GeminiThinkingConfig
   timeoutMs: number
 }>
 
@@ -117,6 +124,34 @@ function normalizeMessages(raw: unknown, allowEmptyCurrentUser = false): GoogleA
   return out
 }
 
+function validateGeminiThinkingConfig(raw: unknown, model: string): GeminiThinkingConfig | null | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
+  const record = raw as Record<string, unknown>
+  const mode = record.mode
+  if (mode !== 'auto' && mode !== 'budget' && mode !== 'level') return null
+  if ('includeThoughts' in record && typeof record.includeThoughts !== 'boolean') return null
+  let thinkingBudget: number | undefined
+  if ('thinkingBudget' in record) {
+    if (typeof record.thinkingBudget !== 'number' || !Number.isFinite(record.thinkingBudget) || record.thinkingBudget <= 0) {
+      return null
+    }
+    thinkingBudget = Math.trunc(record.thinkingBudget)
+  }
+  let thinkingLevel: GeminiThinkingConfig['thinkingLevel'] | undefined
+  if ('thinkingLevel' in record) {
+    if (!isGeminiThinkingLevel(record.thinkingLevel)) return null
+    thinkingLevel = record.thinkingLevel
+  }
+  const candidate: GeminiThinkingConfig = {
+    mode,
+    ...(thinkingBudget !== undefined ? { thinkingBudget } : {}),
+    ...(thinkingLevel ? { thinkingLevel } : {}),
+    includeThoughts: record.includeThoughts === true,
+  }
+  return normalizeGeminiThinkingConfig({ model, config: candidate })
+}
+
 export function validateGoogleAIStudioTextChatPayload(payload: unknown): ValidatedTextChatPayload {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return staticFailure('invalid_payload', 'Google AI Studio text chat payload is invalid.')
@@ -139,6 +174,11 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     return staticFailure('invalid_payload', 'Google AI Studio text chat requires user and assistant messages.')
   }
 
+  const geminiThinking = validateGeminiThinkingConfig(record.geminiThinking, model)
+  if (geminiThinking === null) {
+    return staticFailure('invalid_payload', 'Google AI Studio thinking config payload is invalid.')
+  }
+
   return {
     ok: true,
     requestId,
@@ -146,6 +186,7 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     model,
     messages,
     ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
+    ...(geminiThinking ? { geminiThinking } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
 }
@@ -160,12 +201,42 @@ function readGoogleAIStudioApiKey(credentialService: ProviderCredentialService):
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
+  if (error.phase !== 'transport' && error.phase !== 'http' && error.phase !== 'abort' && error.category !== 'network') {
+    return {
+      phase: error.phase,
+      provider: 'google-ai-studio',
+      category: error.category,
+      message: sanitizeProviderMessage(error.message),
+      ...(error.code ? { code: sanitizeProviderCode(error.code) } : {}),
+      ...(typeof error.httpStatus === 'number' ? { httpStatus: error.httpStatus } : {}),
+      ...(error.retryable ? { retryable: true } : {}),
+      ...(error.requestId ? { requestId: sanitizeProviderCode(error.requestId) } : {}),
+    }
+  }
   return sanitizeProviderNetworkError({
     providerId: 'google_ai_studio',
     providerWireName: 'google-ai-studio',
     providerLabel: 'Google AI Studio',
     error,
   })
+}
+
+function sanitizeProviderMessage(message: unknown): string {
+  const value = typeof message === 'string' && message.trim() ? message : 'Google AI Studio stream failed.'
+  return redactProviderDiagnosticText(value).slice(0, 1000)
+}
+
+function sanitizeProviderCode(code: unknown): string {
+  const value = typeof code === 'string' && code.trim() ? code : String(code ?? 'error')
+  return redactProviderDiagnosticText(value).slice(0, 120)
+}
+
+function redactProviderDiagnosticText(value: string): string {
+  return value
+    .replace(/\bAuthorization\b\s*:?\s*Bearer\s+[A-Za-z0-9._~+/-]+/giu, '[redacted-auth]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+/giu, '[redacted-auth]')
+    .replace(/\b(x-goog-api-key|api[_ -]?key)\b\s*[:=]\s*[A-Za-z0-9._~+/-]+/giu, '$1=[redacted]')
+    .replace(/https?:\/\/[^\s"'<>]+/giu, '[redacted-url]')
 }
 
 function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent {
@@ -217,6 +288,7 @@ function buildProviderRequest(input: Readonly<{
     config: {
       model: input.request.model,
       requestedReasoningMode: 'auto',
+      ...(input.request.geminiThinking ? { geminiThinking: input.request.geminiThinking } : {}),
     },
   }
 }

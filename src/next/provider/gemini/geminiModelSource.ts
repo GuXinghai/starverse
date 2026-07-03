@@ -9,6 +9,7 @@ import {
   providerNetworkFailureMessage,
   type NetworkErrorEnvelope,
 } from '../../../shared/network/networkErrorEnvelope'
+import { resolveGeminiThinkingCapability } from './geminiThinkingPolicy'
 
 export const GOOGLE_AI_STUDIO_PROVIDER_KEY = 'google_ai_studio' as const
 export const GOOGLE_AI_STUDIO_ENDPOINT_ID = 'google-ai-studio-official' as const
@@ -257,12 +258,16 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): GeminiPr
 
   const supportedGenerationMethods = asStringArray(record.supportedGenerationMethods)
   const textChat = supportedGenerationMethods.includes('generateContent') || supportedGenerationMethods.includes('streamGenerateContent')
+  const thinkingCapability = resolveGeminiThinkingCapability({
+    model: nativeModelId,
+    supportedGenerationMethods,
+  })
   const capabilitySeed: NonNullable<GeminiProviderModelAvailability['capabilitySeed']> = {
     textChat,
     supportedGenerationMethods,
     ...(asPositiveInteger(record.inputTokenLimit) ? { inputTokenLimit: asPositiveInteger(record.inputTokenLimit) } : {}),
     ...(asPositiveInteger(record.outputTokenLimit) ? { outputTokenLimit: asPositiveInteger(record.outputTokenLimit) } : {}),
-    thinking: 'unknown',
+    thinking: thinkingCapability.kind === 'unsupported' ? 'unknown' : 'supported',
     functionCalling: 'unknown',
     builtInTools: 'unknown',
     vision: 'unknown',

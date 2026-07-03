@@ -375,6 +375,10 @@ function providerRequiresTextOnlyGates(selection: CurrentRuntimeSelection): sele
   return selection.state === 'selected' && selection.providerKey !== 'openrouter'
 }
 
+function providerUsesNativeReasoningControls(selection: CurrentRuntimeSelection): boolean {
+  return selection.state === 'selected' && selection.providerKey === 'google_ai_studio'
+}
+
 export function getRuntimeTextChatBlockReason(input: RuntimeTextChatBlockReasonInput): string | null {
   if (input.selection.state === 'unset') return RUNTIME_SELECTION_UNSET_SEND_BLOCK_REASON
 
@@ -401,7 +405,11 @@ export function getRuntimeTextChatBlockReason(input: RuntimeTextChatBlockReasonI
   if ((featureEnabled(input.sessionConfig.tools) || input.toolsRequested === true) && input.capability.tools === 'blocked') {
     return `${providerName} experimental text chat does not support tools. Disable tools before sending.`
   }
-  if (featureEnabled(input.sessionConfig.reasoning) && input.capability.reasoningArtifacts !== 'supported') {
+  if (
+    featureEnabled(input.sessionConfig.reasoning) &&
+    input.capability.reasoningArtifacts !== 'supported' &&
+    !providerUsesNativeReasoningControls(input.selection)
+  ) {
     return `${providerName} experimental text chat does not support reasoning controls. Disable reasoning before sending.`
   }
   if (featureEnabled(input.sessionConfig.imageGeneration) && input.capability.imageGeneration === 'blocked') {

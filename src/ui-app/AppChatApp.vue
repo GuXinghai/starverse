@@ -56,6 +56,8 @@ const {
   activeTitle,
   activeBranch,
   reasoningDisplayMode,
+  reasoningPanelDefaultExpanded,
+  reasoningPanelAutoCollapseAfterReasoning,
   reasoningRailMode,
   rightRailOpen,
   closeRightRailPanel,
@@ -161,6 +163,9 @@ const {
   onUpdateModel,
   onUpdateReasoningEnabled,
   onUpdateReasoningEffortLevel,
+  onUpdateGoogleAIStudioThinking,
+  onUpdateReasoningPanelDefaultExpanded,
+  onUpdateReasoningPanelAutoCollapseAfterReasoning,
   onUpdateWebSearchEnabled,
   onUpdateWebSearchLevel,
   onUpdateImageGenerationEnabled,
@@ -783,6 +788,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             @refreshProviderModelsRequested="onRefreshProviderModelPickerSources"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
+            @updateGoogleAIStudioThinking="onUpdateGoogleAIStudioThinking"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"
             @updateWebSearchLevel="onUpdateWebSearchLevel"
             @updateImageGenerationEnabled="onUpdateImageGenerationEnabled"
@@ -837,12 +843,15 @@ function shouldShowInlineReasoning(message: any): boolean {
             :currentRuntimeCapability="currentRuntimeCapability"
             :currentRuntimeStatus="currentRuntimeStatus"
             :reasoningDisplayMode="reasoningDisplayMode"
+            :reasoningPanelDefaultExpanded="reasoningPanelDefaultExpanded"
+            :reasoningPanelAutoCollapseAfterReasoning="reasoningPanelAutoCollapseAfterReasoning"
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
             :samplingParamsResolved="activeSessionSamplingParamsResolved"
             @updateModel="onUpdateModel"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
+            @updateGoogleAIStudioThinking="onUpdateGoogleAIStudioThinking"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"
             @updateWebSearchLevel="onUpdateWebSearchLevel"
             @updateWebSearchLayer="onComposerUpdateWebSearchLayer"
@@ -881,6 +890,8 @@ function shouldShowInlineReasoning(message: any): boolean {
             @clearDeepSeekChat="onClearDeepSeekChat"
             @refreshDeepSeekModels="onRefreshDeepSeekModels"
             @updateReasoningDisplayMode="onUpdateReasoningDisplayMode"
+            @updateReasoningPanelDefaultExpanded="onUpdateReasoningPanelDefaultExpanded"
+            @updateReasoningPanelAutoCollapseAfterReasoning="onUpdateReasoningPanelAutoCollapseAfterReasoning"
             @openSettings="openSettings"
           />
         </ChatRightRail>

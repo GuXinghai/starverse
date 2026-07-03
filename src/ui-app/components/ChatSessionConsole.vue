@@ -20,6 +20,13 @@ import type {
   GeminiModelAvailabilityResult,
   GeminiProviderModelAvailability,
 } from '@/next/provider/gemini/geminiModelSource'
+import {
+  DEFAULT_GEMINI_THINKING_CONFIG,
+  normalizeGeminiThinkingConfig,
+  resolveGeminiThinkingCapability,
+  type GeminiThinkingConfig,
+  type GeminiThinkingLevel,
+} from '@/next/provider/gemini/geminiThinkingPolicy'
 import type {
   AnthropicModelAvailabilityResult,
   AnthropicProviderModelAvailability,
@@ -163,6 +170,8 @@ const props = defineProps<{
     warnings: readonly string[]
   }> | null
   reasoningDisplayMode: 'inline' | 'rail'
+  reasoningPanelDefaultExpanded?: boolean
+  reasoningPanelAutoCollapseAfterReasoning?: boolean
   modelCatalog: readonly ModelCatalogItem[]
   webSearchResolved: ResolvedSearchSettings | null
   samplingParamsResolved: ResolvedSamplingParams | null
@@ -172,6 +181,7 @@ const emit = defineEmits<{
   (e: 'updateModel', modelKey: ChatModelSelection | string): void
   (e: 'updateReasoningEnabled', enabled: boolean): void
   (e: 'updateReasoningEffort', effort: 'low' | 'medium' | 'high'): void
+  (e: 'updateGoogleAIStudioThinking', value: Partial<GeminiThinkingConfig>): void
   (e: 'updateWebSearchEnabled', enabled: boolean): void
   (e: 'updateWebSearchLevel', level: 'low' | 'high'): void
   (e: 'updateWebSearchLayer', layer: SearchSettingsLayer | null): void
@@ -218,6 +228,8 @@ const emit = defineEmits<{
   (e: 'clearDeepSeekChat'): void
   (e: 'refreshDeepSeekModels'): void
   (e: 'updateReasoningDisplayMode', mode: 'inline' | 'rail'): void
+  (e: 'updateReasoningPanelDefaultExpanded', expanded: boolean): void
+  (e: 'updateReasoningPanelAutoCollapseAfterReasoning', enabled: boolean): void
   (e: 'openSettings'): void
 }>()
 
@@ -227,11 +239,20 @@ const selectedModelId = computed(() => props.sessionConfig.model.selectedModelKe
 const openRouterModelValue = computed(() => (
   selectedProviderId.value === DEFAULT_CHAT_PROVIDER_ID ? selectedModelId.value : DEFAULT_OPENROUTER_MODEL_ID
 ))
+const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === 'google_ai_studio')
+const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModelId.value }))
+const googleThinkingConfig = computed(() => normalizeGeminiThinkingConfig({
+  model: selectedModelId.value,
+  config: props.sessionConfig.googleAIStudioThinking ?? DEFAULT_GEMINI_THINKING_CONFIG,
+}))
+const googleThinkingEnabled = computed(() => googleThinkingConfig.value.mode !== 'auto' && googleThinkingCapability.value.kind !== 'unsupported')
+const reasoningPanelDefaultExpanded = computed(() => props.reasoningPanelDefaultExpanded !== false)
+const reasoningPanelAutoCollapseAfterReasoning = computed(() => props.reasoningPanelAutoCollapseAfterReasoning === true)
 function selectedModelFor(providerId: ChatModelSelection['providerId']): string {
-  return selectedProviderId.value === providerId ? selectedModelId.value : '
+  return selectedProviderId.value === providerId ? selectedModelId.value : ''
 }
 function selectProviderModel(providerId: ChatModelSelection['providerId'], modelId: unknown) {
-  const normalized = String(modelId ?? ').trim()
+  const normalized = String(modelId ?? '').trim()
   if (!normalized) return
   emit('updateModel', { providerId, modelId: normalized })
 }
@@ -244,7 +265,7 @@ const openRouterChatStatusLabel = computed(() => openRouterChat.value.enabled ? 
 const lmStudioChat = computed(() => props.lmStudioChat ?? {
   enabled: false,
   endpointUrl: 'http://127.0.0.1:1234',
-  model: ',
+  model: '',
   chatMode: 'openai_compatible' as const,
   openAICompatiblePreferredEndpoint: 'chat_completions' as const,
   nativeRestControls: {
@@ -274,7 +295,7 @@ const lmStudioChatStatusLabel = computed(() => lmStudioChat.value.enabled ? t('s
 const lmStudioProbeLoading = ref(false)
 const lmStudioActionLoading = ref(false)
 const lmStudioProbeResult = ref<any | null>(null)
-const lmStudioActionResult = ref<string>(')
+const lmStudioActionResult = ref<string>('')
 const lmStudioNativeModels = computed(() => {
   const result = lmStudioProbeResult.value
   return result?.ok && result.diagnostics?.nativeRest?.ok ? result.diagnostics.nativeRest.models as any[] : []
@@ -297,7 +318,7 @@ function formatLMStudioAvailability(available: boolean): string {
 const ollamaChat = computed(() => props.ollamaChat ?? {
   enabled: false,
   endpointUrl: 'http://127.0.0.1:11434',
-  model: ',
+  model: '',
   chatMode: 'native_rest' as const,
   nativeRestPreferredEndpoint: 'chat' as const,
   openAICompatiblePreferredEndpoint: 'chat_completions' as const,
@@ -328,7 +349,7 @@ const ollamaChatStatusLabel = computed(() => ollamaChat.value.enabled ? t('setti
 const ollamaProbeLoading = ref(false)
 const ollamaActionLoading = ref(false)
 const ollamaProbeResult = ref<any | null>(null)
-const ollamaActionResult = ref<string>(')
+const ollamaActionResult = ref<string>('')
 const ollamaLocalModels = computed(() => {
   const result = ollamaProbeResult.value
   return result?.ok && result.diagnostics?.localModels?.ok ? result.diagnostics.localModels.models as any[] : []
@@ -354,13 +375,13 @@ const runtimeCapabilitySourceLabel = computed(() => props.currentRuntimeCapabili
 const localEndpointChat = computed(() => props.localEndpointChat ?? {
   enabled: false,
   endpointUrl: 'http://localhost:1234/v1',
-  model: ',
+  model: '',
   experimentalLabel: t('chat.console.provider.localEndpoint.experimentalLabel'),
 })
 const localEndpointChatStatusLabel = computed(() => localEndpointChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
 const openAIResponsesChat = computed(() => props.openAIResponsesChat ?? {
   enabled: false,
-  model: ',
+  model: '',
   experimentalLabel: t('chat.console.provider.openAIResponses.experimentalLabel'),
 })
 const openAIResponsesChatStatusLabel = computed(() => openAIResponsesChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
@@ -394,7 +415,7 @@ const openAIResponsesAvailabilitySummary = computed(() => {
 })
 const googleAIStudioChat = computed(() => props.googleAIStudioChat ?? {
   enabled: false,
-  model: ',
+  model: '',
   experimentalLabel: t('chat.console.provider.googleAIStudio.experimentalLabel'),
 })
 const googleAIStudioChatStatusLabel = computed(() => googleAIStudioChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
@@ -428,7 +449,7 @@ const googleAIStudioAvailabilitySummary = computed(() => {
 })
 const anthropicChat = computed(() => props.anthropicChat ?? {
   enabled: false,
-  model: ',
+  model: '',
   experimentalLabel: t('chat.console.provider.anthropic.experimentalLabel'),
 })
 const anthropicChatStatusLabel = computed(() => anthropicChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
@@ -462,7 +483,7 @@ const anthropicAvailabilitySummary = computed(() => {
 })
 const deepSeekChat = computed(() => props.deepSeekChat ?? {
   enabled: false,
-  model: ',
+  model: '',
   experimentalLabel: t('chat.console.provider.deepSeek.experimentalLabel'),
 })
 const deepSeekChatStatusLabel = computed(() => deepSeekChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
@@ -499,7 +520,7 @@ const imageValue = computed<ImageGenerationUserConfig>(() => ({
   outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? 'auto',
   aspectRatio: props.sessionConfig.imageGeneration.aspectRatio,
   imageSize: props.sessionConfig.imageGeneration.resolution,
-  advancedJson: props.sessionConfig.imageGeneration.detail?.advancedJson ?? ',
+  advancedJson: props.sessionConfig.imageGeneration.detail?.advancedJson ?? '',
 }))
 
 function formatObservedAt(observedAtMs: number): string {
@@ -521,6 +542,42 @@ function networkFailureMessage(result: unknown): string {
   }) ?? t('errors.network.reason.networkUnknown')
 }
 
+function onGoogleThinkingEnabledChange(enabled: boolean) {
+  if (!enabled) {
+    emit('updateGoogleAIStudioThinking', { mode: 'auto' })
+    return
+  }
+  if (googleThinkingCapability.value.kind === 'budget') {
+    emit('updateGoogleAIStudioThinking', { mode: 'budget' })
+    return
+  }
+  if (googleThinkingCapability.value.kind === 'level') {
+    emit('updateGoogleAIStudioThinking', { mode: 'level' })
+  }
+}
+
+function onGoogleThinkingBudgetChange(event: Event) {
+  const value = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(value) || value <= 0) return
+  emit('updateGoogleAIStudioThinking', {
+    mode: 'budget',
+    thinkingBudget: Math.trunc(value),
+  })
+}
+
+function onGoogleThinkingLevelChange(event: Event) {
+  emit('updateGoogleAIStudioThinking', {
+    mode: 'level',
+    thinkingLevel: (event.target as HTMLSelectElement).value as GeminiThinkingLevel,
+  })
+}
+
+function onGoogleThinkingIncludeThoughtsChange(event: Event) {
+  emit('updateGoogleAIStudioThinking', {
+    includeThoughts: (event.target as HTMLInputElement).checked,
+  })
+}
+
 function formatLMStudioModels(models: any[]): string {
   if (models.length === 0) return t('settings.lmStudio.none')
   return models
@@ -535,7 +592,7 @@ function formatLMStudioModels(models: any[]): string {
       const meta = [model.type, model.quantization, model.paramsString, model.maxContextLength ? tf('settings.lmStudio.contextShort', { value: model.maxContextLength }) : null]
         .filter(Boolean)
         .join(' · ')
-      return `${label} (${loaded}${meta ? ` · ${meta}` : '})`
+      return `${label} (${loaded}${meta ? ` · ${meta}` : ''})`
     })
     .join(' | ')
 }
@@ -547,7 +604,7 @@ async function probeLMStudio(options: Readonly<{ clearAction?: boolean }> = {}) 
     return
   }
   lmStudioProbeLoading.value = true
-  if (options.clearAction !== false) lmStudioActionResult.value = '
+  if (options.clearAction !== false) lmStudioActionResult.value = ''
   try {
     const result = await bridge.probe({
       endpointUrl: lmStudioChat.value.endpointUrl,
@@ -568,7 +625,7 @@ async function loadLMStudioSelectedModel() {
   const model = selectedModelFor('lm_studio').trim()
   if (!lmStudioBridgeAvailable.value || !model) return
   lmStudioActionLoading.value = true
-  lmStudioActionResult.value = '
+  lmStudioActionResult.value = ''
   try {
     const result = await bridge.loadModel({
       endpointUrl: lmStudioChat.value.endpointUrl,
@@ -592,7 +649,7 @@ async function unloadLMStudioSelectedModel() {
   const instanceId = lmStudioSelectedInstanceId.value.trim()
   if (!lmStudioBridgeAvailable.value || !instanceId) return
   lmStudioActionLoading.value = true
-  lmStudioActionResult.value = '
+  lmStudioActionResult.value = ''
   try {
     const result = await bridge.unloadModel({
       endpointUrl: lmStudioChat.value.endpointUrl,
@@ -622,8 +679,8 @@ function formatOllamaModels(models: any[]): string {
       const status = model.running ? t('settings.ollama.running') : t('settings.ollama.installed')
       const details = model.details && typeof model.details === 'object'
         ? [model.details.family, model.details.parameterSize, model.details.quantizationLevel].filter(Boolean).join(' · ')
-        : '
-      return `${label} (${status}${details ? ` · ${details}` : '})`
+        : ''
+      return `${label} (${status}${details ? ` · ${details}` : ''})`
     })
     .join(' | ')
 }
@@ -635,7 +692,7 @@ async function probeOllama(options: Readonly<{ clearAction?: boolean }> = {}) {
     return
   }
   ollamaProbeLoading.value = true
-  if (options.clearAction !== false) ollamaActionResult.value = '
+  if (options.clearAction !== false) ollamaActionResult.value = ''
   try {
     const result = await bridge.probe({
       endpointUrl: ollamaChat.value.endpointUrl,
@@ -656,7 +713,7 @@ async function loadOllamaSelectedModel() {
   const model = selectedModelFor('ollama_local').trim()
   if (!ollamaBridgeAvailable.value || !model) return
   ollamaActionLoading.value = true
-  ollamaActionResult.value = '
+  ollamaActionResult.value = ''
   try {
     const result = await bridge.loadModel({
       endpointUrl: ollamaChat.value.endpointUrl,
@@ -680,7 +737,7 @@ async function unloadOllamaSelectedModel() {
   const model = selectedModelFor('ollama_local').trim()
   if (!ollamaBridgeAvailable.value || !model) return
   ollamaActionLoading.value = true
-  ollamaActionResult.value = '
+  ollamaActionResult.value = ''
   try {
     const result = await bridge.unloadModel({
       endpointUrl: ollamaChat.value.endpointUrl,
@@ -820,6 +877,28 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.display.rightRailReasoning') }}
           </button>
         </div>
+        <label class="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300"
+            :checked="reasoningPanelDefaultExpanded"
+            :disabled="disabled"
+            data-testid="session-reasoning-panel-default-expanded"
+            @change="emit('updateReasoningPanelDefaultExpanded', ($event.target as HTMLInputElement).checked)"
+          />
+          <span>{{ t('chat.console.display.expandReasoningWhileThinking') }}</span>
+        </label>
+        <label class="flex items-center gap-2 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-700">
+          <input
+            type="checkbox"
+            class="h-4 w-4 rounded border-gray-300"
+            :checked="reasoningPanelAutoCollapseAfterReasoning"
+            :disabled="disabled"
+            data-testid="session-reasoning-panel-auto-collapse-after-reasoning"
+            @change="emit('updateReasoningPanelAutoCollapseAfterReasoning', ($event.target as HTMLInputElement).checked)"
+          />
+          <span>{{ t('chat.console.display.collapseReasoningWhenAnswerStarts') }}</span>
+        </label>
       </section>
 
       <section class="space-y-2 rounded-lg border border-gray-200 bg-gray-50/70 p-3" data-testid="runtime-selection-status">
@@ -949,8 +1028,8 @@ function chipClass(active: boolean): string {
                 <div>
                   <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
                   <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-<div v-if="modelAvailability.ownedBy">{{ tf('chat.console.common.ownedBy', { owner: modelAvailability.ownedBy }) }}</div>
-<div v-if="modelAvailability.createdAtSec">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAtSec }) }}</div>
+                  <div v-if="modelAvailability.ownedBy">{{ tf('chat.console.common.ownedBy', { owner: modelAvailability.ownedBy }) }}</div>
+                  <div v-if="modelAvailability.createdAtSec">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAtSec }) }}</div>
                   <div>{{ formatOpenAICapabilitySeed(modelAvailability) }}</div>
                 </div>
                 <button
@@ -1060,8 +1139,8 @@ function chipClass(active: boolean): string {
                 <div>
                   <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
                   <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-<div v-if="modelAvailability.modelType">{{ tf('chat.console.common.type', { type: modelAvailability.modelType }) }}</div>
-<div v-if="modelAvailability.createdAt">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAt }) }}</div>
+                  <div v-if="modelAvailability.modelType">{{ tf('chat.console.common.type', { type: modelAvailability.modelType }) }}</div>
+                  <div v-if="modelAvailability.createdAt">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAt }) }}</div>
                   <div>{{ formatAnthropicCapabilitySeed(modelAvailability) }}</div>
                 </div>
                 <button
@@ -1859,14 +1938,15 @@ function chipClass(active: boolean): string {
           <label class="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
-              :checked="props.sessionConfig.reasoning.enabled"
-              :disabled="disabled"
-              @change="emit('updateReasoningEnabled', ($event.target as HTMLInputElement).checked)"
+              :checked="isGoogleAIStudioSelected ? googleThinkingEnabled : props.sessionConfig.reasoning.enabled"
+              :disabled="disabled || (isGoogleAIStudioSelected && googleThinkingCapability.kind === 'unsupported')"
+              data-testid="session-reasoning-enabled"
+              @change="isGoogleAIStudioSelected ? onGoogleThinkingEnabledChange(($event.target as HTMLInputElement).checked) : emit('updateReasoningEnabled', ($event.target as HTMLInputElement).checked)"
             />
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div class="grid grid-cols-3 gap-2">
+        <div v-if="!isGoogleAIStudioSelected" class="grid grid-cols-3 gap-2">
           <button
             v-for="effort in ['low', 'medium', 'high']"
             :key="effort"
@@ -1878,6 +1958,58 @@ function chipClass(active: boolean): string {
           >
             {{ formatReasoningEffort(effort) }}
           </button>
+        </div>
+        <div v-else-if="googleThinkingCapability.kind === 'budget'" class="space-y-2" data-testid="session-google-thinking-budget-controls">
+          <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
+            <span>{{ t('chat.console.reasoning.thinkingBudget') }}</span>
+            <input
+              type="number"
+              class="w-32 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
+              :min="googleThinkingCapability.minBudget"
+              :max="googleThinkingCapability.maxBudget"
+              :value="googleThinkingConfig.thinkingBudget"
+              :disabled="disabled"
+              data-testid="session-google-thinking-budget"
+              @input="onGoogleThinkingBudgetChange"
+            />
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              :checked="googleThinkingConfig.includeThoughts === true"
+              :disabled="disabled"
+              data-testid="session-google-thinking-include-thoughts"
+              @change="onGoogleThinkingIncludeThoughtsChange"
+            />
+            {{ t('chat.console.reasoning.includeThoughts') }}
+          </label>
+        </div>
+        <div v-else-if="googleThinkingCapability.kind === 'level'" class="space-y-2" data-testid="session-google-thinking-level-controls">
+          <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
+            <span>{{ t('chat.console.reasoning.thinkingLevel') }}</span>
+            <select
+              class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
+              :value="googleThinkingConfig.thinkingLevel"
+              :disabled="disabled"
+              data-testid="session-google-thinking-level"
+              @change="onGoogleThinkingLevelChange"
+            >
+              <option v-for="level in googleThinkingCapability.levels" :key="level" :value="level">{{ level }}</option>
+            </select>
+          </label>
+          <label class="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              :checked="googleThinkingConfig.includeThoughts === true"
+              :disabled="disabled"
+              data-testid="session-google-thinking-include-thoughts"
+              @change="onGoogleThinkingIncludeThoughtsChange"
+            />
+            {{ t('chat.console.reasoning.includeThoughts') }}
+          </label>
+        </div>
+        <div v-else class="text-xs text-gray-500" data-testid="session-google-thinking-unsupported">
+          {{ t('chat.console.reasoning.geminiUnsupported') }}
         </div>
       </section>
 

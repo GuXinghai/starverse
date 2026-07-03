@@ -11,6 +11,14 @@ import {
   buildProviderModelKey,
   type ChatModelSelection,
 } from '@/next/provider/modelSelection'
+import { GOOGLE_AI_STUDIO_PROVIDER_KEY } from '@/next/provider/gemini/geminiModelSource'
+import {
+  DEFAULT_GEMINI_THINKING_CONFIG,
+  normalizeGeminiThinkingConfig,
+  resolveGeminiThinkingCapability,
+  type GeminiThinkingConfig,
+  type GeminiThinkingLevel,
+} from '@/next/provider/gemini/geminiThinkingPolicy'
 import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 import { formatModelIndicatorName } from './modelIndicatorName'
@@ -71,6 +79,7 @@ const defaultSessionConfig: ChatSessionConfig = {
   samplingParams: {
     detail: null,
   },
+  googleAIStudioThinking: DEFAULT_GEMINI_THINKING_CONFIG,
 }
 
 const emit = defineEmits<{
@@ -80,6 +89,7 @@ const emit = defineEmits<{
   (e: 'refreshProviderModelsRequested'): void
   (e: 'updateReasoningEnabled', value: boolean): void
   (e: 'updateReasoningEffort', value: 'low' | 'medium' | 'high'): void
+  (e: 'updateGoogleAIStudioThinking', value: Partial<GeminiThinkingConfig>): void
   (e: 'updateWebSearchEnabled', value: boolean): void
   (e: 'updateWebSearchLevel', value: 'low' | 'high'): void
   (e: 'updateImageGenerationEnabled', value: boolean): void
@@ -336,6 +346,19 @@ const selectedModelSelection = computed<ChatModelSelection>(() => ({
   providerId: selectedProviderId.value,
   modelId: selectedModel.value,
 }))
+const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === GOOGLE_AI_STUDIO_PROVIDER_KEY)
+const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModel.value }))
+const googleThinkingConfig = computed(() => normalizeGeminiThinkingConfig({
+  model: selectedModel.value,
+  config: resolvedSessionConfig.value.googleAIStudioThinking ?? DEFAULT_GEMINI_THINKING_CONFIG,
+}))
+const googleThinkingEnabled = computed(() => googleThinkingConfig.value.mode !== 'auto' && googleThinkingCapability.value.kind !== 'unsupported')
+const googleThinkingActiveLabel = computed(() => {
+  if (!googleThinkingEnabled.value) return null
+  if (googleThinkingCapability.value.kind === 'budget') return String(googleThinkingConfig.value.thinkingBudget ?? googleThinkingCapability.value.defaultBudget)
+  if (googleThinkingCapability.value.kind === 'level') return googleThinkingConfig.value.thinkingLevel ?? googleThinkingCapability.value.defaultLevel
+  return null
+})
 const modelNameById = computed(() => {
   const map = new Map<string, string>()
   map.set(DEFAULT_OPENROUTER_MODEL_ID, DEFAULT_OPENROUTER_MODEL_ID)
@@ -617,6 +640,42 @@ function onImageChipOption(value: string) {
   }
 }
 
+function onGoogleThinkingToggle() {
+  if (googleThinkingCapability.value.kind === 'unsupported') return
+  if (googleThinkingEnabled.value) {
+    emit('updateGoogleAIStudioThinking', { mode: 'auto' })
+    return
+  }
+  if (googleThinkingCapability.value.kind === 'budget') {
+    emit('updateGoogleAIStudioThinking', { mode: 'budget' })
+    return
+  }
+  emit('updateGoogleAIStudioThinking', { mode: 'level' })
+}
+
+function onGoogleThinkingBudgetInput(event: Event) {
+  const raw = Number((event.target as HTMLInputElement).value)
+  if (!Number.isFinite(raw) || raw <= 0) return
+  emit('updateGoogleAIStudioThinking', {
+    mode: 'budget',
+    thinkingBudget: Math.trunc(raw),
+  })
+}
+
+function onGoogleThinkingLevelInput(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as GeminiThinkingLevel
+  emit('updateGoogleAIStudioThinking', {
+    mode: 'level',
+    thinkingLevel: value,
+  })
+}
+
+function onGoogleThinkingIncludeThoughtsInput(event: Event) {
+  emit('updateGoogleAIStudioThinking', {
+    includeThoughts: (event.target as HTMLInputElement).checked,
+  })
+}
+
 function openModelPicker() {
   if (props.disabled) return
   modelQuickMode.value = null
@@ -831,6 +890,7 @@ onBeforeUnmount(() => {
             +
           </button>
           <ComposerCapabilityChip
+            v-if="!isGoogleAIStudioSelected"
             :enabled="resolvedSessionConfig.reasoning.enabled"
             :label="t('composer.capabilities.reasoning')"
             :active-label="resolvedSessionConfig.reasoning.enabled ? resolvedSessionConfig.reasoning.effort : null"
@@ -841,6 +901,28 @@ onBeforeUnmount(() => {
             data-test-id="reasoning-chip"
             @toggle="emit('updateReasoningEnabled', !resolvedSessionConfig.reasoning.enabled)"
             @select-option="(v) => { emit('updateReasoningEffort', v as 'low' | 'medium' | 'high'); emit('updateReasoningEnabled', true) }"
+          >
+            <template #icon>
+              <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="8" cy="6" r="3" />
+                <path d="M8 9v3" />
+                <path d="M5 14h6" />
+                <path d="M6 12h4" />
+              </svg>
+            </template>
+          </ComposerCapabilityChip>
+          <ComposerCapabilityChip
+            v-else
+            :enabled="googleThinkingEnabled"
+            :label="t('composer.capabilities.reasoning')"
+            :active-label="googleThinkingActiveLabel"
+            kind="reasoning"
+            :disabled="disabled || googleThinkingCapability.kind === 'unsupported'"
+            :options="googleThinkingCapability.kind === 'level' ? ['minimal', 'low', 'medium', 'high'] : []"
+            :selected-option="googleThinkingConfig.thinkingLevel"
+            data-test-id="google-thinking-chip"
+            @toggle="onGoogleThinkingToggle"
+            @select-option="(v) => emit('updateGoogleAIStudioThinking', { mode: 'level', thinkingLevel: v as GeminiThinkingLevel })"
           >
             <template #icon>
               <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -916,6 +998,62 @@ onBeforeUnmount(() => {
             {{ t('composer.actions.send') }}
           </button>
         </div>
+      </div>
+
+      <div
+        v-if="isGoogleAIStudioSelected"
+        class="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-gray-600"
+        data-testid="composer-google-thinking-controls"
+      >
+        <template v-if="googleThinkingCapability.kind === 'budget'">
+          <label class="flex items-center gap-1">
+            <span>thinkingBudget</span>
+            <input
+              type="number"
+              class="w-28 rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
+              :min="googleThinkingCapability.minBudget"
+              :max="googleThinkingCapability.maxBudget"
+              :value="googleThinkingConfig.thinkingBudget"
+              :disabled="disabled"
+              data-testid="composer-google-thinking-budget"
+              @input="onGoogleThinkingBudgetInput"
+            />
+          </label>
+        </template>
+        <template v-else-if="googleThinkingCapability.kind === 'level'">
+          <label class="flex items-center gap-1">
+            <span>thinkingLevel</span>
+            <select
+              class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
+              :value="googleThinkingConfig.thinkingLevel"
+              :disabled="disabled"
+              data-testid="composer-google-thinking-level"
+              @change="onGoogleThinkingLevelInput"
+            >
+              <option v-for="level in googleThinkingCapability.levels" :key="level" :value="level">{{ level }}</option>
+            </select>
+          </label>
+        </template>
+        <span
+          v-else
+          class="text-gray-500"
+          data-testid="composer-google-thinking-unsupported"
+        >
+          Gemini thinking is not available for this model.
+        </span>
+        <label
+          v-if="googleThinkingCapability.kind !== 'unsupported'"
+          class="flex items-center gap-1"
+        >
+          <input
+            type="checkbox"
+            :checked="googleThinkingConfig.includeThoughts === true"
+            :disabled="disabled"
+            data-testid="composer-google-thinking-include-thoughts"
+            @change="onGoogleThinkingIncludeThoughtsInput"
+          />
+          include thoughts
+        </label>
       </div>
 
       <div

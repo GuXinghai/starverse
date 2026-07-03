@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/vue'
+import { fireEvent, render, screen, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import ChatSessionConsole from './ChatSessionConsole.vue'
@@ -50,7 +50,6 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     expect(screen.getByTestId('google-ai-studio-chat-controls').textContent).toContain('Experimental')
     expect(screen.getByTestId('google-ai-studio-chat-controls').textContent).toContain('not OpenRouter')
     expect(screen.getByTestId('google-ai-studio-chat-warning').textContent).toContain(t('chat.console.provider.googleAIStudio.warning'))
-
     expect(screen.getByTestId('google-ai-studio-chat-selected-status').textContent).toContain(tf('chat.console.provider.googleAIStudio.status', { status: t('chat.console.status.active') }))
     expect(screen.getByTestId('google-ai-studio-chat-selected-status').textContent).toContain(tf('chat.console.provider.googleAIStudio.selectedModel', { model: 'gemini-2.5-flash' }))
     expect(screen.getByTestId('google-ai-studio-chat-selected-status').textContent).toContain(t('chat.console.provider.googleAIStudio.credentialBridge'))
@@ -154,5 +153,69 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()
     expect(within(mainModelSelect).queryByText('gemini-2.5-flash')).not.toBeInTheDocument()
+  })
+
+  it('uses Gemini thinkingBudget controls for Gemini 2.5 models', async () => {
+    const user = userEvent.setup()
+    const view = render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...googleAIStudioSessionConfig(),
+          googleAIStudioThinking: {
+            mode: 'budget',
+            thinkingBudget: 2048,
+            includeThoughts: false,
+          },
+        },
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        samplingParamsResolved: null,
+      },
+    })
+
+    expect(screen.getByTestId('session-google-thinking-budget-controls')).toBeInTheDocument()
+    expect(screen.getByTestId('session-google-thinking-budget')).toHaveValue(2048)
+    expect(screen.queryByTestId('session-google-thinking-level')).not.toBeInTheDocument()
+
+    await user.click(screen.getByTestId('session-google-thinking-include-thoughts'))
+    await fireEvent.update(screen.getByTestId('session-google-thinking-budget'), '4096')
+
+    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ includeThoughts: true }])
+    expect(view.emitted('updateGoogleAIStudioThinking')?.[1]).toEqual([{ mode: 'budget', thinkingBudget: 4096 }])
+    expect(view.emitted('updateReasoningEffort')).toBeUndefined()
+  })
+
+  it('uses Gemini thinkingLevel controls for Gemini 3 models', async () => {
+    const view = render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...googleAIStudioSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3-pro' },
+          googleAIStudioThinking: {
+            mode: 'level',
+            thinkingLevel: 'high' as const,
+            includeThoughts: true,
+          },
+        },
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        samplingParamsResolved: null,
+      },
+    })
+
+    expect(screen.getByTestId('session-google-thinking-level-controls')).toBeInTheDocument()
+    expect(screen.getByTestId('session-google-thinking-level')).toHaveValue('high')
+    expect(screen.queryByTestId('session-google-thinking-budget')).not.toBeInTheDocument()
+
+    await fireEvent.update(screen.getByTestId('session-google-thinking-level'), 'minimal')
+
+    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ mode: 'level', thinkingLevel: 'minimal' }])
+    expect(view.emitted('updateReasoningEffort')).toBeUndefined()
   })
 })

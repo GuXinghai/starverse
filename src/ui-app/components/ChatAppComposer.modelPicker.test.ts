@@ -1317,5 +1317,69 @@ describe('ChatAppComposer model picker integration', () => {
       )
     })
   })
+
+  it('shows Gemini budget controls for Google AI Studio Gemini 2.5 models', async () => {
+    const view = render(ChatAppComposer, {
+      props: {
+        draft: '',
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...createSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash' },
+          googleAIStudioThinking: { mode: 'budget' as const, thinkingBudget: 2048, includeThoughts: false },
+        },
+        modelCatalog: [],
+      },
+    })
+
+    expect(screen.getByTestId('composer-google-thinking-budget')).toHaveValue(2048)
+    expect(screen.queryByTestId('composer-google-thinking-level')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('reasoning-chip')).not.toBeInTheDocument()
+
+    await fireEvent.update(screen.getByTestId('composer-google-thinking-budget'), '4096')
+    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ mode: 'budget', thinkingBudget: 4096 }])
+  })
+
+  it('shows Gemini level controls for Google AI Studio Gemini 3 models', async () => {
+    const view = render(ChatAppComposer, {
+      props: {
+        draft: '',
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...createSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3-pro' },
+          googleAIStudioThinking: { mode: 'level' as const, thinkingLevel: 'high' as const, includeThoughts: true },
+        },
+        modelCatalog: [],
+      },
+    })
+
+    expect(screen.getByTestId('composer-google-thinking-level')).toHaveValue('high')
+    expect(screen.queryByTestId('composer-google-thinking-budget')).not.toBeInTheDocument()
+
+    await fireEvent.update(screen.getByTestId('composer-google-thinking-level'), 'minimal')
+    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ mode: 'level', thinkingLevel: 'minimal' }])
+  })
+
+  it('disables Gemini thinking controls for unsupported Google AI Studio models', () => {
+    render(ChatAppComposer, {
+      props: {
+        draft: '',
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...createSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-1.5-pro' },
+        },
+        modelCatalog: [],
+      },
+    })
+
+    expect(screen.getByTestId('composer-google-thinking-unsupported')).toBeInTheDocument()
+    expect(screen.queryByTestId('composer-google-thinking-budget')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('composer-google-thinking-level')).not.toBeInTheDocument()
+  })
 })
 

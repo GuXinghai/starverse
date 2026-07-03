@@ -102,4 +102,41 @@ describe('chatSessionConfig', () => {
       selectedModelKey: 'openai/gpt-4o-mini',
     })
   })
+
+  it('round-trips Google AI Studio native thinking config in conversation meta', () => {
+    const meta = serializeChatSessionConfigToConvoMeta({
+      config: createConfig({
+        model: {
+          selectedProviderId: 'google_ai_studio',
+          selectedModelKey: 'gemini-2.5-flash',
+        },
+        googleAIStudioThinking: {
+          mode: 'budget',
+          thinkingBudget: 2048,
+          includeThoughts: true,
+        },
+      }),
+      defaultProviderId: 'openrouter',
+      defaultModelKey: 'openrouter/auto',
+    })
+
+    expect(meta?.googleAIStudioThinking).toEqual({
+      mode: 'budget',
+      thinkingBudget: 2048,
+      includeThoughts: true,
+    })
+
+    const config = deserializeChatSessionConfigFromConvoMeta({
+      convoMeta: meta,
+      defaultProviderId: 'openrouter',
+      defaultModelKey: 'openrouter/auto',
+    })
+
+    expect(config.googleAIStudioThinking).toEqual({
+      mode: 'budget',
+      thinkingBudget: 2048,
+      thinkingLevel: 'low',
+      includeThoughts: true,
+    })
+  })
 })

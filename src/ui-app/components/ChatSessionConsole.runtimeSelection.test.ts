@@ -22,6 +22,52 @@ function defaultSessionConfig() {
 }
 
 describe('ChatSessionConsole runtime selection controls', () => {
+  it('emits reasoning panel default expansion preference from display controls', async () => {
+    const user = userEvent.setup()
+    const view = render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: defaultSessionConfig(),
+        reasoningDisplayMode: 'inline',
+        reasoningPanelDefaultExpanded: false,
+        modelCatalog: [],
+        webSearchResolved: null,
+        samplingParamsResolved: null,
+      },
+    })
+
+    const toggle = screen.getByTestId('session-reasoning-panel-default-expanded')
+    expect(toggle).not.toBeChecked()
+
+    await user.click(toggle)
+
+    expect(view.emitted('updateReasoningPanelDefaultExpanded')?.[0]).toEqual([true])
+  })
+
+  it('emits reasoning panel auto-collapse preference from display controls', async () => {
+    const user = userEvent.setup()
+    const view = render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: defaultSessionConfig(),
+        reasoningDisplayMode: 'inline',
+        reasoningPanelAutoCollapseAfterReasoning: false,
+        modelCatalog: [],
+        webSearchResolved: null,
+        samplingParamsResolved: null,
+      },
+    })
+
+    const toggle = screen.getByTestId('session-reasoning-panel-auto-collapse-after-reasoning')
+    expect(toggle).not.toBeChecked()
+
+    await user.click(toggle)
+
+    expect(view.emitted('updateReasoningPanelAutoCollapseAfterReasoning')?.[0]).toEqual([true])
+  })
+
   it('shows unset runtime status and explicit OpenRouter selection control', async () => {
     const user = userEvent.setup()
     const selection = { state: 'unset', source: 'unset' } satisfies CurrentRuntimeSelection

@@ -1009,6 +1009,14 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   it('routes explicit Google AI Studio text chat through the normal transcript without OpenRouter, old Gemini, or Generic send', async () => {
     globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
     selectRuntimeProvider('google_ai_studio', 'gemini-2.5-flash')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      googleAIStudioThinking: {
+        mode: 'budget',
+        thinkingBudget: 2048,
+        includeThoughts: true,
+      },
+    }
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1030,6 +1038,11 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(googleAIStudioTextChatCallArgs[0]).toMatchObject({
       model: 'gemini-2.5-flash',
       userText: 'gemini ping',
+      geminiThinking: {
+        mode: 'budget',
+        thinkingBudget: 2048,
+        includeThoughts: true,
+      },
     })
     expect(googleAIStudioTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
     expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'gemini ping' }))

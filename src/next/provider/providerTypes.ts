@@ -16,6 +16,7 @@ import type {
   RequestedReasoningMode,
   ToolCallDelta,
 } from '@/next/state/types'
+import type { GeminiThinkingConfig } from '@/next/provider/gemini/geminiThinkingPolicy'
 import type { NetworkErrorEnvelope } from '@/shared/network/networkErrorEnvelope'
 
 // ---------------------------------------------------------------------------
@@ -127,6 +128,7 @@ export type ProviderStreamConfig = Readonly<{
     modalities?: ReadonlyArray<string>
     imageConfig?: unknown
   }>
+  geminiThinking?: GeminiThinkingConfig
   additionalPlugins?: ReadonlyArray<unknown>
   timeoutMs?: number
   baseUrl?: string

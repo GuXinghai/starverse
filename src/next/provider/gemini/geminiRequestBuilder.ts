@@ -8,6 +8,10 @@
  */
 
 import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import {
+  buildGeminiNativeThinkingConfig,
+  type GeminiNativeThinkingConfig,
+} from '@/next/provider/gemini/geminiThinkingPolicy'
 
 // ---------------------------------------------------------------------------
 // Gemini request types — provider-native schema, contained here
@@ -34,7 +38,7 @@ export type GeminiGenerationConfig = Readonly<{
   temperature?: number
   topP?: number
   maxOutputTokens?: number
-  thinkingConfig?: Readonly<{ thinkingBudget: number }>
+  thinkingConfig?: GeminiNativeThinkingConfig
 }>
 
 export type GeminiTool = Readonly<{
@@ -69,7 +73,7 @@ export type GeminiRequestInput = Readonly<{
  * - `contents` is required.
  * - `systemInstruction` is included only when present.
  * - `generationConfig` fields are included only when present.
- * - `thinkingConfig` is included only when reasoning mode is 'effort' and budget is set.
+ * - `thinkingConfig` is included only from Gemini-native thinking config.
  * - `tools` is passed through only when non-empty.
  * - No OpenRouter plugins, no DeepSeek reasoning_effort, no Anthropic max_tokens.
  */
@@ -94,12 +98,13 @@ export function buildGeminiRequest(input: GeminiRequestInput): GeminiRequest {
     if (typeof sampling.max_tokens === 'number') genConfig.maxOutputTokens = sampling.max_tokens
   }
 
-  // Thinking config — only when mode is 'effort'
-  if (config.requestedReasoningMode === 'effort') {
-    const budget = resolveThinkingBudget(config.requestedReasoningEffort)
-    if (budget !== undefined) {
-      genConfig.thinkingConfig = { thinkingBudget: budget }
-    }
+  // Gemini-native thinking config. Do not map OpenAI/OpenRouter reasoning effort here.
+  const thinkingConfig = buildGeminiNativeThinkingConfig({
+    model: input.model,
+    config: config.geminiThinking,
+  })
+  if (thinkingConfig) {
+    genConfig.thinkingConfig = thinkingConfig
   }
 
   if (Object.keys(genConfig).length > 0) {
@@ -112,24 +117,4 @@ export function buildGeminiRequest(input: GeminiRequestInput): GeminiRequest {
   }
 
   return request as GeminiRequest
-}
-
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-function resolveThinkingBudget(effort: string | undefined): number | undefined {
-  switch (effort) {
-    case 'low':
-    case 'minimal':
-      return 1024
-    case 'medium':
-      return 4096
-    case 'high':
-      return 16384
-    case 'xhigh':
-      return 32768
-    default:
-      return undefined
-  }
 }
