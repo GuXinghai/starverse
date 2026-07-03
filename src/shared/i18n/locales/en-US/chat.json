@@ -1,0 +1,149 @@
+{
+  "chat": {
+    "topBar": {
+      "untitledConversation": "Untitled conversation",
+      "console": "Console",
+      "hideConsole": "Hide console",
+      "modelSummary": "Model · {model}",
+      "modelSummaryWithProvider": "Model · {provider} · {model}"
+    },
+    "rightRail": {
+      "closePanel": "Close panel"
+    },
+    "message": {
+      "role": {
+        "user": "You",
+        "assistant": "Assistant",
+        "tool": "Tool"
+      },
+      "avatar": {
+        "assistant": "A",
+        "tool": "T"
+      },
+      "actions": {
+        "copyRaw": "Copy raw",
+        "restoreQuestion": "Restore question",
+        "excludeQuestion": "Exclude question",
+        "regenerate": "Regenerate",
+        "edit": "Edit",
+        "confirmDelete": "Confirm delete",
+        "copyText": "Copy text",
+        "copyWithReferences": "Copy + refs",
+        "regenerateImage": "Regenerate image",
+        "restoreAnswer": "Restore answer",
+        "excludeAnswer": "Exclude answer",
+        "retryReplace": "Retry replace",
+        "newQuestion": "New question",
+        "replaceQuestion": "Replace question"
+      },
+      "editingQuestion": "Editing question",
+      "answerNotSelected": "Answer not selected for context",
+      "linkOnly": "Link only",
+      "linkWithLocalCopy": "Link + local copy",
+      "imageAlt": "image-{index}",
+      "imagePreviewAlt": "preview",
+      "copyImage": "Copy image",
+      "copyPath": "Copy path",
+      "exportImage": "Export",
+      "persisting": "Persisting...",
+      "imageGenerating": "Image is generating...",
+      "untitledSource": "Untitled source",
+      "unknownTool": "unknown",
+      "type": "type",
+      "arguments": "Arguments"
+    },
+    "attachmentConfirm": {
+      "openPanel": "Open panel",
+      "closeLocator": "Close locator",
+      "previous": "Previous",
+      "next": "Next",
+      "pendingLocked": "Attachment confirmation is pending. The draft is locked.",
+      "cancelSend": "Cancel send",
+      "collapsePanel": "Collapse panel",
+      "historyUnsupportedTitle": "Unsupported history message attachments",
+      "historyUnsupportedDesc": "These attachments still appear in history, but cannot be included in this model send context. Before sending, confirm that all attachments in this section are excluded from the model context.",
+      "allAttachments": "All attachments",
+      "excludeCheckbox": "Exclude checkbox",
+      "locate": "Locate",
+      "currentUnsupportedTitle": "Unsupported current user message attachments",
+      "currentUnsupportedDesc": "These attachments belong to the current user message, but the selected model or send rules cannot include them. Exclude them or remove them from the current draft.",
+      "excludeAll": "Select all exclude",
+      "excludeNone": "Clear exclude selection",
+      "removeAll": "Select all delete/remove",
+      "removeNone": "Clear delete/remove selection",
+      "exclude": "Exclude",
+      "remove": "Remove",
+      "confirmAndContinue": "Confirm and continue"
+    },
+    "attachmentUrl": {
+      "addTitle": "Add URL attachment",
+      "followDefault": "Follow default",
+      "addUrl": "Add URL"
+    },
+    "projectWebSearch": {
+      "title": "Project Web Search",
+      "titleWithTarget": "Project Web Search: {name}"
+    },
+    "reasoning": {
+      "title": "Reasoning",
+      "emptyPayload": "No reasoning payload.",
+      "emptyAssistant": "No assistant message yet.",
+      "encryptedTitle": "Encrypted reasoning",
+      "encryptedDescription": "This reasoning payload is encrypted by the provider and cannot be shown.",
+      "noPayloadShort": "(no reasoning payload)",
+      "excluded": "This request asked the provider not to return reasoning (excluded).",
+      "notReturned": "The model did not return reasoning, or this model does not support it."
+    },
+    "errorPanel": {
+      "unknownError": "Unknown error",
+      "summary": "phase:{phase} · code:{code} · {message} · provider:{provider}",
+      "truncated": "Truncated",
+      "trimmed": "trimmed",
+      "expand": "Expand",
+      "collapse": "Collapse",
+      "details": "Details",
+      "bytes": "bytes: {count}",
+      "detailsLoading": "Details loading...",
+      "detailsUnavailable": "Details unavailable.",
+      "detailsPending": "Details pending."
+    },
+    "status": {
+      "title": "Chat",
+      "model": "model",
+      "provider": "provider",
+      "generation": "gen",
+      "finish": "finish",
+      "truncated": "Truncated",
+      "thisTurn": "This turn",
+      "sessionTotalDerived": "Session total (derived)",
+      "promptShort": "p",
+      "completionShort": "c",
+      "totalShort": "t",
+      "cost": "cost",
+      "abort": "Abort",
+      "reset": "Reset",
+      "error": "error"
+    },
+    "transcript": {
+      "error": "Error",
+      "runTerminated": "Run terminated"
+    },
+    "attachment": {
+      "link": "Link",
+      "history": "History",
+      "type": "type",
+      "route": "route",
+      "notAvailable": "n/a",
+      "needsJob": "needs job",
+      "engineUnavailable": "engine unavailable",
+      "typeConflictDetected": "Type conflict detected",
+      "compatibility": {
+        "blocked": "blocked",
+        "warning": "warning",
+        "compatible": "compatible",
+        "unknown": "unknown"
+      },
+      "excluded": "excluded"
+    }
+  }
+}

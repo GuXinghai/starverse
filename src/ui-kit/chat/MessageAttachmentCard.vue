@@ -1,12 +1,25 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { MessageAttachmentVM } from './types'
+import { t } from '@/shared/i18n'
 
 const props = defineProps<{
   attachment: MessageAttachmentVM
 }>()
 
-const statusLabel = computed(() => props.attachment.displayStatus.replace(/_/g, ' '))
+const statusLabel = computed(() => {
+  if (props.attachment.displayStatus === 'parsing') return t('filePipeline.displayStatus.parsing')
+  if (props.attachment.displayStatus === 'detection_pending') return t('filePipeline.displayStatus.detectionPending')
+  if (props.attachment.displayStatus === 'detection_failed') return t('filePipeline.displayStatus.detectionFailed')
+  if (props.attachment.displayStatus === 'detection_required') return t('filePipeline.displayStatus.detectionRequired')
+  if (props.attachment.displayStatus === 'ready') return t('filePipeline.displayStatus.ready')
+  if (props.attachment.displayStatus === 'ready_with_warnings') return t('filePipeline.displayStatus.readyWithWarnings')
+  if (props.attachment.displayStatus === 'incompatible_with_current_model') return t('filePipeline.displayStatus.incompatible')
+  if (props.attachment.displayStatus === 'failed') return t('filePipeline.displayStatus.failed')
+  if (props.attachment.displayStatus === 'unsupported') return t('filePipeline.displayStatus.unsupported')
+  if (props.attachment.displayStatus === 'excluded_from_current_context') return t('chat.attachment.excluded')
+  return String(props.attachment.displayStatus).replace(/_/g, ' ')
+})
 
 const toneClass = computed(() => {
   if (props.attachment.borderTone === 'green') return 'border-green-300 bg-green-50'
@@ -49,7 +62,7 @@ const iconLabel = computed(() => {
 
 const subtitle = computed(() => {
   const parts: string[] = []
-  if (props.attachment.iconKind === 'link') parts.push('Link')
+  if (props.attachment.iconKind === 'link') parts.push(t('chat.attachment.link'))
   if (props.attachment.sourceKind === 'url_import') parts.push('URL')
   else if (props.attachment.sourceKind && props.attachment.sourceKind !== 'unknown') parts.push(props.attachment.sourceKind)
   if (props.attachment.extension) parts.push(props.attachment.extension)
@@ -68,10 +81,10 @@ const fileTypeHint = computed(() => props.attachment.fileTypeInfo ?? null)
 const recommendedRouteLabel = computed(() => normalizeLabelCode(fileTypeHint.value?.recommendedRouteLabelCode ?? null))
 const compatibilityLabel = computed(() => {
   const compatibility = fileTypeHint.value?.compatibility ?? 'unknown'
-  if (compatibility === 'blocked') return 'blocked'
-  if (compatibility === 'warning') return 'warning'
-  if (compatibility === 'compatible') return 'compatible'
-  return 'unknown'
+  if (compatibility === 'blocked') return t('chat.attachment.compatibility.blocked')
+  if (compatibility === 'warning') return t('chat.attachment.compatibility.warning')
+  if (compatibility === 'compatible') return t('chat.attachment.compatibility.compatible')
+  return t('chat.attachment.compatibility.unknown')
 })
 </script>
 
@@ -118,7 +131,7 @@ const compatibilityLabel = computed(() => {
             {{ statusLabel }}
           </span>
           <span v-if="props.attachment.isHistoryIncompatible" class="rounded-full border border-red-200 bg-red-50 px-2 py-0.5 font-medium uppercase tracking-wide text-red-700">
-            history
+            {{ t('chat.attachment.history') }}
           </span>
         </div>
 
@@ -127,15 +140,15 @@ const compatibilityLabel = computed(() => {
         </div>
         <div v-if="fileTypeHint" class="mt-1.5 space-y-0.5 text-[11px] text-gray-600">
           <div>
-            type: {{ fileTypeHint.formatId }} · {{ fileTypeHint.confidenceLevel }}
+            {{ t('chat.attachment.type') }}: {{ fileTypeHint.formatId }} · {{ fileTypeHint.confidenceLevel }}
           </div>
           <div>
-            route: {{ recommendedRouteLabel ?? 'n/a' }} · {{ compatibilityLabel }}
-            <span v-if="fileTypeHint.requiresJob"> · needs-job</span>
-            <span v-if="fileTypeHint.engineUnavailable"> · engine-unavailable</span>
+            {{ t('chat.attachment.route') }}: {{ recommendedRouteLabel ?? t('chat.attachment.notAvailable') }} · {{ compatibilityLabel }}
+            <span v-if="fileTypeHint.requiresJob"> · {{ t('chat.attachment.needsJob') }}</span>
+            <span v-if="fileTypeHint.engineUnavailable"> · {{ t('chat.attachment.engineUnavailable') }}</span>
           </div>
           <div v-if="fileTypeHint.hasConflicts || fileTypeHint.hasExtensionMimeConflict" class="text-amber-700">
-            type conflict detected
+            {{ t('chat.attachment.typeConflictDetected') }}
           </div>
         </div>
       </div>

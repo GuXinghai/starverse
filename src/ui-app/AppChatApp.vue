@@ -22,6 +22,7 @@ import SearchModal from './components/SearchModal.vue'
 import { useAppChatAppLogic } from './app/appChatApp.logic'
 import { formatModelIndicatorName } from './components/modelIndicatorName'
 import { DEFAULT_CHAT_PROVIDER_ID, DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
+import { t, tf } from '@/shared/i18n'
 
 const {
   isReady,
@@ -269,8 +270,8 @@ const modelSummary = computed(() => {
   const match = modelCatalogForPicker.value.find((item) => item.modelId === selected)
   const modelLabel = formatModelIndicatorName(match?.name ?? selected)
   return selectedProvider === DEFAULT_CHAT_PROVIDER_ID
-    ? `Model · ${modelLabel}`
-    : `Model · ${selectedProvider} · ${modelLabel}`
+    ? tf('chat.topBar.modelSummary', { model: modelLabel })
+    : tf('chat.topBar.modelSummaryWithProvider', { provider: selectedProvider, model: modelLabel })
 })
 
 const webSummary = computed(() => {
@@ -409,7 +410,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`copy-raw-q-${message.messageId}`"
                   @click="copyUserMessageRaw(message as any)"
                 >
-                  Copy raw
+                  {{ t('chat.message.actions.copyRaw') }}
                 </button>
 
                 <button
@@ -418,7 +419,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`toggle-q-${message.messageId}`"
                   @click="onToggleQuestionExclude(message.messageId)"
                 >
-                  {{ turnFiltersByQuestionId.get(message.messageId)?.questionMode === 'exclude' ? 'Restore question' : 'Exclude question' }}
+                  {{ turnFiltersByQuestionId.get(message.messageId)?.questionMode === 'exclude' ? t('chat.message.actions.restoreQuestion') : t('chat.message.actions.excludeQuestion') }}
                 </button>
 
                 <button
@@ -428,7 +429,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`regen-q-${message.messageId}`"
                   @click="onRegenerateFromQuestion(message.messageId)"
                 >
-                  Regenerate
+                  {{ t('chat.message.actions.regenerate') }}
                 </button>
 
                 <button
@@ -438,7 +439,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`edit-q-${message.messageId}`"
                   @click="openQuestionEdit(message.messageId)"
                 >
-                  Edit
+                  {{ t('chat.message.actions.edit') }}
                 </button>
 
                 <template v-if="pendingDeleteQuestionId === message.messageId">
@@ -449,14 +450,14 @@ function shouldShowInlineReasoning(message: any): boolean {
                     :data-testid="`confirm-delete-q-${message.messageId}`"
                     @click="confirmDeleteQuestion(message.messageId)"
                   >
-                    Confirm delete
+                    {{ t('chat.message.actions.confirmDelete') }}
                   </button>
                   <button
                     type="button"
                     class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
                     @click="cancelDeleteQuestion"
                   >
-                    Cancel
+                    {{ t('common.cancel') }}
                   </button>
                 </template>
                 <button
@@ -467,7 +468,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`delete-q-${message.messageId}`"
                   @click="requestDeleteQuestion(message.messageId)"
                 >
-                  Delete
+                  {{ t('common.delete') }}
                 </button>
 
                 <div class="ml-auto flex items-center gap-3 text-gray-600">
@@ -520,7 +521,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`copy-assistant-text-${message.messageId}`"
                   @click="copyAssistantMessage(message as any, 'plain')"
                 >
-                  Copy text
+                  {{ t('chat.message.actions.copyText') }}
                 </button>
                 <button
                   v-if="hasAssistantCitations(message as any)"
@@ -530,7 +531,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`copy-assistant-with-refs-${message.messageId}`"
                   @click="copyAssistantMessage(message as any, 'with_refs')"
                 >
-                  Copy + refs
+                  {{ t('chat.message.actions.copyWithReferences') }}
                 </button>
                 <template v-if="chosenQuestionIdForAnswerRootMessage(message.messageId)">
                   <button
@@ -544,7 +545,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                     :data-testid="`regen-image-a-${message.messageId}`"
                     @click="onRegenerateFromQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!)"
                   >
-                    Regenerate image
+                    {{ t('chat.message.actions.regenerateImage') }}
                   </button>
                   <button
                     type="button"
@@ -557,8 +558,8 @@ function shouldShowInlineReasoning(message: any): boolean {
                   >
                     {{
                       turnFiltersByQuestionId.get(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.answerMode === 'exclude'
-                        ? 'Restore answer'
-                        : 'Exclude answer'
+                        ? t('chat.message.actions.restoreAnswer')
+                        : t('chat.message.actions.excludeAnswer')
                     }}
                   </button>
                   <button
@@ -572,7 +573,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                     :data-testid="`retry-a-${message.messageId}`"
                     @click="onRetryReplaceAnswer(chosenQuestionIdForAnswerRootMessage(message.messageId)!, message.messageId)"
                   >
-                    Retry replace
+                    {{ t('chat.message.actions.retryReplace') }}
                   </button>
 
                   <div v-if="(getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.total ?? 0) > 1" class="ml-auto flex items-center gap-1 text-gray-600">
@@ -612,7 +613,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   </div>
                 </template>
                 <div v-else-if="questionIdForMessage(message.messageId, message.role)" class="text-[11px] text-gray-400">
-                  answer not selected for context
+                  {{ t('chat.message.answerNotSelected') }}
                 </div>
               </div>
             </div>
@@ -628,10 +629,10 @@ function shouldShowInlineReasoning(message: any): boolean {
             data-testid="attachment-confirm-locator-bar"
           >
             <div class="flex flex-wrap items-center gap-2">
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-open-panel" @click="openAttachmentConfirmationPanel">打开面板</button>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-close" @click="closeAttachmentConfirmationLocatorBar">关闭定位条</button>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-prev" @click="navigateAttachmentConfirmationHistory(-1)">上一个</button>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-next" @click="navigateAttachmentConfirmationHistory(1)">下一个</button>
+              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-open-panel" @click="openAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.openPanel') }}</button>
+              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-close" @click="closeAttachmentConfirmationLocatorBar">{{ t('chat.attachmentConfirm.closeLocator') }}</button>
+              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-prev" @click="navigateAttachmentConfirmationHistory(-1)">{{ t('chat.attachmentConfirm.previous') }}</button>
+              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-next" @click="navigateAttachmentConfirmationHistory(1)">{{ t('chat.attachmentConfirm.next') }}</button>
               <span class="font-mono text-[11px]" data-testid="attachment-confirm-locator-index">{{ attachmentConfirmationHistoryLocatorLabel }}</span>
             </div>
           </div>
@@ -641,29 +642,29 @@ function shouldShowInlineReasoning(message: any): boolean {
             data-testid="attachment-confirm-collapsed-banner"
           >
             <div class="flex flex-wrap items-center gap-2">
-              <span>附件确认待处理，草稿已锁定。</span>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-banner-open-panel" @click="openAttachmentConfirmationPanel">打开面板</button>
-              <button type="button" class="rounded border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50" data-testid="attachment-confirm-banner-cancel" @click="closeAttachmentConfirmationByCancel">取消发送</button>
+              <span>{{ t('chat.attachmentConfirm.pendingLocked') }}</span>
+              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-banner-open-panel" @click="openAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.openPanel') }}</button>
+              <button type="button" class="rounded border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50" data-testid="attachment-confirm-banner-cancel" @click="closeAttachmentConfirmationByCancel">{{ t('chat.attachmentConfirm.cancelSend') }}</button>
             </div>
           </div>
           <div v-if="attachmentConfirmationVisible && attachmentConfirmationSession" class="mx-4 rounded-xl border border-amber-300 bg-white p-3 shadow-sm" data-testid="attachment-confirm-panel">
             <div class="flex items-center justify-between gap-2">
               <div class="text-sm font-semibold text-gray-900">{{ attachmentConfirmationSession.title }}</div>
               <div class="flex items-center gap-2">
-                <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-collapse" @click="collapseAttachmentConfirmationPanel">收起面板</button>
-                <button type="button" class="rounded border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50" data-testid="attachment-confirm-cancel" @click="closeAttachmentConfirmationByCancel">取消发送</button>
+                <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-collapse" @click="collapseAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.collapsePanel') }}</button>
+                <button type="button" class="rounded border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50" data-testid="attachment-confirm-cancel" @click="closeAttachmentConfirmationByCancel">{{ t('chat.attachmentConfirm.cancelSend') }}</button>
               </div>
             </div>
             <div v-if="attachmentConfirmationSession.validationMessage" class="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" data-testid="attachment-confirm-validation">
               {{ attachmentConfirmationSession.validationMessage }}
             </div>
             <div v-if="attachmentConfirmationSession.historyItems.length > 0" class="mt-3 rounded border border-gray-200 p-2" data-testid="attachment-confirm-history-section">
-              <button type="button" class="w-full text-left text-sm font-semibold text-gray-900" data-testid="attachment-confirm-history-toggle" @click="toggleAttachmentConfirmationHistorySection">不受支持的历史消息附件</button>
-              <p class="mt-1 text-xs text-gray-600">这些附件仍会显示在历史消息中，但无法纳入本次发送给模型的上下文。继续发送前，你必须确认将该类目下全部附件从本次模型上下文中排除。</p>
+              <button type="button" class="w-full text-left text-sm font-semibold text-gray-900" data-testid="attachment-confirm-history-toggle" @click="toggleAttachmentConfirmationHistorySection">{{ t('chat.attachmentConfirm.historyUnsupportedTitle') }}</button>
+              <p class="mt-1 text-xs text-gray-600">{{ t('chat.attachmentConfirm.historyUnsupportedDesc') }}</p>
               <div v-if="attachmentConfirmationSession.historySectionExpanded" class="mt-2 space-y-2">
                 <div class="flex items-center justify-between gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1" :class="attachmentConfirmationSession.showHistoryValidation ? 'ring-2 ring-red-300' : ''" data-testid="attachment-confirm-history-exclude-all">
                   <div class="flex items-center gap-3 text-xs text-gray-700">
-                    <span class="font-medium text-gray-900">所有附件</span>
+                    <span class="font-medium text-gray-900">{{ t('chat.attachmentConfirm.allAttachments') }}</span>
                     <label class="flex items-center gap-1">
                       <input
                         type="checkbox"
@@ -671,10 +672,10 @@ function shouldShowInlineReasoning(message: any): boolean {
                         data-testid="attachment-confirm-history-exclude-all-checkbox"
                         @change="setAttachmentConfirmationHistoryExcludeAll(($event.target as HTMLInputElement).checked)"
                       />
-                      exclude 勾选项
+                      {{ t('chat.attachmentConfirm.excludeCheckbox') }}
                     </label>
                   </div>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-history-locate-all" @click="locateAttachmentConfirmationHistoryAll">定位</button>
+                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-history-locate-all" @click="locateAttachmentConfirmationHistoryAll">{{ t('chat.attachmentConfirm.locate') }}</button>
                 </div>
                 <div v-for="item in attachmentConfirmationSession.historyItems" :key="item.attachmentId" class="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1" :data-testid="`attachment-confirm-history-row-${item.attachmentId}`">
                   <div class="min-w-0">
@@ -684,20 +685,20 @@ function shouldShowInlineReasoning(message: any): boolean {
                   </div>
                   <div class="flex items-center gap-2">
                     <img v-if="item.previewDataUrl" :src="item.previewDataUrl" class="h-8 w-8 rounded border border-gray-200 object-cover" alt="" />
-                    <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" :data-testid="`attachment-confirm-history-locate-${item.attachmentId}`" @click="locateAttachmentConfirmationHistoryByAttachmentId(item.attachmentId)">定位</button>
+                    <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" :data-testid="`attachment-confirm-history-locate-${item.attachmentId}`" @click="locateAttachmentConfirmationHistoryByAttachmentId(item.attachmentId)">{{ t('chat.attachmentConfirm.locate') }}</button>
                   </div>
                 </div>
               </div>
             </div>
             <div v-if="attachmentConfirmationSession.currentItems.length > 0" class="mt-3 rounded border border-gray-200 p-2" data-testid="attachment-confirm-current-section">
-              <button type="button" class="w-full text-left text-sm font-semibold text-gray-900" data-testid="attachment-confirm-current-toggle" @click="toggleAttachmentConfirmationCurrentSection">当前不受支持的用户消息附件</button>
-              <p class="mt-1 text-xs text-gray-600">这些附件属于当前将要发送的用户消息，但当前模型或发送规则无法纳入它们。你必须选择排除它们，或从当前草稿中移除它们。</p>
+              <button type="button" class="w-full text-left text-sm font-semibold text-gray-900" data-testid="attachment-confirm-current-toggle" @click="toggleAttachmentConfirmationCurrentSection">{{ t('chat.attachmentConfirm.currentUnsupportedTitle') }}</button>
+              <p class="mt-1 text-xs text-gray-600">{{ t('chat.attachmentConfirm.currentUnsupportedDesc') }}</p>
               <div v-if="attachmentConfirmationSession.currentSectionExpanded" class="mt-2 space-y-2">
                 <div class="flex flex-wrap items-center gap-2 text-[11px]">
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-exclude-all" @click="setAttachmentConfirmationCurrentDecisionForAll('exclude')">exclude 全选</button>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-exclude-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">exclude 全不选</button>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-remove-all" @click="setAttachmentConfirmationCurrentDecisionForAll('remove')">delete/remove 全选</button>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-remove-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">delete/remove 全不选</button>
+                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-exclude-all" @click="setAttachmentConfirmationCurrentDecisionForAll('exclude')">{{ t('chat.attachmentConfirm.excludeAll') }}</button>
+                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-exclude-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">{{ t('chat.attachmentConfirm.excludeNone') }}</button>
+                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-remove-all" @click="setAttachmentConfirmationCurrentDecisionForAll('remove')">{{ t('chat.attachmentConfirm.removeAll') }}</button>
+                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-remove-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">{{ t('chat.attachmentConfirm.removeNone') }}</button>
                 </div>
                 <div v-for="item in attachmentConfirmationSession.currentItems" :key="item.attachmentId" class="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1" :class="attachmentConfirmationSession.currentValidationAttachmentId === item.attachmentId ? 'ring-2 ring-red-300' : ''" :data-testid="`attachment-confirm-current-row-${item.attachmentId}`">
                   <div class="min-w-0">
@@ -709,18 +710,18 @@ function shouldShowInlineReasoning(message: any): boolean {
                     <img v-if="item.previewDataUrl" :src="item.previewDataUrl" class="h-8 w-8 rounded border border-gray-200 object-cover" alt="" />
                     <label class="flex items-center gap-1 text-[11px] text-gray-700">
                       <input type="checkbox" :checked="attachmentConfirmationSession.currentDecisionsByAttachmentId[item.attachmentId] === 'exclude'" :data-testid="`attachment-confirm-current-exclude-${item.attachmentId}`" @change="setAttachmentConfirmationCurrentDecision(item.attachmentId, ($event.target as HTMLInputElement).checked ? 'exclude' : null)" />
-                      exclude
+                      {{ t('chat.attachmentConfirm.exclude') }}
                     </label>
                     <label class="flex items-center gap-1 text-[11px] text-gray-700">
                       <input type="checkbox" :checked="attachmentConfirmationSession.currentDecisionsByAttachmentId[item.attachmentId] === 'remove'" :data-testid="`attachment-confirm-current-remove-${item.attachmentId}`" @change="setAttachmentConfirmationCurrentDecision(item.attachmentId, ($event.target as HTMLInputElement).checked ? 'remove' : null)" />
-                      remove
+                      {{ t('chat.attachmentConfirm.remove') }}
                     </label>
                   </div>
                 </div>
               </div>
             </div>
             <div class="mt-3 flex justify-end">
-              <button type="button" class="rounded bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800" data-testid="attachment-confirm-confirm" @click="confirmAttachmentConfirmationSession">确认并继续</button>
+              <button type="button" class="rounded bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800" data-testid="attachment-confirm-confirm" @click="confirmAttachmentConfirmationSession">{{ t('chat.attachmentConfirm.confirmAndContinue') }}</button>
             </div>
           </div>
           <DraftAttachmentStrip
@@ -733,10 +734,10 @@ function shouldShowInlineReasoning(message: any): boolean {
             class="mx-4 mt-2 rounded-xl border border-blue-200 bg-blue-50 p-3"
             data-testid="question-edit-controls"
           >
-            <div class="text-sm font-semibold text-blue-900">Editing question</div>
+            <div class="text-sm font-semibold text-blue-900">{{ t('chat.message.editingQuestion') }}</div>
             <div class="mt-2 flex items-center justify-end gap-2">
               <button type="button" class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50" :disabled="isDraftInteractionLocked" @click="closeQuestionEdit">
-                Cancel
+                {{ t('common.cancel') }}
               </button>
               <button
                 type="button"
@@ -745,7 +746,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                 data-testid="question-edit-new"
                 @click="submitQuestionEdit('new')"
               >
-                New question
+                {{ t('chat.message.actions.newQuestion') }}
               </button>
               <button
                 type="button"
@@ -754,7 +755,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                 data-testid="question-edit-replace"
                 @click="submitQuestionEdit('replace')"
               >
-                Replace question
+                {{ t('chat.message.actions.replaceQuestion') }}
               </button>
             </div>
           </div>
@@ -906,7 +907,7 @@ function shouldShowInlineReasoning(message: any): boolean {
       @keydown.esc="closeAttachmentUrlDialog"
     >
       <div class="w-full max-w-lg rounded-lg bg-white p-4 shadow-xl">
-        <div class="text-sm font-semibold text-gray-900">Add URL attachment</div>
+        <div class="text-sm font-semibold text-gray-900">{{ t('chat.attachmentUrl.addTitle') }}</div>
         <div class="mt-2 space-y-3">
           <input
             class="w-full rounded border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -923,7 +924,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                 :checked="attachmentUrlRetentionMode === 'default'"
                 @change="attachmentUrlRetentionMode = 'default'"
               />
-              Follow default
+              {{ t('chat.attachmentUrl.followDefault') }}
             </label>
             <label class="flex items-center gap-2">
               <input
@@ -932,7 +933,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                 :checked="attachmentUrlRetentionMode === 'link_only'"
                 @change="attachmentUrlRetentionMode = 'link_only'"
               />
-              Link only
+              {{ t('chat.message.linkOnly') }}
             </label>
             <label class="flex items-center gap-2">
               <input
@@ -941,7 +942,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                 :checked="attachmentUrlRetentionMode === 'link_and_file'"
                 @change="attachmentUrlRetentionMode = 'link_and_file'"
               />
-              Link + local copy
+              {{ t('chat.message.linkWithLocalCopy') }}
             </label>
           </div>
         </div>
@@ -951,7 +952,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
             @click="closeAttachmentUrlDialog"
           >
-            Cancel
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
@@ -960,7 +961,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             data-testid="attachment-url-confirm"
             @click="submitAttachmentUrl"
           >
-            Add URL
+            {{ t('chat.attachmentUrl.addUrl') }}
           </button>
         </div>
       </div>
@@ -974,7 +975,7 @@ function shouldShowInlineReasoning(message: any): boolean {
       :open="projectWebSearchSettingsOpen"
       :disabled="!isReady"
       :isRunning="isRunning"
-      :title="`Project Web Search${projectWebSearchSettingsTarget ? `: ${projectWebSearchSettingsTarget.name}` : ''}`"
+      :title="projectWebSearchSettingsTarget ? tf('chat.projectWebSearch.titleWithTarget', { name: projectWebSearchSettingsTarget.name }) : t('chat.projectWebSearch.title')"
       @close="closeProjectWebSearchSettings"
     >
       <div class="space-y-3 p-4">

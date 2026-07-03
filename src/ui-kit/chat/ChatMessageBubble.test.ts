@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import { afterEach, beforeEach, vi } from 'vitest'
 import ChatMessageBubble from './ChatMessageBubble.vue'
 import type { MessageVM } from './types'
-import { resetI18nForTests } from '@/shared/i18n'
+import { resetI18nForTests, t } from '@/shared/i18n'
 
 function msg(partial: Partial<MessageVM> & Pick<MessageVM, 'messageId' | 'role'>): MessageVM {
   return {
@@ -57,7 +57,7 @@ describe('ChatMessageBubble', () => {
       },
     })
 
-    const bubble = screen.getByText('Assistant').closest('.rounded-2xl')
+    const bubble = screen.getByText(t('chat.message.role.assistant')).closest('.rounded-2xl')
     expect(bubble).not.toBeNull()
     expect(bubble).toContainElement(screen.getByTestId('inline-reasoning-slot'))
   })

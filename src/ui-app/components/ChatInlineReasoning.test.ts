@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import { describe, expect, it } from 'vitest'
 import ChatInlineReasoning from './ChatInlineReasoning.vue'
 import type { ReasoningView } from '@/next/state/types'
+import { t } from '@/shared/i18n'
 
 const reasoningView: ReasoningView = {
   visibility: 'shown',
@@ -83,7 +84,7 @@ describe('ChatInlineReasoning', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Gemini thought text')).toBeInTheDocument()
-      expect(screen.queryByText('No reasoning payload.')).toBeNull()
+      expect(screen.queryByText(t('chat.reasoning.emptyPayload'))).toBeNull()
     })
   })
 
@@ -114,8 +115,8 @@ describe('ChatInlineReasoning', () => {
       },
     })
 
-    await fireEvent.mouseDown(screen.getByRole('button', { name: /Reasoning/ }))
-    await fireEvent.mouseUp(screen.getByRole('button', { name: /Reasoning/ }))
+    await fireEvent.mouseDown(screen.getByRole('button', { name: t('chat.reasoning.title') }))
+    await fireEvent.mouseUp(screen.getByRole('button', { name: t('chat.reasoning.title') }))
 
     expect(view.emitted().toggle).toHaveLength(1)
   })

@@ -5,7 +5,7 @@ import ChatErrorPanel from './ChatErrorPanel.vue'
 import RichTextContent from './richtext/RichTextContent.vue'
 import RichTextFinal from './richtext/RichTextFinal.vue'
 import './richtext/richtext.css'
-import { t } from '@/shared/i18n'
+import { t, tf } from '@/shared/i18n'
 
 const props = withDefaults(
   defineProps<{
@@ -338,14 +338,14 @@ function bubbleClass(role: MessageVM['role']) {
 <template>
   <div class="flex gap-3" :class="isUser ? 'justify-end' : 'justify-start'">
     <div v-if="!isUser" class="flex h-8 w-8 flex-none items-center justify-center rounded-full bg-gray-100 ring-1 ring-gray-200">
-      <span class="text-[11px] font-semibold text-gray-600">{{ isTool ? 'T' : 'A' }}</span>
+      <span class="text-[11px] font-semibold text-gray-600">{{ isTool ? t('chat.message.avatar.tool') : t('chat.message.avatar.assistant') }}</span>
     </div>
 
     <div class="w-full max-w-[80%]" :class="isUser ? 'max-w-[85%]' : 'max-w-[80%]'">
       <div class="rounded-2xl px-4 py-3 text-sm" :class="bubbleClass(props.message.role)">
         <div class="mb-2 flex items-center justify-between gap-2">
           <div class="text-[11px] font-semibold uppercase tracking-wide opacity-70">
-            {{ isUser ? 'You' : isTool ? 'Tool' : 'Assistant' }}
+            {{ isUser ? t('chat.message.role.user') : isTool ? t('chat.message.role.tool') : t('chat.message.role.assistant') }}
           </div>
           <div class="flex items-center gap-2">
             <slot name="header-right" />
@@ -420,7 +420,7 @@ function bubbleClass(role: MessageVM['role']) {
                   <img
                     class="h-48 w-full bg-white object-contain"
                     :src="image.url"
-                    :alt="`image-${image.index + 1}`"
+                    :alt="tf('chat.message.imageAlt', { index: image.index + 1 })"
                   />
                 </button>
                 <div class="mt-1 flex flex-wrap gap-1">
@@ -431,7 +431,7 @@ function bubbleClass(role: MessageVM['role']) {
                     :disabled="isTransientDataImageUrl(image.url)"
                     @click.stop="copyImageToClipboard(image.url)"
                   >
-                    Copy image
+                    {{ t('chat.message.copyImage') }}
                   </button>
                   <button
                     type="button"
@@ -440,7 +440,7 @@ function bubbleClass(role: MessageVM['role']) {
                     :disabled="isTransientDataImageUrl(image.url)"
                     @click.stop="copyImagePath(image.url)"
                   >
-                    Copy path
+                    {{ t('chat.message.copyPath') }}
                   </button>
                   <button
                     type="button"
@@ -449,14 +449,14 @@ function bubbleClass(role: MessageVM['role']) {
                     :disabled="isTransientDataImageUrl(image.url)"
                     @click.stop="exportImage(image.url, image.index)"
                   >
-                    Export
+                    {{ t('chat.message.exportImage') }}
                   </button>
                   <span
                     v-if="isTransientDataImageUrl(image.url)"
                     class="rounded border border-blue-200 bg-blue-50 px-2 py-0.5 text-[10px] text-blue-700"
                     :data-testid="`message-image-persisting-${image.index}`"
                   >
-                    Persisting...
+                    {{ t('chat.message.persisting') }}
                   </span>
                 </div>
               </div>
@@ -468,7 +468,7 @@ function bubbleClass(role: MessageVM['role']) {
             class="rounded-lg border border-dashed border-blue-200 bg-blue-50/60 p-3 text-xs text-blue-700"
             data-testid="message-image-placeholder"
           >
-            Image is generating...
+            {{ t('chat.message.imageGenerating') }}
           </div>
 
           <div v-for="(b, idx) in otherBlocks" :key="`other-${idx}`">
@@ -517,7 +517,7 @@ function bubbleClass(role: MessageVM['role']) {
                   {{ item.title || item.domain || item.url }}
                 </a>
                 <span v-else class="break-all text-gray-700">
-                  {{ item.title || item.domain || 'Untitled source' }}
+                  {{ item.title || item.domain || t('chat.message.untitledSource') }}
                 </span>
                 <span
                   v-if="item.startIndex !== undefined && item.endIndex !== undefined"
@@ -546,16 +546,16 @@ function bubbleClass(role: MessageVM['role']) {
           >
             <summary class="cursor-pointer select-none text-xs text-gray-800">
               <span class="font-mono">#{{ tc.index }}</span>
-              <span class="ml-2 font-semibold">{{ tc.name || '(unknown)' }}</span>
+              <span class="ml-2 font-semibold">{{ tc.name || `(${t('chat.message.unknownTool')})` }}</span>
               <span v-if="tc.id" class="ml-2 font-mono text-[11px] text-gray-500">{{ tc.id }}</span>
             </summary>
 
             <div class="mt-2 space-y-2 text-xs text-gray-700">
               <div v-if="tc.type">
-                type: <span class="font-mono">{{ tc.type }}</span>
+                {{ t('chat.message.type') }}: <span class="font-mono">{{ tc.type }}</span>
               </div>
               <div>
-                <div class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600">arguments</div>
+                <div class="mb-1 text-[11px] font-semibold uppercase tracking-wide text-gray-600">{{ t('chat.message.arguments') }}</div>
                 <pre class="whitespace-pre-wrap break-words rounded border border-black/10 bg-black/5 p-2 text-[11px]">{{ tc.argumentsText }}</pre>
               </div>
             </div>
@@ -605,7 +605,7 @@ function bubbleClass(role: MessageVM['role']) {
         <img
           class="mx-auto h-auto max-h-[74vh] w-auto max-w-full rounded border border-gray-200 bg-white object-contain"
           :src="previewImageUrl"
-          alt="preview"
+          :alt="t('chat.message.imagePreviewAlt')"
           data-testid="message-image-preview-image"
         />
       </div>
