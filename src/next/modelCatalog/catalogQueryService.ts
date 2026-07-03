@@ -152,6 +152,8 @@ export type CatalogQueryResult = Readonly<{
   status?: 'not_synced' | 'syncing' | 'synced' | 'failed'
   catalogRevision?: string | null
   modelCount?: number
+  visibleModelCount?: number
+  hiddenModelCount?: number
   lastSyncAtMs?: number
 }>
 
@@ -496,6 +498,12 @@ export class CatalogQueryService {
       const modelCount = typeof raw?.modelCount === 'number' && Number.isFinite(raw.modelCount)
         ? raw.modelCount
         : undefined
+      const visibleModelCount = typeof raw?.visibleModelCount === 'number' && Number.isFinite(raw.visibleModelCount)
+        ? raw.visibleModelCount
+        : undefined
+      const hiddenModelCount = typeof raw?.hiddenModelCount === 'number' && Number.isFinite(raw.hiddenModelCount)
+        ? raw.hiddenModelCount
+        : undefined
       const lastSyncAtMs = typeof raw?.lastSyncAtMs === 'number' && Number.isFinite(raw.lastSyncAtMs)
         ? raw.lastSyncAtMs
         : undefined
@@ -519,6 +527,8 @@ export class CatalogQueryService {
         status: normalizedStatus,
         catalogRevision,
         ...(modelCount !== undefined ? { modelCount } : {}),
+        ...(visibleModelCount !== undefined ? { visibleModelCount } : {}),
+        ...(hiddenModelCount !== undefined ? { hiddenModelCount } : {}),
         ...(lastSyncAtMs !== undefined ? { lastSyncAtMs } : {}),
       }
     } catch (error: any) {

@@ -153,7 +153,9 @@ const draggingFavoriteIndex = ref<number | null>(null)
 
 type SyncStatus = 'not_synced' | 'syncing' | 'synced' | 'failed'
 const syncStatus = ref<SyncStatus>('not_synced')
-const syncModelCount = ref(0)
+const syncTotalModelCount = ref(0)
+const syncVisibleModelCount = ref<number | null>(null)
+const syncHiddenModelCount = ref<number | null>(null)
 const syncLastSyncedAtMs = ref<number | null>(null)
 const syncErrorCode = ref<string | null>(null)
 const syncErrorMessage = ref<string | null>(null)
@@ -372,14 +374,42 @@ const syncFailureReasonText = computed(() => {
   return t(key)
 })
 
+const syncStatusText = computed(() => {
+  const payload = {
+    count: syncTotalModelCount.value,
+    visibleCount: syncVisibleModelCount.value ?? 0,
+    hiddenCount: syncHiddenModelCount.value ?? 0,
+    time: formatSyncTime(syncLastSyncedAtMs.value),
+  }
+  if (syncVisibleModelCount.value !== null && syncHiddenModelCount.value !== null) {
+    return tf('errors.modelCatalog.syncedWithVisibleHidden', payload)
+  }
+  if (syncVisibleModelCount.value !== null && syncVisibleModelCount.value !== syncTotalModelCount.value) {
+    return tf('errors.modelCatalog.syncedWithVisible', payload)
+  }
+  if (syncHiddenModelCount.value !== null && syncHiddenModelCount.value > 0) {
+    return tf('errors.modelCatalog.syncedWithHidden', payload)
+  }
+  return tf('errors.modelCatalog.synced', payload)
+})
+
 const providerOptions = computed(() => {
   const options = new Map<RuntimeProviderKey, { providerId: RuntimeProviderKey; providerName: string; statusLabel: string; loading: boolean; count: number }>()
+  const openRouterKnownCount = syncVisibleModelCount.value ?? syncTotalModelCount.value
+  const openRouterCount = syncStatus.value === 'synced' && openRouterKnownCount > 0
+    ? openRouterKnownCount
+    : items.value.length
+  const openRouterStatusLabel = syncStatus.value === 'synced'
+    ? items.value.length < openRouterCount
+      ? `${items.value.length}/${openRouterCount} loaded`
+      : `${openRouterCount} shown`
+    : syncStatus.value
   options.set(DEFAULT_CHAT_PROVIDER_ID, {
     providerId: DEFAULT_CHAT_PROVIDER_ID,
     providerName: 'OpenRouter',
-    statusLabel: syncStatus.value === 'synced' ? `${items.value.length} shown` : syncStatus.value,
+    statusLabel: openRouterStatusLabel,
     loading: loading.value || syncStatus.value === 'syncing',
-    count: items.value.length,
+    count: openRouterCount,
   })
   for (const source of props.providerSources) {
     options.set(source.providerId, {
@@ -506,6 +536,23 @@ function normalizeCatalogRevision(value: unknown, modelCount?: unknown, lastSync
   const syncedAt = Number(lastSyncAtMs ?? 0)
   if (!Number.isFinite(syncedAt) || syncedAt <= 0) return null
   return `${Number.isFinite(count) ? count : 0}:${syncedAt}`
+}
+
+function normalizeModelCount(value: unknown): number {
+  const count = Number(value)
+  return Number.isFinite(count) && count >= 0 ? Math.floor(count) : 0
+}
+
+function normalizeOptionalModelCount(value: unknown): number | null {
+  if (value === undefined || value === null) return null
+  const count = Number(value)
+  return Number.isFinite(count) && count >= 0 ? Math.floor(count) : null
+}
+
+function applySyncCounts(input: Readonly<{ modelCount?: unknown; visibleModelCount?: unknown; hiddenModelCount?: unknown }>) {
+  syncTotalModelCount.value = normalizeModelCount(input.modelCount)
+  syncVisibleModelCount.value = normalizeOptionalModelCount(input.visibleModelCount)
+  syncHiddenModelCount.value = normalizeOptionalModelCount(input.hiddenModelCount)
 }
 
 function shouldSyncOnPickerOpen(): boolean {
@@ -1099,7 +1146,7 @@ async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_r
     if (succeeded) {
       const revision = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
       syncStatus.value = 'synced'
-      syncModelCount.value = result.modelCount ?? 0
+      applySyncCounts(result)
       syncLastSyncedAtMs.value = result.lastSyncAtMs ?? Date.now()
       syncErrorCode.value = null
       syncErrorMessage.value = null
@@ -1111,7 +1158,7 @@ async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_r
       // Under current contract this should not fire (cache-fresh returns ok=true).
       // Preserve existing synced state from fetchSyncStatus.
       syncStatus.value = 'synced'
-      syncModelCount.value = result.modelCount ?? 0
+      applySyncCounts(result)
       if (result.lastSyncAtMs) syncLastSyncedAtMs.value = result.lastSyncAtMs
       syncIsStale.value = false
       latestCatalogRevision.value = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
@@ -1142,7 +1189,7 @@ async function fetchSyncStatus() {
       syncStatus.value = 'syncing'
     } else if (state === 'ok') {
       syncStatus.value = 'synced'
-      syncModelCount.value = Number(status.modelCount ?? 0)
+      applySyncCounts(status)
       syncLastSyncedAtMs.value = Number(status.lastSyncAtMs ?? 0)
       syncIsStale.value = status.isStale === true || isCatalogStatusStale({
         status: 'synced',
@@ -2150,7 +2197,7 @@ onBeforeUnmount(() => {
             {{ t('errors.modelCatalog.syncSyncing') }}
           </span>
           <span v-else-if="syncStatus === 'synced'" class="text-green-700">
-            {{ tf('errors.modelCatalog.synced', { count: syncModelCount, time: formatSyncTime(syncLastSyncedAtMs) }) }}
+            {{ syncStatusText }}
           </span>
           <span v-else-if="syncStatus === 'failed'" class="text-red-600">
             {{ tf('errors.modelCatalog.syncFailedReason', { reason: syncFailureReasonText }) }}

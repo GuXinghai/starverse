@@ -206,6 +206,37 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.getCoreMeta', expect.anything())
   })
 
+  it('getSyncStatus exposes visible and hidden model counts separately', async () => {
+    const store = createStore({
+      openRouterApiKey: 'sk-ipc-counts',
+      openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
+    })
+    const scope = getScope(store)
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string) => {
+        if (method === 'modelCatalog.getScopedMeta') {
+          return makeScopedMeta(scope, {
+            modelCount: 338,
+            visibleModelCount: 319,
+            hiddenModelCount: 19,
+          })
+        }
+        if (method === 'modelCatalog.validateActiveScopedSnapshot') return { ok: true, modelCount: 338 }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    }
+    const { handlers } = registerHandlers({ store, dbWorkerManager })
+
+    const status = await handlers.get('modelCatalog.getSyncStatus')?.({}, { providerKey: 'openrouter' }) as any
+
+    expect(status).toMatchObject({
+      status: 'synced',
+      modelCount: 338,
+      visibleModelCount: 319,
+      hiddenModelCount: 19,
+    })
+  })
+
   it('getSyncStatus reports missing_api_key without reading legacy meta', async () => {
     const dbWorkerManager = { call: vi.fn() }
     const { handlers } = registerHandlers({
@@ -329,6 +360,8 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
       modelCount: 1,
       lastSyncAtMs: 2,
     })
+    expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain('visibleModelCount')
+    expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain('hiddenModelCount')
     expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain('snap-ipc')
     expect(JSON.stringify(notifyRenderer.mock.calls)).not.toContain(rawApiKey)
     expect(dbWorkerManager.call).toHaveBeenCalledWith('modelCatalog.cleanupExpiredScopedCatalogCaches', expect.objectContaining({

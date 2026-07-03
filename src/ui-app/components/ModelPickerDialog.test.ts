@@ -930,7 +930,7 @@ describe('ModelPickerDialog', () => {
     expect(endpointDetailFn).toHaveBeenCalledTimes(2)
   })
 
-  it('shows synced status with model count and time', async () => {
+  it('shows synced status with total, visible, and hidden model counts when metadata has direct counts', async () => {
     const now = Date.now()
     ;(globalThis as any).electronAPI = {
       modelCatalogSyncNow: vi.fn(async () => ({
@@ -939,6 +939,8 @@ describe('ModelPickerDialog', () => {
         syncSucceeded: true,
         providerKey: 'openrouter',
         modelCount: 150,
+        visibleModelCount: 140,
+        hiddenModelCount: 10,
         lastSyncAtMs: now,
         errorCode: null,
         errorMessage: null,
@@ -948,6 +950,8 @@ describe('ModelPickerDialog', () => {
         syncState: 'ok',
         lastSyncAtMs: now,
         modelCount: 150,
+        visibleModelCount: 140,
+        hiddenModelCount: 10,
         lastErrorCode: null,
         lastErrorMessage: null,
       })),
@@ -965,8 +969,81 @@ describe('ModelPickerDialog', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/已同步/)).toBeTruthy()
-      expect(screen.getByText(/150/)).toBeTruthy()
+      const statusBar = screen.getByTestId('model-picker-sync-refresh').closest('[class*="border-t"]')
+      expect(statusBar?.textContent).toContain('150')
+      expect(statusBar?.textContent).toContain('140')
+      expect(statusBar?.textContent).toContain('10')
+      expect(statusBar?.textContent).toContain('显示')
+      expect(statusBar?.textContent).toContain('隐藏')
     })
+  })
+
+  it('shows direct hidden zero and keeps OpenRouter provider count on synced total instead of loaded page size', async () => {
+    const now = Date.now()
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        syncAttempted: true,
+        syncSucceeded: true,
+        providerKey: 'openrouter',
+        modelCount: 338,
+        visibleModelCount: 338,
+        hiddenModelCount: 0,
+        lastSyncAtMs: now,
+        errorCode: null,
+        errorMessage: null,
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        providerKey: 'openrouter',
+        syncState: 'ok',
+        lastSyncAtMs: now,
+        modelCount: 338,
+        visibleModelCount: 338,
+        hiddenModelCount: 0,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      })),
+    }
+    const queryFn = vi.fn(async () => createResult([
+      {
+        providerKey: 'openrouter',
+        modelId: 'openai/page-1',
+        modelKey: 'openrouter::openai/page-1',
+        canonicalSlug: 'openai/page-1',
+        displayName: 'Page 1',
+        description: null,
+        vendor: 'openai',
+        contextLength: 8192,
+        maxOutputTokens: 4096,
+        createdAtSec: 1700000123,
+        pricing: { prompt: null, completion: null, request: null, image: null },
+        capabilities: {
+          reasoning: false,
+          tools: false,
+          structuredOutputs: false,
+          vision: false,
+          longContext: false,
+        },
+      },
+    ], null, { catalogRevision: 'rev-counts', modelCount: 338, visibleModelCount: 338, hiddenModelCount: 0, lastSyncAtMs: now }))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      const statusBar = screen.getByTestId('model-picker-sync-refresh').closest('[class*="border-t"]')
+      expect(statusBar?.textContent).toContain('已同步')
+      expect(statusBar?.textContent).toContain('338')
+      expect(statusBar?.textContent).toContain('隐藏 0')
+      expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain('1/338 loaded')
+    })
+    expect((screen.getByTestId('model-picker-provider-filter') as HTMLSelectElement).textContent).toContain('OpenRouter (338)')
   })
 
   it('shows failed status with error reason', async () => {
@@ -1184,7 +1261,10 @@ describe('ModelPickerDialog', () => {
     await waitFor(() => {
       expect(getSyncStatus).toHaveBeenCalled()
       expect(screen.getByText(/已同步/)).toBeTruthy()
-      expect(screen.getByText(/300/)).toBeTruthy()
+      const statusBar = screen.getByTestId('model-picker-sync-refresh').closest('[class*="border-t"]')
+      expect(statusBar?.textContent).toContain('300')
+      expect(statusBar?.textContent).not.toContain('显示')
+      expect(statusBar?.textContent).not.toContain('隐藏')
     })
   })
 

@@ -34,6 +34,8 @@ type SyncStatusResult = Readonly<{
   status: 'not_synced' | 'syncing' | 'synced' | 'failed'
   lastSyncAtMs: number
   modelCount: number
+  visibleModelCount?: number
+  hiddenModelCount?: number
   lastErrorCode: string | null
   lastErrorMessage: string | null
   failureReasonCode: string | null
@@ -47,6 +49,8 @@ type SyncNowResult = Readonly<{
   syncSucceeded: boolean
   providerKey: string
   modelCount: number
+  visibleModelCount?: number
+  hiddenModelCount?: number
   lastSyncAtMs: number
   errorCode: string | null
   errorMessage: string | null
@@ -88,6 +92,8 @@ type ScopedQueryResult = Readonly<{
   failureReasonCode: string | null
   catalogRevision: string | null
   modelCount: number
+  visibleModelCount?: number
+  hiddenModelCount?: number
   lastSyncAtMs: number
   items: unknown[]
   nextCursor: unknown | null
@@ -190,6 +196,21 @@ function catalogRevisionFromMeta(meta: Record<string, unknown> | null | undefine
   return `${modelCount}:${Number.isFinite(lastSyncAtMs) ? lastSyncAtMs : 0}`
 }
 
+function modelCountsFromMeta(
+  meta: Record<string, unknown> | null | undefined,
+  fallbackModelCount = 0,
+): Readonly<{ modelCount: number; visibleModelCount?: number; hiddenModelCount?: number }> {
+  const modelCount = Number(meta?.modelCount ?? fallbackModelCount)
+  const rawVisible = Number(meta?.visibleModelCount)
+  const rawHidden = Number(meta?.hiddenModelCount)
+  const safeModelCount = Number.isFinite(modelCount) ? Math.max(0, modelCount) : 0
+  return {
+    modelCount: safeModelCount,
+    ...(Number.isFinite(rawVisible) ? { visibleModelCount: Math.max(0, rawVisible) } : {}),
+    ...(Number.isFinite(rawHidden) ? { hiddenModelCount: Math.max(0, rawHidden) } : {}),
+  }
+}
+
 function freshnessMsFromStore(store: Store): number {
   return normalizeCatalogFreshnessMs(store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY))
 }
@@ -268,11 +289,12 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           currentMeta = null
         }
         const catalogRevision = catalogRevisionFromMeta(currentMeta)
+        const counts = modelCountsFromMeta(currentMeta, result.modelCountAfter)
 
         if (result.syncSucceeded && result.syncAttempted && result.syncSnapshotId) {
           notifyRenderer('db:modelCatalogSynced', {
             routerSource: providerKey,
-            modelCount: result.modelCountAfter,
+            ...counts,
             lastSyncAtMs: result.lastSyncAtMs,
           })
           await runScopedCleanupAfterCatalogChange({ store, dbWorkerManager })
@@ -286,7 +308,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
             syncAttempted: false,
             syncSucceeded: true,
             providerKey,
-            modelCount: result.modelCountAfter,
+            ...counts,
             lastSyncAtMs: result.lastSyncAtMs,
             errorCode: null,
             errorMessage: null,
@@ -314,7 +336,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           syncAttempted: result.syncAttempted,
           syncSucceeded: result.syncSucceeded,
           providerKey,
-          modelCount: result.modelCountAfter,
+          ...counts,
           lastSyncAtMs: result.lastSyncAtMs,
           errorCode,
           errorMessage,
@@ -407,7 +429,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
       const syncState = String(row.syncState ?? 'idle')
       const freshnessMs = freshnessMsFromStore(store)
       const lastSyncAtMs = Number(row.lastSyncAtMs ?? 0)
-      const modelCount = Number(row.modelCount ?? 0)
+      const counts = modelCountsFromMeta(row)
       const catalogRevision = catalogRevisionFromMeta(row)
       if (syncState === 'ok') {
         const validation = await dbWorkerManager.call('modelCatalog.validateActiveScopedSnapshot', {
@@ -421,7 +443,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
             syncState: 'error',
             status: 'failed',
             lastSyncAtMs,
-            modelCount,
+            ...counts,
             lastErrorCode: mapped.code,
             lastErrorMessage: mapped.message,
             failureReasonCode: mapped.code,
@@ -437,7 +459,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           syncState: 'error',
           status: 'failed',
           lastSyncAtMs,
-          modelCount,
+          ...counts,
           lastErrorCode: code,
           lastErrorMessage: row.lastErrorMessage != null ? String(row.lastErrorMessage) : null,
           failureReasonCode: code,
@@ -451,7 +473,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         syncState,
         status,
         lastSyncAtMs,
-        modelCount,
+        ...counts,
         lastErrorCode: row.lastErrorCode != null ? String(row.lastErrorCode) : null,
         lastErrorMessage: row.lastErrorMessage != null ? String(row.lastErrorMessage) : null,
         failureReasonCode: null,
@@ -517,7 +539,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
 
       const syncState = String(meta.syncState ?? 'idle')
       const catalogRevision = catalogRevisionFromMeta(meta)
-      const modelCount = Number(meta.modelCount ?? 0)
+      const counts = modelCountsFromMeta(meta)
       const lastSyncAtMs = Number(meta.lastSyncAtMs ?? 0)
       if (syncState === 'error') {
         return {
@@ -526,7 +548,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           syncState: 'error',
           failureReasonCode: meta.lastErrorCode != null ? String(meta.lastErrorCode) : 'unknown_error',
           catalogRevision,
-          modelCount,
+          ...counts,
           lastSyncAtMs,
           items: [],
           nextCursor: null,
@@ -539,7 +561,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           syncState: 'syncing',
           failureReasonCode: null,
           catalogRevision,
-          modelCount,
+          ...counts,
           lastSyncAtMs,
           items: [],
           nextCursor: null,
@@ -552,7 +574,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           syncState,
           failureReasonCode: null,
           catalogRevision,
-          modelCount,
+          ...counts,
           lastSyncAtMs,
           items: [],
           nextCursor: null,
@@ -571,7 +593,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
           syncState: 'error',
           failureReasonCode: mapped.code,
           catalogRevision,
-          modelCount,
+          ...counts,
           lastSyncAtMs,
           items: [],
           nextCursor: null,
@@ -614,7 +636,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
         syncState: 'ok',
         failureReasonCode: null,
         catalogRevision,
-        modelCount,
+        ...counts,
         lastSyncAtMs,
         items: rows
           .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
