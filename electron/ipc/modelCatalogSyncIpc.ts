@@ -5,11 +5,8 @@ import type { OpenRouterCatalogCredentialStoreReader } from '../jobs/openRouterC
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { cleanupExpiredOpenRouterScopedCatalogCaches } from '../jobs/catalogCacheCleanup'
 import { mapCacheCorruptedToCode, mapDbUnavailableToCode, mapErrorToSyncCode, mapMissingApiKeyToCode } from '../../src/shared/modelCatalog/catalogSyncErrorMapper'
-import {
-  OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
-  isCatalogStatusStale,
-  normalizeCatalogFreshnessMs,
-} from '../../src/shared/modelCatalog/catalogSyncSettings'
+import { isCatalogStatusStale } from '../../src/shared/modelCatalog/catalogSyncSettings'
+import { readProviderCatalogSettings } from '../../src/shared/modelCatalog/providerCatalogSettings'
 import type { RegisterInvoke } from './types'
 
 export const MODEL_CATALOG_SYNC_IPC_CHANNELS = [
@@ -212,7 +209,7 @@ function modelCountsFromMeta(
 }
 
 function freshnessMsFromStore(store: Store): number {
-  return normalizeCatalogFreshnessMs(store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY))
+  return readProviderCatalogSettings(store, 'openrouter').freshnessMs
 }
 
 async function runScopedCleanupAfterCatalogChange(input: Readonly<{

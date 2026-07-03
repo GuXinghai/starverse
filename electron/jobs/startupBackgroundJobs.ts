@@ -7,12 +7,7 @@ import {
   cleanupExpiredOpenRouterScopedCatalogCaches,
   clearDeprecatedOpenRouterCatalogCacheOnce,
 } from './catalogCacheCleanup'
-import {
-  OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
-  OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY,
-  normalizeCatalogAutoSyncPolicy,
-  normalizeCatalogFreshnessMs,
-} from '../../src/shared/modelCatalog/catalogSyncSettings'
+import { readProviderCatalogSettings } from '../../src/shared/modelCatalog/providerCatalogSettings'
 
 type NotifyRenderer = (channel: string, payload: unknown) => void
 
@@ -43,14 +38,15 @@ export async function runStartupBackgroundJobs(input: Readonly<{
       ? input.credentialService.getLegacyStoreValue(key)
       : input.store.get(key),
   }
-  const policy = normalizeCatalogAutoSyncPolicy(input.store.get(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY))
+  const catalogSettings = readProviderCatalogSettings(input.store, 'openrouter')
+  const policy = catalogSettings.startupSyncPolicy
   if (policy !== 'never') {
     const catalogSyncResult = await (input.runCatalogSync ?? runCatalogSyncAtStartup)({
       store: input.store,
       credentialStore,
       dbWorkerManager: input.dbWorkerManager,
       force: policy === 'always',
-      freshnessMs: normalizeCatalogFreshnessMs(input.store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY)),
+      freshnessMs: catalogSettings.freshnessMs,
     })
 
     if (catalogSyncResult.syncSucceeded && catalogSyncResult.syncAttempted) {
