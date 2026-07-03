@@ -32,6 +32,17 @@ describe('decodeGeminiSSE', () => {
     expect(chunks).toHaveLength(2)
   })
 
+  it('decodes CRLF-delimited SSE chunks without merging events', async () => {
+    const c1 = { candidates: [{ content: { parts: [{ text: 'Hello' }] } }] }
+    const c2 = { candidates: [{ finishReason: 'STOP' }] }
+    const input = `data: ${JSON.stringify(c1)}\r\n\r\ndata: ${JSON.stringify(c2)}\r\n\r\n`
+    const events = await collectEvents(input)
+
+    const chunks = events.filter((e) => e.type === 'chunk')
+    expect(chunks).toHaveLength(2)
+    expect(events.some((event) => event.type === 'parse_error')).toBe(false)
+  })
+
   it('handles comment lines', async () => {
     const chunk = { candidates: [{ content: { parts: [{ text: 'Hi' }] } }] }
     const input = `: comment\ndata: ${JSON.stringify(chunk)}\n\n`

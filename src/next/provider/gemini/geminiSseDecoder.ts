@@ -75,7 +75,8 @@ function* parseGeminiSSEText(text: string): Generator<GeminiSSEEvent> {
   const lines = text.split('\n')
   const dataLines: string[] = []
 
-  for (const line of lines) {
+  for (const rawLine of lines) {
+    const line = normalizeSseLine(rawLine)
     if (line === '') {
       yield* flushData(dataLines)
       dataLines.length = 0
@@ -137,7 +138,7 @@ function flushGeminiBuffer(buffer: string): { events: GeminiSSEEvent[]; remainde
   const dataLines: string[] = []
 
   for (let i = 0; i <= lastNewlineIdx; i++) {
-    const line = lines[i]
+    const line = normalizeSseLine(lines[i])
 
     if (line === '') {
       if (dataLines.length > 0) {
@@ -189,4 +190,8 @@ function flushGeminiBuffer(buffer: string): { events: GeminiSSEEvent[]; remainde
 
   const remainder = lastNewlineIdx >= 0 ? lines.slice(lastNewlineIdx + 1).join('\n') : buffer
   return { events, remainder }
+}
+
+function normalizeSseLine(line: string): string {
+  return line.endsWith('\r') ? line.slice(0, -1) : line
 }
