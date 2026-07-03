@@ -1,11 +1,11 @@
 import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
 import type { ProviderFetch } from '../net/providerHttpTransport'
+import { runProviderCatalogSyncJob } from '../modelCatalog/providerCatalogSyncJob'
 import {
   resolveCurrentOpenRouterCatalogScope,
-  runProviderCatalogSyncJob,
   type OpenRouterCatalogScopeContext,
-} from '../modelCatalog/providerCatalogSyncJob'
+} from '../modelCatalog/providerCatalogScopeResolver'
 import type { CatalogSyncRunnerResult } from '../modelCatalog/catalogSyncRunner'
 import type { OpenRouterCatalogCredentialStoreReader } from './openRouterCatalogCredential'
 
