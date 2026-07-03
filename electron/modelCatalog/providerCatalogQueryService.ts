@@ -3,8 +3,11 @@ import type { DbWorkerManager } from '../db/workerManager'
 import { mapCacheCorruptedToCode, mapDbUnavailableToCode, mapMissingApiKeyToCode } from '../../src/shared/modelCatalog/catalogSyncErrorMapper'
 import { isCatalogStatusStale } from '../../src/shared/modelCatalog/catalogSyncSettings'
 import { readProviderCatalogSettings } from '../../src/shared/modelCatalog/providerCatalogSettings'
+import { isProviderCatalogSourceKey } from '../../src/shared/modelCatalog/providerCatalogRegistry'
+import type { ProviderCatalogKnownProviderKey } from '../../src/shared/modelCatalog/providerCatalogContracts'
+import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import type { OpenRouterCatalogCredentialStoreReader } from '../jobs/openRouterCatalogCredential'
-import { resolveCurrentOpenRouterCatalogScope } from './providerCatalogScopeResolver'
+import { resolveCurrentProviderCatalogScope } from './providerCatalogScopeResolver'
 
 export type SyncStatusResult = Readonly<{
   providerKey: string
@@ -74,9 +77,27 @@ export type CatalogClearResult = Readonly<{
 export type ProviderCatalogQueryServiceInput = Readonly<{
   store: Store
   credentialStore: OpenRouterCatalogCredentialStoreReader
+  credentialService?: ProviderCredentialService
   dbWorkerManager: DbWorkerManager
   notifyRenderer?: (channel: string, payload: unknown) => void
 }>
+
+function normalizeProviderKey(raw: unknown): ProviderCatalogKnownProviderKey {
+  const providerKey = String(raw ?? '').trim() || 'openrouter'
+  return isProviderCatalogSourceKey(providerKey) ? providerKey : 'openrouter'
+}
+
+function resolveCurrentScopeForQuery(
+  input: ProviderCatalogQueryServiceInput,
+  providerKey: ProviderCatalogKnownProviderKey,
+) {
+  return resolveCurrentProviderCatalogScope({
+    store: input.store,
+    providerKey,
+    credentialStore: input.credentialStore,
+    credentialService: input.credentialService,
+  })
+}
 
 function parseJsonObject(value: unknown): Record<string, unknown> | null {
   if (value == null || value === '') return null
@@ -179,8 +200,8 @@ export function modelCountsFromMeta(
   }
 }
 
-export function freshnessMsFromStore(store: Store): number {
-  return readProviderCatalogSettings(store, 'openrouter').freshnessMs
+export function freshnessMsFromStore(store: Store, providerKey: ProviderCatalogKnownProviderKey = 'openrouter'): number {
+  return readProviderCatalogSettings(store, providerKey).freshnessMs
 }
 
 export async function getProviderCatalogSyncStatus(
@@ -188,9 +209,9 @@ export async function getProviderCatalogSyncStatus(
   options?: unknown,
 ): Promise<SyncStatusResult> {
   const opts = (options ?? {}) as { providerKey?: string }
-  const providerKey = opts.providerKey ?? 'openrouter'
+  const providerKey = normalizeProviderKey(opts.providerKey)
 
-  const scope = resolveCurrentOpenRouterCatalogScope(input.store, input.credentialStore)
+  const scope = resolveCurrentScopeForQuery(input, providerKey)
   if (!scope) {
     const mapped = mapMissingApiKeyToCode()
     return {
@@ -228,7 +249,7 @@ export async function getProviderCatalogSyncStatus(
     }
     const row = raw as Record<string, unknown>
     const syncState = String(row.syncState ?? 'idle')
-    const freshnessMs = freshnessMsFromStore(input.store)
+    const freshnessMs = freshnessMsFromStore(input.store, providerKey)
     const lastSyncAtMs = Number(row.lastSyncAtMs ?? 0)
     const counts = modelCountsFromMeta(row)
     const catalogRevision = catalogRevisionFromMeta(row)
@@ -303,10 +324,8 @@ export async function queryCurrentProviderCatalog(
   options?: unknown,
 ): Promise<ScopedQueryResult> {
   const opts = (options ?? {}) as ScopedQueryInput
-  const providerKey = typeof opts.providerKey === 'string' && opts.providerKey.trim()
-    ? opts.providerKey.trim()
-    : 'openrouter'
-  const scope = resolveCurrentOpenRouterCatalogScope(input.store, input.credentialStore)
+  const providerKey = normalizeProviderKey(opts.providerKey)
+  const scope = resolveCurrentScopeForQuery(input, providerKey)
   if (!scope) {
     const mapped = mapMissingApiKeyToCode()
     return {
@@ -465,9 +484,9 @@ export async function queryCurrentProviderCatalog(
 
 export async function clearCurrentProviderCatalogCache(
   input: ProviderCatalogQueryServiceInput,
+  providerKey: ProviderCatalogKnownProviderKey = 'openrouter',
 ): Promise<CatalogClearResult> {
-  const providerKey = 'openrouter'
-  const scope = resolveCurrentOpenRouterCatalogScope(input.store, input.credentialStore)
+  const scope = resolveCurrentScopeForQuery(input, providerKey)
   if (!scope) {
     const mapped = mapMissingApiKeyToCode()
     return {

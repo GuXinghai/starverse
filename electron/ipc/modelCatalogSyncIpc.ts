@@ -1,10 +1,12 @@
 import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
-import { resolveCurrentOpenRouterCatalogScope, runCatalogSyncAtStartup } from '../jobs/catalogSyncStartup'
+import { runProviderCatalogSyncJob } from '../modelCatalog/providerCatalogSyncJob'
 import type { OpenRouterCatalogCredentialStoreReader } from '../jobs/openRouterCatalogCredential'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
-import { cleanupExpiredOpenRouterScopedCatalogCaches } from '../jobs/catalogCacheCleanup'
+import { cleanupExpiredProviderScopedCatalogCaches } from '../modelCatalog/providerCatalogCacheCleanup'
 import { mapDbUnavailableToCode, mapErrorToSyncCode, mapMissingApiKeyToCode } from '../../src/shared/modelCatalog/catalogSyncErrorMapper'
+import { isProviderCatalogSourceKey } from '../../src/shared/modelCatalog/providerCatalogRegistry'
+import type { ProviderCatalogKnownProviderKey } from '../../src/shared/modelCatalog/providerCatalogContracts'
 import {
   catalogRevisionFromMeta,
   clearAllProviderCatalogCaches,
@@ -17,6 +19,7 @@ import {
   type ScopedQueryResult,
   type SyncStatusResult,
 } from '../modelCatalog/providerCatalogQueryService'
+import { resolveCurrentProviderCatalogScope } from '../modelCatalog/providerCatalogScopeResolver'
 import type { RegisterInvoke } from './types'
 
 export const MODEL_CATALOG_SYNC_IPC_CHANNELS = [
@@ -52,15 +55,21 @@ type SyncNowResult = Readonly<{
 
 const syncPromisesByScope = new Map<string, Promise<SyncNowResult>>()
 
+function normalizeProviderKey(raw: unknown): ProviderCatalogKnownProviderKey {
+  const providerKey = String(raw ?? '').trim() || 'openrouter'
+  return isProviderCatalogSourceKey(providerKey) ? providerKey : 'openrouter'
+}
+
 async function runScopedCleanupAfterCatalogChange(input: Readonly<{
   store: Store
   dbWorkerManager: DbWorkerManager
+  providerKey: ProviderCatalogKnownProviderKey
 }>): Promise<void> {
   try {
-    await cleanupExpiredOpenRouterScopedCatalogCaches(input)
+    await cleanupExpiredProviderScopedCatalogCaches(input)
   } catch (error) {
     console.warn('[modelCatalog.syncNow] scoped cleanup failed after sync (non-fatal)', {
-      providerKey: 'openrouter',
+      providerKey: input.providerKey,
       errorName: error instanceof Error ? error.name : typeof error,
       errorCode: (error as any)?.code ?? null,
     })
@@ -83,9 +92,14 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
 
   const syncNowHandler = async (_event: unknown, options?: unknown): Promise<SyncNowResult> => {
     const opts = (options ?? {}) as SyncNowInput
-    const providerKey = opts.providerKey ?? 'openrouter'
+    const providerKey = normalizeProviderKey(opts.providerKey)
     const force = opts.force === true
-    const scope = resolveCurrentOpenRouterCatalogScope(store, credentialStore)
+    const scope = resolveCurrentProviderCatalogScope({
+      store,
+      providerKey,
+      credentialStore,
+      credentialService: input.credentialService,
+    })
     if (!scope) {
       const mapped = mapMissingApiKeyToCode()
       return {
@@ -107,12 +121,14 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
 
     const doSync = async (): Promise<SyncNowResult> => {
       try {
-        const result = await runCatalogSyncAtStartup({
+        const result = await runProviderCatalogSyncJob({
+          providerKey,
           store,
           credentialStore,
+          credentialService: input.credentialService,
           dbWorkerManager,
           force,
-          freshnessMs: freshnessMsFromStore(store),
+          freshnessMs: freshnessMsFromStore(store, providerKey),
         })
 
         let currentMeta: Record<string, unknown> | null = null
@@ -134,7 +150,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
             ...counts,
             lastSyncAtMs: result.lastSyncAtMs,
           })
-          await runScopedCleanupAfterCatalogChange({ store, dbWorkerManager })
+          await runScopedCleanupAfterCatalogChange({ store, dbWorkerManager, providerKey })
         }
 
         const isCacheFresh = !result.syncAttempted && !result.syncSucceeded && result.reason === 'cache_fresh'
@@ -225,6 +241,7 @@ export function registerModelCatalogSyncIpc(input: Readonly<{
   const queryServiceInput = {
     store,
     credentialStore,
+    credentialService: input.credentialService,
     dbWorkerManager,
     notifyRenderer,
   } as const
