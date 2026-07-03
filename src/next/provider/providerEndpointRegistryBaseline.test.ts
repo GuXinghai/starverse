@@ -409,7 +409,7 @@ describe('C6 local endpoint baseline characterization', () => {
 
   it('keeps model catalog/listModels and Send Plan touchpoints OpenRouter-scoped before C6 implementation', () => {
     const catalogSchema = readRepoFile('src', 'shared', 'modelCatalog', 'internalSchema.ts')
-    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'openRouterCatalogClient.ts')
+    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'providers', 'openrouter', 'openRouterCatalogClient.ts')
     const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
     const sendPlanClient = readRepoFile('src', 'next', 'files', 'sendPlanClient.ts')
     const openRouterSendPlan = readRepoFile('src', 'next', 'openrouter', 'openRouterSendPlanSerializer.ts')
@@ -417,7 +417,7 @@ describe('C6 local endpoint baseline characterization', () => {
     expect(catalogSchema).toContain('export interface ProviderAdapter')
     expect(openRouterCatalog).toContain('class OpenRouterCatalogClient implements ProviderAdapter')
     expect(openRouterCatalog).toContain('async listModels')
-    expect(catalogSync).toContain('OpenRouterCatalogClient')
+    expect(catalogSync).toContain('createOpenRouterCatalogSource')
     expect(sendPlanClient).toContain('SendPlanProviderContext')
     expect(openRouterSendPlan).toContain('serializeSendPlanForOpenRouter')
 
@@ -435,7 +435,7 @@ describe('R2 DeepSeek provider model source guardrails', () => {
     const preload = readRepoFile('electron', 'preload.ts')
     const console = readRepoFile('src', 'ui-app', 'components', 'ChatSessionConsole.vue')
     const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
-    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'openRouterCatalogClient.ts')
+    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'providers', 'openrouter', 'openRouterCatalogClient.ts')
     const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
     const catalogQueryService = readRepoFile('src', 'next', 'modelCatalog', 'catalogQueryService.ts')
 
@@ -475,7 +475,7 @@ describe('R3 Gemini provider model source guardrails', () => {
     const preload = readRepoFile('electron', 'preload.ts')
     const console = readRepoFile('src', 'ui-app', 'components', 'ChatSessionConsole.vue')
     const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
-    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'openRouterCatalogClient.ts')
+    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'providers', 'openrouter', 'openRouterCatalogClient.ts')
     const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
     const catalogQueryService = readRepoFile('src', 'next', 'modelCatalog', 'catalogQueryService.ts')
 
@@ -517,7 +517,7 @@ describe('R4 OpenAI Responses provider model source guardrails', () => {
     const preload = readRepoFile('electron', 'preload.ts')
     const console = readRepoFile('src', 'ui-app', 'components', 'ChatSessionConsole.vue')
     const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
-    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'openRouterCatalogClient.ts')
+    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'providers', 'openrouter', 'openRouterCatalogClient.ts')
     const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
     const catalogQueryService = readRepoFile('src', 'next', 'modelCatalog', 'catalogQueryService.ts')
 
@@ -556,7 +556,7 @@ describe('R5 Anthropic Messages provider model source guardrails', () => {
     const console = readRepoFile('src', 'ui-app', 'components', 'ChatSessionConsole.vue')
     const settings = readRepoFile('src', 'ui-app', 'components', 'SettingsPanel.vue')
     const anthropicStreamMapper = readRepoFile('src', 'next', 'provider', 'anthropic', 'anthropicStreamMapper.ts')
-    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'openRouterCatalogClient.ts')
+    const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'providers', 'openrouter', 'openRouterCatalogClient.ts')
     const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
     const catalogQueryService = readRepoFile('src', 'next', 'modelCatalog', 'catalogQueryService.ts')
 

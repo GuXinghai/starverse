@@ -115,9 +115,9 @@ const ALLOWLIST = [
     line: /fetch\(request\.transportRef/u,
   },
   {
-    id: 'openrouter-shared-catalog-client-injectable-default',
-    reason: 'shared OpenRouter catalog client remains injectable; Electron catalog sync must inject session fetch',
-    path: /^src\/shared\/modelCatalog\/openRouterCatalogClient\.ts$/u,
+    id: 'openrouter-provider-catalog-client-injectable-default',
+    reason: 'OpenRouter provider catalog client remains injectable; Electron catalog sync must inject session fetch',
+    path: /^src\/shared\/modelCatalog\/providers\/openrouter\/openRouterCatalogClient\.ts$/u,
     rules: ['bare-fetch-default'],
     line: /options\.fetchImpl\s*\?\?\s*fetch/u,
   },

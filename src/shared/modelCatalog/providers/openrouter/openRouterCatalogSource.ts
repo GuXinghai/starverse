@@ -5,7 +5,7 @@ import type {
   ProviderCatalogSourceDescriptor,
 } from '../../providerCatalogContracts'
 import { requireProviderCatalogSourceDescriptor } from '../../providerCatalogRegistry'
-import { OpenRouterCatalogClient } from '../../openRouterCatalogClient'
+import { OpenRouterCatalogClient } from './openRouterCatalogClient'
 
 export const OPENROUTER_PROVIDER_CATALOG_DESCRIPTOR: ProviderCatalogSourceDescriptor =
   requireProviderCatalogSourceDescriptor('openrouter')
