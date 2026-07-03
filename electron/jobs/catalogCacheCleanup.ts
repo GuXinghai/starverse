@@ -1,10 +1,7 @@
 import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
-import {
-  OPENROUTER_DEPRECATED_CATALOG_CACHE_CLEARED_AT_MS_KEY,
-  OPENROUTER_CATALOG_RETENTION_MS_KEY,
-  normalizeCatalogRetentionMs,
-} from '../../src/shared/modelCatalog/catalogSyncSettings'
+import { OPENROUTER_DEPRECATED_CATALOG_CACHE_CLEARED_AT_MS_KEY } from '../../src/shared/modelCatalog/catalogSyncSettings'
+import { readProviderCatalogSettings } from '../../src/shared/modelCatalog/providerCatalogSettings'
 
 export type CatalogCleanupRunResult = Readonly<{
   ok: boolean
@@ -20,7 +17,7 @@ export async function cleanupExpiredOpenRouterScopedCatalogCaches(input: Readonl
   nowMs?: number
 }>): Promise<CatalogCleanupRunResult> {
   try {
-    const retentionMs = normalizeCatalogRetentionMs(input.store.get(OPENROUTER_CATALOG_RETENTION_MS_KEY))
+    const retentionMs = readProviderCatalogSettings(input.store, 'openrouter').retentionMs
     if (retentionMs === 'never') {
       return { ok: true, skipped: true, reason: 'retention_never', deletedScopeCount: 0, deleted: {} }
     }
