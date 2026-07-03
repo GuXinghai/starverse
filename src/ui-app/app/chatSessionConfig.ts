@@ -27,6 +27,11 @@ import {
   type ChatModelSelection,
 } from '@/next/provider/modelSelection'
 import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
+import {
+  DEFAULT_GEMINI_THINKING_CONFIG,
+  isGeminiThinkingLevel,
+  type GeminiThinkingConfig,
+} from '@/next/provider/gemini/geminiThinkingPolicy'
 
 export type ChatSessionConfigReasoningEffort = 'low' | 'medium' | 'high'
 export type ChatSessionConfigWebSearchLevel = 'low' | 'high'
@@ -42,6 +47,7 @@ export type ChatSessionConfig = Readonly<{
     enabled: boolean
     effort: ChatSessionConfigReasoningEffort
   }>
+  googleAIStudioThinking?: GeminiThinkingConfig
   webSearch: Readonly<{
     enabled: boolean
     level: ChatSessionConfigWebSearchLevel
@@ -73,6 +79,7 @@ export type ChatSessionConfigSources = Readonly<{
 export type ChatSessionConfigPatch = Readonly<Partial<{
   model: Partial<ChatSessionConfig['model']>
   reasoning: Partial<ChatSessionConfig['reasoning']>
+  googleAIStudioThinking: Partial<GeminiThinkingConfig> | GeminiThinkingConfig | null
   webSearch: Partial<ChatSessionConfig['webSearch']>
   imageGeneration: Partial<ChatSessionConfig['imageGeneration']>
   samplingParams: Partial<ChatSessionConfig['samplingParams']>
@@ -80,6 +87,7 @@ export type ChatSessionConfigPatch = Readonly<Partial<{
 
 const MODEL_META_KEY = 'selectedModelKey'
 const PROVIDER_META_KEY = 'selectedProviderId'
+const GOOGLE_AI_STUDIO_THINKING_META_KEY = 'googleAIStudioThinking'
 const IMAGE_ASPECT_RATIO_OPTIONS: readonly ChatSessionConfigAspectRatio[] = ['16:9', '3:4', '1:1', '4:3']
 const IMAGE_RESOLUTION_OPTIONS: readonly ChatSessionConfigImageResolution[] = ['1K', '2K', '4K']
 
@@ -137,6 +145,44 @@ function normalizeReasoningEffortForQuickControls(prefs: ReasoningPrefs): ChatSe
   if (prefs.effort === 'high' || prefs.effort === 'xhigh') return 'high'
   if (prefs.effort === 'low' || prefs.effort === 'minimal') return 'low'
   return 'medium'
+}
+
+function normalizeGoogleAIStudioThinking(value: unknown): GeminiThinkingConfig {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return DEFAULT_GEMINI_THINKING_CONFIG
+  const record = value as Partial<GeminiThinkingConfig>
+  const parsedBudget = typeof record.thinkingBudget === 'number'
+    ? record.thinkingBudget
+    : Number(String(record.thinkingBudget ?? '').trim())
+  return {
+    mode: record.mode === 'budget' || record.mode === 'level' || record.mode === 'auto' ? record.mode : 'auto',
+    thinkingBudget: Number.isFinite(parsedBudget) && parsedBudget > 0
+      ? Math.trunc(parsedBudget)
+      : DEFAULT_GEMINI_THINKING_CONFIG.thinkingBudget,
+    thinkingLevel: isGeminiThinkingLevel(record.thinkingLevel)
+      ? record.thinkingLevel
+      : DEFAULT_GEMINI_THINKING_CONFIG.thinkingLevel,
+    includeThoughts: record.includeThoughts === true,
+  }
+}
+
+function mergeGoogleAIStudioThinking(
+  current: GeminiThinkingConfig | undefined,
+  patch: Partial<GeminiThinkingConfig> | GeminiThinkingConfig | null | undefined,
+): GeminiThinkingConfig | undefined {
+  if (patch === undefined) return current
+  if (patch === null) return DEFAULT_GEMINI_THINKING_CONFIG
+  return {
+    ...(current ?? DEFAULT_GEMINI_THINKING_CONFIG),
+    ...patch,
+  }
+}
+
+function isDefaultGoogleAIStudioThinking(config: GeminiThinkingConfig | undefined): boolean {
+  const value = config ?? DEFAULT_GEMINI_THINKING_CONFIG
+  return value.mode === DEFAULT_GEMINI_THINKING_CONFIG.mode &&
+    value.thinkingBudget === DEFAULT_GEMINI_THINKING_CONFIG.thinkingBudget &&
+    value.thinkingLevel === DEFAULT_GEMINI_THINKING_CONFIG.thinkingLevel &&
+    value.includeThoughts === DEFAULT_GEMINI_THINKING_CONFIG.includeThoughts
 }
 
 function toReasoningPrefs(config: ChatSessionConfig['reasoning']): ReasoningPrefs {
@@ -230,6 +276,7 @@ export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConf
       enabled: reasoningResolved.mode === 'effort' && reasoningResolved.effort !== 'none',
       effort: normalizeReasoningEffortForQuickControls(reasoningResolved),
     },
+    googleAIStudioThinking: normalizeGoogleAIStudioThinking(rawConvoRecord?.[GOOGLE_AI_STUDIO_THINKING_META_KEY]),
     webSearch: {
       enabled: webSearchResolved.effectiveMode,
       level: normalizeWebSearchLevelFromResolvedDepth(webSearchResolved.resolvedDepth),
@@ -258,6 +305,7 @@ export function mergeChatSessionConfig(current: ChatSessionConfig, patch: ChatSe
       ...current.reasoning,
       ...(patch.reasoning ?? {}),
     },
+    googleAIStudioThinking: mergeGoogleAIStudioThinking(current.googleAIStudioThinking, patch.googleAIStudioThinking),
     webSearch: {
       ...current.webSearch,
       ...(patch.webSearch ?? {}),
@@ -296,9 +344,18 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
     ),
   }
   const withModel = mergeSelectedModelSelectionIntoMeta(reasoningPlan.nextConvoMeta, selectedSelection, defaultSelection)
+  const withGoogleThinking = (() => {
+    const next = withModel ? { ...withModel } : {}
+    if (isDefaultGoogleAIStudioThinking(input.config.googleAIStudioThinking)) {
+      delete next[GOOGLE_AI_STUDIO_THINKING_META_KEY]
+    } else {
+      next[GOOGLE_AI_STUDIO_THINKING_META_KEY] = input.config.googleAIStudioThinking
+    }
+    return Object.keys(next).length > 0 ? next : null
+  })()
 
   const withWebSearch = mergeConvoWebSearchOverrideMeta(
-    withModel,
+    withGoogleThinking,
     buildWebSearchDetail({
       enabled: input.config.webSearch.enabled,
       level: input.config.webSearch.level,

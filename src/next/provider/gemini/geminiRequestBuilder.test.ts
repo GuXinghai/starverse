@@ -102,32 +102,51 @@ describe('buildGeminiRequest', () => {
     expect(req.generationConfig).toBeUndefined()
   })
 
-  it('includes thinkingConfig when mode is effort', () => {
+  it('includes native thinkingBudget for Gemini 2.5 budget mode', () => {
+    const req = buildGeminiRequest({
+      model: 'gemini-2.5-flash',
+      messages: baseMessages,
+      config: baseConfig({
+        geminiThinking: { mode: 'budget', thinkingBudget: 1234, includeThoughts: true },
+      }),
+    })
+
+    expect((req.generationConfig as any).thinkingConfig).toEqual({
+      thinkingBudget: 1234,
+      includeThoughts: true,
+    })
+  })
+
+  it('includes native thinkingLevel for Gemini 3 level mode', () => {
+    const req = buildGeminiRequest({
+      model: 'gemini-3-pro',
+      messages: baseMessages,
+      config: baseConfig({
+        geminiThinking: { mode: 'level', thinkingLevel: 'minimal', includeThoughts: false },
+      }),
+    })
+
+    expect((req.generationConfig as any).thinkingConfig).toEqual({
+      thinkingLevel: 'minimal',
+      includeThoughts: false,
+    })
+  })
+
+  it('does not include thinkingConfig when Gemini thinking mode is auto', () => {
+    const req = buildGeminiRequest({
+      model: 'gemini-2.5-pro',
+      messages: baseMessages,
+      config: baseConfig({ geminiThinking: { mode: 'auto', includeThoughts: false } }),
+    })
+
+    expect(req.generationConfig).toBeUndefined()
+  })
+
+  it('ignores generic reasoning effort for Gemini native requests', () => {
     const req = buildGeminiRequest({
       model: 'gemini-2.5-pro',
       messages: baseMessages,
       config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
-    })
-
-    expect((req.generationConfig as any).thinkingConfig).toEqual({ thinkingBudget: 16384 })
-  })
-
-  it('maps thinking budget levels correctly', () => {
-    for (const [effort, budget] of [['low', 1024], ['minimal', 1024], ['medium', 4096], ['high', 16384], ['xhigh', 32768]] as const) {
-      const req = buildGeminiRequest({
-        model: 'gemini-2.5-pro',
-        messages: baseMessages,
-        config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: effort }),
-      })
-      expect((req.generationConfig as any).thinkingConfig.thinkingBudget).toBe(budget)
-    }
-  })
-
-  it('does not include thinkingConfig when mode is auto', () => {
-    const req = buildGeminiRequest({
-      model: 'gemini-2.5-pro',
-      messages: baseMessages,
-      config: baseConfig({ requestedReasoningMode: 'auto', requestedReasoningEffort: 'high' }),
     })
 
     expect(req.generationConfig).toBeUndefined()
@@ -172,10 +191,11 @@ describe('buildGeminiRequest', () => {
     const req = buildGeminiRequest({
       model: 'gemini-2.5-pro',
       messages: baseMessages,
-      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
+      config: baseConfig({ geminiThinking: { mode: 'budget', thinkingBudget: 2048 } }),
     })
 
     expect((req as any).reasoning_effort).toBeUndefined()
+    expect((req as any).reasoning).toBeUndefined()
   })
 
   it('does not include Anthropic-specific fields', () => {

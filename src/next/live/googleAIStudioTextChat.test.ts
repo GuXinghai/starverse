@@ -49,6 +49,11 @@ describe('googleAIStudioTextChat renderer bridge', () => {
         assistantMessageId: 'assistant_1',
         model: 'gemini-2.5-flash',
         messages: [{ role: 'user', content: 'hello' }],
+        geminiThinking: {
+          mode: 'budget',
+          thinkingBudget: 2048,
+          includeThoughts: true,
+        },
       })
       queueMicrotask(() => {
         listeners.get('google_ai_studio_req_1')?.({
@@ -64,6 +69,7 @@ describe('googleAIStudioTextChat renderer bridge', () => {
           type: 'event',
           event: { type: 'stream.done' },
         })
+        listeners.get('google_ai_studio_req_1')?.({ type: 'end' })
         endListeners.get('google_ai_studio_req_1')?.()
       })
       return { ok: true }
@@ -82,9 +88,16 @@ describe('googleAIStudioTextChat renderer bridge', () => {
       },
     }
 
-    const events = await collect()
+    const events = await collect({
+      geminiThinking: {
+        mode: 'budget',
+        thinkingBudget: 2048,
+        includeThoughts: true,
+      },
+    })
     expect(events.some((event: any) => event.type === 'MessageDeltaText' && event.text === 'gemini hi')).toBe(true)
     expect(events.some((event: any) => event.type === 'StreamDone')).toBe(true)
+    expect(events.some((event: any) => event.type === 'StreamError' && event.error?.openrouter?.code === 'invalid_wire_event')).toBe(false)
     expect(JSON.stringify(events)).not.toContain('AIza-')
     expect(JSON.stringify(events)).not.toContain('Authorization')
   })

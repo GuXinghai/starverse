@@ -387,6 +387,17 @@ describe('getRuntimeTextChatBlockReason', () => {
     })).toContain('does not support reasoning controls')
   })
 
+  it('does not block Google AI Studio native thinking when legacy reasoning flag remains enabled', () => {
+    const selection = selected('google_ai_studio', 'gemini-2.5-flash')
+    expect(getRuntimeTextChatBlockReason({
+      selection,
+      capability: getRuntimeCapabilitySummaryLite(selection),
+      text: 'hello',
+      hasDraftAttachments: false,
+      sessionConfig: { ...baseSessionConfig, reasoning: { enabled: true } },
+    })).toBeNull()
+  })
+
   it('blocks image generation for experimental text-only providers', () => {
     const selection = selected('local_endpoint', 'local-model')
     expect(getRuntimeTextChatBlockReason({

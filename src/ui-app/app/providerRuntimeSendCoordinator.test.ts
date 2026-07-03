@@ -300,6 +300,40 @@ describe('providerRuntimeSendCoordinator', () => {
     expect(deepSeekCalls).toEqual([expect.objectContaining({ model: 'model_1' })])
   })
 
+  it('passes Gemini native thinking config only to Google AI Studio streams', async () => {
+    googleAIStudioCalls.length = 0
+    openAIResponsesCalls.length = 0
+    const abortController = new AbortController()
+    const geminiThinking = {
+      mode: 'budget' as const,
+      thinkingBudget: 2048,
+      includeThoughts: true,
+    }
+
+    await drain(createExperimentalRuntimeTextEvents({
+      providerKey: 'google_ai_studio',
+      requestId: 'google_req_thinking',
+      assistantMessageId: 'assistant_thinking',
+      modelId: 'gemini-2.5-flash',
+      userText: 'hello',
+      contextMessages: [],
+      geminiThinking,
+      signal: abortController.signal,
+    }))
+    await drain(createExperimentalRuntimeTextEvents({
+      providerKey: 'openai_responses',
+      requestId: 'openai_req_no_thinking',
+      assistantMessageId: 'assistant_openai',
+      modelId: 'gpt-4.1-mini',
+      userText: 'hello',
+      contextMessages: [],
+      signal: abortController.signal,
+    }))
+
+    expect(googleAIStudioCalls).toEqual([expect.objectContaining({ geminiThinking })])
+    expect(openAIResponsesCalls).toEqual([expect.not.objectContaining({ geminiThinking: expect.anything() })])
+  })
+
   it('passes current user image content blocks to image-capable experimental wrappers', async () => {
     openAIResponsesCalls.length = 0
     googleAIStudioCalls.length = 0

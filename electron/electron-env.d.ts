@@ -854,6 +854,16 @@ type GoogleAIStudioTextChatStartResult =
     error: string
   }
 
+type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
+type GeminiThinkingMode = 'auto' | 'budget' | 'level'
+
+type GeminiThinkingConfig = {
+  mode: GeminiThinkingMode
+  thinkingBudget?: number
+  thinkingLevel?: GeminiThinkingLevel
+  includeThoughts?: boolean
+}
+
 type AnthropicTextChatMessage = {
   role: 'user' | 'assistant'
   content: string
@@ -1020,6 +1030,7 @@ interface Window {
       assistantMessageId: string
       model: string
       messages: GoogleAIStudioTextChatMessage[]
+      geminiThinking?: GeminiThinkingConfig
       timeoutMs?: number
     }) => Promise<GoogleAIStudioTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>

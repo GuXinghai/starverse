@@ -63,7 +63,12 @@ import {
   getChatReasoningDisplayMode,
   setChatReasoningDisplayMode,
 } from '@/next/settings/chatDisplayPrefsClient'
-import { getChatReasoningPanelDefaultExpanded } from '@/next/settings/reasoningPanelDefaultClient'
+import {
+  getChatReasoningPanelAutoCollapseAfterReasoning,
+  getChatReasoningPanelDefaultExpanded,
+  setChatReasoningPanelAutoCollapseAfterReasoning,
+  setChatReasoningPanelDefaultExpanded,
+} from '@/next/settings/reasoningPanelDefaultClient'
 import { listScopedCurrentModelCatalog } from '@/next/modelCatalog/modelCatalogClient'
 import { selectModelCatalogAll, selectModelCatalogVisible } from '@/next/modelCatalog/modelCatalogSelectors'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
@@ -113,6 +118,13 @@ import {
   GOOGLE_AI_STUDIO_PROVIDER_KEY,
   type GeminiModelAvailabilityResult,
 } from '@/next/provider/gemini/geminiModelSource'
+import {
+  DEFAULT_GEMINI_THINKING_CONFIG,
+  normalizeGeminiThinkingConfig,
+  resolveGeminiThinkingCapability,
+  type GeminiThinkingConfig,
+  type GeminiThinkingLevel,
+} from '@/next/provider/gemini/geminiThinkingPolicy'
 import {
   ANTHROPIC_MESSAGES_ENDPOINT_ID,
   ANTHROPIC_MESSAGES_PROFILE_ID,
@@ -369,6 +381,7 @@ export function useAppChatAppLogic() {
   const modelPrefsScopeForUi = computed(() => ({ scopeType: 'global' as const, scopeId: '' as const }))
   const globalReasoningPrefs = ref<ReasoningPrefs | null>(null)
   const globalReasoningPanelDefaultExpanded = ref(true)
+  const globalReasoningPanelAutoCollapseAfterReasoning = ref(false)
   const globalUserMessageRenderDefault = ref<boolean | null>(null)
   const globalWebSearchDefaults = ref<SearchSettingsLayer | null>(null)
   const globalSamplingParamsDefaults = ref<SamplingParamsLayer | null>(null)
@@ -3652,6 +3665,39 @@ export function useAppChatAppLogic() {
     state.value = toggleReasoningPanelState(state.value, targetId)
   }
 
+  function getMessageStateById(messageId: string): MessageState | null {
+    const id = String(messageId ?? '').trim()
+    if (!id) return null
+    const messagesById = state.value.entities?.messagesById ?? state.value.messages
+    return messagesById[id] ?? null
+  }
+
+  function setReasoningPanelExpandedForMessage(messageId: string, expanded: boolean): boolean {
+    const message = getMessageStateById(messageId)
+    if (!message) return false
+    const nextState = expanded ? 'expanded' : 'collapsed'
+    if (message.reasoningPanelState === nextState) return false
+    state.value = toggleReasoningPanelState(state.value, messageId)
+    return true
+  }
+
+  function autoOpenReasoningPanelForMessage(messageId: string) {
+    if (globalReasoningPanelDefaultExpanded.value === false) return
+    setReasoningPanelExpandedForMessage(messageId, true)
+    if (reasoningRailMode.value) {
+      rightRailView.value = 'reasoning'
+      rightRailOpen.value = true
+    }
+  }
+
+  function autoCollapseReasoningPanelForMessage(messageId: string) {
+    if (globalReasoningPanelAutoCollapseAfterReasoning.value !== true) return
+    setReasoningPanelExpandedForMessage(messageId, false)
+    if (reasoningRailMode.value && effectiveRightRailView.value === 'reasoning') {
+      rightRailOpen.value = false
+    }
+  }
+
   function onOpenReasoningDisplayForMessage(messageId?: string) {
     const targetId = typeof messageId === 'string' && messageId.trim().length > 0 ? messageId : lastAssistantMessageId.value
     if (!targetId) return
@@ -4290,8 +4336,46 @@ export function useAppChatAppLogic() {
     return nextConfig
   }
 
+  function resolveCurrentGoogleAIStudioThinkingConfig(modelId: string): GeminiThinkingConfig {
+    return normalizeGeminiThinkingConfig({
+      model: modelId,
+      config: activeSessionConfig.value.googleAIStudioThinking ?? DEFAULT_GEMINI_THINKING_CONFIG,
+    })
+  }
+
+  function defaultGoogleAIStudioThinkingModeForModel(modelId: string): GeminiThinkingConfig['mode'] {
+    const capability = resolveGeminiThinkingCapability({ model: modelId })
+    if (capability.kind === 'budget') return 'budget'
+    if (capability.kind === 'level') return 'level'
+    return 'auto'
+  }
+
+  async function onUpdateGoogleAIStudioThinking(patch: Partial<GeminiThinkingConfig>) {
+    if (isDraftInteractionLocked.value) return
+    const modelId = normalizeRuntimeModelId(activeSessionConfig.value.model.selectedModelKey ?? '')
+    const current = activeSessionConfig.value.googleAIStudioThinking ?? DEFAULT_GEMINI_THINKING_CONFIG
+    const next = normalizeGeminiThinkingConfig({
+      model: modelId,
+      config: {
+        ...current,
+        ...patch,
+      },
+    })
+    await updateActiveConvoSessionConfig({
+      googleAIStudioThinking: next,
+    })
+    hydrateSessionConfigUiFromActiveConvo()
+  }
+
   async function onUpdateReasoningEnabled(nextEnabled: boolean) {
     if (isDraftInteractionLocked.value) return
+    if (activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY) {
+      const modelId = normalizeRuntimeModelId(activeSessionConfig.value.model.selectedModelKey ?? '')
+      await onUpdateGoogleAIStudioThinking({
+        mode: nextEnabled ? defaultGoogleAIStudioThinkingModeForModel(modelId) : 'auto',
+      })
+      return
+    }
     await updateActiveConvoSessionConfig({
       reasoning: {
         enabled: nextEnabled,
@@ -4302,6 +4386,13 @@ export function useAppChatAppLogic() {
 
   async function onUpdateReasoningEffortLevel(nextEffort: 'low' | 'medium' | 'high') {
     if (isDraftInteractionLocked.value) return
+    if (activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY) {
+      await onUpdateGoogleAIStudioThinking({
+        mode: 'level',
+        thinkingLevel: nextEffort as GeminiThinkingLevel,
+      })
+      return
+    }
     await updateActiveConvoSessionConfig({
       reasoning: {
         enabled: true,
@@ -4396,6 +4487,30 @@ export function useAppChatAppLogic() {
     if (nextMode === 'inline' && rightRailView.value === 'reasoning') {
       rightRailView.value = 'console'
       rightRailOpen.value = false
+    }
+  }
+
+  async function onUpdateReasoningPanelDefaultExpanded(nextExpanded: boolean) {
+    if (isDraftInteractionLocked.value) return
+    const normalized = nextExpanded === true
+    globalReasoningPanelDefaultExpanded.value = normalized
+    await setChatReasoningPanelDefaultExpanded(normalized)
+    try {
+      window.dispatchEvent(new CustomEvent('settings:reasoningPanelDefaultExpandedUpdated', { detail: normalized }))
+    } catch {
+      // no-op
+    }
+  }
+
+  async function onUpdateReasoningPanelAutoCollapseAfterReasoning(nextEnabled: boolean) {
+    if (isDraftInteractionLocked.value) return
+    const normalized = nextEnabled === true
+    globalReasoningPanelAutoCollapseAfterReasoning.value = normalized
+    await setChatReasoningPanelAutoCollapseAfterReasoning(normalized)
+    try {
+      window.dispatchEvent(new CustomEvent('settings:reasoningPanelAutoCollapseAfterReasoningUpdated', { detail: normalized }))
+    } catch {
+      // no-op
     }
   }
 
@@ -8043,6 +8158,18 @@ export function useAppChatAppLogic() {
     }
   }
 
+  async function refreshGlobalReasoningPanelAutoCollapseAfterReasoning(): Promise<boolean> {
+    try {
+      const value = await getChatReasoningPanelAutoCollapseAfterReasoning()
+      globalReasoningPanelAutoCollapseAfterReasoning.value = value
+      return value
+    } catch (err) {
+      if (shouldLogDebug()) console.warn('[ui-app] refreshGlobalReasoningPanelAutoCollapseAfterReasoning failed (non-fatal):', err)
+      globalReasoningPanelAutoCollapseAfterReasoning.value = false
+      return false
+    }
+  }
+
   async function loadProjectReasoningPrefs(projectId: string): Promise<ReasoningPrefs | null> {
     const cached = projects.value.find((p) => p.id === projectId)
     const cachedPrefs = extractReasoningPrefs(cached?.meta ?? null)
@@ -8088,6 +8215,10 @@ export function useAppChatAppLogic() {
 
   function handleGlobalReasoningPanelDefaultExpandedUpdated(event: Event) {
     globalReasoningPanelDefaultExpanded.value = (event as CustomEvent).detail !== false
+  }
+
+  function handleGlobalReasoningPanelAutoCollapseAfterReasoningUpdated(event: Event) {
+    globalReasoningPanelAutoCollapseAfterReasoning.value = (event as CustomEvent).detail === true
   }
 
   async function persistReasoningPrefs() {
@@ -8169,6 +8300,26 @@ export function useAppChatAppLogic() {
     stream: ActiveStream
     errorPersistPromise: Promise<void> | null
   }>
+
+  function isReasoningDetailEventForMessage(ev: DomainEvent, assistantMessageId: string): boolean {
+    if (ev.type === 'MessageDeltaReasoningDetail') {
+      return ev.messageId === assistantMessageId
+    }
+    if (ev.type === 'MessageDeltaReasoningDetailBatch') {
+      return ev.messageId === assistantMessageId && Array.isArray(ev.details) && ev.details.length > 0
+    }
+    return false
+  }
+
+  function isAssistantTextEventForMessage(ev: DomainEvent, assistantMessageId: string): boolean {
+    if (ev.type === 'MessageDeltaText') {
+      return ev.messageId === assistantMessageId && ev.text.length > 0
+    }
+    if (ev.type === 'MessageAppendContentBlock' && ev.messageId === assistantMessageId && ev.block?.type === 'text') {
+      return String(ev.block.text ?? '').length > 0
+    }
+    return false
+  }
 
   function processReasoningDetailEvent(ev: DomainEvent, stream: ActiveStream, assistantMessageId: string) {
     if (ev.type !== 'MessageDeltaReasoningDetail' || ev.messageId !== assistantMessageId) return
@@ -8462,6 +8613,9 @@ export function useAppChatAppLogic() {
     let errorPersisted = false
     let errorPersistPromise: Promise<void> | null = null
     let sawAnyEvent = false
+    let sawReasoningForPanel = false
+    let autoOpenedReasoningPanel = false
+    let autoCollapsedReasoningPanel = false
     let latestUsageSnapshot: Record<string, unknown> | null = null
 
     let telemetryTerminalStatus: 'done' | 'error' | 'aborted' = 'done'
@@ -8575,6 +8729,22 @@ export function useAppChatAppLogic() {
           eventScheduler.enqueue(branchId, ev)
         } else {
           commitImmediate(branchId, ev)
+        }
+
+        if (isReasoningDetailEventForMessage(ev, assistantMessageId)) {
+          sawReasoningForPanel = true
+          if (!autoOpenedReasoningPanel) {
+            autoOpenedReasoningPanel = true
+            autoOpenReasoningPanelForMessage(assistantMessageId)
+          }
+        }
+        if (
+          sawReasoningForPanel &&
+          !autoCollapsedReasoningPanel &&
+          isAssistantTextEventForMessage(ev, assistantMessageId)
+        ) {
+          autoCollapsedReasoningPanel = true
+          autoCollapseReasoningPanelForMessage(assistantMessageId)
         }
 
         if (ev.type === 'MessageDeltaText' && ev.messageId === assistantMessageId) {
@@ -8823,6 +8993,9 @@ export function useAppChatAppLogic() {
       const ollamaConfig = providerKey === 'ollama_local'
         ? ollamaProviderConfig.value
         : undefined
+      const geminiThinking = providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY
+        ? resolveCurrentGoogleAIStudioThinkingConfig(modelId)
+        : undefined
       const requestId = randomId(getExperimentalRuntimeTextRequestPrefix(providerKey))
       const started = startGeneration(state.value, {
         runId: branchId,
@@ -8831,7 +9004,7 @@ export function useAppChatAppLogic() {
         userMessageId: questionId,
         userMessageText: questionText,
         assistantMessageId,
-        reasoningPanelDefaultExpanded: false,
+        reasoningPanelDefaultExpanded: globalReasoningPanelDefaultExpanded.value,
         requestedReasoningMode: 'auto',
       })
       state.value = started.state
@@ -8866,6 +9039,7 @@ export function useAppChatAppLogic() {
           ...(lmStudioConfig ? { lmStudioConfig } : {}),
           ...(ollamaConfig ? { ollamaConfig } : {}),
           ...(endpointUrl ? { localEndpointUrl: endpointUrl } : {}),
+          ...(geminiThinking ? { geminiThinking } : {}),
           signal,
         }),
       })
@@ -9503,6 +9677,9 @@ export function useAppChatAppLogic() {
     const ollamaConfig = input.providerKey === 'ollama_local'
       ? ollamaProviderConfig.value
       : undefined
+    const geminiThinking = input.providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY
+      ? resolveCurrentGoogleAIStudioThinkingConfig(modelId)
+      : undefined
 
     const begun = await beginTurn(input.branch.id, input.text, {
       ...(input.attachConversationDraft ? { attachConversationDraft: true } : {}),
@@ -9546,7 +9723,7 @@ export function useAppChatAppLogic() {
       userMessageId,
       userMessageText: input.text,
       assistantMessageId,
-      reasoningPanelDefaultExpanded: false,
+      reasoningPanelDefaultExpanded: globalReasoningPanelDefaultExpanded.value,
       requestedReasoningMode: 'auto',
     })
     state.value = started.state
@@ -9572,6 +9749,7 @@ export function useAppChatAppLogic() {
         ...(lmStudioConfig ? { lmStudioConfig } : {}),
         ...(ollamaConfig ? { ollamaConfig } : {}),
         ...(endpointUrl ? { localEndpointUrl: endpointUrl } : {}),
+        ...(geminiThinking ? { geminiThinking } : {}),
         signal,
       }),
     })
@@ -10497,6 +10675,7 @@ export function useAppChatAppLogic() {
       await refreshConvos()
       await refreshGlobalReasoningPrefs()
       await refreshGlobalReasoningPanelDefaultExpanded()
+      await refreshGlobalReasoningPanelAutoCollapseAfterReasoning()
       await refreshGlobalWebSearchDefaults()
       await refreshGlobalSamplingParamsDefaults()
       await refreshGlobalUserMessageRenderDefault()
@@ -10524,6 +10703,7 @@ export function useAppChatAppLogic() {
   onMounted(() => {
     window.addEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
     window.addEventListener('settings:reasoningPanelDefaultExpandedUpdated', handleGlobalReasoningPanelDefaultExpandedUpdated)
+    window.addEventListener('settings:reasoningPanelAutoCollapseAfterReasoningUpdated', handleGlobalReasoningPanelAutoCollapseAfterReasoningUpdated)
     window.addEventListener('settings:userMessageRenderDefaultUpdated', handleGlobalUserMessageRenderDefaultUpdated)
     window.addEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.addEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
@@ -10655,6 +10835,7 @@ export function useAppChatAppLogic() {
     void flushDraftPersistence()
     window.removeEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
     window.removeEventListener('settings:reasoningPanelDefaultExpandedUpdated', handleGlobalReasoningPanelDefaultExpandedUpdated)
+    window.removeEventListener('settings:reasoningPanelAutoCollapseAfterReasoningUpdated', handleGlobalReasoningPanelAutoCollapseAfterReasoningUpdated)
     window.removeEventListener('settings:userMessageRenderDefaultUpdated', handleGlobalUserMessageRenderDefaultUpdated)
     window.removeEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.removeEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
@@ -10760,6 +10941,8 @@ export function useAppChatAppLogic() {
     onSelectSearchHit,
     showReasoningPanel,
     reasoningDisplayMode,
+    reasoningPanelDefaultExpanded: globalReasoningPanelDefaultExpanded,
+    reasoningPanelAutoCollapseAfterReasoning: globalReasoningPanelAutoCollapseAfterReasoning,
     reasoningInlineMode,
     reasoningRailMode,
     rightRailOpen,
@@ -10910,6 +11093,9 @@ export function useAppChatAppLogic() {
     onUpdateModel,
     onUpdateReasoningEnabled,
     onUpdateReasoningEffortLevel,
+    onUpdateGoogleAIStudioThinking,
+    onUpdateReasoningPanelDefaultExpanded,
+    onUpdateReasoningPanelAutoCollapseAfterReasoning,
     onUpdateWebSearchEnabled,
     onUpdateWebSearchLevel,
     onUpdateImageGenerationEnabled,

@@ -77,6 +77,47 @@ describe('googleAIStudioTextChatIpc', () => {
     })).toMatchObject({ ok: false, code: 'invalid_payload' })
   })
 
+  it('validates Gemini native thinking config as a safe plain object', () => {
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_thinking',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      geminiThinking: { mode: 'budget', thinkingBudget: 2048, includeThoughts: true },
+    })).toMatchObject({
+      ok: true,
+      geminiThinking: {
+        mode: 'budget',
+        thinkingBudget: 2048,
+        includeThoughts: true,
+      },
+    })
+
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_bad_thinking_budget',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      geminiThinking: { mode: 'budget', thinkingBudget: '2048' },
+    })).toMatchObject({ ok: false, code: 'invalid_payload' })
+
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_bad_thinking_level',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-3-pro',
+      messages: [{ role: 'user', content: 'hello' }],
+      geminiThinking: { mode: 'level', thinkingLevel: 'xhigh' },
+    })).toMatchObject({ ok: false, code: 'invalid_payload' })
+
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_none',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+      geminiThinking: { mode: 'none' },
+    })).toMatchObject({ ok: false, code: 'invalid_payload' })
+  })
+
   it('streams native Gemini text deltas with main-process Google AI Studio credential resolution', async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse')
@@ -88,6 +129,13 @@ describe('googleAIStudioTextChatIpc', () => {
       expect(body).toMatchObject({
         contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
       })
+      expect(body.generationConfig?.thinkingConfig).toEqual({
+        thinkingBudget: 2048,
+        includeThoughts: true,
+      })
+      expect(body.reasoning_effort).toBeUndefined()
+      expect(body.reasoning).toBeUndefined()
+      expect(body.thinking).toBeUndefined()
       return makeSseResponse(textChunk('gemini hello'), doneChunk())
     }) as unknown as typeof fetch
 
@@ -101,6 +149,7 @@ describe('googleAIStudioTextChatIpc', () => {
       assistantMessageId: 'assistant_1',
       model: 'gemini-2.5-flash',
       messages: [{ role: 'user', content: 'hello' }],
+      geminiThinking: { mode: 'budget', thinkingBudget: 2048, includeThoughts: true },
       timeoutMs: 1000,
     })
 
@@ -247,6 +296,45 @@ describe('googleAIStudioTextChatIpc', () => {
       event.event.error.networkError?.safeDetailCode === 'network_unknown' &&
       event.event.error.message === 'Google AI Studio: Network request failed.',
     )).toBe(true)
+  })
+
+  it('preserves Gemini stream provider errors instead of rewriting them as network_unknown', async () => {
+    const fetchImpl = vi.fn(async () => makeSseResponse(`data: ${JSON.stringify({
+      error: {
+        code: 400,
+        status: 'INVALID_ARGUMENT',
+        message: 'Bad request Authorization: Bearer fake-google-secret at https://public.example.test',
+      },
+    })}`)) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('fake-google-secret'), fetchImpl })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    await handler({ sender }, {
+      requestId: 'google_ai_studio_req_stream_error',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('google-ai-studio-chat:end:google_ai_studio_req_stream_error'))
+    const events = sentEvents(sender, 'google_ai_studio_req_stream_error')
+    const errorEvent = events.find((event) => event.type === 'event' && event.event.type === 'stream.error')
+    expect(errorEvent?.type).toBe('event')
+    if (errorEvent?.type === 'event' && errorEvent.event.type === 'stream.error') {
+      expect(errorEvent.event.error.provider).toBe('google-ai-studio')
+      expect(errorEvent.event.error.category).toBe('provider_error')
+      expect(errorEvent.event.error.code).toBe('400')
+      expect(errorEvent.event.error.message).toContain('Bad request')
+      expect(errorEvent.event.error.message).not.toBe('Google AI Studio: Network request failed.')
+      expect(errorEvent.event.error.networkError).toBeUndefined()
+    }
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toContain('fake-google-secret')
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('public.example.test')
   })
 
   it('maps provider 404 to a clearer sanitized model/version/streaming cause', async () => {
