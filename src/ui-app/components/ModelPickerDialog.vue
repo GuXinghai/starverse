@@ -434,12 +434,18 @@ const providerOptions = computed(() => {
     count: openRouterCount,
   })
   for (const source of props.providerSources) {
+    const isActiveCatalogProvider = activeCatalogProviderKey.value === source.providerId
+    const catalogCount = isActiveCatalogProvider
+      ? syncVisibleModelCount.value ?? syncTotalModelCount.value ?? items.value.length
+      : 0
     options.set(source.providerId, {
       providerId: source.providerId,
       providerName: source.providerName,
-      statusLabel: source.statusLabel,
-      loading: source.loading,
-      count: source.items.length,
+      statusLabel: isActiveCatalogProvider && syncStatus.value === 'synced'
+        ? `${catalogCount} shown`
+        : source.statusLabel,
+      loading: source.loading || (isActiveCatalogProvider && syncStatus.value === 'syncing'),
+      count: isActiveCatalogProvider && catalogCount > 0 ? catalogCount : source.items.length,
     })
   }
   return Array.from(options.values())
