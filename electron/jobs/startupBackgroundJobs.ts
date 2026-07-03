@@ -3,11 +3,11 @@ import type { DbWorkerManager } from '../db/workerManager'
 import { runCatalogSyncAtStartup } from './catalogSyncStartup'
 import type { OpenRouterCatalogCredentialStoreReader } from './openRouterCatalogCredential'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { runProviderCatalogStartupSync } from '../modelCatalog/providerCatalogStartup'
 import {
   cleanupExpiredOpenRouterScopedCatalogCaches,
   clearDeprecatedOpenRouterCatalogCacheOnce,
 } from './catalogCacheCleanup'
-import { readProviderCatalogSettings } from '../../src/shared/modelCatalog/providerCatalogSettings'
 
 type NotifyRenderer = (channel: string, payload: unknown) => void
 
@@ -38,28 +38,12 @@ export async function runStartupBackgroundJobs(input: Readonly<{
       ? input.credentialService.getLegacyStoreValue(key)
       : input.store.get(key),
   }
-  const catalogSettings = readProviderCatalogSettings(input.store, 'openrouter')
-  const policy = catalogSettings.startupSyncPolicy
-  if (policy !== 'never') {
-    const catalogSyncResult = await (input.runCatalogSync ?? runCatalogSyncAtStartup)({
-      store: input.store,
-      credentialStore,
-      dbWorkerManager: input.dbWorkerManager,
-      force: policy === 'always',
-      freshnessMs: catalogSettings.freshnessMs,
-    })
-
-    if (catalogSyncResult.syncSucceeded && catalogSyncResult.syncAttempted) {
-      postWindowNotifications.push({
-        channel: 'db:modelCatalogSynced',
-        payload: {
-          routerSource: 'openrouter',
-          modelCount: catalogSyncResult.modelCountAfter,
-          lastSyncAtMs: catalogSyncResult.lastSyncAtMs,
-        },
-      })
-    }
-  }
+  postWindowNotifications.push(...await runProviderCatalogStartupSync({
+    store: input.store,
+    credentialStore,
+    dbWorkerManager: input.dbWorkerManager,
+    runCatalogSync: input.runCatalogSync,
+  }))
 
   try {
     await (input.cleanupExpiredScopedCaches ?? cleanupExpiredOpenRouterScopedCatalogCaches)({
