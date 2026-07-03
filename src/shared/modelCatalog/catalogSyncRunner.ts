@@ -1,7 +1,9 @@
+import type { ProviderCatalogDataSource } from './providerCatalogCore'
+
 export type CatalogSyncRunnerMeta = Readonly<{
   providerKey: string
   schemaVersion: number
-  dataSource: 'models_user_primary' | 'models_fallback' | 'mixed'
+  dataSource: ProviderCatalogDataSource
   baseUrl: string
   snapshotId: string
   modelCount: number
@@ -49,7 +51,7 @@ export type CatalogSyncRunnerResult = Readonly<{
     | 'sync_failed_no_cache'
     | 'missing_api_key_with_cache'
     | 'missing_api_key_no_cache'
-  source: 'models_user_primary' | 'models_fallback' | 'mixed' | 'none'
+  source: ProviderCatalogDataSource | 'none'
   modelCountBefore: number
   modelCountAfter: number
   lastSyncAtMs: number
