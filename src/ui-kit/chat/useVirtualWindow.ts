@@ -20,6 +20,7 @@ type VirtualWindowOptions = Readonly<{
 }>
 
 const CHUNK_SIZE = 64
+const HEIGHT_EPSILON_PX = 1
 
 function clamp(value: number, min: number, max: number): number {
   return Math.max(min, Math.min(max, value))
@@ -140,14 +141,20 @@ export function useVirtualWindow(options: VirtualWindowOptions) {
     return Math.min(items.length - 1, index)
   }
 
-  function updateRange() {
+  function updateRange(): boolean {
     const items = itemsRef.value
     const el = options.scrollEl.value
     if (!el || items.length === 0) {
-      range.value = { start: 0, end: 0 }
-      topPaddingPx.value = 0
-      bottomPaddingPx.value = 0
-      return
+      const changed = range.value.start !== 0 ||
+        range.value.end !== 0 ||
+        topPaddingPx.value !== 0 ||
+        bottomPaddingPx.value !== 0
+      if (changed) {
+        range.value = { start: 0, end: 0 }
+        topPaddingPx.value = 0
+        bottomPaddingPx.value = 0
+      }
+      return changed
     }
 
     const scrollTop = Math.max(0, el.scrollTop)
@@ -165,12 +172,24 @@ export function useVirtualWindow(options: VirtualWindowOptions) {
     const start = clamp(startIndex - overscan.value, 0, items.length)
     const end = clamp(endIndex + overscan.value, 0, items.length)
 
-    range.value = { start, end }
     const total = getTotalHeight()
     const top = getOffsetForIndex(start)
     const bottom = Math.max(0, total - getOffsetForIndex(end))
-    topPaddingPx.value = top
-    bottomPaddingPx.value = bottom
+
+    let changed = false
+    if (range.value.start !== start || range.value.end !== end) {
+      range.value = { start, end }
+      changed = true
+    }
+    if (topPaddingPx.value !== top) {
+      topPaddingPx.value = top
+      changed = true
+    }
+    if (bottomPaddingPx.value !== bottom) {
+      bottomPaddingPx.value = bottom
+      changed = true
+    }
+    return changed
   }
 
   function flushMeasures() {
@@ -179,26 +198,33 @@ export function useVirtualWindow(options: VirtualWindowOptions) {
     pendingMeasures = new Map()
     if (updates.size === 0) return
 
+    let changedCount = 0
     for (const [key, nextHeight] of updates) {
       const index = keyToIndex.get(key)
       if (index === undefined) continue
       const chunkIndex = ensureChunkIndex(index)
+      const hadMeasuredHeight = measuredHeights.has(key)
       const prevHeight = measuredHeights.get(key) ?? estimatedHeight.value
       const normalized = normalizeMeasuredHeight(nextHeight)
-      if (prevHeight === normalized) continue
+      if (Math.abs(prevHeight - normalized) <= HEIGHT_EPSILON_PX) continue
       measuredHeights.set(key, normalized)
 
       const diff = normalized - prevHeight
+      changedCount += 1
       chunkSums.value[chunkIndex] = (chunkSums.value[chunkIndex] ?? 0) + diff
       if (!Number.isFinite(chunkSums.value[chunkIndex] ?? 0)) {
         chunkSums.value[chunkIndex] = 0
       }
 
-      if (measuredHeights.has(key)) {
+      if (!hadMeasuredHeight) {
+        totalMeasuredHeight.value += normalized
+        measuredCount.value += 1
+      } else {
         totalMeasuredHeight.value += diff
-        if (prevHeight === estimatedHeight.value) measuredCount.value += 1
       }
     }
+
+    if (changedCount === 0) return
 
     avgMeasuredHeight.value = measuredCount.value > 0 ? totalMeasuredHeight.value / measuredCount.value : estimatedHeight.value
     updateRange()
