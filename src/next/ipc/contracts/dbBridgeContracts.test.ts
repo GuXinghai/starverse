@@ -11,6 +11,7 @@ import {
   decodeBranchSwitchQuestionCandidateResponse,
   decodeBranchTruncateFromQuestionResponse,
   decodeChatDraftResponse,
+  decodeChatReasoningPanelAutoCollapseAfterReasoningResponse,
   decodeChatReasoningPanelDefaultExpandedResponse,
   decodeChatReasoningDisplayModeResponse,
   decodeConvoCreateResponse,
@@ -921,6 +922,13 @@ const cases: ContractCase[] = [
     valid: { value: true },
     missing: {},
     wrongType: { value: 'true' },
+  },
+  {
+    name: 'settings.getChatReasoningPanelAutoCollapseAfterReasoning',
+    decode: decodeChatReasoningPanelAutoCollapseAfterReasoningResponse,
+    valid: { value: false },
+    missing: {},
+    wrongType: { value: 'false' },
   },
   {
     name: 'settings.getChatDraft',

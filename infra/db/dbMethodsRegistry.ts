@@ -184,6 +184,8 @@ export const DB_METHODS = [
   { name: 'settings.setChatReasoningDisplayMode', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.getChatReasoningPanelDefaultExpanded', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.setChatReasoningPanelDefaultExpanded', renderer: true, worker: true, domain: 'settings' },
+  { name: 'settings.getChatReasoningPanelAutoCollapseAfterReasoning', renderer: true, worker: true, domain: 'settings' },
+  { name: 'settings.setChatReasoningPanelAutoCollapseAfterReasoning', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.getNetworkProxySettings', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.setNetworkProxySettings', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.getChatDraft', renderer: true, worker: true, domain: 'settings' },
