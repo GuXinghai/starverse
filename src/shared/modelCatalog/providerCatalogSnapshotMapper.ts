@@ -1,5 +1,5 @@
 import type { ProviderCatalogSnapshot } from './providerCatalogContracts'
-import type { CatalogScopedSnapshotWriterInput } from './catalogSyncJob'
+import type { CatalogScopedSnapshotWriterInput } from './providerCatalogWriterContracts'
 import type { CatalogModel, JsonValue } from './internalSchema'
 
 function safeStringify(value: unknown): string | null {
