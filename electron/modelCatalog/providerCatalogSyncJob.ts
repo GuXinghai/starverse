@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import type Store from 'electron-store'
 import type { DbWorkerManager } from '../db/workerManager'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
+import type { ProviderCredentialKey, ProviderCredentialService } from '../credentials/providerCredentialService'
 import type { OpenRouterCatalogCredentialStoreReader } from '../jobs/openRouterCatalogCredential'
 import { resolveOpenRouterCatalogCredentialFromLegacyStore } from '../jobs/openRouterCatalogCredential'
 import { mapErrorToSyncCode, mapMissingApiKeyToCode } from '../../src/shared/modelCatalog/catalogSyncErrorMapper'
@@ -10,16 +11,20 @@ import {
   normalizeCatalogFreshnessMs,
 } from '../../src/shared/modelCatalog/catalogSyncSettings'
 import { requireProviderCatalogSource } from '../../src/shared/modelCatalog/providerCatalogSourceRegistry'
+import { requireProviderCatalogSourceDescriptor } from '../../src/shared/modelCatalog/providerCatalogRegistry'
+import type { ProviderCatalogKnownProviderKey } from '../../src/shared/modelCatalog/providerCatalogContracts'
 import { mapProviderCatalogSnapshotToScopedWriterInput } from '../../src/shared/modelCatalog/providerCatalogSnapshotMapper'
 import { resolveCurrentOpenRouterCatalogScope } from './providerCatalogScopeResolver'
+import { deriveCatalogScopeFromStore } from './catalogScope'
 import { CatalogSyncRunner, type CatalogSyncRunnerMeta, type CatalogSyncRunnerResult } from './catalogSyncRunner'
 
 const CATALOG_META_SCHEMA_VERSION = 1
 
 export type ProviderCatalogSyncJobInput = Readonly<{
-  providerKey?: 'openrouter'
+  providerKey?: ProviderCatalogKnownProviderKey
   store: Store
   credentialStore?: OpenRouterCatalogCredentialStoreReader
+  credentialService?: ProviderCredentialService
   dbWorkerManager: DbWorkerManager
   fetchImpl?: ProviderFetch
   force?: boolean
@@ -66,7 +71,7 @@ function generateProviderCatalogSnapshotId(): string {
   return `catalog-${Date.now()}-${randomUUID()}`
 }
 
-function buildMissingApiKeyResult(providerKey: 'openrouter'): CatalogSyncRunnerResult {
+function buildMissingApiKeyResult(providerKey: ProviderCatalogKnownProviderKey): CatalogSyncRunnerResult {
   const nowMs = Date.now()
   return {
     providerKey,
@@ -88,18 +93,65 @@ function buildMissingApiKeyResult(providerKey: 'openrouter'): CatalogSyncRunnerR
   }
 }
 
+type ResolvedProviderCatalogRuntime = Readonly<{
+  apiKey: string
+  normalizedBaseUrl: string
+  catalogScopeKey: string
+  scopeDataSource: CatalogSyncRunnerMeta['dataSource']
+}>
+
+function providerCredentialKeyForCatalog(providerKey: ProviderCatalogKnownProviderKey): ProviderCredentialKey | null {
+  if (providerKey === 'google_ai_studio') return 'google_ai_studio'
+  if (providerKey === 'openai_responses') return 'openai_responses'
+  if (providerKey === 'deepseek') return 'deepseek'
+  if (providerKey === 'anthropic_messages') return 'anthropic'
+  return null
+}
+
+function resolveProviderCatalogRuntime(
+  input: ProviderCatalogSyncJobInput,
+  providerKey: ProviderCatalogKnownProviderKey,
+): ResolvedProviderCatalogRuntime | null {
+  if (providerKey === 'openrouter') {
+    const credentialResult = resolveOpenRouterCatalogCredentialFromLegacyStore(input.credentialStore ?? input.store)
+    if (!credentialResult.ok) return null
+    const scope = resolveCurrentOpenRouterCatalogScope(input.store, input.credentialStore ?? input.store)
+    if (!scope) return null
+    return {
+      apiKey: credentialResult.credential.apiKey,
+      normalizedBaseUrl: scope.normalizedBaseUrl,
+      catalogScopeKey: scope.catalogScopeKey,
+      scopeDataSource: scope.scopeDataSource,
+    }
+  }
+
+  const credentialKey = providerCredentialKeyForCatalog(providerKey)
+  if (!credentialKey || !input.credentialService) return null
+  const credentialResult = input.credentialService.readApiKey(credentialKey)
+  if (!credentialResult.ok) return null
+  const descriptor = requireProviderCatalogSourceDescriptor(providerKey)
+  const scope = deriveCatalogScopeFromStore({
+    store: input.store,
+    providerKey,
+    apiKey: credentialResult.apiKey,
+    baseUrl: descriptor.defaultBaseUrl,
+    dataSource: descriptor.defaultDataSource,
+  })
+  return {
+    apiKey: credentialResult.apiKey,
+    normalizedBaseUrl: scope.normalizedBaseUrl,
+    catalogScopeKey: scope.catalogScopeKey,
+    scopeDataSource: scope.dataSource,
+  }
+}
+
 export async function runProviderCatalogSyncJob(
   input: ProviderCatalogSyncJobInput,
 ): Promise<CatalogSyncRunnerResult> {
   const providerKey = input.providerKey ?? 'openrouter'
   const source = requireProviderCatalogSource(providerKey)
-  const credentialResult = resolveOpenRouterCatalogCredentialFromLegacyStore(input.credentialStore ?? input.store)
-  if (!credentialResult.ok) {
-    return buildMissingApiKeyResult(providerKey)
-  }
-  const credential = credentialResult.credential
-  const scope = resolveCurrentOpenRouterCatalogScope(input.store, input.credentialStore ?? input.store)
-  if (!scope) {
+  const runtime = resolveProviderCatalogRuntime(input, providerKey)
+  if (!runtime) {
     return buildMissingApiKeyResult(providerKey)
   }
   const freshnessMs = normalizeCatalogFreshnessMs(input.freshnessMs ?? DEFAULT_CATALOG_FRESHNESS_MS)
@@ -111,14 +163,14 @@ export async function runProviderCatalogSyncJob(
     readMeta: async (targetProviderKey) => {
       const raw = await input.dbWorkerManager.call('modelCatalog.getScopedMeta', {
         providerKey: targetProviderKey,
-        catalogScopeKey: scope.catalogScopeKey,
+        catalogScopeKey: runtime.catalogScopeKey,
       })
       const meta = normalizeScopedMeta(raw, freshnessMs)
       if (!meta) return null
       if (meta.syncState === 'ok') {
         const validation = await input.dbWorkerManager.call('modelCatalog.validateActiveScopedSnapshot', {
           providerKey: targetProviderKey,
-          catalogScopeKey: scope.catalogScopeKey,
+          catalogScopeKey: runtime.catalogScopeKey,
         }) as { ok?: boolean }
         if (validation?.ok !== true) return null
       }
@@ -127,8 +179,8 @@ export async function runProviderCatalogSyncJob(
     runSync: async () => {
       const snapshot = await source.fetchSnapshot({
         providerKey,
-        apiKey: credential.apiKey,
-        baseUrl: scope.normalizedBaseUrl,
+        apiKey: runtime.apiKey,
+        baseUrl: runtime.normalizedBaseUrl,
         fetchImpl: input.fetchImpl ?? createElectronSessionProviderFetch(),
         preferUserScopedModels: true,
       })
@@ -143,8 +195,8 @@ export async function runProviderCatalogSyncJob(
       await input.dbWorkerManager.call('modelCatalog.writeScopedSnapshot', {
         ...scopedInput,
         providerKey,
-        catalogScopeKey: scope.catalogScopeKey,
-        baseUrl: scope.normalizedBaseUrl,
+        catalogScopeKey: runtime.catalogScopeKey,
+        baseUrl: runtime.normalizedBaseUrl,
         schemaVersion: CATALOG_META_SCHEMA_VERSION,
       })
       return {
@@ -167,9 +219,9 @@ export async function runProviderCatalogSyncJob(
     try {
       await input.dbWorkerManager.call('modelCatalog.updateScopedMetaSyncError', {
         providerKey,
-        catalogScopeKey: scope.catalogScopeKey,
-        baseUrl: scope.normalizedBaseUrl,
-        dataSource: scope.scopeDataSource,
+        catalogScopeKey: runtime.catalogScopeKey,
+        baseUrl: runtime.normalizedBaseUrl,
+        dataSource: runtime.scopeDataSource,
         lastErrorCode: errorCode.code,
         lastErrorMessage: errorCode.message,
         atMs: Date.now(),
