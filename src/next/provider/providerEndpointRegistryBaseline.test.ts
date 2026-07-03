@@ -411,17 +411,19 @@ describe('C6 local endpoint baseline characterization', () => {
     const catalogSchema = readRepoFile('src', 'shared', 'modelCatalog', 'internalSchema.ts')
     const openRouterCatalog = readRepoFile('src', 'shared', 'modelCatalog', 'providers', 'openrouter', 'openRouterCatalogClient.ts')
     const catalogSync = readRepoFile('src', 'shared', 'modelCatalog', 'catalogSyncJob.ts')
+    const providerCatalogSync = readRepoFile('electron', 'modelCatalog', 'providerCatalogSyncJob.ts')
     const sendPlanClient = readRepoFile('src', 'next', 'files', 'sendPlanClient.ts')
     const openRouterSendPlan = readRepoFile('src', 'next', 'openrouter', 'openRouterSendPlanSerializer.ts')
 
     expect(catalogSchema).toContain('export interface ProviderAdapter')
     expect(openRouterCatalog).toContain('class OpenRouterCatalogClient implements ProviderAdapter')
     expect(openRouterCatalog).toContain('async listModels')
-    expect(catalogSync).toContain('createOpenRouterCatalogSource')
+    expect(catalogSync).toContain('CatalogScopedSnapshotWriterInput')
+    expect(providerCatalogSync).toContain('requireProviderCatalogSource')
     expect(sendPlanClient).toContain('SendPlanProviderContext')
     expect(openRouterSendPlan).toContain('serializeSendPlanForOpenRouter')
 
-    for (const source of [catalogSchema, openRouterCatalog, catalogSync, sendPlanClient, openRouterSendPlan]) {
+    for (const source of [catalogSchema, openRouterCatalog, catalogSync, providerCatalogSync, sendPlanClient, openRouterSendPlan]) {
       expectNoRegistryPlaceholder(source)
       expectNoLocalEndpointRuntimeIdentifier(source)
     }

@@ -1,1 +1,4 @@
-export * from '@/shared/modelCatalog/catalogSyncJob'
+export type {
+  CatalogScopedModelUpsertInput,
+  CatalogScopedSnapshotWriterInput,
+} from '@/shared/modelCatalog/providerCatalogWriterContracts'
