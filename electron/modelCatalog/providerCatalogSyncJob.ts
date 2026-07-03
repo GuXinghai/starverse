@@ -9,7 +9,7 @@ import {
   DEFAULT_CATALOG_FRESHNESS_MS,
   normalizeCatalogFreshnessMs,
 } from '../../src/shared/modelCatalog/catalogSyncSettings'
-import { openRouterCatalogSource } from '../../src/shared/modelCatalog/providers/openrouter/openRouterCatalogSource'
+import { requireProviderCatalogSource } from '../../src/shared/modelCatalog/providerCatalogSourceRegistry'
 import { mapProviderCatalogSnapshotToScopedWriterInput } from '../../src/shared/modelCatalog/providerCatalogSnapshotMapper'
 import { resolveCurrentOpenRouterCatalogScope } from './providerCatalogScopeResolver'
 import { CatalogSyncRunner, type CatalogSyncRunnerMeta, type CatalogSyncRunnerResult } from './catalogSyncRunner'
@@ -92,6 +92,7 @@ export async function runProviderCatalogSyncJob(
   input: ProviderCatalogSyncJobInput,
 ): Promise<CatalogSyncRunnerResult> {
   const providerKey = input.providerKey ?? 'openrouter'
+  const source = requireProviderCatalogSource(providerKey)
   const credentialResult = resolveOpenRouterCatalogCredentialFromLegacyStore(input.credentialStore ?? input.store)
   if (!credentialResult.ok) {
     return buildMissingApiKeyResult(providerKey)
@@ -124,7 +125,7 @@ export async function runProviderCatalogSyncJob(
       return meta
     },
     runSync: async () => {
-      const snapshot = await openRouterCatalogSource.fetchSnapshot({
+      const snapshot = await source.fetchSnapshot({
         providerKey,
         apiKey: credential.apiKey,
         baseUrl: scope.normalizedBaseUrl,
