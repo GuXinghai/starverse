@@ -1,10 +1,16 @@
 import type { ProviderCatalogKnownProviderKey, ProviderCatalogSource } from './providerCatalogContracts'
+import { anthropicCatalogSource } from './providers/anthropic/anthropicCatalogSource'
+import { deepSeekCatalogSource } from './providers/deepseek/deepSeekCatalogSource'
 import { googleAIStudioCatalogSource } from './providers/google/googleAIStudioCatalogSource'
+import { openAIResponsesCatalogSource } from './providers/openai/openAIResponsesCatalogSource'
 import { openRouterCatalogSource } from './providers/openrouter/openRouterCatalogSource'
 
 const PROVIDER_CATALOG_SOURCE_BY_KEY = new Map<ProviderCatalogKnownProviderKey, ProviderCatalogSource>([
   ['openrouter', openRouterCatalogSource],
   ['google_ai_studio', googleAIStudioCatalogSource],
+  ['anthropic_messages', anthropicCatalogSource],
+  ['openai_responses', openAIResponsesCatalogSource],
+  ['deepseek', deepSeekCatalogSource],
 ])
 
 export function listProviderCatalogSources(): ReadonlyArray<ProviderCatalogSource> {
