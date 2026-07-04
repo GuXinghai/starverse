@@ -334,6 +334,54 @@ describe('providerRuntimeSendCoordinator', () => {
     expect(openAIResponsesCalls).toEqual([expect.not.objectContaining({ geminiThinking: expect.anything() })])
   })
 
+  it('passes image generation config only to OpenAI Responses and Google AI Studio wrappers', async () => {
+    googleAIStudioCalls.length = 0
+    openAIResponsesCalls.length = 0
+    anthropicCalls.length = 0
+    const abortController = new AbortController()
+    const imageGeneration = {
+      outputMode: 'image_and_text' as const,
+      aspectRatio: '1:1',
+      imageSize: '1K' as const,
+      imageConfig: { quality: 'high' },
+    }
+
+    await drain(createExperimentalRuntimeTextEvents({
+      providerKey: 'openai_responses',
+      requestId: 'openai_req_image',
+      assistantMessageId: 'assistant_openai_image',
+      modelId: 'gpt-4.1-mini',
+      userText: 'draw',
+      contextMessages: [],
+      imageGeneration,
+      signal: abortController.signal,
+    }))
+    await drain(createExperimentalRuntimeTextEvents({
+      providerKey: 'google_ai_studio',
+      requestId: 'google_req_image',
+      assistantMessageId: 'assistant_google_image',
+      modelId: 'gemini-2.5-flash-image',
+      userText: 'draw',
+      contextMessages: [],
+      imageGeneration,
+      signal: abortController.signal,
+    }))
+    await drain(createExperimentalRuntimeTextEvents({
+      providerKey: 'anthropic_messages',
+      requestId: 'anthropic_req_image',
+      assistantMessageId: 'assistant_anthropic_image',
+      modelId: 'claude-sonnet-4-5',
+      userText: 'draw',
+      contextMessages: [],
+      imageGeneration,
+      signal: abortController.signal,
+    }))
+
+    expect(openAIResponsesCalls).toEqual([expect.objectContaining({ imageGeneration })])
+    expect(googleAIStudioCalls).toEqual([expect.objectContaining({ imageGeneration })])
+    expect(anthropicCalls).toEqual([expect.not.objectContaining({ imageGeneration: expect.anything() })])
+  })
+
   it('passes current user image content blocks to image-capable experimental wrappers', async () => {
     openAIResponsesCalls.length = 0
     googleAIStudioCalls.length = 0

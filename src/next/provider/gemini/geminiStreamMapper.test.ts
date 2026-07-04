@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapGeminiStreamChunkToStarverse, type GeminiStreamChunk } from '@/next/provider/gemini/geminiStreamMapper'
+import { mapGeminiInteractionResponseToStarverse, mapGeminiStreamChunkToStarverse, type GeminiStreamChunk } from '@/next/provider/gemini/geminiStreamMapper'
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
 
 // ---------------------------------------------------------------------------
@@ -507,5 +507,266 @@ describe('mapGeminiStreamChunkToStarverse', () => {
         expect((lastUsage.usage as any).thoughtsTokenCount).toBe(30)
       }
     })
+  })
+})
+
+describe('mapGeminiInteractionResponseToStarverse', () => {
+  const msgId = 'assistant_1'
+
+  it('maps output_image data to image content block', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      interaction: {
+        output_image: {
+          data: 'iVBORw0KGgo=',
+          mime_type: 'image/png',
+        },
+      },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+    ])
+  })
+
+  it('maps text and nested image blocks without duplicating images', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      output_text: 'done',
+      steps: [
+        {
+          type: 'output_image',
+          data: 'iVBORw0KGgo=',
+          mimeType: 'image/png',
+        },
+        {
+          output_image: {
+            data: 'iVBORw0KGgo=',
+            mime_type: 'image/png',
+          },
+        },
+      ],
+      usageMetadata: { totalTokenCount: 10 },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.text_delta',
+        messageId: msgId,
+        choiceIndex: 0,
+        text: 'done',
+      },
+      {
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+      { type: 'usage.delta', usage: { totalTokenCount: 10 } },
+    ])
+  })
+
+  it('maps thought summaries to reasoning details before image blocks', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      type: 'thought_summary',
+      text: 'I will plan the composition.',
+      thought_signature: 'sig_1',
+      output_image: {
+        data: 'iVBORw0KGgo=',
+        mime_type: 'image/png',
+      },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.reasoning_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 0,
+          type: 'thought_summary',
+          summary: 'I will plan the composition.',
+          __starverseReasoningPiece: true,
+          thought_signature: 'sig_1',
+        },
+      },
+      {
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+    ])
+  })
+
+  it('maps official Interactions thought summary text and images to ordered reasoning details', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      steps: [
+        {
+          type: 'thought',
+          summary: [
+            { type: 'text', text: 'Sketch the silhouette.' },
+            { type: 'image', data: 'iVBORw0KGthought=', mime_type: 'image/png' },
+            { type: 'text', text: 'Refine the lighting.' },
+          ],
+          thought_signature: 'sig_2',
+        },
+      ],
+      model_output: [
+        {
+          type: 'image',
+          data: 'iVBORw0KGgo=',
+        },
+      ],
+    }, msgId)
+
+    const reasoningEvents = events.filter((event) => event.type === 'message.reasoning_detail')
+    expect(reasoningEvents).toEqual([
+      {
+        type: 'message.reasoning_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 0,
+          type: 'thought_summary',
+          summary: 'Sketch the silhouette.',
+          __starverseReasoningPiece: true,
+          thought_signature: 'sig_2',
+        },
+      },
+      {
+        type: 'message.reasoning_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 1,
+          type: 'thought_image',
+          image: {
+            url: 'data:image/png;base64,iVBORw0KGthought=',
+            mimeType: 'image/png',
+          },
+          __starverseReasoningPiece: true,
+          thought_signature: 'sig_2',
+        },
+      },
+      {
+        type: 'message.reasoning_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 2,
+          type: 'thought_summary',
+          summary: 'Refine the lighting.',
+          __starverseReasoningPiece: true,
+          thought_signature: 'sig_2',
+        },
+      },
+    ])
+    expect(events.filter((event) => event.type === 'message.content_block_append')).toEqual([
+      {
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+    ])
+  })
+
+  it('maps official streaming Interactions thought_summary content text to reasoning summary detail', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      event: 'step.delta',
+      delta: {
+        type: 'thought_summary',
+        content: {
+          type: 'text',
+          text: 'Plan the scene before rendering.',
+        },
+        thought_signature: 'sig_stream_1',
+      },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.reasoning_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 0,
+          type: 'thought_summary',
+          summary: 'Plan the scene before rendering.',
+          __starverseReasoningPiece: true,
+          thought_signature: 'sig_stream_1',
+        },
+      },
+    ])
+  })
+
+  it('keeps streaming thought_summary content image out of final image blocks', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      delta: {
+        type: 'thought_summary',
+        content: {
+          type: 'image',
+          data: 'iVBORw0KGthought=',
+          mime_type: 'image/png',
+        },
+        thought_signature: 'sig_stream_image',
+      },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.reasoning_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 0,
+          type: 'thought_image',
+          image: {
+            url: 'data:image/png;base64,iVBORw0KGthought=',
+            mimeType: 'image/png',
+          },
+          __starverseReasoningPiece: true,
+          thought_signature: 'sig_stream_image',
+        },
+      },
+    ])
+  })
+
+  it('keeps final streaming image deltas as final image blocks', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      delta: {
+        type: 'image',
+        data: 'iVBORw0KGfinal=',
+        mime_type: 'image/png',
+      },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGfinal=',
+        },
+      },
+    ])
   })
 })

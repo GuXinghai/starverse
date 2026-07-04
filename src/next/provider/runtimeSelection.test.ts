@@ -229,7 +229,7 @@ describe('RuntimeCapabilitySummaryLite', () => {
       webSearch: 'blocked',
       tools: 'blocked',
       reasoningArtifacts: 'filtered',
-      imageGeneration: 'blocked',
+      imageGeneration: 'supported',
       structuredOutput: 'blocked',
       source: 'experimental_image_inline',
     })
@@ -404,6 +404,30 @@ describe('getRuntimeTextChatBlockReason', () => {
       selection,
       capability: getRuntimeCapabilitySummaryLite(selection),
       text: 'hello',
+      hasDraftAttachments: false,
+      sessionConfig: { ...baseSessionConfig, imageGeneration: { enabled: true } },
+    })).toContain('does not support image generation')
+  })
+
+  it('allows image generation for OpenAI Responses and Google AI Studio', () => {
+    for (const providerKey of ['openai_responses', 'google_ai_studio'] as const) {
+      const selection = selected(providerKey, `${providerKey}-model`)
+      expect(getRuntimeTextChatBlockReason({
+        selection,
+        capability: getRuntimeCapabilitySummaryLite(selection),
+        text: 'draw a small icon',
+        hasDraftAttachments: false,
+        sessionConfig: { ...baseSessionConfig, imageGeneration: { enabled: true } },
+      })).toBeNull()
+    }
+  })
+
+  it('keeps Anthropic image generation explicitly unsupported', () => {
+    const selection = selected('anthropic_messages', 'claude-sonnet-4-5')
+    expect(getRuntimeTextChatBlockReason({
+      selection,
+      capability: getRuntimeCapabilitySummaryLite(selection),
+      text: 'draw a small icon',
       hasDraftAttachments: false,
       sessionConfig: { ...baseSessionConfig, imageGeneration: { enabled: true } },
     })).toContain('does not support image generation')

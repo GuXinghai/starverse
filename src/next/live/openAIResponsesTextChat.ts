@@ -1,5 +1,5 @@
 import type { DomainEvent } from '@/next/state/types'
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
 import type { ProviderRuntimeContentBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
 
@@ -15,6 +15,7 @@ export type OpenAIResponsesTextChatOptions = Readonly<{
   userText: string
   contextMessages?: readonly unknown[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  imageGeneration?: ProviderStreamConfig['imageGeneration']
   signal?: AbortSignal
   timeoutMs?: number
 }>
@@ -211,6 +212,7 @@ export async function* streamOpenAIResponsesTextChatAsDomainEvents(
         assistantMessageId: options.assistantMessageId,
         model: options.model,
         messages,
+        ...(options.imageGeneration ? { imageGeneration: options.imageGeneration } : {}),
         ...(hasContentBlocks ? { currentUserContentBlocks: options.currentUserContentBlocks } : {}),
         ...(typeof options.timeoutMs === 'number' ? { timeoutMs: options.timeoutMs } : {}),
       }),

@@ -301,11 +301,27 @@ export function getRuntimeCapabilitySummaryLite(selection: CurrentRuntimeSelecti
     }
   }
 
-  if (
-    selection.providerKey === 'openai_responses' ||
-    selection.providerKey === 'google_ai_studio' ||
-    selection.providerKey === 'anthropic_messages'
-  ) {
+  if (selection.providerKey === 'openai_responses' || selection.providerKey === 'google_ai_studio') {
+    return {
+      textChat: true,
+      streamingText: true,
+      attachments: 'supported',
+      webSearch: 'blocked',
+      tools: 'blocked',
+      reasoningArtifacts: 'filtered',
+      imageGeneration: 'supported',
+      structuredOutput: 'blocked',
+      usageFinal: 'not_guaranteed',
+      source: 'experimental_image_inline',
+      warnings: [
+        `${RUNTIME_PROVIDER_DISPLAY_NAMES[selection.providerKey]} R1 supports small PNG/JPEG image and small PDF inline attachments.`,
+        'Image generation is routed through the provider-native text chat endpoint when enabled.',
+        'Non-PDF documents, audio, video, tools, web search, and structured output are blocked in this runtime slice.',
+      ],
+    }
+  }
+
+  if (selection.providerKey === 'anthropic_messages') {
     return {
       textChat: true,
       streamingText: true,
@@ -318,8 +334,9 @@ export function getRuntimeCapabilitySummaryLite(selection: CurrentRuntimeSelecti
       usageFinal: 'not_guaranteed',
       source: 'experimental_image_inline',
       warnings: [
-        `${RUNTIME_PROVIDER_DISPLAY_NAMES[selection.providerKey]} R1 supports small PNG/JPEG image and small PDF inline attachments.`,
-        'Non-PDF documents, audio, video, tools, web search, image generation, and structured output are blocked in this runtime slice.',
+        'Anthropic Messages R1 supports small PNG/JPEG image and small PDF inline attachments.',
+        'Anthropic image generation output is unsupported in Starverse; disable image generation before sending.',
+        'Non-PDF documents, audio, video, tools, web search, and structured output are blocked in this runtime slice.',
       ],
     }
   }

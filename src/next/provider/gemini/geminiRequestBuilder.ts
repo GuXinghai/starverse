@@ -12,6 +12,10 @@ import {
   buildGeminiNativeThinkingConfig,
   type GeminiNativeThinkingConfig,
 } from '@/next/provider/gemini/geminiThinkingPolicy'
+import {
+  resolveGeminiImageGenerationPolicy,
+  validateGeminiImageGenerationImageSize,
+} from '@/next/provider/gemini/geminiImageGenerationPolicy'
 
 // ---------------------------------------------------------------------------
 // Gemini request types — provider-native schema, contained here
@@ -50,6 +54,21 @@ export type GeminiRequest = Readonly<{
   systemInstruction?: GeminiSystemInstruction
   generationConfig?: GeminiGenerationConfig
   tools?: ReadonlyArray<GeminiTool>
+}>
+
+export type GeminiInteractionRequest = Readonly<{
+  model: string
+  input: string
+  stream: true
+  response_format: Readonly<{
+    type: 'image'
+    aspect_ratio?: string
+    image_size?: string
+  } & Record<string, unknown>>
+  generation_config?: Readonly<{
+    thinking_level?: string
+    thinking_summaries?: 'auto'
+  }>
 }>
 
 // ---------------------------------------------------------------------------
@@ -117,4 +136,82 @@ export function buildGeminiRequest(input: GeminiRequestInput): GeminiRequest {
   }
 
   return request as GeminiRequest
+}
+
+export function buildGeminiImageGenerationInteractionRequest(input: GeminiRequestInput): GeminiInteractionRequest {
+  const { messages, config } = input
+  const imageGeneration = config.imageGeneration
+  const imageConfig = imageGeneration?.imageConfig && typeof imageGeneration.imageConfig === 'object' && !Array.isArray(imageGeneration.imageConfig)
+    ? imageGeneration.imageConfig as Record<string, unknown>
+    : {}
+  const nestedResponseFormat = imageConfig.response_format && typeof imageConfig.response_format === 'object' && !Array.isArray(imageConfig.response_format)
+    ? imageConfig.response_format as Record<string, unknown>
+    : {}
+
+  const responseFormat: Record<string, unknown> = {
+    ...nestedResponseFormat,
+    type: 'image',
+  }
+  const aspectRatio = typeof imageGeneration?.aspectRatio === 'string' && imageGeneration.aspectRatio.trim()
+    ? imageGeneration.aspectRatio.trim()
+    : typeof imageConfig.aspect_ratio === 'string'
+      ? imageConfig.aspect_ratio.trim()
+      : ''
+  const imageSize = typeof imageGeneration?.imageSize === 'string' && imageGeneration.imageSize.trim()
+    ? imageGeneration.imageSize.trim()
+    : typeof imageConfig.image_size === 'string'
+      ? imageConfig.image_size.trim()
+      : typeof nestedResponseFormat.image_size === 'string'
+        ? nestedResponseFormat.image_size.trim()
+        : ''
+  const imageSizeValidation = validateGeminiImageGenerationImageSize({
+    model: input.model,
+    imageSize,
+  })
+  if (!imageSizeValidation.ok) {
+    throw new Error(`Google AI Studio image size ${imageSize || '(empty)'} is not supported for ${input.model}. Supported sizes: ${imageSizeValidation.supportedImageSizes.join(', ')}.`)
+  }
+  if (aspectRatio) responseFormat.aspect_ratio = aspectRatio
+  if (imageSize) responseFormat.image_size = imageSize
+
+  const generationConfig = buildGeminiInteractionGenerationConfig(input)
+
+  return {
+    model: input.model.startsWith('models/') ? input.model : `models/${input.model}`,
+    input: flattenGeminiPrompt(messages),
+    stream: true,
+    response_format: responseFormat as GeminiInteractionRequest['response_format'],
+    ...(generationConfig ? { generation_config: generationConfig } : {}),
+  }
+}
+
+function buildGeminiInteractionGenerationConfig(input: GeminiRequestInput): GeminiInteractionRequest['generation_config'] | undefined {
+  const policy = resolveGeminiImageGenerationPolicy(input.model)
+  const config = input.config.geminiThinking
+  const out: Record<string, unknown> = {}
+  if (
+    policy.kind !== 'unsupported' &&
+    policy.thinkingLevels.length > 0 &&
+    config?.mode === 'level' &&
+    typeof config.thinkingLevel === 'string' &&
+    (policy.thinkingLevels as readonly string[]).includes(config.thinkingLevel)
+  ) {
+    out.thinking_level = config.thinkingLevel
+  }
+  if (policy.supportsThoughtSummaries && config?.includeThoughts === true) {
+    out.thinking_summaries = 'auto'
+  }
+  return Object.keys(out).length > 0 ? out as GeminiInteractionRequest['generation_config'] : undefined
+}
+
+function flattenGeminiPrompt(messages: ReadonlyArray<GeminiContent>): string {
+  return messages
+    .map((message) =>
+      (message.parts ?? [])
+        .map((part) => typeof part.text === 'string' ? part.text : '')
+        .join('\n')
+        .trim()
+    )
+    .filter(Boolean)
+    .join('\n\n')
 }

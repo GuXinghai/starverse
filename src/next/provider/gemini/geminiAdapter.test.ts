@@ -107,6 +107,148 @@ describe('streamViaGemini', () => {
     expect(body.contents).toEqual([{ role: 'user', parts: [{ text: 'Hello' }] }])
   })
 
+  it('routes image generation requests through Gemini Interactions API', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      interaction: {
+        output_image: {
+          data: 'iVBORw0KGgo=',
+          mime_type: 'image/png',
+        },
+      },
+    }), { status: 200 }))
+
+    const events = await collectEvents(streamViaGemini(makeRequest({
+      imageGeneration: {
+        outputMode: 'image_only',
+        aspectRatio: '1:1',
+        imageSize: '1K',
+      },
+    }), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url, init] = (fetch as any).mock.calls[0]
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/interactions')
+    const body = JSON.parse(init.body)
+    expect(body).toMatchObject({
+      model: 'models/gemini-2.5-pro',
+      input: 'Hello',
+      response_format: {
+        type: 'image',
+        aspect_ratio: '1:1',
+        image_size: '1K',
+      },
+    })
+    expect(events).toContainEqual({
+      type: 'message.content_block_append',
+      messageId: 'assistant_1',
+      choiceIndex: 0,
+      block: {
+        type: 'image',
+        url: 'data:image/png;base64,iVBORw0KGgo=',
+      },
+    })
+    expect(events.at(-1)).toEqual({ type: 'stream.done' })
+  })
+
+  it('streams Gemini Interactions thought summaries before generated image blocks', async () => {
+    const response = makeSseResponse(
+      `data: ${JSON.stringify({ type: 'thought_summary', text: 'Planning the scene.', thought_signature: 'sig_1' })}`,
+      `data: ${JSON.stringify({ type: 'output_image', data: 'iVBORw0KGgo=', mime_type: 'image/png' })}`,
+    )
+    response.headers.set('content-type', 'text/event-stream')
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaGemini(makeRequest({
+      model: 'gemini-3.1-flash-image',
+      imageGeneration: {
+        outputMode: 'image_and_text',
+        aspectRatio: '1:1',
+      },
+      geminiThinking: {
+        mode: 'level',
+        thinkingLevel: 'high',
+        includeThoughts: true,
+      },
+    }), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.generation_config).toEqual({
+      thinking_level: 'high',
+      thinking_summaries: 'auto',
+    })
+    expect(body.thinking_config).toBeUndefined()
+    expect(events).toEqual([
+      {
+        type: 'message.reasoning_detail',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        detail: {
+          type: 'thought_summary',
+          summary: 'Planning the scene.',
+          thought_signature: 'sig_1',
+        },
+      },
+      {
+        type: 'message.content_block_append',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+      { type: 'stream.done' },
+    ])
+  })
+
+  it('keeps repeated Gemini Interactions image blocks across stream chunks', async () => {
+    const imageChunk = `data: ${JSON.stringify({ type: 'output_image', data: 'iVBORw0KGgo=', mime_type: 'image/png' })}`
+    const response = makeSseResponse(imageChunk, imageChunk)
+    response.headers.set('content-type', 'text/event-stream')
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaGemini(makeRequest({
+      imageGeneration: {
+        outputMode: 'image_and_text',
+      },
+    }), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    expect(events.filter((event) => event.type === 'message.content_block_append')).toEqual([
+      {
+        type: 'message.content_block_append',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+      {
+        type: 'message.content_block_append',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+    ])
+    expect(events.at(-1)).toEqual({ type: 'stream.done' })
+  })
+
   it('adds inlineData image part for text plus image requests without leaking local paths', async () => {
     const response = makeSseResponse(textChunkSse('Hi'), finishChunkSse('STOP'))
     const fetch = mockFetch(response)

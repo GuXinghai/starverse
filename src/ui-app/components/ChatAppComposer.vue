@@ -3,7 +3,7 @@ import { computed, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } f
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import { ModelPrefsService, type ModelPrefsFavorite, type ModelPrefsRecent, type ModelPrefsScopeInput } from '@/next/modelPrefs/modelPrefsService'
-import type { ChatSessionConfig } from '../app/chatSessionConfig'
+import type { ChatSessionConfig, ChatSessionConfigImageResolution } from '../app/chatSessionConfig'
 import type { ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
 import {
   DEFAULT_CHAT_PROVIDER_ID,
@@ -19,6 +19,10 @@ import {
   type GeminiThinkingConfig,
   type GeminiThinkingLevel,
 } from '@/next/provider/gemini/geminiThinkingPolicy'
+import {
+  isKnownGeminiImageGenerationModel,
+  resolveGeminiImageGenerationPolicy,
+} from '@/next/provider/gemini/geminiImageGenerationPolicy'
 import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 import { formatModelIndicatorName } from './modelIndicatorName'
@@ -93,7 +97,7 @@ const emit = defineEmits<{
   (e: 'updateWebSearchEnabled', value: boolean): void
   (e: 'updateWebSearchLevel', value: 'low' | 'high'): void
   (e: 'updateImageGenerationEnabled', value: boolean): void
-  (e: 'updateImageGenerationResolution', value: '1K' | '2K' | '4K'): void
+  (e: 'updateImageGenerationResolution', value: ChatSessionConfigImageResolution): void
   (e: 'updateImageGenerationAspectRatio', value: '16:9' | '3:4' | '1:1' | '4:3'): void
   (e: 'attachFilesRequested'): void
   (e: 'attachImagesRequested'): void
@@ -347,18 +351,60 @@ const selectedModelSelection = computed<ChatModelSelection>(() => ({
   modelId: selectedModel.value,
 }))
 const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === GOOGLE_AI_STUDIO_PROVIDER_KEY)
+const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModel.value))
+const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModel.value))
 const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModel.value }))
 const googleThinkingConfig = computed(() => normalizeGeminiThinkingConfig({
   model: selectedModel.value,
   config: resolvedSessionConfig.value.googleAIStudioThinking ?? DEFAULT_GEMINI_THINKING_CONFIG,
 }))
-const googleThinkingEnabled = computed(() => googleThinkingConfig.value.mode !== 'auto' && googleThinkingCapability.value.kind !== 'unsupported')
+const googleThinkingEnabled = computed(() => {
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
+  return googleThinkingConfig.value.mode !== 'auto' && googleThinkingCapability.value.kind !== 'unsupported'
+})
 const googleThinkingActiveLabel = computed(() => {
+  if (isGoogleImageGenerationModel.value) {
+    const policy = googleImageGenerationPolicy.value
+    if (policy.kind === 'nano_banana_2') {
+      const configured = googleThinkingConfig.value.thinkingLevel
+      return configured && (policy.thinkingLevels as readonly string[]).includes(configured)
+        ? configured
+        : policy.defaultThinkingLevel
+    }
+    return policy.supportsThoughtSummaries ? t('chat.console.reasoning.providerManaged') : null
+  }
   if (!googleThinkingEnabled.value) return null
   if (googleThinkingCapability.value.kind === 'budget') return String(googleThinkingConfig.value.thinkingBudget ?? googleThinkingCapability.value.defaultBudget)
   if (googleThinkingCapability.value.kind === 'level') return googleThinkingConfig.value.thinkingLevel ?? googleThinkingCapability.value.defaultLevel
   return null
 })
+const imageGenerationSizeOptions = computed<readonly ChatSessionConfigImageResolution[]>(() => {
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportedImageSizes
+  return ['1K', '2K', '4K']
+})
+const effectiveImageGenerationEnabled = computed(() =>
+  isGoogleImageGenerationModel.value || resolvedSessionConfig.value.imageGeneration.enabled
+)
+const effectiveImageGenerationResolution = computed<ChatSessionConfigImageResolution>(() =>
+  isGoogleImageGenerationModel.value &&
+    (
+      !resolvedSessionConfig.value.imageGeneration.enabled ||
+      !(googleImageGenerationPolicy.value.supportedImageSizes as readonly string[]).includes(resolvedSessionConfig.value.imageGeneration.resolution)
+    )
+    ? googleImageGenerationPolicy.value.defaultImageSize
+    : resolvedSessionConfig.value.imageGeneration.resolution
+)
+const effectiveImageGenerationAspectRatio = computed(() =>
+  isGoogleImageGenerationModel.value &&
+    (!resolvedSessionConfig.value.imageGeneration.enabled || !resolvedSessionConfig.value.imageGeneration.aspectRatio)
+    ? '1:1'
+    : resolvedSessionConfig.value.imageGeneration.aspectRatio
+)
+const effectiveImageGenerationActiveLabel = computed(() =>
+  effectiveImageGenerationEnabled.value
+    ? `${effectiveImageGenerationResolution.value} · ${effectiveImageGenerationAspectRatio.value}`
+    : null
+)
 const modelNameById = computed(() => {
   const map = new Map<string, string>()
   map.set(DEFAULT_OPENROUTER_MODEL_ID, DEFAULT_OPENROUTER_MODEL_ID)
@@ -629,10 +675,10 @@ function onPaste(event: ClipboardEvent) {
 }
 
 function onImageChipOption(value: string) {
-  const resolutions = ['1K', '2K', '4K']
+  const resolutions = imageGenerationSizeOptions.value
   const aspectRatios = ['16:9', '3:4', '1:1', '4:3']
-  if (resolutions.includes(value)) {
-    emit('updateImageGenerationResolution', value as '1K' | '2K' | '4K')
+  if ((resolutions as readonly string[]).includes(value)) {
+    emit('updateImageGenerationResolution', value as ChatSessionConfigImageResolution)
     emit('updateImageGenerationEnabled', true)
   } else if (aspectRatios.includes(value)) {
     emit('updateImageGenerationAspectRatio', value as '16:9' | '3:4' | '1:1' | '4:3')
@@ -641,6 +687,7 @@ function onImageChipOption(value: string) {
 }
 
 function onGoogleThinkingToggle() {
+  if (isGoogleImageGenerationModel.value) return
   if (googleThinkingCapability.value.kind === 'unsupported') return
   if (googleThinkingEnabled.value) {
     emit('updateGoogleAIStudioThinking', { mode: 'auto' })
@@ -664,6 +711,12 @@ function onGoogleThinkingBudgetInput(event: Event) {
 
 function onGoogleThinkingLevelInput(event: Event) {
   const value = (event.target as HTMLSelectElement).value as GeminiThinkingLevel
+  if (
+    isGoogleImageGenerationModel.value &&
+    !(googleImageGenerationPolicy.value.thinkingLevels as readonly string[]).includes(value)
+  ) {
+    return
+  }
   emit('updateGoogleAIStudioThinking', {
     mode: 'level',
     thinkingLevel: value,
@@ -917,7 +970,7 @@ onBeforeUnmount(() => {
             :label="t('composer.capabilities.reasoning')"
             :active-label="googleThinkingActiveLabel"
             kind="reasoning"
-            :disabled="disabled || googleThinkingCapability.kind === 'unsupported'"
+            :disabled="disabled || (isGoogleImageGenerationModel && googleImageGenerationPolicy.kind === 'legacy_nano_banana') || (!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported')"
             data-test-id="google-thinking-chip"
             @toggle="onGoogleThinkingToggle"
           >
@@ -934,7 +987,7 @@ onBeforeUnmount(() => {
                 class="w-52 space-y-2 px-3 py-2 text-[11px] text-gray-700"
                 data-testid="composer-google-thinking-controls"
               >
-                <template v-if="googleThinkingCapability.kind === 'budget'">
+                <template v-if="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'budget'">
                   <label class="space-y-1">
                     <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.thinkingBudget') }}</span>
                     <input
@@ -949,7 +1002,21 @@ onBeforeUnmount(() => {
                     />
                   </label>
                 </template>
-                <template v-else-if="googleThinkingCapability.kind === 'level'">
+                <template v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.thinkingLevels.length > 0">
+                  <label class="space-y-1">
+                    <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.thinkingLevel') }}</span>
+                    <select
+                      class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
+                      :value="googleThinkingActiveLabel"
+                      :disabled="disabled"
+                      data-testid="composer-google-thinking-level"
+                      @change="onGoogleThinkingLevelInput"
+                    >
+                      <option v-for="level in googleImageGenerationPolicy.thinkingLevels" :key="level" :value="level">{{ level }}</option>
+                    </select>
+                  </label>
+                </template>
+                <template v-else-if="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'level'">
                   <label class="space-y-1">
                     <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.thinkingLevel') }}</span>
                     <select
@@ -964,7 +1031,7 @@ onBeforeUnmount(() => {
                   </label>
                 </template>
                 <label
-                  v-if="googleThinkingCapability.kind !== 'unsupported'"
+                  v-if="isGoogleImageGenerationModel ? googleImageGenerationPolicy.supportsThoughtSummaries : googleThinkingCapability.kind !== 'unsupported'"
                   class="flex items-center gap-1.5"
                 >
                   <input
@@ -976,6 +1043,13 @@ onBeforeUnmount(() => {
                   />
                   <span>{{ t('chat.console.reasoning.includeThoughts') }}</span>
                 </label>
+                <div
+                  v-if="isGoogleImageGenerationModel"
+                  class="text-[11px] text-gray-500"
+                  data-testid="composer-google-thinking-provider-managed"
+                >
+                  {{ t('chat.console.reasoning.geminiImageProviderManaged') }}
+                </div>
               </div>
             </template>
           </ComposerCapabilityChip>
@@ -1001,15 +1075,15 @@ onBeforeUnmount(() => {
             </template>
           </ComposerCapabilityChip>
           <ComposerCapabilityChip
-            :enabled="resolvedSessionConfig.imageGeneration.enabled"
+            :enabled="effectiveImageGenerationEnabled"
             :label="t('composer.capabilities.image')"
-            :active-label="resolvedSessionConfig.imageGeneration.enabled ? `${resolvedSessionConfig.imageGeneration.resolution} · ${resolvedSessionConfig.imageGeneration.aspectRatio}` : null"
+            :active-label="effectiveImageGenerationActiveLabel"
             kind="image"
             :disabled="disabled"
-            :options="['1K', '2K', '4K', '—', '16:9', '3:4', '1:1', '4:3']"
+            :options="[...imageGenerationSizeOptions, '—', '16:9', '3:4', '1:1', '4:3']"
             :selected-option="null"
             data-test-id="image-chip"
-            @toggle="emit('updateImageGenerationEnabled', !resolvedSessionConfig.imageGeneration.enabled)"
+            @toggle="isGoogleImageGenerationModel ? emit('updateImageGenerationEnabled', true) : emit('updateImageGenerationEnabled', !resolvedSessionConfig.imageGeneration.enabled)"
             @select-option="onImageChipOption"
           >
             <template #icon>

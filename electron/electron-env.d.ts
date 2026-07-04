@@ -1018,6 +1018,7 @@ interface Window {
       assistantMessageId: string
       model: string
       messages: OpenAIResponsesTextChatMessage[]
+      imageGeneration?: unknown
       timeoutMs?: number
     }) => Promise<OpenAIResponsesTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>
@@ -1031,6 +1032,7 @@ interface Window {
       model: string
       messages: GoogleAIStudioTextChatMessage[]
       geminiThinking?: GeminiThinkingConfig
+      imageGeneration?: unknown
       timeoutMs?: number
     }) => Promise<GoogleAIStudioTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>

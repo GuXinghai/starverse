@@ -107,6 +107,7 @@ export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async func
   // Stream SSE → events → StarverseStreamEvent
   // Terminal coordination: exactly one terminal outcome
   let terminalEmitted = false
+  const emittedImageUrls = new Set<string>()
 
   for await (const sseEvent of decodeResponsesSSE(sseStream)) {
     if (terminalEmitted) break
@@ -115,6 +116,7 @@ export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async func
       const mapped = mapOpenAIResponsesEventToStarverse(sseEvent.data, assistantMessageId)
       for (const event of mapped) {
         if (terminalEmitted) break
+        if (isDuplicateImageContentBlock(event, emittedImageUrls)) continue
 
         if (event.type === 'stream.done' || event.type === 'stream.error') {
           yield event
@@ -189,6 +191,15 @@ function isResponsesMessage(msg: unknown): msg is ResponsesInputMessage {
   if (!msg || typeof msg !== 'object') return false
   const role = (msg as any).role
   return role === 'system' || role === 'user' || role === 'assistant' || role === 'developer'
+}
+
+function isDuplicateImageContentBlock(event: StarverseStreamEvent, emittedImageUrls: Set<string>): boolean {
+  if (event.type !== 'message.content_block_append') return false
+  const block = event.block as Record<string, unknown>
+  if (block.type !== 'image' || typeof block.url !== 'string') return false
+  if (emittedImageUrls.has(block.url)) return true
+  emittedImageUrls.add(block.url)
+  return false
 }
 
 async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent> {

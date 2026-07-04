@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildGeminiRequest, type GeminiContent } from '@/next/provider/gemini/geminiRequestBuilder'
+import { buildGeminiImageGenerationInteractionRequest, buildGeminiRequest, type GeminiContent } from '@/next/provider/gemini/geminiRequestBuilder'
 import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
 
 const baseMessages: GeminiContent[] = [
@@ -208,5 +208,86 @@ describe('buildGeminiRequest', () => {
     expect((req as any).max_tokens).toBeUndefined()
     expect((req as any).system).toBeUndefined()
     expect((req as any).thinking).toBeUndefined()
+  })
+})
+
+describe('buildGeminiImageGenerationInteractionRequest', () => {
+  it('builds Gemini Interactions image request with response_format', () => {
+    const req = buildGeminiImageGenerationInteractionRequest({
+      model: 'gemini-3.1-flash-image',
+      messages: baseMessages,
+      config: baseConfig({
+        imageGeneration: {
+          outputMode: 'image_and_text',
+          aspectRatio: '16:9',
+          imageSize: '2K',
+        },
+      }),
+    })
+
+    expect(req).toEqual({
+      model: 'models/gemini-3.1-flash-image',
+      input: 'Hello',
+      stream: true,
+      response_format: {
+        type: 'image',
+        aspect_ratio: '16:9',
+        image_size: '2K',
+      },
+    })
+  })
+
+  it('allows advanced response_format fields without writing OpenAI reasoning fields', () => {
+    const req = buildGeminiImageGenerationInteractionRequest({
+      model: 'models/gemini-3-pro-image-preview',
+      messages: [
+        { role: 'user', parts: [{ text: 'First' }] },
+        { role: 'model', parts: [{ text: 'Second' }] },
+      ],
+      config: baseConfig({
+        requestedReasoningMode: 'effort',
+        requestedReasoningEffort: 'high',
+        imageGeneration: {
+          imageConfig: {
+            response_format: { seed: 42 },
+            aspect_ratio: '1:1',
+          },
+        },
+      }),
+    })
+
+    expect(req.model).toBe('models/gemini-3-pro-image-preview')
+    expect(req.input).toBe('First\n\nSecond')
+    expect(req.stream).toBe(true)
+    expect(req.response_format).toEqual({ type: 'image', seed: 42, aspect_ratio: '1:1' })
+    expect((req as any).reasoning_effort).toBeUndefined()
+    expect((req as any).reasoning).toBeUndefined()
+  })
+
+  it('includes Interactions generation_config for image generation reasoning summaries and supported levels', () => {
+    const req = buildGeminiImageGenerationInteractionRequest({
+      model: 'gemini-3.1-flash-image',
+      messages: baseMessages,
+      config: baseConfig({
+        imageGeneration: { aspectRatio: '1:1' },
+        geminiThinking: { mode: 'level', thinkingLevel: 'high', includeThoughts: true },
+      }),
+    })
+
+    expect(req.generation_config).toEqual({
+      thinking_level: 'high',
+      thinking_summaries: 'auto',
+    })
+    expect((req as any).thinking_config).toBeUndefined()
+  })
+
+  it('rejects illegal model-specific image sizes without fallback', () => {
+    expect(() => buildGeminiImageGenerationInteractionRequest({
+      model: 'gemini-3.1-flash-lite-image',
+      messages: baseMessages,
+      config: baseConfig({
+        imageGeneration: { imageSize: '4K' },
+      }),
+    })).toThrow('Supported sizes: 1K')
   })
 })

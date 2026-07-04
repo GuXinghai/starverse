@@ -118,6 +118,49 @@ describe('googleAIStudioTextChatIpc', () => {
     })).toMatchObject({ ok: false, code: 'invalid_payload' })
   })
 
+  it('validates image generation config as safe plain data', () => {
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_image',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'draw' }],
+      imageGeneration: {
+        outputMode: 'image_only',
+        aspectRatio: '16:9',
+        imageSize: '2K',
+        imageConfig: { response_format: { seed: 42 } },
+      },
+    })).toMatchObject({
+      ok: true,
+      imageGeneration: {
+        outputMode: 'image_only',
+        aspectRatio: '16:9',
+        imageSize: '2K',
+        imageConfig: { response_format: { seed: 42 } },
+      },
+    })
+
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_bad_image',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'draw' }],
+      imageGeneration: { imageSize: '8K' },
+    })).toMatchObject({ ok: false, code: 'invalid_payload' })
+
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_bad_known_image_size',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-3.1-flash-lite-image',
+      messages: [{ role: 'user', content: 'draw' }],
+      imageGeneration: { imageSize: '4K' },
+    })).toMatchObject({
+      ok: false,
+      code: 'invalid_payload',
+      error: 'Google AI Studio image size is not supported for this model. Supported sizes: 1K.',
+    })
+  })
+
   it('streams native Gemini text deltas with main-process Google AI Studio credential resolution', async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse')

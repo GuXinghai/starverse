@@ -240,6 +240,8 @@
         "thinkingBudget": "thinkingBudget",
         "thinkingLevel": "thinkingLevel",
         "includeThoughts": "返回推理摘要",
+        "providerManaged": "开启",
+        "geminiImageProviderManaged": "Gemini 生图模型使用提供方托管的推理。模型支持时，Starverse 可以请求返回推理摘要。",
         "geminiUnsupported": "该模型不可使用 Gemini 推理控制。",
         "effort": {
           "low": "低",

@@ -117,6 +117,10 @@ export function mapOpenAIResponsesEventToStarverse(
     // -----------------------------------------------------------------------
     case 'response.output_item.done': {
       const item = event.item as Record<string, unknown> | undefined
+      if (item?.type === 'image_generation_call') {
+        const imageEvent = imageGenerationItemToContentBlockEvent(item, messageId)
+        if (imageEvent) events.push(imageEvent)
+      }
       if (item?.type === 'reasoning') {
         // Reasoning output item finalized — emit as opaque artifact
         const summary = Array.isArray(item.summary) ? item.summary : []
@@ -144,6 +148,15 @@ export function mapOpenAIResponsesEventToStarverse(
     // -----------------------------------------------------------------------
     case 'response.completed': {
       const response = event.response as Record<string, unknown> | undefined
+      const output = Array.isArray(response?.output) ? response.output : []
+      for (const item of output) {
+        if (!item || typeof item !== 'object') continue
+        const record = item as Record<string, unknown>
+        if (record.type !== 'image_generation_call') continue
+        const imageEvent = imageGenerationItemToContentBlockEvent(record, messageId)
+        if (imageEvent) events.push(imageEvent)
+      }
+
       if (response?.usage) {
         events.push({ type: 'usage.delta', usage: response.usage })
       }
@@ -241,4 +254,25 @@ export function mapOpenAIResponsesEventToStarverse(
   }
 
   return events
+}
+
+function imageGenerationItemToContentBlockEvent(
+  item: Record<string, unknown>,
+  messageId: string,
+): StarverseStreamEvent | null {
+  const result = typeof item.result === 'string' ? item.result.trim() : ''
+  if (!result) return null
+  const outputFormat = typeof item.output_format === 'string' ? item.output_format.trim().toLowerCase() : ''
+  const mimeType = outputFormat && /^[a-z0-9.+-]+$/i.test(outputFormat)
+    ? `image/${outputFormat}`
+    : 'image/png'
+  return {
+    type: 'message.content_block_append',
+    messageId,
+    choiceIndex: 0,
+    block: {
+      type: 'image',
+      url: result.startsWith('data:image/') ? result : `data:${mimeType};base64,${result}`,
+    },
+  }
 }
