@@ -126,6 +126,9 @@ export type ProviderStreamConfig = Readonly<{
   imageGeneration?: Readonly<{
     capabilityClass?: string
     modalities?: ReadonlyArray<string>
+    outputMode?: 'auto' | 'image_only' | 'image_and_text'
+    aspectRatio?: string
+    imageSize?: '512' | '1K' | '2K' | '4K' | ''
     imageConfig?: unknown
   }>
   geminiThinking?: GeminiThinkingConfig

@@ -35,7 +35,7 @@ import {
 
 export type ChatSessionConfigReasoningEffort = 'low' | 'medium' | 'high'
 export type ChatSessionConfigWebSearchLevel = 'low' | 'high'
-export type ChatSessionConfigImageResolution = '1K' | '2K' | '4K'
+export type ChatSessionConfigImageResolution = '512' | '1K' | '2K' | '4K'
 export type ChatSessionConfigAspectRatio = '16:9' | '3:4' | '1:1' | '4:3'
 
 export type ChatSessionConfig = Readonly<{
@@ -89,7 +89,7 @@ const MODEL_META_KEY = 'selectedModelKey'
 const PROVIDER_META_KEY = 'selectedProviderId'
 const GOOGLE_AI_STUDIO_THINKING_META_KEY = 'googleAIStudioThinking'
 const IMAGE_ASPECT_RATIO_OPTIONS: readonly ChatSessionConfigAspectRatio[] = ['16:9', '3:4', '1:1', '4:3']
-const IMAGE_RESOLUTION_OPTIONS: readonly ChatSessionConfigImageResolution[] = ['1K', '2K', '4K']
+const IMAGE_RESOLUTION_OPTIONS: readonly ChatSessionConfigImageResolution[] = ['512', '1K', '2K', '4K']
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null

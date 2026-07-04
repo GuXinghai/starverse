@@ -202,6 +202,30 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
       )
       expect(events).toHaveLength(0)
     })
+
+    it('maps image_generation_call output item result to image content block', () => {
+      const events = mapOpenAIResponsesEventToStarverse(
+        reasoningOutputItemDone({
+          type: 'image_generation_call',
+          id: 'img_1',
+          result: 'iVBORw0KGgo=',
+          output_format: 'png',
+        }),
+        msgId,
+      )
+
+      expect(events).toEqual([
+        {
+          type: 'message.content_block_append',
+          messageId: msgId,
+          choiceIndex: 0,
+          block: {
+            type: 'image',
+            url: 'data:image/png;base64,iVBORw0KGgo=',
+          },
+        },
+      ])
+    })
   })
 
   // =========================================================================
@@ -255,6 +279,34 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
   // =========================================================================
 
   describe('usage', () => {
+    it('maps image_generation_call from completed response output', () => {
+      const events = mapOpenAIResponsesEventToStarverse(
+        completedEvent({
+          id: 'resp_1',
+          model: 'gpt-image-model',
+          output: [
+            {
+              type: 'image_generation_call',
+              id: 'img_1',
+              result: 'iVBORw0KGgo=',
+            },
+          ],
+        }),
+        msgId,
+      )
+
+      expect(events[0]).toEqual({
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      })
+      expect(events.at(-1)).toEqual({ type: 'stream.done' })
+    })
+
     it('maps response.completed with usage to usage.delta', () => {
       const events = mapOpenAIResponsesEventToStarverse(
         completedEvent({

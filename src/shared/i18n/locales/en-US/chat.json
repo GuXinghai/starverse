@@ -240,6 +240,8 @@
         "thinkingBudget": "thinkingBudget",
         "thinkingLevel": "thinkingLevel",
         "includeThoughts": "include thoughts",
+        "providerManaged": "on",
+        "geminiImageProviderManaged": "Gemini image models use provider-managed thinking. Starverse can request summaries when the model supports them.",
         "geminiUnsupported": "Gemini thinking is not available for this model.",
         "effort": {
           "low": "Low",

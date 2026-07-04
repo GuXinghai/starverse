@@ -220,4 +220,120 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ mode: 'level', thinkingLevel: 'minimal' }])
     expect(view.emitted('updateReasoningEffort')).toBeUndefined()
   })
+
+  it('uses managed Gemini image thinking controls and model-specific image sizes for Nano Banana 2 Lite', async () => {
+    const view = render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...googleAIStudioSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-lite-image' },
+          googleAIStudioThinking: {
+            mode: 'auto' as const,
+            includeThoughts: false,
+          },
+          imageGeneration: {
+            enabled: true,
+            resolution: '1K' as const,
+            aspectRatio: '1:1' as const,
+            mode: 'default' as const,
+            detail: null,
+          },
+        },
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        samplingParamsResolved: null,
+      },
+    })
+
+    expect(screen.getByTestId('session-reasoning-enabled')).toBeDisabled()
+    expect(screen.queryByTestId('session-google-thinking-budget')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('session-google-thinking-level')).not.toBeInTheDocument()
+    expect(screen.getByTestId('session-google-thinking-provider-managed')).toHaveTextContent(t('chat.console.reasoning.geminiImageProviderManaged'))
+
+    await userEvent.click(screen.getByTestId('session-google-thinking-include-thoughts'))
+
+    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ includeThoughts: true }])
+    expect(screen.getByRole('button', { name: '1K' })).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '2K' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '4K' })).not.toBeInTheDocument()
+  })
+
+  it('forces image generation on and keeps reasoning off for legacy Nano Banana', async () => {
+    const view = render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...googleAIStudioSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash-image' },
+          googleAIStudioThinking: {
+            mode: 'auto' as const,
+            includeThoughts: false,
+          },
+          imageGeneration: {
+            enabled: false,
+            resolution: '4K' as const,
+            aspectRatio: '16:9' as const,
+            mode: 'default' as const,
+            detail: null,
+          },
+        },
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        samplingParamsResolved: null,
+      },
+    })
+
+    const reasoningToggle = screen.getByTestId('session-reasoning-enabled')
+    expect(reasoningToggle).toBeDisabled()
+    expect(reasoningToggle).not.toBeChecked()
+    expect(screen.getByTestId('session-google-thinking-unsupported')).toHaveTextContent(t('chat.console.reasoning.geminiUnsupported'))
+
+    const imageToggle = screen.getByTestId('session-image-generation-enabled')
+    expect(imageToggle).toBeDisabled()
+    expect(imageToggle).toBeChecked()
+    expect(screen.getByRole('button', { name: '1K' })).toHaveClass('bg-gray-900')
+    expect(screen.getByRole('button', { name: '1:1' })).toHaveClass('bg-gray-900')
+    expect(screen.queryByRole('button', { name: '2K' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '4K' })).not.toBeInTheDocument()
+
+    await userEvent.click(imageToggle)
+    expect(view.emitted('updateImageGenerationEnabled')).toBeUndefined()
+  })
+
+  it('keeps selected supported image size and aspect ratio for Google image models', () => {
+    render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...googleAIStudioSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-image' },
+          googleAIStudioThinking: {
+            mode: 'level' as const,
+            thinkingLevel: 'minimal' as const,
+            includeThoughts: false,
+          },
+          imageGeneration: {
+            enabled: true,
+            resolution: '4K' as const,
+            aspectRatio: '16:9' as const,
+            mode: 'custom' as const,
+            detail: null,
+          },
+        },
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        samplingParamsResolved: null,
+      },
+    })
+
+    expect(screen.getByRole('button', { name: '4K' })).toHaveClass('bg-gray-900')
+    expect(screen.getByRole('button', { name: '16:9' })).toHaveClass('bg-gray-900')
+  })
 })

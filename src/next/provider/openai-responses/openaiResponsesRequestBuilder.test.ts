@@ -156,6 +156,49 @@ describe('buildResponsesRequest', () => {
     expect((req as any).image_config).toBeUndefined()
   })
 
+  it('adds image_generation tool when image generation is enabled', () => {
+    const req = buildResponsesRequest({
+      model: 'gpt-5-mini',
+      messages: baseMessages,
+      config: baseConfig({
+        imageGeneration: {
+          outputMode: 'image_and_text',
+          aspectRatio: '3:4',
+          imageSize: '1K',
+          imageConfig: { quality: 'high' },
+        },
+      }),
+    })
+
+    expect(req.tools).toEqual([
+      {
+        type: 'image_generation',
+        quality: 'high',
+        size: '1024x1536',
+      },
+    ])
+  })
+
+  it('appends image_generation after existing tools and does not emit OpenRouter aliases', () => {
+    const req = buildResponsesRequest({
+      model: 'gpt-5-mini',
+      messages: baseMessages,
+      config: baseConfig({
+        tools: [{ type: 'function', name: 'lookup' }],
+        imageGeneration: {
+          aspectRatio: '1:1',
+          imageSize: '4K',
+          imageConfig: { aspect_ratio: '16:9', image_size: '2K', size: 'auto' },
+        },
+      }),
+    })
+
+    expect(req.tools).toEqual([
+      { type: 'function', name: 'lookup' },
+      { type: 'image_generation', size: 'auto' },
+    ])
+  })
+
   it('does not include DeepSeek-specific fields', () => {
     const req = buildResponsesRequest({
       model: 'o3',

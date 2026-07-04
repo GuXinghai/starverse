@@ -1,5 +1,5 @@
 export type ImageGenerationOutputMode = 'auto' | 'image_only' | 'image_and_text'
-export type ImageGenerationImageSize = '1K' | '2K' | '4K'
+export type ImageGenerationImageSize = '512' | '1K' | '2K' | '4K'
 
 export type ImageGenerationUserConfig = Readonly<{
   enabled: boolean
@@ -39,7 +39,7 @@ export function normalizeImageGenerationUserConfig(value: unknown): ImageGenerat
       : 'auto'
   const normalizedImageSizeRaw = String(raw.imageSize ?? '').trim()
   const imageSize: ImageGenerationImageSize | '' =
-    normalizedImageSizeRaw === '1K' || normalizedImageSizeRaw === '2K' || normalizedImageSizeRaw === '4K'
+    normalizedImageSizeRaw === '512' || normalizedImageSizeRaw === '1K' || normalizedImageSizeRaw === '2K' || normalizedImageSizeRaw === '4K'
       ? normalizedImageSizeRaw
       : ''
   return {

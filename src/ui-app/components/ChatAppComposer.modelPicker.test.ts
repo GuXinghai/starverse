@@ -56,6 +56,13 @@ async function openGoogleThinkingMenu() {
   return await screen.findByTestId('composer-google-thinking-controls')
 }
 
+async function openImageMenu() {
+  const chip = screen.getByTestId('image-chip')
+  await fireEvent.click(within(chip).getByTestId('capability-chip-chevron'))
+  await screen.findAllByTestId('capability-chip-menu')
+  return screen.getAllByTestId('capability-chip-menu').at(-1) as HTMLElement
+}
+
 describe('ChatAppComposer model picker integration', () => {
   const originalDbBridge = (globalThis as any).dbBridge
 
@@ -1373,6 +1380,118 @@ describe('ChatAppComposer model picker integration', () => {
 
     await fireEvent.update(screen.getByTestId('composer-google-thinking-level'), 'minimal')
     expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ mode: 'level', thinkingLevel: 'minimal' }])
+  })
+
+  it('uses Gemini image model thinking and size policy for Nano Banana 2', async () => {
+    const view = render(ChatAppComposer, {
+      props: {
+        draft: '',
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...createSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-image' },
+          googleAIStudioThinking: { mode: 'level' as const, thinkingLevel: 'high' as const, includeThoughts: false },
+        },
+        modelCatalog: [],
+      },
+    })
+
+    await openGoogleThinkingMenu()
+
+    const level = screen.getByTestId('composer-google-thinking-level')
+    expect(level).toHaveValue('high')
+    expect(within(level).queryByRole('option', { name: 'low' })).not.toBeInTheDocument()
+    expect(within(level).queryByRole('option', { name: 'medium' })).not.toBeInTheDocument()
+    expect(screen.queryByTestId('composer-google-thinking-budget')).not.toBeInTheDocument()
+
+    await fireEvent.update(level, 'minimal')
+    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ mode: 'level', thinkingLevel: 'minimal' }])
+
+    await openImageMenu()
+    const options = screen.getAllByTestId('capability-chip-option').map((node) => node.textContent)
+    expect(options).toContain('512')
+    expect(options).toContain('4K')
+  })
+
+  it('forces image generation on and disables reasoning for legacy Nano Banana', async () => {
+    const view = render(ChatAppComposer, {
+      props: {
+        draft: '',
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...createSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash-image' },
+          googleAIStudioThinking: { mode: 'auto' as const, includeThoughts: false },
+          imageGeneration: {
+            enabled: false,
+            resolution: '4K' as const,
+            aspectRatio: '16:9' as const,
+            mode: 'default' as const,
+            detail: null,
+          },
+        },
+        modelCatalog: [],
+      },
+    })
+
+    const reasoningChip = screen.getByTestId('google-thinking-chip')
+    expect(within(reasoningChip).getByTestId('capability-chip-body')).toBeDisabled()
+
+    const imageChip = screen.getByTestId('image-chip')
+    expect(within(imageChip).getByTestId('capability-chip-body')).toHaveTextContent('1K · 1:1')
+
+    await fireEvent.click(within(imageChip).getByTestId('capability-chip-body'))
+    expect(view.emitted('updateImageGenerationEnabled')?.[0]).toEqual([true])
+  })
+
+  it('keeps selected supported image size and aspect ratio for Google image models', async () => {
+    render(ChatAppComposer, {
+      props: {
+        draft: '',
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...createSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-image' },
+          googleAIStudioThinking: { mode: 'level' as const, thinkingLevel: 'minimal' as const, includeThoughts: false },
+          imageGeneration: {
+            enabled: true,
+            resolution: '4K' as const,
+            aspectRatio: '16:9' as const,
+            mode: 'custom' as const,
+            detail: null,
+          },
+        },
+        modelCatalog: [],
+      },
+    })
+
+    const imageChip = screen.getByTestId('image-chip')
+    expect(within(imageChip).getByTestId('capability-chip-body')).toHaveTextContent('4K · 16:9')
+  })
+
+  it('restricts image size options for Nano Banana 2 Lite', async () => {
+    render(ChatAppComposer, {
+      props: {
+        draft: '',
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...createSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-lite-image' },
+          googleAIStudioThinking: { mode: 'auto' as const, includeThoughts: false },
+        },
+        modelCatalog: [],
+      },
+    })
+
+    await openImageMenu()
+    const options = screen.getAllByTestId('capability-chip-option').map((node) => node.textContent)
+    expect(options).toContain('1K')
+    expect(options).not.toContain('2K')
+    expect(options).not.toContain('4K')
   })
 
   it('disables Gemini thinking controls for unsupported Google AI Studio models', () => {

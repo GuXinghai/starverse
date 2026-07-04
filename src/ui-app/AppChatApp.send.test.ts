@@ -428,6 +428,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       if (method === 'settings.getSamplingParamsDefaults') return { value: null }
       if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
       if (method === 'settings.getUserMessageRenderDefault') return { value: false }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'messageAsset.persistFromDataUrls') return { ok: true, assets: [] }
       if (method === 'convo.list') {
         return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1, meta: convoListMeta }]
       }

@@ -1,5 +1,5 @@
 import type { DomainEvent } from '@/next/state/types'
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
 import type { ProviderRuntimeContentBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
 import type { GeminiThinkingConfig } from '@/next/provider/gemini/geminiThinkingPolicy'
@@ -17,6 +17,7 @@ export type GoogleAIStudioTextChatOptions = Readonly<{
   contextMessages?: readonly unknown[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
   geminiThinking?: GeminiThinkingConfig
+  imageGeneration?: ProviderStreamConfig['imageGeneration']
   signal?: AbortSignal
   timeoutMs?: number
 }>
@@ -218,6 +219,7 @@ export async function* streamGoogleAIStudioTextChatAsDomainEvents(
         model: options.model,
         messages,
         ...(options.geminiThinking ? { geminiThinking: options.geminiThinking } : {}),
+        ...(options.imageGeneration ? { imageGeneration: options.imageGeneration } : {}),
         ...(hasContentBlocks ? { currentUserContentBlocks: options.currentUserContentBlocks } : {}),
         ...(typeof options.timeoutMs === 'number' ? { timeoutMs: options.timeoutMs } : {}),
       }),

@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
+import type { ImageGenerationImageSize, ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
 
 const props = defineProps<{
   modelValue: ImageGenerationUserConfig
   disabled?: boolean
+  imageSizeOptions?: readonly ImageGenerationImageSize[]
 }>()
 
 const emit = defineEmits<{
@@ -12,6 +13,9 @@ const emit = defineEmits<{
 }>()
 
 const value = computed(() => props.modelValue)
+const imageSizeOptions = computed(() => props.imageSizeOptions && props.imageSizeOptions.length > 0
+  ? props.imageSizeOptions
+  : ['1K', '2K', '4K'] as const)
 
 function emitPatch(patch: Partial<ImageGenerationUserConfig>) {
   emit('update:modelValue', {
@@ -32,9 +36,7 @@ function emitPatch(patch: Partial<ImageGenerationUserConfig>) {
           :value="value.imageSize || '1K'"
           @change="emitPatch({ imageSize: ($event.target as HTMLSelectElement).value as any })"
         >
-          <option value="1K">1K</option>
-          <option value="2K">2K</option>
-          <option value="4K">4K</option>
+          <option v-for="size in imageSizeOptions" :key="size" :value="size">{{ size }}</option>
         </select>
       </label>
 

@@ -1,6 +1,6 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
-import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
+import type { ProviderStreamConfig, ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaGemini, type GeminiFetchFn } from '../../src/next/provider/gemini/geminiAdapter'
 import type { GeminiContent } from '../../src/next/provider/gemini/geminiRequestBuilder'
 import {
@@ -8,6 +8,7 @@ import {
   normalizeGeminiThinkingConfig,
   type GeminiThinkingConfig,
 } from '../../src/next/provider/gemini/geminiThinkingPolicy'
+import { validateGeminiImageGenerationImageSize } from '../../src/next/provider/gemini/geminiImageGenerationPolicy'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import { sanitizeProviderNetworkError } from './providerNetworkError'
@@ -36,6 +37,7 @@ export type GoogleAIStudioTextChatPayload = Readonly<{
   messages?: unknown
   currentUserContentBlocks?: unknown
   geminiThinking?: unknown
+  imageGeneration?: unknown
   timeoutMs?: unknown
 }>
 
@@ -68,6 +70,7 @@ type ValidatedTextChatSuccess = Readonly<{
   messages: GoogleAIStudioTextChatMessage[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
   geminiThinking?: GeminiThinkingConfig
+  imageGeneration?: ProviderStreamConfig['imageGeneration']
   timeoutMs: number
 }>
 
@@ -152,6 +155,82 @@ function validateGeminiThinkingConfig(raw: unknown, model: string): GeminiThinki
   return normalizeGeminiThinkingConfig({ model, config: candidate })
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
+}
+
+function clonePlainJsonObject(value: unknown): Record<string, unknown> | null | undefined {
+  if (value === undefined || value === null) return undefined
+  if (!isPlainRecord(value)) return null
+  try {
+    const text = JSON.stringify(value)
+    if (text.length > 20000) return null
+    const parsed = JSON.parse(text)
+    return isPlainRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function validateImageGenerationConfig(raw: unknown): ProviderStreamConfig['imageGeneration'] | null | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (!isPlainRecord(raw)) return null
+
+  const out: {
+    capabilityClass?: string
+    modalities?: string[]
+    outputMode?: 'auto' | 'image_only' | 'image_and_text'
+    aspectRatio?: string
+    imageSize?: '512' | '1K' | '2K' | '4K' | ''
+    imageConfig?: Record<string, unknown>
+  } = {}
+
+  if ('capabilityClass' in raw) {
+    const value = String(raw.capabilityClass ?? '').trim()
+    if (!value || value.length > 128) return null
+    out.capabilityClass = value
+  }
+  if ('modalities' in raw) {
+    if (!Array.isArray(raw.modalities)) return null
+    const modalities = raw.modalities.map((item) => String(item ?? '').trim()).filter((item) => item === 'image' || item === 'text')
+    if (modalities.length !== raw.modalities.length) return null
+    if (modalities.length > 0) out.modalities = modalities
+  }
+  if ('outputMode' in raw) {
+    if (raw.outputMode !== 'auto' && raw.outputMode !== 'image_only' && raw.outputMode !== 'image_and_text') return null
+    out.outputMode = raw.outputMode
+  }
+  if ('aspectRatio' in raw) {
+    const value = String(raw.aspectRatio ?? '').trim()
+    if (value.length > 32) return null
+    if (value) out.aspectRatio = value
+  }
+  if ('imageSize' in raw) {
+    if (raw.imageSize !== '' && raw.imageSize !== '512' && raw.imageSize !== '1K' && raw.imageSize !== '2K' && raw.imageSize !== '4K') return null
+    out.imageSize = raw.imageSize
+  }
+  if ('imageConfig' in raw) {
+    const imageConfig = clonePlainJsonObject(raw.imageConfig)
+    if (imageConfig === null) return null
+    if (imageConfig) out.imageConfig = imageConfig
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+function extractImageSizeForValidation(imageGeneration: ProviderStreamConfig['imageGeneration']): unknown {
+  if (!imageGeneration) return undefined
+  if (imageGeneration.imageSize) return imageGeneration.imageSize
+  const imageConfig = imageGeneration.imageConfig
+  if (!imageConfig || typeof imageConfig !== 'object' || Array.isArray(imageConfig)) return undefined
+  const record = imageConfig as Record<string, unknown>
+  if (typeof record.image_size === 'string') return record.image_size.trim()
+  const responseFormat = record.response_format
+  if (!responseFormat || typeof responseFormat !== 'object' || Array.isArray(responseFormat)) return undefined
+  const responseRecord = responseFormat as Record<string, unknown>
+  return typeof responseRecord.image_size === 'string' ? responseRecord.image_size.trim() : undefined
+}
+
 export function validateGoogleAIStudioTextChatPayload(payload: unknown): ValidatedTextChatPayload {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return staticFailure('invalid_payload', 'Google AI Studio text chat payload is invalid.')
@@ -178,6 +257,19 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
   if (geminiThinking === null) {
     return staticFailure('invalid_payload', 'Google AI Studio thinking config payload is invalid.')
   }
+  const imageGeneration = validateImageGenerationConfig(record.imageGeneration)
+  if (imageGeneration === null) {
+    return staticFailure('invalid_payload', 'Google AI Studio image generation payload is invalid.')
+  }
+  if (imageGeneration) {
+    const imageSizeValidation = validateGeminiImageGenerationImageSize({
+      model,
+      imageSize: extractImageSizeForValidation(imageGeneration),
+    })
+    if (!imageSizeValidation.ok) {
+      return staticFailure('invalid_payload', `Google AI Studio image size is not supported for this model. Supported sizes: ${imageSizeValidation.supportedImageSizes.join(', ')}.`)
+    }
+  }
 
   return {
     ok: true,
@@ -187,6 +279,7 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     messages,
     ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
     ...(geminiThinking ? { geminiThinking } : {}),
+    ...(imageGeneration ? { imageGeneration } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
 }
@@ -289,6 +382,7 @@ function buildProviderRequest(input: Readonly<{
       model: input.request.model,
       requestedReasoningMode: 'auto',
       ...(input.request.geminiThinking ? { geminiThinking: input.request.geminiThinking } : {}),
+      ...(input.request.imageGeneration ? { imageGeneration: input.request.imageGeneration } : {}),
     },
   }
 }

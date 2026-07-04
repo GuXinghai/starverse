@@ -27,11 +27,15 @@ import {
   type GeminiThinkingConfig,
   type GeminiThinkingLevel,
 } from '@/next/provider/gemini/geminiThinkingPolicy'
+import {
+  isKnownGeminiImageGenerationModel,
+  resolveGeminiImageGenerationPolicy,
+} from '@/next/provider/gemini/geminiImageGenerationPolicy'
 import type {
   AnthropicModelAvailabilityResult,
   AnthropicProviderModelAvailability,
 } from '@/next/provider/anthropic/anthropicModelSource'
-import type { ChatSessionConfig } from '../app/chatSessionConfig'
+import type { ChatSessionConfig, ChatSessionConfigImageResolution } from '../app/chatSessionConfig'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
@@ -187,7 +191,7 @@ const emit = defineEmits<{
   (e: 'updateWebSearchLayer', layer: SearchSettingsLayer | null): void
   (e: 'updateSamplingParamsLayer', layer: SamplingParamsLayer | null): void
   (e: 'updateImageGenerationEnabled', enabled: boolean): void
-  (e: 'updateImageGenerationResolution', value: '1K' | '2K' | '4K'): void
+  (e: 'updateImageGenerationResolution', value: ChatSessionConfigImageResolution): void
   (e: 'updateImageGenerationAspectRatio', value: '16:9' | '3:4' | '1:1' | '4:3'): void
   (e: 'updateImageGeneration', value: ImageGenerationUserConfig): void
   (e: 'updateOpenRouterChatEnabled', enabled: boolean): void
@@ -240,12 +244,39 @@ const openRouterModelValue = computed(() => (
   selectedProviderId.value === DEFAULT_CHAT_PROVIDER_ID ? selectedModelId.value : DEFAULT_OPENROUTER_MODEL_ID
 ))
 const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === 'google_ai_studio')
+const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModelId.value))
+const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModelId.value))
 const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModelId.value }))
 const googleThinkingConfig = computed(() => normalizeGeminiThinkingConfig({
   model: selectedModelId.value,
   config: props.sessionConfig.googleAIStudioThinking ?? DEFAULT_GEMINI_THINKING_CONFIG,
 }))
-const googleThinkingEnabled = computed(() => googleThinkingConfig.value.mode !== 'auto' && googleThinkingCapability.value.kind !== 'unsupported')
+const googleThinkingEnabled = computed(() => {
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
+  return googleThinkingConfig.value.mode !== 'auto' && googleThinkingCapability.value.kind !== 'unsupported'
+})
+const imageGenerationSizeOptions = computed<readonly ChatSessionConfigImageResolution[]>(() => {
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportedImageSizes
+  return ['1K', '2K', '4K']
+})
+const effectiveImageGenerationEnabled = computed(() =>
+  isGoogleImageGenerationModel.value || props.sessionConfig.imageGeneration.enabled
+)
+const effectiveImageGenerationResolution = computed<ChatSessionConfigImageResolution>(() =>
+  isGoogleImageGenerationModel.value &&
+    (
+      !props.sessionConfig.imageGeneration.enabled ||
+      !(googleImageGenerationPolicy.value.supportedImageSizes as readonly string[]).includes(props.sessionConfig.imageGeneration.resolution)
+    )
+    ? googleImageGenerationPolicy.value.defaultImageSize
+    : props.sessionConfig.imageGeneration.resolution
+)
+const effectiveImageGenerationAspectRatio = computed(() =>
+  isGoogleImageGenerationModel.value &&
+    (!props.sessionConfig.imageGeneration.enabled || !props.sessionConfig.imageGeneration.aspectRatio)
+    ? '1:1'
+    : props.sessionConfig.imageGeneration.aspectRatio
+)
 const reasoningPanelDefaultExpanded = computed(() => props.reasoningPanelDefaultExpanded !== false)
 const reasoningPanelAutoCollapseAfterReasoning = computed(() => props.reasoningPanelAutoCollapseAfterReasoning === true)
 function selectedModelFor(providerId: ChatModelSelection['providerId']): string {
@@ -516,10 +547,10 @@ const deepSeekAvailabilitySummary = computed(() => {
   return tf('chat.console.availability.records', { count: result.models.length, source, observedAt: formatObservedAt(result.observedAtMs) })
 })
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
-  enabled: props.sessionConfig.imageGeneration.enabled,
+  enabled: effectiveImageGenerationEnabled.value,
   outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? 'auto',
-  aspectRatio: props.sessionConfig.imageGeneration.aspectRatio,
-  imageSize: props.sessionConfig.imageGeneration.resolution,
+  aspectRatio: effectiveImageGenerationAspectRatio.value,
+  imageSize: effectiveImageGenerationResolution.value,
   advancedJson: props.sessionConfig.imageGeneration.detail?.advancedJson ?? '',
 }))
 
@@ -543,6 +574,7 @@ function networkFailureMessage(result: unknown): string {
 }
 
 function onGoogleThinkingEnabledChange(enabled: boolean) {
+  if (isGoogleImageGenerationModel.value) return
   if (!enabled) {
     emit('updateGoogleAIStudioThinking', { mode: 'auto' })
     return
@@ -566,9 +598,16 @@ function onGoogleThinkingBudgetChange(event: Event) {
 }
 
 function onGoogleThinkingLevelChange(event: Event) {
+  const value = (event.target as HTMLSelectElement).value as GeminiThinkingLevel
+  if (
+    isGoogleImageGenerationModel.value &&
+    !(googleImageGenerationPolicy.value.thinkingLevels as readonly string[]).includes(value)
+  ) {
+    return
+  }
   emit('updateGoogleAIStudioThinking', {
     mode: 'level',
-    thinkingLevel: (event.target as HTMLSelectElement).value as GeminiThinkingLevel,
+    thinkingLevel: value,
   })
 }
 
@@ -1945,7 +1984,7 @@ function chipClass(active: boolean): string {
             <input
               type="checkbox"
               :checked="isGoogleAIStudioSelected ? googleThinkingEnabled : props.sessionConfig.reasoning.enabled"
-              :disabled="disabled || (isGoogleAIStudioSelected && googleThinkingCapability.kind === 'unsupported')"
+              :disabled="disabled || isGoogleImageGenerationModel || (isGoogleAIStudioSelected && googleThinkingCapability.kind === 'unsupported')"
               data-testid="session-reasoning-enabled"
               @change="isGoogleAIStudioSelected ? onGoogleThinkingEnabledChange(($event.target as HTMLInputElement).checked) : emit('updateReasoningEnabled', ($event.target as HTMLInputElement).checked)"
             />
@@ -1965,7 +2004,7 @@ function chipClass(active: boolean): string {
             {{ formatReasoningEffort(effort) }}
           </button>
         </div>
-        <div v-else-if="googleThinkingCapability.kind === 'budget'" class="space-y-2" data-testid="session-google-thinking-budget-controls">
+        <div v-else-if="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'budget'" class="space-y-2" data-testid="session-google-thinking-budget-controls">
           <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
             <span>{{ t('chat.console.reasoning.thinkingBudget') }}</span>
             <input
@@ -1989,6 +2028,51 @@ function chipClass(active: boolean): string {
             />
             {{ t('chat.console.reasoning.includeThoughts') }}
           </label>
+        </div>
+        <div v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.thinkingLevels.length > 0" class="space-y-2" data-testid="session-google-thinking-level-controls">
+          <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
+            <span>{{ t('chat.console.reasoning.thinkingLevel') }}</span>
+            <select
+              class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
+              :value="googleThinkingConfig.thinkingLevel"
+              :disabled="disabled"
+              data-testid="session-google-thinking-level"
+              @change="onGoogleThinkingLevelChange"
+            >
+              <option v-for="level in googleImageGenerationPolicy.thinkingLevels" :key="level" :value="level">{{ level }}</option>
+            </select>
+          </label>
+          <label v-if="googleImageGenerationPolicy.supportsThoughtSummaries" class="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              :checked="googleThinkingConfig.includeThoughts === true"
+              :disabled="disabled"
+              data-testid="session-google-thinking-include-thoughts"
+              @change="onGoogleThinkingIncludeThoughtsChange"
+            />
+            {{ t('chat.console.reasoning.includeThoughts') }}
+          </label>
+          <div class="text-xs text-gray-500" data-testid="session-google-thinking-provider-managed">
+            {{ t('chat.console.reasoning.geminiImageProviderManaged') }}
+          </div>
+        </div>
+        <div v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.kind !== 'legacy_nano_banana'" class="space-y-2" data-testid="session-google-thinking-provider-managed-controls">
+          <label v-if="googleImageGenerationPolicy.supportsThoughtSummaries" class="flex items-center gap-2 text-sm text-gray-700">
+            <input
+              type="checkbox"
+              :checked="googleThinkingConfig.includeThoughts === true"
+              :disabled="disabled"
+              data-testid="session-google-thinking-include-thoughts"
+              @change="onGoogleThinkingIncludeThoughtsChange"
+            />
+            {{ t('chat.console.reasoning.includeThoughts') }}
+          </label>
+          <div class="text-xs text-gray-500" data-testid="session-google-thinking-provider-managed">
+            {{ t('chat.console.reasoning.geminiImageProviderManaged') }}
+          </div>
+        </div>
+        <div v-else-if="isGoogleImageGenerationModel" class="text-xs text-gray-500" data-testid="session-google-thinking-unsupported">
+          {{ t('chat.console.reasoning.geminiUnsupported') }}
         </div>
         <div v-else-if="googleThinkingCapability.kind === 'level'" class="space-y-2" data-testid="session-google-thinking-level-controls">
           <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
@@ -2078,22 +2162,23 @@ function chipClass(active: boolean): string {
           <label class="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
-              :checked="props.sessionConfig.imageGeneration.enabled"
-              :disabled="disabled"
-              @change="emit('updateImageGenerationEnabled', ($event.target as HTMLInputElement).checked)"
+              :checked="effectiveImageGenerationEnabled"
+              :disabled="disabled || isGoogleImageGenerationModel"
+              data-testid="session-image-generation-enabled"
+              @change="emit('updateImageGenerationEnabled', isGoogleImageGenerationModel ? true : ($event.target as HTMLInputElement).checked)"
             />
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
         <div class="grid grid-cols-3 gap-2">
           <button
-            v-for="resolution in ['1K', '2K', '4K']"
+            v-for="resolution in imageGenerationSizeOptions"
             :key="resolution"
             type="button"
             class="rounded-md border px-2 py-1.5 text-sm"
-            :class="chipClass(props.sessionConfig.imageGeneration.resolution === resolution)"
-            :disabled="disabled || !props.sessionConfig.imageGeneration.enabled"
-            @click="emit('updateImageGenerationResolution', resolution as '1K' | '2K' | '4K')"
+            :class="chipClass(effectiveImageGenerationResolution === resolution)"
+            :disabled="disabled || !effectiveImageGenerationEnabled"
+            @click="emit('updateImageGenerationResolution', resolution)"
           >
             {{ resolution }}
           </button>
@@ -2104,8 +2189,8 @@ function chipClass(active: boolean): string {
             :key="ratio"
             type="button"
             class="rounded-md border px-2 py-1.5 text-sm"
-            :class="chipClass(props.sessionConfig.imageGeneration.aspectRatio === ratio)"
-            :disabled="disabled || !props.sessionConfig.imageGeneration.enabled"
+            :class="chipClass(effectiveImageGenerationAspectRatio === ratio)"
+            :disabled="disabled || !effectiveImageGenerationEnabled"
             @click="emit('updateImageGenerationAspectRatio', ratio as '16:9' | '3:4' | '1:1' | '4:3')"
           >
             {{ ratio }}
@@ -2113,8 +2198,9 @@ function chipClass(active: boolean): string {
         </div>
         <ImageGenerationSettingsEditor
           :model-value="imageValue"
-          :disabled="disabled || !props.sessionConfig.imageGeneration.enabled"
-          @update:model-value="emit('updateImageGeneration', { ...$event, enabled: props.sessionConfig.imageGeneration.enabled })"
+          :disabled="disabled || !effectiveImageGenerationEnabled"
+          :image-size-options="imageGenerationSizeOptions"
+          @update:model-value="emit('updateImageGeneration', { ...$event, enabled: effectiveImageGenerationEnabled })"
         />
       </section>
 

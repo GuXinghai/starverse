@@ -89,6 +89,37 @@ describe('openAIResponsesTextChatIpc', () => {
     })).toMatchObject({ ok: false, code: 'invalid_payload' })
   })
 
+  it('validates image generation config as safe plain data', () => {
+    expect(validateOpenAIResponsesTextChatPayload({
+      requestId: 'openai_responses_req_image',
+      assistantMessageId: 'assistant_1',
+      model: 'gpt-4.1-mini',
+      messages: [{ role: 'user', content: 'draw' }],
+      imageGeneration: {
+        outputMode: 'image_and_text',
+        aspectRatio: '1:1',
+        imageSize: '1K',
+        imageConfig: { quality: 'high' },
+      },
+    })).toMatchObject({
+      ok: true,
+      imageGeneration: {
+        outputMode: 'image_and_text',
+        aspectRatio: '1:1',
+        imageSize: '1K',
+        imageConfig: { quality: 'high' },
+      },
+    })
+
+    expect(validateOpenAIResponsesTextChatPayload({
+      requestId: 'openai_responses_req_bad_image',
+      assistantMessageId: 'assistant_1',
+      model: 'gpt-4.1-mini',
+      messages: [{ role: 'user', content: 'draw' }],
+      imageGeneration: { outputMode: 'none' },
+    })).toMatchObject({ ok: false, code: 'invalid_payload' })
+  })
+
   it('streams native OpenAI Responses text deltas with main-process credential resolution', async () => {
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
       expect(url).toBe('https://api.openai.com/v1/responses')

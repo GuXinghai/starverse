@@ -16,9 +16,14 @@
 
 import type { ProviderStreamRequest, StarverseStreamEvent, StarverseProviderError } from '@/next/provider/providerTypes'
 import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
-import { buildGeminiRequest, type GeminiContent } from '@/next/provider/gemini/geminiRequestBuilder'
+import {
+  buildGeminiImageGenerationInteractionRequest,
+  buildGeminiRequest,
+  type GeminiContent,
+  type GeminiInteractionRequest,
+} from '@/next/provider/gemini/geminiRequestBuilder'
 import { decodeGeminiSSE } from '@/next/provider/gemini/geminiSseDecoder'
-import { mapGeminiStreamChunkToStarverse } from '@/next/provider/gemini/geminiStreamMapper'
+import { mapGeminiInteractionResponseToStarverse, mapGeminiStreamChunkToStarverse } from '@/next/provider/gemini/geminiStreamMapper'
 import { buildGeminiUserParts } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 // ---------------------------------------------------------------------------
@@ -57,6 +62,11 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
   // Build messages from request
   const messages = buildMessages(request)
   const systemInstruction = extractSystemPrompt(request)
+
+  if (config.imageGeneration) {
+    yield* streamViaGeminiInteractionsImageGeneration(request, transport, messages, systemInstruction)
+    return
+  }
 
   // Build Gemini request body
   const body = buildGeminiRequest({
@@ -168,6 +178,180 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------
+
+async function* streamViaGeminiInteractionsImageGeneration(
+  request: ProviderStreamRequest,
+  transport: GeminiTransportOptions & { fetch: GeminiFetchFn },
+  messages: GeminiContent[],
+  systemInstruction: string | undefined,
+): AsyncGenerator<StarverseStreamEvent> {
+  const { assistantMessageId, config, signal } = request
+  let body: GeminiInteractionRequest
+  try {
+    body = buildGeminiImageGenerationInteractionRequest({
+      model: config.model,
+      messages,
+      config,
+      ...(systemInstruction ? { systemInstruction } : {}),
+    })
+  } catch (err: any) {
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'request_build',
+        provider: 'gemini',
+        category: 'bad_request',
+        code: 'invalid_image_generation_config',
+        message: err instanceof Error ? err.message : 'Google AI Studio image generation config is invalid.',
+      },
+      terminal: true,
+    }
+    return
+  }
+  const url = `${transport.baseUrl.replace(/\/$/, '')}/v1beta/interactions`
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'x-goog-api-key': transport.apiKey,
+  }
+
+  let response: Response
+  try {
+    response = await transport.fetch(url, {
+      method: 'POST',
+      headers,
+      body: JSON.stringify(body),
+      signal: signal ?? undefined,
+    })
+  } catch (err: any) {
+    yield* mapTransportError(err)
+    return
+  }
+
+  if (!response.ok) {
+    yield* mapHttpError(response)
+    return
+  }
+
+  const contentType = response.headers.get('content-type') ?? ''
+  if (contentType.toLowerCase().includes('text/event-stream')) {
+    yield* streamGeminiInteractionSse(response, assistantMessageId)
+    return
+  }
+
+  let payload: unknown
+  try {
+    payload = await response.json()
+  } catch {
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'stream',
+        provider: 'gemini',
+        category: 'protocol',
+        message: 'Google AI Studio image generation returned invalid JSON.',
+      },
+      terminal: true,
+    }
+    return
+  }
+
+  const mapped = mapGeminiInteractionResponseToStarverse(payload, assistantMessageId)
+  if (!mapped.some((event) => event.type === 'message.content_block_append')) {
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'provider',
+        provider: 'gemini',
+        category: 'provider_error',
+        message: 'Google AI Studio image generation returned no image output.',
+        code: 'image_output_missing',
+      },
+      terminal: true,
+    }
+    return
+  }
+
+  for (const event of mapped) yield event
+  yield { type: 'stream.done' }
+}
+
+async function* streamGeminiInteractionSse(
+  response: Response,
+  assistantMessageId: string,
+): AsyncGenerator<StarverseStreamEvent> {
+  const sseStream = response.body
+  if (!sseStream) {
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'stream',
+        provider: 'gemini',
+        category: 'protocol',
+        message: 'Google AI Studio image generation stream body is null.',
+      },
+      terminal: true,
+    }
+    return
+  }
+
+  let imageEmitted = false
+  let terminalEmitted = false
+  let terminalErrorEmitted = false
+
+  for await (const sseEvent of decodeGeminiSSE(sseStream)) {
+    if (terminalEmitted) break
+
+    if (sseEvent.type === 'chunk') {
+      const mapped = mapGeminiInteractionResponseToStarverse(sseEvent.data, assistantMessageId)
+      for (const event of mapped) {
+        if (event.type === 'message.content_block_append') imageEmitted = true
+        if (event.type === 'stream.done' || event.type === 'stream.error') {
+          yield event
+          terminalEmitted = true
+          break
+        }
+        yield event
+      }
+    } else if (sseEvent.type === 'done') {
+      terminalEmitted = true
+      break
+    } else if (sseEvent.type === 'parse_error') {
+      yield {
+        type: 'stream.error',
+        error: {
+          phase: 'stream',
+          provider: 'gemini',
+          category: 'protocol',
+          message: sseEvent.message,
+        },
+        terminal: true,
+      }
+      terminalEmitted = true
+      terminalErrorEmitted = true
+    }
+  }
+
+  if (terminalErrorEmitted) return
+  if (terminalEmitted && imageEmitted) {
+    yield { type: 'stream.done' }
+    return
+  }
+  if (imageEmitted) {
+    yield { type: 'stream.done' }
+    return
+  }
+  yield {
+    type: 'stream.error',
+    error: {
+      phase: 'provider',
+      provider: 'gemini',
+      category: 'provider_error',
+      message: 'Google AI Studio image generation returned no image output.',
+      code: 'image_output_missing',
+    },
+    terminal: true,
+  }
+}
 
 function buildMessages(request: ProviderStreamRequest): GeminiContent[] {
   const messages: GeminiContent[] = []
