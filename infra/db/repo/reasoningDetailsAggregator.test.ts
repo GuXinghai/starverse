@@ -276,6 +276,93 @@ describe('buildReasoningDetailsArray', () => {
       const result = buildReasoningDetailsArray(segments)
       expect((result[0] as any).text).toBe('旧格式数据')
     })
+
+    it('保留 Gemini thought image 的 asset URL 和 reasoning piece 标记', () => {
+      const segments: ReasoningDetailSegmentRow[] = [
+        makeSegment({
+          segmentId: 1,
+          type: 'thought_image',
+          payload: JSON.stringify({
+            type: 'thought_image',
+            index: 0,
+            image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
+            __starverseReasoningPiece: true,
+          }),
+        }),
+      ]
+
+      const result = buildReasoningDetailsArray(segments)
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        type: 'thought_image',
+        index: 0,
+        image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
+        __starverseReasoningPiece: true,
+      })
+    })
+
+    it('保留 Gemini display reasoning pieces 相对图片的 segment 顺序', () => {
+      const segments: ReasoningDetailSegmentRow[] = [
+        makeSegment({
+          segmentId: 1,
+          type: 'thought_summary',
+          index: 0,
+          payload: JSON.stringify({
+            type: 'thought_summary',
+            index: 0,
+            summary: 'before image',
+            __starverseReasoningPiece: true,
+          }),
+          deltaSummary: 'before image',
+        }),
+        makeSegment({
+          segmentId: 2,
+          type: 'thought_image',
+          index: 0,
+          payload: JSON.stringify({
+            type: 'thought_image',
+            index: 0,
+            image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
+            __starverseReasoningPiece: true,
+          }),
+        }),
+        makeSegment({
+          segmentId: 3,
+          type: 'thought_summary',
+          index: 0,
+          payload: JSON.stringify({
+            type: 'thought_summary',
+            index: 0,
+            summary: 'after image',
+            __starverseReasoningPiece: true,
+          }),
+          deltaSummary: 'after image',
+        }),
+      ]
+
+      const result = buildReasoningDetailsArray(segments)
+
+      expect(result).toEqual([
+        {
+          type: 'thought_summary',
+          index: 0,
+          summary: 'before image',
+          __starverseReasoningPiece: true,
+        },
+        {
+          type: 'thought_image',
+          index: 0,
+          image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
+          __starverseReasoningPiece: true,
+        },
+        {
+          type: 'thought_summary',
+          index: 0,
+          summary: 'after image',
+          __starverseReasoningPiece: true,
+        },
+      ])
+    })
   })
 })
 

@@ -383,6 +383,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                 <template #before-content>
                   <ChatInlineReasoning
                     v-if="message.role === 'assistant' && shouldShowInlineReasoning(message)"
+                    :messageId="message.messageId"
                     :reasoningView="message.reasoningView"
                     :reasoningPieces="message.messageId === lastAssistantMessageId ? lastAssistantReasoningPieces : null"
                     :collapsed="reasoningRailMode ? !(rightRailOpen && effectiveRightRailView === 'reasoning') : message.reasoningView.panelState === 'collapsed'"

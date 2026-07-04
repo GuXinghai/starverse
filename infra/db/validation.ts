@@ -214,6 +214,7 @@ export const ListMessageErrorByIdsSchema: ZodType<ListMessageErrorByIdsInput> = 
 export const PersistMessageAssetsFromDataUrlsSchema: ZodType<PersistMessageAssetsFromDataUrlsInput> = z.object({
   messageId: z.string().min(1),
   imageDataUrls: z.array(z.string().min(1)).max(64),
+  linkToMessage: z.boolean().optional(),
 })
 
 export const ListMessageAssetsByMessageIdsSchema: ZodType<ListMessageAssetsByMessageIdsInput> = z.object({

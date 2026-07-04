@@ -96,4 +96,35 @@ describeIfBetterSqlite('MessageAssetRepo', () => {
       rmSync(tempRoot, { recursive: true, force: true })
     }
   })
+
+  it('can persist detached generated images without linking them as message content assets', () => {
+    const tempRoot = mkdtempSync(path.join(os.tmpdir(), 'starverse-message-asset-'))
+    try {
+      const db = new BetterSqlite3(':memory:')
+      loadSchema(db)
+      insertConvo(db, 'c1')
+
+      const messageRepo = new MessageRepo(db)
+      const m1 = messageRepo.append({ convoId: 'c1', role: 'assistant', body: '' })
+      const repo = new MessageAssetRepo(db, path.join(tempRoot, 'images'))
+      const persisted = repo.persistFromDataUrls({
+        messageId: m1.id,
+        imageDataUrls: [ONE_BY_ONE_PNG_DATA_URL],
+        linkToMessage: false,
+      })
+
+      expect(persisted.ok).toBe(true)
+      expect(persisted.assets).toHaveLength(1)
+      expect(persisted.assets[0].assetUrl.startsWith('asset://')).toBe(true)
+      expect(existsSync(persisted.assets[0].path)).toBe(true)
+
+      const assetCount = db.prepare('SELECT COUNT(*) AS cnt FROM asset').get() as { cnt: number }
+      const linkCount = db.prepare('SELECT COUNT(*) AS cnt FROM message_asset').get() as { cnt: number }
+      expect(assetCount.cnt).toBe(1)
+      expect(linkCount.cnt).toBe(0)
+      expect(repo.listByMessageIds({ messageIds: [m1.id] })).toEqual([])
+    } finally {
+      rmSync(tempRoot, { recursive: true, force: true })
+    }
+  })
 })

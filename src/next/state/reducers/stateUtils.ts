@@ -44,21 +44,25 @@ function nextPieceIdFrom(pieces: ReasoningPiece[]): number {
   return maxId + 1
 }
 
+function textPieceLength(piece: ReasoningPiece | undefined): number {
+  return piece?.type === 'text' ? piece.text.length : 0
+}
+
 export function appendReasoningPieces(prevPieces: ReasoningPiece[] | undefined, deltaText: string): { pieces: ReasoningPiece[]; lastLen: number } {
   if (!deltaText) {
-    const lastLen = prevPieces && prevPieces.length > 0 ? prevPieces[prevPieces.length - 1].text.length : 0
+    const lastLen = prevPieces && prevPieces.length > 0 ? textPieceLength(prevPieces[prevPieces.length - 1]) : 0
     return { pieces: prevPieces ?? [], lastLen }
   }
 
   const pieces: ReasoningPiece[] = Array.isArray(prevPieces) && prevPieces.length > 0
     ? [...prevPieces]
-    : [{ id: 1, text: '' }]
+    : [{ id: 1, type: 'text', text: '' }]
   let nextPieceId = nextPieceIdFrom(pieces)
   let remaining = deltaText
 
   const lastIndex = pieces.length - 1
   const last = pieces[lastIndex]
-  if (last.text.length < REASONING_PIECE_MAX_CHARS) {
+  if (last?.type === 'text' && last.text.length < REASONING_PIECE_MAX_CHARS) {
     const space = REASONING_PIECE_MAX_CHARS - last.text.length
     if (space > 0) {
       const head = remaining.slice(0, space)
@@ -69,12 +73,31 @@ export function appendReasoningPieces(prevPieces: ReasoningPiece[] | undefined, 
 
   while (remaining.length > 0) {
     const chunk = remaining.slice(0, REASONING_PIECE_MAX_CHARS)
-    pieces.push({ id: nextPieceId++, text: chunk })
+    pieces.push({ id: nextPieceId++, type: 'text', text: chunk })
     remaining = remaining.slice(chunk.length)
   }
 
-  const lastLen = pieces.length > 0 ? pieces[pieces.length - 1].text.length : 0
+  const lastLen = pieces.length > 0 ? textPieceLength(pieces[pieces.length - 1]) : 0
   return { pieces, lastLen }
+}
+
+export function appendReasoningImagePiece(
+  prevPieces: ReasoningPiece[] | undefined,
+  image: Readonly<{ url: string; mimeType?: string }>,
+): { pieces: ReasoningPiece[]; lastLen: number } {
+  const url = typeof image.url === 'string' ? image.url.trim() : ''
+  if (!url) {
+    const lastLen = prevPieces && prevPieces.length > 0 ? textPieceLength(prevPieces[prevPieces.length - 1]) : 0
+    return { pieces: prevPieces ?? [], lastLen }
+  }
+  const pieces: ReasoningPiece[] = Array.isArray(prevPieces) && prevPieces.length > 0 ? [...prevPieces] : []
+  pieces.push({
+    id: nextPieceIdFrom(pieces),
+    type: 'image',
+    url,
+    ...(image.mimeType ? { mimeType: image.mimeType } : {}),
+  })
+  return { pieces, lastLen: 0 }
 }
 
 export function updateMessage(state: RootState, messageId: string, updater: (m: MessageState) => MessageState): RootState {

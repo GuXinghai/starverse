@@ -140,6 +140,134 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     expect(vm?.reasoningView.reasoningText).toBe('Gemini thought text')
   })
 
+  it('derives summary text from Gemini Interactions thought summaries when only raw details are hydrated', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-3.1-flash-image',
+    })
+
+    const messagesWithThoughtSummary = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [{ type: 'thought_summary', summary: 'Gemini image reasoning summary' }],
+        reasoningPieces: [],
+      },
+    }
+    const stateWithThoughtSummary = {
+      ...s1,
+      messages: messagesWithThoughtSummary,
+      entities: { ...s1.entities, messagesById: messagesWithThoughtSummary },
+    }
+
+    const vm = selectMessage(stateWithThoughtSummary, assistantMessageId)
+
+    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.summaryText).toBe('Gemini image reasoning summary')
+  })
+
+  it('derives Gemini thought image pieces when persisted summary text already exists', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-3.1-flash-image',
+    })
+
+    const messagesWithThoughtImage = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningSummaryText: 'Persisted reasoning summary',
+        reasoningDetailsRaw: [
+          {
+            type: 'thought_image',
+            image: {
+              url: 'asset://message-images/reasoning-image.png',
+              mimeType: 'image/png',
+            },
+          },
+        ],
+        reasoningPieces: [],
+      },
+    }
+    const stateWithThoughtImage = {
+      ...s1,
+      messages: messagesWithThoughtImage,
+      entities: { ...s1.entities, messagesById: messagesWithThoughtImage },
+    }
+
+    const vm = selectMessage(stateWithThoughtImage, assistantMessageId)
+
+    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.summaryText).toBe('Persisted reasoning summary')
+    expect(vm?.reasoningView.reasoningPieces).toEqual([
+      {
+        id: 1,
+        type: 'image',
+        url: 'asset://message-images/reasoning-image.png',
+        mimeType: 'image/png',
+      },
+    ])
+  })
+
+  it('preserves Gemini display reasoning piece order when replaying raw details', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-3.1-flash-image',
+    })
+
+    const messagesWithInterleavedPieces = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningSummaryText: 'Persisted reasoning summary',
+        reasoningDetailsRaw: [
+          {
+            type: 'thought_summary',
+            summary: 'before image',
+            __starverseReasoningPiece: true,
+          },
+          {
+            type: 'thought_image',
+            image: {
+              url: 'asset://message-images/reasoning-image.png',
+              mimeType: 'image/png',
+            },
+          },
+          {
+            type: 'thought_summary',
+            summary: 'after image',
+            __starverseReasoningPiece: true,
+          },
+        ],
+        reasoningPieces: [],
+      },
+    }
+    const stateWithInterleavedPieces = {
+      ...s1,
+      messages: messagesWithInterleavedPieces,
+      entities: { ...s1.entities, messagesById: messagesWithInterleavedPieces },
+    }
+
+    const vm = selectMessage(stateWithInterleavedPieces, assistantMessageId)
+
+    expect(vm?.reasoningView.reasoningPieces).toEqual([
+      { id: 1, type: 'text', text: 'before image' },
+      {
+        id: 2,
+        type: 'image',
+        url: 'asset://message-images/reasoning-image.png',
+        mimeType: 'image/png',
+      },
+      { id: 3, type: 'text', text: 'after image' },
+    ])
+  })
+
   it('returns "shown" when hasEncryptedReasoning is true', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {

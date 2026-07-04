@@ -86,6 +86,50 @@ describe('ChatReasoningPanel', () => {
     })
   })
 
+  it('renders reasoning image pieces inside the reasoning panel', () => {
+    const { container } = render(ChatReasoningPanel, {
+      props: {
+        reasoningView: {
+          visibility: 'shown',
+          panelState: 'expanded',
+          reasoningPieces: [
+            { id: 1, type: 'text', text: 'Sketch.' },
+            { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
+            { id: 3, type: 'text', text: 'Refine.' },
+          ],
+        },
+      },
+    })
+
+    const image = container.querySelector('img[src="data:image/png;base64,abc"]')
+    expect(image).not.toBeNull()
+    return waitFor(() => {
+      expect(screen.getByText('Sketch.')).toBeInTheDocument()
+      expect(screen.getByText('Refine.')).toBeInTheDocument()
+    })
+  })
+
+  it('does not render standalone summary when mixed reasoning pieces are present', async () => {
+    const { container } = render(ChatReasoningPanel, {
+      props: {
+        reasoningView: {
+          visibility: 'shown',
+          panelState: 'expanded',
+          summaryText: 'Sketch.',
+          reasoningPieces: [
+            { id: 1, type: 'text', text: 'Sketch.' },
+            { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
+          ],
+        },
+      },
+    })
+
+    expect(container.querySelector('img[src="data:image/png;base64,abc"]')).not.toBeNull()
+    await waitFor(() => {
+      expect(screen.getAllByText('Sketch.')).toHaveLength(1)
+    })
+  })
+
   it('renders excluded copy', () => {
     render(ChatReasoningPanel, {
       props: {

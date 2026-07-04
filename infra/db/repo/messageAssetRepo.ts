@@ -389,6 +389,7 @@ export class MessageAssetRepo {
   persistFromDataUrls(input: PersistMessageAssetsFromDataUrlsInput): { ok: true; assets: MessageAssetRecord[] } {
     const messageId = String(input.messageId ?? '').trim()
     if (!messageId) throw new Error('Missing messageId')
+    const linkToMessage = input.linkToMessage !== false
 
     const rawUrls = Array.isArray(input.imageDataUrls) ? input.imageDataUrls : []
     const urls = rawUrls
@@ -400,17 +401,21 @@ export class MessageAssetRepo {
     // If DB transaction fails afterwards, these files are removed to avoid orphan blobs.
     const createdFilesToCompensate: string[] = []
     const txn = this.db.transaction(() => {
-      this.deleteMessageLinksStmt.run({ messageId })
+      if (linkToMessage) {
+        this.deleteMessageLinksStmt.run({ messageId })
+      }
       let ordinal = 0
       for (const dataUrl of urls) {
         const upsert = this.upsertAssetFromDataUrl(dataUrl)
         const now = Date.now()
-        this.insertMessageLinkStmt.run({
-          messageId,
-          assetId: upsert.asset.id,
-          ordinal,
-          createdAt: now,
-        })
+        if (linkToMessage) {
+          this.insertMessageLinkStmt.run({
+            messageId,
+            assetId: upsert.asset.id,
+            ordinal,
+            createdAt: now,
+          })
+        }
         if (upsert.assetCreated && upsert.fileCreated) {
           createdFilesToCompensate.push(upsert.asset.path)
         }

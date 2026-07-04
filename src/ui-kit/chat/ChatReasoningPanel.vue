@@ -1,11 +1,12 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, watchEffect } from 'vue'
 import type { ReasoningPiece, ReasoningView } from './types'
 import ReasoningRichText from './ReasoningRichText.vue'
 import { t } from '@/shared/i18n'
 
 const props = withDefaults(
   defineProps<{
+    messageId?: string | null
     reasoningView: ReasoningView | null
     reasoningPieces?: ReasoningPiece[] | null
     isStreaming?: boolean
@@ -22,7 +23,11 @@ const props = withDefaults(
 const reasoningPieces = computed(() => {
   const pieces = props.reasoningPieces ?? props.reasoningView?.reasoningPieces
   if (!Array.isArray(pieces)) return null
-  const normalized = pieces.filter((piece) => typeof piece?.text === 'string' && piece.text.trim().length > 0)
+  const normalized = pieces.filter((piece) => {
+    if (piece?.type === 'text') return piece.text.trim().length > 0
+    if (piece?.type === 'image') return piece.url.trim().length > 0
+    return false
+  })
   return normalized.length > 0 ? normalized : null
 })
 
@@ -34,14 +39,14 @@ const hasAnyReasoningText = computed(() => {
   return hasText || hasPieces.value
 })
 
+const shouldRenderStandaloneText = computed(() => !hasPieces.value)
+
 const reasoningBodyText = computed(() => {
+  if (!shouldRenderStandaloneText.value) return ''
   const parts: string[] = []
   const reasoningText = props.reasoningView?.reasoningText
   if (typeof reasoningText === 'string' && reasoningText.trim().length > 0) {
     parts.push(reasoningText)
-  }
-  if (reasoningPieces.value && reasoningPieces.value.length > 0) {
-    parts.push(reasoningPieces.value.map((piece) => piece.text).join(''))
   }
   return parts.join('\n\n')
 })
@@ -52,6 +57,44 @@ const formattedDuration = computed(() => {
   const ms = props.localProcessingDurationMs
   if (typeof ms !== 'number' || ms < 0) return null
   return `${(ms / 1000).toFixed(2)}s`
+})
+
+function summarizeReasoningPiece(piece: ReasoningPiece, index: number) {
+  if (piece.type === 'image') {
+    return {
+      index,
+      id: piece.id,
+      type: piece.type,
+      urlKind: piece.url.startsWith('asset://') ? 'asset' : piece.url.startsWith('data:image/') ? 'data-image' : 'other',
+      mimeType: piece.mimeType,
+    }
+  }
+  return {
+    index,
+    id: piece.id,
+    type: piece.type,
+    textLen: piece.text.length,
+    textPreview: piece.text.slice(0, 80),
+  }
+}
+
+watchEffect(() => {
+  if (typeof import.meta !== 'undefined' && !(import.meta as any).env?.DEV) return
+  const pieces = reasoningPieces.value ?? []
+  const hasImagePiece = pieces.some((piece) => piece.type === 'image')
+  const summaryText = props.reasoningView?.summaryText ?? ''
+  if (!hasImagePiece && !(summaryText.length > 0 && pieces.length > 0)) return
+  console.warn('[reasoning-render-trace]', {
+    component: 'ChatReasoningPanel',
+    messageId: props.messageId ?? null,
+    isStreaming: props.isStreaming,
+    visibility: props.reasoningView?.visibility,
+    summaryTextLen: summaryText.length,
+    summaryTextPreview: summaryText.slice(0, 120),
+    reasoningTextLen: props.reasoningView?.reasoningText?.length ?? 0,
+    piecesSource: props.reasoningPieces ? 'prop' : 'reasoningView',
+    pieces: pieces.map(summarizeReasoningPiece),
+  })
 })
 </script>
 
@@ -93,7 +136,7 @@ const formattedDuration = computed(() => {
             <div class="mt-1 text-sm">{{ t('chat.reasoning.encryptedDescription') }}</div>
           </div>
 
-          <div v-if="props.reasoningView.summaryText" class="rounded border border-gray-200 bg-white p-2">
+          <div v-if="shouldRenderStandaloneText && props.reasoningView.summaryText" class="rounded border border-gray-200 bg-white p-2">
             <div class="mb-1 text-xs font-semibold text-gray-700">{{ t('common.summary') }}</div>
             <ReasoningRichText
               :text="props.reasoningView.summaryText"
@@ -101,11 +144,25 @@ const formattedDuration = computed(() => {
             />
           </div>
 
-          <div v-if="reasoningBodyText" class="rounded border border-gray-200 bg-white p-2">
+          <div v-if="reasoningBodyText || hasPieces" class="space-y-2 rounded border border-gray-200 bg-white p-2">
             <ReasoningRichText
+              v-if="reasoningBodyText"
               :text="reasoningBodyText"
               :streaming="props.isStreaming === true"
             />
+            <template v-for="piece in reasoningPieces ?? []" :key="piece.id">
+              <ReasoningRichText
+                v-if="piece.type === 'text'"
+                :text="piece.text"
+                :streaming="props.isStreaming === true"
+              />
+              <img
+                v-if="piece.type === 'image'"
+                :src="piece.url"
+                class="max-h-96 max-w-full rounded border border-gray-200 object-contain"
+                alt=""
+              />
+            </template>
           </div>
 
           <div v-if="!hasAnyReasoningText" class="text-sm text-gray-500">{{ t('chat.reasoning.noPayloadShort') }}</div>

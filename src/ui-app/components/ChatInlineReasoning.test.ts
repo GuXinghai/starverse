@@ -75,7 +75,7 @@ describe('ChatInlineReasoning', () => {
         reasoningView: {
           visibility: 'shown',
           panelState: 'expanded',
-          reasoningPieces: [{ id: 1, text: 'Gemini thought text' }],
+          reasoningPieces: [{ id: 1, type: 'text', text: 'Gemini thought text' }],
         },
         collapsed: false,
         displayMode: 'inline',
@@ -94,7 +94,7 @@ describe('ChatInlineReasoning', () => {
         reasoningView: {
           visibility: 'shown',
           panelState: 'expanded',
-          reasoningPieces: [{ id: 1, text: '公式：$E=mc^2$' }],
+          reasoningPieces: [{ id: 1, type: 'text', text: '公式：$E=mc^2$' }],
         },
         collapsed: false,
         displayMode: 'inline',
@@ -103,6 +103,51 @@ describe('ChatInlineReasoning', () => {
 
     await waitFor(() => {
       expect(container.querySelector('.katex')).not.toBeNull()
+    })
+  })
+
+  it('renders reasoning image pieces inline', () => {
+    const { container } = render(ChatInlineReasoning, {
+      props: {
+        reasoningView: {
+          visibility: 'shown',
+          panelState: 'expanded',
+          reasoningPieces: [
+            { id: 1, type: 'text', text: 'Before image.' },
+            { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
+          ],
+        },
+        collapsed: false,
+        displayMode: 'inline',
+      },
+    })
+
+    expect(container.querySelector('img[src="data:image/png;base64,abc"]')).not.toBeNull()
+    return waitFor(() => {
+      expect(screen.getByText('Before image.')).toBeInTheDocument()
+    })
+  })
+
+  it('does not render standalone summary when mixed reasoning pieces are present', async () => {
+    const { container } = render(ChatInlineReasoning, {
+      props: {
+        reasoningView: {
+          visibility: 'shown',
+          panelState: 'expanded',
+          summaryText: 'Before image.',
+          reasoningPieces: [
+            { id: 1, type: 'text', text: 'Before image.' },
+            { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
+          ],
+        },
+        collapsed: false,
+        displayMode: 'inline',
+      },
+    })
+
+    expect(container.querySelector('img[src="data:image/png;base64,abc"]')).not.toBeNull()
+    await waitFor(() => {
+      expect(screen.getAllByText('Before image.')).toHaveLength(1)
     })
   })
 

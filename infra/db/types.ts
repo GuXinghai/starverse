@@ -231,6 +231,7 @@ export type ListMessageErrorByIdsInput = {
 export type PersistMessageAssetsFromDataUrlsInput = Readonly<{
   messageId: string
   imageDataUrls: string[]
+  linkToMessage?: boolean
 }>
 
 export type ListMessageAssetsByMessageIdsInput = Readonly<{

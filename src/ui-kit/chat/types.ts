@@ -33,10 +33,18 @@ export type MessageAnnotation = Readonly<Record<string, unknown>>
 export type ReasoningViewVisibility = 'shown' | 'excluded' | 'not_returned'
 export type ReasoningPanelState = 'collapsed' | 'expanded'
 
-export type ReasoningPiece = Readonly<{
-  id: number
-  text: string
-}>
+export type ReasoningPiece =
+  | Readonly<{
+      id: number
+      type: 'text'
+      text: string
+    }>
+  | Readonly<{
+      id: number
+      type: 'image'
+      url: string
+      mimeType?: string
+    }>
 
 export type ToolCallVM = Readonly<{
   index: number

@@ -3,6 +3,8 @@ import { sanitizeErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import {
   decodeBooleanAck,
   decodeAppendReasoningDetailSegmentsResponse,
+  decodeMessageAssetListResponse,
+  decodeMessageAssetPersistResponse,
   decodeMessageAppendResponse,
   decodeMessageFinalizeReasoningDetailsResponse,
   decodeMessageListResponse,
@@ -183,13 +185,49 @@ export async function persistMessageImageAssetsFromDataUrls(input: Readonly<{
   messageId: string
   imageDataUrls: string[]
 }>): Promise<PersistedMessageImageAsset[]> {
-  void input
-  return []
+  const bridge = getDbBridge()
+  if (!bridge) return []
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) return []
+  const imageDataUrls = Array.isArray(input.imageDataUrls)
+    ? input.imageDataUrls.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+  if (imageDataUrls.length === 0) return []
+  const result = await bridge.invoke('messageAsset.persistFromDataUrls', { messageId, imageDataUrls })
+  return decodeMessageAssetPersistResponse(result)
+}
+
+export async function persistDetachedImageAssetsFromDataUrls(input: Readonly<{
+  messageId: string
+  imageDataUrls: string[]
+}>): Promise<PersistedMessageImageAsset[]> {
+  const bridge = getDbBridge()
+  if (!bridge) return []
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) return []
+  const imageDataUrls = Array.isArray(input.imageDataUrls)
+    ? input.imageDataUrls.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+  if (imageDataUrls.length === 0) return []
+  const result = await bridge.invoke('messageAsset.persistFromDataUrls', {
+    messageId,
+    imageDataUrls,
+    linkToMessage: false,
+  })
+  return decodeMessageAssetPersistResponse(result)
 }
 
 export async function listMessageImageAssetsByMessageIds(messageIds: ReadonlyArray<string>): Promise<PersistedMessageImageAsset[]> {
-  void messageIds
-  return []
+  const bridge = getDbBridge()
+  if (!bridge) return []
+  const ids = Array.from(new Set(
+    (Array.isArray(messageIds) ? messageIds : [])
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean)
+  ))
+  if (ids.length === 0) return []
+  const result = await bridge.invoke('messageAsset.listByMessageIds', { messageIds: ids })
+  return decodeMessageAssetListResponse(result)
 }
 
 /** DB 写入统计 */
