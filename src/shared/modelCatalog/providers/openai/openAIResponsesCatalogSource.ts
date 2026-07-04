@@ -58,10 +58,10 @@ function catalogModelFromAvailability(
   model: OpenAIProviderModelAvailability,
   baseUrl: string,
   fetchedAtMs: number,
-): CatalogModel | null {
-  if (model.capabilitySeed?.textChat !== true || model.capabilitySeed.responsesApi !== true) return null
-  const contextLength = model.capabilitySeed.contextLength ?? model.capabilitySeed.maxInputTokens ?? null
-  const maxOutputTokens = model.capabilitySeed.maxOutputTokens ?? null
+): CatalogModel {
+  const seed = model.capabilitySeed
+  const contextLength = seed?.contextLength ?? seed?.maxInputTokens ?? null
+  const maxOutputTokens = seed?.maxOutputTokens ?? null
   return {
     modelKey: `openai_responses::${model.nativeModelId}` as const,
     providerKey: 'openai_responses',
@@ -76,16 +76,16 @@ function catalogModelFromAvailability(
     contextLength,
     maxOutputTokens,
     architectureModality: null,
-    inputModalities: model.capabilitySeed.imageInput === true ? ['text', 'image'] : ['text'],
-    outputModalities: model.capabilitySeed.audioInput === true ? ['text', 'audio'] : ['text'],
+    inputModalities: seed?.imageInput === true ? ['text', 'image'] : ['text'],
+    outputModalities: seed?.audioInput === true ? ['text', 'audio'] : ['text'],
     tokenizer: null,
     instructType: null,
     supportedParameters: ['temperature', 'top_p', 'max_output_tokens'],
     capabilities: {
-      reasoning: model.capabilitySeed.reasoning === 'supported',
-      tools: model.capabilitySeed.functionCalling === true || model.capabilitySeed.hostedTools === true,
-      structuredOutputs: model.capabilitySeed.structuredOutput === true,
-      vision: model.capabilitySeed.imageInput === true,
+      reasoning: seed?.reasoning === 'supported',
+      tools: seed?.functionCalling === true || seed?.hostedTools === true,
+      structuredOutputs: seed?.structuredOutput === true,
+      vision: seed?.imageInput === true,
       longContext: typeof contextLength === 'number' && contextLength >= 128_000,
     },
     pricing: null,
@@ -121,7 +121,6 @@ export function createOpenAIResponsesCatalogSource(): ProviderCatalogSource {
       if (!result.ok) throw new Error(result.message)
       const models = result.models
         .map((model) => catalogModelFromAvailability(model, baseUrl, result.observedAtMs))
-        .filter((model): model is CatalogModel => !!model)
       return {
         providerKey: 'openai_responses',
         baseUrl,

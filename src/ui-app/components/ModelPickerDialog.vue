@@ -3,8 +3,8 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { t, tf } from '@/shared/i18n'
 import {
   CatalogQueryService,
-  type CatalogQueryCursor,
   type CatalogQueryInput,
+  type CatalogQueryCursor,
   type CatalogQueryItem,
   type CatalogQueryResult,
   type CatalogQueryModality,
@@ -119,7 +119,7 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const listScrollRef = ref<HTMLElement | null>(null)
 const searchText = ref('')
 const includeDescriptionInSearch = ref(false)
-const selectedProviderFilter = ref<RuntimeProviderKey | 'all'>('all')
+const selectedProviderFilters = ref<RuntimeProviderKey[]>([])
 const selectedVendors = ref<string[]>([])
 const selectedCategory = ref<OpenRouterModelCategory | 'all'>('all')
 const contextLengthMin = ref('')
@@ -143,7 +143,6 @@ const loading = ref(false)
 const error = ref<string | null>(null)
 const queryNotice = ref<string | null>(null)
 const items = ref<CatalogQueryItem[]>([])
-const nextCursor = ref<CatalogQueryCursor | null>(null)
 const activeModelKey = ref('')
 const modelDetail = ref<ModelCatalogModelDetailResult['item']>(null)
 const modelDetailLoading = ref(false)
@@ -157,6 +156,17 @@ const editableFavoriteModelKeys = ref<string[]>([])
 const draggingFavoriteIndex = ref<number | null>(null)
 
 type SyncStatus = 'not_synced' | 'syncing' | 'synced' | 'failed'
+type ProviderSyncSnapshot = Readonly<{
+  status: SyncStatus
+  totalModelCount: number
+  visibleModelCount: number | null
+  hiddenModelCount: number | null
+  lastSyncedAtMs: number | null
+  errorCode: string | null
+  errorMessage: string | null
+  isStale: boolean
+  catalogRevision: string | null
+}>
 const syncStatus = ref<SyncStatus>('not_synced')
 const syncTotalModelCount = ref(0)
 const syncVisibleModelCount = ref<number | null>(null)
@@ -169,6 +179,7 @@ const latestCatalogRevision = ref<string | null>(null)
 const appliedCatalogRevision = ref<string | null>(null)
 const pendingCatalogUpdateAvailable = ref(false)
 const pendingCatalogRevision = ref<string | null>(null)
+const providerSyncSnapshots = ref<Partial<Record<ProviderCatalogKnownProviderKey, ProviderSyncSnapshot>>>({})
 const pickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
 const catalogFreshnessMs = ref(DEFAULT_CATALOG_FRESHNESS_MS)
@@ -176,6 +187,8 @@ let lastAutoSyncAtMs = 0
 let lastManualRefreshAtMs = 0
 const AUTO_SYNC_COOLDOWN_MS = 10_000
 const MANUAL_REFRESH_COOLDOWN_MS = 3_000
+const FULL_LOAD_PAGE_LIMIT = 100
+const FULL_LOAD_MAX_PAGES_PER_PROVIDER = 100
 let unsubscribeModelCatalogSynced: (() => void) | null = null
 
 const architectureModalityOptions = [
@@ -231,23 +244,40 @@ let skipAutoQuery = false
 let lastFocusBeforeOpen: HTMLElement | null = null
 
 const activeCatalogProviderKey = computed<ProviderCatalogKnownProviderKey>(() => {
-  const providerFilter = selectedProviderFilter.value
-  return providerFilter !== 'all' && isProviderCatalogSourceKey(providerFilter)
-    ? providerFilter as ProviderCatalogKnownProviderKey
+  const selectedCatalogProviders = selectedProviderFilters.value.filter(isProviderCatalogSourceKey)
+  return selectedCatalogProviders.length === 1
+    ? selectedCatalogProviders[0] as ProviderCatalogKnownProviderKey
     : DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey
+})
+const catalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() => {
+  const keys = new Set<ProviderCatalogKnownProviderKey>([
+    DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey,
+  ])
+  for (const source of props.providerSources) {
+    if (isProviderCatalogSourceKey(source.providerId)) {
+      keys.add(source.providerId as ProviderCatalogKnownProviderKey)
+    }
+  }
+  return [...keys]
 })
 const catalogPickerItems = computed(() => items.value.map((item) => toCatalogPickerItem(item)))
 const providerPickerItems = computed(() => props.providerSources.flatMap((source) => source.items.map((item) => toProviderPickerItem(item))))
+const selectedProviderSet = computed(() => new Set(selectedProviderFilters.value))
+const selectedCatalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() =>
+  catalogProviderKeys.value.filter((providerId) => selectedProviderSet.value.has(providerId))
+)
 const pickerItems = computed(() => {
-  const catalogProviderWithItems = items.value.length > 0 ? activeCatalogProviderKey.value : null
+  const catalogProvidersWithItems = new Set(
+    items.value.map((item) => catalogProviderIdFromItem(item)),
+  )
   const sourceItems = [
     ...catalogPickerItems.value,
-    ...providerPickerItems.value.filter((item) => item.providerId !== catalogProviderWithItems),
+    ...providerPickerItems.value.filter((item) => !catalogProvidersWithItems.has(item.providerId)),
   ]
-  const providerFilter = selectedProviderFilter.value
+  const providerFilter = selectedProviderSet.value
   const text = searchText.value.trim().toLowerCase()
   return sourceItems.filter((item) => {
-    if (providerFilter !== 'all' && item.providerId !== providerFilter) return false
+    if (!providerFilter.has(item.providerId)) return false
     if (item.detailSource === 'openrouter_catalog' || item.detailSource === 'provider_catalog') return true
     if (!text) return true
     const haystack = [
@@ -259,6 +289,13 @@ const pickerItems = computed(() => {
     ].map((part) => String(part ?? '').toLowerCase()).join('\n')
     return haystack.includes(text)
   })
+})
+const shownCountByProvider = computed(() => {
+  const counts = new Map<RuntimeProviderKey, number>()
+  for (const item of pickerItems.value) {
+    counts.set(item.providerId, (counts.get(item.providerId) ?? 0) + 1)
+  }
+  return counts
 })
 
 const itemKeys = computed(() => pickerItems.value.map((item) => item.itemKey))
@@ -312,9 +349,6 @@ const effectiveNotice = computed(() => {
   return noticeParts.length > 0 ? noticeParts.join(' ') : null
 })
 
-const canLoadMore = computed(() => selectedProviderFilter.value !== 'all' && !isProviderCatalogSourceKey(selectedProviderFilter.value)
-  ? false
-  : !!nextCursor.value && !loading.value && !props.disabled)
 const endpointItems = computed(() => endpointDetails.value?.items ?? [])
 const endpointFetchedAtMs = computed(() => endpointDetails.value?.fetchedAtMs ?? null)
 const endpointError = computed(() => endpointDetails.value?.error ?? null)
@@ -352,7 +386,7 @@ const queryFilterSignature = computed(() =>
   JSON.stringify({
     searchText: searchText.value.trim(),
     includeDescriptionInSearch: includeDescriptionInSearch.value,
-    selectedProviderFilter: selectedProviderFilter.value,
+    selectedProviderFilters: [...selectedProviderFilters.value].sort(),
     selectedVendors: [...selectedVendors.value].sort(),
     selectedCategory: selectedCategory.value,
     contextLengthMin: contextLengthMin.value,
@@ -417,15 +451,17 @@ const syncStatusText = computed(() => {
 
 const providerOptions = computed(() => {
   const options = new Map<RuntimeProviderKey, { providerId: RuntimeProviderKey; providerName: string; statusLabel: string; loading: boolean; count: number }>()
-  const openRouterKnownCount = syncVisibleModelCount.value ?? syncTotalModelCount.value
-  const openRouterCount = syncStatus.value === 'synced' && openRouterKnownCount > 0
+  const openRouterSnapshot = providerSyncSnapshots.value[DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey]
+  const openRouterKnownCount = openRouterSnapshot?.visibleModelCount ?? openRouterSnapshot?.totalModelCount ?? syncVisibleModelCount.value ?? syncTotalModelCount.value
+  const openRouterCount = openRouterSnapshot?.status === 'synced' && openRouterKnownCount > 0
     ? openRouterKnownCount
     : items.value.length
-  const openRouterStatusLabel = syncStatus.value === 'synced'
-    ? items.value.length < openRouterCount
-      ? `${items.value.length}/${openRouterCount} loaded`
-      : `${openRouterCount} shown`
-    : syncStatus.value
+  const openRouterStatusLabel = formatProviderOptionStatus({
+    providerId: DEFAULT_CHAT_PROVIDER_ID,
+    fallbackStatusLabel: syncStatus.value,
+    fallbackItemCount: items.value.length,
+    sourceItemCount: 0,
+  })
   options.set(DEFAULT_CHAT_PROVIDER_ID, {
     providerId: DEFAULT_CHAT_PROVIDER_ID,
     providerName: 'OpenRouter',
@@ -435,21 +471,34 @@ const providerOptions = computed(() => {
   })
   for (const source of props.providerSources) {
     const isActiveCatalogProvider = activeCatalogProviderKey.value === source.providerId
-    const catalogCount = isActiveCatalogProvider
-      ? syncVisibleModelCount.value ?? syncTotalModelCount.value ?? items.value.length
+    const snapshot = isProviderCatalogSourceKey(source.providerId)
+      ? providerSyncSnapshots.value[source.providerId as ProviderCatalogKnownProviderKey]
+      : null
+    const catalogCount = snapshot?.status === 'synced'
+      ? snapshot.visibleModelCount ?? snapshot.totalModelCount
       : 0
     options.set(source.providerId, {
       providerId: source.providerId,
       providerName: source.providerName,
-      statusLabel: isActiveCatalogProvider && syncStatus.value === 'synced'
-        ? `${catalogCount} shown`
-        : source.statusLabel,
-      loading: source.loading || (isActiveCatalogProvider && syncStatus.value === 'syncing'),
-      count: isActiveCatalogProvider && catalogCount > 0 ? catalogCount : source.items.length,
+      statusLabel: formatProviderOptionStatus({
+        providerId: source.providerId,
+        fallbackStatusLabel: source.statusLabel,
+        fallbackItemCount: isActiveCatalogProvider ? items.value.length : source.items.length,
+        sourceItemCount: source.items.length,
+      }),
+      loading: source.loading || snapshot?.status === 'syncing',
+      count: catalogCount > 0 ? catalogCount : source.items.length,
     })
   }
   return Array.from(options.values())
 })
+const providerFilterIds = computed(() => providerOptions.value.map((provider) => provider.providerId))
+const selectedProviderFilterCount = computed(() =>
+  providerFilterIds.value.filter((providerId) => selectedProviderSet.value.has(providerId)).length
+)
+const allProviderFiltersSelected = computed(() =>
+  providerFilterIds.value.length > 0 && selectedProviderFilterCount.value === providerFilterIds.value.length
+)
 
 function providerNameForId(providerId: RuntimeProviderKey): string {
   if (isProviderCatalogSourceKey(providerId)) return catalogProviderNames[providerId]
@@ -601,6 +650,101 @@ function applySyncCounts(input: Readonly<{ modelCount?: unknown; visibleModelCou
   syncTotalModelCount.value = normalizeModelCount(input.modelCount)
   syncVisibleModelCount.value = normalizeOptionalModelCount(input.visibleModelCount)
   syncHiddenModelCount.value = normalizeOptionalModelCount(input.hiddenModelCount)
+}
+
+function createProviderSyncSnapshot(input: Readonly<{
+  syncState?: unknown
+  modelCount?: unknown
+  visibleModelCount?: unknown
+  hiddenModelCount?: unknown
+  lastSyncAtMs?: unknown
+  lastErrorCode?: unknown
+  lastErrorMessage?: unknown
+  catalogRevision?: unknown
+  isStale?: unknown
+}>): ProviderSyncSnapshot {
+  const state = String(input.syncState ?? 'idle')
+  const status: SyncStatus = state === 'syncing'
+    ? 'syncing'
+    : state === 'ok'
+      ? 'synced'
+      : state === 'error'
+        ? 'failed'
+        : 'not_synced'
+  const lastSyncedAtMs = Number(input.lastSyncAtMs ?? 0)
+  const normalizedLastSyncedAtMs = Number.isFinite(lastSyncedAtMs) && lastSyncedAtMs > 0 ? lastSyncedAtMs : null
+  const totalModelCount = normalizeModelCount(input.modelCount)
+  return {
+    status,
+    totalModelCount,
+    visibleModelCount: normalizeOptionalModelCount(input.visibleModelCount),
+    hiddenModelCount: normalizeOptionalModelCount(input.hiddenModelCount),
+    lastSyncedAtMs: normalizedLastSyncedAtMs,
+    errorCode: input.lastErrorCode ? String(input.lastErrorCode) : null,
+    errorMessage: input.lastErrorMessage ? String(input.lastErrorMessage) : null,
+    isStale: input.isStale === true || isCatalogStatusStale({
+      status: status === 'synced' ? 'synced' : 'not_synced',
+      lastSyncAtMs: normalizedLastSyncedAtMs,
+      freshnessMs: catalogFreshnessMs.value,
+    }),
+    catalogRevision: normalizeCatalogRevision(input.catalogRevision, totalModelCount, normalizedLastSyncedAtMs),
+  }
+}
+
+function setProviderSyncSnapshot(providerKey: ProviderCatalogKnownProviderKey, snapshot: ProviderSyncSnapshot) {
+  providerSyncSnapshots.value = {
+    ...providerSyncSnapshots.value,
+    [providerKey]: snapshot,
+  }
+}
+
+function applyActiveSyncSnapshot(snapshot: ProviderSyncSnapshot) {
+  syncStatus.value = snapshot.status
+  syncTotalModelCount.value = snapshot.totalModelCount
+  syncVisibleModelCount.value = snapshot.visibleModelCount
+  syncHiddenModelCount.value = snapshot.hiddenModelCount
+  syncLastSyncedAtMs.value = snapshot.lastSyncedAtMs
+  syncErrorCode.value = snapshot.errorCode
+  syncErrorMessage.value = snapshot.errorMessage
+  syncIsStale.value = snapshot.isStale
+  latestCatalogRevision.value = snapshot.catalogRevision
+}
+
+function formatProviderOptionStatus(input: Readonly<{
+  providerId: RuntimeProviderKey
+  fallbackStatusLabel: string
+  fallbackItemCount: number
+  sourceItemCount: number
+}>): string {
+  if (!isProviderCatalogSourceKey(input.providerId)) return input.fallbackStatusLabel
+  const snapshot = providerSyncSnapshots.value[input.providerId as ProviderCatalogKnownProviderKey]
+  if (!snapshot) return input.fallbackStatusLabel
+  if (snapshot.status !== 'synced') return snapshot.status
+  const totalCount = snapshot.visibleModelCount ?? snapshot.totalModelCount
+  if (totalCount <= 0) return input.fallbackStatusLabel
+  const shownCount = Math.min(
+    shownCountByProvider.value.get(input.providerId) ?? input.sourceItemCount,
+    totalCount,
+  )
+  return `${shownCount}/${totalCount} shown`
+}
+
+function selectAllProviderFilters() {
+  selectedProviderFilters.value = providerFilterIds.value
+}
+
+function clearProviderFilters() {
+  selectedProviderFilters.value = []
+}
+
+function toggleProviderFilter(providerId: RuntimeProviderKey, checked: boolean) {
+  const next = new Set(selectedProviderFilters.value)
+  if (checked) {
+    next.add(providerId)
+  } else {
+    next.delete(providerId)
+  }
+  selectedProviderFilters.value = providerFilterIds.value.filter((candidate) => next.has(candidate))
 }
 
 function shouldSyncOnPickerOpen(): boolean {
@@ -785,7 +929,7 @@ function scheduleRefresh(delayMs: number) {
   clearDebounceTimer()
   debounceTimer = setTimeout(() => {
     debounceTimer = null
-    void fetchPage(false)
+    void fetchPage()
   }, Math.max(0, delayMs))
 }
 
@@ -842,7 +986,7 @@ function hasImageGenerationSignal(item: CatalogQueryItem): boolean {
   return imagePrice.length > 0
 }
 
-function buildQueryInput(append: boolean): CatalogQueryInput {
+function buildQueryInput(providerKey: ProviderCatalogKnownProviderKey, cursor: CatalogQueryCursor | null): CatalogQueryInput {
   const vendors = selectedVendors.value.length > 0 ? [...selectedVendors.value] : undefined
   const contextMin = parseNumberInput(contextLengthMin.value)
   const contextMax = parseNumberInput(contextLengthMax.value)
@@ -855,8 +999,7 @@ function buildQueryInput(append: boolean): CatalogQueryInput {
   const expiringWindowDays = expiringWithinEnabled.value ? parseNumberInput(expiringWithinDays.value) : undefined
   const tokenizers = parseCsvFilters(tokenizerFiltersText.value)
   const instructTypes = parseCsvFilters(instructTypeFiltersText.value)
-  const catalogProviderKey = activeCatalogProviderKey.value
-  const category = catalogProviderKey === DEFAULT_CHAT_PROVIDER_ID && selectedCategory.value !== 'all'
+  const category = providerKey === DEFAULT_CHAT_PROVIDER_ID && selectedCategory.value !== 'all'
     ? selectedCategory.value
     : undefined
 
@@ -877,27 +1020,19 @@ function buildQueryInput(append: boolean): CatalogQueryInput {
     ...(expiringWindowDays !== undefined ? { expiringWithinDays: Math.max(0, Math.floor(expiringWindowDays)) } : {}),
   }
   return {
-    sourceProviderKey: catalogProviderKey,
+    sourceProviderKey: providerKey,
     searchText: searchText.value.trim() || undefined,
     includeDescriptionInSearch: includeDescriptionInSearch.value,
     ...(Object.keys(filter).length > 0 ? { filter } : {}),
     page: {
-      limit: 60,
-      cursor: append ? nextCursor.value : null,
+      limit: FULL_LOAD_PAGE_LIMIT,
+      cursor,
     },
     sort: {
       by: sortBy.value,
       order: sortOrder.value,
     },
   }
-}
-
-function mergeItems(previous: readonly CatalogQueryItem[], incoming: readonly CatalogQueryItem[]): CatalogQueryItem[] {
-  if (previous.length === 0) return [...incoming]
-  const byId = new Map<string, CatalogQueryItem>()
-  for (const item of previous) byId.set(item.modelId, item)
-  for (const item of incoming) byId.set(item.modelId, item)
-  return Array.from(byId.values())
 }
 
 function ensureActiveCandidate() {
@@ -976,33 +1111,77 @@ async function restorePickerUiSnapshot(snapshot: PickerUiSnapshot) {
   }
 }
 
-async function fetchPage(append: boolean, options: Readonly<{ preserveUiState?: boolean }> = {}) {
-  const cursor = nextCursor.value
-  if (append && !cursor) return
+async function fetchProviderCatalog(providerKey: ProviderCatalogKnownProviderKey): Promise<CatalogQueryResult> {
+  const allItems: CatalogQueryItem[] = []
+  let cursor: CatalogQueryCursor | null = null
+  let firstResult: CatalogQueryResult | null = null
+  let notice: string | null = null
 
+  for (let pageIndex = 0; pageIndex < FULL_LOAD_MAX_PAGES_PER_PROVIDER; pageIndex += 1) {
+    const result = await resolveQueryFn()(buildQueryInput(providerKey, cursor))
+    if (!firstResult) firstResult = result
+    allItems.push(...(Array.isArray(result.items) ? result.items : []))
+    if (result.notice) notice = notice ? `${notice} ${result.notice}` : result.notice
+    cursor = result.nextCursor ?? null
+    if (!cursor) {
+      return {
+        ...result,
+        items: allItems,
+        nextCursor: null,
+        notice,
+        catalogRevision: firstResult.catalogRevision ?? result.catalogRevision,
+        modelCount: firstResult.modelCount ?? result.modelCount,
+        visibleModelCount: firstResult.visibleModelCount ?? result.visibleModelCount,
+        hiddenModelCount: firstResult.hiddenModelCount ?? result.hiddenModelCount,
+        lastSyncAtMs: firstResult.lastSyncAtMs ?? result.lastSyncAtMs,
+      }
+    }
+  }
+
+  const truncationNotice = `Stopped loading ${providerNameForId(providerKey)} after ${FULL_LOAD_MAX_PAGES_PER_PROVIDER * FULL_LOAD_PAGE_LIMIT} models.`
+  return {
+    ...(firstResult ?? { items: [], nextCursor: null }),
+    items: allItems,
+    nextCursor: null,
+    notice: notice ? `${notice} ${truncationNotice}` : truncationNotice,
+  }
+}
+
+async function fetchPage(options: Readonly<{ preserveUiState?: boolean }> = {}) {
   const uiSnapshot = options.preserveUiState ? capturePickerUiSnapshot() : null
   const currentSeq = ++querySeq
   loading.value = true
   error.value = null
-  if (!append) {
-    queryNotice.value = null
-  }
+  queryNotice.value = null
 
   try {
-    const result = await resolveQueryFn()(buildQueryInput(append))
-    if (currentSeq !== querySeq) return
-
-    const incoming = Array.isArray(result.items) ? result.items : []
-    items.value = append ? mergeItems(items.value, incoming) : [...incoming]
-    nextCursor.value = result.nextCursor ?? null
-    queryNotice.value = result.notice ?? null
-    if (!append) {
-      const revision = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
-      appliedCatalogRevision.value = revision
-      latestCatalogRevision.value = revision ?? latestCatalogRevision.value
+    const providerKeys = selectedCatalogProviderKeys.value
+    if (providerKeys.length === 0) {
+      items.value = []
+      appliedCatalogRevision.value = null
       pendingCatalogUpdateAvailable.value = false
       pendingCatalogRevision.value = null
+      ensureActiveCandidate()
+      await nextTick()
+      refresh()
+      return
     }
+
+    const results = await Promise.all(providerKeys.map((providerKey) => fetchProviderCatalog(providerKey)))
+    if (currentSeq !== querySeq) return
+
+    items.value = results.flatMap((result) => Array.isArray(result.items) ? result.items : [])
+    queryNotice.value = results.map((result) => String(result.notice ?? '').trim()).filter(Boolean).join(' ') || null
+    const activeResult = results.find((result) =>
+      result.items.some((item) => catalogProviderIdFromItem(item) === activeCatalogProviderKey.value)
+    ) ?? results[0] ?? null
+    const revision = activeResult
+      ? normalizeCatalogRevision(activeResult.catalogRevision, activeResult.modelCount, activeResult.lastSyncAtMs)
+      : null
+    appliedCatalogRevision.value = revision
+    latestCatalogRevision.value = revision ?? latestCatalogRevision.value
+    pendingCatalogUpdateAvailable.value = false
+    pendingCatalogRevision.value = null
     ensureActiveCandidate()
     await nextTick()
     refresh()
@@ -1011,11 +1190,8 @@ async function fetchPage(append: boolean, options: Readonly<{ preserveUiState?: 
     }
   } catch (err: any) {
     if (currentSeq !== querySeq) return
-    if (!append) {
-      items.value = []
-      nextCursor.value = null
-      activeModelKey.value = ''
-    }
+    items.value = []
+    activeModelKey.value = ''
     error.value = err?.message ? String(err.message) : 'Failed to query model catalog.'
   } finally {
     if (currentSeq === querySeq) {
@@ -1104,7 +1280,6 @@ function openDialogState() {
   lastFocusBeforeOpen = document.activeElement instanceof HTMLElement ? document.activeElement : null
   skipAutoQuery = true
   items.value = []
-  nextCursor.value = null
   activeModelKey.value = selectedModelId.value ? pickerItemKey(selectedProviderId.value, selectedModelId.value) : ''
   modelDetail.value = null
   modelDetailLoading.value = false
@@ -1113,7 +1288,7 @@ function openDialogState() {
   endpointLoading.value = false
   activeDetailTab.value = 'model'
   activePickerMode.value = 'all'
-  selectedProviderFilter.value = 'all'
+  selectedProviderFilters.value = providerFilterIds.value
   queryNotice.value = null
   error.value = null
   pendingCatalogUpdateAvailable.value = false
@@ -1136,7 +1311,7 @@ async function triggerPickerOpenSync() {
   if (now - lastAutoSyncAtMs < AUTO_SYNC_COOLDOWN_MS) return
   lastAutoSyncAtMs = now
   await loadCatalogSyncSettings()
-  await fetchSyncStatus()
+  await fetchVisibleProviderSyncStatuses()
   if (syncStatus.value === 'syncing') return
   if (!shouldSyncOnPickerOpen()) return
   await runSync(false, 'model_picker_opened')
@@ -1145,7 +1320,7 @@ async function triggerPickerOpenSync() {
 async function applyLatestCatalogList() {
   pendingCatalogUpdateAvailable.value = false
   pendingCatalogRevision.value = null
-  await fetchPage(false, { preserveUiState: true })
+  await fetchPage({ preserveUiState: true })
 }
 
 async function handleSyncedCatalogRevision(nextRevision: string | null, syncAttempted: boolean) {
@@ -1196,6 +1371,16 @@ async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_r
 
     if (succeeded) {
       const revision = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
+      const snapshot = createProviderSyncSnapshot({
+        syncState: 'ok',
+        modelCount: result.modelCount,
+        visibleModelCount: result.visibleModelCount,
+        hiddenModelCount: result.hiddenModelCount,
+        lastSyncAtMs: result.lastSyncAtMs ?? Date.now(),
+        catalogRevision: result.catalogRevision,
+        isStale: false,
+      })
+      setProviderSyncSnapshot(activeCatalogProviderKey.value, snapshot)
       syncStatus.value = 'synced'
       applySyncCounts(result)
       syncLastSyncedAtMs.value = result.lastSyncAtMs ?? Date.now()
@@ -1208,12 +1393,34 @@ async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_r
       // Defensive: IPC returned ok=false with syncAttempted=false.
       // Under current contract this should not fire (cache-fresh returns ok=true).
       // Preserve existing synced state from fetchSyncStatus.
+      const snapshot = createProviderSyncSnapshot({
+        syncState: 'ok',
+        modelCount: result.modelCount,
+        visibleModelCount: result.visibleModelCount,
+        hiddenModelCount: result.hiddenModelCount,
+        lastSyncAtMs: result.lastSyncAtMs,
+        catalogRevision: result.catalogRevision,
+        isStale: false,
+      })
+      setProviderSyncSnapshot(activeCatalogProviderKey.value, snapshot)
       syncStatus.value = 'synced'
       applySyncCounts(result)
       if (result.lastSyncAtMs) syncLastSyncedAtMs.value = result.lastSyncAtMs
       syncIsStale.value = false
       latestCatalogRevision.value = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
     } else {
+      const snapshot = createProviderSyncSnapshot({
+        syncState: 'error',
+        modelCount: result.modelCount,
+        visibleModelCount: result.visibleModelCount,
+        hiddenModelCount: result.hiddenModelCount,
+        lastSyncAtMs: result.lastSyncAtMs,
+        lastErrorCode: result.errorCode ?? 'unknown_error',
+        lastErrorMessage: result.errorMessage ?? null,
+        catalogRevision: result.catalogRevision,
+        isStale: true,
+      })
+      setProviderSyncSnapshot(activeCatalogProviderKey.value, snapshot)
       syncStatus.value = 'failed'
       syncErrorCode.value = result.errorCode ?? 'unknown_error'
       syncErrorMessage.value = result.errorMessage ?? null
@@ -1228,36 +1435,28 @@ async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_r
 }
 
 async function fetchSyncStatus() {
+  await fetchProviderSyncStatus(activeCatalogProviderKey.value, true)
+}
+
+async function fetchVisibleProviderSyncStatuses() {
+  const keys = catalogProviderKeys.value
+  await Promise.all(keys.map((providerKey) =>
+    fetchProviderSyncStatus(providerKey, providerKey === activeCatalogProviderKey.value),
+  ))
+}
+
+async function fetchProviderSyncStatus(providerKey: ProviderCatalogKnownProviderKey, applyToActiveProvider: boolean) {
   const electronAPI = (globalThis as any).electronAPI
   if (!electronAPI?.modelCatalogGetSyncStatus) return
 
   try {
-    const status = await electronAPI.modelCatalogGetSyncStatus({ providerKey: activeCatalogProviderKey.value })
+    const status = await electronAPI.modelCatalogGetSyncStatus({ providerKey })
     if (!status) return
 
-    const state = String(status.syncState ?? 'idle')
-    if (state === 'syncing') {
-      syncStatus.value = 'syncing'
-    } else if (state === 'ok') {
-      syncStatus.value = 'synced'
-      applySyncCounts(status)
-      syncLastSyncedAtMs.value = Number(status.lastSyncAtMs ?? 0)
-      syncIsStale.value = status.isStale === true || isCatalogStatusStale({
-        status: 'synced',
-        lastSyncAtMs: syncLastSyncedAtMs.value,
-        freshnessMs: catalogFreshnessMs.value,
-      })
-      latestCatalogRevision.value = normalizeCatalogRevision(status.catalogRevision, status.modelCount, status.lastSyncAtMs)
-    } else if (state === 'error') {
-      syncStatus.value = 'failed'
-      syncErrorCode.value = status.lastErrorCode ?? 'unknown_error'
-      syncErrorMessage.value = status.lastErrorMessage ?? null
-      syncIsStale.value = true
-      latestCatalogRevision.value = normalizeCatalogRevision(status.catalogRevision, status.modelCount, status.lastSyncAtMs)
-    } else {
-      syncStatus.value = 'not_synced'
-      syncIsStale.value = true
-      latestCatalogRevision.value = normalizeCatalogRevision(status.catalogRevision, status.modelCount, status.lastSyncAtMs)
+    const snapshot = createProviderSyncSnapshot(status)
+    setProviderSyncSnapshot(providerKey, snapshot)
+    if (applyToActiveProvider) {
+      applyActiveSyncSnapshot(snapshot)
     }
   } catch {
     // keep current state
@@ -1426,7 +1625,7 @@ watch(
 )
 
 watch(
-  () => selectedProviderFilter.value,
+  () => selectedProviderFilters.value.join('\n'),
   () => {
     if (!props.open || skipAutoQuery) return
     lastAutoSyncAtMs = 0
@@ -1593,30 +1792,52 @@ onBeforeUnmount(() => {
                 </label>
               </div>
               <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Provider</label>
-                <select
-                  v-model="selectedProviderFilter"
-                  class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
-                  :disabled="props.disabled"
-                  data-testid="model-picker-provider-filter"
-                >
-                  <option value="all">All providers</option>
-                  <option v-for="provider in providerOptions" :key="provider.providerId" :value="provider.providerId">
-                    {{ `${provider.providerName} (${provider.count})` }}
-                  </option>
-                </select>
+                <div class="flex items-center justify-between gap-2">
+                  <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Provider</label>
+                  <div class="flex items-center gap-1">
+                    <button
+                      type="button"
+                      class="rounded border px-1.5 py-0.5 text-[10px] shadow-sm disabled:opacity-50"
+                      :class="allProviderFiltersSelected ? 'border-blue-200 bg-blue-50 text-blue-700' : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'"
+                      :disabled="props.disabled"
+                      data-testid="model-picker-provider-select-all"
+                      @click="selectAllProviderFilters"
+                    >
+                      All
+                    </button>
+                    <button
+                      type="button"
+                      class="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-600 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                      :disabled="props.disabled"
+                      data-testid="model-picker-provider-select-none"
+                      @click="clearProviderFilters"
+                    >
+                      None
+                    </button>
+                  </div>
+                </div>
                 <div class="mt-2 space-y-1">
-                  <div
+                  <label
                     v-for="provider in providerOptions"
                     :key="`provider-status-${provider.providerId}`"
                     class="flex items-center justify-between gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px]"
                     :data-testid="`model-picker-provider-status-${provider.providerId}`"
                   >
-                    <span class="truncate font-medium text-gray-700">{{ provider.providerName }}</span>
+                    <span class="flex min-w-0 items-center gap-2">
+                      <input
+                        type="checkbox"
+                        class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                        :checked="selectedProviderSet.has(provider.providerId)"
+                        :disabled="props.disabled"
+                        :data-testid="`model-picker-provider-filter-${provider.providerId}`"
+                        @change="toggleProviderFilter(provider.providerId, ($event.target as HTMLInputElement).checked)"
+                      />
+                      <span class="truncate font-medium text-gray-700">{{ provider.providerName }}</span>
+                    </span>
                     <span :class="provider.loading ? 'text-blue-600' : provider.count > 0 ? 'text-green-700' : 'text-gray-500'">
                       {{ provider.loading ? 'loading' : provider.statusLabel }}
                     </span>
-                  </div>
+                  </label>
                 </div>
               </div>
               <div>
@@ -2158,16 +2379,6 @@ onBeforeUnmount(() => {
                 <div>
                   {{ activePickerMode === 'all' ? `${pickerItems.length} result${pickerItems.length === 1 ? '' : 's'}` : `${activeShortcutItems.length} model${activeShortcutItems.length === 1 ? '' : 's'}` }}
                 </div>
-                <button
-                  v-if="activePickerMode === 'all'"
-                  type="button"
-                  class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  :disabled="!canLoadMore"
-                  data-testid="model-picker-load-more"
-                  @click="fetchPage(true)"
-                >
-                  {{ loading ? 'Loading...' : 'Load more' }}
-                </button>
               </div>
             </div>
 
