@@ -92,6 +92,21 @@ describe('ReasoningArtifact model', () => {
     })
   })
 
+  it('maps Gemini thought summary to reasoning_summary', () => {
+    const artifact = reasoningArtifactFromDetail({
+      ...BASE,
+      providerKey: 'google_ai_studio',
+      detail: { type: 'thought_summary', summary: 'image reasoning summary' },
+    })
+
+    expect(artifact).toMatchObject({
+      providerKey: 'google_ai_studio',
+      kind: 'reasoning_summary',
+      visibility: 'diagnostic_collapsed',
+      summaryText: 'image reasoning summary',
+    })
+  })
+
   it('does not allow secret-like fields in providerSpecific', () => {
     const artifact = createReasoningArtifact({
       ...BASE,

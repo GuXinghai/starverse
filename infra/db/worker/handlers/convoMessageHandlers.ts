@@ -290,13 +290,13 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
     })
 
   register('messageAsset.persistFromDataUrls', (raw) => {
-      void PersistMessageAssetsFromDataUrlsSchema.parse(raw)
-      return { ok: true, assets: [] }
+      const input = PersistMessageAssetsFromDataUrlsSchema.parse(raw)
+      return rt.messageAssetRepo.persistFromDataUrls(input)
     })
 
   register('messageAsset.listByMessageIds', (raw) => {
-      void ListMessageAssetsByMessageIdsSchema.parse(raw)
-      return []
+      const input = ListMessageAssetsByMessageIdsSchema.parse(raw)
+      return rt.messageAssetRepo.listByMessageIds(input)
     })
 
   register('messageAsset.getById', (raw) => {

@@ -87,6 +87,56 @@ function readFixtureText(fileName: string) {
     })
     expect(s5.entities?.messagesById?.assistant_1?.reasoningVersion).toBe(baseReasoningVersion + 1)
   })
+
+  it('keeps Gemini thought images in ordered reasoning pieces', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: testModel,
+      assistantMessageId: 'assistant_1',
+      userMessageId: 'user_1',
+      userMessageText: 'hello',
+    })
+
+    const next = applyEvents(started.state, runId, [
+      {
+        type: 'MessageDeltaReasoningDetail',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        detail: { index: 0, type: 'thought_summary', summary: 'Sketch.', __starverseReasoningPiece: true },
+      },
+      {
+        type: 'MessageDeltaReasoningDetail',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        detail: {
+          index: 1,
+          type: 'thought_image',
+          image: { url: 'data:image/png;base64,abc', mimeType: 'image/png' },
+          __starverseReasoningPiece: true,
+        },
+      },
+      {
+        type: 'MessageDeltaReasoningDetail',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        detail: { index: 2, type: 'thought_summary', summary: 'Refine.', __starverseReasoningPiece: true },
+      },
+    ])
+
+    expect(next.entities?.messagesById?.assistant_1?.reasoningPieces).toEqual([
+      { id: 1, type: 'text', text: 'Sketch.' },
+      { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
+      { id: 3, type: 'text', text: 'Refine.' },
+    ])
+    const assistant = selectTranscript(next, runId).find((message) => message.messageId === 'assistant_1')
+    expect(assistant?.reasoningView.reasoningPieces).toEqual([
+      { id: 1, type: 'text', text: 'Sketch.' },
+      { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
+      { id: 3, type: 'text', text: 'Refine.' },
+    ])
+  })
 async function replayFixture(_runId: string, assistantMessageId: string, fileName: string): Promise<DomainEvent[]> {
   const text = readFixtureText(fileName)
   const bytes = new TextEncoder().encode(text)

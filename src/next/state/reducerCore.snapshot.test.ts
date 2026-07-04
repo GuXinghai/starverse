@@ -20,7 +20,10 @@ function summarizeState(state: RootState, runId: string) {
       reasoningEndReason: m.reasoningEndReason ?? null,
       reasoningDurationMs: m.reasoningDurationMs ?? null,
       reasoningSummaryText: m.reasoningSummaryText ?? null,
-      reasoningPiecesText: (m.reasoningPieces ?? []).map((p) => p.text).join(''),
+      reasoningPiecesText: (m.reasoningPieces ?? [])
+        .filter((p) => p.type === 'text')
+        .map((p) => p.text)
+        .join(''),
       error: m.errorEnvelope
         ? {
             completionClass: (m.errorEnvelope as any).completionClass ?? null,

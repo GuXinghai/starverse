@@ -45,8 +45,13 @@ function scheduleAsyncCompaction(pieces: ReasoningPiece[]): void {
   const compact = () => {
     if (pieces.length <= REASONING_PIECE_MAX_COUNT) return
     const startTime = performance.now()
-    const mergedText = pieces.slice(0, REASONING_PIECE_COMPACT_COUNT).map((p) => p.text).join('')
-    const mergedPiece = { id: nextPieceIdFrom(pieces), text: mergedText }
+    const head = pieces.slice(0, REASONING_PIECE_COMPACT_COUNT)
+    if (head.some((piece) => piece.type === 'image')) return
+    const mergedText = head
+      .filter((p) => p.type === 'text')
+      .map((p) => p.text)
+      .join('')
+    const mergedPiece: ReasoningPiece = { id: nextPieceIdFrom(pieces), type: 'text', text: mergedText }
     pieces.splice(0, REASONING_PIECE_COMPACT_COUNT, mergedPiece)
     const duration = performance.now() - startTime
     recordMergeOp(duration)
@@ -113,7 +118,7 @@ function maybeRecordReasoningDiag(event: DomainEvent, state: RootState, endTimer
     deltaTextLen,
     detailsCount,
     reasoningPiecesLen: msg?.reasoningPieces?.length ?? 0,
-    reasoningTotalChars: msg?.reasoningPieces?.reduce((sum, p) => sum + (p?.text?.length ?? 0), 0) ?? 0,
+    reasoningTotalChars: msg?.reasoningPieces?.reduce((sum, p) => sum + (p.type === 'text' ? p.text.length : 0), 0) ?? 0,
   })
 }
 

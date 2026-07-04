@@ -40,7 +40,11 @@ function recordFallbackReplayLocal(): void {
 
 function normalizeReasoningPieces(raw: ReadonlyArray<ReasoningPiece> | undefined): ReasoningPiece[] | undefined {
   if (!Array.isArray(raw)) return undefined
-  const pieces = raw.filter((piece) => typeof piece?.text === 'string' && piece.text.trim().length > 0)
+  const pieces = raw.filter((piece) => {
+    if (piece?.type === 'text') return piece.text.trim().length > 0
+    if (piece?.type === 'image') return piece.url.trim().length > 0
+    return false
+  })
   return pieces.length > 0 ? pieces : undefined
 }
 
@@ -51,11 +55,12 @@ function logPieceCount(messageId: string, pieces: ReasoningPiece[], lastPieceLen
   if (now - lastPieceReportTime < 1000) return
   lastPieceReportTime = now
   const count = pieces.length
-  const totalChars = pieces.reduce((sum, piece) => sum + (piece?.text?.length ?? 0), 0)
+  const totalChars = pieces.reduce((sum, piece) => sum + (piece.type === 'text' ? piece.text.length : 0), 0)
+  const lastPiece = pieces[count - 1]
   const resolvedLastLen =
     typeof lastPieceLen === 'number'
       ? lastPieceLen
-      : (pieces[count - 1]?.text?.length ?? 0)
+      : (lastPiece?.type === 'text' ? lastPiece.text.length : 0)
   const prev = lastPieceCounts.get(messageId)
   const elapsedMs = prev ? Math.max(1, now - prev.t) : 1000
   const delta = prev ? Math.max(0, count - prev.count) : 0
@@ -119,21 +124,77 @@ function computeReasoningVisibility(
   return 'not_returned'
 }
 
+function appendReplayTextPiece(pieces: ReasoningPiece[], text: string, nextId: number): number {
+  if (!text) return nextId
+  const lastIndex = pieces.length - 1
+  const last = pieces[lastIndex]
+  if (last?.type === 'text') {
+    pieces[lastIndex] = { ...last, text: last.text + text }
+    return nextId
+  }
+  pieces.push({ id: nextId, type: 'text', text })
+  return nextId + 1
+}
+
+function appendReplayImagePiece(
+  pieces: ReasoningPiece[],
+  image: Readonly<{ url: string; mimeType?: string }>,
+  nextId: number,
+): number {
+  const url = typeof image.url === 'string' ? image.url.trim() : ''
+  if (!url) return nextId
+  pieces.push({
+    id: nextId,
+    type: 'image',
+    url,
+    ...(image.mimeType ? { mimeType: image.mimeType } : {}),
+  })
+  return nextId + 1
+}
+
 function deriveReasoningDisplayFromDetails(reasoningDetailsRaw: unknown[]): {
   summaryText?: string
   reasoningText?: string
+  reasoningPieces?: ReasoningPiece[]
 } {
   // 使用 Merger 重放，统一快照/增量语义
   const merger = new ReasoningDetailStreamMerger()
   const firstSeenOrder = new Map<string, number>()
   let order = 0
+  const reasoningPieces: ReasoningPiece[] = []
+  let nextReasoningPieceId = 1
 
   for (const detail of reasoningDetailsRaw) {
     if (!detail || typeof detail !== 'object') continue
-    merger.merge(detail)
-    const key = buildDetailKey(detail as any)
+    const record = detail as any
+    const merged = merger.merge(record)
+    const key = buildDetailKey(record)
     if (!firstSeenOrder.has(key)) {
       firstSeenOrder.set(key, order++)
+    }
+
+    if (record.type === 'thought_image') {
+      const image = record.image
+      const url = image && typeof image === 'object' ? (image as any).url : undefined
+      if (typeof url === 'string' && url.trim().length > 0) {
+        const mimeType = typeof (image as any).mimeType === 'string' ? (image as any).mimeType : undefined
+        nextReasoningPieceId = appendReplayImagePiece(
+          reasoningPieces,
+          { url, ...(mimeType ? { mimeType } : {}) },
+          nextReasoningPieceId,
+        )
+      }
+      continue
+    }
+
+    if (
+      record.__starverseReasoningPiece === true &&
+      (record.type === 'thought_summary' || record.type === 'thinking_summary' || record.type === 'reasoning_summary')
+    ) {
+      const summary = merged?.deltaSummary ?? record.__deltaSummary ?? record.summary ?? record.text
+      if (typeof summary === 'string' && summary.length > 0) {
+        nextReasoningPieceId = appendReplayTextPiece(reasoningPieces, summary, nextReasoningPieceId)
+      }
     }
   }
 
@@ -165,15 +226,31 @@ function deriveReasoningDisplayFromDetails(reasoningDetailsRaw: unknown[]): {
       continue
     }
 
+    if (type === 'thought_image') {
+      continue
+    }
+
     if (type === 'reasoning.summary') {
       const summary = (detail as any).summary ?? (detail as any).text
       if (typeof summary === 'string' && summary.length > 0) summaryText = summary
       continue
     }
+
+    if (type === 'thought_summary' || type === 'thinking_summary' || type === 'reasoning_summary') {
+      const summary = (detail as any).summary ?? (detail as any).text
+      if (typeof summary === 'string' && summary.length > 0) {
+        if ((detail as any).__starverseReasoningPiece === true) {
+          continue
+        } else {
+          summaryText = summary
+        }
+      }
+      continue
+    }
   }
 
   const reasoningText = reasoningTextParts.length > 0 ? reasoningTextParts.join('') : undefined
-  return { summaryText, reasoningText }
+  return { summaryText, reasoningText, reasoningPieces: reasoningPieces.length > 0 ? reasoningPieces : undefined }
 }
 
 export function selectMessage(state: RootState, messageId: string): MessageVM | null {
@@ -202,13 +279,11 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   let reasoningText: string | undefined
   let reasoningPieces: ReasoningPiece[] | undefined
 
-  // 优先使用增量 pieces，必要时才回退全量重放
+  // 优先使用增量 pieces，必要时回放全量 details。DB-hydrated Gemini image
+  // reasoning can have summaryText and raw thought_image details but no live pieces.
   if (hasPieces) {
     reasoningPieces = normalizedPieces
     // 使用 pieces 时不需要 reasoningText
-  } else if (summaryText) {
-    // 仅有 summary（常见于 summary-only 流）
-    reasoningText = m.reasoningStreamingText
   } else if (hasDetails) {
     // 回退到全量重放
     usedFallback = true
@@ -216,6 +291,10 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
     const derived = deriveReasoningDisplayFromDetails(m.reasoningDetailsRaw)
     summaryText = summaryText ?? derived.summaryText
     reasoningText = derived.reasoningText
+    reasoningPieces = derived.reasoningPieces
+  } else if (summaryText) {
+    // 仅有 summary（常见于 summary-only 流）
+    reasoningText = m.reasoningStreamingText
   }
 
   if (!reasoningText && !reasoningPieces) {
