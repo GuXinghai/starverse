@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watchEffect } from 'vue'
-import type { ReasoningView, ReasoningPiece } from '@/next/state/types'
+import type { ReasoningDisplayBlock, ReasoningView, ReasoningPiece } from '@/next/state/types'
 import ReasoningRichText from '@/ui-kit/chat/ReasoningRichText.vue'
 import { t } from '@/shared/i18n'
 
@@ -57,15 +57,27 @@ const reasoningPieces = computed(() => {
   })
 })
 
+const displayBlocks = computed(() => {
+  const blocks = props.reasoningView?.displayBlocks
+  if (!Array.isArray(blocks)) return []
+  return blocks.filter((block) => {
+    if (block?.type === 'text') return block.text.trim().length > 0
+    if (block?.type === 'image') return block.url.trim().length > 0
+    if (block?.type === 'opaque') return block.label.trim().length > 0
+    return false
+  })
+})
+
 const hasReasoningPayload = computed(() => {
   return Boolean(
+    displayBlocks.value.length > 0 ||
     props.reasoningView?.summaryText ||
     props.reasoningView?.reasoningText ||
     reasoningPieces.value.length > 0
   )
 })
 
-const shouldRenderStandaloneText = computed(() => reasoningPieces.value.length === 0)
+const shouldRenderStandaloneText = computed(() => reasoningPieces.value.length === 0 && displayBlocks.value.length === 0)
 
 const reasoningBodyText = computed(() => {
   if (!shouldRenderStandaloneText.value) return ''
@@ -96,12 +108,31 @@ function summarizeReasoningPiece(piece: ReasoningPiece, index: number) {
   }
 }
 
+function summarizeDisplayBlock(block: ReasoningDisplayBlock, index: number) {
+  if (block.type === 'text') {
+    return { index, blockId: block.blockId, ordinal: block.ordinal, type: block.type, textLen: block.text.length, textPreview: block.text.slice(0, 80) }
+  }
+  if (block.type === 'image') {
+    return {
+      index,
+      blockId: block.blockId,
+      ordinal: block.ordinal,
+      type: block.type,
+      urlKind: block.url.startsWith('asset://') ? 'asset' : block.url.startsWith('data:image/') ? 'data-image' : 'other',
+      mimeType: block.mimeType,
+    }
+  }
+  return { index, blockId: block.blockId, ordinal: block.ordinal, type: block.type, label: block.label }
+}
+
 watchEffect(() => {
   if (typeof import.meta !== 'undefined' && !(import.meta as any).env?.DEV) return
   const pieces = reasoningPieces.value
+  const blocks = displayBlocks.value
   const hasImagePiece = pieces.some((piece) => piece.type === 'image')
+  const hasImageBlock = blocks.some((block) => block.type === 'image')
   const summaryText = props.reasoningView?.summaryText ?? ''
-  if (!hasImagePiece && !(summaryText.length > 0 && pieces.length > 0)) return
+  if (!hasImagePiece && !hasImageBlock && !(summaryText.length > 0 && (pieces.length > 0 || blocks.length > 0))) return
   console.warn('[reasoning-render-trace]', {
     component: 'ChatInlineReasoning',
     messageId: props.messageId ?? null,
@@ -113,6 +144,7 @@ watchEffect(() => {
     summaryTextPreview: summaryText.slice(0, 120),
     reasoningTextLen: props.reasoningView?.reasoningText?.length ?? 0,
     piecesSource: props.reasoningPieces ? 'prop' : 'reasoningView',
+    displayBlocks: blocks.map(summarizeDisplayBlock),
     pieces: pieces.map(summarizeReasoningPiece),
   })
 })
@@ -145,7 +177,26 @@ watchEffect(() => {
         :text="reasoningBodyText"
         :streaming="props.isStreaming"
       />
-      <template v-for="piece in reasoningPieces" :key="piece.id">
+      <template v-for="block in displayBlocks" :key="block.blockId">
+        <ReasoningRichText
+          v-if="block.type === 'text'"
+          :text="block.text"
+          :streaming="props.isStreaming"
+        />
+        <img
+          v-if="block.type === 'image'"
+          :src="block.url"
+          class="max-h-72 max-w-full rounded border border-gray-200 object-contain"
+          alt=""
+        />
+        <div
+          v-if="block.type === 'opaque'"
+          class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600"
+        >
+          {{ block.label }}
+        </div>
+      </template>
+      <template v-if="displayBlocks.length === 0" v-for="piece in reasoningPieces" :key="piece.id">
         <ReasoningRichText
           v-if="piece.type === 'text'"
           :text="piece.text"

@@ -1,4 +1,4 @@
-import type { RootState } from '../types'
+import type { ReasoningDisplayBlock, RootState } from '../types'
 import type { EventByType, HandlerContext } from './reducerTypes'
 import {
   appendReasoningImagePiece,
@@ -23,6 +23,48 @@ function getReasoningImage(detail: unknown): Readonly<{ url: string; mimeType?: 
 
 function shouldAppendSummaryAsPiece(detail: unknown): boolean {
   return !!(detail && typeof detail === 'object' && (detail as Record<string, unknown>).__starverseReasoningPiece === true)
+}
+
+function normalizeDisplayBlock(block: ReasoningDisplayBlock): ReasoningDisplayBlock | null {
+  if (!block || typeof block !== 'object') return null
+  const ordinal = Number(block.ordinal)
+  if (!Number.isFinite(ordinal) || ordinal < 0) return null
+  const blockId = String(block.blockId ?? '').trim()
+  if (!blockId) return null
+  if (block.type === 'text') {
+    const text = typeof block.text === 'string' ? block.text : ''
+    if (!text) return null
+    return { ...block, blockId, ordinal }
+  }
+  if (block.type === 'image') {
+    const url = typeof block.url === 'string' ? block.url.trim() : ''
+    if (!url) return null
+    return { ...block, blockId, ordinal, url }
+  }
+  if (block.type === 'opaque') {
+    const label = typeof block.label === 'string' ? block.label.trim() : ''
+    if (!label) return null
+    return { ...block, blockId, ordinal, label }
+  }
+  return null
+}
+
+export function handleMessageAppendReasoningDisplayBlock(
+  ctx: HandlerContext,
+  event: EventByType<'MessageAppendReasoningDisplayBlock'>
+): RootState {
+  const block = normalizeDisplayBlock(event.block)
+  if (!block) return ctx.state
+  return updateMessage(ctx.state, event.messageId, (m) => {
+    const prev = Array.isArray(m.reasoningDisplayBlocks) ? m.reasoningDisplayBlocks : []
+    if (prev.some((item) => item.blockId === block.blockId || item.ordinal === block.ordinal)) return m
+    const nextBlocks = [...prev, block].sort((a, b) => a.ordinal - b.ordinal)
+    return {
+      ...m,
+      reasoningDisplayBlocks: nextBlocks,
+      reasoningVersion: m.reasoningVersion + 1,
+    }
+  })
 }
 
 export function handleMessageDeltaReasoningDetail(ctx: HandlerContext, event: EventByType<'MessageDeltaReasoningDetail'>): RootState {

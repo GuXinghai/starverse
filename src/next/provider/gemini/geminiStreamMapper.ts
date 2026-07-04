@@ -239,6 +239,7 @@ export function mapGeminiInteractionResponseToStarverse(
 ): StarverseStreamEvent[] {
   const events: StarverseStreamEvent[] = []
   const reasoningDetails = collectGeminiInteractionReasoningDetails(payload)
+  const reasoningDisplayBlocks = buildGeminiInteractionReasoningDisplayBlocks(reasoningDetails, messageId)
   const images = collectGeminiInteractionImages(payload)
   const texts = collectGeminiInteractionTexts(payload)
 
@@ -248,6 +249,15 @@ export function mapGeminiInteractionResponseToStarverse(
       messageId,
       choiceIndex: 0,
       detail,
+    })
+  }
+
+  for (const block of reasoningDisplayBlocks) {
+    events.push({
+      type: 'message.reasoning_display_block',
+      messageId,
+      choiceIndex: 0,
+      block,
     })
   }
 
@@ -275,6 +285,55 @@ export function mapGeminiInteractionResponseToStarverse(
   const usage = extractUsage(payload)
   if (usage) events.push({ type: 'usage.delta', usage })
   return events
+}
+
+function buildGeminiInteractionReasoningDisplayBlocks(
+  details: ReadonlyArray<unknown>,
+  messageId: string,
+): NonNullable<Extract<StarverseStreamEvent, { type: 'message.reasoning_display_block' }>['block']>[] {
+  const blocks: NonNullable<Extract<StarverseStreamEvent, { type: 'message.reasoning_display_block' }>['block']>[] = []
+  let ordinal = 0
+  for (const detail of details) {
+    if (!detail || typeof detail !== 'object' || Array.isArray(detail)) continue
+    const record = detail as Record<string, unknown>
+    const type = String(record.type ?? '')
+    if (type === 'thought_image') {
+      const image = asPlainRecord(record.image)
+      const url = typeof image?.url === 'string' ? image.url.trim() : ''
+      if (!url) continue
+      const mimeType = typeof image?.mimeType === 'string' ? image.mimeType : undefined
+      blocks.push({
+        blockId: `${messageId}:gemini-interaction:${ordinal}`,
+        ordinal,
+        type: 'image',
+        url,
+        ...(mimeType ? { mimeType } : {}),
+        semanticRole: 'thought',
+        providerKey: 'google_ai_studio',
+        sourceEventType: type,
+      })
+      ordinal += 1
+      continue
+    }
+    if (type === 'thought_summary' || type === 'thinking_summary' || type === 'reasoning_summary') {
+      const text =
+        typeof record.summary === 'string' ? record.summary :
+        typeof record.text === 'string' ? record.text :
+        ''
+      if (!text) continue
+      blocks.push({
+        blockId: `${messageId}:gemini-interaction:${ordinal}`,
+        ordinal,
+        type: 'text',
+        text,
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+        sourceEventType: type,
+      })
+      ordinal += 1
+    }
+  }
+  return blocks
 }
 
 function collectGeminiInteractionReasoningDetails(payload: unknown): unknown[] {

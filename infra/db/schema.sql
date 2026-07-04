@@ -91,6 +91,34 @@ CREATE TABLE IF NOT EXISTS message_reasoning_detail_segments (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint
   ON message_reasoning_detail_segments (message_id, segment_fingerprint);
 
+CREATE TABLE IF NOT EXISTS message_reasoning_display_blocks (
+  block_id TEXT PRIMARY KEY,
+  message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+  ordinal INTEGER NOT NULL,
+  block_type TEXT NOT NULL CHECK (block_type IN ('text', 'image', 'opaque')),
+  text TEXT,
+  semantic_role TEXT CHECK (
+    semantic_role IS NULL OR semantic_role IN ('summary', 'reasoning', 'thinking', 'thought')
+  ),
+  url TEXT,
+  mime TEXT,
+  width INTEGER,
+  height INTEGER,
+  alt TEXT,
+  label TEXT,
+  warning TEXT,
+  provider_key TEXT,
+  source_event_type TEXT,
+  payload_json TEXT,
+  created_at INTEGER NOT NULL,
+  segment_fingerprint TEXT,
+  UNIQUE (message_id, ordinal),
+  UNIQUE (message_id, segment_fingerprint)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reasoning_display_blocks_message_ordinal
+  ON message_reasoning_display_blocks(message_id, ordinal);
+
 CREATE TABLE IF NOT EXISTS message_error (
   message_id TEXT PRIMARY KEY REFERENCES message(id) ON DELETE CASCADE,
   envelope_json TEXT NOT NULL,

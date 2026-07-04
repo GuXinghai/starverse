@@ -1,4 +1,4 @@
-import type { MessageState, MessageVM, ReasoningPiece, ReasoningViewVisibility, RootState, RunVM } from './types'
+import type { MessageState, MessageVM, ReasoningDisplayBlock, ReasoningPiece, ReasoningViewVisibility, RootState, RunVM } from './types'
 import { ReasoningDetailStreamMerger, buildDetailKey } from './reasoningDetailStreamMerger'
 import { beginDeriveMeasure, endDeriveMeasure, recordDerive, recordFallbackReplay } from './perfMetrics'
 import { getDiagnosticsFlags } from '@/shared/diagnostics/flags'
@@ -122,6 +122,17 @@ function computeReasoningVisibility(
     return 'excluded'
   }
   return 'not_returned'
+}
+
+function normalizeReasoningDisplayBlocks(raw: ReadonlyArray<ReasoningDisplayBlock> | undefined): ReasoningDisplayBlock[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const blocks = raw.filter((block) => {
+    if (block?.type === 'text') return block.text.trim().length > 0
+    if (block?.type === 'image') return block.url.trim().length > 0
+    if (block?.type === 'opaque') return block.label.trim().length > 0
+    return false
+  }).slice().sort((a, b) => a.ordinal - b.ordinal)
+  return blocks.length > 0 ? blocks : undefined
 }
 
 function appendReplayTextPiece(pieces: ReasoningPiece[], text: string, nextId: number): number {
@@ -267,6 +278,7 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   let usedFallback = false
 
   const normalizedPieces = normalizeReasoningPieces(m.reasoningPieces)
+  const displayBlocks = normalizeReasoningDisplayBlocks(m.reasoningDisplayBlocks)
   const hasPieces = Array.isArray(normalizedPieces) && normalizedPieces.length > 0
   const hasDetails = Array.isArray(m.reasoningDetailsRaw) && m.reasoningDetailsRaw.length > 0
 
@@ -319,7 +331,7 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
     reasoningView: {
       summaryText,
       reasoningText,
-      reasoningPieces,
+      ...(displayBlocks ? { displayBlocks } : { reasoningPieces }),
       hasEncrypted: m.hasEncryptedReasoning,
       visibility,
       panelState: m.reasoningPanelState,

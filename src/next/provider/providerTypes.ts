@@ -12,6 +12,7 @@
 import type {
   ContentBlock,
   MessageAnnotation,
+  ReasoningDisplayBlock,
   ReasoningEffort,
   RequestedReasoningMode,
   ToolCallDelta,
@@ -93,6 +94,7 @@ export type StarverseStreamEvent =
     }>
   | Readonly<{ type: 'message.reasoning_detail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'message.reasoning_detail_batch'; messageId: string; choiceIndex: number; details: unknown[] }>
+  | Readonly<{ type: 'message.reasoning_display_block'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
   | Readonly<{ type: 'usage.delta'; usage: unknown }>
   | Readonly<{
       type: 'meta.delta'

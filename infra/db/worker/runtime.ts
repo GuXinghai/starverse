@@ -529,6 +529,33 @@ export class DbWorkerRuntime {
       )
     `)
 
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS message_reasoning_display_blocks (
+        block_id TEXT PRIMARY KEY,
+        message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+        ordinal INTEGER NOT NULL,
+        block_type TEXT NOT NULL CHECK (block_type IN ('text', 'image', 'opaque')),
+        text TEXT,
+        semantic_role TEXT CHECK (
+          semantic_role IS NULL OR semantic_role IN ('summary', 'reasoning', 'thinking', 'thought')
+        ),
+        url TEXT,
+        mime TEXT,
+        width INTEGER,
+        height INTEGER,
+        alt TEXT,
+        label TEXT,
+        warning TEXT,
+        provider_key TEXT,
+        source_event_type TEXT,
+        payload_json TEXT,
+        created_at INTEGER NOT NULL,
+        segment_fingerprint TEXT,
+        UNIQUE (message_id, ordinal),
+        UNIQUE (message_id, segment_fingerprint)
+      )
+    `)
+
     // Ensure segment_fingerprint column exists for existing tables
     const segmentCols = this.db.prepare('PRAGMA table_info(message_reasoning_detail_segments)').all() as { name: string }[]
     const segmentColNames = new Set(segmentCols.map((col) => col.name))
@@ -540,7 +567,8 @@ export class DbWorkerRuntime {
       'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message ON message_reasoning_detail_segments(message_id)',
       'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message_order ON message_reasoning_detail_segments(message_id, segment_id)',
       'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_group ON message_reasoning_detail_segments(message_id, detail_id, detail_index, type, format, segment_id)',
-      'CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint ON message_reasoning_detail_segments(message_id, segment_fingerprint)'
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint ON message_reasoning_detail_segments(message_id, segment_fingerprint)',
+      'CREATE INDEX IF NOT EXISTS idx_reasoning_display_blocks_message_ordinal ON message_reasoning_display_blocks(message_id, ordinal)'
     ]
     for (const sql of indexStatements) {
       this.db.exec(sql)
