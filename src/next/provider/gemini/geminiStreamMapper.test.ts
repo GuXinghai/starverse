@@ -600,6 +600,20 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
         },
       },
       {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:0`,
+          ordinal: 0,
+          type: 'text',
+          text: 'I will plan the composition.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_summary',
+        },
+      },
+      {
         type: 'message.content_block_append',
         messageId: msgId,
         choiceIndex: 0,
@@ -633,6 +647,7 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
     }, msgId)
 
     const reasoningEvents = events.filter((event) => event.type === 'message.reasoning_detail')
+    const displayEvents = events.filter((event) => event.type === 'message.reasoning_display_block')
     expect(reasoningEvents).toEqual([
       {
         type: 'message.reasoning_detail',
@@ -674,6 +689,51 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
         },
       },
     ])
+    expect(displayEvents).toEqual([
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:0`,
+          ordinal: 0,
+          type: 'text',
+          text: 'Sketch the silhouette.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_summary',
+        },
+      },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:1`,
+          ordinal: 1,
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGthought=',
+          mimeType: 'image/png',
+          semanticRole: 'thought',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_image',
+        },
+      },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:2`,
+          ordinal: 2,
+          type: 'text',
+          text: 'Refine the lighting.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_summary',
+        },
+      },
+    ])
     expect(events.filter((event) => event.type === 'message.content_block_append')).toEqual([
       {
         type: 'message.content_block_append',
@@ -687,7 +747,7 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
     ])
   })
 
-  it('maps official streaming Interactions thought_summary content text to reasoning summary detail', () => {
+  it('maps official streaming Interactions thought_summary content text to reasoning summary detail and display block', () => {
     const events = mapGeminiInteractionResponseToStarverse({
       event: 'step.delta',
       delta: {
@@ -713,10 +773,24 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
           thought_signature: 'sig_stream_1',
         },
       },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:0`,
+          ordinal: 0,
+          type: 'text',
+          text: 'Plan the scene before rendering.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_summary',
+        },
+      },
     ])
   })
 
-  it('keeps streaming thought_summary content image out of final image blocks', () => {
+  it('keeps streaming thought_summary content image out of final image blocks and maps it to display block', () => {
     const events = mapGeminiInteractionResponseToStarverse({
       delta: {
         type: 'thought_summary',
@@ -745,9 +819,23 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
           thought_signature: 'sig_stream_image',
         },
       },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:0`,
+          ordinal: 0,
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGthought=',
+          mimeType: 'image/png',
+          semanticRole: 'thought',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_image',
+        },
+      },
     ])
   })
-
   it('keeps final streaming image deltas as final image blocks', () => {
     const events = mapGeminiInteractionResponseToStarverse({
       delta: {

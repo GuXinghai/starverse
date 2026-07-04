@@ -1,7 +1,7 @@
 /* eslint-disable max-lines-per-function, complexity */
 import BetterSqlite3 from 'better-sqlite3'
 import { randomUUID, createHash } from 'node:crypto'
-import type { AppendMessageInput, ListMessageParams, MessageRecord, AppendReasoningDetailSegmentsInput, FinalizeReasoningDetailsInput, SetReasoningRequestConfigInput, SetMessageAnnotationsInput } from '../../db/types'
+import type { AppendMessageInput, ListMessageParams, MessageRecord, AppendReasoningDetailSegmentsInput, AppendReasoningDisplayBlocksInput, FinalizeReasoningDetailsInput, ListReasoningDisplayBlocksByMessageIdsInput, ReasoningDisplayBlockRecord, SetReasoningRequestConfigInput, SetMessageAnnotationsInput } from '../../db/types'
 import { buildReasoningDetailsArray, stableStringifyReasoningDetails, type ReasoningDetailSegmentRow } from './reasoningDetailsAggregator'
 import { mergeMetaWithReasoning, safeParseMessageMeta } from './shared/messageMetaMerge'
 
@@ -47,6 +47,8 @@ export class MessageRepo {
   private updateAnnotationsStmt: BetterSqlite3.Statement
   private insertReasoningSegmentStmt: BetterSqlite3.Statement
   private listReasoningSegmentsStmt: BetterSqlite3.Statement
+  private insertReasoningDisplayBlockStmt: BetterSqlite3.Statement
+  private listReasoningDisplayBlocksStmt: BetterSqlite3.Statement
   private updateReasoningFinalStmt: BetterSqlite3.Statement
   private updateReasoningRequestConfigStmt: BetterSqlite3.Statement
   private getReasoningSegmentsStatsStmt: BetterSqlite3.Statement
@@ -173,6 +175,73 @@ export class MessageRepo {
       FROM message_reasoning_detail_segments
       WHERE message_id = @messageId
       ORDER BY segment_id ASC
+    `)
+
+    this.insertReasoningDisplayBlockStmt = this.db.prepare(`
+      INSERT OR IGNORE INTO message_reasoning_display_blocks (
+        block_id,
+        message_id,
+        ordinal,
+        block_type,
+        text,
+        semantic_role,
+        url,
+        mime,
+        width,
+        height,
+        alt,
+        label,
+        warning,
+        provider_key,
+        source_event_type,
+        payload_json,
+        created_at,
+        segment_fingerprint
+      )
+      VALUES (
+        @blockId,
+        @messageId,
+        @ordinal,
+        @blockType,
+        @text,
+        @semanticRole,
+        @url,
+        @mime,
+        @width,
+        @height,
+        @alt,
+        @label,
+        @warning,
+        @providerKey,
+        @sourceEventType,
+        @payloadJson,
+        @createdAt,
+        @fingerprint
+      )
+    `)
+
+    this.listReasoningDisplayBlocksStmt = this.db.prepare(`
+      SELECT
+        block_id AS blockId,
+        message_id AS messageId,
+        ordinal,
+        block_type AS type,
+        text,
+        semantic_role AS semanticRole,
+        url,
+        mime AS mimeType,
+        width,
+        height,
+        alt,
+        label,
+        warning,
+        provider_key AS providerKey,
+        source_event_type AS sourceEventType
+      FROM message_reasoning_display_blocks
+      WHERE message_id IN (
+        SELECT value FROM json_each(@messageIdsJson)
+      )
+      ORDER BY message_id ASC, ordinal ASC
     `)
 
     this.updateReasoningFinalStmt = this.db.prepare(`
@@ -583,6 +652,65 @@ export class MessageRepo {
 
     txn()
     return { ok: true }
+  }
+
+  appendReasoningDisplayBlocks(input: AppendReasoningDisplayBlocksInput) {
+    const messageId = String(input.messageId ?? '').trim()
+    if (!messageId) throw new Error('Missing messageId')
+    const blocks = Array.isArray(input.blocks) ? input.blocks : []
+    if (blocks.length === 0) return { ok: true, received: 0, inserted: 0, ignored: 0 }
+
+    const now = Date.now()
+    let inserted = 0
+    let ignored = 0
+    const txn = this.db.transaction(() => {
+      for (const block of blocks) {
+        const blockId = String(block.blockId ?? '').trim()
+        const ordinal = Number(block.ordinal)
+        const type = String(block.type ?? '').trim()
+        if (!blockId || !Number.isFinite(ordinal) || ordinal < 0) continue
+        if (type !== 'text' && type !== 'image' && type !== 'opaque') continue
+
+        const payloadJson = JSON.stringify(block)
+        const fingerprint = createHash('sha256')
+          .update([messageId, String(ordinal), type, payloadJson].join('\n'))
+          .digest('hex')
+        const result = this.insertReasoningDisplayBlockStmt.run({
+          blockId,
+          messageId,
+          ordinal,
+          blockType: type,
+          text: type === 'text' ? String(block.text ?? '') : null,
+          semanticRole: block.semanticRole ?? null,
+          url: type === 'image' ? String(block.url ?? '') : null,
+          mime: type === 'image' ? (block.mimeType ?? null) : null,
+          width: typeof block.width === 'number' ? block.width : null,
+          height: typeof block.height === 'number' ? block.height : null,
+          alt: block.alt ?? null,
+          label: type === 'opaque' ? String(block.label ?? '') : null,
+          warning: block.warning ?? null,
+          providerKey: block.providerKey ?? null,
+          sourceEventType: block.sourceEventType ?? null,
+          payloadJson,
+          createdAt: now,
+          fingerprint,
+        })
+        if (result.changes > 0) inserted++
+        else ignored++
+      }
+    })
+    txn()
+    return { ok: true, received: blocks.length, inserted, ignored }
+  }
+
+  listReasoningDisplayBlocksByMessageIds(input: ListReasoningDisplayBlocksByMessageIdsInput): ReasoningDisplayBlockRecord[] {
+    const ids = Array.from(new Set(
+      (Array.isArray(input.messageIds) ? input.messageIds : [])
+        .map((id) => String(id ?? '').trim())
+        .filter(Boolean)
+    ))
+    if (ids.length === 0) return []
+    return this.listReasoningDisplayBlocksStmt.all({ messageIdsJson: JSON.stringify(ids) }) as ReasoningDisplayBlockRecord[]
   }
 
   setReasoningRequestConfig(input: SetReasoningRequestConfigInput) {

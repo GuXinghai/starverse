@@ -46,6 +46,39 @@ export type ReasoningPiece =
       mimeType?: string
     }>
 
+export type ReasoningDisplayBlock =
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'text'
+      text: string
+      semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+      providerKey?: string
+      sourceEventType?: string
+    }>
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'image'
+      url: string
+      mimeType?: string
+      width?: number
+      height?: number
+      alt?: string
+      semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+      providerKey?: string
+      sourceEventType?: string
+    }>
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'opaque'
+      label: string
+      warning?: string
+      providerKey?: string
+      sourceEventType?: string
+    }>
+
 export type ToolCallVM = Readonly<{
   index: number
   id?: string
@@ -85,6 +118,7 @@ export type ErrorPanelViewModel = Readonly<{
 }>
 
 export type ReasoningView = Readonly<{
+  displayBlocks?: ReasoningDisplayBlock[]
   summaryText?: string
   reasoningText?: string
   reasoningPieces?: ReasoningPiece[]

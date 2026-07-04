@@ -1,7 +1,7 @@
 import { computed, markRaw, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
 import { t, tf } from '@/shared/i18n'
 import type { ErrorPanelViewModel } from '@/ui-kit/chat/types'
-import type { CompletionOutcome, DomainEvent, MessageState, MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
+import type { CompletionOutcome, DomainEvent, MessageState, MessageVM, ReasoningDisplayBlock, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
 import {
   createConvo,
   deleteConvo,
@@ -38,8 +38,10 @@ import {
 import {
   appendMessageDelta,
   appendReasoningDetailSegments,
+  appendReasoningDisplayBlocks,
   finalizeReasoningDetails,
   getReasoningSegmentsStats,
+  listReasoningDisplayBlocksByMessageIds,
   listMessageErrorEnvelopes,
   listMessageImageAssetsByMessageIds,
   persistDetachedImageAssetsFromDataUrls,
@@ -1800,6 +1802,46 @@ export function useAppChatAppLogic() {
     return out
   }
 
+  function collectReasoningDisplayImageDataUrls(blocks: ReadonlyArray<ReasoningDisplayBlock>): string[] {
+    const out: string[] = []
+    for (const block of blocks) {
+      if (block.type !== 'image') continue
+      if (isDataImageUrl(block.url)) out.push(block.url)
+    }
+    return out
+  }
+
+  function replaceReasoningDisplayImageDataUrls(
+    blocks: ReadonlyArray<ReasoningDisplayBlock>,
+    assets: ReadonlyArray<PersistedMessageImageAsset>,
+  ): ReasoningDisplayBlock[] {
+    const replacementUrls = assets
+      .slice()
+      .sort((a, b) => a.ordinal - b.ordinal)
+      .map((asset) => resolveImageRenderUrl(asset))
+      .filter((url) => url.length > 0)
+    if (replacementUrls.length === 0) return [...blocks]
+
+    let nextImageIndex = 0
+    return blocks.map((block) => {
+      if (block.type !== 'image') return block
+      if (!isDataImageUrl(block.url)) return block
+      const nextUrl = replacementUrls[nextImageIndex] ?? replacementUrls[replacementUrls.length - 1]
+      nextImageIndex += 1
+      return nextUrl ? { ...block, url: nextUrl } : block
+    })
+  }
+
+  async function persistReasoningDisplayImageDataUrls(
+    messageId: string,
+    blocks: ReadonlyArray<ReasoningDisplayBlock>,
+  ): Promise<ReasoningDisplayBlock[]> {
+    const imageDataUrls = collectReasoningDisplayImageDataUrls(blocks)
+    if (imageDataUrls.length === 0) return [...blocks]
+    const assets = await persistDetachedImageAssetsFromDataUrls({ messageId, imageDataUrls })
+    return replaceReasoningDisplayImageDataUrls(blocks, assets)
+  }
+
   function replaceReasoningImageDataUrls(
     details: ReadonlyArray<unknown>,
     assets: ReadonlyArray<PersistedMessageImageAsset>,
@@ -1931,6 +1973,45 @@ export function useAppChatAppLogic() {
       }
 
       nextMessages[messageId] = { ...message, contentBlocks: nextBlocks }
+      changed = true
+    }
+
+    if (!changed) return
+    state.value = {
+      ...state.value,
+      messages: nextMessages,
+      runMessageIds: state.value.runMessageIds,
+      entities: { messagesById: nextMessages },
+      views: state.value.views,
+    }
+  }
+
+  function applyHydratedReasoningDisplayBlocksToState(blocks: ReadonlyArray<ReasoningDisplayBlock>) {
+    if (blocks.length === 0) return
+    const grouped = new Map<string, ReasoningDisplayBlock[]>()
+    for (const block of blocks) {
+      const messageId = String((block as any).messageId ?? '').trim()
+      if (!messageId) continue
+      const normalized = { ...block }
+      delete (normalized as any).messageId
+      const list = grouped.get(messageId) ?? []
+      list.push(normalized)
+      grouped.set(messageId, list)
+    }
+    if (grouped.size === 0) return
+
+    const messages = state.value.entities?.messagesById ?? state.value.messages
+    const nextMessages: Record<string, MessageState> = { ...messages }
+    let changed = false
+
+    for (const [messageId, messageBlocks] of grouped.entries()) {
+      const message = nextMessages[messageId]
+      if (!message) continue
+      nextMessages[messageId] = {
+        ...message,
+        reasoningDisplayBlocks: markRaw([...messageBlocks].sort((a, b) => a.ordinal - b.ordinal)),
+        reasoningVersion: message.reasoningVersion + 1,
+      }
       changed = true
     }
 
@@ -2335,6 +2416,24 @@ export function useAppChatAppLogic() {
     applyHydratedImageAssetsToState(assets)
   }
 
+  async function hydrateReasoningDisplayBlocksForRows(
+    rows: ReadonlyArray<Readonly<{ id: string; role: string }>>,
+    token: number
+  ) {
+    const ids: string[] = []
+    for (const row of rows) {
+      const messageId = String(row.id ?? '').trim()
+      if (!messageId) continue
+      if (String(row.role ?? '').trim() !== 'assistant') continue
+      ids.push(messageId)
+    }
+    if (ids.length === 0) return
+
+    const blocks = await listReasoningDisplayBlocksByMessageIds(ids)
+    if (transcriptRefreshToken.value !== token) return
+    applyHydratedReasoningDisplayBlocksToState(blocks as any)
+  }
+
   function hasErrorEnvelope(messageId: string): boolean {
     const id = String(messageId ?? '').trim()
     if (!id) return false
@@ -2482,6 +2581,7 @@ export function useAppChatAppLogic() {
         reasoningDetailsRaw: markRaw(reasoningDetailsRaw),
         reasoningStreamingText: '',
         reasoningPieces: markRaw([]),
+        reasoningDisplayBlocks: markRaw([]),
         reasoningLastPieceLen: 0,
         reasoningPanelState: previousPanelState ?? 'collapsed',
         hasEncryptedReasoning,
@@ -2907,14 +3007,27 @@ export function useAppChatAppLogic() {
     }
   }
 
+  async function flushReasoningDisplayBlocks(stream: ActiveStream, assistantMessageId: string) {
+    const pending = stream.pendingReasoningDisplayBlocks.value
+    if (!pending || pending.length === 0) return
+    const batch = pending.splice(0, pending.length)
+    try {
+      const blocks = await persistReasoningDisplayImageDataUrls(assistantMessageId, batch)
+      await appendReasoningDisplayBlocks({ messageId: assistantMessageId, blocks })
+    } catch (err) {
+      if (shouldLogReasoningDebug()) console.warn('[ui-app] appendReasoningDisplayBlocks failed (non-fatal):', err)
+    }
+  }
+
   function scheduleReasoningDetailFlush(stream: ActiveStream, assistantMessageId: string, delayMs = 250) {
     if (stream.reasoningFlushTimer.id) return
     stream.reasoningFlushTimer.id = setTimeout(async () => {
       stream.reasoningFlushTimer.id = null
       try {
         await flushReasoningDetailSegments(stream, assistantMessageId)
+        await flushReasoningDisplayBlocks(stream, assistantMessageId)
       } finally {
-        if (stream.pendingReasoningDetails.value.length > 0) {
+        if (stream.pendingReasoningDetails.value.length > 0 || stream.pendingReasoningDisplayBlocks.value.length > 0) {
           scheduleReasoningDetailFlush(stream, assistantMessageId, delayMs)
         }
       }
@@ -3141,6 +3254,7 @@ export function useAppChatAppLogic() {
     }
     await hydrateErrorEnvelopesForRows(rows, myToken)
     await hydrateMessageAssetsForRows(rows, myToken)
+    await hydrateReasoningDisplayBlocksForRows(rows, myToken)
     const next = new Map<string, Readonly<EffectiveFilterResult & { chosenAnswerRootId: string }>>()
     const order: string[] = []
     for (const t of rendered.turns) {
@@ -8746,6 +8860,16 @@ export function useAppChatAppLogic() {
     return false
   }
 
+  function isReasoningDisplayBlockEventForMessage(ev: DomainEvent, assistantMessageId: string): boolean {
+    return ev.type === 'MessageAppendReasoningDisplayBlock' && ev.messageId === assistantMessageId
+  }
+
+  function processReasoningDisplayBlockEvent(ev: DomainEvent, stream: ActiveStream, assistantMessageId: string) {
+    if (ev.type !== 'MessageAppendReasoningDisplayBlock' || ev.messageId !== assistantMessageId) return
+    stream.pendingReasoningDisplayBlocks.value.push(ev.block)
+    scheduleReasoningDetailFlush(stream, assistantMessageId)
+  }
+
   function isAssistantTextEventForMessage(ev: DomainEvent, assistantMessageId: string): boolean {
     if (ev.type === 'MessageDeltaText') {
       return ev.messageId === assistantMessageId && ev.text.length > 0
@@ -8840,8 +8964,10 @@ export function useAppChatAppLogic() {
       const pendingCountBeforeFlush = stream.pendingReasoningDetails.value.length
       logGoogleAIStudioMessageSnapshot('app.reasoning.finalize.before_flush', assistantMessageId, {
         pendingCountBeforeFlush,
+        pendingDisplayBlockCountBeforeFlush: stream.pendingReasoningDisplayBlocks.value.length,
       })
       await flushReasoningDetailSegments(stream, assistantMessageId)
+      await flushReasoningDisplayBlocks(stream, assistantMessageId)
       logGoogleAIStudioMessageSnapshot('app.reasoning.finalize.after_flush_before_finalize_db', assistantMessageId)
       await finalizeReasoningDetails({ messageId: assistantMessageId })
       logGoogleAIStudioMessageSnapshot('app.reasoning.finalize.after_finalize_db_before_refresh', assistantMessageId)
@@ -9195,7 +9321,7 @@ export function useAppChatAppLogic() {
           commitImmediate(branchId, ev)
         }
 
-        if (isReasoningDetailEventForMessage(ev, assistantMessageId)) {
+        if (isReasoningDetailEventForMessage(ev, assistantMessageId) || isReasoningDisplayBlockEventForMessage(ev, assistantMessageId)) {
           sawReasoningForPanel = true
           if (!autoOpenedReasoningPanel) {
             autoOpenedReasoningPanel = true
@@ -9226,6 +9352,7 @@ export function useAppChatAppLogic() {
         }
 
         processReasoningDetailEvent(ev, stream, assistantMessageId)
+        processReasoningDisplayBlockEvent(ev, stream, assistantMessageId)
         if (reasoningArtifactCollector) {
           const created = collectReasoningArtifactsFromDomainEvent(reasoningArtifactCollector, ev)
           if (created.length > 0) {

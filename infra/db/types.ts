@@ -105,6 +105,50 @@ export type FinalizeReasoningDetailsInput = Readonly<{
   messageId: string
 }>
 
+export type ReasoningDisplayBlockRecord = Readonly<{
+  blockId: string
+  messageId: string
+  ordinal: number
+  type: 'text' | 'image' | 'opaque'
+  text: string | null
+  semanticRole: 'summary' | 'reasoning' | 'thinking' | 'thought' | null
+  url: string | null
+  mimeType: string | null
+  width: number | null
+  height: number | null
+  alt: string | null
+  label: string | null
+  warning: string | null
+  providerKey: string | null
+  sourceEventType: string | null
+}>
+
+export type ReasoningDisplayBlockInput = Readonly<{
+  blockId: string
+  ordinal: number
+  type: 'text' | 'image' | 'opaque'
+  text?: string
+  semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+  url?: string
+  mimeType?: string
+  width?: number
+  height?: number
+  alt?: string
+  label?: string
+  warning?: string
+  providerKey?: string
+  sourceEventType?: string
+}>
+
+export type AppendReasoningDisplayBlocksInput = Readonly<{
+  messageId: string
+  blocks: ReasoningDisplayBlockInput[]
+}>
+
+export type ListReasoningDisplayBlocksByMessageIdsInput = Readonly<{
+  messageIds: string[]
+}>
+
 export type SetReasoningRequestConfigInput = Readonly<{
   messageId: string
   value?: unknown

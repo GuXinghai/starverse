@@ -112,6 +112,39 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     expect(vm?.reasoningView.visibility).toBe('shown')
   })
 
+  it('prefers reasoning display blocks over legacy reasoning pieces', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-3.1-flash-image',
+    })
+    const messages = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [{ type: 'thought_summary', summary: 'raw summary' }],
+        reasoningSummaryText: 'legacy summary',
+        reasoningPieces: [{ id: 1, type: 'text' as const, text: 'legacy piece' }],
+        reasoningDisplayBlocks: [
+          { blockId: 'b1', ordinal: 0, type: 'text' as const, text: 'display text', semanticRole: 'summary' as const },
+          { blockId: 'b2', ordinal: 1, type: 'image' as const, url: 'asset://image-1', semanticRole: 'thought' as const },
+        ],
+      },
+    }
+    const vm = selectMessage({
+      ...s1,
+      messages,
+      entities: { ...s1.entities, messagesById: messages },
+    }, assistantMessageId)
+
+    expect(vm?.reasoningView.displayBlocks).toEqual([
+      { blockId: 'b1', ordinal: 0, type: 'text', text: 'display text', semanticRole: 'summary' },
+      { blockId: 'b2', ordinal: 1, type: 'image', url: 'asset://image-1', semanticRole: 'thought' },
+    ])
+    expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
+  })
+
   it('derives display text from Gemini thought details when only raw details are hydrated', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {

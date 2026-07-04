@@ -3,13 +3,16 @@ import { sanitizeErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import {
   decodeBooleanAck,
   decodeAppendReasoningDetailSegmentsResponse,
+  decodeAppendReasoningDisplayBlocksResponse,
   decodeMessageAssetListResponse,
   decodeMessageAssetPersistResponse,
   decodeMessageAppendResponse,
   decodeMessageFinalizeReasoningDetailsResponse,
   decodeMessageListResponse,
   decodeMessageSetStatusResponse,
+  decodeReasoningDisplayBlockListResponse,
 } from '@/next/ipc/contracts/dbBridgeContracts'
+import type { ReasoningDisplayBlock } from '@/next/state/types'
 
 export type PersistedMessageRole = 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter' | string
 
@@ -240,6 +243,15 @@ export interface AppendReasoningDetailSegmentsResult {
   sumDeltaLenInserted: number
 }
 
+export interface AppendReasoningDisplayBlocksResult {
+  ok: boolean
+  received: number
+  inserted: number
+  ignored: number
+}
+
+export type PersistedReasoningDisplayBlock = ReasoningDisplayBlock & Readonly<{ messageId: string }>
+
 export async function appendReasoningDetailSegments(input: Readonly<{ messageId: string; details: unknown[] }>): Promise<AppendReasoningDetailSegmentsResult> {
   const bridge = requireDbBridge()
   const messageId = String(input.messageId ?? '').trim()
@@ -250,6 +262,76 @@ export async function appendReasoningDetailSegments(input: Readonly<{ messageId:
 
   const result = await bridge.invoke('message.appendReasoningDetailSegments', { messageId, details })
   return decodeAppendReasoningDetailSegmentsResponse(result)
+}
+
+export async function appendReasoningDisplayBlocks(input: Readonly<{ messageId: string; blocks: ReasoningDisplayBlock[] }>): Promise<AppendReasoningDisplayBlocksResult> {
+  const bridge = requireDbBridge()
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) throw new Error('Missing messageId')
+  const blocks = Array.isArray(input.blocks) ? input.blocks : []
+  if (blocks.length === 0) return { ok: true, received: 0, inserted: 0, ignored: 0 }
+  const result = await bridge.invoke('message.appendReasoningDisplayBlocks', { messageId, blocks })
+  return decodeAppendReasoningDisplayBlocksResponse(result)
+}
+
+export async function listReasoningDisplayBlocksByMessageIds(messageIds: ReadonlyArray<string>): Promise<PersistedReasoningDisplayBlock[]> {
+  const bridge = getDbBridge()
+  if (!bridge) return []
+  const ids = Array.from(new Set(
+    (Array.isArray(messageIds) ? messageIds : [])
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean)
+  ))
+  if (ids.length === 0) return []
+  const rows = decodeReasoningDisplayBlockListResponse(
+    await bridge.invoke('message.listReasoningDisplayBlocksByMessageIds', { messageIds: ids })
+  )
+  return rows
+    .map((row): PersistedReasoningDisplayBlock | null => {
+      if (row.type === 'text') {
+        const text = row.text ?? ''
+        return text ? ({
+          messageId: row.messageId,
+          blockId: row.blockId,
+          ordinal: row.ordinal,
+          type: 'text',
+          text,
+          ...(row.semanticRole ? { semanticRole: row.semanticRole } : {}),
+          ...(row.providerKey ? { providerKey: row.providerKey } : {}),
+          ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
+        } as PersistedReasoningDisplayBlock) : null
+      }
+      if (row.type === 'image') {
+        const url = row.url ?? ''
+        return url ? ({
+          messageId: row.messageId,
+          blockId: row.blockId,
+          ordinal: row.ordinal,
+          type: 'image',
+          url,
+          ...(row.mimeType ? { mimeType: row.mimeType } : {}),
+          ...(row.width ? { width: row.width } : {}),
+          ...(row.height ? { height: row.height } : {}),
+          ...(row.alt ? { alt: row.alt } : {}),
+          ...(row.semanticRole ? { semanticRole: row.semanticRole } : {}),
+          ...(row.providerKey ? { providerKey: row.providerKey } : {}),
+          ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
+        } as PersistedReasoningDisplayBlock) : null
+      }
+      const label = row.label ?? ''
+      return label ? ({
+        messageId: row.messageId,
+        blockId: row.blockId,
+        ordinal: row.ordinal,
+        type: 'opaque',
+        label,
+        ...(row.warning ? { warning: row.warning } : {}),
+        ...(row.providerKey ? { providerKey: row.providerKey } : {}),
+        ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
+      } as PersistedReasoningDisplayBlock) : null
+    })
+    .filter((block): block is PersistedReasoningDisplayBlock => !!block)
+    .sort((a, b) => a.ordinal - b.ordinal)
 }
 
 export async function finalizeReasoningDetails(input: Readonly<{ messageId: string }>): Promise<boolean> {

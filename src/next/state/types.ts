@@ -67,6 +67,39 @@ export type ReasoningPiece =
       mimeType?: string
     }>
 
+export type ReasoningDisplayBlock =
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'text'
+      text: string
+      semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+      providerKey?: string
+      sourceEventType?: string
+    }>
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'image'
+      url: string
+      mimeType?: string
+      width?: number
+      height?: number
+      alt?: string
+      semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+      providerKey?: string
+      sourceEventType?: string
+    }>
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'opaque'
+      label: string
+      warning?: string
+      providerKey?: string
+      sourceEventType?: string
+    }>
+
 export type ToolCallVM = Readonly<{
   index: number
   id?: string
@@ -86,6 +119,7 @@ export type ToolCallDelta = Readonly<{
 }>
 
 export type ReasoningView = Readonly<{
+  displayBlocks?: ReasoningDisplayBlock[]
   summaryText?: string
   reasoningText?: string
   reasoningPieces?: ReasoningPiece[]
@@ -163,6 +197,7 @@ export type DomainEvent =
   }>
   | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'MessageDeltaReasoningDetailBatch'; messageId: string; choiceIndex: number; details: unknown[] }>
+  | Readonly<{ type: 'MessageAppendReasoningDisplayBlock'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
   | Readonly<{ type: 'UsageDelta'; usage: unknown }>
   | Readonly<{
     type: 'MetaDelta'
@@ -187,6 +222,7 @@ export type MessageState = Readonly<{
   reasoningStreamingText: string
   reasoningSummaryText?: string
   reasoningPieces?: ReasoningPiece[]
+  reasoningDisplayBlocks?: ReasoningDisplayBlock[]
   reasoningLastPieceLen?: number
   reasoningPanelState: ReasoningPanelState
   hasEncryptedReasoning: boolean

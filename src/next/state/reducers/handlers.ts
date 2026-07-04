@@ -8,6 +8,7 @@ import {
 import {
   handleMessageDeltaReasoningDetail,
   handleMessageDeltaReasoningDetailBatch,
+  handleMessageAppendReasoningDisplayBlock,
 } from './reasoningHandlers'
 import {
   handleMetaDelta,
@@ -30,6 +31,7 @@ const handlersByType: HandlerMap = {
   MessageDeltaAnnotationBatch: handleMessageDeltaAnnotationBatch,
   MessageDeltaReasoningDetail: handleMessageDeltaReasoningDetail,
   MessageDeltaReasoningDetailBatch: handleMessageDeltaReasoningDetailBatch,
+  MessageAppendReasoningDisplayBlock: handleMessageAppendReasoningDisplayBlock,
   StreamAbort: handleStreamAbort,
   StreamError: handleStreamError,
   StreamDone: handleStreamDone,

@@ -51,7 +51,9 @@ import type {
   DetectFileTypeInput,
   MarkFileTypeVerdictStaleInput,
   AppendReasoningDetailSegmentsInput,
+  AppendReasoningDisplayBlocksInput,
   FinalizeReasoningDetailsInput,
+  ListReasoningDisplayBlocksByMessageIdsInput,
   SetReasoningRequestConfigInput,
   GetReasoningSegmentsStatsInput,
   CreateConvoInput,
@@ -646,6 +648,32 @@ export const MarkFileTypeVerdictStaleSchema: ZodType<MarkFileTypeVerdictStaleInp
 export const AppendReasoningDetailSegmentsSchema: ZodType<AppendReasoningDetailSegmentsInput> = z.object({
   messageId: z.string().min(1),
   details: z.array(z.any()).min(1)
+})
+
+const ReasoningDisplayBlockSchema = z.object({
+  blockId: z.string().min(1),
+  ordinal: z.number().int().nonnegative(),
+  type: z.enum(['text', 'image', 'opaque']),
+  text: z.string().optional(),
+  semanticRole: z.enum(['summary', 'reasoning', 'thinking', 'thought']).optional(),
+  url: z.string().optional(),
+  mimeType: z.string().optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  alt: z.string().optional(),
+  label: z.string().optional(),
+  warning: z.string().optional(),
+  providerKey: z.string().optional(),
+  sourceEventType: z.string().optional(),
+})
+
+export const AppendReasoningDisplayBlocksSchema: ZodType<AppendReasoningDisplayBlocksInput> = z.object({
+  messageId: z.string().min(1),
+  blocks: z.array(ReasoningDisplayBlockSchema).min(1).max(256),
+})
+
+export const ListReasoningDisplayBlocksByMessageIdsSchema: ZodType<ListReasoningDisplayBlocksByMessageIdsInput> = z.object({
+  messageIds: z.array(z.string().min(1)).min(1).max(500),
 })
 
 export const FinalizeReasoningDetailsSchema: ZodType<FinalizeReasoningDetailsInput> = z.object({

@@ -75,6 +75,24 @@ export type DecodedMessageAssetRender = Readonly<{
   assetUrl: string
 }>
 
+export type DecodedReasoningDisplayBlock = Readonly<{
+  blockId: string
+  messageId: string
+  ordinal: number
+  type: 'text' | 'image' | 'opaque'
+  text: string | null
+  semanticRole: 'summary' | 'reasoning' | 'thinking' | 'thought' | null
+  url: string | null
+  mimeType: string | null
+  width: number | null
+  height: number | null
+  alt: string | null
+  label: string | null
+  warning: string | null
+  providerKey: string | null
+  sourceEventType: string | null
+}>
+
 export type DecodedFileAsset = Readonly<{
   id: string
   filename: string
@@ -1128,6 +1146,47 @@ const appendReasoningDetailSegmentsResultSchema = z.object({
   sumDeltaLenInserted: z.number().finite(),
 })
 
+const appendReasoningDisplayBlocksResultSchema = z.object({
+  ok: z.boolean(),
+  received: z.number().finite(),
+  inserted: z.number().finite(),
+  ignored: z.number().finite(),
+})
+
+const reasoningDisplayBlockSchema = z.object({
+  blockId: nonEmpty,
+  messageId: nonEmpty,
+  ordinal: z.number().int().nonnegative(),
+  type: z.enum(['text', 'image', 'opaque']),
+  text: z.string().nullable().optional(),
+  semanticRole: z.enum(['summary', 'reasoning', 'thinking', 'thought']).nullable().optional(),
+  url: z.string().nullable().optional(),
+  mimeType: z.string().nullable().optional(),
+  width: z.number().int().positive().nullable().optional(),
+  height: z.number().int().positive().nullable().optional(),
+  alt: z.string().nullable().optional(),
+  label: z.string().nullable().optional(),
+  warning: z.string().nullable().optional(),
+  providerKey: z.string().nullable().optional(),
+  sourceEventType: z.string().nullable().optional(),
+}).transform((row): DecodedReasoningDisplayBlock => ({
+  blockId: row.blockId,
+  messageId: row.messageId,
+  ordinal: row.ordinal,
+  type: row.type,
+  text: row.text ?? null,
+  semanticRole: row.semanticRole ?? null,
+  url: row.url ?? null,
+  mimeType: row.mimeType ?? null,
+  width: row.width ?? null,
+  height: row.height ?? null,
+  alt: row.alt ?? null,
+  label: row.label ?? null,
+  warning: row.warning ?? null,
+  providerKey: row.providerKey ?? null,
+  sourceEventType: row.sourceEventType ?? null,
+}))
+
 const beginTurnResultSchema = z.object({
   ok: z.literal(true),
   convoId: nonEmpty,
@@ -1644,6 +1703,14 @@ export function decodeFileAssetPhysicalCleanupPlanResponse(raw: unknown) {
 
 export function decodeAppendReasoningDetailSegmentsResponse(raw: unknown) {
   return decodeWithSchema('message.appendReasoningDetailSegments', appendReasoningDetailSegmentsResultSchema, raw)
+}
+
+export function decodeAppendReasoningDisplayBlocksResponse(raw: unknown) {
+  return decodeWithSchema('message.appendReasoningDisplayBlocks', appendReasoningDisplayBlocksResultSchema, raw)
+}
+
+export function decodeReasoningDisplayBlockListResponse(raw: unknown): DecodedReasoningDisplayBlock[] {
+  return decodeWithSchema('message.listReasoningDisplayBlocksByMessageIds', z.array(reasoningDisplayBlockSchema), raw)
 }
 
 export function decodeBranchBeginTurnResponse(raw: unknown): DecodedBeginTurnResult {
