@@ -145,13 +145,15 @@ describe('ModelPickerDialog', () => {
     expect(screen.getByTestId('model-picker-provider-status-anthropic_messages')).toHaveTextContent('credential missing')
     expect(await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')).toHaveTextContent('OpenAI Responses')
 
-    await fireEvent.update(screen.getByTestId('model-picker-provider-filter'), 'anthropic_messages')
+    await user.click(screen.getByTestId('model-picker-provider-select-none'))
+    await user.click(screen.getByTestId('model-picker-provider-filter-anthropic_messages'))
     await waitFor(() => {
       expect(screen.queryByTestId('model-picker-item-openai_responses-gpt-4.1-mini')).toBeNull()
       expect(screen.getByText('No models found for current search/filter.')).toBeTruthy()
     })
 
-    await fireEvent.update(screen.getByTestId('model-picker-provider-filter'), 'openai_responses')
+    await user.click(screen.getByTestId('model-picker-provider-select-none'))
+    await user.click(screen.getByTestId('model-picker-provider-filter-openai_responses'))
     const openAIItem = await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')
     await user.hover(openAIItem)
     expect(await screen.findByTestId('model-picker-provider-detail')).toHaveTextContent('GPT-4.1 mini')
@@ -162,6 +164,71 @@ describe('ModelPickerDialog', () => {
     const events = view.emitted()
     expect(events.select?.[0]).toEqual([{ providerId: 'openai_responses', modelId: 'gpt-4.1-mini' }, 'GPT-4.1 mini'])
     expect(events.close).toBeTruthy()
+  })
+
+  it('keeps other catalog provider models visible after OpenRouter is unchecked', async () => {
+    const user = userEvent.setup()
+    const queryFn = vi.fn(async (input: CatalogQueryInput) => {
+      const providerKey = String(input.sourceProviderKey ?? input.providerKey ?? 'openrouter')
+      const modelId = providerKey === 'openrouter'
+        ? 'openrouter-model'
+        : providerKey === 'openai_responses'
+          ? 'gpt-4.1'
+          : 'gemini-2.5-flash'
+      const displayName = providerKey === 'openrouter'
+        ? 'OpenRouter Model'
+        : providerKey === 'openai_responses'
+          ? 'GPT-4.1'
+          : 'Gemini 2.5 Flash'
+      return createResult([
+        {
+          providerKey,
+          modelId,
+          modelKey: `${providerKey}::${modelId}`,
+          canonicalSlug: modelId,
+          displayName,
+          description: null,
+          vendor: providerKey,
+          contextLength: 8192,
+          maxOutputTokens: 4096,
+          createdAtSec: 1700000123,
+          pricing: { prompt: null, completion: null, request: null, image: null },
+          capabilities: {
+            reasoning: false,
+            tools: false,
+            structuredOutputs: false,
+            vision: false,
+            longContext: false,
+          },
+        },
+      ])
+    })
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedProviderId: 'openrouter',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+        providerSources: [
+          { providerId: 'openai_responses', providerName: 'OpenAI Responses', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+          { providerId: 'google_ai_studio', providerName: 'Google AI Studio', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+        ],
+      },
+    })
+
+    await screen.findByTestId('model-picker-item-openrouter-model')
+    await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1')
+    await screen.findByTestId('model-picker-item-google_ai_studio-gemini-2.5-flash')
+
+    await user.click(screen.getByTestId('model-picker-provider-filter-openrouter'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('model-picker-item-openrouter-model')).toBeNull()
+      expect(screen.getByTestId('model-picker-item-openai_responses-gpt-4.1')).toBeTruthy()
+      expect(screen.getByTestId('model-picker-item-google_ai_studio-gemini-2.5-flash')).toBeTruthy()
+    })
   })
 
   it('uses scoped current query API as the default model list source', async () => {
@@ -238,7 +305,7 @@ describe('ModelPickerDialog', () => {
 
     expect(scopedQuery).toHaveBeenCalledWith(expect.objectContaining({
       providerKey: 'openrouter',
-      limit: 60,
+      limit: 100,
     }))
     expect(legacyInvoke).not.toHaveBeenCalled()
     const payload = JSON.stringify(scopedQuery.mock.calls)
@@ -573,7 +640,7 @@ describe('ModelPickerDialog', () => {
     })
   })
 
-  it('supports pagination via load more and keeps dialog usable on query errors', async () => {
+  it('loads all catalog pages automatically and keeps dialog usable on query errors', async () => {
     const user = userEvent.setup()
     const endpointDetailFn = vi.fn(async (input: { modelId: string }) => ({
       providerKey: 'openrouter',
@@ -656,9 +723,8 @@ describe('ModelPickerDialog', () => {
     })
 
     await screen.findByTestId('model-picker-item-openai/page-1')
-
-    await user.click(screen.getByTestId('model-picker-load-more'))
     await screen.findByTestId('model-picker-item-openai/page-2')
+    expect(screen.queryByTestId('model-picker-load-more')).toBeNull()
 
     const search = screen.getByTestId('model-picker-search')
     await fireEvent.update(search, 'broken')
@@ -978,7 +1044,7 @@ describe('ModelPickerDialog', () => {
     })
   })
 
-  it('shows direct hidden zero and keeps OpenRouter provider count on synced total instead of loaded page size', async () => {
+  it('shows direct hidden zero and keeps OpenRouter provider count on synced total instead of visible page size', async () => {
     const now = Date.now()
     ;(globalThis as any).electronAPI = {
       modelCatalogSyncNow: vi.fn(async () => ({
@@ -1041,9 +1107,107 @@ describe('ModelPickerDialog', () => {
       expect(statusBar?.textContent).toContain('已同步')
       expect(statusBar?.textContent).toContain('338')
       expect(statusBar?.textContent).toContain('隐藏 0')
-      expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain('1/338 loaded')
+      expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain('1/338 shown')
     })
-    expect((screen.getByTestId('model-picker-provider-filter') as HTMLSelectElement).textContent).toContain('OpenRouter (338)')
+    expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain('1/338 shown')
+  })
+
+  it('uses catalog sync status for non-active provider counts', async () => {
+    const now = Date.now()
+    const counts: Record<string, number> = {
+      openrouter: 340,
+      openai_responses: 2,
+      google_ai_studio: 39,
+      anthropic_messages: 9,
+      deepseek: 4,
+    }
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        syncAttempted: false,
+        syncSucceeded: true,
+        providerKey: 'openrouter',
+        modelCount: counts.openrouter,
+        visibleModelCount: counts.openrouter,
+        hiddenModelCount: 0,
+        lastSyncAtMs: now,
+        errorCode: null,
+        errorMessage: null,
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async (options: any) => {
+        const providerKey = String(options?.providerKey ?? 'openrouter')
+        const count = counts[providerKey] ?? 0
+        return {
+          providerKey,
+          syncState: 'ok',
+          lastSyncAtMs: now,
+          modelCount: count,
+          visibleModelCount: count,
+          hiddenModelCount: 0,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+        }
+      }),
+    }
+    const queryFn = vi.fn(async (input: CatalogQueryInput) => {
+      const providerKey = String(input.sourceProviderKey ?? input.providerKey ?? 'openrouter')
+      return createResult([
+        {
+          providerKey,
+          modelId: `${providerKey}/page-1`,
+          modelKey: `${providerKey}::${providerKey}/page-1`,
+          canonicalSlug: `${providerKey}/page-1`,
+          displayName: `${providerKey} Page 1`,
+          description: null,
+          vendor: providerKey,
+          contextLength: 8192,
+          maxOutputTokens: 4096,
+          createdAtSec: 1700000123,
+          pricing: { prompt: null, completion: null, request: null, image: null },
+          capabilities: {
+            reasoning: false,
+            tools: false,
+            structuredOutputs: false,
+            vision: false,
+            longContext: false,
+          },
+        },
+      ], null, {
+        catalogRevision: `rev-counts-${providerKey}`,
+        modelCount: counts[providerKey] ?? 0,
+        visibleModelCount: counts[providerKey] ?? 0,
+        hiddenModelCount: 0,
+        lastSyncAtMs: now,
+      })
+    })
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+        providerSources: [
+          { providerId: 'openai_responses', providerName: 'OpenAI Responses', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+          { providerId: 'google_ai_studio', providerName: 'Google AI Studio', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+          { providerId: 'anthropic_messages', providerName: 'Anthropic Messages', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+          { providerId: 'deepseek', providerName: 'DeepSeek', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+        ],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain('1/340 shown')
+      expect(screen.getByTestId('model-picker-provider-status-openai_responses').textContent).toContain('1/2 shown')
+      expect(screen.getByTestId('model-picker-provider-status-google_ai_studio').textContent).toContain('1/39 shown')
+      expect(screen.getByTestId('model-picker-provider-status-anthropic_messages').textContent).toContain('1/9 shown')
+      expect(screen.getByTestId('model-picker-provider-status-deepseek').textContent).toContain('1/4 shown')
+    })
+
+    expect(screen.getByTestId('model-picker-provider-status-openai_responses').textContent).toContain('1/2 shown')
+    expect(screen.getByTestId('model-picker-provider-status-google_ai_studio').textContent).toContain('1/39 shown')
+    expect(screen.getByTestId('model-picker-provider-status-anthropic_messages').textContent).toContain('1/9 shown')
+    expect(screen.getByTestId('model-picker-provider-status-deepseek').textContent).toContain('1/4 shown')
   })
 
   it('shows failed status with error reason', async () => {

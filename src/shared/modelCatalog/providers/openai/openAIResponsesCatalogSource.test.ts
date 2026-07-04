@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createOpenAIResponsesCatalogSource } from './openAIResponsesCatalogSource'
 
 describe('openAIResponsesCatalogSource', () => {
-  it('fetches OpenAI /models into curated Responses catalog entries', async () => {
+  it('fetches OpenAI /models into Responses catalog entries without requiring curated capability metadata', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       object: 'list',
       data: [
@@ -14,7 +14,7 @@ describe('openAIResponsesCatalogSource', () => {
         },
         {
           object: 'model',
-          id: 'non-curated-embedding-model',
+          id: 'non-curated-model',
           owned_by: 'openai',
         },
       ],
@@ -37,7 +37,7 @@ describe('openAIResponsesCatalogSource', () => {
       },
       redirect: 'error',
     }))
-    expect(snapshot.models.map((model) => model.modelId)).toEqual(['gpt-4.1'])
+    expect(snapshot.models.map((model) => model.modelId)).toEqual(['gpt-4.1', 'non-curated-model'])
     expect(snapshot.models[0]).toMatchObject({
       providerKey: 'openai_responses',
       modelKey: 'openai_responses::gpt-4.1',
@@ -49,6 +49,23 @@ describe('openAIResponsesCatalogSource', () => {
       createdAtSec: 1710000000,
       capabilities: expect.objectContaining({
         reasoning: false,
+      }),
+    })
+    expect(snapshot.models[1]).toMatchObject({
+      providerKey: 'openai_responses',
+      modelKey: 'openai_responses::non-curated-model',
+      displayName: 'non-curated-model',
+      vendor: 'openai',
+      family: 'non',
+      status: 'active',
+      visibility: 'visible',
+      inputModalities: ['text'],
+      outputModalities: ['text'],
+      capabilities: expect.objectContaining({
+        reasoning: false,
+        tools: false,
+        structuredOutputs: false,
+        vision: false,
       }),
     })
     expect(JSON.stringify(snapshot)).not.toContain('sk-openai-test')
