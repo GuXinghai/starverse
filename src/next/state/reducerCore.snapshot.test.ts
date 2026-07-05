@@ -19,11 +19,6 @@ function summarizeState(state: RootState, runId: string) {
       isComplete: m.streaming.isComplete,
       reasoningEndReason: m.reasoningEndReason ?? null,
       reasoningDurationMs: m.reasoningDurationMs ?? null,
-      reasoningSummaryText: m.reasoningSummaryText ?? null,
-      reasoningPiecesText: (m.reasoningPieces ?? [])
-        .filter((p) => p.type === 'text')
-        .map((p) => p.text)
-        .join(''),
       error: m.errorEnvelope
         ? {
             completionClass: (m.errorEnvelope as any).completionClass ?? null,
@@ -111,8 +106,6 @@ describe('reducerCore semantic snapshots', () => {
             "isComplete": true,
             "reasoningDurationMs": null,
             "reasoningEndReason": null,
-            "reasoningPiecesText": "",
-            "reasoningSummaryText": null,
             "role": "user",
             "text": "hello",
           },
@@ -122,8 +115,6 @@ describe('reducerCore semantic snapshots', () => {
             "isComplete": true,
             "reasoningDurationMs": 20,
             "reasoningEndReason": "normal_complete",
-            "reasoningPiecesText": "",
-            "reasoningSummaryText": null,
             "role": "assistant",
             "text": "hi",
           },
@@ -180,8 +171,6 @@ describe('reducerCore semantic snapshots', () => {
             "isComplete": true,
             "reasoningDurationMs": 40,
             "reasoningEndReason": "mid_stream_error",
-            "reasoningPiecesText": "",
-            "reasoningSummaryText": null,
             "role": "assistant",
             "text": "partial",
           },
@@ -236,8 +225,6 @@ describe('reducerCore semantic snapshots', () => {
             "isComplete": true,
             "reasoningDurationMs": 50,
             "reasoningEndReason": "user_abort",
-            "reasoningPiecesText": "",
-            "reasoningSummaryText": null,
             "role": "assistant",
             "text": "part",
           },
@@ -292,8 +279,6 @@ describe('reducerCore semantic snapshots', () => {
             "isComplete": true,
             "reasoningDurationMs": null,
             "reasoningEndReason": "normal_complete",
-            "reasoningPiecesText": "",
-            "reasoningSummaryText": null,
             "role": "assistant",
             "text": "",
           },

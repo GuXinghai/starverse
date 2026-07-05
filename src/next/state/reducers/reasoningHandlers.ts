@@ -11,20 +11,22 @@ function normalizeDisplayBlock(block: ReasoningDisplayBlock): ReasoningDisplayBl
   if (!Number.isFinite(ordinal) || ordinal < 0) return null
   const blockId = String(block.blockId ?? '').trim()
   if (!blockId) return null
+  const providerKey = String(block.providerKey ?? '').trim()
+  if (!providerKey) return null
   if (block.type === 'text') {
     const text = typeof block.text === 'string' ? block.text : ''
     if (!text) return null
-    return { ...block, blockId, ordinal }
+    return { ...block, blockId, ordinal, providerKey }
   }
   if (block.type === 'image') {
     const url = typeof block.url === 'string' ? block.url.trim() : ''
     if (!url) return null
-    return { ...block, blockId, ordinal, url }
+    return { ...block, blockId, ordinal, providerKey, url }
   }
   if (block.type === 'opaque') {
     const label = typeof block.label === 'string' ? block.label.trim() : ''
     if (!label) return null
-    return { ...block, blockId, ordinal, label }
+    return { ...block, blockId, ordinal, providerKey, label }
   }
   return null
 }

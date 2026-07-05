@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ReasoningView, LegacyReasoningPiece } from '@/next/state/types'
+import type { ReasoningView } from '@/next/state/types'
 import ReasoningRichText from '@/ui-kit/chat/ReasoningRichText.vue'
 import { t } from '@/shared/i18n'
 
@@ -8,7 +8,6 @@ const props = withDefaults(
   defineProps<{
     messageId?: string | null
     reasoningView: ReasoningView | null
-    legacyReasoningPieces?: LegacyReasoningPiece[] | null
     collapsed: boolean
     displayMode?: 'inline' | 'rail'
     isStreaming?: boolean
@@ -47,16 +46,6 @@ const indicator = computed(() => {
   return props.collapsed ? 'v' : '^'
 })
 
-const legacyReasoningPieces = computed(() => {
-  const pieces = props.legacyReasoningPieces ?? props.reasoningView?.reasoningPieces
-  if (!Array.isArray(pieces)) return []
-  return pieces.filter((piece) => {
-    if (piece?.type === 'text') return piece.text.trim().length > 0
-    if (piece?.type === 'image') return piece.url.trim().length > 0
-    return false
-  })
-})
-
 const displayBlocks = computed(() => {
   const blocks = props.reasoningView?.displayBlocks
   if (!Array.isArray(blocks)) return []
@@ -68,26 +57,7 @@ const displayBlocks = computed(() => {
   })
 })
 
-const hasReasoningPayload = computed(() => {
-  return Boolean(
-    displayBlocks.value.length > 0 ||
-    props.reasoningView?.summaryText ||
-    props.reasoningView?.reasoningText ||
-    legacyReasoningPieces.value.length > 0
-  )
-})
-
-const shouldRenderStandaloneText = computed(() => legacyReasoningPieces.value.length === 0 && displayBlocks.value.length === 0)
-
-const reasoningBodyText = computed(() => {
-  if (!shouldRenderStandaloneText.value) return ''
-  const parts: string[] = []
-  const reasoningText = props.reasoningView?.reasoningText
-  if (typeof reasoningText === 'string' && reasoningText.trim().length > 0) {
-    parts.push(reasoningText)
-  }
-  return parts.join('\n\n')
-})
+const hasReasoningPayload = computed(() => displayBlocks.value.length > 0)
 
 </script>
 
@@ -108,16 +78,6 @@ const reasoningBodyText = computed(() => {
     </button>
 
     <div v-if="props.displayMode === 'inline' && !props.collapsed" class="mt-2 space-y-2 text-xs text-gray-600">
-      <ReasoningRichText
-        v-if="shouldRenderStandaloneText && props.reasoningView?.summaryText"
-        :text="props.reasoningView.summaryText"
-        :streaming="props.isStreaming"
-      />
-      <ReasoningRichText
-        v-if="reasoningBodyText"
-        :text="reasoningBodyText"
-        :streaming="props.isStreaming"
-      />
       <template v-for="block in displayBlocks" :key="block.blockId">
         <ReasoningRichText
           v-if="block.type === 'text'"
@@ -136,19 +96,6 @@ const reasoningBodyText = computed(() => {
         >
           {{ block.label }}
         </div>
-      </template>
-      <template v-if="displayBlocks.length === 0" v-for="piece in legacyReasoningPieces" :key="piece.id">
-        <ReasoningRichText
-          v-if="piece.type === 'text'"
-          :text="piece.text"
-          :streaming="props.isStreaming"
-        />
-        <img
-          v-if="piece.type === 'image'"
-          :src="piece.url"
-          class="max-h-72 max-w-full rounded border border-gray-200 object-contain"
-          alt=""
-        />
       </template>
       <div v-if="!hasReasoningPayload">
         {{ t('chat.reasoning.emptyPayload') }}

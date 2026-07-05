@@ -164,10 +164,8 @@ function readFixtureText(fileName: string) {
       },
     ])
 
-    expect(next.entities?.messagesById?.assistant_1?.reasoningPieces).toEqual([])
     expect(next.entities?.messagesById?.assistant_1?.reasoningDetailsRaw).toHaveLength(3)
     const assistant = selectTranscript(next, runId).find((message) => message.messageId === 'assistant_1')
-    expect(assistant?.reasoningView.reasoningPieces).toBeUndefined()
     expect(assistant?.reasoningView.displayBlocks).toEqual([
       {
         blockId: 'display-1',
@@ -302,9 +300,6 @@ describe('next/state reducer', () => {
           "reasoningView": {
             "hasEncrypted": false,
             "panelState": "expanded",
-            "reasoningPieces": undefined,
-            "reasoningText": undefined,
-            "summaryText": undefined,
             "visibility": "not_returned",
           },
           "role": "assistant",

@@ -7,29 +7,34 @@ function view(partial: Partial<ReasoningView> & Pick<ReasoningView, 'visibility'
   return {
     visibility: partial.visibility,
     panelState: partial.panelState ?? 'expanded',
-    summaryText: partial.summaryText,
-    reasoningText: partial.reasoningText,
     hasEncrypted: partial.hasEncrypted,
+    displayBlocks: partial.displayBlocks,
   }
 }
 
 describe('ChatReasoningPanel', () => {
-  it('renders shown summary + reasoning', async () => {
+  it('renders shown display blocks', async () => {
     render(ChatReasoningPanel, {
       props: {
         reasoningView: view({
           visibility: 'shown',
           panelState: 'expanded',
-          summaryText: 'S',
-          reasoningText: 'R',
+          displayBlocks: [
+            {
+              blockId: 'display-1',
+              ordinal: 0,
+              type: 'text',
+              text: 'Display reasoning',
+              semanticRole: 'summary',
+              providerKey: 'google_ai_studio',
+            },
+          ],
         }),
       },
     })
 
-    expect(screen.getAllByText('摘要').length).toBeGreaterThan(0)
     await waitFor(() => {
-      expect(screen.getByText('S')).toBeInTheDocument()
-      expect(screen.getByText('R')).toBeInTheDocument()
+      expect(screen.getByText('Display reasoning')).toBeInTheDocument()
     })
   })
 
@@ -39,16 +44,23 @@ describe('ChatReasoningPanel', () => {
         reasoningView: view({
           visibility: 'shown',
           panelState: 'collapsed',
-          summaryText: 'S',
-          reasoningText: 'R',
+          displayBlocks: [
+            {
+              blockId: 'display-1',
+              ordinal: 0,
+              type: 'text',
+              text: 'Display reasoning',
+              semanticRole: 'summary',
+              providerKey: 'google_ai_studio',
+            },
+          ],
         }),
       },
     })
 
     expect(screen.queryByText('(collapsed)')).not.toBeInTheDocument()
-    expect(screen.getAllByText('摘要').length).toBeGreaterThan(0)
     await waitFor(() => {
-      expect(screen.getByText('S')).toBeInTheDocument()
+      expect(screen.getByText('Display reasoning')).toBeInTheDocument()
     })
     r1.unmount()
 
@@ -57,16 +69,22 @@ describe('ChatReasoningPanel', () => {
         reasoningView: view({
           visibility: 'shown',
           panelState: 'expanded',
-          summaryText: 'S',
-          reasoningText: 'R',
+          displayBlocks: [
+            {
+              blockId: 'display-1',
+              ordinal: 0,
+              type: 'text',
+              text: 'Display reasoning',
+              semanticRole: 'summary',
+              providerKey: 'google_ai_studio',
+            },
+          ],
         }),
       },
     })
 
-    expect(screen.getAllByText('摘要').length).toBeGreaterThan(0)
     await waitFor(() => {
-      expect(screen.getByText('S')).toBeInTheDocument()
-      expect(screen.getByText('R')).toBeInTheDocument()
+      expect(screen.getByText('Display reasoning')).toBeInTheDocument()
     })
   })
 
@@ -76,7 +94,16 @@ describe('ChatReasoningPanel', () => {
         reasoningView: view({
           visibility: 'shown',
           panelState: 'expanded',
-          reasoningText: '公式：$E=mc^2$',
+          displayBlocks: [
+            {
+              blockId: 'display-1',
+              ordinal: 0,
+              type: 'text',
+              text: '公式：$E=mc^2$',
+              semanticRole: 'summary',
+              providerKey: 'google_ai_studio',
+            },
+          ],
         }),
       },
     })
@@ -86,16 +113,38 @@ describe('ChatReasoningPanel', () => {
     })
   })
 
-  it('renders reasoning image pieces inside the reasoning panel', () => {
+  it('renders reasoning image display blocks inside the reasoning panel', () => {
     const { container } = render(ChatReasoningPanel, {
       props: {
         reasoningView: {
           visibility: 'shown',
           panelState: 'expanded',
-          reasoningPieces: [
-            { id: 1, type: 'text', text: 'Sketch.' },
-            { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
-            { id: 3, type: 'text', text: 'Refine.' },
+          displayBlocks: [
+            {
+              blockId: 'display-1',
+              ordinal: 0,
+              type: 'text',
+              text: 'Sketch.',
+              semanticRole: 'summary',
+              providerKey: 'google_ai_studio',
+            },
+            {
+              blockId: 'display-2',
+              ordinal: 1,
+              type: 'image',
+              url: 'data:image/png;base64,abc',
+              mimeType: 'image/png',
+              semanticRole: 'thought',
+              providerKey: 'google_ai_studio',
+            },
+            {
+              blockId: 'display-3',
+              ordinal: 2,
+              type: 'text',
+              text: 'Refine.',
+              semanticRole: 'summary',
+              providerKey: 'google_ai_studio',
+            },
           ],
         },
       },
@@ -109,24 +158,18 @@ describe('ChatReasoningPanel', () => {
     })
   })
 
-  it('does not render standalone summary when mixed reasoning pieces are present', async () => {
-    const { container } = render(ChatReasoningPanel, {
+  it('does not render legacy summary without display blocks', async () => {
+    render(ChatReasoningPanel, {
       props: {
         reasoningView: {
           visibility: 'shown',
           panelState: 'expanded',
-          summaryText: 'Sketch.',
-          reasoningPieces: [
-            { id: 1, type: 'text', text: 'Sketch.' },
-            { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
-          ],
         },
       },
     })
 
-    expect(container.querySelector('img[src="data:image/png;base64,abc"]')).not.toBeNull()
     await waitFor(() => {
-      expect(screen.getAllByText('Sketch.')).toHaveLength(1)
+      expect(screen.getByText(t('chat.reasoning.noPayloadShort'))).toBeInTheDocument()
     })
   })
 

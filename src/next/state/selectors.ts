@@ -1,14 +1,6 @@
-import type { MessageState, MessageVM, ReasoningDisplayBlock, ReasoningPiece, ReasoningViewVisibility, RootState, RunVM } from './types'
+import type { MessageState, MessageVM, ReasoningDisplayBlock, ReasoningViewVisibility, RootState, RunVM } from './types'
 import { beginDeriveMeasure, endDeriveMeasure, recordDerive } from './perfMetrics'
-import { getDiagnosticsFlags } from '@/shared/diagnostics/flags'
-import { createDiagnosticsLogger, publishPhase3PieceSnapshot } from '@/shared/diagnostics/bridge'
 import { recordSelectorsDerive, isSchedDiagEnabled, startTimer } from './schedulerDiagnostics'
-
-let lastPieceReportTime = Date.now()
-const lastPieceCounts = new Map<string, { count: number; t: number }>()
-const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV === true
-const diagnosticsFlags = getDiagnosticsFlags()
-const diagnosticsLogger = createDiagnosticsLogger(diagnosticsFlags)
 
 type MessageCacheEntry = Readonly<{ source: MessageState; derived: MessageVM }>
 const messageCache = new Map<string, MessageCacheEntry>()
@@ -19,47 +11,6 @@ type TranscriptCacheEntry = Readonly<{
   result: MessageVM[]
 }>
 const transcriptCache = new Map<string, TranscriptCacheEntry>()
-
-function normalizeReasoningPieces(raw: ReadonlyArray<ReasoningPiece> | undefined): ReasoningPiece[] | undefined {
-  if (!Array.isArray(raw)) return undefined
-  const pieces = raw.filter((piece) => {
-    if (piece?.type === 'text') return piece.text.trim().length > 0
-    if (piece?.type === 'image') return piece.url.trim().length > 0
-    return false
-  })
-  return pieces.length > 0 ? pieces : undefined
-}
-
-function logPieceCount(messageId: string, pieces: ReasoningPiece[], lastPieceLen?: number): void {
-  if (!diagnosticsFlags.phase3Audit) return
-  if (!Array.isArray(pieces) || pieces.length === 0) return
-  const now = Date.now()
-  if (now - lastPieceReportTime < 1000) return
-  lastPieceReportTime = now
-  const count = pieces.length
-  const totalChars = pieces.reduce((sum, piece) => sum + (piece.type === 'text' ? piece.text.length : 0), 0)
-  const lastPiece = pieces[count - 1]
-  const resolvedLastLen =
-    typeof lastPieceLen === 'number'
-      ? lastPieceLen
-      : (lastPiece?.type === 'text' ? lastPiece.text.length : 0)
-  const prev = lastPieceCounts.get(messageId)
-  const elapsedMs = prev ? Math.max(1, now - prev.t) : 1000
-  const delta = prev ? Math.max(0, count - prev.count) : 0
-  const pieceSplitCountPerSec = delta / (elapsedMs / 1000)
-  lastPieceCounts.set(messageId, { count, t: now })
-  diagnosticsLogger.log('piece-count', { messageId: messageId.slice(-8), count })
-  if (isDev) {
-    publishPhase3PieceSnapshot({
-      t: now,
-      messageId,
-      count,
-      reasoningTotalChars: totalChars,
-      reasoningLastPieceLen: resolvedLastLen,
-      pieceSplitCountPerSec,
-    })
-  }
-}
 
 export function selectRun(state: RootState, runId: string): RunVM | null {
   const s = state.runs[runId]
@@ -129,33 +80,8 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   // 诊断计时
   const diagEnabled = isSchedDiagEnabled()
   const endTimer = diagEnabled ? startTimer() : null
-  let usedFallback = false
 
-  const normalizedPieces = normalizeReasoningPieces(m.reasoningPieces)
   const displayBlocks = normalizeReasoningDisplayBlocks(m.reasoningDisplayBlocks)
-  const hasPieces = Array.isArray(normalizedPieces) && normalizedPieces.length > 0
-
-  // 监控 piece 数量
-  if (hasPieces && normalizedPieces) {
-    logPieceCount(messageId, normalizedPieces, m.reasoningLastPieceLen)
-  }
-
-  let summaryText = m.reasoningSummaryText
-  let reasoningText: string | undefined
-  let reasoningPieces: ReasoningPiece[] | undefined
-
-  // Display blocks are the UI SSOT. Raw reasoning details remain semantic only.
-  if (hasPieces) {
-    reasoningPieces = normalizedPieces
-    // 使用 pieces 时不需要 reasoningText
-  } else if (summaryText) {
-    // 仅有 summary（常见于 summary-only 流）
-    reasoningText = m.reasoningStreamingText
-  }
-
-  if (!reasoningText && !reasoningPieces && m.reasoningStreamingText.length > 0) {
-    reasoningText = m.reasoningStreamingText
-  }
 
   const visibility = computeReasoningVisibility(
     m.hasEncryptedReasoning,
@@ -174,9 +100,7 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
     errorEnvelope: m.errorEnvelope ?? null,
     errorSummary: m.errorSummary ?? null,
     reasoningView: {
-      summaryText,
-      reasoningText,
-      ...(displayBlocks ? { displayBlocks } : { reasoningPieces }),
+      ...(displayBlocks ? { displayBlocks } : {}),
       hasEncrypted: m.hasEncryptedReasoning,
       visibility,
       panelState: m.reasoningPanelState,
@@ -193,7 +117,7 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   if (diagEnabled && endTimer) {
     recordSelectorsDerive({
       deriveMs: endTimer(),
-      fallbackReplay: usedFallback,
+      fallbackReplay: false,
     })
   }
 

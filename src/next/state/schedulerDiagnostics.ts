@@ -40,8 +40,8 @@ export type ReducerSample = Readonly<{
   applyMs: number
   deltaTextLen: number
   detailsCount: number
-  reasoningPiecesLen: number
-  reasoningTotalChars: number
+  rawDetailsCount: number
+  rawReasoningTotalChars: number
 }>
 
 export type SelectorSample = Readonly<{
@@ -230,7 +230,7 @@ function computeDiagnosisHint(snapshot: AggregatedSnapshot): string | null {
 
   // 检测 fallback replay 频繁
   if (selectors.fallbackReplayCountPerSec > 10) {
-    return `fallback replay heavy: ${selectors.fallbackReplayCountPerSec.toFixed(1)}/s（应走 pieces 路径）`
+    return `fallback replay heavy: ${selectors.fallbackReplayCountPerSec.toFixed(1)}/s（应走 display blocks 路径）`
   }
 
   return null
