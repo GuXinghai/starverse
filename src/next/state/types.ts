@@ -80,7 +80,7 @@ export type ReasoningDisplayBlock =
       type: 'text'
       text: string
       semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
-      providerKey?: string
+      providerKey: string
       sourceEventType?: string
       sourceRawSegmentId?: number
     }>
@@ -96,7 +96,7 @@ export type ReasoningDisplayBlock =
       height?: number
       alt?: string
       semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
-      providerKey?: string
+      providerKey: string
       sourceEventType?: string
       sourceRawSegmentId?: number
     }>
@@ -106,7 +106,7 @@ export type ReasoningDisplayBlock =
       type: 'opaque'
       label: string
       warning?: string
-      providerKey?: string
+      providerKey: string
       sourceEventType?: string
       sourceRawSegmentId?: number
     }>

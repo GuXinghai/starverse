@@ -127,8 +127,22 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
         reasoningSummaryText: 'legacy summary',
         reasoningPieces: [{ id: 1, type: 'text' as const, text: 'legacy piece' }],
         reasoningDisplayBlocks: [
-          { blockId: 'b1', ordinal: 0, type: 'text' as const, text: 'display text', semanticRole: 'summary' as const },
-          { blockId: 'b2', ordinal: 1, type: 'image' as const, url: 'asset://image-1', semanticRole: 'thought' as const },
+          {
+            blockId: 'b1',
+            ordinal: 0,
+            type: 'text' as const,
+            text: 'display text',
+            semanticRole: 'summary' as const,
+            providerKey: 'google_ai_studio',
+          },
+          {
+            blockId: 'b2',
+            ordinal: 1,
+            type: 'image' as const,
+            url: 'asset://image-1',
+            semanticRole: 'thought' as const,
+            providerKey: 'google_ai_studio',
+          },
         ],
       },
     }
@@ -139,8 +153,22 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     }, assistantMessageId)
 
     expect(vm?.reasoningView.displayBlocks).toEqual([
-      { blockId: 'b1', ordinal: 0, type: 'text', text: 'display text', semanticRole: 'summary' },
-      { blockId: 'b2', ordinal: 1, type: 'image', url: 'asset://image-1', semanticRole: 'thought' },
+      {
+        blockId: 'b1',
+        ordinal: 0,
+        type: 'text',
+        text: 'display text',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+      },
+      {
+        blockId: 'b2',
+        ordinal: 1,
+        type: 'image',
+        url: 'asset://image-1',
+        semanticRole: 'thought',
+        providerKey: 'google_ai_studio',
+      },
     ])
     expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
   })
@@ -161,7 +189,14 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
         ...s1.messages[assistantMessageId],
         reasoningDetailsRaw: [],
         reasoningDisplayBlocks: [
-          { blockId: 'display-1', ordinal: 0, type: 'image' as const, url: 'asset://reasoning-image-1', semanticRole: 'thought' as const },
+          {
+            blockId: 'display-1',
+            ordinal: 0,
+            type: 'image' as const,
+            url: 'asset://reasoning-image-1',
+            semanticRole: 'thought' as const,
+            providerKey: 'google_ai_studio',
+          },
         ],
       },
     }
@@ -174,7 +209,14 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
 
     expect(vm?.reasoningView.visibility).toBe('shown')
     expect(vm?.reasoningView.displayBlocks).toEqual([
-      { blockId: 'display-1', ordinal: 0, type: 'image', url: 'asset://reasoning-image-1', semanticRole: 'thought' },
+      {
+        blockId: 'display-1',
+        ordinal: 0,
+        type: 'image',
+        url: 'asset://reasoning-image-1',
+        semanticRole: 'thought',
+        providerKey: 'google_ai_studio',
+      },
     ])
   })
 
@@ -309,7 +351,14 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
         ],
         reasoningPieces: [],
         reasoningDisplayBlocks: [
-          { blockId: 'b1', ordinal: 0, type: 'text' as const, text: 'before image', semanticRole: 'summary' as const },
+          {
+            blockId: 'b1',
+            ordinal: 0,
+            type: 'text' as const,
+            text: 'before image',
+            semanticRole: 'summary' as const,
+            providerKey: 'google_ai_studio',
+          },
           {
             blockId: 'b2',
             ordinal: 1,
@@ -317,8 +366,16 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
             url: 'asset://message-images/reasoning-image.png',
             mimeType: 'image/png',
             semanticRole: 'thought' as const,
+            providerKey: 'google_ai_studio',
           },
-          { blockId: 'b3', ordinal: 2, type: 'text' as const, text: 'after image', semanticRole: 'summary' as const },
+          {
+            blockId: 'b3',
+            ordinal: 2,
+            type: 'text' as const,
+            text: 'after image',
+            semanticRole: 'summary' as const,
+            providerKey: 'google_ai_studio',
+          },
         ],
       },
     }
@@ -332,7 +389,14 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
 
     expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
     expect(vm?.reasoningView.displayBlocks).toEqual([
-      { blockId: 'b1', ordinal: 0, type: 'text', text: 'before image', semanticRole: 'summary' },
+      {
+        blockId: 'b1',
+        ordinal: 0,
+        type: 'text',
+        text: 'before image',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+      },
       {
         blockId: 'b2',
         ordinal: 1,
@@ -340,8 +404,16 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
         url: 'asset://message-images/reasoning-image.png',
         mimeType: 'image/png',
         semanticRole: 'thought',
+        providerKey: 'google_ai_studio',
       },
-      { blockId: 'b3', ordinal: 2, type: 'text', text: 'after image', semanticRole: 'summary' },
+      {
+        blockId: 'b3',
+        ordinal: 2,
+        type: 'text',
+        text: 'after image',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+      },
     ])
   })
 

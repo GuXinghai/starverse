@@ -125,7 +125,7 @@ export type ReasoningDisplayBlockRecord = Readonly<{
   alt: string | null
   label: string | null
   warning: string | null
-  providerKey: string | null
+  providerKey: string
   sourceEventType: string | null
   sourceRawSegmentId: number | null
   finalAt: number | null
@@ -146,7 +146,7 @@ export type ReasoningDisplayBlockInput = Readonly<{
   alt?: string
   label?: string
   warning?: string
-  providerKey?: string
+  providerKey: string
   sourceEventType?: string
   sourceRawSegmentId?: number
 }>

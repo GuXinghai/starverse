@@ -126,7 +126,14 @@ function readFixtureText(fileName: string) {
         type: 'MessageAppendReasoningDisplayBlock',
         messageId: 'assistant_1',
         choiceIndex: 0,
-        block: { blockId: 'display-1', ordinal: 0, type: 'text', text: 'Sketch.', semanticRole: 'summary' },
+        block: {
+          blockId: 'display-1',
+          ordinal: 0,
+          type: 'text',
+          text: 'Sketch.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+        },
       },
       {
         type: 'MessageAppendReasoningDisplayBlock',
@@ -139,13 +146,21 @@ function readFixtureText(fileName: string) {
           url: 'data:image/png;base64,abc',
           mimeType: 'image/png',
           semanticRole: 'thought',
+          providerKey: 'google_ai_studio',
         },
       },
       {
         type: 'MessageAppendReasoningDisplayBlock',
         messageId: 'assistant_1',
         choiceIndex: 0,
-        block: { blockId: 'display-3', ordinal: 2, type: 'text', text: 'Refine.', semanticRole: 'summary' },
+        block: {
+          blockId: 'display-3',
+          ordinal: 2,
+          type: 'text',
+          text: 'Refine.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+        },
       },
     ])
 
@@ -154,7 +169,14 @@ function readFixtureText(fileName: string) {
     const assistant = selectTranscript(next, runId).find((message) => message.messageId === 'assistant_1')
     expect(assistant?.reasoningView.reasoningPieces).toBeUndefined()
     expect(assistant?.reasoningView.displayBlocks).toEqual([
-      { blockId: 'display-1', ordinal: 0, type: 'text', text: 'Sketch.', semanticRole: 'summary' },
+      {
+        blockId: 'display-1',
+        ordinal: 0,
+        type: 'text',
+        text: 'Sketch.',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+      },
       {
         blockId: 'display-2',
         ordinal: 1,
@@ -162,8 +184,16 @@ function readFixtureText(fileName: string) {
         url: 'data:image/png;base64,abc',
         mimeType: 'image/png',
         semanticRole: 'thought',
+        providerKey: 'google_ai_studio',
       },
-      { blockId: 'display-3', ordinal: 2, type: 'text', text: 'Refine.', semanticRole: 'summary' },
+      {
+        blockId: 'display-3',
+        ordinal: 2,
+        type: 'text',
+        text: 'Refine.',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+      },
     ])
   })
 async function replayFixture(_runId: string, assistantMessageId: string, fileName: string): Promise<DomainEvent[]> {

@@ -690,6 +690,8 @@ export class MessageRepo {
         const type = String(block.type ?? '').trim()
         if (!blockId || !Number.isFinite(ordinal) || ordinal < 0) continue
         if (type !== 'text' && type !== 'image' && type !== 'opaque') continue
+        const providerKey = String(block.providerKey ?? '').trim()
+        if (!providerKey) throw new Error('Reasoning display block providerKey is required')
         const assetId = String(block.assetId ?? '').trim()
         const fileAssetId = String(block.fileAssetId ?? '').trim()
 
@@ -713,7 +715,7 @@ export class MessageRepo {
           alt: block.alt ?? null,
           label: type === 'opaque' ? String(block.label ?? '') : null,
           warning: block.warning ?? null,
-          providerKey: block.providerKey ?? null,
+          providerKey,
           sourceEventType: block.sourceEventType ?? null,
           sourceRawSegmentId: typeof block.sourceRawSegmentId === 'number' ? block.sourceRawSegmentId : null,
           payloadJson,
