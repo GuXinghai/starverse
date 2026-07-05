@@ -300,16 +300,20 @@ export async function listReasoningDisplayBlocksByMessageIds(messageIds: Readonl
           ...(row.semanticRole ? { semanticRole: row.semanticRole } : {}),
           ...(row.providerKey ? { providerKey: row.providerKey } : {}),
           ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
+          ...(row.sourceRawSegmentId ? { sourceRawSegmentId: row.sourceRawSegmentId } : {}),
         } as PersistedReasoningDisplayBlock) : null
       }
       if (row.type === 'image') {
-        const url = row.url ?? ''
+        const assetId = row.assetId ?? ''
+        const url = row.url ?? (assetId ? `asset://${assetId}` : '')
         return url ? ({
           messageId: row.messageId,
           blockId: row.blockId,
           ordinal: row.ordinal,
           type: 'image',
           url,
+          ...(assetId ? { assetId } : {}),
+          ...(row.fileAssetId ? { fileAssetId: row.fileAssetId } : {}),
           ...(row.mimeType ? { mimeType: row.mimeType } : {}),
           ...(row.width ? { width: row.width } : {}),
           ...(row.height ? { height: row.height } : {}),
@@ -317,6 +321,7 @@ export async function listReasoningDisplayBlocksByMessageIds(messageIds: Readonl
           ...(row.semanticRole ? { semanticRole: row.semanticRole } : {}),
           ...(row.providerKey ? { providerKey: row.providerKey } : {}),
           ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
+          ...(row.sourceRawSegmentId ? { sourceRawSegmentId: row.sourceRawSegmentId } : {}),
         } as PersistedReasoningDisplayBlock) : null
       }
       const label = row.label ?? ''
@@ -329,6 +334,7 @@ export async function listReasoningDisplayBlocksByMessageIds(messageIds: Readonl
         ...(row.warning ? { warning: row.warning } : {}),
         ...(row.providerKey ? { providerKey: row.providerKey } : {}),
         ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
+        ...(row.sourceRawSegmentId ? { sourceRawSegmentId: row.sourceRawSegmentId } : {}),
       } as PersistedReasoningDisplayBlock) : null
     })
     .filter((block): block is PersistedReasoningDisplayBlock => !!block)

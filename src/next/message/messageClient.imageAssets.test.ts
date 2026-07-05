@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   listMessageImageAssetsByMessageIds,
+  listReasoningDisplayBlocksByMessageIds,
   persistDetachedImageAssetsFromDataUrls,
   persistMessageImageAssetsFromDataUrls,
 } from '@/next/message/messageClient'
@@ -112,6 +113,52 @@ describe('messageClient image assets', () => {
       messageId: 'assistant_1',
       imageDataUrls: ['data:image/png;base64,iVBORw0KGgo='],
       linkToMessage: false,
+    })
+  })
+
+  it('hydrates reasoning display image blocks from structured asset references', async () => {
+    const invoke = vi.fn(async () => [
+      {
+        messageId: 'assistant_1',
+        blockId: 'reasoning_image_1',
+        ordinal: 2,
+        type: 'image',
+        assetId: 'asset_1',
+        fileAssetId: null,
+        url: null,
+        mimeType: 'image/png',
+        width: 16,
+        height: 16,
+        alt: 'thought image',
+        semanticRole: 'thought',
+        providerKey: 'google-ai-studio',
+        sourceEventType: 'message.reasoning_display_block',
+        sourceRawSegmentId: 7,
+        finalAt: 100,
+      },
+    ])
+    vi.stubGlobal('dbBridge', { invoke })
+
+    await expect(listReasoningDisplayBlocksByMessageIds(['assistant_1'])).resolves.toEqual([
+      {
+        messageId: 'assistant_1',
+        blockId: 'reasoning_image_1',
+        ordinal: 2,
+        type: 'image',
+        url: 'asset://asset_1',
+        assetId: 'asset_1',
+        mimeType: 'image/png',
+        width: 16,
+        height: 16,
+        alt: 'thought image',
+        semanticRole: 'thought',
+        providerKey: 'google-ai-studio',
+        sourceEventType: 'message.reasoning_display_block',
+        sourceRawSegmentId: 7,
+      },
+    ])
+    expect(invoke).toHaveBeenCalledWith('message.listReasoningDisplayBlocksByMessageIds', {
+      messageIds: ['assistant_1'],
     })
   })
 })

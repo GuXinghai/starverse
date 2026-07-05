@@ -539,6 +539,8 @@ export class DbWorkerRuntime {
         semantic_role TEXT CHECK (
           semantic_role IS NULL OR semantic_role IN ('summary', 'reasoning', 'thinking', 'thought')
         ),
+        asset_id TEXT REFERENCES asset(id) ON DELETE SET NULL,
+        file_asset_id TEXT REFERENCES file_assets(id) ON DELETE SET NULL,
         url TEXT,
         mime TEXT,
         width INTEGER,
@@ -548,6 +550,7 @@ export class DbWorkerRuntime {
         warning TEXT,
         provider_key TEXT,
         source_event_type TEXT,
+        source_raw_segment_id INTEGER REFERENCES message_reasoning_detail_segments(segment_id) ON DELETE SET NULL,
         payload_json TEXT,
         created_at INTEGER NOT NULL,
         final_at INTEGER,
@@ -568,6 +571,15 @@ export class DbWorkerRuntime {
     const displayColNames = new Set(displayCols.map((col) => col.name))
     if (!displayColNames.has('final_at')) {
       this.db.exec('ALTER TABLE message_reasoning_display_blocks ADD COLUMN final_at INTEGER')
+    }
+    if (!displayColNames.has('asset_id')) {
+      this.db.exec('ALTER TABLE message_reasoning_display_blocks ADD COLUMN asset_id TEXT')
+    }
+    if (!displayColNames.has('file_asset_id')) {
+      this.db.exec('ALTER TABLE message_reasoning_display_blocks ADD COLUMN file_asset_id TEXT')
+    }
+    if (!displayColNames.has('source_raw_segment_id')) {
+      this.db.exec('ALTER TABLE message_reasoning_display_blocks ADD COLUMN source_raw_segment_id INTEGER')
     }
 
     const indexStatements = [

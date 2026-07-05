@@ -419,6 +419,12 @@ describe('MessageRepo.appendReasoningDetailSegments (aggregation consistency)', 
   })
 
   it('finalizeReasoningDisplayBlocks marks ordered display blocks without changing replay order', () => {
+    const now = Date.now()
+    db.prepare(`
+      INSERT INTO asset (id, hash, mime, width, height, bytes, path, created_at, updated_at)
+      VALUES ('asset_reasoning_image', 'hash_reasoning_image', 'image/png', 16, 16, 128, 'reasoning-image.png', @now, @now)
+    `).run({ now })
+
     const append = repo.appendReasoningDisplayBlocks({
       messageId: 'm1',
       blocks: [
@@ -436,6 +442,7 @@ describe('MessageRepo.appendReasoningDetailSegments (aggregation consistency)', 
           ordinal: 2,
           type: 'image',
           url: 'asset://reasoning-image',
+          assetId: 'asset_reasoning_image',
           mimeType: 'image/png',
           providerKey: 'google-ai-studio',
           sourceEventType: 'message.reasoning_display_block',
@@ -461,6 +468,7 @@ describe('MessageRepo.appendReasoningDetailSegments (aggregation consistency)', 
     const rows = repo.listReasoningDisplayBlocksByMessageIds({ messageIds: ['m1'] })
     expect(rows.map((row) => row.ordinal)).toEqual([1, 2, 3])
     expect(rows.map((row) => row.type)).toEqual(['text', 'image', 'text'])
+    expect(rows[1]?.assetId).toBe('asset_reasoning_image')
     expect(rows.every((row) => row.finalAt === finalize.finalAt)).toBe(true)
   })
 })

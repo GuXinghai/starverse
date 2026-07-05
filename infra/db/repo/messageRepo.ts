@@ -186,6 +186,8 @@ export class MessageRepo {
         block_type,
         text,
         semantic_role,
+        asset_id,
+        file_asset_id,
         url,
         mime,
         width,
@@ -195,6 +197,7 @@ export class MessageRepo {
         warning,
         provider_key,
         source_event_type,
+        source_raw_segment_id,
         payload_json,
         created_at,
         final_at,
@@ -207,6 +210,8 @@ export class MessageRepo {
         @blockType,
         @text,
         @semanticRole,
+        @assetId,
+        @fileAssetId,
         @url,
         @mime,
         @width,
@@ -216,6 +221,7 @@ export class MessageRepo {
         @warning,
         @providerKey,
         @sourceEventType,
+        @sourceRawSegmentId,
         @payloadJson,
         @createdAt,
         NULL,
@@ -238,6 +244,8 @@ export class MessageRepo {
         block_type AS type,
         text,
         semantic_role AS semanticRole,
+        asset_id AS assetId,
+        file_asset_id AS fileAssetId,
         url,
         mime AS mimeType,
         width,
@@ -247,6 +255,7 @@ export class MessageRepo {
         warning,
         provider_key AS providerKey,
         source_event_type AS sourceEventType,
+        source_raw_segment_id AS sourceRawSegmentId,
         final_at AS finalAt
       FROM message_reasoning_display_blocks
       WHERE message_id IN (
@@ -681,6 +690,8 @@ export class MessageRepo {
         const type = String(block.type ?? '').trim()
         if (!blockId || !Number.isFinite(ordinal) || ordinal < 0) continue
         if (type !== 'text' && type !== 'image' && type !== 'opaque') continue
+        const assetId = String(block.assetId ?? '').trim()
+        const fileAssetId = String(block.fileAssetId ?? '').trim()
 
         const payloadJson = JSON.stringify(block)
         const fingerprint = createHash('sha256')
@@ -693,6 +704,8 @@ export class MessageRepo {
           blockType: type,
           text: type === 'text' ? String(block.text ?? '') : null,
           semanticRole: block.semanticRole ?? null,
+          assetId: type === 'image' && assetId ? assetId : null,
+          fileAssetId: type === 'image' && fileAssetId ? fileAssetId : null,
           url: type === 'image' ? String(block.url ?? '') : null,
           mime: type === 'image' ? (block.mimeType ?? null) : null,
           width: typeof block.width === 'number' ? block.width : null,
@@ -702,6 +715,7 @@ export class MessageRepo {
           warning: block.warning ?? null,
           providerKey: block.providerKey ?? null,
           sourceEventType: block.sourceEventType ?? null,
+          sourceRawSegmentId: typeof block.sourceRawSegmentId === 'number' ? block.sourceRawSegmentId : null,
           payloadJson,
           createdAt: now,
           fingerprint,

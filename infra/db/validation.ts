@@ -657,6 +657,8 @@ const ReasoningDisplayBlockSchema = z.object({
   type: z.enum(['text', 'image', 'opaque']),
   text: z.string().optional(),
   semanticRole: z.enum(['summary', 'reasoning', 'thinking', 'thought']).optional(),
+  assetId: z.string().min(1).optional(),
+  fileAssetId: z.string().min(1).optional(),
   url: z.string().optional(),
   mimeType: z.string().optional(),
   width: z.number().int().positive().optional(),
@@ -666,6 +668,7 @@ const ReasoningDisplayBlockSchema = z.object({
   warning: z.string().optional(),
   providerKey: z.string().optional(),
   sourceEventType: z.string().optional(),
+  sourceRawSegmentId: z.number().int().positive().optional(),
 })
 
 export const AppendReasoningDisplayBlocksSchema: ZodType<AppendReasoningDisplayBlocksInput> = z.object({
