@@ -299,12 +299,14 @@ async function* streamGeminiInteractionSse(
   let imageEmitted = false
   let terminalEmitted = false
   let terminalErrorEmitted = false
+  let eventOrdinal = 0
 
   for await (const sseEvent of decodeGeminiSSE(sseStream)) {
     if (terminalEmitted) break
 
     if (sseEvent.type === 'chunk') {
-      const mapped = mapGeminiInteractionResponseToStarverse(sseEvent.data, assistantMessageId)
+      const mapped = mapGeminiInteractionResponseToStarverse(sseEvent.data, assistantMessageId, { eventOrdinal })
+      eventOrdinal += 1
       for (const event of mapped) {
         if (event.type === 'message.content_block_append') imageEmitted = true
         if (event.type === 'stream.done' || event.type === 'stream.error') {
