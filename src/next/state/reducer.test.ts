@@ -88,7 +88,7 @@ function readFixtureText(fileName: string) {
     expect(s5.entities?.messagesById?.assistant_1?.reasoningVersion).toBe(baseReasoningVersion + 1)
   })
 
-  it('keeps Gemini thought images as raw state and replays legacy pieces through selectors', () => {
+  it('keeps Gemini thought images as raw state and uses display blocks for UI replay', () => {
     const runId = 'r1'
     const started = startGeneration(createInitialState(), {
       runId,
@@ -123,15 +123,48 @@ function readFixtureText(fileName: string) {
         choiceIndex: 0,
         detail: { index: 2, type: 'thought_summary', summary: 'Refine.', __starverseReasoningPiece: true },
       },
+      {
+        type: 'MessageAppendReasoningDisplayBlock',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: { blockId: 'display-1', ordinal: 0, type: 'text', text: 'Sketch.', semanticRole: 'summary' },
+      },
+      {
+        type: 'MessageAppendReasoningDisplayBlock',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          blockId: 'display-2',
+          ordinal: 1,
+          type: 'image',
+          url: 'data:image/png;base64,abc',
+          mimeType: 'image/png',
+          semanticRole: 'thought',
+        },
+      },
+      {
+        type: 'MessageAppendReasoningDisplayBlock',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: { blockId: 'display-3', ordinal: 2, type: 'text', text: 'Refine.', semanticRole: 'summary' },
+      },
     ])
 
     expect(next.entities?.messagesById?.assistant_1?.reasoningPieces).toEqual([])
     expect(next.entities?.messagesById?.assistant_1?.reasoningDetailsRaw).toHaveLength(3)
     const assistant = selectTranscript(next, runId).find((message) => message.messageId === 'assistant_1')
-    expect(assistant?.reasoningView.reasoningPieces).toEqual([
-      { id: 1, type: 'text', text: 'Sketch.' },
-      { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
-      { id: 3, type: 'text', text: 'Refine.' },
+    expect(assistant?.reasoningView.reasoningPieces).toBeUndefined()
+    expect(assistant?.reasoningView.displayBlocks).toEqual([
+      { blockId: 'display-1', ordinal: 0, type: 'text', text: 'Sketch.', semanticRole: 'summary' },
+      {
+        blockId: 'display-2',
+        ordinal: 1,
+        type: 'image',
+        url: 'data:image/png;base64,abc',
+        mimeType: 'image/png',
+        semanticRole: 'thought',
+      },
+      { blockId: 'display-3', ordinal: 2, type: 'text', text: 'Refine.', semanticRole: 'summary' },
     ])
   })
 async function replayFixture(_runId: string, assistantMessageId: string, fileName: string): Promise<DomainEvent[]> {
@@ -241,7 +274,7 @@ describe('next/state reducer', () => {
             "hasEncrypted": false,
             "panelState": "expanded",
             "reasoningPieces": undefined,
-            "reasoningText": "",
+            "reasoningText": undefined,
             "summaryText": undefined,
             "visibility": "not_returned",
           },

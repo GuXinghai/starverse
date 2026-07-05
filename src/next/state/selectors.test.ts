@@ -178,7 +178,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     ])
   })
 
-  it('derives display text from Gemini thought details when only raw details are hydrated', () => {
+  it('does not derive UI display text from raw reasoning details', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
       runId: 'run1',
@@ -203,10 +203,12 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     const vm = selectMessage(stateWithThought, assistantMessageId)
 
     expect(vm?.reasoningView.visibility).toBe('shown')
-    expect(vm?.reasoningView.reasoningText).toBe('Gemini thought text')
+    expect(vm?.reasoningView.reasoningText).toBeUndefined()
+    expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
+    expect(vm?.reasoningView.displayBlocks).toBeUndefined()
   })
 
-  it('derives summary text from Gemini Interactions thought summaries when only raw details are hydrated', () => {
+  it('does not derive UI summary text from raw reasoning summaries', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
       runId: 'run1',
@@ -231,10 +233,12 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     const vm = selectMessage(stateWithThoughtSummary, assistantMessageId)
 
     expect(vm?.reasoningView.visibility).toBe('shown')
-    expect(vm?.reasoningView.summaryText).toBe('Gemini image reasoning summary')
+    expect(vm?.reasoningView.summaryText).toBeUndefined()
+    expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
+    expect(vm?.reasoningView.displayBlocks).toBeUndefined()
   })
 
-  it('derives Gemini thought image pieces when persisted summary text already exists', () => {
+  it('keeps persisted summary text but does not derive image pieces from raw thought images', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
       runId: 'run1',
@@ -269,17 +273,11 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
 
     expect(vm?.reasoningView.visibility).toBe('shown')
     expect(vm?.reasoningView.summaryText).toBe('Persisted reasoning summary')
-    expect(vm?.reasoningView.reasoningPieces).toEqual([
-      {
-        id: 1,
-        type: 'image',
-        url: 'asset://message-images/reasoning-image.png',
-        mimeType: 'image/png',
-      },
-    ])
+    expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
+    expect(vm?.reasoningView.displayBlocks).toBeUndefined()
   })
 
-  it('preserves Gemini display reasoning piece order when replaying raw details', () => {
+  it('uses display blocks, not raw details, to preserve Gemini reasoning display order', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
       runId: 'run1',
@@ -312,6 +310,18 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
           },
         ],
         reasoningPieces: [],
+        reasoningDisplayBlocks: [
+          { blockId: 'b1', ordinal: 0, type: 'text' as const, text: 'before image', semanticRole: 'summary' as const },
+          {
+            blockId: 'b2',
+            ordinal: 1,
+            type: 'image' as const,
+            url: 'asset://message-images/reasoning-image.png',
+            mimeType: 'image/png',
+            semanticRole: 'thought' as const,
+          },
+          { blockId: 'b3', ordinal: 2, type: 'text' as const, text: 'after image', semanticRole: 'summary' as const },
+        ],
       },
     }
     const stateWithInterleavedPieces = {
@@ -322,15 +332,18 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
 
     const vm = selectMessage(stateWithInterleavedPieces, assistantMessageId)
 
-    expect(vm?.reasoningView.reasoningPieces).toEqual([
-      { id: 1, type: 'text', text: 'before image' },
+    expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
+    expect(vm?.reasoningView.displayBlocks).toEqual([
+      { blockId: 'b1', ordinal: 0, type: 'text', text: 'before image', semanticRole: 'summary' },
       {
-        id: 2,
+        blockId: 'b2',
+        ordinal: 1,
         type: 'image',
         url: 'asset://message-images/reasoning-image.png',
         mimeType: 'image/png',
+        semanticRole: 'thought',
       },
-      { id: 3, type: 'text', text: 'after image' },
+      { blockId: 'b3', ordinal: 2, type: 'text', text: 'after image', semanticRole: 'summary' },
     ])
   })
 
