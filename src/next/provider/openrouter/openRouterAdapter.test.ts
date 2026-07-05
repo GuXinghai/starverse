@@ -45,8 +45,8 @@ describe('streamEventBridge', () => {
       'message.content_block_append',
       'message.tool_call_delta',
       'message.annotation_batch',
-      'message.reasoning_detail',
-      'message.reasoning_detail_batch',
+      'message.reasoning_raw_detail',
+      'message.reasoning_raw_detail_batch',
       'usage.delta',
       'stream.done',
     ]
@@ -65,8 +65,8 @@ describe('streamEventBridge', () => {
       { type: 'message.content_block_append', messageId: 'm', choiceIndex: 0, block: { type: 'image', url: 'u' } },
       { type: 'message.tool_call_delta', messageId: 'm', choiceIndex: 0, mergeStrategy: 'append', toolCallDeltas: [] },
       { type: 'message.annotation_batch', messageId: 'm', choiceIndex: 0, mergeStrategy: 'replace', annotations: [] },
-      { type: 'message.reasoning_detail', messageId: 'm', choiceIndex: 0, detail: {} },
-      { type: 'message.reasoning_detail_batch', messageId: 'm', choiceIndex: 0, details: [] },
+      { type: 'message.reasoning_raw_detail', messageId: 'm', choiceIndex: 0, detail: {} },
+      { type: 'message.reasoning_raw_detail_batch', messageId: 'm', choiceIndex: 0, details: [] },
       { type: 'usage.delta', usage: {} },
       { type: 'stream.done' },
       { type: 'stream.error', error: {} as any, terminal: true },
@@ -108,6 +108,34 @@ describe('streamEventBridge', () => {
     const streamEvent = domainEventToStreamEvent(original)
     const roundtripped = streamEventToDomainEvent(streamEvent)
     expect(roundtripped).toEqual(original)
+  })
+
+  it('accepts legacy reasoning_detail stream events as raw reasoning compatibility input', () => {
+    expect(streamEventToDomainEvent({
+      type: 'message.reasoning_detail',
+      messageId: 'm',
+      choiceIndex: 0,
+      detail: { text: 'legacy raw' },
+      chunkNo: 2,
+    })).toEqual({
+      type: 'MessageDeltaReasoningDetail',
+      messageId: 'm',
+      choiceIndex: 0,
+      detail: { text: 'legacy raw' },
+      chunkNo: 2,
+    })
+
+    expect(streamEventToDomainEvent({
+      type: 'message.reasoning_detail_batch',
+      messageId: 'm',
+      choiceIndex: 0,
+      details: [{ text: 'legacy raw batch' }],
+    })).toEqual({
+      type: 'MessageDeltaReasoningDetailBatch',
+      messageId: 'm',
+      choiceIndex: 0,
+      details: [{ text: 'legacy raw batch' }],
+    })
   })
 
   it('roundtrip preserves field values for meta delta', () => {
