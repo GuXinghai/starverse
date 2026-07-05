@@ -92,6 +92,8 @@ export type StarverseStreamEvent =
       mergeStrategy: 'append' | 'replace'
       annotations: MessageAnnotation[]
     }>
+  | Readonly<{ type: 'message.reasoning_raw_detail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
+  | Readonly<{ type: 'message.reasoning_raw_detail_batch'; messageId: string; choiceIndex: number; details: unknown[] }>
   | Readonly<{ type: 'message.reasoning_detail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'message.reasoning_detail_batch'; messageId: string; choiceIndex: number; details: unknown[] }>
   | Readonly<{ type: 'message.reasoning_display_block'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>

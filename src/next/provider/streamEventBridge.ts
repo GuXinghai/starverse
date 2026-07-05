@@ -128,8 +128,10 @@ export function streamEventToDomainEvent(event: StarverseStreamEvent): DomainEve
         mergeStrategy: event.mergeStrategy,
         annotations: event.annotations,
       }
+    case 'message.reasoning_raw_detail':
     case 'message.reasoning_detail':
       return { type: 'MessageDeltaReasoningDetail', messageId: event.messageId, choiceIndex: event.choiceIndex, detail: event.detail, chunkNo: event.chunkNo }
+    case 'message.reasoning_raw_detail_batch':
     case 'message.reasoning_detail_batch':
       return { type: 'MessageDeltaReasoningDetailBatch', messageId: event.messageId, choiceIndex: event.choiceIndex, details: event.details }
     case 'message.reasoning_display_block':
@@ -187,9 +189,9 @@ export function domainEventToStreamEvent(event: DomainEvent): StarverseStreamEve
         annotations: event.annotations,
       }
     case 'MessageDeltaReasoningDetail':
-      return { type: 'message.reasoning_detail', messageId: event.messageId, choiceIndex: event.choiceIndex, detail: event.detail, chunkNo: event.chunkNo }
+      return { type: 'message.reasoning_raw_detail', messageId: event.messageId, choiceIndex: event.choiceIndex, detail: event.detail, chunkNo: event.chunkNo }
     case 'MessageDeltaReasoningDetailBatch':
-      return { type: 'message.reasoning_detail_batch', messageId: event.messageId, choiceIndex: event.choiceIndex, details: event.details }
+      return { type: 'message.reasoning_raw_detail_batch', messageId: event.messageId, choiceIndex: event.choiceIndex, details: event.details }
     case 'MessageAppendReasoningDisplayBlock':
       return { type: 'message.reasoning_display_block', messageId: event.messageId, choiceIndex: event.choiceIndex, block: event.block }
     case 'UsageDelta':
