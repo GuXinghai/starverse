@@ -105,6 +105,10 @@ export type FinalizeReasoningDetailsInput = Readonly<{
   messageId: string
 }>
 
+export type FinalizeReasoningDisplayBlocksInput = Readonly<{
+  messageId: string
+}>
+
 export type ReasoningDisplayBlockRecord = Readonly<{
   blockId: string
   messageId: string
@@ -121,6 +125,7 @@ export type ReasoningDisplayBlockRecord = Readonly<{
   warning: string | null
   providerKey: string | null
   sourceEventType: string | null
+  finalAt: number | null
 }>
 
 export type ReasoningDisplayBlockInput = Readonly<{

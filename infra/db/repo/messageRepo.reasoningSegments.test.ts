@@ -417,4 +417,50 @@ describe('MessageRepo.appendReasoningDetailSegments (aggregation consistency)', 
     expect(rebuilt).toHaveLength(1)
     expect((rebuilt[0] as any).data).toBe('encrypted-chunk-1encrypted-chunk-2')
   })
+
+  it('finalizeReasoningDisplayBlocks marks ordered display blocks without changing replay order', () => {
+    const append = repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId: 'display-1',
+          ordinal: 1,
+          type: 'text',
+          text: 'first',
+          semanticRole: 'thought',
+          providerKey: 'google-ai-studio',
+          sourceEventType: 'message.reasoning_display_block',
+        },
+        {
+          blockId: 'display-2',
+          ordinal: 2,
+          type: 'image',
+          url: 'asset://reasoning-image',
+          mimeType: 'image/png',
+          providerKey: 'google-ai-studio',
+          sourceEventType: 'message.reasoning_display_block',
+        },
+        {
+          blockId: 'display-3',
+          ordinal: 3,
+          type: 'text',
+          text: 'second',
+          semanticRole: 'thought',
+          providerKey: 'google-ai-studio',
+          sourceEventType: 'message.reasoning_display_block',
+        },
+      ],
+    })
+
+    expect(append).toMatchObject({ ok: true, received: 3, inserted: 3, ignored: 0 })
+
+    const finalize = repo.finalizeReasoningDisplayBlocks({ messageId: 'm1' })
+    expect(finalize).toMatchObject({ ok: true, finalized: 3 })
+    expect(finalize.finalAt).toBeGreaterThan(0)
+
+    const rows = repo.listReasoningDisplayBlocksByMessageIds({ messageIds: ['m1'] })
+    expect(rows.map((row) => row.ordinal)).toEqual([1, 2, 3])
+    expect(rows.map((row) => row.type)).toEqual(['text', 'image', 'text'])
+    expect(rows.every((row) => row.finalAt === finalize.finalAt)).toBe(true)
+  })
 })

@@ -332,10 +332,17 @@ function createDbBridge() {
       return { ok: true }
     }
     if (method === 'message.setReasoningRequestConfig') return { ok: true }
+    if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
     if (method === 'message.appendReasoningDetailSegments') return { ok: true, received: 0, inserted: 0, skipped: 0, ignored: 0, sumDeltaLenInserted: 0 }
+    if (method === 'message.appendReasoningDisplayBlocks') return { ok: true, received: 0, inserted: 0, ignored: 0 }
+    if (method === 'message.finalizeReasoningDisplayBlocks') return { ok: true }
     if (method === 'message.finalizeReasoningDetails') return { ok: true }
     if (method === 'messageError.upsert') return { ok: true }
     if (method === 'messageError.listByMessageIds') return []
+    if (method === 'messageAsset.listByMessageIds') return []
+    if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+    if (method === 'settings.getImageGenerationDefault') return { value: null }
+    if (method === 'settings.getDfcAttachmentDefaults') return { value: null }
     if (method === 'message.list') return orderedMessages()
 
     return { ok: true }
@@ -476,6 +483,7 @@ describe('ui-app AppChatApp stream session terminal idempotency', () => {
       expect(summary.methodCounts['message.setStatus'] ?? 0).toBe(1)
       expect(summary.methodCounts['messageError.upsert'] ?? 0).toBe(expectedErrorUpsertCount)
       expect(summary.methodCounts['message.appendDelta'] ?? 0).toBe(1)
+      expect(summary.methodCounts['message.finalizeReasoningDisplayBlocks'] ?? 0).toBe(1)
       expect(summary.methodCounts['message.finalizeReasoningDetails'] ?? 0).toBe(1)
       expect(summary.statusSequence).toEqual([expectedStatus])
       expect(summary.completionClasses).toEqual(expectedCompletionClasses)

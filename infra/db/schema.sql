@@ -111,6 +111,7 @@ CREATE TABLE IF NOT EXISTS message_reasoning_display_blocks (
   source_event_type TEXT,
   payload_json TEXT,
   created_at INTEGER NOT NULL,
+  final_at INTEGER,
   segment_fingerprint TEXT,
   UNIQUE (message_id, ordinal),
   UNIQUE (message_id, segment_fingerprint)

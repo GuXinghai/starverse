@@ -1,7 +1,7 @@
 /* eslint-disable max-lines-per-function, complexity */
 import BetterSqlite3 from 'better-sqlite3'
 import { randomUUID, createHash } from 'node:crypto'
-import type { AppendMessageInput, ListMessageParams, MessageRecord, AppendReasoningDetailSegmentsInput, AppendReasoningDisplayBlocksInput, FinalizeReasoningDetailsInput, ListReasoningDisplayBlocksByMessageIdsInput, ReasoningDisplayBlockRecord, SetReasoningRequestConfigInput, SetMessageAnnotationsInput } from '../../db/types'
+import type { AppendMessageInput, ListMessageParams, MessageRecord, AppendReasoningDetailSegmentsInput, AppendReasoningDisplayBlocksInput, FinalizeReasoningDetailsInput, FinalizeReasoningDisplayBlocksInput, ListReasoningDisplayBlocksByMessageIdsInput, ReasoningDisplayBlockRecord, SetReasoningRequestConfigInput, SetMessageAnnotationsInput } from '../../db/types'
 import { buildReasoningDetailsArray, stableStringifyReasoningDetails, type ReasoningDetailSegmentRow } from './reasoningDetailsAggregator'
 import { mergeMetaWithReasoning, safeParseMessageMeta } from './shared/messageMetaMerge'
 
@@ -48,6 +48,7 @@ export class MessageRepo {
   private insertReasoningSegmentStmt: BetterSqlite3.Statement
   private listReasoningSegmentsStmt: BetterSqlite3.Statement
   private insertReasoningDisplayBlockStmt: BetterSqlite3.Statement
+  private finalizeReasoningDisplayBlocksStmt: BetterSqlite3.Statement
   private listReasoningDisplayBlocksStmt: BetterSqlite3.Statement
   private updateReasoningFinalStmt: BetterSqlite3.Statement
   private updateReasoningRequestConfigStmt: BetterSqlite3.Statement
@@ -196,6 +197,7 @@ export class MessageRepo {
         source_event_type,
         payload_json,
         created_at,
+        final_at,
         segment_fingerprint
       )
       VALUES (
@@ -216,8 +218,16 @@ export class MessageRepo {
         @sourceEventType,
         @payloadJson,
         @createdAt,
+        NULL,
         @fingerprint
       )
+    `)
+
+    this.finalizeReasoningDisplayBlocksStmt = this.db.prepare(`
+      UPDATE message_reasoning_display_blocks
+      SET final_at = @finalAt
+      WHERE message_id = @messageId
+        AND final_at IS NULL
     `)
 
     this.listReasoningDisplayBlocksStmt = this.db.prepare(`
@@ -236,7 +246,8 @@ export class MessageRepo {
         label,
         warning,
         provider_key AS providerKey,
-        source_event_type AS sourceEventType
+        source_event_type AS sourceEventType,
+        final_at AS finalAt
       FROM message_reasoning_display_blocks
       WHERE message_id IN (
         SELECT value FROM json_each(@messageIdsJson)
@@ -701,6 +712,15 @@ export class MessageRepo {
     })
     txn()
     return { ok: true, received: blocks.length, inserted, ignored }
+  }
+
+  finalizeReasoningDisplayBlocks(input: FinalizeReasoningDisplayBlocksInput) {
+    const messageId = String(input.messageId ?? '').trim()
+    if (!messageId) throw new Error('Missing messageId')
+
+    const finalAt = Date.now()
+    const result = this.finalizeReasoningDisplayBlocksStmt.run({ messageId, finalAt })
+    return { ok: true, finalized: result.changes, finalAt }
   }
 
   listReasoningDisplayBlocksByMessageIds(input: ListReasoningDisplayBlocksByMessageIdsInput): ReasoningDisplayBlockRecord[] {
