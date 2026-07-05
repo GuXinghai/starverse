@@ -76,12 +76,24 @@ describe('mapAnthropicStreamEventToStarverse', () => {
     it('maps thinking_delta to message.reasoning_detail', () => {
       const events = mapAnthropicStreamEventToStarverse(thinkingDeltaEvent('Let me think...'), msgId)
 
-      expect(events).toHaveLength(1)
+      expect(events).toHaveLength(2)
       expect(events[0].type).toBe('message.reasoning_detail')
       if (events[0].type === 'message.reasoning_detail') {
         expect(events[0].detail).toEqual({ type: 'thinking_delta', thinking: 'Let me think...' })
         expect(events[0].messageId).toBe(msgId)
       }
+      expect(events[1]).toMatchObject({
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'text',
+          text: 'Let me think...',
+          semanticRole: 'thinking',
+          providerKey: 'anthropic',
+          sourceEventType: 'content_block_delta',
+        },
+      })
     })
 
     it('thinking NEVER becomes visible text', () => {
@@ -142,9 +154,11 @@ describe('mapAnthropicStreamEventToStarverse', () => {
       }
 
       const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+      const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
 
       expect(reasoningEvents).toHaveLength(2)
+      expect(displayEvents).toHaveLength(2)
       expect(textEvents).toHaveLength(2)
 
       // Reasoning appears before text
@@ -166,8 +180,9 @@ describe('mapAnthropicStreamEventToStarverse', () => {
       }
 
       expect(allEvents[0].type).toBe('message.reasoning_detail')
-      expect(allEvents[1].type).toBe('message.reasoning_detail')
-      expect(allEvents[2].type).toBe('message.text_delta')
+      expect(allEvents[1].type).toBe('message.reasoning_display_block')
+      expect(allEvents[2].type).toBe('message.reasoning_detail')
+      expect(allEvents[3].type).toBe('message.text_delta')
     })
   })
 
@@ -436,6 +451,7 @@ describe('mapAnthropicStreamEventToStarverse', () => {
       }
 
       const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+      const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
       const usageEvents = allEvents.filter((e) => e.type === 'usage.delta')
       const metaEvents = allEvents.filter((e) => e.type === 'meta.delta')
@@ -443,6 +459,7 @@ describe('mapAnthropicStreamEventToStarverse', () => {
 
       // Exact counts
       expect(reasoningEvents).toHaveLength(3) // 2 thinking + 1 signature
+      expect(displayEvents).toHaveLength(2) // thinking only; signature stays raw/opaque
       expect(textEvents).toHaveLength(1)
       expect(usageEvents).toHaveLength(2) // message_start + message_delta
       expect(doneEvents).toHaveLength(1)
