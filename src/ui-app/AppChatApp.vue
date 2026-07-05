@@ -290,6 +290,8 @@ function shouldShowInlineReasoning(message: any): boolean {
   if (!view) return false
   if (view.visibility === 'shown' || view.visibility === 'excluded') return true
   if (view.hasEncrypted === true) return true
+  if (Array.isArray(view.displayBlocks) && view.displayBlocks.length > 0) return true
+  if (Array.isArray(view.reasoningPieces) && view.reasoningPieces.length > 0) return true
   if (typeof view.summaryText === 'string' && view.summaryText.trim().length > 0) return true
   if (typeof view.reasoningText === 'string' && view.reasoningText.trim().length > 0) return true
   return false

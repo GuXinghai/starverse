@@ -111,10 +111,11 @@ export function selectRun(state: RootState, runId: string): RunVM | null {
 function computeReasoningVisibility(
   hasEncryptedReasoning: boolean,
   reasoningDetailsRaw: unknown[],
+  hasReasoningDisplayBlocks: boolean,
   requestedReasoningExclude: boolean
 ): ReasoningViewVisibility {
   // If we have encrypted signal or actual reasoning content → shown
-  if (hasEncryptedReasoning || reasoningDetailsRaw.length > 0) {
+  if (hasEncryptedReasoning || reasoningDetailsRaw.length > 0 || hasReasoningDisplayBlocks) {
     return 'shown'
   }
   // No reasoning content: distinguish excluded vs not_returned
@@ -316,6 +317,7 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   const visibility = computeReasoningVisibility(
     m.hasEncryptedReasoning,
     m.reasoningDetailsRaw,
+    !!displayBlocks,
     m.requestedReasoningExclude
   )
 
