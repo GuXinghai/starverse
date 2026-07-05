@@ -1,6 +1,6 @@
 <script setup lang="ts">
-import { computed, watchEffect } from 'vue'
-import type { ReasoningDisplayBlock, LegacyReasoningPiece, ReasoningView } from './types'
+import { computed } from 'vue'
+import type { LegacyReasoningPiece, ReasoningView } from './types'
 import ReasoningRichText from './ReasoningRichText.vue'
 import { t } from '@/shared/i18n'
 
@@ -72,63 +72,6 @@ const formattedDuration = computed(() => {
   return `${(ms / 1000).toFixed(2)}s`
 })
 
-function summarizeLegacyReasoningPiece(piece: LegacyReasoningPiece, index: number) {
-  if (piece.type === 'image') {
-    return {
-      index,
-      id: piece.id,
-      type: piece.type,
-      urlKind: piece.url.startsWith('asset://') ? 'asset' : piece.url.startsWith('data:image/') ? 'data-image' : 'other',
-      mimeType: piece.mimeType,
-    }
-  }
-  return {
-    index,
-    id: piece.id,
-    type: piece.type,
-    textLen: piece.text.length,
-    textPreview: piece.text.slice(0, 80),
-  }
-}
-
-function summarizeDisplayBlock(block: ReasoningDisplayBlock, index: number) {
-  if (block.type === 'text') {
-    return { index, blockId: block.blockId, ordinal: block.ordinal, type: block.type, textLen: block.text.length, textPreview: block.text.slice(0, 80) }
-  }
-  if (block.type === 'image') {
-    return {
-      index,
-      blockId: block.blockId,
-      ordinal: block.ordinal,
-      type: block.type,
-      urlKind: block.url.startsWith('asset://') ? 'asset' : block.url.startsWith('data:image/') ? 'data-image' : 'other',
-      mimeType: block.mimeType,
-    }
-  }
-  return { index, blockId: block.blockId, ordinal: block.ordinal, type: block.type, label: block.label }
-}
-
-watchEffect(() => {
-  if (typeof import.meta !== 'undefined' && !(import.meta as any).env?.DEV) return
-  const pieces = legacyReasoningPieces.value ?? []
-  const blocks = displayBlocks.value ?? []
-  const hasImagePiece = pieces.some((piece) => piece.type === 'image')
-  const hasImageBlock = blocks.some((block) => block.type === 'image')
-  const summaryText = props.reasoningView?.summaryText ?? ''
-  if (!hasImagePiece && !hasImageBlock && !(summaryText.length > 0 && (pieces.length > 0 || blocks.length > 0))) return
-  console.warn('[reasoning-render-trace]', {
-    component: 'ChatReasoningPanel',
-    messageId: props.messageId ?? null,
-    isStreaming: props.isStreaming,
-    visibility: props.reasoningView?.visibility,
-    summaryTextLen: summaryText.length,
-    summaryTextPreview: summaryText.slice(0, 120),
-    reasoningTextLen: props.reasoningView?.reasoningText?.length ?? 0,
-    piecesSource: props.legacyReasoningPieces ? 'prop' : 'reasoningView',
-    displayBlocks: blocks.map(summarizeDisplayBlock),
-    pieces: pieces.map(summarizeLegacyReasoningPiece),
-  })
-})
 </script>
 
 <template>

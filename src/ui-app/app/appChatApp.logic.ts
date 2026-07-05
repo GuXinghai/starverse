@@ -1365,11 +1365,6 @@ export function useAppChatAppLogic() {
       const duration = endCommitMeasure(measureId)
       recordCommit(duration)
       recordUpdatedMessages(updatedIds.size)
-      for (const ev of events) {
-        if (isGoogleReasoningTraceEvent(ev, runId) || isGoogleImageOrTextTraceEvent(ev, runId)) {
-          logGoogleAIStudioReasoningState('app.scheduler.after_commit', runId, ev)
-        }
-      }
     },
     onEnqueue: (event) => {
       if (event.type === 'MessageDeltaReasoningDetail') recordDelta(1)
@@ -1404,12 +1399,6 @@ export function useAppChatAppLogic() {
   }
 
   function commitImmediate(runId: string, event: DomainEvent) {
-    if (isGoogleReasoningTraceEvent(event, runId) || isGoogleImageOrTextTraceEvent(event, runId)) {
-      logGoogleAIStudioReasoningTrace('app.event.before_commit', {
-        runId,
-        event: summarizeDomainEventForTrace(event),
-      })
-    }
     if (event.type === 'MessageDeltaReasoningDetail') recordDelta(1)
     if (event.type === 'MessageDeltaReasoningDetailBatch') {
       const count = Array.isArray(event.details) ? event.details.length : 0
@@ -1423,233 +1412,6 @@ export function useAppChatAppLogic() {
     state.value = next
     const duration = endCommitMeasure(measureId)
     recordCommit(duration)
-    if (isGoogleReasoningTraceEvent(event, runId) || isGoogleImageOrTextTraceEvent(event, runId)) {
-      logGoogleAIStudioReasoningState('app.event.after_commit', runId, event)
-    }
-  }
-
-  function isGoogleAIStudioTraceRun(runId: string): boolean {
-    const provider = state.value.runs[runId]?.provider
-    return provider === GOOGLE_AI_STUDIO_PROVIDER_KEY || provider === 'google-ai-studio'
-  }
-
-  function isGoogleReasoningTraceEvent(event: DomainEvent, runId: string): boolean {
-    if (event.type !== 'MessageDeltaReasoningDetail' && event.type !== 'MessageDeltaReasoningDetailBatch') return false
-    return isGoogleAIStudioTraceRun(runId)
-  }
-
-  function isGoogleImageOrTextTraceEvent(event: DomainEvent, runId: string): boolean {
-    if (!isGoogleAIStudioTraceRun(runId)) return false
-    if (event.type === 'MessageAppendContentBlock') {
-      return event.block?.type === 'image' || event.block?.type === 'text'
-    }
-    return event.type === 'MessageDeltaText' || event.type === 'StreamDone' || event.type === 'StreamError'
-  }
-
-  function logGoogleAIStudioReasoningState(stage: string, runId: string, event: DomainEvent) {
-    if (typeof import.meta !== 'undefined' && !(import.meta as any).env?.DEV) return
-    const messageId = 'messageId' in event && typeof event.messageId === 'string' ? event.messageId : ''
-    const messages = state.value.entities?.messagesById ?? state.value.messages
-    const msg = messageId ? messages[messageId] : undefined
-    const vm = messageId ? selectMessage(state.value, messageId) : null
-    console.warn('[google-ai-studio][reasoning-trace]', {
-      stage,
-      runId,
-      messageId,
-      state: msg
-        ? {
-            reasoningDetailsRawCount: msg.reasoningDetailsRaw.length,
-            reasoningSummaryText: truncateReasoningTraceText(msg.reasoningSummaryText),
-            reasoningPiecesCount: msg.reasoningPieces?.length ?? 0,
-            reasoningPieces: summarizeReasoningPiecesForTrace(msg.reasoningPieces),
-            reasoningDetailsRaw: summarizeReasoningDetailsForTrace(msg.reasoningDetailsRaw),
-            contentBlocks: summarizeContentBlocksForTrace(msg.contentBlocks),
-            reasoningVersion: msg.reasoningVersion,
-            reasoningPanelState: msg.reasoningPanelState,
-            streaming: msg.streaming,
-          }
-        : null,
-      vm: vm?.reasoningView
-        ? {
-            visibility: vm.reasoningView.visibility,
-            summaryText: truncateReasoningTraceText(vm.reasoningView.summaryText),
-            reasoningText: truncateReasoningTraceText(vm.reasoningView.reasoningText),
-            piecesCount: vm.reasoningView.reasoningPieces?.length ?? 0,
-            pieces: summarizeReasoningPiecesForTrace(vm.reasoningView.reasoningPieces),
-            panelState: vm.reasoningView.panelState,
-          }
-        : null,
-      activeAssistantMessageId: activeAssistantMessageId.value,
-      lastAssistantMessageId: lastAssistantMessageId.value,
-      rightRailOpen: rightRailOpen.value,
-      rightRailView: rightRailView.value,
-    })
-  }
-
-  function logGoogleAIStudioReasoningTrace(stage: string, payload: Record<string, unknown>) {
-    if (typeof import.meta !== 'undefined' && !(import.meta as any).env?.DEV) return
-    console.warn('[google-ai-studio][reasoning-trace]', { stage, ...payload })
-  }
-
-  function logGoogleAIStudioMessageSnapshot(stage: string, messageId: string, extra: Record<string, unknown> = {}) {
-    if (typeof import.meta !== 'undefined' && !(import.meta as any).env?.DEV) return
-    const id = String(messageId ?? '').trim()
-    const messages = state.value.entities?.messagesById ?? state.value.messages
-    const msg = id ? messages[id] : undefined
-    const vm = id ? selectMessage(state.value, id) : null
-    console.warn('[google-ai-studio][reasoning-trace]', {
-      stage,
-      messageId: id,
-      ...extra,
-      state: msg
-        ? {
-            reasoningDetailsRawCount: msg.reasoningDetailsRaw.length,
-            reasoningDetailsRaw: summarizeReasoningDetailsForTrace(msg.reasoningDetailsRaw),
-            reasoningPiecesCount: msg.reasoningPieces?.length ?? 0,
-            reasoningPieces: summarizeReasoningPiecesForTrace(msg.reasoningPieces),
-            contentBlocks: summarizeContentBlocksForTrace(msg.contentBlocks),
-            reasoningPanelState: msg.reasoningPanelState,
-            reasoningVersion: msg.reasoningVersion,
-            streaming: msg.streaming,
-          }
-        : null,
-      vm: vm?.reasoningView
-        ? {
-            visibility: vm.reasoningView.visibility,
-            panelState: vm.reasoningView.panelState,
-            piecesCount: vm.reasoningView.reasoningPieces?.length ?? 0,
-            pieces: summarizeReasoningPiecesForTrace(vm.reasoningView.reasoningPieces),
-          }
-        : null,
-      activeAssistantMessageId: activeAssistantMessageId.value,
-      lastAssistantMessageId: lastAssistantMessageId.value,
-      rightRailOpen: rightRailOpen.value,
-      rightRailView: rightRailView.value,
-    })
-  }
-
-  function summarizeDomainReasoningEventForLog(event: DomainEvent): unknown {
-    if (event.type === 'MessageDeltaReasoningDetail') {
-      return {
-        type: event.type,
-        messageId: event.messageId,
-        detail: summarizeReasoningDetailForTrace(event.detail),
-      }
-    }
-    if (event.type === 'MessageDeltaReasoningDetailBatch') {
-      return {
-        type: event.type,
-        messageId: event.messageId,
-        details: event.details.map(summarizeReasoningDetailForTrace),
-      }
-    }
-    return { type: event.type }
-  }
-
-  function summarizeDomainEventForTrace(event: DomainEvent): unknown {
-    if (event.type === 'MessageDeltaReasoningDetail' || event.type === 'MessageDeltaReasoningDetailBatch') {
-      return summarizeDomainReasoningEventForLog(event)
-    }
-    if (event.type === 'MessageAppendContentBlock') {
-      return {
-        type: event.type,
-        messageId: event.messageId,
-        block: summarizeContentBlockForTrace(event.block),
-      }
-    }
-    if (event.type === 'MessageDeltaText') {
-      return {
-        type: event.type,
-        messageId: event.messageId,
-        text: truncateReasoningTraceText(event.text),
-      }
-    }
-    return { type: event.type }
-  }
-
-  function summarizeReasoningDetailForTrace(detail: unknown): unknown {
-    if (!detail || typeof detail !== 'object') return detail
-    const record = detail as Record<string, unknown>
-    const image = record.image && typeof record.image === 'object' && !Array.isArray(record.image)
-      ? (record.image as Record<string, unknown>)
-      : null
-    return {
-      type: record.type,
-      index: record.index,
-      text: truncateReasoningTraceText(typeof record.text === 'string' ? record.text : undefined),
-      summary: truncateReasoningTraceText(typeof record.summary === 'string' ? record.summary : undefined),
-      deltaSummary: truncateReasoningTraceText(typeof record.__deltaSummary === 'string' ? record.__deltaSummary : undefined),
-      starversePiece: record.__starverseReasoningPiece === true,
-      image: image
-        ? {
-            url: summarizeImageUrlForTrace(image.url),
-            mimeType: typeof image.mimeType === 'string' ? image.mimeType : undefined,
-          }
-        : undefined,
-      hasThoughtSignature: typeof record.thought_signature === 'string' && record.thought_signature.length > 0,
-    }
-  }
-
-  function summarizeReasoningDetailsForTrace(details: unknown[] | undefined): unknown[] {
-    if (!Array.isArray(details)) return []
-    return details.slice(-8).map(summarizeReasoningDetailForTrace)
-  }
-
-  function summarizeReasoningPiecesForTrace(pieces: ReadonlyArray<unknown> | undefined): unknown[] {
-    if (!Array.isArray(pieces)) return []
-    return pieces.slice(-8).map((piece) => {
-      if (!piece || typeof piece !== 'object') return piece
-      const record = piece as Record<string, unknown>
-      if (record.type === 'image') {
-        return {
-          id: record.id,
-          type: record.type,
-          url: summarizeImageUrlForTrace(record.url),
-          mimeType: typeof record.mimeType === 'string' ? record.mimeType : undefined,
-        }
-      }
-      if (record.type === 'text') {
-        return {
-          id: record.id,
-          type: record.type,
-          text: truncateReasoningTraceText(typeof record.text === 'string' ? record.text : undefined),
-        }
-      }
-      return { type: record.type }
-    })
-  }
-
-  function summarizeContentBlocksForTrace(blocks: ReadonlyArray<unknown> | undefined): unknown[] {
-    if (!Array.isArray(blocks)) return []
-    return blocks.slice(-8).map(summarizeContentBlockForTrace)
-  }
-
-  function summarizeContentBlockForTrace(block: unknown): unknown {
-    if (!block || typeof block !== 'object') return block
-    const record = block as Record<string, unknown>
-    if (record.type === 'image') {
-      return { type: record.type, url: summarizeImageUrlForTrace(record.url) }
-    }
-    if (record.type === 'text') {
-      return { type: record.type, text: truncateReasoningTraceText(typeof record.text === 'string' ? record.text : undefined) }
-    }
-    return { type: record.type }
-  }
-
-  function summarizeImageUrlForTrace(value: unknown): unknown {
-    if (typeof value !== 'string') return undefined
-    const trimmed = value.trim()
-    if (trimmed.startsWith('data:image/')) {
-      const mime = trimmed.slice('data:'.length, trimmed.indexOf(';base64,') > 0 ? trimmed.indexOf(';base64,') : Math.min(trimmed.length, 64))
-      return { kind: 'data-image', mime, length: trimmed.length }
-    }
-    if (trimmed.startsWith('asset://')) return { kind: 'asset', value: trimmed, length: trimmed.length }
-    return { kind: 'other', prefix: trimmed.slice(0, 48), length: trimmed.length }
-  }
-
-  function truncateReasoningTraceText(value: string | undefined): string | undefined {
-    if (!value) return undefined
-    return value.length > 4000 ? `${value.slice(0, 4000)}...[truncated:${value.length - 4000}]` : value
   }
 
   function completionClassFromEvent(event: DomainEvent): CompletionClass | null {
@@ -2975,19 +2737,8 @@ export function useAppChatAppLogic() {
     if (!pending || pending.length === 0) return
     const batch = pending.splice(0, pending.length)
     try {
-      logGoogleAIStudioMessageSnapshot('app.reasoning.flush.before_persist', assistantMessageId, {
-        batchCount: batch.length,
-        batch: summarizeReasoningDetailsForTrace(batch),
-      })
       const details = await persistReasoningImageDataUrls(assistantMessageId, batch)
-      logGoogleAIStudioMessageSnapshot('app.reasoning.flush.after_image_asset_persist', assistantMessageId, {
-        batchCount: details.length,
-        batch: summarizeReasoningDetailsForTrace(details),
-      })
       const result = await appendReasoningDetailSegments({ messageId: assistantMessageId, details })
-      logGoogleAIStudioMessageSnapshot('app.reasoning.flush.after_db_append', assistantMessageId, {
-        dbAppendResult: result,
-      })
       // 累加 DB 统计到 diagnosticTracker
       stream.diagnosticTracker.dbInserted += result.inserted
       stream.diagnosticTracker.dbSkipped += result.skipped
@@ -3175,28 +2926,6 @@ export function useAppChatAppLogic() {
     }
     if (debug && rendered.debug) console.log('[ui-app] context.getRenderableTurns debug', rendered.debug)
     const rows = rendered.messages
-    if (typeof import.meta === 'undefined' || (import.meta as any).env?.DEV) {
-      const reasoningRows = rows
-        .filter((row) => {
-          const details = extractReasoningDetailsFromMeta(row.meta ?? null)
-          return details.length > 0 || String(row.role ?? '').trim() === 'assistant'
-        })
-        .slice(-8)
-        .map((row) => ({
-          id: String(row.id ?? '').slice(0, 8),
-          role: row.role,
-          status: row.status,
-          providerId: extractRuntimeSelectionFromMessageMeta(row.meta ?? null).providerId,
-          reasoningDetailsRawCount: extractReasoningDetailsFromMeta(row.meta ?? null).length,
-          reasoningDetailsRaw: summarizeReasoningDetailsForTrace(extractReasoningDetailsFromMeta(row.meta ?? null)),
-        }))
-      console.warn('[google-ai-studio][reasoning-trace]', {
-        stage: 'app.transcript.loaded_from_db',
-        branchId: bid,
-        token: myToken,
-        rows: reasoningRows,
-      })
-    }
     retainReasoningArtifactsForMessageIds(rows.map((m) => m.id))
     hydrateStateFromPersistedMessages(
       bid,
@@ -3226,31 +2955,6 @@ export function useAppChatAppLogic() {
     if (shouldLogDebug()) {
       const statuses = [...metaMap.entries()].map(([id, m]) => ({ id: id.slice(0, 8), status: m.status }))
       console.log('[ui-app] loadTranscriptForBranch: updated messageMetaById', { statuses })
-    }
-    if (typeof import.meta === 'undefined' || (import.meta as any).env?.DEV) {
-      const messages = state.value.entities?.messagesById ?? state.value.messages
-      const assistantSummaries = rows
-        .filter((row) => String(row.role ?? '').trim() === 'assistant')
-        .slice(-8)
-        .map((row) => {
-          const id = String(row.id ?? '').trim()
-          const msg = messages[id]
-          const vm = id ? selectMessage(state.value, id) : null
-          return {
-            id: id.slice(0, 8),
-            stateReasoningDetailsRawCount: msg?.reasoningDetailsRaw.length ?? 0,
-            stateReasoningPieces: summarizeReasoningPiecesForTrace(msg?.reasoningPieces),
-            vmPieces: summarizeReasoningPiecesForTrace(vm?.reasoningView.reasoningPieces),
-            vmVisibility: vm?.reasoningView.visibility,
-            panelState: msg?.reasoningPanelState,
-          }
-        })
-      console.warn('[google-ai-studio][reasoning-trace]', {
-        stage: 'app.transcript.hydrated_state',
-        branchId: bid,
-        token: myToken,
-        assistants: assistantSummaries,
-      })
     }
     await hydrateErrorEnvelopesForRows(rows, myToken)
     await hydrateMessageAssetsForRows(rows, myToken)
@@ -4161,33 +3865,23 @@ export function useAppChatAppLogic() {
 
   function autoOpenReasoningPanelForMessage(messageId: string) {
     if (globalReasoningPanelDefaultExpanded.value === false) {
-      logGoogleAIStudioMessageSnapshot('app.reasoning.auto_open_skipped', messageId, {
-        reason: 'default_expanded_disabled',
-      })
       return
     }
-    logGoogleAIStudioMessageSnapshot('app.reasoning.auto_open_before', messageId)
     setReasoningPanelExpandedForMessage(messageId, true)
     if (reasoningRailMode.value) {
       rightRailView.value = 'reasoning'
       rightRailOpen.value = true
     }
-    logGoogleAIStudioMessageSnapshot('app.reasoning.auto_open_after', messageId)
   }
 
   function autoCollapseReasoningPanelForMessage(messageId: string) {
     if (globalReasoningPanelAutoCollapseAfterReasoning.value !== true) {
-      logGoogleAIStudioMessageSnapshot('app.reasoning.auto_collapse_skipped', messageId, {
-        reason: 'auto_collapse_disabled',
-      })
       return
     }
-    logGoogleAIStudioMessageSnapshot('app.reasoning.auto_collapse_before', messageId)
     setReasoningPanelExpandedForMessage(messageId, false)
     if (reasoningRailMode.value && effectiveRightRailView.value === 'reasoning') {
       rightRailOpen.value = false
     }
-    logGoogleAIStudioMessageSnapshot('app.reasoning.auto_collapse_after', messageId)
   }
 
   function onOpenReasoningDisplayForMessage(messageId?: string) {
@@ -8903,13 +8597,6 @@ export function useAppChatAppLogic() {
         __metadataDigest: merged.metadataDigest,
       }
       stream.pendingReasoningDetails.value.push(detailWithDelta)
-      logGoogleAIStudioMessageSnapshot('app.reasoning.pending_queued', assistantMessageId, {
-        chunkNo,
-        key,
-        deltaLen,
-        pendingCount: stream.pendingReasoningDetails.value.length,
-        detail: summarizeReasoningDetailForTrace(detailWithDelta),
-      })
       scheduleReasoningDetailFlush(stream, assistantMessageId)
 
       // 追踪诊断信息
@@ -8934,12 +8621,6 @@ export function useAppChatAppLogic() {
     // Merger 返回 null，记录跳过
     stream.diagnosticTracker.events.push({ chunkNo, key, deltaLen: 0, action: 'skipped', reason: 'merger_null' })
     stream.diagnosticTracker.totalSkipped++
-    logGoogleAIStudioMessageSnapshot('app.reasoning.pending_skipped', assistantMessageId, {
-      chunkNo,
-      key,
-      reason: 'merger_null',
-      detail: summarizeReasoningDetailForTrace(ev.detail),
-    })
     if (shouldLogReasoningDebug()) {
       console.log('[reasoning-chunk] SKIPPED (merger returned null)', { key })
     }
@@ -8961,16 +8642,9 @@ export function useAppChatAppLogic() {
     // Use unified finalization to enforce: refresh FIRST, then clear activeStream.
     try {
       // 记录 flush 前的队列信息
-      const pendingCountBeforeFlush = stream.pendingReasoningDetails.value.length
-      logGoogleAIStudioMessageSnapshot('app.reasoning.finalize.before_flush', assistantMessageId, {
-        pendingCountBeforeFlush,
-        pendingDisplayBlockCountBeforeFlush: stream.pendingReasoningDisplayBlocks.value.length,
-      })
       await flushReasoningDetailSegments(stream, assistantMessageId)
       await flushReasoningDisplayBlocks(stream, assistantMessageId)
-      logGoogleAIStudioMessageSnapshot('app.reasoning.finalize.after_flush_before_finalize_db', assistantMessageId)
       await finalizeReasoningDetails({ messageId: assistantMessageId })
-      logGoogleAIStudioMessageSnapshot('app.reasoning.finalize.after_finalize_db_before_refresh', assistantMessageId)
 
       if (shouldLogReasoningDebug()) {
         const mergerStats = stream.reasoningMerger.getStats()
@@ -9068,7 +8742,6 @@ export function useAppChatAppLogic() {
           mergerDeltaCount: mergerStats.deltaCount,
           mergerSnapshotCount: mergerStats.snapshotCount,
           mergerUniqueKeys: mergerStats.uniqueKeys,
-          pendingCountBeforeFlush,
           dbSegmentsCount,
           isLikelySnapshot: mergerStats.isLikelySnapshot,
           isEncryptedModel,
@@ -9292,17 +8965,6 @@ export function useAppChatAppLogic() {
         sawAnyEvent = true
         input.telemetry?.onEvent?.(ev)
 
-        if (
-          input.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
-          (ev.type === 'MessageDeltaReasoningDetail' || ev.type === 'MessageDeltaReasoningDetailBatch')
-        ) {
-          logGoogleAIStudioReasoningTrace('app.stream.received', {
-            branchId,
-            assistantMessageId,
-            event: summarizeDomainReasoningEventForLog(ev),
-          })
-        }
-
         if (ev.type === 'StreamError' || ev.type === 'StreamAbort') {
           const completionClass = completionClassFromEvent(ev) ?? 'error'
           if (completionClass === 'aborted') {
@@ -9333,11 +8995,6 @@ export function useAppChatAppLogic() {
           !autoCollapsedReasoningPanel &&
           isAssistantTextEventForMessage(ev, assistantMessageId)
         ) {
-          logGoogleAIStudioReasoningTrace('app.reasoning.auto_collapse_trigger', {
-            branchId,
-            assistantMessageId,
-            event: summarizeDomainEventForTrace(ev),
-          })
           autoCollapsedReasoningPanel = true
           autoCollapseReasoningPanelForMessage(assistantMessageId)
         }
