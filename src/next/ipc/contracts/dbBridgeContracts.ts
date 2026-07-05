@@ -91,6 +91,7 @@ export type DecodedReasoningDisplayBlock = Readonly<{
   warning: string | null
   providerKey: string | null
   sourceEventType: string | null
+  finalAt: number | null
 }>
 
 export type DecodedFileAsset = Readonly<{
@@ -1169,6 +1170,7 @@ const reasoningDisplayBlockSchema = z.object({
   warning: z.string().nullable().optional(),
   providerKey: z.string().nullable().optional(),
   sourceEventType: z.string().nullable().optional(),
+  finalAt: z.number().int().nonnegative().nullable().optional(),
 }).transform((row): DecodedReasoningDisplayBlock => ({
   blockId: row.blockId,
   messageId: row.messageId,
@@ -1185,6 +1187,7 @@ const reasoningDisplayBlockSchema = z.object({
   warning: row.warning ?? null,
   providerKey: row.providerKey ?? null,
   sourceEventType: row.sourceEventType ?? null,
+  finalAt: row.finalAt ?? null,
 }))
 
 const beginTurnResultSchema = z.object({
@@ -1707,6 +1710,10 @@ export function decodeAppendReasoningDetailSegmentsResponse(raw: unknown) {
 
 export function decodeAppendReasoningDisplayBlocksResponse(raw: unknown) {
   return decodeWithSchema('message.appendReasoningDisplayBlocks', appendReasoningDisplayBlocksResultSchema, raw)
+}
+
+export function decodeMessageFinalizeReasoningDisplayBlocksResponse(raw: unknown): boolean {
+  return decodeStrictAck('message.finalizeReasoningDisplayBlocks', raw)
 }
 
 export function decodeReasoningDisplayBlockListResponse(raw: unknown): DecodedReasoningDisplayBlock[] {

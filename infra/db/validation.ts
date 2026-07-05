@@ -52,6 +52,7 @@ import type {
   MarkFileTypeVerdictStaleInput,
   AppendReasoningDetailSegmentsInput,
   AppendReasoningDisplayBlocksInput,
+  FinalizeReasoningDisplayBlocksInput,
   FinalizeReasoningDetailsInput,
   ListReasoningDisplayBlocksByMessageIdsInput,
   SetReasoningRequestConfigInput,
@@ -674,6 +675,10 @@ export const AppendReasoningDisplayBlocksSchema: ZodType<AppendReasoningDisplayB
 
 export const ListReasoningDisplayBlocksByMessageIdsSchema: ZodType<ListReasoningDisplayBlocksByMessageIdsInput> = z.object({
   messageIds: z.array(z.string().min(1)).min(1).max(500),
+})
+
+export const FinalizeReasoningDisplayBlocksSchema: ZodType<FinalizeReasoningDisplayBlocksInput> = z.object({
+  messageId: z.string().min(1),
 })
 
 export const FinalizeReasoningDetailsSchema: ZodType<FinalizeReasoningDetailsInput> = z.object({

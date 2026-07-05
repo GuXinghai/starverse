@@ -25,6 +25,7 @@ import {
   AppendReasoningDetailSegmentsSchema,
   AppendReasoningDisplayBlocksSchema,
   FinalizeReasoningDetailsSchema,
+  FinalizeReasoningDisplayBlocksSchema,
   ListReasoningDisplayBlocksByMessageIdsSchema,
   SetReasoningRequestConfigSchema,
   GetReasoningSegmentsStatsSchema,
@@ -319,6 +320,11 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
   register('message.appendReasoningDisplayBlocks', (raw) => {
       const input = AppendReasoningDisplayBlocksSchema.parse(raw)
       return rt.messageRepo.appendReasoningDisplayBlocks(input)
+    })
+
+  register('message.finalizeReasoningDisplayBlocks', (raw) => {
+      const input = FinalizeReasoningDisplayBlocksSchema.parse(raw)
+      return rt.messageRepo.finalizeReasoningDisplayBlocks(input)
     })
 
   register('message.listReasoningDisplayBlocksByMessageIds', (raw) => {

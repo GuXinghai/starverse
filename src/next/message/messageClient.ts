@@ -7,6 +7,7 @@ import {
   decodeMessageAssetListResponse,
   decodeMessageAssetPersistResponse,
   decodeMessageAppendResponse,
+  decodeMessageFinalizeReasoningDisplayBlocksResponse,
   decodeMessageFinalizeReasoningDetailsResponse,
   decodeMessageListResponse,
   decodeMessageSetStatusResponse,
@@ -340,6 +341,14 @@ export async function finalizeReasoningDetails(input: Readonly<{ messageId: stri
   if (!messageId) throw new Error('Missing messageId')
   const result = await bridge.invoke('message.finalizeReasoningDetails', { messageId })
   return decodeMessageFinalizeReasoningDetailsResponse(result)
+}
+
+export async function finalizeReasoningDisplayBlocks(input: Readonly<{ messageId: string }>): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) throw new Error('Missing messageId')
+  const result = await bridge.invoke('message.finalizeReasoningDisplayBlocks', { messageId })
+  return decodeMessageFinalizeReasoningDisplayBlocksResponse(result)
 }
 
 export async function setMessageReasoningRequestConfig(input: Readonly<{ messageId: string; value: unknown }>): Promise<boolean> {

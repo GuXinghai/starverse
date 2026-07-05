@@ -39,6 +39,7 @@ import {
   appendMessageDelta,
   appendReasoningDetailSegments,
   appendReasoningDisplayBlocks,
+  finalizeReasoningDisplayBlocks,
   finalizeReasoningDetails,
   getReasoningSegmentsStats,
   listReasoningDisplayBlocksByMessageIds,
@@ -8644,6 +8645,11 @@ export function useAppChatAppLogic() {
       // 记录 flush 前的队列信息
       await flushReasoningDetailSegments(stream, assistantMessageId)
       await flushReasoningDisplayBlocks(stream, assistantMessageId)
+      try {
+        await finalizeReasoningDisplayBlocks({ messageId: assistantMessageId })
+      } catch (err) {
+        if (shouldLogReasoningDebug()) console.warn('[ui-app] finalizeReasoningDisplayBlocks failed (non-fatal):', err)
+      }
       await finalizeReasoningDetails({ messageId: assistantMessageId })
 
       if (shouldLogReasoningDebug()) {

@@ -550,6 +550,7 @@ export class DbWorkerRuntime {
         source_event_type TEXT,
         payload_json TEXT,
         created_at INTEGER NOT NULL,
+        final_at INTEGER,
         segment_fingerprint TEXT,
         UNIQUE (message_id, ordinal),
         UNIQUE (message_id, segment_fingerprint)
@@ -561,6 +562,12 @@ export class DbWorkerRuntime {
     const segmentColNames = new Set(segmentCols.map((col) => col.name))
     if (!segmentColNames.has('segment_fingerprint')) {
       this.db.exec('ALTER TABLE message_reasoning_detail_segments ADD COLUMN segment_fingerprint TEXT')
+    }
+
+    const displayCols = this.db.prepare('PRAGMA table_info(message_reasoning_display_blocks)').all() as { name: string }[]
+    const displayColNames = new Set(displayCols.map((col) => col.name))
+    if (!displayColNames.has('final_at')) {
+      this.db.exec('ALTER TABLE message_reasoning_display_blocks ADD COLUMN final_at INTEGER')
     }
 
     const indexStatements = [

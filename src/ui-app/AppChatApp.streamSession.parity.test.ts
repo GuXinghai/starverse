@@ -118,6 +118,7 @@ type ScenarioSummary = {
   completionClasses: string[]
   reasoningSegmentCalls: number
   reasoningSegmentItems: number
+  finalizeReasoningDisplayCalls: number
   finalizeReasoningCalls: number
 }
 
@@ -438,9 +439,16 @@ function createDbBridge(mode: ScenarioMode) {
       }, 0)
       return { ok: true, received: details.length, inserted: details.length, skipped: 0, ignored: 0, sumDeltaLenInserted }
     }
+    if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
+    if (method === 'message.appendReasoningDisplayBlocks') return { ok: true, received: 0, inserted: 0, ignored: 0 }
+    if (method === 'message.finalizeReasoningDisplayBlocks') return { ok: true }
     if (method === 'message.finalizeReasoningDetails') return { ok: true }
     if (method === 'messageError.upsert') return { ok: true }
     if (method === 'messageError.listByMessageIds') return []
+    if (method === 'messageAsset.listByMessageIds') return []
+    if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+    if (method === 'settings.getImageGenerationDefault') return { value: null }
+    if (method === 'settings.getDfcAttachmentDefaults') return { value: null }
     if (method === 'message.list') return orderedMessages()
 
     return { ok: true }
@@ -499,6 +507,7 @@ async function runScenario(mode: ScenarioMode, options?: { expectHello?: boolean
   const completionClasses: string[] = []
   let reasoningSegmentCalls = 0
   let reasoningSegmentItems = 0
+  let finalizeReasoningDisplayCalls = 0
   let finalizeReasoningCalls = 0
 
   for (const [method, params] of calls) {
@@ -527,6 +536,10 @@ async function runScenario(mode: ScenarioMode, options?: { expectHello?: boolean
       reasoningSegmentItems += Array.isArray((params as any)?.details) ? (params as any).details.length : 0
       continue
     }
+    if (method === 'message.finalizeReasoningDisplayBlocks') {
+      finalizeReasoningDisplayCalls += 1
+      continue
+    }
     if (method === 'message.finalizeReasoningDetails') {
       finalizeReasoningCalls += 1
     }
@@ -540,6 +553,7 @@ async function runScenario(mode: ScenarioMode, options?: { expectHello?: boolean
     completionClasses,
     reasoningSegmentCalls,
     reasoningSegmentItems,
+    finalizeReasoningDisplayCalls,
     finalizeReasoningCalls,
   }
 }
@@ -613,6 +627,7 @@ describe('ui-app AppChatApp stream session parity', () => {
       expect(summary.completionClasses).toEqual(['error'])
       expect(summary.reasoningSegmentCalls).toBe(1)
       expect(summary.reasoningSegmentItems).toBe(1)
+      expect(summary.finalizeReasoningDisplayCalls).toBe(1)
       expect(summary.finalizeReasoningCalls).toBe(1)
     }
   )
