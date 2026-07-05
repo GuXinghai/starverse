@@ -18,7 +18,12 @@ import type { DomainEvent, StreamEndReason } from '@/next/state/types'
 import { normalizeTransportError } from '@/next/errors/normalizeOpenRouterError'
 import { TerminalArbiter } from '@/next/streaming/core/terminalArbiter'
 import { TimingMachine } from '@/next/streaming/core/timingMachine'
-import type { BuildStreamErrorFromAppErrorInput, StreamRequestContext, StreamSemanticCoreInput } from '@/next/streaming/core/types'
+import type {
+  BuildStreamErrorFromAppErrorInput,
+  StreamJsonChunkMapper,
+  StreamRequestContext,
+  StreamSemanticCoreInput,
+} from '@/next/streaming/core/types'
 
 export function mapAppPhaseToEnvelopePhase(appPhase: AppErrorPhase, fallback: ErrorPhase): ErrorPhase {
   if (appPhase === 'pre_stream_request_error') return 'pre_stream'
@@ -87,6 +92,14 @@ export async function* streamFetchSemanticCore(input: StreamSemanticCoreInput): 
   let lastMeta: LastMeta = {}
   let chunkNo = 0
   let receivedAnySse = false
+  const defaultMapJsonChunkToEvents: StreamJsonChunkMapper = (mapperInput) =>
+    mapChunkToEvents({
+      chunk: mapperInput.chunk as any,
+      messageId: mapperInput.messageId,
+      choiceIndex: mapperInput.choiceIndex,
+      chunkNo: mapperInput.chunkNo,
+    }) as any as DomainEvent[]
+  const mapJsonChunkToEvents = input.mapJsonChunkToEvents ?? defaultMapJsonChunkToEvents
 
   yield timing.emitRequestStartSnapshot()
 
@@ -177,11 +190,11 @@ export async function* streamFetchSemanticCore(input: StreamSemanticCoreInput): 
     }
 
     chunkNo++
-    const mapped = mapChunkToEvents({
-      chunk: ev.value as any,
+    const mapped = mapJsonChunkToEvents({
+      chunk: ev.value,
       messageId: input.assistantMessageId,
       chunkNo,
-    }) as any as DomainEvent[]
+    }) as DomainEvent[]
 
     for (const mappedEvent of mapped) {
       if (mappedEvent.type === 'MetaDelta') {
