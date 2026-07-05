@@ -54,7 +54,7 @@ export type ReasoningViewVisibility = 'shown' | 'excluded' | 'not_returned'
 
 export type ReasoningPanelState = 'collapsed' | 'expanded'
 
-export type ReasoningPiece =
+export type LegacyReasoningPiece =
   | Readonly<{
       id: number
       type: 'text'
@@ -66,6 +66,12 @@ export type ReasoningPiece =
       url: string
       mimeType?: string
     }>
+
+/**
+ * Legacy fallback for pre-display-block reasoning replay and live text compaction.
+ * New UI display should prefer ReasoningDisplayBlock.
+ */
+export type ReasoningPiece = LegacyReasoningPiece
 
 export type ReasoningDisplayBlock =
   | Readonly<{
@@ -122,7 +128,7 @@ export type ReasoningView = Readonly<{
   displayBlocks?: ReasoningDisplayBlock[]
   summaryText?: string
   reasoningText?: string
-  reasoningPieces?: ReasoningPiece[]
+  reasoningPieces?: LegacyReasoningPiece[]
   hasEncrypted?: boolean
   visibility: ReasoningViewVisibility
   panelState: ReasoningPanelState
@@ -221,7 +227,7 @@ export type MessageState = Readonly<{
   reasoningDetailsRaw: unknown[]
   reasoningStreamingText: string
   reasoningSummaryText?: string
-  reasoningPieces?: ReasoningPiece[]
+  reasoningPieces?: LegacyReasoningPiece[]
   reasoningDisplayBlocks?: ReasoningDisplayBlock[]
   reasoningLastPieceLen?: number
   reasoningPanelState: ReasoningPanelState

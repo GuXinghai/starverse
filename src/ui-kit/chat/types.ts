@@ -33,7 +33,7 @@ export type MessageAnnotation = Readonly<Record<string, unknown>>
 export type ReasoningViewVisibility = 'shown' | 'excluded' | 'not_returned'
 export type ReasoningPanelState = 'collapsed' | 'expanded'
 
-export type ReasoningPiece =
+export type LegacyReasoningPiece =
   | Readonly<{
       id: number
       type: 'text'
@@ -45,6 +45,12 @@ export type ReasoningPiece =
       url: string
       mimeType?: string
     }>
+
+/**
+ * Legacy fallback for reasoning replay when no display blocks are available.
+ * New reasoning UI should prefer ReasoningDisplayBlock.
+ */
+export type ReasoningPiece = LegacyReasoningPiece
 
 export type ReasoningDisplayBlock =
   | Readonly<{
@@ -121,7 +127,7 @@ export type ReasoningView = Readonly<{
   displayBlocks?: ReasoningDisplayBlock[]
   summaryText?: string
   reasoningText?: string
-  reasoningPieces?: ReasoningPiece[]
+  reasoningPieces?: LegacyReasoningPiece[]
   hasEncrypted?: boolean
   visibility: ReasoningViewVisibility
   panelState: ReasoningPanelState
