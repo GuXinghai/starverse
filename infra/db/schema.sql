@@ -100,6 +100,8 @@ CREATE TABLE IF NOT EXISTS message_reasoning_display_blocks (
   semantic_role TEXT CHECK (
     semantic_role IS NULL OR semantic_role IN ('summary', 'reasoning', 'thinking', 'thought')
   ),
+  asset_id TEXT REFERENCES asset(id) ON DELETE SET NULL,
+  file_asset_id TEXT REFERENCES file_assets(id) ON DELETE SET NULL,
   url TEXT,
   mime TEXT,
   width INTEGER,
@@ -109,6 +111,7 @@ CREATE TABLE IF NOT EXISTS message_reasoning_display_blocks (
   warning TEXT,
   provider_key TEXT,
   source_event_type TEXT,
+  source_raw_segment_id INTEGER REFERENCES message_reasoning_detail_segments(segment_id) ON DELETE SET NULL,
   payload_json TEXT,
   created_at INTEGER NOT NULL,
   final_at INTEGER,

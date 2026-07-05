@@ -1589,9 +1589,19 @@ export function useAppChatAppLogic() {
     return blocks.map((block) => {
       if (block.type !== 'image') return block
       if (!isDataImageUrl(block.url)) return block
+      const asset = assets[nextImageIndex] ?? assets[assets.length - 1]
       const nextUrl = replacementUrls[nextImageIndex] ?? replacementUrls[replacementUrls.length - 1]
       nextImageIndex += 1
-      return nextUrl ? { ...block, url: nextUrl } : block
+      return nextUrl
+        ? {
+            ...block,
+            url: nextUrl,
+            ...(asset?.assetId ? { assetId: asset.assetId } : {}),
+            ...(asset?.mime ? { mimeType: asset.mime } : {}),
+            ...(typeof asset?.width === 'number' ? { width: asset.width } : {}),
+            ...(typeof asset?.height === 'number' ? { height: asset.height } : {}),
+          }
+        : block
     })
   }
 

@@ -82,6 +82,8 @@ export type DecodedReasoningDisplayBlock = Readonly<{
   type: 'text' | 'image' | 'opaque'
   text: string | null
   semanticRole: 'summary' | 'reasoning' | 'thinking' | 'thought' | null
+  assetId: string | null
+  fileAssetId: string | null
   url: string | null
   mimeType: string | null
   width: number | null
@@ -91,6 +93,7 @@ export type DecodedReasoningDisplayBlock = Readonly<{
   warning: string | null
   providerKey: string | null
   sourceEventType: string | null
+  sourceRawSegmentId: number | null
   finalAt: number | null
 }>
 
@@ -1161,6 +1164,8 @@ const reasoningDisplayBlockSchema = z.object({
   type: z.enum(['text', 'image', 'opaque']),
   text: z.string().nullable().optional(),
   semanticRole: z.enum(['summary', 'reasoning', 'thinking', 'thought']).nullable().optional(),
+  assetId: z.string().nullable().optional(),
+  fileAssetId: z.string().nullable().optional(),
   url: z.string().nullable().optional(),
   mimeType: z.string().nullable().optional(),
   width: z.number().int().positive().nullable().optional(),
@@ -1170,6 +1175,7 @@ const reasoningDisplayBlockSchema = z.object({
   warning: z.string().nullable().optional(),
   providerKey: z.string().nullable().optional(),
   sourceEventType: z.string().nullable().optional(),
+  sourceRawSegmentId: z.number().int().positive().nullable().optional(),
   finalAt: z.number().int().nonnegative().nullable().optional(),
 }).transform((row): DecodedReasoningDisplayBlock => ({
   blockId: row.blockId,
@@ -1178,6 +1184,8 @@ const reasoningDisplayBlockSchema = z.object({
   type: row.type,
   text: row.text ?? null,
   semanticRole: row.semanticRole ?? null,
+  assetId: row.assetId ?? null,
+  fileAssetId: row.fileAssetId ?? null,
   url: row.url ?? null,
   mimeType: row.mimeType ?? null,
   width: row.width ?? null,
@@ -1187,6 +1195,7 @@ const reasoningDisplayBlockSchema = z.object({
   warning: row.warning ?? null,
   providerKey: row.providerKey ?? null,
   sourceEventType: row.sourceEventType ?? null,
+  sourceRawSegmentId: row.sourceRawSegmentId ?? null,
   finalAt: row.finalAt ?? null,
 }))
 

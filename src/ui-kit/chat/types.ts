@@ -61,12 +61,15 @@ export type ReasoningDisplayBlock =
       semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
       providerKey?: string
       sourceEventType?: string
+      sourceRawSegmentId?: number
     }>
   | Readonly<{
       blockId: string
       ordinal: number
       type: 'image'
       url: string
+      assetId?: string
+      fileAssetId?: string
       mimeType?: string
       width?: number
       height?: number
@@ -74,6 +77,7 @@ export type ReasoningDisplayBlock =
       semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
       providerKey?: string
       sourceEventType?: string
+      sourceRawSegmentId?: number
     }>
   | Readonly<{
       blockId: string
@@ -83,6 +87,7 @@ export type ReasoningDisplayBlock =
       warning?: string
       providerKey?: string
       sourceEventType?: string
+      sourceRawSegmentId?: number
     }>
 
 export type ToolCallVM = Readonly<{

@@ -116,6 +116,8 @@ export type ReasoningDisplayBlockRecord = Readonly<{
   type: 'text' | 'image' | 'opaque'
   text: string | null
   semanticRole: 'summary' | 'reasoning' | 'thinking' | 'thought' | null
+  assetId: string | null
+  fileAssetId: string | null
   url: string | null
   mimeType: string | null
   width: number | null
@@ -125,6 +127,7 @@ export type ReasoningDisplayBlockRecord = Readonly<{
   warning: string | null
   providerKey: string | null
   sourceEventType: string | null
+  sourceRawSegmentId: number | null
   finalAt: number | null
 }>
 
@@ -134,6 +137,8 @@ export type ReasoningDisplayBlockInput = Readonly<{
   type: 'text' | 'image' | 'opaque'
   text?: string
   semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+  assetId?: string
+  fileAssetId?: string
   url?: string
   mimeType?: string
   width?: number
@@ -143,6 +148,7 @@ export type ReasoningDisplayBlockInput = Readonly<{
   warning?: string
   providerKey?: string
   sourceEventType?: string
+  sourceRawSegmentId?: number
 }>
 
 export type AppendReasoningDisplayBlocksInput = Readonly<{
