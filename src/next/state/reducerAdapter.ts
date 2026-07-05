@@ -3,7 +3,6 @@ import { markRaw } from 'vue'
 import type {
   DomainEvent,
   MessageState,
-  ReasoningPiece,
   RootState,
   StartGenerationInput,
 } from './types'
@@ -15,12 +14,8 @@ import {
   startGenerationCore,
   toggleReasoningPanelStateCore,
 } from './reducerCore'
-import { recordMergeOp } from './perfMetrics'
 import { injectMergerDiagRecorder } from './reasoningDetailStreamMerger'
 import { isSchedDiagEnabled, recordMergerOp, recordReducerReasoning, startTimer } from './schedulerDiagnostics'
-
-const REASONING_PIECE_MAX_COUNT = 200
-const REASONING_PIECE_COMPACT_COUNT = 50
 
 // Keep merger diagnostics wired in adapter (core remains framework/environment agnostic).
 injectMergerDiagRecorder(recordMergerOp, isSchedDiagEnabled())
@@ -29,39 +24,6 @@ function generateId(prefix: string): string {
   const cryptoObj = (globalThis as any).crypto as { randomUUID?: () => string } | undefined
   if (cryptoObj?.randomUUID) return `${prefix}_${cryptoObj.randomUUID()}`
   return `${prefix}_${Date.now()}_${Math.random().toString(16).slice(2)}`
-}
-
-function nextPieceIdFrom(pieces: ReasoningPiece[]): number {
-  let maxId = 0
-  for (const piece of pieces) {
-    if (typeof piece.id === 'number' && piece.id > maxId) {
-      maxId = piece.id
-    }
-  }
-  return maxId + 1
-}
-
-function scheduleAsyncCompaction(pieces: ReasoningPiece[]): void {
-  const compact = () => {
-    if (pieces.length <= REASONING_PIECE_MAX_COUNT) return
-    const startTime = performance.now()
-    const head = pieces.slice(0, REASONING_PIECE_COMPACT_COUNT)
-    if (head.some((piece) => piece.type === 'image')) return
-    const mergedText = head
-      .filter((p) => p.type === 'text')
-      .map((p) => p.text)
-      .join('')
-    const mergedPiece: ReasoningPiece = { id: nextPieceIdFrom(pieces), type: 'text', text: mergedText }
-    pieces.splice(0, REASONING_PIECE_COMPACT_COUNT, mergedPiece)
-    const duration = performance.now() - startTime
-    recordMergeOp(duration)
-  }
-
-  if (typeof requestIdleCallback !== 'undefined') {
-    requestIdleCallback(compact)
-  } else {
-    setTimeout(compact, 0)
-  }
 }
 
 function markMessageRawFields(message: MessageState | undefined): void {
@@ -75,25 +37,12 @@ function markMessageRawFields(message: MessageState | undefined): void {
   if (Array.isArray(message.annotations)) {
     markRaw(message.annotations)
   }
-  if (Array.isArray(message.reasoningPieces)) {
-    markRaw(message.reasoningPieces)
-  }
 }
 
 function markStateRawFields(state: RootState): void {
   const messages = state.entities?.messagesById ?? state.messages
   for (const message of Object.values(messages)) {
     markMessageRawFields(message)
-  }
-}
-
-function maybeScheduleReasoningCompaction(state: RootState, event: DomainEvent): void {
-  if (event.type !== 'MessageDeltaReasoningDetail' && event.type !== 'MessageDeltaReasoningDetailBatch') return
-  const messages = state.entities?.messagesById ?? state.messages
-  const message = messages[event.messageId]
-  if (!message || !Array.isArray(message.reasoningPieces)) return
-  if (message.reasoningPieces.length > REASONING_PIECE_MAX_COUNT) {
-    scheduleAsyncCompaction(message.reasoningPieces)
   }
 }
 
@@ -117,8 +66,8 @@ function maybeRecordReasoningDiag(event: DomainEvent, state: RootState, endTimer
     applyMs: endTimer(),
     deltaTextLen,
     detailsCount,
-    reasoningPiecesLen: msg?.reasoningPieces?.length ?? 0,
-    reasoningTotalChars: msg?.reasoningPieces?.reduce((sum, p) => sum + (p.type === 'text' ? p.text.length : 0), 0) ?? 0,
+    rawDetailsCount: msg?.reasoningDetailsRaw?.length ?? 0,
+    rawReasoningTotalChars: 0,
   })
 }
 
@@ -152,7 +101,6 @@ export function applyEvent(state: RootState, runId: string, event: DomainEvent):
       : null
   const next = applyEventCore(state, runId, event, coreOptions)
   markStateRawFields(next)
-  maybeScheduleReasoningCompaction(next, event)
   maybeRecordReasoningDiag(event, next, endTimer)
   return next
 }

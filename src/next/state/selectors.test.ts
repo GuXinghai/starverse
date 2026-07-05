@@ -112,7 +112,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     expect(vm?.reasoningView.visibility).toBe('shown')
   })
 
-  it('prefers reasoning display blocks over legacy reasoning pieces', () => {
+  it('uses reasoning display blocks as the only UI display payload', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
       runId: 'run1',
@@ -124,8 +124,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       [assistantMessageId]: {
         ...s1.messages[assistantMessageId],
         reasoningDetailsRaw: [{ type: 'thought_summary', summary: 'raw summary' }],
-        reasoningSummaryText: 'legacy summary',
-        reasoningPieces: [{ id: 1, type: 'text' as const, text: 'legacy piece' }],
         reasoningDisplayBlocks: [
           {
             blockId: 'b1',
@@ -170,7 +168,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
         providerKey: 'google_ai_studio',
       },
     ])
-    expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
   })
 
   it('returns "shown" when display blocks exist even without raw details', () => {
@@ -233,7 +230,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       [assistantMessageId]: {
         ...s1.messages[assistantMessageId],
         reasoningDetailsRaw: [{ type: 'thought', text: 'Gemini thought text' }],
-        reasoningPieces: [],
       },
     }
     const stateWithThought = {
@@ -245,8 +241,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     const vm = selectMessage(stateWithThought, assistantMessageId)
 
     expect(vm?.reasoningView.visibility).toBe('shown')
-    expect(vm?.reasoningView.reasoningText).toBeUndefined()
-    expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
     expect(vm?.reasoningView.displayBlocks).toBeUndefined()
   })
 
@@ -263,7 +257,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       [assistantMessageId]: {
         ...s1.messages[assistantMessageId],
         reasoningDetailsRaw: [{ type: 'thought_summary', summary: 'Gemini image reasoning summary' }],
-        reasoningPieces: [],
       },
     }
     const stateWithThoughtSummary = {
@@ -275,12 +268,10 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     const vm = selectMessage(stateWithThoughtSummary, assistantMessageId)
 
     expect(vm?.reasoningView.visibility).toBe('shown')
-    expect(vm?.reasoningView.summaryText).toBeUndefined()
-    expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
     expect(vm?.reasoningView.displayBlocks).toBeUndefined()
   })
 
-  it('keeps persisted summary text but does not derive image pieces from raw thought images', () => {
+  it('does not derive display image blocks from raw thought images', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
       runId: 'run1',
@@ -292,7 +283,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       ...s1.messages,
       [assistantMessageId]: {
         ...s1.messages[assistantMessageId],
-        reasoningSummaryText: 'Persisted reasoning summary',
         reasoningDetailsRaw: [
           {
             type: 'thought_image',
@@ -302,7 +292,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
             },
           },
         ],
-        reasoningPieces: [],
       },
     }
     const stateWithThoughtImage = {
@@ -314,8 +303,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     const vm = selectMessage(stateWithThoughtImage, assistantMessageId)
 
     expect(vm?.reasoningView.visibility).toBe('shown')
-    expect(vm?.reasoningView.summaryText).toBe('Persisted reasoning summary')
-    expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
     expect(vm?.reasoningView.displayBlocks).toBeUndefined()
   })
 
@@ -331,7 +318,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       ...s1.messages,
       [assistantMessageId]: {
         ...s1.messages[assistantMessageId],
-        reasoningSummaryText: 'Persisted reasoning summary',
         reasoningDetailsRaw: [
           {
             type: 'thought_summary',
@@ -349,7 +335,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
             summary: 'after image',
           },
         ],
-        reasoningPieces: [],
         reasoningDisplayBlocks: [
           {
             blockId: 'b1',
@@ -387,7 +372,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
 
     const vm = selectMessage(stateWithInterleavedPieces, assistantMessageId)
 
-    expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
     expect(vm?.reasoningView.displayBlocks).toEqual([
       {
         blockId: 'b1',

@@ -19,14 +19,6 @@ type PerfSnapshot = Readonly<{
   mergeDurationAvgMs?: number
 }>
 
-type PieceSnapshot = Readonly<{
-  messageId?: string
-  count?: number
-  reasoningTotalChars?: number
-  reasoningLastPieceLen?: number
-  pieceSplitCountPerSec?: number
-}>
-
 export type Phase3AuditSnapshot = Readonly<{
   t: number
   stable?: number
@@ -36,10 +28,6 @@ export type Phase3AuditSnapshot = Readonly<{
   bubbleUpdateTotalPerSec?: number
   bubbleUpdateUniquePerSec?: number
   fallbackReplayPerSec?: number
-  pieceCount?: number
-  reasoningTotalChars?: number
-  reasoningLastPieceLen?: number
-  pieceSplitCountPerSec?: number
   mergeOpsPerSec?: number
   mergeAvgMs?: number
 }>
@@ -56,17 +44,10 @@ function readPerfSnapshot(): PerfSnapshot | null {
   return raw as PerfSnapshot
 }
 
-function readPieceSnapshot(): PieceSnapshot | null {
-  const raw = (globalThis as any).__svPhase3PieceCount
-  if (!raw || typeof raw !== 'object') return null
-  return raw as PieceSnapshot
-}
-
 export function runPhase3Audit(): Phase3AuditSnapshot | null {
   if (!diagnosticsFlags.phase3Audit) return null
   const ref = readRefAuditSnapshot()
   const perf = readPerfSnapshot()
-  const pieces = readPieceSnapshot()
 
   const snapshot: Phase3AuditSnapshot = {
     t: Date.now(),
@@ -77,10 +58,6 @@ export function runPhase3Audit(): Phase3AuditSnapshot | null {
     bubbleUpdateTotalPerSec: perf?.bubbleUpdateTotalPerSec,
     bubbleUpdateUniquePerSec: perf?.bubbleUpdateUniquePerSec,
     fallbackReplayPerSec: perf?.fallbackReplayPerSec,
-    pieceCount: pieces?.count,
-    reasoningTotalChars: pieces?.reasoningTotalChars,
-    reasoningLastPieceLen: pieces?.reasoningLastPieceLen,
-    pieceSplitCountPerSec: pieces?.pieceSplitCountPerSec,
     mergeOpsPerSec: perf?.mergeOpsPerSec,
     mergeAvgMs: perf?.mergeDurationAvgMs,
   }

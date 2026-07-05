@@ -7,7 +7,16 @@ import { t } from '@/shared/i18n'
 const reasoningView: ReasoningView = {
   visibility: 'shown',
   panelState: 'expanded',
-  reasoningText: 'Reasoning body',
+  displayBlocks: [
+    {
+      blockId: 'display-1',
+      ordinal: 0,
+      type: 'text',
+      text: 'Reasoning body',
+      semanticRole: 'summary',
+      providerKey: 'google_ai_studio',
+    },
+  ],
 }
 
 describe('ChatInlineReasoning', () => {
@@ -69,13 +78,22 @@ describe('ChatInlineReasoning', () => {
     expect(screen.queryByText('Reasoning body')).not.toBeInTheDocument()
   })
 
-  it('renders reasoning pieces from the reasoning view when no explicit pieces prop is provided', async () => {
+  it('renders reasoning display blocks from the reasoning view', async () => {
     render(ChatInlineReasoning, {
       props: {
         reasoningView: {
           visibility: 'shown',
           panelState: 'expanded',
-          reasoningPieces: [{ id: 1, type: 'text', text: 'Gemini thought text' }],
+          displayBlocks: [
+            {
+              blockId: 'display-1',
+              ordinal: 0,
+              type: 'text',
+              text: 'Gemini thought text',
+              semanticRole: 'summary',
+              providerKey: 'google_ai_studio',
+            },
+          ],
         },
         collapsed: false,
         displayMode: 'inline',
@@ -94,7 +112,16 @@ describe('ChatInlineReasoning', () => {
         reasoningView: {
           visibility: 'shown',
           panelState: 'expanded',
-          reasoningPieces: [{ id: 1, type: 'text', text: '公式：$E=mc^2$' }],
+          displayBlocks: [
+            {
+              blockId: 'display-1',
+              ordinal: 0,
+              type: 'text',
+              text: '公式：$E=mc^2$',
+              semanticRole: 'summary',
+              providerKey: 'google_ai_studio',
+            },
+          ],
         },
         collapsed: false,
         displayMode: 'inline',
@@ -106,15 +133,30 @@ describe('ChatInlineReasoning', () => {
     })
   })
 
-  it('renders reasoning image pieces inline', () => {
+  it('renders reasoning image display blocks inline', () => {
     const { container } = render(ChatInlineReasoning, {
       props: {
         reasoningView: {
           visibility: 'shown',
           panelState: 'expanded',
-          reasoningPieces: [
-            { id: 1, type: 'text', text: 'Before image.' },
-            { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
+          displayBlocks: [
+            {
+              blockId: 'display-1',
+              ordinal: 0,
+              type: 'text',
+              text: 'Before image.',
+              semanticRole: 'summary',
+              providerKey: 'google_ai_studio',
+            },
+            {
+              blockId: 'display-2',
+              ordinal: 1,
+              type: 'image',
+              url: 'data:image/png;base64,abc',
+              mimeType: 'image/png',
+              semanticRole: 'thought',
+              providerKey: 'google_ai_studio',
+            },
           ],
         },
         collapsed: false,
@@ -128,40 +170,46 @@ describe('ChatInlineReasoning', () => {
     })
   })
 
-  it('does not render standalone summary when mixed reasoning pieces are present', async () => {
-    const { container } = render(ChatInlineReasoning, {
+  it('does not render legacy summary without display blocks', async () => {
+    render(ChatInlineReasoning, {
       props: {
         reasoningView: {
           visibility: 'shown',
           panelState: 'expanded',
-          summaryText: 'Before image.',
-          reasoningPieces: [
-            { id: 1, type: 'text', text: 'Before image.' },
-            { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
-          ],
         },
         collapsed: false,
         displayMode: 'inline',
       },
     })
 
-    expect(container.querySelector('img[src="data:image/png;base64,abc"]')).not.toBeNull()
     await waitFor(() => {
-      expect(screen.getAllByText('Before image.')).toHaveLength(1)
+      expect(screen.getByText(t('chat.reasoning.emptyPayload'))).toBeInTheDocument()
     })
   })
 
-  it('renders display blocks before legacy fallback fields', async () => {
+  it('renders display blocks as the only reasoning payload', async () => {
     const { container } = render(ChatInlineReasoning, {
       props: {
         reasoningView: {
           visibility: 'shown',
           panelState: 'expanded',
-          summaryText: 'Legacy summary.',
-          reasoningPieces: [{ id: 1, type: 'text', text: 'Legacy piece.' }],
           displayBlocks: [
-            { blockId: 'display-text', ordinal: 0, type: 'text', text: 'Display text.', semanticRole: 'thought' },
-            { blockId: 'display-image', ordinal: 1, type: 'image', url: 'asset://display-image', semanticRole: 'thought' },
+            {
+              blockId: 'display-text',
+              ordinal: 0,
+              type: 'text',
+              text: 'Display text.',
+              semanticRole: 'thought',
+              providerKey: 'google_ai_studio',
+            },
+            {
+              blockId: 'display-image',
+              ordinal: 1,
+              type: 'image',
+              url: 'asset://display-image',
+              semanticRole: 'thought',
+              providerKey: 'google_ai_studio',
+            },
           ],
         },
         collapsed: false,

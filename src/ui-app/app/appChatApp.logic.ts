@@ -1197,7 +1197,6 @@ export function useAppChatAppLogic() {
     const s = lastAssistantMessage.value?.streaming
     return Boolean(s && s.isTarget && !s.isComplete)
   })
-  const lastAssistantReasoningPieces = computed(() => lastAssistantReasoningView.value?.reasoningPieces ?? null)
 
   const isRunning = computed(() => runVM.value?.status === 'requesting' || runVM.value?.status === 'streaming' || runVM.value?.status === 'tool_waiting')
 
@@ -2354,10 +2353,7 @@ export function useAppChatAppLogic() {
         toolCalls: [],
         ...(annotations.length > 0 ? { annotations: markRaw(annotations) } : {}),
         reasoningDetailsRaw: markRaw(reasoningDetailsRaw),
-        reasoningStreamingText: '',
-        reasoningPieces: markRaw([]),
         reasoningDisplayBlocks: markRaw([]),
-        reasoningLastPieceLen: 0,
         reasoningPanelState: previousPanelState ?? 'collapsed',
         hasEncryptedReasoning,
         reasoningDurationMs: timing.durationMs,
@@ -8696,7 +8692,8 @@ export function useAppChatAppLogic() {
           console.warn('[reasoning-verify] failed to load db replay snapshot:', err)
         }
 
-        const uiFinalText = selectMessage(state.value, assistantMessageId)?.reasoningView?.reasoningText
+        const uiDisplayBlockCount =
+          selectMessage(state.value, assistantMessageId)?.reasoningView?.displayBlocks?.length ?? 0
 
         // 输出 diagnosticTracker 摘要（包含 DB 统计）
         const tracker = stream.diagnosticTracker
@@ -8774,19 +8771,16 @@ export function useAppChatAppLogic() {
           isEncryptedModel,
           mergerFinalTextLen: mergerCompareText?.length ?? 0,
           dbFinalTextLen: dbCompareText?.length ?? 0,
-          uiFinalTextLen: uiFinalText?.length ?? 0,
+          uiDisplayBlockCount,
           // 加密模型不输出原文（避免日志过大）
           mergerFinalText: isEncryptedModel ? `[encrypted ${mergerCompareText?.length ?? 0} bytes]` : mergerFinalText,
           dbFinalText: isEncryptedModel ? `[encrypted ${dbCompareText?.length ?? 0} bytes]` : dbFinalText,
-          uiFinalText: isEncryptedModel ? '[encrypted - see UI]' : uiFinalText,
         })
 
         // 加密模型：比较 encryptedData；非加密模型：比较 reasoningText
         const textMismatch = mergerCompareText !== dbCompareText
-        // UI 文本对于加密模型无法直接比较（UI 可能解密显示），跳过 UI 比较
-        const uiMismatch = !isEncryptedModel && dbFinalText !== uiFinalText
 
-        if (textMismatch || uiMismatch) {
+        if (textMismatch) {
           // 找出具体差异位置（使用比较用的文本）
           let diffPos = -1
           const shorter = mergerCompareText && dbCompareText
@@ -8809,7 +8803,6 @@ export function useAppChatAppLogic() {
             messageId: assistantMessageId,
             isEncryptedModel,
             textMismatch,
-            uiMismatch,
             diffPos,
             diffContext: diffPos >= 0 && !isEncryptedModel ? {
               mergerAround: mergerCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
@@ -11288,7 +11281,6 @@ export function useAppChatAppLogic() {
     lastAssistantReasoningView,
     lastAssistantReasoningVersion,
     lastAssistantIsStreaming,
-    lastAssistantReasoningPieces,
     lastAssistantMessage,
     draft,
     draftAttachmentViewModels,

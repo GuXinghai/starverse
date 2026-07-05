@@ -662,13 +662,7 @@ function summarizeMessage(message: MessageState): Record<string, unknown> {
     reasoningVersion: message.reasoningVersion,
     reasoning: {
       detailsCount: message.reasoningDetailsRaw.length,
-      summaryText: message.reasoningSummaryText ?? null,
-      piecesText: (message.reasoningPieces ?? [])
-        .filter((piece) => piece.type === 'text')
-        .map((piece) => piece.text)
-        .join(''),
-      piecesCount: (message.reasoningPieces ?? []).length,
-      lastPieceLen: message.reasoningLastPieceLen ?? null,
+      displayBlockCount: message.reasoningDisplayBlocks?.length ?? 0,
       panelState: message.reasoningPanelState,
       hasEncryptedReasoning: message.hasEncryptedReasoning,
       durationMs: message.reasoningDurationMs ?? null,

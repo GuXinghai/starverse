@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ReasoningView, LegacyReasoningPiece } from '@/next/state/types'
+import type { ReasoningView } from '@/next/state/types'
 import ChatReasoningPanel from '@/ui-kit/chat/ChatReasoningPanel.vue'
 import { t } from '@/shared/i18n'
 
@@ -9,7 +9,6 @@ const props = defineProps<{
   reasoningView: ReasoningView | null
   reasoningVersion?: number
   isStreaming?: boolean
-  legacyReasoningPieces?: LegacyReasoningPiece[] | null
   localProcessingDurationMs?: number
 }>()
 
@@ -26,7 +25,6 @@ const memoKey = computed(() => {
     v-memo="memoKey"
     :messageId="props.messageId"
     :reasoningView="reasoningView"
-    :legacyReasoningPieces="props.legacyReasoningPieces"
     :reasoningVersion="props.reasoningVersion"
     :isStreaming="props.isStreaming"
     :localProcessingDurationMs="props.localProcessingDurationMs"

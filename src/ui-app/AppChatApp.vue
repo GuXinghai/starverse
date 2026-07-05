@@ -104,7 +104,6 @@ const {
   lastAssistantReasoningView,
   lastAssistantReasoningVersion,
   lastAssistantIsStreaming,
-  lastAssistantReasoningPieces,
   lastAssistantMessage,
   draft,
   draftAttachmentViewModels,
@@ -291,9 +290,6 @@ function shouldShowInlineReasoning(message: any): boolean {
   if (view.visibility === 'shown' || view.visibility === 'excluded') return true
   if (view.hasEncrypted === true) return true
   if (Array.isArray(view.displayBlocks) && view.displayBlocks.length > 0) return true
-  if (Array.isArray(view.reasoningPieces) && view.reasoningPieces.length > 0) return true
-  if (typeof view.summaryText === 'string' && view.summaryText.trim().length > 0) return true
-  if (typeof view.reasoningText === 'string' && view.reasoningText.trim().length > 0) return true
   return false
 }
 </script>
@@ -387,7 +383,6 @@ function shouldShowInlineReasoning(message: any): boolean {
                     v-if="message.role === 'assistant' && shouldShowInlineReasoning(message)"
                     :messageId="message.messageId"
                     :reasoningView="message.reasoningView"
-                    :legacyReasoningPieces="message.messageId === lastAssistantMessageId ? lastAssistantReasoningPieces : null"
                     :collapsed="reasoningRailMode ? !(rightRailOpen && effectiveRightRailView === 'reasoning') : message.reasoningView.panelState === 'collapsed'"
                     :display-mode="reasoningRailMode ? 'rail' : 'inline'"
                     :isStreaming="message.streaming?.isTarget === true && message.streaming?.isComplete !== true"
@@ -822,7 +817,6 @@ function shouldShowInlineReasoning(message: any): boolean {
             :reasoningView="lastAssistantReasoningView"
             :reasoningVersion="lastAssistantReasoningVersion"
             :isStreaming="lastAssistantIsStreaming"
-            :legacyReasoningPieces="lastAssistantReasoningPieces"
             :localProcessingDurationMs="lastAssistantMessage?.reasoningDurationMs ?? undefined"
           />
           <ChatSessionConsole

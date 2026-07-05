@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { LegacyReasoningPiece, ReasoningView } from './types'
+import type { ReasoningView } from './types'
 import ReasoningRichText from './ReasoningRichText.vue'
 import { t } from '@/shared/i18n'
 
@@ -8,7 +8,6 @@ const props = withDefaults(
   defineProps<{
     messageId?: string | null
     reasoningView: ReasoningView | null
-    legacyReasoningPieces?: LegacyReasoningPiece[] | null
     isStreaming?: boolean
     title?: string
     emptyText?: string
@@ -19,17 +18,6 @@ const props = withDefaults(
     emptyText: '',
   },
 )
-
-const legacyReasoningPieces = computed(() => {
-  const pieces = props.legacyReasoningPieces ?? props.reasoningView?.reasoningPieces
-  if (!Array.isArray(pieces)) return null
-  const normalized = pieces.filter((piece) => {
-    if (piece?.type === 'text') return piece.text.trim().length > 0
-    if (piece?.type === 'image') return piece.url.trim().length > 0
-    return false
-  })
-  return normalized.length > 0 ? normalized : null
-})
 
 const displayBlocks = computed(() => {
   const blocks = props.reasoningView?.displayBlocks
@@ -44,25 +32,6 @@ const displayBlocks = computed(() => {
 })
 
 const hasDisplayBlocks = computed(() => Array.isArray(displayBlocks.value) && displayBlocks.value.length > 0)
-const hasLegacyPieces = computed(() => Array.isArray(legacyReasoningPieces.value) && legacyReasoningPieces.value.length > 0)
-
-const hasAnyReasoningText = computed(() => {
-  if (!props.reasoningView) return false
-  const hasText = Boolean(props.reasoningView.summaryText || props.reasoningView.reasoningText)
-  return hasText || hasLegacyPieces.value || hasDisplayBlocks.value
-})
-
-const shouldRenderStandaloneText = computed(() => !hasLegacyPieces.value && !hasDisplayBlocks.value)
-
-const reasoningBodyText = computed(() => {
-  if (!shouldRenderStandaloneText.value) return ''
-  const parts: string[] = []
-  const reasoningText = props.reasoningView?.reasoningText
-  if (typeof reasoningText === 'string' && reasoningText.trim().length > 0) {
-    parts.push(reasoningText)
-  }
-  return parts.join('\n\n')
-})
 
 const showEncryptedBadge = computed(() => props.reasoningView?.hasEncrypted === true)
 
@@ -112,14 +81,6 @@ const formattedDuration = computed(() => {
             <div class="mt-1 text-sm">{{ t('chat.reasoning.encryptedDescription') }}</div>
           </div>
 
-          <div v-if="shouldRenderStandaloneText && props.reasoningView.summaryText" class="rounded border border-gray-200 bg-white p-2">
-            <div class="mb-1 text-xs font-semibold text-gray-700">{{ t('common.summary') }}</div>
-            <ReasoningRichText
-              :text="props.reasoningView.summaryText"
-              :streaming="props.isStreaming === true"
-            />
-          </div>
-
           <div v-if="hasDisplayBlocks" class="space-y-2 rounded border border-gray-200 bg-white p-2">
             <template v-for="block in displayBlocks ?? []" :key="block.blockId">
               <ReasoningRichText
@@ -142,28 +103,7 @@ const formattedDuration = computed(() => {
             </template>
           </div>
 
-          <div v-else-if="reasoningBodyText || hasLegacyPieces" class="space-y-2 rounded border border-gray-200 bg-white p-2">
-            <ReasoningRichText
-              v-if="reasoningBodyText"
-              :text="reasoningBodyText"
-              :streaming="props.isStreaming === true"
-            />
-            <template v-for="piece in legacyReasoningPieces ?? []" :key="piece.id">
-              <ReasoningRichText
-                v-if="piece.type === 'text'"
-                :text="piece.text"
-                :streaming="props.isStreaming === true"
-              />
-              <img
-                v-if="piece.type === 'image'"
-                :src="piece.url"
-                class="max-h-96 max-w-full rounded border border-gray-200 object-contain"
-                alt=""
-              />
-            </template>
-          </div>
-
-          <div v-if="!hasAnyReasoningText" class="text-sm text-gray-500">{{ t('chat.reasoning.noPayloadShort') }}</div>
+          <div v-if="!hasDisplayBlocks" class="text-sm text-gray-500">{{ t('chat.reasoning.noPayloadShort') }}</div>
         </template>
 
         <template v-else-if="props.reasoningView.visibility === 'excluded'">
