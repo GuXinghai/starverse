@@ -260,7 +260,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     })
   })
 
-  it('provider filter routes catalog query and picker-open sync through that provider scope', async () => {
+  it('provider filter routes catalog query while bottom sync provider routes manual sync scope', async () => {
     const now = mockNow()
     setCatalogSettings({
       openRouterCatalogPickerOpenSyncPolicy: 'never',
@@ -369,19 +369,147 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
       },
     })
 
-    await screen.findByTestId('model-picker-provider-filter')
-    await user.selectOptions(screen.getByTestId('model-picker-provider-filter'), 'google_ai_studio')
+    await screen.findByTestId('model-picker-provider-filter-google_ai_studio')
+    await user.click(screen.getByTestId('model-picker-provider-select-none'))
+    await user.click(screen.getByTestId('model-picker-provider-filter-google_ai_studio'))
 
     await screen.findByTestId('model-picker-item-google_ai_studio-gemini-2.5-flash')
     await waitFor(() => {
       expect(queryFn).toHaveBeenCalledWith(expect.objectContaining({
         sourceProviderKey: 'google_ai_studio',
       }))
+    })
+
+    await user.selectOptions(screen.getByTestId('model-picker-sync-provider'), 'google_ai_studio')
+    await user.click(screen.getByTestId('model-picker-sync-refresh'))
+
+    await waitFor(() => {
       expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
         providerKey: 'google_ai_studio',
-        force: false,
-        reason: 'model_picker_opened',
+        force: true,
+        reason: 'manual_refresh',
       }))
     })
+  })
+
+  it('provider row refresh sends force sync for that provider scope and reloads checked provider results', async () => {
+    const now = mockNow()
+    setCatalogSettings({
+      openRouterCatalogPickerOpenSyncPolicy: 'never',
+      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      'providerCatalog.google_ai_studio.pickerOpenSyncPolicy': 'never',
+      'providerCatalog.google_ai_studio.freshnessMs': 15 * 60 * 1000,
+    })
+    const syncNow = vi.fn(async (options: any) => ({
+      ok: true,
+      syncAttempted: true,
+      syncSucceeded: true,
+      providerKey: options?.providerKey ?? 'unknown',
+      modelCount: 1,
+      visibleModelCount: 1,
+      hiddenModelCount: 0,
+      lastSyncAtMs: now,
+      errorCode: null,
+      errorMessage: null,
+      catalogRevision: `${options?.providerKey ?? 'unknown'}-rev`,
+    }))
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: syncNow,
+      modelCatalogGetSyncStatus: vi.fn(async (options: any) => ({
+        providerKey: options?.providerKey ?? 'openrouter',
+        syncState: 'ok',
+        status: 'synced',
+        lastSyncAtMs: now,
+        modelCount: options?.providerKey === 'google_ai_studio' ? 1 : 100,
+        visibleModelCount: options?.providerKey === 'google_ai_studio' ? 1 : 100,
+        hiddenModelCount: 0,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+        isStale: false,
+        catalogRevision: `${options?.providerKey ?? 'openrouter'}-rev`,
+      })),
+    }
+    const oldGoogleModel: CatalogQueryResult['items'][number] = {
+      providerKey: 'google_ai_studio',
+      modelId: 'gemini-old',
+      modelKey: 'google_ai_studio::gemini-old',
+      canonicalSlug: 'gemini-old',
+      displayName: 'Gemini Old',
+      description: null,
+      vendor: 'Google',
+      contextLength: 1048576,
+      maxOutputTokens: 65536,
+      createdAtSec: null,
+      pricing: { prompt: null, completion: null, request: null, image: null },
+      capabilities: {
+        reasoning: true,
+        tools: true,
+        structuredOutputs: true,
+        vision: true,
+        longContext: true,
+      },
+      inputModalities: ['text', 'image'],
+      outputModalities: ['text'],
+      supportedParameters: ['temperature'],
+      status: 'active',
+      visibility: 'visible',
+    }
+    const newGoogleModel = {
+      ...oldGoogleModel,
+      modelId: 'gemini-new',
+      modelKey: 'google_ai_studio::gemini-new',
+      canonicalSlug: 'gemini-new',
+      displayName: 'Gemini New',
+    }
+    let googleQueryCount = 0
+    const queryFn = vi.fn(async (input: any) => {
+      if (input.sourceProviderKey !== 'google_ai_studio') {
+        return createResult([], null, {
+          catalogRevision: 'openrouter-rev',
+          modelCount: 100,
+          lastSyncAtMs: now,
+        })
+      }
+      googleQueryCount += 1
+      return createResult([googleQueryCount === 1 ? oldGoogleModel : newGoogleModel], null, {
+        catalogRevision: googleQueryCount === 1 ? 'google-rev-old' : 'google-rev-new',
+        modelCount: 1,
+        visibleModelCount: 1,
+        hiddenModelCount: 0,
+        lastSyncAtMs: now,
+      })
+    })
+    const user = userEvent.setup()
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+        providerSources: [
+          {
+            providerId: 'google_ai_studio',
+            providerName: 'Google AI Studio',
+            statusKind: 'not_loaded',
+            statusLabel: 'not loaded',
+            loading: false,
+            items: [],
+          },
+        ],
+      },
+    })
+
+    await screen.findByTestId('model-picker-item-google_ai_studio-gemini-old')
+    await user.click(screen.getByTestId('model-picker-provider-refresh-google_ai_studio'))
+
+    await waitFor(() => {
+      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
+        providerKey: 'google_ai_studio',
+        force: true,
+        reason: 'manual_refresh',
+      }))
+    })
+    await screen.findByTestId('model-picker-item-google_ai_studio-gemini-new')
   })
 })
