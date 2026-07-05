@@ -151,6 +151,32 @@ describe('ChatInlineReasoning', () => {
     })
   })
 
+  it('renders display blocks before legacy fallback fields', async () => {
+    const { container } = render(ChatInlineReasoning, {
+      props: {
+        reasoningView: {
+          visibility: 'shown',
+          panelState: 'expanded',
+          summaryText: 'Legacy summary.',
+          reasoningPieces: [{ id: 1, type: 'text', text: 'Legacy piece.' }],
+          displayBlocks: [
+            { blockId: 'display-text', ordinal: 0, type: 'text', text: 'Display text.', semanticRole: 'thought' },
+            { blockId: 'display-image', ordinal: 1, type: 'image', url: 'asset://display-image', semanticRole: 'thought' },
+          ],
+        },
+        collapsed: false,
+        displayMode: 'inline',
+      },
+    })
+
+    expect(container.querySelector('img[src="asset://display-image"]')).not.toBeNull()
+    await waitFor(() => {
+      expect(screen.getByText('Display text.')).toBeInTheDocument()
+      expect(screen.queryByText('Legacy summary.')).toBeNull()
+      expect(screen.queryByText('Legacy piece.')).toBeNull()
+    })
+  })
+
   it('emits toggle when the Reasoning strip is clicked', async () => {
     const view = render(ChatInlineReasoning, {
       props: {

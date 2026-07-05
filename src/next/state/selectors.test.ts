@@ -145,6 +145,39 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     expect(vm?.reasoningView.reasoningPieces).toBeUndefined()
   })
 
+  it('returns "shown" when display blocks exist even without raw details', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-3.1-flash-image',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'high',
+      requestedReasoningExclude: true,
+    })
+    const messages = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [],
+        reasoningDisplayBlocks: [
+          { blockId: 'display-1', ordinal: 0, type: 'image' as const, url: 'asset://reasoning-image-1', semanticRole: 'thought' as const },
+        ],
+      },
+    }
+
+    const vm = selectMessage({
+      ...s1,
+      messages,
+      entities: { ...s1.entities, messagesById: messages },
+    }, assistantMessageId)
+
+    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.displayBlocks).toEqual([
+      { blockId: 'display-1', ordinal: 0, type: 'image', url: 'asset://reasoning-image-1', semanticRole: 'thought' },
+    ])
+  })
+
   it('derives display text from Gemini thought details when only raw details are hydrated', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
