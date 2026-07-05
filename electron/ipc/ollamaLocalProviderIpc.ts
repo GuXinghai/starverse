@@ -1014,6 +1014,10 @@ function syntheticOpenAITextDelta(text: string): string {
   return `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: text }, finish_reason: null }] })}\n\n`
 }
 
+function syntheticOllamaNativeThinkingDelta(thinking: string): string {
+  return `data: ${JSON.stringify({ choices: [{ index: 0, delta: { thinking }, finish_reason: null }] })}\n\n`
+}
+
 function syntheticOpenAIDone(): string {
   return 'data: [DONE]\n\n'
 }
@@ -1044,6 +1048,8 @@ function nativeJsonToWireEvents(parsed: Record<string, any>): OllamaTextChatWire
   const message = parsed.message && typeof parsed.message === 'object'
     ? parsed.message as Record<string, unknown>
     : null
+  const thinking = stringOrUndefined(message?.thinking) ?? stringOrUndefined(parsed.thinking)
+  if (thinking) out.push({ type: 'chunk', data: syntheticOllamaNativeThinkingDelta(thinking) })
   const content = stringOrUndefined(message?.content) ?? stringOrUndefined(parsed.response)
   if (content) out.push({ type: 'chunk', data: syntheticOpenAITextDelta(content) })
   if (parsed.done === true) out.push({ type: 'chunk', data: syntheticOpenAIDone() })
