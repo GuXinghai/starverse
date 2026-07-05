@@ -88,7 +88,7 @@ function readFixtureText(fileName: string) {
     expect(s5.entities?.messagesById?.assistant_1?.reasoningVersion).toBe(baseReasoningVersion + 1)
   })
 
-  it('keeps Gemini thought images in ordered reasoning pieces', () => {
+  it('keeps Gemini thought images as raw state and replays legacy pieces through selectors', () => {
     const runId = 'r1'
     const started = startGeneration(createInitialState(), {
       runId,
@@ -125,11 +125,8 @@ function readFixtureText(fileName: string) {
       },
     ])
 
-    expect(next.entities?.messagesById?.assistant_1?.reasoningPieces).toEqual([
-      { id: 1, type: 'text', text: 'Sketch.' },
-      { id: 2, type: 'image', url: 'data:image/png;base64,abc', mimeType: 'image/png' },
-      { id: 3, type: 'text', text: 'Refine.' },
-    ])
+    expect(next.entities?.messagesById?.assistant_1?.reasoningPieces).toEqual([])
+    expect(next.entities?.messagesById?.assistant_1?.reasoningDetailsRaw).toHaveLength(3)
     const assistant = selectTranscript(next, runId).find((message) => message.messageId === 'assistant_1')
     expect(assistant?.reasoningView.reasoningPieces).toEqual([
       { id: 1, type: 'text', text: 'Sketch.' },
