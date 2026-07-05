@@ -13,7 +13,9 @@
  *
  * Key Gemini quirks handled here:
  * - text parts (thought !== true) → visible text
- * - text parts (thought === true) → reasoning (NEVER visible text)
+ * - text parts (thought === true) → raw reasoning + reasoning display text (NEVER visible text)
+ * - inlineData parts (thought === true) → raw reasoning image + reasoning display image
+ * - inlineData parts (thought !== true) → assistant image content block
  * - functionCall parts → ignored (no tool delta shape in Starverse)
  * - usageMetadata → usage.delta
  * - finishReason → meta.delta + stream.done
@@ -25,6 +27,7 @@
  */
 
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import { createReasoningImageDisplayBlock, createReasoningTextDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
 
 // ---------------------------------------------------------------------------
 // Gemini response types — provider-native schema, contained here only
@@ -77,6 +80,10 @@ export type GeminiStreamChunk = Readonly<{
   error?: Readonly<{ code: number; message: string; status?: string }>
 }>
 
+export type GeminiStreamMapOptions = Readonly<{
+  eventOrdinal?: number
+}>
+
 // ---------------------------------------------------------------------------
 // Known finish reasons
 // ---------------------------------------------------------------------------
@@ -104,7 +111,8 @@ function normalizeFinishReason(native: string | undefined): string {
  *
  * - Pure function: emits events only; does not write any state.
  * - text parts with thought !== true → message.text_delta.
- * - text parts with thought === true → message.reasoning_raw_detail. NEVER visible text.
+ * - text parts with thought === true → message.reasoning_raw_detail + message.reasoning_display_block. NEVER visible text.
+ * - thought inlineData → reasoning image display block; non-thought inlineData → assistant image content block.
  * - functionCall parts → ignored (no tool delta event shape).
  * - usageMetadata → usage.delta.
  * - finishReason → meta.delta.
@@ -115,6 +123,7 @@ function normalizeFinishReason(native: string | undefined): string {
 export function mapGeminiStreamChunkToStarverse(
   chunk: GeminiStreamChunk,
   messageId: string,
+  options: GeminiStreamMapOptions = {},
 ): StarverseStreamEvent[] {
   const events: StarverseStreamEvent[] = []
 
@@ -173,6 +182,7 @@ export function mapGeminiStreamChunkToStarverse(
   // Process content parts
   const content = candidate.content
   if (content?.parts) {
+    let displayIndex = 0
     for (const part of content.parts) {
       // Thought/reasoning part — NEVER visible text
       if (part.thought === true) {
@@ -183,6 +193,59 @@ export function mapGeminiStreamChunkToStarverse(
             choiceIndex: 0,
             detail: { type: 'thought', text: part.text },
           })
+          const displayBlock = createReasoningTextDisplayBlock({
+            messageId,
+            providerKey: 'google_ai_studio',
+            ordinal: resolveGeminiDisplayOrdinal(options, displayIndex++),
+            text: part.text,
+            semanticRole: 'thought',
+            sourceEventType: 'candidate.part.thought.text',
+          })
+          if (displayBlock) {
+            events.push({
+              type: 'message.reasoning_display_block',
+              messageId,
+              choiceIndex: 0,
+              block: displayBlock,
+            })
+          }
+        }
+        if (part.inlineData) {
+          const image = imageFromInlineData(part.inlineData)
+          if (image) {
+            const thoughtSignature = readPartThoughtSignature(part)
+            events.push({
+              type: 'message.reasoning_raw_detail',
+              messageId,
+              choiceIndex: 0,
+              detail: {
+                type: 'thought_image',
+                image: {
+                  url: toDataUrl(image.data, image.mimeType),
+                  mimeType: image.mimeType,
+                },
+                __starverseReasoningPiece: true,
+                ...(thoughtSignature ? { thought_signature: thoughtSignature } : {}),
+              },
+            })
+            const displayBlock = createReasoningImageDisplayBlock({
+              messageId,
+              providerKey: 'google_ai_studio',
+              ordinal: resolveGeminiDisplayOrdinal(options, displayIndex++),
+              url: toDataUrl(image.data, image.mimeType),
+              mimeType: image.mimeType,
+              semanticRole: 'thought',
+              sourceEventType: 'candidate.part.thought.inlineData',
+            })
+            if (displayBlock) {
+              events.push({
+                type: 'message.reasoning_display_block',
+                messageId,
+                choiceIndex: 0,
+                block: displayBlock,
+              })
+            }
+          }
         }
         continue
       }
@@ -209,8 +272,20 @@ export function mapGeminiStreamChunkToStarverse(
         continue
       }
 
-      // Inline data part — ignored
+      // Inline image output belongs to the assistant content stream.
       if (part.inlineData) {
+        const image = imageFromInlineData(part.inlineData)
+        if (image) {
+          events.push({
+            type: 'message.content_block_append',
+            messageId,
+            choiceIndex: 0,
+            block: {
+              type: 'image',
+              url: toDataUrl(image.data, image.mimeType),
+            },
+          })
+        }
         continue
       }
     }
@@ -231,6 +306,28 @@ export function mapGeminiStreamChunkToStarverse(
   }
 
   return events
+}
+
+function resolveGeminiDisplayOrdinal(options: GeminiStreamMapOptions, partIndex: number): number {
+  if (typeof options.eventOrdinal === 'number' && Number.isFinite(options.eventOrdinal) && options.eventOrdinal >= 0) {
+    return Math.floor(options.eventOrdinal) * 1000 + partIndex
+  }
+  return partIndex
+}
+
+function imageFromInlineData(inlineData: GeminiPart['inlineData']): { data: string; mimeType: string } | null {
+  if (!inlineData) return null
+  const data = normalizeBase64(inlineData.data)
+  const rawMimeType = typeof inlineData.mimeType === 'string' ? inlineData.mimeType.trim().toLowerCase() : ''
+  if (!data || !rawMimeType.startsWith('image/')) return null
+  const mimeType = normalizeMimeType(rawMimeType)
+  return { data, mimeType }
+}
+
+function readPartThoughtSignature(part: GeminiPart): string {
+  const record = part as Record<string, unknown>
+  const value = record.thoughtSignature ?? record.thought_signature
+  return typeof value === 'string' ? value.trim() : ''
 }
 
 export function mapGeminiInteractionResponseToStarverse(

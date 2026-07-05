@@ -122,12 +122,14 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
   // Stream SSE → chunks → StarverseStreamEvent
   // Terminal coordination: exactly one terminal outcome
   let terminalEmitted = false
+  let eventOrdinal = 0
 
   for await (const sseEvent of decodeGeminiSSE(sseStream)) {
     if (terminalEmitted) break
 
     if (sseEvent.type === 'chunk') {
-      const mapped = mapGeminiStreamChunkToStarverse(sseEvent.data, assistantMessageId)
+      const mapped = mapGeminiStreamChunkToStarverse(sseEvent.data, assistantMessageId, { eventOrdinal })
+      eventOrdinal += 1
       for (const event of mapped) {
         if (terminalEmitted) break
 
