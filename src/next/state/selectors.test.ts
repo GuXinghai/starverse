@@ -294,7 +294,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
           {
             type: 'thought_summary',
             summary: 'before image',
-            __starverseReasoningPiece: true,
           },
           {
             type: 'thought_image',
@@ -306,7 +305,6 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
           {
             type: 'thought_summary',
             summary: 'after image',
-            __starverseReasoningPiece: true,
           },
         ],
         reasoningPieces: [],

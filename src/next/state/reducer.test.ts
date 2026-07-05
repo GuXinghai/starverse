@@ -104,7 +104,7 @@ function readFixtureText(fileName: string) {
         type: 'MessageDeltaReasoningDetail',
         messageId: 'assistant_1',
         choiceIndex: 0,
-        detail: { index: 0, type: 'thought_summary', summary: 'Sketch.', __starverseReasoningPiece: true },
+        detail: { index: 0, type: 'thought_summary', summary: 'Sketch.' },
       },
       {
         type: 'MessageDeltaReasoningDetail',
@@ -114,14 +114,13 @@ function readFixtureText(fileName: string) {
           index: 1,
           type: 'thought_image',
           image: { url: 'data:image/png;base64,abc', mimeType: 'image/png' },
-          __starverseReasoningPiece: true,
         },
       },
       {
         type: 'MessageDeltaReasoningDetail',
         messageId: 'assistant_1',
         choiceIndex: 0,
-        detail: { index: 2, type: 'thought_summary', summary: 'Refine.', __starverseReasoningPiece: true },
+        detail: { index: 2, type: 'thought_summary', summary: 'Refine.' },
       },
       {
         type: 'MessageAppendReasoningDisplayBlock',

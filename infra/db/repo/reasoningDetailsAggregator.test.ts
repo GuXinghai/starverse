@@ -277,7 +277,7 @@ describe('buildReasoningDetailsArray', () => {
       expect((result[0] as any).text).toBe('旧格式数据')
     })
 
-    it('保留 Gemini thought image 的 asset URL 和 reasoning piece 标记', () => {
+    it('保留 Gemini thought image 的 asset URL', () => {
       const segments: ReasoningDetailSegmentRow[] = [
         makeSegment({
           segmentId: 1,
@@ -286,7 +286,6 @@ describe('buildReasoningDetailsArray', () => {
             type: 'thought_image',
             index: 0,
             image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
-            __starverseReasoningPiece: true,
           }),
         }),
       ]
@@ -297,11 +296,10 @@ describe('buildReasoningDetailsArray', () => {
         type: 'thought_image',
         index: 0,
         image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
-        __starverseReasoningPiece: true,
       })
     })
 
-    it('保留 Gemini display reasoning pieces 相对图片的 segment 顺序', () => {
+    it('聚合 Gemini raw summaries separately from standalone thought images', () => {
       const segments: ReasoningDetailSegmentRow[] = [
         makeSegment({
           segmentId: 1,
@@ -311,7 +309,6 @@ describe('buildReasoningDetailsArray', () => {
             type: 'thought_summary',
             index: 0,
             summary: 'before image',
-            __starverseReasoningPiece: true,
           }),
           deltaSummary: 'before image',
         }),
@@ -323,7 +320,6 @@ describe('buildReasoningDetailsArray', () => {
             type: 'thought_image',
             index: 0,
             image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
-            __starverseReasoningPiece: true,
           }),
         }),
         makeSegment({
@@ -334,7 +330,6 @@ describe('buildReasoningDetailsArray', () => {
             type: 'thought_summary',
             index: 0,
             summary: 'after image',
-            __starverseReasoningPiece: true,
           }),
           deltaSummary: 'after image',
         }),
@@ -346,20 +341,12 @@ describe('buildReasoningDetailsArray', () => {
         {
           type: 'thought_summary',
           index: 0,
-          summary: 'before image',
-          __starverseReasoningPiece: true,
+          summary: 'before imageafter image',
         },
         {
           type: 'thought_image',
           index: 0,
           image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
-          __starverseReasoningPiece: true,
-        },
-        {
-          type: 'thought_summary',
-          index: 0,
-          summary: 'after image',
-          __starverseReasoningPiece: true,
         },
       ])
     })

@@ -192,7 +192,6 @@ describe('streamViaGemini', () => {
         messageId: 'assistant_1',
         choiceIndex: 0,
         detail: {
-          __starverseReasoningPiece: true,
           index: 0,
           type: 'thought_summary',
           summary: 'Planning the scene.',

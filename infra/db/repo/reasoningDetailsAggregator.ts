@@ -27,13 +27,12 @@ function coerceIndex(value: unknown): number | null {
   return value
 }
 
-function shouldPreserveDisplaySegment(segment: ReasoningDetailSegmentRow, payload: Record<string, unknown> | null): boolean {
+function shouldPreserveStandaloneRawSegment(segment: ReasoningDetailSegmentRow, payload: Record<string, unknown> | null): boolean {
   const type = String(payload?.type ?? segment.type ?? '')
-  if (type === 'thought_image') return true
-  return payload?.__starverseReasoningPiece === true
+  return type === 'thought_image'
 }
 
-function buildDisplaySegmentDetail(
+function buildStandaloneRawSegmentDetail(
   segment: ReasoningDetailSegmentRow,
   payload: Record<string, unknown> | null,
 ): Record<string, unknown> {
@@ -70,7 +69,6 @@ function buildDisplaySegmentDetail(
   if (payload?.encrypted !== undefined) detail.encrypted = payload.encrypted
   if (payload?.thinking !== undefined) detail.thinking = payload.thinking
   if (payload?.thought_signature !== undefined) detail.thought_signature = payload.thought_signature
-  if (payload?.__starverseReasoningPiece === true) detail.__starverseReasoningPiece = true
   if (detail.type === 'thought_image' && payload?.image !== undefined) detail.image = payload.image
 
   return detail
@@ -116,9 +114,9 @@ export function buildReasoningDetailsArray(segments: ReadonlyArray<ReasoningDeta
 
   for (const segment of segments) {
     const payload = safeParseJson(segment.payload)
-    if (shouldPreserveDisplaySegment(segment, payload)) {
+    if (shouldPreserveStandaloneRawSegment(segment, payload)) {
       results.push({
-        detail: buildDisplaySegmentDetail(segment, payload),
+        detail: buildStandaloneRawSegmentDetail(segment, payload),
         firstSegmentId: segment.segmentId,
         indexValue: coerceIndex(payload?.index ?? segment.index),
       })
@@ -228,7 +226,6 @@ export function buildReasoningDetailsArray(segments: ReadonlyArray<ReasoningDeta
     if (lastEncrypted !== undefined) detail.encrypted = lastEncrypted
     if (lastThinking !== undefined) detail.thinking = lastThinking
     if (lastThoughtSignature !== undefined) detail.thought_signature = lastThoughtSignature
-    if (lastPayload?.__starverseReasoningPiece === true) detail.__starverseReasoningPiece = true
     if (detail.type === 'thought_image' && lastPayload?.image !== undefined) {
       detail.image = lastPayload.image
     }

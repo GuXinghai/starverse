@@ -224,7 +224,6 @@ export function mapGeminiStreamChunkToStarverse(
                   url: toDataUrl(image.data, image.mimeType),
                   mimeType: image.mimeType,
                 },
-                __starverseReasoningPiece: true,
                 ...(thoughtSignature ? { thought_signature: thoughtSignature } : {}),
               },
             })
@@ -447,7 +446,6 @@ function collectGeminiInteractionReasoningDetails(payload: unknown): unknown[] {
       details.push({
         type: 'thought_summary',
         summary,
-        __starverseReasoningPiece: true,
         ...(signature ? { thought_signature: signature } : {}),
       })
       return
@@ -537,7 +535,6 @@ function extractThoughtSummaryDetails(record: Record<string, unknown>): unknown[
             url: toDataUrl(image.data, image.mimeType),
             mimeType: image.mimeType,
           },
-          __starverseReasoningPiece: true,
           ...(signature ? { thought_signature: signature } : {}),
         })
         continue
@@ -548,7 +545,6 @@ function extractThoughtSummaryDetails(record: Record<string, unknown>): unknown[
         out.push({
           type: 'thought_summary',
           summary: text,
-          __starverseReasoningPiece: true,
           ...(signature ? { thought_signature: signature } : {}),
         })
       }
@@ -566,7 +562,6 @@ function extractThoughtSummaryDetails(record: Record<string, unknown>): unknown[
           url: toDataUrl(image.data, image.mimeType),
           mimeType: image.mimeType,
         },
-        __starverseReasoningPiece: true,
         ...(signature ? { thought_signature: signature } : {}),
       })
     }
