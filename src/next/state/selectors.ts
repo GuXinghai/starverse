@@ -1,13 +1,9 @@
 import type { MessageState, MessageVM, ReasoningDisplayBlock, ReasoningPiece, ReasoningViewVisibility, RootState, RunVM } from './types'
-import { ReasoningDetailStreamMerger, buildDetailKey } from './reasoningDetailStreamMerger'
-import { beginDeriveMeasure, endDeriveMeasure, recordDerive, recordFallbackReplay } from './perfMetrics'
+import { beginDeriveMeasure, endDeriveMeasure, recordDerive } from './perfMetrics'
 import { getDiagnosticsFlags } from '@/shared/diagnostics/flags'
 import { createDiagnosticsLogger, publishPhase3PieceSnapshot } from '@/shared/diagnostics/bridge'
 import { recordSelectorsDerive, isSchedDiagEnabled, startTimer } from './schedulerDiagnostics'
 
-// fallbackReplayCount 监控
-let fallbackReplayCount = 0
-let lastFallbackReportTime = Date.now()
 let lastPieceReportTime = Date.now()
 const lastPieceCounts = new Map<string, { count: number; t: number }>()
 const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV === true
@@ -23,20 +19,6 @@ type TranscriptCacheEntry = Readonly<{
   result: MessageVM[]
 }>
 const transcriptCache = new Map<string, TranscriptCacheEntry>()
-
-function recordFallbackReplayLocal(): void {
-  if (!diagnosticsFlags.perf) return
-  fallbackReplayCount++
-  const now = Date.now()
-  if (now - lastFallbackReportTime >= 1000) {
-    const rate = fallbackReplayCount / ((now - lastFallbackReportTime) / 1000)
-    diagnosticsLogger.log('fallback-replay', { rate: Number(rate.toFixed(2)), total: fallbackReplayCount })
-    fallbackReplayCount = 0
-    lastFallbackReportTime = now
-  }
-  // 同时记录到全局性能指标
-  recordFallbackReplay()
-}
 
 function normalizeReasoningPieces(raw: ReadonlyArray<ReasoningPiece> | undefined): ReasoningPiece[] | undefined {
   if (!Array.isArray(raw)) return undefined
@@ -136,135 +118,6 @@ function normalizeReasoningDisplayBlocks(raw: ReadonlyArray<ReasoningDisplayBloc
   return blocks.length > 0 ? blocks : undefined
 }
 
-function appendReplayTextPiece(pieces: ReasoningPiece[], text: string, nextId: number): number {
-  if (!text) return nextId
-  const lastIndex = pieces.length - 1
-  const last = pieces[lastIndex]
-  if (last?.type === 'text') {
-    pieces[lastIndex] = { ...last, text: last.text + text }
-    return nextId
-  }
-  pieces.push({ id: nextId, type: 'text', text })
-  return nextId + 1
-}
-
-function appendReplayImagePiece(
-  pieces: ReasoningPiece[],
-  image: Readonly<{ url: string; mimeType?: string }>,
-  nextId: number,
-): number {
-  const url = typeof image.url === 'string' ? image.url.trim() : ''
-  if (!url) return nextId
-  pieces.push({
-    id: nextId,
-    type: 'image',
-    url,
-    ...(image.mimeType ? { mimeType: image.mimeType } : {}),
-  })
-  return nextId + 1
-}
-
-function deriveReasoningDisplayFromDetails(reasoningDetailsRaw: unknown[]): {
-  summaryText?: string
-  reasoningText?: string
-  reasoningPieces?: ReasoningPiece[]
-} {
-  // 使用 Merger 重放，统一快照/增量语义
-  const merger = new ReasoningDetailStreamMerger()
-  const firstSeenOrder = new Map<string, number>()
-  let order = 0
-  const reasoningPieces: ReasoningPiece[] = []
-  let nextReasoningPieceId = 1
-
-  for (const detail of reasoningDetailsRaw) {
-    if (!detail || typeof detail !== 'object') continue
-    const record = detail as any
-    const merged = merger.merge(record)
-    const key = buildDetailKey(record)
-    if (!firstSeenOrder.has(key)) {
-      firstSeenOrder.set(key, order++)
-    }
-
-    if (record.type === 'thought_image') {
-      const image = record.image
-      const url = image && typeof image === 'object' ? (image as any).url : undefined
-      if (typeof url === 'string' && url.trim().length > 0) {
-        const mimeType = typeof (image as any).mimeType === 'string' ? (image as any).mimeType : undefined
-        nextReasoningPieceId = appendReplayImagePiece(
-          reasoningPieces,
-          { url, ...(mimeType ? { mimeType } : {}) },
-          nextReasoningPieceId,
-        )
-      }
-      continue
-    }
-
-    if (
-      record.__starverseReasoningPiece === true &&
-      (record.type === 'thought_summary' || record.type === 'thinking_summary' || record.type === 'reasoning_summary')
-    ) {
-      const summary = merged?.deltaSummary ?? record.__deltaSummary ?? record.summary ?? record.text
-      if (typeof summary === 'string' && summary.length > 0) {
-        nextReasoningPieceId = appendReplayTextPiece(reasoningPieces, summary, nextReasoningPieceId)
-      }
-    }
-  }
-
-  const snapshots = merger.getMergedSnapshots()
-  const sortedSnapshots = [...snapshots].sort((a, b) => {
-    const ai = typeof a.index === 'number' ? a.index : Number.POSITIVE_INFINITY
-    const bi = typeof b.index === 'number' ? b.index : Number.POSITIVE_INFINITY
-    if (ai !== bi) return ai - bi
-    const aKey = buildDetailKey(a)
-    const bKey = buildDetailKey(b)
-    return (firstSeenOrder.get(aKey) ?? 0) - (firstSeenOrder.get(bKey) ?? 0)
-  })
-
-  let summaryText: string | undefined
-  const reasoningTextParts: string[] = []
-
-  for (const detail of sortedSnapshots) {
-    const type = (detail as any).type
-
-    if (type === 'reasoning.text') {
-      const text = (detail as any).text
-      if (typeof text === 'string' && text.length > 0) reasoningTextParts.push(text)
-      continue
-    }
-
-    if (type === 'thought') {
-      const text = (detail as any).text
-      if (typeof text === 'string' && text.length > 0) reasoningTextParts.push(text)
-      continue
-    }
-
-    if (type === 'thought_image') {
-      continue
-    }
-
-    if (type === 'reasoning.summary') {
-      const summary = (detail as any).summary ?? (detail as any).text
-      if (typeof summary === 'string' && summary.length > 0) summaryText = summary
-      continue
-    }
-
-    if (type === 'thought_summary' || type === 'thinking_summary' || type === 'reasoning_summary') {
-      const summary = (detail as any).summary ?? (detail as any).text
-      if (typeof summary === 'string' && summary.length > 0) {
-        if ((detail as any).__starverseReasoningPiece === true) {
-          continue
-        } else {
-          summaryText = summary
-        }
-      }
-      continue
-    }
-  }
-
-  const reasoningText = reasoningTextParts.length > 0 ? reasoningTextParts.join('') : undefined
-  return { summaryText, reasoningText, reasoningPieces: reasoningPieces.length > 0 ? reasoningPieces : undefined }
-}
-
 export function selectMessage(state: RootState, messageId: string): MessageVM | null {
   const messagesById = state.entities?.messagesById ?? state.messages
   const m = messagesById[messageId]
@@ -281,7 +134,6 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   const normalizedPieces = normalizeReasoningPieces(m.reasoningPieces)
   const displayBlocks = normalizeReasoningDisplayBlocks(m.reasoningDisplayBlocks)
   const hasPieces = Array.isArray(normalizedPieces) && normalizedPieces.length > 0
-  const hasDetails = Array.isArray(m.reasoningDetailsRaw) && m.reasoningDetailsRaw.length > 0
 
   // 监控 piece 数量
   if (hasPieces && normalizedPieces) {
@@ -292,25 +144,16 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   let reasoningText: string | undefined
   let reasoningPieces: ReasoningPiece[] | undefined
 
-  // 优先使用增量 pieces，必要时回放全量 details。DB-hydrated Gemini image
-  // reasoning can have summaryText and raw thought_image details but no live pieces.
+  // Display blocks are the UI SSOT. Raw reasoning details remain semantic only.
   if (hasPieces) {
     reasoningPieces = normalizedPieces
     // 使用 pieces 时不需要 reasoningText
-  } else if (hasDetails) {
-    // 回退到全量重放
-    usedFallback = true
-    recordFallbackReplayLocal()
-    const derived = deriveReasoningDisplayFromDetails(m.reasoningDetailsRaw)
-    summaryText = summaryText ?? derived.summaryText
-    reasoningText = derived.reasoningText
-    reasoningPieces = derived.reasoningPieces
   } else if (summaryText) {
     // 仅有 summary（常见于 summary-only 流）
     reasoningText = m.reasoningStreamingText
   }
 
-  if (!reasoningText && !reasoningPieces) {
+  if (!reasoningText && !reasoningPieces && m.reasoningStreamingText.length > 0) {
     reasoningText = m.reasoningStreamingText
   }
 
