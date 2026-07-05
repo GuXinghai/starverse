@@ -20,6 +20,7 @@
  */
 
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import { createReasoningTextDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
 
 // ---------------------------------------------------------------------------
 // OpenAI Responses event types — provider-native schema, contained here only
@@ -28,6 +29,10 @@ import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
 export type OpenAIResponsesStreamEvent = Readonly<{
   type: string
   [key: string]: unknown
+}>
+
+export type OpenAIResponsesStreamMapOptions = Readonly<{
+  eventOrdinal?: number
 }>
 
 // ---------------------------------------------------------------------------
@@ -48,6 +53,7 @@ export type OpenAIResponsesStreamEvent = Readonly<{
 export function mapOpenAIResponsesEventToStarverse(
   event: OpenAIResponsesStreamEvent,
   messageId: string,
+  options: OpenAIResponsesStreamMapOptions = {},
 ): StarverseStreamEvent[] {
   const events: StarverseStreamEvent[] = []
 
@@ -84,6 +90,22 @@ export function mapOpenAIResponsesEventToStarverse(
           choiceIndex: 0,
           detail: { type: 'reasoning_summary', text: delta },
         })
+        const displayBlock = createReasoningTextDisplayBlock({
+          messageId,
+          providerKey: 'openai-responses',
+          ordinal: resolveReasoningDisplayOrdinal(event, options),
+          text: delta,
+          semanticRole: 'summary',
+          sourceEventType: event.type,
+        })
+        if (displayBlock) {
+          events.push({
+            type: 'message.reasoning_display_block',
+            messageId,
+            choiceIndex: 0,
+            block: displayBlock,
+          })
+        }
       }
       break
     }
@@ -104,6 +126,22 @@ export function mapOpenAIResponsesEventToStarverse(
           choiceIndex: 0,
           detail: { type: 'reasoning_text', text: delta },
         })
+        const displayBlock = createReasoningTextDisplayBlock({
+          messageId,
+          providerKey: 'openai-responses',
+          ordinal: resolveReasoningDisplayOrdinal(event, options),
+          text: delta,
+          semanticRole: 'reasoning',
+          sourceEventType: event.type,
+        })
+        if (displayBlock) {
+          events.push({
+            type: 'message.reasoning_display_block',
+            messageId,
+            choiceIndex: 0,
+            block: displayBlock,
+          })
+        }
       }
       break
     }
@@ -254,6 +292,19 @@ export function mapOpenAIResponsesEventToStarverse(
   }
 
   return events
+}
+
+function resolveReasoningDisplayOrdinal(
+  event: OpenAIResponsesStreamEvent,
+  options: OpenAIResponsesStreamMapOptions,
+): number {
+  if (typeof options.eventOrdinal === 'number' && Number.isFinite(options.eventOrdinal) && options.eventOrdinal >= 0) {
+    return options.eventOrdinal
+  }
+  if (typeof event.sequence_number === 'number' && Number.isFinite(event.sequence_number) && event.sequence_number >= 0) {
+    return event.sequence_number
+  }
+  return 0
 }
 
 function imageGenerationItemToContentBlockEvent(

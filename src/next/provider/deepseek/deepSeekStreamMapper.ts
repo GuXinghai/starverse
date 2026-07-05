@@ -18,6 +18,7 @@
  */
 
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import { createReasoningTextDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
 
 // ---------------------------------------------------------------------------
 // DeepSeek chunk types — provider-native schema, contained here only
@@ -141,6 +142,22 @@ export function mapDeepSeekChunkToEvents(input: DeepSeekChunkInput): StarverseSt
       detail: { text: delta.reasoning_content, type: 'reasoning_content' },
       chunkNo: input.chunkNo,
     })
+    const displayBlock = createReasoningTextDisplayBlock({
+      messageId,
+      providerKey: 'deepseek',
+      ordinal: typeof input.chunkNo === 'number' ? input.chunkNo : 0,
+      text: delta.reasoning_content,
+      semanticRole: 'reasoning',
+      sourceEventType: 'delta.reasoning_content',
+    })
+    if (displayBlock) {
+      events.push({
+        type: 'message.reasoning_display_block',
+        messageId,
+        choiceIndex,
+        block: displayBlock,
+      })
+    }
   }
 
   // Visible text content

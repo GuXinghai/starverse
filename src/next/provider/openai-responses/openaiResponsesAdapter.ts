@@ -108,12 +108,14 @@ export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async func
   // Terminal coordination: exactly one terminal outcome
   let terminalEmitted = false
   const emittedImageUrls = new Set<string>()
+  let eventOrdinal = 0
 
   for await (const sseEvent of decodeResponsesSSE(sseStream)) {
     if (terminalEmitted) break
 
     if (sseEvent.type === 'event') {
-      const mapped = mapOpenAIResponsesEventToStarverse(sseEvent.data, assistantMessageId)
+      const mapped = mapOpenAIResponsesEventToStarverse(sseEvent.data, assistantMessageId, { eventOrdinal })
+      eventOrdinal += 1
       for (const event of mapped) {
         if (terminalEmitted) break
         if (isDuplicateImageContentBlock(event, emittedImageUrls)) continue

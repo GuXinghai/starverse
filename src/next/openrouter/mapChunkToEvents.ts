@@ -8,6 +8,9 @@
  * @see docs/architecture/REASONING_IDEMPOTENCY_CONTRACT.md 幂等契约
  */
 
+import type { ReasoningDisplayBlock } from '@/next/state/types'
+import { createReasoningImageDisplayBlock, createReasoningTextDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
+
 export type DomainEvent =
   | Readonly<{ type: 'StreamComment'; text: string }>
   | Readonly<{ type: 'StreamError'; error: unknown; terminal: true }>
@@ -29,6 +32,7 @@ export type DomainEvent =
       annotations: unknown[]
     }>
   | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
+  | Readonly<{ type: 'MessageAppendReasoningDisplayBlock'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
   | Readonly<{ type: 'UsageDelta'; usage: unknown }>
   | Readonly<{
       type: 'MetaDelta'
@@ -216,7 +220,8 @@ export function mapChunkToEvents(input: OpenRouterChunkInput): DomainEvent[] {
 
   const reasoningDetails = delta?.reasoning_details ?? message?.reasoning_details
   if (Array.isArray(reasoningDetails)) {
-    for (const detail of reasoningDetails) {
+    for (let detailIndex = 0; detailIndex < reasoningDetails.length; detailIndex += 1) {
+      const detail = reasoningDetails[detailIndex]
       events.push({
         type: 'MessageDeltaReasoningDetail',
         messageId,
@@ -224,8 +229,96 @@ export function mapChunkToEvents(input: OpenRouterChunkInput): DomainEvent[] {
         detail,
         chunkNo: input.chunkNo,
       })
+      const displayBlock = mapOpenRouterReasoningDetailToDisplayBlock({
+        detail,
+        messageId,
+        chunkNo: input.chunkNo,
+        detailIndex,
+      })
+      if (displayBlock) {
+        events.push({
+          type: 'MessageAppendReasoningDisplayBlock',
+          messageId,
+          choiceIndex,
+          block: displayBlock,
+        })
+      }
     }
   }
 
   return events
+}
+
+function mapOpenRouterReasoningDetailToDisplayBlock(input: Readonly<{
+  detail: unknown
+  messageId: string
+  chunkNo?: number
+  detailIndex: number
+}>): ReasoningDisplayBlock | null {
+  if (!input.detail || typeof input.detail !== 'object') return null
+  const detail = input.detail as Record<string, unknown>
+  const type = typeof detail.type === 'string' ? detail.type : ''
+  const ordinal = resolveOpenRouterDisplayOrdinal(input.chunkNo, input.detailIndex)
+
+  if (type === 'reasoning.text' && typeof detail.text === 'string') {
+    return createReasoningTextDisplayBlock({
+      messageId: input.messageId,
+      providerKey: 'openrouter',
+      ordinal,
+      text: detail.text,
+      semanticRole: 'reasoning',
+      sourceEventType: 'reasoning_details.reasoning.text',
+      blockIdSuffix: String(input.detailIndex),
+    })
+  }
+
+  if (type === 'reasoning.summary' && typeof detail.summary === 'string') {
+    return createReasoningTextDisplayBlock({
+      messageId: input.messageId,
+      providerKey: 'openrouter',
+      ordinal,
+      text: detail.summary,
+      semanticRole: 'summary',
+      sourceEventType: 'reasoning_details.reasoning.summary',
+      blockIdSuffix: String(input.detailIndex),
+    })
+  }
+
+  if (type === 'thought_summary' && typeof detail.summary === 'string') {
+    return createReasoningTextDisplayBlock({
+      messageId: input.messageId,
+      providerKey: 'openrouter',
+      ordinal,
+      text: detail.summary,
+      semanticRole: 'thought',
+      sourceEventType: 'reasoning_details.thought_summary',
+      blockIdSuffix: String(input.detailIndex),
+    })
+  }
+
+  if (type === 'thought_image') {
+    const image = detail.image
+    if (!image || typeof image !== 'object' || Array.isArray(image)) return null
+    const imageRecord = image as Record<string, unknown>
+    const url = typeof imageRecord.url === 'string' ? imageRecord.url : ''
+    return createReasoningImageDisplayBlock({
+      messageId: input.messageId,
+      providerKey: 'openrouter',
+      ordinal,
+      url,
+      mimeType: typeof imageRecord.mimeType === 'string' ? imageRecord.mimeType : undefined,
+      semanticRole: 'thought',
+      sourceEventType: 'reasoning_details.thought_image',
+      blockIdSuffix: String(input.detailIndex),
+    })
+  }
+
+  return null
+}
+
+function resolveOpenRouterDisplayOrdinal(chunkNo: number | undefined, detailIndex: number): number {
+  if (typeof chunkNo === 'number' && Number.isFinite(chunkNo) && chunkNo >= 0) {
+    return (Math.floor(chunkNo) * 1000) + detailIndex
+  }
+  return detailIndex
 }

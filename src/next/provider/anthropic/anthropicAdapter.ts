@@ -111,12 +111,14 @@ export const streamViaAnthropic: RuntimeProviderStreamAdapter = async function* 
   // Stream SSE → events → StarverseStreamEvent
   // Terminal coordination: exactly one terminal outcome
   let terminalEmitted = false
+  let eventOrdinal = 0
 
   for await (const sseEvent of decodeAnthropicSSE(sseStream)) {
     if (terminalEmitted) break
 
     if (sseEvent.type === 'event') {
-      const mapped = mapAnthropicStreamEventToStarverse(sseEvent.data, assistantMessageId)
+      const mapped = mapAnthropicStreamEventToStarverse(sseEvent.data, assistantMessageId, { eventOrdinal })
+      eventOrdinal += 1
       for (const event of mapped) {
         if (terminalEmitted) break
 

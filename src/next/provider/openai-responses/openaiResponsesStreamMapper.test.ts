@@ -93,12 +93,24 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
     it('maps reasoning summary delta to message.reasoning_detail', () => {
       const events = mapOpenAIResponsesEventToStarverse(reasoningSummaryDelta('Let me think...'), msgId)
 
-      expect(events).toHaveLength(1)
+      expect(events).toHaveLength(2)
       expect(events[0].type).toBe('message.reasoning_detail')
       if (events[0].type === 'message.reasoning_detail') {
         expect(events[0].detail).toEqual({ type: 'reasoning_summary', text: 'Let me think...' })
         expect(events[0].messageId).toBe(msgId)
       }
+      expect(events[1]).toMatchObject({
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'text',
+          text: 'Let me think...',
+          semanticRole: 'summary',
+          providerKey: 'openai-responses',
+          sourceEventType: 'response.reasoning_summary_text.delta',
+        },
+      })
     })
 
     it('does not emit event for reasoning summary done', () => {
@@ -121,11 +133,23 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
     it('maps reasoning text delta to message.reasoning_detail', () => {
       const events = mapOpenAIResponsesEventToStarverse(reasoningTextDelta('Step 1: analyze...'), msgId)
 
-      expect(events).toHaveLength(1)
+      expect(events).toHaveLength(2)
       expect(events[0].type).toBe('message.reasoning_detail')
       if (events[0].type === 'message.reasoning_detail') {
         expect(events[0].detail).toEqual({ type: 'reasoning_text', text: 'Step 1: analyze...' })
       }
+      expect(events[1]).toMatchObject({
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'text',
+          text: 'Step 1: analyze...',
+          semanticRole: 'reasoning',
+          providerKey: 'openai-responses',
+          sourceEventType: 'response.reasoning_text.delta',
+        },
+      })
     })
 
     it('does not emit event for reasoning text done', () => {
@@ -247,9 +271,11 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
       }
 
       const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+      const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
 
       expect(reasoningEvents).toHaveLength(2)
+      expect(displayEvents).toHaveLength(2)
       expect(textEvents).toHaveLength(2)
 
       // Reasoning appears before text
@@ -270,7 +296,8 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
       }
 
       expect(allEvents[0].type).toBe('message.reasoning_detail')
-      expect(allEvents[1].type).toBe('message.text_delta')
+      expect(allEvents[1].type).toBe('message.reasoning_display_block')
+      expect(allEvents[2].type).toBe('message.text_delta')
     })
   })
 
@@ -480,12 +507,14 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
       }
 
       const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+      const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
       const usageEvents = allEvents.filter((e) => e.type === 'usage.delta')
       const doneEvents = allEvents.filter((e) => e.type === 'stream.done')
       const metaEvents = allEvents.filter((e) => e.type === 'meta.delta')
 
       expect(reasoningEvents).toHaveLength(2)
+      expect(displayEvents).toHaveLength(2)
       expect(textEvents).toHaveLength(2)
       expect(usageEvents).toHaveLength(1)
       expect(doneEvents).toHaveLength(1)

@@ -78,14 +78,30 @@ describe('mapDeepSeekChunkToEvents', () => {
     const events = mapDeepSeekChunkToEvents({
       chunk: reasoningChunk('gen_1', 'deepseek-r1', 'Let me think...'),
       messageId: msgId,
+      chunkNo: 7,
     })
 
     const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block')
     expect(reasoningEvents).toHaveLength(1)
+    expect(displayEvents).toHaveLength(1)
     if (reasoningEvents[0].type === 'message.reasoning_detail') {
       expect(reasoningEvents[0].detail).toEqual({ text: 'Let me think...', type: 'reasoning_content' })
       expect(reasoningEvents[0].messageId).toBe(msgId)
     }
+    expect(displayEvents[0]).toMatchObject({
+      type: 'message.reasoning_display_block',
+      messageId: msgId,
+      choiceIndex: 0,
+      block: {
+        type: 'text',
+        text: 'Let me think...',
+        semanticRole: 'reasoning',
+        providerKey: 'deepseek',
+        sourceEventType: 'delta.reasoning_content',
+        ordinal: 7,
+      },
+    })
   })
 
   it('reasoning_content NEVER becomes visible text', () => {
@@ -107,7 +123,8 @@ describe('mapDeepSeekChunkToEvents', () => {
     // reasoning comes first in the output (as it does in the delta)
     expect(events[0].type).toBe('meta.delta')
     expect(events[1].type).toBe('message.reasoning_detail')
-    expect(events[2].type).toBe('message.text_delta')
+    expect(events[2].type).toBe('message.reasoning_display_block')
+    expect(events[3].type).toBe('message.text_delta')
   })
 
   it('preserves sequential reasoning then text chunks in order', () => {
@@ -124,9 +141,11 @@ describe('mapDeepSeekChunkToEvents', () => {
     }
 
     const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+    const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
     const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
 
     expect(reasoningEvents).toHaveLength(2)
+    expect(displayEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(2)
 
     // Reasoning events come before text events in the sequence
@@ -320,11 +339,13 @@ describe('mapDeepSeekChunkToEvents', () => {
     }
 
     const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+    const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
     const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
     const metaEvents = allEvents.filter((e) => e.type === 'meta.delta')
     const usageEvents = allEvents.filter((e) => e.type === 'usage.delta')
 
     expect(reasoningEvents).toHaveLength(2)
+    expect(displayEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(1)
     expect(metaEvents.length).toBeGreaterThanOrEqual(1)
     expect(usageEvents).toHaveLength(1)
