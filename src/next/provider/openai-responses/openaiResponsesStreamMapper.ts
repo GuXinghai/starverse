@@ -9,8 +9,8 @@
  *
  * Key quirks handled here:
  * - `response.output_text.delta` → visible text (message.text_delta)
- * - `response.reasoning_summary_text.delta` → reasoning (message.reasoning_detail)
- * - `response.reasoning_text.delta` → reasoning (message.reasoning_detail)
+ * - `response.reasoning_summary_text.delta` → reasoning (message.reasoning_raw_detail)
+ * - `response.reasoning_text.delta` → reasoning (message.reasoning_raw_detail)
  * - Reasoning text NEVER becomes visible text
  * - `response.completed` → usage.delta + stream.done
  * - `response.failed` / `response.incomplete` → stream.error terminal
@@ -85,7 +85,7 @@ export function mapOpenAIResponsesEventToStarverse(
       const delta = typeof event.delta === 'string' ? event.delta : ''
       if (delta.length > 0) {
         events.push({
-          type: 'message.reasoning_detail',
+          type: 'message.reasoning_raw_detail',
           messageId,
           choiceIndex: 0,
           detail: { type: 'reasoning_summary', text: delta },
@@ -121,7 +121,7 @@ export function mapOpenAIResponsesEventToStarverse(
       const delta = typeof event.delta === 'string' ? event.delta : ''
       if (delta.length > 0) {
         events.push({
-          type: 'message.reasoning_detail',
+          type: 'message.reasoning_raw_detail',
           messageId,
           choiceIndex: 0,
           detail: { type: 'reasoning_text', text: delta },
@@ -166,7 +166,7 @@ export function mapOpenAIResponsesEventToStarverse(
         const status = typeof item.status === 'string' ? item.status : undefined
 
         events.push({
-          type: 'message.reasoning_detail',
+          type: 'message.reasoning_raw_detail',
           messageId,
           choiceIndex: 0,
           detail: {

@@ -186,7 +186,7 @@ describe('deepSeekTextChatIpc', () => {
       event.event.type === 'message.text_delta' &&
       event.event.text === 'visible answer',
     )).toBe(true)
-    expect(events.some((event) => event.type === 'event' && event.event.type === 'message.reasoning_detail')).toBe(false)
+    expect(events.some((event) => event.type === 'event' && event.event.type === 'message.reasoning_raw_detail')).toBe(false)
     expect(JSON.stringify(events)).not.toContain('private chain of thought')
   })
 

@@ -115,12 +115,12 @@ describe('mapGeminiStreamChunkToStarverse', () => {
   // =========================================================================
 
   describe('thinking / thought', () => {
-    it('maps thought part to message.reasoning_detail', () => {
+    it('maps thought part to message.reasoning_raw_detail', () => {
       const events = mapGeminiStreamChunkToStarverse(thoughtChunk('Let me think...'), msgId)
 
-      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
       expect(reasoningEvents).toHaveLength(1)
-      if (reasoningEvents[0].type === 'message.reasoning_detail') {
+      if (reasoningEvents[0].type === 'message.reasoning_raw_detail') {
         expect(reasoningEvents[0].detail).toEqual({ type: 'thought', text: 'Let me think...' })
         expect(reasoningEvents[0].messageId).toBe(msgId)
       }
@@ -134,14 +134,14 @@ describe('mapGeminiStreamChunkToStarverse', () => {
 
     it('ignores empty thought part', () => {
       const events = mapGeminiStreamChunkToStarverse(thoughtChunk(''), msgId)
-      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
       expect(reasoningEvents).toHaveLength(0)
     })
 
     it('preserves mixed thought + text order', () => {
       const events = mapGeminiStreamChunkToStarverse(mixedChunk('thinking...', 'visible answer'), msgId)
 
-      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
       const textEvents = events.filter((e) => e.type === 'message.text_delta')
 
       expect(reasoningEvents).toHaveLength(1)
@@ -480,7 +480,7 @@ describe('mapGeminiStreamChunkToStarverse', () => {
         allEvents.push(...mapGeminiStreamChunkToStarverse(chunk, msgId))
       }
 
-      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
       const usageEvents = allEvents.filter((e) => e.type === 'usage.delta')
       const metaEvents = allEvents.filter((e) => e.type === 'meta.delta')
@@ -588,7 +588,7 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
 
     expect(events).toEqual([
       {
-        type: 'message.reasoning_detail',
+        type: 'message.reasoning_raw_detail',
         messageId: msgId,
         choiceIndex: 0,
         detail: {
@@ -646,11 +646,11 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
       ],
     }, msgId)
 
-    const reasoningEvents = events.filter((event) => event.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((event) => event.type === 'message.reasoning_raw_detail')
     const displayEvents = events.filter((event) => event.type === 'message.reasoning_display_block')
     expect(reasoningEvents).toEqual([
       {
-        type: 'message.reasoning_detail',
+        type: 'message.reasoning_raw_detail',
         messageId: msgId,
         choiceIndex: 0,
         detail: {
@@ -662,7 +662,7 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
         },
       },
       {
-        type: 'message.reasoning_detail',
+        type: 'message.reasoning_raw_detail',
         messageId: msgId,
         choiceIndex: 0,
         detail: {
@@ -677,7 +677,7 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
         },
       },
       {
-        type: 'message.reasoning_detail',
+        type: 'message.reasoning_raw_detail',
         messageId: msgId,
         choiceIndex: 0,
         detail: {
@@ -762,7 +762,7 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
 
     expect(events).toEqual([
       {
-        type: 'message.reasoning_detail',
+        type: 'message.reasoning_raw_detail',
         messageId: msgId,
         choiceIndex: 0,
         detail: {
@@ -805,7 +805,7 @@ describe('mapGeminiInteractionResponseToStarverse', () => {
 
     expect(events).toEqual([
       {
-        type: 'message.reasoning_detail',
+        type: 'message.reasoning_raw_detail',
         messageId: msgId,
         choiceIndex: 0,
         detail: {

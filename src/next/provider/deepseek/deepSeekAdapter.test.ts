@@ -211,7 +211,7 @@ describe('streamViaDeepSeek', () => {
       { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-test', fetch },
     ))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
 
     expect(reasoningEvents).toHaveLength(2)
@@ -253,7 +253,7 @@ describe('streamViaDeepSeek', () => {
       { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-test', fetch },
     ))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
 
     expect(reasoningEvents).toHaveLength(1)
@@ -455,7 +455,7 @@ describe('streamViaDeepSeek', () => {
       { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-test', fetch },
     ))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     const metaEvents = events.filter((e) => e.type === 'meta.delta')
     const usageEvents = events.filter((e) => e.type === 'usage.delta')

@@ -46,8 +46,8 @@ export type AnthropicStreamMapOptions = Readonly<{
  *
  * - Pure function: emits events only; does not write any state.
  * - "text_delta" → message.text_delta.
- * - "thinking_delta" → message.reasoning_detail. NEVER visible text.
- * - "signature_delta" → message.reasoning_detail (opaque provider signature).
+ * - "thinking_delta" → message.reasoning_raw_detail. NEVER visible text.
+ * - "signature_delta" → message.reasoning_raw_detail (opaque provider signature).
  * - "input_json_delta" → ignored (no tool delta event shape in Starverse).
  * - Usage from message_start and message_delta → usage.delta at message_delta.
  * - stop_reason → meta.delta with normalized finish reason.
@@ -111,7 +111,7 @@ export function mapAnthropicStreamEventToStarverse(
           const thinking = typeof delta.thinking === 'string' ? delta.thinking : ''
           if (thinking.length > 0) {
             events.push({
-              type: 'message.reasoning_detail',
+              type: 'message.reasoning_raw_detail',
               messageId,
               choiceIndex: 0,
               detail: { type: 'thinking_delta', thinking },
@@ -140,7 +140,7 @@ export function mapAnthropicStreamEventToStarverse(
           const signature = typeof delta.signature === 'string' ? delta.signature : ''
           if (signature.length > 0) {
             events.push({
-              type: 'message.reasoning_detail',
+              type: 'message.reasoning_raw_detail',
               messageId,
               choiceIndex: 0,
               detail: { type: 'signature_delta', signature },

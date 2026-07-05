@@ -136,7 +136,7 @@ export function mapDeepSeekChunkToEvents(input: DeepSeekChunkInput): StarverseSt
   // Reasoning content — NEVER visible text
   if (typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
     events.push({
-      type: 'message.reasoning_detail',
+      type: 'message.reasoning_raw_detail',
       messageId,
       choiceIndex,
       detail: { text: delta.reasoning_content, type: 'reasoning_content' },
