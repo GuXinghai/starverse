@@ -332,10 +332,11 @@ function readPartThoughtSignature(part: GeminiPart): string {
 export function mapGeminiInteractionResponseToStarverse(
   payload: unknown,
   messageId: string,
+  options: GeminiStreamMapOptions = {},
 ): StarverseStreamEvent[] {
   const events: StarverseStreamEvent[] = []
   const reasoningDetails = collectGeminiInteractionReasoningDetails(payload)
-  const reasoningDisplayBlocks = buildGeminiInteractionReasoningDisplayBlocks(reasoningDetails, messageId)
+  const reasoningDisplayBlocks = buildGeminiInteractionReasoningDisplayBlocks(reasoningDetails, messageId, options)
   const images = collectGeminiInteractionImages(payload)
   const texts = collectGeminiInteractionTexts(payload)
 
@@ -386,9 +387,10 @@ export function mapGeminiInteractionResponseToStarverse(
 function buildGeminiInteractionReasoningDisplayBlocks(
   details: ReadonlyArray<unknown>,
   messageId: string,
+  options: GeminiStreamMapOptions = {},
 ): NonNullable<Extract<StarverseStreamEvent, { type: 'message.reasoning_display_block' }>['block']>[] {
   const blocks: NonNullable<Extract<StarverseStreamEvent, { type: 'message.reasoning_display_block' }>['block']>[] = []
-  let ordinal = 0
+  let displayIndex = 0
   for (const detail of details) {
     if (!detail || typeof detail !== 'object' || Array.isArray(detail)) continue
     const record = detail as Record<string, unknown>
@@ -398,6 +400,7 @@ function buildGeminiInteractionReasoningDisplayBlocks(
       const url = typeof image?.url === 'string' ? image.url.trim() : ''
       if (!url) continue
       const mimeType = typeof image?.mimeType === 'string' ? image.mimeType : undefined
+      const ordinal = resolveGeminiDisplayOrdinal(options, displayIndex++)
       blocks.push({
         blockId: `${messageId}:gemini-interaction:${ordinal}`,
         ordinal,
@@ -408,7 +411,6 @@ function buildGeminiInteractionReasoningDisplayBlocks(
         providerKey: 'google_ai_studio',
         sourceEventType: type,
       })
-      ordinal += 1
       continue
     }
     if (type === 'thought_summary' || type === 'thinking_summary' || type === 'reasoning_summary') {
@@ -417,6 +419,7 @@ function buildGeminiInteractionReasoningDisplayBlocks(
         typeof record.text === 'string' ? record.text :
         ''
       if (!text) continue
+      const ordinal = resolveGeminiDisplayOrdinal(options, displayIndex++)
       blocks.push({
         blockId: `${messageId}:gemini-interaction:${ordinal}`,
         ordinal,
@@ -426,7 +429,6 @@ function buildGeminiInteractionReasoningDisplayBlocks(
         providerKey: 'google_ai_studio',
         sourceEventType: type,
       })
-      ordinal += 1
     }
   }
   return blocks

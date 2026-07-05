@@ -225,6 +225,59 @@ describe('streamViaGemini', () => {
     ])
   })
 
+  it('keeps multiple Gemini Interactions thought summary display blocks across stream chunks', async () => {
+    const response = makeSseResponse(
+      `data: ${JSON.stringify({ type: 'thought_summary', text: 'Define the scene.', thought_signature: 'sig_1' })}`,
+      `data: ${JSON.stringify({ type: 'thought_summary', text: 'Refine the pose.', thought_signature: 'sig_2' })}`,
+      `data: ${JSON.stringify({ type: 'output_image', data: 'iVBORw0KGgo=', mime_type: 'image/png' })}`,
+    )
+    response.headers.set('content-type', 'text/event-stream')
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaGemini(makeRequest({
+      model: 'gemini-3.1-flash-image',
+      imageGeneration: {
+        outputMode: 'image_and_text',
+        aspectRatio: '1:1',
+      },
+      geminiThinking: {
+        mode: 'level',
+        thinkingLevel: 'high',
+        includeThoughts: true,
+      },
+    }), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    const displayBlocks = events
+      .filter((event) => event.type === 'message.reasoning_display_block')
+      .map((event) => event.block)
+
+    expect(displayBlocks).toEqual([
+      {
+        blockId: 'assistant_1:gemini-interaction:0',
+        ordinal: 0,
+        type: 'text',
+        text: 'Define the scene.',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+        sourceEventType: 'thought_summary',
+      },
+      {
+        blockId: 'assistant_1:gemini-interaction:1000',
+        ordinal: 1000,
+        type: 'text',
+        text: 'Refine the pose.',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+        sourceEventType: 'thought_summary',
+      },
+    ])
+    expect(events.at(-1)).toEqual({ type: 'stream.done' })
+  })
+
   it('keeps repeated Gemini Interactions image blocks across stream chunks', async () => {
     const imageChunk = `data: ${JSON.stringify({ type: 'output_image', data: 'iVBORw0KGgo=', mime_type: 'image/png' })}`
     const response = makeSseResponse(imageChunk, imageChunk)
