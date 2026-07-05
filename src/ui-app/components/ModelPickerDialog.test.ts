@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
+import { t, tf } from '@/shared/i18n'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 
 function createResult(
@@ -149,7 +150,7 @@ describe('ModelPickerDialog', () => {
     await user.click(screen.getByTestId('model-picker-provider-filter-anthropic_messages'))
     await waitFor(() => {
       expect(screen.queryByTestId('model-picker-item-openai_responses-gpt-4.1-mini')).toBeNull()
-      expect(screen.getByText('No models found for current search/filter.')).toBeTruthy()
+      expect(screen.getByText(t('errors.modelCatalog.noModelsFound'))).toBeTruthy()
     })
 
     await user.click(screen.getByTestId('model-picker-provider-select-none'))
@@ -785,30 +786,30 @@ describe('ModelPickerDialog', () => {
     await user.click(screen.getByTestId('model-picker-vendor-openai'))
     await user.selectOptions(screen.getByTestId('model-picker-category'), 'science')
 
-    await user.click(screen.getByText('Capability Limits'))
+    await user.click(screen.getByText(t('errors.modelCatalog.capabilityLimits')))
     await fireEvent.update(screen.getByTestId('model-picker-context-min'), '4096')
     await fireEvent.update(screen.getByTestId('model-picker-context-max'), '200000')
     await fireEvent.update(screen.getByTestId('model-picker-max-output-min'), '1024')
     await fireEvent.update(screen.getByTestId('model-picker-max-output-max'), '8192')
 
-    await user.click(screen.getByText('Modalities'))
+    await user.click(screen.getByText(t('errors.modelCatalog.modalities')))
     await user.click(screen.getByTestId('model-picker-arch-text->image'))
     await user.click(screen.getByTestId('model-picker-input-modality-image'))
     await user.click(screen.getByTestId('model-picker-output-modality-text'))
 
-    await user.click(screen.getByText('Features'))
+    await user.click(screen.getByText(t('errors.modelCatalog.features')))
     await user.click(screen.getByTestId('model-picker-supported-tools'))
     await fireEvent.update(screen.getByTestId('model-picker-tokenizers'), 'gpt, sentencepiece')
     await fireEvent.update(screen.getByTestId('model-picker-instruct-types'), 'chatml')
     await user.selectOptions(screen.getByTestId('model-picker-per-request-limits'), 'yes')
     await user.selectOptions(screen.getByTestId('model-picker-default-parameters'), 'no')
 
-    await user.click(screen.getByText('Compliance & Lifecycle'))
+    await user.click(screen.getByText(t('errors.modelCatalog.complianceLifecycle')))
     await user.selectOptions(screen.getByTestId('model-picker-is-moderated'), 'yes')
     await user.click(screen.getByTestId('model-picker-expiring-toggle'))
     await fireEvent.update(screen.getByTestId('model-picker-expiring-days'), '14')
 
-    await user.click(screen.getByText('Sort'))
+    await user.click(screen.getByText(t('errors.modelCatalog.sort')))
     await user.selectOptions(screen.getByTestId('model-picker-sort-by'), 'context_length')
     await user.selectOptions(screen.getByTestId('model-picker-sort-order'), 'desc')
 
@@ -1107,9 +1108,9 @@ describe('ModelPickerDialog', () => {
       expect(statusBar?.textContent).toContain('已同步')
       expect(statusBar?.textContent).toContain('338')
       expect(statusBar?.textContent).toContain('隐藏 0')
-      expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain('1/338 shown')
+      expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 338 }))
     })
-    expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain('1/338 shown')
+    expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 338 }))
   })
 
   it('uses catalog sync status for non-active provider counts', async () => {
@@ -1197,17 +1198,17 @@ describe('ModelPickerDialog', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain('1/340 shown')
-      expect(screen.getByTestId('model-picker-provider-status-openai_responses').textContent).toContain('1/2 shown')
-      expect(screen.getByTestId('model-picker-provider-status-google_ai_studio').textContent).toContain('1/39 shown')
-      expect(screen.getByTestId('model-picker-provider-status-anthropic_messages').textContent).toContain('1/9 shown')
-      expect(screen.getByTestId('model-picker-provider-status-deepseek').textContent).toContain('1/4 shown')
+      expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 340 }))
+      expect(screen.getByTestId('model-picker-provider-status-openai_responses').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 2 }))
+      expect(screen.getByTestId('model-picker-provider-status-google_ai_studio').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 39 }))
+      expect(screen.getByTestId('model-picker-provider-status-anthropic_messages').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 9 }))
+      expect(screen.getByTestId('model-picker-provider-status-deepseek').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 4 }))
     })
 
-    expect(screen.getByTestId('model-picker-provider-status-openai_responses').textContent).toContain('1/2 shown')
-    expect(screen.getByTestId('model-picker-provider-status-google_ai_studio').textContent).toContain('1/39 shown')
-    expect(screen.getByTestId('model-picker-provider-status-anthropic_messages').textContent).toContain('1/9 shown')
-    expect(screen.getByTestId('model-picker-provider-status-deepseek').textContent).toContain('1/4 shown')
+    expect(screen.getByTestId('model-picker-provider-status-openai_responses').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 2 }))
+    expect(screen.getByTestId('model-picker-provider-status-google_ai_studio').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 39 }))
+    expect(screen.getByTestId('model-picker-provider-status-anthropic_messages').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 9 }))
+    expect(screen.getByTestId('model-picker-provider-status-deepseek').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 4 }))
   })
 
   it('shows failed status with error reason', async () => {
@@ -1647,7 +1648,7 @@ describe('ModelPickerDialog', () => {
     })
   })
 
-  it('manual update mode shows update prompt and waits for immediate update click', async () => {
+  it('manual refresh applies changed catalog list immediately', async () => {
     setCatalogSettings({
       openRouterCatalogPickerOpenSyncPolicy: 'never',
       openRouterCatalogListUpdateMode: 'manual',
@@ -1710,13 +1711,9 @@ describe('ModelPickerDialog', () => {
     await screen.findByTestId('model-picker-item-openai/old')
     await user.click(screen.getByTestId('model-picker-sync-refresh'))
 
-    await screen.findByTestId('model-picker-update-available')
-    expect(screen.getByText('模型列表有更新')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '立即更新' })).toBeTruthy()
-    expect(screen.queryByTestId('model-picker-item-openai/new')).toBeNull()
-
-    await user.click(screen.getByTestId('model-picker-apply-update'))
     await screen.findByTestId('model-picker-item-openai/new')
+    expect(screen.queryByTestId('model-picker-update-available')).toBeNull()
+    expect(queryFn).toHaveBeenCalledTimes(2)
   })
 
   it('automatic update mode applies changed list and preserves search text without auto-selecting first item', async () => {

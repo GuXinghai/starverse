@@ -57,6 +57,14 @@ import type { ProviderModelPickerItem, ProviderModelPickerSource } from '../app/
 type TriState = 'any' | 'yes' | 'no'
 type DetailTab = 'model' | 'endpoints'
 type PickerMode = 'all' | 'favorites' | 'recents'
+type ProviderFilterOption = Readonly<{
+  providerId: RuntimeProviderKey
+  providerName: string
+  statusLabel: string
+  loading: boolean
+  count: number
+}>
+type SyncProviderOption = ProviderFilterOption & Readonly<{ providerId: ProviderCatalogKnownProviderKey }>
 type PickerModelItem = CatalogQueryItem & Readonly<{
   providerId: RuntimeProviderKey
   providerName: string
@@ -167,24 +175,17 @@ type ProviderSyncSnapshot = Readonly<{
   isStale: boolean
   catalogRevision: string | null
 }>
-const syncStatus = ref<SyncStatus>('not_synced')
-const syncTotalModelCount = ref(0)
-const syncVisibleModelCount = ref<number | null>(null)
-const syncHiddenModelCount = ref<number | null>(null)
-const syncLastSyncedAtMs = ref<number | null>(null)
-const syncErrorCode = ref<string | null>(null)
-const syncErrorMessage = ref<string | null>(null)
-const syncIsStale = ref(true)
-const latestCatalogRevision = ref<string | null>(null)
-const appliedCatalogRevision = ref<string | null>(null)
-const pendingCatalogUpdateAvailable = ref(false)
-const pendingCatalogRevision = ref<string | null>(null)
+type CatalogRevisionMap = Partial<Record<ProviderCatalogKnownProviderKey, string>>
+const latestCatalogRevisions = ref<CatalogRevisionMap>({})
+const appliedCatalogRevisions = ref<CatalogRevisionMap>({})
+const pendingCatalogRevisions = ref<CatalogRevisionMap>({})
 const providerSyncSnapshots = ref<Partial<Record<ProviderCatalogKnownProviderKey, ProviderSyncSnapshot>>>({})
+const selectedSyncProviderKey = ref<ProviderCatalogKnownProviderKey>(DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey)
 const pickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
 const catalogFreshnessMs = ref(DEFAULT_CATALOG_FRESHNESS_MS)
 let lastAutoSyncAtMs = 0
-let lastManualRefreshAtMs = 0
+const lastManualRefreshAtMsByProvider = new Map<ProviderCatalogKnownProviderKey, number>()
 const AUTO_SYNC_COOLDOWN_MS = 10_000
 const MANUAL_REFRESH_COOLDOWN_MS = 3_000
 const FULL_LOAD_PAGE_LIMIT = 100
@@ -217,16 +218,6 @@ const supportedParameterOptions = [
   'presence_penalty',
   'logprobs',
 ] as const
-const sortByOptions: ReadonlyArray<Readonly<{ key: CatalogQuerySortBy; label: string }>> = [
-  { key: 'name', label: 'Name' },
-  { key: 'created_at', label: 'Created Time' },
-  { key: 'context_length', label: 'Context Length' },
-  { key: 'max_output_tokens', label: 'Max Output Tokens' },
-]
-const sortOrderOptions: ReadonlyArray<Readonly<{ key: CatalogQuerySortOrder; label: string }>> = [
-  { key: 'asc', label: 'Asc' },
-  { key: 'desc', label: 'Desc' },
-]
 const categoryOptions = OPENROUTER_MODEL_CATEGORIES
 const catalogProviderNames: Readonly<Record<ProviderCatalogKnownProviderKey, string>> = {
   openrouter: 'OpenRouter',
@@ -243,12 +234,6 @@ let endpointSeq = 0
 let skipAutoQuery = false
 let lastFocusBeforeOpen: HTMLElement | null = null
 
-const activeCatalogProviderKey = computed<ProviderCatalogKnownProviderKey>(() => {
-  const selectedCatalogProviders = selectedProviderFilters.value.filter(isProviderCatalogSourceKey)
-  return selectedCatalogProviders.length === 1
-    ? selectedCatalogProviders[0] as ProviderCatalogKnownProviderKey
-    : DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey
-})
 const catalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() => {
   const keys = new Set<ProviderCatalogKnownProviderKey>([
     DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey,
@@ -260,6 +245,16 @@ const catalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() => {
   }
   return [...keys]
 })
+const sortByOptions = computed<ReadonlyArray<Readonly<{ key: CatalogQuerySortBy; label: string }>>>(() => [
+  { key: 'name', label: t('errors.modelCatalog.sortName') },
+  { key: 'created_at', label: t('errors.modelCatalog.sortCreatedAt') },
+  { key: 'context_length', label: t('errors.modelCatalog.sortContextLength') },
+  { key: 'max_output_tokens', label: t('errors.modelCatalog.sortMaxOutputTokens') },
+])
+const sortOrderOptions = computed<ReadonlyArray<Readonly<{ key: CatalogQuerySortOrder; label: string }>>>(() => [
+  { key: 'asc', label: t('errors.modelCatalog.sortAsc') },
+  { key: 'desc', label: t('errors.modelCatalog.sortDesc') },
+])
 const catalogPickerItems = computed(() => items.value.map((item) => toCatalogPickerItem(item)))
 const providerPickerItems = computed(() => props.providerSources.flatMap((source) => source.items.map((item) => toProviderPickerItem(item))))
 const selectedProviderSet = computed(() => new Set(selectedProviderFilters.value))
@@ -424,41 +419,20 @@ const SYNC_FAILURE_REASON_MAP: Record<string, string> = {
   unknown_error: 'errors.modelCatalog.syncFailUnknownError',
 }
 
-const syncFailureReasonText = computed(() => {
-  const code = syncErrorCode.value ?? 'unknown_error'
-  const key = SYNC_FAILURE_REASON_MAP[code] ?? SYNC_FAILURE_REASON_MAP.unknown_error
-  return t(key)
-})
+const selectedSyncSnapshot = computed(() => getProviderSyncSnapshot(selectedSyncProviderKey.value))
+const pendingCatalogUpdateAvailable = computed(() => Boolean(pendingCatalogRevisions.value[selectedSyncProviderKey.value]))
 
-const syncStatusText = computed(() => {
-  const payload = {
-    count: syncTotalModelCount.value,
-    visibleCount: syncVisibleModelCount.value ?? 0,
-    hiddenCount: syncHiddenModelCount.value ?? 0,
-    time: formatSyncTime(syncLastSyncedAtMs.value),
-  }
-  if (syncVisibleModelCount.value !== null && syncHiddenModelCount.value !== null) {
-    return tf('errors.modelCatalog.syncedWithVisibleHidden', payload)
-  }
-  if (syncVisibleModelCount.value !== null && syncVisibleModelCount.value !== syncTotalModelCount.value) {
-    return tf('errors.modelCatalog.syncedWithVisible', payload)
-  }
-  if (syncHiddenModelCount.value !== null && syncHiddenModelCount.value > 0) {
-    return tf('errors.modelCatalog.syncedWithHidden', payload)
-  }
-  return tf('errors.modelCatalog.synced', payload)
-})
-
-const providerOptions = computed(() => {
-  const options = new Map<RuntimeProviderKey, { providerId: RuntimeProviderKey; providerName: string; statusLabel: string; loading: boolean; count: number }>()
-  const openRouterSnapshot = providerSyncSnapshots.value[DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey]
-  const openRouterKnownCount = openRouterSnapshot?.visibleModelCount ?? openRouterSnapshot?.totalModelCount ?? syncVisibleModelCount.value ?? syncTotalModelCount.value
+const providerOptions = computed<ProviderFilterOption[]>(() => {
+  const options = new Map<RuntimeProviderKey, ProviderFilterOption>()
+  const openRouterProviderKey = DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey
+  const openRouterSnapshot = providerSyncSnapshots.value[openRouterProviderKey]
+  const openRouterKnownCount = openRouterSnapshot?.visibleModelCount ?? openRouterSnapshot?.totalModelCount ?? 0
   const openRouterCount = openRouterSnapshot?.status === 'synced' && openRouterKnownCount > 0
     ? openRouterKnownCount
     : items.value.length
   const openRouterStatusLabel = formatProviderOptionStatus({
     providerId: DEFAULT_CHAT_PROVIDER_ID,
-    fallbackStatusLabel: syncStatus.value,
+    fallbackStatusLabel: openRouterSnapshot?.status ?? 'not_synced',
     fallbackItemCount: items.value.length,
     sourceItemCount: 0,
   })
@@ -466,24 +440,24 @@ const providerOptions = computed(() => {
     providerId: DEFAULT_CHAT_PROVIDER_ID,
     providerName: 'OpenRouter',
     statusLabel: openRouterStatusLabel,
-    loading: loading.value || syncStatus.value === 'syncing',
+    loading: loading.value || openRouterSnapshot?.status === 'syncing',
     count: openRouterCount,
   })
   for (const source of props.providerSources) {
-    const isActiveCatalogProvider = activeCatalogProviderKey.value === source.providerId
     const snapshot = isProviderCatalogSourceKey(source.providerId)
       ? providerSyncSnapshots.value[source.providerId as ProviderCatalogKnownProviderKey]
       : null
     const catalogCount = snapshot?.status === 'synced'
       ? snapshot.visibleModelCount ?? snapshot.totalModelCount
       : 0
+    const catalogItemCount = items.value.filter((item) => catalogProviderIdFromItem(item) === source.providerId).length
     options.set(source.providerId, {
       providerId: source.providerId,
       providerName: source.providerName,
       statusLabel: formatProviderOptionStatus({
         providerId: source.providerId,
         fallbackStatusLabel: source.statusLabel,
-        fallbackItemCount: isActiveCatalogProvider ? items.value.length : source.items.length,
+        fallbackItemCount: catalogItemCount > 0 ? catalogItemCount : source.items.length,
         sourceItemCount: source.items.length,
       }),
       loading: source.loading || snapshot?.status === 'syncing',
@@ -492,6 +466,9 @@ const providerOptions = computed(() => {
   }
   return Array.from(options.values())
 })
+const syncProviderOptions = computed<SyncProviderOption[]>(() =>
+  providerOptions.value.filter((provider): provider is SyncProviderOption => isProviderCatalogSourceKey(provider.providerId)),
+)
 const providerFilterIds = computed(() => providerOptions.value.map((provider) => provider.providerId))
 const selectedProviderFilterCount = computed(() =>
   providerFilterIds.value.filter((providerId) => selectedProviderSet.value.has(providerId)).length
@@ -524,8 +501,10 @@ function toCatalogPickerItem(item: CatalogQueryItem): PickerModelItem {
     providerName: providerNameForId(providerId),
     itemKey: pickerItemKey(providerId, item.modelId),
     capabilitySummary: openRouterCapabilitySummary(item),
-    statusLabel: item.status ?? item.visibility ?? 'catalog',
-    sourceLabel: providerId === DEFAULT_CHAT_PROVIDER_ID ? 'OpenRouter catalog' : 'Provider catalog',
+    statusLabel: formatCatalogStatusLabel(item.status ?? item.visibility ?? 'catalog'),
+    sourceLabel: providerId === DEFAULT_CHAT_PROVIDER_ID
+      ? t('errors.modelCatalog.sourceOpenRouterCatalog')
+      : t('errors.modelCatalog.sourceProviderCatalog'),
     selectable: true,
     detailSource: providerId === DEFAULT_CHAT_PROVIDER_ID ? 'openrouter_catalog' : 'provider_catalog',
   }
@@ -574,11 +553,22 @@ function openRouterCapabilitySummary(item: CatalogQueryItem): string {
   if (Array.isArray(item.outputModalities) && item.outputModalities.length > 0) {
     labels.push(`out:${item.outputModalities.join('+')}`)
   }
-  if (item.capabilities.reasoning) labels.push('reasoning')
-  if (item.capabilities.tools) labels.push('tools')
-  if (item.capabilities.vision) labels.push('vision')
-  if (item.capabilities.longContext) labels.push('long context')
-  return labels.length > 0 ? labels.join(' · ') : 'catalog capability'
+  if (item.capabilities.reasoning) labels.push(t('errors.modelCatalog.capabilityReasoning'))
+  if (item.capabilities.tools) labels.push(t('errors.modelCatalog.capabilityTools'))
+  if (item.capabilities.vision) labels.push(t('errors.modelCatalog.capabilityVision'))
+  if (item.capabilities.longContext) labels.push(t('errors.modelCatalog.capabilityLongContext'))
+  return labels.length > 0 ? labels.join(' · ') : t('errors.modelCatalog.catalogCapability')
+}
+
+function formatCatalogStatusLabel(value: string | null | undefined): string {
+  const normalized = String(value ?? '').trim()
+  if (!normalized) return t('errors.modelCatalog.catalog')
+  if (normalized === 'catalog') return t('errors.modelCatalog.catalog')
+  if (normalized === 'not_synced') return t('errors.modelCatalog.syncNotSynced')
+  if (normalized === 'syncing') return t('errors.modelCatalog.syncing')
+  if (normalized === 'synced') return t('errors.modelCatalog.catalog')
+  if (normalized === 'failed') return t('errors.modelCatalog.syncFailed')
+  return normalized
 }
 
 function formatSyncTime(ms: number | null): string {
@@ -597,7 +587,7 @@ function getElectronStore(): { get?: (key: string) => Promise<unknown> } | null 
   return store && typeof store.get === 'function' ? store : null
 }
 
-async function loadCatalogSyncSettings() {
+async function loadCatalogSyncSettings(providerKey: ProviderCatalogKnownProviderKey = selectedSyncProviderKey.value) {
   const store = getElectronStore()
   if (!store?.get) {
     pickerOpenSyncPolicy.value = DEFAULT_CATALOG_AUTO_SYNC_POLICY
@@ -605,7 +595,6 @@ async function loadCatalogSyncSettings() {
     catalogFreshnessMs.value = DEFAULT_CATALOG_FRESHNESS_MS
     return
   }
-  const providerKey = activeCatalogProviderKey.value
   const settingKey = (settingName: 'pickerOpenSyncPolicy' | 'listUpdateMode' | 'freshnessMs') =>
     providerKey === DEFAULT_CHAT_PROVIDER_ID
       ? (
@@ -644,12 +633,6 @@ function normalizeOptionalModelCount(value: unknown): number | null {
   if (value === undefined || value === null) return null
   const count = Number(value)
   return Number.isFinite(count) && count >= 0 ? Math.floor(count) : null
-}
-
-function applySyncCounts(input: Readonly<{ modelCount?: unknown; visibleModelCount?: unknown; hiddenModelCount?: unknown }>) {
-  syncTotalModelCount.value = normalizeModelCount(input.modelCount)
-  syncVisibleModelCount.value = normalizeOptionalModelCount(input.visibleModelCount)
-  syncHiddenModelCount.value = normalizeOptionalModelCount(input.hiddenModelCount)
 }
 
 function createProviderSyncSnapshot(input: Readonly<{
@@ -698,16 +681,49 @@ function setProviderSyncSnapshot(providerKey: ProviderCatalogKnownProviderKey, s
   }
 }
 
-function applyActiveSyncSnapshot(snapshot: ProviderSyncSnapshot) {
-  syncStatus.value = snapshot.status
-  syncTotalModelCount.value = snapshot.totalModelCount
-  syncVisibleModelCount.value = snapshot.visibleModelCount
-  syncHiddenModelCount.value = snapshot.hiddenModelCount
-  syncLastSyncedAtMs.value = snapshot.lastSyncedAtMs
-  syncErrorCode.value = snapshot.errorCode
-  syncErrorMessage.value = snapshot.errorMessage
-  syncIsStale.value = snapshot.isStale
-  latestCatalogRevision.value = snapshot.catalogRevision
+function getCatalogRevision(map: CatalogRevisionMap, providerKey: ProviderCatalogKnownProviderKey): string | null {
+  return map[providerKey] ?? null
+}
+
+function setCatalogRevision(
+  target: { value: CatalogRevisionMap },
+  providerKey: ProviderCatalogKnownProviderKey,
+  revision: string | null,
+) {
+  const next = { ...target.value }
+  if (revision) {
+    next[providerKey] = revision
+  } else {
+    delete next[providerKey]
+  }
+  target.value = next
+}
+
+function clearCatalogRevisions(target: { value: CatalogRevisionMap }, providerKeys: readonly ProviderCatalogKnownProviderKey[]) {
+  if (providerKeys.length === 0) return
+  const next = { ...target.value }
+  for (const providerKey of providerKeys) {
+    delete next[providerKey]
+  }
+  target.value = next
+}
+
+function emptyProviderSyncSnapshot(): ProviderSyncSnapshot {
+  return {
+    status: 'not_synced',
+    totalModelCount: 0,
+    visibleModelCount: null,
+    hiddenModelCount: null,
+    lastSyncedAtMs: null,
+    errorCode: null,
+    errorMessage: null,
+    isStale: true,
+    catalogRevision: null,
+  }
+}
+
+function getProviderSyncSnapshot(providerKey: ProviderCatalogKnownProviderKey): ProviderSyncSnapshot {
+  return providerSyncSnapshots.value[providerKey] ?? emptyProviderSyncSnapshot()
 }
 
 function formatProviderOptionStatus(input: Readonly<{
@@ -716,17 +732,42 @@ function formatProviderOptionStatus(input: Readonly<{
   fallbackItemCount: number
   sourceItemCount: number
 }>): string {
-  if (!isProviderCatalogSourceKey(input.providerId)) return input.fallbackStatusLabel
+  if (!isProviderCatalogSourceKey(input.providerId)) return formatCatalogStatusLabel(input.fallbackStatusLabel)
   const snapshot = providerSyncSnapshots.value[input.providerId as ProviderCatalogKnownProviderKey]
-  if (!snapshot) return input.fallbackStatusLabel
-  if (snapshot.status !== 'synced') return snapshot.status
+  if (!snapshot) return formatCatalogStatusLabel(input.fallbackStatusLabel)
+  if (snapshot.status !== 'synced') return formatCatalogStatusLabel(snapshot.status)
   const totalCount = snapshot.visibleModelCount ?? snapshot.totalModelCount
-  if (totalCount <= 0) return input.fallbackStatusLabel
+  if (totalCount <= 0) return formatCatalogStatusLabel(input.fallbackStatusLabel)
   const shownCount = Math.min(
     shownCountByProvider.value.get(input.providerId) ?? input.sourceItemCount,
     totalCount,
   )
-  return `${shownCount}/${totalCount} shown`
+  return tf('errors.modelCatalog.shownCount', { shownCount, totalCount })
+}
+
+function modelCatalogSyncFailureReasonText(errorCode: string | null): string {
+  const code = errorCode ?? 'unknown_error'
+  const key = SYNC_FAILURE_REASON_MAP[code] ?? SYNC_FAILURE_REASON_MAP.unknown_error
+  return t(key)
+}
+
+function formatProviderSyncStatusText(snapshot: ProviderSyncSnapshot): string {
+  const payload = {
+    count: snapshot.totalModelCount,
+    visibleCount: snapshot.visibleModelCount ?? 0,
+    hiddenCount: snapshot.hiddenModelCount ?? 0,
+    time: formatSyncTime(snapshot.lastSyncedAtMs),
+  }
+  if (snapshot.visibleModelCount !== null && snapshot.hiddenModelCount !== null) {
+    return tf('errors.modelCatalog.syncedWithVisibleHidden', payload)
+  }
+  if (snapshot.visibleModelCount !== null && snapshot.visibleModelCount !== snapshot.totalModelCount) {
+    return tf('errors.modelCatalog.syncedWithVisible', payload)
+  }
+  if (snapshot.hiddenModelCount !== null && snapshot.hiddenModelCount > 0) {
+    return tf('errors.modelCatalog.syncedWithHidden', payload)
+  }
+  return tf('errors.modelCatalog.synced', payload)
 }
 
 function selectAllProviderFilters() {
@@ -747,20 +788,26 @@ function toggleProviderFilter(providerId: RuntimeProviderKey, checked: boolean) 
   selectedProviderFilters.value = providerFilterIds.value.filter((candidate) => next.has(candidate))
 }
 
-function shouldSyncOnPickerOpen(): boolean {
-  if (syncStatus.value === 'syncing') return false
+function ensureSelectedSyncProviderKey() {
+  const keys = catalogProviderKeys.value
+  if (keys.includes(selectedSyncProviderKey.value)) return
+  selectedSyncProviderKey.value = keys[0] ?? (DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey)
+}
+
+function shouldSyncOnPickerOpen(snapshot: ProviderSyncSnapshot): boolean {
+  if (snapshot.status === 'syncing') return false
   if (pickerOpenSyncPolicy.value === 'never') return false
   if (pickerOpenSyncPolicy.value === 'always') return true
-  if (syncStatus.value === 'not_synced') return true
-  if (syncStatus.value === 'synced') {
-    return syncIsStale.value || isCatalogStatusStale({
+  if (snapshot.status === 'not_synced') return true
+  if (snapshot.status === 'synced') {
+    return snapshot.isStale || isCatalogStatusStale({
       status: 'synced',
-      lastSyncAtMs: syncLastSyncedAtMs.value,
+      lastSyncAtMs: snapshot.lastSyncedAtMs,
       freshnessMs: catalogFreshnessMs.value,
     })
   }
-  if (syncStatus.value === 'failed') {
-    return syncErrorCode.value === 'cache_corrupted'
+  if (snapshot.status === 'failed') {
+    return snapshot.errorCode === 'cache_corrupted'
   }
   return false
 }
@@ -1138,7 +1185,10 @@ async function fetchProviderCatalog(providerKey: ProviderCatalogKnownProviderKey
     }
   }
 
-  const truncationNotice = `Stopped loading ${providerNameForId(providerKey)} after ${FULL_LOAD_MAX_PAGES_PER_PROVIDER * FULL_LOAD_PAGE_LIMIT} models.`
+  const truncationNotice = tf('errors.modelCatalog.truncationNotice', {
+    providerName: providerNameForId(providerKey),
+    count: FULL_LOAD_MAX_PAGES_PER_PROVIDER * FULL_LOAD_PAGE_LIMIT,
+  })
   return {
     ...(firstResult ?? { items: [], nextCursor: null }),
     items: allItems,
@@ -1158,9 +1208,8 @@ async function fetchPage(options: Readonly<{ preserveUiState?: boolean }> = {}) 
     const providerKeys = selectedCatalogProviderKeys.value
     if (providerKeys.length === 0) {
       items.value = []
-      appliedCatalogRevision.value = null
-      pendingCatalogUpdateAvailable.value = false
-      pendingCatalogRevision.value = null
+      appliedCatalogRevisions.value = {}
+      pendingCatalogRevisions.value = {}
       ensureActiveCandidate()
       await nextTick()
       refresh()
@@ -1172,16 +1221,24 @@ async function fetchPage(options: Readonly<{ preserveUiState?: boolean }> = {}) 
 
     items.value = results.flatMap((result) => Array.isArray(result.items) ? result.items : [])
     queryNotice.value = results.map((result) => String(result.notice ?? '').trim()).filter(Boolean).join(' ') || null
-    const activeResult = results.find((result) =>
-      result.items.some((item) => catalogProviderIdFromItem(item) === activeCatalogProviderKey.value)
-    ) ?? results[0] ?? null
-    const revision = activeResult
-      ? normalizeCatalogRevision(activeResult.catalogRevision, activeResult.modelCount, activeResult.lastSyncAtMs)
-      : null
-    appliedCatalogRevision.value = revision
-    latestCatalogRevision.value = revision ?? latestCatalogRevision.value
-    pendingCatalogUpdateAvailable.value = false
-    pendingCatalogRevision.value = null
+    const nextAppliedRevisions = { ...appliedCatalogRevisions.value }
+    const nextLatestRevisions = { ...latestCatalogRevisions.value }
+    const nextPendingRevisions = { ...pendingCatalogRevisions.value }
+    results.forEach((result, index) => {
+      const providerKey = providerKeys[index]
+      if (!providerKey) return
+      const revision = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
+      if (revision) {
+        nextAppliedRevisions[providerKey] = revision
+        nextLatestRevisions[providerKey] = revision
+      } else {
+        delete nextAppliedRevisions[providerKey]
+      }
+      delete nextPendingRevisions[providerKey]
+    })
+    appliedCatalogRevisions.value = nextAppliedRevisions
+    latestCatalogRevisions.value = nextLatestRevisions
+    pendingCatalogRevisions.value = nextPendingRevisions
     ensureActiveCandidate()
     await nextTick()
     refresh()
@@ -1192,7 +1249,7 @@ async function fetchPage(options: Readonly<{ preserveUiState?: boolean }> = {}) 
     if (currentSeq !== querySeq) return
     items.value = []
     activeModelKey.value = ''
-    error.value = err?.message ? String(err.message) : 'Failed to query model catalog.'
+    error.value = err?.message ? String(err.message) : t('errors.modelCatalog.queryFailed')
   } finally {
     if (currentSeq === querySeq) {
       loading.value = false
@@ -1227,7 +1284,7 @@ async function fetchEndpointDetails(forceRefresh: boolean) {
       fetchedAtMs: null,
       source: 'scoped_catalog',
       items: [],
-      error: err?.message ? String(err.message) : 'Failed to load endpoint details.',
+      error: err?.message ? String(err.message) : t('errors.modelCatalog.endpointDetailsLoadFailed'),
     }
   } finally {
     if (currentSeq === endpointSeq) {
@@ -1259,7 +1316,7 @@ async function fetchModelDetail() {
   } catch (err: any) {
     if (currentSeq !== modelDetailSeq) return
     modelDetail.value = null
-    modelDetailError.value = err?.message ? String(err.message) : 'Failed to load model detail.'
+    modelDetailError.value = err?.message ? String(err.message) : t('errors.modelCatalog.modelDetailLoadFailed')
   } finally {
     if (currentSeq === modelDetailSeq) {
       modelDetailLoading.value = false
@@ -1291,10 +1348,9 @@ function openDialogState() {
   selectedProviderFilters.value = providerFilterIds.value
   queryNotice.value = null
   error.value = null
-  pendingCatalogUpdateAvailable.value = false
-  pendingCatalogRevision.value = null
-  appliedCatalogRevision.value = null
-  latestCatalogRevision.value = null
+  pendingCatalogRevisions.value = {}
+  appliedCatalogRevisions.value = {}
+  latestCatalogRevisions.value = {}
   resetFavoriteEditorState()
   skipAutoQuery = false
   querySeq += 1
@@ -1310,59 +1366,80 @@ async function triggerPickerOpenSync() {
   const now = Date.now()
   if (now - lastAutoSyncAtMs < AUTO_SYNC_COOLDOWN_MS) return
   lastAutoSyncAtMs = now
-  await loadCatalogSyncSettings()
+  const providerKey = selectedSyncProviderKey.value
+  await loadCatalogSyncSettings(providerKey)
   await fetchVisibleProviderSyncStatuses()
-  if (syncStatus.value === 'syncing') return
-  if (!shouldSyncOnPickerOpen()) return
-  await runSync(false, 'model_picker_opened')
+  const snapshot = getProviderSyncSnapshot(providerKey)
+  if (!shouldSyncOnPickerOpen(snapshot)) return
+  await runSyncProvider(providerKey, false, 'model_picker_opened')
 }
 
 async function applyLatestCatalogList() {
-  pendingCatalogUpdateAvailable.value = false
-  pendingCatalogRevision.value = null
   await fetchPage({ preserveUiState: true })
 }
 
-async function handleSyncedCatalogRevision(nextRevision: string | null, syncAttempted: boolean) {
+async function handleSyncedCatalogRevision(
+  providerKey: ProviderCatalogKnownProviderKey,
+  nextRevision: string | null,
+  syncAttempted: boolean,
+  options: Readonly<{ applyImmediately?: boolean }> = {},
+) {
   if (!props.open || !syncAttempted || !nextRevision) return
-  latestCatalogRevision.value = nextRevision
-  if (nextRevision === appliedCatalogRevision.value) {
-    pendingCatalogUpdateAvailable.value = false
-    pendingCatalogRevision.value = null
+  setCatalogRevision(latestCatalogRevisions, providerKey, nextRevision)
+  if (!selectedProviderSet.value.has(providerKey)) return
+
+  if (nextRevision === getCatalogRevision(appliedCatalogRevisions.value, providerKey)) {
+    setCatalogRevision(pendingCatalogRevisions, providerKey, null)
     return
   }
-  if (catalogListUpdateMode.value === 'automatic') {
+
+  if (options.applyImmediately === true || catalogListUpdateMode.value === 'automatic') {
     await applyLatestCatalogList()
     return
   }
-  pendingCatalogUpdateAvailable.value = true
-  pendingCatalogRevision.value = nextRevision
+  setCatalogRevision(pendingCatalogRevisions, providerKey, nextRevision)
 }
 
-async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_refresh' = force ? 'manual_refresh' : 'model_picker_opened') {
+async function runSyncProvider(
+  providerKey: ProviderCatalogKnownProviderKey,
+  force: boolean,
+  reason: 'model_picker_opened' | 'manual_refresh' = force ? 'manual_refresh' : 'model_picker_opened',
+) {
+  await loadCatalogSyncSettings(providerKey)
   const electronAPI = (globalThis as any).electronAPI
   if (!electronAPI?.modelCatalogSyncNow) {
-    syncStatus.value = 'failed'
-    syncErrorCode.value = 'unknown_error'
-    syncErrorMessage.value = 'renderer_bridge'
+    setProviderSyncSnapshot(providerKey, {
+      ...getProviderSyncSnapshot(providerKey),
+      status: 'failed',
+      errorCode: 'unknown_error',
+      errorMessage: 'renderer_bridge',
+      isStale: true,
+    })
     return
   }
 
-  syncStatus.value = 'syncing'
-  syncErrorCode.value = null
-  syncErrorMessage.value = null
+  setProviderSyncSnapshot(providerKey, {
+    ...getProviderSyncSnapshot(providerKey),
+    status: 'syncing',
+    errorCode: null,
+    errorMessage: null,
+  })
 
   try {
     const result = await electronAPI.modelCatalogSyncNow({
-      providerKey: activeCatalogProviderKey.value,
+      providerKey,
       force,
       reason,
     })
 
     if (!result) {
-      syncStatus.value = 'failed'
-      syncErrorCode.value = 'unknown_error'
-      syncErrorMessage.value = 'null_result'
+      setProviderSyncSnapshot(providerKey, {
+        ...getProviderSyncSnapshot(providerKey),
+        status: 'failed',
+        errorCode: 'unknown_error',
+        errorMessage: 'null_result',
+        isStale: true,
+      })
       return
     }
 
@@ -1380,15 +1457,10 @@ async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_r
         catalogRevision: result.catalogRevision,
         isStale: false,
       })
-      setProviderSyncSnapshot(activeCatalogProviderKey.value, snapshot)
-      syncStatus.value = 'synced'
-      applySyncCounts(result)
-      syncLastSyncedAtMs.value = result.lastSyncAtMs ?? Date.now()
-      syncErrorCode.value = null
-      syncErrorMessage.value = null
-      syncIsStale.value = false
-      latestCatalogRevision.value = revision
-      await handleSyncedCatalogRevision(revision, attempted)
+      setProviderSyncSnapshot(providerKey, snapshot)
+      await handleSyncedCatalogRevision(providerKey, revision, attempted, {
+        applyImmediately: reason === 'manual_refresh',
+      })
     } else if (!attempted) {
       // Defensive: IPC returned ok=false with syncAttempted=false.
       // Under current contract this should not fire (cache-fresh returns ok=true).
@@ -1402,12 +1474,12 @@ async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_r
         catalogRevision: result.catalogRevision,
         isStale: false,
       })
-      setProviderSyncSnapshot(activeCatalogProviderKey.value, snapshot)
-      syncStatus.value = 'synced'
-      applySyncCounts(result)
-      if (result.lastSyncAtMs) syncLastSyncedAtMs.value = result.lastSyncAtMs
-      syncIsStale.value = false
-      latestCatalogRevision.value = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
+      setProviderSyncSnapshot(providerKey, snapshot)
+      setCatalogRevision(
+        latestCatalogRevisions,
+        providerKey,
+        normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs),
+      )
     } else {
       const snapshot = createProviderSyncSnapshot({
         syncState: 'error',
@@ -1420,32 +1492,29 @@ async function runSync(force: boolean, reason: 'model_picker_opened' | 'manual_r
         catalogRevision: result.catalogRevision,
         isStale: true,
       })
-      setProviderSyncSnapshot(activeCatalogProviderKey.value, snapshot)
-      syncStatus.value = 'failed'
-      syncErrorCode.value = result.errorCode ?? 'unknown_error'
-      syncErrorMessage.value = result.errorMessage ?? null
-      syncIsStale.value = true
+      setProviderSyncSnapshot(providerKey, snapshot)
     }
   } catch (err) {
-    syncStatus.value = 'failed'
-    syncErrorCode.value = 'unknown_error'
-    syncErrorMessage.value = err instanceof Error ? err.name : String(err)
-    syncIsStale.value = true
+    setProviderSyncSnapshot(providerKey, {
+      ...getProviderSyncSnapshot(providerKey),
+      status: 'failed',
+      errorCode: 'unknown_error',
+      errorMessage: err instanceof Error ? err.name : String(err),
+      isStale: true,
+    })
   }
 }
 
 async function fetchSyncStatus() {
-  await fetchProviderSyncStatus(activeCatalogProviderKey.value, true)
+  await fetchProviderSyncStatus(selectedSyncProviderKey.value)
 }
 
 async function fetchVisibleProviderSyncStatuses() {
   const keys = catalogProviderKeys.value
-  await Promise.all(keys.map((providerKey) =>
-    fetchProviderSyncStatus(providerKey, providerKey === activeCatalogProviderKey.value),
-  ))
+  await Promise.all(keys.map((providerKey) => fetchProviderSyncStatus(providerKey)))
 }
 
-async function fetchProviderSyncStatus(providerKey: ProviderCatalogKnownProviderKey, applyToActiveProvider: boolean) {
+async function fetchProviderSyncStatus(providerKey: ProviderCatalogKnownProviderKey) {
   const electronAPI = (globalThis as any).electronAPI
   if (!electronAPI?.modelCatalogGetSyncStatus) return
 
@@ -1455,19 +1524,27 @@ async function fetchProviderSyncStatus(providerKey: ProviderCatalogKnownProvider
 
     const snapshot = createProviderSyncSnapshot(status)
     setProviderSyncSnapshot(providerKey, snapshot)
-    if (applyToActiveProvider) {
-      applyActiveSyncSnapshot(snapshot)
-    }
   } catch {
     // keep current state
   }
 }
 
-function onManualRefresh() {
+function canRunManualRefresh(providerKey: ProviderCatalogKnownProviderKey): boolean {
   const now = Date.now()
-  if (now - lastManualRefreshAtMs < MANUAL_REFRESH_COOLDOWN_MS) return
-  lastManualRefreshAtMs = now
-  void loadCatalogSyncSettings().then(() => runSync(true, 'manual_refresh'))
+  const lastRefreshAtMs = lastManualRefreshAtMsByProvider.get(providerKey) ?? 0
+  if (now - lastRefreshAtMs < MANUAL_REFRESH_COOLDOWN_MS) return false
+  lastManualRefreshAtMsByProvider.set(providerKey, now)
+  return true
+}
+
+function onManualRefreshProvider(providerKey: ProviderCatalogKnownProviderKey = selectedSyncProviderKey.value) {
+  if (!canRunManualRefresh(providerKey)) return
+  void runSyncProvider(providerKey, true, 'manual_refresh')
+}
+
+function onProviderRowRefresh(providerId: RuntimeProviderKey) {
+  if (!isProviderCatalogSourceKey(providerId)) return
+  onManualRefreshProvider(providerId)
 }
 
 function onApplyCatalogUpdate() {
@@ -1476,9 +1553,10 @@ function onApplyCatalogUpdate() {
 
 async function onExternalCatalogSynced() {
   if (!props.open) return
-  await loadCatalogSyncSettings()
+  const providerKey = selectedSyncProviderKey.value
+  await loadCatalogSyncSettings(providerKey)
   await fetchSyncStatus()
-  await handleSyncedCatalogRevision(latestCatalogRevision.value, true)
+  await handleSyncedCatalogRevision(providerKey, getProviderSyncSnapshot(providerKey).catalogRevision, true)
 }
 
 function restoreFocusAfterClose() {
@@ -1629,19 +1707,28 @@ watch(
   () => {
     if (!props.open || skipAutoQuery) return
     lastAutoSyncAtMs = 0
-    syncStatus.value = 'not_synced'
-    syncTotalModelCount.value = 0
-    syncVisibleModelCount.value = null
-    syncHiddenModelCount.value = null
-    syncLastSyncedAtMs.value = null
-    syncErrorCode.value = null
-    syncErrorMessage.value = null
-    syncIsStale.value = true
-    latestCatalogRevision.value = null
-    appliedCatalogRevision.value = null
-    pendingCatalogUpdateAvailable.value = false
-    pendingCatalogRevision.value = null
+    const selectedProviderKeys = selectedCatalogProviderKeys.value
+    clearCatalogRevisions(appliedCatalogRevisions, selectedProviderKeys)
+    clearCatalogRevisions(pendingCatalogRevisions, selectedProviderKeys)
     void triggerPickerOpenSync()
+  },
+  { flush: 'post' },
+)
+
+watch(
+  () => catalogProviderKeys.value.join('\n'),
+  () => {
+    ensureSelectedSyncProviderKey()
+  },
+  { immediate: true },
+)
+
+watch(
+  selectedSyncProviderKey,
+  (providerKey) => {
+    if (!props.open) return
+    lastAutoSyncAtMs = 0
+    void loadCatalogSyncSettings(providerKey).then(() => fetchProviderSyncStatus(providerKey))
   },
   { flush: 'post' },
 )
@@ -1750,7 +1837,7 @@ onBeforeUnmount(() => {
   >
     <div class="flex h-[85vh] w-full max-w-6xl flex-col overflow-hidden rounded-xl bg-white shadow-xl">
       <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
-        <div class="text-sm font-semibold text-gray-900">Model Picker</div>
+        <div class="text-sm font-semibold text-gray-900">{{ t('errors.modelCatalog.dialogTitle') }}</div>
         <button
           type="button"
           class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
@@ -1758,7 +1845,7 @@ onBeforeUnmount(() => {
           data-testid="model-picker-close"
           @click="onClose"
         >
-          Close
+          {{ t('common.close') }}
         </button>
       </div>
 
@@ -1766,17 +1853,17 @@ onBeforeUnmount(() => {
         <aside class="min-h-0 space-y-3 overflow-y-auto rounded-lg border border-gray-200 bg-gray-50 p-3">
           <details open class="rounded-md border border-gray-200 bg-white px-3 py-2">
             <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              Identity & Search
+              {{ t('errors.modelCatalog.identitySearch') }}
             </summary>
             <div class="mt-2 space-y-3">
               <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Search</label>
+                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.search') }}</label>
                 <input
                   ref="searchInputRef"
                   v-model="searchText"
                   type="text"
                   class="mt-1 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-200"
-                  placeholder="Search model name or id..."
+                  :placeholder="t('errors.modelCatalog.searchPlaceholder')"
                   :disabled="props.disabled"
                   data-testid="model-picker-search"
                 />
@@ -1788,12 +1875,12 @@ onBeforeUnmount(() => {
                     :disabled="props.disabled"
                     data-testid="model-picker-include-description"
                   />
-                  <span>including description</span>
+                  <span>{{ t('errors.modelCatalog.includingDescription') }}</span>
                 </label>
               </div>
               <div>
                 <div class="flex items-center justify-between gap-2">
-                  <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Provider</label>
+                  <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.provider') }}</label>
                   <div class="flex items-center gap-1">
                     <button
                       type="button"
@@ -1803,7 +1890,7 @@ onBeforeUnmount(() => {
                       data-testid="model-picker-provider-select-all"
                       @click="selectAllProviderFilters"
                     >
-                      All
+                      {{ t('errors.modelCatalog.selectAll') }}
                     </button>
                     <button
                       type="button"
@@ -1812,18 +1899,27 @@ onBeforeUnmount(() => {
                       data-testid="model-picker-provider-select-none"
                       @click="clearProviderFilters"
                     >
-                      None
+                      {{ t('errors.modelCatalog.selectNone') }}
                     </button>
                   </div>
                 </div>
                 <div class="mt-2 space-y-1">
-                  <label
+                  <div
                     v-for="provider in providerOptions"
                     :key="`provider-status-${provider.providerId}`"
-                    class="flex items-center justify-between gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px]"
+                    class="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1 text-[11px]"
                     :data-testid="`model-picker-provider-status-${provider.providerId}`"
                   >
-                    <span class="flex min-w-0 items-center gap-2">
+                    <button
+                      type="button"
+                      class="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-600 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+                      :disabled="props.disabled || provider.loading || !isProviderCatalogSourceKey(provider.providerId)"
+                      :data-testid="`model-picker-provider-refresh-${provider.providerId}`"
+                      @click="onProviderRowRefresh(provider.providerId)"
+                    >
+                      {{ provider.loading ? '…' : t('errors.modelCatalog.refresh') }}
+                    </button>
+                    <label class="flex min-w-0 items-center gap-2">
                       <input
                         type="checkbox"
                         class="h-3.5 w-3.5 rounded border-gray-300 text-blue-600 focus:ring-blue-500"
@@ -1833,29 +1929,29 @@ onBeforeUnmount(() => {
                         @change="toggleProviderFilter(provider.providerId, ($event.target as HTMLInputElement).checked)"
                       />
                       <span class="truncate font-medium text-gray-700">{{ provider.providerName }}</span>
-                    </span>
+                    </label>
                     <span :class="provider.loading ? 'text-blue-600' : provider.count > 0 ? 'text-green-700' : 'text-gray-500'">
-                      {{ provider.loading ? 'loading' : provider.statusLabel }}
+                      {{ provider.loading ? t('errors.modelCatalog.syncing') : provider.statusLabel }}
                     </span>
-                  </label>
+                  </div>
                 </div>
               </div>
               <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Category</label>
+                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.category') }}</label>
                 <select
                   v-model="selectedCategory"
                   class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
                   :disabled="props.disabled"
                   data-testid="model-picker-category"
                 >
-                  <option value="all">All categories</option>
+                  <option value="all">{{ t('errors.modelCatalog.allCategories') }}</option>
                   <option v-for="category in categoryOptions" :key="category" :value="category">{{ category }}</option>
                 </select>
               </div>
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Vendor Prefix</div>
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.vendorPrefix') }}</div>
                 <div v-if="vendorOptions.length === 0" class="mt-1 text-[11px] text-gray-400">
-                  Vendor options will appear after data loads.
+                  {{ t('errors.modelCatalog.vendorOptionsPending') }}
                 </div>
                 <div v-else class="mt-1 max-h-28 space-y-1 overflow-auto">
                   <label
@@ -1880,18 +1976,18 @@ onBeforeUnmount(() => {
 
           <details class="rounded-md border border-gray-200 bg-white px-3 py-2">
             <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              Capability Limits
+              {{ t('errors.modelCatalog.capabilityLimits') }}
             </summary>
             <div class="mt-2 space-y-3">
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Context Length</div>
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.contextLength') }}</div>
                 <div class="mt-1 grid grid-cols-2 gap-2">
                   <input
                     v-model="contextLengthMin"
                     type="number"
                     min="0"
                     class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
-                    placeholder="min"
+                    :placeholder="t('errors.modelCatalog.minPlaceholder')"
                     :disabled="props.disabled"
                     data-testid="model-picker-context-min"
                   />
@@ -1900,21 +1996,21 @@ onBeforeUnmount(() => {
                     type="number"
                     min="0"
                     class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
-                    placeholder="max"
+                    :placeholder="t('errors.modelCatalog.maxPlaceholder')"
                     :disabled="props.disabled"
                     data-testid="model-picker-context-max"
                   />
                 </div>
               </div>
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Max Completion Tokens</div>
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.maxCompletionTokens') }}</div>
                 <div class="mt-1 grid grid-cols-2 gap-2">
                   <input
                     v-model="maxOutputTokensMin"
                     type="number"
                     min="0"
                     class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
-                    placeholder="min"
+                    :placeholder="t('errors.modelCatalog.minPlaceholder')"
                     :disabled="props.disabled"
                     data-testid="model-picker-max-output-min"
                   />
@@ -1923,7 +2019,7 @@ onBeforeUnmount(() => {
                     type="number"
                     min="0"
                     class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
-                    placeholder="max"
+                    :placeholder="t('errors.modelCatalog.maxPlaceholder')"
                     :disabled="props.disabled"
                     data-testid="model-picker-max-output-max"
                   />
@@ -1934,7 +2030,7 @@ onBeforeUnmount(() => {
 
           <details class="rounded-md border border-gray-200 bg-white px-3 py-2">
             <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              Modalities
+              {{ t('errors.modelCatalog.modalities') }}
             </summary>
             <div class="mt-2 space-y-3">
               <div class="flex items-center gap-2">
@@ -1950,12 +2046,12 @@ onBeforeUnmount(() => {
                   data-testid="model-picker-quick-image-output"
                   @click="toggleQuickImageOutputFilter"
                 >
-                  {{ selectedOutputModalities.length === 1 && selectedOutputModalities[0] === 'image' ? 'Image output only: ON' : 'Image output only: OFF' }}
+                  {{ selectedOutputModalities.length === 1 && selectedOutputModalities[0] === 'image' ? t('errors.modelCatalog.imageOutputOnlyOn') : t('errors.modelCatalog.imageOutputOnlyOff') }}
                 </button>
-                <div class="text-[11px] text-gray-500">One-click filter for output modality `image`.</div>
+                <div class="text-[11px] text-gray-500">{{ t('errors.modelCatalog.imageOutputOnlyHelp') }}</div>
               </div>
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Architecture</div>
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.architecture') }}</div>
                 <div class="mt-1 flex flex-wrap gap-2">
                   <label
                     v-for="option in architectureModalityOptions"
@@ -1975,7 +2071,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Input Modalities</div>
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.inputModalities') }}</div>
                 <div class="mt-1 flex flex-wrap gap-2">
                   <label
                     v-for="option in modalityOptions"
@@ -1995,7 +2091,7 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Output Modalities</div>
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.outputModalities') }}</div>
                 <div class="mt-1 flex flex-wrap gap-2">
                   <label
                     v-for="option in modalityOptions"
@@ -2019,11 +2115,11 @@ onBeforeUnmount(() => {
 
           <details class="rounded-md border border-gray-200 bg-white px-3 py-2">
             <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              Features
+              {{ t('errors.modelCatalog.features') }}
             </summary>
             <div class="mt-2 space-y-3">
               <div>
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Supported Parameters</div>
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.supportedParameters') }}</div>
                 <div class="mt-1 max-h-28 space-y-1 overflow-auto">
                   <label
                     v-for="option in supportedParameterOptions"
@@ -2043,49 +2139,49 @@ onBeforeUnmount(() => {
                 </div>
               </div>
               <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Tokenizer (CSV)</label>
+                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.tokenizerCsv') }}</label>
                 <input
                   v-model="tokenizerFiltersText"
                   type="text"
                   class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
-                  placeholder="gpt, sentencepiece"
+                  :placeholder="t('errors.modelCatalog.tokenizerPlaceholder')"
                   :disabled="props.disabled"
                   data-testid="model-picker-tokenizers"
                 />
               </div>
               <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Instruct Type (CSV)</label>
+                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.instructTypeCsv') }}</label>
                 <input
                   v-model="instructTypeFiltersText"
                   type="text"
                   class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
-                  placeholder="chatml, json_schema"
+                  :placeholder="t('errors.modelCatalog.instructTypePlaceholder')"
                   :disabled="props.disabled"
                   data-testid="model-picker-instruct-types"
                 />
               </div>
               <div class="grid grid-cols-1 gap-2">
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Per Request Limits</label>
+                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.perRequestLimits') }}</label>
                 <select
                   v-model="hasPerRequestLimits"
                   class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
                   :disabled="props.disabled"
                   data-testid="model-picker-per-request-limits"
                 >
-                  <option value="any">Any</option>
-                  <option value="yes">Has limits</option>
-                  <option value="no">No limits</option>
+                  <option value="any">{{ t('errors.modelCatalog.any') }}</option>
+                  <option value="yes">{{ t('errors.modelCatalog.hasLimits') }}</option>
+                  <option value="no">{{ t('errors.modelCatalog.noLimits') }}</option>
                 </select>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Default Parameters</label>
+                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.defaultParameters') }}</label>
                 <select
                   v-model="hasDefaultParameters"
                   class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
                   :disabled="props.disabled"
                   data-testid="model-picker-default-parameters"
                 >
-                  <option value="any">Any</option>
-                  <option value="yes">Has defaults</option>
-                  <option value="no">No defaults</option>
+                  <option value="any">{{ t('errors.modelCatalog.any') }}</option>
+                  <option value="yes">{{ t('errors.modelCatalog.hasDefaults') }}</option>
+                  <option value="no">{{ t('errors.modelCatalog.noDefaults') }}</option>
                 </select>
               </div>
             </div>
@@ -2093,20 +2189,20 @@ onBeforeUnmount(() => {
 
           <details class="rounded-md border border-gray-200 bg-white px-3 py-2">
             <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">
-              Compliance & Lifecycle
+              {{ t('errors.modelCatalog.complianceLifecycle') }}
             </summary>
             <div class="mt-2 space-y-3">
               <div>
-                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Moderation</label>
+                <label class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.moderation') }}</label>
                 <select
                   v-model="moderationFilter"
                   class="mt-1 w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-xs text-gray-700"
                   :disabled="props.disabled"
                   data-testid="model-picker-is-moderated"
                 >
-                  <option value="any">Any</option>
-                  <option value="yes">Moderated</option>
-                  <option value="no">Unmoderated</option>
+                  <option value="any">{{ t('errors.modelCatalog.any') }}</option>
+                  <option value="yes">{{ t('errors.modelCatalog.moderated') }}</option>
+                  <option value="no">{{ t('errors.modelCatalog.unmoderated') }}</option>
                 </select>
               </div>
               <label class="flex items-center gap-2 text-[11px] text-gray-700">
@@ -2117,7 +2213,7 @@ onBeforeUnmount(() => {
                   :disabled="props.disabled"
                   data-testid="model-picker-expiring-toggle"
                 />
-                <span>Only models expiring within days</span>
+                <span>{{ t('errors.modelCatalog.expiringWithinDays') }}</span>
               </label>
               <input
                 v-model="expiringWithinDays"
@@ -2132,7 +2228,7 @@ onBeforeUnmount(() => {
           </details>
 
           <details class="rounded-md border border-gray-200 bg-white px-3 py-2">
-            <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">Sort</summary>
+            <summary class="cursor-pointer text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.sort') }}</summary>
             <div class="mt-2 grid grid-cols-2 gap-2">
               <select
                 v-model="sortBy"
@@ -2154,7 +2250,7 @@ onBeforeUnmount(() => {
           </details>
 
           <div class="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
-            <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Current</div>
+            <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.current') }}</div>
             <div class="mt-1 break-all font-medium text-gray-900">{{ selectedModelLabel }}</div>
             <div v-if="effectiveNotice" class="mt-2 text-[11px] text-gray-500">{{ effectiveNotice }}</div>
             <div v-if="error" class="mt-2 text-[11px] text-red-600">{{ error }}</div>
@@ -2162,7 +2258,7 @@ onBeforeUnmount(() => {
 
           <div class="rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-600">
             <div class="flex items-center justify-between gap-2">
-              <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Favorites Order</div>
+              <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.favoritesOrder') }}</div>
               <div class="flex items-center gap-2">
                 <button
                   v-if="!favoriteEditMode"
@@ -2172,7 +2268,7 @@ onBeforeUnmount(() => {
                   data-testid="model-picker-favorites-edit"
                   @click="openFavoriteEditMode"
                 >
-                  Edit
+                  {{ t('errors.modelCatalog.edit') }}
                 </button>
                 <template v-else>
                   <button
@@ -2182,7 +2278,7 @@ onBeforeUnmount(() => {
                     data-testid="model-picker-favorites-cancel"
                     @click="cancelFavoriteEditMode"
                   >
-                    Cancel
+                    {{ t('common.cancel') }}
                   </button>
                   <button
                     type="button"
@@ -2191,13 +2287,13 @@ onBeforeUnmount(() => {
                     data-testid="model-picker-favorites-done"
                     @click="saveFavoriteOrder"
                   >
-                    Done
+                    {{ t('errors.modelCatalog.done') }}
                   </button>
                 </template>
               </div>
             </div>
             <div v-if="normalizedFavoriteModelKeys.length === 0" class="mt-2 text-[11px] text-gray-400">
-              No favorites yet.
+              {{ t('errors.modelCatalog.noFavoritesYet') }}
             </div>
             <div v-else-if="!favoriteEditMode" class="mt-2 space-y-1">
               <div
@@ -2252,9 +2348,9 @@ onBeforeUnmount(() => {
                 data-testid="model-picker-list"
               >
                 <template v-if="activePickerMode === 'all'">
-                  <div v-if="loading && pickerItems.length === 0" class="px-2 py-4 text-sm text-gray-500">Loading models...</div>
+                  <div v-if="loading && pickerItems.length === 0" class="px-2 py-4 text-sm text-gray-500">{{ t('errors.modelCatalog.loadingModels') }}</div>
                   <div v-else-if="!loading && pickerItems.length === 0" class="px-2 py-4 text-sm text-gray-500">
-                    No models found for current search/filter.
+                    {{ t('errors.modelCatalog.noModelsFound') }}
                   </div>
                   <template v-else>
                     <div :style="{ height: `${topPaddingPx}px` }" />
@@ -2315,12 +2411,12 @@ onBeforeUnmount(() => {
                           {{ item.capabilitySummary }}
                         </span>
                         <span v-if="hasImageGenerationSignal(item)" class="rounded border border-green-200 bg-green-50 px-1.5 py-0.5 text-green-700">
-                          image_gen
+                          {{ t('errors.modelCatalog.capabilityImageGeneration') }}
                         </span>
-                        <span v-if="item.capabilities.reasoning" class="rounded border border-gray-200 px-1.5 py-0.5">reasoning</span>
-                        <span v-if="item.capabilities.tools" class="rounded border border-gray-200 px-1.5 py-0.5">tools</span>
-                        <span v-if="item.capabilities.vision" class="rounded border border-gray-200 px-1.5 py-0.5">vision</span>
-                        <span v-if="item.capabilities.longContext" class="rounded border border-gray-200 px-1.5 py-0.5">long_context</span>
+                        <span v-if="item.capabilities.reasoning" class="rounded border border-gray-200 px-1.5 py-0.5">{{ t('errors.modelCatalog.capabilityReasoning') }}</span>
+                        <span v-if="item.capabilities.tools" class="rounded border border-gray-200 px-1.5 py-0.5">{{ t('errors.modelCatalog.capabilityTools') }}</span>
+                        <span v-if="item.capabilities.vision" class="rounded border border-gray-200 px-1.5 py-0.5">{{ t('errors.modelCatalog.capabilityVision') }}</span>
+                        <span v-if="item.capabilities.longContext" class="rounded border border-gray-200 px-1.5 py-0.5">{{ t('errors.modelCatalog.capabilityLongContext') }}</span>
                       </div>
                     </button>
                     <div :style="{ height: `${bottomPaddingPx}px` }" />
@@ -2328,7 +2424,7 @@ onBeforeUnmount(() => {
                 </template>
                 <template v-else>
                   <div v-if="activeShortcutItems.length === 0" class="px-2 py-4 text-sm text-gray-500">
-                    {{ activePickerMode === 'favorites' ? 'No favorite models yet.' : 'No recent models in this session yet.' }}
+                    {{ activePickerMode === 'favorites' ? t('errors.modelCatalog.noFavoriteModels') : t('errors.modelCatalog.noRecentModels') }}
                   </div>
                   <template v-else>
                     <button
@@ -2377,7 +2473,7 @@ onBeforeUnmount(() => {
 
               <div class="flex items-center justify-between border-t border-gray-200 px-3 py-2 text-[11px] text-gray-500">
                 <div>
-                  {{ activePickerMode === 'all' ? `${pickerItems.length} result${pickerItems.length === 1 ? '' : 's'}` : `${activeShortcutItems.length} model${activeShortcutItems.length === 1 ? '' : 's'}` }}
+                  {{ activePickerMode === 'all' ? tf('errors.modelCatalog.resultCount', { count: pickerItems.length }) : tf('errors.modelCatalog.modelCount', { count: activeShortcutItems.length }) }}
                 </div>
               </div>
             </div>
@@ -2395,7 +2491,7 @@ onBeforeUnmount(() => {
                   data-testid="model-picker-detail-tab-model"
                   @click="setActiveDetailTab('model')"
                 >
-                  Model
+                  {{ t('errors.modelCatalog.detailTabModel') }}
                 </button>
                 <button
                   type="button"
@@ -2408,7 +2504,7 @@ onBeforeUnmount(() => {
                   data-testid="model-picker-detail-tab-endpoints"
                   @click="setActiveDetailTab('endpoints')"
                 >
-                  Endpoints
+                  {{ t('errors.modelCatalog.detailTabEndpoints') }}
                 </button>
               </div>
 
@@ -2417,21 +2513,21 @@ onBeforeUnmount(() => {
                 class="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700"
                 data-testid="model-picker-provider-detail"
               >
-                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">Provider Model</div>
+                <div class="text-[11px] font-semibold uppercase tracking-wide text-gray-500">{{ t('errors.modelCatalog.providerModel') }}</div>
                 <div class="mt-2 text-sm font-semibold text-gray-900">{{ activeDetailItem.displayName }}</div>
                 <div class="mt-1 break-all text-[11px] text-gray-500">{{ `${activeDetailItem.providerName} · ${activeDetailItem.modelId}` }}</div>
                 <div class="mt-3 grid gap-2">
                   <div class="rounded border border-gray-200 bg-white px-2 py-1">
-                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Status</div>
+                    <div class="text-[10px] uppercase tracking-wide text-gray-400">{{ t('errors.modelCatalog.status') }}</div>
                     <div>{{ activeDetailItem.statusLabel }}</div>
                   </div>
                   <div class="rounded border border-gray-200 bg-white px-2 py-1">
-                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Capabilities</div>
-                    <div>{{ activeDetailItem.capabilitySummary ?? 'capability unknown' }}</div>
+                    <div class="text-[10px] uppercase tracking-wide text-gray-400">{{ t('errors.modelCatalog.capabilities') }}</div>
+                    <div>{{ activeDetailItem.capabilitySummary ?? t('errors.modelCatalog.capabilityUnknown') }}</div>
                   </div>
                   <div class="rounded border border-gray-200 bg-white px-2 py-1">
-                    <div class="text-[10px] uppercase tracking-wide text-gray-400">Source</div>
-                    <div>{{ activeDetailItem.sourceLabel ?? 'provider source' }}</div>
+                    <div class="text-[10px] uppercase tracking-wide text-gray-400">{{ t('errors.modelCatalog.source') }}</div>
+                    <div>{{ activeDetailItem.sourceLabel ?? t('errors.modelCatalog.providerSource') }}</div>
                   </div>
                 </div>
               </div>
@@ -2458,8 +2554,26 @@ onBeforeUnmount(() => {
         </section>
       </div>
 
-      <div class="flex items-center justify-between border-t border-gray-200 px-4 py-2 text-[11px]">
-        <div class="flex items-center gap-2">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 px-4 py-2 text-[11px]">
+        <div class="flex min-w-0 flex-wrap items-center gap-2">
+          <label class="text-gray-500" for="model-picker-sync-provider">
+            {{ t('errors.modelCatalog.provider') }}
+          </label>
+          <select
+            id="model-picker-sync-provider"
+            v-model="selectedSyncProviderKey"
+            class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 disabled:bg-gray-100"
+            :disabled="props.disabled || syncProviderOptions.length === 0"
+            data-testid="model-picker-sync-provider"
+          >
+            <option
+              v-for="provider in syncProviderOptions"
+              :key="`sync-provider-${provider.providerId}`"
+              :value="provider.providerId"
+            >
+              {{ provider.providerName }}
+            </option>
+          </select>
           <template v-if="pendingCatalogUpdateAvailable">
             <span class="text-blue-700" data-testid="model-picker-update-available">
               {{ t('errors.modelCatalog.updateAvailable') }}
@@ -2474,27 +2588,30 @@ onBeforeUnmount(() => {
               {{ t('errors.modelCatalog.applyUpdate') }}
             </button>
           </template>
-          <span v-if="syncStatus === 'not_synced'" class="text-gray-400">
+          <span v-if="selectedSyncSnapshot.status === 'not_synced'" class="text-gray-400">
             {{ t('errors.modelCatalog.syncNotSynced') }}
           </span>
-          <span v-else-if="syncStatus === 'syncing'" class="text-blue-600">
+          <span v-else-if="selectedSyncSnapshot.status === 'syncing'" class="text-blue-600">
             {{ t('errors.modelCatalog.syncSyncing') }}
           </span>
-          <span v-else-if="syncStatus === 'synced'" class="text-green-700">
-            {{ syncStatusText }}
+          <span v-else-if="selectedSyncSnapshot.status === 'synced'" class="text-green-700">
+            {{ formatProviderSyncStatusText(selectedSyncSnapshot) }}
           </span>
-          <span v-else-if="syncStatus === 'failed'" class="text-red-600">
-            {{ tf('errors.modelCatalog.syncFailedReason', { reason: syncFailureReasonText }) }}
+          <span v-else-if="selectedSyncSnapshot.status === 'failed'" class="text-red-600">
+            {{ tf('errors.modelCatalog.syncFailedReason', { reason: modelCatalogSyncFailureReasonText(selectedSyncSnapshot.errorCode) }) }}
+          </span>
+          <span class="text-gray-400" data-testid="model-picker-sync-last-synced">
+            {{ tf('errors.modelCatalog.lastSyncedAt', { time: formatSyncTime(selectedSyncSnapshot.lastSyncedAtMs) }) }}
           </span>
         </div>
         <button
           type="button"
           class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-600 hover:bg-gray-50 disabled:opacity-50"
-          :disabled="syncStatus === 'syncing' || props.disabled"
+          :disabled="selectedSyncSnapshot.status === 'syncing' || props.disabled"
           data-testid="model-picker-sync-refresh"
-          @click="onManualRefresh"
+          @click="onManualRefreshProvider()"
         >
-          {{ syncStatus === 'syncing' ? '…' : '↻' }}
+          {{ selectedSyncSnapshot.status === 'syncing' ? '…' : t('errors.modelCatalog.sync') }}
         </button>
       </div>
     </div>
