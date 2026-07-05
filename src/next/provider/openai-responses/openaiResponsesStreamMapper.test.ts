@@ -90,12 +90,12 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
   // =========================================================================
 
   describe('reasoning summary', () => {
-    it('maps reasoning summary delta to message.reasoning_detail', () => {
+    it('maps reasoning summary delta to message.reasoning_raw_detail', () => {
       const events = mapOpenAIResponsesEventToStarverse(reasoningSummaryDelta('Let me think...'), msgId)
 
       expect(events).toHaveLength(2)
-      expect(events[0].type).toBe('message.reasoning_detail')
-      if (events[0].type === 'message.reasoning_detail') {
+      expect(events[0].type).toBe('message.reasoning_raw_detail')
+      if (events[0].type === 'message.reasoning_raw_detail') {
         expect(events[0].detail).toEqual({ type: 'reasoning_summary', text: 'Let me think...' })
         expect(events[0].messageId).toBe(msgId)
       }
@@ -130,12 +130,12 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
   // =========================================================================
 
   describe('reasoning text', () => {
-    it('maps reasoning text delta to message.reasoning_detail', () => {
+    it('maps reasoning text delta to message.reasoning_raw_detail', () => {
       const events = mapOpenAIResponsesEventToStarverse(reasoningTextDelta('Step 1: analyze...'), msgId)
 
       expect(events).toHaveLength(2)
-      expect(events[0].type).toBe('message.reasoning_detail')
-      if (events[0].type === 'message.reasoning_detail') {
+      expect(events[0].type).toBe('message.reasoning_raw_detail')
+      if (events[0].type === 'message.reasoning_raw_detail') {
         expect(events[0].detail).toEqual({ type: 'reasoning_text', text: 'Step 1: analyze...' })
       }
       expect(events[1]).toMatchObject({
@@ -169,7 +169,7 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
   // =========================================================================
 
   describe('reasoning output item', () => {
-    it('maps reasoning output item done to message.reasoning_detail', () => {
+    it('maps reasoning output item done to message.reasoning_raw_detail', () => {
       const events = mapOpenAIResponsesEventToStarverse(
         reasoningOutputItemDone({
           type: 'reasoning',
@@ -181,8 +181,8 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
       )
 
       expect(events).toHaveLength(1)
-      expect(events[0].type).toBe('message.reasoning_detail')
-      if (events[0].type === 'message.reasoning_detail') {
+      expect(events[0].type).toBe('message.reasoning_raw_detail')
+      if (events[0].type === 'message.reasoning_raw_detail') {
         const detail = events[0].detail as any
         expect(detail.type).toBe('reasoning_item')
         expect(detail.id).toBe('reasoning_1')
@@ -204,7 +204,7 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
       )
 
       expect(events).toHaveLength(1)
-      if (events[0].type === 'message.reasoning_detail') {
+      if (events[0].type === 'message.reasoning_raw_detail') {
         const detail = events[0].detail as any
         expect(detail.encrypted_content).toBe('base64encodedcontent')
       }
@@ -270,7 +270,7 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
         allEvents.push(...mapOpenAIResponsesEventToStarverse(ev, msgId))
       }
 
-      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
       const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
 
@@ -295,7 +295,7 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
         allEvents.push(...mapOpenAIResponsesEventToStarverse(ev, msgId))
       }
 
-      expect(allEvents[0].type).toBe('message.reasoning_detail')
+      expect(allEvents[0].type).toBe('message.reasoning_raw_detail')
       expect(allEvents[1].type).toBe('message.reasoning_display_block')
       expect(allEvents[2].type).toBe('message.text_delta')
     })
@@ -506,7 +506,7 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
         allEvents.push(...mapOpenAIResponsesEventToStarverse(ev, msgId))
       }
 
-      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
       const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
       const usageEvents = allEvents.filter((e) => e.type === 'usage.delta')

@@ -238,7 +238,7 @@ describe('streamViaOpenAIResponses', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     expect(reasoningEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(0)
@@ -257,7 +257,7 @@ describe('streamViaOpenAIResponses', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     expect(reasoningEvents).toHaveLength(1)
     expect(textEvents).toHaveLength(1)
@@ -509,7 +509,7 @@ describe('streamViaOpenAIResponses', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     const usageEvents = events.filter((e) => e.type === 'usage.delta')
     const doneEvents = events.filter((e) => e.type === 'stream.done')

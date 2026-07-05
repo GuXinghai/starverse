@@ -104,7 +104,7 @@ function normalizeFinishReason(native: string | undefined): string {
  *
  * - Pure function: emits events only; does not write any state.
  * - text parts with thought !== true → message.text_delta.
- * - text parts with thought === true → message.reasoning_detail. NEVER visible text.
+ * - text parts with thought === true → message.reasoning_raw_detail. NEVER visible text.
  * - functionCall parts → ignored (no tool delta event shape).
  * - usageMetadata → usage.delta.
  * - finishReason → meta.delta.
@@ -178,7 +178,7 @@ export function mapGeminiStreamChunkToStarverse(
       if (part.thought === true) {
         if (typeof part.text === 'string' && part.text.length > 0) {
           events.push({
-            type: 'message.reasoning_detail',
+            type: 'message.reasoning_raw_detail',
             messageId,
             choiceIndex: 0,
             detail: { type: 'thought', text: part.text },
@@ -245,7 +245,7 @@ export function mapGeminiInteractionResponseToStarverse(
 
   for (const detail of reasoningDetails) {
     events.push({
-      type: 'message.reasoning_detail',
+      type: 'message.reasoning_raw_detail',
       messageId,
       choiceIndex: 0,
       detail,

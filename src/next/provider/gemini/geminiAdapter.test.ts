@@ -188,13 +188,29 @@ describe('streamViaGemini', () => {
     expect(body.thinking_config).toBeUndefined()
     expect(events).toEqual([
       {
-        type: 'message.reasoning_detail',
+        type: 'message.reasoning_raw_detail',
         messageId: 'assistant_1',
         choiceIndex: 0,
         detail: {
+          __starverseReasoningPiece: true,
+          index: 0,
           type: 'thought_summary',
           summary: 'Planning the scene.',
           thought_signature: 'sig_1',
+        },
+      },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          blockId: 'assistant_1:gemini-interaction:0',
+          ordinal: 0,
+          type: 'text',
+          text: 'Planning the scene.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_summary',
         },
       },
       {
@@ -357,7 +373,7 @@ describe('streamViaGemini', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     expect(reasoningEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(0)
@@ -589,7 +605,7 @@ describe('streamViaGemini', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     const usageEvents = events.filter((e) => e.type === 'usage.delta')
     const doneEvents = events.filter((e) => e.type === 'stream.done')

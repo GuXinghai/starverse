@@ -167,7 +167,13 @@ function safeProviderError(error: StarverseProviderError): StarverseProviderErro
 }
 
 function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent | null {
-  if (event.type === 'message.reasoning_detail' || event.type === 'message.reasoning_detail_batch') {
+  if (
+    event.type === 'message.reasoning_raw_detail' ||
+    event.type === 'message.reasoning_raw_detail_batch' ||
+    event.type === 'message.reasoning_detail' ||
+    event.type === 'message.reasoning_detail_batch' ||
+    event.type === 'message.reasoning_display_block'
+  ) {
     return null
   }
   if (event.type === 'stream.error') {

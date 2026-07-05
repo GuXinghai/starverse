@@ -74,18 +74,18 @@ describe('mapDeepSeekChunkToEvents', () => {
     }
   })
 
-  it('maps reasoning_content to message.reasoning_detail', () => {
+  it('maps reasoning_content to message.reasoning_raw_detail', () => {
     const events = mapDeepSeekChunkToEvents({
       chunk: reasoningChunk('gen_1', 'deepseek-r1', 'Let me think...'),
       messageId: msgId,
       chunkNo: 7,
     })
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block')
     expect(reasoningEvents).toHaveLength(1)
     expect(displayEvents).toHaveLength(1)
-    if (reasoningEvents[0].type === 'message.reasoning_detail') {
+    if (reasoningEvents[0].type === 'message.reasoning_raw_detail') {
       expect(reasoningEvents[0].detail).toEqual({ text: 'Let me think...', type: 'reasoning_content' })
       expect(reasoningEvents[0].messageId).toBe(msgId)
     }
@@ -122,7 +122,7 @@ describe('mapDeepSeekChunkToEvents', () => {
 
     // reasoning comes first in the output (as it does in the delta)
     expect(events[0].type).toBe('meta.delta')
-    expect(events[1].type).toBe('message.reasoning_detail')
+    expect(events[1].type).toBe('message.reasoning_raw_detail')
     expect(events[2].type).toBe('message.reasoning_display_block')
     expect(events[3].type).toBe('message.text_delta')
   })
@@ -140,7 +140,7 @@ describe('mapDeepSeekChunkToEvents', () => {
       allEvents.push(...mapDeepSeekChunkToEvents({ chunk, messageId: msgId }))
     }
 
-    const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
     const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
     const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
 
@@ -259,7 +259,7 @@ describe('mapDeepSeekChunkToEvents', () => {
 
     // Should produce meta but no text/reasoning events
     expect(events.some((e) => e.type === 'message.text_delta')).toBe(false)
-    expect(events.some((e) => e.type === 'message.reasoning_detail')).toBe(false)
+    expect(events.some((e) => e.type === 'message.reasoning_raw_detail')).toBe(false)
   })
 
   it('handles null content and null reasoning_content gracefully', () => {
@@ -273,7 +273,7 @@ describe('mapDeepSeekChunkToEvents', () => {
     })
 
     expect(events.some((e) => e.type === 'message.text_delta')).toBe(false)
-    expect(events.some((e) => e.type === 'message.reasoning_detail')).toBe(false)
+    expect(events.some((e) => e.type === 'message.reasoning_raw_detail')).toBe(false)
   })
 
   it('handles empty string content and reasoning_content gracefully', () => {
@@ -287,7 +287,7 @@ describe('mapDeepSeekChunkToEvents', () => {
     })
 
     expect(events.some((e) => e.type === 'message.text_delta')).toBe(false)
-    expect(events.some((e) => e.type === 'message.reasoning_detail')).toBe(false)
+    expect(events.some((e) => e.type === 'message.reasoning_raw_detail')).toBe(false)
   })
 
   it('maps tool_calls delta to message.tool_call_delta', () => {
@@ -338,7 +338,7 @@ describe('mapDeepSeekChunkToEvents', () => {
       allEvents.push(...mapDeepSeekChunkToEvents({ chunk, messageId: msgId }))
     }
 
-    const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
     const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
     const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
     const metaEvents = allEvents.filter((e) => e.type === 'meta.delta')

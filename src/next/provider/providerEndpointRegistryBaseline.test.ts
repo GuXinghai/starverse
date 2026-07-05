@@ -576,7 +576,7 @@ describe('R5 Anthropic Messages provider model source guardrails', () => {
     expect(preload).toContain("contextBridge.exposeInMainWorld('anthropicModels'")
     expect(console).toContain('anthropic-models-diagnostics')
     expect(settings).toContain('Use Console refresh for official availability diagnostics')
-    expect(anthropicStreamMapper).toContain("'message.reasoning_detail'")
+    expect(anthropicStreamMapper).toContain("'message.reasoning_raw_detail'")
     expect(anthropicStreamMapper).not.toMatch(/thinking_delta[\s\S]{0,200}message\.text_delta/)
     expect(anthropicStreamMapper).not.toMatch(/signature_delta[\s\S]{0,200}message\.text_delta/)
 
