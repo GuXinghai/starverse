@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { DomainEvent } from '@/next/state/types'
+import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
 import {
   buildStreamErrorFromAppError,
   mapAppPhaseToEndReason,
@@ -12,8 +13,17 @@ import {
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import type { OpenRouterStreamWireEvent } from '@/shared/ipc/openRouterStreamWire'
 import { mapGenericOpenAICompatibleChunkToEvents } from '@/next/provider/generic/genericOpenAICompatibleStreamMapper'
+import type { StreamJsonChunkMapper } from '@/next/streaming/core/types'
 
 const testModel = DEFAULT_OPENROUTER_TEST_MODEL
+
+const mapOpenRouterJsonChunkToEvents: StreamJsonChunkMapper = (input) =>
+  mapChunkToEvents({
+    chunk: input.chunk as any,
+    messageId: input.messageId,
+    choiceIndex: input.choiceIndex,
+    chunkNo: input.chunkNo,
+  }) as DomainEvent[]
 
 function readFixtureText(fileName: string): string {
   const fullPath = path.join(process.cwd(), 'src/next/openrouter/sse/fixtures', fileName)
@@ -74,6 +84,7 @@ async function collect(events: readonly unknown[]): Promise<DomainEvent[]> {
     assistantMessageId: 'assistant_fixture',
     requestContext: { model: testModel, stream: true },
     tRequestStart: Date.now(),
+    mapJsonChunkToEvents: mapOpenRouterJsonChunkToEvents,
     mapAppPhaseToEnvelopePhase,
     mapAppPhaseToEndReason,
     buildStreamErrorFromAppError,

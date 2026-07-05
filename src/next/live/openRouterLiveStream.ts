@@ -4,6 +4,7 @@ import type { OpenRouterAdditionalPlugin } from '@/next/openrouter/buildRequest'
 import type { OpenRouterWebRequestPatch } from '@/next/openrouter/searchSettingsResolver'
 import type { OpenRouterSamplingParamsPatch } from '@/next/openrouter/samplingParamsResolver'
 import { decodeOpenRouterSSE } from '@/next/openrouter/sse/decoder'
+import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
 import { resolveImageGenerationRequestModalities } from '@/next/openrouter/imageGenerationContract'
 import type { ImageCapabilityClass } from '@/next/openrouter/imageGenerationContract'
 import {
@@ -28,6 +29,7 @@ import { getOpenRouterProviderRequireParameters } from '@/next/settings/openRout
 import { getNetExpSettings } from '@/next/netExp/netExpClient'
 import type { ReasoningEffort, RequestedReasoningMode, StreamEndReason } from '@/next/state/types'
 import type { DomainEvent } from '@/next/state/types'
+import type { StreamJsonChunkMapper } from '@/next/streaming/core/types'
 import { buildOpenRouterMessages, type ContextMode, type InternalMessage } from '@/next/context/buildMessages'
 import {
   buildAbortEnvelope,
@@ -64,6 +66,14 @@ function logTiming(tag: string, data: Record<string, unknown>) {
     // ignore
   }
 }
+
+const mapOpenRouterJsonChunkToEvents: StreamJsonChunkMapper = (input) =>
+  mapChunkToEvents({
+    chunk: input.chunk as any,
+    messageId: input.messageId,
+    choiceIndex: input.choiceIndex,
+    chunkNo: input.chunkNo,
+  }) as unknown as readonly DomainEvent[]
 
 function extractWebPluginFromBody(body: unknown):
   | Readonly<{
@@ -317,6 +327,7 @@ export const ipcTransportStrategy: OpenRouterTransportStrategy<OpenRouterIpcTran
         requestContext,
         tRequestStart: Date.now(),
         signal,
+        mapJsonChunkToEvents: mapOpenRouterJsonChunkToEvents,
         logTiming,
         logStreamError,
         mapAppPhaseToEnvelopePhase,
@@ -440,6 +451,7 @@ export const fetchTransportStrategy: OpenRouterTransportStrategy<OpenRouterFetch
       requestContext,
       tRequestStart: timing.tRequestStart,
       signal,
+      mapJsonChunkToEvents: mapOpenRouterJsonChunkToEvents,
       logTiming,
       logStreamError,
       mapAppPhaseToEnvelopePhase,

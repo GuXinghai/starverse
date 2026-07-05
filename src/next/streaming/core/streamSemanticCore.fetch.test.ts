@@ -2,8 +2,10 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { decodeOpenRouterSSE } from '@/next/openrouter/sse/decoder'
+import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import type { DomainEvent } from '@/next/state/types'
+import type { StreamJsonChunkMapper } from '@/next/streaming/core/types'
 import { streamOpenRouterChatAsEvents } from '@/next/live/openRouterLiveStream'
 import {
   buildStreamErrorFromAppError,
@@ -13,6 +15,14 @@ import {
 } from '@/next/streaming/core'
 
 const testModel = DEFAULT_OPENROUTER_TEST_MODEL
+
+const mapOpenRouterJsonChunkToEvents: StreamJsonChunkMapper = (input) =>
+  mapChunkToEvents({
+    chunk: input.chunk as any,
+    messageId: input.messageId,
+    choiceIndex: input.choiceIndex,
+    chunkNo: input.chunkNo,
+  }) as DomainEvent[]
 
 type TerminalType = 'StreamDone' | 'StreamAbort' | 'StreamError' | null
 
@@ -183,6 +193,7 @@ async function collectViaCore(fixtureText: string): Promise<DomainEvent[]> {
     assistantMessageId: 'assistant_fixture',
     requestContext: { model: testModel, stream: true },
     tRequestStart: Date.now(),
+    mapJsonChunkToEvents: mapOpenRouterJsonChunkToEvents,
     mapAppPhaseToEnvelopePhase,
     mapAppPhaseToEndReason,
     buildStreamErrorFromAppError,

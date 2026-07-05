@@ -12,7 +12,6 @@ import {
   buildTransportErrorEnvelope,
 } from '@/next/errors/openRouterErrorEnvelope'
 import type { ErrorEnvelope, ErrorPhase } from '@/next/errors/openRouterErrorEnvelope'
-import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
 import { mapResponsesEventToTerminal } from '@/next/openrouter/responsesEventMapper'
 import type { DomainEvent, StreamEndReason } from '@/next/state/types'
 import { normalizeTransportError } from '@/next/errors/normalizeOpenRouterError'
@@ -20,7 +19,6 @@ import { TerminalArbiter } from '@/next/streaming/core/terminalArbiter'
 import { TimingMachine } from '@/next/streaming/core/timingMachine'
 import type {
   BuildStreamErrorFromAppErrorInput,
-  StreamJsonChunkMapper,
   StreamRequestContext,
   StreamSemanticCoreInput,
 } from '@/next/streaming/core/types'
@@ -92,14 +90,6 @@ export async function* streamFetchSemanticCore(input: StreamSemanticCoreInput): 
   let lastMeta: LastMeta = {}
   let chunkNo = 0
   let receivedAnySse = false
-  const defaultMapJsonChunkToEvents: StreamJsonChunkMapper = (mapperInput) =>
-    mapChunkToEvents({
-      chunk: mapperInput.chunk as any,
-      messageId: mapperInput.messageId,
-      choiceIndex: mapperInput.choiceIndex,
-      chunkNo: mapperInput.chunkNo,
-    }) as any as DomainEvent[]
-  const mapJsonChunkToEvents = input.mapJsonChunkToEvents ?? defaultMapJsonChunkToEvents
 
   yield timing.emitRequestStartSnapshot()
 
@@ -190,7 +180,7 @@ export async function* streamFetchSemanticCore(input: StreamSemanticCoreInput): 
     }
 
     chunkNo++
-    const mapped = mapJsonChunkToEvents({
+    const mapped = input.mapJsonChunkToEvents({
       chunk: ev.value,
       messageId: input.assistantMessageId,
       chunkNo,

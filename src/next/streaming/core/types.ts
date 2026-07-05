@@ -35,7 +35,7 @@ export type StreamSemanticCoreInput = StreamCoreErrorTools &
     requestContext: StreamRequestContext
     tRequestStart: number
     signal?: AbortSignal | null
-    mapJsonChunkToEvents?: StreamJsonChunkMapper
+    mapJsonChunkToEvents: StreamJsonChunkMapper
     logTiming?: (tag: string, data: Record<string, unknown>) => void
     logStreamError?: (tag: string, payload: unknown) => void
   }>
@@ -47,7 +47,7 @@ export type StreamWireSemanticCoreInput = StreamCoreErrorTools &
     requestContext: StreamRequestContext
     tRequestStart: number
     signal?: AbortSignal | null
-    mapJsonChunkToEvents?: StreamJsonChunkMapper
+    mapJsonChunkToEvents: StreamJsonChunkMapper
     logTiming?: (tag: string, data: Record<string, unknown>) => void
     logStreamError?: (tag: string, payload: unknown) => void
   }>
