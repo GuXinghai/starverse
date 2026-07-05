@@ -1578,9 +1578,10 @@ export function useAppChatAppLogic() {
     blocks: ReadonlyArray<ReasoningDisplayBlock>,
     assets: ReadonlyArray<PersistedMessageImageAsset>,
   ): ReasoningDisplayBlock[] {
-    const replacementUrls = assets
+    const sortedAssets = assets
       .slice()
       .sort((a, b) => a.ordinal - b.ordinal)
+    const replacementUrls = sortedAssets
       .map((asset) => resolveImageRenderUrl(asset))
       .filter((url) => url.length > 0)
     if (replacementUrls.length === 0) return [...blocks]
@@ -1589,7 +1590,7 @@ export function useAppChatAppLogic() {
     return blocks.map((block) => {
       if (block.type !== 'image') return block
       if (!isDataImageUrl(block.url)) return block
-      const asset = assets[nextImageIndex] ?? assets[assets.length - 1]
+      const asset = sortedAssets[nextImageIndex] ?? sortedAssets[sortedAssets.length - 1]
       const nextUrl = replacementUrls[nextImageIndex] ?? replacementUrls[replacementUrls.length - 1]
       nextImageIndex += 1
       return nextUrl
@@ -1619,9 +1620,10 @@ export function useAppChatAppLogic() {
     details: ReadonlyArray<unknown>,
     assets: ReadonlyArray<PersistedMessageImageAsset>,
   ): unknown[] {
-    const replacementUrls = assets
+    const sortedAssets = assets
       .slice()
       .sort((a, b) => a.ordinal - b.ordinal)
+    const replacementUrls = sortedAssets
       .map((asset) => resolveImageRenderUrl(asset))
       .filter((url) => url.length > 0)
     if (replacementUrls.length === 0) return [...details]
