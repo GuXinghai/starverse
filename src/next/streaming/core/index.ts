@@ -15,6 +15,7 @@ export { streamWireSemanticCore,
 export type {
   StreamRequestContext,
   StreamCoreErrorTools,
+  StreamJsonChunkMapper,
   StreamSemanticCoreInput,
   StreamWireSemanticCoreInput,
   BuildStreamErrorFromAppErrorInput,

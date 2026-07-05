@@ -9,6 +9,7 @@ import {
   streamWireSemanticCore,
 } from '@/next/streaming/core'
 import { buildAbortEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import { mapGenericOpenAICompatibleChunkToEvents } from '@/next/provider/generic/genericOpenAICompatibleStreamMapper'
 import {
   buildOpenAICompatibleUserContent,
   type OpenAICompatibleChatContentPart,
@@ -237,6 +238,7 @@ export async function* streamOllamaTextChatAsDomainEvents(
       requestContext,
       tRequestStart: Date.now(),
       signal: options.signal,
+      mapJsonChunkToEvents: mapGenericOpenAICompatibleChunkToEvents,
       mapAppPhaseToEnvelopePhase,
       mapAppPhaseToEndReason,
       buildStreamErrorFromAppError,
