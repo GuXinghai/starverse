@@ -529,8 +529,35 @@ export class DbWorkerRuntime {
       )
     `)
 
+    this.createReasoningDisplayBlocksTable()
+
+    // Ensure segment_fingerprint column exists for existing tables
+    const segmentCols = this.db.prepare('PRAGMA table_info(message_reasoning_detail_segments)').all() as { name: string }[]
+    const segmentColNames = new Set(segmentCols.map((col) => col.name))
+    if (!segmentColNames.has('segment_fingerprint')) {
+      this.db.exec('ALTER TABLE message_reasoning_detail_segments ADD COLUMN segment_fingerprint TEXT')
+    }
+
+    this.ensureReasoningDisplayBlocksSchemaParity()
+
+    const indexStatements = [
+      'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message ON message_reasoning_detail_segments(message_id)',
+      'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message_order ON message_reasoning_detail_segments(message_id, segment_id)',
+      'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_group ON message_reasoning_detail_segments(message_id, detail_id, detail_index, type, format, segment_id)',
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint ON message_reasoning_detail_segments(message_id, segment_fingerprint)',
+      'CREATE INDEX IF NOT EXISTS idx_reasoning_display_blocks_message_ordinal ON message_reasoning_display_blocks(message_id, ordinal)'
+    ]
+    for (const sql of indexStatements) {
+      this.db.exec(sql)
+    }
+
+    // Backfill segment_fingerprint for historical rows (idempotent, batch processing)
+    this.backfillSegmentFingerprints()
+  }
+
+  private createReasoningDisplayBlocksTable(tableName = 'message_reasoning_display_blocks') {
     this.db.exec(`
-      CREATE TABLE IF NOT EXISTS message_reasoning_display_blocks (
+      CREATE TABLE IF NOT EXISTS ${tableName} (
         block_id TEXT PRIMARY KEY,
         message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
         ordinal INTEGER NOT NULL,
@@ -548,7 +575,7 @@ export class DbWorkerRuntime {
         alt TEXT,
         label TEXT,
         warning TEXT,
-        provider_key TEXT,
+        provider_key TEXT NOT NULL CHECK (length(provider_key) > 0),
         source_event_type TEXT,
         source_raw_segment_id INTEGER REFERENCES message_reasoning_detail_segments(segment_id) ON DELETE SET NULL,
         payload_json TEXT,
@@ -559,42 +586,146 @@ export class DbWorkerRuntime {
         UNIQUE (message_id, segment_fingerprint)
       )
     `)
+  }
 
-    // Ensure segment_fingerprint column exists for existing tables
-    const segmentCols = this.db.prepare('PRAGMA table_info(message_reasoning_detail_segments)').all() as { name: string }[]
-    const segmentColNames = new Set(segmentCols.map((col) => col.name))
-    if (!segmentColNames.has('segment_fingerprint')) {
-      this.db.exec('ALTER TABLE message_reasoning_detail_segments ADD COLUMN segment_fingerprint TEXT')
-    }
-
-    const displayCols = this.db.prepare('PRAGMA table_info(message_reasoning_display_blocks)').all() as { name: string }[]
-    const displayColNames = new Set(displayCols.map((col) => col.name))
-    if (!displayColNames.has('final_at')) {
-      this.db.exec('ALTER TABLE message_reasoning_display_blocks ADD COLUMN final_at INTEGER')
-    }
-    if (!displayColNames.has('asset_id')) {
-      this.db.exec('ALTER TABLE message_reasoning_display_blocks ADD COLUMN asset_id TEXT')
-    }
-    if (!displayColNames.has('file_asset_id')) {
-      this.db.exec('ALTER TABLE message_reasoning_display_blocks ADD COLUMN file_asset_id TEXT')
-    }
-    if (!displayColNames.has('source_raw_segment_id')) {
-      this.db.exec('ALTER TABLE message_reasoning_display_blocks ADD COLUMN source_raw_segment_id INTEGER')
-    }
-
-    const indexStatements = [
-      'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message ON message_reasoning_detail_segments(message_id)',
-      'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message_order ON message_reasoning_detail_segments(message_id, segment_id)',
-      'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_group ON message_reasoning_detail_segments(message_id, detail_id, detail_index, type, format, segment_id)',
-      'CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint ON message_reasoning_detail_segments(message_id, segment_fingerprint)',
-      'CREATE INDEX IF NOT EXISTS idx_reasoning_display_blocks_message_ordinal ON message_reasoning_display_blocks(message_id, ordinal)'
+  private ensureReasoningDisplayBlocksSchemaParity() {
+    const columns = this.db.prepare('PRAGMA table_info(message_reasoning_display_blocks)').all() as Array<{
+      name: string
+      notnull: number
+    }>
+    const columnNames = new Set(columns.map((col) => col.name))
+    const requiredColumns = [
+      'block_id',
+      'message_id',
+      'ordinal',
+      'block_type',
+      'asset_id',
+      'file_asset_id',
+      'provider_key',
+      'source_raw_segment_id',
+      'final_at',
+      'segment_fingerprint',
     ]
-    for (const sql of indexStatements) {
-      this.db.exec(sql)
-    }
+    const providerKey = columns.find((col) => col.name === 'provider_key')
+    const foreignKeys = this.db.prepare('PRAGMA foreign_key_list(message_reasoning_display_blocks)').all() as Array<{
+      from: string
+      table: string
+      to: string
+      on_delete: string
+    }>
+    const hasForeignKey = (from: string, table: string, to: string, onDelete: string) =>
+      foreignKeys.some((fk) =>
+        fk.from === from &&
+        fk.table === table &&
+        fk.to === to &&
+        fk.on_delete.toUpperCase() === onDelete
+      )
 
-    // Backfill segment_fingerprint for historical rows (idempotent, batch processing)
-    this.backfillSegmentFingerprints()
+    const needsRebuild = requiredColumns.some((column) => !columnNames.has(column)) ||
+      providerKey?.notnull !== 1 ||
+      !hasForeignKey('asset_id', 'asset', 'id', 'SET NULL') ||
+      !hasForeignKey('file_asset_id', 'file_assets', 'id', 'SET NULL') ||
+      !hasForeignKey('source_raw_segment_id', 'message_reasoning_detail_segments', 'segment_id', 'SET NULL')
+
+    if (!needsRebuild) return
+
+    this.rebuildReasoningDisplayBlocksTable(columnNames)
+  }
+
+  private rebuildReasoningDisplayBlocksTable(columnNames: Set<string>) {
+    const column = (name: string, fallback = 'NULL') => columnNames.has(name) ? `old.${name}` : fallback
+    const providerKeyExpr = columnNames.has('provider_key')
+      ? "COALESCE(NULLIF(TRIM(old.provider_key), ''), 'unknown_legacy')"
+      : "'unknown_legacy'"
+    const assetIdExpr = columnNames.has('asset_id')
+      ? `CASE
+          WHEN old.asset_id IS NOT NULL AND EXISTS (SELECT 1 FROM asset WHERE asset.id = old.asset_id)
+          THEN old.asset_id
+          ELSE NULL
+        END`
+      : 'NULL'
+    const fileAssetIdExpr = columnNames.has('file_asset_id')
+      ? `CASE
+          WHEN old.file_asset_id IS NOT NULL AND EXISTS (SELECT 1 FROM file_assets WHERE file_assets.id = old.file_asset_id)
+          THEN old.file_asset_id
+          ELSE NULL
+        END`
+      : 'NULL'
+    const sourceRawSegmentIdExpr = columnNames.has('source_raw_segment_id')
+      ? `CASE
+          WHEN old.source_raw_segment_id IS NOT NULL AND EXISTS (
+            SELECT 1 FROM message_reasoning_detail_segments
+            WHERE message_reasoning_detail_segments.segment_id = old.source_raw_segment_id
+          )
+          THEN old.source_raw_segment_id
+          ELSE NULL
+        END`
+      : 'NULL'
+
+    this.db.exec(`
+      PRAGMA foreign_keys = OFF;
+      DROP TABLE IF EXISTS message_reasoning_display_blocks_next;
+    `)
+    this.createReasoningDisplayBlocksTable('message_reasoning_display_blocks_next')
+    this.db.exec(`
+      INSERT OR IGNORE INTO message_reasoning_display_blocks_next (
+        block_id,
+        message_id,
+        ordinal,
+        block_type,
+        text,
+        semantic_role,
+        asset_id,
+        file_asset_id,
+        url,
+        mime,
+        width,
+        height,
+        alt,
+        label,
+        warning,
+        provider_key,
+        source_event_type,
+        source_raw_segment_id,
+        payload_json,
+        created_at,
+        final_at,
+        segment_fingerprint
+      )
+      SELECT
+        old.block_id,
+        old.message_id,
+        old.ordinal,
+        old.block_type,
+        ${column('text')},
+        ${column('semantic_role')},
+        ${assetIdExpr},
+        ${fileAssetIdExpr},
+        ${column('url')},
+        ${column('mime')},
+        ${column('width')},
+        ${column('height')},
+        ${column('alt')},
+        ${column('label')},
+        ${column('warning')},
+        ${providerKeyExpr},
+        ${column('source_event_type')},
+        ${sourceRawSegmentIdExpr},
+        ${column('payload_json')},
+        old.created_at,
+        ${column('final_at')},
+        ${column('segment_fingerprint')}
+      FROM message_reasoning_display_blocks AS old
+      WHERE old.block_id IS NOT NULL
+        AND old.message_id IS NOT NULL
+        AND old.ordinal IS NOT NULL
+        AND old.block_type IN ('text', 'image', 'opaque')
+        AND old.created_at IS NOT NULL;
+
+      DROP TABLE message_reasoning_display_blocks;
+      ALTER TABLE message_reasoning_display_blocks_next RENAME TO message_reasoning_display_blocks;
+      PRAGMA foreign_keys = ON;
+    `)
   }
 
   private ensureMessageErrorSchema() {

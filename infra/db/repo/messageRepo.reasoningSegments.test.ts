@@ -471,4 +471,20 @@ describe('MessageRepo.appendReasoningDetailSegments (aggregation consistency)', 
     expect(rows[1]?.assetId).toBe('asset_reasoning_image')
     expect(rows.every((row) => row.finalAt === finalize.finalAt)).toBe(true)
   })
+
+  it('rejects reasoning display blocks without providerKey', () => {
+    expect(() => repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId: 'display-missing-provider',
+          ordinal: 1,
+          type: 'text',
+          text: 'orphan display block',
+          semanticRole: 'thought',
+          sourceEventType: 'message.reasoning_display_block',
+        } as any,
+      ],
+    })).toThrow('providerKey is required')
+  })
 })

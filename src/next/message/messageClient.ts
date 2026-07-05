@@ -298,7 +298,7 @@ export async function listReasoningDisplayBlocksByMessageIds(messageIds: Readonl
           type: 'text',
           text,
           ...(row.semanticRole ? { semanticRole: row.semanticRole } : {}),
-          ...(row.providerKey ? { providerKey: row.providerKey } : {}),
+          providerKey: row.providerKey,
           ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
           ...(row.sourceRawSegmentId ? { sourceRawSegmentId: row.sourceRawSegmentId } : {}),
         } as PersistedReasoningDisplayBlock) : null
@@ -319,7 +319,7 @@ export async function listReasoningDisplayBlocksByMessageIds(messageIds: Readonl
           ...(row.height ? { height: row.height } : {}),
           ...(row.alt ? { alt: row.alt } : {}),
           ...(row.semanticRole ? { semanticRole: row.semanticRole } : {}),
-          ...(row.providerKey ? { providerKey: row.providerKey } : {}),
+          providerKey: row.providerKey,
           ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
           ...(row.sourceRawSegmentId ? { sourceRawSegmentId: row.sourceRawSegmentId } : {}),
         } as PersistedReasoningDisplayBlock) : null
@@ -332,7 +332,7 @@ export async function listReasoningDisplayBlocksByMessageIds(messageIds: Readonl
         type: 'opaque',
         label,
         ...(row.warning ? { warning: row.warning } : {}),
-        ...(row.providerKey ? { providerKey: row.providerKey } : {}),
+        providerKey: row.providerKey,
         ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
         ...(row.sourceRawSegmentId ? { sourceRawSegmentId: row.sourceRawSegmentId } : {}),
       } as PersistedReasoningDisplayBlock) : null

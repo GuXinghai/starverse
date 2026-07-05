@@ -666,7 +666,7 @@ const ReasoningDisplayBlockSchema = z.object({
   alt: z.string().optional(),
   label: z.string().optional(),
   warning: z.string().optional(),
-  providerKey: z.string().optional(),
+  providerKey: z.string().min(1),
   sourceEventType: z.string().optional(),
   sourceRawSegmentId: z.number().int().positive().optional(),
 })

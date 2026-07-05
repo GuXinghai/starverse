@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS message_reasoning_display_blocks (
   alt TEXT,
   label TEXT,
   warning TEXT,
-  provider_key TEXT,
+  provider_key TEXT NOT NULL CHECK (length(provider_key) > 0),
   source_event_type TEXT,
   source_raw_segment_id INTEGER REFERENCES message_reasoning_detail_segments(segment_id) ON DELETE SET NULL,
   payload_json TEXT,

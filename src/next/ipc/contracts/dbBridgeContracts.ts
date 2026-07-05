@@ -91,7 +91,7 @@ export type DecodedReasoningDisplayBlock = Readonly<{
   alt: string | null
   label: string | null
   warning: string | null
-  providerKey: string | null
+  providerKey: string
   sourceEventType: string | null
   sourceRawSegmentId: number | null
   finalAt: number | null
@@ -1173,7 +1173,7 @@ const reasoningDisplayBlockSchema = z.object({
   alt: z.string().nullable().optional(),
   label: z.string().nullable().optional(),
   warning: z.string().nullable().optional(),
-  providerKey: z.string().nullable().optional(),
+  providerKey: nonEmpty,
   sourceEventType: z.string().nullable().optional(),
   sourceRawSegmentId: z.number().int().positive().nullable().optional(),
   finalAt: z.number().int().nonnegative().nullable().optional(),
@@ -1193,7 +1193,7 @@ const reasoningDisplayBlockSchema = z.object({
   alt: row.alt ?? null,
   label: row.label ?? null,
   warning: row.warning ?? null,
-  providerKey: row.providerKey ?? null,
+  providerKey: row.providerKey,
   sourceEventType: row.sourceEventType ?? null,
   sourceRawSegmentId: row.sourceRawSegmentId ?? null,
   finalAt: row.finalAt ?? null,
