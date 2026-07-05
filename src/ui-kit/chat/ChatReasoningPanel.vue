@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, watchEffect } from 'vue'
-import type { ReasoningDisplayBlock, ReasoningPiece, ReasoningView } from './types'
+import type { ReasoningDisplayBlock, LegacyReasoningPiece, ReasoningView } from './types'
 import ReasoningRichText from './ReasoningRichText.vue'
 import { t } from '@/shared/i18n'
 
@@ -8,7 +8,7 @@ const props = withDefaults(
   defineProps<{
     messageId?: string | null
     reasoningView: ReasoningView | null
-    reasoningPieces?: ReasoningPiece[] | null
+    legacyReasoningPieces?: LegacyReasoningPiece[] | null
     isStreaming?: boolean
     title?: string
     emptyText?: string
@@ -20,8 +20,8 @@ const props = withDefaults(
   },
 )
 
-const reasoningPieces = computed(() => {
-  const pieces = props.reasoningPieces ?? props.reasoningView?.reasoningPieces
+const legacyReasoningPieces = computed(() => {
+  const pieces = props.legacyReasoningPieces ?? props.reasoningView?.reasoningPieces
   if (!Array.isArray(pieces)) return null
   const normalized = pieces.filter((piece) => {
     if (piece?.type === 'text') return piece.text.trim().length > 0
@@ -44,15 +44,15 @@ const displayBlocks = computed(() => {
 })
 
 const hasDisplayBlocks = computed(() => Array.isArray(displayBlocks.value) && displayBlocks.value.length > 0)
-const hasPieces = computed(() => Array.isArray(reasoningPieces.value) && reasoningPieces.value.length > 0)
+const hasLegacyPieces = computed(() => Array.isArray(legacyReasoningPieces.value) && legacyReasoningPieces.value.length > 0)
 
 const hasAnyReasoningText = computed(() => {
   if (!props.reasoningView) return false
   const hasText = Boolean(props.reasoningView.summaryText || props.reasoningView.reasoningText)
-  return hasText || hasPieces.value || hasDisplayBlocks.value
+  return hasText || hasLegacyPieces.value || hasDisplayBlocks.value
 })
 
-const shouldRenderStandaloneText = computed(() => !hasPieces.value && !hasDisplayBlocks.value)
+const shouldRenderStandaloneText = computed(() => !hasLegacyPieces.value && !hasDisplayBlocks.value)
 
 const reasoningBodyText = computed(() => {
   if (!shouldRenderStandaloneText.value) return ''
@@ -72,7 +72,7 @@ const formattedDuration = computed(() => {
   return `${(ms / 1000).toFixed(2)}s`
 })
 
-function summarizeReasoningPiece(piece: ReasoningPiece, index: number) {
+function summarizeLegacyReasoningPiece(piece: LegacyReasoningPiece, index: number) {
   if (piece.type === 'image') {
     return {
       index,
@@ -110,7 +110,7 @@ function summarizeDisplayBlock(block: ReasoningDisplayBlock, index: number) {
 
 watchEffect(() => {
   if (typeof import.meta !== 'undefined' && !(import.meta as any).env?.DEV) return
-  const pieces = reasoningPieces.value ?? []
+  const pieces = legacyReasoningPieces.value ?? []
   const blocks = displayBlocks.value ?? []
   const hasImagePiece = pieces.some((piece) => piece.type === 'image')
   const hasImageBlock = blocks.some((block) => block.type === 'image')
@@ -124,9 +124,9 @@ watchEffect(() => {
     summaryTextLen: summaryText.length,
     summaryTextPreview: summaryText.slice(0, 120),
     reasoningTextLen: props.reasoningView?.reasoningText?.length ?? 0,
-    piecesSource: props.reasoningPieces ? 'prop' : 'reasoningView',
+    piecesSource: props.legacyReasoningPieces ? 'prop' : 'reasoningView',
     displayBlocks: blocks.map(summarizeDisplayBlock),
-    pieces: pieces.map(summarizeReasoningPiece),
+    pieces: pieces.map(summarizeLegacyReasoningPiece),
   })
 })
 </script>
@@ -199,13 +199,13 @@ watchEffect(() => {
             </template>
           </div>
 
-          <div v-else-if="reasoningBodyText || hasPieces" class="space-y-2 rounded border border-gray-200 bg-white p-2">
+          <div v-else-if="reasoningBodyText || hasLegacyPieces" class="space-y-2 rounded border border-gray-200 bg-white p-2">
             <ReasoningRichText
               v-if="reasoningBodyText"
               :text="reasoningBodyText"
               :streaming="props.isStreaming === true"
             />
-            <template v-for="piece in reasoningPieces ?? []" :key="piece.id">
+            <template v-for="piece in legacyReasoningPieces ?? []" :key="piece.id">
               <ReasoningRichText
                 v-if="piece.type === 'text'"
                 :text="piece.text"

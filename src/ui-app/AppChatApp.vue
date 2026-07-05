@@ -385,7 +385,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                     v-if="message.role === 'assistant' && shouldShowInlineReasoning(message)"
                     :messageId="message.messageId"
                     :reasoningView="message.reasoningView"
-                    :reasoningPieces="message.messageId === lastAssistantMessageId ? lastAssistantReasoningPieces : null"
+                    :legacyReasoningPieces="message.messageId === lastAssistantMessageId ? lastAssistantReasoningPieces : null"
                     :collapsed="reasoningRailMode ? !(rightRailOpen && effectiveRightRailView === 'reasoning') : message.reasoningView.panelState === 'collapsed'"
                     :display-mode="reasoningRailMode ? 'rail' : 'inline'"
                     :isStreaming="message.streaming?.isTarget === true && message.streaming?.isComplete !== true"
@@ -820,7 +820,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :reasoningView="lastAssistantReasoningView"
             :reasoningVersion="lastAssistantReasoningVersion"
             :isStreaming="lastAssistantIsStreaming"
-            :reasoningPieces="lastAssistantReasoningPieces"
+            :legacyReasoningPieces="lastAssistantReasoningPieces"
             :localProcessingDurationMs="lastAssistantMessage?.reasoningDurationMs ?? undefined"
           />
           <ChatSessionConsole

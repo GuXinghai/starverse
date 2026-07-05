@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watchEffect } from 'vue'
-import type { ReasoningDisplayBlock, ReasoningView, ReasoningPiece } from '@/next/state/types'
+import type { ReasoningDisplayBlock, ReasoningView, LegacyReasoningPiece } from '@/next/state/types'
 import ReasoningRichText from '@/ui-kit/chat/ReasoningRichText.vue'
 import { t } from '@/shared/i18n'
 
@@ -8,7 +8,7 @@ const props = withDefaults(
   defineProps<{
     messageId?: string | null
     reasoningView: ReasoningView | null
-    reasoningPieces?: ReasoningPiece[] | null
+    legacyReasoningPieces?: LegacyReasoningPiece[] | null
     collapsed: boolean
     displayMode?: 'inline' | 'rail'
     isStreaming?: boolean
@@ -47,8 +47,8 @@ const indicator = computed(() => {
   return props.collapsed ? 'v' : '^'
 })
 
-const reasoningPieces = computed(() => {
-  const pieces = props.reasoningPieces ?? props.reasoningView?.reasoningPieces
+const legacyReasoningPieces = computed(() => {
+  const pieces = props.legacyReasoningPieces ?? props.reasoningView?.reasoningPieces
   if (!Array.isArray(pieces)) return []
   return pieces.filter((piece) => {
     if (piece?.type === 'text') return piece.text.trim().length > 0
@@ -73,11 +73,11 @@ const hasReasoningPayload = computed(() => {
     displayBlocks.value.length > 0 ||
     props.reasoningView?.summaryText ||
     props.reasoningView?.reasoningText ||
-    reasoningPieces.value.length > 0
+    legacyReasoningPieces.value.length > 0
   )
 })
 
-const shouldRenderStandaloneText = computed(() => reasoningPieces.value.length === 0 && displayBlocks.value.length === 0)
+const shouldRenderStandaloneText = computed(() => legacyReasoningPieces.value.length === 0 && displayBlocks.value.length === 0)
 
 const reasoningBodyText = computed(() => {
   if (!shouldRenderStandaloneText.value) return ''
@@ -89,7 +89,7 @@ const reasoningBodyText = computed(() => {
   return parts.join('\n\n')
 })
 
-function summarizeReasoningPiece(piece: ReasoningPiece, index: number) {
+function summarizeLegacyReasoningPiece(piece: LegacyReasoningPiece, index: number) {
   if (piece.type === 'image') {
     return {
       index,
@@ -127,7 +127,7 @@ function summarizeDisplayBlock(block: ReasoningDisplayBlock, index: number) {
 
 watchEffect(() => {
   if (typeof import.meta !== 'undefined' && !(import.meta as any).env?.DEV) return
-  const pieces = reasoningPieces.value
+  const pieces = legacyReasoningPieces.value
   const blocks = displayBlocks.value
   const hasImagePiece = pieces.some((piece) => piece.type === 'image')
   const hasImageBlock = blocks.some((block) => block.type === 'image')
@@ -143,9 +143,9 @@ watchEffect(() => {
     summaryTextLen: summaryText.length,
     summaryTextPreview: summaryText.slice(0, 120),
     reasoningTextLen: props.reasoningView?.reasoningText?.length ?? 0,
-    piecesSource: props.reasoningPieces ? 'prop' : 'reasoningView',
+    piecesSource: props.legacyReasoningPieces ? 'prop' : 'reasoningView',
     displayBlocks: blocks.map(summarizeDisplayBlock),
-    pieces: pieces.map(summarizeReasoningPiece),
+    pieces: pieces.map(summarizeLegacyReasoningPiece),
   })
 })
 </script>
@@ -196,7 +196,7 @@ watchEffect(() => {
           {{ block.label }}
         </div>
       </template>
-      <template v-if="displayBlocks.length === 0" v-for="piece in reasoningPieces" :key="piece.id">
+      <template v-if="displayBlocks.length === 0" v-for="piece in legacyReasoningPieces" :key="piece.id">
         <ReasoningRichText
           v-if="piece.type === 'text'"
           :text="piece.text"
