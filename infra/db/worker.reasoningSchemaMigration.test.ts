@@ -49,18 +49,46 @@ function expectDisplayBlockSchemaParity(db: Database) {
   expect(uniqueColumnGroups).toContainEqual(['message_id', 'segment_fingerprint'])
 }
 
+function expectDisplayBlockSchemaVersion(db: Database) {
+  const row = db.prepare(`
+    SELECT value_json AS valueJson
+    FROM settings_kv
+    WHERE key = 'reasoning_display_blocks_schema_version'
+  `).get() as { valueJson?: string } | undefined
+  expect(row?.valueJson).toBe('2')
+}
+
 function createTempDbPath(tempDirs: string[]) {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-reasoning-schema-'))
   tempDirs.push(tempDir)
   return path.join(tempDir, 'starverse.sqlite')
 }
 
-function seedLegacyDisplayBlockDatabase(dbPath: string) {
+function seedLegacyDisplayBlockDatabase(
+  dbPath: string,
+  options: Readonly<{ providerKeyNullable?: boolean; includeAssetForeignKeys?: boolean }> = {},
+) {
   const baseSchemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
   const baseSchema = readFileSync(baseSchemaPath, 'utf8')
   const db = new BetterSqlite3(dbPath)
   try {
     db.exec(baseSchema)
+    const providerKeyDefinition = options.providerKeyNullable === false
+      ? 'provider_key TEXT NOT NULL CHECK (length(provider_key) > 0)'
+      : 'provider_key TEXT'
+    const assetIdDefinition = options.includeAssetForeignKeys === true
+      ? 'asset_id TEXT REFERENCES asset(id) ON DELETE SET NULL'
+      : 'asset_id TEXT'
+    const fileAssetIdDefinition = options.includeAssetForeignKeys === true
+      ? 'file_asset_id TEXT REFERENCES file_assets(id) ON DELETE SET NULL'
+      : 'file_asset_id TEXT'
+    const sourceRawSegmentDefinition = options.includeAssetForeignKeys === true
+      ? 'source_raw_segment_id INTEGER REFERENCES message_reasoning_detail_segments(segment_id) ON DELETE SET NULL'
+      : 'source_raw_segment_id INTEGER'
+    const assetValue = options.includeAssetForeignKeys === true ? 'NULL' : "'missing-asset'"
+    const fileAssetValue = options.includeAssetForeignKeys === true ? 'NULL' : "'missing-file-asset'"
+    const sourceRawSegmentValue = options.includeAssetForeignKeys === true ? 'NULL' : '404'
+
     db.exec(`
       DROP TABLE message_reasoning_display_blocks;
       CREATE TABLE message_reasoning_display_blocks (
@@ -72,8 +100,8 @@ function seedLegacyDisplayBlockDatabase(dbPath: string) {
         semantic_role TEXT CHECK (
           semantic_role IS NULL OR semantic_role IN ('summary', 'reasoning', 'thinking', 'thought')
         ),
-        asset_id TEXT,
-        file_asset_id TEXT,
+        ${assetIdDefinition},
+        ${fileAssetIdDefinition},
         url TEXT,
         mime TEXT,
         width INTEGER,
@@ -81,9 +109,9 @@ function seedLegacyDisplayBlockDatabase(dbPath: string) {
         alt TEXT,
         label TEXT,
         warning TEXT,
-        provider_key TEXT,
+        ${providerKeyDefinition},
         source_event_type TEXT,
-        source_raw_segment_id INTEGER,
+        ${sourceRawSegmentDefinition},
         payload_json TEXT,
         created_at INTEGER,
         final_at INTEGER,
@@ -120,10 +148,10 @@ function seedLegacyDisplayBlockDatabase(dbPath: string) {
         0,
         'text',
         'legacy thought',
-        NULL,
-        'missing-asset',
-        'missing-file-asset',
-        404,
+        ${options.providerKeyNullable === false ? "'legacy_provider'" : 'NULL'},
+        ${assetValue},
+        ${fileAssetValue},
+        ${sourceRawSegmentValue},
         @now,
         'legacy-fingerprint'
       )
@@ -216,40 +244,45 @@ describe('DbWorkerRuntime reasoning schema migration', () => {
     const runtime = new DbWorkerRuntime({ dbPath })
     try {
       expectDisplayBlockSchemaParity(runtime.db)
+      expectDisplayBlockSchemaVersion(runtime.db)
     } finally {
       runtime.shutdown()
     }
   })
 
-  it('rebuilds legacy reasoning display block schema to match fresh constraints', () => {
+  it('drops and recreates legacy reasoning display block table with nullable providerKey', () => {
     const dbPath = createTempDbPath(tempDirs)
-    seedLegacyDisplayBlockDatabase(dbPath)
+    seedLegacyDisplayBlockDatabase(dbPath, { providerKeyNullable: true, includeAssetForeignKeys: true })
 
     const runtime = new DbWorkerRuntime({ dbPath })
     try {
       expectDisplayBlockSchemaParity(runtime.db)
-
-      const row = runtime.db.prepare(`
-        SELECT
-          provider_key AS providerKey,
-          asset_id AS assetId,
-          file_asset_id AS fileAssetId,
-          source_raw_segment_id AS sourceRawSegmentId
+      expectDisplayBlockSchemaVersion(runtime.db)
+      const count = runtime.db.prepare(`
+        SELECT COUNT(*) AS count
         FROM message_reasoning_display_blocks
         WHERE block_id = 'legacy-display-1'
-      `).get() as {
-        providerKey: string
-        assetId: string | null
-        fileAssetId: string | null
-        sourceRawSegmentId: number | null
-      }
+      `).get() as { count: number }
+      expect(count.count).toBe(0)
+    } finally {
+      runtime.shutdown()
+    }
+  })
 
-      expect(row).toEqual({
-        providerKey: 'unknown_legacy',
-        assetId: null,
-        fileAssetId: null,
-        sourceRawSegmentId: null,
-      })
+  it('drops and recreates legacy reasoning display block table without asset/raw foreign keys', () => {
+    const dbPath = createTempDbPath(tempDirs)
+    seedLegacyDisplayBlockDatabase(dbPath, { providerKeyNullable: false, includeAssetForeignKeys: false })
+
+    const runtime = new DbWorkerRuntime({ dbPath })
+    try {
+      expectDisplayBlockSchemaParity(runtime.db)
+      expectDisplayBlockSchemaVersion(runtime.db)
+      const count = runtime.db.prepare(`
+        SELECT COUNT(*) AS count
+        FROM message_reasoning_display_blocks
+        WHERE block_id = 'legacy-display-1'
+      `).get() as { count: number }
+      expect(count.count).toBe(0)
     } finally {
       runtime.shutdown()
     }
