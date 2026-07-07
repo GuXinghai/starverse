@@ -19,6 +19,7 @@ import {
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
 import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
+import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
 
 export const GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS = [
   'google-ai-studio-chat:stream-text',
@@ -37,6 +38,7 @@ export type GoogleAIStudioTextChatPayload = Readonly<{
   messages?: unknown
   currentUserContentBlocks?: unknown
   geminiThinking?: unknown
+  generationParams?: unknown
   imageGeneration?: unknown
   timeoutMs?: unknown
 }>
@@ -70,6 +72,7 @@ type ValidatedTextChatSuccess = Readonly<{
   messages: GoogleAIStudioTextChatMessage[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
   geminiThinking?: GeminiThinkingConfig
+  generationParams?: ProviderStreamConfig['generationParams']
   imageGeneration?: ProviderStreamConfig['imageGeneration']
   timeoutMs: number
 }>
@@ -159,19 +162,6 @@ function isPlainRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
 }
 
-function clonePlainJsonObject(value: unknown): Record<string, unknown> | null | undefined {
-  if (value === undefined || value === null) return undefined
-  if (!isPlainRecord(value)) return null
-  try {
-    const text = JSON.stringify(value)
-    if (text.length > 20000) return null
-    const parsed = JSON.parse(text)
-    return isPlainRecord(parsed) ? parsed : null
-  } catch {
-    return null
-  }
-}
-
 function validateImageGenerationConfig(raw: unknown): ProviderStreamConfig['imageGeneration'] | null | undefined {
   if (raw === undefined || raw === null) return undefined
   if (!isPlainRecord(raw)) return null
@@ -182,7 +172,6 @@ function validateImageGenerationConfig(raw: unknown): ProviderStreamConfig['imag
     outputMode?: 'auto' | 'image_only' | 'image_and_text'
     aspectRatio?: string
     imageSize?: '512' | '1K' | '2K' | '4K' | ''
-    imageConfig?: Record<string, unknown>
   } = {}
 
   if ('capabilityClass' in raw) {
@@ -209,11 +198,6 @@ function validateImageGenerationConfig(raw: unknown): ProviderStreamConfig['imag
     if (raw.imageSize !== '' && raw.imageSize !== '512' && raw.imageSize !== '1K' && raw.imageSize !== '2K' && raw.imageSize !== '4K') return null
     out.imageSize = raw.imageSize
   }
-  if ('imageConfig' in raw) {
-    const imageConfig = clonePlainJsonObject(raw.imageConfig)
-    if (imageConfig === null) return null
-    if (imageConfig) out.imageConfig = imageConfig
-  }
 
   return Object.keys(out).length > 0 ? out : undefined
 }
@@ -221,14 +205,7 @@ function validateImageGenerationConfig(raw: unknown): ProviderStreamConfig['imag
 function extractImageSizeForValidation(imageGeneration: ProviderStreamConfig['imageGeneration']): unknown {
   if (!imageGeneration) return undefined
   if (imageGeneration.imageSize) return imageGeneration.imageSize
-  const imageConfig = imageGeneration.imageConfig
-  if (!imageConfig || typeof imageConfig !== 'object' || Array.isArray(imageConfig)) return undefined
-  const record = imageConfig as Record<string, unknown>
-  if (typeof record.image_size === 'string') return record.image_size.trim()
-  const responseFormat = record.response_format
-  if (!responseFormat || typeof responseFormat !== 'object' || Array.isArray(responseFormat)) return undefined
-  const responseRecord = responseFormat as Record<string, unknown>
-  return typeof responseRecord.image_size === 'string' ? responseRecord.image_size.trim() : undefined
+  return undefined
 }
 
 export function validateGoogleAIStudioTextChatPayload(payload: unknown): ValidatedTextChatPayload {
@@ -261,6 +238,10 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
   if (imageGeneration === null) {
     return staticFailure('invalid_payload', 'Google AI Studio image generation payload is invalid.')
   }
+  const generationParams = validateProviderGenerationParamsPayload(record.generationParams)
+  if (generationParams === null) {
+    return staticFailure('invalid_payload', 'Google AI Studio generation params payload is invalid.')
+  }
   if (imageGeneration) {
     const imageSizeValidation = validateGeminiImageGenerationImageSize({
       model,
@@ -279,6 +260,7 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     messages,
     ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
     ...(geminiThinking ? { geminiThinking } : {}),
+    ...(generationParams ? { generationParams } : {}),
     ...(imageGeneration ? { imageGeneration } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
@@ -382,6 +364,7 @@ function buildProviderRequest(input: Readonly<{
       model: input.request.model,
       requestedReasoningMode: 'auto',
       ...(input.request.geminiThinking ? { geminiThinking: input.request.geminiThinking } : {}),
+      ...(input.request.generationParams ? { generationParams: input.request.generationParams } : {}),
       ...(input.request.imageGeneration ? { imageGeneration: input.request.imageGeneration } : {}),
     },
   }

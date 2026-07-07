@@ -6,7 +6,6 @@ export type ImageGenerationUserConfig = Readonly<{
   outputMode: ImageGenerationOutputMode
   aspectRatio: string
   imageSize: ImageGenerationImageSize | ''
-  advancedJson: string
 }>
 
 export type ConvoImageGenerationMode = 'default' | 'custom'
@@ -22,7 +21,6 @@ export const DEFAULT_IMAGE_GENERATION_USER_CONFIG: ImageGenerationUserConfig = {
   outputMode: 'auto',
   aspectRatio: '',
   imageSize: '',
-  advancedJson: '',
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -47,7 +45,6 @@ export function normalizeImageGenerationUserConfig(value: unknown): ImageGenerat
     outputMode,
     aspectRatio: String(raw.aspectRatio ?? '').trim(),
     imageSize,
-    advancedJson: typeof raw.advancedJson === 'string' ? raw.advancedJson : '',
   }
 }
 

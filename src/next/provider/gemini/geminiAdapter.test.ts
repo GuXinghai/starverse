@@ -118,6 +118,7 @@ describe('streamViaGemini', () => {
     }), { status: 200 }))
 
     const events = await collectEvents(streamViaGemini(makeRequest({
+      model: 'gemini-3.1-flash-image',
       imageGeneration: {
         outputMode: 'image_only',
         aspectRatio: '1:1',
@@ -134,7 +135,7 @@ describe('streamViaGemini', () => {
     expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/interactions')
     const body = JSON.parse(init.body)
     expect(body).toMatchObject({
-      model: 'models/gemini-2.5-pro',
+      model: 'models/gemini-3.1-flash-image',
       input: 'Hello',
       response_format: {
         type: 'image',
@@ -168,10 +169,11 @@ describe('streamViaGemini', () => {
         outputMode: 'image_and_text',
         aspectRatio: '1:1',
       },
-      geminiThinking: {
-        mode: 'level',
-        thinkingLevel: 'high',
-        includeThoughts: true,
+      generationParams: {
+        generation_config: {
+          thinking_level: 'high',
+          thinking_summaries: 'auto',
+        },
       },
     }), {
       baseUrl: 'https://generativelanguage.googleapis.com',
@@ -240,10 +242,11 @@ describe('streamViaGemini', () => {
         outputMode: 'image_and_text',
         aspectRatio: '1:1',
       },
-      geminiThinking: {
-        mode: 'level',
-        thinkingLevel: 'high',
-        includeThoughts: true,
+      generationParams: {
+        generation_config: {
+          thinking_level: 'high',
+          thinking_summaries: 'auto',
+        },
       },
     }), {
       baseUrl: 'https://generativelanguage.googleapis.com',
@@ -285,6 +288,7 @@ describe('streamViaGemini', () => {
     const fetch = mockFetch(response)
 
     const events = await collectEvents(streamViaGemini(makeRequest({
+      model: 'gemini-3.1-flash-image',
       imageGeneration: {
         outputMode: 'image_and_text',
       },
