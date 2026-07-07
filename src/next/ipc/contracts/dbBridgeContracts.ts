@@ -1275,7 +1275,7 @@ const webSearchDefaultsSchema = z.object({
   value: definedUnknownSchema.nullable(),
 })
 
-const samplingParamsDefaultsSchema = z.object({
+const generationParamsDefaultsSchema = z.object({
   value: definedUnknownSchema.nullable(),
 })
 
@@ -1816,8 +1816,8 @@ export function decodeWebSearchDefaultsResponse(raw: unknown): unknown | null {
   return decodeWithSchema('settings.getWebSearchDefaults', webSearchDefaultsSchema, raw).value
 }
 
-export function decodeSamplingParamsDefaultsResponse(raw: unknown): unknown | null {
-  return decodeWithSchema('settings.getSamplingParamsDefaults', samplingParamsDefaultsSchema, raw).value
+export function decodeGenerationParamsDefaultsResponse(raw: unknown): unknown | null {
+  return decodeWithSchema('settings.getGenerationParamsDefaults', generationParamsDefaultsSchema, raw).value
 }
 
 export function decodeImageGenerationDefaultResponse(raw: unknown): unknown | null {

@@ -4,11 +4,11 @@ import {
   SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED,
   SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE,
   SETTINGS_KEY_DFC_ATTACHMENT_DEFAULTS,
+  SETTINGS_KEY_GENERATION_PARAMS_DEFAULTS,
   SETTINGS_KEY_NETWORK_PROXY,
   SETTINGS_KEY_IMAGE_GENERATION_DEFAULT,
   SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS,
   SETTINGS_KEY_REASONING_PREFS,
-  SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS,
   SETTINGS_KEY_USER_MESSAGE_RENDER_DEFAULT,
   SETTINGS_KEY_WEB_SEARCH_DEFAULTS,
 } from './settingsKeys'
@@ -113,13 +113,13 @@ export class SettingsRepo {
     this.writeJson(SETTINGS_KEY_WEB_SEARCH_DEFAULTS, value)
   }
 
-  getSamplingParamsDefaults(): unknown | null {
-    const value = this.readJson(SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS)
+  getGenerationParamsDefaults(): unknown | null {
+    const value = this.readJson(SETTINGS_KEY_GENERATION_PARAMS_DEFAULTS)
     return value === undefined ? null : value
   }
 
-  setSamplingParamsDefaults(value: unknown): void {
-    this.writeJson(SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS, value)
+  setGenerationParamsDefaults(value: unknown): void {
+    this.writeJson(SETTINGS_KEY_GENERATION_PARAMS_DEFAULTS, value)
   }
 
   getImageGenerationDefault(): unknown | null {
