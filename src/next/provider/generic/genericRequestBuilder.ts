@@ -10,6 +10,7 @@
  */
 
 import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import { applyProviderGenerationParamsPatch } from '@/next/provider/providerGenerationParams'
 import type { OpenAICompatibleChatContentPart } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 export type GenericMessage = Readonly<{
@@ -24,6 +25,9 @@ export type GenericRequest = Readonly<{
   temperature?: number
   top_p?: number
   max_tokens?: number
+  max_completion_tokens?: number
+  presence_penalty?: number
+  frequency_penalty?: number
   user?: string
 }>
 
@@ -39,7 +43,7 @@ export type GenericRequestInput = Readonly<{
  *
  * - `model`, `messages` are required.
  * - `stream: true` is always set.
- * - `temperature`, `top_p`, `max_tokens` included only when present in samplingParams.
+ * - Generation params are included only when present.
  * - `user` included only when provided.
  * - No tools, functions, response_format, reasoning, web_search, plugins,
  *   files/attachments, or non-profile-gated multimodal.
@@ -53,12 +57,19 @@ export function buildGenericRequest(input: GenericRequestInput): GenericRequest 
     stream: true,
   }
 
-  const sampling = config.samplingParams as Record<string, unknown> | undefined
-  if (sampling) {
-    if (typeof sampling.temperature === 'number') request.temperature = sampling.temperature
-    if (typeof sampling.top_p === 'number') request.top_p = sampling.top_p
-    if (typeof sampling.max_tokens === 'number') request.max_tokens = sampling.max_tokens
-  }
+  applyProviderGenerationParamsPatch({
+    target: request,
+    raw: config.generationParams,
+    allowedKeys: new Set([
+      'temperature',
+      'top_p',
+      'max_tokens',
+      'max_completion_tokens',
+      'presence_penalty',
+      'frequency_penalty',
+    ]),
+    providerLabel: 'Generic OpenAI-compatible',
+  })
 
   if (user && user.length > 0) {
     request.user = user

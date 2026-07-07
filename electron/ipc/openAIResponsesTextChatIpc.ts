@@ -12,6 +12,7 @@ import {
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
 import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
+import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
 
 export const OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS = [
   'openai-responses-chat:stream-text',
@@ -29,6 +30,7 @@ export type OpenAIResponsesTextChatPayload = Readonly<{
   model?: unknown
   messages?: unknown
   currentUserContentBlocks?: unknown
+  generationParams?: unknown
   imageGeneration?: unknown
   timeoutMs?: unknown
 }>
@@ -61,6 +63,7 @@ type ValidatedTextChatSuccess = Readonly<{
   model: string
   messages: OpenAIResponsesTextChatMessage[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  generationParams?: ProviderStreamConfig['generationParams']
   imageGeneration?: ProviderStreamConfig['imageGeneration']
   timeoutMs: number
 }>
@@ -199,6 +202,10 @@ export function validateOpenAIResponsesTextChatPayload(payload: unknown): Valida
   if (imageGeneration === null) {
     return staticFailure('invalid_payload', 'OpenAI Responses image generation payload is invalid.')
   }
+  const generationParams = validateProviderGenerationParamsPayload(record.generationParams)
+  if (generationParams === null) {
+    return staticFailure('invalid_payload', 'OpenAI Responses generation params payload is invalid.')
+  }
 
   return {
     ok: true,
@@ -207,6 +214,7 @@ export function validateOpenAIResponsesTextChatPayload(payload: unknown): Valida
     model,
     messages,
     ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
+    ...(generationParams ? { generationParams } : {}),
     ...(imageGeneration ? { imageGeneration } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
@@ -272,6 +280,7 @@ function buildProviderRequest(input: Readonly<{
     config: {
       model: input.request.model,
       requestedReasoningMode: 'auto',
+      ...(input.request.generationParams ? { generationParams: input.request.generationParams } : {}),
       ...(input.request.imageGeneration ? { imageGeneration: input.request.imageGeneration } : {}),
     },
   }

@@ -8,6 +8,7 @@
  */
 
 import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import { applyProviderGenerationParamsPatch } from '@/next/provider/providerGenerationParams'
 
 // ---------------------------------------------------------------------------
 // Anthropic request types — provider-native schema, contained here
@@ -50,8 +51,10 @@ export type AnthropicRequest = Readonly<{
   system?: string
   temperature?: number
   top_p?: number
+  top_k?: number
   tools?: ReadonlyArray<unknown>
   thinking?: AnthropicThinkingConfig
+  output_config?: Readonly<Record<string, unknown>>
 }>
 
 // ---------------------------------------------------------------------------
@@ -76,37 +79,18 @@ export type AnthropicRequestInput = Readonly<{
  * - `model`, `messages`, `max_tokens` are required.
  * - `stream: true` is always set.
  * - `system` is included only when present.
- * - `temperature`, `top_p` are included only when present.
+ * - Generation params are included only when present.
  * - `tools` is passed through only when non-empty.
- * - `thinking` config is included only when reasoning mode is 'effort' and budget is set.
+ * - `thinking` config is included only through generationParams.
  * - No OpenRouter plugins, no provider.require_parameters, no DeepSeek reasoning_effort.
  */
 export function buildAnthropicRequest(input: AnthropicRequestInput): AnthropicRequest {
   const { model, messages, config, system, maxTokens } = input
 
-  // Resolve thinking budget first (may affect max_tokens)
-  let thinkingConfig: AnthropicThinkingConfig | undefined
-  if (config.requestedReasoningMode === 'effort') {
-    const budgetTokens = resolveThinkingBudget(config.requestedReasoningEffort)
-    if (budgetTokens !== undefined) {
-      thinkingConfig = { type: 'enabled', budget_tokens: budgetTokens }
-    }
-  }
-
-  // Compute max_tokens.
-  // Anthropic-specific invariant: max_tokens > thinking.budget_tokens
-  // (required by Anthropic extended-thinking API).
-  // If thinking is enabled and the effective max_tokens is not already
-  // greater than the budget, raise it to budget + 1.
-  const defaultMaxTokens = maxTokens ?? 4096
-  const effectiveMaxTokens = thinkingConfig
-    ? Math.max(defaultMaxTokens, thinkingConfig.budget_tokens + 1)
-    : defaultMaxTokens
-
   const request: Record<string, unknown> = {
     model,
     messages,
-    max_tokens: effectiveMaxTokens,
+    max_tokens: maxTokens ?? 4096,
     stream: true,
   }
 
@@ -115,21 +99,17 @@ export function buildAnthropicRequest(input: AnthropicRequestInput): AnthropicRe
     request.system = system
   }
 
-  // Sampling params
-  const sampling = config.samplingParams as Record<string, unknown> | undefined
-  if (sampling) {
-    if (typeof sampling.temperature === 'number') request.temperature = sampling.temperature
-    if (typeof sampling.top_p === 'number') request.top_p = sampling.top_p
-  }
+  applyProviderGenerationParamsPatch({
+    target: request,
+    raw: config.generationParams,
+    allowedKeys: new Set(['max_tokens', 'temperature', 'top_p', 'top_k', 'thinking', 'output_config']),
+    providerLabel: 'Anthropic Messages',
+  })
+  enforceAnthropicThinkingBudgetInvariant(request)
 
   // Tools — pass-through only when non-empty
   if (config.tools && config.tools.length > 0) {
     request.tools = config.tools
-  }
-
-  // Thinking config
-  if (thinkingConfig) {
-    request.thinking = thinkingConfig
   }
 
   return request as AnthropicRequest
@@ -139,18 +119,21 @@ export function buildAnthropicRequest(input: AnthropicRequestInput): AnthropicRe
 // Internal helpers
 // ---------------------------------------------------------------------------
 
-function resolveThinkingBudget(effort: string | undefined): number | undefined {
-  switch (effort) {
-    case 'low':
-    case 'minimal':
-      return 1024
-    case 'medium':
-      return 4096
-    case 'high':
-      return 16384
-    case 'xhigh':
-      return 32768
-    default:
-      return undefined
+function getGenerationParamThinkingBudget(request: Record<string, unknown>): number | undefined {
+  const thinking = request.thinking
+  if (!thinking || typeof thinking !== 'object' || Array.isArray(thinking)) return undefined
+  const budget = (thinking as Record<string, unknown>).budget_tokens
+  if (typeof budget !== 'number' || !Number.isFinite(budget)) return undefined
+  return Math.trunc(budget)
+}
+
+function enforceAnthropicThinkingBudgetInvariant(request: Record<string, unknown>) {
+  const budgetTokens = getGenerationParamThinkingBudget(request)
+  if (budgetTokens === undefined) return
+  const maxTokens = typeof request.max_tokens === 'number' && Number.isFinite(request.max_tokens)
+    ? Math.trunc(request.max_tokens)
+    : 4096
+  if (maxTokens <= budgetTokens) {
+    request.max_tokens = budgetTokens + 1
   }
 }

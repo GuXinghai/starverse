@@ -764,7 +764,7 @@ describe('streamViaGeneric raw transport compatibility fixture', () => {
       const fetch = mockFetch(response)
 
       const events = await collectEvents(streamViaGeneric(makeRequest({
-        samplingParams: { temperature: 0.7, max_tokens: 1024 },
+        generationParams: { temperature: 0.7, max_tokens: 1024 },
       }), {
         baseUrl: 'https://api.example.com/v1',
         apiKey: VALID_API_KEY,

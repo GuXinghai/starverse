@@ -2,7 +2,6 @@ import { buildOpenRouterChatCompletionsRequest } from '@/next/openrouter/buildRe
 import type { OpenRouterImageConfig, OpenRouterOutputModality } from '@/next/openrouter/buildRequest'
 import type { OpenRouterAdditionalPlugin } from '@/next/openrouter/buildRequest'
 import type { OpenRouterWebRequestPatch } from '@/next/openrouter/searchSettingsResolver'
-import type { OpenRouterSamplingParamsPatch } from '@/next/openrouter/samplingParamsResolver'
 import { decodeOpenRouterSSE } from '@/next/openrouter/sse/decoder'
 import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
 import { resolveImageGenerationRequestModalities } from '@/next/openrouter/imageGenerationContract'
@@ -361,7 +360,7 @@ export type LiveRequestConfig = Readonly<{
     requestPatch: OpenRouterWebRequestPatch
     resolvedMode?: 'enable' | 'default' | 'disable'
   }>
-  samplingParams?: OpenRouterSamplingParamsPatch
+  generationParams?: Record<string, unknown>
   imageGeneration?: Readonly<{
     capabilityClass?: ImageCapabilityClass
     modalities?: ReadonlyArray<OpenRouterOutputModality>
@@ -586,13 +585,6 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
 
   const messages = buildOpenRouterMessages(internalMessages, { mode: options.contextMode ?? 'default' })
 
-  const reasoning =
-    options.config.requestedReasoningMode === 'auto'
-      ? undefined
-      : {
-        effort: options.config.requestedReasoningEffort ?? 'none',
-        ...(options.config.requestedReasoningExclude === true ? { exclude: true } : {}),
-      }
   const imageGenerationPatch = resolveImageGenerationPatch({
     imageGeneration: options.config.imageGeneration,
   })
@@ -605,9 +597,8 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     tools: options.config.tools ?? [],
     ...imageGenerationPatch,
     ...(options.config.webSearch?.requestPatch ? { webSearchPatch: options.config.webSearch.requestPatch } : {}),
-    ...(options.config.samplingParams ? { samplingParams: options.config.samplingParams } : {}),
+    ...(options.config.generationParams ? { generationParams: options.config.generationParams } : {}),
     ...(providerRequireParameters === true ? { providerRequireParameters: true } : {}),
-    ...(reasoning ? { reasoning } : {}),
     ...(options.config.openRouterAdditionalPlugins ? { additionalPlugins: options.config.openRouterAdditionalPlugins } : {}),
     ...streamDebugPatch,
   })

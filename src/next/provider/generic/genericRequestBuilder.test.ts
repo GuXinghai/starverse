@@ -32,7 +32,7 @@ describe('buildGenericRequest', () => {
     const req = buildGenericRequest({
       model: 'gpt-4o-mini',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { temperature: 0.7 } }),
+      config: baseConfig({ generationParams: { temperature: 0.7 } }),
     })
     expect(req.temperature).toBe(0.7)
     expect(req.top_p).toBeUndefined()
@@ -43,7 +43,7 @@ describe('buildGenericRequest', () => {
     const req = buildGenericRequest({
       model: 'gpt-4o-mini',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { top_p: 0.9 } }),
+      config: baseConfig({ generationParams: { top_p: 0.9 } }),
     })
     expect(req.top_p).toBe(0.9)
   })
@@ -52,7 +52,7 @@ describe('buildGenericRequest', () => {
     const req = buildGenericRequest({
       model: 'gpt-4o-mini',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { max_tokens: 1024 } }),
+      config: baseConfig({ generationParams: { max_tokens: 1024 } }),
     })
     expect(req.max_tokens).toBe(1024)
   })

@@ -1018,6 +1018,7 @@ interface Window {
       assistantMessageId: string
       model: string
       messages: OpenAIResponsesTextChatMessage[]
+      generationParams?: unknown
       imageGeneration?: unknown
       timeoutMs?: number
     }) => Promise<OpenAIResponsesTextChatStartResult>
@@ -1032,6 +1033,7 @@ interface Window {
       model: string
       messages: GoogleAIStudioTextChatMessage[]
       geminiThinking?: GeminiThinkingConfig
+      generationParams?: unknown
       imageGeneration?: unknown
       timeoutMs?: number
     }) => Promise<GoogleAIStudioTextChatStartResult>
@@ -1045,6 +1047,7 @@ interface Window {
       assistantMessageId: string
       model: string
       messages: AnthropicTextChatMessage[]
+      generationParams?: unknown
       timeoutMs?: number
     }) => Promise<AnthropicTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>
@@ -1057,6 +1060,7 @@ interface Window {
       assistantMessageId: string
       model: string
       messages: DeepSeekTextChatMessage[]
+      generationParams?: unknown
       timeoutMs?: number
     }) => Promise<DeepSeekTextChatStartResult>
     abortTextChat?: (requestId: string) => Promise<{ ok: true }>

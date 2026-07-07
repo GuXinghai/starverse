@@ -141,7 +141,7 @@ describe('Generic endpoint fixture metadata boundary', () => {
       capability: expect.objectContaining({
         textChat: true,
         streamingText: true,
-        samplingParams: true,
+        generationParams: true,
         tools: false,
         reasoning: false,
         webSearch: false,
@@ -171,12 +171,12 @@ describe('Generic endpoint fixture metadata boundary', () => {
 
   it('preserves conservative capability shape pressure and only allows disabling supported fields', () => {
     const meta = toGenericEndpointFixtureMetadata(validConfig({
-      capabilityOverride: { samplingParams: false, tools: false },
+      capabilityOverride: { generationParams: false, tools: false },
     }))
 
     expect(isError(meta)).toBe(false)
     if (!isError(meta)) {
-      expect(meta.capability.samplingParams).toBe(false)
+      expect(meta.capability.generationParams).toBe(false)
       expect(meta.capability.tools).toBe(false)
       expect(meta.capability.reasoning).toBe(false)
       expect(meta.capability.webSearch).toBe(false)
@@ -619,12 +619,12 @@ describe('resolveGenericEndpointDescriptor', () => {
 
   it('disabling a supported feature is allowed', () => {
     const result = resolveGenericEndpointDescriptor(
-      validConfig({ capabilityOverride: { samplingParams: false } }),
+      validConfig({ capabilityOverride: { generationParams: false } }),
       validResolver(),
     )
     expect(isDescriptor(result)).toBe(true)
     if (isDescriptor(result)) {
-      expect(result.capability.samplingParams).toBe(false)
+      expect(result.capability.generationParams).toBe(false)
     }
   })
 
@@ -746,9 +746,9 @@ describe('toSafeGenericEndpointMetadata', () => {
 
   it('metadata reflects valid capability override', () => {
     const meta = toSafeGenericEndpointMetadata(
-      validConfig({ capabilityOverride: { samplingParams: false } }),
+      validConfig({ capabilityOverride: { generationParams: false } }),
     )
-    expect(meta.capability.samplingParams).toBe(false)
+    expect(meta.capability.generationParams).toBe(false)
     expect(meta.capability.tools).toBe(false)
   })
 
