@@ -91,7 +91,7 @@
         "model": "模型",
         "reasoning": "推理",
         "webSearch": "联网搜索",
-        "sampling": "采样",
+        "generationParams": "生成参数",
         "imageGeneration": "图像生成"
       },
       "display": {
@@ -243,6 +243,7 @@
         "providerManaged": "开启",
         "geminiImageProviderManaged": "Gemini 生图模型使用提供方托管的推理。模型支持时，Starverse 可以请求返回推理摘要。",
         "geminiUnsupported": "该模型不可使用 Gemini 推理控制。",
+        "openAIResponsesUnsupported": "该 OpenAI Responses 模型不提供显式推理努力程度控制。",
         "effort": {
           "low": "低",
           "medium": "中",
@@ -254,6 +255,57 @@
           "low": "低",
           "high": "高"
         }
+      }
+    },
+    "generationParams": {
+      "title": "参数",
+      "show": "显示",
+      "hide": "隐藏",
+      "showAdvanced": "显示高级参数",
+      "hideAdvanced": "隐藏高级参数",
+      "reset": "重置",
+      "configuredCount": "已配置 {count} 项",
+      "empty": "当前提供方/模型没有可用的生成参数。",
+      "unsupportedForModel": "当前提供方/模型不支持 {param}。",
+      "mode": {
+        "inherit": "继承",
+        "custom": "自定义",
+        "omit": "省略"
+      },
+      "source": {
+        "session": "会话",
+        "project": "项目",
+        "global": "全局",
+        "inherit": "继承"
+      },
+      "state": {
+        "omitted": "已省略",
+        "notSent": "未发送"
+      },
+      "reasoning": {
+        "auto": "自动"
+      },
+      "description": {
+        "temperature": "采样随机性。",
+        "topP": "核采样阈值。",
+        "topK": "Top-k 候选 token 数量上限。",
+        "minP": "最小概率采样阈值。",
+        "topA": "自适应采样阈值。",
+        "frequencyPenalty": "频率惩罚。",
+        "presencePenalty": "存在惩罚。",
+        "repetitionPenalty": "重复惩罚。",
+        "seed": "尽力保持确定性的随机种子。",
+        "maxOutputTokens": "输出 token 上限。",
+        "reasoningEffort": "提供方推理努力程度。",
+        "reasoningSummary": "推理摘要请求。",
+        "thinkingEnabled": "提供方 thinking 开关。",
+        "thinkingBudget": "提供方 thinking budget。",
+        "thinkingLevel": "提供方 thinking level。",
+        "thoughtSummaryMode": "Gemini 思考摘要模式。",
+        "stopSequences": "停止序列。",
+        "googleSearch": "Google 搜索接地。",
+        "imageSearch": "图片搜索接地。",
+        "verbosity": "输出详细程度。"
       }
     },
     "reasoning": {

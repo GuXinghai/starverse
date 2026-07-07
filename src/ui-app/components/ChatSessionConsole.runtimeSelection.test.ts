@@ -17,7 +17,7 @@ function defaultSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
   }
 }
 
@@ -33,7 +33,7 @@ describe('ChatSessionConsole runtime selection controls', () => {
         reasoningPanelDefaultExpanded: false,
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -56,7 +56,7 @@ describe('ChatSessionConsole runtime selection controls', () => {
         reasoningPanelAutoCollapseAfterReasoning: false,
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -91,7 +91,7 @@ describe('ChatSessionConsole runtime selection controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -138,7 +138,7 @@ describe('ChatSessionConsole runtime selection controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 

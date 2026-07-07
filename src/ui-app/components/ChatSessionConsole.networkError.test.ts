@@ -15,7 +15,7 @@ function defaultSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
   }
 }
 
@@ -78,7 +78,7 @@ describe('ChatSessionConsole network error display', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 

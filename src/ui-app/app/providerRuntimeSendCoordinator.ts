@@ -68,6 +68,7 @@ export type ExperimentalRuntimeTextEventInput = Readonly<{
   ollamaConfig?: OllamaTextChatConfig
   localEndpointUrl?: string
   geminiThinking?: GeminiThinkingConfig
+  generationParams?: ProviderStreamConfig['generationParams']
   imageGeneration?: ProviderStreamConfig['imageGeneration']
 }>
 
@@ -225,6 +226,7 @@ export function createExperimentalRuntimeTextEvents(
         userText: input.userText,
         contextMessages: input.contextMessages,
         currentUserContentBlocks: input.currentUserContentBlocks,
+        ...(input.generationParams ? { generationParams: input.generationParams } : {}),
         ...(input.imageGeneration ? { imageGeneration: input.imageGeneration } : {}),
         signal: input.signal,
       })
@@ -237,6 +239,7 @@ export function createExperimentalRuntimeTextEvents(
         contextMessages: input.contextMessages,
         currentUserContentBlocks: input.currentUserContentBlocks,
         ...(input.geminiThinking ? { geminiThinking: input.geminiThinking } : {}),
+        ...(input.generationParams ? { generationParams: input.generationParams } : {}),
         ...(input.imageGeneration ? { imageGeneration: input.imageGeneration } : {}),
         signal: input.signal,
       })
@@ -248,6 +251,7 @@ export function createExperimentalRuntimeTextEvents(
         userText: input.userText,
         contextMessages: input.contextMessages,
         currentUserContentBlocks: input.currentUserContentBlocks,
+        ...(input.generationParams ? { generationParams: input.generationParams } : {}),
         signal: input.signal,
       })
     case 'deepseek':
@@ -258,6 +262,7 @@ export function createExperimentalRuntimeTextEvents(
         userText: input.userText,
         contextMessages: input.contextMessages,
         currentUserContentBlocks: input.currentUserContentBlocks,
+        ...(input.generationParams ? { generationParams: input.generationParams } : {}),
         signal: input.signal,
       })
   }

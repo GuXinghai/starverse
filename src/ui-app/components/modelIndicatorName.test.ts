@@ -28,7 +28,7 @@ describe('ChatAppComposer model indicator', () => {
             mode: 'default',
             detail: null,
           },
-          samplingParams: { detail: null },
+          generationParams: { detail: null },
         },
         modelCatalog: [
           {

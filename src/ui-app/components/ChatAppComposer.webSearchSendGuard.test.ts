@@ -20,7 +20,7 @@ describe('ChatAppComposer web search send guard', () => {
       mode: 'default'
       detail: null
     }
-    samplingParams: { detail: null }
+    generationParams: { detail: null }
   }
 
   afterEach(() => {
@@ -53,7 +53,7 @@ describe('ChatAppComposer web search send guard', () => {
         mode: 'default' as const,
         detail: null,
       },
-      samplingParams: { detail: null },
+      generationParams: { detail: null },
     }
   }
 

@@ -2,7 +2,11 @@
 import { computed, ref } from 'vue'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import type { SearchSettingsLayer, ResolvedSearchSettings } from '@/next/openrouter/searchSettingsResolver'
-import type { SamplingParamsLayer, ResolvedSamplingParams } from '@/next/openrouter/samplingParamsResolver'
+import { getDefaultGenerationParamProfile } from '@/next/generation-params/generationParamProfiles'
+import type {
+  GenerationParamsLayer,
+  ResolvedGenerationParams,
+} from '@/next/generation-params/generationParamTypes'
 import type { ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
 import type {
   CurrentRuntimeSelection,
@@ -12,6 +16,13 @@ import type {
   OpenAIModelAvailabilityResult,
   OpenAIProviderModelAvailability,
 } from '@/next/provider/openai-responses/openAIResponsesModelSource'
+import { OPENAI_RESPONSES_PROVIDER_KEY } from '@/next/provider/openai-responses/openAIResponsesModelSource'
+import {
+  formatOpenAIResponsesAutoReasoningLabel,
+  getOpenAIResponsesReasoningEffortOptions,
+  hasExplicitOpenAIResponsesReasoningEffort,
+  type OpenAIResponsesReasoningEffortSetting,
+} from '@/next/provider/openai-responses/openaiResponsesReasoningPolicy'
 import type {
   DeepSeekModelAvailabilityResult,
   ProviderModelAvailability,
@@ -35,9 +46,9 @@ import type {
   AnthropicModelAvailabilityResult,
   AnthropicProviderModelAvailability,
 } from '@/next/provider/anthropic/anthropicModelSource'
-import type { ChatSessionConfig, ChatSessionConfigImageResolution } from '../app/chatSessionConfig'
+import type { ChatSessionConfig, ChatSessionConfigAspectRatio, ChatSessionConfigImageResolution } from '../app/chatSessionConfig'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
-import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
+import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
 import { t, tf } from '@/shared/i18n'
 import {
@@ -178,7 +189,7 @@ const props = defineProps<{
   reasoningPanelAutoCollapseAfterReasoning?: boolean
   modelCatalog: readonly ModelCatalogItem[]
   webSearchResolved: ResolvedSearchSettings | null
-  samplingParamsResolved: ResolvedSamplingParams | null
+  generationParamsResolved: ResolvedGenerationParams | null
 }>()
 
 const emit = defineEmits<{
@@ -189,10 +200,10 @@ const emit = defineEmits<{
   (e: 'updateWebSearchEnabled', enabled: boolean): void
   (e: 'updateWebSearchLevel', level: 'low' | 'high'): void
   (e: 'updateWebSearchLayer', layer: SearchSettingsLayer | null): void
-  (e: 'updateSamplingParamsLayer', layer: SamplingParamsLayer | null): void
+  (e: 'updateGenerationParamsLayer', layer: GenerationParamsLayer | null): void
   (e: 'updateImageGenerationEnabled', enabled: boolean): void
   (e: 'updateImageGenerationResolution', value: ChatSessionConfigImageResolution): void
-  (e: 'updateImageGenerationAspectRatio', value: '16:9' | '3:4' | '1:1' | '4:3'): void
+  (e: 'updateImageGenerationAspectRatio', value: ChatSessionConfigAspectRatio): void
   (e: 'updateImageGeneration', value: ImageGenerationUserConfig): void
   (e: 'updateOpenRouterChatEnabled', enabled: boolean): void
   (e: 'updateLMStudioChatEnabled', enabled: boolean): void
@@ -238,12 +249,21 @@ const emit = defineEmits<{
 }>()
 
 const disabled = computed(() => props.disabled || props.isRunning)
+const generationParamsProfile = computed(() =>
+  getDefaultGenerationParamProfile(props.sessionConfig.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID, {
+    requestKind: isGoogleImageGenerationModel.value ? 'image_generation' : 'text',
+  })
+)
+const generationParamsModelId = computed(() =>
+  props.sessionConfig.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
+)
 const selectedProviderId = computed<ChatModelSelection['providerId']>(() => props.sessionConfig.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID)
 const selectedModelId = computed(() => props.sessionConfig.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID)
 const openRouterModelValue = computed(() => (
   selectedProviderId.value === DEFAULT_CHAT_PROVIDER_ID ? selectedModelId.value : DEFAULT_OPENROUTER_MODEL_ID
 ))
 const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === 'google_ai_studio')
+const isOpenAIResponsesSelected = computed(() => selectedProviderId.value === OPENAI_RESPONSES_PROVIDER_KEY)
 const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModelId.value))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModelId.value))
 const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModelId.value }))
@@ -255,10 +275,30 @@ const googleThinkingEnabled = computed(() => {
   if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
   return googleThinkingConfig.value.mode !== 'auto' && googleThinkingCapability.value.kind !== 'unsupported'
 })
+const googleImageThinkingLevelValue = computed(() => {
+  const policy = googleImageGenerationPolicy.value
+  const configured = googleThinkingConfig.value.thinkingLevel
+  if (configured && (policy.thinkingLevels as readonly string[]).includes(configured)) return configured
+  return 'defaultThinkingLevel' in policy ? policy.defaultThinkingLevel : policy.thinkingLevels[0] ?? ''
+})
 const imageGenerationSizeOptions = computed<readonly ChatSessionConfigImageResolution[]>(() => {
   if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportedImageSizes
   return ['1K', '2K', '4K']
 })
+const imageGenerationAspectRatioOptions = computed<readonly ChatSessionConfigAspectRatio[]>(() => {
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportedAspectRatios
+  return ['16:9', '3:4', '1:1', '4:3']
+})
+const imageGenerationOutputModeOptions = computed(() => {
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportedOutputModes
+  return ['auto', 'image_only', 'image_and_text'] as const
+})
+const showImageGenerationSizeControl = computed(() =>
+  !isGoogleImageGenerationModel.value || googleImageGenerationPolicy.value.imageSizeMode !== 'hidden'
+)
+const lockImageGenerationSizeControl = computed(() =>
+  isGoogleImageGenerationModel.value && googleImageGenerationPolicy.value.imageSizeMode === 'locked'
+)
 const effectiveImageGenerationEnabled = computed(() =>
   isGoogleImageGenerationModel.value || props.sessionConfig.imageGeneration.enabled
 )
@@ -273,12 +313,38 @@ const effectiveImageGenerationResolution = computed<ChatSessionConfigImageResolu
 )
 const effectiveImageGenerationAspectRatio = computed(() =>
   isGoogleImageGenerationModel.value &&
-    (!props.sessionConfig.imageGeneration.enabled || !props.sessionConfig.imageGeneration.aspectRatio)
+    (
+      !props.sessionConfig.imageGeneration.enabled ||
+      !props.sessionConfig.imageGeneration.aspectRatio ||
+      !(googleImageGenerationPolicy.value.supportedAspectRatios as readonly string[]).includes(props.sessionConfig.imageGeneration.aspectRatio)
+    )
     ? '1:1'
     : props.sessionConfig.imageGeneration.aspectRatio
 )
 const reasoningPanelDefaultExpanded = computed(() => props.reasoningPanelDefaultExpanded !== false)
 const reasoningPanelAutoCollapseAfterReasoning = computed(() => props.reasoningPanelAutoCollapseAfterReasoning === true)
+const openAIResponsesReasoningSupported = computed(() =>
+  isOpenAIResponsesSelected.value && hasExplicitOpenAIResponsesReasoningEffort(selectedModelId.value)
+)
+const openAIResponsesReasoningOptions = computed<readonly OpenAIResponsesReasoningEffortSetting[]>(() =>
+  getOpenAIResponsesReasoningEffortOptions(selectedModelId.value)
+)
+const openAIResponsesReasoningValue = computed<OpenAIResponsesReasoningEffortSetting>(() => {
+  const layerValue = props.sessionConfig.generationParams.detail?.reasoningEffort
+  const customValue = layerValue?.mode === 'custom' && typeof layerValue.value === 'string'
+    ? layerValue.value
+    : null
+  const decision = props.generationParamsResolved?.decisions.reasoningEffort
+  const decisionValue = decision &&
+    (decision.state === 'sent' || decision.state === 'deprecated' || decision.state === 'providerAuto') &&
+    typeof decision.value === 'string'
+    ? decision.value
+    : null
+  const candidate = customValue ?? decisionValue ?? 'auto'
+  return (openAIResponsesReasoningOptions.value as readonly string[]).includes(candidate)
+    ? candidate as OpenAIResponsesReasoningEffortSetting
+    : 'auto'
+})
 function selectedModelFor(providerId: ChatModelSelection['providerId']): string {
   return selectedProviderId.value === providerId ? selectedModelId.value : ''
 }
@@ -548,10 +614,9 @@ const deepSeekAvailabilitySummary = computed(() => {
 })
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
   enabled: effectiveImageGenerationEnabled.value,
-  outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? 'auto',
+  outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? (isGoogleImageGenerationModel.value ? googleImageGenerationPolicy.value.defaultOutputMode : 'auto'),
   aspectRatio: effectiveImageGenerationAspectRatio.value,
-  imageSize: effectiveImageGenerationResolution.value,
-  advancedJson: props.sessionConfig.imageGeneration.detail?.advancedJson ?? '',
+  imageSize: showImageGenerationSizeControl.value ? effectiveImageGenerationResolution.value : '',
 }))
 
 function formatObservedAt(observedAtMs: number): string {
@@ -856,6 +921,22 @@ function formatAnthropicCapabilitySeed(model: AnthropicProviderModelAvailability
 
 function formatReasoningEffort(effort: string): string {
   return t(`chat.console.reasoning.effort.${effort}`)
+}
+
+function formatOpenAIResponsesReasoningOption(option: OpenAIResponsesReasoningEffortSetting): string {
+  if (option === 'auto') {
+    return formatOpenAIResponsesAutoReasoningLabel(selectedModelId.value, t('chat.generationParams.reasoning.auto'))
+  }
+  return option
+}
+
+function onOpenAIResponsesReasoningSelect(option: OpenAIResponsesReasoningEffortSetting) {
+  if (!openAIResponsesReasoningSupported.value) return
+  const current = props.sessionConfig.generationParams.detail ?? {}
+  emit('updateGenerationParamsLayer', {
+    ...current,
+    reasoningEffort: { mode: 'custom', value: option },
+  })
 }
 
 function formatWebSearchLevel(level: string): string {
@@ -1977,21 +2058,44 @@ function chipClass(active: boolean): string {
         </div>
       </section>
 
-      <section class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
+      <section
+        v-if="!(isGoogleImageGenerationModel && googleImageGenerationPolicy.kind === 'legacy_nano_banana')"
+        class="space-y-3 rounded-lg border border-gray-200 bg-gray-50/70 p-3"
+      >
         <div class="flex items-center justify-between gap-2">
           <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.reasoning') }}</div>
           <label class="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
-              :checked="isGoogleAIStudioSelected ? googleThinkingEnabled : props.sessionConfig.reasoning.enabled"
-              :disabled="disabled || isGoogleImageGenerationModel || (isGoogleAIStudioSelected && googleThinkingCapability.kind === 'unsupported')"
+              :checked="isOpenAIResponsesSelected ? openAIResponsesReasoningSupported : isGoogleAIStudioSelected ? googleThinkingEnabled : props.sessionConfig.reasoning.enabled"
+              :disabled="disabled || isOpenAIResponsesSelected || isGoogleImageGenerationModel || (isGoogleAIStudioSelected && googleThinkingCapability.kind === 'unsupported')"
               data-testid="session-reasoning-enabled"
-              @change="isGoogleAIStudioSelected ? onGoogleThinkingEnabledChange(($event.target as HTMLInputElement).checked) : emit('updateReasoningEnabled', ($event.target as HTMLInputElement).checked)"
+              @change="isOpenAIResponsesSelected ? null : isGoogleAIStudioSelected ? onGoogleThinkingEnabledChange(($event.target as HTMLInputElement).checked) : emit('updateReasoningEnabled', ($event.target as HTMLInputElement).checked)"
             />
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div v-if="!isGoogleAIStudioSelected" class="grid grid-cols-3 gap-2">
+        <div v-if="isOpenAIResponsesSelected" class="grid grid-cols-3 gap-2" data-testid="session-openai-responses-reasoning-controls">
+          <button
+            v-for="option in openAIResponsesReasoningOptions"
+            :key="option"
+            type="button"
+            class="rounded-md border px-2 py-1.5 text-sm"
+            :class="chipClass(openAIResponsesReasoningValue === option)"
+            :disabled="disabled || !openAIResponsesReasoningSupported"
+            @click="onOpenAIResponsesReasoningSelect(option)"
+          >
+            {{ formatOpenAIResponsesReasoningOption(option) }}
+          </button>
+          <div
+            v-if="!openAIResponsesReasoningSupported"
+            class="col-span-3 text-xs text-gray-500"
+            data-testid="session-openai-responses-reasoning-unsupported"
+          >
+            {{ t('chat.console.reasoning.openAIResponsesUnsupported') }}
+          </div>
+        </div>
+        <div v-else-if="!isGoogleAIStudioSelected" class="grid grid-cols-3 gap-2">
           <button
             v-for="effort in ['low', 'medium', 'high']"
             :key="effort"
@@ -2034,7 +2138,7 @@ function chipClass(active: boolean): string {
             <span>{{ t('chat.console.reasoning.thinkingLevel') }}</span>
             <select
               class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
-              :value="googleThinkingConfig.thinkingLevel"
+              :value="googleImageThinkingLevelValue"
               :disabled="disabled"
               data-testid="session-google-thinking-level"
               @change="onGoogleThinkingLevelChange"
@@ -2145,14 +2249,16 @@ function chipClass(active: boolean): string {
       </section>
 
       <section class="min-w-0 space-y-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-50/70 p-3">
-        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.sampling') }}</div>
-        <SamplingParamsSettingsEditor
-          :model-value="props.sessionConfig.samplingParams.detail"
+        <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.generationParams') }}</div>
+        <GenerationParamsSettingsEditor
+          :model-value="props.sessionConfig.generationParams.detail"
           :disabled="disabled"
-          :resolved="props.samplingParamsResolved"
+          :resolved="props.generationParamsResolved"
+          :profile="generationParamsProfile"
+          :model-id="generationParamsModelId"
           :collapsible="false"
           compact
-          @update:model-value="emit('updateSamplingParamsLayer', $event)"
+          @update:model-value="emit('updateGenerationParamsLayer', $event)"
         />
       </section>
 
@@ -2170,28 +2276,28 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div class="grid grid-cols-3 gap-2">
+        <div v-if="showImageGenerationSizeControl" class="grid grid-cols-3 gap-2">
           <button
             v-for="resolution in imageGenerationSizeOptions"
             :key="resolution"
             type="button"
             class="rounded-md border px-2 py-1.5 text-sm"
             :class="chipClass(effectiveImageGenerationResolution === resolution)"
-            :disabled="disabled || !effectiveImageGenerationEnabled"
+            :disabled="disabled || !effectiveImageGenerationEnabled || lockImageGenerationSizeControl"
             @click="emit('updateImageGenerationResolution', resolution)"
           >
             {{ resolution }}
           </button>
         </div>
-        <div class="grid grid-cols-4 gap-2">
+        <div class="flex flex-wrap gap-2">
           <button
-            v-for="ratio in ['16:9', '3:4', '1:1', '4:3']"
+            v-for="ratio in imageGenerationAspectRatioOptions"
             :key="ratio"
             type="button"
             class="rounded-md border px-2 py-1.5 text-sm"
             :class="chipClass(effectiveImageGenerationAspectRatio === ratio)"
             :disabled="disabled || !effectiveImageGenerationEnabled"
-            @click="emit('updateImageGenerationAspectRatio', ratio as '16:9' | '3:4' | '1:1' | '4:3')"
+            @click="emit('updateImageGenerationAspectRatio', ratio)"
           >
             {{ ratio }}
           </button>
@@ -2200,6 +2306,10 @@ function chipClass(active: boolean): string {
           :model-value="imageValue"
           :disabled="disabled || !effectiveImageGenerationEnabled"
           :image-size-options="imageGenerationSizeOptions"
+          :aspect-ratio-options="imageGenerationAspectRatioOptions"
+          :output-mode-options="imageGenerationOutputModeOptions"
+          :show-image-size-control="showImageGenerationSizeControl"
+          :lock-image-size-control="lockImageGenerationSizeControl"
           @update:model-value="emit('updateImageGeneration', { ...$event, enabled: effectiveImageGenerationEnabled })"
         />
       </section>

@@ -44,7 +44,6 @@ describe('ChatAppComposer attachments entry', () => {
               outputMode: 'auto' as const,
               aspectRatio: 'default' as const,
               imageSize: 'default' as const,
-              advancedJson: '',
             },
             resolution: 'default' as const,
             aspectRatio: 'default' as const,

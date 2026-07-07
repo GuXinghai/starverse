@@ -1,10 +1,15 @@
 import { render, screen, waitFor } from '@testing-library/vue'
+import { within } from '@testing-library/dom'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppChatApp from './AppChatApp.vue'
 
 describe('ui-app AppChatApp (web search settings UI)', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+
+  function getWebSearchChipBody() {
+    return within(screen.getByTestId('web-search-chip')).getByTestId('capability-chip-body')
+  }
 
   beforeEach(() => {
     let projectMeta: Record<string, unknown> | null = {
@@ -68,7 +73,53 @@ describe('ui-app AppChatApp (web search settings UI)', () => {
       if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
       if (method === 'settings.getUserMessageRenderDefault') return { value: false }
       if (method === 'settings.getWebSearchDefaults') return { value: { searchMode: 'disable', searchDepth: 'medium' } }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
+      if (method === 'settings.getImageGenerationDefault') return { value: null }
+      if (method === 'settings.getDfcAttachmentDefaults') return { value: null }
+      if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
+      if (method === 'settings.setChatReasoningDisplayMode') return { ok: true }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
+      if (method === 'conversationDraft.restore') {
+        return {
+          conversationId: String(params?.conversationId ?? 'c1'),
+          draftText: '',
+          draftMode: 'compose',
+          editingSourceMessageId: null,
+          attachedAssetIds: [],
+          attachments: [],
+          updatedAt: 1,
+        }
+      }
+      if (method === 'conversationDraft.updateText') {
+        return {
+          conversationId: String(params?.conversationId ?? 'c1'),
+          draftText: String(params?.draftText ?? ''),
+          draftMode: 'compose',
+          editingSourceMessageId: null,
+          attachedAssetIds: [],
+          attachments: [],
+          updatedAt: 2,
+        }
+      }
+      if (method === 'sendPlan.buildCurrent') {
+        return {
+          sendPlan: {
+            status: 'sendable',
+            warnings: [],
+            blockingReasons: [],
+            includedAttachments: [],
+            excludedAttachments: [],
+            attachmentPlans: [],
+            requiresModelChange: false,
+            canProceedAfterDroppingExcluded: false,
+            requiresUserConfirmation: false,
+            plannerVersion: 'phase-5/v1',
+          },
+          draftText: String(params?.draftText ?? ''),
+          assets: [],
+        }
+      }
       if (method === 'reasoningIndex.list') return []
       if (method === 'modelCatalog.list') return []
       if (method === 'modelCatalog.queryCore') return { items: [], nextCursor: null }
@@ -85,35 +136,32 @@ describe('ui-app AppChatApp (web search settings UI)', () => {
     ;(globalThis as any).dbBridge = originalDbBridge
   })
 
-  it('updates session effective label immediately when project defaults change and session stays default', async () => {
+  it('updates composer web search chip when project defaults change and session stays default', async () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
     await screen.findByText('hello')
 
-    const sessionButton = await screen.findByTestId('session-web-search-open')
-    expect(sessionButton.textContent ?? '').toContain('Web: On')
-    expect(sessionButton.textContent ?? '').toContain('project')
+    expect(getWebSearchChipBody().textContent ?? '').toContain('low')
 
     await user.click(screen.getByTestId('project-settings-p1'))
     await user.click(await screen.findByTestId('search-mode-default'))
     await user.click(screen.getByTestId('project-web-search-save'))
 
     await waitFor(() => {
-      const label = screen.getByTestId('session-web-search-open').textContent ?? ''
-      expect(label).toContain('Web: Off')
-      expect(label).toContain('global')
+      expect(getWebSearchChipBody().textContent ?? '').toContain('搜索')
     })
 
-    window.dispatchEvent(new CustomEvent('settings:webSearchDefaultsUpdated', {
-      detail: { searchMode: 'enable', searchDepth: 'high' },
-    }))
-
-    await waitFor(() => {
-      const label = screen.getByTestId('session-web-search-open').textContent ?? ''
-      expect(label).toContain('Web: On')
-      expect(label).toContain('global')
-    })
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    expect(invoke).toHaveBeenCalledWith(
+      'project.save',
+      expect.objectContaining({
+        id: 'p1',
+        meta: expect.objectContaining({
+          webSearchDefaults: expect.objectContaining({ searchMode: 'default' }),
+        }),
+      }),
+    )
   })
 
   it('renders composer web search row and persists quick overrides', async () => {
@@ -121,24 +169,20 @@ describe('ui-app AppChatApp (web search settings UI)', () => {
     render(AppChatApp)
 
     await screen.findByText('hello')
-    await screen.findByTestId('composer-web-search-row')
+    await screen.findByTestId('web-search-chip')
 
-    await user.click(screen.getByTestId('composer-web-mode-toggle'))
+    await user.click(getWebSearchChipBody())
     await waitFor(() => {
-      const label = screen.getByTestId('session-web-search-open').textContent ?? ''
-      expect(label).toContain('Web: On')
-      expect(label).toContain('session')
+      expect(getWebSearchChipBody().textContent ?? '').toContain('搜索')
     })
 
-    await user.click(screen.getByTestId('composer-web-mode-toggle'))
+    await user.click(getWebSearchChipBody())
     await waitFor(() => {
-      const label = screen.getByTestId('session-web-search-open').textContent ?? ''
-      expect(label).toContain('Web: Off')
-      expect(label).toContain('session')
+      expect(getWebSearchChipBody().textContent ?? '').toContain('low')
     })
 
-    await user.selectOptions(screen.getByTestId('composer-web-depth-select'), 'custom')
-    await user.selectOptions(screen.getByTestId('composer-web-max-results'), '7')
+    await user.click(within(screen.getByTestId('web-search-chip')).getByTestId('capability-chip-chevron'))
+    await user.click(screen.getAllByTestId('capability-chip-option').find((node) => node.textContent === 'high')!)
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith(
@@ -156,7 +200,7 @@ describe('ui-app AppChatApp (web search settings UI)', () => {
       expect.objectContaining({
         id: 'c1',
         meta: expect.objectContaining({
-          webSearchOverride: expect.objectContaining({ searchDepth: 'custom', maxResults: 7 }),
+          webSearchOverride: expect.objectContaining({ searchMode: 'enable', searchDepth: 'high' }),
         }),
       }),
     )

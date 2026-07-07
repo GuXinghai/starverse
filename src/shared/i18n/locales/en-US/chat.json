@@ -91,7 +91,7 @@
         "model": "Model",
         "reasoning": "Reasoning",
         "webSearch": "Web Search",
-        "sampling": "Sampling",
+        "generationParams": "Generation Parameters",
         "imageGeneration": "Image Generation"
       },
       "display": {
@@ -243,6 +243,7 @@
         "providerManaged": "on",
         "geminiImageProviderManaged": "Gemini image models use provider-managed thinking. Starverse can request summaries when the model supports them.",
         "geminiUnsupported": "Gemini thinking is not available for this model.",
+        "openAIResponsesUnsupported": "This OpenAI Responses model does not expose explicit reasoning effort controls.",
         "effort": {
           "low": "Low",
           "medium": "Medium",
@@ -254,6 +255,57 @@
           "low": "Low",
           "high": "High"
         }
+      }
+    },
+    "generationParams": {
+      "title": "Parameters",
+      "show": "Show",
+      "hide": "Hide",
+      "showAdvanced": "Show advanced",
+      "hideAdvanced": "Hide advanced",
+      "reset": "Reset",
+      "configuredCount": "{count} configured",
+      "empty": "No generation parameters are available for this provider/model.",
+      "unsupportedForModel": "{param} is not supported by this provider/model.",
+      "mode": {
+        "inherit": "inherit",
+        "custom": "custom",
+        "omit": "omit"
+      },
+      "source": {
+        "session": "session",
+        "project": "project",
+        "global": "global",
+        "inherit": "inherit"
+      },
+      "state": {
+        "omitted": "omitted",
+        "notSent": "not sent"
+      },
+      "reasoning": {
+        "auto": "Auto"
+      },
+      "description": {
+        "temperature": "Sampling randomness.",
+        "topP": "Nucleus sampling threshold.",
+        "topK": "Top-k token candidate limit.",
+        "minP": "Minimum probability sampling threshold.",
+        "topA": "Adaptive sampling threshold.",
+        "frequencyPenalty": "Frequency penalty.",
+        "presencePenalty": "Presence penalty.",
+        "repetitionPenalty": "Repetition penalty.",
+        "seed": "Best-effort deterministic seed.",
+        "maxOutputTokens": "Output token limit.",
+        "reasoningEffort": "Provider reasoning effort.",
+        "reasoningSummary": "Reasoning summary request.",
+        "thinkingEnabled": "Provider thinking toggle.",
+        "thinkingBudget": "Provider thinking budget.",
+        "thinkingLevel": "Provider thinking level.",
+        "thoughtSummaryMode": "Gemini thought summary mode.",
+        "stopSequences": "Stop sequences.",
+        "googleSearch": "Google Search grounding.",
+        "imageSearch": "Image Search grounding.",
+        "verbosity": "Output verbosity."
       }
     },
     "reasoning": {

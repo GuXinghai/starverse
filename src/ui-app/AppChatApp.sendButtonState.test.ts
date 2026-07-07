@@ -84,10 +84,26 @@ vi.mock('@/next/live/openRouterLiveStream', () => {
   return { streamOpenRouterChatAsEvents }
 })
 
+vi.mock('@/next/provider/openrouter/openRouterAdapter', () => {
+  async function* streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource(options: any) {
+    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
+    yield { type: 'MetaDelta', meta: { id: 'gen_1', model: 'openai/gpt-4o' } }
+    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hello' }
+    if ((globalThis as any).__testOverrides?.hangStream) {
+      await new Promise<void>((resolve) => {
+        ;(globalThis as any).__testOverrides.hangResolve = resolve
+      })
+    }
+    yield { type: 'StreamDone' }
+  }
+  return { streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource }
+})
+
 describe('ui-app AppChatApp send button state', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronAPI = (globalThis as any).electronAPI
   const originalElectronStore = (globalThis as any).electronStore
+  const originalOpenRouterCredential = (globalThis as any).openRouterCredential
   const originalSetTimeout = globalThis.setTimeout
 
   const draftBox = () => screen.getByTestId('composer-draft') as HTMLTextAreaElement
@@ -196,9 +212,13 @@ describe('ui-app AppChatApp send button state', () => {
         return undefined
       }),
     }
+    ;(globalThis as any).openRouterCredential = {
+      getStatus: vi.fn(async () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })),
+    }
 
     const persisted: Array<any> = []
     let turnCounter = 0
+    let draftText = ''
 
     const invoke = vi.fn(async (method: string, params?: any) => {
       if (method === 'project.getInbox') return null
@@ -206,7 +226,7 @@ describe('ui-app AppChatApp send button state', () => {
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
       if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
       if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
       if (method === 'settings.getUserMessageRenderDefault') return { value: false }
       if (method === 'convo.list') {
@@ -287,11 +307,15 @@ describe('ui-app AppChatApp send button state', () => {
       }
       if (method === 'conversationDraft.restore') {
         if ((globalThis as any).__testOverrides?.draftRestoreResponse) {
-          return (globalThis as any).__testOverrides.draftRestoreResponse
+          const response = (globalThis as any).__testOverrides.draftRestoreResponse
+          return {
+            ...response,
+            draftText: response.draftText ?? draftText,
+          }
         }
         return {
           conversationId: 'c1',
-          draftText: '',
+          draftText,
           draftMode: 'compose',
           editingSourceMessageId: null,
           attachedAssetIds: [],
@@ -300,9 +324,10 @@ describe('ui-app AppChatApp send button state', () => {
         }
       }
       if (method === 'conversationDraft.updateText') {
+        draftText = String(params?.draftText ?? '')
         return {
           conversationId: 'c1',
-          draftText: '',
+          draftText,
           draftMode: 'compose',
           editingSourceMessageId: null,
           attachedAssetIds: [],
@@ -357,6 +382,25 @@ describe('ui-app AppChatApp send button state', () => {
           })
         }
         return makeSendPlanResponse()
+      }
+      if (method === 'sendPlan.prepareOpenRouter') {
+        const sendPlan = makeSendPlanResponse().sendPlan
+        return {
+          sendPlan,
+          contentParts: [],
+          additionalPlugins: [],
+          diagnostics: {
+            sendPlanStatus: sendPlan.status,
+            includedAttachmentCount: 0,
+            excludedAttachmentCount: 0,
+            includedAttachments: [],
+            excludedAttachments: [],
+            injectedPlugins: [],
+            attachmentErrors: [],
+            containsMultimodalParts: false,
+          },
+          hasDraftAttachmentPlans: false,
+        }
       }
       if (method === 'filePipeline.prepareOpenRouterSend') {
         return {
@@ -435,6 +479,8 @@ describe('ui-app AppChatApp send button state', () => {
       if (method === 'message.updateMeta') return { ok: true }
       if (method === 'message.finalize') return { ok: true }
       if (method === 'message.markError') return { ok: true }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
       if (method === 'run.saveSnapshot') return { ok: true }
       if (method === 'run.getSnapshot') return null
       return null
@@ -455,6 +501,7 @@ describe('ui-app AppChatApp send button state', () => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
     globalThis.setTimeout = originalSetTimeout
     try { localStorage.removeItem('sv_event_scheduler') } catch { /* no-op */ }
   })
@@ -497,6 +544,9 @@ describe('ui-app AppChatApp send button state', () => {
     await user.click(textarea)
     await user.type(textarea, 'Hello')
     await waitFor(() => {
+      expect(draftBox().value).toBe('Hello')
+    })
+    await waitFor(() => {
       expect(sendButton()).toBeEnabled()
     })
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
@@ -505,18 +555,35 @@ describe('ui-app AppChatApp send button state', () => {
 
   it('P0: shows Stop button during active stream', async () => {
     ;(globalThis as any).__testOverrides.hangStream = true
+    ;(globalThis as any).__testOverrides.draftRestoreResponse = {
+      conversationId: 'c1',
+      draftText: 'Hello',
+      draftMode: 'compose',
+      editingSourceMessageId: null,
+      attachedAssetIds: [],
+      attachments: [],
+      updatedAt: Date.now(),
+    }
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
     render(AppChatApp)
     await waitForAppReady()
-    const textarea = draftBox()
-    await user.click(textarea)
-    await user.type(textarea, 'Hello')
+    await waitFor(() => {
+      expect(draftBox().value).toBe('Hello')
+    })
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    await waitFor(() => {
+      expect(invoke.mock.calls.filter(([method]) => method === 'sendPlan.buildCurrent').length).toBeGreaterThanOrEqual(1)
+      expect(screen.queryByTestId('composer-send-gate-loading')).toBeNull()
+    })
     await waitFor(() => {
       expect(sendButton()).toBeEnabled()
     })
     await user.click(sendButton())
     await waitFor(() => {
-      expect(screen.queryByTestId('composer-send')).toBeNull()
+      expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.any(Object))
+    })
+    await waitFor(() => {
+      expect(screen.getByTestId('composer-stop')).toBeInTheDocument()
     })
   })
 

@@ -75,6 +75,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronApi = (globalThis as any).electronAPI
   const originalElectronStore = (globalThis as any).electronStore
+  const originalOpenRouterCredential = (globalThis as any).openRouterCredential
   let invoke: ReturnType<typeof vi.fn>
   let selectLocalFiles: ReturnType<typeof vi.fn>
   let draftResponse: ReturnType<typeof baseDraft>
@@ -87,6 +88,11 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   let convoRows: Array<Record<string, unknown>> = []
   let historyIncompatibleMessageIds: string[] = []
   let historyAttachmentRowsByMessageId: Record<string, Array<Record<string, unknown>>> = {}
+
+  async function firstModelPickerItem(modelId: string): Promise<HTMLElement> {
+    const items = await screen.findAllByTestId(`model-picker-item-${modelId}`)
+    return items[0] as HTMLElement
+  }
 
   function mockAttachmentMenuLayout() {
     const rect = {
@@ -749,7 +755,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'settings.getReasoningPrefs') return { value: null }
       if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
       if (method === 'settings.getUserMessageRenderDefault') return { value: null }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
       if (method === 'settings.getDfcAttachmentDefaults') return { value: dfcAttachmentDefaultsValue }
@@ -759,6 +765,8 @@ describe('ui-app AppChatApp attachment entry flow', () => {
       }
       if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
       if (method === 'settings.setChatReasoningDisplayMode') return { ok: true }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
 
       if (method === 'convo.list') {
         return convoRows
@@ -1414,6 +1422,9 @@ describe('ui-app AppChatApp attachment entry flow', () => {
         return undefined
       }),
     }
+    ;(globalThis as any).openRouterCredential = {
+      getStatus: vi.fn(async () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })),
+    }
   })
 
   afterEach(() => {
@@ -1421,6 +1432,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronApi
     ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
     vi.restoreAllMocks()
   })
 
@@ -2035,7 +2047,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     const callsBeforeModelSwitch = sendPlanBuildCallCount
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-openai/gpt-4o'))
+    await user.click(await firstModelPickerItem('openai/gpt-4o'))
 
     await waitFor(() => {
       expect(sendPlanBuildCallCount).toBeGreaterThan(callsBeforeModelSwitch)
@@ -2159,7 +2171,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     const callsBeforeModelSwitch = sendPlanBuildCallCount
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-openai/gpt-4o'))
+    await user.click(await firstModelPickerItem('openai/gpt-4o'))
 
     await waitFor(() => {
       expect(sendPlanBuildCallCount).toBeGreaterThan(callsBeforeModelSwitch)
@@ -2284,7 +2296,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     render(AppChatApp)
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-openai/gpt-4o'))
+    await user.click(await firstModelPickerItem('openai/gpt-4o'))
 
     await user.click(await screen.findByTestId('composer-attach-toggle'))
     await waitFor(() => {

@@ -99,11 +99,13 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
       if (method === 'project.list') return []
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
       if (method === 'settings.getUserMessageRenderDefault') return { value: null }
       if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
       if (method === 'settings.getChatDraft') return { value: null }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
       if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       if (method === 'branch.ensureDefault') {
         const { a2 } = renderPath()
@@ -480,7 +482,7 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
     await user.click(screen.getByTestId('edit-q-u1'))
     await screen.findByTestId('question-edit-controls')
     expect(screen.getByTestId('question-edit-replace')).toBeDisabled()
-    await user.click(within(screen.getByTestId('question-edit-controls')).getByText('Cancel'))
+    await user.click(within(screen.getByTestId('question-edit-controls')).getByText(/Cancel|取消/))
 
     await user.click(screen.getByTestId('edit-q-u2'))
     await screen.findByTestId('question-edit-controls')

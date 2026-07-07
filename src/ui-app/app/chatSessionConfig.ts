@@ -5,9 +5,10 @@ import {
 } from '@/next/openrouter/searchSettingsPersistence'
 import type { SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
 import {
-  mergeConvoSamplingParamsOverrideMeta,
-} from '@/next/openrouter/samplingParamsPersistence'
-import type { SamplingParamsLayer } from '@/next/openrouter/samplingParamsResolver'
+  extractConvoGenerationParamsOverride,
+  mergeConvoGenerationParamsOverrideMeta,
+} from '@/next/generation-params/generationParamPersistence'
+import type { GenerationParamsLayer } from '@/next/generation-params/generationParamTypes'
 import {
   mergeConvoImageGenerationMeta,
   normalizeImageGenerationUserConfig,
@@ -36,7 +37,22 @@ import {
 export type ChatSessionConfigReasoningEffort = 'low' | 'medium' | 'high'
 export type ChatSessionConfigWebSearchLevel = 'low' | 'high'
 export type ChatSessionConfigImageResolution = '512' | '1K' | '2K' | '4K'
-export type ChatSessionConfigAspectRatio = '16:9' | '3:4' | '1:1' | '4:3'
+export type ChatSessionConfigAspectRatio =
+  | 'auto'
+  | '1:1'
+  | '9:16'
+  | '16:9'
+  | '3:4'
+  | '4:3'
+  | '3:2'
+  | '2:3'
+  | '5:4'
+  | '4:5'
+  | '21:9'
+  | '4:1'
+  | '1:4'
+  | '8:1'
+  | '1:8'
 
 export type ChatSessionConfig = Readonly<{
   model: Readonly<{
@@ -60,8 +76,8 @@ export type ChatSessionConfig = Readonly<{
     mode: ConvoImageGenerationMode
     detail: ImageGenerationUserConfig | null
   }>
-  samplingParams: Readonly<{
-    detail: SamplingParamsLayer | null
+  generationParams: Readonly<{
+    detail: GenerationParamsLayer | null
   }>
 }>
 
@@ -70,7 +86,7 @@ export type ChatSessionConfigSources = Readonly<{
   projectMeta?: unknown
   globalReasoningPrefs?: unknown
   globalWebSearchDefaults?: unknown
-  globalSamplingParamsDefaults?: unknown
+  globalGenerationParamsDefaults?: unknown
   globalImageGenerationDefault?: unknown
   defaultModelKey: string
   defaultProviderId?: RuntimeProviderKey
@@ -82,13 +98,29 @@ export type ChatSessionConfigPatch = Readonly<Partial<{
   googleAIStudioThinking: Partial<GeminiThinkingConfig> | GeminiThinkingConfig | null
   webSearch: Partial<ChatSessionConfig['webSearch']>
   imageGeneration: Partial<ChatSessionConfig['imageGeneration']>
-  samplingParams: Partial<ChatSessionConfig['samplingParams']>
+  generationParams: Partial<ChatSessionConfig['generationParams']>
 }>>
 
 const MODEL_META_KEY = 'selectedModelKey'
 const PROVIDER_META_KEY = 'selectedProviderId'
 const GOOGLE_AI_STUDIO_THINKING_META_KEY = 'googleAIStudioThinking'
-const IMAGE_ASPECT_RATIO_OPTIONS: readonly ChatSessionConfigAspectRatio[] = ['16:9', '3:4', '1:1', '4:3']
+const IMAGE_ASPECT_RATIO_OPTIONS: readonly ChatSessionConfigAspectRatio[] = [
+  'auto',
+  '1:1',
+  '9:16',
+  '16:9',
+  '3:4',
+  '4:3',
+  '3:2',
+  '2:3',
+  '5:4',
+  '4:5',
+  '21:9',
+  '4:1',
+  '1:4',
+  '8:1',
+  '1:8',
+]
 const IMAGE_RESOLUTION_OPTIONS: readonly ChatSessionConfigImageResolution[] = ['512', '1K', '2K', '4K']
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -264,7 +296,7 @@ export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConf
 
   const rawConvoRecord = asRecord(input.convoMeta)
   const webSearchDetail = asRecord(rawConvoRecord?.webSearchOverride)
-  const samplingDetail = asRecord(rawConvoRecord?.samplingParamsOverride)
+  const generationDetail = extractConvoGenerationParamsOverride(input.convoMeta)
   const imageDetail = imageResolved.mode === 'custom' ? imageResolved.effective : null
 
   return {
@@ -289,8 +321,8 @@ export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConf
       mode: imageResolved.mode,
       detail: imageDetail,
     },
-    samplingParams: {
-      detail: (samplingDetail as SamplingParamsLayer | null) ?? null,
+    generationParams: {
+      detail: generationDetail,
     },
   }
 }
@@ -314,9 +346,9 @@ export function mergeChatSessionConfig(current: ChatSessionConfig, patch: ChatSe
       ...current.imageGeneration,
       ...(patch.imageGeneration ?? {}),
     },
-    samplingParams: {
-      ...current.samplingParams,
-      ...(patch.samplingParams ?? {}),
+    generationParams: {
+      ...current.generationParams,
+      ...(patch.generationParams ?? {}),
     },
   }
 }
@@ -363,9 +395,9 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
     }),
   )
 
-  const withSampling = mergeConvoSamplingParamsOverrideMeta(withWebSearch, input.config.samplingParams.detail)
+  const withGenerationParams = mergeConvoGenerationParamsOverrideMeta(withWebSearch, input.config.generationParams.detail)
 
-  return mergeConvoImageGenerationMeta(withSampling, {
+  return mergeConvoImageGenerationMeta(withGenerationParams, {
     mode: input.config.imageGeneration.mode,
     custom: buildImageGenerationDetail({
       enabled: input.config.imageGeneration.enabled,
