@@ -17,7 +17,7 @@ import ChatAppComposer from './components/ChatAppComposer.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import WebSearchSettingsEditor from './components/WebSearchSettingsEditor.vue'
-import SamplingParamsSettingsEditor from './components/SamplingParamsSettingsEditor.vue'
+import GenerationParamsSettingsEditor from './components/GenerationParamsSettingsEditor.vue'
 import SearchModal from './components/SearchModal.vue'
 import { useAppChatAppLogic } from './app/appChatApp.logic'
 import { formatModelIndicatorName } from './components/modelIndicatorName'
@@ -157,7 +157,7 @@ const {
   providerModelPickerSources,
   modelCatalogNotice,
   modelPrefsScopeForUi,
-  activeSessionSamplingParamsResolved,
+  activeSessionGenerationParamsResolved,
   activeSessionWebSearchResolved,
   onUpdateModel,
   onUpdateReasoningEnabled,
@@ -171,7 +171,7 @@ const {
   onUpdateImageGenerationResolution,
   onUpdateImageGenerationAspectRatio,
   onUpdateReasoningDisplayMode,
-  onComposerUpdateSamplingParamsLayer,
+  onComposerUpdateGenerationParamsLayer,
   onComposerUpdateWebSearchLayer,
   onUpdateImageGeneration,
   onUpdateOpenRouterChatEnabled,
@@ -235,8 +235,8 @@ const {
   projectWebSearchSettingsOpen,
   projectWebSearchSettingsTarget,
   closeProjectWebSearchSettings,
-  projectSamplingParamsDraft,
-  projectSamplingParamsResolved,
+  projectGenerationParamsDraft,
+  projectGenerationParamsResolved,
   projectWebSearchDraft,
   projectWebSearchResolved,
   projectWebSearchDraftHint,
@@ -782,10 +782,12 @@ function shouldShowInlineReasoning(message: any): boolean {
             :sendPlanWarningSummary="composerSendGateWarningReason"
             :isSendPlanLoading="composerSendPlanLoading"
             :historyIncompatibleSummary="historyIncompatibleAttachmentSummary"
+            :generationParamsResolved="activeSessionGenerationParamsResolved"
             @updateModel="onUpdateModel"
             @refreshProviderModelsRequested="onRefreshProviderModelPickerSources"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
+            @updateGenerationParamsLayer="onComposerUpdateGenerationParamsLayer"
             @updateGoogleAIStudioThinking="onUpdateGoogleAIStudioThinking"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"
             @updateWebSearchLevel="onUpdateWebSearchLevel"
@@ -844,7 +846,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             :reasoningPanelAutoCollapseAfterReasoning="reasoningPanelAutoCollapseAfterReasoning"
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
-            :samplingParamsResolved="activeSessionSamplingParamsResolved"
+            :generationParamsResolved="activeSessionGenerationParamsResolved"
             @updateModel="onUpdateModel"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
@@ -852,7 +854,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"
             @updateWebSearchLevel="onUpdateWebSearchLevel"
             @updateWebSearchLayer="onComposerUpdateWebSearchLayer"
-            @updateSamplingParamsLayer="onComposerUpdateSamplingParamsLayer"
+            @updateGenerationParamsLayer="onComposerUpdateGenerationParamsLayer"
             @updateImageGenerationEnabled="onUpdateImageGenerationEnabled"
             @updateImageGenerationResolution="onUpdateImageGenerationResolution"
             @updateImageGenerationAspectRatio="onUpdateImageGenerationAspectRatio"
@@ -988,10 +990,10 @@ function shouldShowInlineReasoning(message: any): boolean {
     >
       <div class="space-y-3 p-4">
         <div class="rounded-md border border-gray-100 bg-gray-50/60 p-3">
-          <SamplingParamsSettingsEditor
-            v-model="projectSamplingParamsDraft"
+          <GenerationParamsSettingsEditor
+            v-model="projectGenerationParamsDraft"
             :disabled="!isReady || isRunning || projectWebSearchSettingsSaving || !projectWebSearchSettingsTarget"
-            :resolved="projectSamplingParamsResolved"
+            :resolved="projectGenerationParamsResolved"
             :defaultCollapsed="true"
           />
         </div>

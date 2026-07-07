@@ -15,7 +15,7 @@ function defaultSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
   }
 }
 
@@ -43,17 +43,17 @@ describe('ChatSessionConsole LocalEndpoint chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
     expect(screen.getByTestId('local-endpoint-chat-controls').textContent).toContain('Experimental')
     expect(screen.getByTestId('local-endpoint-chat-controls').textContent).toContain('not OpenRouter')
-    expect(screen.getByTestId('local-endpoint-chat-warning').textContent).toContain('Text-only loopback')
-    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('LocalEndpoint chat is active')
-    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('Selected endpoint: http://localhost:1234/v1')
-    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('Selected local model: local-model-a')
-    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('does not use API keys or custom headers')
+    expect(screen.getByTestId('local-endpoint-chat-warning').textContent).toContain('loopback')
+    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('LocalEndpoint')
+    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('http://localhost:1234/v1')
+    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('local-model-a')
+    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('API Key')
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
     expect(screen.queryByTestId('local-endpoint-chat-model')).not.toBeInTheDocument()

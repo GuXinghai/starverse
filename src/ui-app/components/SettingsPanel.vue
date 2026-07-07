@@ -5,7 +5,7 @@ import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningP
 import { getUserMessageRenderDefault, setUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
 import { getChatReasoningPanelDefaultExpanded, setChatReasoningPanelDefaultExpanded } from '@/next/settings/reasoningPanelDefaultClient'
 import { getWebSearchDefaults, setWebSearchDefaults } from '@/next/settings/webSearchDefaultsClient'
-import { getSamplingParamsDefaults, setSamplingParamsDefaults } from '@/next/settings/samplingParamsDefaultsClient'
+import { getGenerationParamsDefaults, setGenerationParamsDefaults } from '@/next/settings/generationParamsDefaultsClient'
 import {
   getNetworkProxySettings,
   probeLibreOfficeOfficialDownloadNetwork,
@@ -29,10 +29,10 @@ import { formatNetExpRunReport, getLastNetExpRunReport } from '@/next/netExp/net
 import type { ReasoningEffort, ReasoningPrefs } from '@/next/state/types'
 import { normalizeSearchSettingsLayer } from '@/next/openrouter/searchSettingsPersistence'
 import { resolveSearchSettings, type SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
-import { normalizeSamplingParamsLayer } from '@/next/openrouter/samplingParamsPersistence'
-import { resolveSamplingParams, type SamplingParamsLayer } from '@/next/openrouter/samplingParamsResolver'
+import { normalizeGenerationParamsLayer } from '@/next/generation-params/generationParamPersistence'
+import type { GenerationParamsLayer } from '@/next/generation-params/generationParamTypes'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
-import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
+import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import PluginManagementPanel from './PluginManagementPanel.vue'
 import { t, tf, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
@@ -477,7 +477,7 @@ const reasoningPanelDefaultExpanded = ref(true)
 const userMessageRenderDefault = ref(false)
 const maxRecentModelsDraft = ref('8')
 const webSearchDefaults = ref<SearchSettingsLayer | null>(null)
-const samplingParamsDefaults = ref<SamplingParamsLayer | null>(null)
+const generationParamsDefaults = ref<GenerationParamsLayer | null>(null)
 const netExpDisableHttp2 = ref(DEFAULT_NETEXP_SETTINGS.disableHttp2)
 const netExpDisableQuic = ref(DEFAULT_NETEXP_SETTINGS.disableQuic)
 const netExpStreamInMainProcess = ref(DEFAULT_NETEXP_SETTINGS.streamInMainProcess)
@@ -537,10 +537,6 @@ const globalWebSearchInheritanceHint = computed(() => {
   }
   return t('settings.search.hintGlobal')
 })
-const globalSamplingParamsResolved = computed(() =>
-  resolveSamplingParams({ global: samplingParamsDefaults.value })
-)
-
 function isValidUrlOrEmpty(value: string): boolean {
   const trimmed = value.trim()
   if (!trimmed) return true
@@ -948,9 +944,9 @@ async function load() {
       webSearchDefaults.value = null
     }
     try {
-      samplingParamsDefaults.value = normalizeSamplingParamsLayer(await getSamplingParamsDefaults())
+      generationParamsDefaults.value = normalizeGenerationParamsLayer(await getGenerationParamsDefaults())
     } catch {
-      samplingParamsDefaults.value = null
+      generationParamsDefaults.value = null
     }
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
@@ -1095,15 +1091,15 @@ async function save() {
       }
     }
     const normalizedWebSearchDefaults = normalizeSearchSettingsLayer(webSearchDefaults.value)
-    const normalizedSamplingParamsDefaults = normalizeSamplingParamsLayer(samplingParamsDefaults.value)
+    const normalizedGenerationParamsDefaults = normalizeGenerationParamsLayer(generationParamsDefaults.value)
     await setWebSearchDefaults(normalizedWebSearchDefaults)
-    await setSamplingParamsDefaults(normalizedSamplingParamsDefaults)
+    await setGenerationParamsDefaults(normalizedGenerationParamsDefaults)
     try {
       window.dispatchEvent(new CustomEvent('settings:reasoningPrefsUpdated', { detail: nextReasoningPrefs }))
       window.dispatchEvent(new CustomEvent('settings:reasoningPanelDefaultExpandedUpdated', { detail: reasoningPanelDefaultExpanded.value === true }))
       window.dispatchEvent(new CustomEvent('settings:userMessageRenderDefaultUpdated', { detail: userMessageRenderDefault.value === true }))
       window.dispatchEvent(new CustomEvent('settings:webSearchDefaultsUpdated', { detail: normalizedWebSearchDefaults }))
-      window.dispatchEvent(new CustomEvent('settings:samplingParamsDefaultsUpdated', { detail: normalizedSamplingParamsDefaults }))
+      window.dispatchEvent(new CustomEvent('settings:generationParamsDefaultsUpdated', { detail: normalizedGenerationParamsDefaults }))
       window.dispatchEvent(new CustomEvent('settings:maxRecentModelsUpdated', { detail: nextMaxRecentModels }))
       window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
         detail: {
@@ -2392,10 +2388,9 @@ onMounted(() => {
       <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.customParams.title') }}</div>
         <div class="mt-3">
-          <SamplingParamsSettingsEditor
-            v-model="samplingParamsDefaults"
+          <GenerationParamsSettingsEditor
+            v-model="generationParamsDefaults"
             :disabled="!canEdit || loading || saving"
-            :resolved="globalSamplingParamsResolved"
             :defaultCollapsed="true"
           />
         </div>

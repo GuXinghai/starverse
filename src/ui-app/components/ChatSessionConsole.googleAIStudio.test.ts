@@ -16,7 +16,7 @@ function defaultSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
   }
 }
 
@@ -43,7 +43,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -126,7 +126,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
           { modelId: 'openrouter::anthropic/claude-3', name: 'OpenRouter Claude 3' } as any,
         ],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -174,7 +174,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -207,7 +207,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -244,13 +244,16 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
     expect(screen.getByTestId('session-reasoning-enabled')).toBeDisabled()
     expect(screen.queryByTestId('session-google-thinking-budget')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('session-google-thinking-level')).not.toBeInTheDocument()
+    const levelSelect = screen.getByTestId('session-google-thinking-level')
+    expect(levelSelect).toHaveValue('minimal')
+    expect(within(levelSelect).getByRole('option', { name: 'minimal' })).toBeInTheDocument()
+    expect(within(levelSelect).getByRole('option', { name: 'high' })).toBeInTheDocument()
     expect(screen.getByTestId('session-google-thinking-provider-managed')).toHaveTextContent(t('chat.console.reasoning.geminiImageProviderManaged'))
 
     await userEvent.click(screen.getByTestId('session-google-thinking-include-thoughts'))
@@ -284,20 +287,18 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
-    const reasoningToggle = screen.getByTestId('session-reasoning-enabled')
-    expect(reasoningToggle).toBeDisabled()
-    expect(reasoningToggle).not.toBeChecked()
-    expect(screen.getByTestId('session-google-thinking-unsupported')).toHaveTextContent(t('chat.console.reasoning.geminiUnsupported'))
+    expect(screen.queryByTestId('session-reasoning-enabled')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('session-google-thinking-unsupported')).not.toBeInTheDocument()
 
     const imageToggle = screen.getByTestId('session-image-generation-enabled')
     expect(imageToggle).toBeDisabled()
     expect(imageToggle).toBeChecked()
-    expect(screen.getByRole('button', { name: '1K' })).toHaveClass('bg-gray-900')
     expect(screen.getByRole('button', { name: '1:1' })).toHaveClass('bg-gray-900')
+    expect(screen.queryByRole('button', { name: '1K' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '2K' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '4K' })).not.toBeInTheDocument()
 
@@ -329,7 +330,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 

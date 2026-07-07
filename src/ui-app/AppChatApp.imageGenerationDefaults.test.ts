@@ -1,4 +1,5 @@
 import { render, screen, waitFor } from '@testing-library/vue'
+import { within } from '@testing-library/dom'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import AppChatApp from './AppChatApp.vue'
@@ -99,8 +100,53 @@ function installDbBridge(input: Readonly<{
     if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
     if (method === 'settings.getUserMessageRenderDefault') return { value: false }
     if (method === 'settings.getWebSearchDefaults') return { value: null }
-    if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+    if (method === 'settings.getGenerationParamsDefaults') return { value: null }
     if (method === 'settings.getImageGenerationDefault') return { value: input.globalImageDefault ?? null }
+    if (method === 'settings.getDfcAttachmentDefaults') return { value: null }
+    if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
+    if (method === 'settings.setChatReasoningDisplayMode') return { ok: true }
+    if (method === 'messageAsset.listByMessageIds') return []
+    if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
+    if (method === 'conversationDraft.restore') {
+      return {
+        conversationId: String(params?.conversationId ?? convos[0]?.id ?? ''),
+        draftText: '',
+        draftMode: 'compose',
+        editingSourceMessageId: null,
+        attachedAssetIds: [],
+        attachments: [],
+        updatedAt: 1,
+      }
+    }
+    if (method === 'conversationDraft.updateText') {
+      return {
+        conversationId: String(params?.conversationId ?? convos[0]?.id ?? ''),
+        draftText: String(params?.draftText ?? ''),
+        draftMode: 'compose',
+        editingSourceMessageId: null,
+        attachedAssetIds: [],
+        attachments: [],
+        updatedAt: 2,
+      }
+    }
+    if (method === 'sendPlan.buildCurrent') {
+      return {
+        sendPlan: {
+          status: 'sendable',
+          warnings: [],
+          blockingReasons: [],
+          includedAttachments: [],
+          excludedAttachments: [],
+          attachmentPlans: [],
+          requiresModelChange: false,
+          canProceedAfterDroppingExcluded: false,
+          requiresUserConfirmation: false,
+          plannerVersion: 'phase-5/v1',
+        },
+        draftText: String(params?.draftText ?? ''),
+        assets: [],
+      }
+    }
     if (method === 'reasoningIndex.list') return []
     if (method === 'modelCatalog.list') {
       return [{ modelId: 'anthropic/claude-3', name: 'Claude 3', vendor: 'anthropic', status: 'visible', supportedParameters: [], lastSeenSnapshotId: 'snap_1' }]
@@ -179,14 +225,89 @@ function installDbBridge(input: Readonly<{
     return { ok: true }
   })
   ;(globalThis as any).dbBridge = { invoke }
+  ;(globalThis as any).electronAPI = {
+    ...(globalThis as any).electronAPI,
+    modelCatalogQueryScopedCurrent: vi.fn(async (options?: any) => {
+      if (String(options?.providerKey ?? 'openrouter') !== 'openrouter') {
+        return {
+          providerKey: String(options?.providerKey ?? ''),
+          status: 'synced',
+          items: [],
+          nextCursor: null,
+          modelCount: 0,
+          visibleModelCount: 0,
+          hiddenModelCount: 0,
+          lastSyncAtMs: 1700000000000,
+        }
+      }
+      return {
+        providerKey: 'openrouter',
+        status: 'synced',
+        items: [
+          {
+            providerKey: 'openrouter',
+            modelId: 'anthropic/claude-3',
+            modelKey: 'openrouter::anthropic/claude-3',
+            canonicalSlug: 'anthropic/claude-3',
+            displayName: 'Claude 3',
+            description: null,
+            vendor: 'anthropic',
+            contextLength: 200000,
+            maxOutputTokens: 8192,
+            createdAtSec: 1700000123,
+            pricing: {
+              prompt: '0',
+              completion: '0',
+              request: '0',
+              image: '0',
+            },
+            capabilities: {
+              reasoning: true,
+              tools: false,
+              structuredOutputs: false,
+              vision: false,
+              longContext: true,
+            },
+            family: null,
+            status: 'active',
+            visibility: 'visible',
+            inputModalities: ['text'],
+            outputModalities: ['text', 'image'],
+            supportedParameters: [],
+            firstSeenAtMs: 1700000000000,
+            lastSeenAtMs: 1700000000000,
+            syncedAtMs: 1700000000000,
+          },
+        ],
+        nextCursor: null,
+        modelCount: 1,
+        visibleModelCount: 1,
+        hiddenModelCount: 0,
+        lastSyncAtMs: 1700000000000,
+      }
+    }),
+  }
   return invoke
 }
 
 describe('ui-app AppChatApp image generation defaults', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+  const originalElectronAPI = (globalThis as any).electronAPI
+
+  function getImageChipBody() {
+    return within(screen.getByTestId('image-chip')).getByTestId('capability-chip-body')
+  }
+
+  async function chooseImageChipOption(user: ReturnType<typeof userEvent.setup>, option: string) {
+    await user.click(within(screen.getByTestId('image-chip')).getByTestId('capability-chip-chevron'))
+    const target = screen.getAllByTestId('capability-chip-option').find((node) => node.textContent === option)
+    expect(target).toBeTruthy()
+    await user.click(target!)
+  }
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
+    ;(globalThis as any).electronAPI = originalElectronAPI
   })
 
   it('hides controls before image-capable model selection, exits default on edit, and keeps cross-convo isolation', async () => {
@@ -200,7 +321,6 @@ describe('ui-app AppChatApp image generation defaults', () => {
         outputMode: 'image_only',
         aspectRatio: '16:9',
         imageSize: '2K',
-        advancedJson: '',
       },
     })
 
@@ -208,21 +328,18 @@ describe('ui-app AppChatApp image generation defaults', () => {
     render(AppChatApp)
 
     await screen.findByText('hello-c1')
-    expect(screen.queryByTestId('composer-image-generation-row')).toBeNull()
+    expect(getImageChipBody().textContent ?? '').toContain('2K · 16:9')
 
     await user.click(await screen.findByTestId('current-model-pill'))
     await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
-    await screen.findByTestId('composer-image-generation-row')
+    await waitFor(() => {
+      expect(getImageChipBody().textContent ?? '').toContain('2K · 16:9')
+    })
 
-    const followDefault = screen.getByTestId('composer-image-follow-default') as HTMLInputElement
-    const aspectRatio = screen.getByTestId('composer-image-aspect-ratio') as HTMLSelectElement
-    expect(followDefault.checked).toBe(true)
-    expect(aspectRatio.value).toBe('16:9')
-
-    await user.selectOptions(aspectRatio, '1:1')
+    await chooseImageChipOption(user, '1:1')
 
     await waitFor(() => {
-      expect(followDefault.checked).toBe(false)
+      expect(getImageChipBody().textContent ?? '').toContain('2K · 1:1')
       expect(invoke).toHaveBeenCalledWith(
         'convo.save',
         expect.objectContaining({
@@ -238,8 +355,7 @@ describe('ui-app AppChatApp image generation defaults', () => {
     await user.click(screen.getByText('Chat 2'))
     await screen.findByText('hello-c2')
 
-    expect((screen.getByTestId('composer-image-follow-default') as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByTestId('composer-image-aspect-ratio') as HTMLSelectElement).value).toBe('16:9')
+    expect(getImageChipBody().textContent ?? '').toContain('2K · 16:9')
   })
 
   it('resolves default convo config from project default before global default', async () => {
@@ -257,9 +373,8 @@ describe('ui-app AppChatApp image generation defaults', () => {
             imageGenerationDefaultCustom: {
               enabled: true,
               outputMode: 'image_and_text',
-              aspectRatio: '3:2',
+              aspectRatio: '4:3',
               imageSize: '4K',
-              advancedJson: '',
             },
           },
         },
@@ -269,7 +384,6 @@ describe('ui-app AppChatApp image generation defaults', () => {
         outputMode: 'image_only',
         aspectRatio: '16:9',
         imageSize: '2K',
-        advancedJson: '',
       },
     })
 
@@ -279,14 +393,14 @@ describe('ui-app AppChatApp image generation defaults', () => {
     await screen.findByText('hello-c1')
     await user.click(await screen.findByTestId('current-model-pill'))
     await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
-    await screen.findByTestId('composer-image-generation-row')
+    await waitFor(() => {
+      expect(getImageChipBody().textContent ?? '').toContain('2K · 16:9')
+    })
 
-    expect((screen.getByTestId('composer-image-aspect-ratio') as HTMLSelectElement).value).toBe('16:9')
 
     await user.click(screen.getByText('Chat 2'))
     await screen.findByText('hello-c2')
 
-    expect((screen.getByTestId('composer-image-follow-default') as HTMLInputElement).checked).toBe(true)
-    expect((screen.getByTestId('composer-image-aspect-ratio') as HTMLSelectElement).value).toBe('3:2')
+    expect(getImageChipBody().textContent ?? '').toContain('4K · 4:3')
   })
 })

@@ -16,7 +16,7 @@ function defaultSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
   }
 }
 
@@ -43,7 +43,7 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -111,7 +111,7 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
                 capabilitySeed: {
                   textChat: true,
                   responsesApi: true,
-                  reasoning: 'unknown',
+                  reasoning: 'unsupported',
                   imageInput: 'unknown',
                   fileInput: 'unknown',
                   functionCalling: 'unknown',
@@ -128,7 +128,7 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
           { modelId: 'openrouter::anthropic/claude-3', name: 'OpenRouter Claude 3' } as any,
         ],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -158,5 +158,71 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()
     expect(within(mainModelSelect).queryByText('gpt-4.1-mini')).not.toBeInTheDocument()
+  })
+
+  it('uses OpenAI Responses reasoning policy controls instead of legacy reasoning state', async () => {
+    const user = userEvent.setup()
+    const view = render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...defaultSessionConfig(),
+          model: { selectedProviderId: 'openai_responses' as const, selectedModelKey: 'gpt-5.4-nano' },
+          reasoning: { enabled: false, effort: 'medium' as const },
+          generationParams: {
+            detail: {
+              reasoningEffort: { mode: 'custom' as const, value: 'auto' },
+            },
+          },
+        },
+        openAIResponsesChat: {
+          enabled: true,
+          model: 'gpt-5.4-nano',
+          experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
+        },
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        generationParamsResolved: null,
+      },
+    })
+
+    expect(screen.getByTestId('session-reasoning-enabled')).toBeDisabled()
+    const controls = screen.getByTestId('session-openai-responses-reasoning-controls')
+    expect(within(controls).getByRole('button', { name: `${t('chat.generationParams.reasoning.auto')} (none)` })).toBeInTheDocument()
+
+    await user.click(within(controls).getByRole('button', { name: 'low' }))
+
+    expect(view.emitted('updateReasoningEnabled')).toBeUndefined()
+    expect(view.emitted('updateReasoningEffort')).toBeUndefined()
+    expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([
+      {
+        reasoningEffort: { mode: 'custom', value: 'low' },
+      },
+    ])
+  })
+
+  it('locks OpenAI Responses reasoning controls for models without explicit effort support', () => {
+    render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: openAIResponsesSessionConfig(),
+        openAIResponsesChat: {
+          enabled: true,
+          model: 'gpt-4.1-mini',
+          experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
+        },
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        generationParamsResolved: null,
+      },
+    })
+
+    expect(screen.getByTestId('session-reasoning-enabled')).toBeDisabled()
+    expect(screen.getByTestId('session-openai-responses-reasoning-unsupported').textContent)
+      .toContain(t('chat.console.reasoning.openAIResponsesUnsupported'))
   })
 })

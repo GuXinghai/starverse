@@ -425,10 +425,11 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
       if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
       if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
       if (method === 'settings.getUserMessageRenderDefault') return { value: false }
       if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
       if (method === 'messageAsset.persistFromDataUrls') return { ok: true, assets: [] }
       if (method === 'convo.list') {
         return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1, meta: convoListMeta }]
@@ -1008,6 +1009,150 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
   })
 
+  it('passes resolved generation params to experimental provider sends', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          temperature: { mode: 'custom', value: 0.2 },
+          topP: { mode: 'omit' },
+          maxOutputTokens: { mode: 'custom', value: 64 },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai generation params ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai generation params ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-4.1-mini',
+      userText: 'openai generation params ping',
+      generationParams: {
+        temperature: 0.2,
+        max_output_tokens: 64,
+      },
+    })
+    expect(openAIResponsesTextChatCallArgs[0].generationParams).not.toHaveProperty('top_p')
+  })
+
+  it('omits OpenAI Responses reasoning effort when provider auto is selected', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
+    selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          reasoningEffort: { mode: 'custom', value: 'auto' },
+          maxOutputTokens: { mode: 'custom', value: 64 },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai auto reasoning ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai auto reasoning ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-5.4-nano',
+      generationParams: {
+        max_output_tokens: 64,
+      },
+    })
+    expect(openAIResponsesTextChatCallArgs[0].generationParams).not.toHaveProperty('reasoning')
+  })
+
+  it('sends explicit OpenAI Responses reasoning effort when supported by the selected model', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
+    selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          reasoningEffort: { mode: 'custom', value: 'low' },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai explicit reasoning ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai explicit reasoning ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-5.4-nano',
+      generationParams: {
+        reasoning: { effort: 'low' },
+      },
+    })
+  })
+
+  it('does not send OpenAI Responses reasoning effort for models without explicit effort support', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          reasoningEffort: { mode: 'custom', value: 'high' },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai unsupported reasoning ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai unsupported reasoning ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-4.1-mini',
+    })
+    expect(openAIResponsesTextChatCallArgs[0].generationParams ?? {}).not.toHaveProperty('reasoning')
+  })
+
   it('routes explicit Google AI Studio text chat through the normal transcript without OpenRouter, old Gemini, or Generic send', async () => {
     globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
     selectRuntimeProvider('google_ai_studio', 'gemini-2.5-flash')
@@ -1294,7 +1439,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('hi')
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
+    const imageCapableModelItems = await screen.findAllByTestId(`model-picker-item-${imageCapableModel}`)
+    await user.click(imageCapableModelItems[0]!)
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     await waitFor(() => {
@@ -1344,7 +1490,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         outputMode: 'image_only',
         aspectRatio: '16:9',
         imageSize: '2K',
-        advancedJson: '',
       },
     }
     const user = userEvent.setup()
@@ -1380,7 +1525,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         outputMode: 'image_only',
         aspectRatio: '',
         imageSize: '2K',
-        advancedJson: '',
       },
     }
     const user = userEvent.setup()
@@ -1412,7 +1556,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         outputMode: 'image_only',
         aspectRatio: '',
         imageSize: '4K',
-        advancedJson: '',
       },
     }
     const user = userEvent.setup()
@@ -1441,7 +1584,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         outputMode: 'image_only',
         aspectRatio: '',
         imageSize: '1024x1024',
-        advancedJson: '',
       },
     }
     const user = userEvent.setup()
@@ -1470,7 +1612,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
     await waitForAppReady()
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
+    const imageCapableModelItems = await screen.findAllByTestId(`model-picker-item-${imageCapableModel}`)
+    await user.click(imageCapableModelItems[0]!)
     await waitForAppReady()
 
     const box = draftBox()

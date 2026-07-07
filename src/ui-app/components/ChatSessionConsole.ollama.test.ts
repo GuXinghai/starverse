@@ -16,7 +16,7 @@ function defaultSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
   }
 }
 
@@ -127,7 +127,7 @@ describe('ChatSessionConsole Ollama controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -160,7 +160,7 @@ describe('ChatSessionConsole Ollama controls', () => {
       reasoningDisplayMode: 'inline',
       modelCatalog: [],
       webSearchResolved: null,
-      samplingParamsResolved: null,
+      generationParamsResolved: null,
     })
     await user.click(screen.getByTestId('ollama-openai-endpoint-responses'))
     await user.click(screen.getByTestId('ollama-auto-load-enabled'))
@@ -229,7 +229,7 @@ describe('ChatSessionConsole Ollama controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -260,7 +260,7 @@ describe('ChatSessionConsole Ollama controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -290,7 +290,7 @@ describe('ChatSessionConsole Ollama controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 

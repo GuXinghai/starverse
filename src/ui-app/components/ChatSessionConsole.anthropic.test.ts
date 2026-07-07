@@ -16,7 +16,7 @@ function defaultSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
   }
 }
 
@@ -43,7 +43,7 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -130,7 +130,7 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
           { modelId: 'openrouter::anthropic/claude-3', name: 'OpenRouter Claude 3' } as any,
         ],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 

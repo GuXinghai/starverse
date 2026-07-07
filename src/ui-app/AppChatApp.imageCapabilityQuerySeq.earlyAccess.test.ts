@@ -92,7 +92,7 @@ describe('AppChatApp imageCapabilityQuerySeq early access regression', () => {
       if (method === 'settings.getWebSearchDefaults') {
         return { value: null }
       }
-      if (method === 'settings.getSamplingParamsDefaults') {
+      if (method === 'settings.getGenerationParamsDefaults') {
         return { value: null }
       }
       if (method === 'settings.getImageGenerationDefault') {
@@ -101,6 +101,8 @@ describe('AppChatApp imageCapabilityQuerySeq early access regression', () => {
       if (method === 'settings.getUserMessageRenderDefault') {
         return { value: false }
       }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
       if (method === 'modelCatalog.list') {
         return [
           {
@@ -174,8 +176,8 @@ describe('AppChatApp imageCapabilityQuerySeq early access regression', () => {
 
     await flushEarlyTicks()
     await waitFor(() => {
-      const samplingRow = document.querySelector('[data-testid="composer-sampling-params-row"]')
-      expect(samplingRow).toBeTruthy()
+      const currentModelPill = document.querySelector('[data-testid="current-model-pill"]')
+      expect(currentModelPill).toBeTruthy()
     }, { timeout: 5000 })
 
     const matched = [...collectMatchedLogs(errorSpy, keywordPattern), ...collectMatchedLogs(warnSpy, keywordPattern)]

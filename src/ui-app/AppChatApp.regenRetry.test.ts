@@ -173,7 +173,7 @@ function mockStableAppBootstrapCalls(method: string, params?: any) {
   if (projectBootstrap !== undefined) return projectBootstrap
   if (method === 'settings.getReasoningPrefs') return { value: null }
   if (method === 'settings.getWebSearchDefaults') return { value: null }
-  if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+  if (method === 'settings.getGenerationParamsDefaults') return { value: null }
   if (method === 'settings.getUserMessageRenderDefault') return { value: null }
   if (method === 'settings.getImageGenerationDefault') return { value: null }
   if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
@@ -377,6 +377,7 @@ function mockStableAppBootstrapCalls(method: string, params?: any) {
   }
   if (method === 'messageError.listByMessageIds') return []
   if (method === 'messageAsset.listByMessageIds') return []
+  if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
   if (method === 'modelPrefs.listRecents') return []
   return undefined
 }

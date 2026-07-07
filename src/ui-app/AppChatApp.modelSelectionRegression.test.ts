@@ -26,7 +26,7 @@ describe('ui-app AppChatApp model selection regression', () => {
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'settings.getReasoningPrefs') return { value: null }
       if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
       if (method === 'settings.getUserMessageRenderDefault') return { value: null }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
       if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
@@ -35,6 +35,8 @@ describe('ui-app AppChatApp model selection regression', () => {
       if (method === 'settings.deleteChatDraft') return { deleted: 0 }
       if (method === 'settings.deleteChatDraftsByPrefix') return { deleted: 0 }
       if (method === 'settings.setChatReasoningDisplayMode') return { ok: true }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
       if (method === 'branch.ensureDefault') return branch
       if (method === 'branch.list') return [branch]
       if (method === 'context.getRenderableTurns') {
@@ -211,8 +213,8 @@ describe('ui-app AppChatApp model selection regression', () => {
     const currentModelPill = await screen.findByTestId('current-model-pill')
     await user.click(currentModelPill)
 
-    const selectedItem = await screen.findByTestId('model-picker-item-anthropic/claude-3')
-    await user.click(selectedItem)
+    const selectedItems = await screen.findAllByTestId('model-picker-item-anthropic/claude-3')
+    await user.click(selectedItems[0]!)
 
     await waitFor(() => {
       expect(screen.getByTestId('current-model-pill').textContent).toContain('Claude 3')
@@ -235,9 +237,12 @@ describe('ui-app AppChatApp model selection regression', () => {
     render(AppChatApp)
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.selectOptions(await screen.findByTestId('model-picker-provider-filter'), 'openai_responses')
-    const selectedItem = await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')
-    await user.click(selectedItem)
+    const openAIProviderFilter = await screen.findByTestId('model-picker-provider-filter-openai_responses') as HTMLInputElement
+    if (!openAIProviderFilter.checked) {
+      await user.click(openAIProviderFilter)
+    }
+    const selectedItems = await screen.findAllByTestId('model-picker-item-openai_responses-gpt-4.1-mini')
+    await user.click(selectedItems[0]!)
 
     await waitFor(() => {
       const saveCall = invoke.mock.calls.find((call) =>

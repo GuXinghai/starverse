@@ -10,6 +10,7 @@ const props = defineProps<{
   kind?: 'reasoning' | 'webSearch' | 'image'
   disabled?: boolean
   options?: readonly string[]
+  optionLabels?: Readonly<Record<string, string>>
   selectedOption?: string | null
   dataTestId?: string
 }>()
@@ -107,6 +108,10 @@ function onOptionClick(option: string) {
   closeMenu()
 }
 
+function optionLabel(option: string): string {
+  return props.optionLabels?.[option] ?? option
+}
+
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onBodyClick)
   document.removeEventListener('keydown', onKeydown)
@@ -191,7 +196,7 @@ onBeforeUnmount(() => {
               data-testid="capability-chip-option"
               @click="onOptionClick(option)"
             >
-              {{ option }}
+              {{ optionLabel(option) }}
             </button>
           </template>
         </template>

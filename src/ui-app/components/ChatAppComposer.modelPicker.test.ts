@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import { __resetModelPrefsServiceCacheForTests } from '@/next/modelPrefs/modelPrefsService'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
+import { t } from '@/shared/i18n'
 import ChatAppComposer from './ChatAppComposer.vue'
 
 function createResult(items: CatalogQueryResult['items']): CatalogQueryResult {
@@ -27,7 +28,7 @@ function createSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
   }
 }
 
@@ -250,6 +251,67 @@ describe('ChatAppComposer model picker integration', () => {
     await waitFor(() => {
       expect(screen.getByTestId('current-model-pill').textContent).toContain('OpenAI Responses')
       expect(screen.getByTestId('current-model-pill').textContent).toContain('GPT-4.1 mini')
+    })
+  })
+
+  it('uses OpenAI Responses reasoning effort options from generation params policy', async () => {
+    const user = userEvent.setup()
+    const updateGenerationParamsLayer = vi.fn()
+
+    const Wrapper = defineComponent({
+      components: { ChatAppComposer },
+      setup() {
+        const draft = ref('')
+        const model = ref('gpt-5.4-nano')
+        const requestedReasoningEffort = ref<'auto'>('auto')
+        const requestedReasoningExclude = ref(false)
+        const sessionConfig = computed(() => ({
+          ...createSessionConfig(),
+          model: { selectedProviderId: 'openai_responses' as const, selectedModelKey: model.value },
+          reasoning: { enabled: false, effort: 'medium' as const },
+          generationParams: {
+            detail: {
+              reasoningEffort: { mode: 'custom' as const, value: 'auto' },
+            },
+          },
+        }))
+        return {
+          draft,
+          model,
+          requestedReasoningEffort,
+          requestedReasoningExclude,
+          sessionConfig,
+          updateGenerationParamsLayer,
+        }
+      },
+      template: `
+        <ChatAppComposer
+          v-model:draft="draft"
+          v-model:model="model"
+          v-model:requestedReasoningEffort="requestedReasoningEffort"
+          v-model:requestedReasoningExclude="requestedReasoningExclude"
+          :disabled="false"
+          :isRunning="false"
+          :sessionConfig="sessionConfig"
+          :modelCatalog="[]"
+          :showHiddenModelsInPickers="false"
+          :modelCatalogNotice="null"
+          @updateGenerationParamsLayer="updateGenerationParamsLayer"
+        />
+      `,
+    })
+
+    render(Wrapper)
+
+    const chip = screen.getByTestId('reasoning-chip')
+    expect(chip.textContent).toContain(`${t('chat.generationParams.reasoning.auto')} (none)`)
+
+    await user.click(within(chip).getByTestId('capability-chip-chevron'))
+    const menu = await screen.findByTestId('capability-chip-menu')
+    await user.click(within(menu).getByRole('button', { name: 'xhigh' }))
+
+    expect(updateGenerationParamsLayer).toHaveBeenCalledWith({
+      reasoningEffort: { mode: 'custom', value: 'xhigh' },
     })
   })
 
@@ -1436,11 +1498,10 @@ describe('ChatAppComposer model picker integration', () => {
       },
     })
 
-    const reasoningChip = screen.getByTestId('google-thinking-chip')
-    expect(within(reasoningChip).getByTestId('capability-chip-body')).toBeDisabled()
+    expect(screen.queryByTestId('google-thinking-chip')).not.toBeInTheDocument()
 
     const imageChip = screen.getByTestId('image-chip')
-    expect(within(imageChip).getByTestId('capability-chip-body')).toHaveTextContent('1K · 1:1')
+    expect(within(imageChip).getByTestId('capability-chip-body')).toHaveTextContent('1:1')
 
     await fireEvent.click(within(imageChip).getByTestId('capability-chip-body'))
     expect(view.emitted('updateImageGenerationEnabled')?.[0]).toEqual([true])

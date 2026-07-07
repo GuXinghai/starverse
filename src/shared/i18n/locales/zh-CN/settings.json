@@ -340,7 +340,7 @@
       "hintGlobal": "当项目/会话保持 mode=default 时，应用全局默认值。"
     },
     "customParams": {
-      "title": "全局自定义参数"
+      "title": "全局生成参数"
     },
     "footer": "ui-app 从 electron-store（非 env）读取 OpenRouter 设置，以避免隐式覆盖。"
   }

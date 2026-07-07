@@ -62,7 +62,7 @@ import { getUserMessageRenderDefault } from '@/next/settings/userMessageRenderDe
 import { getWebSearchDefaults } from '@/next/settings/webSearchDefaultsClient'
 import { getImageGenerationDefault } from '@/next/settings/imageGenerationDefaultClient'
 import { getDfcAttachmentDefaults, setDfcAttachmentDefaults } from '@/next/settings/dfcAttachmentDefaultsClient'
-import { getSamplingParamsDefaults } from '@/next/settings/samplingParamsDefaultsClient'
+import { getGenerationParamsDefaults } from '@/next/settings/generationParamsDefaultsClient'
 import {
   getChatReasoningDisplayMode,
   setChatReasoningDisplayMode,
@@ -233,18 +233,20 @@ import {
   type SearchSettingsLayer,
 } from '@/next/openrouter/searchSettingsResolver'
 import {
-  resolveSamplingParams,
-  hasSamplingParamsPatch,
-  type OpenRouterSamplingParamsPatch,
-  type SamplingParamsLayer,
-} from '@/next/openrouter/samplingParamsResolver'
-import {
-  extractConvoSamplingParamsOverride,
-  extractProjectSamplingParamsDefaults,
-  mergeProjectSamplingParamsDefaultsMeta,
-  normalizeSamplingParamsLayer,
-  resolveSamplingParamsFromStoredLayers,
-} from '@/next/openrouter/samplingParamsPersistence'
+  extractConvoGenerationParamsOverride,
+  extractProjectGenerationParamsDefaults,
+  mergeProjectGenerationParamsDefaultsMeta,
+  normalizeGenerationParamsLayer,
+  resolveGenerationParamsFromStoredLayers,
+} from '@/next/generation-params/generationParamPersistence'
+import { resolveGenerationParamsFromLayers } from '@/next/generation-params/generationParamResolver'
+import { mapGenerationParamsToProviderRequestPatch } from '@/next/generation-params/generationParamMappers'
+import { getDefaultGenerationParamProfile } from '@/next/generation-params/generationParamProfiles'
+import type {
+  GenerationParamsLayer,
+  ProviderGenerationParamProfile,
+  ResolvedGenerationParams,
+} from '@/next/generation-params/generationParamTypes'
 import type { SearchHit } from '@/next/search/searchTypes'
 import { buildContextForBranchInternalMessages, getRenderableTurnsForBranch } from '@/next/context/contextClient'
 import type { InternalMessage } from '@/next/context/buildMessages'
@@ -277,6 +279,7 @@ import {
   mergeChatSessionConfig,
   serializeChatSessionConfigToConvoMeta,
   type ChatSessionConfig,
+  type ChatSessionConfigAspectRatio,
   type ChatSessionConfigPatch,
 } from './chatSessionConfig'
 import type { ProviderModelPickerSource } from './providerModelPickerViewModel'
@@ -372,12 +375,13 @@ export function useAppChatAppLogic() {
   const projectWebSearchSettingsProjectId = ref<string | null>(null)
   const sessionWebSearchDraft = ref<SearchSettingsLayer | null>(null)
   const projectWebSearchDraft = ref<SearchSettingsLayer | null>(null)
-  const sessionSamplingParamsDraft = ref<SamplingParamsLayer | null>(null)
-  const projectSamplingParamsDraft = ref<SamplingParamsLayer | null>(null)
+  const sessionGenerationParamsDraft = ref<GenerationParamsLayer | null>(null)
+  const projectGenerationParamsDraft = ref<GenerationParamsLayer | null>(null)
   const sessionWebSearchSettingsSaving = ref(false)
   const projectWebSearchSettingsSaving = ref(false)
   const sessionWebSearchQuickSaving = ref(false)
-  const sessionSamplingParamsQuickSaving = ref(false)
+  const sessionGenerationParamsQuickSaving = ref(false)
+  let sessionGenerationParamsPendingLayer: GenerationParamsLayer | null | undefined
   const sessionWebSearchSettingsStatus = ref<string | null>(null)
   const projectWebSearchSettingsStatus = ref<string | null>(null)
   const modelCatalogItems = ref<ModelCatalogItem[]>([])
@@ -390,7 +394,7 @@ export function useAppChatAppLogic() {
   const globalReasoningPanelAutoCollapseAfterReasoning = ref(false)
   const globalUserMessageRenderDefault = ref<boolean | null>(null)
   const globalWebSearchDefaults = ref<SearchSettingsLayer | null>(null)
-  const globalSamplingParamsDefaults = ref<SamplingParamsLayer | null>(null)
+  const globalGenerationParamsDefaults = ref<GenerationParamsLayer | null>(null)
   const dfcAttachmentDefaults = ref<DfcAttachmentDefaults>(normalizeDfcAttachmentDefaults(null))
   const skipReasoningPrefSave = ref(false)
   const reasoningPrefSaveTimer = ref<ReturnType<typeof setTimeout> | null>(null)
@@ -1114,7 +1118,7 @@ export function useAppChatAppLogic() {
     () => {
       if (!sessionWebSearchSettingsOpen.value) return
       sessionWebSearchDraft.value = getActiveConvoWebSearchLayer()
-      sessionSamplingParamsDraft.value = getActiveConvoSamplingParamsLayer()
+      sessionGenerationParamsDraft.value = getActiveConvoGenerationParamsLayer()
       sessionWebSearchSettingsStatus.value = null
     },
     { flush: 'sync' }
@@ -1150,7 +1154,7 @@ export function useAppChatAppLogic() {
   })
 
   watch(
-    [activeConvoId, globalReasoningPrefs, globalWebSearchDefaults, globalSamplingParamsDefaults, globalImageGenerationDefault],
+    [activeConvoId, globalReasoningPrefs, globalWebSearchDefaults, globalGenerationParamsDefaults, globalImageGenerationDefault],
     () => {
       hydrateSessionConfigUiFromActiveConvo()
     },
@@ -4052,7 +4056,7 @@ export function useAppChatAppLogic() {
       projectMeta,
       globalReasoningPrefs: globalReasoningPrefs.value,
       globalWebSearchDefaults: globalWebSearchDefaults.value,
-      globalSamplingParamsDefaults: globalSamplingParamsDefaults.value,
+      globalGenerationParamsDefaults: globalGenerationParamsDefaults.value,
       globalImageGenerationDefault: globalImageGenerationDefault.value,
       defaultModelKey: DEFAULT_OPENROUTER_MODEL_ID,
       defaultProviderId: DEFAULT_CHAT_PROVIDER_ID,
@@ -4677,7 +4681,7 @@ export function useAppChatAppLogic() {
     hydrateSessionConfigUiFromActiveConvo()
   }
 
-  async function onUpdateImageGenerationAspectRatio(nextAspectRatio: '16:9' | '3:4' | '1:1' | '4:3') {
+  async function onUpdateImageGenerationAspectRatio(nextAspectRatio: ChatSessionConfigAspectRatio) {
     if (isDraftInteractionLocked.value) return
     const current = activeSessionConfig.value.imageGeneration
     await updateActiveConvoSessionConfig({
@@ -7122,21 +7126,21 @@ export function useAppChatAppLogic() {
     return projects.value.find((p) => p.id === id) ?? null
   }
 
-  function getConvoSamplingParamsLayer(convo: ConvoSummary | null): SamplingParamsLayer | null {
-    return normalizeSamplingParamsLayer(extractConvoSamplingParamsOverride(convo?.meta ?? null))
+  function getConvoGenerationParamsLayer(convo: ConvoSummary | null): GenerationParamsLayer | null {
+    return normalizeGenerationParamsLayer(extractConvoGenerationParamsOverride(convo?.meta ?? null))
   }
 
-  function getProjectSamplingParamsLayerForConvo(convo: ConvoSummary | null): SamplingParamsLayer | null {
+  function getProjectGenerationParamsLayerForConvo(convo: ConvoSummary | null): GenerationParamsLayer | null {
     const project = getProjectByIdLocal(convo?.projectId)
-    return normalizeSamplingParamsLayer(extractProjectSamplingParamsDefaults(project?.meta ?? null))
+    return normalizeGenerationParamsLayer(extractProjectGenerationParamsDefaults(project?.meta ?? null))
   }
 
-  function getActiveConvoSamplingParamsLayer(): SamplingParamsLayer | null {
-    return getConvoSamplingParamsLayer(getActiveConvoRecord())
+  function getActiveConvoGenerationParamsLayer(): GenerationParamsLayer | null {
+    return getConvoGenerationParamsLayer(getActiveConvoRecord())
   }
 
-  function getActiveProjectSamplingParamsLayer(): SamplingParamsLayer | null {
-    return getProjectSamplingParamsLayerForConvo(getActiveConvoRecord())
+  function getActiveProjectGenerationParamsLayer(): GenerationParamsLayer | null {
+    return getProjectGenerationParamsLayerForConvo(getActiveConvoRecord())
   }
 
   function getConvoWebSearchLayer(convo: ConvoSummary | null): SearchSettingsLayer | null {
@@ -7160,15 +7164,40 @@ export function useAppChatAppLogic() {
     activeSessionConfig.value.webSearch.detail
   )
 
-  const activeSessionSamplingParamsLayer = computed<SamplingParamsLayer | null>(() =>
-    activeSessionConfig.value.samplingParams.detail
+  function generationParamProfileForProvider(
+    providerId: RuntimeProviderKey | null | undefined,
+    modelId?: string | null,
+  ): ProviderGenerationParamProfile {
+    const requestKind = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(modelId)
+      ? 'image_generation'
+      : 'text'
+    return getDefaultGenerationParamProfile(providerId ?? DEFAULT_CHAT_PROVIDER_ID, { requestKind }) ?? getDefaultGenerationParamProfile(DEFAULT_CHAT_PROVIDER_ID)!
+  }
+
+  const activeSessionGenerationParamsLayer = computed<GenerationParamsLayer | null>(() =>
+    activeSessionConfig.value.generationParams.detail
   )
 
-  const activeSessionSamplingParamsResolved = computed(() =>
-    resolveSamplingParams({
-      convo: getActiveConvoSamplingParamsLayer(),
-      project: getActiveProjectSamplingParamsLayer(),
-      global: globalSamplingParamsDefaults.value,
+  const activeSessionGenerationParamsProfile = computed(() =>
+    generationParamProfileForProvider(
+      activeSessionConfig.value.model.selectedProviderId,
+      activeSessionConfig.value.model.selectedModelKey,
+    )
+  )
+
+  const activeSessionGenerationParamsModelId = computed(() =>
+    activeSessionConfig.value.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
+  )
+
+  const activeSessionGenerationParamsResolved = computed<ResolvedGenerationParams>(() =>
+    resolveGenerationParamsFromLayers({
+      profile: activeSessionGenerationParamsProfile.value,
+      modelId: activeSessionGenerationParamsModelId.value,
+      layers: {
+        conversation: getActiveConvoGenerationParamsLayer(),
+        project: getActiveProjectGenerationParamsLayer(),
+        global: globalGenerationParamsDefaults.value,
+      },
     })
   )
 
@@ -7208,18 +7237,26 @@ export function useAppChatAppLogic() {
     )
   )
 
-  const sessionSamplingParamsDraftResolved = computed(() =>
-    resolveSamplingParams({
-      convo: sessionSamplingParamsDraft.value,
-      project: getActiveProjectSamplingParamsLayer(),
-      global: globalSamplingParamsDefaults.value,
+  const sessionGenerationParamsDraftResolved = computed<ResolvedGenerationParams>(() =>
+    resolveGenerationParamsFromLayers({
+      profile: activeSessionGenerationParamsProfile.value,
+      modelId: activeSessionGenerationParamsModelId.value,
+      layers: {
+        conversation: sessionGenerationParamsDraft.value,
+        project: getActiveProjectGenerationParamsLayer(),
+        global: globalGenerationParamsDefaults.value,
+      },
     })
   )
 
-  const projectSamplingParamsResolved = computed(() =>
-    resolveSamplingParams({
-      project: projectSamplingParamsDraft.value,
-      global: globalSamplingParamsDefaults.value,
+  const projectGenerationParamsResolved = computed<ResolvedGenerationParams>(() =>
+    resolveGenerationParamsFromLayers({
+      profile: activeSessionGenerationParamsProfile.value,
+      modelId: activeSessionGenerationParamsModelId.value,
+      layers: {
+        project: projectGenerationParamsDraft.value,
+        global: globalGenerationParamsDefaults.value,
+      },
     })
   )
 
@@ -7274,21 +7311,21 @@ export function useAppChatAppLogic() {
     globalWebSearchDefaults.value = normalizeSearchSettingsLayer((event as CustomEvent).detail)
   }
 
-  async function refreshGlobalSamplingParamsDefaults(): Promise<SamplingParamsLayer | null> {
+  async function refreshGlobalGenerationParamsDefaults(): Promise<GenerationParamsLayer | null> {
     try {
-      globalSamplingParamsDefaults.value = normalizeSamplingParamsLayer(await getSamplingParamsDefaults())
-      return globalSamplingParamsDefaults.value
+      globalGenerationParamsDefaults.value = normalizeGenerationParamsLayer(await getGenerationParamsDefaults())
+      return globalGenerationParamsDefaults.value
     } catch (err) {
-      globalSamplingParamsDefaults.value = null
+      globalGenerationParamsDefaults.value = null
       if (shouldLogDebug()) {
-        console.warn('[ui-app] refreshGlobalSamplingParamsDefaults failed:', err)
+        console.warn('[ui-app] refreshGlobalGenerationParamsDefaults failed:', err)
       }
       return null
     }
   }
 
-  function handleGlobalSamplingParamsDefaultsUpdated(event: Event) {
-    globalSamplingParamsDefaults.value = normalizeSamplingParamsLayer((event as CustomEvent).detail)
+  function handleGlobalGenerationParamsDefaultsUpdated(event: Event) {
+    globalGenerationParamsDefaults.value = normalizeGenerationParamsLayer((event as CustomEvent).detail)
   }
 
   function openSessionWebSearchSettings() {
@@ -7296,14 +7333,14 @@ export function useAppChatAppLogic() {
     if (!activeConvoId.value) return
     sessionWebSearchSettingsStatus.value = null
     sessionWebSearchDraft.value = getActiveConvoWebSearchLayer()
-    sessionSamplingParamsDraft.value = getActiveConvoSamplingParamsLayer()
+    sessionGenerationParamsDraft.value = getActiveConvoGenerationParamsLayer()
     sessionWebSearchSettingsOpen.value = true
   }
 
   function closeSessionWebSearchSettings() {
     sessionWebSearchSettingsOpen.value = false
     sessionWebSearchSettingsStatus.value = null
-    sessionSamplingParamsDraft.value = null
+    sessionGenerationParamsDraft.value = null
   }
 
   function onOpenProjectWebSearchSettings(projectId: string) {
@@ -7314,7 +7351,7 @@ export function useAppChatAppLogic() {
     projectWebSearchSettingsStatus.value = null
     projectWebSearchSettingsProjectId.value = project.id
     projectWebSearchDraft.value = normalizeSearchSettingsLayer(extractProjectWebSearchDefaults(project.meta ?? null))
-    projectSamplingParamsDraft.value = normalizeSamplingParamsLayer(extractProjectSamplingParamsDefaults(project.meta ?? null))
+    projectGenerationParamsDraft.value = normalizeGenerationParamsLayer(extractProjectGenerationParamsDefaults(project.meta ?? null))
     projectWebSearchSettingsOpen.value = true
   }
 
@@ -7322,7 +7359,7 @@ export function useAppChatAppLogic() {
     projectWebSearchSettingsOpen.value = false
     projectWebSearchSettingsProjectId.value = null
     projectWebSearchDraft.value = null
-    projectSamplingParamsDraft.value = null
+    projectGenerationParamsDraft.value = null
     projectWebSearchSettingsStatus.value = null
   }
 
@@ -7337,10 +7374,10 @@ export function useAppChatAppLogic() {
     })
   }
 
-  async function persistActiveConvoSamplingParamsOverride(nextLayer: SamplingParamsLayer | null) {
-    const normalizedNext = normalizeSamplingParamsLayer(nextLayer)
+  async function persistActiveConvoGenerationParamsOverride(nextLayer: GenerationParamsLayer | null) {
+    const normalizedNext = normalizeGenerationParamsLayer(nextLayer)
     await updateActiveConvoSessionConfig({
-      samplingParams: {
+      generationParams: {
         detail: normalizedNext,
       },
     })
@@ -7359,16 +7396,27 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function onComposerUpdateSamplingParamsLayer(nextLayer: SamplingParamsLayer | null) {
-    if (isRunning.value || sessionSamplingParamsQuickSaving.value) return
+  async function onComposerUpdateGenerationParamsLayer(nextLayer: GenerationParamsLayer | null) {
+    if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
-    sessionSamplingParamsQuickSaving.value = true
+    if (sessionGenerationParamsQuickSaving.value) {
+      sessionGenerationParamsPendingLayer = normalizeGenerationParamsLayer(nextLayer)
+      return
+    }
+    sessionGenerationParamsQuickSaving.value = true
     try {
-      await persistActiveConvoSamplingParamsOverride(nextLayer)
+      let layerToSave = normalizeGenerationParamsLayer(nextLayer)
+      while (true) {
+        await persistActiveConvoGenerationParamsOverride(layerToSave)
+        if (sessionGenerationParamsPendingLayer === undefined) break
+        layerToSave = sessionGenerationParamsPendingLayer
+        sessionGenerationParamsPendingLayer = undefined
+      }
     } catch (err: any) {
+      sessionGenerationParamsPendingLayer = undefined
       loadError.value = err?.message ? String(err.message) : String(err)
     } finally {
-      sessionSamplingParamsQuickSaving.value = false
+      sessionGenerationParamsQuickSaving.value = false
     }
   }
 
@@ -7384,7 +7432,7 @@ export function useAppChatAppLogic() {
     sessionWebSearchSettingsStatus.value = null
     try {
       await persistActiveConvoWebSearchOverride(sessionWebSearchDraft.value)
-      await persistActiveConvoSamplingParamsOverride(sessionSamplingParamsDraft.value)
+      await persistActiveConvoGenerationParamsOverride(sessionGenerationParamsDraft.value)
       sessionWebSearchSettingsStatus.value = 'Saved.'
     } catch (err: any) {
       sessionWebSearchSettingsStatus.value = err?.message ? String(err.message) : String(err)
@@ -7402,14 +7450,14 @@ export function useAppChatAppLogic() {
     try {
       const nextLayer = normalizeSearchSettingsLayer(projectWebSearchDraft.value)
       const nextMeta = mergeProjectWebSearchDefaultsMeta(project.meta ?? null, nextLayer)
-      const nextSamplingLayer = normalizeSamplingParamsLayer(projectSamplingParamsDraft.value)
-      const nextMetaWithSampling = mergeProjectSamplingParamsDefaultsMeta(nextMeta, nextSamplingLayer)
+      const nextGenerationParamsLayer = normalizeGenerationParamsLayer(projectGenerationParamsDraft.value)
+      const nextMetaWithGenerationParams = mergeProjectGenerationParamsDefaultsMeta(nextMeta, nextGenerationParamsLayer)
       await saveProject({
         id: project.id,
         name: project.name,
-        meta: nextMetaWithSampling,
+        meta: nextMetaWithGenerationParams,
       })
-      projects.value = projects.value.map((p) => (p.id === project.id ? { ...p, meta: nextMetaWithSampling } : p))
+      projects.value = projects.value.map((p) => (p.id === project.id ? { ...p, meta: nextMetaWithGenerationParams } : p))
       projectWebSearchSettingsStatus.value = 'Saved.'
     } catch (err: any) {
       projectWebSearchSettingsStatus.value = err?.message ? String(err.message) : String(err)
@@ -7476,26 +7524,101 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function resolveSamplingParamsConfigForConvoId(convoId: string): Promise<Readonly<{
-    requestPatch: OpenRouterSamplingParamsPatch
+  function hasGenerationParamsRequestPatch(patch: Record<string, unknown>): boolean {
+    return Object.keys(patch).length > 0
+  }
+
+  function shouldEmitGenerationParamsSmokeTrace(): boolean {
+    if (typeof window === 'undefined') return false
+    try {
+      return window.localStorage?.getItem('starverse.generationParamsSmokeTrace') === '1'
+    } catch {
+      return false
+    }
+  }
+
+  function emitGenerationParamsSmokeTrace(payload: Readonly<{
+    providerId: RuntimeProviderKey
+    modelId: string
+    requestParams: Record<string, unknown>
+    wireParams: Record<string, unknown>
+  }>) {
+    if (!shouldEmitGenerationParamsSmokeTrace()) return
+    console.info('[generation-params-smoke-trace]', {
+      providerId: payload.providerId,
+      modelId: payload.modelId,
+      requestParams: payload.requestParams,
+      wireParams: payload.wireParams,
+    })
+  }
+
+  function shouldResolveGenerationParamsForProvider(providerId: RuntimeProviderKey): boolean {
+    return (
+      providerId === DEFAULT_CHAT_PROVIDER_ID ||
+      providerId === OPENAI_RESPONSES_PROVIDER_KEY ||
+      providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY ||
+      providerId === ANTHROPIC_MESSAGES_PROVIDER_KEY ||
+      providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
+    )
+  }
+
+  async function resolveGenerationParamsConfigForConvoId(
+    convoId: string,
+    providerId: RuntimeProviderKey,
+    modelId: string,
+  ): Promise<Readonly<{
+    requestPatch: Record<string, unknown>
+    requestParams: Record<string, unknown>
   }>> {
     const convo = getConvoById(convoId)
     const projectMeta = convo?.projectId
       ? getProjectByIdLocal(convo.projectId)?.meta ?? null
       : null
-    try {
-      const resolved = resolveSamplingParamsFromStoredLayers({
-        convoMeta: convo?.meta ?? null,
-        projectMeta,
-        globalDefaults: globalSamplingParamsDefaults.value,
-      })
-      return { requestPatch: resolved.requestPatch }
-    } catch (err) {
-      if (shouldLogDebug()) {
-        console.warn('[ui-app] resolveSamplingParamsConfigForConvoId failed, fallback empty:', err)
-      }
-      return { requestPatch: {} }
+    const profile = generationParamProfileForProvider(providerId, modelId)
+    const resolved = resolveGenerationParamsFromStoredLayers({
+      profile,
+      modelId,
+      convoMeta: convo?.meta ?? null,
+      projectMeta,
+      globalDefaults: globalGenerationParamsDefaults.value,
+    })
+    if (resolved.errors.length > 0) {
+      const first = resolved.errors[0]
+      throw new Error(first.key ? `${first.key}: ${first.message}` : first.message)
     }
+    const requestParams: Record<string, unknown> = { ...resolved.requestParams }
+    if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(modelId)) {
+      const imagePolicy = resolveGeminiImageGenerationPolicy(modelId)
+      const sessionConfig = getChatSessionConfigForConvo(convo ?? null)
+      const thinking = normalizeGeminiThinkingConfig({
+        model: modelId,
+        config: sessionConfig.googleAIStudioThinking ?? DEFAULT_GEMINI_THINKING_CONFIG,
+      })
+      if (
+        requestParams.thinkingLevel === undefined &&
+        imagePolicy.kind !== 'legacy_nano_banana' &&
+        thinking.mode === 'level' &&
+        typeof thinking.thinkingLevel === 'string' &&
+        (imagePolicy.thinkingLevels as readonly string[]).includes(thinking.thinkingLevel)
+      ) {
+        requestParams.thinkingLevel = thinking.thinkingLevel
+      }
+      if (
+        requestParams.thoughtSummaryMode === undefined &&
+        requestParams.reasoningSummary === undefined &&
+        imagePolicy.supportsThoughtSummaries
+      ) {
+        requestParams.thoughtSummaryMode = thinking.includeThoughts === true ? 'auto' : 'none'
+      }
+    }
+    const requestPatch = mapGenerationParamsToProviderRequestPatch({ profile, modelId, requestParams: requestParams as any })
+    emitGenerationParamsSmokeTrace({
+      providerId,
+      modelId,
+      requestParams: { ...requestParams },
+      wireParams: { ...requestPatch },
+    })
+    return { requestPatch, requestParams: { ...requestParams } }
   }
 
   function normalizeModelKey(value: unknown): string {
@@ -7737,28 +7860,6 @@ export function useAppChatAppLogic() {
     return 'selected model endpoint is unavailable.'
   }
 
-  function parseImageGenerationAdvancedJson(
-    raw: string
-  ): Readonly<{ value: Record<string, unknown> | null; error: string | null }> {
-    const text = String(raw ?? '').trim()
-    if (!text) return { value: null, error: null }
-    try {
-      const parsed = JSON.parse(text)
-      if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        return { value: null, error: 'advanced JSON must be an object.' }
-      }
-      return { value: parsed as Record<string, unknown>, error: null }
-    } catch {
-      return { value: null, error: 'advanced JSON is invalid.' }
-    }
-  }
-
-  const parsedImageGenerationAdvanced = computed(() =>
-    parseImageGenerationAdvancedJson(imageGenerationState.value.advancedJson)
-  )
-
-  const imageGenerationAdvancedError = computed(() => parsedImageGenerationAdvanced.value.error)
-
   const imageGenerationSupported = computed(() => selectedModelImageCapabilityClass.value !== null)
 
   const imageGenerationSupportHint = computed(() => {
@@ -7889,8 +7990,22 @@ export function useAppChatAppLogic() {
         ? normalized.imageSize
         : '1K'
     const aspectRatio =
-      normalized.aspectRatio === '16:9' || normalized.aspectRatio === '3:4' || normalized.aspectRatio === '1:1' || normalized.aspectRatio === '4:3'
-        ? normalized.aspectRatio
+      normalized.aspectRatio === 'auto' ||
+      normalized.aspectRatio === '1:1' ||
+      normalized.aspectRatio === '9:16' ||
+      normalized.aspectRatio === '16:9' ||
+      normalized.aspectRatio === '3:4' ||
+      normalized.aspectRatio === '4:3' ||
+      normalized.aspectRatio === '3:2' ||
+      normalized.aspectRatio === '2:3' ||
+      normalized.aspectRatio === '5:4' ||
+      normalized.aspectRatio === '4:5' ||
+      normalized.aspectRatio === '21:9' ||
+      normalized.aspectRatio === '4:1' ||
+      normalized.aspectRatio === '1:4' ||
+      normalized.aspectRatio === '8:1' ||
+      normalized.aspectRatio === '1:8'
+        ? normalized.aspectRatio as ChatSessionConfigAspectRatio
         : '1:1'
     await updateActiveConvoSessionConfig({
       imageGeneration: {
@@ -7949,30 +8064,40 @@ export function useAppChatAppLogic() {
     imageConfig?: OpenRouterImageConfig
   }> | null {
     const ui = imageGenerationState.value
-    if (!ui.enabled) return null
+    const selectedModelId = normalizeRuntimeModelId(activeSessionConfig.value.model.selectedModelKey ?? '')
+    const isGeminiImageModel = providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(selectedModelId)
+    if (!ui.enabled && !isGeminiImageModel) return null
 
-    const imageConfigPatch: Record<string, unknown> = {}
     const aspectRatio = String(ui.aspectRatio ?? '').trim()
     const imageSize = String(ui.imageSize ?? '').trim()
-    const advanced = parsedImageGenerationAdvanced.value
-    if (advanced.value) {
-      Object.assign(imageConfigPatch, advanced.value)
-    }
-    if (aspectRatio) imageConfigPatch.aspect_ratio = aspectRatio
-    if (imageSize) imageConfigPatch.image_size = imageSize
-    else delete imageConfigPatch.image_size
-
-    const imageConfig =
-      Object.keys(imageConfigPatch).length > 0
-        ? (imageConfigPatch as OpenRouterImageConfig)
-        : undefined
 
     if (providerKey === OPENAI_RESPONSES_PROVIDER_KEY || providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY) {
+      if (isGeminiImageModel) {
+        const policy = resolveGeminiImageGenerationPolicy(selectedModelId)
+        const resolvedAspectRatio = aspectRatio || policy.defaultAspectRatio
+        if (!(policy.supportedAspectRatios as readonly string[]).includes(resolvedAspectRatio)) {
+          throw new Error(`Google AI Studio aspect ratio ${resolvedAspectRatio || '(empty)'} is not supported for ${selectedModelId}. Supported aspect ratios: ${policy.supportedAspectRatios.join(', ')}.`)
+        }
+        let resolvedImageSize: ImageGenerationUserConfig['imageSize'] = ''
+        if (policy.imageSizeMode !== 'hidden') {
+          resolvedImageSize = (imageSize || policy.defaultImageSize) as ImageGenerationUserConfig['imageSize']
+          if (!(policy.supportedImageSizes as readonly string[]).includes(resolvedImageSize)) {
+            throw new Error(`Google AI Studio image size ${resolvedImageSize || '(empty)'} is not supported for ${selectedModelId}. Supported sizes: ${policy.supportedImageSizes.join(', ')}.`)
+          }
+        }
+        const outputMode = ui.outputMode === 'image_only' || ui.outputMode === 'image_and_text'
+          ? ui.outputMode
+          : policy.defaultOutputMode
+        return {
+          outputMode,
+          aspectRatio: resolvedAspectRatio,
+          imageSize: resolvedImageSize,
+        }
+      }
       return {
         outputMode: ui.outputMode,
         aspectRatio,
         imageSize: ui.imageSize,
-        ...(imageConfig ? { imageConfig } : {}),
       }
     }
 
@@ -7990,6 +8115,14 @@ export function useAppChatAppLogic() {
     if (capabilityClass === 'image_only' && modalities?.includes('text')) {
       modalities = ['image']
     }
+
+    const imageConfigPatch: Record<string, unknown> = {}
+    if (aspectRatio && aspectRatio !== 'auto') imageConfigPatch.aspect_ratio = aspectRatio
+    if (imageSize) imageConfigPatch.image_size = imageSize
+    const imageConfig =
+      Object.keys(imageConfigPatch).length > 0
+        ? (imageConfigPatch as OpenRouterImageConfig)
+        : undefined
 
     return {
       capabilityClass,
@@ -8170,21 +8303,26 @@ export function useAppChatAppLogic() {
       if (shouldPersistProvider === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(normalized)) {
         const policy = resolveGeminiImageGenerationPolicy(normalized)
         const current = getActiveSessionConfigSnapshot()
+        const imageSize = policy.imageSizeMode === 'hidden' ? '' : policy.defaultImageSize
         patch.imageGeneration = {
           enabled: true,
           resolution: policy.defaultImageSize,
-          aspectRatio: '1:1',
+          aspectRatio: policy.defaultAspectRatio,
           mode: 'custom',
           detail: normalizeImageGenerationState({
             ...normalizeImageGenerationState(current.imageGeneration.detail),
             enabled: true,
-            imageSize: policy.defaultImageSize,
-            aspectRatio: '1:1',
+            outputMode: policy.defaultOutputMode,
+            imageSize,
+            aspectRatio: policy.defaultAspectRatio,
           }),
         }
         patch.googleAIStudioThinking = {
           ...(current.googleAIStudioThinking ?? DEFAULT_GEMINI_THINKING_CONFIG),
           mode: defaultGoogleAIStudioThinkingModeForModel(normalized),
+          ...(policy.kind !== 'unsupported' && policy.kind !== 'legacy_nano_banana' && 'defaultThinkingLevel' in policy
+            ? { thinkingLevel: policy.defaultThinkingLevel }
+            : {}),
         }
       }
       await updateActiveConvoSessionConfig(patch)
@@ -9260,6 +9398,9 @@ export function useAppChatAppLogic() {
       const geminiThinking = providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY
         ? resolveCurrentGoogleAIStudioThinkingConfig(modelId)
         : undefined
+      const generationParamsConfig = shouldResolveGenerationParamsForProvider(providerKey)
+        ? await resolveGenerationParamsConfigForConvoId(convoId, providerKey, modelId)
+        : { requestPatch: {}, requestParams: {} }
       const imageGenerationConfig = resolveImageGenerationConfigForRequest(providerKey)
       const requestId = randomId(getExperimentalRuntimeTextRequestPrefix(providerKey))
       const started = startGeneration(state.value, {
@@ -9306,6 +9447,7 @@ export function useAppChatAppLogic() {
           ...(ollamaConfig ? { ollamaConfig } : {}),
           ...(endpointUrl ? { localEndpointUrl: endpointUrl } : {}),
           ...(geminiThinking ? { geminiThinking } : {}),
+          ...(hasGenerationParamsRequestPatch(generationParamsConfig.requestPatch) ? { generationParams: generationParamsConfig.requestPatch } : {}),
           ...(imageGenerationConfig ? { imageGeneration: imageGenerationConfig } : {}),
           signal,
         }),
@@ -9321,7 +9463,7 @@ export function useAppChatAppLogic() {
 
     const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = getRequestedReasoningConfig()
     const webSearchConfig = await resolveWebSearchConfigForConvoId(convoId)
-    const samplingParamsConfig = await resolveSamplingParamsConfigForConvoId(convoId)
+    const generationParamsConfig = await resolveGenerationParamsConfigForConvoId(convoId, DEFAULT_CHAT_PROVIDER_ID, modelId)
     const imageGenerationConfig = resolveImageGenerationConfigForRequest(DEFAULT_CHAT_PROVIDER_ID)
 
     const requestId = randomId('req')
@@ -9392,7 +9534,7 @@ export function useAppChatAppLogic() {
           model: modelId,
           requestedReasoningMode,
           webSearch: webSearchConfig,
-          ...(hasSamplingParamsPatch(samplingParamsConfig.requestPatch) ? { samplingParams: samplingParamsConfig.requestPatch } : {}),
+          ...(hasGenerationParamsRequestPatch(generationParamsConfig.requestPatch) ? { generationParams: generationParamsConfig.requestPatch } : {}),
           ...(imageGenerationConfig ? { imageGeneration: imageGenerationConfig } : {}),
           ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
           ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
@@ -9947,6 +10089,9 @@ export function useAppChatAppLogic() {
     const geminiThinking = input.providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY
       ? resolveCurrentGoogleAIStudioThinkingConfig(modelId)
       : undefined
+    const generationParamsConfig = shouldResolveGenerationParamsForProvider(input.providerKey)
+      ? await resolveGenerationParamsConfigForConvoId(input.convoId, input.providerKey, modelId)
+      : { requestPatch: {}, requestParams: {} }
     const imageGenerationConfig = resolveImageGenerationConfigForRequest(input.providerKey)
 
     const begun = await beginTurn(input.branch.id, input.text, {
@@ -10019,6 +10164,7 @@ export function useAppChatAppLogic() {
         ...(ollamaConfig ? { ollamaConfig } : {}),
         ...(endpointUrl ? { localEndpointUrl: endpointUrl } : {}),
         ...(geminiThinking ? { geminiThinking } : {}),
+        ...(hasGenerationParamsRequestPatch(generationParamsConfig.requestPatch) ? { generationParams: generationParamsConfig.requestPatch } : {}),
         ...(imageGenerationConfig ? { imageGeneration: imageGenerationConfig } : {}),
         signal,
       }),
@@ -10235,7 +10381,7 @@ export function useAppChatAppLogic() {
 
     const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = getRequestedReasoningConfig()
     const webSearchConfig = await resolveWebSearchConfigForConvoId(convoId)
-    const samplingParamsConfig = await resolveSamplingParamsConfigForConvoId(convoId)
+    const generationParamsConfig = await resolveGenerationParamsConfigForConvoId(convoId, DEFAULT_CHAT_PROVIDER_ID, modelId)
     const imageGenerationConfig = resolveImageGenerationConfigForRequest(DEFAULT_CHAT_PROVIDER_ID)
     const requestId = randomId('req')
 
@@ -10287,7 +10433,7 @@ export function useAppChatAppLogic() {
           model: modelId,
           requestedReasoningMode,
           webSearch: webSearchConfig,
-          ...(hasSamplingParamsPatch(samplingParamsConfig.requestPatch) ? { samplingParams: samplingParamsConfig.requestPatch } : {}),
+          ...(hasGenerationParamsRequestPatch(generationParamsConfig.requestPatch) ? { generationParams: generationParamsConfig.requestPatch } : {}),
           ...(imageGenerationConfig ? { imageGeneration: imageGenerationConfig } : {}),
           ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
           ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
@@ -10947,7 +11093,7 @@ export function useAppChatAppLogic() {
       await refreshGlobalReasoningPanelDefaultExpanded()
       await refreshGlobalReasoningPanelAutoCollapseAfterReasoning()
       await refreshGlobalWebSearchDefaults()
-      await refreshGlobalSamplingParamsDefaults()
+      await refreshGlobalGenerationParamsDefaults()
       await refreshGlobalUserMessageRenderDefault()
       await refreshGlobalImageGenerationDefault()
       await refreshDfcAttachmentDefaults()
@@ -10976,7 +11122,7 @@ export function useAppChatAppLogic() {
     window.addEventListener('settings:reasoningPanelAutoCollapseAfterReasoningUpdated', handleGlobalReasoningPanelAutoCollapseAfterReasoningUpdated)
     window.addEventListener('settings:userMessageRenderDefaultUpdated', handleGlobalUserMessageRenderDefaultUpdated)
     window.addEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
-    window.addEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
+    window.addEventListener('settings:generationParamsDefaultsUpdated', handleGlobalGenerationParamsDefaultsUpdated)
     window.addEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
     addExperimentalProviderChatEventListeners()
     window.addEventListener('pagehide', handlePageHide)
@@ -11108,7 +11254,7 @@ export function useAppChatAppLogic() {
     window.removeEventListener('settings:reasoningPanelAutoCollapseAfterReasoningUpdated', handleGlobalReasoningPanelAutoCollapseAfterReasoningUpdated)
     window.removeEventListener('settings:userMessageRenderDefaultUpdated', handleGlobalUserMessageRenderDefaultUpdated)
     window.removeEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
-    window.removeEventListener('settings:samplingParamsDefaultsUpdated', handleGlobalSamplingParamsDefaultsUpdated)
+    window.removeEventListener('settings:generationParamsDefaultsUpdated', handleGlobalGenerationParamsDefaultsUpdated)
     window.removeEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
     removeExperimentalProviderChatEventListeners()
     window.removeEventListener('pagehide', handlePageHide)
@@ -11346,9 +11492,9 @@ export function useAppChatAppLogic() {
     showHiddenModelsInPickers,
     modelCatalogNotice,
     modelPrefsScopeForUi,
-    activeSessionSamplingParamsLayer,
-    activeSessionSamplingParamsResolved,
-    sessionSamplingParamsQuickSaving,
+    activeSessionGenerationParamsLayer,
+    activeSessionGenerationParamsResolved,
+    sessionGenerationParamsQuickSaving,
     sessionWebSearchSettingsSaving,
     activeSessionWebSearchLayer,
     activeSessionWebSearchResolved,
@@ -11358,7 +11504,6 @@ export function useAppChatAppLogic() {
     imageGenerationFollowDefault,
     selectedModelImageCapabilityClass,
     imageGenerationSupportHint,
-    imageGenerationAdvancedError,
     onUpdateModel,
     onUpdateReasoningEnabled,
     onUpdateReasoningEffortLevel,
@@ -11371,7 +11516,7 @@ export function useAppChatAppLogic() {
     onUpdateImageGenerationResolution,
     onUpdateImageGenerationAspectRatio,
     onUpdateReasoningDisplayMode,
-    onComposerUpdateSamplingParamsLayer,
+    onComposerUpdateGenerationParamsLayer,
     onComposerUpdateWebSearchLayer,
     onUpdateImageGeneration,
     onUpdateImageGenerationFollowDefault,
@@ -11429,8 +11574,8 @@ export function useAppChatAppLogic() {
     closeSettings,
     sessionWebSearchSettingsOpen,
     closeSessionWebSearchSettings,
-    sessionSamplingParamsDraft,
-    sessionSamplingParamsDraftResolved,
+    sessionGenerationParamsDraft,
+    sessionGenerationParamsDraftResolved,
     sessionWebSearchDraft,
     sessionWebSearchDraftResolved,
     sessionWebSearchDraftHint,
@@ -11439,8 +11584,8 @@ export function useAppChatAppLogic() {
     projectWebSearchSettingsOpen,
     projectWebSearchSettingsTarget,
     closeProjectWebSearchSettings,
-    projectSamplingParamsDraft,
-    projectSamplingParamsResolved,
+    projectGenerationParamsDraft,
+    projectGenerationParamsResolved,
     projectWebSearchDraft,
     projectWebSearchResolved,
     projectWebSearchDraftHint,

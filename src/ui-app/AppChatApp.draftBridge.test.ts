@@ -13,11 +13,13 @@ describe('ui-app AppChatApp draft bridge migration', () => {
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'settings.getReasoningPrefs') return { value: null }
       if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
       if (method === 'settings.getUserMessageRenderDefault') return { value: null }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
       if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
       if (method === 'settings.setChatReasoningDisplayMode') return { ok: true }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
 
       if (method === 'convo.list') {
         return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 2 }]
@@ -59,6 +61,25 @@ describe('ui-app AppChatApp draft bridge migration', () => {
         }
       }
 
+      if (method === 'sendPlan.buildCurrent') {
+        return {
+          sendPlan: {
+            status: 'sendable',
+            warnings: [],
+            blockingReasons: [],
+            includedAttachments: [],
+            excludedAttachments: [],
+            attachmentPlans: [],
+            requiresModelChange: false,
+            canProceedAfterDroppingExcluded: false,
+            requiresUserConfirmation: false,
+            plannerVersion: 'phase-5/v1',
+          },
+          draftText: String(params?.draftText ?? ''),
+          assets: [],
+        }
+      }
+
       return { ok: true }
     })
     ;(globalThis as any).dbBridge = { invoke }
@@ -81,7 +102,7 @@ describe('ui-app AppChatApp draft bridge migration', () => {
   it('persists draft text through conversationDraft.updateText and never calls legacy chatDraft writes', async () => {
     render(AppChatApp)
 
-    const textarea = (await screen.findByPlaceholderText('Type a message...')) as HTMLTextAreaElement
+    const textarea = (await screen.findByTestId('composer-draft')) as HTMLTextAreaElement
     await fireEvent.update(textarea, 'new text')
     await new Promise((resolve) => setTimeout(resolve, 350))
 

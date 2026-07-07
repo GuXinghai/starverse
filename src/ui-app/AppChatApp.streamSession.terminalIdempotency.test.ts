@@ -340,7 +340,7 @@ function createDbBridge() {
     if (method === 'messageError.upsert') return { ok: true }
     if (method === 'messageError.listByMessageIds') return []
     if (method === 'messageAsset.listByMessageIds') return []
-    if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+    if (method === 'settings.getGenerationParamsDefaults') return { value: null }
     if (method === 'settings.getImageGenerationDefault') return { value: null }
     if (method === 'settings.getDfcAttachmentDefaults') return { value: null }
     if (method === 'message.list') return orderedMessages()

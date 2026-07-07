@@ -21,7 +21,7 @@ function createConfig(overrides: Partial<ChatSessionConfig> = {}): ChatSessionCo
       mode: 'default',
       detail: null,
     },
-    samplingParams: {
+    generationParams: {
       detail: null,
     },
     ...overrides,
@@ -137,6 +137,40 @@ describe('chatSessionConfig', () => {
       thinkingBudget: 2048,
       thinkingLevel: 'low',
       includeThoughts: true,
+    })
+  })
+
+  it('round-trips versioned generation params override in conversation meta', () => {
+    const meta = serializeChatSessionConfigToConvoMeta({
+      config: createConfig({
+        generationParams: {
+          detail: {
+            temperature: { mode: 'custom', value: 0.2 },
+            maxOutputTokens: { mode: 'custom', value: 64 },
+          },
+        },
+      }),
+      defaultProviderId: 'openrouter',
+      defaultModelKey: 'openrouter/auto',
+    })
+
+    expect(meta?.generationParamsOverride).toEqual({
+      version: 1,
+      params: {
+        temperature: { mode: 'custom', value: 0.2 },
+        maxOutputTokens: { mode: 'custom', value: 64 },
+      },
+    })
+
+    const config = deserializeChatSessionConfigFromConvoMeta({
+      convoMeta: meta,
+      defaultProviderId: 'openrouter',
+      defaultModelKey: 'openrouter/auto',
+    })
+
+    expect(config.generationParams.detail).toEqual({
+      temperature: { mode: 'custom', value: 0.2 },
+      maxOutputTokens: { mode: 'custom', value: 64 },
     })
   })
 })

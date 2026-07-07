@@ -252,8 +252,8 @@ function createDbBridgeMock() {
     if (method === 'settings.setUserMessageRenderDefault') return { ok: true }
     if (method === 'settings.getWebSearchDefaults') return { value: null }
     if (method === 'settings.setWebSearchDefaults') return { ok: true }
-    if (method === 'settings.getSamplingParamsDefaults') return { value: null }
-    if (method === 'settings.setSamplingParamsDefaults') return { ok: true }
+    if (method === 'settings.getGenerationParamsDefaults') return { value: null }
+    if (method === 'settings.setGenerationParamsDefaults') return { ok: true }
     return { ok: true }
   })
   return { invoke }
@@ -442,7 +442,7 @@ describe('ui-app SettingsPanel', () => {
     expect(invoke).toHaveBeenCalledWith('settings.setChatReasoningPanelDefaultExpanded', { value: true })
     expect(invoke).toHaveBeenCalledWith('settings.setUserMessageRenderDefault', { value: false })
     expect(invoke).toHaveBeenCalledWith('settings.setWebSearchDefaults', { value: null })
-    expect(invoke).toHaveBeenCalledWith('settings.setSamplingParamsDefaults', { value: null })
+    expect(invoke).toHaveBeenCalledWith('settings.setGenerationParamsDefaults', { value: null })
     const credentialUpdate = (globalThis as any).openRouterCredential.update as ReturnType<typeof vi.fn>
     expect(credentialUpdate).toHaveBeenCalledWith({ apiKey: 'sk-new' })
   })

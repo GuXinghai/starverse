@@ -340,7 +340,7 @@
       "hintGlobal": "Global defaults apply when project/session keeps mode=default."
     },
     "customParams": {
-      "title": "Global Custom Parameters"
+      "title": "Global Generation Parameters"
     },
     "footer": "ui-app reads OpenRouter settings from electron-store (not env) to avoid hidden overrides."
   }
