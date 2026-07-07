@@ -86,23 +86,33 @@ describe('SettingsRepo', () => {
     expect(repo.getWebSearchDefaults()).toBeNull()
   })
 
-  it('persists sampling_params.defaults and defaults to null', () => {
+  it('persists generation_params.defaults without reading legacy sampling params', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     const repo = new SettingsRepo(db)
 
-    expect(repo.getSamplingParamsDefaults()).toBeNull()
+    expect(repo.getGenerationParamsDefaults()).toBeNull()
+
+    db.prepare(`
+      INSERT INTO settings_kv(key, value_json, created_at_ms, updated_at_ms)
+      VALUES ('sampling_params.defaults', @valueJson, 1, 1)
+    `).run({
+      valueJson: JSON.stringify({ top_p: { mode: 'custom', value: 0.2 } }),
+    })
+    expect(repo.getGenerationParamsDefaults()).toBeNull()
 
     const value = {
-      temperature: { mode: 'custom', value: 0.8 },
-      top_p: { mode: 'custom', value: 0.95 },
-      max_tokens: { mode: 'custom', value: 1200 },
+      version: 1,
+      params: {
+        topP: { mode: 'custom', value: 0.95 },
+        maxOutputTokens: { mode: 'omit' },
+      },
     }
-    repo.setSamplingParamsDefaults(value)
-    expect(repo.getSamplingParamsDefaults()).toEqual(value)
+    repo.setGenerationParamsDefaults(value)
+    expect(repo.getGenerationParamsDefaults()).toEqual(value)
 
-    repo.setSamplingParamsDefaults(null)
-    expect(repo.getSamplingParamsDefaults()).toBeNull()
+    repo.setGenerationParamsDefaults(null)
+    expect(repo.getGenerationParamsDefaults()).toBeNull()
   })
 
   it('persists image_generation.default and defaults to null', () => {
@@ -117,7 +127,6 @@ describe('SettingsRepo', () => {
       outputMode: 'image_only',
       aspectRatio: '16:9',
       imageSize: '1024x1024',
-      advancedJson: '{"seed":7}',
     }
     repo.setImageGenerationDefault(value)
     expect(repo.getImageGenerationDefault()).toEqual(value)

@@ -332,15 +332,15 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return { ok: true }
     })
 
-  register('settings.getSamplingParamsDefaults', () => {
-        return { value: rt.settingsRepo.getSamplingParamsDefaults() }
+  register('settings.getGenerationParamsDefaults', () => {
+        return { value: rt.settingsRepo.getGenerationParamsDefaults() }
     })
 
-  register('settings.setSamplingParamsDefaults', (raw) => {
+  register('settings.setGenerationParamsDefaults', (raw) => {
         if (!raw || typeof raw !== 'object' || !('value' in raw)) {
-          throw new DbWorkerError('ERR_VALIDATION', 'settings.setSamplingParamsDefaults requires value')
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setGenerationParamsDefaults requires value')
         }
-        rt.settingsRepo.setSamplingParamsDefaults((raw as any).value ?? null)
+        rt.settingsRepo.setGenerationParamsDefaults((raw as any).value ?? null)
         return { ok: true }
     })
 
