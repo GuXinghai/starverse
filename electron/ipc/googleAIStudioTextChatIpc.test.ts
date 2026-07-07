@@ -122,13 +122,12 @@ describe('googleAIStudioTextChatIpc', () => {
     expect(validateGoogleAIStudioTextChatPayload({
       requestId: 'google_ai_studio_req_image',
       assistantMessageId: 'assistant_1',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-image',
       messages: [{ role: 'user', content: 'draw' }],
       imageGeneration: {
         outputMode: 'image_only',
         aspectRatio: '16:9',
         imageSize: '2K',
-        imageConfig: { response_format: { seed: 42 } },
       },
     })).toMatchObject({
       ok: true,
@@ -136,16 +135,15 @@ describe('googleAIStudioTextChatIpc', () => {
         outputMode: 'image_only',
         aspectRatio: '16:9',
         imageSize: '2K',
-        imageConfig: { response_format: { seed: 42 } },
       },
     })
 
     expect(validateGoogleAIStudioTextChatPayload({
       requestId: 'google_ai_studio_req_bad_image',
       assistantMessageId: 'assistant_1',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-lite-image',
       messages: [{ role: 'user', content: 'draw' }],
-      imageGeneration: { imageSize: '8K' },
+      imageGeneration: { imageSize: '4K' },
     })).toMatchObject({ ok: false, code: 'invalid_payload' })
 
     expect(validateGoogleAIStudioTextChatPayload({
@@ -192,7 +190,14 @@ describe('googleAIStudioTextChatIpc', () => {
       assistantMessageId: 'assistant_1',
       model: 'gemini-2.5-flash',
       messages: [{ role: 'user', content: 'hello' }],
-      geminiThinking: { mode: 'budget', thinkingBudget: 2048, includeThoughts: true },
+      generationParams: {
+        generationConfig: {
+          thinkingConfig: {
+            thinkingBudget: 2048,
+            includeThoughts: true,
+          },
+        },
+      },
       timeoutMs: 1000,
     })
 

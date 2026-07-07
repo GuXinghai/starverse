@@ -66,7 +66,7 @@ describe('buildGeminiRequest', () => {
     const req = buildGeminiRequest({
       model: 'gemini-2.5-pro',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { temperature: 0.7 } }),
+      config: baseConfig({ generationParams: { generationConfig: { temperature: 0.7 } } }),
     })
 
     expect((req.generationConfig as any).temperature).toBe(0.7)
@@ -76,7 +76,7 @@ describe('buildGeminiRequest', () => {
     const req = buildGeminiRequest({
       model: 'gemini-2.5-pro',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { top_p: 0.9 } }),
+      config: baseConfig({ generationParams: { generationConfig: { topP: 0.9 } } }),
     })
 
     expect((req.generationConfig as any).topP).toBe(0.9)
@@ -86,7 +86,7 @@ describe('buildGeminiRequest', () => {
     const req = buildGeminiRequest({
       model: 'gemini-2.5-pro',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { max_tokens: 4096 } }),
+      config: baseConfig({ generationParams: { generationConfig: { maxOutputTokens: 4096 } } }),
     })
 
     expect((req.generationConfig as any).maxOutputTokens).toBe(4096)
@@ -102,12 +102,16 @@ describe('buildGeminiRequest', () => {
     expect(req.generationConfig).toBeUndefined()
   })
 
-  it('includes native thinkingBudget for Gemini 2.5 budget mode', () => {
+  it('includes native thinkingBudget from generationParams', () => {
     const req = buildGeminiRequest({
       model: 'gemini-2.5-flash',
       messages: baseMessages,
       config: baseConfig({
-        geminiThinking: { mode: 'budget', thinkingBudget: 1234, includeThoughts: true },
+        generationParams: {
+          generationConfig: {
+            thinkingConfig: { thinkingBudget: 1234, includeThoughts: true },
+          },
+        },
       }),
     })
 
@@ -117,12 +121,16 @@ describe('buildGeminiRequest', () => {
     })
   })
 
-  it('includes native thinkingLevel for Gemini 3 level mode', () => {
+  it('includes native thinkingLevel from generationParams', () => {
     const req = buildGeminiRequest({
       model: 'gemini-3-pro',
       messages: baseMessages,
       config: baseConfig({
-        geminiThinking: { mode: 'level', thinkingLevel: 'minimal', includeThoughts: false },
+        generationParams: {
+          generationConfig: {
+            thinkingConfig: { thinkingLevel: 'minimal', includeThoughts: false },
+          },
+        },
       }),
     })
 
@@ -132,11 +140,11 @@ describe('buildGeminiRequest', () => {
     })
   })
 
-  it('does not include thinkingConfig when Gemini thinking mode is auto', () => {
+  it('does not derive thinkingConfig from legacy Gemini thinking config', () => {
     const req = buildGeminiRequest({
       model: 'gemini-2.5-pro',
       messages: baseMessages,
-      config: baseConfig({ geminiThinking: { mode: 'auto', includeThoughts: false } }),
+      config: baseConfig({ geminiThinking: { mode: 'budget', thinkingBudget: 2048, includeThoughts: true } }),
     })
 
     expect(req.generationConfig).toBeUndefined()
@@ -229,17 +237,20 @@ describe('buildGeminiImageGenerationInteractionRequest', () => {
       model: 'models/gemini-3.1-flash-image',
       input: 'Hello',
       stream: true,
-      response_format: {
-        type: 'image',
-        aspect_ratio: '16:9',
-        image_size: '2K',
-      },
+      response_format: [
+        { type: 'text' },
+        {
+          type: 'image',
+          aspect_ratio: '16:9',
+          image_size: '2K',
+        },
+      ],
     })
   })
 
-  it('allows advanced response_format fields without writing OpenAI reasoning fields', () => {
+  it('does not write aspect_ratio for auto or image_size for legacy Nano Banana', () => {
     const req = buildGeminiImageGenerationInteractionRequest({
-      model: 'models/gemini-3-pro-image-preview',
+      model: 'publishers/google/models/gemini-2.5-flash-image',
       messages: [
         { role: 'user', parts: [{ text: 'First' }] },
         { role: 'model', parts: [{ text: 'Second' }] },
@@ -248,20 +259,20 @@ describe('buildGeminiImageGenerationInteractionRequest', () => {
         requestedReasoningMode: 'effort',
         requestedReasoningEffort: 'high',
         imageGeneration: {
-          imageConfig: {
-            response_format: { seed: 42 },
-            aspect_ratio: '1:1',
-          },
+          outputMode: 'image_only',
+          aspectRatio: 'auto',
+          imageSize: '4K',
         },
       }),
     })
 
-    expect(req.model).toBe('models/gemini-3-pro-image-preview')
+    expect(req.model).toBe('models/gemini-2.5-flash-image')
     expect(req.input).toBe('First\n\nSecond')
     expect(req.stream).toBe(true)
-    expect(req.response_format).toEqual({ type: 'image', seed: 42, aspect_ratio: '1:1' })
+    expect(req.response_format).toEqual({ type: 'image' })
     expect((req as any).reasoning_effort).toBeUndefined()
     expect((req as any).reasoning).toBeUndefined()
+    expect((req as any).imageConfig).toBeUndefined()
   })
 
   it('includes Interactions generation_config for image generation reasoning summaries and supported levels', () => {
@@ -270,15 +281,69 @@ describe('buildGeminiImageGenerationInteractionRequest', () => {
       messages: baseMessages,
       config: baseConfig({
         imageGeneration: { aspectRatio: '1:1' },
-        geminiThinking: { mode: 'level', thinkingLevel: 'high', includeThoughts: true },
+        generationParams: {
+          generation_config: {
+            temperature: 1.5,
+            top_p: 0.8,
+            max_output_tokens: 4096,
+            stop_sequences: ['STOP'],
+            thinking_level: 'high',
+            thinking_summaries: 'auto',
+          },
+        },
       }),
     })
 
     expect(req.generation_config).toEqual({
+      temperature: 1.5,
+      top_p: 0.8,
+      max_output_tokens: 4096,
+      stop_sequences: ['STOP'],
       thinking_level: 'high',
       thinking_summaries: 'auto',
     })
     expect((req as any).thinking_config).toBeUndefined()
+  })
+
+  it('omits thinking_summaries when thought summary mode is none', () => {
+    const req = buildGeminiImageGenerationInteractionRequest({
+      model: 'gemini-3.1-flash-lite-image',
+      messages: baseMessages,
+      config: baseConfig({
+        imageGeneration: { imageSize: '1K' },
+        generationParams: {
+          generation_config: {
+            thinking_level: 'minimal',
+            thinking_summaries: 'none',
+          },
+        },
+      }),
+    })
+
+    expect(req.generation_config).toEqual({
+      thinking_level: 'minimal',
+    })
+  })
+
+  it('maps Gemini image generation tools by model capability', () => {
+    const req = buildGeminiImageGenerationInteractionRequest({
+      model: 'gemini-3.1-flash-image',
+      messages: baseMessages,
+      config: baseConfig({
+        imageGeneration: { imageSize: '512' },
+        generationParams: {
+          tools: {
+            google_search: true,
+            image_search: true,
+          },
+        },
+      }),
+    })
+
+    expect(req.tools).toEqual([
+      { google_search: {} },
+      { image_search: {} },
+    ])
   })
 
   it('rejects illegal model-specific image sizes without fallback', () => {
@@ -289,5 +354,35 @@ describe('buildGeminiImageGenerationInteractionRequest', () => {
         imageGeneration: { imageSize: '4K' },
       }),
     })).toThrow('Supported sizes: 1K')
+  })
+
+  it('rejects unsupported tools before fetch', () => {
+    expect(() => buildGeminiImageGenerationInteractionRequest({
+      model: 'gemini-3-pro-image',
+      messages: baseMessages,
+      config: baseConfig({
+        imageGeneration: { imageSize: '1K' },
+        generationParams: {
+          tools: {
+            image_search: true,
+          },
+        },
+      }),
+    })).toThrow('does not support Image Search')
+  })
+
+  it('rejects Gemini image generation temperature above 2 before fetch', () => {
+    expect(() => buildGeminiImageGenerationInteractionRequest({
+      model: 'gemini-3.1-flash-image',
+      messages: baseMessages,
+      config: baseConfig({
+        imageGeneration: { imageSize: '1K' },
+        generationParams: {
+          generation_config: {
+            temperature: 2.1,
+          },
+        },
+      }),
+    })).toThrow('temperature must be between 0 and 2')
   })
 })

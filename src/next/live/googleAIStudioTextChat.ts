@@ -17,6 +17,7 @@ export type GoogleAIStudioTextChatOptions = Readonly<{
   contextMessages?: readonly unknown[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
   geminiThinking?: GeminiThinkingConfig
+  generationParams?: ProviderStreamConfig['generationParams']
   imageGeneration?: ProviderStreamConfig['imageGeneration']
   signal?: AbortSignal
   timeoutMs?: number
@@ -219,6 +220,7 @@ export async function* streamGoogleAIStudioTextChatAsDomainEvents(
         model: options.model,
         messages,
         ...(options.geminiThinking ? { geminiThinking: options.geminiThinking } : {}),
+        ...(options.generationParams ? { generationParams: options.generationParams } : {}),
         ...(options.imageGeneration ? { imageGeneration: options.imageGeneration } : {}),
         ...(hasContentBlocks ? { currentUserContentBlocks: options.currentUserContentBlocks } : {}),
         ...(typeof options.timeoutMs === 'number' ? { timeoutMs: options.timeoutMs } : {}),

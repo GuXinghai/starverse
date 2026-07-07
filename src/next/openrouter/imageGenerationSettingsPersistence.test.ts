@@ -26,7 +26,6 @@ describe('imageGenerationSettingsPersistence', () => {
       outputMode: 'image_only',
       aspectRatio: '16:9',
       imageSize: '2K',
-      advancedJson: '{"seed":7}',
     })
   })
 
@@ -37,14 +36,12 @@ describe('imageGenerationSettingsPersistence', () => {
         outputMode: 'image_only',
         aspectRatio: '',
         imageSize: '1024x1024',
-        advancedJson: '',
       })
     ).toEqual({
       enabled: true,
       outputMode: 'image_only',
       aspectRatio: '',
       imageSize: '',
-      advancedJson: '',
     })
   })
 
@@ -54,7 +51,6 @@ describe('imageGenerationSettingsPersistence', () => {
       outputMode: 'image_and_text' as const,
       aspectRatio: '1:1',
       imageSize: '',
-      advancedJson: '',
     } satisfies ImageGenerationUserConfig
     const merged = mergeConvoImageGenerationMeta({ selectedModelKey: 'x' }, { mode: 'custom', custom })
     expect(merged).toEqual({
@@ -76,7 +72,6 @@ describe('imageGenerationSettingsPersistence', () => {
       outputMode: 'auto',
       aspectRatio: '',
       imageSize: '',
-      advancedJson: '',
     }
     const projectMeta = mergeProjectImageGenerationDefaultMeta(
       null,
@@ -87,7 +82,6 @@ describe('imageGenerationSettingsPersistence', () => {
           outputMode: 'image_only',
           aspectRatio: '16:9',
           imageSize: '2K',
-          advancedJson: '',
         },
       },
     )
@@ -100,7 +94,6 @@ describe('imageGenerationSettingsPersistence', () => {
           outputMode: 'image_and_text',
           aspectRatio: '3:2',
           imageSize: '4K',
-          advancedJson: '{"seed":1}',
         },
       },
     )
