@@ -114,7 +114,7 @@ describe('OpenAI curated metadata seed', () => {
         capabilitySeed: {
           textChat: true,
           responsesApi: true,
-          reasoning: 'unknown',
+          reasoning: 'unsupported',
           imageInput: 'unknown',
           fileInput: 'unknown',
           functionCalling: 'unknown',
@@ -143,10 +143,30 @@ describe('OpenAI curated metadata seed', () => {
       capabilitySeed: {
         textChat: true,
         responsesApi: true,
-        reasoning: 'unknown',
+        reasoning: 'unsupported',
       },
     })
     expect(mini?.warnings.join('\n')).toContain('/models reports availability/basic ownership')
+  })
+
+  it('seeds provider-reported reasoning-capable models from the OpenAI Responses policy', () => {
+    const result = resolveOpenAIModelAvailabilityFromModelsPayload({
+      object: 'list',
+      data: [
+        { id: 'gpt-5.4-nano', object: 'model', created: 1745875200, owned_by: 'system' },
+      ],
+    }, OBSERVED_AT_MS)
+
+    expect(result.ok).toBe(true)
+    const nano = result.ok ? result.models.find((model) => model.nativeModelId === 'gpt-5.4-nano') : null
+    expect(nano).toMatchObject({
+      capabilitySeed: {
+        textChat: true,
+        responsesApi: true,
+        reasoning: 'supported',
+        reasoningEffort: ['none', 'low', 'medium', 'high', 'xhigh'],
+      },
+    })
   })
 
   it('does not overclaim capabilities for unknown provider-reported models', () => {
