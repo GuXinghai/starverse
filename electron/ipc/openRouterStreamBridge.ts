@@ -141,8 +141,6 @@ function safeStringifyForLog(value: unknown, maxChars: number): { text: string; 
 
 function buildFallbackRequestBody(payload: OpenRouterStreamWireRequest): Record<string, unknown> {
   const userText = typeof payload.userText === 'string' ? payload.userText : ''
-  const reasoningMode = String(payload.config.requestedReasoningMode ?? 'auto')
-  const reasoningEffort = String(payload.config.requestedReasoningEffort ?? 'none')
   const body: Record<string, unknown> = {
     model: String(payload.config.model ?? ''),
     stream: true,
@@ -160,12 +158,6 @@ function buildFallbackRequestBody(payload: OpenRouterStreamWireRequest): Record<
     !Array.isArray(payload.config.imageConfig)
   ) {
     body.image_config = payload.config.imageConfig
-  }
-  if (reasoningMode !== 'auto') {
-    body.reasoning = {
-      effort: reasoningEffort,
-      ...(payload.config.requestedReasoningExclude === true ? { exclude: true } : {}),
-    }
   }
   if (payload.config.providerRequireParameters === true) {
     body.provider = { require_parameters: true }

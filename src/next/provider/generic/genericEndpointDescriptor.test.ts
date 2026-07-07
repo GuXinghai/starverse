@@ -231,7 +231,7 @@ describe('GenericRuntimeCapability', () => {
       expect(cap.basicMessages).toBe(true)
       expect(cap.streamingText).toBe(true)
       expect(cap.basicHttpError).toBe(true)
-      expect(cap.samplingParams).toBe(true)
+      expect(cap.generationParams).toBe(true)
       expect(cap.tools).toBe(false)
       expect(cap.functionCalling).toBe(false)
       expect(cap.files).toBe(false)
@@ -323,14 +323,14 @@ describe('validateCapabilityOverride', () => {
     expect(result?.code).toBe('blocked_capability_override')
   })
 
-  it('rejects non-boolean samplingParams value', () => {
-    const result = validateCapabilityOverride({ samplingParams: 1 } as any)
+  it('rejects non-boolean generationParams value', () => {
+    const result = validateCapabilityOverride({ generationParams: 1 } as any)
     expect(result).not.toBeNull()
     expect(result?.code).toBe('blocked_capability_override')
   })
 
   it('allows disabling a supported feature', () => {
-    expect(validateCapabilityOverride({ samplingParams: false })).toBeNull()
+    expect(validateCapabilityOverride({ generationParams: false })).toBeNull()
   })
 
   it('allows setting blocked feature to false', () => {
@@ -394,10 +394,10 @@ describe('validateGenericRequestedCapabilities', () => {
     expect(validateGenericRequestedCapabilities(baseConfig)).toBeNull()
   })
 
-  it('accepts sampling params', () => {
+  it('accepts generation params', () => {
     expect(validateGenericRequestedCapabilities({
       ...baseConfig,
-      samplingParams: { temperature: 0.7, top_p: 0.9, max_tokens: 1024 },
+      generationParams: { temperature: 0.7, top_p: 0.9, max_tokens: 1024 },
     })).toBeNull()
   })
 
@@ -437,14 +437,12 @@ describe('validateGenericRequestedCapabilities', () => {
     expect(result?.code).toBe('blocked_capability_override')
   })
 
-  it('rejects reasoning mode effort', () => {
-    const result = validateGenericRequestedCapabilities({
+  it('ignores legacy requested reasoning controls', () => {
+    expect(validateGenericRequestedCapabilities({
       ...baseConfig,
       requestedReasoningMode: 'effort',
       requestedReasoningEffort: 'high',
-    })
-    expect(result).not.toBeNull()
-    expect(result?.code).toBe('blocked_capability_override')
+    })).toBeNull()
   })
 
   it('accepts reasoning mode auto', () => {

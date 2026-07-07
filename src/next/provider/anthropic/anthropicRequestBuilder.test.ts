@@ -64,7 +64,7 @@ describe('buildAnthropicRequest', () => {
     const req = buildAnthropicRequest({
       model: 'claude-sonnet-4-5',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { temperature: 0.7 } }),
+      config: baseConfig({ generationParams: { temperature: 0.7 } }),
     })
 
     expect(req.temperature).toBe(0.7)
@@ -74,13 +74,13 @@ describe('buildAnthropicRequest', () => {
     const req = buildAnthropicRequest({
       model: 'claude-sonnet-4-5',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { top_p: 0.9 } }),
+      config: baseConfig({ generationParams: { top_p: 0.9 } }),
     })
 
     expect(req.top_p).toBe(0.9)
   })
 
-  it('does not include sampling params when absent', () => {
+  it('does not include generation params when absent', () => {
     const req = buildAnthropicRequest({
       model: 'claude-sonnet-4-5',
       messages: baseMessages,
@@ -112,11 +112,11 @@ describe('buildAnthropicRequest', () => {
     expect(req.tools).toBeUndefined()
   })
 
-  it('includes thinking config when mode is effort', () => {
+  it('includes thinking config from generationParams', () => {
     const req = buildAnthropicRequest({
       model: 'claude-sonnet-4-5',
       messages: baseMessages,
-      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
+      config: baseConfig({ generationParams: { thinking: { type: 'enabled', budget_tokens: 16384 } } }),
     })
 
     expect(req.thinking).toEqual({ type: 'enabled', budget_tokens: 16384 })
@@ -124,33 +124,32 @@ describe('buildAnthropicRequest', () => {
     expect(req.max_tokens).toBeGreaterThan((req.thinking as any).budget_tokens)
   })
 
-  it('maps thinking budget levels correctly', () => {
-    for (const [effort, budget] of [['low', 1024], ['minimal', 1024], ['medium', 4096], ['high', 16384], ['xhigh', 32768]] as const) {
-      const req = buildAnthropicRequest({
-        model: 'claude-sonnet-4-5',
-        messages: baseMessages,
-        config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: effort }),
-      })
-      expect((req.thinking as any).budget_tokens).toBe(budget)
-    }
+  it('does not derive thinking config from legacy requested reasoning controls', () => {
+    const req = buildAnthropicRequest({
+      model: 'claude-sonnet-4-5',
+      messages: baseMessages,
+      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
+    })
+
+    expect(req.thinking).toBeUndefined()
   })
 
-  it('default max_tokens always exceeds thinking budget for all effort levels', () => {
-    for (const effort of ['low', 'minimal', 'medium', 'high', 'xhigh'] as const) {
+  it('default max_tokens always exceeds generationParams thinking budget', () => {
+    for (const budget of [1024, 4096, 16384, 32768] as const) {
       const req = buildAnthropicRequest({
         model: 'claude-sonnet-4-5',
         messages: baseMessages,
-        config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: effort }),
+        config: baseConfig({ generationParams: { thinking: { type: 'enabled', budget_tokens: budget } } }),
       })
       expect(req.max_tokens).toBeGreaterThan((req.thinking as any).budget_tokens)
     }
   })
 
-  it('medium effort raises max_tokens above budget (no longer equal)', () => {
+  it('generationParams thinking budget raises max_tokens above budget (no longer equal)', () => {
     const req = buildAnthropicRequest({
       model: 'claude-sonnet-4-5',
       messages: baseMessages,
-      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'medium' }),
+      config: baseConfig({ generationParams: { thinking: { type: 'enabled', budget_tokens: 4096 } } }),
     })
 
     expect((req.thinking as any).budget_tokens).toBe(4096)
@@ -161,7 +160,7 @@ describe('buildAnthropicRequest', () => {
     const req = buildAnthropicRequest({
       model: 'claude-sonnet-4-5',
       messages: baseMessages,
-      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
+      config: baseConfig({ generationParams: { thinking: { type: 'enabled', budget_tokens: 16384 } } }),
       maxTokens: 32768,
     })
 
@@ -173,7 +172,7 @@ describe('buildAnthropicRequest', () => {
     const req = buildAnthropicRequest({
       model: 'claude-sonnet-4-5',
       messages: baseMessages,
-      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
+      config: baseConfig({ generationParams: { thinking: { type: 'enabled', budget_tokens: 16384 } } }),
       maxTokens: 1000,
     })
 
@@ -185,7 +184,7 @@ describe('buildAnthropicRequest', () => {
     const req = buildAnthropicRequest({
       model: 'claude-sonnet-4-5',
       messages: baseMessages,
-      config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
+      config: baseConfig({ generationParams: { thinking: { type: 'enabled', budget_tokens: 16384 } } }),
       maxTokens: 16384,
     })
 

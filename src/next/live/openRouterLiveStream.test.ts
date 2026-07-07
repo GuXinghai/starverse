@@ -114,7 +114,7 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
         }
     }
 
-    it('Case1 default: mode=effort effort=none exclude=false => body.reasoning.effort==="none"', async () => {
+    it('Case1 legacy requested reasoning controls do not write body.reasoning', async () => {
         const bodyText = await captureRequestBodyText({
             apiKey: 'k',
             model: DEFAULT_OPENROUTER_TEST_MODEL,
@@ -123,8 +123,8 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
             requestedReasoningExclude: false,
         })
 
-        expect(bodyText).toContain('"reasoning":')
-        expect(bodyText).toContain('"effort":"none"')
+        expect(bodyText).not.toContain('"reasoning":')
+        expect(bodyText).not.toContain('"effort":"none"')
         expect(bodyText).not.toContain('"enabled":')
     })
 
@@ -141,25 +141,31 @@ describe('streamOpenRouterChatAsEvents (smoke)', () => {
     it.each([
         ['minimal', 'minimal'],
         ['low', 'low'],
-    ] as const)('Case3 effort=%s => body.reasoning.effort=%s', async (_label, effort) => {
+    ] as const)('Case3 generationParams reasoning effort=%s => body.reasoning.effort=%s', async (_label, effort) => {
         const bodyText = await captureRequestBodyText({
             apiKey: 'k',
             model: DEFAULT_OPENROUTER_TEST_MODEL,
             requestedReasoningMode: 'effort',
-            requestedReasoningEffort: effort,
+            requestedReasoningEffort: 'high',
+            generationParams: {
+                reasoning: { effort },
+            },
         })
 
         expect(bodyText).toContain(`\"effort\":\"${effort}\"`)
         expect(bodyText).not.toContain('\"enabled\":')
     })
 
-    it('Case4 exclude=true => body.reasoning.exclude===true', async () => {
+    it('Case4 generationParams reasoning exclude=true => body.reasoning.exclude===true', async () => {
         const bodyText = await captureRequestBodyText({
             apiKey: 'k',
             model: DEFAULT_OPENROUTER_TEST_MODEL,
             requestedReasoningMode: 'effort',
-            requestedReasoningEffort: 'high',
-            requestedReasoningExclude: true,
+            requestedReasoningEffort: 'low',
+            requestedReasoningExclude: false,
+            generationParams: {
+                reasoning: { effort: 'high', exclude: true },
+            },
         })
 
         expect(bodyText).toContain('"reasoning":{"effort":"high","exclude":true}')

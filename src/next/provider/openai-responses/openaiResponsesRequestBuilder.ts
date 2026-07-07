@@ -8,6 +8,7 @@
  */
 
 import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import { applyProviderGenerationParamsPatch, asProviderGenerationParamsRecord } from '@/next/provider/providerGenerationParams'
 
 // ---------------------------------------------------------------------------
 // OpenAI Responses request types — provider-native schema, contained here
@@ -26,8 +27,8 @@ export type ResponsesInputMessage = Readonly<{
 }>
 
 export type ResponsesReasoningConfig = Readonly<{
-  effort?: 'low' | 'medium' | 'high'
-  summary?: 'auto' | 'none' | 'concise'
+  effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  summary?: 'auto' | 'none' | 'concise' | 'detailed'
 }>
 
 export type ResponsesImageGenerationTool = Readonly<{
@@ -39,8 +40,11 @@ export type ResponsesRequest = Readonly<{
   model: string
   input: string | ReadonlyArray<ResponsesInputMessage>
   stream: true
+  temperature?: number
+  top_p?: number
   reasoning?: ResponsesReasoningConfig
   max_output_tokens?: number
+  text?: Readonly<{ verbosity?: 'low' | 'medium' | 'high' }>
   tools?: ReadonlyArray<unknown>
   instructions?: string
 }>
@@ -66,7 +70,7 @@ export type ResponsesRequestInput = Readonly<{
  * - `model` and `messages` (as `input`) are required.
  * - `stream: true` is always set.
  * - `reasoning` config is included only when explicitly set.
- * - `max_output_tokens` is included only when present.
+ * - Generation params are included only when present.
  * - `tools` is passed through only when non-empty.
  * - `instructions` is included only when present.
  * - No OpenRouter plugins, no provider.require_parameters, no DeepSeek reasoning_effort.
@@ -85,26 +89,13 @@ export function buildResponsesRequest(input: ResponsesRequestInput): ResponsesRe
     request.instructions = instructions
   }
 
-  // Reasoning config — only when mode is 'effort'
-  if (config.requestedReasoningMode === 'effort') {
-    const reasoning: Record<string, unknown> = {}
-    if (config.requestedReasoningEffort) {
-      // Map Starverse effort levels to Responses effort levels
-      const effort = mapReasoningEffort(config.requestedReasoningEffort)
-      if (effort) reasoning.effort = effort
-    }
-    // Default to concise summary for reasoning models
-    reasoning.summary = 'concise'
-    if (Object.keys(reasoning).length > 0) {
-      request.reasoning = reasoning
-    }
-  }
-
-  // Max output tokens
-  const sampling = config.samplingParams as Record<string, unknown> | undefined
-  if (sampling && typeof sampling.max_tokens === 'number') {
-    request.max_output_tokens = sampling.max_tokens
-  }
+  validateOpenAIResponsesGenerationParams(config.generationParams)
+  applyProviderGenerationParamsPatch({
+    target: request,
+    raw: config.generationParams,
+    allowedKeys: new Set(['temperature', 'top_p', 'max_output_tokens', 'reasoning', 'text']),
+    providerLabel: 'OpenAI Responses',
+  })
 
   const tools = [
     ...(config.tools && config.tools.length > 0 ? config.tools : []),
@@ -117,22 +108,14 @@ export function buildResponsesRequest(input: ResponsesRequestInput): ResponsesRe
   return request as ResponsesRequest
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-function mapReasoningEffort(effort: string): 'low' | 'medium' | 'high' | undefined {
-  switch (effort) {
-    case 'low':
-    case 'minimal':
-      return 'low'
-    case 'medium':
-      return 'medium'
-    case 'high':
-    case 'xhigh':
-      return 'high'
-    default:
-      return undefined
+function validateOpenAIResponsesGenerationParams(raw: unknown): void {
+  const patch = asProviderGenerationParamsRecord(raw)
+  if (!patch) return
+  const reasoning = patch.reasoning
+  if (!reasoning || typeof reasoning !== 'object' || Array.isArray(reasoning)) return
+  const effort = (reasoning as Record<string, unknown>).effort
+  if (effort === 'auto') {
+    throw new Error('OpenAI Responses generationParams.reasoning.effort=auto is not a wire value; omit reasoning.effort instead.')
   }
 }
 

@@ -36,7 +36,7 @@ export type GenericRuntimeCapability = Readonly<{
   basicMessages: true
   streamingText: true
   basicHttpError: true
-  samplingParams: true
+  generationParams: true
   tools: false
   functionCalling: false
   files: false
@@ -59,7 +59,7 @@ const DEFAULT_CAPABILITY: GenericRuntimeCapability = {
   basicMessages: true,
   streamingText: true,
   basicHttpError: true,
-  samplingParams: true,
+  generationParams: true,
   tools: false,
   functionCalling: false,
   files: false,
@@ -310,9 +310,6 @@ export function validateGenericRequestedCapabilities(
     webSearch?: unknown
     imageGeneration?: unknown
     additionalPlugins?: unknown
-    requestedReasoningMode?: string
-    requestedReasoningEffort?: string
-    requestedReasoningExclude?: unknown
     [key: string]: unknown
   }>,
 ): DescriptorValidationError | null {
@@ -334,11 +331,6 @@ export function validateGenericRequestedCapabilities(
   // Additional plugins
   if (config.additionalPlugins && Array.isArray(config.additionalPlugins) && config.additionalPlugins.length > 0) {
     return { code: 'blocked_capability_override', message: 'Generic adapter does not support additional plugins.' }
-  }
-
-  // Reasoning mode (only 'auto' is allowed — 'effort' enables reasoning)
-  if (config.requestedReasoningMode && config.requestedReasoningMode !== 'auto') {
-    return { code: 'blocked_capability_override', message: 'Generic adapter does not support reasoning mode.' }
   }
 
   return null

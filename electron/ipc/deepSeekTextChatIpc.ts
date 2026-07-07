@@ -9,6 +9,7 @@ import {
   sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
+import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
 
 export const DEEPSEEK_TEXT_CHAT_IPC_CHANNELS = [
   'deepseek-chat:stream-text',
@@ -26,6 +27,7 @@ export type DeepSeekTextChatPayload = Readonly<{
   model?: unknown
   messages?: unknown
   currentUserContentBlocks?: unknown
+  generationParams?: unknown
   timeoutMs?: unknown
 }>
 
@@ -56,6 +58,7 @@ type ValidatedTextChatSuccess = Readonly<{
   model: string
   messages: DeepSeekTextChatMessage[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  generationParams?: ProviderStreamRequest['config']['generationParams']
   timeoutMs: number
 }>
 
@@ -126,6 +129,10 @@ export function validateDeepSeekTextChatPayload(payload: unknown): ValidatedText
   if (!messages) {
     return staticFailure('invalid_payload', 'DeepSeek official text chat requires user and assistant messages.')
   }
+  const generationParams = validateProviderGenerationParamsPayload(record.generationParams)
+  if (generationParams === null) {
+    return staticFailure('invalid_payload', 'DeepSeek official generation params payload is invalid.')
+  }
 
   return {
     ok: true,
@@ -134,6 +141,7 @@ export function validateDeepSeekTextChatPayload(payload: unknown): ValidatedText
     model,
     messages,
     ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
+    ...(generationParams ? { generationParams } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
 }
@@ -217,6 +225,7 @@ function buildProviderRequest(input: Readonly<{
     config: {
       model: input.request.model,
       requestedReasoningMode: 'auto',
+      ...(input.request.generationParams ? { generationParams: input.request.generationParams } : {}),
     },
   }
 }

@@ -151,7 +151,7 @@ function genericConservativeCapability(): GenericRuntimeCapability {
     basicMessages: true,
     streamingText: true,
     basicHttpError: true,
-    samplingParams: true,
+    generationParams: true,
     tools: false,
     functionCalling: false,
     files: false,

@@ -1,5 +1,5 @@
 import type { DomainEvent } from '@/next/state/types'
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
 import type { ProviderRuntimeContentBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
 
@@ -15,6 +15,7 @@ export type DeepSeekTextChatOptions = Readonly<{
   userText: string
   contextMessages?: readonly unknown[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  generationParams?: ProviderStreamConfig['generationParams']
   signal?: AbortSignal
   timeoutMs?: number
 }>
@@ -215,6 +216,7 @@ export async function* streamDeepSeekTextChatAsDomainEvents(
         assistantMessageId: options.assistantMessageId,
         model: options.model,
         messages,
+        ...(options.generationParams ? { generationParams: options.generationParams } : {}),
         ...(hasContentBlocks ? { currentUserContentBlocks: options.currentUserContentBlocks } : {}),
         ...(typeof options.timeoutMs === 'number' ? { timeoutMs: options.timeoutMs } : {}),
       }),

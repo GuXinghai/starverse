@@ -114,6 +114,10 @@ export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async func
     if (terminalEmitted) break
 
     if (sseEvent.type === 'event') {
+      logOpenAIResponsesProviderErrorEvent({
+        request,
+        event: sseEvent.data,
+      })
       const mapped = mapOpenAIResponsesEventToStarverse(sseEvent.data, assistantMessageId, { eventOrdinal })
       eventOrdinal += 1
       for (const event of mapped) {
@@ -239,6 +243,12 @@ async function* mapHttpError(response: Response): AsyncGenerator<StarverseStream
     errorBody = null
   }
 
+  logOpenAIResponsesHttpError({
+    status: response.status,
+    statusText: response.statusText,
+    body: errorBody,
+  })
+
   const code = (errorBody as any)?.error?.code ?? `http_${response.status}`
   const message = (errorBody as any)?.error?.message ?? response.statusText
 
@@ -260,5 +270,45 @@ async function* mapHttpError(response: Response): AsyncGenerator<StarverseStream
       raw: errorBody,
     } satisfies StarverseProviderError,
     terminal: true,
+  }
+}
+
+function logOpenAIResponsesHttpError(input: Readonly<{
+  status: number
+  statusText: string
+  body: unknown
+}>): void {
+  console.warn('[openai-responses][http-error-raw]', {
+    status: input.status,
+    statusText: input.statusText,
+    body: input.body,
+    rawJson: stringifyOpenAIResponsesDiagnosticJson(input.body),
+  })
+}
+
+function logOpenAIResponsesProviderErrorEvent(input: Readonly<{
+  request: ProviderStreamRequest
+  event: unknown
+}>): void {
+  if (!input.event || typeof input.event !== 'object') return
+  const record = input.event as Record<string, unknown>
+  const type = typeof record.type === 'string' ? record.type : ''
+  if (type !== 'error' && type !== 'response.failed' && type !== 'response.incomplete') return
+
+  console.warn('[openai-responses][stream-error-raw]', {
+    requestId: input.request.requestId,
+    assistantMessageId: input.request.assistantMessageId,
+    model: input.request.config.model,
+    type,
+    event: input.event,
+    rawJson: stringifyOpenAIResponsesDiagnosticJson(input.event),
+  })
+}
+
+function stringifyOpenAIResponsesDiagnosticJson(value: unknown): string {
+  try {
+    return JSON.stringify(value)
+  } catch {
+    return '[unserializable]'
   }
 }

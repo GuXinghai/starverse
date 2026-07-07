@@ -126,7 +126,7 @@ export type ProviderStreamConfig = Readonly<{
     requestPatch: unknown
     resolvedMode?: 'enable' | 'default' | 'disable'
   }>
-  samplingParams?: unknown
+  generationParams?: unknown
   imageGeneration?: Readonly<{
     capabilityClass?: string
     modalities?: ReadonlyArray<string>

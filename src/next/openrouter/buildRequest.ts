@@ -1,9 +1,4 @@
 import type { OpenRouterWebRequestPatch } from './searchSettingsResolver'
-import {
-  normalizeSamplingParamNumericValue,
-  type OpenRouterSamplingParamsPatch,
-} from './samplingParamsResolver'
-import { OPENROUTER_SAMPLING_PARAM_KEYS } from './samplingParamsCatalog'
 
 export type OpenRouterReasoningEffort =
   | 'xhigh'
@@ -33,6 +28,40 @@ export type OpenRouterImageConfig = Readonly<{
 export type OpenRouterDebugConfig = Readonly<{
   echoUpstreamBody?: boolean
 }>
+
+export type OpenRouterGenerationParamsPatch = Readonly<Record<string, unknown>>
+
+type OpenRouterGenerationNumericParamName =
+  | 'temperature'
+  | 'top_p'
+  | 'top_k'
+  | 'min_p'
+  | 'top_a'
+  | 'frequency_penalty'
+  | 'presence_penalty'
+  | 'repetition_penalty'
+  | 'seed'
+  | 'max_tokens'
+
+const OPENROUTER_GENERATION_NUMERIC_PARAM_SPECS: Readonly<Record<
+  OpenRouterGenerationNumericParamName,
+  Readonly<{ integer?: boolean; min?: number; max?: number }>
+>> = Object.freeze({
+  temperature: { min: 0, max: 2 },
+  top_p: { min: 0, max: 1 },
+  top_k: { integer: true, min: 0 },
+  min_p: { min: 0, max: 1 },
+  top_a: { min: 0, max: 1 },
+  frequency_penalty: { min: -2, max: 2 },
+  presence_penalty: { min: -2, max: 2 },
+  repetition_penalty: { min: 0, max: 2 },
+  seed: { integer: true, min: 0 },
+  max_tokens: { integer: true, min: 1 },
+})
+
+const OPENROUTER_GENERATION_NUMERIC_PARAM_KEYS = Object.keys(
+  OPENROUTER_GENERATION_NUMERIC_PARAM_SPECS,
+) as OpenRouterGenerationNumericParamName[]
 
 export type OpenRouterWebPlugin = Readonly<{
   id: 'web'
@@ -78,7 +107,7 @@ export type BuildOpenRouterRequestInput = Readonly<{
    * - `always`: always include `web_search_options` when provided.
    */
   webSearchContextPolicy?: 'always' | 'native_only'
-  samplingParams?: OpenRouterSamplingParamsPatch
+  generationParams?: OpenRouterGenerationParamsPatch
   debug?: OpenRouterDebugConfig
   additionalPlugins?: ReadonlyArray<OpenRouterAdditionalPlugin>
 }>
@@ -102,6 +131,7 @@ export type OpenRouterChatCompletionsRequest = Readonly<{
   repetition_penalty?: number
   seed?: number
   max_tokens?: number
+  verbosity?: string
   debug?: Readonly<{
     echo_upstream_body?: boolean
   }>
@@ -130,6 +160,7 @@ type MutableOpenRouterChatCompletionsRequest = {
   repetition_penalty?: number
   seed?: number
   max_tokens?: number
+  verbosity?: string
   debug?: { echo_upstream_body?: boolean }
 }
 
@@ -281,21 +312,62 @@ function normalizeAdditionalPlugin(raw: unknown): OpenRouterAdditionalPlugin {
   }
 }
 
-function normalizeSamplingParamsPatch(raw: unknown): OpenRouterSamplingParamsPatch {
+function normalizeGenerationParamsPatch(raw: unknown): Record<string, unknown> {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    throw new Error('samplingParams must be an object')
+    throw new Error('generationParams must be an object')
   }
   const value = raw as Record<string, unknown>
-  const next: Partial<Record<(typeof OPENROUTER_SAMPLING_PARAM_KEYS)[number], number>> = {}
-  for (const key of OPENROUTER_SAMPLING_PARAM_KEYS) {
+  const next: Record<string, unknown> = {}
+  for (const key of OPENROUTER_GENERATION_NUMERIC_PARAM_KEYS) {
     if (!(key in value)) continue
-    const normalized = normalizeSamplingParamNumericValue(key, value[key])
+    const normalized = normalizeOpenRouterGenerationNumericValue(key, value[key])
     if (normalized === null) {
-      throw new Error(`samplingParams.${key} is invalid`)
+      throw new Error(`generationParams.${key} is invalid`)
     }
     next[key] = normalized
   }
+
+  if ('reasoning' in value) {
+    const reasoning = value.reasoning
+    if (!reasoning || typeof reasoning !== 'object' || Array.isArray(reasoning)) {
+      throw new Error('generationParams.reasoning must be an object')
+    }
+    next.reasoning = normalizeReasoningRequest(reasoning as OpenRouterReasoningInput)
+  }
+
+  if ('verbosity' in value) {
+    const verbosity = value.verbosity
+    if (
+      verbosity !== 'low' &&
+      verbosity !== 'medium' &&
+      verbosity !== 'high' &&
+      verbosity !== 'xhigh' &&
+      verbosity !== 'max'
+    ) {
+      throw new Error('generationParams.verbosity is invalid')
+    }
+    next.verbosity = verbosity
+  }
+
+  const allowedKeys = new Set([...OPENROUTER_GENERATION_NUMERIC_PARAM_KEYS, 'reasoning', 'verbosity'])
+  for (const key of Object.keys(value)) {
+    if (!allowedKeys.has(key)) {
+      throw new Error(`generationParams.${key} is not supported by OpenRouter`)
+    }
+  }
   return next
+}
+
+function normalizeOpenRouterGenerationNumericValue(
+  key: OpenRouterGenerationNumericParamName,
+  value: unknown,
+): number | null {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return null
+  const spec = OPENROUTER_GENERATION_NUMERIC_PARAM_SPECS[key]
+  const normalized = spec.integer ? Math.round(value) : value
+  if (spec.min !== undefined && normalized < spec.min) return null
+  if (spec.max !== undefined && normalized > spec.max) return null
+  return normalized
 }
 
 function createBaseRequest(input: BuildOpenRouterRequestInput): MutableOpenRouterChatCompletionsRequest {
@@ -333,12 +405,14 @@ function applyImageGenerationPatch(request: MutableOpenRouterChatCompletionsRequ
   })
 }
 
-function applySamplingParamsPatch(request: MutableOpenRouterChatCompletionsRequest, input: BuildOpenRouterRequestInput) {
-  if (input.samplingParams === undefined) return
-  const sampling = normalizeSamplingParamsPatch(input.samplingParams)
-  for (const key of OPENROUTER_SAMPLING_PARAM_KEYS) {
-    const value = sampling[key]
-    if (value === undefined) continue
+function applyGenerationParamsPatch(request: MutableOpenRouterChatCompletionsRequest, input: BuildOpenRouterRequestInput) {
+  if (input.generationParams === undefined) return
+  const generationParams = normalizeGenerationParamsPatch(input.generationParams)
+  for (const [key, value] of Object.entries(generationParams)) {
+    if (key === 'reasoning') {
+      request.reasoning = value as Record<string, unknown>
+      continue
+    }
     ;(request as Record<string, unknown>)[key] = value
   }
 }
@@ -432,7 +506,7 @@ function applyAdditionalPluginsPatch(request: MutableOpenRouterChatCompletionsRe
  *
  * Rules (SSOT-aligned):
  * - `stream` must be boolean (reject "true"/"false" strings)
- * - `reasoning` only concerns request payload, never UI display
+ * - `generationParams.reasoning` is the request payload source for reasoning
  * - `reasoning.effort = "none"` is the only definition of "disable reasoning", and must not be combined with `max_tokens`
  * - `effort` and `max_tokens` are treated as mutually exclusive control modes
  */
@@ -454,11 +528,7 @@ export function buildOpenRouterChatCompletionsRequest(
   applyProviderPatch(request, input)
   applyToolsPatch(request, input)
   applyImageGenerationPatch(request, input)
-  applySamplingParamsPatch(request, input)
-
-  if (input.reasoning) {
-    request.reasoning = normalizeReasoningRequest(input.reasoning)
-  }
+  applyGenerationParamsPatch(request, input)
 
   applyDebugPatch(request, input)
   applyWebSearchPatch(request, input)
