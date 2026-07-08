@@ -414,12 +414,14 @@ function getErrorProvider(envelope: ErrorEnvelope): string | undefined {
 }
 
 function buildErrorSummary(envelope: ErrorEnvelope): Record<string, unknown> {
+  const meta = envelope.openrouter?.metadata as any
   return {
     completionClass: envelope.completionClass,
     phase: envelope.phase,
     code: envelope.openrouter?.code,
     message: envelope.openrouter?.message,
     provider: getErrorProvider(envelope),
+    ...(meta?.networkError ? { networkError: meta.networkError } : {}),
   }
 }
 

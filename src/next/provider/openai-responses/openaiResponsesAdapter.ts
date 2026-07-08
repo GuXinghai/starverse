@@ -20,6 +20,7 @@ import { buildResponsesRequest, type ResponsesInputMessage } from '@/next/provid
 import { decodeResponsesSSE } from '@/next/provider/openai-responses/openaiResponsesSseDecoder'
 import { mapOpenAIResponsesEventToStarverse } from '@/next/provider/openai-responses/openaiResponsesStreamMapper'
 import { buildOpenAIResponsesUserContent } from '@/next/multimodal/providerRuntimeContentBlocks'
+import { buildNetworkErrorEnvelope } from '@/shared/network/networkErrorEnvelope'
 
 // ---------------------------------------------------------------------------
 // Adapter types
@@ -251,6 +252,19 @@ async function* mapHttpError(response: Response): AsyncGenerator<StarverseStream
 
   const code = (errorBody as any)?.error?.code ?? `http_${response.status}`
   const message = (errorBody as any)?.error?.message ?? response.statusText
+  const providerDiagnostic = buildOpenAIResponsesProviderDiagnostic({
+    status: response.status,
+    statusText: response.statusText,
+    body: errorBody,
+  })
+  const networkError = buildNetworkErrorEnvelope({
+    requestPurpose: 'provider_stream',
+    providerId: 'openai_responses',
+    transportKind: 'electron_session_fetch',
+    httpStatus: response.status,
+    providerCode: code,
+    providerMessage: message,
+  })
 
   const category: StarverseProviderError['category'] =
     response.status === 401 ? 'auth' :
@@ -267,7 +281,8 @@ async function* mapHttpError(response: Response): AsyncGenerator<StarverseStream
       message: String(message),
       code: String(code),
       httpStatus: response.status,
-      raw: errorBody,
+      networkError,
+      raw: providerDiagnostic,
     } satisfies StarverseProviderError,
     terminal: true,
   }
@@ -281,8 +296,8 @@ function logOpenAIResponsesHttpError(input: Readonly<{
   console.warn('[openai-responses][http-error-raw]', {
     status: input.status,
     statusText: input.statusText,
-    body: input.body,
-    rawJson: stringifyOpenAIResponsesDiagnosticJson(input.body),
+    body: redactOpenAIResponsesDiagnosticValue(input.body),
+    rawJson: stringifyOpenAIResponsesDiagnosticJson(redactOpenAIResponsesDiagnosticValue(input.body)),
   })
 }
 
@@ -311,4 +326,52 @@ function stringifyOpenAIResponsesDiagnosticJson(value: unknown): string {
   } catch {
     return '[unserializable]'
   }
+}
+
+function buildOpenAIResponsesProviderDiagnostic(input: Readonly<{
+  status: number
+  statusText: string
+  body: unknown
+}>): Record<string, unknown> {
+  const body = redactOpenAIResponsesDiagnosticValue(input.body)
+  return {
+    provider: 'openai-responses',
+    httpStatus: input.status,
+    statusText: input.statusText,
+    body,
+    rawJson: stringifyOpenAIResponsesDiagnosticJson(body),
+  }
+}
+
+function redactOpenAIResponsesDiagnosticValue(value: unknown, depth = 0): unknown {
+  if (depth > 6) return null
+  if (value === null || value === undefined) return value
+  if (typeof value === 'string') return redactOpenAIResponsesDiagnosticString(value)
+  if (typeof value === 'number' || typeof value === 'boolean') return value
+  if (Array.isArray(value)) return value.slice(0, 80).map((item) => redactOpenAIResponsesDiagnosticValue(item, depth + 1))
+  if (typeof value !== 'object') return String(value)
+
+  const out: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value as Record<string, unknown>).slice(0, 80)) {
+    const normalizedKey = key.toLowerCase()
+    if (
+      normalizedKey.includes('authorization') ||
+      normalizedKey.includes('api_key') ||
+      normalizedKey.includes('apikey') ||
+      normalizedKey.includes('access_token') ||
+      normalizedKey.includes('client_secret')
+    ) {
+      out[key] = '[REDACTED]'
+      continue
+    }
+    out[key] = redactOpenAIResponsesDiagnosticValue(item, depth + 1)
+  }
+  return out
+}
+
+function redactOpenAIResponsesDiagnosticString(value: string): string {
+  return value
+    .replace(/Bearer\s+[A-Za-z0-9._~+/=-]+/gi, 'Bearer [REDACTED]')
+    .replace(/sk-[A-Za-z0-9._-]+/g, 'sk-[REDACTED]')
+    .replace(/([?&](?:key|api_key|token|access_token|client_secret)=)[^&\s]+/gi, '$1[REDACTED]')
 }

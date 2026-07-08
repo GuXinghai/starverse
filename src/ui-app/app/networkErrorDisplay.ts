@@ -17,6 +17,7 @@ const NETWORK_REASON_KEYS: Record<NetworkFailureReason, string> = {
   http_403_forbidden: 'errors.network.reason.http403Forbidden',
   http_404_not_found_or_model_missing: 'errors.network.reason.http404NotFoundOrModelMissing',
   http_429_rate_limited: 'errors.network.reason.http429RateLimited',
+  provider_access_unverified_or_forbidden: 'errors.network.reason.providerAccessUnverifiedOrForbidden',
   provider_bad_request: 'errors.network.reason.providerBadRequest',
   provider_model_unavailable: 'errors.network.reason.providerModelUnavailable',
   local_endpoint_rejected_remote_host: 'errors.network.reason.localEndpointRejectedRemoteHost',
@@ -166,6 +167,13 @@ function networkFailureReasonFromDisplayCode(code: unknown): NetworkFailureReaso
     case 'bad_request':
     case 'invalid_request':
       return 'provider_bad_request'
+    case 'provider_access_unverified_or_forbidden':
+    case 'organization_not_verified':
+    case 'organization_unverified':
+    case 'access_not_verified':
+    case 'access_denied':
+    case 'permission_denied':
+      return 'provider_access_unverified_or_forbidden'
     case 'provider_model_unavailable':
     case 'model_unavailable':
       return 'provider_model_unavailable'

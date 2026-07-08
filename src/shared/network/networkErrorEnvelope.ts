@@ -34,6 +34,7 @@ export type NetworkFailureReason =
   | 'http_403_forbidden'
   | 'http_404_not_found_or_model_missing'
   | 'http_429_rate_limited'
+  | 'provider_access_unverified_or_forbidden'
   | 'provider_bad_request'
   | 'provider_model_unavailable'
   | 'local_endpoint_rejected_remote_host'
@@ -86,6 +87,7 @@ const SAFE_MESSAGE_KEYS: Record<NetworkFailureReason, string> = {
   http_403_forbidden: 'errors.network.reason.http403Forbidden',
   http_404_not_found_or_model_missing: 'errors.network.reason.http404NotFoundOrModelMissing',
   http_429_rate_limited: 'errors.network.reason.http429RateLimited',
+  provider_access_unverified_or_forbidden: 'errors.network.reason.providerAccessUnverifiedOrForbidden',
   provider_bad_request: 'errors.network.reason.providerBadRequest',
   provider_model_unavailable: 'errors.network.reason.providerModelUnavailable',
   local_endpoint_rejected_remote_host: 'errors.network.reason.localEndpointRejectedRemoteHost',
@@ -111,6 +113,7 @@ const SAFE_MESSAGES: Record<NetworkFailureReason, string> = {
   http_403_forbidden: 'Access was forbidden.',
   http_404_not_found_or_model_missing: 'Endpoint or model was not found.',
   http_429_rate_limited: 'Rate limit was reached.',
+  provider_access_unverified_or_forbidden: 'Provider account or model access is not verified or permitted.',
   provider_bad_request: 'Provider rejected the request.',
   provider_model_unavailable: 'Provider reported that the model is unavailable.',
   local_endpoint_rejected_remote_host: 'Local endpoint host was rejected.',
@@ -245,6 +248,11 @@ function networkFailureReasonFromProviderSignal(code: unknown, message: unknown)
   if (!token) return null
   if (/\b(model.*(not found|missing|unavailable)|not_found|model_not_found|model_unavailable|no such model)\b/u.test(token)) {
     return 'provider_model_unavailable'
+  }
+  if (
+    /\b(organization must be verified|verify organization|must be verified|not verified|does not have access|no access|not permitted|permission denied|access denied)\b/u.test(token)
+  ) {
+    return 'provider_access_unverified_or_forbidden'
   }
   if (/\b(bad_request|invalid_request|invalid argument|invalid_payload)\b/u.test(token)) return 'provider_bad_request'
   return null

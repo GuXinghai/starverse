@@ -17,6 +17,7 @@ describe('networkErrorDisplay', () => {
     ['http_403_forbidden', 'errors.network.reason.http403Forbidden'],
     ['http_404_not_found_or_model_missing', 'errors.network.reason.http404NotFoundOrModelMissing'],
     ['http_429_rate_limited', 'errors.network.reason.http429RateLimited'],
+    ['provider_access_unverified_or_forbidden', 'errors.network.reason.providerAccessUnverifiedOrForbidden'],
     ['proxy_auth_required', 'errors.network.reason.proxyAuthRequired'],
     ['proxy_connect_failed', 'errors.network.reason.proxyConnectFailed'],
     ['dns_error', 'errors.network.reason.dnsError'],
@@ -71,6 +72,8 @@ describe('networkErrorDisplay', () => {
     ['size_mismatch', 'errors.network.reason.downloadSizeMismatch'],
     ['resume_retries_exhausted', 'errors.network.reason.downloadResumeRangeRejected'],
     ['download_failed', 'errors.network.reason.downloadFailed'],
+    ['organization_not_verified', 'errors.network.reason.providerAccessUnverifiedOrForbidden'],
+    ['permission_denied', 'errors.network.reason.providerAccessUnverifiedOrForbidden'],
     ['timeout', 'errors.network.reason.connectionTimeout'],
     ['cancelled', 'errors.network.reason.requestAborted'],
   ])('maps legacy code %s to a specific user message', (code, key) => {
