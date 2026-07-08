@@ -416,6 +416,45 @@ describe('streamViaOpenAIResponses', () => {
     }
   })
 
+  it('HTTP provider errors preserve redacted raw diagnostic JSON and structured access reason', async () => {
+    const responseBody = {
+      error: {
+        code: 'unsupported_value',
+        message: "Your organization must be verified to use the model 'o3'. Authorization: Bearer sk-secret",
+        type: 'invalid_request_error',
+        param: 'model',
+      },
+    }
+    const response = new Response(
+      JSON.stringify(responseBody),
+      { status: 400, statusText: 'Bad Request' },
+    )
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaOpenAIResponses(makeRequest(), {
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    const errorEvents = events.filter((e) => e.type === 'stream.error')
+    expect(errorEvents).toHaveLength(1)
+    if (errorEvents[0].type === 'stream.error') {
+      expect(errorEvents[0].terminal).toBe(true)
+      expect(errorEvents[0].error.code).toBe('unsupported_value')
+      expect(errorEvents[0].error.networkError?.safeDetailCode).toBe('provider_access_unverified_or_forbidden')
+
+      const diagnostic = errorEvents[0].error.raw as any
+      expect(diagnostic.provider).toBe('openai-responses')
+      expect(diagnostic.httpStatus).toBe(400)
+      expect(diagnostic.body?.error?.code).toBe('unsupported_value')
+      expect(diagnostic.body?.error?.message).toContain('Your organization must be verified')
+      expect(diagnostic.rawJson).toContain('unsupported_value')
+      expect(JSON.stringify(diagnostic)).not.toContain('sk-secret')
+      expect(JSON.stringify(diagnostic)).not.toContain('Bearer sk-secret')
+    }
+  })
+
   it('network error yields terminal stream.error', async () => {
     const fetch: ResponsesFetchFn = vi.fn(async () => { throw new TypeError('fetch failed') })
 

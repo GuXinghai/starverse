@@ -19,6 +19,18 @@ describe('networkErrorEnvelope', () => {
     expect(networkFailureReasonFromHttpStatus(status)).toBe(reason)
   })
 
+  it('maps provider verification and access failures before generic bad request', () => {
+    expect(networkFailureReasonFromHttpStatus(400, {
+      providerCode: 'unsupported_value',
+      providerMessage: "Your organization must be verified to use the model 'o3'. Please Verify Organization.",
+    })).toBe('provider_access_unverified_or_forbidden')
+
+    expect(networkFailureReasonFromHttpStatus(400, {
+      providerCode: 'unsupported_value',
+      providerMessage: "Unsupported value: 'none' is not supported with the 'o1' model.",
+    })).toBe('provider_bad_request')
+  })
+
   it.each([
     [Object.assign(new Error('connect ECONNREFUSED 127.0.0.1:11434'), { code: 'ECONNREFUSED' }), 'connection_refused'],
     [Object.assign(new Error('getaddrinfo ENOTFOUND api.example.test'), { code: 'ENOTFOUND' }), 'dns_error'],

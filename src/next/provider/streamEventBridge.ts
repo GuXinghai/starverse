@@ -76,6 +76,7 @@ function providerErrorToErrorEnvelope(err: StarverseProviderError): ErrorEnvelop
       metadata: {
         provider_name: err.provider,
         ...(err.networkError ? { networkError: err.networkError } : {}),
+        ...(err.raw !== undefined ? { providerDiagnostic: err.raw } : {}),
       },
     },
     truncated: false,

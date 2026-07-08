@@ -25,6 +25,7 @@
         "http403Forbidden": "访问被拒绝。",
         "http404NotFoundOrModelMissing": "端点或模型不存在。",
         "http429RateLimited": "请求过于频繁。",
+        "providerAccessUnverifiedOrForbidden": "提供方账号或模型访问权限未验证或未获授权。",
         "providerBadRequest": "提供方拒绝了请求。",
         "providerModelUnavailable": "提供方报告模型不可用。",
         "localEndpointRejectedRemoteHost": "本地端点主机被拒绝。",

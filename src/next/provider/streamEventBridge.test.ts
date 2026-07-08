@@ -22,4 +22,49 @@ describe('streamEventBridge', () => {
       expect(event.error.openrouter.metadata?.provider_name).toBe('google-ai-studio')
     }
   })
+
+  it('preserves provider diagnostic and structured network error in fallback envelopes', () => {
+    const providerDiagnostic = {
+      provider: 'openai-responses',
+      httpStatus: 400,
+      body: {
+        error: {
+          code: 'unsupported_value',
+          message: 'Your organization must be verified to use the model.',
+        },
+      },
+      rawJson: '{"error":{"code":"unsupported_value"}}',
+    }
+    const networkError = {
+      requestPurpose: 'provider_stream',
+      providerId: 'openai_responses',
+      transportKind: 'electron_session_fetch',
+      reason: 'provider_access_unverified_or_forbidden',
+      safeDetailCode: 'provider_access_unverified_or_forbidden',
+      safeMessage: 'Provider account or model access is not verified or permitted.',
+      safeMessageKey: 'errors.network.reason.providerAccessUnverifiedOrForbidden',
+      retryable: false,
+    } as const
+
+    const event = streamEventToDomainEvent({
+      type: 'stream.error',
+      terminal: true,
+      error: {
+        phase: 'http',
+        provider: 'openai-responses',
+        category: 'bad_request',
+        code: 'unsupported_value',
+        message: 'Your organization must be verified to use the model.',
+        httpStatus: 400,
+        networkError,
+        raw: providerDiagnostic,
+      },
+    })
+
+    expect(event.type).toBe('StreamError')
+    if (event.type === 'StreamError') {
+      expect(event.error.openrouter.metadata?.networkError).toEqual(networkError)
+      expect(event.error.openrouter.metadata?.providerDiagnostic).toEqual(providerDiagnostic)
+    }
+  })
 })

@@ -25,6 +25,7 @@
         "http403Forbidden": "Access was forbidden.",
         "http404NotFoundOrModelMissing": "Endpoint or model was not found.",
         "http429RateLimited": "Rate limit was reached.",
+        "providerAccessUnverifiedOrForbidden": "Provider account or model access is not verified or permitted.",
         "providerBadRequest": "Provider rejected the request.",
         "providerModelUnavailable": "Provider reported that the model is unavailable.",
         "localEndpointRejectedRemoteHost": "Local endpoint host was rejected.",
