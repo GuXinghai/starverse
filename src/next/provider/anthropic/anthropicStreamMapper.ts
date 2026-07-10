@@ -22,7 +22,6 @@
  */
 
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
-import { createReasoningTextDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
 
 // ---------------------------------------------------------------------------
 // Anthropic event types — provider-native schema, contained here only
@@ -58,7 +57,7 @@ export type AnthropicStreamMapOptions = Readonly<{
 export function mapAnthropicStreamEventToStarverse(
   event: AnthropicStreamEvent,
   messageId: string,
-  options: AnthropicStreamMapOptions = {},
+  _options: AnthropicStreamMapOptions = {},
 ): StarverseStreamEvent[] {
   const events: StarverseStreamEvent[] = []
 
@@ -116,22 +115,6 @@ export function mapAnthropicStreamEventToStarverse(
               choiceIndex: 0,
               detail: { type: 'thinking_delta', thinking },
             })
-            const displayBlock = createReasoningTextDisplayBlock({
-              messageId,
-              providerKey: 'anthropic',
-              ordinal: resolveReasoningDisplayOrdinal(event, options),
-              text: thinking,
-              semanticRole: 'thinking',
-              sourceEventType: event.type,
-            })
-            if (displayBlock) {
-              events.push({
-                type: 'message.reasoning_display_block',
-                messageId,
-                choiceIndex: 0,
-                block: displayBlock,
-              })
-            }
           }
           break
         }
@@ -251,17 +234,4 @@ const KNOWN_STOP_REASONS = new Set([
 
 function normalizeStopReason(native: string): string {
   return KNOWN_STOP_REASONS.has(native) ? native : 'unknown'
-}
-
-function resolveReasoningDisplayOrdinal(
-  event: AnthropicStreamEvent,
-  options: AnthropicStreamMapOptions,
-): number {
-  if (typeof options.eventOrdinal === 'number' && Number.isFinite(options.eventOrdinal) && options.eventOrdinal >= 0) {
-    return options.eventOrdinal
-  }
-  if (typeof event.index === 'number' && Number.isFinite(event.index) && event.index >= 0) {
-    return event.index
-  }
-  return 0
 }

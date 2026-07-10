@@ -125,22 +125,7 @@ describe('mapGeminiStreamChunkToStarverse', () => {
         expect(reasoningEvents[0].detail).toEqual({ type: 'thought', text: 'Let me think...' })
         expect(reasoningEvents[0].messageId).toBe(msgId)
       }
-      expect(displayEvents).toEqual([
-        {
-          type: 'message.reasoning_display_block',
-          messageId: msgId,
-          choiceIndex: 0,
-          block: {
-            blockId: `${msgId}:reasoning-display:google_ai_studio:candidate.part.thought.text:0:text`,
-            ordinal: 0,
-            type: 'text',
-            text: 'Let me think...',
-            semanticRole: 'thought',
-            providerKey: 'google_ai_studio',
-            sourceEventType: 'candidate.part.thought.text',
-          },
-        },
-      ])
+      expect(displayEvents).toHaveLength(0)
     })
 
     it('thought NEVER becomes visible text', () => {
@@ -163,15 +148,13 @@ describe('mapGeminiStreamChunkToStarverse', () => {
       const textEvents = events.filter((e) => e.type === 'message.text_delta')
 
       expect(reasoningEvents).toHaveLength(1)
-      expect(displayEvents).toHaveLength(1)
+      expect(displayEvents).toHaveLength(0)
       expect(textEvents).toHaveLength(1)
 
       // Reasoning comes before text
       const reasoningIdx = events.indexOf(reasoningEvents[0])
-      const displayIdx = events.indexOf(displayEvents[0])
       const textIdx = events.indexOf(textEvents[0])
       expect(reasoningIdx).toBeLessThan(textIdx)
-      expect(displayIdx).toBeLessThan(textIdx)
     })
 
     it('maps thought inline image to raw reasoning and ordered display image block', () => {
@@ -201,20 +184,6 @@ describe('mapGeminiStreamChunkToStarverse', () => {
           messageId: msgId,
           choiceIndex: 0,
           detail: { type: 'thought', text: 'Sketch.' },
-        },
-        {
-          type: 'message.reasoning_display_block',
-          messageId: msgId,
-          choiceIndex: 0,
-          block: {
-            blockId: `${msgId}:reasoning-display:google_ai_studio:candidate.part.thought.text:2000:text`,
-            ordinal: 2000,
-            type: 'text',
-            text: 'Sketch.',
-            semanticRole: 'thought',
-            providerKey: 'google_ai_studio',
-            sourceEventType: 'candidate.part.thought.text',
-          },
         },
         {
           type: 'message.reasoning_raw_detail',
@@ -248,20 +217,6 @@ describe('mapGeminiStreamChunkToStarverse', () => {
           messageId: msgId,
           choiceIndex: 0,
           detail: { type: 'thought', text: 'Refine.' },
-        },
-        {
-          type: 'message.reasoning_display_block',
-          messageId: msgId,
-          choiceIndex: 0,
-          block: {
-            blockId: `${msgId}:reasoning-display:google_ai_studio:candidate.part.thought.text:2002:text`,
-            ordinal: 2002,
-            type: 'text',
-            text: 'Refine.',
-            semanticRole: 'thought',
-            providerKey: 'google_ai_studio',
-            sourceEventType: 'candidate.part.thought.text',
-          },
         },
       ])
       expect(events.some((event) => event.type === 'message.content_block_append')).toBe(false)

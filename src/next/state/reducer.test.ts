@@ -88,6 +88,124 @@ function readFixtureText(fileName: string) {
     expect(s5.entities?.messagesById?.assistant_1?.reasoningVersion).toBe(baseReasoningVersion + 1)
   })
 
+  it('upserts provider-native Gemini snapshots without changing visible versions', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: testModel,
+      assistantMessageId: 'assistant_1',
+      userMessageId: 'user_1',
+      userMessageText: 'hello',
+    })
+
+    const base = started.state.entities?.messagesById?.assistant_1
+    const baseTextVersion = base?.textVersion ?? 0
+    const baseReasoningVersion = base?.reasoningVersion ?? 0
+
+    const first = applyEvent(started.state, runId, {
+      type: 'MessageUpsertProviderNativeContent',
+      messageId: 'assistant_1',
+      choiceIndex: 0,
+      snapshot: {
+        providerKey: 'google_ai_studio',
+        sourceApi: 'gemini_generate_content',
+        snapshotKey: 'candidate:0',
+        candidateIndex: 0,
+        status: 'streaming',
+        content: { role: 'model', parts: [{ text: 'draft', thought: true, thoughtSignature: 'sig-1' }] },
+      },
+    })
+
+    const second = applyEvent(first, runId, {
+      type: 'MessageUpsertProviderNativeContent',
+      messageId: 'assistant_1',
+      choiceIndex: 0,
+      snapshot: {
+        providerKey: 'google_ai_studio',
+        sourceApi: 'gemini_generate_content',
+        snapshotKey: 'candidate:0',
+        candidateIndex: 0,
+        status: 'final',
+        content: { role: 'model', parts: [{ text: 'final', thought: true, thoughtSignature: 'sig-1' }] },
+        finishReason: 'STOP',
+        usageMetadata: { thoughtsTokenCount: 3 },
+      },
+    })
+
+    const message = second.entities?.messagesById?.assistant_1
+    expect(message?.textVersion).toBe(baseTextVersion)
+    expect(message?.reasoningVersion).toBe(baseReasoningVersion)
+    expect(message?.providerNativeContents).toEqual([
+      {
+        providerKey: 'google_ai_studio',
+        sourceApi: 'gemini_generate_content',
+        snapshotKey: 'candidate:0',
+        candidateIndex: 0,
+        status: 'final',
+        content: { role: 'model', parts: [{ text: 'final', thought: true, thoughtSignature: 'sig-1' }] },
+        finishReason: 'STOP',
+        usageMetadata: { thoughtsTokenCount: 3 },
+      },
+    ])
+  })
+
+  it('upserts Anthropic thinking display blocks by stable blockId', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: testModel,
+      assistantMessageId: 'assistant_1',
+      userMessageId: 'user_1',
+      userMessageText: 'hello',
+    })
+    const blockId = 'assistant_1:reasoning-display:anthropic:anthropic_messages:0:thinking'
+
+    const next = applyEvents(started.state, runId, [
+      {
+        type: 'MessageUpsertReasoningDisplayBlock',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          blockId,
+          ordinal: 0,
+          type: 'text',
+          text: 'I am',
+          semanticRole: 'thinking',
+          providerKey: 'anthropic',
+          sourceEventType: 'content_block_delta.thinking_delta',
+        },
+      },
+      {
+        type: 'MessageUpsertReasoningDisplayBlock',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          blockId,
+          ordinal: 0,
+          type: 'text',
+          text: 'I am thinking.',
+          semanticRole: 'thinking',
+          providerKey: 'anthropic',
+          sourceEventType: 'content_block_delta.thinking_delta',
+        },
+      },
+    ])
+
+    expect(next.entities?.messagesById?.assistant_1?.reasoningDisplayBlocks).toEqual([
+      {
+        blockId,
+        ordinal: 0,
+        type: 'text',
+        text: 'I am thinking.',
+        semanticRole: 'thinking',
+        providerKey: 'anthropic',
+        sourceEventType: 'content_block_delta.thinking_delta',
+      },
+    ])
+  })
+
   it('keeps Gemini thought images as raw state and uses display blocks for UI replay', () => {
     const runId = 'r1'
     const started = startGeneration(createInitialState(), {
@@ -194,6 +312,119 @@ function readFixtureText(fileName: string) {
       },
     ])
   })
+
+  it('upserts reasoning display blocks by blockId without duplicating streamed deltas', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: testModel,
+      assistantMessageId: 'assistant_1',
+      userMessageId: 'user_1',
+      userMessageText: 'hello',
+    })
+
+    const next = applyEvents(started.state, runId, [
+      {
+        type: 'MessageUpsertReasoningDisplayBlock',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          blockId: 'openai-summary-part-0',
+          ordinal: 0,
+          type: 'text',
+          text: "I'm",
+          semanticRole: 'summary',
+          providerKey: 'openai-responses',
+          sourceEventType: 'response.reasoning_summary_text.delta',
+        },
+      },
+      {
+        type: 'MessageUpsertReasoningDisplayBlock',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          blockId: 'openai-summary-part-0',
+          ordinal: 0,
+          type: 'text',
+          text: "I'm considering",
+          semanticRole: 'summary',
+          providerKey: 'openai-responses',
+          sourceEventType: 'response.reasoning_summary_text.delta',
+        },
+      },
+    ])
+
+    const assistant = selectTranscript(next, runId).find((message) => message.messageId === 'assistant_1')
+    expect(assistant?.reasoningView.displayBlocks).toEqual([
+      {
+        blockId: 'openai-summary-part-0',
+        ordinal: 0,
+        type: 'text',
+        text: "I'm considering",
+        semanticRole: 'summary',
+        providerKey: 'openai-responses',
+        sourceEventType: 'response.reasoning_summary_text.delta',
+      },
+    ])
+  })
+
+  it('upserts DeepSeek reasoning_content display blocks into one continuous block', () => {
+    const runId = 'r1'
+    const started = startGeneration(createInitialState(), {
+      runId,
+      requestId: 'req1',
+      model: testModel,
+      assistantMessageId: 'assistant_1',
+      userMessageId: 'user_1',
+      userMessageText: 'hello',
+    })
+
+    const next = applyEvents(started.state, runId, [
+      {
+        type: 'MessageUpsertReasoningDisplayBlock',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          blockId: 'assistant_1:deepseek:0:reasoning_content',
+          ordinal: 0,
+          type: 'text',
+          text: 'I am',
+          semanticRole: 'reasoning',
+          providerKey: 'deepseek',
+          sourceEventType: 'reasoning_content',
+        },
+      },
+      {
+        type: 'MessageUpsertReasoningDisplayBlock',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          blockId: 'assistant_1:deepseek:0:reasoning_content',
+          ordinal: 0,
+          type: 'text',
+          text: 'I am thinking.',
+          semanticRole: 'reasoning',
+          providerKey: 'deepseek',
+          sourceEventType: 'reasoning_content',
+        },
+      },
+    ])
+
+    const assistant = selectTranscript(next, runId).find((message) => message.messageId === 'assistant_1')
+    expect(assistant?.reasoningView.displayBlocks).toEqual([
+      {
+        blockId: 'assistant_1:deepseek:0:reasoning_content',
+        ordinal: 0,
+        type: 'text',
+        text: 'I am thinking.',
+        semanticRole: 'reasoning',
+        providerKey: 'deepseek',
+        sourceEventType: 'reasoning_content',
+      },
+    ])
+  })
+
 async function replayFixture(_runId: string, assistantMessageId: string, fileName: string): Promise<DomainEvent[]> {
   const text = readFixtureText(fileName)
   const bytes = new TextEncoder().encode(text)

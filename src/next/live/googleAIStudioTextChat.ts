@@ -3,10 +3,17 @@ import type { ProviderStreamConfig, StarverseStreamEvent } from '@/next/provider
 import { streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
 import type { ProviderRuntimeContentBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
 import type { GeminiThinkingConfig } from '@/next/provider/gemini/geminiThinkingPolicy'
+import {
+  GEMINI_GENERATE_CONTENT_SOURCE_API,
+  GEMINI_PROVIDER_NATIVE_PROVIDER_KEY,
+  normalizeGeminiProviderNativeSnapshot,
+  type GeminiProviderNativeSnapshot,
+} from '@/next/provider/gemini/geminiProviderNativeContent'
 
 export type GoogleAIStudioTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
   content: string
+  geminiNativeContent?: GeminiProviderNativeSnapshot
 }>
 
 export type GoogleAIStudioTextChatOptions = Readonly<{
@@ -53,6 +60,63 @@ function textFromContent(content: unknown): string {
     .join('')
 }
 
+function textFromContextRecord(record: Record<string, unknown>): string {
+  if (typeof record.content === 'string' || Array.isArray(record.content)) {
+    return textFromContent(record.content)
+  }
+  if (typeof record.contentText === 'string') return record.contentText
+  if (Array.isArray(record.contentBlocks)) return textFromContent(record.contentBlocks)
+  return ''
+}
+
+class GeminiNativeHistoryError extends Error {
+  constructor(
+    readonly code: 'gemini_native_history_missing' | 'gemini_native_history_not_final',
+    message: string,
+  ) {
+    super(message)
+    this.name = 'GeminiNativeHistoryError'
+  }
+}
+
+function isGoogleAIStudioAssistant(record: Record<string, unknown>): boolean {
+  const providerId = typeof record.providerId === 'string' ? record.providerId : undefined
+  const providerKey = typeof record.providerKey === 'string' ? record.providerKey : undefined
+  return providerId === GEMINI_PROVIDER_NATIVE_PROVIDER_KEY || providerKey === GEMINI_PROVIDER_NATIVE_PROVIDER_KEY
+}
+
+function selectFinalGeminiNativeSnapshot(record: Record<string, unknown>): GeminiProviderNativeSnapshot | null {
+  const raw = record.providerNativeContents
+  if (!Array.isArray(raw)) return null
+  let sawNonFinal = false
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const candidate = item as Record<string, unknown>
+    if (candidate.providerKey !== GEMINI_PROVIDER_NATIVE_PROVIDER_KEY) continue
+    if (candidate.sourceApi !== GEMINI_GENERATE_CONTENT_SOURCE_API) continue
+    if (candidate.candidateIndex !== 0) continue
+    if (candidate.status !== 'final') {
+      sawNonFinal = true
+      continue
+    }
+    try {
+      return normalizeGeminiProviderNativeSnapshot(candidate)
+    } catch {
+      throw new GeminiNativeHistoryError(
+        'gemini_native_history_not_final',
+        'Google AI Studio history contains invalid Gemini native content.',
+      )
+    }
+  }
+  if (sawNonFinal) {
+    throw new GeminiNativeHistoryError(
+      'gemini_native_history_not_final',
+      'Google AI Studio history contains non-final Gemini native content.',
+    )
+  }
+  return null
+}
+
 export function buildGoogleAIStudioTextChatMessages(input: Readonly<{
   contextMessages?: readonly unknown[]
   userText: string
@@ -63,9 +127,18 @@ export function buildGoogleAIStudioTextChatMessages(input: Readonly<{
     const record = item as Record<string, unknown>
     const role = record.role
     if (role !== 'user' && role !== 'assistant') continue
-    const content = textFromContent(record.content).trim()
-    if (!content) continue
-    messages.push({ role, content })
+    const nativeSnapshot = role === 'assistant' && isGoogleAIStudioAssistant(record)
+      ? selectFinalGeminiNativeSnapshot(record)
+      : null
+    if (role === 'assistant' && isGoogleAIStudioAssistant(record) && !nativeSnapshot) {
+      throw new GeminiNativeHistoryError(
+        'gemini_native_history_missing',
+        'Google AI Studio assistant history is missing final Gemini native content.',
+      )
+    }
+    const content = textFromContextRecord(record).trim()
+    if (!content && !nativeSnapshot) continue
+    messages.push({ role, content, ...(nativeSnapshot ? { geminiNativeContent: nativeSnapshot } : {}) })
   }
 
   const userText = input.userText.trim()
@@ -196,10 +269,19 @@ export async function* streamGoogleAIStudioTextChatAsDomainEvents(
     return
   }
 
-  const messages = buildGoogleAIStudioTextChatMessages({
-    contextMessages: options.contextMessages,
-    userText: options.userText,
-  })
+  let messages: GoogleAIStudioTextChatMessage[]
+  try {
+    messages = buildGoogleAIStudioTextChatMessages({
+      contextMessages: options.contextMessages,
+      userText: options.userText,
+    })
+  } catch (err) {
+    if (err instanceof GeminiNativeHistoryError) {
+      yield streamError(err.code, err.message, 'bad_request')
+      return
+    }
+    throw err
+  }
   const hasContentBlocks = (options.currentUserContentBlocks?.length ?? 0) > 0
   if (messages.length === 0 && hasContentBlocks) {
     messages.push({ role: 'user', content: '' })

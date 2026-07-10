@@ -123,6 +123,29 @@ CREATE TABLE IF NOT EXISTS message_reasoning_display_blocks (
 CREATE INDEX IF NOT EXISTS idx_reasoning_display_blocks_message_ordinal
   ON message_reasoning_display_blocks(message_id, ordinal);
 
+CREATE TABLE IF NOT EXISTS message_provider_native_contents (
+  message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+  provider_key TEXT NOT NULL CHECK (length(provider_key) > 0),
+  source_api TEXT NOT NULL CHECK (length(source_api) > 0),
+  snapshot_key TEXT NOT NULL CHECK (length(snapshot_key) > 0),
+  candidate_index INTEGER CHECK (candidate_index IS NULL OR candidate_index >= 0),
+  status TEXT NOT NULL CHECK (status IN ('streaming', 'final', 'error', 'cancelled')),
+  content_json TEXT NOT NULL,
+  role TEXT,
+  finish_reason TEXT,
+  stop_reason TEXT,
+  stop_sequence TEXT,
+  usage_json TEXT,
+  model TEXT,
+  model_version TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL,
+  PRIMARY KEY (message_id, provider_key, source_api, snapshot_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_provider_native_contents_message
+  ON message_provider_native_contents(message_id);
+
 CREATE TABLE IF NOT EXISTS message_error (
   message_id TEXT PRIMARY KEY REFERENCES message(id) ON DELETE CASCADE,
   envelope_json TEXT NOT NULL,

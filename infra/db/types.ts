@@ -28,6 +28,7 @@ import type {
   DfcSendStrategy,
   DfcTargetKind,
 } from '../../src/shared/files/documentFormatConversion'
+import type { ProviderNativeSnapshot } from '../../src/next/provider/providerNativeSnapshot'
 
 export type JsonObject = Record<string, unknown>
 
@@ -163,6 +164,25 @@ export type ListReasoningDisplayBlocksByMessageIdsInput = Readonly<{
 export type SetReasoningRequestConfigInput = Readonly<{
   messageId: string
   value?: unknown
+}>
+
+export type ProviderNativeContentStatus = 'streaming' | 'final' | 'error' | 'cancelled'
+
+export type ProviderNativeContentSnapshot = ProviderNativeSnapshot
+
+export type UpsertProviderNativeContentInput = Readonly<{
+  messageId: string
+  snapshot: ProviderNativeContentSnapshot
+}>
+
+export type ListProviderNativeContentsByMessageIdsInput = Readonly<{
+  messageIds: string[]
+}>
+
+export type ProviderNativeContentRecord = ProviderNativeContentSnapshot & Readonly<{
+  messageId: string
+  createdAt: number
+  updatedAt: number
 }>
 
 export type GetReasoningSegmentsStatsInput = Readonly<{

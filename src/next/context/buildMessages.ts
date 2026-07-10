@@ -13,6 +13,9 @@ export type InternalMessage = Readonly<{
   toolCallId?: string
   toolName?: string
   reasoningDetailsRaw?: unknown[]
+  providerId?: string
+  modelId?: string
+  providerNativeContents?: unknown[]
 }>
 
 export type BuildMessagesOptions = Readonly<{
@@ -87,4 +90,3 @@ export function buildOpenRouterMessages(
 
   return out
 }
-

@@ -13,7 +13,7 @@
  *
  * Key Gemini quirks handled here:
  * - text parts (thought !== true) → visible text
- * - text parts (thought === true) → raw reasoning + reasoning display text (NEVER visible text)
+ * - text parts (thought === true) → raw reasoning only; Gemini adapter owns visible text display assembly
  * - inlineData parts (thought === true) → raw reasoning image + reasoning display image
  * - inlineData parts (thought !== true) → assistant image content block
  * - functionCall parts → ignored (no tool delta shape in Starverse)
@@ -27,7 +27,7 @@
  */
 
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
-import { createReasoningImageDisplayBlock, createReasoningTextDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
+import { createReasoningImageDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
 
 // ---------------------------------------------------------------------------
 // Gemini response types — provider-native schema, contained here only
@@ -111,7 +111,7 @@ function normalizeFinishReason(native: string | undefined): string {
  *
  * - Pure function: emits events only; does not write any state.
  * - text parts with thought !== true → message.text_delta.
- * - text parts with thought === true → message.reasoning_raw_detail + message.reasoning_display_block. NEVER visible text.
+ * - text parts with thought === true → message.reasoning_raw_detail. NEVER visible text.
  * - thought inlineData → reasoning image display block; non-thought inlineData → assistant image content block.
  * - functionCall parts → ignored (no tool delta event shape).
  * - usageMetadata → usage.delta.
@@ -193,22 +193,7 @@ export function mapGeminiStreamChunkToStarverse(
             choiceIndex: 0,
             detail: { type: 'thought', text: part.text },
           })
-          const displayBlock = createReasoningTextDisplayBlock({
-            messageId,
-            providerKey: 'google_ai_studio',
-            ordinal: resolveGeminiDisplayOrdinal(options, displayIndex++),
-            text: part.text,
-            semanticRole: 'thought',
-            sourceEventType: 'candidate.part.thought.text',
-          })
-          if (displayBlock) {
-            events.push({
-              type: 'message.reasoning_display_block',
-              messageId,
-              choiceIndex: 0,
-              block: displayBlock,
-            })
-          }
+          displayIndex += 1
         }
         if (part.inlineData) {
           const image = imageFromInlineData(part.inlineData)

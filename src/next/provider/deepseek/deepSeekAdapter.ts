@@ -18,6 +18,7 @@ import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProvid
 import { buildDeepSeekRequest, type DeepSeekMessage } from '@/next/provider/deepseek/deepSeekRequestBuilder'
 import { decodeDeepSeekSSE } from '@/next/provider/deepseek/deepSeekSseDecoder'
 import { mapDeepSeekChunkToEvents } from '@/next/provider/deepseek/deepSeekStreamMapper'
+import { createDeepSeekReasoningDisplayAssemblerState } from '@/next/provider/deepseek/deepseekReasoningDisplayAssembler'
 import { hasProviderRuntimeNonTextBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 // ---------------------------------------------------------------------------
@@ -125,6 +126,7 @@ export const streamViaDeepSeek: RuntimeProviderStreamAdapter = async function* s
   // - After any terminal, no further events are yielded
   let chunkNo = 0
   let terminalEmitted = false
+  const reasoningDisplayState = createDeepSeekReasoningDisplayAssemblerState()
 
   for await (const sseEvent of decodeDeepSeekSSE(sseStream)) {
     if (terminalEmitted) break
@@ -134,6 +136,7 @@ export const streamViaDeepSeek: RuntimeProviderStreamAdapter = async function* s
         chunk: sseEvent.value,
         messageId: assistantMessageId,
         chunkNo,
+        reasoningDisplayState,
       })
       for (const event of events) {
         if (terminalEmitted) break
@@ -196,9 +199,8 @@ function buildMessages(request: ProviderStreamRequest): DeepSeekMessage[] {
   // Context messages (if provided as DeepSeekMessage-compatible)
   if (request.contextMessages) {
     for (const msg of request.contextMessages) {
-      if (isDeepSeekMessage(msg)) {
-        messages.push(msg)
-      }
+      const normalized = normalizeDeepSeekMessage(msg)
+      if (normalized) messages.push(normalized)
     }
   }
 
@@ -217,10 +219,48 @@ function buildMessages(request: ProviderStreamRequest): DeepSeekMessage[] {
   return messages
 }
 
-function isDeepSeekMessage(msg: unknown): msg is DeepSeekMessage {
-  if (!msg || typeof msg !== 'object') return false
+function normalizeDeepSeekMessage(msg: unknown): DeepSeekMessage | null {
+  if (!msg || typeof msg !== 'object') return null
+  const source = msg as Record<string, unknown>
   const role = (msg as any).role
-  return role === 'system' || role === 'user' || role === 'assistant' || role === 'tool'
+  if (role !== 'system' && role !== 'user' && role !== 'assistant' && role !== 'tool') return null
+
+  const output: Record<string, unknown> = {
+    role,
+    content: deriveDeepSeekMessageContent(source),
+  }
+
+  const name = source.name
+  if (typeof name === 'string' && name.trim()) output.name = name.trim()
+
+  const toolCallId = typeof source.tool_call_id === 'string'
+    ? source.tool_call_id
+    : typeof source.toolCallId === 'string'
+      ? source.toolCallId
+      : null
+  if (toolCallId && toolCallId.trim()) output.tool_call_id = toolCallId.trim()
+
+  const toolCalls = Array.isArray(source.tool_calls)
+    ? source.tool_calls
+    : Array.isArray(source.toolCalls)
+      ? source.toolCalls
+      : null
+  if (toolCalls && toolCalls.length > 0) output.tool_calls = toolCalls
+
+  return output as DeepSeekMessage
+}
+
+function deriveDeepSeekMessageContent(msg: Record<string, unknown>): string | null {
+  if (typeof msg.content === 'string') return msg.content
+  if (msg.content === null) return null
+  if (typeof msg.contentText === 'string') return msg.contentText
+  if (Array.isArray(msg.contentBlocks)) {
+    return msg.contentBlocks
+      .filter((block) => block && typeof block === 'object' && (block as any).type === 'text')
+      .map((block) => String((block as any).text ?? ''))
+      .join('')
+  }
+  return ''
 }
 
 async function* mapTransportError(err: any, _messageId: string): AsyncGenerator<StarverseStreamEvent> {

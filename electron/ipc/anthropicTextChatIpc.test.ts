@@ -33,6 +33,23 @@ function makeSseResponse(...lines: string[]): Response {
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
+function makeAnthropicNativeSnapshot() {
+  return {
+    providerKey: 'anthropic',
+    sourceApi: 'anthropic_messages',
+    snapshotKey: 'assistant',
+    role: 'assistant',
+    status: 'final',
+    content: [
+      { type: 'thinking', thinking: 'private thought', signature: 'sig_1' },
+      { type: 'redacted_thinking', data: 'opaque_redacted' },
+      { type: 'text', text: 'previous answer' },
+    ],
+    stopReason: 'end_turn',
+    usage: { output_tokens: 12 },
+  }
+}
+
 function createSender() {
   return { send: vi.fn() }
 }
@@ -135,6 +152,49 @@ describe('anthropicTextChatIpc', () => {
     expect(serializedEvents).not.toContain('x-api-key')
     expect(serializedEvents).not.toContain('Bearer')
     expect(serializedEvents).not.toContain('Authorization')
+  })
+
+  it('passes final Anthropic native assistant content through IPC without leaking Starverse fields', async () => {
+    const nativeSnapshot = makeAnthropicNativeSnapshot()
+    const fetchImpl = vi.fn(async (_url: string, init?: RequestInit) => {
+      const body = JSON.parse(String(init?.body ?? '{}'))
+      expect(body.messages[0]).toEqual({
+        role: 'assistant',
+        content: nativeSnapshot.content,
+      })
+      expect(body.messages[1]).toEqual({ role: 'user', content: 'next' })
+      const serializedBody = JSON.stringify(body)
+      expect(serializedBody).toContain('sig_1')
+      expect(serializedBody).toContain('opaque_redacted')
+      expect(serializedBody).not.toContain('anthropicNativeContent')
+      expect(serializedBody).not.toContain('providerNativeContents')
+      expect(serializedBody).not.toContain('reasoningDisplayBlocks')
+      expect(serializedBody).not.toContain('reasoningDetailsRaw')
+      return makeSseResponse(textDeltaSse('ok'), messageStopSse())
+    }) as unknown as typeof fetch
+
+    const registerInvoke = vi.fn()
+    registerAnthropicTextChatIpc({ registerInvoke, credentialService: createCredentialService('sk-ant-secret'), fetchImpl })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'anthropic-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    const start = await handler({ sender }, {
+      requestId: 'anthropic_req_native_context',
+      assistantMessageId: 'assistant_1',
+      model: 'claude-sonnet-4-5',
+      messages: [
+        {
+          role: 'assistant',
+          content: '',
+          anthropicNativeContent: nativeSnapshot,
+        },
+        { role: 'user', content: 'next' },
+      ],
+      timeoutMs: 1000,
+    })
+
+    expect(start).toEqual({ ok: true })
+    await vi.waitFor(() => expect(fetchImpl).toHaveBeenCalledTimes(1))
   })
 
   it('uses Electron session fetch by default instead of global fetch', async () => {

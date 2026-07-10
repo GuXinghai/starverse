@@ -55,6 +55,8 @@ import type {
   FinalizeReasoningDisplayBlocksInput,
   FinalizeReasoningDetailsInput,
   ListReasoningDisplayBlocksByMessageIdsInput,
+  UpsertProviderNativeContentInput,
+  ListProviderNativeContentsByMessageIdsInput,
   SetReasoningRequestConfigInput,
   GetReasoningSegmentsStatsInput,
   CreateConvoInput,
@@ -677,6 +679,33 @@ export const AppendReasoningDisplayBlocksSchema: ZodType<AppendReasoningDisplayB
 })
 
 export const ListReasoningDisplayBlocksByMessageIdsSchema: ZodType<ListReasoningDisplayBlocksByMessageIdsInput> = z.object({
+  messageIds: z.array(z.string().min(1)).min(1).max(500),
+})
+
+const ProviderNativeContentSnapshotSchema = z.object({
+  providerKey: z.string().min(1),
+  sourceApi: z.string().min(1),
+  snapshotKey: z.string().min(1),
+  candidateIndex: z.number().int().nonnegative().optional(),
+  status: z.enum(['streaming', 'final', 'error', 'cancelled']),
+  content: z.any(),
+  role: z.string().min(1).optional(),
+  finishReason: z.string().min(1).optional(),
+  stopReason: z.string().min(1).optional(),
+  stopSequence: z.string().nullable().optional(),
+  usageMetadata: z.record(z.any()).optional(),
+  usage: z.any().optional(),
+  model: z.string().min(1).optional(),
+  diagnostics: z.array(z.record(z.any())).optional(),
+  modelVersion: z.string().min(1).optional(),
+}).passthrough()
+
+export const UpsertProviderNativeContentSchema = z.object({
+  messageId: z.string().min(1),
+  snapshot: ProviderNativeContentSnapshotSchema,
+}) as unknown as ZodType<UpsertProviderNativeContentInput>
+
+export const ListProviderNativeContentsByMessageIdsSchema: ZodType<ListProviderNativeContentsByMessageIdsInput> = z.object({
   messageIds: z.array(z.string().min(1)).min(1).max(500),
 })
 

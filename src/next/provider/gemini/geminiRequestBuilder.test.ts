@@ -23,6 +23,36 @@ describe('buildGeminiRequest', () => {
     })
 
     expect(req.contents).toEqual(baseMessages)
+    expect((req.generationConfig as any).candidateCount).toBe(1)
+  })
+
+  it('rejects candidateCount values other than 1', () => {
+    expect(() => buildGeminiRequest({
+      model: 'gemini-2.5-pro',
+      messages: baseMessages,
+      config: baseConfig({ generationParams: { generationConfig: { candidateCount: 2 } } }),
+    })).toThrow(/candidateCount=1/)
+  })
+
+  it('preserves Gemini native signed parts without flattening', () => {
+    const messages: GeminiContent[] = [
+      {
+        role: 'model',
+        parts: [
+          { text: 'thought', thought: true, thoughtSignature: 'sig-1' } as any,
+          { text: 'answer' },
+        ],
+      },
+      { role: 'user', parts: [{ text: 'continue' }] },
+    ]
+    const req = buildGeminiRequest({
+      model: 'gemini-2.5-pro',
+      messages,
+      config: baseConfig(),
+    })
+
+    expect(req.contents).toEqual(messages)
+    expect((req.contents[0].parts[0] as any).thoughtSignature).toBe('sig-1')
   })
 
   it('maps role/content parts correctly', () => {
@@ -92,14 +122,14 @@ describe('buildGeminiRequest', () => {
     expect((req.generationConfig as any).maxOutputTokens).toBe(4096)
   })
 
-  it('does not include generationConfig when absent', () => {
+  it('includes only candidateCount when generationConfig is otherwise absent', () => {
     const req = buildGeminiRequest({
       model: 'gemini-2.5-pro',
       messages: baseMessages,
       config: baseConfig(),
     })
 
-    expect(req.generationConfig).toBeUndefined()
+    expect(req.generationConfig).toEqual({ candidateCount: 1 })
   })
 
   it('includes native thinkingBudget from generationParams', () => {
@@ -147,7 +177,8 @@ describe('buildGeminiRequest', () => {
       config: baseConfig({ geminiThinking: { mode: 'budget', thinkingBudget: 2048, includeThoughts: true } }),
     })
 
-    expect(req.generationConfig).toBeUndefined()
+    expect(req.generationConfig).toEqual({ candidateCount: 1 })
+    expect((req.generationConfig as any).thinkingConfig).toBeUndefined()
   })
 
   it('ignores generic reasoning effort for Gemini native requests', () => {
@@ -157,7 +188,8 @@ describe('buildGeminiRequest', () => {
       config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
     })
 
-    expect(req.generationConfig).toBeUndefined()
+    expect(req.generationConfig).toEqual({ candidateCount: 1 })
+    expect((req.generationConfig as any).thinkingConfig).toBeUndefined()
   })
 
   it('includes tools when present and non-empty', () => {

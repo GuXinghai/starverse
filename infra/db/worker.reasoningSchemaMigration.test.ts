@@ -58,6 +58,31 @@ function expectDisplayBlockSchemaVersion(db: Database) {
   expect(row?.valueJson).toBe('2')
 }
 
+function providerNativeColumns(db: Database): ColumnInfo[] {
+  return db.prepare('PRAGMA table_info(message_provider_native_contents)').all() as ColumnInfo[]
+}
+
+function expectProviderNativeSchemaParity(db: Database) {
+  const columns = providerNativeColumns(db)
+  const columnByName = new Map(columns.map((column) => [column.name, column]))
+  expect(columnByName.get('provider_key')?.notnull).toBe(1)
+  expect(columnByName.get('source_api')?.notnull).toBe(1)
+  expect(columnByName.get('snapshot_key')?.notnull).toBe(1)
+  expect(columnByName.has('role')).toBe(true)
+  expect(columnByName.has('usage_json')).toBe(true)
+  expect(columnByName.has('model')).toBe(true)
+
+  const uniqueIndexes = db.prepare('PRAGMA index_list(message_provider_native_contents)').all() as IndexInfo[]
+  const uniqueColumnGroups = uniqueIndexes
+    .filter((index) => index.unique === 1)
+    .map((index) => {
+      const escapedName = index.name.replace(/"/g, '""')
+      return (db.prepare(`PRAGMA index_info("${escapedName}")`).all() as IndexColumnInfo[])
+        .map((column) => column.name)
+    })
+  expect(uniqueColumnGroups).toContainEqual(['message_id', 'provider_key', 'source_api', 'snapshot_key'])
+}
+
 function createTempDbPath(tempDirs: string[]) {
   const tempDir = mkdtempSync(path.join(os.tmpdir(), 'starverse-reasoning-schema-'))
   tempDirs.push(tempDir)
@@ -161,6 +186,71 @@ function seedLegacyDisplayBlockDatabase(
   }
 }
 
+function seedLegacyProviderNativeDatabase(dbPath: string) {
+  const baseSchemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
+  const baseSchema = readFileSync(baseSchemaPath, 'utf8')
+  const db = new BetterSqlite3(dbPath)
+  try {
+    db.exec(baseSchema)
+    db.exec(`
+      DROP TABLE message_provider_native_contents;
+      CREATE TABLE message_provider_native_contents (
+        message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+        provider_key TEXT NOT NULL CHECK (provider_key = 'google_ai_studio'),
+        source_api TEXT NOT NULL CHECK (source_api = 'gemini_generate_content'),
+        candidate_index INTEGER NOT NULL CHECK (candidate_index >= 0),
+        status TEXT NOT NULL CHECK (status IN ('streaming', 'final', 'error', 'cancelled')),
+        content_json TEXT NOT NULL,
+        finish_reason TEXT,
+        usage_metadata_json TEXT,
+        model_version TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (message_id, provider_key, source_api, candidate_index)
+      );
+    `)
+    const now = Date.now()
+    db.prepare(`
+      INSERT INTO convo (id, project_id, title, created_at, updated_at, meta)
+      VALUES ('c1', NULL, 'legacy native', @now, @now, NULL)
+    `).run({ now })
+    db.prepare(`
+      INSERT INTO message (id, convo_id, role, created_at, seq, status)
+      VALUES ('m1', 'c1', 'assistant', @now, 1, 'final')
+    `).run({ now })
+    db.prepare(`
+      INSERT INTO message_provider_native_contents (
+        message_id,
+        provider_key,
+        source_api,
+        candidate_index,
+        status,
+        content_json,
+        finish_reason,
+        usage_metadata_json,
+        model_version,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        'm1',
+        'google_ai_studio',
+        'gemini_generate_content',
+        3,
+        'final',
+        '{"role":"model","parts":[{"text":"ok","thoughtSignature":"sig"}]}',
+        'STOP',
+        '{"totalTokenCount":4}',
+        'gemini-test',
+        @now,
+        @now
+      )
+    `).run({ now })
+  } finally {
+    db.close()
+  }
+}
+
 describe('DbWorkerRuntime reasoning schema migration', () => {
   const tempDirs: string[] = []
 
@@ -245,6 +335,38 @@ describe('DbWorkerRuntime reasoning schema migration', () => {
     try {
       expectDisplayBlockSchemaParity(runtime.db)
       expectDisplayBlockSchemaVersion(runtime.db)
+    } finally {
+      runtime.shutdown()
+    }
+  })
+
+  it('creates fresh provider-native schema with provider-neutral snapshot key', () => {
+    const dbPath = createTempDbPath(tempDirs)
+    const runtime = new DbWorkerRuntime({ dbPath })
+    try {
+      expectProviderNativeSchemaParity(runtime.db)
+    } finally {
+      runtime.shutdown()
+    }
+  })
+
+  it('migrates legacy Gemini provider-native rows to snapshot_key per candidate index', () => {
+    const dbPath = createTempDbPath(tempDirs)
+    seedLegacyProviderNativeDatabase(dbPath)
+
+    const runtime = new DbWorkerRuntime({ dbPath })
+    try {
+      expectProviderNativeSchemaParity(runtime.db)
+      const row = runtime.db.prepare(`
+        SELECT snapshot_key AS snapshotKey, candidate_index AS candidateIndex, usage_json AS usageJson
+        FROM message_provider_native_contents
+        WHERE message_id = 'm1'
+      `).get() as { snapshotKey: string; candidateIndex: number; usageJson: string }
+      expect(row).toEqual({
+        snapshotKey: 'candidate:3',
+        candidateIndex: 3,
+        usageJson: '{"totalTokenCount":4}',
+      })
     } finally {
       runtime.shutdown()
     }

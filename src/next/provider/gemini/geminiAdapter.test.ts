@@ -105,6 +105,51 @@ describe('streamViaGemini', () => {
 
     const body = JSON.parse(init.body)
     expect(body.contents).toEqual([{ role: 'user', parts: [{ text: 'Hello' }] }])
+    expect(body.generationConfig).toEqual({ candidateCount: 1 })
+  })
+
+  it('emits provider-native Gemini content snapshots for stream continuation', async () => {
+    const response = makeSseResponse(
+      `data: ${JSON.stringify({
+        candidates: [{
+          content: {
+            role: 'model',
+            parts: [
+              { text: 'thinking', thought: true, thoughtSignature: 'sig-a' },
+              { text: ' answer' },
+            ],
+          },
+        }],
+        usageMetadata: { totalTokenCount: 9, thoughtsTokenCount: 3 },
+        modelVersion: 'gemini-test-version',
+      })}`,
+      finishChunkSse('STOP'),
+    )
+
+    const events = await collectEvents(streamViaGemini(makeRequest(), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch: mockFetch(response),
+    }))
+
+    const nativeEvents = events.filter((event) => event.type === 'message.provider_native_content_upsert')
+    expect(nativeEvents.length).toBeGreaterThan(0)
+    const finalSnapshot = (nativeEvents[nativeEvents.length - 1] as any).snapshot
+    expect(finalSnapshot).toMatchObject({
+      providerKey: 'google_ai_studio',
+      sourceApi: 'gemini_generate_content',
+      candidateIndex: 0,
+      status: 'final',
+      content: {
+        role: 'model',
+        parts: [
+          { text: 'thinking', thought: true, thoughtSignature: 'sig-a' },
+          { text: ' answer' },
+        ],
+      },
+      usageMetadata: { totalTokenCount: 9, thoughtsTokenCount: 3 },
+      modelVersion: 'gemini-test-version',
+    })
   })
 
   it('routes image generation requests through Gemini Interactions API', async () => {
@@ -153,6 +198,43 @@ describe('streamViaGemini', () => {
       },
     })
     expect(events.at(-1)).toEqual({ type: 'stream.done' })
+  })
+
+  it('rejects Gemini Interactions image generation when prior context is present', async () => {
+    const fetch = vi.fn(async () => new Response('{}', { status: 200 }))
+
+    const events = await collectEvents(streamViaGemini({
+      ...makeRequest({
+        model: 'gemini-3.1-flash-image',
+        imageGeneration: {
+          outputMode: 'image_only',
+          aspectRatio: '1:1',
+          imageSize: '1K',
+        },
+      }),
+      contextMessages: [
+        { role: 'model', parts: [{ text: 'previous image turn' }] },
+      ],
+    }, {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(events).toEqual([
+      {
+        type: 'stream.error',
+        error: {
+          phase: 'request_build',
+          provider: 'gemini',
+          category: 'bad_request',
+          code: 'gemini_interactions_continuation_unsupported',
+          message: 'Google AI Studio image generation continuation is not supported in this Starverse build.',
+        },
+        terminal: true,
+      },
+    ])
   })
 
   it('streams Gemini Interactions thought summaries before generated image blocks', async () => {
@@ -430,8 +512,16 @@ describe('streamViaGemini', () => {
     }))
 
     const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
-    expect(reasoningEvents).toHaveLength(2)
+    expect(reasoningEvents).toHaveLength(3)
+    expect(displayEvents).toHaveLength(2)
+    if (displayEvents[0].type === 'message.reasoning_display_block_upsert' && displayEvents[1].type === 'message.reasoning_display_block_upsert') {
+      expect(displayEvents[0].block.blockId).toBe(displayEvents[1].block.blockId)
+      expect(displayEvents[0].block.type === 'text' ? displayEvents[0].block.text : undefined).toBe('Let me think...')
+      expect(displayEvents[1].block.type === 'text' ? displayEvents[1].block.text : undefined).toBe('Let me think... Okay.')
+    }
+    expect(JSON.stringify(reasoningEvents[2])).toContain('gemini_thought_summary_final_empty')
     expect(textEvents).toHaveLength(0)
   })
 
@@ -662,15 +752,21 @@ describe('streamViaGemini', () => {
     }))
 
     const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     const usageEvents = events.filter((e) => e.type === 'usage.delta')
     const doneEvents = events.filter((e) => e.type === 'stream.done')
 
     // Exact counts
-    expect(reasoningEvents).toHaveLength(2)
+    expect(reasoningEvents).toHaveLength(3)
+    expect(displayEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(1)
     expect(usageEvents).toHaveLength(1)
     expect(doneEvents).toHaveLength(1)
+    if (displayEvents[0].type === 'message.reasoning_display_block_upsert' && displayEvents[1].type === 'message.reasoning_display_block_upsert') {
+      expect(displayEvents[0].block.blockId).toBe(displayEvents[1].block.blockId)
+      expect(displayEvents[1].block.type === 'text' ? displayEvents[1].block.text : undefined).toBe('Let me analyze this... The answer is 42.')
+    }
 
     // stream.done is last
     expect(events[events.length - 1].type).toBe('stream.done')

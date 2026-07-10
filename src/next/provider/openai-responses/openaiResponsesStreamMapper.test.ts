@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
-import { mapOpenAIResponsesEventToStarverse, type OpenAIResponsesStreamEvent } from '@/next/provider/openai-responses/openaiResponsesStreamMapper'
+import {
+  mapOpenAIResponsesEventToStarverse,
+  type OpenAIResponsesReasoningSummaryDedupeState,
+  type OpenAIResponsesStreamEvent,
+} from '@/next/provider/openai-responses/openaiResponsesStreamMapper'
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
 
 // ---------------------------------------------------------------------------
@@ -100,7 +104,7 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
         expect(events[0].messageId).toBe(msgId)
       }
       expect(events[1]).toMatchObject({
-        type: 'message.reasoning_display_block',
+        type: 'message.reasoning_display_block_upsert',
         messageId: msgId,
         choiceIndex: 0,
         block: {
@@ -139,7 +143,7 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
         expect(events[0].detail).toEqual({ type: 'reasoning_text', text: 'Step 1: analyze...' })
       }
       expect(events[1]).toMatchObject({
-        type: 'message.reasoning_display_block',
+        type: 'message.reasoning_display_block_upsert',
         messageId: msgId,
         choiceIndex: 0,
         block: {
@@ -169,7 +173,7 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
   // =========================================================================
 
   describe('reasoning output item', () => {
-    it('maps reasoning output item done to message.reasoning_raw_detail', () => {
+    it('maps reasoning output item done to raw detail and displayable summary block', () => {
       const events = mapOpenAIResponsesEventToStarverse(
         reasoningOutputItemDone({
           type: 'reasoning',
@@ -180,7 +184,7 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
         msgId,
       )
 
-      expect(events).toHaveLength(1)
+      expect(events).toHaveLength(2)
       expect(events[0].type).toBe('message.reasoning_raw_detail')
       if (events[0].type === 'message.reasoning_raw_detail') {
         const detail = events[0].detail as any
@@ -189,6 +193,18 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
         expect(detail.summary).toEqual([{ text: 'I thought about this', type: 'summary_text' }])
         expect(detail.status).toBe('completed')
       }
+      expect(events[1]).toMatchObject({
+        type: 'message.reasoning_display_block_upsert',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'text',
+          text: 'I thought about this',
+          semanticRole: 'summary',
+          providerKey: 'openai-responses',
+          sourceEventType: 'response.output_item.done',
+        },
+      })
     })
 
     it('preserves encrypted_content in reasoning item artifact', () => {
@@ -208,6 +224,97 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
         const detail = events[0].detail as any
         expect(detail.encrypted_content).toBe('base64encodedcontent')
       }
+    })
+
+    it('does not emit display block for empty reasoning item summary', () => {
+      const events = mapOpenAIResponsesEventToStarverse(
+        reasoningOutputItemDone({
+          type: 'reasoning',
+          id: 'reasoning_empty',
+          summary: [],
+          status: 'completed',
+        }),
+        msgId,
+      )
+
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('message.reasoning_raw_detail')
+      expect(events.some((event) => event.type === 'message.reasoning_display_block_upsert')).toBe(false)
+    })
+
+    it('preserves unknown reasoning summary shapes without throwing', () => {
+      const events = mapOpenAIResponsesEventToStarverse(
+        reasoningOutputItemDone({
+          type: 'reasoning',
+          id: 'reasoning_unknown',
+          summary: [{ type: 'unknown_shape', payload: { nested: true } }],
+          status: 'completed',
+        }),
+        msgId,
+      )
+
+      expect(events).toHaveLength(1)
+      expect(events[0].type).toBe('message.reasoning_raw_detail')
+      if (events[0].type === 'message.reasoning_raw_detail') {
+        const detail = events[0].detail as any
+        expect(detail.summary).toEqual([{ raw: { type: 'unknown_shape', payload: { nested: true } } }])
+      }
+    })
+
+    it('does not duplicate final summary when reasoning summary delta already emitted the same text', () => {
+      const dedupe: OpenAIResponsesReasoningSummaryDedupeState = {
+        emittedSummaryKeys: new Set(),
+        streamedSummaryTextByItemKey: new Map(),
+      }
+      const deltaEvents = mapOpenAIResponsesEventToStarverse(
+        reasoningSummaryDelta('I thought about this'),
+        msgId,
+        { reasoningSummaryDedupe: dedupe },
+      )
+      const doneEvents = mapOpenAIResponsesEventToStarverse(
+        reasoningOutputItemDone({
+          type: 'reasoning',
+          id: 'item_0',
+          summary: [{ text: 'I thought about this', type: 'summary_text' }],
+          status: 'completed',
+        }),
+        msgId,
+        { reasoningSummaryDedupe: dedupe },
+      )
+
+      expect(deltaEvents.filter((event) => event.type === 'message.reasoning_display_block_upsert')).toHaveLength(1)
+      expect(doneEvents.filter((event) => event.type === 'message.reasoning_raw_detail')).toHaveLength(1)
+      expect(doneEvents.filter((event) => event.type === 'message.reasoning_display_block_upsert')).toHaveLength(0)
+    })
+
+    it('does not duplicate final summary when streamed deltas compose the same text', () => {
+      const dedupe: OpenAIResponsesReasoningSummaryDedupeState = {
+        emittedSummaryKeys: new Set(),
+        streamedSummaryTextByItemKey: new Map(),
+      }
+      mapOpenAIResponsesEventToStarverse(
+        { ...reasoningSummaryDelta('I thought '), item_id: 'reasoning_1' },
+        msgId,
+        { reasoningSummaryDedupe: dedupe },
+      )
+      mapOpenAIResponsesEventToStarverse(
+        { ...reasoningSummaryDelta('about this'), item_id: 'reasoning_1', sequence_number: 2 },
+        msgId,
+        { reasoningSummaryDedupe: dedupe },
+      )
+      const doneEvents = mapOpenAIResponsesEventToStarverse(
+        reasoningOutputItemDone({
+          type: 'reasoning',
+          id: 'reasoning_1',
+          summary: [{ text: 'I thought about this', type: 'summary_text' }],
+          status: 'completed',
+        }),
+        msgId,
+        { reasoningSummaryDedupe: dedupe },
+      )
+
+      expect(doneEvents.filter((event) => event.type === 'message.reasoning_raw_detail')).toHaveLength(1)
+      expect(doneEvents.filter((event) => event.type === 'message.reasoning_display_block_upsert')).toHaveLength(0)
     })
 
     it('reasoning item NEVER becomes visible text', () => {
@@ -266,16 +373,27 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
       ]
 
       const allEvents: StarverseStreamEvent[] = []
+      const dedupe: OpenAIResponsesReasoningSummaryDedupeState = {
+        emittedSummaryKeys: new Set(),
+        streamedSummaryTextByItemKey: new Map(),
+      }
       for (const ev of input) {
-        allEvents.push(...mapOpenAIResponsesEventToStarverse(ev, msgId))
+        allEvents.push(...mapOpenAIResponsesEventToStarverse(ev, msgId, { reasoningSummaryDedupe: dedupe }))
       }
 
       const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
-      const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
+      const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block_upsert')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
 
       expect(reasoningEvents).toHaveLength(2)
       expect(displayEvents).toHaveLength(2)
+      expect(displayEvents.at(-1)).toMatchObject({
+        type: 'message.reasoning_display_block_upsert',
+        block: { text: 'Thinking step 1 Thinking step 2' },
+      })
+      if (displayEvents[0].type === 'message.reasoning_display_block_upsert' && displayEvents[1].type === 'message.reasoning_display_block_upsert') {
+        expect(displayEvents[1].block.blockId).toBe(displayEvents[0].block.blockId)
+      }
       expect(textEvents).toHaveLength(2)
 
       // Reasoning appears before text
@@ -291,12 +409,16 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
       ]
 
       const allEvents: StarverseStreamEvent[] = []
+      const dedupe: OpenAIResponsesReasoningSummaryDedupeState = {
+        emittedSummaryKeys: new Set(),
+        streamedSummaryTextByItemKey: new Map(),
+      }
       for (const ev of input) {
-        allEvents.push(...mapOpenAIResponsesEventToStarverse(ev, msgId))
+        allEvents.push(...mapOpenAIResponsesEventToStarverse(ev, msgId, { reasoningSummaryDedupe: dedupe }))
       }
 
       expect(allEvents[0].type).toBe('message.reasoning_raw_detail')
-      expect(allEvents[1].type).toBe('message.reasoning_display_block')
+      expect(allEvents[1].type).toBe('message.reasoning_display_block_upsert')
       expect(allEvents[2].type).toBe('message.text_delta')
     })
   })
@@ -502,12 +624,16 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
       ]
 
       const allEvents: StarverseStreamEvent[] = []
+      const dedupe: OpenAIResponsesReasoningSummaryDedupeState = {
+        emittedSummaryKeys: new Set(),
+        streamedSummaryTextByItemKey: new Map(),
+      }
       for (const ev of input) {
-        allEvents.push(...mapOpenAIResponsesEventToStarverse(ev, msgId))
+        allEvents.push(...mapOpenAIResponsesEventToStarverse(ev, msgId, { reasoningSummaryDedupe: dedupe }))
       }
 
       const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
-      const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
+      const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block_upsert')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
       const usageEvents = allEvents.filter((e) => e.type === 'usage.delta')
       const doneEvents = allEvents.filter((e) => e.type === 'stream.done')
@@ -515,6 +641,13 @@ describe('mapOpenAIResponsesEventToStarverse', () => {
 
       expect(reasoningEvents).toHaveLength(2)
       expect(displayEvents).toHaveLength(2)
+      expect(displayEvents.at(-1)).toMatchObject({
+        type: 'message.reasoning_display_block_upsert',
+        block: { text: 'Step 1: analyze the problem' },
+      })
+      if (displayEvents[0].type === 'message.reasoning_display_block_upsert' && displayEvents[1].type === 'message.reasoning_display_block_upsert') {
+        expect(displayEvents[1].block.blockId).toBe(displayEvents[0].block.blockId)
+      }
       expect(textEvents).toHaveLength(2)
       expect(usageEvents).toHaveLength(1)
       expect(doneEvents).toHaveLength(1)

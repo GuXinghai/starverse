@@ -97,6 +97,26 @@ export type DecodedReasoningDisplayBlock = Readonly<{
   finalAt: number | null
 }>
 
+export type DecodedProviderNativeContent = Readonly<{
+  messageId: string
+  providerKey: string
+  sourceApi: string
+  snapshotKey: string
+  candidateIndex?: number
+  status: 'streaming' | 'final' | 'error' | 'cancelled'
+  content: unknown
+  role?: string
+  finishReason?: string
+  stopReason?: string
+  stopSequence?: string | null
+  usageMetadata?: Readonly<Record<string, unknown>>
+  usage?: unknown
+  model?: string
+  modelVersion?: string
+  createdAt: number
+  updatedAt: number
+}>
+
 export type DecodedFileAsset = Readonly<{
   id: string
   filename: string
@@ -1154,6 +1174,7 @@ const appendReasoningDisplayBlocksResultSchema = z.object({
   ok: z.boolean(),
   received: z.number().finite(),
   inserted: z.number().finite(),
+  updated: z.number().finite().optional().default(0),
   ignored: z.number().finite(),
 })
 
@@ -1197,6 +1218,44 @@ const reasoningDisplayBlockSchema = z.object({
   sourceEventType: row.sourceEventType ?? null,
   sourceRawSegmentId: row.sourceRawSegmentId ?? null,
   finalAt: row.finalAt ?? null,
+}))
+
+const providerNativeContentRecordSchema = z.object({
+  messageId: nonEmpty,
+  providerKey: nonEmpty,
+  sourceApi: nonEmpty,
+  snapshotKey: nonEmpty,
+  candidateIndex: z.number().int().nonnegative().optional(),
+  status: z.enum(['streaming', 'final', 'error', 'cancelled']),
+  content: z.any(),
+  role: z.string().optional(),
+  finishReason: z.string().optional(),
+  stopReason: z.string().optional(),
+  stopSequence: z.string().nullable().optional(),
+  usageMetadata: z.record(z.any()).optional(),
+  usage: z.any().optional(),
+  model: z.string().optional(),
+  modelVersion: z.string().optional(),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+}).transform((row): DecodedProviderNativeContent => ({
+  messageId: row.messageId,
+  providerKey: row.providerKey,
+  sourceApi: row.sourceApi,
+  snapshotKey: row.snapshotKey,
+  ...(typeof row.candidateIndex === 'number' ? { candidateIndex: row.candidateIndex } : {}),
+  status: row.status,
+  content: row.content,
+  ...(row.role ? { role: row.role } : {}),
+  ...(row.finishReason ? { finishReason: row.finishReason } : {}),
+  ...(row.stopReason ? { stopReason: row.stopReason } : {}),
+  ...(row.stopSequence !== undefined ? { stopSequence: row.stopSequence } : {}),
+  ...(row.usageMetadata ? { usageMetadata: row.usageMetadata } : {}),
+  ...(row.usage !== undefined ? { usage: row.usage } : {}),
+  ...(row.model ? { model: row.model } : {}),
+  ...(row.modelVersion ? { modelVersion: row.modelVersion } : {}),
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
 }))
 
 const beginTurnResultSchema = z.object({
@@ -1727,6 +1786,14 @@ export function decodeMessageFinalizeReasoningDisplayBlocksResponse(raw: unknown
 
 export function decodeReasoningDisplayBlockListResponse(raw: unknown): DecodedReasoningDisplayBlock[] {
   return decodeWithSchema('message.listReasoningDisplayBlocksByMessageIds', z.array(reasoningDisplayBlockSchema), raw)
+}
+
+export function decodeMessageUpsertProviderNativeContentResponse(raw: unknown): boolean {
+  return decodeBooleanAck('message.upsertProviderNativeContent', raw)
+}
+
+export function decodeProviderNativeContentListResponse(raw: unknown): DecodedProviderNativeContent[] {
+  return decodeWithSchema('message.listProviderNativeContentsByMessageIds', z.array(providerNativeContentRecordSchema), raw)
 }
 
 export function decodeBranchBeginTurnResponse(raw: unknown): DecodedBeginTurnResult {

@@ -76,24 +76,14 @@ describe('mapAnthropicStreamEventToStarverse', () => {
     it('maps thinking_delta to message.reasoning_raw_detail', () => {
       const events = mapAnthropicStreamEventToStarverse(thinkingDeltaEvent('Let me think...'), msgId)
 
-      expect(events).toHaveLength(2)
+      expect(events).toHaveLength(1)
       expect(events[0].type).toBe('message.reasoning_raw_detail')
       if (events[0].type === 'message.reasoning_raw_detail') {
         expect(events[0].detail).toEqual({ type: 'thinking_delta', thinking: 'Let me think...' })
         expect(events[0].messageId).toBe(msgId)
       }
-      expect(events[1]).toMatchObject({
-        type: 'message.reasoning_display_block',
-        messageId: msgId,
-        choiceIndex: 0,
-        block: {
-          type: 'text',
-          text: 'Let me think...',
-          semanticRole: 'thinking',
-          providerKey: 'anthropic',
-          sourceEventType: 'content_block_delta',
-        },
-      })
+      expect(events.some((event) => event.type === 'message.reasoning_display_block')).toBe(false)
+      expect(events.some((event) => event.type === 'message.reasoning_display_block_upsert')).toBe(false)
     })
 
     it('thinking NEVER becomes visible text', () => {
@@ -158,7 +148,7 @@ describe('mapAnthropicStreamEventToStarverse', () => {
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
 
       expect(reasoningEvents).toHaveLength(2)
-      expect(displayEvents).toHaveLength(2)
+      expect(displayEvents).toHaveLength(0)
       expect(textEvents).toHaveLength(2)
 
       // Reasoning appears before text
@@ -180,9 +170,8 @@ describe('mapAnthropicStreamEventToStarverse', () => {
       }
 
       expect(allEvents[0].type).toBe('message.reasoning_raw_detail')
-      expect(allEvents[1].type).toBe('message.reasoning_display_block')
-      expect(allEvents[2].type).toBe('message.reasoning_raw_detail')
-      expect(allEvents[3].type).toBe('message.text_delta')
+      expect(allEvents[1].type).toBe('message.reasoning_raw_detail')
+      expect(allEvents[2].type).toBe('message.text_delta')
     })
   })
 
@@ -459,7 +448,7 @@ describe('mapAnthropicStreamEventToStarverse', () => {
 
       // Exact counts
       expect(reasoningEvents).toHaveLength(3) // 2 thinking + 1 signature
-      expect(displayEvents).toHaveLength(2) // thinking only; signature stays raw/opaque
+      expect(displayEvents).toHaveLength(0)
       expect(textEvents).toHaveLength(1)
       expect(usageEvents).toHaveLength(2) // message_start + message_delta
       expect(doneEvents).toHaveLength(1)
