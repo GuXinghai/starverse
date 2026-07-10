@@ -283,7 +283,12 @@
         "notSent": "not sent"
       },
       "reasoning": {
-        "auto": "Auto"
+        "effort": "Reasoning effort",
+        "summary": "Return reasoning summary",
+        "off": "Off",
+        "auto": "Auto",
+        "concise": "Concise",
+        "detailed": "Detailed"
       },
       "description": {
         "temperature": "Sampling randomness.",

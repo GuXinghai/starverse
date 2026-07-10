@@ -7,6 +7,14 @@ export type OpenAIResponsesReasoningEffort =
   | 'xhigh'
 
 export type OpenAIResponsesReasoningEffortSetting = 'auto' | OpenAIResponsesReasoningEffort
+export type OpenAIResponsesReasoningSummarySetting = 'off' | 'auto' | 'concise' | 'detailed'
+
+export const OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS: readonly OpenAIResponsesReasoningSummarySetting[] = [
+  'off',
+  'auto',
+  'concise',
+  'detailed',
+]
 
 export type OpenAIResponsesReasoningSpec = Readonly<{
   efforts: readonly OpenAIResponsesReasoningEffort[]

@@ -26,10 +26,12 @@ import {
 } from '@/next/provider/gemini/geminiImageGenerationPolicy'
 import { OPENAI_RESPONSES_PROVIDER_KEY } from '@/next/provider/openai-responses/openAIResponsesModelSource'
 import {
+  OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS,
   formatOpenAIResponsesAutoReasoningLabel,
   getOpenAIResponsesReasoningEffortOptions,
   hasExplicitOpenAIResponsesReasoningEffort,
   type OpenAIResponsesReasoningEffortSetting,
+  type OpenAIResponsesReasoningSummarySetting,
 } from '@/next/provider/openai-responses/openaiResponsesReasoningPolicy'
 import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
 import ModelPickerDialog from './ModelPickerDialog.vue'
@@ -404,6 +406,12 @@ const openAIResponsesReasoningOptionLabels = computed<Record<string, string>>(()
   }
   return labels
 })
+const openAIResponsesReasoningSummaryOptionLabels = computed<Record<string, string>>(() => ({
+  off: t('chat.generationParams.reasoning.off'),
+  auto: t('chat.generationParams.reasoning.auto'),
+  concise: t('chat.generationParams.reasoning.concise'),
+  detailed: t('chat.generationParams.reasoning.detailed'),
+}))
 const openAIResponsesReasoningValue = computed<OpenAIResponsesReasoningEffortSetting>(() => {
   const layerValue = resolvedSessionConfig.value.generationParams.detail?.reasoningEffort
   const customValue = layerValue?.mode === 'custom' && typeof layerValue.value === 'string'
@@ -418,6 +426,23 @@ const openAIResponsesReasoningValue = computed<OpenAIResponsesReasoningEffortSet
   return (openAIResponsesReasoningOptions.value as readonly string[]).includes(candidate)
     ? candidate as OpenAIResponsesReasoningEffortSetting
     : 'auto'
+})
+const openAIResponsesReasoningSummaryValue = computed<OpenAIResponsesReasoningSummarySetting>(() => {
+  if (!openAIResponsesReasoningSupported.value) return 'off'
+  const layerValue = resolvedSessionConfig.value.generationParams.detail?.reasoningSummary
+  if (layerValue?.mode === 'omit') return 'off'
+  const customValue = layerValue?.mode === 'custom' && typeof layerValue.value === 'string'
+    ? layerValue.value
+    : null
+  const decision = props.generationParamsResolved?.decisions.reasoningSummary
+  const decisionValue =
+    decision && (decision.state === 'sent' || decision.state === 'deprecated') && typeof decision.value === 'string'
+      ? decision.value
+      : null
+  const candidate = customValue ?? decisionValue ?? 'off'
+  return (OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS as readonly string[]).includes(candidate)
+    ? candidate as OpenAIResponsesReasoningSummarySetting
+    : 'off'
 })
 const openAIResponsesReasoningActiveLabel = computed(() =>
   openAIResponsesReasoningSupported.value
@@ -833,6 +858,18 @@ function onOpenAIResponsesReasoningSelect(value: string) {
   })
 }
 
+function onOpenAIResponsesReasoningSummarySelect(value: string) {
+  if (!openAIResponsesReasoningSupported.value) return
+  if (!(OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS as readonly string[]).includes(value)) return
+  const current = resolvedSessionConfig.value.generationParams.detail ?? {}
+  emit('updateGenerationParamsLayer', {
+    ...current,
+    reasoningSummary: value === 'off'
+      ? { mode: 'omit' }
+      : { mode: 'custom', value: value as Exclude<OpenAIResponsesReasoningSummarySetting, 'off'> },
+  })
+}
+
 function onOpenAIResponsesReasoningToggle() {
   if (!openAIResponsesReasoningSupported.value) return
   onOpenAIResponsesReasoningSelect('auto')
@@ -1030,12 +1067,8 @@ onBeforeUnmount(() => {
             :active-label="openAIResponsesReasoningActiveLabel"
             kind="reasoning"
             :disabled="disabled || !openAIResponsesReasoningSupported"
-            :options="openAIResponsesReasoningSupported ? openAIResponsesReasoningOptions : []"
-            :option-labels="openAIResponsesReasoningOptionLabels"
-            :selected-option="openAIResponsesReasoningValue"
             data-test-id="reasoning-chip"
             @toggle="onOpenAIResponsesReasoningToggle"
-            @select-option="onOpenAIResponsesReasoningSelect"
           >
             <template #icon>
               <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1044,6 +1077,42 @@ onBeforeUnmount(() => {
                 <path d="M5 14h6" />
                 <path d="M6 12h4" />
               </svg>
+            </template>
+            <template #menu="{ close }">
+              <div class="w-56 space-y-3 px-3 py-2 text-[11px] text-gray-700" data-testid="composer-openai-responses-reasoning-controls">
+                <div class="space-y-1.5">
+                  <div class="font-medium text-gray-600">{{ t('chat.generationParams.reasoning.effort') }}</div>
+                  <div class="grid grid-cols-2 gap-1">
+                    <button
+                      v-for="option in openAIResponsesReasoningOptions"
+                      :key="option"
+                      type="button"
+                      class="rounded border px-2 py-1 text-left transition-colors hover:bg-gray-50"
+                      :class="openAIResponsesReasoningValue === option ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-700'"
+                      data-testid="composer-openai-responses-reasoning-effort-option"
+                      @click="() => { onOpenAIResponsesReasoningSelect(option); close() }"
+                    >
+                      {{ openAIResponsesReasoningOptionLabels[option] ?? option }}
+                    </button>
+                  </div>
+                </div>
+                <div class="space-y-1.5 border-t border-gray-100 pt-2">
+                  <div class="font-medium text-gray-600">{{ t('chat.generationParams.reasoning.summary') }}</div>
+                  <div class="grid grid-cols-2 gap-1">
+                    <button
+                      v-for="option in OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS"
+                      :key="option"
+                      type="button"
+                      class="rounded border px-2 py-1 text-left transition-colors hover:bg-gray-50"
+                      :class="openAIResponsesReasoningSummaryValue === option ? 'border-gray-900 bg-gray-900 text-white' : 'border-gray-200 bg-white text-gray-700'"
+                      data-testid="composer-openai-responses-reasoning-summary-option"
+                      @click="() => { onOpenAIResponsesReasoningSummarySelect(option); close() }"
+                    >
+                      {{ openAIResponsesReasoningSummaryOptionLabels[option] ?? option }}
+                    </button>
+                  </div>
+                </div>
+              </div>
             </template>
           </ComposerCapabilityChip>
           <ComposerCapabilityChip

@@ -42,10 +42,23 @@ describe('generationParamMappers', () => {
       requestParams: {
         verbosity: 'low',
         reasoningEffort: 'high',
+        reasoningSummary: 'concise',
       },
     })).toEqual({
       text: { verbosity: 'low' },
-      reasoning: { effort: 'high' },
+      reasoning: { effort: 'high', summary: 'concise' },
+    })
+  })
+
+  it('maps OpenAI Responses reasoning summary without explicit effort', () => {
+    expect(mapGenerationParamsToProviderRequestPatch({
+      profile: openaiResponsesGenerationProfile,
+      modelId: 'gpt-5.4-nano',
+      requestParams: {
+        reasoningSummary: 'auto',
+      },
+    })).toEqual({
+      reasoning: { summary: 'auto' },
     })
   })
 

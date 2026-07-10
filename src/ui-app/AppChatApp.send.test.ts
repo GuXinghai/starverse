@@ -1121,6 +1121,77 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     })
   })
 
+  it('sends OpenAI Responses reasoning summary without explicit effort when configured', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
+    selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          reasoningEffort: { mode: 'custom', value: 'auto' },
+          reasoningSummary: { mode: 'custom', value: 'concise' },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai reasoning summary ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai reasoning summary ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-5.4-nano',
+      generationParams: {
+        reasoning: { summary: 'concise' },
+      },
+    })
+    expect(openAIResponsesTextChatCallArgs[0].generationParams?.reasoning).not.toHaveProperty('effort')
+  })
+
+  it('omits OpenAI Responses reasoning summary when configured off', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
+    selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          reasoningEffort: { mode: 'custom', value: 'auto' },
+          reasoningSummary: { mode: 'omit' },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai reasoning summary off ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai reasoning summary off ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-5.4-nano',
+    })
+    expect(openAIResponsesTextChatCallArgs[0].generationParams ?? {}).not.toHaveProperty('reasoning')
+  })
+
   it('does not send OpenAI Responses reasoning effort for models without explicit effort support', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
     selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')

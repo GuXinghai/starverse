@@ -283,7 +283,12 @@
         "notSent": "未发送"
       },
       "reasoning": {
-        "auto": "自动"
+        "effort": "推理努力程度",
+        "summary": "返回推理摘要",
+        "off": "关闭",
+        "auto": "自动",
+        "concise": "简洁",
+        "detailed": "详细"
       },
       "description": {
         "temperature": "采样随机性。",

@@ -191,6 +191,11 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
     expect(screen.getByTestId('session-reasoning-enabled')).toBeDisabled()
     const controls = screen.getByTestId('session-openai-responses-reasoning-controls')
     expect(within(controls).getByRole('button', { name: `${t('chat.generationParams.reasoning.auto')} (none)` })).toBeInTheDocument()
+    const summaryControls = within(controls).getByTestId('session-openai-responses-reasoning-summary-controls')
+    expect(within(summaryControls).getByRole('button', { name: t('chat.generationParams.reasoning.off') })).toBeInTheDocument()
+    expect(within(summaryControls).getByRole('button', { name: t('chat.generationParams.reasoning.auto') })).toBeInTheDocument()
+    expect(within(summaryControls).getByRole('button', { name: t('chat.generationParams.reasoning.concise') })).toBeInTheDocument()
+    expect(within(summaryControls).getByRole('button', { name: t('chat.generationParams.reasoning.detailed') })).toBeInTheDocument()
 
     await user.click(within(controls).getByRole('button', { name: 'low' }))
 
@@ -199,6 +204,15 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
     expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([
       {
         reasoningEffort: { mode: 'custom', value: 'low' },
+      },
+    ])
+
+    await user.click(within(summaryControls).getByRole('button', { name: t('chat.generationParams.reasoning.auto') }))
+
+    expect(view.emitted('updateGenerationParamsLayer')?.[1]).toEqual([
+      {
+        reasoningEffort: { mode: 'custom', value: 'auto' },
+        reasoningSummary: { mode: 'custom', value: 'auto' },
       },
     ])
   })

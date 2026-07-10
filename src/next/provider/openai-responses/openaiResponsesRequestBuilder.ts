@@ -28,7 +28,7 @@ export type ResponsesInputMessage = Readonly<{
 
 export type ResponsesReasoningConfig = Readonly<{
   effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
-  summary?: 'auto' | 'none' | 'concise' | 'detailed'
+  summary?: 'auto' | 'concise' | 'detailed'
 }>
 
 export type ResponsesImageGenerationTool = Readonly<{
@@ -96,6 +96,7 @@ export function buildResponsesRequest(input: ResponsesRequestInput): ResponsesRe
     allowedKeys: new Set(['temperature', 'top_p', 'max_output_tokens', 'reasoning', 'text']),
     providerLabel: 'OpenAI Responses',
   })
+  sanitizeOpenAIResponsesReasoning(request)
 
   const tools = [
     ...(config.tools && config.tools.length > 0 ? config.tools : []),
@@ -117,6 +118,57 @@ function validateOpenAIResponsesGenerationParams(raw: unknown): void {
   if (effort === 'auto') {
     throw new Error('OpenAI Responses generationParams.reasoning.effort=auto is not a wire value; omit reasoning.effort instead.')
   }
+  const summary = (reasoning as Record<string, unknown>).summary
+  if (summary !== undefined && !isOpenAIResponsesReasoningSummary(summary)) {
+    throw new Error('OpenAI Responses generationParams.reasoning.summary must be omitted or one of auto, concise, detailed.')
+  }
+}
+
+function sanitizeOpenAIResponsesReasoning(request: Record<string, unknown>): void {
+  const rawReasoning = request.reasoning
+  if (rawReasoning === undefined) return
+  if (!rawReasoning || typeof rawReasoning !== 'object' || Array.isArray(rawReasoning)) {
+    throw new Error('OpenAI Responses generationParams.reasoning must be an object.')
+  }
+
+  const reasoning = rawReasoning as Record<string, unknown>
+  const normalized: Record<string, unknown> = {}
+
+  const effort = reasoning.effort
+  if (effort !== undefined) {
+    if (!isOpenAIResponsesReasoningEffort(effort)) {
+      throw new Error('OpenAI Responses generationParams.reasoning.effort must be omitted or one of none, minimal, low, medium, high, xhigh.')
+    }
+    normalized.effort = effort
+  }
+
+  const summary = reasoning.summary
+  if (summary !== undefined) {
+    if (!isOpenAIResponsesReasoningSummary(summary)) {
+      throw new Error('OpenAI Responses generationParams.reasoning.summary must be omitted or one of auto, concise, detailed.')
+    }
+    normalized.summary = summary
+  }
+
+  if (Object.keys(normalized).length === 0) {
+    delete request.reasoning
+    return
+  }
+
+  request.reasoning = normalized
+}
+
+function isOpenAIResponsesReasoningEffort(value: unknown): value is NonNullable<ResponsesReasoningConfig['effort']> {
+  return value === 'none' ||
+    value === 'minimal' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh'
+}
+
+function isOpenAIResponsesReasoningSummary(value: unknown): value is NonNullable<ResponsesReasoningConfig['summary']> {
+  return value === 'auto' || value === 'concise' || value === 'detailed'
 }
 
 function buildImageGenerationTool(config: ProviderStreamConfig): ResponsesImageGenerationTool {

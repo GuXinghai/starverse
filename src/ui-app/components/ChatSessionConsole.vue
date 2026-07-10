@@ -18,10 +18,12 @@ import type {
 } from '@/next/provider/openai-responses/openAIResponsesModelSource'
 import { OPENAI_RESPONSES_PROVIDER_KEY } from '@/next/provider/openai-responses/openAIResponsesModelSource'
 import {
+  OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS,
   formatOpenAIResponsesAutoReasoningLabel,
   getOpenAIResponsesReasoningEffortOptions,
   hasExplicitOpenAIResponsesReasoningEffort,
   type OpenAIResponsesReasoningEffortSetting,
+  type OpenAIResponsesReasoningSummarySetting,
 } from '@/next/provider/openai-responses/openaiResponsesReasoningPolicy'
 import type {
   DeepSeekModelAvailabilityResult,
@@ -344,6 +346,24 @@ const openAIResponsesReasoningValue = computed<OpenAIResponsesReasoningEffortSet
   return (openAIResponsesReasoningOptions.value as readonly string[]).includes(candidate)
     ? candidate as OpenAIResponsesReasoningEffortSetting
     : 'auto'
+})
+const openAIResponsesReasoningSummaryValue = computed<OpenAIResponsesReasoningSummarySetting>(() => {
+  if (!openAIResponsesReasoningSupported.value) return 'off'
+  const layerValue = props.sessionConfig.generationParams.detail?.reasoningSummary
+  if (layerValue?.mode === 'omit') return 'off'
+  const customValue = layerValue?.mode === 'custom' && typeof layerValue.value === 'string'
+    ? layerValue.value
+    : null
+  const decision = props.generationParamsResolved?.decisions.reasoningSummary
+  const decisionValue = decision &&
+    (decision.state === 'sent' || decision.state === 'deprecated') &&
+    typeof decision.value === 'string'
+    ? decision.value
+    : null
+  const candidate = customValue ?? decisionValue ?? 'off'
+  return (OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS as readonly string[]).includes(candidate)
+    ? candidate as OpenAIResponsesReasoningSummarySetting
+    : 'off'
 })
 function selectedModelFor(providerId: ChatModelSelection['providerId']): string {
   return selectedProviderId.value === providerId ? selectedModelId.value : ''
@@ -936,6 +956,21 @@ function onOpenAIResponsesReasoningSelect(option: OpenAIResponsesReasoningEffort
   emit('updateGenerationParamsLayer', {
     ...current,
     reasoningEffort: { mode: 'custom', value: option },
+  })
+}
+
+function formatOpenAIResponsesReasoningSummaryOption(option: OpenAIResponsesReasoningSummarySetting): string {
+  return t(`chat.generationParams.reasoning.${option}`)
+}
+
+function onOpenAIResponsesReasoningSummarySelect(option: OpenAIResponsesReasoningSummarySetting) {
+  if (!openAIResponsesReasoningSupported.value) return
+  const current = props.sessionConfig.generationParams.detail ?? {}
+  emit('updateGenerationParamsLayer', {
+    ...current,
+    reasoningSummary: option === 'off'
+      ? { mode: 'omit' }
+      : { mode: 'custom', value: option },
   })
 }
 
@@ -2075,21 +2110,42 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.status.enabled') }}
           </label>
         </div>
-        <div v-if="isOpenAIResponsesSelected" class="grid grid-cols-3 gap-2" data-testid="session-openai-responses-reasoning-controls">
-          <button
-            v-for="option in openAIResponsesReasoningOptions"
-            :key="option"
-            type="button"
-            class="rounded-md border px-2 py-1.5 text-sm"
-            :class="chipClass(openAIResponsesReasoningValue === option)"
-            :disabled="disabled || !openAIResponsesReasoningSupported"
-            @click="onOpenAIResponsesReasoningSelect(option)"
-          >
-            {{ formatOpenAIResponsesReasoningOption(option) }}
-          </button>
+        <div v-if="isOpenAIResponsesSelected" class="space-y-2" data-testid="session-openai-responses-reasoning-controls">
+          <div class="space-y-1">
+            <div class="text-xs font-medium text-gray-600">{{ t('chat.generationParams.reasoning.effort') }}</div>
+            <div class="grid grid-cols-3 gap-2">
+              <button
+                v-for="option in openAIResponsesReasoningOptions"
+                :key="option"
+                type="button"
+                class="rounded-md border px-2 py-1.5 text-sm"
+                :class="chipClass(openAIResponsesReasoningValue === option)"
+                :disabled="disabled || !openAIResponsesReasoningSupported"
+                @click="onOpenAIResponsesReasoningSelect(option)"
+              >
+                {{ formatOpenAIResponsesReasoningOption(option) }}
+              </button>
+            </div>
+          </div>
+          <div class="space-y-1" data-testid="session-openai-responses-reasoning-summary-controls">
+            <div class="text-xs font-medium text-gray-600">{{ t('chat.generationParams.reasoning.summary') }}</div>
+            <div class="grid grid-cols-4 gap-2">
+              <button
+                v-for="option in OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS"
+                :key="option"
+                type="button"
+                class="rounded-md border px-2 py-1.5 text-sm"
+                :class="chipClass(openAIResponsesReasoningSummaryValue === option)"
+                :disabled="disabled || !openAIResponsesReasoningSupported"
+                @click="onOpenAIResponsesReasoningSummarySelect(option)"
+              >
+                {{ formatOpenAIResponsesReasoningSummaryOption(option) }}
+              </button>
+            </div>
+          </div>
           <div
             v-if="!openAIResponsesReasoningSupported"
-            class="col-span-3 text-xs text-gray-500"
+            class="text-xs text-gray-500"
             data-testid="session-openai-responses-reasoning-unsupported"
           >
             {{ t('chat.console.reasoning.openAIResponsesUnsupported') }}
