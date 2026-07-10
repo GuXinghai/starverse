@@ -233,6 +233,8 @@ let modelDetailSeq = 0
 let endpointSeq = 0
 let skipAutoQuery = false
 let lastFocusBeforeOpen: HTMLElement | null = null
+let providerFiltersInitialized = false
+let dialogWasOpen = false
 
 const catalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() => {
   const keys = new Set<ProviderCatalogKnownProviderKey>([
@@ -1128,14 +1130,111 @@ function ensureActiveVisible(index: number) {
 }
 
 type PickerUiSnapshot = Readonly<{
+  searchText: string
+  includeDescriptionInSearch: boolean
+  selectedProviderFilters: readonly RuntimeProviderKey[]
+  selectedVendors: readonly string[]
+  selectedCategory: OpenRouterModelCategory | 'all'
+  contextLengthMin: string
+  contextLengthMax: string
+  maxOutputTokensMin: string
+  maxOutputTokensMax: string
+  selectedArchitectureModalities: readonly string[]
+  selectedInputModalities: readonly CatalogQueryModality[]
+  selectedOutputModalities: readonly CatalogQueryModality[]
+  selectedSupportedParameters: readonly string[]
+  tokenizerFiltersText: string
+  instructTypeFiltersText: string
+  hasPerRequestLimits: TriState
+  hasDefaultParameters: TriState
+  moderationFilter: TriState
+  expiringWithinEnabled: boolean
+  expiringWithinDays: string
+  sortBy: CatalogQuerySortBy
+  sortOrder: CatalogQuerySortOrder
+  activeDetailTab: DetailTab
+  activePickerMode: PickerMode
+  selectedSyncProviderKey: ProviderCatalogKnownProviderKey
   activeModelKey: string
   scrollTop: number
 }>
+const lastPickerUiSnapshot = ref<PickerUiSnapshot | null>(null)
+
+function cloneStringArray(values: readonly string[]): string[] {
+  return values.map((value) => String(value ?? '').trim()).filter(Boolean)
+}
 
 function capturePickerUiSnapshot(): PickerUiSnapshot {
   return {
+    searchText: searchText.value,
+    includeDescriptionInSearch: includeDescriptionInSearch.value,
+    selectedProviderFilters: [...selectedProviderFilters.value],
+    selectedVendors: [...selectedVendors.value],
+    selectedCategory: selectedCategory.value,
+    contextLengthMin: contextLengthMin.value,
+    contextLengthMax: contextLengthMax.value,
+    maxOutputTokensMin: maxOutputTokensMin.value,
+    maxOutputTokensMax: maxOutputTokensMax.value,
+    selectedArchitectureModalities: [...selectedArchitectureModalities.value],
+    selectedInputModalities: [...selectedInputModalities.value],
+    selectedOutputModalities: [...selectedOutputModalities.value],
+    selectedSupportedParameters: [...selectedSupportedParameters.value],
+    tokenizerFiltersText: tokenizerFiltersText.value,
+    instructTypeFiltersText: instructTypeFiltersText.value,
+    hasPerRequestLimits: hasPerRequestLimits.value,
+    hasDefaultParameters: hasDefaultParameters.value,
+    moderationFilter: moderationFilter.value,
+    expiringWithinEnabled: expiringWithinEnabled.value,
+    expiringWithinDays: expiringWithinDays.value,
+    sortBy: sortBy.value,
+    sortOrder: sortOrder.value,
+    activeDetailTab: activeDetailTab.value,
+    activePickerMode: activePickerMode.value,
+    selectedSyncProviderKey: selectedSyncProviderKey.value,
     activeModelKey: activeModelKey.value,
     scrollTop: listScrollRef.value?.scrollTop ?? 0,
+  }
+}
+
+function rememberPickerUiSnapshot() {
+  lastPickerUiSnapshot.value = capturePickerUiSnapshot()
+}
+
+function restorePickerFiltersSnapshot(snapshot: PickerUiSnapshot) {
+  searchText.value = String(snapshot.searchText ?? '')
+  includeDescriptionInSearch.value = snapshot.includeDescriptionInSearch === true
+  const providerIds = new Set(providerFilterIds.value)
+  selectedProviderFilters.value = [...snapshot.selectedProviderFilters].filter((providerId) => providerIds.has(providerId))
+  selectedVendors.value = cloneStringArray(snapshot.selectedVendors)
+  selectedCategory.value =
+    snapshot.selectedCategory === 'all' || categoryOptions.includes(snapshot.selectedCategory as OpenRouterModelCategory)
+      ? snapshot.selectedCategory
+      : 'all'
+  contextLengthMin.value = String(snapshot.contextLengthMin ?? '')
+  contextLengthMax.value = String(snapshot.contextLengthMax ?? '')
+  maxOutputTokensMin.value = String(snapshot.maxOutputTokensMin ?? '')
+  maxOutputTokensMax.value = String(snapshot.maxOutputTokensMax ?? '')
+  selectedArchitectureModalities.value = cloneStringArray(snapshot.selectedArchitectureModalities)
+  selectedInputModalities.value = [...snapshot.selectedInputModalities].filter((value) =>
+    (modalityOptions as readonly string[]).includes(value),
+  )
+  selectedOutputModalities.value = [...snapshot.selectedOutputModalities].filter((value) =>
+    (modalityOptions as readonly string[]).includes(value),
+  )
+  selectedSupportedParameters.value = cloneStringArray(snapshot.selectedSupportedParameters)
+  tokenizerFiltersText.value = String(snapshot.tokenizerFiltersText ?? '')
+  instructTypeFiltersText.value = String(snapshot.instructTypeFiltersText ?? '')
+  hasPerRequestLimits.value = snapshot.hasPerRequestLimits === 'yes' || snapshot.hasPerRequestLimits === 'no' ? snapshot.hasPerRequestLimits : 'any'
+  hasDefaultParameters.value = snapshot.hasDefaultParameters === 'yes' || snapshot.hasDefaultParameters === 'no' ? snapshot.hasDefaultParameters : 'any'
+  moderationFilter.value = snapshot.moderationFilter === 'yes' || snapshot.moderationFilter === 'no' ? snapshot.moderationFilter : 'any'
+  expiringWithinEnabled.value = snapshot.expiringWithinEnabled === true
+  expiringWithinDays.value = String(snapshot.expiringWithinDays ?? '7')
+  sortBy.value = sortByOptions.value.some((option) => option.key === snapshot.sortBy) ? snapshot.sortBy : 'name'
+  sortOrder.value = snapshot.sortOrder === 'desc' ? 'desc' : 'asc'
+  activeDetailTab.value = snapshot.activeDetailTab === 'endpoints' ? 'endpoints' : 'model'
+  activePickerMode.value = snapshot.activePickerMode === 'favorites' || snapshot.activePickerMode === 'recents' ? snapshot.activePickerMode : 'all'
+  if (catalogProviderKeys.value.includes(snapshot.selectedSyncProviderKey)) {
+    selectedSyncProviderKey.value = snapshot.selectedSyncProviderKey
   }
 }
 
@@ -1156,6 +1255,17 @@ async function restorePickerUiSnapshot(snapshot: PickerUiSnapshot) {
   if (listScrollRef.value) {
     listScrollRef.value.scrollTop = Math.max(0, snapshot.scrollTop)
   }
+}
+
+function ensureProviderFiltersInitialized() {
+  const ids = providerFilterIds.value
+  if (!providerFiltersInitialized) {
+    selectedProviderFilters.value = ids
+    providerFiltersInitialized = true
+    return
+  }
+  const validIds = new Set(ids)
+  selectedProviderFilters.value = selectedProviderFilters.value.filter((providerId) => validIds.has(providerId))
 }
 
 async function fetchProviderCatalog(providerKey: ProviderCatalogKnownProviderKey): Promise<CatalogQueryResult> {
@@ -1197,8 +1307,8 @@ async function fetchProviderCatalog(providerKey: ProviderCatalogKnownProviderKey
   }
 }
 
-async function fetchPage(options: Readonly<{ preserveUiState?: boolean }> = {}) {
-  const uiSnapshot = options.preserveUiState ? capturePickerUiSnapshot() : null
+async function fetchPage(options: Readonly<{ preserveUiState?: boolean; restoreUiState?: PickerUiSnapshot | null }> = {}) {
+  const uiSnapshot = options.restoreUiState ?? (options.preserveUiState ? capturePickerUiSnapshot() : null)
   const currentSeq = ++querySeq
   loading.value = true
   error.value = null
@@ -1336,16 +1446,23 @@ function setActiveDetailTab(tab: DetailTab) {
 function openDialogState() {
   lastFocusBeforeOpen = document.activeElement instanceof HTMLElement ? document.activeElement : null
   skipAutoQuery = true
+  const restoreSnapshot = lastPickerUiSnapshot.value
+  if (restoreSnapshot) {
+    restorePickerFiltersSnapshot(restoreSnapshot)
+  } else {
+    ensureProviderFiltersInitialized()
+  }
+  if (props.forceOutputImageOnly === true) {
+    setOutputModalitiesFilter(['image'])
+  }
   items.value = []
-  activeModelKey.value = selectedModelId.value ? pickerItemKey(selectedProviderId.value, selectedModelId.value) : ''
+  activeModelKey.value = restoreSnapshot?.activeModelKey
+    ?? (selectedModelId.value ? pickerItemKey(selectedProviderId.value, selectedModelId.value) : '')
   modelDetail.value = null
   modelDetailLoading.value = false
   modelDetailError.value = null
   endpointDetails.value = null
   endpointLoading.value = false
-  activeDetailTab.value = 'model'
-  activePickerMode.value = 'all'
-  selectedProviderFilters.value = providerFilterIds.value
   queryNotice.value = null
   error.value = null
   pendingCatalogRevisions.value = {}
@@ -1354,7 +1471,7 @@ function openDialogState() {
   resetFavoriteEditorState()
   skipAutoQuery = false
   querySeq += 1
-  scheduleRefresh(0)
+  void fetchPage({ restoreUiState: restoreSnapshot })
   void nextTick(() => {
     searchInputRef.value?.focus()
     refresh()
@@ -1567,13 +1684,20 @@ function restoreFocusAfterClose() {
 
 function onClose() {
   if (props.disabled) return
+  rememberPickerUiSnapshot()
   resetFavoriteEditorState()
   emit('close')
+}
+
+function onModelListScroll() {
+  if (!props.open) return
+  rememberPickerUiSnapshot()
 }
 
 function onSelectItem(item: PickerModelItem | null | undefined) {
   if (props.disabled || props.isRunning) return
   if (!item?.selectable) return
+  rememberPickerUiSnapshot()
   emit('select', { providerId: item.providerId, modelId: item.modelId }, item.displayName)
   emit('close')
 }
@@ -1658,12 +1782,11 @@ watch(
   () => props.open,
   (open) => {
     if (open) {
-      if (props.forceOutputImageOnly === true) {
-        setOutputModalitiesFilter(['image'])
-      }
+      dialogWasOpen = true
       openDialogState()
       return
     }
+    if (dialogWasOpen) rememberPickerUiSnapshot()
     clearDebounceTimer()
     querySeq += 1
     modelDetailSeq += 1
@@ -2346,6 +2469,7 @@ onBeforeUnmount(() => {
                 ref="listScrollRef"
                 class="h-[60vh] overflow-auto px-2 py-2 xl:h-auto xl:flex-1"
                 data-testid="model-picker-list"
+                @scroll="onModelListScroll"
               >
                 <template v-if="activePickerMode === 'all'">
                   <div v-if="loading && pickerItems.length === 0" class="px-2 py-4 text-sm text-gray-500">{{ t('errors.modelCatalog.loadingModels') }}</div>

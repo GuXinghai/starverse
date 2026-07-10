@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, ref } from 'vue'
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import { t, tf } from '@/shared/i18n'
@@ -165,6 +166,102 @@ describe('ModelPickerDialog', () => {
     const events = view.emitted()
     expect(events.select?.[0]).toEqual([{ providerId: 'openai_responses', modelId: 'gpt-4.1-mini' }, 'GPT-4.1 mini'])
     expect(events.close).toBeTruthy()
+  })
+
+  it('temporarily preserves provider filters and list scroll across close and reopen', async () => {
+    const user = userEvent.setup()
+    const queryFn = vi.fn(async (input: CatalogQueryInput) => {
+      const providerKey = String(input.sourceProviderKey ?? input.providerKey ?? 'openrouter')
+      const modelId = providerKey === 'openai_responses' ? 'gpt-4.1' : 'openrouter-model'
+      const displayName = providerKey === 'openai_responses' ? 'GPT-4.1' : 'OpenRouter Model'
+      return createResult([
+        {
+          providerKey,
+          modelId,
+          modelKey: `${providerKey}::${modelId}`,
+          canonicalSlug: modelId,
+          displayName,
+          description: null,
+          vendor: providerKey,
+          contextLength: 8192,
+          maxOutputTokens: 4096,
+          createdAtSec: 1700000123,
+          pricing: { prompt: null, completion: null, request: null, image: null },
+          capabilities: {
+            reasoning: false,
+            tools: false,
+            structuredOutputs: false,
+            vision: false,
+            longContext: false,
+          },
+        },
+      ])
+    })
+
+    const Wrapper = defineComponent({
+      components: { ModelPickerDialog },
+      setup() {
+        const open = ref(true)
+        return {
+          open,
+          queryFn,
+          close: () => {
+            open.value = false
+          },
+          reopen: () => {
+            open.value = true
+          },
+        }
+      },
+      template: `
+        <button type="button" data-testid="reopen-model-picker" @click="reopen">Reopen</button>
+        <ModelPickerDialog
+          :open="open"
+          selectedProviderId="openrouter"
+          selectedModelId="openrouter-model"
+          :queryFn="queryFn"
+          :debounceMs="0"
+          :providerSources="[
+            {
+              providerId: 'openai_responses',
+              providerName: 'OpenAI Responses',
+              statusKind: 'not_loaded',
+              statusLabel: 'catalog',
+              loading: false,
+              items: [],
+            },
+          ]"
+          @close="close"
+        />
+      `,
+    })
+
+    render(Wrapper)
+
+    await screen.findByTestId('model-picker-item-openrouter-model')
+    await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1')
+
+    await user.click(screen.getByTestId('model-picker-provider-filter-openrouter'))
+    await waitFor(() => {
+      expect(screen.queryByTestId('model-picker-item-openrouter-model')).toBeNull()
+      expect(screen.getByTestId('model-picker-item-openai_responses-gpt-4.1')).toBeTruthy()
+    })
+
+    const list = screen.getByTestId('model-picker-list') as HTMLElement
+    list.scrollTop = 180
+    await fireEvent.scroll(list)
+    await user.click(screen.getByTestId('model-picker-close'))
+    expect(screen.queryByTestId('model-picker-dialog')).toBeNull()
+
+    await user.click(screen.getByTestId('reopen-model-picker'))
+    await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1')
+
+    expect(screen.queryByTestId('model-picker-item-openrouter-model')).toBeNull()
+    expect((screen.getByTestId('model-picker-provider-filter-openrouter') as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByTestId('model-picker-provider-filter-openai_responses') as HTMLInputElement).checked).toBe(true)
+    await waitFor(() => {
+      expect((screen.getByTestId('model-picker-list') as HTMLElement).scrollTop).toBe(180)
+    })
   })
 
   it('keeps other catalog provider models visible after OpenRouter is unchecked', async () => {
@@ -1244,8 +1341,7 @@ describe('ModelPickerDialog', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText(/同步失败/)).toBeTruthy()
-      expect(screen.getByText(/API Key 无效/)).toBeTruthy()
+      expect(screen.getByText('同步失败：API Key 无效')).toBeTruthy()
     })
   })
 
