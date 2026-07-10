@@ -280,6 +280,8 @@ export class DbWorkerRuntime {
     this.ensureUsageLogSchema()
     console.log('[DbWorkerRuntime] 确保 Reasoning Schema...')
     this.ensureReasoningSchema()
+    console.log('[DbWorkerRuntime] 确保 Provider Native Content Schema...')
+    this.ensureProviderNativeContentSchema()
     console.log('[DbWorkerRuntime] 确保 Message Error Schema...')
     this.ensureMessageErrorSchema()
     console.log('[DbWorkerRuntime] 确保 Message Asset Schema...')
@@ -685,6 +687,165 @@ export class DbWorkerRuntime {
     )
 
     return hasUnique(['message_id', 'ordinal']) && hasUnique(['message_id', 'segment_fingerprint'])
+  }
+
+  private ensureProviderNativeContentSchema() {
+    const exists = !!this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'message_provider_native_contents'")
+      .get()
+    if (!exists) {
+      this.createProviderNativeContentTable()
+      return
+    }
+    if (!this.providerNativeContentSchemaMatchesExpected()) {
+      this.recreateProviderNativeContentTable()
+    }
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_provider_native_contents_message
+        ON message_provider_native_contents(message_id);
+    `)
+  }
+
+  private createProviderNativeContentTable(tableName = 'message_provider_native_contents') {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ${tableName} (
+        message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+        provider_key TEXT NOT NULL CHECK (length(provider_key) > 0),
+        source_api TEXT NOT NULL CHECK (length(source_api) > 0),
+        snapshot_key TEXT NOT NULL CHECK (length(snapshot_key) > 0),
+        candidate_index INTEGER CHECK (candidate_index IS NULL OR candidate_index >= 0),
+        status TEXT NOT NULL CHECK (status IN ('streaming', 'final', 'error', 'cancelled')),
+        content_json TEXT NOT NULL,
+        role TEXT,
+        finish_reason TEXT,
+        stop_reason TEXT,
+        stop_sequence TEXT,
+        usage_json TEXT,
+        model TEXT,
+        model_version TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (message_id, provider_key, source_api, snapshot_key)
+      );
+    `)
+  }
+
+  private providerNativeContentSchemaMatchesExpected(): boolean {
+    const columns = this.db.prepare('PRAGMA table_info(message_provider_native_contents)').all() as Array<{
+      name: string
+      notnull: number
+    }>
+    const columnNames = new Set(columns.map((column) => column.name))
+    const required = [
+      'message_id',
+      'provider_key',
+      'source_api',
+      'snapshot_key',
+      'candidate_index',
+      'status',
+      'content_json',
+      'role',
+      'finish_reason',
+      'stop_reason',
+      'stop_sequence',
+      'usage_json',
+      'model',
+      'model_version',
+      'created_at',
+      'updated_at',
+    ]
+    if (required.some((name) => !columnNames.has(name))) return false
+    const snapshotKey = columns.find((column) => column.name === 'snapshot_key')
+    if (snapshotKey?.notnull !== 1) return false
+    const indexList = this.db.prepare('PRAGMA index_list(message_provider_native_contents)').all() as Array<{
+      name: string
+      unique: number
+    }>
+    const uniqueColumnGroups = indexList
+      .filter((index) => index.unique === 1)
+      .map((index) => {
+        const escaped = index.name.replace(/"/g, '""')
+        return (this.db.prepare(`PRAGMA index_info("${escaped}")`).all() as Array<{ name: string }>)
+          .map((column) => column.name)
+      })
+    return uniqueColumnGroups.some((group) =>
+      group.length === 4 &&
+      group[0] === 'message_id' &&
+      group[1] === 'provider_key' &&
+      group[2] === 'source_api' &&
+      group[3] === 'snapshot_key'
+    )
+  }
+
+  private recreateProviderNativeContentTable() {
+    const oldColumns = this.db.prepare('PRAGMA table_info(message_provider_native_contents)').all() as Array<{ name: string }>
+    const oldColumnNames = new Set(oldColumns.map((column) => column.name))
+    const tempName = 'message_provider_native_contents_new'
+    this.db.exec(`DROP TABLE IF EXISTS ${tempName}`)
+    this.createProviderNativeContentTable(tempName)
+
+    const selectExpr = (column: string, fallback: string) =>
+      oldColumnNames.has(column) ? column : fallback
+    const candidateSnapshotExpr = oldColumnNames.has('candidate_index')
+      ? "CASE WHEN candidate_index IS NOT NULL THEN 'candidate:' || candidate_index ELSE 'snapshot' END"
+      : "'snapshot'"
+    const snapshotKeyExpr = oldColumnNames.has('snapshot_key')
+      ? `COALESCE(NULLIF(snapshot_key, ''), ${candidateSnapshotExpr})`
+      : candidateSnapshotExpr
+    const candidateIndexExpr = selectExpr('candidate_index', 'NULL')
+    const usageExpr = oldColumnNames.has('usage_json')
+      ? 'usage_json'
+      : selectExpr('usage_metadata_json', 'NULL')
+
+    this.db.exec(`
+      INSERT OR REPLACE INTO ${tempName} (
+        message_id,
+        provider_key,
+        source_api,
+        snapshot_key,
+        candidate_index,
+        status,
+        content_json,
+        role,
+        finish_reason,
+        stop_reason,
+        stop_sequence,
+        usage_json,
+        model,
+        model_version,
+        created_at,
+        updated_at
+      )
+      SELECT
+        message_id,
+        provider_key,
+        source_api,
+        ${snapshotKeyExpr},
+        ${candidateIndexExpr},
+        status,
+        content_json,
+        ${selectExpr('role', 'NULL')},
+        ${selectExpr('finish_reason', 'NULL')},
+        ${selectExpr('stop_reason', 'NULL')},
+        ${selectExpr('stop_sequence', 'NULL')},
+        ${usageExpr},
+        ${selectExpr('model', 'NULL')},
+        ${selectExpr('model_version', 'NULL')},
+        created_at,
+        updated_at
+      FROM message_provider_native_contents
+      WHERE message_id IS NOT NULL
+        AND provider_key IS NOT NULL
+        AND source_api IS NOT NULL
+        AND status IN ('streaming', 'final', 'error', 'cancelled')
+        AND content_json IS NOT NULL
+    `)
+    this.db.exec(`
+      DROP TABLE message_provider_native_contents;
+      ALTER TABLE ${tempName} RENAME TO message_provider_native_contents;
+      CREATE INDEX IF NOT EXISTS idx_provider_native_contents_message
+        ON message_provider_native_contents(message_id);
+    `)
   }
 
   private ensureMessageErrorSchema() {

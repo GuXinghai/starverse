@@ -18,6 +18,7 @@ import type {
   ToolCallDelta,
 } from '@/next/state/types'
 import type { GeminiThinkingConfig } from '@/next/provider/gemini/geminiThinkingPolicy'
+import type { ProviderNativeSnapshot } from '@/next/provider/providerNativeSnapshot'
 import type { NetworkErrorEnvelope } from '@/shared/network/networkErrorEnvelope'
 
 // ---------------------------------------------------------------------------
@@ -97,6 +98,8 @@ export type StarverseStreamEvent =
   | Readonly<{ type: 'message.reasoning_detail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'message.reasoning_detail_batch'; messageId: string; choiceIndex: number; details: unknown[] }>
   | Readonly<{ type: 'message.reasoning_display_block'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
+  | Readonly<{ type: 'message.reasoning_display_block_upsert'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
+  | Readonly<{ type: 'message.provider_native_content_upsert'; messageId: string; choiceIndex: number; snapshot: ProviderNativeSnapshot }>
   | Readonly<{ type: 'usage.delta'; usage: unknown }>
   | Readonly<{
       type: 'meta.delta'

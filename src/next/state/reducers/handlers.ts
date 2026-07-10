@@ -9,7 +9,9 @@ import {
   handleMessageDeltaReasoningDetail,
   handleMessageDeltaReasoningDetailBatch,
   handleMessageAppendReasoningDisplayBlock,
+  handleMessageUpsertReasoningDisplayBlock,
 } from './reasoningHandlers'
+import { handleMessageUpsertProviderNativeContent } from './providerNativeHandlers'
 import {
   handleMetaDelta,
   handleStreamAbort,
@@ -32,6 +34,8 @@ const handlersByType: HandlerMap = {
   MessageDeltaReasoningDetail: handleMessageDeltaReasoningDetail,
   MessageDeltaReasoningDetailBatch: handleMessageDeltaReasoningDetailBatch,
   MessageAppendReasoningDisplayBlock: handleMessageAppendReasoningDisplayBlock,
+  MessageUpsertReasoningDisplayBlock: handleMessageUpsertReasoningDisplayBlock,
+  MessageUpsertProviderNativeContent: handleMessageUpsertProviderNativeContent,
   StreamAbort: handleStreamAbort,
   StreamError: handleStreamError,
   StreamDone: handleStreamDone,

@@ -20,7 +20,11 @@
  */
 
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
-import { createReasoningTextDisplayBlock } from '@/next/provider/reasoningDisplayBlock'
+import {
+  appendOpenAIResponsesReasoningDelta,
+  buildOpenAIResponsesFinalSummaryDisplayBlocks,
+  type OpenAIResponsesReasoningDisplayAssemblerState,
+} from './openaiResponsesReasoningDisplayAssembler'
 
 // ---------------------------------------------------------------------------
 // OpenAI Responses event types — provider-native schema, contained here only
@@ -33,7 +37,16 @@ export type OpenAIResponsesStreamEvent = Readonly<{
 
 export type OpenAIResponsesStreamMapOptions = Readonly<{
   eventOrdinal?: number
+  reasoningSummaryDedupe?: OpenAIResponsesReasoningSummaryDedupeState
 }>
+
+export type OpenAIResponsesReasoningSummaryDedupeState = {
+  emittedSummaryKeys: Set<string>
+  streamedSummaryTextByItemKey: Map<string, string>
+  displayTextByPartKey?: Map<string, string>
+}
+
+export type OpenAIResponsesReasoningDisplayState = OpenAIResponsesReasoningDisplayAssemblerState
 
 // ---------------------------------------------------------------------------
 // mapOpenAIResponsesEventToStarverse — pure function
@@ -90,17 +103,15 @@ export function mapOpenAIResponsesEventToStarverse(
           choiceIndex: 0,
           detail: { type: 'reasoning_summary', text: delta },
         })
-        const displayBlock = createReasoningTextDisplayBlock({
+        const displayBlock = appendOpenAIResponsesReasoningDelta({
+          event,
           messageId,
-          providerKey: 'openai-responses',
-          ordinal: resolveReasoningDisplayOrdinal(event, options),
-          text: delta,
+          state: options.reasoningSummaryDedupe,
           semanticRole: 'summary',
-          sourceEventType: event.type,
         })
         if (displayBlock) {
           events.push({
-            type: 'message.reasoning_display_block',
+            type: 'message.reasoning_display_block_upsert',
             messageId,
             choiceIndex: 0,
             block: displayBlock,
@@ -126,17 +137,15 @@ export function mapOpenAIResponsesEventToStarverse(
           choiceIndex: 0,
           detail: { type: 'reasoning_text', text: delta },
         })
-        const displayBlock = createReasoningTextDisplayBlock({
+        const displayBlock = appendOpenAIResponsesReasoningDelta({
+          event,
           messageId,
-          providerKey: 'openai-responses',
-          ordinal: resolveReasoningDisplayOrdinal(event, options),
-          text: delta,
+          state: options.reasoningSummaryDedupe,
           semanticRole: 'reasoning',
-          sourceEventType: event.type,
         })
         if (displayBlock) {
           events.push({
-            type: 'message.reasoning_display_block',
+            type: 'message.reasoning_display_block_upsert',
             messageId,
             choiceIndex: 0,
             block: displayBlock,
@@ -162,6 +171,7 @@ export function mapOpenAIResponsesEventToStarverse(
       if (item?.type === 'reasoning') {
         // Reasoning output item finalized — emit as opaque artifact
         const summary = Array.isArray(item.summary) ? item.summary : []
+        const normalizedSummary = normalizeReasoningSummaryItems(summary)
         const encryptedContent = typeof item.encrypted_content === 'string' ? item.encrypted_content : null
         const status = typeof item.status === 'string' ? item.status : undefined
 
@@ -172,11 +182,28 @@ export function mapOpenAIResponsesEventToStarverse(
           detail: {
             type: 'reasoning_item',
             id: typeof item.id === 'string' ? item.id : undefined,
-            summary: summary.map((s: any) => ({ text: typeof s?.text === 'string' ? s.text : '', type: 'summary_text' })),
+            summary: normalizedSummary,
             ...(encryptedContent ? { encrypted_content: encryptedContent } : {}),
             ...(status ? { status } : {}),
           },
         })
+
+        const summaryTexts = extractReasoningSummaryTexts(normalizedSummary)
+        const displayBlocks = buildOpenAIResponsesFinalSummaryDisplayBlocks({
+          event,
+          item,
+          messageId,
+          summaryTexts,
+          state: options.reasoningSummaryDedupe,
+        })
+        for (const block of displayBlocks) {
+          events.push({
+            type: 'message.reasoning_display_block_upsert',
+            messageId,
+            choiceIndex: 0,
+            block,
+          })
+        }
       }
       break
     }
@@ -294,17 +321,28 @@ export function mapOpenAIResponsesEventToStarverse(
   return events
 }
 
-function resolveReasoningDisplayOrdinal(
-  event: OpenAIResponsesStreamEvent,
-  options: OpenAIResponsesStreamMapOptions,
-): number {
-  if (typeof options.eventOrdinal === 'number' && Number.isFinite(options.eventOrdinal) && options.eventOrdinal >= 0) {
-    return options.eventOrdinal
-  }
-  if (typeof event.sequence_number === 'number' && Number.isFinite(event.sequence_number) && event.sequence_number >= 0) {
-    return event.sequence_number
-  }
-  return 0
+function normalizeReasoningSummaryItems(summary: unknown[]): Array<Record<string, unknown>> {
+  return summary.map((item) => {
+    if (typeof item === 'string') {
+      return { text: item, type: 'summary_text' }
+    }
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      const record = item as Record<string, unknown>
+      if (typeof record.text === 'string') {
+        return {
+          text: record.text,
+          type: typeof record.type === 'string' ? record.type : 'summary_text',
+        }
+      }
+    }
+    return { raw: item }
+  })
+}
+
+function extractReasoningSummaryTexts(summary: Array<Record<string, unknown>>): string[] {
+  return summary
+    .map((item) => typeof item.text === 'string' ? item.text : '')
+    .filter((text) => text.trim().length > 0)
 }
 
 function imageGenerationItemToContentBlockEvent(

@@ -40,6 +40,8 @@ export const DB_METHODS = [
   { name: 'message.appendReasoningDisplayBlocks', renderer: true, worker: true, domain: 'message' },
   { name: 'message.finalizeReasoningDisplayBlocks', renderer: true, worker: true, domain: 'message' },
   { name: 'message.listReasoningDisplayBlocksByMessageIds', renderer: true, worker: true, domain: 'message' },
+  { name: 'message.upsertProviderNativeContent', renderer: true, worker: true, domain: 'message' },
+  { name: 'message.listProviderNativeContentsByMessageIds', renderer: true, worker: true, domain: 'message' },
   { name: 'message.setReasoningRequestConfig', renderer: true, worker: true, domain: 'message' },
   { name: 'message.getReasoningSegmentsStats', renderer: true, worker: true, domain: 'message' },
   { name: 'messageError.upsert', renderer: true, worker: true, domain: 'messageError' },

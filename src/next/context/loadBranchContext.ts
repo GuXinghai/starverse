@@ -38,13 +38,16 @@ function extractContentBlocksFromMeta(meta: unknown): InternalMessage['contentBl
   return blocks.length > 0 ? (blocks as any) : undefined
 }
 
-function extractToolMeta(meta: unknown): Pick<InternalMessage, 'toolCalls' | 'toolCallId' | 'toolName' | 'reasoningDetailsRaw'> {
+function extractToolMeta(meta: unknown): Pick<InternalMessage, 'toolCalls' | 'toolCallId' | 'toolName' | 'reasoningDetailsRaw' | 'providerId' | 'modelId' | 'providerNativeContents'> {
   const obj = asRecord(meta)
   const toolCalls = Array.isArray(obj?.toolCalls) ? (obj?.toolCalls as any[]) : undefined
   const toolCallId = typeof obj?.toolCallId === 'string' ? String(obj.toolCallId) : undefined
   const toolName = typeof obj?.toolName === 'string' ? String(obj.toolName) : undefined
   const reasoningDetailsRaw = Array.isArray(obj?.reasoningDetailsRaw) ? (obj?.reasoningDetailsRaw as any[]) : undefined
-  return { toolCalls, toolCallId, toolName, reasoningDetailsRaw }
+  const providerId = typeof obj?.providerId === 'string' ? String(obj.providerId) : undefined
+  const modelId = typeof obj?.modelId === 'string' ? String(obj.modelId) : undefined
+  const providerNativeContents = Array.isArray(obj?.providerNativeContents) ? (obj.providerNativeContents as unknown[]) : undefined
+  return { toolCalls, toolCallId, toolName, reasoningDetailsRaw, providerId, modelId, providerNativeContents }
 }
 
 export function toInternalMessagesFromBranchPath(rows: ReadonlyArray<BranchPathMessage>): InternalMessage[] {
@@ -65,7 +68,8 @@ export function toInternalMessagesFromBranchPath(rows: ReadonlyArray<BranchPathM
       (Array.isArray(metaBits.toolCalls) && metaBits.toolCalls.length > 0) ||
       typeof metaBits.toolCallId === 'string' ||
       typeof metaBits.toolName === 'string' ||
-      (Array.isArray(metaBits.reasoningDetailsRaw) && metaBits.reasoningDetailsRaw.length > 0)
+      (Array.isArray(metaBits.reasoningDetailsRaw) && metaBits.reasoningDetailsRaw.length > 0) ||
+      (Array.isArray(metaBits.providerNativeContents) && metaBits.providerNativeContents.length > 0)
 
     if (roleRaw === 'assistant' && isEmptyText && isEmptyBlocks && !hasMeaningfulMeta) {
       continue

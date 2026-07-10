@@ -22,6 +22,7 @@ import { asProviderGenerationParamsRecord } from '@/next/provider/providerGenera
 // ---------------------------------------------------------------------------
 
 export type GeminiPart = Readonly<{
+  [key: string]: unknown
   text?: string
   inlineData?: Readonly<{ mimeType: string; data: string }>
   fileData?: Readonly<{ mimeType: string; fileUri: string }>
@@ -42,6 +43,7 @@ export type GeminiGenerationConfig = Readonly<{
   temperature?: number
   topP?: number
   maxOutputTokens?: number
+  candidateCount?: number
   thinkingConfig?: GeminiNativeThinkingConfig
 }>
 
@@ -136,6 +138,11 @@ export function buildGeminiRequest(input: GeminiRequestInput): GeminiRequest {
     }
     Object.assign(genConfig, nativeGenerationConfig)
   }
+  const candidateCount = genConfig.candidateCount
+  if (candidateCount !== undefined && candidateCount !== 1) {
+    throw new Error('Google AI Studio generateContent continuation requires candidateCount=1.')
+  }
+  genConfig.candidateCount = 1
 
   if (Object.keys(genConfig).length > 0) {
     request.generationConfig = genConfig

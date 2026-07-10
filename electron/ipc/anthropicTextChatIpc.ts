@@ -13,6 +13,10 @@ import {
 import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
 import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
 import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
+import {
+  assertFinalAnthropicProviderNativeSnapshot,
+  type AnthropicProviderNativeSnapshot,
+} from '../../src/next/provider/anthropic/anthropicProviderNativeContent'
 
 export const ANTHROPIC_TEXT_CHAT_IPC_CHANNELS = [
   'anthropic-chat:stream-text',
@@ -22,6 +26,7 @@ export const ANTHROPIC_TEXT_CHAT_IPC_CHANNELS = [
 export type AnthropicTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
   content: string
+  anthropicNativeContent?: AnthropicProviderNativeSnapshot
 }>
 
 export type AnthropicTextChatPayload = Readonly<{
@@ -100,13 +105,29 @@ function normalizeMessages(raw: unknown, allowEmptyCurrentUser = false): Anthrop
     const role = (item as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant') return null
     const content = String((item as Record<string, unknown>).content ?? '').trim()
+    let anthropicNativeContent: AnthropicProviderNativeSnapshot | undefined
+    if (role === 'assistant' && (item as Record<string, unknown>).anthropicNativeContent !== undefined) {
+      try {
+        anthropicNativeContent = assertFinalAnthropicProviderNativeSnapshot((item as Record<string, unknown>).anthropicNativeContent)
+      } catch {
+        return null
+      }
+    }
     if (!content) {
+      if (anthropicNativeContent) {
+        out.push({ role, content: '', anthropicNativeContent })
+        continue
+      }
       if (allowEmptyCurrentUser && index === sliced.length - 1 && role === 'user') {
         out.push({ role, content: '' })
       }
       continue
     }
-    out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS) })
+    out.push({
+      role,
+      content: content.slice(0, MAX_MESSAGE_CHARS),
+      ...(anthropicNativeContent ? { anthropicNativeContent } : {}),
+    })
   }
   if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
   return out

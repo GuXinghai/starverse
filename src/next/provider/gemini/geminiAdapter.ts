@@ -24,6 +24,13 @@ import {
 } from '@/next/provider/gemini/geminiRequestBuilder'
 import { decodeGeminiSSE } from '@/next/provider/gemini/geminiSseDecoder'
 import { mapGeminiInteractionResponseToStarverse, mapGeminiStreamChunkToStarverse } from '@/next/provider/gemini/geminiStreamMapper'
+import { createGeminiProviderNativeAccumulator } from '@/next/provider/gemini/geminiProviderNativeAccumulator'
+import { clonePlainJsonObject } from '@/next/provider/gemini/geminiProviderNativeContent'
+import {
+  buildGeminiFinalThoughtSummaryEvents,
+  buildGeminiThoughtSummaryDeltaEvents,
+  createGeminiReasoningDisplayAssemblerState,
+} from '@/next/provider/gemini/geminiReasoningDisplayAssembler'
 import { buildGeminiUserParts } from '@/next/multimodal/providerRuntimeContentBlocks'
 
 // ---------------------------------------------------------------------------
@@ -59,22 +66,54 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
 ): AsyncGenerator<StarverseStreamEvent> {
   const { assistantMessageId, config, signal } = request
 
-  // Build messages from request
-  const messages = buildMessages(request)
-  const systemInstruction = extractSystemPrompt(request)
-
   if (config.imageGeneration) {
+    if (hasPriorContextMessages(request)) {
+      yield {
+        type: 'stream.error',
+        error: {
+          phase: 'request_build',
+          provider: 'gemini',
+          category: 'bad_request',
+          code: 'gemini_interactions_continuation_unsupported',
+          message: 'Google AI Studio image generation continuation is not supported in this Starverse build.',
+        },
+        terminal: true,
+      }
+      return
+    }
+    const messages = buildMessages(request)
+    const systemInstruction = extractSystemPrompt(request)
     yield* streamViaGeminiInteractionsImageGeneration(request, transport, messages, systemInstruction)
     return
   }
 
+  // Build messages from request
+  const messages = buildMessages(request)
+  const systemInstruction = extractSystemPrompt(request)
+
   // Build Gemini request body
-  const body = buildGeminiRequest({
-    model: config.model,
-    messages,
-    config,
-    ...(systemInstruction ? { systemInstruction } : {}),
-  })
+  let body: ReturnType<typeof buildGeminiRequest>
+  try {
+    body = buildGeminiRequest({
+      model: config.model,
+      messages,
+      config,
+      ...(systemInstruction ? { systemInstruction } : {}),
+    })
+  } catch (err: any) {
+    yield {
+      type: 'stream.error',
+      error: {
+        phase: 'request_build',
+        provider: 'gemini',
+        category: 'bad_request',
+        code: 'invalid_request',
+        message: err instanceof Error ? err.message : 'Google AI Studio request is invalid.',
+      },
+      terminal: true,
+    }
+    return
+  }
 
   // Execute transport
   // Gemini uses streamGenerateContent endpoint with SSE
@@ -123,26 +162,51 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
   // Terminal coordination: exactly one terminal outcome
   let terminalEmitted = false
   let eventOrdinal = 0
+  const nativeAccumulator = createGeminiProviderNativeAccumulator({ messageId: assistantMessageId })
+  const reasoningDisplayState = createGeminiReasoningDisplayAssemblerState()
 
   for await (const sseEvent of decodeGeminiSSE(sseStream)) {
     if (terminalEmitted) break
 
     if (sseEvent.type === 'chunk') {
+      const hasFinishReason = hasGeminiFinishReason(sseEvent.data)
+      const nativeEvents = nativeAccumulator.ingestChunk(
+        sseEvent.data,
+        hasFinishReason ? 'final' : 'streaming',
+      )
+      for (const event of nativeEvents) yield event
       const mapped = mapGeminiStreamChunkToStarverse(sseEvent.data, assistantMessageId, { eventOrdinal })
+      const displayEvents = hasFinishReason
+        ? buildGeminiFinalThoughtSummaryEvents({
+            response: sseEvent.data,
+            messageId: assistantMessageId,
+            state: reasoningDisplayState,
+          })
+        : buildGeminiThoughtSummaryDeltaEvents({
+            response: sseEvent.data,
+            messageId: assistantMessageId,
+            state: reasoningDisplayState,
+          })
       eventOrdinal += 1
+      const terminalEvents: StarverseStreamEvent[] = []
       for (const event of mapped) {
         if (terminalEmitted) break
 
         if (event.type === 'stream.done' || event.type === 'stream.error') {
-          yield event
-          terminalEmitted = true
+          terminalEvents.push(event)
         } else {
           yield event
         }
       }
+      for (const event of displayEvents) yield event
+      for (const event of terminalEvents) {
+        yield event
+        terminalEmitted = true
+      }
     } else if (sseEvent.type === 'done') {
       // Defensive: Gemini doesn't typically use [DONE], but handle it
       if (!terminalEmitted) {
+        for (const event of nativeAccumulator.finalize('final')) yield event
         yield { type: 'stream.done' }
         terminalEmitted = true
       }
@@ -164,6 +228,7 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
 
   // Fallback: if stream ended without terminal
   if (!terminalEmitted) {
+    for (const event of nativeAccumulator.finalize('error')) yield event
     yield {
       type: 'stream.error',
       error: {
@@ -364,7 +429,7 @@ function buildMessages(request: ProviderStreamRequest): GeminiContent[] {
   if (request.contextMessages) {
     for (const msg of request.contextMessages) {
       if (isGeminiContent(msg)) {
-        messages.push(msg)
+        messages.push(cloneGeminiContent(msg))
       }
     }
   }
@@ -376,6 +441,13 @@ function buildMessages(request: ProviderStreamRequest): GeminiContent[] {
   })
 
   return messages
+}
+
+function hasPriorContextMessages(request: ProviderStreamRequest): boolean {
+  return Array.isArray(request.contextMessages) && request.contextMessages.some((msg) => {
+    if (!msg || typeof msg !== 'object') return false
+    return (msg as any).role !== 'system'
+  })
 }
 
 function extractSystemPrompt(request: ProviderStreamRequest): string | undefined {
@@ -394,6 +466,19 @@ function isGeminiContent(msg: unknown): msg is GeminiContent {
   if (!msg || typeof msg !== 'object') return false
   const role = (msg as any).role
   return (role === 'user' || role === 'model') && Array.isArray((msg as any).parts)
+}
+
+function cloneGeminiContent(content: GeminiContent): GeminiContent {
+  return clonePlainJsonObject(content, '$.contents[]') as unknown as GeminiContent
+}
+
+function hasGeminiFinishReason(chunk: unknown): boolean {
+  if (!chunk || typeof chunk !== 'object' || Array.isArray(chunk)) return false
+  const candidates = (chunk as any).candidates
+  if (!Array.isArray(candidates)) return false
+  return candidates.some((candidate) =>
+    candidate && typeof candidate === 'object' && typeof (candidate as any).finishReason === 'string' && (candidate as any).finishReason.length > 0
+  )
 }
 
 async function* mapTransportError(err: any): AsyncGenerator<StarverseStreamEvent> {

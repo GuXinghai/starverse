@@ -50,7 +50,9 @@ import {
   setMessageAnnotations,
   setMessageReasoningRequestConfig,
   setMessageStatus,
+  upsertProviderNativeContent,
   upsertMessageErrorEnvelope,
+  type PersistedProviderNativeContent,
   type PersistedMessageImageAsset,
 } from '@/next/message/messageClient'
 import { findProjectById, listProjects, saveProject, getInbox, createProject, deleteProject, countConversationsBatch, type ProjectSummary } from '@/next/project/projectClient'
@@ -1522,6 +1524,15 @@ export function useAppChatAppLogic() {
     return []
   }
 
+  function extractProviderNativeContentsFromMeta(meta: unknown): PersistedProviderNativeContent[] {
+    const obj = asRecord(meta)
+    const raw = obj?.providerNativeContents
+    if (!Array.isArray(raw)) return []
+    return raw
+      .filter((item): item is PersistedProviderNativeContent => !!item && typeof item === 'object')
+      .map((item) => item as PersistedProviderNativeContent)
+  }
+
   function extractAnnotationsFromMeta(meta: unknown): unknown[] {
     const obj = asRecord(meta)
     const raw = obj?.annotations
@@ -2341,6 +2352,7 @@ export function useAppChatAppLogic() {
 
       const meta = r.meta ?? null
       const reasoningDetailsRaw = extractReasoningDetailsFromMeta(meta)
+      const providerNativeContents = extractProviderNativeContentsFromMeta(meta)
       const annotations = extractAnnotationsFromMeta(meta)
       const hasEncryptedReasoning = reasoningDetailsRaw.some((detail) => detail && typeof detail === 'object' && (detail as any).type === 'reasoning.encrypted')
       const requestConfig = extractRequestReasoningConfigFromMeta(meta)
@@ -2358,6 +2370,7 @@ export function useAppChatAppLogic() {
         ...(annotations.length > 0 ? { annotations: markRaw(annotations) } : {}),
         reasoningDetailsRaw: markRaw(reasoningDetailsRaw),
         reasoningDisplayBlocks: markRaw([]),
+        providerNativeContents: markRaw(providerNativeContents),
         reasoningPanelState: previousPanelState ?? 'collapsed',
         hasEncryptedReasoning,
         reasoningDurationMs: timing.durationMs,
@@ -2743,6 +2756,25 @@ export function useAppChatAppLogic() {
     if (!stream.reasoningFlushTimer.id) return
     clearTimeout(stream.reasoningFlushTimer.id)
     stream.reasoningFlushTimer.id = null
+  }
+
+  function clearProviderNativeFlushTimer(stream: ActiveStream) {
+    if (!stream.providerNativeFlushTimer.id) return
+    clearTimeout(stream.providerNativeFlushTimer.id)
+    stream.providerNativeFlushTimer.id = null
+  }
+
+  async function flushProviderNativeContents(stream: ActiveStream, assistantMessageId: string) {
+    const pending = stream.pendingProviderNativeContents.value
+    if (!pending || pending.length === 0) return
+    const batch = pending.splice(0, pending.length)
+    try {
+      for (const snapshot of batch) {
+        await upsertProviderNativeContent({ messageId: assistantMessageId, snapshot })
+      }
+    } catch (err) {
+      if (shouldLogDebug()) console.warn('[ui-app] upsertProviderNativeContent failed (non-fatal):', err)
+    }
   }
 
   async function flushReasoningDetailSegments(stream: ActiveStream, assistantMessageId: string) {
@@ -3858,6 +3890,20 @@ export function useAppChatAppLogic() {
     const targetId = typeof messageId === 'string' && messageId.trim().length > 0 ? messageId : lastAssistantMessageId.value
     if (!targetId) return
     state.value = toggleReasoningPanelState(state.value, targetId)
+  }
+
+  function scheduleProviderNativeFlush(stream: ActiveStream, assistantMessageId: string, delayMs = 250) {
+    if (stream.providerNativeFlushTimer.id) return
+    stream.providerNativeFlushTimer.id = setTimeout(async () => {
+      stream.providerNativeFlushTimer.id = null
+      try {
+        await flushProviderNativeContents(stream, assistantMessageId)
+      } finally {
+        if (stream.pendingProviderNativeContents.value.length > 0) {
+          scheduleProviderNativeFlush(stream, assistantMessageId, delayMs)
+        }
+      }
+    }, delayMs)
   }
 
   function getMessageStateById(messageId: string): MessageState | null {
@@ -8702,13 +8748,19 @@ export function useAppChatAppLogic() {
   }
 
   function isReasoningDisplayBlockEventForMessage(ev: DomainEvent, assistantMessageId: string): boolean {
-    return ev.type === 'MessageAppendReasoningDisplayBlock' && ev.messageId === assistantMessageId
+    return (ev.type === 'MessageAppendReasoningDisplayBlock' || ev.type === 'MessageUpsertReasoningDisplayBlock') && ev.messageId === assistantMessageId
   }
 
   function processReasoningDisplayBlockEvent(ev: DomainEvent, stream: ActiveStream, assistantMessageId: string) {
-    if (ev.type !== 'MessageAppendReasoningDisplayBlock' || ev.messageId !== assistantMessageId) return
+    if ((ev.type !== 'MessageAppendReasoningDisplayBlock' && ev.type !== 'MessageUpsertReasoningDisplayBlock') || ev.messageId !== assistantMessageId) return
     stream.pendingReasoningDisplayBlocks.value.push(ev.block)
     scheduleReasoningDetailFlush(stream, assistantMessageId)
+  }
+
+  function processProviderNativeContentEvent(ev: DomainEvent, stream: ActiveStream, assistantMessageId: string) {
+    if (ev.type !== 'MessageUpsertProviderNativeContent' || ev.messageId !== assistantMessageId) return
+    stream.pendingProviderNativeContents.value.push(ev.snapshot)
+    scheduleProviderNativeFlush(stream, assistantMessageId)
   }
 
   function isAssistantTextEventForMessage(ev: DomainEvent, assistantMessageId: string): boolean {
@@ -8778,6 +8830,7 @@ export function useAppChatAppLogic() {
     const { convoId, assistantMessageId, assistantSeq, stream, errorPersistPromise } = input
     clearFlushTimer(stream)
     clearReasoningFlushTimer(stream)
+    clearProviderNativeFlushTimer(stream)
     // 输出 Merger 诊断统计
     if (shouldLogReasoningDebug()) {
       const stats = stream.reasoningMerger.getStats()
@@ -8791,6 +8844,7 @@ export function useAppChatAppLogic() {
       // 记录 flush 前的队列信息
       await flushReasoningDetailSegments(stream, assistantMessageId)
       await flushReasoningDisplayBlocks(stream, assistantMessageId)
+      await flushProviderNativeContents(stream, assistantMessageId)
       try {
         await finalizeReasoningDisplayBlocks({ messageId: assistantMessageId })
       } catch (err) {
@@ -9038,6 +9092,8 @@ export function useAppChatAppLogic() {
       await flushPending(convoId, stream)
       clearReasoningFlushTimer(stream)
       await flushReasoningDetailSegments(stream, assistantMessageId)
+      clearProviderNativeFlushTimer(stream)
+      await flushProviderNativeContents(stream, assistantMessageId)
     }
 
     const ensurePersistStatusOnce = async () => {
@@ -9159,6 +9215,7 @@ export function useAppChatAppLogic() {
 
         processReasoningDetailEvent(ev, stream, assistantMessageId)
         processReasoningDisplayBlockEvent(ev, stream, assistantMessageId)
+        processProviderNativeContentEvent(ev, stream, assistantMessageId)
         if (reasoningArtifactCollector) {
           const created = collectReasoningArtifactsFromDomainEvent(reasoningArtifactCollector, ev)
           if (created.length > 0) {

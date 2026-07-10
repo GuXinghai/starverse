@@ -49,6 +49,27 @@ export function handleMessageAppendReasoningDisplayBlock(
   })
 }
 
+export function handleMessageUpsertReasoningDisplayBlock(
+  ctx: HandlerContext,
+  event: EventByType<'MessageUpsertReasoningDisplayBlock'>
+): RootState {
+  const block = normalizeDisplayBlock(event.block)
+  if (!block) return ctx.state
+  return updateMessage(ctx.state, event.messageId, (m) => {
+    const prev = Array.isArray(m.reasoningDisplayBlocks) ? m.reasoningDisplayBlocks : []
+    const existingIndex = prev.findIndex((item) => item.blockId === block.blockId)
+    const nextBlocks = existingIndex >= 0
+      ? prev.map((item, index) => index === existingIndex ? block : item)
+      : [...prev, block]
+    nextBlocks.sort((a, b) => a.ordinal - b.ordinal || a.blockId.localeCompare(b.blockId))
+    return {
+      ...m,
+      reasoningDisplayBlocks: nextBlocks,
+      reasoningVersion: m.reasoningVersion + 1,
+    }
+  })
+}
+
 export function handleMessageDeltaReasoningDetail(ctx: HandlerContext, event: EventByType<'MessageDeltaReasoningDetail'>): RootState {
   return updateMessage(ctx.state, event.messageId, (m) => {
     const nextDetails = [...m.reasoningDetailsRaw, event.detail]

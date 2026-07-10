@@ -18,7 +18,11 @@ import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEven
 import type { RuntimeProviderStreamAdapter } from '@/next/provider/runtimeProviderAdapter'
 import { buildResponsesRequest, type ResponsesInputMessage } from '@/next/provider/openai-responses/openaiResponsesRequestBuilder'
 import { decodeResponsesSSE } from '@/next/provider/openai-responses/openaiResponsesSseDecoder'
-import { mapOpenAIResponsesEventToStarverse } from '@/next/provider/openai-responses/openaiResponsesStreamMapper'
+import {
+  mapOpenAIResponsesEventToStarverse,
+  type OpenAIResponsesReasoningSummaryDedupeState,
+} from '@/next/provider/openai-responses/openaiResponsesStreamMapper'
+import { createOpenAIResponsesReasoningDisplayAssemblerState } from '@/next/provider/openai-responses/openaiResponsesReasoningDisplayAssembler'
 import { buildOpenAIResponsesUserContent } from '@/next/multimodal/providerRuntimeContentBlocks'
 import { buildNetworkErrorEnvelope } from '@/shared/network/networkErrorEnvelope'
 
@@ -109,6 +113,9 @@ export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async func
   // Terminal coordination: exactly one terminal outcome
   let terminalEmitted = false
   const emittedImageUrls = new Set<string>()
+  const reasoningSummaryDedupe: OpenAIResponsesReasoningSummaryDedupeState = {
+    ...createOpenAIResponsesReasoningDisplayAssemblerState(),
+  }
   let eventOrdinal = 0
 
   for await (const sseEvent of decodeResponsesSSE(sseStream)) {
@@ -119,7 +126,10 @@ export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async func
         request,
         event: sseEvent.data,
       })
-      const mapped = mapOpenAIResponsesEventToStarverse(sseEvent.data, assistantMessageId, { eventOrdinal })
+      const mapped = mapOpenAIResponsesEventToStarverse(sseEvent.data, assistantMessageId, {
+        eventOrdinal,
+        reasoningSummaryDedupe,
+      })
       eventOrdinal += 1
       for (const event of mapped) {
         if (terminalEmitted) break
@@ -179,9 +189,8 @@ function buildMessages(request: ProviderStreamRequest): ResponsesInputMessage[] 
   // Context messages
   if (request.contextMessages) {
     for (const msg of request.contextMessages) {
-      if (isResponsesMessage(msg)) {
-        messages.push(msg)
-      }
+      const normalized = normalizeResponsesMessage(msg)
+      if (normalized) messages.push(normalized)
     }
   }
 
@@ -194,10 +203,31 @@ function buildMessages(request: ProviderStreamRequest): ResponsesInputMessage[] 
   return messages
 }
 
-function isResponsesMessage(msg: unknown): msg is ResponsesInputMessage {
-  if (!msg || typeof msg !== 'object') return false
+function normalizeResponsesMessage(msg: unknown): ResponsesInputMessage | null {
+  if (!msg || typeof msg !== 'object') return null
   const role = (msg as any).role
-  return role === 'system' || role === 'user' || role === 'assistant' || role === 'developer'
+  if (role !== 'system' && role !== 'user' && role !== 'assistant' && role !== 'developer') return null
+  const content = normalizeResponsesMessageContent(msg as Record<string, unknown>)
+  const type = (msg as any).type
+  if (content == null) return null
+  return {
+    role,
+    content,
+    ...(type === 'message' ? { type } : {}),
+  }
+}
+
+function normalizeResponsesMessageContent(msg: Record<string, unknown>): ResponsesInputMessage['content'] | null {
+  const content = msg.content
+  if (typeof content === 'string' || Array.isArray(content)) return content as ResponsesInputMessage['content']
+  if (typeof msg.contentText === 'string') return msg.contentText
+  const blocks = msg.contentBlocks
+  if (!Array.isArray(blocks)) return null
+  const text = blocks
+    .filter((block) => block && typeof block === 'object' && (block as any).type === 'text')
+    .map((block) => String((block as any).text ?? ''))
+    .join('')
+  return text.length > 0 ? text : null
 }
 
 function isDuplicateImageContentBlock(event: StarverseStreamEvent, emittedImageUrls: Set<string>): boolean {

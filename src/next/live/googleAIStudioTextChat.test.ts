@@ -40,6 +40,60 @@ describe('googleAIStudioTextChat renderer bridge', () => {
     ])
   })
 
+  it('carries final Gemini native content for Google assistant history', () => {
+    const snapshot = {
+      providerKey: 'google_ai_studio',
+      sourceApi: 'gemini_generate_content',
+      candidateIndex: 0,
+      status: 'final',
+      content: {
+        role: 'model',
+        parts: [
+          { text: 'signed thought', thought: true, thoughtSignature: 'sig-1' },
+          { text: 'visible answer' },
+        ],
+      },
+    }
+
+    expect(buildGoogleAIStudioTextChatMessages({
+      contextMessages: [
+        {
+          role: 'assistant',
+          providerId: 'google_ai_studio',
+          contentText: 'visible answer',
+          reasoningDisplayBlocks: [
+            {
+              blockId: 'display-1',
+              ordinal: 0,
+              type: 'text',
+              text: 'display-only thought',
+              providerKey: 'google_ai_studio',
+            },
+          ],
+          reasoningDetailsRaw: [{ type: 'thought', text: 'raw-only thought' }],
+          providerNativeContents: [snapshot],
+        },
+      ],
+      userText: 'current user',
+    })).toEqual([
+      { role: 'assistant', content: 'visible answer', geminiNativeContent: snapshot },
+      { role: 'user', content: 'current user' },
+    ])
+  })
+
+  it('rejects Google assistant history without final Gemini native content', () => {
+    expect(() => buildGoogleAIStudioTextChatMessages({
+      contextMessages: [
+        {
+          role: 'assistant',
+          providerId: 'google_ai_studio',
+          contentText: 'visible answer',
+        },
+      ],
+      userText: 'current user',
+    })).toThrow(/missing final Gemini native content/)
+  })
+
   it('streams native Gemini text deltas into DomainEvents', async () => {
     const listeners = new Map<string, (payload: unknown) => void>()
     const endListeners = new Map<string, () => void>()

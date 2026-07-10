@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mapDeepSeekChunkToEvents, type DeepSeekChunk } from '@/next/provider/deepseek/deepSeekStreamMapper'
+import { createDeepSeekReasoningDisplayAssemblerState } from '@/next/provider/deepseek/deepseekReasoningDisplayAssembler'
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
 
 // ---------------------------------------------------------------------------
@@ -48,6 +49,14 @@ function usageChunk(id: string, model: string, usage: DeepSeekChunk['usage']): D
   return { id, model, usage }
 }
 
+function finalReasoningChunk(id: string, model: string, reasoning_content: string): DeepSeekChunk {
+  return {
+    id,
+    model,
+    choices: [{ index: 0, message: { role: 'assistant', reasoning_content }, finish_reason: null }],
+  }
+}
+
 function errorChunk(code: string, message: string): DeepSeekChunk {
   return { error: { code, message } }
 }
@@ -75,14 +84,16 @@ describe('mapDeepSeekChunkToEvents', () => {
   })
 
   it('maps reasoning_content to message.reasoning_raw_detail', () => {
+    const reasoningDisplayState = createDeepSeekReasoningDisplayAssemblerState()
     const events = mapDeepSeekChunkToEvents({
       chunk: reasoningChunk('gen_1', 'deepseek-r1', 'Let me think...'),
       messageId: msgId,
       chunkNo: 7,
+      reasoningDisplayState,
     })
 
     const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
-    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     expect(reasoningEvents).toHaveLength(1)
     expect(displayEvents).toHaveLength(1)
     if (reasoningEvents[0].type === 'message.reasoning_raw_detail') {
@@ -90,7 +101,7 @@ describe('mapDeepSeekChunkToEvents', () => {
       expect(reasoningEvents[0].messageId).toBe(msgId)
     }
     expect(displayEvents[0]).toMatchObject({
-      type: 'message.reasoning_display_block',
+      type: 'message.reasoning_display_block_upsert',
       messageId: msgId,
       choiceIndex: 0,
       block: {
@@ -98,8 +109,8 @@ describe('mapDeepSeekChunkToEvents', () => {
         text: 'Let me think...',
         semanticRole: 'reasoning',
         providerKey: 'deepseek',
-        sourceEventType: 'delta.reasoning_content',
-        ordinal: 7,
+        sourceEventType: 'reasoning_content',
+        ordinal: 0,
       },
     })
   })
@@ -115,15 +126,17 @@ describe('mapDeepSeekChunkToEvents', () => {
   })
 
   it('preserves mixed reasoning + visible text order', () => {
+    const reasoningDisplayState = createDeepSeekReasoningDisplayAssemblerState()
     const events = mapDeepSeekChunkToEvents({
       chunk: mixedChunk('gen_1', 'deepseek-r1', 'thinking...', 'visible answer'),
       messageId: msgId,
+      reasoningDisplayState,
     })
 
     // reasoning comes first in the output (as it does in the delta)
     expect(events[0].type).toBe('meta.delta')
     expect(events[1].type).toBe('message.reasoning_raw_detail')
-    expect(events[2].type).toBe('message.reasoning_display_block')
+    expect(events[2].type).toBe('message.reasoning_display_block_upsert')
     expect(events[3].type).toBe('message.text_delta')
   })
 
@@ -136,17 +149,30 @@ describe('mapDeepSeekChunkToEvents', () => {
     ]
 
     const allEvents: StarverseStreamEvent[] = []
+    const reasoningDisplayState = createDeepSeekReasoningDisplayAssemblerState()
     for (const chunk of chunks) {
-      allEvents.push(...mapDeepSeekChunkToEvents({ chunk, messageId: msgId }))
+      allEvents.push(...mapDeepSeekChunkToEvents({ chunk, messageId: msgId, reasoningDisplayState }))
     }
 
     const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
-    const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
+    const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
 
     expect(reasoningEvents).toHaveLength(2)
     expect(displayEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(2)
+    if (
+      displayEvents[0].type === 'message.reasoning_display_block_upsert' &&
+      displayEvents[1].type === 'message.reasoning_display_block_upsert'
+    ) {
+      expect(displayEvents[0].block.blockId).toBe(displayEvents[1].block.blockId)
+      expect(displayEvents[0].block.type).toBe('text')
+      expect(displayEvents[1].block.type).toBe('text')
+      if (displayEvents[0].block.type === 'text' && displayEvents[1].block.type === 'text') {
+        expect(displayEvents[0].block.text).toBe('step 1')
+        expect(displayEvents[1].block.text).toBe('step 1 step 2')
+      }
+    }
 
     // Reasoning events come before text events in the sequence
     const lastReasoningIdx = allEvents.lastIndexOf(reasoningEvents[reasoningEvents.length - 1])
@@ -334,12 +360,13 @@ describe('mapDeepSeekChunkToEvents', () => {
     ]
 
     const allEvents: StarverseStreamEvent[] = []
+    const reasoningDisplayState = createDeepSeekReasoningDisplayAssemblerState()
     for (const chunk of chunks) {
-      allEvents.push(...mapDeepSeekChunkToEvents({ chunk, messageId: msgId }))
+      allEvents.push(...mapDeepSeekChunkToEvents({ chunk, messageId: msgId, reasoningDisplayState }))
     }
 
     const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
-    const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
+    const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
     const metaEvents = allEvents.filter((e) => e.type === 'meta.delta')
     const usageEvents = allEvents.filter((e) => e.type === 'usage.delta')
@@ -365,5 +392,60 @@ describe('mapDeepSeekChunkToEvents', () => {
     // stream.done emitted after finish
     const doneEvents = allEvents.filter((e) => e.type === 'stream.done')
     expect(doneEvents).toHaveLength(1)
+  })
+
+  it('dedupes final message.reasoning_content after streamed reasoning_content', () => {
+    const reasoningDisplayState = createDeepSeekReasoningDisplayAssemblerState()
+    const allEvents: StarverseStreamEvent[] = []
+    allEvents.push(...mapDeepSeekChunkToEvents({
+      chunk: reasoningChunk('gen_1', 'deepseek-r1', 'I am'),
+      messageId: msgId,
+      reasoningDisplayState,
+    }))
+    allEvents.push(...mapDeepSeekChunkToEvents({
+      chunk: reasoningChunk('gen_1', 'deepseek-r1', ' thinking.'),
+      messageId: msgId,
+      reasoningDisplayState,
+    }))
+    allEvents.push(...mapDeepSeekChunkToEvents({
+      chunk: finalReasoningChunk('gen_1', 'deepseek-r1', 'I am thinking.'),
+      messageId: msgId,
+      reasoningDisplayState,
+    }))
+
+    const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
+    const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block_upsert')
+    expect(reasoningEvents).toHaveLength(3)
+    expect(displayEvents).toHaveLength(2)
+    if (displayEvents[0].type === 'message.reasoning_display_block_upsert' && displayEvents[1].type === 'message.reasoning_display_block_upsert') {
+      expect(displayEvents[0].block.blockId).toBe(displayEvents[1].block.blockId)
+    }
+  })
+
+  it('uses final message.reasoning_content to cover a more complete final snapshot', () => {
+    const reasoningDisplayState = createDeepSeekReasoningDisplayAssemblerState()
+    const allEvents: StarverseStreamEvent[] = []
+    allEvents.push(...mapDeepSeekChunkToEvents({
+      chunk: reasoningChunk('gen_1', 'deepseek-r1', 'I am thinking'),
+      messageId: msgId,
+      reasoningDisplayState,
+    }))
+    allEvents.push(...mapDeepSeekChunkToEvents({
+      chunk: finalReasoningChunk('gen_1', 'deepseek-r1', 'I am thinking. Final check.'),
+      messageId: msgId,
+      reasoningDisplayState,
+    }))
+
+    const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block_upsert')
+    expect(displayEvents).toHaveLength(2)
+    if (displayEvents[0].type === 'message.reasoning_display_block_upsert' && displayEvents[1].type === 'message.reasoning_display_block_upsert') {
+      expect(displayEvents[0].block.blockId).toBe(displayEvents[1].block.blockId)
+      expect(displayEvents[1].block).toMatchObject({
+        type: 'text',
+        text: 'I am thinking. Final check.',
+        providerKey: 'deepseek',
+        sourceEventType: 'reasoning_content',
+      })
+    }
   })
 })

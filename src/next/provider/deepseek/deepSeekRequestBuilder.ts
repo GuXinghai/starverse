@@ -21,6 +21,9 @@ import { applyProviderGenerationParamsPatch } from '@/next/provider/providerGene
 export type DeepSeekMessage = Readonly<{
   role: 'system' | 'user' | 'assistant' | 'tool'
   content: string | null
+  name?: string
+  tool_call_id?: string
+  tool_calls?: ReadonlyArray<unknown>
 }>
 
 export type DeepSeekRequest = Readonly<{

@@ -137,6 +137,10 @@ export function streamEventToDomainEvent(event: StarverseStreamEvent): DomainEve
       return { type: 'MessageDeltaReasoningDetailBatch', messageId: event.messageId, choiceIndex: event.choiceIndex, details: event.details }
     case 'message.reasoning_display_block':
       return { type: 'MessageAppendReasoningDisplayBlock', messageId: event.messageId, choiceIndex: event.choiceIndex, block: event.block }
+    case 'message.reasoning_display_block_upsert':
+      return { type: 'MessageUpsertReasoningDisplayBlock', messageId: event.messageId, choiceIndex: event.choiceIndex, block: event.block }
+    case 'message.provider_native_content_upsert':
+      return { type: 'MessageUpsertProviderNativeContent', messageId: event.messageId, choiceIndex: event.choiceIndex, snapshot: event.snapshot }
     case 'usage.delta':
       return { type: 'UsageDelta', usage: event.usage }
     case 'meta.delta':
@@ -195,6 +199,10 @@ export function domainEventToStreamEvent(event: DomainEvent): StarverseStreamEve
       return { type: 'message.reasoning_raw_detail_batch', messageId: event.messageId, choiceIndex: event.choiceIndex, details: event.details }
     case 'MessageAppendReasoningDisplayBlock':
       return { type: 'message.reasoning_display_block', messageId: event.messageId, choiceIndex: event.choiceIndex, block: event.block }
+    case 'MessageUpsertReasoningDisplayBlock':
+      return { type: 'message.reasoning_display_block_upsert', messageId: event.messageId, choiceIndex: event.choiceIndex, block: event.block }
+    case 'MessageUpsertProviderNativeContent':
+      return { type: 'message.provider_native_content_upsert', messageId: event.messageId, choiceIndex: event.choiceIndex, snapshot: event.snapshot }
     case 'UsageDelta':
       return { type: 'usage.delta', usage: event.usage }
     case 'MetaDelta':

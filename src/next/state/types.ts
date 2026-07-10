@@ -1,4 +1,5 @@
 import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import type { ProviderNativeSnapshot } from '@/next/provider/providerNativeSnapshot'
 
 export type RunStatus =
   | 'idle'
@@ -187,6 +188,8 @@ export type DomainEvent =
   | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'MessageDeltaReasoningDetailBatch'; messageId: string; choiceIndex: number; details: unknown[] }>
   | Readonly<{ type: 'MessageAppendReasoningDisplayBlock'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
+  | Readonly<{ type: 'MessageUpsertReasoningDisplayBlock'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
+  | Readonly<{ type: 'MessageUpsertProviderNativeContent'; messageId: string; choiceIndex: number; snapshot: ProviderNativeSnapshot }>
   | Readonly<{ type: 'UsageDelta'; usage: unknown }>
   | Readonly<{
     type: 'MetaDelta'
@@ -209,6 +212,7 @@ export type MessageState = Readonly<{
   toolCalls: ToolCallVM[]
   reasoningDetailsRaw: unknown[]
   reasoningDisplayBlocks?: ReasoningDisplayBlock[]
+  providerNativeContents?: ProviderNativeSnapshot[]
   reasoningPanelState: ReasoningPanelState
   hasEncryptedReasoning: boolean
   reasoningDurationMs?: number | null

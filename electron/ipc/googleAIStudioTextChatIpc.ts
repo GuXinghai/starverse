@@ -4,6 +4,11 @@ import type { ProviderStreamConfig, ProviderStreamRequest, StarverseProviderErro
 import { streamViaGemini, type GeminiFetchFn } from '../../src/next/provider/gemini/geminiAdapter'
 import type { GeminiContent } from '../../src/next/provider/gemini/geminiRequestBuilder'
 import {
+  cloneGeminiProviderNativeContent,
+  normalizeGeminiProviderNativeSnapshot,
+  type GeminiProviderNativeSnapshot,
+} from '../../src/next/provider/gemini/geminiProviderNativeContent'
+import {
   isGeminiThinkingLevel,
   normalizeGeminiThinkingConfig,
   type GeminiThinkingConfig,
@@ -29,6 +34,7 @@ export const GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS = [
 export type GoogleAIStudioTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
   content: string
+  geminiNativeContent?: GeminiProviderNativeSnapshot
 }>
 
 export type GoogleAIStudioTextChatPayload = Readonly<{
@@ -117,14 +123,27 @@ function normalizeMessages(raw: unknown, allowEmptyCurrentUser = false): GoogleA
     if (!item || typeof item !== 'object') return null
     const role = (item as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant') return null
-    const content = String((item as Record<string, unknown>).content ?? '').trim()
+    const record = item as Record<string, unknown>
+    const content = String(record.content ?? '').trim()
+    let geminiNativeContent: GeminiProviderNativeSnapshot | undefined
+    if (role === 'assistant' && record.geminiNativeContent !== undefined) {
+      try {
+        const snapshot = normalizeGeminiProviderNativeSnapshot(record.geminiNativeContent)
+        if (snapshot.status !== 'final') return null
+        geminiNativeContent = snapshot
+      } catch {
+        return null
+      }
+    }
     if (!content) {
       if (allowEmptyCurrentUser && index === sliced.length - 1 && role === 'user') {
         out.push({ role, content: '' })
+      } else if (role === 'assistant' && geminiNativeContent) {
+        out.push({ role, content: '', geminiNativeContent })
       }
       continue
     }
-    out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS) })
+    out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS), ...(geminiNativeContent ? { geminiNativeContent } : {}) })
   }
   if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
   return out
@@ -341,6 +360,9 @@ function sendWireEnd(sender: WebContents, requestId: string) {
 }
 
 function toGeminiContent(message: GoogleAIStudioTextChatMessage): GeminiContent {
+  if (message.role === 'assistant' && message.geminiNativeContent) {
+    return cloneGeminiProviderNativeContent(message.geminiNativeContent.content) as GeminiContent
+  }
   return {
     role: message.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: message.content }],

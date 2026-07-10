@@ -14,24 +14,7 @@ import { applyProviderGenerationParamsPatch } from '@/next/provider/providerGene
 // Anthropic request types — provider-native schema, contained here
 // ---------------------------------------------------------------------------
 
-export type AnthropicContentBlock = Readonly<
-  | { type: 'text'; text: string }
-  | {
-      type: 'image'
-      source:
-        | Readonly<{ type: 'base64'; media_type: string; data: string }>
-        | Readonly<{ type: 'url'; url: string }>
-        | Readonly<{ type: 'file'; file_id: string }>
-    }
-  | {
-      type: 'document'
-      source:
-        | Readonly<{ type: 'base64'; media_type: string; data: string }>
-        | Readonly<{ type: 'url'; url: string }>
-        | Readonly<{ type: 'file'; file_id: string }>
-      title?: string
-    }
->
+export type AnthropicContentBlock = Readonly<Record<string, unknown>>
 
 export type AnthropicMessage = Readonly<{
   role: 'user' | 'assistant'

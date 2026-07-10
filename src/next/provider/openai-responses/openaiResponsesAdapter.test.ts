@@ -239,9 +239,51 @@ describe('streamViaOpenAIResponses', () => {
     }))
 
     const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     expect(reasoningEvents).toHaveLength(2)
+    expect(displayEvents).toHaveLength(2)
+    expect(displayEvents.at(-1)).toMatchObject({
+      type: 'message.reasoning_display_block_upsert',
+      block: { text: 'Thinking step 1 Thinking step 2' },
+    })
     expect(textEvents).toHaveLength(0)
+  })
+
+  it('strips reasoning display blocks from historical context messages before sending', async () => {
+    const response = makeSseResponse(textDeltaSse('Hi'))
+    const fetch = mockFetch(response)
+
+    await collectEvents(streamViaOpenAIResponses({
+      ...makeRequest(),
+      contextMessages: [
+        {
+          role: 'assistant',
+          content: 'previous answer',
+          reasoningDisplayBlocks: [
+            {
+              blockId: 'openai-reasoning',
+              ordinal: 0,
+              type: 'text',
+              text: 'private reasoning summary',
+              providerKey: 'openai-responses',
+            },
+          ],
+          reasoningDetailsRaw: [{ type: 'reasoning_summary', text: 'private reasoning summary' }],
+        },
+      ],
+    }, {
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.input[0]).toEqual({ role: 'assistant', content: 'previous answer' })
+    expect(JSON.stringify(body)).not.toContain('reasoningDisplayBlocks')
+    expect(JSON.stringify(body)).not.toContain('reasoningDetailsRaw')
+    expect(JSON.stringify(body)).not.toContain('private reasoning summary')
   })
 
   it('mixed reasoning + visible text order is preserved', async () => {
