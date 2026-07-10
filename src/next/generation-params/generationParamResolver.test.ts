@@ -96,6 +96,41 @@ describe('generationParamResolver', () => {
     })
   })
 
+  it('uses omit to disable OpenAI Responses reasoning summary without sending a wire value', () => {
+    const resolved = resolveGenerationParamsFromLayers({
+      profile: openaiResponsesGenerationProfile,
+      modelId: 'gpt-5.4-nano',
+      layers: {
+        conversation: { reasoningSummary: { mode: 'omit' } },
+        global: { reasoningSummary: { mode: 'custom', value: 'detailed' } },
+      },
+    })
+
+    expect(resolved.errors).toEqual([])
+    expect(resolved.requestParams.reasoningSummary).toBeUndefined()
+    expect(resolved.decisions.reasoningSummary).toMatchObject({
+      state: 'omitted',
+      source: 'conversation',
+    })
+  })
+
+  it('does not send OpenAI Responses reasoning summary for non-reasoning models', () => {
+    const resolved = resolveGenerationParamsFromLayers({
+      profile: openaiResponsesGenerationProfile,
+      modelId: 'gpt-4.1-mini',
+      layers: {
+        conversation: { reasoningSummary: { mode: 'custom', value: 'auto' } },
+      },
+    })
+
+    expect(resolved.errors).toEqual([])
+    expect(resolved.requestParams.reasoningSummary).toBeUndefined()
+    expect(resolved.decisions.reasoningSummary).toMatchObject({ state: 'unsupported' })
+    expect(resolved.warnings).toEqual([
+      expect.objectContaining({ code: 'unsupported_param', key: 'reasoningSummary' }),
+    ])
+  })
+
   it('does not send unsupported OpenAI Responses reasoning effort for non-reasoning models', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: openaiResponsesGenerationProfile,

@@ -91,6 +91,35 @@ describe('buildResponsesRequest', () => {
     expect(req.reasoning).toEqual({ summary: 'concise' })
   })
 
+  it.each(['auto', 'concise', 'detailed'] as const)('allows reasoning summary %s as a wire value', (summary) => {
+    const req = buildResponsesRequest({
+      model: 'gpt-5.4-nano',
+      messages: baseMessages,
+      config: baseConfig({ generationParams: { reasoning: { summary } } }),
+    })
+
+    expect(req.reasoning).toEqual({ summary })
+  })
+
+  it.each(['none', 'off', null, false, 'verbose'] as const)('rejects provider-native reasoning summary %s', (summary) => {
+    expect(() => buildResponsesRequest({
+      model: 'gpt-5.4-nano',
+      messages: baseMessages,
+      config: baseConfig({ generationParams: { reasoning: { summary } } }),
+    })).toThrow(/reasoning\.summary must be omitted or one of auto, concise, detailed/)
+  })
+
+  it('omits empty reasoning objects instead of sending reasoning: {}', () => {
+    const req = buildResponsesRequest({
+      model: 'gpt-5.4-nano',
+      messages: baseMessages,
+      config: baseConfig({ generationParams: { reasoning: {} } }),
+    })
+
+    expect(req.reasoning).toBeUndefined()
+    expect(Object.prototype.hasOwnProperty.call(req, 'reasoning')).toBe(false)
+  })
+
   it('does not include reasoning when mode is auto', () => {
     const req = buildResponsesRequest({
       model: 'o3',

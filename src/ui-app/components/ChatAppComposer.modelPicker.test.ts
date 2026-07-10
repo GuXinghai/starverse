@@ -308,10 +308,73 @@ describe('ChatAppComposer model picker integration', () => {
 
     await user.click(within(chip).getByTestId('capability-chip-chevron'))
     const menu = await screen.findByTestId('capability-chip-menu')
+    expect(within(menu).getByText(t('chat.generationParams.reasoning.summary'))).toBeInTheDocument()
+    expect(within(menu).getByRole('button', { name: t('chat.generationParams.reasoning.off') })).toBeInTheDocument()
+    expect(within(menu).getByRole('button', { name: t('chat.generationParams.reasoning.concise') })).toBeInTheDocument()
     await user.click(within(menu).getByRole('button', { name: 'xhigh' }))
 
     expect(updateGenerationParamsLayer).toHaveBeenCalledWith({
       reasoningEffort: { mode: 'custom', value: 'xhigh' },
+    })
+  })
+
+  it('updates OpenAI Responses reasoning summary from the composer reasoning menu', async () => {
+    const user = userEvent.setup()
+    const updateGenerationParamsLayer = vi.fn()
+
+    const Wrapper = defineComponent({
+      components: { ChatAppComposer },
+      setup() {
+        const draft = ref('')
+        const model = ref('gpt-5.4-nano')
+        const requestedReasoningEffort = ref<'auto'>('auto')
+        const requestedReasoningExclude = ref(false)
+        const sessionConfig = computed(() => ({
+          ...createSessionConfig(),
+          model: { selectedProviderId: 'openai_responses' as const, selectedModelKey: model.value },
+          generationParams: {
+            detail: {
+              reasoningEffort: { mode: 'custom' as const, value: 'auto' },
+              reasoningSummary: { mode: 'omit' as const },
+            },
+          },
+        }))
+        return {
+          draft,
+          model,
+          requestedReasoningEffort,
+          requestedReasoningExclude,
+          sessionConfig,
+          updateGenerationParamsLayer,
+        }
+      },
+      template: `
+        <ChatAppComposer
+          v-model:draft="draft"
+          v-model:model="model"
+          v-model:requestedReasoningEffort="requestedReasoningEffort"
+          v-model:requestedReasoningExclude="requestedReasoningExclude"
+          :disabled="false"
+          :isRunning="false"
+          :sessionConfig="sessionConfig"
+          :modelCatalog="[]"
+          :showHiddenModelsInPickers="false"
+          :modelCatalogNotice="null"
+          @updateGenerationParamsLayer="updateGenerationParamsLayer"
+        />
+      `,
+    })
+
+    render(Wrapper)
+
+    const chip = screen.getByTestId('reasoning-chip')
+    await user.click(within(chip).getByTestId('capability-chip-chevron'))
+    const menu = await screen.findByTestId('capability-chip-menu')
+    await user.click(within(menu).getByRole('button', { name: t('chat.generationParams.reasoning.detailed') }))
+
+    expect(updateGenerationParamsLayer).toHaveBeenCalledWith({
+      reasoningEffort: { mode: 'custom', value: 'auto' },
+      reasoningSummary: { mode: 'custom', value: 'detailed' },
     })
   })
 

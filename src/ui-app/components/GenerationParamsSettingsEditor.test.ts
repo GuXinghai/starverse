@@ -84,4 +84,27 @@ describe('GenerationParamsSettingsEditor', () => {
 
     expect(screen.queryByTestId('generation-param-mode-reasoningEffort')).toBeNull()
   })
+
+  it('uses OpenAI Responses summary enum values without legacy none', async () => {
+    render(GenerationParamsSettingsEditor, {
+      props: {
+        modelValue: {
+          reasoningSummary: { mode: 'custom', value: 'auto' },
+        },
+        profile: openaiResponsesGenerationProfile,
+        modelId: 'gpt-5.4-nano',
+        collapsible: false,
+      },
+    })
+
+    const value = screen.getByTestId('generation-param-value-reasoningSummary') as HTMLSelectElement
+    expect(Array.from(value.options).map((option) => option.value)).toEqual([
+      'auto',
+      'concise',
+      'detailed',
+    ])
+    expect(within(value).queryByText('none')).not.toBeInTheDocument()
+
+    expect(screen.getByTestId('generation-param-mode-reasoningSummary')).toHaveValue('custom')
+  })
 })
