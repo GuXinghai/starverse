@@ -27,7 +27,6 @@ import { mapGeminiInteractionResponseToStarverse, mapGeminiStreamChunkToStarvers
 import { createGeminiProviderNativeAccumulator } from '@/next/provider/gemini/geminiProviderNativeAccumulator'
 import { clonePlainJsonObject } from '@/next/provider/gemini/geminiProviderNativeContent'
 import {
-  buildGeminiFinalThoughtSummaryEvents,
   buildGeminiThoughtSummaryDeltaEvents,
   createGeminiReasoningDisplayAssemblerState,
 } from '@/next/provider/gemini/geminiReasoningDisplayAssembler'
@@ -42,6 +41,7 @@ export type GeminiTransportOptions = Readonly<{
   apiKey: string
   model?: string
   timeoutMs?: number
+  captureSerializedRequest?: (serializedBody: string) => void
 }>
 
 export type GeminiFetchFn = (
@@ -126,10 +126,12 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
 
   let response: Response
   try {
+    const serializedBody = JSON.stringify(body)
+    try { transport.captureSerializedRequest?.(serializedBody) } catch { /* raw capture is non-fatal */ }
     response = await transport.fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body),
+      body: serializedBody,
       signal: signal ?? undefined,
     })
   } catch (err: any) {
@@ -176,17 +178,11 @@ export const streamViaGemini: RuntimeProviderStreamAdapter = async function* str
       )
       for (const event of nativeEvents) yield event
       const mapped = mapGeminiStreamChunkToStarverse(sseEvent.data, assistantMessageId, { eventOrdinal })
-      const displayEvents = hasFinishReason
-        ? buildGeminiFinalThoughtSummaryEvents({
-            response: sseEvent.data,
-            messageId: assistantMessageId,
-            state: reasoningDisplayState,
-          })
-        : buildGeminiThoughtSummaryDeltaEvents({
-            response: sseEvent.data,
-            messageId: assistantMessageId,
-            state: reasoningDisplayState,
-          })
+      const displayEvents = buildGeminiThoughtSummaryDeltaEvents({
+        response: sseEvent.data,
+        messageId: assistantMessageId,
+        state: reasoningDisplayState,
+      })
       eventOrdinal += 1
       const terminalEvents: StarverseStreamEvent[] = []
       for (const event of mapped) {
@@ -283,10 +279,12 @@ async function* streamViaGeminiInteractionsImageGeneration(
 
   let response: Response
   try {
+    const serializedBody = JSON.stringify(body)
+    try { transport.captureSerializedRequest?.(serializedBody) } catch { /* raw capture is non-fatal */ }
     response = await transport.fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body),
+      body: serializedBody,
       signal: signal ?? undefined,
     })
   } catch (err: any) {

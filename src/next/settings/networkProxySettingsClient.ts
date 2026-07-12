@@ -3,7 +3,7 @@ import {
   DEFAULT_NETWORK_PROXY_SETTINGS,
   normalizeNetworkProxySettings,
   type NetworkProxySettings,
-} from '@/next/plugin-distribution/networkProxyShared'
+} from '@/shared/plugin-distribution/networkProxyShared'
 
 export type LibreOfficeProxyProbeResult = Readonly<{
   ok: boolean

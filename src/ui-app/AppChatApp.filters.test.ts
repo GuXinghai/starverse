@@ -12,6 +12,9 @@ describe('ui-app AppChatApp (filters: include/exclude)', () => {
 
     const invoke = vi.fn(async (method: string, _params?: any) => {
       if (method === 'project.list') return []
+      if (method === 'project.getInbox') return null
+      if (method === 'project.countConversationsBatch') return { counts: {} }
+      if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
       if (method === 'convo.list') return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       if (method === 'branch.ensureDefault') return { id: 'b1', convoId: 'c1', headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
       if (method === 'branch.list') return [{ id: 'b1', convoId: 'c1', headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
@@ -20,7 +23,7 @@ describe('ui-app AppChatApp (filters: include/exclude)', () => {
         return {
           messages: [
             { id: 'u1', convoId: 'c1', role: 'user', seq: 1, createdAt: 1, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId: 'c1', role: 'assistant', seq: 2, createdAt: 2, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: null },
+            { id: 'a1', convoId: 'c1', role: 'assistant', seq: 2, createdAt: 2, parentId: 'u1', status: 'error', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: null },
           ],
           turns: [
             { questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false },
@@ -32,6 +35,12 @@ describe('ui-app AppChatApp (filters: include/exclude)', () => {
       if (method === 'context.buildForBranch') {
         return { messages: [], debug: { branchId: 'b1', excludedQuestionIds: [], includedMessageIds: [], chosenAnswerRootByQuestionId: { u1: 'a1' } } }
       }
+
+      if (method === 'messageAsset.listByMessageIds') {
+        return await new Promise(() => {})
+      }
+      if (method === 'messageError.listByMessageIds') throw new Error('error hydration unavailable')
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') throw new Error('reasoning hydration unavailable')
 
       if (method === 'branchFilter.set' || method === 'branchFilter.clear') return { ok: true }
       return { ok: true }
@@ -50,11 +59,16 @@ describe('ui-app AppChatApp (filters: include/exclude)', () => {
     render(AppChatApp)
 
     await screen.findByText('Q1')
+    expect(await screen.findByTestId('copy-assistant-text-a1')).toBeEnabled()
+    expect(await screen.findByTestId('raw-data-a-a1')).toBeEnabled()
+    expect(await screen.findByTestId('retry-a-a1')).toBeEnabled()
+    expect(screen.queryByText('该回答未选入上下文')).not.toBeInTheDocument()
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    await waitFor(() => expect(invoke).toHaveBeenCalledWith('messageError.listByMessageIds', { messageIds: ['a1'] }))
 
     const btn = await screen.findByTestId('toggle-q-u1')
     await user.click(btn)
 
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith('branchFilter.set', expect.objectContaining({ branchId: 'b1', targetType: 'question', targetId: 'u1', mode: 'exclude' }))
 
     // Refresh called (context.getRenderableTurns invoked again).

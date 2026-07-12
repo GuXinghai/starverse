@@ -514,14 +514,13 @@ describe('streamViaGemini', () => {
     const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
-    expect(reasoningEvents).toHaveLength(3)
+    expect(reasoningEvents).toHaveLength(2)
     expect(displayEvents).toHaveLength(2)
     if (displayEvents[0].type === 'message.reasoning_display_block_upsert' && displayEvents[1].type === 'message.reasoning_display_block_upsert') {
       expect(displayEvents[0].block.blockId).toBe(displayEvents[1].block.blockId)
       expect(displayEvents[0].block.type === 'text' ? displayEvents[0].block.text : undefined).toBe('Let me think...')
       expect(displayEvents[1].block.type === 'text' ? displayEvents[1].block.text : undefined).toBe('Let me think... Okay.')
     }
-    expect(JSON.stringify(reasoningEvents[2])).toContain('gemini_thought_summary_final_empty')
     expect(textEvents).toHaveLength(0)
   })
 
@@ -758,7 +757,7 @@ describe('streamViaGemini', () => {
     const doneEvents = events.filter((e) => e.type === 'stream.done')
 
     // Exact counts
-    expect(reasoningEvents).toHaveLength(3)
+    expect(reasoningEvents).toHaveLength(2)
     expect(displayEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(1)
     expect(usageEvents).toHaveLength(1)

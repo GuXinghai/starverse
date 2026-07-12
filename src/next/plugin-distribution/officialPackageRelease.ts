@@ -5,7 +5,7 @@ import {
   type PackageDownloadTransport,
   type StagedDownloadedMemoryPackage,
 } from './packageDownloader'
-import type { NetworkProxySettings } from './networkProxy'
+import type { NetworkProxySettings } from '@/shared/plugin-distribution/networkProxy'
 import {
   verifyPluginPackageCryptographicTrust,
   type CryptoVerificationEnvironment,

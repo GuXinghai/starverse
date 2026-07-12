@@ -45,6 +45,7 @@ describe('googleAIStudioTextChat renderer bridge', () => {
       providerKey: 'google_ai_studio',
       sourceApi: 'gemini_generate_content',
       candidateIndex: 0,
+      snapshotKey: 'candidate:0',
       status: 'final',
       content: {
         role: 'model',
@@ -103,10 +104,10 @@ describe('googleAIStudioTextChat renderer bridge', () => {
         assistantMessageId: 'assistant_1',
         model: 'gemini-2.5-flash',
         messages: [{ role: 'user', content: 'hello' }],
-        geminiThinking: {
-          mode: 'budget',
-          thinkingBudget: 2048,
-          includeThoughts: true,
+        generationParams: {
+          generationConfig: {
+            thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+          },
         },
       })
       queueMicrotask(() => {
@@ -143,10 +144,10 @@ describe('googleAIStudioTextChat renderer bridge', () => {
     }
 
     const events = await collect({
-      geminiThinking: {
-        mode: 'budget',
-        thinkingBudget: 2048,
-        includeThoughts: true,
+      generationParams: {
+        generationConfig: {
+          thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+        },
       },
     })
     expect(events.some((event: any) => event.type === 'MessageDeltaText' && event.text === 'gemini hi')).toBe(true)

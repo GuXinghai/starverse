@@ -19,8 +19,73 @@ import {
   type DfcTargetKind,
 } from '@/shared/files/documentFormatConversion'
 import { normalizeDfcAttachmentDefaults, type DfcAttachmentDefaults } from '@/shared/files/dfcAttachmentDefaults'
+import {
+  compatibleOrdinaryHeadersSchema,
+  compatibleEndpointSecurityPolicySchema,
+  compatibleProfileVersionSchema,
+  compatibleQueryConfigSchema,
+  compatibleSensitiveHeaderRefsSchema,
+  credentialVersionRefSchema,
+  endpointRevisionIdSchema,
+  providerInstanceIdSchema,
+  requestProfileIdSchema,
+  responseProfileIdSchema,
+  type CompatibleRendererCredentialDescriptor,
+  type CompatibleRendererEndpointRevision,
+  type CompatibleRendererProviderInstance,
+} from '@/shared/provider/openai-chat-compatible'
 
 const nonEmpty = z.string().trim().min(1)
+
+const compatibleRendererProviderSchema = z.object({
+  providerInstanceId: providerInstanceIdSchema,
+  protocolKey: z.literal('openai_chat_compatible'),
+  displayName: z.string().trim().min(1).max(256),
+  status: z.enum(['active', 'disabled', 'deleted']),
+  createdAtMs: z.number().int().nonnegative(),
+  updatedAtMs: z.number().int().nonnegative(),
+  deletedAtMs: z.number().int().nonnegative().nullable(),
+}).strict()
+
+const compatibleRendererCredentialSchema = z.object({
+  credentialVersionRef: credentialVersionRefSchema,
+  providerInstanceId: providerInstanceIdSchema,
+  version: compatibleProfileVersionSchema,
+  authMode: z.enum(['none', 'bearer', 'basic', 'custom_headers']),
+  configured: z.boolean(),
+  maskState: z.enum(['not_applicable', 'not_configured', 'configured_masked']),
+  sensitiveHeaderNames: z.array(z.string().trim().min(1).max(128)).max(32),
+  deletedAtMs: z.number().int().nonnegative().nullable(),
+}).strict().superRefine((value, ctx) => {
+  const expectedMaskState = value.authMode === 'none'
+    ? 'not_applicable'
+    : value.configured ? 'configured_masked' : 'not_configured'
+  if (value.maskState !== expectedMaskState) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['maskState'], message: 'Credential mask state is inconsistent.' })
+  }
+  if (value.authMode !== 'custom_headers' && value.sensitiveHeaderNames.length > 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sensitiveHeaderNames'], message: 'Sensitive header names require custom_headers auth.' })
+  }
+})
+
+const compatibleRendererEndpointSchema = z.object({
+  endpointRevisionId: endpointRevisionIdSchema,
+  providerInstanceId: providerInstanceIdSchema,
+  revision: compatibleProfileVersionSchema,
+  baseUrl: z.string().url().max(2048),
+  allowInsecureHttp: z.boolean(),
+  securityPolicy: compatibleEndpointSecurityPolicySchema,
+  authMode: z.enum(['none', 'bearer', 'basic', 'custom_headers']),
+  credentialVersionRef: credentialVersionRefSchema.nullable(),
+  ordinaryHeaders: compatibleOrdinaryHeadersSchema,
+  sensitiveHeaderRefs: compatibleSensitiveHeaderRefsSchema,
+  query: compatibleQueryConfigSchema,
+  requestProfileId: requestProfileIdSchema,
+  requestProfileVersion: compatibleProfileVersionSchema,
+  responseProfileId: responseProfileIdSchema,
+  responseProfileVersion: compatibleProfileVersionSchema,
+  createdAtMs: z.number().int().nonnegative(),
+}).strict()
 
 export type DecodedProjectSummary = Readonly<{
   id: string
@@ -49,6 +114,8 @@ export type DecodedPersistedMessage = Readonly<{
   createdAt: number
   body: string
   meta: unknown
+  routeProvenanceId?: string
+  choiceIndex?: number
 }>
 
 export type DecodedMessageAsset = Readonly<{
@@ -413,6 +480,8 @@ const persistedMessageSchema = z.object({
   createdAt: z.number().finite().default(0),
   body: z.string().default(''),
   meta: z.unknown().optional(),
+  routeProvenanceId: z.string().trim().min(1).optional(),
+  choiceIndex: z.number().int().nonnegative().max(1024).optional(),
 }).transform((row) => ({
   ...row,
   meta: row.meta ?? null,
@@ -1338,6 +1407,51 @@ const generationParamsDefaultsSchema = z.object({
   value: definedUnknownSchema.nullable(),
 })
 
+const contextBuiltMessageSchema = z.object({
+  id: nonEmpty,
+  convoId: nonEmpty,
+  role: nonEmpty,
+  seq: z.number().int().nonnegative(),
+  createdAt: z.number().int().nonnegative(),
+  parentId: nonEmpty.nullable(),
+  status: nonEmpty,
+  answerRootId: nonEmpty.nullable(),
+  questionId: nonEmpty.nullable(),
+  body: z.string(),
+  meta: z.unknown().nullable(),
+  routeProvenanceId: z.string().trim().min(1).nullable().optional(),
+  choiceIndex: z.number().int().nonnegative().max(1024).nullable().optional(),
+}).strict().transform((row) => ({
+  ...row,
+  routeProvenanceId: row.routeProvenanceId ?? null,
+  choiceIndex: row.choiceIndex ?? null,
+}))
+
+const contextBuildDebugSchema = z.object({
+  branchId: nonEmpty,
+  excludedQuestionIds: z.array(nonEmpty),
+  includedMessageIds: z.array(nonEmpty),
+  chosenAnswerRootByQuestionId: z.record(nonEmpty),
+}).strict()
+
+const contextBuildResultSchema = z.object({
+  messages: z.array(contextBuiltMessageSchema),
+  debug: contextBuildDebugSchema.optional(),
+}).strict()
+
+const renderableTurnSchema = z.object({
+  questionId: nonEmpty,
+  chosenAnswerRootId: nonEmpty.nullable(),
+  questionMode: z.enum(['include', 'exclude']),
+  answerMode: z.enum(['include', 'exclude']),
+  effectiveMode: z.enum(['include', 'exclude']),
+  lockedByQuestionExclude: z.boolean(),
+}).strict()
+
+const renderableTurnsResultSchema = contextBuildResultSchema.extend({
+  turns: z.array(renderableTurnSchema),
+}).strict()
+
 const imageGenerationDefaultSchema = z.object({
   value: definedUnknownSchema.nullable(),
 })
@@ -1474,6 +1588,8 @@ export function decodeMessageListResponse(raw: unknown): DecodedPersistedMessage
     createdAt: row.createdAt ?? 0,
     body: row.body ?? '',
     meta: row.meta ?? null,
+    ...(row.routeProvenanceId ? { routeProvenanceId: row.routeProvenanceId } : {}),
+    ...(row.choiceIndex !== undefined ? { choiceIndex: row.choiceIndex } : {}),
   }))
 }
 
@@ -1487,6 +1603,8 @@ export function decodeMessageAppendResponse(raw: unknown): DecodedPersistedMessa
     createdAt: row.createdAt ?? 0,
     body: row.body ?? '',
     meta: row.meta ?? null,
+    ...(row.routeProvenanceId ? { routeProvenanceId: row.routeProvenanceId } : {}),
+    ...(row.choiceIndex !== undefined ? { choiceIndex: row.choiceIndex } : {}),
   }
 }
 
@@ -1887,6 +2005,14 @@ export function decodeGenerationParamsDefaultsResponse(raw: unknown): unknown | 
   return decodeWithSchema('settings.getGenerationParamsDefaults', generationParamsDefaultsSchema, raw).value
 }
 
+export function decodeContextBuildForBranchResponse(raw: unknown) {
+  return decodeWithSchema('context.buildForBranch', contextBuildResultSchema, raw)
+}
+
+export function decodeContextRenderableTurnsResponse(raw: unknown) {
+  return decodeWithSchema('context.getRenderableTurns', renderableTurnsResultSchema, raw)
+}
+
 export function decodeImageGenerationDefaultResponse(raw: unknown): unknown | null {
   return decodeWithSchema('settings.getImageGenerationDefault', imageGenerationDefaultSchema, raw).value
 }
@@ -1929,4 +2055,16 @@ export function decodeMessageFinalizeReasoningDetailsResponse(raw: unknown): boo
 
 export function decodeBranchSetHeadResponse(raw: unknown): boolean {
   return decodeStrictAck('branch.setHead', raw)
+}
+
+export function decodeCompatibleRendererProvider(raw: unknown): CompatibleRendererProviderInstance {
+  return decodeWithSchema('compatibleProvider.rendererSafe', compatibleRendererProviderSchema, raw)
+}
+
+export function decodeCompatibleRendererCredential(raw: unknown): CompatibleRendererCredentialDescriptor {
+  return decodeWithSchema('compatibleCredential.rendererSafe', compatibleRendererCredentialSchema, raw)
+}
+
+export function decodeCompatibleRendererEndpoint(raw: unknown): CompatibleRendererEndpointRevision {
+  return decodeWithSchema('compatibleEndpoint.rendererSafe', compatibleRendererEndpointSchema, raw)
 }

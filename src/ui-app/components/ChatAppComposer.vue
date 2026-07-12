@@ -7,17 +7,14 @@ import type { ChatSessionConfig, ChatSessionConfigAspectRatio, ChatSessionConfig
 import type { ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
 import type { GenerationParamsLayer, ResolvedGenerationParams } from '@/next/generation-params/generationParamTypes'
 import {
-  DEFAULT_CHAT_PROVIDER_ID,
+  OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
   buildProviderModelKey,
   type ChatModelSelection,
 } from '@/next/provider/modelSelection'
 import { GOOGLE_AI_STUDIO_PROVIDER_KEY } from '@/next/provider/gemini/geminiModelSource'
 import {
-  DEFAULT_GEMINI_THINKING_CONFIG,
-  normalizeGeminiThinkingConfig,
   resolveGeminiThinkingCapability,
-  type GeminiThinkingConfig,
   type GeminiThinkingLevel,
 } from '@/next/provider/gemini/geminiThinkingPolicy'
 import {
@@ -37,6 +34,8 @@ import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 import { formatModelIndicatorName } from './modelIndicatorName'
 import { t } from '@/shared/i18n'
+import { createCompatibleCatalogClient } from '@/next/modelCatalog/compatibleCatalogClient'
+import { compatibleConfigurationSelectionSchema, createCompatibleProviderRegistryClient, type CompatibleConfigurationPickerSource, type CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
 
 const props = defineProps<{
   draft: string
@@ -74,6 +73,7 @@ const defaultSessionConfig: ChatSessionConfig = {
   model: {
     selectedProviderId: null,
     selectedModelKey: null,
+    compatibleSelection: null,
   },
   reasoning: {
     enabled: false,
@@ -94,18 +94,16 @@ const defaultSessionConfig: ChatSessionConfig = {
   generationParams: {
     detail: null,
   },
-  googleAIStudioThinking: DEFAULT_GEMINI_THINKING_CONFIG,
 }
 
 const emit = defineEmits<{
   (e: 'update:draft', value: string): void
-  (e: 'updateModel', value: ChatModelSelection): void
+  (e: 'updateModel', value: ChatModelSelection | CompatibleConfigurationSelection): void
   (e: 'update:model', value: string): void
   (e: 'refreshProviderModelsRequested'): void
   (e: 'updateReasoningEnabled', value: boolean): void
   (e: 'updateReasoningEffort', value: 'low' | 'medium' | 'high'): void
   (e: 'updateGenerationParamsLayer', value: GenerationParamsLayer | null): void
-  (e: 'updateGoogleAIStudioThinking', value: Partial<GeminiThinkingConfig>): void
   (e: 'updateWebSearchEnabled', value: boolean): void
   (e: 'updateWebSearchLevel', value: 'low' | 'high'): void
   (e: 'updateImageGenerationEnabled', value: boolean): void
@@ -351,29 +349,54 @@ const resolvedSendButtonMode = computed(() => {
 })
 const isSendButtonStop = computed(() => resolvedSendButtonMode.value === 'stop_square')
 const isSendButtonBusy = computed(() => resolvedSendButtonMode.value === 'busy_spinner')
+const compatibleConfigurationSelection = computed(() => props.sessionConfig?.model.compatibleSelection ?? null)
+const compatibleConfigurationSources = ref<CompatibleConfigurationPickerSource[]>([])
 const isSendButtonEnabled = computed(() => resolvedSendButtonMode.value === 'enabled_arrow')
 const historyIncompatibleSummary = computed(() => props.historyIncompatibleSummary ?? null)
 const selectedModel = computed(() => {
   const normalized = normalizeModelKey(resolvedSessionConfig.value.model.selectedModelKey)
-  return normalized || DEFAULT_OPENROUTER_MODEL_ID
+  return normalized
 })
-const selectedProviderId = computed(() => resolvedSessionConfig.value.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID)
-const selectedModelSelection = computed<ChatModelSelection>(() => ({
-  providerId: selectedProviderId.value,
-  modelId: selectedModel.value,
-}))
+const selectedProviderId = computed(() => resolvedSessionConfig.value.model.selectedProviderId ?? null)
+const selectedModelSelection = computed<ChatModelSelection | null>(() => selectedProviderId.value && selectedModel.value
+  ? { providerId: selectedProviderId.value, modelId: selectedModel.value }
+  : null)
 const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === GOOGLE_AI_STUDIO_PROVIDER_KEY)
 const isOpenAIResponsesSelected = computed(() => selectedProviderId.value === OPENAI_RESPONSES_PROVIDER_KEY)
 const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModel.value))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModel.value))
 const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModel.value }))
-const googleThinkingConfig = computed(() => normalizeGeminiThinkingConfig({
-  model: selectedModel.value,
-  config: resolvedSessionConfig.value.googleAIStudioThinking ?? DEFAULT_GEMINI_THINKING_CONFIG,
-}))
+function customGoogleGenerationParamValue(key: 'thinkingBudget' | 'thinkingLevel' | 'includeThoughts' | 'thoughtSummaryMode'): unknown {
+  const setting = resolvedSessionConfig.value.generationParams.detail?.[key]
+  if (setting?.mode === 'custom') return setting.value
+  const decision = props.generationParamsResolved?.decisions[key]
+  return decision && (decision.state === 'sent' || decision.state === 'deprecated') ? decision.value : undefined
+}
+const googleThinkingConfig = computed(() => {
+  const capability = googleThinkingCapability.value
+  const level = customGoogleGenerationParamValue('thinkingLevel')
+  const budget = customGoogleGenerationParamValue('thinkingBudget')
+  return {
+    thinkingBudget: typeof budget === 'number'
+      ? budget
+      : capability.kind === 'budget' ? capability.defaultBudget : 8192,
+    thinkingLevel: typeof level === 'string'
+      ? level as GeminiThinkingLevel
+      : capability.kind === 'level' ? capability.defaultLevel : 'low' as GeminiThinkingLevel,
+    includeThoughts: isGoogleImageGenerationModel.value
+      ? customGoogleGenerationParamValue('thoughtSummaryMode') === 'auto'
+      : customGoogleGenerationParamValue('includeThoughts') === true,
+  }
+})
 const googleThinkingEnabled = computed(() => {
   if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
-  return googleThinkingConfig.value.mode !== 'auto' && googleThinkingCapability.value.kind !== 'unsupported'
+  if (googleThinkingCapability.value.kind === 'budget') {
+    return resolvedSessionConfig.value.generationParams.detail?.thinkingBudget?.mode === 'custom'
+  }
+  if (googleThinkingCapability.value.kind === 'level') {
+    return resolvedSessionConfig.value.generationParams.detail?.thinkingLevel?.mode === 'custom'
+  }
+  return false
 })
 const googleThinkingActiveLabel = computed(() => {
   if (isGoogleImageGenerationModel.value) {
@@ -504,7 +527,7 @@ const modelNameById = computed(() => {
     const displayName = formatModelIndicatorName(item.name)
     if (!modelId || !displayName) continue
     map.set(modelId, displayName)
-    map.set(buildProviderModelKey({ providerId: DEFAULT_CHAT_PROVIDER_ID, modelId }), displayName)
+    map.set(buildProviderModelKey({ providerId: OPENROUTER_PROVIDER_ID, modelId }), displayName)
   }
   for (const source of props.providerModelSources ?? []) {
     for (const item of source.items) {
@@ -523,7 +546,7 @@ const modelNameById = computed(() => {
   return map
 })
 const providerNameById = computed(() => {
-  const map = new Map<string, string>([[DEFAULT_CHAT_PROVIDER_ID, 'OpenRouter']])
+  const map = new Map<string, string>([[OPENROUTER_PROVIDER_ID, 'OpenRouter']])
   for (const source of props.providerModelSources ?? []) {
     map.set(source.providerId, source.providerName)
   }
@@ -532,7 +555,7 @@ const providerNameById = computed(() => {
 const favoriteModelKeySet = computed(() => new Set(favoriteModels.value.map((item) => item.modelKey)))
 const currentModelKey = computed(() => {
   const normalized = normalizeModelKey(selectedModel.value)
-  return normalized.length > 0 ? `${selectedProviderId.value}::${normalized}` : ''
+  return selectedProviderId.value && normalized.length > 0 ? `${selectedProviderId.value}::${normalized}` : ''
 })
 const attachmentFeedbackClass = computed(() => {
   if (props.attachmentFeedbackTone === 'error') return 'border-red-200 bg-red-50 text-red-800'
@@ -569,10 +592,12 @@ const activeQuickModelEmptyText = computed(() => {
   return null
 })
 const currentModelDisplayName = computed(() => {
-  const providerModelKey = buildProviderModelKey(selectedModelSelection.value)
+  const selection = selectedModelSelection.value
+  if (!selection) return t('chat.console.runtime.noProviderSelected')
+  const providerModelKey = buildProviderModelKey(selection)
   const displayName = modelNameById.value.get(providerModelKey) ?? modelNameById.value.get(selectedModel.value) ?? selectedModel.value
-  const providerName = providerNameById.value.get(selectedProviderId.value) ?? selectedProviderId.value
-  return selectedProviderId.value === DEFAULT_CHAT_PROVIDER_ID
+  const providerName = providerNameById.value.get(selection.providerId) ?? selection.providerId
+  return selection.providerId === OPENROUTER_PROVIDER_ID
     ? displayName
     : `${providerName} · ${displayName}`
 })
@@ -654,7 +679,7 @@ function clearRecentPersistTimer() {
 
 function buildRecentRecord(selection: ChatModelSelection): ModelPrefsRecent {
   const nowMs = Date.now()
-  const providerId = selection.providerId ?? DEFAULT_CHAT_PROVIDER_ID
+  const providerId = selection.providerId
   const modelId = normalizeModelKey(selection.modelId)
   return {
     scopeType: (activePrefsScope().scopeType ?? 'global') as ModelPrefsRecent['scopeType'],
@@ -689,9 +714,9 @@ function scheduleRecentPersistence(selection: ChatModelSelection) {
 }
 
 function recordRecentModelSelection(selection: ChatModelSelection) {
-  const providerId = selection.providerId ?? DEFAULT_CHAT_PROVIDER_ID
+  const providerId = selection.providerId
   const normalized = normalizeModelKey(selection.modelId)
-  if (!normalized || (providerId === DEFAULT_CHAT_PROVIDER_ID && normalized === DEFAULT_OPENROUTER_MODEL_ID)) return
+  if (!normalized || (providerId === OPENROUTER_PROVIDER_ID && normalized === DEFAULT_OPENROUTER_MODEL_ID)) return
   const normalizedSelection = { providerId, modelId: normalized }
   const modelKey = buildProviderModelKey(normalizedSelection)
   const next = [
@@ -780,23 +805,36 @@ function onImageChipOption(value: string) {
 function onGoogleThinkingToggle() {
   if (isGoogleImageGenerationModel.value) return
   if (googleThinkingCapability.value.kind === 'unsupported') return
+  const current = resolvedSessionConfig.value.generationParams.detail ?? {}
   if (googleThinkingEnabled.value) {
-    emit('updateGoogleAIStudioThinking', { mode: 'auto' })
+    emit('updateGenerationParamsLayer', {
+      ...current,
+      ...(googleThinkingCapability.value.kind === 'budget' ? { thinkingBudget: { mode: 'omit' } as const } : {}),
+      ...(googleThinkingCapability.value.kind === 'level' ? { thinkingLevel: { mode: 'omit' } as const } : {}),
+    })
     return
   }
   if (googleThinkingCapability.value.kind === 'budget') {
-    emit('updateGoogleAIStudioThinking', { mode: 'budget' })
+    emit('updateGenerationParamsLayer', {
+      ...current,
+      thinkingBudget: { mode: 'custom', value: googleThinkingCapability.value.defaultBudget },
+    })
     return
   }
-  emit('updateGoogleAIStudioThinking', { mode: 'level' })
+  if (googleThinkingCapability.value.kind === 'level') {
+    emit('updateGenerationParamsLayer', {
+      ...current,
+      thinkingLevel: { mode: 'custom', value: googleThinkingCapability.value.defaultLevel },
+    })
+  }
 }
 
 function onGoogleThinkingBudgetInput(event: Event) {
   const raw = Number((event.target as HTMLInputElement).value)
   if (!Number.isFinite(raw) || raw <= 0) return
-  emit('updateGoogleAIStudioThinking', {
-    mode: 'budget',
-    thinkingBudget: Math.trunc(raw),
+  emit('updateGenerationParamsLayer', {
+    ...(resolvedSessionConfig.value.generationParams.detail ?? {}),
+    thinkingBudget: { mode: 'custom', value: Math.trunc(raw) },
   })
 }
 
@@ -808,16 +846,61 @@ function onGoogleThinkingLevelInput(event: Event) {
   ) {
     return
   }
-  emit('updateGoogleAIStudioThinking', {
-    mode: 'level',
-    thinkingLevel: value,
+  emit('updateGenerationParamsLayer', {
+    ...(resolvedSessionConfig.value.generationParams.detail ?? {}),
+    thinkingLevel: { mode: 'custom', value },
   })
 }
 
 function onGoogleThinkingIncludeThoughtsInput(event: Event) {
-  emit('updateGoogleAIStudioThinking', {
-    includeThoughts: (event.target as HTMLInputElement).checked,
+  const enabled = (event.target as HTMLInputElement).checked
+  emit('updateGenerationParamsLayer', {
+    ...(resolvedSessionConfig.value.generationParams.detail ?? {}),
+    ...(isGoogleImageGenerationModel.value
+      ? { thoughtSummaryMode: { mode: 'custom', value: enabled ? 'auto' : 'none' } as const }
+      : { includeThoughts: { mode: 'custom', value: enabled } as const }),
   })
+}
+
+async function loadCompatibleConfigurationSources() {
+  try {
+    const registry = createCompatibleProviderRegistryClient()
+    const catalog = createCompatibleCatalogClient()
+    const providers = await registry.list()
+    compatibleConfigurationSources.value = await Promise.all(providers.filter((details) => details.provider.status === 'active').map(async (details) => {
+      const endpoint = details.endpointRevisions[0]
+      const responseProfile = details.activeConfiguration?.responseProfile as any
+      if (!endpoint || !responseProfile?.reasoningMappingId || !responseProfile?.inlinePolicyId) return { providerInstanceId: details.provider.providerInstanceId, providerName: details.provider.displayName, models: [] }
+      const result = await catalog.query({ providerInstanceId: details.provider.providerInstanceId, includeStale: true, limit: 200 })
+      return {
+        providerInstanceId: details.provider.providerInstanceId,
+        providerName: details.provider.displayName,
+        models: result.items.map((model) => ({
+          modelId: model.modelId,
+          displayName: model.metadata.displayName ?? model.modelId,
+          sourceLabel: model.sourcePresence.manual && model.sourcePresence.remote !== 'absent' ? 'manual + remote' : model.sourcePresence.manual ? 'manual' : model.sourcePresence.remote === 'stale' ? 'remote stale' : 'remote',
+          selection: compatibleConfigurationSelectionSchema.parse({
+            kind: 'openai_chat_compatible_configuration' as const,
+            providerInstanceId: details.provider.providerInstanceId,
+            providerName: details.provider.displayName,
+            modelId: model.modelId,
+            endpointRevisionId: endpoint.endpointRevisionId,
+            credentialVersionRef: endpoint.credentialVersionRef,
+            requestProfileId: endpoint.requestProfileId,
+            requestProfileVersion: endpoint.requestProfileVersion,
+            responseProfileId: endpoint.responseProfileId,
+            responseProfileVersion: endpoint.responseProfileVersion,
+            reasoningMappingId: responseProfile.reasoningMappingId,
+            reasoningMappingVersion: responseProfile.reasoningMappingVersion,
+            inlinePolicyId: responseProfile.inlinePolicyId,
+            inlinePolicyVersion: responseProfile.inlinePolicyVersion,
+          }),
+        })),
+      }
+    }))
+  } catch {
+    compatibleConfigurationSources.value = []
+  }
 }
 
 function openModelPicker() {
@@ -825,6 +908,7 @@ function openModelPicker() {
   modelQuickMode.value = null
   modelPickerOpen.value = true
   emit('refreshProviderModelsRequested')
+  void loadCompatibleConfigurationSources()
 }
 
 function closeModelPicker() {
@@ -875,16 +959,22 @@ function onOpenAIResponsesReasoningToggle() {
   onOpenAIResponsesReasoningSelect('auto')
 }
 
-function onSelectModelFromPicker(selection: ChatModelSelection, displayName?: string) {
-  rememberModelDisplayName(selection.modelId, displayName)
-  emit('updateModel', selection)
-  emit('update:model', selection.modelId)
-  recordRecentModelSelection(selection)
+function onSelectModelFromPicker(selection: ChatModelSelection | CompatibleConfigurationSelection, displayName?: string) {
+  if ('kind' in selection && selection.kind === 'openai_chat_compatible_configuration') {
+    emit('updateModel', selection)
+    modelPickerOpen.value = false
+    return
+  }
+  const nativeSelection = selection as ChatModelSelection
+  rememberModelDisplayName(nativeSelection.modelId, displayName)
+  emit('updateModel', nativeSelection)
+  emit('update:model', nativeSelection.modelId)
+  recordRecentModelSelection(nativeSelection)
   modelPickerOpen.value = false
 }
 
 function onUpdateModel(modelId: string) {
-  const selection = { providerId: DEFAULT_CHAT_PROVIDER_ID, modelId }
+  const selection = { providerId: OPENROUTER_PROVIDER_ID, modelId }
   emit('updateModel', selection)
   emit('update:model', modelId)
   recordRecentModelSelection(selection)
@@ -892,12 +982,12 @@ function onUpdateModel(modelId: string) {
 
 async function onToggleCurrentModelFavorite() {
   const modelId = normalizeModelKey(selectedModel.value)
-  if (!modelId || modelId === DEFAULT_OPENROUTER_MODEL_ID || selectedProviderId.value !== DEFAULT_CHAT_PROVIDER_ID) return
+  if (!modelId || modelId === DEFAULT_OPENROUTER_MODEL_ID || selectedProviderId.value !== OPENROUTER_PROVIDER_ID) return
   await ModelPrefsService.toggleFavorite(
     {
-      providerKey: DEFAULT_CHAT_PROVIDER_ID,
+      providerKey: OPENROUTER_PROVIDER_ID,
       modelId,
-      modelKey: `${DEFAULT_CHAT_PROVIDER_ID}::${modelId}`,
+      modelKey: `${OPENROUTER_PROVIDER_ID}::${modelId}`,
     },
     activePrefsScope(),
   )
@@ -909,9 +999,9 @@ async function onToggleModelPickerFavorite(modelId: string) {
   if (!normalized) return
   await ModelPrefsService.toggleFavorite(
     {
-      providerKey: DEFAULT_CHAT_PROVIDER_ID,
+      providerKey: OPENROUTER_PROVIDER_ID,
       modelId: normalized,
-      modelKey: `${DEFAULT_CHAT_PROVIDER_ID}::${normalized}`,
+      modelKey: `${OPENROUTER_PROVIDER_ID}::${normalized}`,
     },
     activePrefsScope(),
   )
@@ -1336,7 +1426,7 @@ onBeforeUnmount(() => {
               ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
               : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
           "
-          :disabled="props.disabled || props.isRunning || selectedModel === DEFAULT_OPENROUTER_MODEL_ID || selectedProviderId !== DEFAULT_CHAT_PROVIDER_ID"
+          :disabled="props.disabled || props.isRunning || selectedModel === DEFAULT_OPENROUTER_MODEL_ID || selectedProviderId !== OPENROUTER_PROVIDER_ID"
           data-testid="current-model-favorite-toggle"
           @click="onToggleCurrentModelFavorite"
         >
@@ -1445,9 +1535,10 @@ onBeforeUnmount(() => {
     :open="modelPickerOpen"
     :disabled="props.disabled"
     :isRunning="props.isRunning"
-    :selectedProviderId="selectedModelSelection.providerId"
+    :selectedProviderId="selectedProviderId ?? undefined"
     :selectedModelId="selectedModel"
     :providerSources="props.providerModelSources ?? []"
+    :compatibleConfigurationSources="compatibleConfigurationSources"
     :favoriteModelKeys="favoriteModelKeys"
     :recentModelKeys="recentModelKeys"
     :fallbackModels="props.modelCatalog"
@@ -1458,4 +1549,7 @@ onBeforeUnmount(() => {
     @toggleFavorite="onToggleModelPickerFavorite"
     @reorderFavorites="onReorderModelPickerFavorites"
   />
+  <div v-if="compatibleConfigurationSelection" class="mt-2 rounded border border-blue-200 bg-blue-50 px-3 py-2 text-xs text-blue-900" data-testid="compatible-send-selection">
+    {{ compatibleConfigurationSelection.providerName }} · {{ compatibleConfigurationSelection.modelId }}
+  </div>
 </template>

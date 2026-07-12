@@ -34,6 +34,7 @@ export type ResponsesTransportOptions = Readonly<{
   baseUrl: string
   apiKey: string
   timeoutMs?: number
+  captureSerializedRequest?: (serializedBody: string) => void
 }>
 
 export type ResponsesFetchFn = (
@@ -77,10 +78,12 @@ export const streamViaOpenAIResponses: RuntimeProviderStreamAdapter = async func
 
   let response: Response
   try {
+    const serializedBody = JSON.stringify(body)
+    try { transport.captureSerializedRequest?.(serializedBody) } catch { /* raw capture is non-fatal */ }
     response = await transport.fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body),
+      body: serializedBody,
       signal: signal ?? undefined,
     })
   } catch (err: any) {

@@ -46,13 +46,14 @@ import {
 import type { ProviderCatalogKnownProviderKey } from '@/shared/modelCatalog/providerCatalogContracts'
 import { providerCatalogSettingKey } from '@/shared/modelCatalog/providerCatalogSettings'
 import {
-  DEFAULT_CHAT_PROVIDER_ID,
+  OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
   buildProviderModelKey,
   type ChatModelSelection,
 } from '@/next/provider/modelSelection'
 import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
 import type { ProviderModelPickerItem, ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
+import type { CompatibleConfigurationPickerSource, CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
 
 type TriState = 'any' | 'yes' | 'no'
 type DetailTab = 'model' | 'endpoints'
@@ -89,6 +90,7 @@ const props = withDefaults(
     selectedProviderId?: RuntimeProviderKey
     selectedModelId: string
     providerSources?: readonly ProviderModelPickerSource[]
+    compatibleConfigurationSources?: readonly CompatibleConfigurationPickerSource[]
     favoriteModelKeys?: readonly string[]
     recentModelKeys?: readonly string[]
     fallbackModels?: readonly ModelCatalogItem[]
@@ -105,6 +107,7 @@ const props = withDefaults(
     favoriteModelKeys: () => [],
     recentModelKeys: () => [],
     providerSources: () => [],
+    compatibleConfigurationSources: () => [],
     fallbackModels: () => [],
     notice: null,
     debounceMs: 250,
@@ -112,13 +115,12 @@ const props = withDefaults(
     endpointDetailFn: undefined,
     modelDetailFn: undefined,
     forceOutputImageOnly: false,
-    selectedProviderId: DEFAULT_CHAT_PROVIDER_ID,
   },
 )
 
 const emit = defineEmits<{
   close: []
-  select: [selection: ChatModelSelection, displayName: string]
+  select: [selection: ChatModelSelection | CompatibleConfigurationSelection, displayName: string]
   toggleFavorite: [modelId: string]
   reorderFavorites: [orderedModelKeys: string[]]
 }>()
@@ -180,7 +182,7 @@ const latestCatalogRevisions = ref<CatalogRevisionMap>({})
 const appliedCatalogRevisions = ref<CatalogRevisionMap>({})
 const pendingCatalogRevisions = ref<CatalogRevisionMap>({})
 const providerSyncSnapshots = ref<Partial<Record<ProviderCatalogKnownProviderKey, ProviderSyncSnapshot>>>({})
-const selectedSyncProviderKey = ref<ProviderCatalogKnownProviderKey>(DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey)
+const selectedSyncProviderKey = ref<ProviderCatalogKnownProviderKey>(OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey)
 const pickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
 const catalogFreshnessMs = ref(DEFAULT_CATALOG_FRESHNESS_MS)
@@ -238,7 +240,7 @@ let dialogWasOpen = false
 
 const catalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() => {
   const keys = new Set<ProviderCatalogKnownProviderKey>([
-    DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey,
+    OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey,
   ])
   for (const source of props.providerSources) {
     if (isProviderCatalogSourceKey(source.providerId)) {
@@ -257,7 +259,9 @@ const sortOrderOptions = computed<ReadonlyArray<Readonly<{ key: CatalogQuerySort
   { key: 'asc', label: t('errors.modelCatalog.sortAsc') },
   { key: 'desc', label: t('errors.modelCatalog.sortDesc') },
 ])
-const catalogPickerItems = computed(() => items.value.map((item) => toCatalogPickerItem(item)))
+const catalogPickerItems = computed(() => items.value
+  .map((item) => toCatalogPickerItem(item))
+  .filter((item): item is PickerModelItem => item !== null))
 const providerPickerItems = computed(() => props.providerSources.flatMap((source) => source.items.map((item) => toProviderPickerItem(item))))
 const selectedProviderSet = computed(() => new Set(selectedProviderFilters.value))
 const selectedCatalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() =>
@@ -327,16 +331,17 @@ const activeItem = computed(() => {
   return index >= 0 ? pickerItems.value[index] : null
 })
 
-const selectedProviderId = computed(() => props.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID)
+const selectedProviderId = computed(() => props.selectedProviderId ?? null)
 const selectedModelId = computed(() => normalizeModelId(props.selectedModelId))
 
 const selectedModelLabel = computed(() => {
   const selected = selectedModelId.value
+  if (!selectedProviderId.value) return t('chat.console.runtime.noProviderSelected')
   const inResults = pickerItems.value.find((item) =>
     item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
   )
   const label = inResults?.displayName ?? (selected || DEFAULT_OPENROUTER_MODEL_ID)
-  return selectedProviderId.value === DEFAULT_CHAT_PROVIDER_ID
+  return selectedProviderId.value === OPENROUTER_PROVIDER_ID
     ? label
     : `${providerNameForId(selectedProviderId.value)} · ${label}`
 })
@@ -426,20 +431,20 @@ const pendingCatalogUpdateAvailable = computed(() => Boolean(pendingCatalogRevis
 
 const providerOptions = computed<ProviderFilterOption[]>(() => {
   const options = new Map<RuntimeProviderKey, ProviderFilterOption>()
-  const openRouterProviderKey = DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey
+  const openRouterProviderKey = OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey
   const openRouterSnapshot = providerSyncSnapshots.value[openRouterProviderKey]
   const openRouterKnownCount = openRouterSnapshot?.visibleModelCount ?? openRouterSnapshot?.totalModelCount ?? 0
   const openRouterCount = openRouterSnapshot?.status === 'synced' && openRouterKnownCount > 0
     ? openRouterKnownCount
     : items.value.length
   const openRouterStatusLabel = formatProviderOptionStatus({
-    providerId: DEFAULT_CHAT_PROVIDER_ID,
+    providerId: OPENROUTER_PROVIDER_ID,
     fallbackStatusLabel: openRouterSnapshot?.status ?? 'not_synced',
     fallbackItemCount: items.value.length,
     sourceItemCount: 0,
   })
-  options.set(DEFAULT_CHAT_PROVIDER_ID, {
-    providerId: DEFAULT_CHAT_PROVIDER_ID,
+  options.set(OPENROUTER_PROVIDER_ID, {
+    providerId: OPENROUTER_PROVIDER_ID,
     providerName: 'OpenRouter',
     statusLabel: openRouterStatusLabel,
     loading: loading.value || openRouterSnapshot?.status === 'syncing',
@@ -488,15 +493,14 @@ function pickerItemKey(providerId: RuntimeProviderKey, modelId: string): string 
   return buildProviderModelKey({ providerId, modelId })
 }
 
-function catalogProviderIdFromItem(item: CatalogQueryItem): RuntimeProviderKey {
+function catalogProviderIdFromItem(item: CatalogQueryItem): RuntimeProviderKey | null {
   const providerKey = String(item.providerKey ?? '').trim()
-  return isProviderCatalogSourceKey(providerKey)
-    ? providerKey
-    : DEFAULT_CHAT_PROVIDER_ID
+  return isProviderCatalogSourceKey(providerKey) ? providerKey : null
 }
 
-function toCatalogPickerItem(item: CatalogQueryItem): PickerModelItem {
+function toCatalogPickerItem(item: CatalogQueryItem): PickerModelItem | null {
   const providerId = catalogProviderIdFromItem(item)
+  if (!providerId) return null
   return {
     ...item,
     providerId,
@@ -504,11 +508,11 @@ function toCatalogPickerItem(item: CatalogQueryItem): PickerModelItem {
     itemKey: pickerItemKey(providerId, item.modelId),
     capabilitySummary: openRouterCapabilitySummary(item),
     statusLabel: formatCatalogStatusLabel(item.status ?? item.visibility ?? 'catalog'),
-    sourceLabel: providerId === DEFAULT_CHAT_PROVIDER_ID
+    sourceLabel: providerId === OPENROUTER_PROVIDER_ID
       ? t('errors.modelCatalog.sourceOpenRouterCatalog')
       : t('errors.modelCatalog.sourceProviderCatalog'),
     selectable: true,
-    detailSource: providerId === DEFAULT_CHAT_PROVIDER_ID ? 'openrouter_catalog' : 'provider_catalog',
+    detailSource: providerId === OPENROUTER_PROVIDER_ID ? 'openrouter_catalog' : 'provider_catalog',
   }
 }
 
@@ -598,7 +602,7 @@ async function loadCatalogSyncSettings(providerKey: ProviderCatalogKnownProvider
     return
   }
   const settingKey = (settingName: 'pickerOpenSyncPolicy' | 'listUpdateMode' | 'freshnessMs') =>
-    providerKey === DEFAULT_CHAT_PROVIDER_ID
+    providerKey === OPENROUTER_PROVIDER_ID
       ? (
           settingName === 'pickerOpenSyncPolicy'
             ? OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY
@@ -793,7 +797,7 @@ function toggleProviderFilter(providerId: RuntimeProviderKey, checked: boolean) 
 function ensureSelectedSyncProviderKey() {
   const keys = catalogProviderKeys.value
   if (keys.includes(selectedSyncProviderKey.value)) return
-  selectedSyncProviderKey.value = keys[0] ?? (DEFAULT_CHAT_PROVIDER_ID as ProviderCatalogKnownProviderKey)
+  selectedSyncProviderKey.value = keys[0] ?? (OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey)
 }
 
 function shouldSyncOnPickerOpen(snapshot: ProviderSyncSnapshot): boolean {
@@ -840,22 +844,22 @@ function parseModelIdFromModelKey(modelKey: string): string {
   return normalized.slice(delimiterIndex + delimiter.length).trim()
 }
 
-function parseProviderIdFromModelKey(modelKey: string): RuntimeProviderKey {
+function parseProviderIdFromModelKey(modelKey: string): RuntimeProviderKey | null {
   const normalized = String(modelKey ?? '').trim()
   const delimiter = '::'
   const delimiterIndex = normalized.indexOf(delimiter)
-  if (delimiterIndex <= 0) return DEFAULT_CHAT_PROVIDER_ID
+  if (delimiterIndex <= 0) return null
   const providerId = normalized.slice(0, delimiterIndex).trim()
   return providerOptions.value.some((option) => option.providerId === providerId)
     ? providerId as RuntimeProviderKey
-    : DEFAULT_CHAT_PROVIDER_ID
+    : null
 }
 
 function normalizeModelId(value: unknown): string {
   return String(value ?? '').trim()
 }
 
-function isSelectedModel(modelId: string, providerId: RuntimeProviderKey = DEFAULT_CHAT_PROVIDER_ID): boolean {
+function isSelectedModel(modelId: string, providerId: RuntimeProviderKey): boolean {
   return providerId === selectedProviderId.value && normalizeModelId(modelId) === selectedModelId.value
 }
 
@@ -894,7 +898,7 @@ function buildShortcutItems(modelKeys: readonly string[]): ShortcutItem[] {
     .map((modelKey) => {
       const providerId = parseProviderIdFromModelKey(modelKey)
       const modelId = normalizeModelId(parseModelIdFromModelKey(modelKey))
-      if (!modelId) return null
+      if (!providerId || !modelId) return null
       const available = pickerItems.value.some((item) => item.providerId === providerId && normalizeModelId(item.modelId) === modelId)
       return {
         modelKey,
@@ -1048,7 +1052,7 @@ function buildQueryInput(providerKey: ProviderCatalogKnownProviderKey, cursor: C
   const expiringWindowDays = expiringWithinEnabled.value ? parseNumberInput(expiringWithinDays.value) : undefined
   const tokenizers = parseCsvFilters(tokenizerFiltersText.value)
   const instructTypes = parseCsvFilters(instructTypeFiltersText.value)
-  const category = providerKey === DEFAULT_CHAT_PROVIDER_ID && selectedCategory.value !== 'all'
+  const category = providerKey === OPENROUTER_PROVIDER_ID && selectedCategory.value !== 'all'
     ? selectedCategory.value
     : undefined
 
@@ -1094,7 +1098,7 @@ function ensureActiveCandidate() {
     }
     if (activeModelKey.value && availableShortcutItems.some((item) => item.modelKey === activeModelKey.value)) return
     const selected = selectedModelId.value
-    const selectedKey = selected ? pickerItemKey(selectedProviderId.value, selected) : ''
+    const selectedKey = selectedProviderId.value && selected ? pickerItemKey(selectedProviderId.value, selected) : ''
     const selectedExists = selected && availableShortcutItems.some((item) =>
       item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
     )
@@ -1107,7 +1111,7 @@ function ensureActiveCandidate() {
   }
   if (activeModelKey.value && pickerItems.value.some((item) => item.itemKey === activeModelKey.value)) return
   const selected = selectedModelId.value
-  const selectedKey = selected ? pickerItemKey(selectedProviderId.value, selected) : ''
+  const selectedKey = selectedProviderId.value && selected ? pickerItemKey(selectedProviderId.value, selected) : ''
   const selectedExists = selected && pickerItems.value.some((item) =>
     item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
   )
@@ -1243,7 +1247,7 @@ async function restorePickerUiSnapshot(snapshot: PickerUiSnapshot) {
   const active = String(snapshot.activeModelKey ?? '').trim()
   if (active && pickerItems.value.some((item) => item.itemKey === active)) {
     activeModelKey.value = active
-  } else if (selectedModelId.value && pickerItems.value.some((item) =>
+  } else if (selectedProviderId.value && selectedModelId.value && pickerItems.value.some((item) =>
     item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selectedModelId.value
   )) {
     activeModelKey.value = pickerItemKey(selectedProviderId.value, selectedModelId.value)
@@ -1370,7 +1374,7 @@ async function fetchPage(options: Readonly<{ preserveUiState?: boolean; restoreU
 async function fetchEndpointDetails(forceRefresh: boolean) {
   const modelId = String(activeDetailModelId.value ?? '').trim()
   const detailItem = activeDetailItem.value
-  if (!props.open || !modelId || detailItem?.providerId !== DEFAULT_CHAT_PROVIDER_ID) {
+  if (!props.open || !modelId || detailItem?.providerId !== OPENROUTER_PROVIDER_ID) {
     endpointDetails.value = null
     endpointLoading.value = false
     return
@@ -1380,7 +1384,7 @@ async function fetchEndpointDetails(forceRefresh: boolean) {
   endpointLoading.value = true
   try {
     const result = await resolveEndpointDetailFn()({
-      providerKey: DEFAULT_CHAT_PROVIDER_ID,
+      providerKey: OPENROUTER_PROVIDER_ID,
       modelId,
       forceRefresh,
     })
@@ -1389,7 +1393,7 @@ async function fetchEndpointDetails(forceRefresh: boolean) {
   } catch (err: any) {
     if (currentSeq !== endpointSeq) return
     endpointDetails.value = {
-      providerKey: DEFAULT_CHAT_PROVIDER_ID,
+      providerKey: OPENROUTER_PROVIDER_ID,
       modelId,
       fetchedAtMs: null,
       source: 'scoped_catalog',
@@ -1406,7 +1410,7 @@ async function fetchEndpointDetails(forceRefresh: boolean) {
 async function fetchModelDetail() {
   const modelId = String(activeDetailModelId.value ?? '').trim()
   const detailItem = activeDetailItem.value
-  if (!props.open || !modelId || detailItem?.providerId !== DEFAULT_CHAT_PROVIDER_ID) {
+  if (!props.open || !modelId || detailItem?.providerId !== OPENROUTER_PROVIDER_ID) {
     modelDetail.value = null
     modelDetailError.value = null
     modelDetailLoading.value = false
@@ -1417,7 +1421,7 @@ async function fetchModelDetail() {
   modelDetailError.value = null
   try {
     const result = await resolveModelDetailFn()({
-      providerKey: DEFAULT_CHAT_PROVIDER_ID,
+      providerKey: OPENROUTER_PROVIDER_ID,
       modelId,
     })
     if (currentSeq !== modelDetailSeq) return
@@ -1457,7 +1461,7 @@ function openDialogState() {
   }
   items.value = []
   activeModelKey.value = restoreSnapshot?.activeModelKey
-    ?? (selectedModelId.value ? pickerItemKey(selectedProviderId.value, selectedModelId.value) : '')
+    ?? (selectedProviderId.value && selectedModelId.value ? pickerItemKey(selectedProviderId.value, selectedModelId.value) : '')
   modelDetail.value = null
   modelDetailLoading.value = false
   modelDetailError.value = null
@@ -1702,7 +1706,7 @@ function onSelectItem(item: PickerModelItem | null | undefined) {
   emit('close')
 }
 
-function onSelectModel(modelId: string, providerId: RuntimeProviderKey = DEFAULT_CHAT_PROVIDER_ID) {
+function onSelectModel(modelId: string, providerId: RuntimeProviderKey) {
   const normalized = String(modelId ?? '').trim()
   if (!normalized) return
   onSelectItem(pickerItems.value.find((item) => item.providerId === providerId && item.modelId === normalized))
@@ -1710,7 +1714,7 @@ function onSelectModel(modelId: string, providerId: RuntimeProviderKey = DEFAULT
 
 function onToggleFavorite(item: PickerModelItem) {
   if (props.disabled || props.isRunning) return
-  if (item.providerId !== DEFAULT_CHAT_PROVIDER_ID) return
+  if (item.providerId !== OPENROUTER_PROVIDER_ID) return
   const normalized = String(item.modelId ?? '').trim()
   if (!normalized) return
   emit('toggleFavorite', normalized)
@@ -1726,7 +1730,7 @@ function onToggleShortcutFavorite(item: ShortcutItem) {
   if (pickerItem) onToggleFavorite(pickerItem)
 }
 
-function isFavoriteModel(modelId: string, providerId: RuntimeProviderKey = DEFAULT_CHAT_PROVIDER_ID): boolean {
+function isFavoriteModel(modelId: string, providerId: RuntimeProviderKey): boolean {
   const normalized = String(modelId ?? '').trim()
   if (!normalized) return false
   return favoriteModelKeySet.value.has(buildProviderModelKey({ providerId, modelId: normalized }))
@@ -1861,8 +1865,8 @@ watch(
   ([providerId, next]) => {
     if (!props.open) return
     const normalized = normalizeModelId(next)
-    if (!normalized) return
-    const selectedKey = pickerItemKey(providerId ?? DEFAULT_CHAT_PROVIDER_ID, normalized)
+    if (!providerId || !normalized) return
+    const selectedKey = pickerItemKey(providerId, normalized)
     if (pickerItems.value.some((item) => item.itemKey === selectedKey)) {
       activeModelKey.value = selectedKey
     }
@@ -1970,6 +1974,18 @@ onBeforeUnmount(() => {
         >
           {{ t('common.close') }}
         </button>
+      </div>
+
+      <div v-if="props.compatibleConfigurationSources.length" class="border-b border-gray-200 bg-blue-50 px-4 py-3" data-testid="compatible-configuration-picker">
+        <div class="text-xs font-semibold text-blue-900">OpenAI Chat Completions-compatible · configuration only</div>
+        <div class="mt-2 flex flex-wrap gap-2">
+          <template v-for="source in props.compatibleConfigurationSources" :key="source.providerInstanceId">
+            <button v-for="model in source.models" :key="`${source.providerInstanceId}:${model.modelId}`" type="button" class="rounded border border-blue-200 bg-white px-2 py-1 text-left text-xs" :disabled="props.disabled || props.isRunning" :data-testid="`compatible-model-${source.providerInstanceId}-${model.modelId}`" @click="emit('select', model.selection, model.displayName)">
+              <span class="font-medium">{{ source.providerName }} · {{ model.displayName }}</span>
+              <span class="ml-1 text-blue-700">{{ model.sourceLabel }}</span>
+            </button>
+          </template>
+        </div>
       </div>
 
       <div class="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden p-4 lg:grid-cols-[320px_minmax(0,1fr)]">
@@ -2488,7 +2504,7 @@ onBeforeUnmount(() => {
                           ? 'border-blue-300 bg-blue-50'
                           : 'border-gray-200 bg-white hover:bg-gray-50'
                       "
-                      :data-testid="item.providerId === DEFAULT_CHAT_PROVIDER_ID ? `model-picker-item-${item.modelId}` : `model-picker-item-${item.providerId}-${item.modelId}`"
+                      :data-testid="item.providerId === OPENROUTER_PROVIDER_ID ? `model-picker-item-${item.modelId}` : `model-picker-item-${item.providerId}-${item.modelId}`"
                       :disabled="props.disabled || props.isRunning || !item.selectable"
                       @mouseenter="activeModelKey = item.itemKey"
                       @focus="activeModelKey = item.itemKey"
@@ -2502,7 +2518,7 @@ onBeforeUnmount(() => {
                         </div>
                         <div class="flex shrink-0 items-center gap-2">
                           <button
-                            v-if="item.providerId === DEFAULT_CHAT_PROVIDER_ID"
+                            v-if="item.providerId === OPENROUTER_PROVIDER_ID"
                             type="button"
                             class="rounded border px-1.5 py-0.5 text-[11px] leading-none"
                             :class="
@@ -2575,7 +2591,7 @@ onBeforeUnmount(() => {
                           <div class="truncate text-[11px] text-gray-500">{{ item.modelId }}</div>
                         </div>
                         <button
-                          v-if="item.providerId === DEFAULT_CHAT_PROVIDER_ID"
+                          v-if="item.providerId === OPENROUTER_PROVIDER_ID"
                           type="button"
                           class="rounded border px-1.5 py-0.5 text-[11px] leading-none"
                           :class="
@@ -2633,7 +2649,7 @@ onBeforeUnmount(() => {
               </div>
 
               <div
-                v-if="activeDetailTab === 'model' && activeDetailItem && activeDetailItem.providerId !== DEFAULT_CHAT_PROVIDER_ID"
+                v-if="activeDetailTab === 'model' && activeDetailItem && activeDetailItem.providerId !== OPENROUTER_PROVIDER_ID"
                 class="rounded-md border border-gray-200 bg-gray-50 p-3 text-xs text-gray-700"
                 data-testid="model-picker-provider-detail"
               >
@@ -2670,7 +2686,7 @@ onBeforeUnmount(() => {
                 :fetchedAtMs="endpointFetchedAtMs"
                 :items="endpointItems"
                 :error="endpointError"
-                :disabled="props.disabled || !activeDetailModelId || activeDetailItem?.providerId !== DEFAULT_CHAT_PROVIDER_ID"
+                :disabled="props.disabled || !activeDetailModelId || activeDetailItem?.providerId !== OPENROUTER_PROVIDER_ID"
                 @refresh="onRefreshEndpointDetails"
               />
             </div>

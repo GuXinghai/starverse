@@ -1,4 +1,4 @@
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import { readNonEmptyString } from './validation'
 
 export const OFFICIAL_CATALOG_SOURCE_KINDS = [

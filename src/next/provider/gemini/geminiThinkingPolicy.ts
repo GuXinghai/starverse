@@ -1,12 +1,4 @@
 export type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
-export type GeminiThinkingMode = 'auto' | 'budget' | 'level'
-
-export type GeminiThinkingConfig = Readonly<{
-  mode: GeminiThinkingMode
-  thinkingBudget?: number
-  thinkingLevel?: GeminiThinkingLevel
-  includeThoughts?: boolean
-}>
 
 export type GeminiThinkingCapability =
   | Readonly<{
@@ -31,21 +23,9 @@ export type GeminiThinkingCapability =
         | 'unknown_model_family'
     }>
 
-export type GeminiNativeThinkingConfig = Readonly<{
-  thinkingBudget?: number
-  thinkingLevel?: GeminiThinkingLevel
-  includeThoughts?: boolean
-}>
-
 export const GEMINI_THINKING_LEVELS: readonly GeminiThinkingLevel[] = ['minimal', 'low', 'medium', 'high']
 export const DEFAULT_GEMINI_THINKING_BUDGET = 8192
 export const DEFAULT_GEMINI_THINKING_LEVEL: GeminiThinkingLevel = 'low'
-export const DEFAULT_GEMINI_THINKING_CONFIG: GeminiThinkingConfig = {
-  mode: 'auto',
-  thinkingBudget: DEFAULT_GEMINI_THINKING_BUDGET,
-  thinkingLevel: DEFAULT_GEMINI_THINKING_LEVEL,
-  includeThoughts: false,
-}
 
 const GEMINI_2_5_NON_PRO_MAX_BUDGET = 24576
 const GEMINI_2_5_PRO_MAX_BUDGET = 32768
@@ -117,74 +97,4 @@ export function resolveGeminiThinkingCapability(input: Readonly<{
 
 export function isGeminiThinkingLevel(value: unknown): value is GeminiThinkingLevel {
   return typeof value === 'string' && (GEMINI_THINKING_LEVELS as readonly string[]).includes(value)
-}
-
-export function clampGeminiThinkingBudget(value: unknown, capability: Extract<GeminiThinkingCapability, { kind: 'budget' }>): number {
-  const parsed = typeof value === 'number' ? value : Number(String(value ?? '').trim())
-  if (!Number.isFinite(parsed)) return capability.defaultBudget
-  const integer = Math.trunc(parsed)
-  return Math.min(capability.maxBudget, Math.max(capability.minBudget, integer))
-}
-
-export function normalizeGeminiThinkingConfig(input: Readonly<{
-  model: string
-  config?: GeminiThinkingConfig | null
-  supportedGenerationMethods?: readonly string[] | null
-}>): GeminiThinkingConfig {
-  const current = input.config ?? DEFAULT_GEMINI_THINKING_CONFIG
-  const capability = resolveGeminiThinkingCapability({
-    model: input.model,
-    supportedGenerationMethods: input.supportedGenerationMethods,
-  })
-  const includeThoughts = current.includeThoughts === true
-  if (capability.kind === 'budget') {
-    return {
-      mode: current.mode === 'budget' ? 'budget' : 'auto',
-      thinkingBudget: clampGeminiThinkingBudget(current.thinkingBudget, capability),
-      thinkingLevel: DEFAULT_GEMINI_THINKING_LEVEL,
-      includeThoughts,
-    }
-  }
-  if (capability.kind === 'level') {
-    return {
-      mode: current.mode === 'level' ? 'level' : 'auto',
-      thinkingBudget: DEFAULT_GEMINI_THINKING_BUDGET,
-      thinkingLevel: isGeminiThinkingLevel(current.thinkingLevel) ? current.thinkingLevel : capability.defaultLevel,
-      includeThoughts,
-    }
-  }
-  return {
-    mode: 'auto',
-    thinkingBudget: DEFAULT_GEMINI_THINKING_BUDGET,
-    thinkingLevel: DEFAULT_GEMINI_THINKING_LEVEL,
-    includeThoughts,
-  }
-}
-
-export function buildGeminiNativeThinkingConfig(input: Readonly<{
-  model: string
-  config?: GeminiThinkingConfig | null
-  supportedGenerationMethods?: readonly string[] | null
-}>): GeminiNativeThinkingConfig | undefined {
-  const normalized = normalizeGeminiThinkingConfig(input)
-  const capability = resolveGeminiThinkingCapability({
-    model: input.model,
-    supportedGenerationMethods: input.supportedGenerationMethods,
-  })
-  if (capability.kind === 'budget' && normalized.mode === 'budget') {
-    return {
-      thinkingBudget: normalized.thinkingBudget ?? capability.defaultBudget,
-      includeThoughts: normalized.includeThoughts === true,
-    }
-  }
-  if (capability.kind === 'level' && normalized.mode === 'level') {
-    return {
-      thinkingLevel: normalized.thinkingLevel ?? capability.defaultLevel,
-      includeThoughts: normalized.includeThoughts === true,
-    }
-  }
-  if (normalized.includeThoughts === true && capability.kind !== 'unsupported') {
-    return { includeThoughts: true }
-  }
-  return undefined
 }

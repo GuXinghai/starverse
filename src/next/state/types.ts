@@ -120,6 +120,8 @@ export type ReasoningView = Readonly<{
 
 export type MessageVM = Readonly<{
   messageId: string
+  routeProvenanceId?: string
+  choiceIndex?: number
   role: MessageRole
   contentBlocks: ContentBlock[]
   requestedImageGeneration?: boolean
@@ -142,6 +144,7 @@ export type MessageVM = Readonly<{
 
 export type RunVM = Readonly<{
   runId: string
+  routeProvenanceId?: string
   status: RunStatus
   requestId?: string
   generationId?: string
@@ -204,6 +207,8 @@ export type DomainEvent =
 
 export type MessageState = Readonly<{
   messageId: string
+  routeProvenanceId?: string
+  choiceIndex?: number
   role: MessageRole
   contentText: string
   contentBlocks: ContentBlock[]
@@ -240,6 +245,7 @@ export type MessageState = Readonly<{
 
 export type RunState = Readonly<{
   runId: string
+  routeProvenanceId?: string
   status: RunStatus
   requestId?: string
   targetAssistantMessageId?: string
@@ -277,6 +283,8 @@ export type RootState = Readonly<{
 export type StartGenerationInput = Readonly<{
   runId: string
   requestId: string
+  routeProvenanceId?: string
+  choiceIndex?: number
   model?: string
   assistantMessageId?: string
   userMessageId?: string

@@ -23,6 +23,7 @@ export const GENERATION_PARAM_SPECS: readonly GenerationParamSpec[] = [
   { key: 'thinkingEnabled', label: 'thinkingEnabled', valueType: 'boolean', description: 'Provider thinking toggle.' },
   { key: 'thinkingBudget', label: 'thinkingBudget', valueType: 'integer', description: 'Provider thinking budget.' },
   { key: 'thinkingLevel', label: 'thinkingLevel', valueType: 'enum', description: 'Provider thinking level.' },
+  { key: 'includeThoughts', label: 'includeThoughts', valueType: 'boolean', description: 'Request Gemini thought summaries.' },
   { key: 'thoughtSummaryMode', label: 'thoughtSummaryMode', valueType: 'enum', description: 'Gemini thought summary request.' },
   { key: 'stopSequences', label: 'stopSequences', valueType: 'stringArray', description: 'Provider stop sequences.' },
   { key: 'googleSearch', label: 'googleSearch', valueType: 'boolean', description: 'Gemini Google Search grounding.' },

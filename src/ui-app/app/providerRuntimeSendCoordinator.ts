@@ -11,7 +11,6 @@ import { streamOpenAIResponsesTextChatAsDomainEvents } from '@/next/live/openAIR
 import { streamGoogleAIStudioTextChatAsDomainEvents } from '@/next/live/googleAIStudioTextChat'
 import { streamAnthropicTextChatAsDomainEvents } from '@/next/live/anthropicTextChat'
 import { streamDeepSeekTextChatAsDomainEvents } from '@/next/live/deepSeekTextChat'
-import type { GeminiThinkingConfig } from '@/next/provider/gemini/geminiThinkingPolicy'
 import {
   getRuntimeTextChatBlockReason,
   resolveRuntimeTextSendRoute,
@@ -67,7 +66,6 @@ export type ExperimentalRuntimeTextEventInput = Readonly<{
   lmStudioConfig?: LMStudioTextChatConfig
   ollamaConfig?: OllamaTextChatConfig
   localEndpointUrl?: string
-  geminiThinking?: GeminiThinkingConfig
   generationParams?: ProviderStreamConfig['generationParams']
   imageGeneration?: ProviderStreamConfig['imageGeneration']
 }>
@@ -238,7 +236,6 @@ export function createExperimentalRuntimeTextEvents(
         userText: input.userText,
         contextMessages: input.contextMessages,
         currentUserContentBlocks: input.currentUserContentBlocks,
-        ...(input.geminiThinking ? { geminiThinking: input.geminiThinking } : {}),
         ...(input.generationParams ? { generationParams: input.generationParams } : {}),
         ...(input.imageGeneration ? { imageGeneration: input.imageGeneration } : {}),
         signal: input.signal,

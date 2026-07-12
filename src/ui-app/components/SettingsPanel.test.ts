@@ -28,44 +28,32 @@ function createElectronStoreMockWith(values: Record<string, unknown>) {
 function createOpenRouterCredentialMock(input?: {
   apiKeyConfigured?: boolean
   apiKey?: string
-  baseUrlConfigured?: boolean
-  baseUrlInvalid?: boolean
-  displayBaseUrl?: string
 }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
     apiKey: input?.apiKey ?? 'sk-openrouter-saved',
-    baseUrlConfigured: input?.baseUrlConfigured ?? true,
-    baseUrlInvalid: input?.baseUrlInvalid ?? false,
-    displayBaseUrl: input?.displayBaseUrl ?? 'https://openrouter.ai/api/v1',
   }
-  const buildEndpoint = () => {
-    const hasSafeCustomBaseUrl = !state.baseUrlInvalid && state.baseUrlConfigured && state.displayBaseUrl.trim().length > 0
-    return {
+  const buildEndpoint = () => ({
       kind: 'openrouter_endpoint',
-      endpointId: state.baseUrlConfigured ? 'openrouter-custom-legacy-store' : 'openrouter-official',
-      endpointStatus: !state.baseUrlConfigured ? 'official' : state.baseUrlInvalid ? 'invalid_custom' : 'custom',
+      endpointId: 'openrouter-official',
+      endpointStatus: 'official',
       providerId: 'openrouter',
       profileId: 'openrouter_v1_chat',
-      displayName: state.baseUrlConfigured ? 'OpenRouter custom endpoint' : 'OpenRouter official endpoint',
+      displayName: 'OpenRouter official endpoint',
       source: 'legacy_store',
-      baseUrlConfigured: state.baseUrlConfigured,
-      ...(state.baseUrlInvalid ? { baseUrlInvalid: true } : {}),
-      ...(hasSafeCustomBaseUrl ? { displayBaseUrl: state.displayBaseUrl } : {}),
-      ...(!state.baseUrlConfigured ? { displayBaseUrl: 'https://openrouter.ai/api/v1' } : {}),
+      baseUrlConfigured: false,
+      displayBaseUrl: 'https://openrouter.ai/api/v1',
       defaultBaseUrl: 'https://openrouter.ai/api/v1',
       credentialRef: { kind: 'credential_ref', id: 'openrouter-chat-legacy-store' },
       catalogCredentialRef: { kind: 'credential_ref', id: 'openrouter-catalog-legacy-store' },
       rendererVisible: true,
-    }
-  }
+    })
   const buildStatus = () => ({
     source: 'legacy_store',
     apiKeyConfigured: state.apiKeyConfigured,
     ...(state.apiKeyConfigured ? { maskedApiKey: '***' } : {}),
-    baseUrlConfigured: state.baseUrlConfigured,
-    ...(state.baseUrlInvalid ? { baseUrlInvalid: true } : {}),
-    ...(!state.baseUrlInvalid && state.displayBaseUrl.trim().length > 0 ? { displayBaseUrl: state.displayBaseUrl } : {}),
+    baseUrlConfigured: false,
+    displayBaseUrl: 'https://openrouter.ai/api/v1',
     defaultBaseUrl: 'https://openrouter.ai/api/v1',
     endpoint: buildEndpoint(),
   })
@@ -76,20 +64,10 @@ function createOpenRouterCredentialMock(input?: {
         ? { ok: true, apiKey: state.apiKey }
         : { ok: false, code: 'credential_missing', message: 'OpenRouter API key is not configured.' }
     )),
-    update: vi.fn(async (payload: { apiKey?: string; baseUrl?: string | null }) => {
+    update: vi.fn(async (payload: { apiKey?: string }) => {
       if (payload.apiKey && payload.apiKey.trim()) {
         state.apiKeyConfigured = true
         state.apiKey = payload.apiKey.trim()
-      }
-      if (payload.baseUrl === null) {
-        state.displayBaseUrl = ''
-        state.baseUrlConfigured = false
-        state.baseUrlInvalid = false
-      }
-      if (typeof payload.baseUrl === 'string') {
-        state.displayBaseUrl = payload.baseUrl.trim()
-        state.baseUrlConfigured = state.displayBaseUrl.length > 0
-        state.baseUrlInvalid = false
       }
       return { ok: true, status: buildStatus() }
     }),
@@ -429,7 +407,6 @@ describe('ui-app SettingsPanel', () => {
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
-    expect(storeSet).not.toHaveBeenCalledWith('openRouterBaseUrl', expect.anything())
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogStartupSyncPolicy', 'stale_only')
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogPickerOpenSyncPolicy', 'stale_only')
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogListUpdateMode', 'manual')
@@ -458,7 +435,6 @@ describe('ui-app SettingsPanel', () => {
       expect((globalThis as any).openRouterCredential.getStatus).toHaveBeenCalled()
     })
     expect(storeGet).not.toHaveBeenCalledWith('openRouterApiKey')
-    expect(storeGet).not.toHaveBeenCalledWith('openRouterBaseUrl')
 
     const keyInput = screen.getByTestId('settings-openrouter-api-key') as HTMLInputElement
     await waitFor(() => expect(keyInput).not.toBeDisabled())
@@ -466,7 +442,6 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.queryByDisplayValue('sk-old')).toBeNull()
     expect(keyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
     expect(screen.queryByTestId('settings-openrouter-key-status')).not.toBeInTheDocument()
-    expect(screen.getByDisplayValue('https://openrouter.ai/api/v1')).toBeTruthy()
 
     await user.clear(keyInput)
     await user.type(keyInput, 'sk-c4c-replacement-key')
@@ -474,7 +449,6 @@ describe('ui-app SettingsPanel', () => {
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
-    expect(storeSet).not.toHaveBeenCalledWith('openRouterBaseUrl', expect.anything())
     expect((globalThis as any).openRouterCredential.update).toHaveBeenCalledWith({
       apiKey: 'sk-c4c-replacement-key',
     })
@@ -702,47 +676,6 @@ describe('ui-app SettingsPanel', () => {
     expect(document.body.textContent).not.toContain('endpoint picker')
   })
 
-  it('shows OpenRouter endpoint metadata without adding endpoint registry controls', async () => {
-    ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock({
-      apiKeyConfigured: true,
-      baseUrlConfigured: true,
-      displayBaseUrl: 'https://openrouter.ai/api/v1',
-    })
-
-    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-    await screen.findByText('设置')
-
-    const endpointMetadata = await screen.findByTestId('settings-openrouter-endpoint-metadata')
-    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain(t('settings.openrouter.endpointCustom'))
-    expect(endpointMetadata.textContent).toContain(t('settings.openrouter.endpointNameCustom'))
-    expect(endpointMetadata.textContent).toContain('https://openrouter.ai/api/v1')
-    expect(endpointMetadata.textContent).not.toContain('Authorization')
-    expect(endpointMetadata.textContent).not.toContain('Bearer')
-    expect(endpointMetadata.textContent).not.toContain('sk-')
-    expect(screen.queryByLabelText(/endpoint/i)).toBeNull()
-    expect(screen.queryByLabelText(/profile/i)).toBeNull()
-  })
-
-  it('shows official endpoint metadata while leaving custom base URL input empty', async () => {
-    ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock({
-      apiKeyConfigured: true,
-      baseUrlConfigured: false,
-      displayBaseUrl: '',
-    })
-
-    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-    await screen.findByText('设置')
-    const endpointMetadata = await screen.findByTestId('settings-openrouter-endpoint-metadata')
-    const baseUrlInput = screen.getByPlaceholderText('https://openrouter.ai/api/v1') as HTMLInputElement
-
-    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain(t('settings.openrouter.endpointOfficial'))
-    expect(endpointMetadata.textContent).toContain(t('settings.openrouter.endpointNameOfficial'))
-    expect(endpointMetadata.textContent).toContain('https://openrouter.ai/api/v1')
-    expect(baseUrlInput).toHaveValue('')
-  })
-
 
   it('loads catalog sync settings defaults', async () => {
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
@@ -816,59 +749,6 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogFreshnessMs', 15 * 60 * 1000)
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogRetentionMs', 'never')
     expect(JSON.stringify(storeSet.mock.calls.filter(([key]) => String(key).startsWith('openRouterCatalog')))).not.toContain('sk-')
-  })
-
-  it('updates base URL through the OpenRouter credential bridge without requiring API key re-entry', async () => {
-    const user = userEvent.setup()
-    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-    await screen.findByText('设置')
-    const baseUrlInput = await screen.findByDisplayValue('https://openrouter.ai/api/v1') as HTMLInputElement
-    await waitFor(() => expect(baseUrlInput).not.toBeDisabled())
-    await user.clear(baseUrlInput)
-    await user.type(baseUrlInput, 'https://openrouter.ai/api/v1/')
-    await user.click(screen.getByRole('button', { name: '保存' }))
-
-    expect((globalThis as any).openRouterCredential.update).toHaveBeenCalledWith({
-      baseUrl: 'https://openrouter.ai/api/v1/',
-    })
-    const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
-    expect(storeSet).not.toHaveBeenCalledWith('openRouterBaseUrl', expect.anything())
-    expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
-  })
-
-  it('does not place invalid stored base URL metadata into the editable input', async () => {
-    const user = userEvent.setup()
-    ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock({
-      apiKeyConfigured: true,
-      baseUrlConfigured: true,
-      baseUrlInvalid: true,
-      displayBaseUrl: 'https://user:pass@?token=sk-hidden',
-    })
-
-    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-    await screen.findByText('设置')
-    await waitFor(() => expect((globalThis as any).openRouterCredential.getStatus).toHaveBeenCalled())
-
-    const baseUrlInput = screen.getByPlaceholderText('https://openrouter.ai/api/v1') as HTMLInputElement
-    await waitFor(() => expect(baseUrlInput).not.toBeDisabled())
-    expect(baseUrlInput).toHaveValue('')
-    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain(t('settings.openrouter.endpointInvalidCustom'))
-    expect(screen.getByTestId('settings-openrouter-endpoint-warning').textContent).toContain(t('settings.openrouter.endpointCustomBaseUrlInvalid'))
-    expect(screen.queryByDisplayValue('[invalid-url]')).toBeNull()
-    expect(screen.queryByDisplayValue('https://user:pass@?token=sk-hidden')).toBeNull()
-    expect(screen.getByTestId('settings-openrouter-endpoint-metadata').textContent).not.toContain('user:pass')
-    expect(screen.getByTestId('settings-openrouter-endpoint-metadata').textContent).not.toContain('token=')
-
-    await fireEvent.update(baseUrlInput, 'https://openrouter.ai/api/v1')
-    await user.click(screen.getByRole('button', { name: '保存' }))
-
-    expect((globalThis as any).openRouterCredential.update).toHaveBeenCalledWith({
-      baseUrl: 'https://openrouter.ai/api/v1',
-    })
-    expect(JSON.stringify(document.body.textContent)).not.toContain('user:pass')
-    expect(JSON.stringify(document.body.textContent)).not.toContain('sk-hidden')
   })
 
   it('emits settings:openRouterConnectionUpdated after save without API key in payload', async () => {
@@ -1219,7 +1099,7 @@ describe('ui-app SettingsPanel', () => {
     await screen.findByText('设置')
 
     const clearButtons = screen.getAllByRole('button', { name: '清除' })
-    expect(clearButtons.length).toBeGreaterThanOrEqual(2)
+    expect(clearButtons.length).toBeGreaterThanOrEqual(1)
 
     await user.click(clearButtons[0])
 
@@ -1227,7 +1107,6 @@ describe('ui-app SettingsPanel', () => {
     expect(storeDelete).not.toHaveBeenCalledWith('openRouterApiKey')
     expect((globalThis as any).openRouterCredential.clear).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.getByTestId('settings-openrouter-key-status').textContent).toContain(t('settings.credentials.notConfigured')))
-    expect(screen.getByDisplayValue('https://openrouter.ai/api/v1')).toBeTruthy()
   })
 
   it('persists debug echo toggle in localStorage (dev-only control)', async () => {

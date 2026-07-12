@@ -1,6 +1,6 @@
 import { LOCAL_CONTROLLED_ROOT_KINDS, type LocalControlledRootKind } from './localPackageRegistration'
 import type { PluginCryptoVerificationResult } from './cryptoVerification'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import { readNonEmptyString } from './validation'
 
 export type VerifiedInstallPackageIdentity = Readonly<{

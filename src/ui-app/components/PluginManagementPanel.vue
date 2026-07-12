@@ -19,7 +19,7 @@ import {
   DEFAULT_NETWORK_PROXY_SETTINGS,
   proxyModeLabel,
   type NetworkProxyMode,
-} from '@/next/plugin-distribution/networkProxyShared'
+} from '@/shared/plugin-distribution/networkProxyShared'
 import {
   pluginErrorChainDiagnosticLines,
   pluginErrorChainDetailRows,

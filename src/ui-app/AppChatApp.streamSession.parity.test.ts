@@ -129,6 +129,22 @@ function createDbBridge(mode: ScenarioMode) {
   const questionId = 'u1'
   const oldAnswerId = 'a_old'
   const streamAnswerId = 'a_stream'
+  const generationSnapshot = {
+    schemaVersion: 1 as const,
+    route: {
+      providerId: 'openrouter',
+      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      endpointId: 'openrouter-official',
+      profileId: 'openrouter_v1_chat',
+    },
+    generationParams: { requestPatch: {}, requestParams: {} },
+    reasoning: { mode: 'auto', effort: null, exclude: false },
+    webSearch: { enabled: false },
+    imageGeneration: {},
+    providerOptions: {},
+    tools: { enabled: false, allowedToolIds: [], requireExternalSideEffectConfirmation: true },
+    attachments: { sourceQuestionId: questionId, items: [] },
+  }
 
   const store: {
     headMessageId: string | null
@@ -167,7 +183,10 @@ function createDbBridge(mode: ScenarioMode) {
               answerRootId: oldAnswerId,
               questionId,
               body: 'A-old',
-              meta: null,
+              meta: {
+                providerId: 'openrouter',
+                modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+              },
             },
           },
   }
@@ -175,8 +194,30 @@ function createDbBridge(mode: ScenarioMode) {
   const orderedMessages = () => Object.values(store.messagesById).sort((a, b) => a.seq - b.seq)
 
   const invoke = vi.fn(async (method: string, params?: any) => {
-    if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-    if (method === 'convo.create') return { id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }
+    if (method === 'convo.list') {
+      return [{
+        id: convoId,
+        title: 'Chat 1',
+        createdAt: 1,
+        updatedAt: 1,
+        meta: {
+          selectedProviderId: 'openrouter',
+          selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
+        },
+      }]
+    }
+    if (method === 'convo.create') {
+      return {
+        id: convoId,
+        title: 'Chat 1',
+        createdAt: 1,
+        updatedAt: 1,
+        meta: {
+          selectedProviderId: 'openrouter',
+          selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
+        },
+      }
+    }
     if (method === 'project.list') return []
     if (method === 'project.create') return { id: 'p1', name: String(params?.name ?? 'Inbox'), createdAt: 1, updatedAt: 1, meta: null }
     if (method === 'project.findById') return null
@@ -355,7 +396,11 @@ function createDbBridge(mode: ScenarioMode) {
       return { ok: true, convoId, branchId, questionId, questionSeq: 1, assistantId: streamAnswerId, assistantSeq: 2 }
     }
 
-    if (method === 'branch.regenerateFromQuestion') {
+    if (method === 'answerGeneration.getSnapshot') return { ok: true, snapshot: generationSnapshot }
+    if (method === 'answerGeneration.persistSnapshot' || method === 'answerGeneration.finalize') return { ok: true }
+    if (method === 'answerGeneration.claimStream') return { ok: true, claimed: true, state: 'streaming' }
+
+    if (method === 'branch.regenerateQuestionWithCurrentConfig') {
       const ts = Date.now()
       store.messagesById[streamAnswerId] = {
         id: streamAnswerId,
@@ -376,10 +421,25 @@ function createDbBridge(mode: ScenarioMode) {
         { answerRootId: streamAnswerId, createdAt: ts + 1, status: 'streaming' },
         ...store.candidates.filter((c) => c.answerRootId !== streamAnswerId),
       ]
-      return { ok: true, newAnswerRootId: streamAnswerId, newAssistantSeq: 3 }
+      return {
+        ok: true,
+        operationId: String(params?.operationId ?? 'op-regenerate'),
+        actionKind: 'regenerate',
+        branchId,
+        questionId,
+        targetAnswerRootId: null,
+        newAnswerRootId: streamAnswerId,
+        newAssistantSeq: 3,
+        chosenAnswerRootId: streamAnswerId,
+        headMessageId: streamAnswerId,
+        visibleAnswerRootIds: store.candidates.map((candidate) => candidate.answerRootId),
+        snapshot: generationSnapshot,
+        state: 'committed',
+        idempotentReplay: false,
+      }
     }
 
-    if (method === 'branch.retryReplaceAnswer') {
+    if (method === 'branch.retryChosenAnswerReplacing') {
       const ts = Date.now()
       store.messagesById[streamAnswerId] = {
         id: streamAnswerId,
@@ -400,7 +460,22 @@ function createDbBridge(mode: ScenarioMode) {
         { answerRootId: streamAnswerId, createdAt: ts + 1, status: 'streaming' },
         ...store.candidates.filter((c) => c.answerRootId !== streamAnswerId),
       ]
-      return { ok: true, newAnswerRootId: streamAnswerId, newAssistantSeq: 3 }
+      return {
+        ok: true,
+        operationId: String(params?.operationId ?? 'op-retry'),
+        actionKind: 'retry_replace',
+        branchId,
+        questionId,
+        targetAnswerRootId: oldAnswerId,
+        newAnswerRootId: streamAnswerId,
+        newAssistantSeq: 3,
+        chosenAnswerRootId: streamAnswerId,
+        headMessageId: streamAnswerId,
+        visibleAnswerRootIds: store.candidates.map((candidate) => candidate.answerRootId),
+        snapshot: generationSnapshot,
+        state: 'committed',
+        idempotentReplay: false,
+      }
     }
 
     if (method === 'branch.truncateFromQuestion') {
@@ -447,6 +522,7 @@ function createDbBridge(mode: ScenarioMode) {
     if (method === 'messageError.listByMessageIds') return []
     if (method === 'messageAsset.listByMessageIds') return []
     if (method === 'settings.getGenerationParamsDefaults') return { value: null }
+    if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
     if (method === 'settings.getImageGenerationDefault') return { value: null }
     if (method === 'settings.getDfcAttachmentDefaults') return { value: null }
     if (method === 'message.list') return orderedMessages()
@@ -584,7 +660,6 @@ describe('ui-app AppChatApp stream session parity', () => {
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
         if (key === 'openRouterApiKey') return 'sk-test'
-        if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
         return undefined
       }),
     }

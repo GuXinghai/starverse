@@ -101,7 +101,6 @@ export interface SettingsMessages {
       readonly anthropicCredentialUpdateFailed: string
       readonly deepSeekCredentialUpdateFailed: string
       readonly openRouterCredentialClearFailed: string
-      readonly openRouterBaseUrlClearFailed: string
       readonly openAIResponsesCredentialClearFailed: string
       readonly googleAIStudioCredentialClearFailed: string
       readonly anthropicCredentialClearFailed: string

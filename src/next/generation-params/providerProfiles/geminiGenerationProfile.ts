@@ -18,6 +18,41 @@ const generationConfigInteger = (field: string, min?: number): GenerationParamCa
   ui: { visibleByDefault: true, editable: true },
 })
 
+const generationConfigBoolean = (path: readonly string[]): GenerationParamCapability => ({
+  supported: true,
+  wirePath: path,
+  valueType: 'boolean',
+  status: 'stable',
+  ui: { visibleByDefault: true, editable: true },
+})
+
+const unsupportedThinkingParam = (valueType: GenerationParamCapability['valueType']): GenerationParamCapability => ({
+  supported: false,
+  valueType,
+  status: 'unsupported',
+  ui: { visibleByDefault: false, editable: false },
+})
+
+const thinkingBudgetCapability: GenerationParamCapability = {
+  supported: true,
+  wirePath: ['generationConfig', 'thinkingConfig', 'thinkingBudget'],
+  valueType: 'integer',
+  range: { min: 0, integer: true },
+  status: 'stable',
+  ui: { visibleByDefault: false, editable: true },
+}
+
+const thinkingLevelCapability: GenerationParamCapability = {
+  supported: true,
+  wirePath: ['generationConfig', 'thinkingConfig', 'thinkingLevel'],
+  valueType: 'enum',
+  enumValues: ['minimal', 'low', 'medium', 'high'],
+  status: 'stable',
+  ui: { visibleByDefault: true, editable: true },
+}
+
+const includeThoughtsCapability = generationConfigBoolean(['generationConfig', 'thinkingConfig', 'includeThoughts'])
+
 const gemini3DeprecatedSampling = (field: string, valueType: 'number' | 'integer'): GenerationParamCapability => ({
   supported: true,
   wirePath: ['generationConfig', field],
@@ -44,37 +79,28 @@ export const geminiGenerationProfile: ProviderGenerationParamProfile = {
     presencePenalty: { ...generationConfigNumber('presencePenalty', -2, 2), range: { min: -2, max: 2, exclusiveMax: true } },
     frequencyPenalty: { ...generationConfigNumber('frequencyPenalty', -2, 2), range: { min: -2, max: 2, exclusiveMax: true } },
     seed: { ...generationConfigInteger('seed'), ui: { visibleByDefault: false, editable: true, warning: 'Gemini seed is best effort.' } },
-    thinkingBudget: {
-      supported: true,
-      wirePath: ['generationConfig', 'thinkingConfig', 'thinkingBudget'],
-      valueType: 'integer',
-      range: { min: 0, integer: true },
-      status: 'stable',
-      ui: { visibleByDefault: false, editable: true },
-    },
-    thinkingLevel: {
-      supported: true,
-      wirePath: ['generationConfig', 'thinkingConfig', 'thinkingLevel'],
-      valueType: 'enum',
-      enumValues: ['minimal', 'low', 'medium', 'high'],
-      status: 'stable',
-      ui: { visibleByDefault: true, editable: true },
-    },
+    thinkingBudget: unsupportedThinkingParam('integer'),
+    thinkingLevel: unsupportedThinkingParam('enum'),
+    includeThoughts: unsupportedThinkingParam('boolean'),
   },
   modelOverrides: [
+    {
+      match: { modelIdPattern: '(^|/|models/)gemini-2\\.5-' },
+      params: {
+        thinkingBudget: thinkingBudgetCapability,
+        includeThoughts: includeThoughtsCapability,
+      },
+      notes: 'Gemini 2.5 uses thinkingBudget and may return thought summaries.',
+    },
     {
       match: { modelIdPattern: '(^|/)gemini-3' },
       params: {
         temperature: gemini3DeprecatedSampling('temperature', 'number'),
         topP: { ...gemini3DeprecatedSampling('topP', 'number'), range: { min: 0, max: 1 } },
         topK: gemini3DeprecatedSampling('topK', 'integer'),
-        thinkingBudget: {
-          supported: false,
-          wirePath: ['generationConfig', 'thinkingConfig', 'thinkingBudget'],
-          valueType: 'integer',
-          status: 'unsupported',
-          ui: { visibleByDefault: false, editable: false },
-        } as GenerationParamCapability,
+        thinkingBudget: unsupportedThinkingParam('integer'),
+        thinkingLevel: thinkingLevelCapability,
+        includeThoughts: includeThoughtsCapability,
       },
       notes: 'Gemini 3 uses thinkingLevel and deprecates explicit sampling controls.',
     },

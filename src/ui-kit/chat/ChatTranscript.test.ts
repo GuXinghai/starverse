@@ -1,4 +1,6 @@
 import { render, screen } from '@testing-library/vue'
+import { beforeEach } from 'vitest'
+import { resetI18nForTests, t } from '@/shared/i18n'
 import ChatTranscript from './ChatTranscript.vue'
 import type { MessageVM } from './types'
 
@@ -14,6 +16,8 @@ function msg(partial: Partial<MessageVM> & Pick<MessageVM, 'messageId' | 'role'>
 }
 
 describe('ChatTranscript', () => {
+  beforeEach(() => resetI18nForTests())
+
   it('renders activeMessageId streaming marker even if message.streaming.isTarget is false', () => {
     render(ChatTranscript, {
       props: {
@@ -26,7 +30,7 @@ describe('ChatTranscript', () => {
       },
     })
 
-    expect(screen.getByText('正在生成')).toBeInTheDocument()
+    expect(screen.getByText(t('common.generating'))).toBeInTheDocument()
   })
 
   it('renders error tail when error is provided', () => {
@@ -40,7 +44,7 @@ describe('ChatTranscript', () => {
       },
     })
 
-    expect(screen.getByText('Error')).toBeInTheDocument()
+    expect(screen.getByText(t('chat.transcript.error'))).toBeInTheDocument()
     expect(screen.getByText(/boom/)).toBeInTheDocument()
   })
 })

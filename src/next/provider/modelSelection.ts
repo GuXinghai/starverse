@@ -5,12 +5,8 @@ export type ChatModelSelection = Readonly<{
   modelId: string
 }>
 
-export const DEFAULT_CHAT_PROVIDER_ID: RuntimeProviderKey = 'openrouter'
+export const OPENROUTER_PROVIDER_ID: RuntimeProviderKey = 'openrouter'
 export const DEFAULT_OPENROUTER_MODEL_ID = 'openrouter/auto'
-export const DEFAULT_CHAT_MODEL_SELECTION: ChatModelSelection = {
-  providerId: DEFAULT_CHAT_PROVIDER_ID,
-  modelId: DEFAULT_OPENROUTER_MODEL_ID,
-}
 
 const RUNTIME_PROVIDER_IDS: readonly RuntimeProviderKey[] = [
   'openrouter',
@@ -30,17 +26,17 @@ export function normalizeRuntimeProviderId(value: unknown): RuntimeProviderKey |
     : null
 }
 
-export function normalizeModelId(value: unknown, fallback = DEFAULT_OPENROUTER_MODEL_ID): string {
+export function normalizeModelId(value: unknown, fallback = ''): string {
   const normalized = String(value ?? '').trim()
   return normalized.length > 0 ? normalized : fallback
 }
 
 export function normalizeChatModelSelection(
   input: Readonly<Partial<ChatModelSelection>> | null | undefined,
-  fallback: ChatModelSelection = DEFAULT_CHAT_MODEL_SELECTION,
-): ChatModelSelection {
-  const providerId = normalizeRuntimeProviderId(input?.providerId) ?? fallback.providerId
-  const modelId = normalizeModelId(input?.modelId, fallback.modelId)
+): ChatModelSelection | null {
+  const providerId = normalizeRuntimeProviderId(input?.providerId)
+  const modelId = normalizeModelId(input?.modelId)
+  if (!providerId || !modelId) return null
   return { providerId, modelId }
 }
 

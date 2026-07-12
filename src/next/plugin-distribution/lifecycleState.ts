@@ -1,5 +1,5 @@
 import type { PluginFailureReason } from './types'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import {
   patchPdpRegistryRecord,
   type PdpPluginRegistryRecord,

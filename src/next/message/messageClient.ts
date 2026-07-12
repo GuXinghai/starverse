@@ -28,6 +28,8 @@ export type PersistedMessage = Readonly<{
   createdAt: number
   body: string
   meta: unknown
+  routeProvenanceId?: string
+  choiceIndex?: number
 }>
 
 export type PersistedMessageError = Readonly<{

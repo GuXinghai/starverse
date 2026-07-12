@@ -32,12 +32,12 @@
         "regenerateImage": "Regenerate image",
         "restoreAnswer": "Restore answer",
         "excludeAnswer": "Exclude answer",
-        "retryReplace": "Retry replace",
+        "retryReplace": "Retry and replace",
+        "retryAsNew": "Retry as new answer",
         "newQuestion": "New question",
         "replaceQuestion": "Replace question"
       },
       "editingQuestion": "Editing question",
-      "answerNotSelected": "Answer not selected for context",
       "linkOnly": "Link only",
       "linkWithLocalCopy": "Link + local copy",
       "imageAlt": "image-{index}",
@@ -178,7 +178,7 @@
         "openAIResponses": {
           "title": "OpenAI Responses Chat",
           "experimentalLabel": "Experimental · OpenAI Responses text-only · not OpenRouter",
-          "warning": "Native OpenAI Responses API text-only streaming. Attachments, web, tools, image generation, reasoning, and Generic compatibility routing are disabled.",
+          "warning": "Native OpenAI Responses API text-only streaming. Attachments, web, tools, image generation, and reasoning are disabled.",
           "status": "Experimental OpenAI Responses chat is {status}.",
           "selectedModel": "Selected Responses model: {model}",
           "credentialBridge": "OpenAI Responses chat uses a main-process credential bridge and does not expose API keys to this console.",
@@ -190,7 +190,7 @@
         "anthropic": {
           "title": "Anthropic Messages Chat",
           "experimentalLabel": "Experimental · Anthropic Messages text-only · not OpenRouter",
-          "warning": "Native Anthropic Messages API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, signatures, and Generic compatibility routing are disabled.",
+          "warning": "Native Anthropic Messages API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, and signatures are disabled.",
           "status": "Experimental Anthropic Messages chat is {status}.",
           "selectedModel": "Selected Claude model: {model}",
           "credentialBridge": "Anthropic chat uses a main-process credential bridge and does not expose API keys to this console.",
@@ -202,7 +202,7 @@
         "deepSeek": {
           "title": "DeepSeek Official Chat",
           "experimentalLabel": "Experimental · DeepSeek official text-only · not OpenRouter",
-          "warning": "DeepSeek official API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, reasoning_content display, and Generic compatibility routing are disabled.",
+          "warning": "DeepSeek official API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, and reasoning_content display are disabled.",
           "status": "Experimental DeepSeek official chat is {status}.",
           "selectedModel": "Selected DeepSeek model: {model}",
           "credentialBridge": "DeepSeek chat uses a main-process credential bridge and does not expose API keys to this console.",
@@ -214,7 +214,7 @@
         "googleAIStudio": {
           "title": "Google AI Studio Chat",
           "experimentalLabel": "Experimental · Google AI Studio Gemini text-only · not OpenRouter",
-          "warning": "Native Google AI Studio Gemini text-only streaming. Attachments, web, tools, image generation, reasoning, legacy Gemini runtime, and Generic compatibility routing are disabled.",
+          "warning": "Native Google AI Studio Gemini text-only streaming. Attachments, web, tools, image generation, reasoning, and legacy Gemini runtime are disabled.",
           "status": "Experimental Google AI Studio chat is {status}.",
           "selectedModel": "Selected Gemini model: {model}",
           "credentialBridge": "Google AI Studio chat uses a main-process credential bridge and does not expose API keys to this console.",
@@ -306,6 +306,7 @@
         "thinkingEnabled": "Provider thinking toggle.",
         "thinkingBudget": "Provider thinking budget.",
         "thinkingLevel": "Provider thinking level.",
+        "includeThoughts": "Request Gemini thought summaries.",
         "thoughtSummaryMode": "Gemini thought summary mode.",
         "stopSequences": "Stop sequences.",
         "googleSearch": "Google Search grounding.",
@@ -373,6 +374,23 @@
         "unknown": "unknown"
       },
       "excluded": "excluded"
+    },
+    "newTemplate": {
+      "reset": "Reset temporary chat",
+      "modelConfig": "Model and configuration",
+      "draftAttachments": "Draft and attachments",
+      "confirmReset": "Reset selected",
+      "cancel": "Cancel",
+      "settingsTitle": "New chat lifecycle",
+      "startupNavigation": "Open on startup",
+      "openNew": "New chat",
+      "restoreFormal": "Last formal chat",
+      "projectsOnly": "Projects only",
+      "startupResetModel": "Reset model and configuration on startup",
+      "startupResetDraft": "Reset draft and attachments on startup",
+      "postSendReset": "After first send",
+      "resetAll": "Reset everything",
+      "preserveModel": "Preserve model and configuration"
     }
   }
 }

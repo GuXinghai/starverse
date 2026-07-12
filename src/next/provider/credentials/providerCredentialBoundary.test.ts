@@ -1,20 +1,11 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs'
 import { join, relative } from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID } from '@/next/provider/generic/genericEndpointDescriptor'
-import {
-  resolveGenericEndpointDescriptor,
-  toSafeGenericEndpointMetadata,
-  type GenericEndpointConfig,
-} from '@/next/provider/generic/genericEndpointConfig'
 import {
   validateProviderCredentialRef,
-  providerCredentialResolutionFromCredential,
-  type ProviderCredentialResolver,
 } from '@/next/provider/credentials/providerCredentialResolver'
 import {
   SECRET_LIKE_CREDENTIAL_FIELD_NAMES,
-  createBearerCredential,
   isSecretLikeCredentialFieldName,
   normalizeCredentialFieldName,
 } from '@/next/provider/credentials/providerCredential'
@@ -31,7 +22,6 @@ const repoRoot = process.cwd()
 
 const boundarySourceFiles = [
   ...collectSourceFiles(join(repoRoot, 'src', 'next', 'provider', 'credentials')),
-  join(repoRoot, 'src', 'next', 'provider', 'generic', 'genericEndpointConfig.ts'),
 ]
 
 const forbiddenRuntimeImportPattern =
@@ -108,22 +98,6 @@ function relativePath(file: string): string {
   return relative(repoRoot, file).split('\\').join('/')
 }
 
-function validConfig(overrides?: Partial<GenericEndpointConfig>): GenericEndpointConfig {
-  return {
-    endpointId: 'ep-boundary',
-    displayName: 'Boundary Endpoint',
-    profileId: GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
-    baseUrl: 'https://api.example.com/v1',
-    model: 'gpt-4o-mini',
-    credentialRef,
-    ...overrides,
-  }
-}
-
-function validResolver(): ProviderCredentialResolver {
-  return () => providerCredentialResolutionFromCredential(createBearerCredential('sk-resolved-secret-token'))
-}
-
 function expectNoSecretShapes(serialized: string): void {
   for (const value of secretValues) {
     expect(serialized).not.toContain(value)
@@ -132,7 +106,7 @@ function expectNoSecretShapes(serialized: string): void {
 
 describe('provider credential boundary safety gates', () => {
   describe('static import boundary gate', () => {
-    it('keeps credential and Generic config boundary sources free of Electron, renderer, env, store, and OpenRouter legacy imports', () => {
+    it('keeps credential boundary sources free of Electron, renderer, env, store, and OpenRouter legacy imports', () => {
       const offenders: string[] = []
 
       for (const file of boundarySourceFiles) {
@@ -182,41 +156,6 @@ describe('provider credential boundary safety gates', () => {
           expectNoSecretShapes(JSON.stringify(result))
         }
       }
-    })
-
-    it('GenericEndpointConfig rejects common secret-like fields case-insensitively with safe errors', () => {
-      for (const field of secretLikeFields) {
-        const result = resolveGenericEndpointDescriptor(
-          {
-            ...validConfig(),
-            [field]: field.toLowerCase().includes('authorization')
-              ? 'Bearer sk-boundary-secret-token'
-              : 'sk-boundary-secret-token',
-          } as GenericEndpointConfig,
-          validResolver(),
-        )
-
-        expect('code' in result).toBe(true)
-        if ('code' in result) {
-          expect(result.code).toBe('secret_like_field_rejected')
-          expect(result.message).toBe('Config must not contain secret-like field. Use credentialRef instead.')
-          expectNoSecretShapes(JSON.stringify(result))
-        }
-      }
-    })
-
-    it('safe Generic metadata never exposes raw credential, auth headers, or URL userinfo', () => {
-      const metadata = toSafeGenericEndpointMetadata(
-        validConfig({
-          baseUrl: 'https://user:sk-boundary-secret-token@api.example.com/v1',
-        }),
-      )
-      const serialized = JSON.stringify(metadata)
-
-      expect(metadata.credentialPresent).toBe(true)
-      expectNoSecretShapes(serialized)
-      expect(serialized).not.toContain('user:')
-      expect(serialized).not.toContain('api.example.com')
     })
 
     it('store failure results exposed to the resolver are normalized before leaving the boundary', () => {

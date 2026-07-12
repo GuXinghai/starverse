@@ -8,22 +8,24 @@ import { anthropicGenerationProfile } from './providerProfiles/anthropicGenerati
 import { deepseekGenerationProfile } from './providerProfiles/deepseekGenerationProfile'
 import { geminiGenerationProfile } from './providerProfiles/geminiGenerationProfile'
 import { geminiImageGenerationProfile } from './providerProfiles/geminiImageGenerationProfile'
-import {
-  genericOpenAICompatibleLegacyGenerationProfile,
-  genericOpenAICompatibleModernGenerationProfile,
-} from './providerProfiles/genericOpenAICompatibleGenerationProfile'
 import { openaiResponsesGenerationProfile } from './providerProfiles/openaiResponsesGenerationProfile'
 import { openrouterGenerationProfile } from './providerProfiles/openrouterGenerationProfile'
 
+export const unsetGenerationProfile: ProviderGenerationParamProfile = {
+  providerId: 'unset',
+  profileId: 'unset_generation_params',
+  wireProtocol: 'none',
+  params: {},
+}
+
 export const GENERATION_PARAM_PROVIDER_PROFILES: readonly ProviderGenerationParamProfile[] = [
+  unsetGenerationProfile,
   openrouterGenerationProfile,
   geminiGenerationProfile,
   geminiImageGenerationProfile,
   openaiResponsesGenerationProfile,
   anthropicGenerationProfile,
   deepseekGenerationProfile,
-  genericOpenAICompatibleLegacyGenerationProfile,
-  genericOpenAICompatibleModernGenerationProfile,
 ]
 
 function modelMatches(modelId: string | null | undefined, pattern?: string, exactModelIds?: readonly string[]): boolean {
@@ -58,15 +60,9 @@ export function getGenerationParamProfileById(profileId: string): ProviderGenera
 export function getDefaultGenerationParamProfile(
   providerId: GenerationProviderId,
   options: Readonly<{
-    genericProtocol?: 'legacy' | 'modern'
     requestKind?: 'text' | 'image_generation'
   }> = {},
 ): ProviderGenerationParamProfile | null {
-  if (providerId === 'generic_openai_compatible') {
-    return options.genericProtocol === 'modern'
-      ? genericOpenAICompatibleModernGenerationProfile
-      : genericOpenAICompatibleLegacyGenerationProfile
-  }
   if (providerId === 'google_ai_studio' && options.requestKind === 'image_generation') {
     return geminiImageGenerationProfile
   }

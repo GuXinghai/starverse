@@ -16,7 +16,7 @@ import {
   DEFAULT_NETWORK_PROXY_SETTINGS,
   normalizeNetworkProxySettings,
   type NetworkProxyMode,
-} from '@/next/plugin-distribution/networkProxyShared'
+} from '@/shared/plugin-distribution/networkProxyShared'
 import {
   DEFAULT_NETEXP_SETTINGS,
   getNetExpRuntimeInfo,
@@ -34,6 +34,8 @@ import type { GenerationParamsLayer } from '@/next/generation-params/generationP
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import PluginManagementPanel from './PluginManagementPanel.vue'
+import CompatibleProviderSettingsPanel from './compatible/CompatibleProviderSettingsPanel.vue'
+import NewChatLifecycleSettingsPanel from './NewChatLifecycleSettingsPanel.vue'
 import { t, tf, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
 import {
@@ -113,30 +115,12 @@ type OpenRouterEndpointMetadataBase = Readonly<{
   rendererVisible: true
 }>
 
-type OpenRouterEndpointMetadata =
-  | Readonly<OpenRouterEndpointMetadataBase & {
+type OpenRouterEndpointMetadata = Readonly<OpenRouterEndpointMetadataBase & {
     endpointId: 'openrouter-official'
     endpointStatus: 'official'
     displayName: 'OpenRouter official endpoint'
     baseUrlConfigured: false
-    baseUrlInvalid?: false
     displayBaseUrl: 'https://openrouter.ai/api/v1'
-  }>
-  | Readonly<OpenRouterEndpointMetadataBase & {
-    endpointId: 'openrouter-custom-legacy-store'
-    endpointStatus: 'custom'
-    displayName: 'OpenRouter custom endpoint'
-    baseUrlConfigured: true
-    baseUrlInvalid?: false
-    displayBaseUrl: string
-  }>
-  | Readonly<OpenRouterEndpointMetadataBase & {
-    endpointId: 'openrouter-custom-legacy-store'
-    endpointStatus: 'invalid_custom'
-    displayName: 'OpenRouter custom endpoint'
-    baseUrlConfigured: true
-    baseUrlInvalid: true
-    displayBaseUrl?: never
   }>
 
 type OpenRouterCredentialStatus = Readonly<{
@@ -146,9 +130,8 @@ type OpenRouterCredentialStatus = Readonly<{
   maskedApiKey?: string
   migratedFromLegacy?: boolean
   warnings?: string[]
-  baseUrlConfigured: boolean
-  baseUrlInvalid?: boolean
-  displayBaseUrl?: string
+  baseUrlConfigured: false
+  displayBaseUrl: 'https://openrouter.ai/api/v1'
   defaultBaseUrl?: string
   endpoint?: OpenRouterEndpointMetadata
 }>
@@ -171,7 +154,7 @@ type ProviderCredentialRevealBridge = Readonly<{
 type OpenRouterCredentialBridge = Readonly<{
   getStatus: () => Promise<OpenRouterCredentialResult>
   reveal: () => Promise<ProviderCredentialRevealResult>
-  update: (payload: Readonly<{ apiKey?: string; baseUrl?: string | null }>) => Promise<OpenRouterCredentialResult>
+  update: (payload: Readonly<{ apiKey?: string }>) => Promise<OpenRouterCredentialResult>
   clear: () => Promise<OpenRouterCredentialResult>
 }>
 
@@ -433,8 +416,6 @@ const OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY = 'sv_debug_openrouter_echo_upstre
 const MAX_RECENT_MODELS_KEY = 'maxRecentModels'
 
 const apiKey = ref('')
-const baseUrl = ref('')
-const loadedBaseUrl = ref('')
 const apiKeyConfigured = ref(false)
 const maskedApiKey = ref('')
 const credentialWarnings = ref<string[]>([])
@@ -454,10 +435,6 @@ const deepSeekApiKey = ref('')
 const deepSeekApiKeyConfigured = ref(false)
 const deepSeekMaskedApiKey = ref('')
 const deepSeekCredentialWarnings = ref<string[]>([])
-const endpointDisplayName = ref(t('settings.openrouter.endpointNameOfficial'))
-const endpointDisplayStatus = ref(t('settings.openrouter.endpointOfficial'))
-const endpointDisplayBaseUrl = ref('')
-const endpointBaseUrlInvalid = ref(false)
 const catalogStartupSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogPickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
@@ -537,20 +514,6 @@ const globalWebSearchInheritanceHint = computed(() => {
   }
   return t('settings.search.hintGlobal')
 })
-function isValidUrlOrEmpty(value: string): boolean {
-  const trimmed = value.trim()
-  if (!trimmed) return true
-  try {
-    // eslint-disable-next-line no-new
-    new URL(trimmed)
-    return true
-  } catch {
-    return false
-  }
-}
-
-const baseUrlValid = computed(() => isValidUrlOrEmpty(baseUrl.value))
-
 const DEFAULT_REASONING_PREFS: ReasoningPrefs = { mode: 'auto', effort: 'auto', exclude: false }
 const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
 const catalogAutoSyncPolicyOptions: ReadonlyArray<Readonly<{ value: CatalogAutoSyncPolicy; labelKey: string }>> = [
@@ -730,32 +693,11 @@ function toggleDeepSeekApiKeyVisibility() {
 }
 
 function applyOpenRouterCredentialStatus(status: OpenRouterCredentialStatus) {
-  const endpoint = status.endpoint
-  const safeDisplayBaseUrl = String(status.displayBaseUrl ?? '').trim()
-  let endpointSafeDisplayBaseUrl: string | undefined
-  if (endpoint?.endpointStatus === 'official' || endpoint?.endpointStatus === 'custom') {
-    endpointSafeDisplayBaseUrl = endpoint.displayBaseUrl
-  } else if (!endpoint && status.baseUrlConfigured === false) {
-    endpointSafeDisplayBaseUrl = status.defaultBaseUrl
-  }
-
   apiKey.value = ''
   showApiKey.value = false
   apiKeyConfigured.value = status.apiKeyConfigured === true
   maskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
   credentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
-  endpointDisplayName.value = endpoint?.endpointStatus === 'custom' || endpoint?.endpointStatus === 'invalid_custom'
-    ? t('settings.openrouter.endpointNameCustom')
-    : t('settings.openrouter.endpointNameOfficial')
-  endpointDisplayStatus.value = endpoint?.endpointStatus === 'invalid_custom'
-    ? t('settings.openrouter.endpointInvalidCustom')
-    : endpoint?.endpointStatus === 'custom'
-      ? t('settings.openrouter.endpointCustom')
-      : t('settings.openrouter.endpointOfficial')
-  endpointDisplayBaseUrl.value = String(endpointSafeDisplayBaseUrl ?? '').trim()
-  endpointBaseUrlInvalid.value = endpoint?.baseUrlInvalid === true || status.baseUrlInvalid === true
-  baseUrl.value = safeDisplayBaseUrl
-  loadedBaseUrl.value = baseUrl.value
 }
 
 async function loadOpenRouterCredentialStatus() {
@@ -965,10 +907,6 @@ async function save() {
     return
   }
 
-  if (!baseUrlValid.value) {
-    error.value = t('settings.openrouter.baseUrlInvalid')
-    return
-  }
   const nextMaxRecentModels = parsePositiveIntegerText(maxRecentModelsDraft.value)
   if (nextMaxRecentModels === null) {
     error.value = t('settings.runtime.maxRecentModelsPositiveInteger')
@@ -981,11 +919,9 @@ async function save() {
     if (!credentialBridge) {
       throw new Error(t('settings.runtime.missingOpenRouterCredentialBridge'))
     }
-    const credentialPayload: { apiKey?: string; baseUrl?: string } = {}
+    const credentialPayload: { apiKey?: string } = {}
     const nextApiKey = apiKey.value.trim()
     if (nextApiKey) credentialPayload.apiKey = nextApiKey
-    const nextBaseUrl = baseUrl.value.trim()
-    if (nextBaseUrl !== loadedBaseUrl.value.trim()) credentialPayload.baseUrl = nextBaseUrl
     const credentialResult = await credentialBridge.update(credentialPayload)
     if (!credentialResult?.ok || !credentialResult.status) {
       throw new Error(credentialResult?.message || t('settings.runtime.openRouterCredentialUpdateFailed'))
@@ -1166,40 +1102,6 @@ async function clearApiKey() {
   }
 }
 
-async function clearBaseUrl() {
-  error.value = null
-  savedMessage.value = null
-  const credentialBridge = getOpenRouterCredentialBridge()
-  if (!credentialBridge) {
-    error.value = t('settings.runtime.missingOpenRouterCredentialBridge')
-    return
-  }
-  saving.value = true
-  try {
-    const result = await credentialBridge.update({ baseUrl: null })
-    if (!result?.ok || !result.status) {
-      throw new Error(result?.message || t('settings.runtime.openRouterBaseUrlClearFailed'))
-    }
-    applyOpenRouterCredentialStatus(result.status)
-    savedMessage.value = t('settings.openrouter.baseUrlCleared')
-    try {
-      window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
-        detail: {
-          hasApiKey: apiKeyConfigured.value,
-          baseUrlChanged: true,
-          reason: 'base_url_cleared',
-        },
-      }))
-    } catch {
-      // no-op
-    }
-  } catch (err: any) {
-    error.value = err?.message ? String(err.message) : String(err)
-  } finally {
-    saving.value = false
-  }
-}
-
 async function testNetworkProxyConnection() {
   error.value = null
   savedMessage.value = null
@@ -1327,11 +1229,6 @@ async function verifyAndSync() {
     return
   }
 
-  if (!baseUrlValid.value) {
-    error.value = t('settings.openrouter.baseUrlInvalid')
-    return
-  }
-
   verifySyncLoading.value = true
   try {
     const credentialBridge = getOpenRouterCredentialBridge()
@@ -1339,11 +1236,9 @@ async function verifyAndSync() {
       error.value = t('settings.runtime.missingOpenRouterCredentialBridge')
       return
     }
-    const credentialPayload: { apiKey?: string; baseUrl?: string } = {}
+    const credentialPayload: { apiKey?: string } = {}
     const nextApiKey = apiKey.value.trim()
     if (nextApiKey) credentialPayload.apiKey = nextApiKey
-    const nextBaseUrl = baseUrl.value.trim()
-    if (nextBaseUrl !== loadedBaseUrl.value.trim()) credentialPayload.baseUrl = nextBaseUrl
     const credentialResult = await credentialBridge.update(credentialPayload)
     if (!credentialResult?.ok || !credentialResult.status) {
       throw new Error(credentialResult?.message || t('settings.runtime.openRouterCredentialUpdateFailed'))
@@ -1605,6 +1500,8 @@ onMounted(() => {
         {{ savedMessage }}
       </div>
 
+      <CompatibleProviderSettingsPanel :disabled="props.disabled || props.isRunning" />
+
       <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('common.language') }}</div>
 
@@ -1695,35 +1592,6 @@ onMounted(() => {
         </div>
         <div v-if="credentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openrouter-credential-warnings">
           <div v-for="warning in credentialWarnings" :key="warning">{{ warning }}</div>
-        </div>
-
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.baseUrl') }}</label>
-        <div class="mt-1 flex items-center gap-2">
-          <input
-            class="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
-            :class="baseUrlValid ? 'border-gray-200' : 'border-red-300'"
-            :placeholder="t('settings.openrouter.baseUrlPlaceholder')"
-            :disabled="!canEdit || loading || saving"
-            v-model="baseUrl"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving"
-            @click="clearBaseUrl"
-          >
-            {{ t('common.clear') }}
-          </button>
-        </div>
-        <div v-if="!baseUrlValid" class="mt-1 text-[11px] text-red-700">{{ t('settings.openrouter.baseUrlInvalid') }}</div>
-        <div
-          class="mt-1 text-[11px] text-gray-500"
-          data-testid="settings-openrouter-endpoint-metadata"
-        >
-          <span data-testid="settings-openrouter-endpoint-status">{{ endpointDisplayStatus }}</span>
-          <span> · {{ endpointDisplayName }}</span>
-          <span v-if="endpointDisplayBaseUrl"> · {{ endpointDisplayBaseUrl }}</span>
-          <span v-if="endpointBaseUrlInvalid" data-testid="settings-openrouter-endpoint-warning"> · {{ t('settings.openrouter.endpointCustomBaseUrlInvalid') }}</span>
         </div>
 
         <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -2495,6 +2363,8 @@ onMounted(() => {
       </div>
 
       <PluginManagementPanel />
+
+      <NewChatLifecycleSettingsPanel />
 
       <div class="text-[11px] text-gray-500">
         {{ t('settings.footer') }}

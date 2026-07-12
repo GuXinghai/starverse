@@ -1,6 +1,6 @@
 import { createHash, createPublicKey, verify } from 'node:crypto'
 import { SUPPORTED_PLUGIN_CRYPTO_SIGNATURE_ALGORITHMS } from './cryptoPolicy'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import { validatePluginSignatureEnvelope, validatePluginTrustRootMetadata } from './trustPolicy'
 import type {
   PluginFailureReason,

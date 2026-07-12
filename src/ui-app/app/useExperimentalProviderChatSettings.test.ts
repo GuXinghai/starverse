@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ref } from 'vue'
+import { DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
 import { useExperimentalProviderChatSettings } from './useExperimentalProviderChatSettings'
 
 const keys = {
@@ -39,7 +40,7 @@ function createSettings() {
     model,
     isRunning,
     isDraftInteractionLocked,
-    normalizeModelKey: (value) => String(value ?? '').trim() || 'openrouter/auto',
+    normalizeModelKey: (value) => String(value ?? '').trim() || DEFAULT_OPENROUTER_MODEL_ID,
   })
   return { settings, model, isRunning, isDraftInteractionLocked }
 }
@@ -58,7 +59,7 @@ describe('useExperimentalProviderChatSettings', () => {
 
     expect(settings.openRouterChatConfig.value).toMatchObject({
       enabled: false,
-      model: 'openrouter/auto',
+      model: DEFAULT_OPENROUTER_MODEL_ID,
       providerLabel: 'OpenRouter · first-class provider',
     })
     expect(settings.lmStudioChatConfig.value).toMatchObject({

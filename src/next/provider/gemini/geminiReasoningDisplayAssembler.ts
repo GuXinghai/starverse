@@ -5,11 +5,6 @@ export type GeminiReasoningDisplayAssemblerState = {
   textByCandidateKey: Map<string, string>
 }
 
-export type GeminiThoughtSummaryFinalization = Readonly<{
-  block: ReasoningDisplayBlock | null
-  diagnostic: unknown | null
-}>
-
 export function createGeminiReasoningDisplayAssemblerState(): GeminiReasoningDisplayAssemblerState {
   return {
     textByCandidateKey: new Map(),
@@ -32,51 +27,6 @@ export function appendGeminiThoughtSummaryDelta(input: Readonly<{
     candidateIndex: input.candidateIndex,
     text: nextText,
   })
-}
-
-export function buildGeminiFinalThoughtSummaryDisplayBlock(input: Readonly<{
-  messageId: string
-  candidateIndex: number
-  text: string
-  state?: GeminiReasoningDisplayAssemblerState
-}>): GeminiThoughtSummaryFinalization {
-  const candidateKey = buildGeminiThoughtSummaryCandidateKey(input.candidateIndex)
-  const previous = input.state?.textByCandidateKey.get(candidateKey)
-
-  if (input.text.length === 0) {
-    return {
-      block: null,
-      diagnostic: previous && previous.length > 0
-        ? createGeminiThoughtSummaryFinalDiagnostic({
-            type: 'gemini_thought_summary_final_empty',
-            candidateIndex: input.candidateIndex,
-            streamText: previous,
-            finalText: '',
-          })
-        : null,
-    }
-  }
-
-  if (previous === input.text) {
-    return { block: null, diagnostic: null }
-  }
-
-  input.state?.textByCandidateKey.set(candidateKey, input.text)
-  return {
-    block: createGeminiThoughtSummaryDisplayBlock({
-      messageId: input.messageId,
-      candidateIndex: input.candidateIndex,
-      text: input.text,
-    }),
-    diagnostic: previous !== undefined
-      ? createGeminiThoughtSummaryFinalDiagnostic({
-          type: 'gemini_thought_summary_final_mismatch',
-          candidateIndex: input.candidateIndex,
-          streamText: previous,
-          finalText: input.text,
-        })
-      : null,
-  }
 }
 
 export function collectGeminiThoughtSummaryTextByCandidate(response: unknown): Map<number, string> {
@@ -126,53 +76,6 @@ export function buildGeminiThoughtSummaryDeltaEvents(input: Readonly<{
   return events
 }
 
-export function buildGeminiFinalThoughtSummaryEvents(input: Readonly<{
-  response: unknown
-  messageId: string
-  state?: GeminiReasoningDisplayAssemblerState
-}>): StarverseStreamEvent[] {
-  const events: StarverseStreamEvent[] = []
-  const candidates = Array.isArray(asRecord(input.response)?.candidates)
-    ? (asRecord(input.response)!.candidates as unknown[])
-    : []
-  const finalTexts = collectGeminiThoughtSummaryTextByCandidate(input.response)
-  const candidateIndexes = new Set<number>()
-  for (const candidate of candidates) {
-    const record = asRecord(candidate)
-    if (record) candidateIndexes.add(readCandidateIndex(record))
-  }
-  for (const key of input.state?.textByCandidateKey.keys() ?? []) {
-    const parsed = parseCandidateKey(key)
-    if (parsed !== null) candidateIndexes.add(parsed)
-  }
-
-  for (const candidateIndex of candidateIndexes) {
-    const result = buildGeminiFinalThoughtSummaryDisplayBlock({
-      messageId: input.messageId,
-      candidateIndex,
-      text: finalTexts.get(candidateIndex) ?? '',
-      state: input.state,
-    })
-    if (result.diagnostic) {
-      events.push({
-        type: 'message.reasoning_raw_detail',
-        messageId: input.messageId,
-        choiceIndex: candidateIndex,
-        detail: result.diagnostic,
-      })
-    }
-    if (result.block) {
-      events.push({
-        type: 'message.reasoning_display_block_upsert',
-        messageId: input.messageId,
-        choiceIndex: candidateIndex,
-        block: result.block,
-      })
-    }
-  }
-  return events
-}
-
 function createGeminiThoughtSummaryDisplayBlock(input: Readonly<{
   messageId: string
   candidateIndex: number
@@ -193,43 +96,10 @@ function buildGeminiThoughtSummaryCandidateKey(candidateIndex: number): string {
   return `candidate:${candidateIndex}:thought_summary`
 }
 
-function parseCandidateKey(key: string): number | null {
-  const match = /^candidate:(\d+):thought_summary$/.exec(key)
-  if (!match) return null
-  const index = Number(match[1])
-  return Number.isInteger(index) && index >= 0 ? index : null
-}
-
 function readCandidateIndex(candidate: Record<string, unknown>): number {
   return typeof candidate.index === 'number' && Number.isInteger(candidate.index) && candidate.index >= 0
     ? candidate.index
     : 0
-}
-
-function createGeminiThoughtSummaryFinalDiagnostic(input: Readonly<{
-  type: 'gemini_thought_summary_final_empty' | 'gemini_thought_summary_final_mismatch'
-  candidateIndex: number
-  streamText: string
-  finalText: string
-}>): Readonly<Record<string, unknown>> {
-  return {
-    type: input.type,
-    provider: 'google_ai_studio',
-    candidateIndex: input.candidateIndex,
-    streamLength: input.streamText.length,
-    finalLength: input.finalText.length,
-    streamHash: stableTextHash(input.streamText),
-    finalHash: stableTextHash(input.finalText),
-  }
-}
-
-function stableTextHash(text: string): string {
-  let hash = 0x811c9dc5
-  for (let index = 0; index < text.length; index += 1) {
-    hash ^= text.charCodeAt(index)
-    hash = Math.imul(hash, 0x01000193)
-  }
-  return (hash >>> 0).toString(16).padStart(8, '0')
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

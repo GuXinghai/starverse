@@ -1,10 +1,15 @@
+import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import type { DomainEvent } from '@/next/state/types'
 import type { StreamJsonChunkMapper } from '@/next/streaming/core/types'
-import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 
 const KNOWN_FINISH_REASONS = new Set(['stop', 'length', 'tool_calls', 'content_filter', 'function_call'])
 
-export const mapGenericOpenAICompatibleChunkToEvents: StreamJsonChunkMapper = (input) => {
+/**
+ * Minimal OpenAI Chat Completions wire mapper shared only by the existing local
+ * endpoint products. It is not a cloud provider identity or the canonical
+ * compatible runtime introduced by later task packages.
+ */
+export const mapLocalOpenAIChatCompletionsChunkToEvents: StreamJsonChunkMapper = (input) => {
   const { chunk, messageId } = input
   const choiceIndex = typeof input.choiceIndex === 'number' ? input.choiceIndex : 0
   const events: DomainEvent[] = []
@@ -18,7 +23,7 @@ export const mapGenericOpenAICompatibleChunkToEvents: StreamJsonChunkMapper = (i
   if (error && typeof error === 'object') {
     events.push({
       type: 'StreamError',
-      error: genericErrorEnvelope(error),
+      error: localEndpointErrorEnvelope(error),
       terminal: true,
     })
     return events
@@ -80,22 +85,22 @@ function normalizeFinishReason(native: string): string {
   return KNOWN_FINISH_REASONS.has(native) ? native : 'unknown'
 }
 
-function genericErrorEnvelope(error: unknown): ErrorEnvelope {
+function localEndpointErrorEnvelope(error: unknown): ErrorEnvelope {
   const record = error && typeof error === 'object' ? error as Record<string, unknown> : {}
   const code = typeof record.code === 'string'
     ? record.code
     : typeof record.type === 'string'
       ? record.type
-      : 'generic_provider_error'
-  const message = typeof record.message === 'string' ? record.message : 'Generic provider error'
+      : 'local_chat_completions_error'
+  const message = typeof record.message === 'string' ? record.message : 'Local chat endpoint error'
   return {
     phase: 'mid_stream',
     completionClass: 'error',
     openrouter: {
       code,
       message,
-      provider: 'generic',
-      metadata: { provider_name: 'generic' },
+      provider: 'local_chat_completions',
+      metadata: { provider_name: 'local_chat_completions' },
     },
     truncated: false,
   } as ErrorEnvelope

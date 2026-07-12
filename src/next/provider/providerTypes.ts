@@ -17,7 +17,6 @@ import type {
   RequestedReasoningMode,
   ToolCallDelta,
 } from '@/next/state/types'
-import type { GeminiThinkingConfig } from '@/next/provider/gemini/geminiThinkingPolicy'
 import type { ProviderNativeSnapshot } from '@/next/provider/providerNativeSnapshot'
 import type { NetworkErrorEnvelope } from '@/shared/network/networkErrorEnvelope'
 
@@ -57,7 +56,7 @@ export type StarverseProviderError = Readonly<{
 // This is the canonical event vocabulary that all RuntimeProviderAdapters
 // must produce. The OpenRouter adapter maps existing DomainEvent shapes
 // into this vocabulary; future adapters (OpenAI Responses, Anthropic Messages,
-// Gemini native, DeepSeek profile, Generic OpenAI-compatible) will produce
+// Gemini native and DeepSeek profile) will produce
 // the same vocabulary from their native stream formats.
 //
 // Field semantics mirror the existing DomainEvent union to preserve
@@ -138,7 +137,6 @@ export type ProviderStreamConfig = Readonly<{
     imageSize?: '512' | '1K' | '2K' | '4K' | ''
     imageConfig?: unknown
   }>
-  geminiThinking?: GeminiThinkingConfig
   additionalPlugins?: ReadonlyArray<unknown>
   timeoutMs?: number
   baseUrl?: string

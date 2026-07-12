@@ -3,7 +3,7 @@ import { once } from 'node:events'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import {
   validateDownloadPolicy,
   type AcceptedDownloadPolicy,
@@ -15,7 +15,7 @@ import {
   buildProxyFetchInit,
   isProxyFetchInitFailure,
   type NetworkProxySettings,
-} from './networkProxy'
+} from '@/shared/plugin-distribution/networkProxy'
 import {
   buildNetworkErrorEnvelope,
   networkFailureReasonFromDownloadFailure,

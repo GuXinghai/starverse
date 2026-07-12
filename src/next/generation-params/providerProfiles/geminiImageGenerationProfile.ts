@@ -56,7 +56,6 @@ export const geminiImageGenerationProfile: ProviderGenerationParamProfile = {
     },
     thinkingLevel: generationConfigEnum('thinking_level', ['minimal', 'high']),
     thoughtSummaryMode: generationConfigEnum('thinking_summaries', ['none', 'auto']),
-    reasoningSummary: generationConfigEnum('thinking_summaries', ['none', 'auto']),
     googleSearch: {
       supported: true,
       wirePath: ['tools', 'google_search'],
@@ -94,7 +93,6 @@ export const geminiImageGenerationProfile: ProviderGenerationParamProfile = {
       params: {
         thinkingLevel: unsupported('enum', 'Legacy Nano Banana does not expose thinking level.', { enumValues: ['minimal', 'high'] }),
         thoughtSummaryMode: unsupported('enum', 'Legacy Nano Banana does not expose thought summaries.', { enumValues: ['none', 'auto'] }),
-        reasoningSummary: unsupported('enum', 'Legacy Nano Banana does not expose thought summaries.', { enumValues: ['none', 'auto'] }),
         googleSearch: unsupported('boolean', 'Legacy Nano Banana does not support Google Search grounding.'),
         imageSearch: unsupported('boolean', 'Legacy Nano Banana does not support Image Search grounding.'),
       },

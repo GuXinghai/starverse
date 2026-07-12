@@ -170,15 +170,23 @@ describe('buildGeminiRequest', () => {
     })
   })
 
-  it('does not derive thinkingConfig from legacy Gemini thinking config', () => {
+  it('serializes Gemini 3 thinking level and thought summaries from generationParams', () => {
     const req = buildGeminiRequest({
-      model: 'gemini-2.5-pro',
+      model: 'gemini-3.1-flash-lite',
       messages: baseMessages,
-      config: baseConfig({ geminiThinking: { mode: 'budget', thinkingBudget: 2048, includeThoughts: true } }),
+      config: baseConfig({
+        generationParams: {
+          generationConfig: {
+            thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+          },
+        },
+      }),
     })
 
-    expect(req.generationConfig).toEqual({ candidateCount: 1 })
-    expect((req.generationConfig as any).thinkingConfig).toBeUndefined()
+    expect(req.generationConfig).toEqual({
+      candidateCount: 1,
+      thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+    })
   })
 
   it('ignores generic reasoning effort for Gemini native requests', () => {
@@ -231,7 +239,7 @@ describe('buildGeminiRequest', () => {
     const req = buildGeminiRequest({
       model: 'gemini-2.5-pro',
       messages: baseMessages,
-      config: baseConfig({ geminiThinking: { mode: 'budget', thinkingBudget: 2048 } }),
+      config: baseConfig(),
     })
 
     expect((req as any).reasoning_effort).toBeUndefined()

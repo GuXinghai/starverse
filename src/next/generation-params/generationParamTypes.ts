@@ -1,6 +1,6 @@
 import type { RuntimeProviderKey } from '../provider/runtimeSelection'
 
-export type GenerationProviderId = RuntimeProviderKey | 'generic_openai_compatible'
+export type GenerationProviderId = RuntimeProviderKey | 'unset'
 
 export type GenerationParamKey =
   | 'temperature'
@@ -18,6 +18,7 @@ export type GenerationParamKey =
   | 'thinkingEnabled'
   | 'thinkingBudget'
   | 'thinkingLevel'
+  | 'includeThoughts'
   | 'thoughtSummaryMode'
   | 'stopSequences'
   | 'googleSearch'
@@ -88,14 +89,13 @@ export type ResolvedGenerationParams = Readonly<{
 }>
 
 export type WireProtocol =
+  | 'none'
   | 'openrouter-chat'
   | 'gemini-generate-content'
   | 'gemini-interactions-image'
   | 'openai-responses'
   | 'anthropic-messages'
   | 'deepseek-chat'
-  | 'openai-chat-compatible-legacy'
-  | 'openai-chat-compatible-modern'
 
 export type GenerationParamValueType = 'number' | 'integer' | 'boolean' | 'enum' | 'stringArray'
 

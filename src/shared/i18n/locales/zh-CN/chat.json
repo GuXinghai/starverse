@@ -32,12 +32,12 @@
         "regenerateImage": "重新生成图片",
         "restoreAnswer": "恢复回答",
         "excludeAnswer": "排除回答",
-        "retryReplace": "重试替换",
+        "retryReplace": "重试并替换回答",
+        "retryAsNew": "重试并生成新回答",
         "newQuestion": "作为新问题发送",
         "replaceQuestion": "替换问题"
       },
       "editingQuestion": "正在编辑问题",
-      "answerNotSelected": "该回答未选入上下文",
       "linkOnly": "仅链接",
       "linkWithLocalCopy": "链接 + 本地副本",
       "imageAlt": "图片-{index}",
@@ -178,7 +178,7 @@
         "openAIResponses": {
           "title": "OpenAI Responses 聊天",
           "experimentalLabel": "实验性 · OpenAI Responses 纯文本 · 非 OpenRouter",
-          "warning": "原生 OpenAI Responses API 纯文本流式输出。附件、联网、工具、图像生成、推理和 Generic 兼容路由均已禁用。",
+          "warning": "原生 OpenAI Responses API 纯文本流式输出。附件、联网、工具、图像生成和推理均已禁用。",
           "status": "实验性 OpenAI Responses 聊天当前为{status}。",
           "selectedModel": "已选 Responses 模型：{model}",
           "credentialBridge": "OpenAI Responses 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
@@ -190,7 +190,7 @@
         "anthropic": {
           "title": "Anthropic Messages 聊天",
           "experimentalLabel": "实验性 · Anthropic Messages 纯文本 · 非 OpenRouter",
-          "warning": "原生 Anthropic Messages API 纯文本流式输出。附件、联网、工具、图像生成、reasoning/thinking、签名和 Generic 兼容路由均已禁用。",
+          "warning": "原生 Anthropic Messages API 纯文本流式输出。附件、联网、工具、图像生成、reasoning/thinking 和签名均已禁用。",
           "status": "实验性 Anthropic Messages 聊天当前为{status}。",
           "selectedModel": "已选 Claude 模型：{model}",
           "credentialBridge": "Anthropic 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
@@ -202,7 +202,7 @@
         "deepSeek": {
           "title": "DeepSeek 官方聊天",
           "experimentalLabel": "实验性 · DeepSeek 官方纯文本 · 非 OpenRouter",
-          "warning": "DeepSeek 官方 API 纯文本流式输出。附件、联网、工具、图像生成、reasoning/thinking、reasoning_content 展示和 Generic 兼容路由均已禁用。",
+          "warning": "DeepSeek 官方 API 纯文本流式输出。附件、联网、工具、图像生成、reasoning/thinking 和 reasoning_content 展示均已禁用。",
           "status": "实验性 DeepSeek 官方聊天当前为{status}。",
           "selectedModel": "已选 DeepSeek 模型：{model}",
           "credentialBridge": "DeepSeek 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
@@ -214,7 +214,7 @@
         "googleAIStudio": {
           "title": "Google AI Studio 聊天",
           "experimentalLabel": "实验性 · Google AI Studio Gemini 纯文本 · 非 OpenRouter",
-          "warning": "原生 Google AI Studio Gemini 纯文本流式输出。附件、联网、工具、图像生成、推理、旧 Gemini runtime 和 Generic 兼容路由均已禁用。",
+          "warning": "原生 Google AI Studio Gemini 纯文本流式输出。附件、联网、工具、图像生成、推理和旧 Gemini runtime 均已禁用。",
           "status": "实验性 Google AI Studio 聊天当前为{status}。",
           "selectedModel": "已选 Gemini 模型：{model}",
           "credentialBridge": "Google AI Studio 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
@@ -306,6 +306,7 @@
         "thinkingEnabled": "提供方 thinking 开关。",
         "thinkingBudget": "提供方 thinking budget。",
         "thinkingLevel": "提供方 thinking level。",
+        "includeThoughts": "请求返回 Gemini 推理摘要。",
         "thoughtSummaryMode": "Gemini 思考摘要模式。",
         "stopSequences": "停止序列。",
         "googleSearch": "Google 搜索接地。",
@@ -373,6 +374,23 @@
         "unknown": "未知"
       },
       "excluded": "已排除"
+    },
+    "newTemplate": {
+      "reset": "重置临时聊天",
+      "modelConfig": "模型与配置",
+      "draftAttachments": "草稿与附件",
+      "confirmReset": "确认重置",
+      "cancel": "取消",
+      "settingsTitle": "新聊天生命周期",
+      "startupNavigation": "启动时打开",
+      "openNew": "新聊天",
+      "restoreFormal": "上次正式聊天",
+      "projectsOnly": "仅项目列表",
+      "startupResetModel": "启动时重置模型与配置",
+      "startupResetDraft": "启动时重置草稿与附件",
+      "postSendReset": "首次发送后",
+      "resetAll": "全部重置",
+      "preserveModel": "保留模型与配置"
     }
   }
 }

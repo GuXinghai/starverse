@@ -3,13 +3,27 @@ import {
   DEFAULT_NETWORK_PROXY_SETTINGS,
   buildProxyFetchInit,
   normalizeNetworkProxySettings,
+  parseNetworkProxySettingsStrict,
   redactProxyCredentialText,
   resolveNetworkProxyForUrl,
-} from './networkProxy'
+} from '@/shared/plugin-distribution/networkProxy'
 
 describe('networkProxy', () => {
   it('normalizes to environment mode by default', () => {
     expect(normalizeNetworkProxySettings(null)).toEqual(DEFAULT_NETWORK_PROXY_SETTINGS)
+  })
+
+  it('strictly reads an explicit route and rejects corrupt values instead of normalizing them', () => {
+    expect(parseNetworkProxySettingsStrict(null)).toEqual(DEFAULT_NETWORK_PROXY_SETTINGS)
+    expect(parseNetworkProxySettingsStrict({
+      proxyMode: 'direct', manualProxyUrl: '', noProxy: '', strictSSL: true,
+    })).toEqual({ proxyMode: 'direct', manualProxyUrl: '', noProxy: '', strictSSL: true })
+    expect(() => parseNetworkProxySettingsStrict({
+      proxyMode: 'browser_compatible', manualProxyUrl: '', noProxy: '', strictSSL: true,
+    })).toThrow(/invalid/u)
+    expect(() => parseNetworkProxySettingsStrict({
+      proxyMode: 'direct', manualProxyUrl: '', noProxy: '', strictSSL: true, fallback: 'environment',
+    })).toThrow(/invalid/u)
   })
 
   it('rejects system mode for the Node downloader without silent fallback', () => {

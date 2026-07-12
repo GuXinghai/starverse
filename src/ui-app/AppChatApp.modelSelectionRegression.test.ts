@@ -5,6 +5,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import AppChatApp from './AppChatApp.vue'
+import { DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
+import { t } from '@/shared/i18n'
 
 describe('ui-app AppChatApp model selection regression', () => {
   const originalDbBridge = (globalThis as any).dbBridge
@@ -262,9 +264,28 @@ describe('ui-app AppChatApp model selection regression', () => {
     expect((globalThis as any).openAIResponsesModels?.listAvailability).toBeUndefined()
   })
 
+  it('persists an explicit OpenRouter auto selection as a complete provider/model pair', async () => {
+    const user = userEvent.setup()
+
+    render(AppChatApp)
+
+    await screen.findByTestId('current-model-pill')
+    await user.click(screen.getByRole('button', { name: t('chat.topBar.console') }))
+    await user.selectOptions(await screen.findByTestId('session-openrouter-model'), DEFAULT_OPENROUTER_MODEL_ID)
+
+    await waitFor(() => {
+      const saveCall = invoke.mock.calls.find((call) =>
+        call[0] === 'convo.save' &&
+        call[1]?.meta?.selectedProviderId === 'openrouter' &&
+        call[1]?.meta?.selectedModelKey === DEFAULT_OPENROUTER_MODEL_ID
+      )
+      expect(saveCall).toBeTruthy()
+    })
+  })
+
   it('does not rehydrate the selection path with stale session state', () => {
     const source = readFileSync(join(process.cwd(), 'src', 'ui-app', 'app', 'appChatApp.logic.ts'), 'utf8')
-    const start = source.indexOf('async function onUpdateModel(nextModelKey: ChatModelSelection | string)')
+    const start = source.indexOf('async function onUpdateModel(nextModelKey: ChatModelSelection | CompatibleConfigurationSelection | string)')
     const end = source.indexOf('async function recordRecentModelUsage(')
 
     expect(start).toBeGreaterThanOrEqual(0)

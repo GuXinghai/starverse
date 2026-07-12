@@ -50,6 +50,23 @@ describe('generationParamResolver', () => {
     expect(resolved.decisions.topP).toMatchObject({ state: 'omitted', source: 'conversation' })
   })
 
+  it('preserves explicit false for Gemini includeThoughts', () => {
+    const resolved = resolveGenerationParamsFromLayers({
+      profile: geminiGenerationProfile,
+      modelId: 'gemini-3.1-flash-lite',
+      layers: {
+        conversation: {
+          thinkingLevel: { mode: 'custom', value: 'medium' },
+          includeThoughts: { mode: 'custom', value: false },
+        },
+      },
+    })
+
+    expect(resolved.errors).toEqual([])
+    expect(resolved.requestParams).toMatchObject({ thinkingLevel: 'medium', includeThoughts: false })
+    expect(resolved.decisions.includeThoughts).toMatchObject({ state: 'sent', value: false })
+  })
+
   it('does not put absent params or provider implicit defaults into requestParams', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: openrouterGenerationProfile,
