@@ -165,10 +165,11 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         isRunning: false,
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
-          googleAIStudioThinking: {
-            mode: 'budget',
-            thinkingBudget: 2048,
-            includeThoughts: false,
+          generationParams: {
+            detail: {
+              thinkingBudget: { mode: 'custom', value: 2048 },
+              includeThoughts: { mode: 'custom', value: false },
+            },
           },
         },
         reasoningDisplayMode: 'inline',
@@ -185,8 +186,14 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     await user.click(screen.getByTestId('session-google-thinking-include-thoughts'))
     await fireEvent.update(screen.getByTestId('session-google-thinking-budget'), '4096')
 
-    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ includeThoughts: true }])
-    expect(view.emitted('updateGoogleAIStudioThinking')?.[1]).toEqual([{ mode: 'budget', thinkingBudget: 4096 }])
+    expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([{
+      thinkingBudget: { mode: 'custom', value: 2048 },
+      includeThoughts: { mode: 'custom', value: true },
+    }])
+    expect(view.emitted('updateGenerationParamsLayer')?.[1]).toEqual([{
+      thinkingBudget: { mode: 'custom', value: 4096 },
+      includeThoughts: { mode: 'custom', value: false },
+    }])
     expect(view.emitted('updateReasoningEffort')).toBeUndefined()
   })
 
@@ -198,10 +205,11 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
           model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3-pro' },
-          googleAIStudioThinking: {
-            mode: 'level',
-            thinkingLevel: 'high' as const,
-            includeThoughts: true,
+          generationParams: {
+            detail: {
+              thinkingLevel: { mode: 'custom', value: 'high' },
+              includeThoughts: { mode: 'custom', value: true },
+            },
           },
         },
         reasoningDisplayMode: 'inline',
@@ -217,7 +225,10 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
 
     await fireEvent.update(screen.getByTestId('session-google-thinking-level'), 'minimal')
 
-    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ mode: 'level', thinkingLevel: 'minimal' }])
+    expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([{
+      thinkingLevel: { mode: 'custom', value: 'minimal' },
+      includeThoughts: { mode: 'custom', value: true },
+    }])
     expect(view.emitted('updateReasoningEffort')).toBeUndefined()
   })
 
@@ -229,9 +240,11 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
           model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-lite-image' },
-          googleAIStudioThinking: {
-            mode: 'auto' as const,
-            includeThoughts: false,
+          generationParams: {
+            detail: {
+              thinkingLevel: { mode: 'custom', value: 'minimal' },
+              thoughtSummaryMode: { mode: 'custom', value: 'none' },
+            },
           },
           imageGeneration: {
             enabled: true,
@@ -258,7 +271,10 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
 
     await userEvent.click(screen.getByTestId('session-google-thinking-include-thoughts'))
 
-    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ includeThoughts: true }])
+    expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([{
+      thinkingLevel: { mode: 'custom', value: 'minimal' },
+      thoughtSummaryMode: { mode: 'custom', value: 'auto' },
+    }])
     expect(screen.getByRole('button', { name: '1K' })).toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '2K' })).not.toBeInTheDocument()
     expect(screen.queryByRole('button', { name: '4K' })).not.toBeInTheDocument()
@@ -272,10 +288,6 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
           model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash-image' },
-          googleAIStudioThinking: {
-            mode: 'auto' as const,
-            includeThoughts: false,
-          },
           imageGeneration: {
             enabled: false,
             resolution: '4K' as const,
@@ -314,10 +326,11 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
           model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-image' },
-          googleAIStudioThinking: {
-            mode: 'level' as const,
-            thinkingLevel: 'minimal' as const,
-            includeThoughts: false,
+          generationParams: {
+            detail: {
+              thinkingLevel: { mode: 'custom', value: 'minimal' },
+              thoughtSummaryMode: { mode: 'custom', value: 'none' },
+            },
           },
           imageGeneration: {
             enabled: true,

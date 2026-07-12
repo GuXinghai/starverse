@@ -733,7 +733,13 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     dfcAttachmentDefaultsValue = null
     forceBlockedOnSecondSendPlanBuild = false
     contextMessages = []
-    convoRows = [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 2, meta: { selectedModelKey: 'openai/gpt-4o' } }]
+    convoRows = [{
+      id: 'c1',
+      title: 'Chat 1',
+      createdAt: 1,
+      updatedAt: 2,
+      meta: { selectedProviderId: 'openrouter', selectedModelKey: 'openai/gpt-4o' },
+    }]
     historyIncompatibleMessageIds = []
     historyAttachmentRowsByMessageId = {}
     selectLocalFiles = vi.fn(async (options?: { context?: 'file' | 'image' }) => {
@@ -1418,7 +1424,6 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
         if (key === 'openRouterApiKey') return 'sk-test'
-        if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
         return undefined
       }),
     }
@@ -1920,41 +1925,26 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     expect(invoke.mock.calls.some((call) => call[0] === 'branch.beginTurn')).toBe(false)
   })
 
-  it('defers draft persistence while attachment confirmation is active and flushes after cancel', async () => {
-    vi.useFakeTimers()
-    try {
-      draftResponse = {
-        ...baseDraft(),
-        attachments: [makeDraftAttachment('asset-draft-excluded', { attachmentOrder: 0 })],
-        attachedAssetIds: ['asset-draft-excluded'],
-      }
-
-      render(AppChatApp)
-
-      await waitFor(() => {
-        expect(screen.getByTestId('composer-send')).toBeEnabled()
-      })
-
-      fireEvent.input(screen.getByTestId('composer-draft'), { target: { value: 'draft body updated' } })
-      fireEvent.click(screen.getByTestId('composer-send'))
-
-      await screen.findByTestId('attachment-confirm-panel')
-      await vi.advanceTimersByTimeAsync(300)
-
-      const updateCallsWhileActive = invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateText')
-      expect(updateCallsWhileActive).toHaveLength(0)
-
-      fireEvent.click(screen.getByTestId('attachment-confirm-cancel'))
-
-      await waitFor(() => {
-        expect(screen.queryByTestId('attachment-confirm-panel')).toBeNull()
-      })
-      await waitFor(() => {
-        expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateText')).toHaveLength(1)
-      })
-    } finally {
-      vi.useRealTimers()
+  it('flushes the draft before attachment confirmation and does not duplicate it after cancel', async () => {
+    draftResponse = {
+      ...baseDraft(),
+      attachments: [makeDraftAttachment('asset-draft-excluded', { attachmentOrder: 0 })],
+      attachedAssetIds: ['asset-draft-excluded'],
     }
+
+    render(AppChatApp)
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
+    fireEvent.input(screen.getByTestId('composer-draft'), { target: { value: 'draft body updated' } })
+    fireEvent.click(screen.getByTestId('composer-send'))
+
+    await screen.findByTestId('attachment-confirm-panel')
+    await waitFor(() => {
+      expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateText')).toHaveLength(1)
+    })
+
+    fireEvent.click(screen.getByTestId('attachment-confirm-cancel'))
+    await waitFor(() => expect(screen.queryByTestId('attachment-confirm-panel')).toBeNull())
+    expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateText')).toHaveLength(1)
   })
 
   it('keeps current attachment remove decisions staged until confirmation is accepted', async () => {
@@ -2130,8 +2120,8 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   it('recomputes and clears history incompatible warning when switching conversations', async () => {
     const user = userEvent.setup()
     convoRows = [
-      { id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 2, meta: { selectedModelKey: 'openai/gpt-4o' } },
-      { id: 'c2', title: 'Chat 2', createdAt: 1, updatedAt: 2, meta: { selectedModelKey: 'openai/gpt-4o' } },
+      { id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 2, meta: { selectedProviderId: 'openrouter', selectedModelKey: 'openai/gpt-4o' } },
+      { id: 'c2', title: 'Chat 2', createdAt: 1, updatedAt: 2, meta: { selectedProviderId: 'openrouter', selectedModelKey: 'openai/gpt-4o' } },
     ]
     contextMessages = [makeContextMessage('m-history-1', 1, 'user')]
     historyIncompatibleMessageIds = ['m-history-1']

@@ -9,7 +9,7 @@ import {
   streamWireSemanticCore,
 } from '@/next/streaming/core'
 import { buildAbortEnvelope } from '@/next/errors/openRouterErrorEnvelope'
-import { mapGenericOpenAICompatibleChunkToEvents } from '@/next/provider/generic/genericOpenAICompatibleStreamMapper'
+import { mapLocalOpenAIChatCompletionsChunkToEvents } from '@/next/streaming/core/localOpenAIChatCompletionsStreamMapper'
 import { mapOllamaNativeChunkToEvents } from '@/next/provider/ollama/ollamaNativeStreamMapper'
 import {
   buildOpenAICompatibleUserContent,
@@ -241,7 +241,7 @@ export async function* streamOllamaTextChatAsDomainEvents(
       signal: options.signal,
       mapJsonChunkToEvents: options.config.chatMode === 'native_rest'
         ? mapOllamaNativeChunkToEvents
-        : mapGenericOpenAICompatibleChunkToEvents,
+        : mapLocalOpenAIChatCompletionsChunkToEvents,
       mapAppPhaseToEnvelopePhase,
       mapAppPhaseToEndReason,
       buildStreamErrorFromAppError,

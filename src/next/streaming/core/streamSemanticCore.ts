@@ -15,7 +15,7 @@ import type { ErrorEnvelope, ErrorPhase } from '@/next/errors/openRouterErrorEnv
 import { mapResponsesEventToTerminal } from '@/next/openrouter/responsesEventMapper'
 import type { DomainEvent, StreamEndReason } from '@/next/state/types'
 import { normalizeTransportError } from '@/next/errors/normalizeOpenRouterError'
-import { TerminalArbiter } from '@/next/streaming/core/terminalArbiter'
+import { TerminalArbiter } from '@/shared/streaming/terminalArbiter'
 import { TimingMachine } from '@/next/streaming/core/timingMachine'
 import type {
   BuildStreamErrorFromAppErrorInput,

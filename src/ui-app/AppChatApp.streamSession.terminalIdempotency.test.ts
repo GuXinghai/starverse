@@ -154,8 +154,30 @@ function createDbBridge() {
   const orderedMessages = () => Object.values(store.messagesById).sort((a, b) => a.seq - b.seq)
 
   const invoke = vi.fn(async (method: string, params?: any) => {
-    if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-    if (method === 'convo.create') return { id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }
+    if (method === 'convo.list') {
+      return [{
+        id: convoId,
+        title: 'Chat 1',
+        createdAt: 1,
+        updatedAt: 1,
+        meta: {
+          selectedProviderId: 'openrouter',
+          selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
+        },
+      }]
+    }
+    if (method === 'convo.create') {
+      return {
+        id: convoId,
+        title: 'Chat 1',
+        createdAt: 1,
+        updatedAt: 1,
+        meta: {
+          selectedProviderId: 'openrouter',
+          selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
+        },
+      }
+    }
     if (method === 'project.list') return []
     if (method === 'project.create') return { id: 'p1', name: String(params?.name ?? 'Inbox'), createdAt: 1, updatedAt: 1, meta: null }
     if (method === 'project.findById') return null
@@ -163,6 +185,7 @@ function createDbBridge() {
     if (method === 'project.countConversationsBatch') return { counts: {} }
     if (method === 'project.countConversations') return { count: 0 }
     if (method === 'settings.getReasoningPrefs') return { value: null }
+    if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
     if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
     if (method === 'modelCatalog.list') {
       return [
@@ -430,7 +453,6 @@ describe('ui-app AppChatApp stream session terminal idempotency', () => {
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
         if (key === 'openRouterApiKey') return 'sk-test'
-        if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
         return undefined
       }),
     }

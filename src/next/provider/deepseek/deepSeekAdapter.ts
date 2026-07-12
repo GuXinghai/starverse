@@ -29,6 +29,7 @@ export type DeepSeekTransportOptions = Readonly<{
   baseUrl: string
   apiKey: string
   timeoutMs?: number
+  captureSerializedRequest?: (serializedBody: string) => void
 }>
 
 export type DeepSeekFetchFn = (
@@ -87,10 +88,12 @@ export const streamViaDeepSeek: RuntimeProviderStreamAdapter = async function* s
 
   let response: Response
   try {
+    const serializedBody = JSON.stringify(body)
+    try { transport.captureSerializedRequest?.(serializedBody) } catch { /* raw capture is non-fatal */ }
     response = await transport.fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body),
+      body: serializedBody,
       signal: signal ?? undefined,
     })
   } catch (err: any) {

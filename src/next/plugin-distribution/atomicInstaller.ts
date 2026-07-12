@@ -1,4 +1,4 @@
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import { containsUnsafeRefSyntax, type PluginInstallPlan } from './installPlan'
 import {
   patchPdpRegistryRecord,

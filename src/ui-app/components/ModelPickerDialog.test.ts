@@ -75,6 +75,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -388,6 +389,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'scoped/current-model',
         modelDetailFn: vi.fn(async () => ({
           providerKey: 'openrouter',
@@ -449,6 +451,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -523,6 +526,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         favoriteModelKeys: ['openrouter::openai/gpt-4o', 'openrouter::anthropic/claude-3'],
         queryFn,
@@ -554,6 +558,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'legacy/only-model',
         notice: 'Model catalog is empty. Fell back to reasoning model index cache.',
         favoriteModelKeys: ['openrouter::legacy/only-model'],
@@ -619,6 +624,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'missing/current-model',
         queryFn,
         modelDetailFn,
@@ -674,6 +680,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -715,6 +722,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -813,6 +821,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -870,6 +879,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -1057,6 +1067,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'openai/gpt-4o',
         queryFn,
         endpointDetailFn,
@@ -1125,6 +1136,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1194,6 +1206,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1282,6 +1295,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1334,6 +1348,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1371,6 +1386,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1418,6 +1434,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1466,6 +1483,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1513,6 +1531,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1556,6 +1575,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1600,6 +1620,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1644,6 +1665,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn: vi.fn(async () => createResult([])),
         debounceMs: 0,
@@ -1686,6 +1708,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn: vi.fn(async () => createResult([], null, { catalogRevision: 'rev-fresh' })),
         debounceMs: 0,
@@ -1729,6 +1752,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn: vi.fn(async () => createResult([], null, { catalogRevision: 'rev-fresh' })),
         debounceMs: 0,
@@ -1798,6 +1822,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'openai/old',
         queryFn,
         debounceMs: 100000,
@@ -1865,6 +1890,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'openai/old',
         queryFn,
         debounceMs: 100000,
@@ -1931,6 +1957,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'openai/stable',
         queryFn,
         debounceMs: 0,

@@ -2,7 +2,7 @@
 import { computed, ref } from 'vue'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import type { SearchSettingsLayer, ResolvedSearchSettings } from '@/next/openrouter/searchSettingsResolver'
-import { getDefaultGenerationParamProfile } from '@/next/generation-params/generationParamProfiles'
+import { getDefaultGenerationParamProfile, unsetGenerationProfile } from '@/next/generation-params/generationParamProfiles'
 import type {
   GenerationParamsLayer,
   ResolvedGenerationParams,
@@ -34,10 +34,7 @@ import type {
   GeminiProviderModelAvailability,
 } from '@/next/provider/gemini/geminiModelSource'
 import {
-  DEFAULT_GEMINI_THINKING_CONFIG,
-  normalizeGeminiThinkingConfig,
   resolveGeminiThinkingCapability,
-  type GeminiThinkingConfig,
   type GeminiThinkingLevel,
 } from '@/next/provider/gemini/geminiThinkingPolicy'
 import {
@@ -54,7 +51,7 @@ import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
 import { t, tf } from '@/shared/i18n'
 import {
-  DEFAULT_CHAT_PROVIDER_ID,
+  OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
   type ChatModelSelection,
 } from '@/next/provider/modelSelection'
@@ -198,7 +195,6 @@ const emit = defineEmits<{
   (e: 'updateModel', modelKey: ChatModelSelection | string): void
   (e: 'updateReasoningEnabled', enabled: boolean): void
   (e: 'updateReasoningEffort', effort: 'low' | 'medium' | 'high'): void
-  (e: 'updateGoogleAIStudioThinking', value: Partial<GeminiThinkingConfig>): void
   (e: 'updateWebSearchEnabled', enabled: boolean): void
   (e: 'updateWebSearchLevel', level: 'low' | 'high'): void
   (e: 'updateWebSearchLayer', layer: SearchSettingsLayer | null): void
@@ -252,30 +248,56 @@ const emit = defineEmits<{
 
 const disabled = computed(() => props.disabled || props.isRunning)
 const generationParamsProfile = computed(() =>
-  getDefaultGenerationParamProfile(props.sessionConfig.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID, {
-    requestKind: isGoogleImageGenerationModel.value ? 'image_generation' : 'text',
-  })
+  props.sessionConfig.model.selectedProviderId
+    ? getDefaultGenerationParamProfile(props.sessionConfig.model.selectedProviderId, {
+      requestKind: isGoogleImageGenerationModel.value ? 'image_generation' : 'text',
+    }) ?? unsetGenerationProfile
+    : unsetGenerationProfile
 )
 const generationParamsModelId = computed(() =>
-  props.sessionConfig.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
+  props.sessionConfig.model.selectedModelKey ?? ''
 )
-const selectedProviderId = computed<ChatModelSelection['providerId']>(() => props.sessionConfig.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID)
-const selectedModelId = computed(() => props.sessionConfig.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID)
+const selectedProviderId = computed<ChatModelSelection['providerId'] | null>(() => props.sessionConfig.model.selectedProviderId ?? null)
+const selectedModelId = computed(() => props.sessionConfig.model.selectedModelKey ?? '')
 const openRouterModelValue = computed(() => (
-  selectedProviderId.value === DEFAULT_CHAT_PROVIDER_ID ? selectedModelId.value : DEFAULT_OPENROUTER_MODEL_ID
+  selectedProviderId.value === OPENROUTER_PROVIDER_ID ? selectedModelId.value : DEFAULT_OPENROUTER_MODEL_ID
 ))
 const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === 'google_ai_studio')
 const isOpenAIResponsesSelected = computed(() => selectedProviderId.value === OPENAI_RESPONSES_PROVIDER_KEY)
 const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModelId.value))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModelId.value))
 const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModelId.value }))
-const googleThinkingConfig = computed(() => normalizeGeminiThinkingConfig({
-  model: selectedModelId.value,
-  config: props.sessionConfig.googleAIStudioThinking ?? DEFAULT_GEMINI_THINKING_CONFIG,
-}))
+function customGenerationParamValue(key: 'thinkingBudget' | 'thinkingLevel' | 'includeThoughts' | 'thoughtSummaryMode'): unknown {
+  const setting = props.sessionConfig.generationParams.detail?.[key]
+  if (setting?.mode === 'custom') return setting.value
+  const decision = props.generationParamsResolved?.decisions[key]
+  return decision && (decision.state === 'sent' || decision.state === 'deprecated') ? decision.value : undefined
+}
+const googleThinkingConfig = computed(() => {
+  const capability = googleThinkingCapability.value
+  const level = customGenerationParamValue('thinkingLevel')
+  const budget = customGenerationParamValue('thinkingBudget')
+  const textIncludeThoughts = customGenerationParamValue('includeThoughts') === true
+  const imageSummaryMode = customGenerationParamValue('thoughtSummaryMode')
+  return {
+    thinkingBudget: typeof budget === 'number'
+      ? budget
+      : capability.kind === 'budget' ? capability.defaultBudget : 8192,
+    thinkingLevel: typeof level === 'string'
+      ? level as GeminiThinkingLevel
+      : capability.kind === 'level' ? capability.defaultLevel : 'low' as GeminiThinkingLevel,
+    includeThoughts: isGoogleImageGenerationModel.value ? imageSummaryMode === 'auto' : textIncludeThoughts,
+  }
+})
 const googleThinkingEnabled = computed(() => {
   if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
-  return googleThinkingConfig.value.mode !== 'auto' && googleThinkingCapability.value.kind !== 'unsupported'
+  if (googleThinkingCapability.value.kind === 'budget') {
+    return props.sessionConfig.generationParams.detail?.thinkingBudget?.mode === 'custom'
+  }
+  if (googleThinkingCapability.value.kind === 'level') {
+    return props.sessionConfig.generationParams.detail?.thinkingLevel?.mode === 'custom'
+  }
+  return false
 })
 const googleImageThinkingLevelValue = computed(() => {
   const policy = googleImageGenerationPolicy.value
@@ -660,25 +682,36 @@ function networkFailureMessage(result: unknown): string {
 
 function onGoogleThinkingEnabledChange(enabled: boolean) {
   if (isGoogleImageGenerationModel.value) return
+  const current = props.sessionConfig.generationParams.detail ?? {}
   if (!enabled) {
-    emit('updateGoogleAIStudioThinking', { mode: 'auto' })
+    emit('updateGenerationParamsLayer', {
+      ...current,
+      ...(googleThinkingCapability.value.kind === 'budget' ? { thinkingBudget: { mode: 'omit' } as const } : {}),
+      ...(googleThinkingCapability.value.kind === 'level' ? { thinkingLevel: { mode: 'omit' } as const } : {}),
+    })
     return
   }
   if (googleThinkingCapability.value.kind === 'budget') {
-    emit('updateGoogleAIStudioThinking', { mode: 'budget' })
+    emit('updateGenerationParamsLayer', {
+      ...current,
+      thinkingBudget: { mode: 'custom', value: googleThinkingCapability.value.defaultBudget },
+    })
     return
   }
   if (googleThinkingCapability.value.kind === 'level') {
-    emit('updateGoogleAIStudioThinking', { mode: 'level' })
+    emit('updateGenerationParamsLayer', {
+      ...current,
+      thinkingLevel: { mode: 'custom', value: googleThinkingCapability.value.defaultLevel },
+    })
   }
 }
 
 function onGoogleThinkingBudgetChange(event: Event) {
   const value = Number((event.target as HTMLInputElement).value)
   if (!Number.isFinite(value) || value <= 0) return
-  emit('updateGoogleAIStudioThinking', {
-    mode: 'budget',
-    thinkingBudget: Math.trunc(value),
+  emit('updateGenerationParamsLayer', {
+    ...(props.sessionConfig.generationParams.detail ?? {}),
+    thinkingBudget: { mode: 'custom', value: Math.trunc(value) },
   })
 }
 
@@ -690,15 +723,19 @@ function onGoogleThinkingLevelChange(event: Event) {
   ) {
     return
   }
-  emit('updateGoogleAIStudioThinking', {
-    mode: 'level',
-    thinkingLevel: value,
+  emit('updateGenerationParamsLayer', {
+    ...(props.sessionConfig.generationParams.detail ?? {}),
+    thinkingLevel: { mode: 'custom', value },
   })
 }
 
 function onGoogleThinkingIncludeThoughtsChange(event: Event) {
-  emit('updateGoogleAIStudioThinking', {
-    includeThoughts: (event.target as HTMLInputElement).checked,
+  const enabled = (event.target as HTMLInputElement).checked
+  emit('updateGenerationParamsLayer', {
+    ...(props.sessionConfig.generationParams.detail ?? {}),
+    ...(isGoogleImageGenerationModel.value
+      ? { thoughtSummaryMode: { mode: 'custom', value: enabled ? 'auto' : 'none' } as const }
+      : { includeThoughts: { mode: 'custom', value: enabled } as const }),
   })
 }
 
@@ -1056,10 +1093,11 @@ function chipClass(active: boolean): string {
       <section class="space-y-2 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.model') }}</div>
         <select
+          data-testid="session-openrouter-model"
           class="w-full rounded border border-gray-200 bg-white px-2 py-1.5 text-sm"
           :disabled="disabled"
           :value="openRouterModelValue"
-          @change="emit('updateModel', ($event.target as HTMLSelectElement).value)"
+          @change="selectProviderModel(OPENROUTER_PROVIDER_ID, ($event.target as HTMLSelectElement).value)"
         >
           <option value="openrouter/auto">openrouter/auto</option>
           <option v-for="item in props.modelCatalog" :key="item.modelId" :value="item.modelId">

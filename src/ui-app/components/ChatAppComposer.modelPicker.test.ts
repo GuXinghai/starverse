@@ -18,7 +18,7 @@ function createResult(items: CatalogQueryResult['items']): CatalogQueryResult {
 
 function createSessionConfig() {
   return {
-    model: { selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
+    model: { selectedProviderId: 'openrouter' as const, selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
     reasoning: { enabled: true, effort: 'medium' as const },
     webSearch: { enabled: true, level: 'low' as const, detail: null },
     imageGeneration: {
@@ -35,7 +35,7 @@ function createSessionConfig() {
 function createBoundSessionConfig(model: { value: string }) {
   return computed(() => ({
     ...createSessionConfig(),
-    model: { selectedModelKey: model.value },
+    model: { selectedProviderId: 'openrouter' as const, selectedModelKey: model.value },
   }))
 }
 
@@ -1465,7 +1465,10 @@ describe('ChatAppComposer model picker integration', () => {
         sessionConfig: {
           ...createSessionConfig(),
           model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash' },
-          googleAIStudioThinking: { mode: 'budget' as const, thinkingBudget: 2048, includeThoughts: false },
+          generationParams: { detail: {
+            thinkingBudget: { mode: 'custom', value: 2048 },
+            includeThoughts: { mode: 'custom', value: false },
+          } },
         },
         modelCatalog: [],
       },
@@ -1479,7 +1482,10 @@ describe('ChatAppComposer model picker integration', () => {
     expect(screen.queryByTestId('reasoning-chip')).not.toBeInTheDocument()
 
     await fireEvent.update(screen.getByTestId('composer-google-thinking-budget'), '4096')
-    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ mode: 'budget', thinkingBudget: 4096 }])
+    expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([{
+      thinkingBudget: { mode: 'custom', value: 4096 },
+      includeThoughts: { mode: 'custom', value: false },
+    }])
   })
 
   it('shows Gemini level controls for Google AI Studio Gemini 3 models', async () => {
@@ -1491,7 +1497,10 @@ describe('ChatAppComposer model picker integration', () => {
         sessionConfig: {
           ...createSessionConfig(),
           model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3-pro' },
-          googleAIStudioThinking: { mode: 'level' as const, thinkingLevel: 'high' as const, includeThoughts: true },
+          generationParams: { detail: {
+            thinkingLevel: { mode: 'custom', value: 'high' },
+            includeThoughts: { mode: 'custom', value: true },
+          } },
         },
         modelCatalog: [],
       },
@@ -1504,7 +1513,10 @@ describe('ChatAppComposer model picker integration', () => {
     expect(screen.queryByTestId('composer-google-thinking-budget')).not.toBeInTheDocument()
 
     await fireEvent.update(screen.getByTestId('composer-google-thinking-level'), 'minimal')
-    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ mode: 'level', thinkingLevel: 'minimal' }])
+    expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([{
+      thinkingLevel: { mode: 'custom', value: 'minimal' },
+      includeThoughts: { mode: 'custom', value: true },
+    }])
   })
 
   it('uses Gemini image model thinking and size policy for Nano Banana 2', async () => {
@@ -1516,7 +1528,10 @@ describe('ChatAppComposer model picker integration', () => {
         sessionConfig: {
           ...createSessionConfig(),
           model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-image' },
-          googleAIStudioThinking: { mode: 'level' as const, thinkingLevel: 'high' as const, includeThoughts: false },
+          generationParams: { detail: {
+            thinkingLevel: { mode: 'custom', value: 'high' },
+            thoughtSummaryMode: { mode: 'custom', value: 'none' },
+          } },
         },
         modelCatalog: [],
       },
@@ -1531,7 +1546,10 @@ describe('ChatAppComposer model picker integration', () => {
     expect(screen.queryByTestId('composer-google-thinking-budget')).not.toBeInTheDocument()
 
     await fireEvent.update(level, 'minimal')
-    expect(view.emitted('updateGoogleAIStudioThinking')?.[0]).toEqual([{ mode: 'level', thinkingLevel: 'minimal' }])
+    expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([{
+      thinkingLevel: { mode: 'custom', value: 'minimal' },
+      thoughtSummaryMode: { mode: 'custom', value: 'none' },
+    }])
 
     await openImageMenu()
     const options = screen.getAllByTestId('capability-chip-option').map((node) => node.textContent)
@@ -1548,7 +1566,6 @@ describe('ChatAppComposer model picker integration', () => {
         sessionConfig: {
           ...createSessionConfig(),
           model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash-image' },
-          googleAIStudioThinking: { mode: 'auto' as const, includeThoughts: false },
           imageGeneration: {
             enabled: false,
             resolution: '4K' as const,
@@ -1579,7 +1596,10 @@ describe('ChatAppComposer model picker integration', () => {
         sessionConfig: {
           ...createSessionConfig(),
           model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-image' },
-          googleAIStudioThinking: { mode: 'level' as const, thinkingLevel: 'minimal' as const, includeThoughts: false },
+          generationParams: { detail: {
+            thinkingLevel: { mode: 'custom', value: 'minimal' },
+            thoughtSummaryMode: { mode: 'custom', value: 'none' },
+          } },
           imageGeneration: {
             enabled: true,
             resolution: '4K' as const,
@@ -1605,7 +1625,6 @@ describe('ChatAppComposer model picker integration', () => {
         sessionConfig: {
           ...createSessionConfig(),
           model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-lite-image' },
-          googleAIStudioThinking: { mode: 'auto' as const, includeThoughts: false },
         },
         modelCatalog: [],
       },

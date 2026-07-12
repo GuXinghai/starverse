@@ -17,6 +17,7 @@ export function selectRun(state: RootState, runId: string): RunVM | null {
   if (!s) return null
   return {
     runId: s.runId,
+    ...(s.routeProvenanceId ? { routeProvenanceId: s.routeProvenanceId } : {}),
     status: s.status,
     requestId: s.requestId,
     generationId: s.generationId,
@@ -92,6 +93,8 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
 
   const derived: MessageVM = {
     messageId: m.messageId,
+    ...(m.routeProvenanceId ? { routeProvenanceId: m.routeProvenanceId } : {}),
+    ...(m.choiceIndex !== undefined ? { choiceIndex: m.choiceIndex } : {}),
     role: m.role,
     contentBlocks: m.contentBlocks,
     ...(m.requestedImageGeneration === true ? { requestedImageGeneration: true } : {}),

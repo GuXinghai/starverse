@@ -61,7 +61,7 @@ export function providerCredentialStoreError(): ProviderCredentialStoreResult {
  *
  * Store messages are intentionally ignored and normalized to static resolver
  * failures so raw token material, Authorization headers, and implementation
- * details cannot leak into Generic config errors or stream events.
+ * details cannot leak into provider configuration errors or stream events.
  */
 export function providerCredentialResolverFromStore(
   store: ProviderCredentialStore,

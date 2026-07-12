@@ -12,17 +12,11 @@ function readRepoFile(...segments: string[]): string {
 function expectNoGenericStoreOpenRouterCredentialAccess(source: string) {
   const blockedPatterns = [
     /electronStore\s*\.\s*get\s*\(\s*['"]openRouterApiKey['"]/,
-    /electronStore\s*\.\s*get\s*\(\s*['"]openRouterBaseUrl['"]/,
     /electronStore\s*\.\s*set\s*\(\s*['"]openRouterApiKey['"]/,
-    /electronStore\s*\.\s*set\s*\(\s*['"]openRouterBaseUrl['"]/,
     /electronStore\s*\.\s*delete\s*\(\s*['"]openRouterApiKey['"]/,
-    /electronStore\s*\.\s*delete\s*\(\s*['"]openRouterBaseUrl['"]/,
     /store\s*\.\s*get\s*\(\s*['"]openRouterApiKey['"]/,
-    /store\s*\.\s*get\s*\(\s*['"]openRouterBaseUrl['"]/,
     /store\s*\.\s*set\s*\(\s*['"]openRouterApiKey['"]/,
-    /store\s*\.\s*set\s*\(\s*['"]openRouterBaseUrl['"]/,
     /store\s*\.\s*delete\s*\(\s*['"]openRouterApiKey['"]/,
-    /store\s*\.\s*delete\s*\(\s*['"]openRouterBaseUrl['"]/,
   ]
   for (const pattern of blockedPatterns) {
     expect(source).not.toMatch(pattern)
@@ -108,7 +102,6 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     expect(source).toContain('openRouterCredential')
     expect(source).toContain('displayBaseUrl')
     expect(source).not.toContain('openRouterApiKey')
-    expect(source).not.toContain('openRouterBaseUrl')
   })
 
   it('audits renderer production files for generic OpenRouter credential store access after C4', () => {
@@ -199,7 +192,7 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     expect(appChatSource).not.toMatch(/streamVia\w*Gemini/)
     expect(appChatSource).not.toContain('geminiApiKey')
     expect(settingsSource).toContain('googleAIStudioCredential')
-    expect(settingsSource).toContain('does not use legacy Gemini runtime')
+    expect(settingsSource).toContain("providerId: 'google-ai-studio'")
     expect(settingsSource).not.toContain("electronStore.get('googleAIStudioApiKey')")
     expect(settingsSource).not.toContain("electronStore.set('googleAIStudioApiKey'")
     expect(settingsSource).not.toContain("electronStore.get('geminiApiKey')")
@@ -220,7 +213,7 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     expect(appChatSource).not.toMatch(/streamViaAnthropic\s*\(/)
     expect(appChatSource).not.toContain('anthropicApiKey')
     expect(settingsSource).toContain('anthropicCredential')
-    expect(settingsSource).toContain('Native Anthropic Messages text-only path')
+    expect(settingsSource).toContain("profileId: 'anthropic_messages_v1'")
     expect(settingsSource).not.toContain("electronStore.get('anthropicApiKey')")
     expect(settingsSource).not.toContain("electronStore.set('anthropicApiKey'")
     expect(settingsSource).not.toContain('Authorization')
@@ -260,10 +253,9 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     expect(coordinatorSource).toContain("case 'deepseek'")
     expect(appChatSource).not.toMatch(/streamViaDeepSeek\s*\(/)
     expect(appChatSource).not.toContain('deepSeekApiKey')
-    expect(appChatSource).not.toContain('streamViaGenericConfig')
     expect(settingsSource).toContain('deepSeekCredential')
-    expect(settingsSource).toContain('Native DeepSeek official profile')
-    expect(settingsSource).toContain('does not persist reasoning_content')
+    expect(settingsSource).toContain("profileId: 'deepseek_official_openai_compat'")
+    expect(settingsSource).toContain("providerId: 'deepseek'")
     expect(settingsSource).not.toContain("electronStore.get('deepSeekApiKey')")
     expect(settingsSource).not.toContain("electronStore.set('deepSeekApiKey'")
     expect(settingsSource).not.toContain('Authorization')
@@ -322,7 +314,7 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     expect(providerSettingsSource).toContain('persistDeepSeekChatStorage')
     expect(appChatSource).toContain('onUpdateDeepSeekChatEnabled')
     expect(appChatSource).toContain('onClearDeepSeekChat')
-    expect(providerSettingsSource).toContain('settings:deepSeekTextChatUpdated')
+    expect(providerSettingsSource).toContain('handleDeepSeekChatStorage')
     expect(providerSettingsSource).toContain('if (anthropicChatEnabled.value)')
     expect(providerSettingsSource).toContain('openAIResponsesChatEnabled.value = false')
     expect(providerSettingsSource).toContain('googleAIStudioChatEnabled.value = false')
@@ -330,14 +322,17 @@ describe('appChatApp OpenRouter C4 exposure baseline', () => {
     expect(providerSettingsSource).toContain('persistAnthropicChatStorage')
     expect(appChatSource).toContain('onUpdateAnthropicChatEnabled')
     expect(appChatSource).toContain('onClearAnthropicChat')
-    expect(providerSettingsSource).toContain('settings:anthropicMessagesTextChatUpdated')
+    expect(providerSettingsSource).toContain('handleAnthropicChatStorage')
   })
 
   it('audits OpenRouter catalog as resolver-backed and separate from renderer credential exposure', () => {
     const catalogStartup = readRepoFile('electron', 'jobs', 'catalogSyncStartup.ts')
+    const providerCatalogSyncJob = readRepoFile('electron', 'modelCatalog', 'providerCatalogSyncJob.ts')
 
-    expect(catalogStartup).toContain('resolveOpenRouterCatalogCredentialFromLegacyStore')
+    expect(catalogStartup).toContain('runProviderCatalogSyncJob')
+    expect(providerCatalogSyncJob).toContain('resolveOpenRouterCatalogCredentialFromLegacyStore')
     expect(catalogStartup).not.toContain("store.get('openRouterApiKey')")
+    expect(providerCatalogSyncJob).not.toContain("store.get('openRouterApiKey')")
     expect(catalogStartup).not.toContain('openRouterCatalogLocalSecret as provider credential')
   })
 

@@ -1,6 +1,7 @@
 import { render, screen, within, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetI18nForTests, t } from '@/shared/i18n'
 import AppChatApp from './AppChatApp.vue'
 
 type MessageRow = Readonly<{
@@ -94,6 +95,8 @@ function createDbBridge(
           messages: [],
           debug: { branchId, excludedQuestionIds: [], includedMessageIds: [], chosenAnswerRootByQuestionId: {} },
         }
+      case 'settings.getChatReasoningDisplayMode':
+        return { value: 'inline' }
       case 'messageError.listByMessageIds': {
         const ids = Array.isArray(params?.messageIds)
           ? params.messageIds.map((v: unknown) => String(v ?? '').trim()).filter((v: string) => v.length > 0)
@@ -141,6 +144,7 @@ describe('AppChatApp lazy hydrate error panels', () => {
   const originalElectronStore = (globalThis as any).electronStore
 
   beforeEach(() => {
+    resetI18nForTests()
     ;(globalThis as any).electronStore = {
       get: vi.fn(async () => undefined),
       set: vi.fn(async () => undefined),
@@ -162,18 +166,18 @@ describe('AppChatApp lazy hydrate error panels', () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await screen.findByText(/code:ERROR-1/)
+    await screen.findByText(/ERROR-1/)
     expect(messageErrorCalls.length).toBe(0)
     const initialErrorCallCount = messageErrorCalls.length
 
-    const panel = await findPanelBySummary(/code:ERROR-1/)
-    const expandButton = within(panel).getByRole('button', { name: 'Expand' })
+    const panel = await findPanelBySummary(/ERROR-1/)
+    const expandButton = within(panel).getByRole('button', { name: t('chat.errorPanel.expand') })
 
     await user.click(expandButton)
 
     await new Promise((resolve) => setTimeout(resolve, 0))
     await waitFor(() => expect(messageErrorCalls.length).toBeGreaterThan(initialErrorCallCount), { timeout: 1000 })
-    await within(panel).findByText('Details unavailable.')
+    await within(panel).findByText(t('chat.errorPanel.detailsUnavailable'))
     const afterFirstFetch = messageErrorCalls.length
     expect(messageErrorCalls[messageErrorCalls.length - 1]).toEqual(['a1'])
 
@@ -190,13 +194,13 @@ describe('AppChatApp lazy hydrate error panels', () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await screen.findByText(/code:LIMIT/)
-    const badge = await screen.findByText('Truncated')
+    await screen.findByText(/LIMIT/)
+    const badge = await screen.findByText(t('chat.errorPanel.truncated'))
     expect(badge).toBeInTheDocument()
     expect(messageErrorCalls.length).toBe(0)
 
-    const panel = await findPanelBySummary(/code:LIMIT/)
-    const expandButton = within(panel).getByRole('button', { name: 'Expand' })
+    const panel = await findPanelBySummary(/LIMIT/)
+    const expandButton = within(panel).getByRole('button', { name: t('chat.errorPanel.expand') })
     await user.click(expandButton)
 
     await new Promise((resolve) => setTimeout(resolve, 0))
@@ -223,19 +227,20 @@ describe('AppChatApp lazy hydrate error panels', () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await screen.findByText(/code:ERROR-2/)
+    await screen.findByText(/ERROR-2/)
     expect(messageErrorCalls.length).toBe(0)
     const initialErrorCallCount = messageErrorCalls.length
 
-    const panel = await findPanelBySummary(/code:ERROR-2/)
-    const expandButton = within(panel).getByRole('button', { name: 'Expand' })
+    const panel = await findPanelBySummary(/ERROR-2/)
+    const expandButton = within(panel).getByRole('button', { name: t('chat.errorPanel.expand') })
 
     await user.click(expandButton)
 
     await new Promise((resolve) => setTimeout(resolve, 0))
     await waitFor(() => expect(messageErrorCalls.length).toBeGreaterThan(initialErrorCallCount), { timeout: 1000 })
     expect(messageErrorCalls[messageErrorCalls.length - 1]).toEqual(['a2'])
-    await within(panel).findByText(/bytes:/i)
+    const bytesLabel = t('chat.errorPanel.bytes').replace('{count}', '')
+    await within(panel).findByText((content) => content.startsWith(bytesLabel))
     await within(panel).findByText(/"openrouter"/i)
     const afterFirstFetch = messageErrorCalls.length
 
@@ -283,15 +288,15 @@ describe('AppChatApp lazy hydrate error panels', () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
-    await screen.findByText(/code:LAZY-A/)
-    await screen.findByText(/code:LAZY-B/)
+    await screen.findByText(/LAZY-A/)
+    await screen.findByText(/LAZY-B/)
     expect(messageErrorCalls.length).toBe(0)
     const initialErrorCallCount = messageErrorCalls.length
 
-    const panelA = await findPanelBySummary(/code:LAZY-A/)
-    const panelB = await findPanelBySummary(/code:LAZY-B/)
-    const expandA = within(panelA).getByRole('button', { name: 'Expand' })
-    const expandB = within(panelB).getByRole('button', { name: 'Expand' })
+    const panelA = await findPanelBySummary(/LAZY-A/)
+    const panelB = await findPanelBySummary(/LAZY-B/)
+    const expandA = within(panelA).getByRole('button', { name: t('chat.errorPanel.expand') })
+    const expandB = within(panelB).getByRole('button', { name: t('chat.errorPanel.expand') })
 
     expandA.click()
     expandB.click()
@@ -342,7 +347,7 @@ describe('AppChatApp lazy hydrate error panels', () => {
 
     render(AppChatApp)
 
-    await screen.findByText(/code:STATUS-ERR/)
+    await screen.findByText(/STATUS-ERR/)
     await waitFor(() => expect(messageErrorCalls.length).toBe(1), { timeout: 1000 })
     expect(messageErrorCalls[0]).toEqual(['a5'])
   }, 20000)

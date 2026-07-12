@@ -6,6 +6,34 @@ import AppChatApp from './AppChatApp.vue'
 
 const streamOpenRouterChatCallArgs: any[] = []
 const openAIResponsesTextChatCallArgs: any[] = []
+const OPENROUTER_ROUTE_META = Object.freeze({
+  providerId: 'openrouter',
+  modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+})
+const TEST_GENERATION_SNAPSHOT = Object.freeze({
+  schemaVersion: 1,
+  route: { providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL, endpointId: 'openrouter-official', profileId: 'openrouter_v1_chat' },
+  generationParams: { requestPatch: {}, requestParams: {} },
+  reasoning: { mode: 'auto', effort: null, exclude: false },
+  webSearch: { enabled: false },
+  imageGeneration: {},
+  providerOptions: {},
+  tools: { enabled: false, allowedToolIds: [], requireExternalSideEffectConfirmation: true },
+  attachments: { sourceQuestionId: 'u1', items: [] },
+})
+
+const answerGenerationResult = (newAnswerRootId: string, newAssistantSeq: number, actionKind: 'regenerate' | 'retry_replace' | 'retry_as_new' = 'regenerate') => ({
+  ok: true,
+  operationId: `op-${actionKind}`,
+  actionKind,
+  newAnswerRootId,
+  newAssistantSeq,
+  chosenAnswerRootId: newAnswerRootId,
+  headMessageId: newAnswerRootId,
+  snapshot: TEST_GENERATION_SNAPSHOT,
+  state: 'streaming',
+  idempotentReplay: false,
+})
 
 vi.mock('@/next/modelCatalog/modelDetailService', () => ({
   getModelCatalogModelDetail: vi.fn(async () => ({
@@ -126,7 +154,10 @@ const defaultConvoRow = Object.freeze({
   title: 'Chat 1',
   createdAt: 1,
   updatedAt: 2,
-  meta: { selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
+  meta: {
+    selectedProviderId: 'openrouter',
+    selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
+  },
 })
 
 let historyAttachmentRowsByMessageId: Record<string, Array<Record<string, unknown>>> = {}
@@ -169,6 +200,9 @@ function mockProjectBootstrapCalls(method: string) {
 }
 
 function mockStableAppBootstrapCalls(method: string, params?: any) {
+  if (method === 'answerGeneration.getSnapshot') return { ok: true, schemaVersion: 1, snapshot: TEST_GENERATION_SNAPSHOT }
+  if (method === 'answerGeneration.finalize' || method === 'answerGeneration.persistSnapshot') return { ok: true }
+  if (method === 'answerGeneration.claimStream') return { ok: true, claimed: true, state: 'streaming' }
   const projectBootstrap = mockProjectBootstrapCalls(method)
   if (projectBootstrap !== undefined) return projectBootstrap
   if (method === 'settings.getReasoningPrefs') return { value: null }
@@ -402,7 +436,6 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
         if (key === 'openRouterApiKey') return 'sk-test'
-        if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
         return undefined
       }),
     }
@@ -428,6 +461,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
     ;(globalThis as any).openAIResponsesCredential = originalOpenAIResponsesCredential
     ;(globalThis as any).openAIResponsesModels = originalOpenAIResponsesModels
+    delete (globalThis as any).rawGenerationDebug
     globalThis.setTimeout = originalSetTimeout
     vi.useRealTimers()
   })
@@ -546,7 +580,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           answerRootId: 'a1',
           questionId: 'u1',
           body: 'A1',
-          meta: null,
+          meta: OPENROUTER_ROUTE_META,
         },
       },
     }
@@ -575,7 +609,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
       if (method === 'branch.getCandidates') {
         return store.candidatesNewToOld
       }
-      if (method === 'branch.regenerateFromQuestion') {
+      if (method === 'branch.regenerateQuestionWithCurrentConfig') {
         const createdAt = Date.now()
         store.messagesById.a2 = {
           id: 'a2',
@@ -596,7 +630,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
           ...store.candidatesNewToOld,
         ]
-        return { ok: true, newAnswerRootId: 'a2', newAssistantSeq: 3 }
+        return answerGenerationResult('a2', 3)
       }
       if (method === 'message.appendDelta') {
         const seq = Number(params?.seq ?? NaN)
@@ -636,6 +670,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     await screen.findByRole('button', { name: /Chat 1/ })
     await screen.findByText('Q1')
     await screen.findByText('A1')
+    expect(await screen.findByTestId('retry-new-a-a1')).toBeEnabled()
 
     const regen = await screen.findByTestId('regen-q-u1')
     expect(regen).not.toBeDisabled()
@@ -646,7 +681,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
 
     await vi.runAllTimersAsync()
 
-    expect(invoke).toHaveBeenCalledWith('branch.regenerateFromQuestion', expect.objectContaining({ branchId: 'b1', questionId: 'u1' }))
+    expect(invoke).toHaveBeenCalledWith('branch.regenerateQuestionWithCurrentConfig', expect.objectContaining({ branchId: 'b1', questionId: 'u1' }))
     expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 3 }))
     expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a2', status: 'final' }))
     expect(invoke).toHaveBeenCalledWith(
@@ -662,9 +697,67 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     expect(streamOpenRouterChatCallArgs).toHaveLength(1)
     expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
     expect(invoke.mock.calls.filter((c) => c[0] === 'branch.getCandidates').length).toBeGreaterThanOrEqual(2)
+    ;(globalThis as any).rawGenerationDebug = {
+      getStatus: vi.fn(async () => ({ available: true, dbPath: 'debug.sqlite', schemaReady: true })),
+      listByAnswerRootId: vi.fn(async () => [{
+        id: 'raw-1', operationId: 'req-1', answerRootId: 'a2', requestSequence: 1,
+        providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        serializedBody: '{"model":"raw-model"}', bodyBytes: 21, bodySha256: 'a'.repeat(64), capturedAtMs: 1,
+      }]),
+    }
+    await user.click(await screen.findByTestId('raw-data-a-a2'))
+    expect(await screen.findByTestId('raw-data-dialog')).toBeInTheDocument()
+    expect(await screen.findByTestId('raw-data-request-1')).toHaveTextContent('"raw-model"')
   })
 
-  it('regenerate uses stored non-OpenRouter provider metadata and never falls back to OpenRouter', async () => {
+  it.each([
+    { label: 'providerless', routeMeta: null },
+    { label: 'provider-only', routeMeta: { providerId: 'openrouter' } },
+  ])('regenerates with the current configuration even when the historical answer is $label', async ({ routeMeta }) => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
+    const convoId = 'c1'
+    const branchId = 'b1'
+    const now = Date.now()
+    const invoke = vi.fn(async (method: string, params?: any) => {
+      const bootstrap = mockStableAppBootstrapCalls(method, params)
+      if (bootstrap !== undefined) return bootstrap
+      if (method === 'branch.ensureDefault') {
+        return { id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
+      }
+      if (method === 'branch.list') {
+        return [{ id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
+      }
+      if (method === 'context.getRenderableTurns') {
+        return {
+          messages: [
+            { id: 'u1', convoId, role: 'user', seq: 1, createdAt: now, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
+            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: routeMeta },
+          ],
+          turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
+        }
+      }
+      if (method === 'branch.getCandidates') {
+        return [{ answerRootId: 'a1', createdAt: now + 2, status: 'final' }]
+      }
+      if (method === 'context.buildForBranch') return { messages: [] }
+      if (method === 'branch.regenerateQuestionWithCurrentConfig') return answerGenerationResult('a2', 3)
+      return { ok: true }
+    })
+
+    ;(globalThis as any).dbBridge = { invoke }
+    render(AppChatApp)
+
+    await screen.findByRole('button', { name: /Chat 1/ })
+    await screen.findByText('A1')
+    await user.click(await screen.findByTestId('regen-q-u1'))
+
+    await vi.runAllTimersAsync()
+    expect(invoke).toHaveBeenCalledWith('branch.regenerateQuestionWithCurrentConfig', expect.objectContaining({ questionId: 'u1' }))
+    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
+  })
+
+  it('regenerate ignores stored provider metadata and uses the current OpenRouter configuration', async () => {
     const user = userEvent.setup()
 
     const convoId = 'c1'
@@ -731,7 +824,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
       if (method === 'context.buildForBranch') return { messages: [] }
       if (method === 'branch.getCandidates') return store.candidatesNewToOld
       if (method === 'messageAttachment.listByMessageId') return []
-      if (method === 'branch.regenerateFromQuestion') {
+      if (method === 'branch.regenerateQuestionWithCurrentConfig') {
         const createdAt = Date.now()
         store.messagesById.a2 = {
           id: 'a2',
@@ -752,7 +845,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
           ...store.candidatesNewToOld,
         ]
-        return { ok: true, newAnswerRootId: 'a2', newAssistantSeq: 3 }
+        return answerGenerationResult('a2', 3)
       }
       if (method === 'message.appendDelta') {
         const seq = Number(params?.seq ?? NaN)
@@ -796,21 +889,17 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     await screen.findByText('A1')
     await user.click(await screen.findByTestId('regen-q-u1'))
 
-    await screen.findByText('openai ok')
+    await screen.findByText('ok')
     await vi.runAllTimersAsync()
 
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
-    expect(openAIResponsesTextChatCallArgs[0]).toEqual(expect.objectContaining({
-      model: 'gpt-4.1-mini',
-      userText: 'Q1',
-    }))
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
+    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
     expect(invoke).toHaveBeenCalledWith(
       'modelPrefs.recordRecent',
       expect.objectContaining({
-        providerKey: 'openai_responses',
-        modelId: 'gpt-4.1-mini',
-        modelKey: 'openai_responses::gpt-4.1-mini',
+        providerKey: 'openrouter',
+        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        modelKey: 'openrouter::' + DEFAULT_OPENROUTER_TEST_MODEL,
       }),
     )
     expect(invoke).toHaveBeenCalledWith(
@@ -819,8 +908,8 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
         messageId: 'a2',
         status: 'final',
         metaPatch: expect.objectContaining({
-          providerId: 'openai_responses',
-          modelId: 'gpt-4.1-mini',
+          providerId: 'openrouter',
+          modelId: DEFAULT_OPENROUTER_TEST_MODEL,
         }),
       }),
     )
@@ -871,7 +960,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           answerRootId: 'a1',
           questionId: 'u1',
           body: 'A1',
-          meta: null,
+          meta: OPENROUTER_ROUTE_META,
         },
       },
     }
@@ -933,7 +1022,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           errorMessage: null,
         }
       }
-      if (method === 'branch.regenerateFromQuestion') {
+      if (method === 'branch.regenerateQuestionWithCurrentConfig') {
         const createdAt = Date.now()
         store.messagesById.a2 = {
           id: 'a2',
@@ -954,7 +1043,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
           ...store.candidatesNewToOld,
         ]
-        return { ok: true, newAnswerRootId: 'a2', newAssistantSeq: 3 }
+        return answerGenerationResult('a2', 3)
       }
       if (method === 'message.appendDelta') {
         const seq = Number(params?.seq ?? NaN)
@@ -1076,7 +1165,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           answerRootId: 'a1',
           questionId: 'u1',
           body: 'A1',
-          meta: null,
+          meta: OPENROUTER_ROUTE_META,
         },
       },
     }
@@ -1103,8 +1192,8 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
       }
       if (method === 'context.buildForBranch') return { messages: [] }
       if (method === 'branch.getCandidates') return visibleCandidates()
-      if (method === 'branch.retryReplaceAnswer') {
-        store.hidden.add(String(params?.currentAnswerRootId ?? ''))
+      if (method === 'branch.retryChosenAnswerReplacing') {
+        store.hidden.add(String(params?.targetAnswerRootId ?? ''))
         const createdAt = Date.now()
         store.messagesById.a2 = {
           id: 'a2',
@@ -1125,7 +1214,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
           ...store.candidatesNewToOld,
         ]
-        return { ok: true, newAnswerRootId: 'a2', newAssistantSeq: 4 }
+        return answerGenerationResult('a2', 4, 'retry_replace')
       }
       if (method === 'message.appendDelta') {
         const seq = Number(params?.seq ?? NaN)
@@ -1172,8 +1261,8 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     await vi.runAllTimersAsync()
 
     expect(invoke).toHaveBeenCalledWith(
-      'branch.retryReplaceAnswer',
-      expect.objectContaining({ branchId: 'b1', questionId: 'u1', currentAnswerRootId: 'a1' })
+      'branch.retryChosenAnswerReplacing',
+      expect.objectContaining({ branchId: 'b1', questionId: 'u1', targetAnswerRootId: 'a1' })
     )
     expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 4 }))
     expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a2', status: 'final' }))
@@ -1240,7 +1329,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           answerRootId: 'a1',
           questionId: 'u1',
           body: 'A1',
-          meta: null,
+          meta: OPENROUTER_ROUTE_META,
         },
       },
     }
@@ -1304,8 +1393,8 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           errorMessage: null,
         }
       }
-      if (method === 'branch.retryReplaceAnswer') {
-        store.hidden.add(String(params?.currentAnswerRootId ?? ''))
+      if (method === 'branch.retryChosenAnswerReplacing') {
+        store.hidden.add(String(params?.targetAnswerRootId ?? ''))
         const createdAt = Date.now()
         store.messagesById.a2 = {
           id: 'a2',
@@ -1326,7 +1415,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
           ...store.candidatesNewToOld,
         ]
-        return { ok: true, newAnswerRootId: 'a2', newAssistantSeq: 4 }
+        return answerGenerationResult('a2', 4, 'retry_replace')
       }
       if (method === 'message.appendDelta') {
         const seq = Number(params?.seq ?? NaN)
@@ -1511,7 +1600,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
         return {
           messages: [
             { id: 'u1', convoId, role: 'user', seq: 1, createdAt: now, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: null },
+            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: OPENROUTER_ROUTE_META },
           ],
           turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
         }
@@ -1540,8 +1629,8 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           errorMessage: null,
         }
       }
-      if (method === 'branch.regenerateFromQuestion') {
-        return { ok: true, newAnswerRootId: 'a2', newAssistantSeq: 3 }
+      if (method === 'branch.regenerateQuestionWithCurrentConfig') {
+        return answerGenerationResult('a2', 3)
       }
       if (method === 'message.appendDelta' || method === 'message.setStatus' || method === 'modelPrefs.recordRecent') {
         return { ok: true }
@@ -1582,7 +1671,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     await user.click(screen.getByTestId('attachment-confirm-confirm'))
 
     await waitFor(() => {
-      expect(invoke.mock.calls.some((call) => call[0] === 'branch.regenerateFromQuestion')).toBe(true)
+      expect(invoke.mock.calls.some((call) => call[0] === 'branch.regenerateQuestionWithCurrentConfig')).toBe(true)
     })
     expect(streamOpenRouterChatCallArgs.length).toBeGreaterThan(0)
     const lastCall = streamOpenRouterChatCallArgs.at(-1)
@@ -1611,7 +1700,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
         return {
           messages: [
             { id: 'u1', convoId, role: 'user', seq: 1, createdAt: now, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: null },
+            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: OPENROUTER_ROUTE_META },
           ],
           turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
         }
@@ -1640,7 +1729,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
           errorMessage: null,
         }
       }
-      if (method === 'branch.retryReplaceAnswer') return { ok: true, newAnswerRootId: 'a2', newAssistantSeq: 3 }
+      if (method === 'branch.retryChosenAnswerReplacing') return answerGenerationResult('a2', 3, 'retry_replace')
       if (method === 'message.appendDelta' || method === 'message.setStatus' || method === 'modelPrefs.recordRecent') return { ok: true }
       return { ok: true }
     })
@@ -1659,7 +1748,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     await user.click(screen.getByTestId('attachment-confirm-confirm'))
 
     await waitFor(() => {
-      expect(invoke.mock.calls.some((call) => call[0] === 'branch.retryReplaceAnswer')).toBe(true)
+      expect(invoke.mock.calls.some((call) => call[0] === 'branch.retryChosenAnswerReplacing')).toBe(true)
     })
   })
 
@@ -1686,7 +1775,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
         return {
           messages: [
             { id: 'u1', convoId, role: 'user', seq: 1, createdAt: now, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: null },
+            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: OPENROUTER_ROUTE_META },
           ],
           turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
         }
@@ -1733,7 +1822,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     await waitFor(() => {
       expect(screen.queryByTestId('attachment-confirm-panel')).toBeNull()
     })
-    expect(invoke.mock.calls.some((call) => call[0] === 'branch.retryReplaceAnswer')).toBe(false)
+    expect(invoke.mock.calls.some((call) => call[0] === 'branch.retryChosenAnswerReplacing')).toBe(false)
     expect(streamOpenRouterChatCallArgs.length).toBe(0)
     expect(screen.getByText('A1')).toBeTruthy()
   })
@@ -1757,7 +1846,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
         return {
           messages: [
             { id: 'u1', convoId, role: 'user', seq: 1, createdAt: now, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: null },
+            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: OPENROUTER_ROUTE_META },
           ],
           turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
         }
@@ -1779,7 +1868,7 @@ describe('ui-app AppChatApp (regenerate + retry replace)', () => {
     await waitFor(() => {
       expect(screen.getByText(/Current replay blocked \(blocked\)/i)).toBeTruthy()
     })
-    expect(invoke.mock.calls.some((call) => call[0] === 'branch.retryReplaceAnswer')).toBe(false)
+    expect(invoke.mock.calls.some((call) => call[0] === 'branch.retryChosenAnswerReplacing')).toBe(false)
     expect(screen.getByText('A1')).toBeTruthy()
     expect(streamOpenRouterChatCallArgs.length).toBe(0)
   })

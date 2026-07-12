@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
+import { DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
 import type { RuntimeCapabilitySummaryLite, RuntimeProviderKey } from '@/next/provider/runtimeSelection'
 import {
   createExperimentalRuntimeTextEvents,
@@ -130,7 +131,7 @@ describe('providerRuntimeSendCoordinator', () => {
 
   it('routes explicit OpenRouter selection to the existing OpenRouter path', () => {
     expect(resolveProviderRuntimeTextSendPreflight({
-      selection: selected('openrouter', 'openrouter/auto'),
+      selection: selected('openrouter', DEFAULT_OPENROUTER_MODEL_ID),
       capability: { ...capability, source: 'openrouter_existing', attachments: 'supported', webSearch: 'supported', tools: 'supported', reasoningArtifacts: 'supported', imageGeneration: 'supported', structuredOutput: 'supported', usageFinal: 'supported' },
       text: 'hello',
       hasDraftAttachments: false,
@@ -245,7 +246,7 @@ describe('providerRuntimeSendCoordinator', () => {
     expect(getExperimentalRuntimeTextReasoningArtifactProvider('deepseek')).toBe('deepseek')
   })
 
-  it('dispatches experimental text streams without routing through Generic or OpenRouter', async () => {
+  it('dispatches experimental text streams without routing through OpenRouter', async () => {
     const abortController = new AbortController()
     const baseInput = {
       requestId: 'req_1',
@@ -300,14 +301,14 @@ describe('providerRuntimeSendCoordinator', () => {
     expect(deepSeekCalls).toEqual([expect.objectContaining({ model: 'model_1' })])
   })
 
-  it('passes Gemini native thinking config only to Google AI Studio streams', async () => {
+  it('passes Gemini thinking generation params to Google AI Studio streams', async () => {
     googleAIStudioCalls.length = 0
     openAIResponsesCalls.length = 0
     const abortController = new AbortController()
-    const geminiThinking = {
-      mode: 'budget' as const,
-      thinkingBudget: 2048,
-      includeThoughts: true,
+    const generationParams = {
+      generationConfig: {
+        thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+      },
     }
 
     await drain(createExperimentalRuntimeTextEvents({
@@ -317,7 +318,7 @@ describe('providerRuntimeSendCoordinator', () => {
       modelId: 'gemini-2.5-flash',
       userText: 'hello',
       contextMessages: [],
-      geminiThinking,
+      generationParams,
       signal: abortController.signal,
     }))
     await drain(createExperimentalRuntimeTextEvents({
@@ -330,8 +331,8 @@ describe('providerRuntimeSendCoordinator', () => {
       signal: abortController.signal,
     }))
 
-    expect(googleAIStudioCalls).toEqual([expect.objectContaining({ geminiThinking })])
-    expect(openAIResponsesCalls).toEqual([expect.not.objectContaining({ geminiThinking: expect.anything() })])
+    expect(googleAIStudioCalls).toEqual([expect.objectContaining({ generationParams })])
+    expect(openAIResponsesCalls).toEqual([expect.not.objectContaining({ generationParams: expect.anything() })])
   })
 
   it('passes image generation config only to OpenAI Responses and Google AI Studio wrappers', async () => {

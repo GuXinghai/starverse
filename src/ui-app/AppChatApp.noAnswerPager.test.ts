@@ -17,6 +17,9 @@ describe('ui-app AppChatApp (no-answer question pager)', () => {
 
     const invoke = vi.fn(async (method: string, params?: any) => {
       if (method === 'project.list') return []
+      if (method === 'project.getInbox') return null
+      if (method === 'project.countConversationsBatch') return { counts: {} }
+      if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
       if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
       if (method === 'branch.ensureDefault') return { id: branchId, convoId, headMessageId: headQuestionId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
       if (method === 'branch.list') return [{ id: branchId, convoId, headMessageId: headQuestionId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]

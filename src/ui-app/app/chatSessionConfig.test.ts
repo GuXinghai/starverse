@@ -4,10 +4,11 @@ import {
   serializeChatSessionConfigToConvoMeta,
   type ChatSessionConfig,
 } from './chatSessionConfig'
+import { compatibleConfigurationSelectionSchema } from '@/next/provider/openai-chat-compatible/ui/compatibleConfigurationSelection'
 
 function createConfig(overrides: Partial<ChatSessionConfig> = {}): ChatSessionConfig {
   return {
-    model: { selectedProviderId: null, selectedModelKey: null },
+    model: { selectedProviderId: null, selectedModelKey: null, compatibleSelection: null },
     reasoning: { enabled: false, effort: 'medium' },
     webSearch: {
       enabled: true,
@@ -29,6 +30,26 @@ function createConfig(overrides: Partial<ChatSessionConfig> = {}): ChatSessionCo
 }
 
 describe('chatSessionConfig', () => {
+  it('round-trips a complete compatible configuration as conversation-scoped selection', () => {
+    const compatibleSelection = compatibleConfigurationSelectionSchema.parse({
+      kind: 'openai_chat_compatible_configuration' as const,
+      providerInstanceId: 'ocp_provider_12345678', providerName: 'Example', modelId: 'same-model',
+      endpointRevisionId: 'ocp_endpoint_12345678', credentialVersionRef: null,
+      requestProfileId: 'ocp_request_profile_12345678', requestProfileVersion: 1,
+      responseProfileId: 'ocp_response_profile_12345678', responseProfileVersion: 1,
+      reasoningMappingId: 'ocp_reasoning_mapping_12345678', reasoningMappingVersion: 1,
+      inlinePolicyId: 'ocp_inline_policy_12345678', inlinePolicyVersion: 1,
+    })
+    const meta = serializeChatSessionConfigToConvoMeta({
+      config: createConfig({ model: { selectedProviderId: null, selectedModelKey: 'same-model', compatibleSelection } }),
+      defaultModelKey: 'openrouter/auto',
+    })
+    expect(meta).not.toHaveProperty('selectedProviderId')
+    expect(meta).not.toHaveProperty('selectedModelKey')
+    expect(deserializeChatSessionConfigFromConvoMeta({ convoMeta: meta, defaultModelKey: 'openrouter/auto' }).model).toEqual({
+      selectedProviderId: null, selectedModelKey: 'same-model', compatibleSelection,
+    })
+  })
   it('serializes custom web-search depth without replacing it with the quick-control level', () => {
     const meta = serializeChatSessionConfigToConvoMeta({
       config: createConfig({
@@ -67,9 +88,9 @@ describe('chatSessionConfig', () => {
         model: {
           selectedProviderId: 'anthropic_messages',
           selectedModelKey: 'claude-haiku-4-5',
+          compatibleSelection: null,
         },
       }),
-      defaultProviderId: 'openrouter',
       defaultModelKey: 'openrouter/auto',
     })
 
@@ -80,63 +101,60 @@ describe('chatSessionConfig', () => {
 
     const config = deserializeChatSessionConfigFromConvoMeta({
       convoMeta: meta,
-      defaultProviderId: 'openrouter',
       defaultModelKey: 'openrouter/auto',
     })
 
     expect(config.model).toEqual({
       selectedProviderId: 'anthropic_messages',
       selectedModelKey: 'claude-haiku-4-5',
+      compatibleSelection: null,
     })
   })
 
-  it('keeps legacy model-only meta readable as OpenRouter selection', () => {
+  it('keeps providerless model-only meta explicitly unset', () => {
     const config = deserializeChatSessionConfigFromConvoMeta({
       convoMeta: { selectedModelKey: 'openai/gpt-4o-mini' },
-      defaultProviderId: 'openrouter',
       defaultModelKey: 'openrouter/auto',
     })
 
     expect(config.model).toEqual({
-      selectedProviderId: 'openrouter',
-      selectedModelKey: 'openai/gpt-4o-mini',
+      selectedProviderId: null,
+      selectedModelKey: null,
+      compatibleSelection: null,
     })
   })
 
-  it('round-trips Google AI Studio native thinking config in conversation meta', () => {
+  it('removes legacy Google thinking meta and persists generation params instead', () => {
     const meta = serializeChatSessionConfigToConvoMeta({
+      baseMeta: {
+        googleAIStudioThinking: { mode: 'level', thinkingLevel: 'high', includeThoughts: true },
+      },
       config: createConfig({
         model: {
           selectedProviderId: 'google_ai_studio',
           selectedModelKey: 'gemini-2.5-flash',
+          compatibleSelection: null,
         },
-        googleAIStudioThinking: {
-          mode: 'budget',
-          thinkingBudget: 2048,
-          includeThoughts: true,
+        generationParams: {
+          detail: {
+            thinkingLevel: { mode: 'custom', value: 'medium' },
+            includeThoughts: { mode: 'custom', value: true },
+          },
         },
       }),
-      defaultProviderId: 'openrouter',
       defaultModelKey: 'openrouter/auto',
     })
 
-    expect(meta?.googleAIStudioThinking).toEqual({
-      mode: 'budget',
-      thinkingBudget: 2048,
-      includeThoughts: true,
-    })
+    expect(meta).not.toHaveProperty('googleAIStudioThinking')
 
     const config = deserializeChatSessionConfigFromConvoMeta({
       convoMeta: meta,
-      defaultProviderId: 'openrouter',
       defaultModelKey: 'openrouter/auto',
     })
 
-    expect(config.googleAIStudioThinking).toEqual({
-      mode: 'budget',
-      thinkingBudget: 2048,
-      thinkingLevel: 'low',
-      includeThoughts: true,
+    expect(config.generationParams.detail).toMatchObject({
+      thinkingLevel: { mode: 'custom', value: 'medium' },
+      includeThoughts: { mode: 'custom', value: true },
     })
   })
 
@@ -150,7 +168,6 @@ describe('chatSessionConfig', () => {
           },
         },
       }),
-      defaultProviderId: 'openrouter',
       defaultModelKey: 'openrouter/auto',
     })
 
@@ -164,7 +181,6 @@ describe('chatSessionConfig', () => {
 
     const config = deserializeChatSessionConfigFromConvoMeta({
       convoMeta: meta,
-      defaultProviderId: 'openrouter',
       defaultModelKey: 'openrouter/auto',
     })
 

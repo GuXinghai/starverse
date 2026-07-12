@@ -10,6 +10,8 @@ import {
   decodeBranchSwitchCandidateResponse,
   decodeBranchSwitchQuestionCandidateResponse,
   decodeBranchTruncateFromQuestionResponse,
+  decodeContextBuildForBranchResponse,
+  decodeContextRenderableTurnsResponse,
   decodeChatDraftResponse,
   decodeChatReasoningPanelAutoCollapseAfterReasoningResponse,
   decodeChatReasoningPanelDefaultExpandedResponse,
@@ -68,6 +70,9 @@ import {
   decodeProjectGetInboxResponse,
   decodeProjectListResponse,
   decodeSearchQueryResponse,
+  decodeCompatibleRendererProvider,
+  decodeCompatibleRendererCredential,
+  decodeCompatibleRendererEndpoint,
 } from './dbBridgeContracts'
 import { IpcContractDecodeError } from './decodeError'
 import { switchQuestionCandidate, truncateBranchFromQuestion } from '@/next/branch/branchClient'
@@ -163,7 +168,17 @@ const cases: ContractCase[] = [
   {
     name: 'message.list',
     decode: decodeMessageListResponse,
-    valid: [{ id: 'm1', convoId: 'c1', role: 'assistant', seq: 1, createdAt: 1, body: 'hi', meta: null }],
+    valid: [{
+      id: 'm1',
+      convoId: 'c1',
+      role: 'assistant',
+      seq: 1,
+      createdAt: 1,
+      body: 'hi',
+      meta: null,
+      routeProvenanceId: 'ocp_route_12345678',
+      choiceIndex: 0,
+    }],
     missing: [{ convoId: 'c1', role: 'assistant', seq: 1 }],
     wrongType: [{ id: 'm1', convoId: 'c1', role: 'assistant', seq: '1', createdAt: 1, body: 'hi' }],
   },
@@ -1885,5 +1900,113 @@ describe('DFC renderer DTO sanitization', () => {
     expect(result).toHaveLength(1)
     expect(result[0]).not.toHaveProperty('storageUri')
     expect(result[0]).not.toHaveProperty('metaJson')
+  })
+
+  it('decodes strict renderer-safe compatible provider records', () => {
+    expect(decodeCompatibleRendererProvider({
+      providerInstanceId: 'ocp_provider_12345678',
+      protocolKey: 'openai_chat_compatible',
+      displayName: 'Example',
+      status: 'active',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      deletedAtMs: null,
+    })).toMatchObject({ providerInstanceId: 'ocp_provider_12345678' })
+    expect(() => decodeCompatibleRendererProvider({
+      providerInstanceId: 'ocp_provider_12345678',
+      protocolKey: 'openai_chat_compatible',
+      displayName: 'Example',
+      status: 'active',
+      createdAtMs: 1,
+      updatedAtMs: 1,
+      deletedAtMs: null,
+      apiKey: 'forbidden',
+    })).toThrow(IpcContractDecodeError)
+  })
+
+  it('rejects raw compatible credential payload fields at the renderer decoder', () => {
+    const safe = {
+      credentialVersionRef: 'ocp_credential_12345678',
+      providerInstanceId: 'ocp_provider_12345678',
+      version: 1,
+      authMode: 'bearer',
+      configured: true,
+      maskState: 'configured_masked',
+      sensitiveHeaderNames: [],
+      deletedAtMs: null,
+    }
+    expect(decodeCompatibleRendererCredential(safe)).toEqual(safe)
+    expect(() => decodeCompatibleRendererCredential({ ...safe, maskState: 'not_configured' })).toThrow(IpcContractDecodeError)
+    for (const forbidden of ['token', 'password', 'apiKey', 'secretValue', 'maskedLabel']) {
+      expect(() => decodeCompatibleRendererCredential({ ...safe, [forbidden]: 'raw-secret' })).toThrow(IpcContractDecodeError)
+    }
+  })
+
+  it('decodes only safe compatible endpoint summaries', () => {
+    const safe = {
+      endpointRevisionId: 'ocp_endpoint_12345678',
+      providerInstanceId: 'ocp_provider_12345678',
+      revision: 1,
+      baseUrl: 'https://api.example.test/v1',
+      allowInsecureHttp: false,
+      securityPolicy: 'compatibility_first',
+      authMode: 'bearer',
+      credentialVersionRef: 'ocp_credential_12345678',
+      ordinaryHeaders: [{ name: 'X-Client', value: 'Starverse', classification: 'public_non_secret' }],
+      sensitiveHeaderRefs: [{ name: 'X-Secret', credentialVersionRef: 'ocp_credential_12345678' }],
+      query: [{ name: 'region', value: 'test', classification: 'public_non_secret' }],
+      requestProfileId: 'ocp_request_profile_12345678',
+      requestProfileVersion: 1,
+      responseProfileId: 'ocp_response_profile_12345678',
+      responseProfileVersion: 1,
+      createdAtMs: 1,
+    }
+    expect(decodeCompatibleRendererEndpoint(safe)).toEqual(safe)
+    expect(decodeCompatibleRendererEndpoint({ ...safe, securityPolicy: 'strict_ssrf' })).toMatchObject({ securityPolicy: 'strict_ssrf' })
+    const missingPolicy: Record<string, unknown> = { ...safe }
+    delete missingPolicy.securityPolicy
+    expect(() => decodeCompatibleRendererEndpoint(missingPolicy)).toThrow(IpcContractDecodeError)
+    expect(() => decodeCompatibleRendererEndpoint({ ...safe, securityPolicy: 'strict' })).toThrow(IpcContractDecodeError)
+    expect(() => decodeCompatibleRendererEndpoint({ ...safe, auth: { mode: 'bearer', token: 'raw' } })).toThrow(IpcContractDecodeError)
+    expect(() => decodeCompatibleRendererEndpoint({
+      ...safe,
+      ordinaryHeaders: [{ name: 'X-Tenant', value: 'hunter2' }],
+    })).toThrow(IpcContractDecodeError)
+  })
+
+  it('round-trips compatible route references through context decoders', () => {
+    const message = {
+      id: 'message-1',
+      convoId: 'convo-1',
+      role: 'assistant',
+      seq: 2,
+      createdAt: 1,
+      parentId: 'question-1',
+      status: 'streaming',
+      answerRootId: 'message-1',
+      questionId: 'question-1',
+      body: '',
+      meta: null,
+      routeProvenanceId: 'ocp_route_12345678',
+      choiceIndex: 0,
+    }
+    expect(decodeContextBuildForBranchResponse({ messages: [message] }).messages[0]).toMatchObject({
+      routeProvenanceId: 'ocp_route_12345678',
+      choiceIndex: 0,
+    })
+    expect(decodeContextRenderableTurnsResponse({ messages: [message], turns: [] }).messages[0]).toMatchObject({
+      routeProvenanceId: 'ocp_route_12345678',
+      choiceIndex: 0,
+    })
+    const nativeMessage: Record<string, unknown> = { ...message }
+    delete nativeMessage.routeProvenanceId
+    delete nativeMessage.choiceIndex
+    expect(decodeContextBuildForBranchResponse({ messages: [nativeMessage] }).messages[0]).toMatchObject({
+      routeProvenanceId: null,
+      choiceIndex: null,
+    })
+    expect(() => decodeContextBuildForBranchResponse({
+      messages: [{ ...message, credentialVersionRef: 'ocp_credential_forbidden' }],
+    })).toThrow(IpcContractDecodeError)
   })
 })

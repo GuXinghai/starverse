@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest'
 import {
-  buildGeminiNativeThinkingConfig,
-  normalizeGeminiThinkingConfig,
   resolveGeminiThinkingCapability,
 } from './geminiThinkingPolicy'
 
@@ -32,26 +30,5 @@ describe('geminiThinkingPolicy', () => {
       model: 'gemini-2.5-flash',
       supportedGenerationMethods: ['countTokens'],
     })).toMatchObject({ kind: 'unsupported', reason: 'unsupported_generation_method' })
-  })
-
-  it('normalizes unsupported and legacy none-like config to auto without native thinking config', () => {
-    const config = normalizeGeminiThinkingConfig({
-      model: 'gemini-2.5-flash',
-      config: { mode: 'none' as any, thinkingBudget: 1234 },
-    })
-
-    expect(config.mode).toBe('auto')
-    expect(buildGeminiNativeThinkingConfig({ model: 'gemini-2.5-flash', config })).toBeUndefined()
-  })
-
-  it('builds native includeThoughts independently from budget or level', () => {
-    expect(buildGeminiNativeThinkingConfig({
-      model: 'gemini-2.5-flash',
-      config: { mode: 'auto', includeThoughts: true },
-    })).toEqual({ includeThoughts: true })
-    expect(buildGeminiNativeThinkingConfig({
-      model: 'gemini-3-pro',
-      config: { mode: 'level', thinkingLevel: 'high', includeThoughts: false },
-    })).toEqual({ thinkingLevel: 'high', includeThoughts: false })
   })
 })

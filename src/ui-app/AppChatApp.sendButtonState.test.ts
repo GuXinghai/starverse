@@ -2,6 +2,7 @@ import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppChatApp from './AppChatApp.vue'
+import { DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
 import { useLiveStreamController } from './app/useLiveStreamController'
 
 ;(globalThis as any).__testOverrides = {}
@@ -208,7 +209,6 @@ describe('ui-app AppChatApp send button state', () => {
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
         if (key === 'openRouterApiKey') return 'redacted-test-key'
-        if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
         return undefined
       }),
     }
@@ -230,7 +230,16 @@ describe('ui-app AppChatApp send button state', () => {
       if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
       if (method === 'settings.getUserMessageRenderDefault') return { value: false }
       if (method === 'convo.list') {
-        return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1, meta: null }]
+        return [{
+          id: 'c1',
+          title: 'Chat 1',
+          createdAt: 1,
+          updatedAt: 1,
+          meta: {
+            selectedProviderId: 'openrouter',
+            selectedModelKey: DEFAULT_OPENROUTER_MODEL_ID,
+          },
+        }]
       }
       if (method === 'modelCatalog.list') return catalogRows
       if (method === 'modelCatalog.queryCore') {

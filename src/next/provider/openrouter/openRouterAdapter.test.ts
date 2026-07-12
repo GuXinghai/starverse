@@ -388,7 +388,7 @@ describe('streamViaOpenRouter', () => {
     }
   })
 
-  it('preserves request body semantics (reasoning.effort=none)', async () => {
+  it('keeps legacy requested reasoning controls out of the request body', async () => {
     const originalFetch = globalThis.fetch
     const calls: any[] = []
     globalThis.fetch = vi.fn(async (url: any, init: any) => {
@@ -414,8 +414,8 @@ describe('streamViaOpenRouter', () => {
       }
 
       const bodyText = String(calls[0]?.init?.body ?? '')
-      expect(bodyText).toContain('"reasoning":')
-      expect(bodyText).toContain('"effort":"none"')
+      expect(bodyText).not.toContain('"reasoning":')
+      expect(bodyText).not.toContain('"effort":"none"')
       expect(bodyText).not.toContain('"enabled":')
     } finally {
       globalThis.fetch = originalFetch
@@ -591,7 +591,7 @@ describe('streamViaOpenRouter', () => {
     }
   })
 
-  it('preserves legacy baseUrl behavior through adapter facade', async () => {
+  it('ignores legacy request baseUrl and uses the official OpenRouter endpoint', async () => {
     const originalFetch = globalThis.fetch
     const calls: any[] = []
     const rawKey = 'sk-or-adapter-baseurl-secret'
@@ -620,7 +620,7 @@ describe('streamViaOpenRouter', () => {
       }
 
       expect(calls).toHaveLength(1)
-      expect(calls[0]?.url).toBe('https://openrouter-proxy.example.test/custom/v1/chat/completions')
+      expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/chat/completions')
       expect(calls[0]?.init?.headers?.Authorization).toBe(`Bearer ${rawKey}`)
       const serializedEvents = JSON.stringify(events)
       expect(serializedEvents).not.toContain(rawKey)
@@ -631,7 +631,7 @@ describe('streamViaOpenRouter', () => {
     }
   })
 
-  it('resolver seam sends the same legacy Authorization and baseUrl behavior as raw path', async () => {
+  it('resolver seam uses the same official endpoint and Authorization as the raw path', async () => {
     const originalFetch = globalThis.fetch
     const calls: any[] = []
     const rawKey = 'sk-or-openrouter-resolved-secret'
@@ -657,7 +657,7 @@ describe('streamViaOpenRouter', () => {
       }
 
       expect(calls).toHaveLength(2)
-      expect(calls[0]?.url).toBe('https://openrouter-proxy.example.test/custom/v1/chat/completions')
+      expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/chat/completions')
       expect(calls[1]?.url).toBe(calls[0]?.url)
       expect(calls[0]?.init?.headers?.Authorization).toBe(`Bearer ${rawKey}`)
       expect(calls[1]?.init?.headers?.Authorization).toBe(calls[0]?.init?.headers?.Authorization)

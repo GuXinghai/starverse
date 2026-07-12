@@ -461,7 +461,7 @@ export function resolveRuntimeTextSendRoute(selection: CurrentRuntimeSelection):
     return { kind: 'experimental_text', providerKey: selection.providerKey }
   }
 
-  return { kind: 'none', reason: 'Generic OpenAI-compatible live routing is deferred.' }
+  return { kind: 'none', reason: 'Unsupported runtime provider selection.' }
 }
 
 export function formatRuntimeSelectionLabel(selection: CurrentRuntimeSelection): string {

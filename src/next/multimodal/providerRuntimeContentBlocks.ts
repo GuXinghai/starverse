@@ -47,7 +47,6 @@ export type ProviderRuntimeImageProvider =
   | 'google_ai_studio'
   | 'openrouter'
   | 'deepseek'
-  | 'generic_openai_compatible'
   | 'local_endpoint'
   | 'lm_studio'
   | 'ollama_local'
@@ -384,7 +383,6 @@ function sanitizeImageBlock(provider: ProviderRuntimeImageProvider, item: unknow
       return isOpenRouterImagePart(item)
         ? { type: 'image_url', image_url: { url: item.image_url.url } }
         : null
-    case 'generic_openai_compatible':
     case 'local_endpoint':
     case 'lm_studio':
     case 'ollama_local':
@@ -456,7 +454,6 @@ function sanitizeFileBlock(provider: ProviderRuntimeImageProvider, item: unknown
       return isOpenRouterFilePart(item)
         ? { type: 'file', file: { filename: item.file.filename, file_data: item.file.file_data } }
         : null
-    case 'generic_openai_compatible':
     case 'local_endpoint':
     case 'lm_studio':
     case 'ollama_local':

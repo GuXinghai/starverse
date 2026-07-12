@@ -8,6 +8,7 @@ import {
   decodeBranchSwitchQuestionCandidateResponse,
   decodeBranchTruncateFromQuestionResponse,
 } from '@/next/ipc/contracts/dbBridgeContracts'
+import type { AssistantAnswerGenerationCommandResult, AssistantAnswerGenerationSnapshotV1 } from '@/next/generation/assistantAnswerGenerationSnapshot'
 import type { DfcAttachmentSendSnapshot } from '@/shared/files/documentFormatConversion'
 
 export type BranchSummary = Readonly<{
@@ -265,6 +266,82 @@ export async function regenerateFromQuestion(branchId: string, questionId: strin
   const raw = await bridge.invoke('branch.regenerateFromQuestion', { branchId: bid, questionId: qid })
   const decoded = decodeBranchRegenerateFromQuestionResponse(raw)
   return { newAnswerRootId: decoded.newAnswerRootId, newAssistantSeq: decoded.newAssistantSeq }
+}
+
+function decodeAnswerGenerationCommand(raw: unknown): AssistantAnswerGenerationCommandResult {
+  if (!raw || typeof raw !== 'object' || (raw as any).ok !== true) throw new Error('DB did not return an answer generation command result')
+  const row = raw as any
+  if (!row.operationId || !row.newAnswerRootId || !Number.isFinite(Number(row.newAssistantSeq)) || !row.snapshot) {
+    throw new Error('DB returned incomplete answer generation command fields')
+  }
+  return Object.freeze({
+    operationId: String(row.operationId),
+    actionKind: row.actionKind,
+    newAnswerRootId: String(row.newAnswerRootId),
+    newAssistantSeq: Number(row.newAssistantSeq),
+    chosenAnswerRootId: String(row.chosenAnswerRootId),
+    headMessageId: String(row.headMessageId),
+    snapshot: row.snapshot as AssistantAnswerGenerationSnapshotV1,
+    state: row.state,
+    idempotentReplay: row.idempotentReplay === true,
+    ...(typeof row.compatibleRouteProvenanceId === 'string' ? { compatibleRouteProvenanceId: row.compatibleRouteProvenanceId } : {}),
+  })
+}
+
+export async function regenerateQuestionWithCurrentConfig(input: Readonly<{
+  operationId: string
+  branchId: string
+  questionId: string
+  snapshot: AssistantAnswerGenerationSnapshotV1
+  compatibleExecutionPins?: Readonly<Record<string, unknown>>
+}>): Promise<AssistantAnswerGenerationCommandResult> {
+  const raw = await requireDbBridge().invoke('branch.regenerateQuestionWithCurrentConfig', input)
+  return decodeAnswerGenerationCommand(raw)
+}
+
+async function retryChosenAnswerCommand(method: 'branch.retryChosenAnswerReplacing' | 'branch.retryChosenAnswerAsNew', input: Readonly<{
+  operationId: string
+  branchId: string
+  questionId: string
+  targetAnswerRootId: string
+  compatibleExecutionPins?: Readonly<Record<string, unknown>>
+}>): Promise<AssistantAnswerGenerationCommandResult> {
+  const raw = await requireDbBridge().invoke(method, input)
+  return decodeAnswerGenerationCommand(raw)
+}
+
+export const retryChosenAnswerReplacing = (input: Readonly<{ operationId: string; branchId: string; questionId: string; targetAnswerRootId: string; compatibleExecutionPins?: Readonly<Record<string, unknown>> }>) =>
+  retryChosenAnswerCommand('branch.retryChosenAnswerReplacing', input)
+
+export const retryChosenAnswerAsNew = (input: Readonly<{ operationId: string; branchId: string; questionId: string; targetAnswerRootId: string; compatibleExecutionPins?: Readonly<Record<string, unknown>> }>) =>
+  retryChosenAnswerCommand('branch.retryChosenAnswerAsNew', input)
+
+export async function finalizeAssistantAnswerGeneration(input: Readonly<{
+  answerRootId: string
+  state: 'completed' | 'failed' | 'cancelled'
+  errorCode?: string | null
+  errorMessage?: string | null
+}>): Promise<void> {
+  await requireDbBridge().invoke('answerGeneration.finalize', input)
+}
+
+export async function claimAssistantAnswerGenerationStream(operationId: string, answerRootId: string): Promise<boolean> {
+  const raw = await requireDbBridge().invoke('answerGeneration.claimStream', { operationId, answerRootId }) as any
+  return raw?.ok === true && raw?.claimed !== false
+}
+
+export async function getAssistantAnswerGenerationSnapshot(answerRootId: string): Promise<AssistantAnswerGenerationSnapshotV1 | null> {
+  const id = String(answerRootId ?? '').trim()
+  if (!id) return null
+  const raw = await requireDbBridge().invoke('answerGeneration.getSnapshot', { answerRootId: id }) as any
+  if (!raw || raw.ok !== true || raw.snapshot == null) return null
+  return raw.snapshot as AssistantAnswerGenerationSnapshotV1
+}
+
+export async function persistAssistantAnswerGenerationSnapshot(answerRootId: string, snapshot: AssistantAnswerGenerationSnapshotV1): Promise<void> {
+  const id = String(answerRootId ?? '').trim()
+  if (!id) throw new Error('Missing answerRootId')
+  await requireDbBridge().invoke('answerGeneration.persistSnapshot', { answerRootId: id, snapshot })
 }
 
 export async function retryReplaceAnswer(branchId: string, questionId: string, currentAnswerRootId: string): Promise<RetryReplaceAnswerResult> {

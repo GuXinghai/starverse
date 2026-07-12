@@ -1,4 +1,4 @@
-export { TerminalArbiter } from '@/next/streaming/core/terminalArbiter'
+export { TerminalArbiter } from '@/shared/streaming/terminalArbiter'
 export { TimingMachine } from '@/next/streaming/core/timingMachine'
 export {
   streamFetchSemanticCore,

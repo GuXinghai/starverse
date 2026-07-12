@@ -5,7 +5,7 @@
  * callers still pass raw apiKey/baseUrl material to the adapter side and the
  * active runtime behavior stays unchanged.
  *
- * Not a secure store, not a renderer API, not a Generic credential path, and
+ * Not a secure store or renderer API, and
  * not a provider/endpoint registry.
  */
 
@@ -22,7 +22,6 @@ import {
 } from '@/next/provider/credentials/providerCredentialResolver'
 
 export const OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY = 'openRouterApiKey'
-export const OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY = 'openRouterBaseUrl'
 export const OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF: ProviderCredentialRef = {
   kind: 'credential_ref',
   id: 'openrouter-chat-legacy-store',
@@ -31,7 +30,6 @@ export const OPENROUTER_CHAT_LEGACY_CREDENTIAL_REF: ProviderCredentialRef = {
 export type OpenRouterLegacyCredentialMaterial = Readonly<{
   kind: 'openrouter_legacy_api_key'
   apiKey: string
-  baseUrl?: string
 }>
 
 export type OpenRouterChatCredentialStoreReader = Readonly<{
@@ -66,24 +64,21 @@ export type SafeOpenRouterLegacyCredentialDiagnostics = Readonly<{
   status: 'configured' | 'missing'
   code: 'credential_configured' | 'credential_missing'
   maskedApiKey: '***'
-  baseUrlConfigured: boolean
-  maskedBaseUrl?: string
+  baseUrlConfigured: false
 }>
 
 export function openRouterLegacyCredentialFromRaw(
-  input: Readonly<{ apiKey: string; baseUrl?: string }>,
+  input: Readonly<{ apiKey: string }>,
 ): OpenRouterLegacyCredentialMaterial {
   return {
     kind: 'openrouter_legacy_api_key',
     apiKey: input.apiKey,
-    ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
   }
 }
 
 export type OpenRouterLegacyCredentialResolutionInput = Readonly<{
   credentialRef: ProviderCredentialRef
   resolveCredential: ProviderCredentialResolver
-  baseUrl?: string
 }>
 
 /**
@@ -102,14 +97,7 @@ export function resolveOpenRouterLegacyCredential(
 
   return openRouterLegacyCredentialFromRaw({
     apiKey: resolution.credential.token,
-    ...(input.baseUrl !== undefined ? { baseUrl: input.baseUrl } : {}),
   })
-}
-
-function readOpenRouterChatLegacyBaseUrlFromStore(
-  store: OpenRouterChatCredentialStoreReader,
-): string | undefined {
-  return String(store.get(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY) ?? '').trim() || undefined
 }
 
 function openRouterChatCredentialResolutionFailure(
@@ -191,11 +179,7 @@ export function resolveOpenRouterChatCredentialFromLegacyStore(
     }
   }
 
-  const baseUrl = readOpenRouterChatLegacyBaseUrlFromStore(store)
-  const credential = openRouterLegacyCredentialFromRaw({
-    apiKey: resolved.apiKey,
-    ...(baseUrl !== undefined ? { baseUrl } : {}),
-  })
+  const credential = openRouterLegacyCredentialFromRaw({ apiKey: resolved.apiKey })
   return {
     ok: true,
     source: 'legacy_store',
@@ -204,31 +188,15 @@ export function resolveOpenRouterChatCredentialFromLegacyStore(
   }
 }
 
-function maskOpenRouterLegacyBaseUrl(baseUrl: string): string {
-  try {
-    const url = new URL(baseUrl)
-    const host = url.hostname
-    if (host.length <= 2) {
-      return `${url.protocol}//${host}${url.port ? `:${url.port}` : ''}`
-    }
-    return `${url.protocol}//${host[0]}***${host[host.length - 1]}${url.port ? `:${url.port}` : ''}`
-  } catch {
-    return '[invalid-url]'
-  }
-}
-
 export function toSafeOpenRouterLegacyCredentialDiagnostics(
   material: OpenRouterLegacyCredentialMaterial,
 ): SafeOpenRouterLegacyCredentialDiagnostics {
   const configured = typeof material.apiKey === 'string' && material.apiKey.trim().length > 0
-  const baseUrlConfigured = typeof material.baseUrl === 'string' && material.baseUrl.trim().length > 0
-
   return {
     kind: 'openrouter_legacy_credential',
     status: configured ? 'configured' : 'missing',
     code: configured ? 'credential_configured' : 'credential_missing',
     maskedApiKey: '***',
-    baseUrlConfigured,
-    ...(baseUrlConfigured ? { maskedBaseUrl: maskOpenRouterLegacyBaseUrl(material.baseUrl!) } : {}),
+    baseUrlConfigured: false,
   }
 }

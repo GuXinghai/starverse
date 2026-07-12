@@ -2,7 +2,7 @@
  * Runtime provider stream adapter contract.
  *
  * This is the minimal shared callable shape extracted from the five
- * integrated provider adapters (DeepSeek, OpenAI Responses, Anthropic, Gemini, Generic).
+ * integrated provider adapters (DeepSeek, OpenAI Responses, Anthropic, and Gemini).
  *
  * OpenRouter is NOT included yet because the current app path uses the
  * OpenRouter facade with a DomainEvent bridge, not this contract.
@@ -27,6 +27,7 @@ export type ProviderStreamTransport = Readonly<{
   fetch: (url: string, init: RequestInit) => Promise<Response>
   baseUrl: string
   apiKey: string
+  captureSerializedRequest?: (serializedBody: string) => void
 }>
 
 // ---------------------------------------------------------------------------
@@ -39,7 +40,7 @@ export type ProviderStreamTransport = Readonly<{
  * Accepts a provider-neutral request and an injectable transport.
  * Yields provider-neutral stream events.
  *
- * Implemented by: DeepSeek, OpenAI Responses, Anthropic, Gemini, Generic.
+ * Implemented by: DeepSeek, OpenAI Responses, Anthropic, and Gemini.
  * NOT implemented by: OpenRouter (uses DomainEvent bridge path).
  */
 export type RuntimeProviderStreamAdapter = (

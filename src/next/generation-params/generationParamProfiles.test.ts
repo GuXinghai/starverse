@@ -4,10 +4,6 @@ import { anthropicGenerationProfile } from './providerProfiles/anthropicGenerati
 import { deepseekGenerationProfile } from './providerProfiles/deepseekGenerationProfile'
 import { geminiGenerationProfile } from './providerProfiles/geminiGenerationProfile'
 import { geminiImageGenerationProfile } from './providerProfiles/geminiImageGenerationProfile'
-import {
-  genericOpenAICompatibleLegacyGenerationProfile,
-  genericOpenAICompatibleModernGenerationProfile,
-} from './providerProfiles/genericOpenAICompatibleGenerationProfile'
 import { openaiResponsesGenerationProfile } from './providerProfiles/openaiResponsesGenerationProfile'
 import { openrouterGenerationProfile } from './providerProfiles/openrouterGenerationProfile'
 
@@ -28,6 +24,20 @@ describe('generationParamProfiles', () => {
     expect(capabilities.topP?.status).toBe('deprecated')
     expect(capabilities.topK?.status).toBe('deprecated')
     expect(capabilities.thinkingBudget?.supported).toBe(false)
+    expect(capabilities.thinkingLevel?.supported).toBe(true)
+    expect(capabilities.includeThoughts?.supported).toBe(true)
+  })
+
+  it('exposes only model-family-correct Gemini thinking controls', () => {
+    const gemini25 = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'gemini-2.5-flash')
+    const unknown = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'future-gemini-model')
+
+    expect(gemini25.thinkingBudget?.supported).toBe(true)
+    expect(gemini25.thinkingLevel?.supported).toBe(false)
+    expect(gemini25.includeThoughts?.supported).toBe(true)
+    expect(unknown.thinkingBudget?.supported).toBe(false)
+    expect(unknown.thinkingLevel?.supported).toBe(false)
+    expect(unknown.includeThoughts?.supported).toBe(false)
   })
 
   it('uses a distinct Gemini image generation profile on request', () => {
@@ -78,16 +88,5 @@ describe('generationParamProfiles', () => {
     expect(capabilities.topP?.status).toBe('noEffect')
     expect(capabilities.presencePenalty?.status).toBe('noEffect')
     expect(capabilities.frequencyPenalty?.status).toBe('noEffect')
-  })
-
-  it('distinguishes generic legacy and modern max token wire keys', () => {
-    expect(genericOpenAICompatibleLegacyGenerationProfile.params.maxOutputTokens?.wireKey).toBe('max_tokens')
-    expect(genericOpenAICompatibleModernGenerationProfile.params.maxOutputTokens?.wireKey).toBe('max_completion_tokens')
-    expect(getDefaultGenerationParamProfile('generic_openai_compatible')?.profileId).toBe(
-      genericOpenAICompatibleLegacyGenerationProfile.profileId,
-    )
-    expect(getDefaultGenerationParamProfile('generic_openai_compatible', { genericProtocol: 'modern' })?.profileId).toBe(
-      genericOpenAICompatibleModernGenerationProfile.profileId,
-    )
   })
 })

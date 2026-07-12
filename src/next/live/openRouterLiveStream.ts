@@ -287,6 +287,13 @@ export const ipcTransportStrategy: OpenRouterTransportStrategy<OpenRouterIpcTran
         contextMessages: options.contextMessages,
         contextMode: options.contextMode,
         requestBody: options.requestBody,
+        rawGenerationContext: {
+          operationId: requestId,
+          answerRootId: assistantMessageId,
+          requestSequence: 1,
+          providerId: 'openrouter',
+          modelId: String(options.config.model ?? ''),
+        },
         config: options.config,
       })
       if (result && result.ok === false) {

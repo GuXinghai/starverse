@@ -1,7 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { mapGenerationParamsToProviderRequestPatch } from './generationParamMappers'
 import { geminiGenerationProfile } from './providerProfiles/geminiGenerationProfile'
-import { genericOpenAICompatibleModernGenerationProfile } from './providerProfiles/genericOpenAICompatibleGenerationProfile'
 import { openaiResponsesGenerationProfile } from './providerProfiles/openaiResponsesGenerationProfile'
 import { openrouterGenerationProfile } from './providerProfiles/openrouterGenerationProfile'
 import type { ProviderGenerationParamProfile } from './generationParamTypes'
@@ -31,6 +30,24 @@ describe('generationParamMappers', () => {
       generationConfig: {
         topP: 0.8,
         maxOutputTokens: 4096,
+      },
+    })
+  })
+
+  it('maps Gemini 3 thinking controls into one native thinkingConfig object', () => {
+    expect(mapGenerationParamsToProviderRequestPatch({
+      profile: geminiGenerationProfile,
+      modelId: 'gemini-3.1-flash-lite',
+      requestParams: {
+        thinkingLevel: 'medium',
+        includeThoughts: true,
+      },
+    })).toEqual({
+      generationConfig: {
+        thinkingConfig: {
+          thinkingLevel: 'medium',
+          includeThoughts: true,
+        },
       },
     })
   })
@@ -75,17 +92,6 @@ describe('generationParamMappers', () => {
     })
   })
 
-  it('maps generic modern maxOutputTokens to max_completion_tokens', () => {
-    expect(mapGenerationParamsToProviderRequestPatch({
-      profile: genericOpenAICompatibleModernGenerationProfile,
-      requestParams: {
-        maxOutputTokens: 1024,
-      },
-    })).toEqual({
-      max_completion_tokens: 1024,
-    })
-  })
-
   it('throws if a requestParam has no provider wire target', () => {
     expect(() => mapGenerationParamsToProviderRequestPatch({
       profile: openaiResponsesGenerationProfile,
@@ -97,9 +103,9 @@ describe('generationParamMappers', () => {
 
   it('uses model overrides when selecting provider wire targets', () => {
     const profile: ProviderGenerationParamProfile = {
-      providerId: 'generic_openai_compatible',
+      providerId: 'openrouter',
       profileId: 'mapper_model_override_fixture',
-      wireProtocol: 'openai-chat-compatible-legacy',
+      wireProtocol: 'openrouter-chat',
       params: {
         maxOutputTokens: {
           supported: true,

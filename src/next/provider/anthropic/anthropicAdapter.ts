@@ -45,6 +45,7 @@ export type AnthropicTransportOptions = Readonly<{
   apiKey: string
   anthropicVersion?: string
   timeoutMs?: number
+  captureSerializedRequest?: (serializedBody: string) => void
 }>
 
 export type AnthropicFetchFn = (
@@ -94,10 +95,12 @@ export const streamViaAnthropic: RuntimeProviderStreamAdapter = async function* 
 
   let response: Response
   try {
+    const serializedBody = JSON.stringify(body)
+    try { transport.captureSerializedRequest?.(serializedBody) } catch { /* raw capture is non-fatal */ }
     response = await transport.fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify(body),
+      body: serializedBody,
       signal: signal ?? undefined,
     })
   } catch (err: any) {

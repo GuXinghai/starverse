@@ -8,7 +8,7 @@
  */
 
 import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
-import type { GeminiNativeThinkingConfig } from '@/next/provider/gemini/geminiThinkingPolicy'
+import type { GeminiThinkingLevel } from '@/next/provider/gemini/geminiThinkingPolicy'
 import {
   normalizeGeminiImageGenerationModelId,
   resolveGeminiImageGenerationPolicy,
@@ -44,7 +44,11 @@ export type GeminiGenerationConfig = Readonly<{
   topP?: number
   maxOutputTokens?: number
   candidateCount?: number
-  thinkingConfig?: GeminiNativeThinkingConfig
+  thinkingConfig?: Readonly<{
+    thinkingBudget?: number
+    thinkingLevel?: GeminiThinkingLevel
+    includeThoughts?: boolean
+  }>
 }>
 
 export type GeminiTool = Readonly<{

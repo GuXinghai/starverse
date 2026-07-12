@@ -12,7 +12,7 @@ import {
 } from '@/next/streaming/core'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import type { OpenRouterStreamWireEvent } from '@/shared/ipc/openRouterStreamWire'
-import { mapGenericOpenAICompatibleChunkToEvents } from '@/next/provider/generic/genericOpenAICompatibleStreamMapper'
+import { mapLocalOpenAIChatCompletionsChunkToEvents } from './localOpenAIChatCompletionsStreamMapper'
 import type { StreamJsonChunkMapper } from '@/next/streaming/core/types'
 
 const testModel = DEFAULT_OPENROUTER_TEST_MODEL
@@ -101,7 +101,7 @@ async function collectWithGenericMapper(events: readonly unknown[]): Promise<Dom
     assistantMessageId: 'assistant_fixture',
     requestContext: { model: 'generic-local-model', stream: true },
     tRequestStart: Date.now(),
-    mapJsonChunkToEvents: mapGenericOpenAICompatibleChunkToEvents,
+    mapJsonChunkToEvents: mapLocalOpenAIChatCompletionsChunkToEvents,
     mapAppPhaseToEnvelopePhase,
     mapAppPhaseToEndReason,
     buildStreamErrorFromAppError,

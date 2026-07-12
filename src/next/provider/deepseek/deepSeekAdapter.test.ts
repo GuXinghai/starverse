@@ -121,6 +121,26 @@ describe('streamViaDeepSeek', () => {
     expect(body.messages).toEqual([{ role: 'user', content: 'Hello' }])
   })
 
+  it('captures and sends the exact same serialized body string', async () => {
+    const fetch = mockFetch(makeSseResponse(textSseChunk('gen_1', 'deepseek-chat', 'ok')))
+    const captured: string[] = []
+    await collectEvents(streamViaDeepSeek(makeRequest(), {
+      baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-test', fetch,
+      captureSerializedRequest: (body) => captured.push(body),
+    }))
+    expect(captured).toHaveLength(1)
+    expect(captured[0]).toBe((fetch as any).mock.calls[0][1].body)
+  })
+
+  it('does not block transport when raw request capture fails', async () => {
+    const fetch = mockFetch(makeSseResponse(textSseChunk('gen_1', 'deepseek-chat', 'ok')))
+    await collectEvents(streamViaDeepSeek(makeRequest(), {
+      baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-test', fetch,
+      captureSerializedRequest: () => { throw new Error('raw store failed') },
+    }))
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
   it('serializes DeepSeek context messages through an outbound allowlist without mutating source messages', async () => {
     const response = makeSseResponse(
       textSseChunk('gen_1', 'deepseek-chat', 'hi'),

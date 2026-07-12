@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import ChatTranscript from '@/ui-kit/chat/ChatTranscript.vue'
 import ChatMessageBubble from '@/ui-kit/chat/ChatMessageBubble.vue'
 import ChatAppReasoningPanel from './components/ChatAppReasoningPanel.vue'
@@ -21,7 +21,7 @@ import GenerationParamsSettingsEditor from './components/GenerationParamsSetting
 import SearchModal from './components/SearchModal.vue'
 import { useAppChatAppLogic } from './app/appChatApp.logic'
 import { formatModelIndicatorName } from './components/modelIndicatorName'
-import { DEFAULT_CHAT_PROVIDER_ID, DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
+import { OPENROUTER_PROVIDER_ID } from '@/next/provider/modelSelection'
 import { t, tf } from '@/shared/i18n'
 
 const {
@@ -29,6 +29,7 @@ const {
   loadError,
   convoListItems,
   activeConvoId,
+  workspaceMode,
   activeProjectId,
   inboxId,
   projectListItems,
@@ -40,6 +41,7 @@ const {
   onDeleteProject,
   onSelectConvo,
   onCreateConvo,
+  onResetSystemTemplate,
   refreshConvos,
   onRenameConvo,
   onDeleteConvo,
@@ -97,10 +99,10 @@ const {
   onToggleAnswerExclude,
   canRetryReplaceInUi,
   onRetryReplaceAnswer,
+  onRetryAnswerAsNew,
   getCandidatePager,
   candidatesLoading,
   onCandidateShift,
-  questionIdForMessage,
   lastAssistantReasoningView,
   lastAssistantReasoningVersion,
   lastAssistantIsStreaming,
@@ -162,7 +164,6 @@ const {
   onUpdateModel,
   onUpdateReasoningEnabled,
   onUpdateReasoningEffortLevel,
-  onUpdateGoogleAIStudioThinking,
   onUpdateReasoningPanelDefaultExpanded,
   onUpdateReasoningPanelAutoCollapseAfterReasoning,
   onUpdateWebSearchEnabled,
@@ -228,6 +229,7 @@ const {
   closeAttachmentUrlDialog,
   submitAttachmentUrl,
   onSend,
+  compatibleRunning,
   onAbort,
   settingsOpen,
   openSettings,
@@ -254,6 +256,13 @@ const {
   confirmDeleteQuestion,
   onOpenReasoningDisplayForMessage,
 } = useAppChatAppLogic()
+const effectiveIsRunning = computed(() => isRunning.value || compatibleRunning.value)
+const templateResetOpen = ref(false)
+const resetTemplateModelConfig = ref(true)
+const resetTemplateDraftAttachments = ref(true)
+function onComposerSend() {
+  void onSend()
+}
 
 const branchSummary = computed(() => {
   if (!activeBranch.value) return 'Branch unavailable'
@@ -269,11 +278,19 @@ const runSummary = computed(() => {
 })
 
 const modelSummary = computed(() => {
-  const selectedProvider = activeSessionConfig.value.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID
-  const selected = activeSessionConfig.value.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
+  const compatible = activeSessionConfig.value.model.compatibleSelection
+  if (compatible) {
+    return tf('chat.topBar.modelSummaryWithProvider', {
+      provider: compatible.providerName,
+      model: formatModelIndicatorName(compatible.modelId),
+    })
+  }
+  const selectedProvider = activeSessionConfig.value.model.selectedProviderId
+  const selected = activeSessionConfig.value.model.selectedModelKey
+  if (!selectedProvider || !selected) return t('chat.console.runtime.noProviderSelected')
   const match = modelCatalogForPicker.value.find((item) => item.modelId === selected)
   const modelLabel = formatModelIndicatorName(match?.name ?? selected)
-  return selectedProvider === DEFAULT_CHAT_PROVIDER_ID
+  return selectedProvider === OPENROUTER_PROVIDER_ID
     ? tf('chat.topBar.modelSummary', { model: modelLabel })
     : tf('chat.topBar.modelSummaryWithProvider', { provider: selectedProvider, model: modelLabel })
 })
@@ -291,6 +308,42 @@ function shouldShowInlineReasoning(message: any): boolean {
   if (view.hasEncrypted === true) return true
   if (Array.isArray(view.displayBlocks) && view.displayBlocks.length > 0) return true
   return false
+}
+
+type RawRequestRecord = Readonly<{
+  id: string; requestSequence: number; providerId: string; modelId: string
+  serializedBody: string; bodyBytes: number; bodySha256: string; capturedAtMs: number
+}>
+const rawDataOpen = ref(false)
+const rawDataLoading = ref(false)
+const rawDataAnswerRootId = ref('')
+const rawDataRecords = ref<readonly RawRequestRecord[]>([])
+const rawDataError = ref<string | null>(null)
+
+async function openRawData(answerRootId: string) {
+  rawDataAnswerRootId.value = answerRootId
+  rawDataOpen.value = true
+  rawDataLoading.value = true
+  rawDataError.value = null
+  try {
+    const debugBridge = window.rawGenerationDebug
+    if (!debugBridge) throw new Error('RAW_DEBUG_BRIDGE_UNAVAILABLE')
+    const status = await debugBridge.getStatus()
+    if (!status.available || !status.schemaReady) {
+      throw new Error(status.errorCode ?? 'RAW_DEBUG_STORE_UNAVAILABLE')
+    }
+    rawDataRecords.value = await debugBridge.listByAnswerRootId(answerRootId)
+  } catch (error) {
+    rawDataRecords.value = []
+    rawDataError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    rawDataLoading.value = false
+  }
+}
+
+function closeRawData() { rawDataOpen.value = false }
+function formatRawRequestBody(body: string): string {
+  try { return JSON.stringify(JSON.parse(body), null, 2) } catch { return body }
 }
 </script>
 
@@ -338,6 +391,7 @@ function shouldShowInlineReasoning(message: any): boolean {
 
       <template #topbar>
         <ChatTopSummaryBar
+          v-if="workspaceMode !== 'none'"
           :title="activeTitle || 'No active conversation'"
           :branchSummary="branchSummary"
           :runSummary="runSummary"
@@ -350,10 +404,24 @@ function shouldShowInlineReasoning(message: any): boolean {
           @openSettings="openSettings"
           @toggleConsolePanel="toggleConsolePanel"
         />
+        <div v-if="workspaceMode === 'template'" class="relative px-3 pb-2">
+          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700" data-testid="new-template-reset-open" @click="templateResetOpen = !templateResetOpen">
+            {{ t('chat.newTemplate.reset') }}
+          </button>
+          <div v-if="templateResetOpen" class="absolute left-3 top-8 z-30 w-64 space-y-2 rounded-lg border border-gray-200 bg-white p-3 text-xs shadow-lg" data-testid="new-template-reset-panel">
+            <label class="flex items-center gap-2"><input v-model="resetTemplateModelConfig" type="checkbox" />{{ t('chat.newTemplate.modelConfig') }}</label>
+            <label class="flex items-center gap-2"><input v-model="resetTemplateDraftAttachments" type="checkbox" />{{ t('chat.newTemplate.draftAttachments') }}</label>
+            <div class="flex justify-end gap-2">
+              <button type="button" class="rounded border px-2 py-1" @click="templateResetOpen = false">{{ t('chat.newTemplate.cancel') }}</button>
+              <button type="button" class="rounded bg-gray-900 px-2 py-1 text-white" :disabled="!resetTemplateModelConfig && !resetTemplateDraftAttachments" data-testid="new-template-reset-confirm" @click="void onResetSystemTemplate({ resetModelConfig: resetTemplateModelConfig, resetDraftAttachments: resetTemplateDraftAttachments }).then(() => { templateResetOpen = false })">{{ t('chat.newTemplate.confirmReset') }}</button>
+            </div>
+          </div>
+        </div>
       </template>
 
       <template #transcript>
         <ChatTranscript
+          v-if="workspaceMode !== 'none'"
           :messageIds="transcriptMessageIds"
           :messagesById="transcriptMessagesById"
           :activeMessageId="activeCursorMessageId"
@@ -527,6 +595,14 @@ function shouldShowInlineReasoning(message: any): boolean {
                   {{ t('chat.message.actions.copyText') }}
                 </button>
                 <button
+                  type="button"
+                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+                  :data-testid="`raw-data-a-${message.messageId}`"
+                  @click="openRawData(message.messageId)"
+                >
+                  Raw Data
+                </button>
+                <button
                   v-if="hasAssistantCitations(message as any)"
                   type="button"
                   class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
@@ -578,7 +654,19 @@ function shouldShowInlineReasoning(message: any): boolean {
                   >
                     {{ t('chat.message.actions.retryReplace') }}
                   </button>
-
+                  <button
+                    type="button"
+                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    :disabled="
+                      activeAssistantMessageId != null ||
+                      isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
+                      !canRetryReplaceInUi(chosenQuestionIdForAnswerRootMessage(message.messageId)!, message.messageId)
+                    "
+                    :data-testid="`retry-new-a-${message.messageId}`"
+                    @click="onRetryAnswerAsNew(chosenQuestionIdForAnswerRootMessage(message.messageId)!, message.messageId)"
+                  >
+                    {{ t('chat.message.actions.retryAsNew') }}
+                  </button>
                   <div v-if="(getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.total ?? 0) > 1" class="ml-auto flex items-center gap-1 text-gray-600">
                     <button
                       type="button"
@@ -615,9 +703,6 @@ function shouldShowInlineReasoning(message: any): boolean {
                     </button>
                   </div>
                 </template>
-                <div v-else-if="questionIdForMessage(message.messageId, message.role)" class="text-[11px] text-gray-400">
-                  {{ t('chat.message.answerNotSelected') }}
-                </div>
               </div>
             </div>
           </template>
@@ -763,6 +848,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             </div>
           </div>
           <ChatAppComposer
+            v-if="workspaceMode !== 'none'"
             v-model:draft="draft"
             :disabled="!isReady || isDraftInteractionLocked"
             :isRunning="isRunning"
@@ -788,13 +874,12 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
             @updateGenerationParamsLayer="onComposerUpdateGenerationParamsLayer"
-            @updateGoogleAIStudioThinking="onUpdateGoogleAIStudioThinking"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"
             @updateWebSearchLevel="onUpdateWebSearchLevel"
             @updateImageGenerationEnabled="onUpdateImageGenerationEnabled"
             @updateImageGenerationResolution="onUpdateImageGenerationResolution"
             @updateImageGenerationAspectRatio="onUpdateImageGenerationAspectRatio"
-            @send="onSend"
+            @send="onComposerSend"
             @abort="onAbort"
             @attachFilesRequested="onAttachFilesRequested"
             @attachImagesRequested="onAttachImagesRequested"
@@ -810,6 +895,7 @@ function shouldShowInlineReasoning(message: any): boolean {
 
       <template #right-rail="{ rightRailMode }">
         <ChatRightRail
+          v-if="workspaceMode !== 'none'"
           :floating="rightRailMode === 'floating'"
           @close="closeRightRailPanel"
         >
@@ -824,7 +910,7 @@ function shouldShowInlineReasoning(message: any): boolean {
           <ChatSessionConsole
             v-else
             :disabled="!isReady || isDraftInteractionLocked"
-            :isRunning="isRunning"
+            :isRunning="effectiveIsRunning"
             :sessionConfig="activeSessionConfig"
             :openRouterChat="openRouterChatConfig"
             :lmStudioChat="lmStudioChatConfig"
@@ -850,7 +936,6 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateModel="onUpdateModel"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
-            @updateGoogleAIStudioThinking="onUpdateGoogleAIStudioThinking"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"
             @updateWebSearchLevel="onUpdateWebSearchLevel"
             @updateWebSearchLayer="onComposerUpdateWebSearchLayer"
@@ -977,14 +1062,14 @@ function shouldShowInlineReasoning(message: any): boolean {
       </div>
     </div>
 
-    <SettingsModal :open="settingsOpen" :disabled="!isReady" :isRunning="isRunning" @close="closeSettings">
-      <SettingsPanel :disabled="!isReady" :isRunning="isRunning" />
+    <SettingsModal :open="settingsOpen" :disabled="!isReady" :isRunning="effectiveIsRunning" @close="closeSettings">
+      <SettingsPanel :disabled="!isReady" :isRunning="effectiveIsRunning" />
     </SettingsModal>
 
     <SettingsModal
       :open="projectWebSearchSettingsOpen"
       :disabled="!isReady"
-      :isRunning="isRunning"
+      :isRunning="effectiveIsRunning"
       :title="projectWebSearchSettingsTarget ? tf('chat.projectWebSearch.titleWithTarget', { name: projectWebSearchSettingsTarget.name }) : t('chat.projectWebSearch.title')"
       @close="closeProjectWebSearchSettings"
     >
@@ -1032,6 +1117,31 @@ function shouldShowInlineReasoning(message: any): boolean {
         </div>
       </div>
     </SettingsModal>
+
+    <div v-if="rawDataOpen" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-6" data-testid="raw-data-dialog">
+      <div class="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-white shadow-xl">
+        <div class="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <div class="font-semibold">Raw Request Data</div>
+            <div class="text-xs text-gray-500">Answer {{ rawDataAnswerRootId }}</div>
+          </div>
+          <button type="button" class="rounded border px-3 py-1 text-sm" data-testid="raw-data-close" @click="closeRawData">Close</button>
+        </div>
+        <div class="min-h-0 flex-1 overflow-auto p-4">
+          <div v-if="rawDataLoading" class="text-sm text-gray-500">Loading...</div>
+          <div v-else-if="rawDataError" class="text-sm text-red-700">{{ rawDataError }}</div>
+          <div v-else-if="rawDataRecords.length === 0" class="text-sm text-gray-500">No persisted raw request body for this answer.</div>
+          <div v-else class="space-y-4">
+            <section v-for="record in rawDataRecords" :key="record.id" class="rounded border">
+              <div class="border-b bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                Request #{{ record.requestSequence }} · {{ record.providerId }} · {{ record.modelId }} · {{ record.bodyBytes }} bytes · SHA-256 {{ record.bodySha256 }}
+              </div>
+              <pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all p-3 text-xs" :data-testid="`raw-data-request-${record.requestSequence}`">{{ formatRawRequestBody(record.serializedBody) }}</pre>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
 
   </div>
 </template>

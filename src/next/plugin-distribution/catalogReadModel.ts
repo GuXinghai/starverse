@@ -1,7 +1,7 @@
 import { evaluateCatalogEntryCompatibility, type CatalogCompatibilityEnvironment } from './catalogCompatibility'
 import { validateOfficialCatalogSource, type OfficialCatalogSourceDescriptor } from './catalogSource'
 import { validatePluginCatalogMetadata } from './catalogMetadata'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import { validatePluginSignatureEnvelope } from './trustPolicy'
 import type {
   PluginCatalogMetadata,
