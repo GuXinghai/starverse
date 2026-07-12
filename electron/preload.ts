@@ -9,6 +9,102 @@ contextBridge.exposeInMainWorld('electronStore', {
   checkIntegrity: () => ipcRenderer.invoke('store-check-integrity'),
 })
 
+contextBridge.exposeInMainWorld('compatibleProviderRegistry', {
+  list: () => ipcRenderer.invoke('compatible-provider:list'),
+  get: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => ipcRenderer.invoke('compatible-provider:get', payload),
+  create: (payload: Readonly<{
+    displayName: string
+    endpoint: CompatibleRegistryEndpointInput
+    credential: CompatibleRegistryCredentialInput
+    requestMappings?: readonly CompatibleRegistryRequestMappingInput[]
+  }>) => ipcRenderer.invoke('compatible-provider:create', payload),
+  update: (payload: Readonly<{
+    providerInstanceId: CompatibleProviderInstanceId
+    displayName?: string
+    status?: 'active' | 'disabled'
+  }>) => ipcRenderer.invoke('compatible-provider:update', payload),
+  updateEndpoint: (payload: Readonly<{
+    providerInstanceId: CompatibleProviderInstanceId
+    endpoint: CompatibleRegistryEndpointInput
+    clearAuthentication?: boolean
+  }>) => ipcRenderer.invoke('compatible-provider:update-endpoint', payload),
+  reviseConfiguration: (payload: Readonly<{
+    providerInstanceId: CompatibleProviderInstanceId
+    requestProfile: unknown
+    requestMappings: readonly CompatibleRegistryRequestMappingInput[]
+    reasoningMapping: unknown
+    inlinePolicy: unknown
+    acceptedDiscoveryPaths?: readonly string[]
+  }>) => ipcRenderer.invoke('compatible-provider:revise-configuration', payload),
+  listDiscovery: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => ipcRenderer.invoke('compatible-provider:list-discovery', payload),
+  ignoreDiscovery: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; streamPath: string }>) => ipcRenderer.invoke('compatible-provider:ignore-discovery', payload),
+  rotateCredential: (payload: Readonly<{
+    providerInstanceId: CompatibleProviderInstanceId
+    credential: Exclude<CompatibleRegistryCredentialInput, Readonly<{ mode: 'none' }>>
+  }>) => ipcRenderer.invoke('compatible-provider:rotate-credential', payload),
+  deleteCredential: (payload: Readonly<{ credentialVersionRef: CompatibleCredentialVersionRef }>) => ipcRenderer.invoke('compatible-provider:delete-credential', payload),
+  deleteProvider: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => ipcRenderer.invoke('compatible-provider:delete', payload),
+})
+
+contextBridge.exposeInMainWorld('compatibleProviderTransport', {
+  testConnection: (payload: Readonly<{
+    providerInstanceId: CompatibleProviderInstanceId
+    requestId: string
+  }>) => ipcRenderer.invoke('compatible-provider:test-connection', payload),
+  abortConnectionTest: (payload: Readonly<{ requestId: string }>) => ipcRenderer.invoke('compatible-provider:abort-connection-test', payload),
+})
+
+contextBridge.exposeInMainWorld('compatibleChat', {
+  preflight: (payload: unknown) => ipcRenderer.invoke('compatible-chat:preflight', payload),
+  start: (payload: unknown) => ipcRenderer.invoke('compatible-chat:start', payload),
+  abort: (payload: Readonly<{ requestId: string }>) => ipcRenderer.invoke('compatible-chat:abort', payload),
+  resolveHistorical: (payload: unknown) => ipcRenderer.invoke('compatible-chat:resolve-historical', payload),
+  onEvent: (listener: (payload: unknown) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload)
+    ipcRenderer.on('compatible-chat:event', wrapped)
+    return () => ipcRenderer.removeListener('compatible-chat:event', wrapped)
+  },
+  onPrepared: (listener: (payload: unknown) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload)
+    ipcRenderer.on('compatible-chat:prepared', wrapped)
+    return () => ipcRenderer.removeListener('compatible-chat:prepared', wrapped)
+  },
+  onEnd: (listener: (payload: unknown) => void) => {
+    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload)
+    ipcRenderer.on('compatible-chat:end', wrapped)
+    return () => ipcRenderer.removeListener('compatible-chat:end', wrapped)
+  },
+})
+
+contextBridge.exposeInMainWorld('rawGenerationDebug', {
+  getStatus: () => ipcRenderer.invoke('raw-generation:get-status'),
+  listByAnswerRootId: (answerRootId: string) => ipcRenderer.invoke('raw-generation:list-by-answer', { answerRootId }),
+})
+
+contextBridge.exposeInMainWorld('compatibleMaintenance', {
+  previewReset: () => ipcRenderer.invoke('compatible-reset:preview', {}),
+  applyReset: (confirmation: string) => ipcRenderer.invoke('compatible-reset:apply', { confirmation }),
+})
+
+contextBridge.exposeInMainWorld('compatibleCatalog', {
+  sync: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; requestId: string; force?: boolean }>) => ipcRenderer.invoke('compatible-catalog:sync', payload),
+  abortSync: (payload: Readonly<{ requestId: string }>) => ipcRenderer.invoke('compatible-catalog:abort-sync', payload),
+  query: (payload: Readonly<{
+    providerInstanceId: CompatibleProviderInstanceId
+    search?: string
+    includeStale?: boolean
+    offset?: number
+    limit?: number
+  }>) => ipcRenderer.invoke('compatible-catalog:query', payload),
+  getStatus: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => ipcRenderer.invoke('compatible-catalog:get-status', payload),
+  upsertManual: (payload: Readonly<{
+    providerInstanceId: CompatibleProviderInstanceId
+    modelId: string
+    metadata: CompatibleCatalogManualMetadataInput
+  }>) => ipcRenderer.invoke('compatible-catalog:upsert-manual', payload),
+  deleteManual: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; modelId: string }>) => ipcRenderer.invoke('compatible-catalog:delete-manual', payload),
+})
+
 contextBridge.exposeInMainWorld('openRouterCredential', {
   getStatus: () => ipcRenderer.invoke('openrouter-credential:get-status'),
   reveal: () => ipcRenderer.invoke('openrouter-credential:reveal'),

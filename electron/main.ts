@@ -34,8 +34,14 @@ import { registerOpenRouterStreamBridge, cleanupOpenRouterStreams } from './ipc/
 import { createFileSelectionGrantStore } from './ipc/fileSelectionGrants'
 import { registerInAppBrowserIpc } from './ipc/inappBrowserIpc'
 import { registerModelCatalogSyncIpc } from './ipc/modelCatalogSyncIpc'
+import { registerRawGenerationDebugIpc } from './ipc/rawGenerationDebugIpc'
+import { RawGenerationRequestStore } from './debug/rawGenerationRequestStore'
 import { registerIpc, validateCoreIpcRegistration } from './ipc/registerIpc'
 import { createProviderCredentialService } from './credentials/providerCredentialService'
+import { createCompatibleCredentialService } from './credentials/compatibleCredentialService'
+import { createCompatibleProviderRegistryService } from './ipc/compatibleProviderRegistryIpc'
+import { createCompatibleCatalogService, type CompatibleCatalogService } from './ipc/compatibleCatalogIpc'
+import { createCompatibleCatalogSyncService, runCompatibleCatalogStartupSync } from './modelCatalog/compatibleCatalogSyncJob'
 import { validateStartupIpcRegistration } from './ipc/startupIpcAudit'
 import { startStartupBackgroundJobs, wireDbEventsToRenderer } from './jobs/startupBackgroundJobs'
 import { createInAppBrowserManager } from './services/inappBrowser'
@@ -43,6 +49,27 @@ import { createMainProcessElectronConversionService } from './services/electronC
 import { createProviderFileUploadService } from './services/providerFileUploadService'
 import { createElectronSessionProxyController } from './net/electronSessionProxyController'
 import { createElectronSessionProviderFetch } from './net/providerHttpTransport'
+import {
+  createCompatibleAddressLeaseRegistry,
+  createElectronSessionAddressResolver,
+  createNodeAddressResolver,
+} from './net/compatibleAddressPolicy'
+import {
+  createCompatibleProviderTransport,
+  createNativeCompatibleTransportAdapters,
+} from './net/compatibleProviderTransport'
+import { createCompatibleRequestRegistry } from './net/compatibleRequestRegistry'
+import {
+  createCompatibleProviderTransportService,
+  type CompatibleProviderTransportService,
+} from './services/compatibleProviderTransportService'
+import { createCompatibleRouteCoordinator } from './services/compatibleRouteCoordinator'
+import { createCompatibleChatRuntimeService, type CompatibleChatRuntimeService } from './services/compatibleChatRuntimeService'
+import { createCompatibleLegacyResetService } from './services/compatibleLegacyResetService'
+import {
+  createCompatibleE2eSmokeTransportDependencies,
+  isCompatibleE2eSmokeEnabled,
+} from './smoke/compatibleE2eTransport'
 import { createMainWindowLifecycle } from './windows/mainWindowLifecycle'
 import {
   CURRENT_CONFIG_VERSION,
@@ -618,6 +645,48 @@ const providerCredentialService = createProviderCredentialService(store, {
   },
 })
 
+const compatibleCredentialService = createCompatibleCredentialService(store, {
+  secureStorage: {
+    kind: 'electron_safe_storage',
+    isEncryptionAvailable: () => safeStorage.isEncryptionAvailable(),
+    encryptString: (value) => safeStorage.encryptString(value),
+    decryptString: (encrypted) => safeStorage.decryptString(encrypted),
+  },
+})
+const compatibleLegacyResetService = createCompatibleLegacyResetService({ db: dbWorkerManager, store, credentials: compatibleCredentialService })
+
+const compatibleProviderRegistryService = createCompatibleProviderRegistryService({
+  db: dbWorkerManager,
+  credentials: compatibleCredentialService,
+})
+
+const compatibleRequestRegistry = createCompatibleRequestRegistry()
+let compatibleProviderTransportService: CompatibleProviderTransportService | null = null
+let compatibleChatRuntimeService: CompatibleChatRuntimeService | null = null
+let compatibleCatalogService: CompatibleCatalogService | null = null
+let compatibleCatalogSyncService: ReturnType<typeof createCompatibleCatalogSyncService> | null = null
+let rawGenerationRequestStore: RawGenerationRequestStore | null = null
+
+function requireRawGenerationRequestStore(): RawGenerationRequestStore {
+  if (!rawGenerationRequestStore) throw new Error('Raw generation request store is not initialized')
+  return rawGenerationRequestStore
+}
+
+function requireCompatibleProviderTransportService(): CompatibleProviderTransportService {
+  if (!compatibleProviderTransportService) throw new Error('Compatible provider transport is not initialized')
+  return compatibleProviderTransportService
+}
+
+function requireCompatibleChatRuntimeService(): CompatibleChatRuntimeService {
+  if (!compatibleChatRuntimeService) throw new Error('Compatible chat runtime is not initialized')
+  return compatibleChatRuntimeService
+}
+
+function requireCompatibleCatalogService(): CompatibleCatalogService {
+  if (!compatibleCatalogService) throw new Error('Compatible catalog is not initialized')
+  return compatibleCatalogService
+}
+
 const providerFileUploadService = createProviderFileUploadService({
   db: dbWorkerManager,
 })
@@ -801,6 +870,37 @@ const ensureDbReady = async () => {
     dialog.showErrorBox(t('dialogs.startup.dbInitFailed'), `${t('dialogs.startup.dbWorkerFailed')}\n\n${(error as any)?.message ?? String(error)}`)
     throw error
   }
+  try {
+    const reconciliation = await compatibleProviderRegistryService.reconcileCredentialStore()
+    if (reconciliation.cleanupFailed > 0 || reconciliation.missingActive > 0) {
+      console.warn('[main] compatible credential reconciliation requires attention')
+    }
+  } catch {
+    console.warn('[main] compatible credential cleanup is temporarily unavailable')
+  }
+  try {
+    const recovery = await dbWorkerManager.call('answerGeneration.recoverInterrupted', { atMs: Date.now() }) as {
+      recovered?: number
+    }
+    if (Number(recovery?.recovered ?? 0) > 0) {
+      console.warn('[main] recovered interrupted assistant generations', { recovered: recovery.recovered })
+    }
+  } catch {
+    console.error('[main] assistant generation recovery failed')
+    throw new Error('Assistant generation recovery failed.')
+  }
+  try {
+    await dbWorkerManager.call('compatibleRoute.recoverIncomplete', { atMs: Date.now() })
+  } catch {
+    console.error('[main] compatible route recovery failed')
+    throw new Error('Compatible route recovery failed.')
+  }
+  try {
+    await dbWorkerManager.call('compatibleCatalog.recoverInterrupted', { atMs: Date.now() })
+  } catch {
+    console.error('[main] compatible catalog recovery failed')
+    throw new Error('Compatible catalog recovery failed.')
+  }
 }
 
 function registerCoreIpcHandlers(): string[] {
@@ -810,6 +910,11 @@ function registerCoreIpcHandlers(): string[] {
     },
     store,
     credentialService: providerCredentialService,
+    compatibleProviderRegistryService,
+    compatibleProviderTransportService: requireCompatibleProviderTransportService(),
+    compatibleChatRuntimeService: requireCompatibleChatRuntimeService(),
+    compatibleCatalogService: requireCompatibleCatalogService(),
+    compatibleLegacyResetService,
     isDev,
     netExpRuntimeInfo,
     networkProxyController: requireNetworkProxyController(),
@@ -823,6 +928,7 @@ function registerCoreIpcHandlers(): string[] {
     quarantineLibreOfficeRuntime: () =>
       dbWorkerManager.call('enginePluginLifecycle.quarantineLibreOfficeRuntime'),
     providerFileUploadService,
+    rawGenerationRequestStore: requireRawGenerationRequestStore(),
   })
 
   const validation = validateCoreIpcRegistration(registration.channels)
@@ -838,7 +944,11 @@ function registerCoreIpcHandlers(): string[] {
 function registerAllIpcHandlers(): string[] {
   const channels = [
     ...registerDbBridge(dbWorkerManager, { fileSelectionGrants }),
-    ...registerOpenRouterStreamBridge({ store, credentialService: providerCredentialService }),
+    ...registerOpenRouterStreamBridge({ credentialService: providerCredentialService, rawGenerationRequestStore: requireRawGenerationRequestStore() }),
+    ...registerRawGenerationDebugIpc({
+      registerInvoke: (channel, handler) => ipcMain.handle(channel, handler as (...args: any[]) => unknown),
+      store: requireRawGenerationRequestStore(),
+    }),
     ...registerCoreIpcHandlers(),
     ...registerInAppBrowserIpc({
       registerInvoke: (channel, handler) => {
@@ -895,6 +1005,8 @@ app.on('before-quit', async (event) => {
 
   // 清理活动的 OpenRouter 流式请求
   cleanupOpenRouterStreams()
+  compatibleProviderTransportService?.abortAll()
+  compatibleChatRuntimeService?.abortAll()
 
   // 停止数据库 Worker
   await dbWorkerManager.stop().catch((error) => {
@@ -936,6 +1048,51 @@ app.whenReady()
         issueCodes: proxyApplyResult.issues?.map((issue) => issue.code) ?? [],
       })
     }
+    rawGenerationRequestStore = new RawGenerationRequestStore(path.join(app.getPath('userData'), 'debug', 'generation-raw.sqlite'))
+    const rawGenerationStatus = rawGenerationRequestStore.getStatus()
+    if (!rawGenerationStatus.available) {
+      console.warn('[raw-generation] debug request store is unavailable', { errorCode: rawGenerationStatus.errorCode })
+    }
+    const compatibleTransportDependencies = isCompatibleE2eSmokeEnabled(process.env, app.isPackaged)
+      ? createCompatibleE2eSmokeTransportDependencies({ env: process.env, isPackaged: app.isPackaged })
+      : {
+      addressPolicies: {
+        electron_session_fetch: createCompatibleAddressLeaseRegistry({
+          resolver: createElectronSessionAddressResolver(session.defaultSession),
+        }),
+        node_undici: createCompatibleAddressLeaseRegistry({
+          resolver: createNodeAddressResolver(),
+        }),
+      },
+      adapters: createNativeCompatibleTransportAdapters({
+        electronSessionFetch: session.defaultSession.fetch.bind(session.defaultSession),
+      }),
+    }
+    const compatibleTransport = createCompatibleProviderTransport(compatibleTransportDependencies)
+    compatibleProviderTransportService = createCompatibleProviderTransportService({
+      db: dbWorkerManager,
+      credentials: compatibleCredentialService,
+      transport: compatibleTransport,
+      requests: compatibleRequestRegistry,
+    })
+    compatibleChatRuntimeService = createCompatibleChatRuntimeService({
+      db: dbWorkerManager,
+      credentials: compatibleCredentialService,
+      transport: compatibleTransport,
+      requests: compatibleRequestRegistry,
+      routes: createCompatibleRouteCoordinator({ db: dbWorkerManager, credentials: compatibleCredentialService }),
+      rawGenerationRequestStore,
+    })
+    compatibleCatalogSyncService = createCompatibleCatalogSyncService({
+      db: dbWorkerManager,
+      credentials: compatibleCredentialService,
+      transport: compatibleTransport,
+      requests: compatibleRequestRegistry,
+    })
+    compatibleCatalogService = createCompatibleCatalogService({
+      db: dbWorkerManager,
+      sync: compatibleCatalogSyncService,
+    })
     registerAllIpcHandlers()
 
     // 注册事件转发：Worker 事件 → Renderer
@@ -945,6 +1102,10 @@ app.whenReady()
     })
 
     mainWindowLifecycle.createWindow()
+    void runCompatibleCatalogStartupSync({
+      db: dbWorkerManager,
+      service: compatibleCatalogSyncService,
+    }).catch(() => undefined)
 
     startStartupBackgroundJobs({
       store,

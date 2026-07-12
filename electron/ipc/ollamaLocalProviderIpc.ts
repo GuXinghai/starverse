@@ -1,5 +1,6 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { createLocalEndpointDirectFetch } from '../net/localEndpointTransport'
 import {
   sanitizeProviderRuntimeImageContentBlocks,
@@ -175,6 +176,7 @@ export type OllamaTextChatWireEvent =
 type RegisterOllamaLocalProviderIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   fetchImpl?: typeof fetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedEndpointUrl =
@@ -1082,8 +1084,12 @@ async function forwardOpenAICompatibleStream(input: Readonly<{
   sender: WebContents
   fetchImpl: typeof fetch
   controller: AbortController
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<boolean> {
   const preferred = input.request.config.openAICompatible.preferredEndpoint
+  const serializedBody = JSON.stringify(preferred === 'responses' ? responsesBody(input.request) : openAIChatBody(input.request))
+  input.rawGenerationRequestStore?.tryPersist({ operationId: input.request.requestId, answerRootId: input.request.assistantMessageId,
+    requestSequence: 1, providerId: 'ollama_local', modelId: input.request.model }, serializedBody)
   const response = await input.fetchImpl(
     ollamaUrl(input.request.endpoint, preferred === 'responses' ? '/v1/responses' : '/v1/chat/completions'),
     {
@@ -1092,7 +1098,7 @@ async function forwardOpenAICompatibleStream(input: Readonly<{
         Accept: 'text/event-stream',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(preferred === 'responses' ? responsesBody(input.request) : openAIChatBody(input.request)),
+      body: serializedBody,
       redirect: 'error',
       signal: input.controller.signal,
     },
@@ -1174,6 +1180,7 @@ async function forwardNativeRestStream(input: Readonly<{
   sender: WebContents
   fetchImpl: typeof fetch
   controller: AbortController
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<boolean> {
   const preferred = input.request.config.nativeRest.preferredEndpoint
   const bodyResult = nativeRestBody(input.request)
@@ -1188,13 +1195,16 @@ async function forwardNativeRestStream(input: Readonly<{
     sendWireEvent(input.sender, input.request.requestId, bodyResult.event)
     return false
   }
+  const serializedBody = JSON.stringify(bodyResult.body)
+  input.rawGenerationRequestStore?.tryPersist({ operationId: input.request.requestId, answerRootId: input.request.assistantMessageId,
+    requestSequence: 1, providerId: 'ollama_local', modelId: input.request.model }, serializedBody)
   const response = await input.fetchImpl(ollamaUrl(input.request.endpoint, preferred === 'generate' ? '/api/generate' : '/api/chat'), {
     method: 'POST',
     headers: {
       Accept: 'application/x-ndjson',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(bodyResult.body),
+    body: serializedBody,
     redirect: 'error',
     signal: input.controller.signal,
   })
@@ -1325,6 +1335,7 @@ async function forwardOllamaTextChat(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
   fetchImpl: typeof fetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const controller = new AbortController()
   activeControllers.set(input.request.requestId, controller)
@@ -1438,7 +1449,7 @@ export function registerOllamaLocalProviderIpc(
       return staticStartFailure('invalid_payload', 'Ollama text chat bridge is unavailable.')
     }
 
-    void forwardOllamaTextChat({ request: validated, sender, fetchImpl })
+    void forwardOllamaTextChat({ request: validated, sender, fetchImpl, rawGenerationRequestStore: input.rawGenerationRequestStore })
     return { ok: true }
   })
 

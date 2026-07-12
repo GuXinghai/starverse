@@ -42,30 +42,12 @@ interface OpenRouterEndpointMetadataBase {
   rendererVisible: true
 }
 
-type OpenRouterEndpointMetadata =
-  | Readonly<OpenRouterEndpointMetadataBase & {
+type OpenRouterEndpointMetadata = Readonly<OpenRouterEndpointMetadataBase & {
     endpointId: 'openrouter-official'
     endpointStatus: 'official'
     displayName: 'OpenRouter official endpoint'
     baseUrlConfigured: false
-    baseUrlInvalid?: false
     displayBaseUrl: 'https://openrouter.ai/api/v1'
-  }>
-  | Readonly<OpenRouterEndpointMetadataBase & {
-    endpointId: 'openrouter-custom-legacy-store'
-    endpointStatus: 'custom'
-    displayName: 'OpenRouter custom endpoint'
-    baseUrlConfigured: true
-    baseUrlInvalid?: false
-    displayBaseUrl: string
-  }>
-  | Readonly<OpenRouterEndpointMetadataBase & {
-    endpointId: 'openrouter-custom-legacy-store'
-    endpointStatus: 'invalid_custom'
-    displayName: 'OpenRouter custom endpoint'
-    baseUrlConfigured: true
-    baseUrlInvalid: true
-    displayBaseUrl?: never
   }>
 
 interface OpenRouterCredentialStatus {
@@ -75,21 +57,19 @@ interface OpenRouterCredentialStatus {
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
-  baseUrlConfigured: boolean
-  baseUrlInvalid?: boolean
-  displayBaseUrl?: string
-  defaultBaseUrl: string
+  baseUrlConfigured: false
+  displayBaseUrl: 'https://openrouter.ai/api/v1'
+  defaultBaseUrl: 'https://openrouter.ai/api/v1'
   endpoint: OpenRouterEndpointMetadata
 }
 
 interface OpenRouterCredentialUpdatePayload {
   apiKey?: string
-  baseUrl?: string | null
 }
 
 type OpenRouterCredentialResult =
   | { ok: true; status: OpenRouterCredentialStatus }
-  | { ok: false; code: 'invalid_payload' | 'store_unavailable' | 'untrusted_base_url'; message: string }
+  | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
 
 type ProviderCredentialRevealResult =
   | { ok: true; apiKey: string }
@@ -854,16 +834,6 @@ type GoogleAIStudioTextChatStartResult =
     error: string
   }
 
-type GeminiThinkingLevel = 'minimal' | 'low' | 'medium' | 'high'
-type GeminiThinkingMode = 'auto' | 'budget' | 'level'
-
-type GeminiThinkingConfig = {
-  mode: GeminiThinkingMode
-  thinkingBudget?: number
-  thinkingLevel?: GeminiThinkingLevel
-  includeThoughts?: boolean
-}
-
 type AnthropicTextChatMessage = {
   role: 'user' | 'assistant'
   content: string
@@ -887,11 +857,337 @@ type DeepSeekTextChatStartResult =
   | {
     ok: false
     code: 'invalid_payload' | 'credential_missing' | 'store_unavailable'
-    error: string
-  }
+      error: string
+    }
+
+type CompatibleProviderInstanceId = string
+type CompatibleCredentialVersionRef = string
+
+type CompatibleProviderRegistryError = Readonly<{
+  code: 'invalid_configuration' | 'registry_unavailable' | 'credential_unavailable'
+  message: string
+}>
+
+type CompatibleProviderRegistryResult<T> =
+  | Readonly<{ ok: true; value: T }>
+  | Readonly<{ ok: false; error: CompatibleProviderRegistryError }>
+
+type CompatibleRegistryPublicValue = Readonly<{
+  name: string
+  value: string
+  classification: 'public_non_secret'
+}>
+
+type CompatibleRegistryEndpointInput = Readonly<{
+  baseUrl: string
+  securityPolicy: 'compatibility_first' | 'strict_ssrf'
+  ordinaryHeaders: readonly CompatibleRegistryPublicValue[]
+  query: readonly CompatibleRegistryPublicValue[]
+}>
+
+type CompatibleRegistryCredentialInput =
+  | Readonly<{ mode: 'none' }>
+  | Readonly<{ mode: 'bearer'; token: string }>
+  | Readonly<{ mode: 'basic'; username: string; password: string }>
+  | Readonly<{ mode: 'custom_headers'; headers: readonly Readonly<{ name: string; value: string }>[] }>
+
+type CompatibleRegistryRequestMappingInput = Readonly<{
+  sourceField: 'reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget'
+  targetPath: readonly (string | number)[]
+  valueKind: 'boolean' | 'number' | 'string'
+  valueMapping: Readonly<Record<string, null | boolean | number | string>>
+  omission: 'omit_when_unset' | 'required'
+}>
+
+type CompatibleRendererProviderInstance = Readonly<{
+  providerInstanceId: CompatibleProviderInstanceId
+  protocolKey: 'openai_chat_compatible'
+  displayName: string
+  status: 'active' | 'disabled' | 'deleted'
+  createdAtMs: number
+  updatedAtMs: number
+  deletedAtMs: number | null
+}>
+
+type CompatibleRendererCredentialDescriptor = Readonly<{
+  credentialVersionRef: CompatibleCredentialVersionRef
+  providerInstanceId: CompatibleProviderInstanceId
+  version: number
+  authMode: 'none' | 'bearer' | 'basic' | 'custom_headers'
+  configured: boolean
+  maskState: 'not_applicable' | 'not_configured' | 'configured_masked'
+  sensitiveHeaderNames: readonly string[]
+  deletedAtMs: number | null
+}>
+
+type CompatibleRendererEndpointRevision = Readonly<{
+  endpointRevisionId: string
+  providerInstanceId: CompatibleProviderInstanceId
+  revision: number
+  baseUrl: string
+  allowInsecureHttp: boolean
+  securityPolicy: 'compatibility_first' | 'strict_ssrf'
+  credentialVersionRef: CompatibleCredentialVersionRef | null
+  ordinaryHeaders: readonly CompatibleRegistryPublicValue[]
+  sensitiveHeaderRefs: readonly Readonly<{
+    name: string
+    credentialVersionRef: CompatibleCredentialVersionRef
+  }>[]
+  query: readonly CompatibleRegistryPublicValue[]
+  requestProfileId: string
+  requestProfileVersion: number
+  responseProfileId: string
+  responseProfileVersion: number
+  createdAtMs: number
+  authMode: 'none' | 'bearer' | 'basic' | 'custom_headers'
+}>
+
+type CompatibleProviderRegistryDetails = Readonly<{
+  provider: CompatibleRendererProviderInstance
+  endpointRevisions: readonly CompatibleRendererEndpointRevision[]
+  credentials: readonly CompatibleRendererCredentialDescriptor[]
+  activeConfiguration: Readonly<{
+    endpointRevisionId: string
+    requestBundle: unknown
+    responseProfile: unknown
+    reasoningMapping: unknown
+    inlinePolicy: unknown
+  }> | null
+}>
+
+type CompatibleDiscoveredResponseField = Readonly<{
+  providerInstanceId: CompatibleProviderInstanceId
+  responseProfileId: string
+  profileVersion: number
+  streamPath: string
+  state: 'candidate' | 'ignored' | 'confirmed'
+  aggregate: Readonly<{
+    schemaVersion: 1
+    observedShapes: readonly ('null' | 'boolean' | 'number' | 'string' | 'array' | 'object')[]
+    redactedPreview: unknown
+    sampleCount: number
+  }>
+  occurrenceCount: number
+  firstObservedAtMs: number
+  lastObservedAtMs: number
+}>
+
+type CompatibleNetworkErrorEnvelope = Readonly<{
+  code:
+    | 'compatible_config_invalid'
+    | 'compatible_url_invalid'
+    | 'compatible_address_blocked'
+    | 'compatible_dns_rebinding_blocked'
+    | 'compatible_strict_ssrf_unavailable'
+    | 'compatible_redirect_blocked'
+    | 'compatible_proxy_route_invalid'
+    | 'compatible_transport_unavailable'
+    | 'compatible_request_capacity'
+    | 'compatible_credential_missing'
+    | 'compatible_auth_invalid'
+    | 'compatible_header_forbidden'
+    | 'compatible_query_invalid'
+    | 'compatible_extra_body_conflict'
+    | 'compatible_request_mapping_invalid'
+    | 'compatible_timeout'
+    | 'compatible_aborted'
+    | 'compatible_window_destroyed'
+    | 'compatible_response_overflow'
+    | 'compatible_sse_overflow'
+    | 'compatible_json_malformed'
+    | 'compatible_sse_malformed'
+    | 'compatible_response_unsupported'
+    | 'compatible_tool_delta_invalid'
+    | 'compatible_reasoning_mapping_invalid'
+    | 'compatible_inline_conflict'
+    | 'compatible_extension_overflow'
+    | 'compatible_network_proxy_tls'
+    | 'compatible_http_auth'
+    | 'compatible_http_rate_limit'
+    | 'compatible_http_provider'
+    | 'compatible_network_unknown'
+    | 'compatible_catalog_sync_failed'
+  stage: 'url' | 'dns' | 'connect' | 'redirect' | 'headers' | 'request' | 'response' | 'stream' | 'lifecycle'
+  safeMessage: string
+  retryable: boolean
+  httpStatus?: number
+}>
+
+type CompatibleConnectionTestResult =
+  | Readonly<{
+      ok: true
+      requestId: string
+      httpStatus: number
+      diagnostics: Readonly<{
+        securityPolicy: 'compatibility_first' | 'strict_ssrf'
+        proxyRoute: 'system' | 'manual' | 'environment' | 'direct'
+        transportKind: 'electron_session_fetch' | 'node_undici'
+        transportCapability: 'pre_request_audit_only' | 'validated_address_lease_v1'
+        proxyBypassed: boolean
+        redirectCount: number
+        insecureHttp: boolean
+      }>
+    }>
+  | Readonly<{ ok: false; requestId: string; error: CompatibleNetworkErrorEnvelope }>
+
+type CompatibleCatalogManualMetadataInput = Readonly<{
+  schemaVersion: 1
+  displayName: string | null
+  contextLength: number | null
+  maxOutputTokens: number | null
+  capabilities: Readonly<{ text: boolean | null; vision: boolean | null; tools: boolean | null; structuredOutputs: boolean | null; reasoning: boolean | null }>
+  pricing: Readonly<{ prompt: string | null; completion: string | null; request: string | null; image: string | null }>
+}>
+
+type CompatibleCatalogMergedModel = Readonly<{
+  protocolKey: 'openai_chat_compatible'
+  providerInstanceId: CompatibleProviderInstanceId
+  modelId: string
+  availability: 'active' | 'stale'
+  metadata: CompatibleCatalogManualMetadataInput & Readonly<{ fieldProvenance: Readonly<Record<string, 'remote_sync' | 'manual' | 'unknown'>> }>
+  sourcePresence: Readonly<{ remote: 'active' | 'stale' | 'absent'; manual: boolean }>
+  conflictFields: readonly string[]
+}>
+
+type CompatibleCatalogSyncState = Readonly<{
+  providerInstanceId: CompatibleProviderInstanceId
+  status: 'never' | 'syncing' | 'success' | 'empty_success' | 'failed' | 'backoff'
+  lastAttemptAtMs: number | null
+  lastSuccessAtMs: number | null
+  lastSuccessSnapshotId: string | null
+  failureCount: number
+  backoffUntilMs: number | null
+  diagnostics: Readonly<{ schemaVersion: 1; code: string; messageKey: string; retryable: boolean; httpStatus: number | null }> | null
+  updatedAtMs: number
+}>
+
+type CompatibleCatalogSyncResult =
+  | Readonly<{
+      ok: true
+      requestId: string
+      providerInstanceId: CompatibleProviderInstanceId
+      snapshotId: string
+      status: 'success' | 'empty_success'
+      models: readonly CompatibleCatalogMergedModel[]
+      syncState: CompatibleCatalogSyncState
+      sourceDiagnostics: Readonly<{ totalRows: number; acceptedRows: number; malformedRows: number; duplicateRows: number }>
+    }>
+  | Readonly<{
+      ok: false
+      requestId: string
+      providerInstanceId: string
+      error: CompatibleNetworkErrorEnvelope
+      syncState: CompatibleCatalogSyncState | null
+    }>
 
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
+  rawGenerationDebug?: Readonly<{
+    getStatus: () => Promise<Readonly<{
+      available: boolean
+      dbPath: string
+      schemaReady: boolean
+      lastCaptureError?: Readonly<{ code: 'RAW_DEBUG_CAPTURE_FAILED'; atMs: number }> | null
+      errorCode?: 'RAW_DEBUG_STORE_OPEN_FAILED'
+    }>>
+    listByAnswerRootId: (answerRootId: string) => Promise<readonly Readonly<{
+      id: string; operationId: string; answerRootId: string; requestSequence: number
+      providerId: string; modelId: string; serializedBody: string; bodyBytes: number
+      bodySha256: string; capturedAtMs: number
+    }>[]>
+  }>
+  compatibleProviderRegistry?: {
+    list?: () => Promise<CompatibleProviderRegistryResult<readonly CompatibleProviderRegistryDetails[]>>
+    get?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
+    create?: (payload: Readonly<{
+      displayName: string
+      endpoint: CompatibleRegistryEndpointInput
+      credential: CompatibleRegistryCredentialInput
+      requestMappings?: readonly CompatibleRegistryRequestMappingInput[]
+    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
+    reviseConfiguration?: (payload: Readonly<{
+      providerInstanceId: CompatibleProviderInstanceId
+      requestProfile: unknown
+      requestMappings: readonly CompatibleRegistryRequestMappingInput[]
+      reasoningMapping: unknown
+      inlinePolicy: unknown
+      acceptedDiscoveryPaths?: readonly string[]
+    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
+    listDiscovery?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => Promise<CompatibleProviderRegistryResult<readonly CompatibleDiscoveredResponseField[]>>
+    ignoreDiscovery?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; streamPath: string }>) => Promise<CompatibleProviderRegistryResult<readonly CompatibleDiscoveredResponseField[]>>
+    update?: (payload: Readonly<{
+      providerInstanceId: CompatibleProviderInstanceId
+      displayName?: string
+      status?: 'active' | 'disabled'
+    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
+    updateEndpoint?: (payload: Readonly<{
+      providerInstanceId: CompatibleProviderInstanceId
+      endpoint: CompatibleRegistryEndpointInput
+      clearAuthentication?: boolean
+    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
+    rotateCredential?: (payload: Readonly<{
+      providerInstanceId: CompatibleProviderInstanceId
+      credential: Exclude<CompatibleRegistryCredentialInput, Readonly<{ mode: 'none' }>>
+    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
+    deleteCredential?: (payload: Readonly<{
+      credentialVersionRef: CompatibleCredentialVersionRef
+    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
+    deleteProvider?: (payload: Readonly<{
+      providerInstanceId: CompatibleProviderInstanceId
+    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
+  }
+  compatibleProviderTransport?: {
+    testConnection?: (payload: Readonly<{
+      providerInstanceId: CompatibleProviderInstanceId
+      requestId: string
+    }>) => Promise<CompatibleConnectionTestResult>
+    abortConnectionTest?: (payload: Readonly<{ requestId: string }>) => Promise<Readonly<{ aborted: boolean }>>
+  }
+  compatibleChat?: {
+    preflight?: (payload: unknown) => Promise<Readonly<{
+      ok: boolean
+      code?: string
+      route?: Readonly<{
+        routeProvenanceId: string; requestId: string; providerInstanceId: string; modelId: string; createdAtMs: number
+      }>
+    }>>
+    start?: (payload: unknown) => Promise<unknown>
+    abort?: (payload: Readonly<{ requestId: string }>) => Promise<Readonly<{ aborted: boolean }>>
+    resolveHistorical?: (payload: unknown) => Promise<unknown>
+    onEvent?: (listener: (payload: unknown) => void) => () => void
+    onPrepared?: (listener: (payload: unknown) => void) => () => void
+    onEnd?: (listener: (payload: unknown) => void) => () => void
+  }
+  compatibleMaintenance?: {
+    previewReset: () => Promise<unknown>
+    applyReset: (confirmation: string) => Promise<unknown>
+  }
+  compatibleCatalog?: {
+    sync?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; requestId: string; force?: boolean }>) => Promise<CompatibleCatalogSyncResult>
+    abortSync?: (payload: Readonly<{ requestId: string }>) => Promise<Readonly<{ aborted: boolean }>>
+    query?: (payload: Readonly<{
+      providerInstanceId: CompatibleProviderInstanceId
+      search?: string
+      includeStale?: boolean
+      offset?: number
+      limit?: number
+    }>) => Promise<Readonly<{
+      protocolKey: 'openai_chat_compatible'
+      providerInstanceId: CompatibleProviderInstanceId
+      providerName: string
+      providerStatus: 'active' | 'disabled' | 'deleted'
+      syncState: CompatibleCatalogSyncState | null
+      total: number
+      items: readonly CompatibleCatalogMergedModel[]
+    }>>
+    getStatus?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => Promise<CompatibleCatalogSyncState | null>
+    upsertManual?: (payload: Readonly<{
+      providerInstanceId: CompatibleProviderInstanceId
+      modelId: string
+      metadata: CompatibleCatalogManualMetadataInput
+    }>) => Promise<CompatibleCatalogMergedModel>
+    deleteManual?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; modelId: string }>) => Promise<Readonly<{ deleted: boolean }>>
+  }
   openRouterCredential?: {
     getStatus?: () => Promise<OpenRouterCredentialResult>
     reveal?: () => Promise<ProviderCredentialRevealResult>
@@ -1032,7 +1328,6 @@ interface Window {
       assistantMessageId: string
       model: string
       messages: GoogleAIStudioTextChatMessage[]
-      geminiThinking?: GeminiThinkingConfig
       generationParams?: unknown
       imageGeneration?: unknown
       timeoutMs?: number

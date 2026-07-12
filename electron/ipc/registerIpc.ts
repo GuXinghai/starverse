@@ -1,5 +1,21 @@
 import type Store from 'electron-store'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import type { CompatibleProviderRegistryService } from './compatibleProviderRegistryIpc'
+import type { CompatibleProviderTransportService } from '../services/compatibleProviderTransportService'
+import type { CompatibleChatRuntimeService } from '../services/compatibleChatRuntimeService'
+import type { CompatibleCatalogService } from './compatibleCatalogIpc'
+import type { CompatibleLegacyResetService } from '../services/compatibleLegacyResetService'
+import {
+  COMPATIBLE_PROVIDER_REGISTRY_CHANNELS,
+  registerCompatibleProviderRegistryIpc,
+} from './compatibleProviderRegistryIpc'
+import {
+  COMPATIBLE_PROVIDER_TRANSPORT_CHANNELS,
+  registerCompatibleProviderTransportIpc,
+} from './compatibleProviderTransportIpc'
+import { COMPATIBLE_CHAT_CHANNELS, registerCompatibleChatIpc } from './compatibleChatIpc'
+import { COMPATIBLE_CATALOG_CHANNELS, registerCompatibleCatalogIpc } from './compatibleCatalogIpc'
+import { COMPATIBLE_LEGACY_RESET_CHANNELS, registerCompatibleLegacyResetIpc } from './compatibleLegacyResetIpc'
 import { registerDialogIpc, DIALOG_IPC_CHANNELS } from './dialogIpc'
 import { registerImageIpc, IMAGE_IPC_CHANNELS, type ResolvedAssetFile } from './imageIpc'
 import { registerNetExpIpc, NETEXP_IPC_CHANNELS } from './netExpIpc'
@@ -82,9 +98,15 @@ import {
 import type { ProviderFileUploadService } from '../services/providerFileUploadService'
 import type { ElectronSessionProxyController } from '../net/electronSessionProxyController'
 import type { RegisterInvoke } from './types'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 
 export const CORE_IPC_CHANNELS = [
   ...STORE_IPC_CHANNELS,
+  ...COMPATIBLE_PROVIDER_REGISTRY_CHANNELS,
+  ...COMPATIBLE_PROVIDER_TRANSPORT_CHANNELS,
+  ...COMPATIBLE_CHAT_CHANNELS,
+  ...COMPATIBLE_CATALOG_CHANNELS,
+  ...COMPATIBLE_LEGACY_RESET_CHANNELS,
   ...OPENROUTER_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...OPENAI_RESPONSES_CREDENTIAL_SETTINGS_IPC_CHANNELS,
   ...OPENAI_RESPONSES_MODEL_AVAILABILITY_IPC_CHANNELS,
@@ -122,6 +144,11 @@ type RegisterIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   store: Store
   credentialService: ProviderCredentialService
+  compatibleProviderRegistryService: CompatibleProviderRegistryService
+  compatibleProviderTransportService: CompatibleProviderTransportService
+  compatibleChatRuntimeService: CompatibleChatRuntimeService
+  compatibleCatalogService: CompatibleCatalogService
+  compatibleLegacyResetService: CompatibleLegacyResetService
   isDev: boolean
   netExpRuntimeInfo: unknown
   networkProxyController: ElectronSessionProxyController
@@ -133,6 +160,7 @@ type RegisterIpcInput = Readonly<{
   importLibreOfficeSvpkg?: (packagePath: string) => Promise<unknown>
   quarantineLibreOfficeRuntime?: () => Promise<unknown>
   providerFileUploadService?: ProviderFileUploadService
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 export type IpcRegistrationResult = Readonly<{
@@ -160,9 +188,28 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
       performConfigSizeCheck: input.performConfigSizeCheck,
       refreshMainLocale: input.refreshMainLocale,
     }),
+    ...registerCompatibleProviderRegistryIpc({
+      registerInvoke: input.registerInvoke,
+      service: input.compatibleProviderRegistryService,
+    }),
+    ...registerCompatibleProviderTransportIpc({
+      registerInvoke: input.registerInvoke,
+      service: input.compatibleProviderTransportService,
+    }),
+    ...registerCompatibleChatIpc({
+      registerInvoke: input.registerInvoke,
+      service: input.compatibleChatRuntimeService,
+    }),
+    ...registerCompatibleCatalogIpc({
+      registerInvoke: input.registerInvoke,
+      service: input.compatibleCatalogService,
+    }),
+    ...registerCompatibleLegacyResetIpc({
+      registerInvoke: input.registerInvoke,
+      service: input.compatibleLegacyResetService,
+    }),
     ...registerOpenRouterCredentialSettingsIpc({
       registerInvoke: input.registerInvoke,
-      store: input.store,
       credentialService: input.credentialService,
     }),
     ...registerOpenAIResponsesCredentialSettingsIpc({
@@ -205,31 +252,38 @@ export function registerIpc(input: RegisterIpcInput): IpcRegistrationResult {
     }),
     ...registerLocalEndpointTextChatIpc({
       registerInvoke: input.registerInvoke,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     }),
     ...registerLMStudioLocalProviderIpc({
       registerInvoke: input.registerInvoke,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     }),
     ...registerOllamaLocalProviderIpc({
       registerInvoke: input.registerInvoke,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     }),
     ...registerOpenAIResponsesTextChatIpc({
       registerInvoke: input.registerInvoke,
       credentialService: input.credentialService,
       providerFileUploadService: input.providerFileUploadService,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     }),
     ...registerGoogleAIStudioTextChatIpc({
       registerInvoke: input.registerInvoke,
       credentialService: input.credentialService,
       providerFileUploadService: input.providerFileUploadService,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     }),
     ...registerAnthropicTextChatIpc({
       registerInvoke: input.registerInvoke,
       credentialService: input.credentialService,
       providerFileUploadService: input.providerFileUploadService,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     }),
     ...registerDeepSeekTextChatIpc({
       registerInvoke: input.registerInvoke,
       credentialService: input.credentialService,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     }),
     ...registerNetExpIpc({
       registerInvoke: input.registerInvoke,

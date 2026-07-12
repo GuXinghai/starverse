@@ -77,44 +77,32 @@ describe('googleAIStudioTextChatIpc', () => {
     })).toMatchObject({ ok: false, code: 'invalid_payload' })
   })
 
-  it('validates Gemini native thinking config as a safe plain object', () => {
+  it('accepts Gemini thinking only through generation params', () => {
     expect(validateGoogleAIStudioTextChatPayload({
       requestId: 'google_ai_studio_req_thinking',
       assistantMessageId: 'assistant_1',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-lite',
       messages: [{ role: 'user', content: 'hello' }],
-      geminiThinking: { mode: 'budget', thinkingBudget: 2048, includeThoughts: true },
+      generationParams: {
+        generationConfig: {
+          thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+        },
+      },
     })).toMatchObject({
       ok: true,
-      geminiThinking: {
-        mode: 'budget',
-        thinkingBudget: 2048,
-        includeThoughts: true,
+      generationParams: {
+        generationConfig: {
+          thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+        },
       },
     })
 
     expect(validateGoogleAIStudioTextChatPayload({
-      requestId: 'google_ai_studio_req_bad_thinking_budget',
+      requestId: 'google_ai_studio_req_bad_generation_params',
       assistantMessageId: 'assistant_1',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-lite',
       messages: [{ role: 'user', content: 'hello' }],
-      geminiThinking: { mode: 'budget', thinkingBudget: '2048' },
-    })).toMatchObject({ ok: false, code: 'invalid_payload' })
-
-    expect(validateGoogleAIStudioTextChatPayload({
-      requestId: 'google_ai_studio_req_bad_thinking_level',
-      assistantMessageId: 'assistant_1',
-      model: 'gemini-3-pro',
-      messages: [{ role: 'user', content: 'hello' }],
-      geminiThinking: { mode: 'level', thinkingLevel: 'xhigh' },
-    })).toMatchObject({ ok: false, code: 'invalid_payload' })
-
-    expect(validateGoogleAIStudioTextChatPayload({
-      requestId: 'google_ai_studio_req_none',
-      assistantMessageId: 'assistant_1',
-      model: 'gemini-2.5-flash',
-      messages: [{ role: 'user', content: 'hello' }],
-      geminiThinking: { mode: 'none' },
+      generationParams: [],
     })).toMatchObject({ ok: false, code: 'invalid_payload' })
   })
 
@@ -160,18 +148,20 @@ describe('googleAIStudioTextChatIpc', () => {
   })
 
   it('streams native Gemini text deltas with main-process Google AI Studio credential resolution', async () => {
+    let fetchedBody = ''
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
-      expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse')
+      expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:streamGenerateContent?alt=sse')
       expect(init?.method).toBe('POST')
       expect(init?.redirect).toBe('error')
       expect((init?.headers as Record<string, string>)?.['x-goog-api-key']).toBe('fake-google-secret')
       expect((init?.headers as Record<string, string>)?.Authorization).toBeUndefined()
-      const body = JSON.parse(String(init?.body ?? '{}'))
+      fetchedBody = String(init?.body ?? '{}')
+      const body = JSON.parse(fetchedBody)
       expect(body).toMatchObject({
         contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
       })
       expect(body.generationConfig?.thinkingConfig).toEqual({
-        thinkingBudget: 2048,
+        thinkingLevel: 'medium',
         includeThoughts: true,
       })
       expect(body.reasoning_effort).toBeUndefined()
@@ -181,19 +171,25 @@ describe('googleAIStudioTextChatIpc', () => {
     }) as unknown as typeof fetch
 
     const registerInvoke = vi.fn()
-    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('fake-google-secret'), fetchImpl })
+    const tryPersist = vi.fn()
+    registerGoogleAIStudioTextChatIpc({
+      registerInvoke,
+      credentialService: createCredentialService('fake-google-secret'),
+      fetchImpl,
+      rawGenerationRequestStore: { tryPersist } as any,
+    })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
     const sender = createSender()
 
     const start = await handler({ sender }, {
       requestId: 'google_ai_studio_req_ok',
       assistantMessageId: 'assistant_1',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-lite',
       messages: [{ role: 'user', content: 'hello' }],
       generationParams: {
         generationConfig: {
           thinkingConfig: {
-            thinkingBudget: 2048,
+            thinkingLevel: 'medium',
             includeThoughts: true,
           },
         },
@@ -203,6 +199,11 @@ describe('googleAIStudioTextChatIpc', () => {
 
     expect(start).toEqual({ ok: true })
     await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('google-ai-studio-chat:end:google_ai_studio_req_ok'))
+    expect(tryPersist).toHaveBeenCalledWith(expect.objectContaining({
+      answerRootId: 'assistant_1',
+      providerId: 'google_ai_studio',
+      modelId: 'gemini-3.1-flash-lite',
+    }), fetchedBody)
     const events = sentEvents(sender, 'google_ai_studio_req_ok')
     expect(events.some((event) =>
       event.type === 'event' &&

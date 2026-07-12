@@ -8,8 +8,13 @@ import {
 import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
 import {
   isProviderCredentialSecureStoreKey,
-  providerCredentialSecureStoreKeys,
+  PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
 } from '../credentials/providerCredentialService'
+import {
+  COMPATIBLE_CREDENTIAL_SECURE_STORE_NAMESPACE,
+  COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
+  isCompatibleCredentialSecureStoreKey,
+} from '../credentials/compatibleCredentialService'
 import type { RegisterInvoke } from './types'
 
 export const STORE_IPC_CHANNELS = [
@@ -22,7 +27,6 @@ export const STORE_IPC_CHANNELS = [
 
 export const RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS = new Set([
   'openRouterApiKey',
-  'openRouterBaseUrl',
   'openAIResponsesApiKey',
   'googleAIStudioApiKey',
   'anthropicApiKey',
@@ -45,13 +49,27 @@ function isLocaleConfigKey(key: string): boolean {
   return key === 'language' || key === 'languageManual'
 }
 
+const PROVIDER_CREDENTIAL_SECURE_STORE_NAMESPACE = PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX.replace(/\.$/u, '')
+
+function pathsOverlap(left: string, right: string): boolean {
+  return left === right || left.startsWith(`${right}.`) || right.startsWith(`${left}.`)
+}
+
 function isRendererBlockedCredentialStoreKey(key: string): boolean {
-  return RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS.has(key) || isProviderCredentialSecureStoreKey(key)
+  const protectedPaths = [
+    ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
+    PROVIDER_CREDENTIAL_SECURE_STORE_NAMESPACE,
+    COMPATIBLE_CREDENTIAL_SECURE_STORE_NAMESPACE,
+  ]
+  return protectedPaths.some((protectedPath) => pathsOverlap(key, protectedPath)) ||
+    isProviderCredentialSecureStoreKey(key) ||
+    isCompatibleCredentialSecureStoreKey(key)
 }
 
 function buildRendererSafeClearKeepKeys(keepKeys: unknown): string[] {
   const safeKeepKeys = Array.isArray(keepKeys) ? keepKeys.map((item) => String(item)) : []
-  for (const key of [...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, ...providerCredentialSecureStoreKeys()]) {
+  const providerCredentialRoot = PROVIDER_CREDENTIAL_SECURE_STORE_NAMESPACE.split('.')[0]!
+  for (const key of [...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, providerCredentialRoot, COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT]) {
     if (!safeKeepKeys.includes(key)) {
       safeKeepKeys.push(key)
     }

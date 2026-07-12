@@ -40,7 +40,7 @@ function getScope(store: any) {
     store,
     providerKey: 'openrouter',
     apiKey,
-    baseUrl: String(store.get('openRouterBaseUrl') ?? '').trim() || null,
+    baseUrl: 'https://openrouter.ai/api/v1',
     dataSource: 'models_user_primary',
   }).catalogScopeKey
 }
@@ -621,20 +621,15 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.list', expect.anything())
   })
 
-  it('queryScopedCurrent isolates API keys and base URLs by current scope', async () => {
+  it('queryScopedCurrent isolates API keys by current scope', async () => {
     const store = createStore({
       openRouterApiKey: 'sk-query-a',
-      openRouterBaseUrl: 'https://openrouter.ai/api/v1',
       openRouterCatalogLocalSecret: 'local-secret-for-ipc-tests-1234567890',
     })
     const scopeA = getScope(store)
     store.setValue('openRouterApiKey', 'sk-query-b')
     const scopeB = getScope(store)
     store.setValue('openRouterApiKey', 'sk-query-a')
-    store.setValue('openRouterBaseUrl', 'https://alt.openrouter.test/api/v1')
-    const scopeAltBaseUrl = getScope(store)
-    store.setValue('openRouterApiKey', 'sk-query-a')
-    store.setValue('openRouterBaseUrl', 'https://openrouter.ai/api/v1')
     const dbWorkerManager = {
       call: vi.fn(async (method: string, params: any) => {
         if (method === 'modelCatalog.getScopedMeta') {
@@ -666,20 +661,9 @@ describe('registerModelCatalogSyncIpc scoped catalog sync', () => {
     const resultA = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, { providerKey: 'openrouter' }) as any
     store.setValue('openRouterApiKey', 'sk-query-b')
     const resultB = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, { providerKey: 'openrouter' }) as any
-    store.setValue('openRouterApiKey', 'sk-query-a')
-    store.setValue('openRouterBaseUrl', 'https://alt.openrouter.test/api/v1')
-    const resultAltBaseUrl = await handlers.get('modelCatalog.queryScopedCurrent')?.({}, { providerKey: 'openrouter' }) as any
-
     expect(scopeA).not.toBe(scopeB)
-    expect(scopeA).not.toBe(scopeAltBaseUrl)
     expect(resultA.items.map((item: any) => item.modelId)).toEqual(['scope-a/model'])
     expect(resultB.items.map((item: any) => item.modelId)).toEqual(['scope-b/model'])
-    expect(resultAltBaseUrl).toMatchObject({
-      status: 'failed',
-      syncState: 'error',
-      failureReasonCode: 'missing_api_key',
-      items: [],
-    })
   })
 
   it('status and query use non-OpenRouter provider scoped snapshots', async () => {

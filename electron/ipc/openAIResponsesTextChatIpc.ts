@@ -11,6 +11,7 @@ import {
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
 import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
 
@@ -54,6 +55,7 @@ type RegisterOpenAIResponsesTextChatIpcInput = Readonly<{
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
   fetchImpl?: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -292,6 +294,7 @@ async function forwardOpenAIResponsesStream(input: Readonly<{
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
   fetchImpl: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const apiKey = readOpenAIResponsesApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -352,6 +355,10 @@ async function forwardOpenAIResponsesStream(input: Readonly<{
       baseUrl: OPENAI_RESPONSES_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
+      captureSerializedRequest: (serializedBody) => input.rawGenerationRequestStore?.tryPersist({
+        operationId: input.request.requestId, answerRootId: input.request.assistantMessageId, requestSequence: 1,
+        providerId: 'openai_responses', modelId: input.request.model,
+      }, serializedBody),
     })
     for await (const event of events) {
       const safeEvent = safeStreamEvent(event)
@@ -414,6 +421,7 @@ export function registerOpenAIResponsesTextChatIpc(
       credentialService: input.credentialService,
       providerFileUploadService: input.providerFileUploadService,
       fetchImpl,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     })
     return { ok: true }
   })

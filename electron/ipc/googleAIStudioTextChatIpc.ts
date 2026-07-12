@@ -8,11 +8,6 @@ import {
   normalizeGeminiProviderNativeSnapshot,
   type GeminiProviderNativeSnapshot,
 } from '../../src/next/provider/gemini/geminiProviderNativeContent'
-import {
-  isGeminiThinkingLevel,
-  normalizeGeminiThinkingConfig,
-  type GeminiThinkingConfig,
-} from '../../src/next/provider/gemini/geminiThinkingPolicy'
 import { validateGeminiImageGenerationImageSize } from '../../src/next/provider/gemini/geminiImageGenerationPolicy'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
@@ -23,6 +18,7 @@ import {
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
 import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
 
@@ -43,7 +39,6 @@ export type GoogleAIStudioTextChatPayload = Readonly<{
   model?: unknown
   messages?: unknown
   currentUserContentBlocks?: unknown
-  geminiThinking?: unknown
   generationParams?: unknown
   imageGeneration?: unknown
   timeoutMs?: unknown
@@ -68,6 +63,7 @@ type RegisterGoogleAIStudioTextChatIpcInput = Readonly<{
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
   fetchImpl?: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -77,7 +73,6 @@ type ValidatedTextChatSuccess = Readonly<{
   model: string
   messages: GoogleAIStudioTextChatMessage[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
-  geminiThinking?: GeminiThinkingConfig
   generationParams?: ProviderStreamConfig['generationParams']
   imageGeneration?: ProviderStreamConfig['imageGeneration']
   timeoutMs: number
@@ -147,34 +142,6 @@ function normalizeMessages(raw: unknown, allowEmptyCurrentUser = false): GoogleA
   }
   if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
   return out
-}
-
-function validateGeminiThinkingConfig(raw: unknown, model: string): GeminiThinkingConfig | null | undefined {
-  if (raw === undefined || raw === null) return undefined
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null
-  const record = raw as Record<string, unknown>
-  const mode = record.mode
-  if (mode !== 'auto' && mode !== 'budget' && mode !== 'level') return null
-  if ('includeThoughts' in record && typeof record.includeThoughts !== 'boolean') return null
-  let thinkingBudget: number | undefined
-  if ('thinkingBudget' in record) {
-    if (typeof record.thinkingBudget !== 'number' || !Number.isFinite(record.thinkingBudget) || record.thinkingBudget <= 0) {
-      return null
-    }
-    thinkingBudget = Math.trunc(record.thinkingBudget)
-  }
-  let thinkingLevel: GeminiThinkingConfig['thinkingLevel'] | undefined
-  if ('thinkingLevel' in record) {
-    if (!isGeminiThinkingLevel(record.thinkingLevel)) return null
-    thinkingLevel = record.thinkingLevel
-  }
-  const candidate: GeminiThinkingConfig = {
-    mode,
-    ...(thinkingBudget !== undefined ? { thinkingBudget } : {}),
-    ...(thinkingLevel ? { thinkingLevel } : {}),
-    includeThoughts: record.includeThoughts === true,
-  }
-  return normalizeGeminiThinkingConfig({ model, config: candidate })
 }
 
 function isPlainRecord(value: unknown): value is Record<string, unknown> {
@@ -249,10 +216,6 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     return staticFailure('invalid_payload', 'Google AI Studio text chat requires user and assistant messages.')
   }
 
-  const geminiThinking = validateGeminiThinkingConfig(record.geminiThinking, model)
-  if (geminiThinking === null) {
-    return staticFailure('invalid_payload', 'Google AI Studio thinking config payload is invalid.')
-  }
   const imageGeneration = validateImageGenerationConfig(record.imageGeneration)
   if (imageGeneration === null) {
     return staticFailure('invalid_payload', 'Google AI Studio image generation payload is invalid.')
@@ -278,7 +241,6 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     model,
     messages,
     ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
-    ...(geminiThinking ? { geminiThinking } : {}),
     ...(generationParams ? { generationParams } : {}),
     ...(imageGeneration ? { imageGeneration } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
@@ -385,7 +347,6 @@ function buildProviderRequest(input: Readonly<{
     config: {
       model: input.request.model,
       requestedReasoningMode: 'auto',
-      ...(input.request.geminiThinking ? { geminiThinking: input.request.geminiThinking } : {}),
       ...(input.request.generationParams ? { generationParams: input.request.generationParams } : {}),
       ...(input.request.imageGeneration ? { imageGeneration: input.request.imageGeneration } : {}),
     },
@@ -398,6 +359,7 @@ async function forwardGoogleAIStudioStream(input: Readonly<{
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
   fetchImpl: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const apiKey = readGoogleAIStudioApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -458,6 +420,10 @@ async function forwardGoogleAIStudioStream(input: Readonly<{
       baseUrl: GOOGLE_AI_STUDIO_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
+      captureSerializedRequest: (serializedBody) => input.rawGenerationRequestStore?.tryPersist({
+        operationId: input.request.requestId, answerRootId: input.request.assistantMessageId, requestSequence: 1,
+        providerId: 'google_ai_studio', modelId: input.request.model,
+      }, serializedBody),
     })
     for await (const event of events) {
       const safeEvent = safeStreamEvent(event)
@@ -520,6 +486,7 @@ export function registerGoogleAIStudioTextChatIpc(
       credentialService: input.credentialService,
       providerFileUploadService: input.providerFileUploadService,
       fetchImpl,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     })
     return { ok: true }
   })

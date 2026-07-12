@@ -5,6 +5,11 @@ import { describe, expect, it, vi } from 'vitest'
 import { safeClearConfig } from '../config/configSchema'
 import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
 import { providerCredentialSecureStoreKeys } from '../credentials/providerCredentialService'
+import {
+  COMPATIBLE_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
+  COMPATIBLE_CREDENTIAL_SECURE_STORE_NAMESPACE,
+  COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
+} from '../credentials/compatibleCredentialService'
 import { registerStoreIpc, RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS } from './storeIpc'
 
 vi.mock('../config/configSchema', async (importOriginal) => {
@@ -17,18 +22,39 @@ vi.mock('../config/configSchema', async (importOriginal) => {
 
 const testDir = dirname(fileURLToPath(import.meta.url))
 
+function getDotPath(root: Record<string, unknown>, key: string): unknown {
+  return key.split('.').reduce<unknown>((current, segment) => {
+    if (!current || typeof current !== 'object') return undefined
+    return (current as Record<string, unknown>)[segment]
+  }, root)
+}
+
+function setDotPath(root: Record<string, unknown>, key: string, value: unknown): void {
+  const segments = key.split('.')
+  let current = root
+  for (const segment of segments.slice(0, -1)) {
+    const next = current[segment]
+    if (!next || typeof next !== 'object') current[segment] = {}
+    current = current[segment] as Record<string, unknown>
+  }
+  current[segments.at(-1)!] = value
+}
+
+function deleteDotPath(root: Record<string, unknown>, key: string): void {
+  const segments = key.split('.')
+  const parent = getDotPath(root, segments.slice(0, -1).join('.'))
+  if (parent && typeof parent === 'object') delete (parent as Record<string, unknown>)[segments.at(-1)!]
+}
+
 function registerHandlers(input?: { refreshMainLocale?: () => void; initialStore?: Record<string, unknown> }) {
   const registerInvoke = vi.fn()
-  const values = new Map<string, unknown>(Object.entries(input?.initialStore ?? {}))
+  const storeData: Record<string, unknown> = { language: 'en-US', languageManual: 'en-US' }
+  for (const [key, value] of Object.entries(input?.initialStore ?? {})) setDotPath(storeData, key, value)
   const store = {
-    store: { language: 'en-US', languageManual: 'en-US' },
-    get: vi.fn((key: string) => values.get(key)),
-    set: vi.fn((key: string, value: unknown) => {
-      values.set(key, value)
-    }),
-    delete: vi.fn((key: string) => {
-      values.delete(key)
-    }),
+    store: storeData,
+    get: vi.fn((key: string) => getDotPath(storeData, key)),
+    set: vi.fn((key: string, value: unknown) => setDotPath(storeData, key, value)),
+    delete: vi.fn((key: string) => deleteDotPath(storeData, key)),
     clear: vi.fn(),
     has: vi.fn(() => true),
   } as any
@@ -123,7 +149,6 @@ describe('registerStoreIpc', () => {
   it('blocks renderer generic store access to legacy credential-bearing keys after C4 filtering', async () => {
     const blockedKeys = [
       'openRouterApiKey',
-      'openRouterBaseUrl',
       'openAIResponsesApiKey',
       'googleAIStudioApiKey',
       'anthropicApiKey',
@@ -132,6 +157,7 @@ describe('registerStoreIpc', () => {
       'apiKey',
       OPENROUTER_CATALOG_LOCAL_SECRET_KEY,
       ...providerCredentialSecureStoreKeys(),
+      `${COMPATIBLE_CREDENTIAL_SECURE_STORE_KEY_PREFIX}ocp_credential_12345678`,
     ] as const
     const { handlers, store } = registerHandlers({
       initialStore: Object.fromEntries(blockedKeys.map((key) => [key, `legacy-${key}`])),
@@ -147,6 +173,28 @@ describe('registerStoreIpc', () => {
       expect(deleteResult).toBe(false)
       expect(store.get).not.toHaveBeenCalledWith(key)
       expect(store.set).not.toHaveBeenCalledWith(key, `updated-${key}`)
+      expect(store.delete).not.toHaveBeenCalledWith(key)
+    }
+  })
+
+  it('blocks credential namespace ancestors and descendants under electron-store dot notation', async () => {
+    const { handlers, store } = registerHandlers()
+    const blockedPaths = [
+      COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
+      COMPATIBLE_CREDENTIAL_SECURE_STORE_NAMESPACE,
+      `${COMPATIBLE_CREDENTIAL_SECURE_STORE_KEY_PREFIX}ocp_credential_12345678`,
+      `${COMPATIBLE_CREDENTIAL_SECURE_STORE_KEY_PREFIX}ocp_credential_12345678.ciphertextBase64`,
+      'providerCredentials',
+      'providerCredentials.v1',
+      'providerCredentials.v1.future-provider',
+    ]
+
+    for (const key of blockedPaths) {
+      expect(await handlers.get('store-get')?.({}, key)).toBeUndefined()
+      expect(await handlers.get('store-set')?.({}, key, 'tamper')).toBe(false)
+      expect(await handlers.get('store-delete')?.({}, key)).toBe(false)
+      expect(store.get).not.toHaveBeenCalledWith(key)
+      expect(store.set).not.toHaveBeenCalledWith(key, 'tamper')
       expect(store.delete).not.toHaveBeenCalledWith(key)
     }
   })
@@ -182,13 +230,14 @@ describe('registerStoreIpc', () => {
   })
 
   it('preserves credential-bearing keys during renderer safe clear by default', async () => {
-    const { handlers } = registerHandlers()
+    const compatibleKey = `${COMPATIBLE_CREDENTIAL_SECURE_STORE_KEY_PREFIX}ocp_credential_12345678`
+    const { handlers } = registerHandlers({ initialStore: { [compatibleKey]: { ciphertextBase64: 'encrypted' } } })
 
     await handlers.get('store-clear-safe')?.({}, [])
 
     expect(vi.mocked(safeClearConfig)).toHaveBeenCalledWith(
       expect.anything(),
-      expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, ...providerCredentialSecureStoreKeys()])
+      expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, 'providerCredentials', COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT])
     )
   })
 
@@ -202,7 +251,8 @@ describe('registerStoreIpc', () => {
     expect(keepKeys).toEqual(expect.arrayContaining([
       'language',
       ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
-      ...providerCredentialSecureStoreKeys(),
+      'providerCredentials',
+      COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
     ]))
     expect(keepKeys).not.toContain('theme')
     expect(keepKeys).not.toContain('activeProvider')
@@ -212,14 +262,14 @@ describe('registerStoreIpc', () => {
     vi.mocked(safeClearConfig).mockClear()
     const { handlers } = registerHandlers()
 
-    await handlers.get('store-clear-safe')?.({}, ['openRouterApiKey', 'openRouterBaseUrl'])
+    await handlers.get('store-clear-safe')?.({}, ['openRouterApiKey'])
 
     const keepKeys = vi.mocked(safeClearConfig).mock.calls.at(-1)?.[1] ?? []
     expect(keepKeys).toEqual(expect.arrayContaining([
       ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
-      ...providerCredentialSecureStoreKeys(),
+      'providerCredentials',
+      COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
     ]))
     expect(keepKeys.filter((key) => key === 'openRouterApiKey')).toHaveLength(1)
-    expect(keepKeys.filter((key) => key === 'openRouterBaseUrl')).toHaveLength(1)
   })
 })

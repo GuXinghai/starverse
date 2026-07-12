@@ -110,13 +110,6 @@ function responseFromChunks(input: Readonly<{
   return response
 }
 
-function createStore(initial: Record<string, unknown>) {
-  const data = new Map<string, unknown>(Object.entries(initial))
-  return {
-    get: vi.fn((key: string) => data.get(key)),
-  } as any
-}
-
 function createCredentialService(apiKey?: string) {
   return {
     readApiKey: vi.fn(() => apiKey
@@ -393,14 +386,11 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
   it('routes main IPC bridge C3 legacy_store credential source through ProviderCredentialService', async () => {
     const warnSpy = vi.spyOn(console, 'warn').mockImplementation(() => {})
     const rawKey = 'sk-or-ipc-bridge-c3-resolved-secret'
-    const store = createStore({
-      openRouterBaseUrl: ' https://openrouter.ai/api/v1/ ',
-    })
     const credentialService = createCredentialService(rawKey)
     const sender = { send: vi.fn() }
 
     try {
-      expect(registerOpenRouterStreamBridge({ store, credentialService })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      expect(registerOpenRouterStreamBridge({ credentialService })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
       const handler = electronMock.handlers.get('openrouter:stream-chat')
       expect(handler).toBeTruthy()
 
@@ -426,8 +416,6 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
 
       expect(result).toEqual({ ok: true })
       expect(credentialService.readApiKey).toHaveBeenCalledWith('openrouter')
-      expect(store.get).not.toHaveBeenCalledWith('openRouterApiKey')
-      expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
       expect(electronMock.requestCalls).toHaveLength(1)
       expect((electronMock.requestCalls[0]?.options as any)?.url).toBe(
         'https://openrouter.ai/api/v1/chat/completions'
@@ -452,59 +440,13 @@ describe('forwardOpenRouterResponseAsWireEvents', () => {
     }
   })
 
-  it('rejects untrusted OpenRouter baseUrl before net.request and never sends Authorization to attacker host', async () => {
-    const rawKey = 'sk-or-ipc-bridge-attacker-secret'
-    const store = createStore({
-      openRouterBaseUrl: 'https://attacker.example.test/custom/v1',
-    })
-    const credentialService = createCredentialService(rawKey)
-    const sender = { send: vi.fn() }
-
-    try {
-      expect(registerOpenRouterStreamBridge({ store, credentialService })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
-      const handler = electronMock.handlers.get('openrouter:stream-chat')
-      expect(handler).toBeTruthy()
-
-      const result = await handler?.({ sender }, {
-        requestId: 'rid_ipc_bridge_attacker_base',
-        wireVersion: OPENROUTER_STREAM_WIRE_VERSION,
-        requestBody: {
-          model: 'openrouter/test-model',
-          stream: true,
-          messages: [{ role: 'user', content: 'hello' }],
-        },
-        config: {
-          credentialSource: 'legacy_store',
-          model: 'openrouter/test-model',
-          requestedReasoningMode: 'auto',
-        },
-      })
-
-      expect(result).toEqual({
-        ok: false,
-        code: 'base_url_untrusted',
-        error: 'OpenRouter base URL is not trusted for the saved official credential.',
-        supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
-      })
-      expect(electronMock.requestCalls).toHaveLength(0)
-      expect(sender.send).not.toHaveBeenCalled()
-      expect(JSON.stringify(result)).not.toContain(rawKey)
-      expect(JSON.stringify(result)).not.toContain('Authorization')
-    } finally {
-      cleanupOpenRouterStreams()
-    }
-  })
-
   it('fails resolver-backed main IPC credential resolution before net.request without leaking raw store values', async () => {
     const rawKey = 'sk-or-ipc-bridge-missing-should-not-leak'
-    const store = createStore({
-      openRouterBaseUrl: `https://user:pass@example.test/${rawKey}`,
-    })
     const credentialService = createCredentialService()
     const sender = { send: vi.fn() }
 
     try {
-      expect(registerOpenRouterStreamBridge({ store, credentialService })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
+      expect(registerOpenRouterStreamBridge({ credentialService })).toEqual(['openrouter:stream-chat', 'openrouter:abort'])
       const handler = electronMock.handlers.get('openrouter:stream-chat')
       expect(handler).toBeTruthy()
 
