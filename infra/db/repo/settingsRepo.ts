@@ -6,6 +6,8 @@ import {
   SETTINGS_KEY_DFC_ATTACHMENT_DEFAULTS,
   SETTINGS_KEY_GENERATION_PARAMS_DEFAULTS,
   SETTINGS_KEY_NETWORK_PROXY,
+  SETTINGS_KEY_NEW_CHAT_LIFECYCLE,
+  SETTINGS_KEY_LAST_FORMAL_CONVERSATION,
   SETTINGS_KEY_IMAGE_GENERATION_DEFAULT,
   SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS,
   SETTINGS_KEY_REASONING_PREFS,
@@ -15,9 +17,11 @@ import {
 import { normalizeDfcAttachmentDefaults } from '../../../src/shared/files/dfcAttachmentDefaults'
 import {
   normalizeNetworkProxySettings,
+  parseNetworkProxySettingsStrict,
   proxyUrlContainsCredentials,
   type NetworkProxySettings,
-} from '../../../src/next/plugin-distribution/networkProxy'
+} from '../../../src/shared/plugin-distribution/networkProxy'
+import type { NewChatLifecycleSettings } from '../types'
 
 type SqlDatabase = BetterSqlite3.Database
 
@@ -184,12 +188,51 @@ export class SettingsRepo {
     return normalizeNetworkProxySettings(this.readJson(SETTINGS_KEY_NETWORK_PROXY))
   }
 
+  getNetworkProxySettingsStrict(): NetworkProxySettings {
+    return parseNetworkProxySettingsStrict(this.readJson(SETTINGS_KEY_NETWORK_PROXY))
+  }
+
   setNetworkProxySettings(value: unknown): void {
     const normalized = normalizeNetworkProxySettings(value)
     if (proxyUrlContainsCredentials(normalized.manualProxyUrl)) {
       throw new Error('proxy credentials require secure storage and are not accepted in the proxy URL')
     }
     this.writeJson(SETTINGS_KEY_NETWORK_PROXY, normalized)
+  }
+
+  getNewChatLifecycleSettings(): NewChatLifecycleSettings {
+    const raw = this.readJson(SETTINGS_KEY_NEW_CHAT_LIFECYCLE) as any
+    return {
+      startupNavigation: raw?.startupNavigation === 'restore_last_formal' || raw?.startupNavigation === 'projects_only'
+        ? raw.startupNavigation
+        : 'open_new',
+      startupTemplateReset: {
+        modelConfig: raw?.startupTemplateReset?.modelConfig !== false,
+        draftAttachments: raw?.startupTemplateReset?.draftAttachments !== false,
+      },
+      postSendTemplateReset: raw?.postSendTemplateReset === 'preserve_model_config'
+        ? 'preserve_model_config'
+        : 'reset_all',
+    }
+  }
+
+  setNewChatLifecycleSettings(value: NewChatLifecycleSettings): void {
+    this.writeJson(SETTINGS_KEY_NEW_CHAT_LIFECYCLE, value)
+  }
+
+  getLastFormalConversationId(): string | null {
+    const value = this.readJson(SETTINGS_KEY_LAST_FORMAL_CONVERSATION)
+    const normalized = typeof value === 'string' ? value.trim() : ''
+    return normalized || null
+  }
+
+  setLastFormalConversationId(conversationId: string | null): void {
+    const normalized = String(conversationId ?? '').trim()
+    if (!normalized) {
+      this.deleteKey(SETTINGS_KEY_LAST_FORMAL_CONVERSATION)
+      return
+    }
+    this.writeJson(SETTINGS_KEY_LAST_FORMAL_CONVERSATION, normalized)
   }
 
   getChatDraft(key: string): string | null {

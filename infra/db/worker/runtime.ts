@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { parentPort } from 'node:worker_threads'
 import BetterSqlite3 from 'better-sqlite3'
 import { DB_SCHEMA_VERSION } from '../schemaVersion'
+import { ensureNewChatTemplateSchema } from '../migrations/ensureNewChatTemplateSchema'
 import { ProjectRepo } from '../repo/projectRepo'
 import { ConvoRepo } from '../repo/convoRepo'
 import { MessageRepo } from '../repo/messageRepo'
@@ -28,6 +29,14 @@ import { ModelCatalogRepo } from '../repo/modelCatalogRepo'
 import { ReasoningModelIndexRepo } from '../repo/reasoningModelIndexRepo'
 import { SettingsRepo } from '../repo/settingsRepo'
 import { ProviderFileUploadCacheRepo } from '../repo/providerFileUploadCacheRepo'
+import { CompatibleProviderRepo } from '../repo/compatibleProviderRepo'
+import { CompatibleProfileRepo } from '../repo/compatibleProfileRepo'
+import { CompatibleCatalogRepo } from '../repo/compatibleCatalogRepo'
+import { CompatibleRouteRepo } from '../repo/compatibleRouteRepo'
+import { CompatibleToolRepo } from '../repo/compatibleToolRepo'
+import { CompatibleDiagnosticsRepo } from '../repo/compatibleDiagnosticsRepo'
+import { CompatibleReasoningRepo } from '../repo/compatibleReasoningRepo'
+import { CompatibleTurnProjectionRepo } from '../repo/compatibleTurnProjectionRepo'
 import { ensureBranchingSchema } from '../migrations/ensureBranchingSchema'
 import { ensureSearchSchema } from '../migrations/ensureSearchSchema'
 import { ensureFilePipelineSchema } from '../migrations/ensureFilePipelineSchema'
@@ -248,9 +257,19 @@ export class DbWorkerRuntime {
   readonly reasoningModelIndexRepo: ReasoningModelIndexRepo
   readonly settingsRepo: SettingsRepo
   readonly providerFileUploadCacheRepo: ProviderFileUploadCacheRepo
+  readonly compatibleProviderRepo: CompatibleProviderRepo
+  readonly compatibleProfileRepo: CompatibleProfileRepo
+  readonly compatibleCatalogRepo: CompatibleCatalogRepo
+  readonly compatibleRouteRepo: CompatibleRouteRepo
+  readonly compatibleToolRepo: CompatibleToolRepo
+  readonly compatibleDiagnosticsRepo: CompatibleDiagnosticsRepo
+  readonly compatibleReasoningRepo: CompatibleReasoningRepo
+  readonly compatibleTurnProjectionRepo: CompatibleTurnProjectionRepo
   readonly officePdfRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
   private handlers: WorkerHandlerMap = new Map()
   inboxId: string = ''
+  newProjectId: string = ''
+  newTemplateConvoId: string = ''
   private activityThrottle = new Map<string, { timer: ReturnType<typeof setTimeout>; updatedAt: number }>()
   private activityThrottleMs = 200
 
@@ -306,6 +325,8 @@ export class DbWorkerRuntime {
     ensureSearchSchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Project System Columns and Index...')
     this.ensureProjectSystemColumnsAndIndex()
+    console.log('[DbWorkerRuntime] 确保 New Chat Template Schema...')
+    ensureNewChatTemplateSchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Convo Project Activity Index...')
     this.ensureConvoProjectActivityIndex()
     console.log('[DbWorkerRuntime] 确保 Core Indexes...')
@@ -321,6 +342,8 @@ export class DbWorkerRuntime {
     }
     console.log('[DbWorkerRuntime] 确保 Inbox Project Data...')
     this.ensureInboxProjectData()
+    console.log('[DbWorkerRuntime] 确保 New Chat Template Data...')
+    this.ensureNewChatTemplateData()
 
     if (config.logSlowQueryMs || config.logDirectory) {
       configureLogging({ slowQueryMs: config.logSlowQueryMs, directory: config.logDirectory })
@@ -412,6 +435,14 @@ export class DbWorkerRuntime {
     this.dashboardPrefRepo = new DashboardPrefRepo(this.db)
     this.modelPreferencesRepo = new ModelPreferencesRepo(this.db)
     this.modelCatalogRepo = new ModelCatalogRepo(this.db)
+    this.compatibleProviderRepo = new CompatibleProviderRepo(this.db)
+    this.compatibleProfileRepo = new CompatibleProfileRepo(this.db)
+    this.compatibleCatalogRepo = new CompatibleCatalogRepo(this.db)
+    this.compatibleRouteRepo = new CompatibleRouteRepo(this.db)
+    this.compatibleToolRepo = new CompatibleToolRepo(this.db)
+    this.compatibleDiagnosticsRepo = new CompatibleDiagnosticsRepo(this.db)
+    this.compatibleReasoningRepo = new CompatibleReasoningRepo(this.db)
+    this.compatibleTurnProjectionRepo = new CompatibleTurnProjectionRepo(this.db)
     this.derivativeJobService = new DerivativeJobService({
       db: this.db,
       fileAssetRepo: this.fileAssetRepo,
@@ -1272,9 +1303,9 @@ export class DbWorkerRuntime {
    * 3. 迁移历史 NULL 会话到 Inbox（分批 500 条，幂等安全）
    */
   private ensureInboxProjectData() {
-    // 1. 幂等创建 Inbox
-    const existing = this.db.prepare('SELECT id FROM project WHERE system_key = ?').get('inbox') as { id: string } | undefined
-    if (!existing) {
+    const ensureIdentity = this.db.transaction(() => {
+      const existing = this.db.prepare('SELECT id FROM project WHERE system_key = ?').get('inbox') as { id: string } | undefined
+      if (existing) return existing.id
       const inboxId = randomUUID()
       const now = Date.now()
       this.db.prepare(`
@@ -1282,11 +1313,9 @@ export class DbWorkerRuntime {
         VALUES (?, 'Inbox', 1, 'inbox', ?, ?, '{"isSystemInbox":true}')
       `).run(inboxId, now, now)
       console.log('[DbWorkerRuntime] Created Inbox project:', inboxId)
-    }
-    
-    // 2. 缓存 inboxId
-    const inboxRow = this.db.prepare('SELECT id FROM project WHERE system_key = ?').get('inbox') as { id: string }
-    this.inboxId = inboxRow.id
+      return inboxId
+    })
+    this.inboxId = ensureIdentity.immediate()
     console.log('[DbWorkerRuntime] Inbox ID cached:', this.inboxId)
     
     // 3. 迁移历史 NULL 会话（分批，不修改 updated_at，幂等安全）
@@ -1307,6 +1336,60 @@ export class DbWorkerRuntime {
 
     // 4. 清理历史伪项目（unassigned / No Project 系统占位）
     this.migrateLegacyUnassignedProjectData()
+  }
+
+  private ensureNewChatTemplateData() {
+    const txn = this.db.transaction(() => {
+      let project = this.db.prepare("SELECT id FROM project WHERE system_key = 'new'").get() as { id: string } | undefined
+      if (!project) {
+        const id = randomUUID()
+        const now = Date.now()
+        this.db.prepare(`
+          INSERT INTO project (id, name, is_system, system_key, created_at, updated_at, meta)
+          VALUES (?, 'New', 1, 'new', ?, ?, '{"isSystemNew":true}')
+        `).run(id, now, now)
+        project = { id }
+      }
+      const rows = this.db.prepare(`
+        SELECT id, system_key
+        FROM convo
+        WHERE project_id = ? OR system_key = 'new_template'
+        ORDER BY created_at ASC, id ASC
+      `).all(project.id) as Array<{ id: string; system_key: string | null }>
+      if (rows.length > 1) {
+        throw new DbWorkerError('ERR_INVALID', 'new_chat_template_duplicate')
+      }
+      let template = rows[0]
+      if (template && template.system_key !== 'new_template') {
+        throw new DbWorkerError('ERR_INVALID', 'new_chat_template_identity_invalid')
+      }
+      if (!template) {
+        const id = randomUUID()
+        const now = Date.now()
+        this.db.prepare(`
+          INSERT INTO convo(id, project_id, title, created_at, updated_at, meta, system_key, template_revision)
+          VALUES (?, ?, 'New Chat', ?, ?, NULL, 'new_template', 0)
+        `).run(id, project.id, now, now)
+        this.db.prepare(`
+          INSERT INTO conversation_drafts(conversation_id, draft_text, draft_mode, editing_source_message_id, updated_at)
+          VALUES (?, '', 'compose', NULL, ?)
+        `).run(id, now)
+        template = { id, system_key: 'new_template' }
+      }
+      const contamination = this.db.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM message WHERE convo_id = @id) AS message_count,
+          (SELECT COUNT(*) FROM compatible_route_provenance r
+             JOIN message m ON m.id = r.request_message_id
+            WHERE m.convo_id = @id) AS route_count
+      `).get({ id: template.id }) as { message_count: number; route_count: number }
+      if (Number(contamination.message_count) > 0 || Number(contamination.route_count) > 0) {
+        throw new DbWorkerError('ERR_INVALID', 'new_chat_template_contaminated')
+      }
+      this.newProjectId = project.id
+      this.newTemplateConvoId = template.id
+    })
+    txn.immediate()
   }
 
   /**
@@ -1536,9 +1619,11 @@ export class DbWorkerRuntime {
 
   loadConvoRow(convoId: string) {
     return this.db.prepare(`
-      SELECT id, project_id, title, created_at, updated_at
-      FROM convo
-      WHERE id = @id
+      SELECT c.id, c.project_id, c.title, c.created_at, c.updated_at
+      FROM convo c
+      WHERE c.id = @id
+        AND COALESCE(c.system_key, '') <> 'new_template'
+        AND NOT EXISTS (SELECT 1 FROM project p WHERE p.id = c.project_id AND p.system_key = 'new')
       LIMIT 1
     `).get({ id: convoId }) as { id: string; project_id: string | null; title: string; created_at: number; updated_at: number } | undefined
   }
@@ -1555,7 +1640,10 @@ export class DbWorkerRuntime {
       FROM message m
       LEFT JOIN message_body mb ON mb.message_id = m.id
       LEFT JOIN convo c ON c.id = m.convo_id
+      LEFT JOIN project p ON p.id = c.project_id
       WHERE m.id = @id
+        AND COALESCE(c.system_key, '') <> 'new_template'
+        AND COALESCE(p.system_key, '') <> 'new'
       LIMIT 1
     `).get({ id: messageId }) as {
       id: string
@@ -1617,6 +1705,7 @@ export class DbWorkerRuntime {
     const stmt = this.db.prepare(`
       SELECT id, name, created_at, updated_at
       FROM project
+      WHERE COALESCE(system_key, '') <> 'new'
       ORDER BY created_at ASC
     `)
     const rows = stmt.all() as Array<{ id: string; name: string; created_at: number; updated_at: number }>
@@ -1632,8 +1721,11 @@ export class DbWorkerRuntime {
 
   *iterateConvoDocs(): Iterable<SearchDocInput> {
     const stmt = this.db.prepare(`
-      SELECT id, project_id, title, created_at, updated_at
-      FROM convo
+      SELECT c.id, c.project_id, c.title, c.created_at, c.updated_at
+      FROM convo c
+      LEFT JOIN project p ON p.id = c.project_id
+      WHERE COALESCE(c.system_key, '') <> 'new_template'
+        AND COALESCE(p.system_key, '') <> 'new'
       ORDER BY created_at ASC
     `)
     const rows = stmt.all() as Array<{ id: string; project_id: string | null; title: string; created_at: number; updated_at: number }>
@@ -1653,7 +1745,10 @@ export class DbWorkerRuntime {
       FROM message m
       LEFT JOIN message_body mb ON mb.message_id = m.id
       LEFT JOIN convo c ON c.id = m.convo_id
+      LEFT JOIN project p ON p.id = c.project_id
       WHERE m.status = 'final'
+        AND COALESCE(c.system_key, '') <> 'new_template'
+        AND COALESCE(p.system_key, '') <> 'new'
       ORDER BY m.created_at ASC
     `)
 

@@ -99,9 +99,13 @@ export class ContextRepo {
         m.reasoning_duration_ms AS reasoningDurationMs,
         m.reasoning_end_reason AS reasoningEndReason,
         m.reasoning_duration_is_fallback AS reasoningDurationIsFallback,
-        b.body
+        b.body,
+        COALESCE(route_choice.route_provenance_id, request_route.route_provenance_id) AS routeProvenanceId,
+        route_choice.choice_index AS choiceIndex
       FROM message m
       LEFT JOIN message_body b ON b.message_id = m.id
+      LEFT JOIN compatible_route_provenance request_route ON request_route.request_message_id = m.id
+      LEFT JOIN compatible_route_choices route_choice ON route_choice.message_id = m.id
       WHERE m.answer_root_id = @answerRootId
         AND m.question_id = @questionId
         AND m.role IN ('assistant','tool')
@@ -277,6 +281,8 @@ export class ContextRepo {
           questionId: r.question_id ? String(r.question_id) : null,
           body: typeof r.body === 'string' ? r.body : String(r.body ?? ''),
           meta,
+          routeProvenanceId: r.routeProvenanceId ? String(r.routeProvenanceId) : null,
+          choiceIndex: typeof r.choiceIndex === 'number' ? r.choiceIndex : null,
         }
         messages.push(row)
         includedIds.push(row.id)
@@ -295,6 +301,8 @@ export class ContextRepo {
         questionId: m.questionId,
         body: m.body,
         meta: (m.meta as any) ?? null,
+        routeProvenanceId: m.routeProvenanceId,
+        choiceIndex: m.choiceIndex,
       }))
 
     return {
@@ -379,6 +387,8 @@ export class ContextRepo {
           questionId: r.question_id ? String(r.question_id) : null,
           body: typeof r.body === 'string' ? r.body : String(r.body ?? ''),
           meta,
+          routeProvenanceId: r.routeProvenanceId ? String(r.routeProvenanceId) : null,
+          choiceIndex: typeof r.choiceIndex === 'number' ? r.choiceIndex : null,
         }
         filtered.push(row)
         includedIds.push(row.id)
@@ -397,6 +407,8 @@ export class ContextRepo {
         questionId: m.questionId,
         body: m.body,
         meta: (m.meta as any) ?? null,
+        routeProvenanceId: m.routeProvenanceId,
+        choiceIndex: m.choiceIndex,
       }))
 
     return {

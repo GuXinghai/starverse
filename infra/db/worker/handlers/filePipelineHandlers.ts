@@ -212,6 +212,12 @@ export function registerFilePipelineHandlers(register: RegisterHandler, runtime:
 }
 
 function registerConversationAttachmentHandlers(register: RegisterHandler, runtime: DbWorkerRuntime) {
+  const touchTemplateRevision = (conversationId: string) => {
+    runtime.db.prepare(`
+      UPDATE convo SET template_revision = template_revision + 1, updated_at = ?
+      WHERE id = ? AND system_key = 'new_template'
+    `).run(Date.now(), conversationId)
+  }
   register('conversationDraft.restore', (raw) => {
     const input = RestoreConversationDraftSchema.parse(raw)
     return runtime.conversationAttachmentService.restoreDraft(input)
@@ -219,12 +225,15 @@ function registerConversationAttachmentHandlers(register: RegisterHandler, runti
 
   register('conversationDraft.updateText', (raw) => {
     const input = UpdateConversationDraftTextSchema.parse(raw)
-    return runtime.conversationAttachmentService.updateDraftText(input)
+    const result = runtime.conversationAttachmentService.updateDraftText(input)
+    touchTemplateRevision(input.conversationId)
+    return result
   })
 
   register('conversationDraft.addAttachment', (raw) => {
     const input = AddDraftAttachmentSchema.parse(raw)
     const attachment = runtime.conversationAttachmentService.addDraftAttachment(input)
+    touchTemplateRevision(input.conversationId)
     runtime.fileTypeDetectionCoordinator.scheduleDraftAttachmentDetection(attachment.assetId, {
       detectionTrigger: 'upload',
     })
@@ -233,12 +242,16 @@ function registerConversationAttachmentHandlers(register: RegisterHandler, runti
 
   register('conversationDraft.removeAttachment', (raw) => {
     const input = RemoveDraftAttachmentSchema.parse(raw)
-    return runtime.conversationAttachmentService.removeDraftAttachment(input)
+    const result = runtime.conversationAttachmentService.removeDraftAttachment(input)
+    touchTemplateRevision(input.conversationId)
+    return result
   })
 
   register('conversationDraft.updateAttachmentSettings', (raw) => {
     const input = UpdateDraftAttachmentSettingsSchema.parse(raw)
-    return runtime.conversationAttachmentService.updateDraftAttachmentSettings(input)
+    const result = runtime.conversationAttachmentService.updateDraftAttachmentSettings(input)
+    touchTemplateRevision(input.conversationId)
+    return result
   })
 
   register('conversationDraft.getDfcOptions', (raw) => {

@@ -175,6 +175,11 @@ export class SearchRepo {
       JOIN search_docs d ON d.doc_id = search_fts.rowid
       WHERE search_fts MATCH @query
         AND d.entity_type IN (${placeholders})
+        AND NOT EXISTS (
+          SELECT 1 FROM project hidden
+          WHERE hidden.system_key = 'new'
+            AND (hidden.id = d.project_id OR hidden.id = (SELECT project_id FROM convo WHERE id = d.convo_id))
+        )
         AND (@projectId IS NULL OR d.project_id = @projectId)
         AND (@convoId IS NULL OR d.convo_id = @convoId)
         AND (@t0 IS NULL OR d.created_at >= @t0)
@@ -243,6 +248,11 @@ export class SearchRepo {
       JOIN search_docs d ON d.doc_id = search_fts.rowid
       WHERE (search_fts.title LIKE @likeQuery OR search_fts.body LIKE @likeQuery)
         AND d.entity_type IN (${placeholders})
+        AND NOT EXISTS (
+          SELECT 1 FROM project hidden
+          WHERE hidden.system_key = 'new'
+            AND (hidden.id = d.project_id OR hidden.id = (SELECT project_id FROM convo WHERE id = d.convo_id))
+        )
         AND (@projectId IS NULL OR d.project_id = @projectId)
         AND (@convoId IS NULL OR d.convo_id = @convoId)
         AND (@t0 IS NULL OR d.created_at >= @t0)
@@ -268,6 +278,8 @@ export class SearchRepo {
     const offset = Math.max(0, params.offset ?? 0)
 
     const filters: string[] = []
+    filters.push(`COALESCE(c.system_key, '') <> 'new_template'`)
+    filters.push(`NOT EXISTS (SELECT 1 FROM project hidden WHERE hidden.id = c.project_id AND hidden.system_key = 'new')`)
     const bind: Record<string, unknown> = {
       query: params.query,
       limit,

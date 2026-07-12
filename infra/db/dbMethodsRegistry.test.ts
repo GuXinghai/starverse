@@ -36,6 +36,15 @@ describe('dbMethodsRegistry', () => {
     expect(DB_RENDERER_METHOD_SET.has('modelCatalog.list' as any)).toBe(false)
     expect(DB_RENDERER_METHOD_SET.has('modelCatalog.queryCore' as any)).toBe(false)
     expect(DB_RENDERER_METHOD_SET.has('reasoningIndex.list' as any)).toBe(false)
+    expect(DB_RENDERER_METHOD_SET.has('compatibleProvider.create')).toBe(false)
+    expect(DB_RENDERER_METHOD_SET.has('compatibleEndpoint.createRevision')).toBe(false)
+    expect(DB_RENDERER_METHOD_SET.has('compatibleRoute.prepareTurn')).toBe(false)
+    expect(DB_RENDERER_METHOD_SET.has('compatibleDiagnostics.createRawExtensions')).toBe(false)
+    expect(DB_RENDERER_METHOD_SET.has('compatibleProjection.saveStreaming')).toBe(false)
+    expect(DB_RENDERER_METHOD_SET.has('compatibleProjection.finalizeRoute')).toBe(false)
+    expect(DB_RENDERER_METHOD_SET.has('compatibleProjection.loadBundle')).toBe(true)
+    expect(DB_RENDERER_METHOD_SET.has('compatibleProjection.recoverIncomplete')).toBe(false)
+    expect(DB_RENDERER_METHOD_SET.has('answerGeneration.recoverInterrupted')).toBe(false)
   })
 
   it('derives worker method set from registry flags', () => {
@@ -51,6 +60,13 @@ describe('dbMethodsRegistry', () => {
     expect(DB_WORKER_METHOD_SET.has('reasoningIndex.syncFromCatalog' as any)).toBe(false)
     expect(DB_WORKER_METHOD_SET.has('health.stats')).toBe(false)
     expect(DB_WORKER_METHOD_SET.has('health.ping')).toBe(true)
+    expect(DB_WORKER_METHOD_SET.has('compatibleProvider.create')).toBe(true)
+    expect(DB_WORKER_METHOD_SET.has('compatibleEndpoint.createRevision')).toBe(true)
+    expect(DB_WORKER_METHOD_SET.has('compatibleRoute.prepareTurn')).toBe(true)
+    expect(DB_WORKER_METHOD_SET.has('compatibleDiagnostics.createRawExtensions')).toBe(true)
+    expect(DB_WORKER_METHOD_SET.has('compatibleProjection.finalizeRoute')).toBe(true)
+    expect(DB_WORKER_METHOD_SET.has('compatibleProjection.recoverIncomplete')).toBe(true)
+    expect(DB_WORKER_METHOD_SET.has('answerGeneration.recoverInterrupted')).toBe(true)
   })
 
   it('keeps replay preparation method available to renderer callers', () => {
