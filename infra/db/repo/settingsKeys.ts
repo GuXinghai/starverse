@@ -10,6 +10,8 @@ export const SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED = 'chat.reasonin
 export const SETTINGS_KEY_CHAT_REASONING_PANEL_AUTO_COLLAPSE_AFTER_REASONING = 'chat.reasoning_panel.auto_collapse_after_reasoning' as const
 export const SETTINGS_KEY_CHAT_DRAFT_PREFIX = 'chat.draft::' as const
 export const SETTINGS_KEY_NETWORK_PROXY = 'network.proxy' as const
+export const SETTINGS_KEY_NEW_CHAT_LIFECYCLE = 'chat.new.lifecycle.v1' as const
+export const SETTINGS_KEY_LAST_FORMAL_CONVERSATION = 'chat.last_formal_conversation.v1' as const
 
 export function buildChatDraftSettingsKey(convoId: string, branchId: string): string {
   const convo = String(convoId ?? '').trim()

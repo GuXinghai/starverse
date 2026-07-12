@@ -10,8 +10,13 @@ import {
   FindProjectByNameSchema,
   CountConversationsSchema,
 } from '../../validation'
+import { DbWorkerError } from '../../errors'
 export function registerProjectHandlers(register: RegisterHandler, runtime: DbWorkerRuntime) {
   const rt = runtime as any
+  const assertMutableProject = (id: string) => {
+    const row = rt.db.prepare('SELECT system_key FROM project WHERE id = ?').get(id) as { system_key?: string | null } | undefined
+    if (row?.system_key) throw new DbWorkerError('ERR_INVALID', `system_project_mutation_forbidden:${row.system_key}`)
+  }
 
   register('health.ping', () => ({ ok: true, now: Date.now() }))
     
@@ -51,6 +56,7 @@ export function registerProjectHandlers(register: RegisterHandler, runtime: DbWo
 
   register('project.save', (raw) => {
       const input = SaveProjectSchema.parse(raw)
+      assertMutableProject(input.id)
       const saveTxn = rt.db.transaction(() => {
         rt.projectRepo.save(input)
         const saved = rt.projectRepo.findById(input.id)
@@ -74,7 +80,6 @@ export function registerProjectHandlers(register: RegisterHandler, runtime: DbWo
 
   register('project.delete', (raw) => {
       const input = DeleteProjectSchema.parse(raw)
-      
       // 禁止删除系统项目（Inbox）
       if (input.id === rt.inboxId) {
         return {
@@ -85,6 +90,7 @@ export function registerProjectHandlers(register: RegisterHandler, runtime: DbWo
           },
         }
       }
+      assertMutableProject(input.id)
 
       const deleteTxn = rt.db.transaction(() => {
         rt.projectRepo.delete(input.id)
@@ -102,7 +108,8 @@ export function registerProjectHandlers(register: RegisterHandler, runtime: DbWo
 
   register('project.findById', (raw) => {
       const input = FindProjectByIdSchema.parse(raw)
-      return rt.projectRepo.findById(input.id)
+      const project = rt.projectRepo.findById(input.id)
+      return project?.systemKey === 'new' ? null : project
     })
 
   register('project.findByName', (raw) => {

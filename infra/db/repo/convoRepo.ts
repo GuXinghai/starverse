@@ -17,7 +17,9 @@ const mapRow = (row: any): ConvoRecord => ({
   title: row.title,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
-  meta: row.meta ? safeParse(row.meta) : null
+  meta: row.meta ? safeParse(row.meta) : null,
+  systemKey: row.system_key ?? null,
+  templateRevision: Number(row.template_revision ?? 0),
 })
 
 const safeParse = (input: string): Record<string, unknown> | null => {
@@ -40,8 +42,10 @@ export class ConvoRepo {
   private projectExistsStmt: BetterSqlite3.Statement
 
   private listBase = `
-    SELECT id, project_id, title, created_at, updated_at, meta
-    FROM convo
+    SELECT c.id, c.project_id, c.title, c.created_at, c.updated_at, c.meta,
+           c.system_key, c.template_revision
+    FROM convo c
+    LEFT JOIN project p ON p.id = c.project_id
   `
 
   constructor(private db: SqlDatabase) {
@@ -118,7 +122,9 @@ export class ConvoRepo {
       title: input.title,
       createdAt: now,
       updatedAt: now,
-      meta: input.meta ?? null
+      meta: input.meta ?? null,
+      systemKey: null,
+      templateRevision: 0,
     }
   }
 
@@ -233,9 +239,9 @@ export class ConvoRepo {
   list(params: ListConvoParams = {}): ConvoRecord[] {
     const limit = params.limit ?? 50
     const offset = params.offset ?? 0
-    const orderBy = params.order === 'createdAt' ? 'created_at' : 'updated_at'
+    const orderBy = params.order === 'createdAt' ? 'c.created_at' : 'c.updated_at'
 
-    let sql = `${this.listBase}`
+    let sql = `${this.listBase} WHERE COALESCE(c.system_key, '') <> 'new_template' AND COALESCE(p.system_key, '') <> 'new'`
     const bind: Record<string, unknown> = {
       limit,
       offset
@@ -247,9 +253,9 @@ export class ConvoRepo {
     // - string: 筛选指定项目
     if (params.projectId !== undefined) {
       if (params.projectId === null) {
-        sql += ` WHERE project_id IS NULL`
+        sql += ` AND c.project_id IS NULL`
       } else {
-        sql += ` WHERE project_id = @projectId`
+        sql += ` AND c.project_id = @projectId`
         bind.projectId = params.projectId
       }
     }

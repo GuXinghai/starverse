@@ -9,6 +9,8 @@ import { registerProviderFileInputHandlers } from './handlers/providerFileInputH
 import { registerEnginePluginLifecycleHandlers } from './handlers/enginePluginLifecycleHandlers'
 import { registerSearchMaintenanceHandlers } from './handlers/searchMaintenanceHandlers'
 import { registerUsagePrefsSettingsHandlers } from './handlers/usagePrefsSettingsHandlers'
+import { registerCompatibleProviderHandlers } from './handlers/compatibleProviderHandlers'
+import { registerSystemChatTemplateHandlers } from './handlers/systemChatTemplateHandlers'
 import type { DbWorkerRuntime } from './runtime'
 
 export type WorkerHandlerContainer = Readonly<{
@@ -29,6 +31,8 @@ export function createWorkerHandlerContainer(runtime: DbWorkerRuntime): WorkerHa
   registerBranchContextHandlers(register, runtime)
   registerSearchMaintenanceHandlers(register, runtime)
   registerUsagePrefsSettingsHandlers(register, runtime)
+  registerCompatibleProviderHandlers(register, runtime)
+  registerSystemChatTemplateHandlers(register, runtime)
 
   assertDbMethodCoverage(
     'DbWorkerRuntime.registerHandlers',

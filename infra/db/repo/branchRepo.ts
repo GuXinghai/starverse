@@ -27,6 +27,8 @@ export type BranchPathMessage = Readonly<{
   questionId: string | null
   body: string
   meta: Record<string, unknown> | null
+  routeProvenanceId: string | null
+  choiceIndex: number | null
 }>
 
 const mapPathRow = (row: any): BranchPathMessage => {
@@ -53,6 +55,8 @@ const mapPathRow = (row: any): BranchPathMessage => {
     questionId: row.question_id ? String(row.question_id) : null,
     body: typeof row.body === 'string' ? row.body : String(row.body ?? ''),
     meta: mergedMeta,
+    routeProvenanceId: row.routeProvenanceId ? String(row.routeProvenanceId) : null,
+    choiceIndex: typeof row.choiceIndex === 'number' ? row.choiceIndex : null,
   }
 }
 
@@ -304,10 +308,14 @@ export class BranchRepo {
         m.reasoning_end_reason AS reasoningEndReason,
         m.reasoning_duration_is_fallback AS reasoningDurationIsFallback,
         b.body,
+        COALESCE(route_choice.route_provenance_id, request_route.route_provenance_id) AS routeProvenanceId,
+        route_choice.choice_index AS choiceIndex,
         chain.depth
       FROM chain
       JOIN message m ON m.id = chain.id
       LEFT JOIN message_body b ON b.message_id = m.id
+      LEFT JOIN compatible_route_provenance request_route ON request_route.request_message_id = m.id
+      LEFT JOIN compatible_route_choices route_choice ON route_choice.message_id = m.id
       ORDER BY chain.depth DESC
     `)
 

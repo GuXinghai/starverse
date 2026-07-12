@@ -22,7 +22,9 @@ const mapRow = (row: any): ProjectRecord => ({
   name: row.name,
   createdAt: row.created_at,
   updatedAt: row.updated_at,
-  meta: row.meta ? safeParse(row.meta) : null
+  meta: row.meta ? safeParse(row.meta) : null,
+  isSystem: row.is_system === 1,
+  systemKey: row.system_key ?? null,
 })
 
 export class ProjectRepo {
@@ -32,7 +34,7 @@ export class ProjectRepo {
   private touchStmt: BetterSqlite3.Statement
 
   private listBase = `
-    SELECT id, name, created_at, updated_at, meta
+    SELECT id, name, created_at, updated_at, meta, is_system, system_key
     FROM project
   `
 
@@ -78,7 +80,9 @@ export class ProjectRepo {
       name: input.name,
       createdAt: payload.createdAt,
       updatedAt: payload.updatedAt,
-      meta: input.meta ?? null
+      meta: input.meta ?? null,
+      isSystem: false,
+      systemKey: null,
     }
   }
 
@@ -120,7 +124,7 @@ export class ProjectRepo {
    * 查询项目列表
    */
   list(params: ListProjectParams = {}): ProjectRecord[] {
-    let sql = this.listBase
+    let sql = `${this.listBase} WHERE COALESCE(system_key, '') <> 'new'`
     const bindings: any = {}
 
     // 排序
@@ -162,7 +166,7 @@ export class ProjectRepo {
    * 根据名称查询项目（精确匹配）
    */
   findByName(name: string): ProjectRecord | null {
-    const sql = this.listBase + ' WHERE name = @name'
+    const sql = this.listBase + " WHERE name = @name AND COALESCE(system_key, '') = ''"
     const stmt = this.db.prepare(sql)
     const row = stmt.get({ name })
     return row ? mapRow(row) : null

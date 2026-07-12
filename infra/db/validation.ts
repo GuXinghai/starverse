@@ -110,6 +110,43 @@ import type {
 
 export const jsonSchema = z.record(z.any())
 
+// Compatible provider schemas are strict and secret-aware; do not use jsonSchema for them.
+export {
+  CreateCompatibleProviderInputSchema,
+  UpdateCompatibleProviderInputSchema,
+  TombstoneCompatibleProviderInputSchema,
+  CreateCompatibleCredentialDescriptorInputSchema,
+  DeleteCompatibleCredentialDescriptorInputSchema,
+  CreateCompatibleEndpointRevisionInputSchema,
+} from './repo/compatibleProviderRepo'
+export {
+  CreateCompatibleRequestProfileInputSchema,
+  CreateCompatibleRequestFieldMappingInputSchema,
+  CreateCompatibleReasoningMappingInputSchema,
+  CreateCompatibleInlinePolicyInputSchema,
+  CreateCompatibleResponseProfileInputSchema,
+} from './repo/compatibleProfileRepo'
+export {
+  ApplyCompatibleRemoteSyncSuccessInputSchema,
+  RecordCompatibleCatalogSyncFailureInputSchema,
+  UpsertCompatibleManualModelInputSchema,
+  UpsertCompatibleCatalogSyncStateInputSchema,
+} from './repo/compatibleCatalogRepo'
+export {
+  CreateCompatibleRouteProvenanceInputSchema,
+  CreateCompatibleRouteChoiceInputSchema,
+} from './repo/compatibleRouteRepo'
+export {
+  SaveCompatibleToolCallInputSchema,
+  CreateCompatibleToolResultInputSchema,
+  CompatibleToolCallKeySchema,
+} from './repo/compatibleToolRepo'
+export {
+  UpsertCompatibleDiscoveredFieldInputSchema,
+  CreateCompatibleRawExtensionRecordInputSchema,
+} from './repo/compatibleDiagnosticsRepo'
+export { SaveCompatibleReasoningChoiceInputSchema } from './repo/compatibleReasoningRepo'
+
 // ========== Project Schemas ==========
 
 export const CreateProjectSchema: ZodType<CreateProjectInput> = z.object({
@@ -825,6 +862,29 @@ export const SwitchCandidateSchema: ZodType<SwitchCandidateInput> = z.object({
 export const RegenerateFromQuestionSchema: ZodType<RegenerateFromQuestionInput> = z.object({
   branchId: z.string().min(1),
   questionId: z.string().min(1),
+})
+
+export const RegenerateQuestionWithCurrentConfigSchema = z.object({
+  operationId: z.string().trim().min(1).max(256),
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+  snapshot: jsonSchema,
+  compatibleExecutionPins: jsonSchema.optional(),
+})
+
+export const RetryChosenAnswerSchema = z.object({
+  operationId: z.string().trim().min(1).max(256),
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+  targetAnswerRootId: z.string().min(1),
+  compatibleExecutionPins: jsonSchema.optional(),
+})
+
+export const FinalizeAssistantAnswerGenerationSchema = z.object({
+  answerRootId: z.string().min(1),
+  state: z.enum(['completed', 'failed', 'cancelled']),
+  errorCode: z.string().max(256).nullable().optional(),
+  errorMessage: z.string().max(4096).nullable().optional(),
 })
 
 export const GetBranchPathSchema: ZodType<GetBranchPathParams> = z.object({

@@ -37,6 +37,8 @@ const mapRow = (row: any): MessageRecord => {
     createdAt: row.created_at,
     body: row.body,
     meta,
+    ...(row.routeProvenanceId ? { routeProvenanceId: String(row.routeProvenanceId) } : {}),
+    ...(typeof row.choiceIndex === 'number' ? { choiceIndex: row.choiceIndex } : {}),
   }
 }
 
@@ -558,9 +560,13 @@ export class MessageRepo {
         m.reasoning_duration_ms AS reasoningDurationMs,
         m.reasoning_end_reason AS reasoningEndReason,
         m.reasoning_duration_is_fallback AS reasoningDurationIsFallback,
-        b.body
+        b.body,
+        COALESCE(route_choice.route_provenance_id, request_route.route_provenance_id) AS routeProvenanceId,
+        route_choice.choice_index AS choiceIndex
       FROM message m
       JOIN message_body b ON b.message_id = m.id
+      LEFT JOIN compatible_route_provenance request_route ON request_route.request_message_id = m.id
+      LEFT JOIN compatible_route_choices route_choice ON route_choice.message_id = m.id
       WHERE m.convo_id = @convoId
         ${params.fromSeq !== undefined ? 'AND m.seq >= @fromSeq' : ''}
       ORDER BY m.seq ${direction}

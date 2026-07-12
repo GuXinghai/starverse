@@ -146,6 +146,12 @@ describe('SettingsRepo', () => {
       noProxy: '',
       strictSSL: true,
     })
+    expect(repo.getNetworkProxySettingsStrict()).toEqual({
+      proxyMode: 'environment',
+      manualProxyUrl: '',
+      noProxy: '',
+      strictSSL: true,
+    })
 
     repo.setNetworkProxySettings({
       proxyMode: 'manual',
@@ -159,6 +165,24 @@ describe('SettingsRepo', () => {
       noProxy: 'localhost,.github.com',
       strictSSL: true,
     })
+    expect(repo.getNetworkProxySettingsStrict()).toEqual({
+      proxyMode: 'manual',
+      manualProxyUrl: 'http://127.0.0.1:7890',
+      noProxy: 'localhost,.github.com',
+      strictSSL: true,
+    })
+  })
+
+  it('compatible strict proxy reads reject a corrupt stored route without changing legacy normalization', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new SettingsRepo(db)
+    db.prepare(`
+      INSERT INTO settings_kv (key, value_json, created_at_ms, updated_at_ms)
+      VALUES ('network.proxy', @value, 1, 1)
+    `).run({ value: JSON.stringify({ proxyMode: 'unknown', manualProxyUrl: '', noProxy: '', strictSSL: true }) })
+    expect(repo.getNetworkProxySettings().proxyMode).toBe('environment')
+    expect(() => repo.getNetworkProxySettingsStrict()).toThrow(/invalid/u)
   })
 
   it('rejects credential-bearing proxy URLs before persistence', () => {
@@ -173,5 +197,26 @@ describe('SettingsRepo', () => {
       strictSSL: true,
     })).toThrow(/proxy credentials/u)
     expect(repo.getNetworkProxySettings().manualProxyUrl).toBe('')
+  })
+
+  it('defaults new chat lifecycle to a clean template and persists explicit policy', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new SettingsRepo(db)
+    expect(repo.getNewChatLifecycleSettings()).toEqual({
+      startupNavigation: 'open_new',
+      startupTemplateReset: { modelConfig: true, draftAttachments: true },
+      postSendTemplateReset: 'reset_all',
+    })
+    repo.setNewChatLifecycleSettings({
+      startupNavigation: 'projects_only',
+      startupTemplateReset: { modelConfig: false, draftAttachments: true },
+      postSendTemplateReset: 'preserve_model_config',
+    })
+    expect(repo.getNewChatLifecycleSettings()).toEqual({
+      startupNavigation: 'projects_only',
+      startupTemplateReset: { modelConfig: false, draftAttachments: true },
+      postSendTemplateReset: 'preserve_model_config',
+    })
   })
 })

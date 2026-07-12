@@ -30,7 +30,9 @@ CREATE TABLE IF NOT EXISTS convo (
   title TEXT NOT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  meta TEXT
+  meta TEXT,
+  system_key TEXT,
+  template_revision INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE TABLE IF NOT EXISTS tag (
@@ -207,6 +209,40 @@ CREATE TABLE IF NOT EXISTS file_assets (
   updated_at INTEGER NOT NULL,
   deleted_at INTEGER
 );
+
+-- Immutable request semantics for assistant answers. Credentials and transient
+-- runtime objects are intentionally excluded from snapshot_json.
+CREATE TABLE IF NOT EXISTS assistant_answer_generation_snapshots (
+  answer_root_id TEXT PRIMARY KEY REFERENCES message(id) ON DELETE CASCADE,
+  schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+  snapshot_json TEXT NOT NULL CHECK (
+    json_valid(snapshot_json) AND json_type(snapshot_json) = 'object'
+    AND length(CAST(snapshot_json AS BLOB)) <= 1048576
+  ),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS assistant_answer_generation_operations (
+  operation_id TEXT PRIMARY KEY CHECK (length(trim(operation_id)) BETWEEN 1 AND 256),
+  action_kind TEXT NOT NULL CHECK (action_kind IN ('regenerate', 'retry_replace', 'retry_as_new')),
+  branch_id TEXT NOT NULL REFERENCES branch(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+  target_answer_root_id TEXT REFERENCES message(id) ON DELETE RESTRICT,
+  result_answer_root_id TEXT NOT NULL UNIQUE REFERENCES message(id) ON DELETE CASCADE,
+  state TEXT NOT NULL CHECK (state IN ('committed', 'streaming', 'completed', 'failed', 'cancelled')),
+  error_code TEXT,
+  error_message TEXT,
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  terminal_at_ms INTEGER,
+  CHECK (
+    (state IN ('committed', 'streaming') AND terminal_at_ms IS NULL) OR
+    (state IN ('completed', 'failed', 'cancelled') AND terminal_at_ms = updated_at_ms)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_answer_generation_operation_branch_question
+  ON assistant_answer_generation_operations(branch_id, question_id, created_at_ms DESC);
 
 CREATE TABLE IF NOT EXISTS file_blobs (
   id TEXT PRIMARY KEY,
@@ -425,6 +461,17 @@ CREATE TABLE IF NOT EXISTS provider_file_upload_cache (
   metadata_json TEXT,
   created_at_ms INTEGER NOT NULL,
   updated_at_ms INTEGER NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS new_chat_materializations (
+  request_id TEXT PRIMARY KEY,
+  template_convo_id TEXT NOT NULL REFERENCES convo(id) ON DELETE RESTRICT,
+  template_revision INTEGER NOT NULL,
+  target_convo_id TEXT NOT NULL UNIQUE REFERENCES convo(id) ON DELETE CASCADE,
+  branch_id TEXT NOT NULL UNIQUE REFERENCES branch(id) ON DELETE CASCADE,
+  question_id TEXT NOT NULL UNIQUE REFERENCES message(id) ON DELETE CASCADE,
+  assistant_id TEXT NOT NULL UNIQUE REFERENCES message(id) ON DELETE CASCADE,
+  created_at INTEGER NOT NULL
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_provider_file_upload_cache_key
@@ -981,3 +1028,772 @@ CREATE TABLE IF NOT EXISTS user_dashboard_prefs (
   is_default INTEGER DEFAULT 0,
   updated_at INTEGER NOT NULL
 );
+
+-- ========== OpenAI Chat Completions-compatible (fresh schema only) ==========
+
+CREATE TABLE IF NOT EXISTS compatible_provider_instances (
+  provider_instance_id TEXT PRIMARY KEY CHECK (provider_instance_id GLOB 'ocp_provider_*' AND length(provider_instance_id) BETWEEN 21 AND 109),
+  protocol_key TEXT NOT NULL CHECK (protocol_key = 'openai_chat_compatible'),
+  display_name TEXT NOT NULL CHECK (length(trim(display_name)) BETWEEN 1 AND 256),
+  status TEXT NOT NULL CHECK (status IN ('active', 'disabled', 'deleted')),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  deleted_at_ms INTEGER,
+  CHECK (
+    (status = 'deleted' AND deleted_at_ms IS NOT NULL AND deleted_at_ms >= created_at_ms) OR
+    (status != 'deleted' AND deleted_at_ms IS NULL)
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_compatible_provider_active_name
+  ON compatible_provider_instances(lower(trim(display_name)))
+  WHERE deleted_at_ms IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_compatible_provider_status
+  ON compatible_provider_instances(status, updated_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS compatible_credential_descriptors (
+  credential_version_ref TEXT PRIMARY KEY CHECK (credential_version_ref GLOB 'ocp_credential_*' AND length(credential_version_ref) BETWEEN 23 AND 111),
+  provider_instance_id TEXT NOT NULL,
+  version INTEGER NOT NULL CHECK (version > 0),
+  auth_mode TEXT NOT NULL CHECK (auth_mode IN ('none', 'bearer', 'basic', 'custom_headers')),
+  backend TEXT NOT NULL CHECK (backend = 'electron_safe_storage'),
+  masked_summary_json TEXT NOT NULL CHECK (json_valid(masked_summary_json)),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  deleted_at_ms INTEGER CHECK (deleted_at_ms IS NULL OR deleted_at_ms >= created_at_ms),
+  FOREIGN KEY (provider_instance_id) REFERENCES compatible_provider_instances(provider_instance_id) ON DELETE RESTRICT,
+  UNIQUE (provider_instance_id, version),
+  UNIQUE (provider_instance_id, credential_version_ref)
+);
+
+CREATE INDEX IF NOT EXISTS idx_compatible_credential_provider
+  ON compatible_credential_descriptors(provider_instance_id, version DESC);
+
+CREATE TABLE IF NOT EXISTS compatible_request_profiles (
+  request_profile_id TEXT NOT NULL CHECK (request_profile_id GLOB 'ocp_request_profile_*' AND length(request_profile_id) BETWEEN 28 AND 116),
+  version INTEGER NOT NULL CHECK (version > 0),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+  config_json TEXT NOT NULL CHECK (json_valid(config_json)),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  PRIMARY KEY (request_profile_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS compatible_request_field_mappings (
+  mapping_id TEXT NOT NULL CHECK (mapping_id GLOB 'ocp_request_mapping_*' AND length(mapping_id) BETWEEN 28 AND 116),
+  version INTEGER NOT NULL CHECK (version > 0),
+  request_profile_id TEXT NOT NULL,
+  request_profile_version INTEGER NOT NULL CHECK (request_profile_version > 0),
+  target_path_json TEXT NOT NULL CHECK (json_valid(target_path_json) AND json_type(target_path_json) = 'array'),
+  config_json TEXT NOT NULL CHECK (json_valid(config_json)),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  PRIMARY KEY (mapping_id, version),
+  FOREIGN KEY (request_profile_id, request_profile_version)
+    REFERENCES compatible_request_profiles(request_profile_id, version) ON DELETE RESTRICT,
+  UNIQUE (request_profile_id, request_profile_version, target_path_json)
+);
+
+CREATE INDEX IF NOT EXISTS idx_compatible_request_mapping_profile
+  ON compatible_request_field_mappings(request_profile_id, request_profile_version);
+
+CREATE TABLE IF NOT EXISTS compatible_reasoning_mappings (
+  mapping_id TEXT NOT NULL CHECK (mapping_id GLOB 'ocp_reasoning_mapping_*' AND length(mapping_id) BETWEEN 30 AND 118),
+  version INTEGER NOT NULL CHECK (version > 0),
+  mode TEXT NOT NULL CHECK (mode IN ('custom_preferred_with_builtin_fallback', 'custom_only')),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+  config_json TEXT NOT NULL CHECK (json_valid(config_json)),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  PRIMARY KEY (mapping_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS compatible_inline_policies (
+  inline_policy_id TEXT NOT NULL CHECK (inline_policy_id GLOB 'ocp_inline_policy_*' AND length(inline_policy_id) BETWEEN 26 AND 114),
+  version INTEGER NOT NULL CHECK (version > 0),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+  config_json TEXT NOT NULL CHECK (json_valid(config_json)),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  PRIMARY KEY (inline_policy_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS compatible_response_profiles (
+  response_profile_id TEXT NOT NULL CHECK (response_profile_id GLOB 'ocp_response_profile_*' AND length(response_profile_id) BETWEEN 29 AND 117),
+  version INTEGER NOT NULL CHECK (version > 0),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+  reasoning_mapping_id TEXT NOT NULL,
+  reasoning_mapping_version INTEGER NOT NULL CHECK (reasoning_mapping_version > 0),
+  inline_policy_id TEXT NOT NULL,
+  inline_policy_version INTEGER NOT NULL CHECK (inline_policy_version > 0),
+  config_json TEXT NOT NULL CHECK (json_valid(config_json)),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  PRIMARY KEY (response_profile_id, version),
+  FOREIGN KEY (reasoning_mapping_id, reasoning_mapping_version)
+    REFERENCES compatible_reasoning_mappings(mapping_id, version) ON DELETE RESTRICT,
+  FOREIGN KEY (inline_policy_id, inline_policy_version)
+    REFERENCES compatible_inline_policies(inline_policy_id, version) ON DELETE RESTRICT,
+  UNIQUE (
+    response_profile_id, version,
+    reasoning_mapping_id, reasoning_mapping_version,
+    inline_policy_id, inline_policy_version
+  )
+);
+
+CREATE TABLE IF NOT EXISTS compatible_endpoint_revisions (
+  endpoint_revision_id TEXT PRIMARY KEY CHECK (endpoint_revision_id GLOB 'ocp_endpoint_*' AND length(endpoint_revision_id) BETWEEN 21 AND 109),
+  provider_instance_id TEXT NOT NULL,
+  revision INTEGER NOT NULL CHECK (revision > 0),
+  base_url TEXT NOT NULL CHECK (
+    length(trim(base_url)) BETWEEN 8 AND 2048 AND
+    instr(base_url, '@') = 0
+  ),
+  allow_insecure_http INTEGER NOT NULL CHECK (allow_insecure_http IN (0, 1)),
+  security_policy TEXT NOT NULL CHECK (security_policy IN ('compatibility_first', 'strict_ssrf')),
+  auth_mode TEXT NOT NULL CHECK (auth_mode IN ('none', 'bearer', 'basic', 'custom_headers')),
+  credential_version_ref TEXT,
+  auth_config_json TEXT NOT NULL CHECK (json_valid(auth_config_json)),
+  ordinary_headers_json TEXT NOT NULL CHECK (json_valid(ordinary_headers_json) AND json_type(ordinary_headers_json) = 'array'),
+  sensitive_header_refs_json TEXT NOT NULL CHECK (json_valid(sensitive_header_refs_json) AND json_type(sensitive_header_refs_json) = 'array'),
+  query_json TEXT NOT NULL CHECK (json_valid(query_json) AND json_type(query_json) = 'array'),
+  request_profile_id TEXT NOT NULL,
+  request_profile_version INTEGER NOT NULL CHECK (request_profile_version > 0),
+  response_profile_id TEXT NOT NULL,
+  response_profile_version INTEGER NOT NULL CHECK (response_profile_version > 0),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  FOREIGN KEY (provider_instance_id) REFERENCES compatible_provider_instances(provider_instance_id) ON DELETE RESTRICT,
+  FOREIGN KEY (provider_instance_id, credential_version_ref)
+    REFERENCES compatible_credential_descriptors(provider_instance_id, credential_version_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (request_profile_id, request_profile_version)
+    REFERENCES compatible_request_profiles(request_profile_id, version) ON DELETE RESTRICT,
+  FOREIGN KEY (response_profile_id, response_profile_version)
+    REFERENCES compatible_response_profiles(response_profile_id, version) ON DELETE RESTRICT,
+  UNIQUE (provider_instance_id, revision),
+  UNIQUE (provider_instance_id, endpoint_revision_id),
+  UNIQUE (
+    endpoint_revision_id, provider_instance_id, credential_version_ref,
+    request_profile_id, request_profile_version,
+    response_profile_id, response_profile_version
+  ),
+  CHECK (
+    (auth_mode = 'none' AND credential_version_ref IS NULL) OR
+    (auth_mode != 'none' AND credential_version_ref IS NOT NULL)
+  ),
+  CHECK (
+    base_url LIKE 'https://%' OR
+    (allow_insecure_http = 1 AND base_url LIKE 'http://%')
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_compatible_endpoint_provider_revision
+  ON compatible_endpoint_revisions(provider_instance_id, revision DESC);
+
+CREATE TABLE IF NOT EXISTS compatible_catalog_snapshots (
+  snapshot_id TEXT PRIMARY KEY CHECK (snapshot_id GLOB 'ocp_catalog_snapshot_*' AND length(snapshot_id) BETWEEN 29 AND 117),
+  provider_instance_id TEXT NOT NULL,
+  snapshot_sequence INTEGER NOT NULL CHECK (snapshot_sequence > 0),
+  observed_at_ms INTEGER NOT NULL CHECK (observed_at_ms >= 0),
+  model_count INTEGER NOT NULL CHECK (model_count >= 0),
+  checksum TEXT CHECK (checksum IS NULL OR length(checksum) BETWEEN 1 AND 256),
+  metadata_json TEXT CHECK (metadata_json IS NULL OR json_valid(metadata_json)),
+  FOREIGN KEY (provider_instance_id) REFERENCES compatible_provider_instances(provider_instance_id) ON DELETE RESTRICT,
+  UNIQUE (provider_instance_id, snapshot_sequence),
+  UNIQUE (provider_instance_id, snapshot_id)
+);
+
+CREATE TABLE IF NOT EXISTS compatible_model_records (
+  provider_instance_id TEXT NOT NULL,
+  model_id TEXT NOT NULL CHECK (length(trim(model_id)) BETWEEN 1 AND 512),
+  source TEXT NOT NULL CHECK (source IN ('remote_sync', 'manual')),
+  record_state TEXT NOT NULL CHECK (record_state IN ('active', 'stale')),
+  snapshot_id TEXT,
+  metadata_json TEXT NOT NULL CHECK (json_valid(metadata_json)),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  PRIMARY KEY (provider_instance_id, model_id, source),
+  FOREIGN KEY (provider_instance_id) REFERENCES compatible_provider_instances(provider_instance_id) ON DELETE RESTRICT,
+  FOREIGN KEY (provider_instance_id, snapshot_id)
+    REFERENCES compatible_catalog_snapshots(provider_instance_id, snapshot_id) ON DELETE RESTRICT,
+  CHECK (
+    (source = 'remote_sync' AND snapshot_id IS NOT NULL) OR
+    (source = 'manual' AND snapshot_id IS NULL)
+  ),
+  CHECK (source = 'remote_sync' OR record_state = 'active')
+);
+
+CREATE INDEX IF NOT EXISTS idx_compatible_model_provider_model
+  ON compatible_model_records(provider_instance_id, model_id);
+CREATE INDEX IF NOT EXISTS idx_compatible_model_provider_state
+  ON compatible_model_records(provider_instance_id, record_state, model_id);
+CREATE INDEX IF NOT EXISTS idx_compatible_model_snapshot
+  ON compatible_model_records(provider_instance_id, snapshot_id);
+
+CREATE TABLE IF NOT EXISTS compatible_catalog_sync_state (
+  provider_instance_id TEXT PRIMARY KEY,
+  status TEXT NOT NULL CHECK (status IN ('never', 'syncing', 'success', 'empty_success', 'failed', 'backoff')),
+  last_attempt_at_ms INTEGER,
+  last_success_at_ms INTEGER,
+  last_success_snapshot_id TEXT,
+  failure_count INTEGER NOT NULL DEFAULT 0 CHECK (failure_count >= 0),
+  backoff_until_ms INTEGER,
+  diagnostics_json TEXT CHECK (diagnostics_json IS NULL OR json_valid(diagnostics_json)),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  FOREIGN KEY (provider_instance_id) REFERENCES compatible_provider_instances(provider_instance_id) ON DELETE RESTRICT,
+  FOREIGN KEY (provider_instance_id, last_success_snapshot_id)
+    REFERENCES compatible_catalog_snapshots(provider_instance_id, snapshot_id) ON DELETE RESTRICT,
+  CHECK (last_attempt_at_ms IS NULL OR last_attempt_at_ms >= 0),
+  CHECK (last_success_at_ms IS NULL OR last_success_at_ms >= 0),
+  CHECK (backoff_until_ms IS NULL OR backoff_until_ms >= 0)
+);
+
+CREATE TABLE IF NOT EXISTS compatible_discovered_fields (
+  provider_instance_id TEXT NOT NULL,
+  response_profile_id TEXT NOT NULL,
+  profile_version INTEGER NOT NULL CHECK (profile_version > 0),
+  stream_path TEXT NOT NULL CHECK (length(trim(stream_path)) BETWEEN 1 AND 1024),
+  state TEXT NOT NULL CHECK (state IN ('candidate', 'ignored', 'confirmed')),
+  aggregate_json TEXT NOT NULL CHECK (json_valid(aggregate_json)),
+  occurrence_count INTEGER NOT NULL CHECK (occurrence_count > 0),
+  first_observed_at_ms INTEGER NOT NULL CHECK (first_observed_at_ms >= 0),
+  last_observed_at_ms INTEGER NOT NULL CHECK (last_observed_at_ms >= first_observed_at_ms),
+  PRIMARY KEY (provider_instance_id, response_profile_id, profile_version, stream_path),
+  FOREIGN KEY (provider_instance_id) REFERENCES compatible_provider_instances(provider_instance_id) ON DELETE RESTRICT,
+  FOREIGN KEY (response_profile_id, profile_version)
+    REFERENCES compatible_response_profiles(response_profile_id, version) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_compatible_discovered_state
+  ON compatible_discovered_fields(provider_instance_id, state, last_observed_at_ms DESC);
+
+CREATE TABLE IF NOT EXISTS compatible_route_provenance (
+  route_provenance_id TEXT PRIMARY KEY CHECK (route_provenance_id GLOB 'ocp_route_*' AND length(route_provenance_id) BETWEEN 18 AND 106),
+  request_id TEXT NOT NULL UNIQUE CHECK (length(trim(request_id)) BETWEEN 1 AND 256),
+  request_message_id TEXT NOT NULL,
+  protocol_key TEXT NOT NULL CHECK (protocol_key = 'openai_chat_compatible'),
+  provider_instance_id TEXT NOT NULL,
+  model_id TEXT NOT NULL CHECK (length(trim(model_id)) BETWEEN 1 AND 512),
+  endpoint_revision_id TEXT NOT NULL,
+  credential_version_ref TEXT,
+  request_profile_id TEXT NOT NULL,
+  request_profile_version INTEGER NOT NULL CHECK (request_profile_version > 0),
+  response_profile_id TEXT NOT NULL,
+  response_profile_version INTEGER NOT NULL CHECK (response_profile_version > 0),
+  reasoning_mapping_id TEXT NOT NULL,
+  reasoning_mapping_version INTEGER NOT NULL CHECK (reasoning_mapping_version > 0),
+  reasoning_mode TEXT NOT NULL CHECK (reasoning_mode IN ('custom_preferred_with_builtin_fallback', 'custom_only')),
+  inline_policy_id TEXT NOT NULL,
+  inline_policy_version INTEGER NOT NULL CHECK (inline_policy_version > 0),
+  state TEXT NOT NULL CHECK (state IN ('prepared', 'streaming', 'completed', 'failed', 'aborted', 'interrupted')),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  terminal_at_ms INTEGER,
+  FOREIGN KEY (request_message_id) REFERENCES message(id) ON DELETE CASCADE,
+  FOREIGN KEY (provider_instance_id) REFERENCES compatible_provider_instances(provider_instance_id) ON DELETE RESTRICT,
+  FOREIGN KEY (provider_instance_id, endpoint_revision_id)
+    REFERENCES compatible_endpoint_revisions(provider_instance_id, endpoint_revision_id) ON DELETE RESTRICT,
+  FOREIGN KEY (
+    endpoint_revision_id, provider_instance_id, credential_version_ref,
+    request_profile_id, request_profile_version,
+    response_profile_id, response_profile_version
+  ) REFERENCES compatible_endpoint_revisions(
+    endpoint_revision_id, provider_instance_id, credential_version_ref,
+    request_profile_id, request_profile_version,
+    response_profile_id, response_profile_version
+  ) ON DELETE RESTRICT,
+  FOREIGN KEY (provider_instance_id, credential_version_ref)
+    REFERENCES compatible_credential_descriptors(provider_instance_id, credential_version_ref) ON DELETE RESTRICT,
+  FOREIGN KEY (request_profile_id, request_profile_version)
+    REFERENCES compatible_request_profiles(request_profile_id, version) ON DELETE RESTRICT,
+  FOREIGN KEY (response_profile_id, response_profile_version)
+    REFERENCES compatible_response_profiles(response_profile_id, version) ON DELETE RESTRICT,
+  FOREIGN KEY (
+    response_profile_id, response_profile_version,
+    reasoning_mapping_id, reasoning_mapping_version,
+    inline_policy_id, inline_policy_version
+  ) REFERENCES compatible_response_profiles(
+    response_profile_id, version,
+    reasoning_mapping_id, reasoning_mapping_version,
+    inline_policy_id, inline_policy_version
+  ) ON DELETE RESTRICT,
+  FOREIGN KEY (reasoning_mapping_id, reasoning_mapping_version)
+    REFERENCES compatible_reasoning_mappings(mapping_id, version) ON DELETE RESTRICT,
+  FOREIGN KEY (inline_policy_id, inline_policy_version)
+    REFERENCES compatible_inline_policies(inline_policy_id, version) ON DELETE RESTRICT,
+  CHECK (
+    (state IN ('prepared', 'streaming') AND terminal_at_ms IS NULL) OR
+    (state IN ('completed', 'failed', 'aborted', 'interrupted') AND terminal_at_ms = updated_at_ms)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_compatible_route_instance_model
+  ON compatible_route_provenance(provider_instance_id, model_id, created_at_ms DESC);
+CREATE INDEX IF NOT EXISTS idx_compatible_route_message
+  ON compatible_route_provenance(request_message_id);
+
+CREATE TABLE IF NOT EXISTS compatible_route_choices (
+  route_provenance_id TEXT NOT NULL,
+  choice_index INTEGER NOT NULL CHECK (choice_index >= 0 AND choice_index <= 1024),
+  message_id TEXT NOT NULL UNIQUE,
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  PRIMARY KEY (route_provenance_id, choice_index),
+  FOREIGN KEY (route_provenance_id) REFERENCES compatible_route_provenance(route_provenance_id) ON DELETE CASCADE,
+  FOREIGN KEY (message_id) REFERENCES message(id) ON DELETE CASCADE,
+  UNIQUE (route_provenance_id, choice_index, message_id)
+);
+
+CREATE TABLE IF NOT EXISTS compatible_tool_calls (
+  route_provenance_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  choice_index INTEGER NOT NULL CHECK (choice_index >= 0 AND choice_index <= 1024),
+  tool_index INTEGER NOT NULL CHECK (tool_index >= 0 AND tool_index <= 1024),
+  tool_call_id TEXT CHECK (tool_call_id IS NULL OR length(tool_call_id) BETWEEN 1 AND 256),
+  tool_type TEXT CHECK (tool_type IS NULL OR tool_type = 'function'),
+  function_name TEXT CHECK (function_name IS NULL OR length(function_name) BETWEEN 1 AND 256),
+  arguments_text TEXT NOT NULL CHECK (length(CAST(arguments_text AS BLOB)) <= 1048576),
+  arguments_observed INTEGER NOT NULL CHECK (arguments_observed IN (0, 1)),
+  arguments_json TEXT CHECK (arguments_json IS NULL OR json_valid(arguments_json)),
+  status TEXT NOT NULL CHECK (status IN ('streaming', 'complete', 'malformed', 'incomplete')),
+  parse_error_code TEXT CHECK (parse_error_code IS NULL OR length(parse_error_code) BETWEEN 1 AND 128),
+  execution_state TEXT NOT NULL CHECK (execution_state = 'not_executed'),
+  sequence_start INTEGER NOT NULL CHECK (sequence_start >= 0),
+  sequence_end INTEGER NOT NULL CHECK (sequence_end >= sequence_start),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
+  CHECK (
+    (status = 'streaming' AND arguments_json IS NULL AND parse_error_code IS NULL) OR
+    (status = 'complete' AND tool_call_id IS NOT NULL AND tool_type = 'function' AND function_name IS NOT NULL
+      AND arguments_observed = 1 AND arguments_json IS NOT NULL AND json_type(arguments_json) = 'object'
+      AND arguments_json = arguments_text AND parse_error_code IS NULL) OR
+    (status IN ('malformed', 'incomplete') AND arguments_json IS NULL AND parse_error_code IS NOT NULL)
+  ),
+  PRIMARY KEY (message_id, choice_index, tool_index),
+  FOREIGN KEY (route_provenance_id, choice_index, message_id)
+    REFERENCES compatible_route_choices(route_provenance_id, choice_index, message_id) ON DELETE CASCADE,
+  UNIQUE (route_provenance_id, tool_call_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_compatible_tool_call_route_choice
+  ON compatible_tool_calls(route_provenance_id, choice_index, tool_index);
+
+CREATE TABLE IF NOT EXISTS compatible_tool_results (
+  tool_result_message_id TEXT PRIMARY KEY,
+  route_provenance_id TEXT NOT NULL,
+  tool_call_id TEXT NOT NULL,
+  content_json TEXT NOT NULL CHECK (json_valid(content_json)),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  FOREIGN KEY (tool_result_message_id) REFERENCES message(id) ON DELETE CASCADE,
+  FOREIGN KEY (route_provenance_id, tool_call_id)
+    REFERENCES compatible_tool_calls(route_provenance_id, tool_call_id) ON DELETE CASCADE,
+  UNIQUE (route_provenance_id, tool_call_id)
+);
+
+CREATE TABLE IF NOT EXISTS compatible_raw_extension_records (
+  record_id TEXT PRIMARY KEY CHECK (record_id GLOB 'ocp_raw_extension_*' AND length(record_id) BETWEEN 26 AND 114),
+  route_provenance_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  choice_index INTEGER NOT NULL CHECK (choice_index >= 0 AND choice_index <= 1024),
+  response_profile_id TEXT NOT NULL,
+  response_profile_version INTEGER NOT NULL CHECK (response_profile_version > 0),
+  source_path TEXT NOT NULL CHECK (length(trim(source_path)) BETWEEN 1 AND 1024),
+  sequence_start INTEGER NOT NULL CHECK (sequence_start >= 0),
+  sequence_end INTEGER NOT NULL CHECK (sequence_end >= sequence_start),
+  extension_kind TEXT NOT NULL CHECK (extension_kind IN ('append', 'snapshot')),
+  semantic TEXT NOT NULL CHECK (semantic IN ('reasoning', 'diagnostic')),
+  value_json TEXT NOT NULL CHECK (json_valid(value_json)),
+  value_bytes INTEGER NOT NULL CHECK (value_bytes BETWEEN 0 AND 16384),
+  redaction_state TEXT NOT NULL CHECK (redaction_state IN ('redacted', 'truncated_redacted', 'dropped')),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  FOREIGN KEY (route_provenance_id, choice_index, message_id)
+    REFERENCES compatible_route_choices(route_provenance_id, choice_index, message_id) ON DELETE CASCADE,
+  FOREIGN KEY (response_profile_id, response_profile_version)
+    REFERENCES compatible_response_profiles(response_profile_id, version) ON DELETE RESTRICT
+);
+
+CREATE INDEX IF NOT EXISTS idx_compatible_raw_message_sequence
+  ON compatible_raw_extension_records(message_id, choice_index, sequence_start);
+CREATE INDEX IF NOT EXISTS idx_compatible_raw_route
+  ON compatible_raw_extension_records(route_provenance_id, choice_index);
+
+CREATE TABLE IF NOT EXISTS compatible_reasoning_choice_state (
+  route_provenance_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  choice_index INTEGER NOT NULL CHECK (choice_index BETWEEN 0 AND 1024),
+  reasoning_mapping_id TEXT NOT NULL,
+  reasoning_mapping_version INTEGER NOT NULL CHECK (reasoning_mapping_version > 0),
+  mode TEXT NOT NULL CHECK (mode IN ('custom_preferred_with_builtin_fallback', 'custom_only')),
+  status TEXT NOT NULL CHECK (status IN ('unselected', 'locked', 'terminal')),
+  locked_source TEXT CHECK (locked_source IS NULL OR locked_source IN ('custom', 'reasoning', 'reasoning_content', 'thinking', 'inline')),
+  locked_source_key TEXT CHECK (locked_source_key IS NULL OR length(locked_source_key) BETWEEN 1 AND 1280),
+  reasoning_text TEXT NOT NULL CHECK (length(CAST(reasoning_text AS BLOB)) <= 1048576),
+  segment_ids_json TEXT NOT NULL CHECK (json_valid(segment_ids_json) AND json_type(segment_ids_json) = 'array'),
+  conflicts_json TEXT NOT NULL CHECK (json_valid(conflicts_json) AND json_type(conflicts_json) = 'array'),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  PRIMARY KEY (route_provenance_id, choice_index),
+  FOREIGN KEY (route_provenance_id, choice_index, message_id)
+    REFERENCES compatible_route_choices(route_provenance_id, choice_index, message_id) ON DELETE CASCADE,
+  FOREIGN KEY (reasoning_mapping_id, reasoning_mapping_version)
+    REFERENCES compatible_reasoning_mappings(mapping_id, version) ON DELETE RESTRICT,
+  CHECK ((status = 'unselected' AND locked_source IS NULL AND locked_source_key IS NULL AND reasoning_text = '') OR (status IN ('locked', 'terminal') AND locked_source IS NOT NULL AND locked_source_key IS NOT NULL)),
+  CHECK (
+    locked_source IS NULL OR
+    (locked_source = 'custom' AND
+      substr(locked_source_key, 1, length('custom:' || reasoning_mapping_id || ':' || reasoning_mapping_version || ':')) = ('custom:' || reasoning_mapping_id || ':' || reasoning_mapping_version || ':') AND
+      length(locked_source_key) > length('custom:' || reasoning_mapping_id || ':' || reasoning_mapping_version || ':')) OR
+    (locked_source = 'inline' AND substr(locked_source_key, 1, 7) = 'inline:' AND length(locked_source_key) > 7) OR
+    (locked_source NOT IN ('custom', 'inline') AND locked_source_key = locked_source)
+  )
+);
+
+CREATE TABLE IF NOT EXISTS compatible_choice_display_projections (
+  route_provenance_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  choice_index INTEGER NOT NULL CHECK (choice_index BETWEEN 0 AND 1024),
+  checkpoint_version INTEGER NOT NULL CHECK (checkpoint_version = 1),
+  status TEXT NOT NULL CHECK (status IN ('streaming', 'completed', 'failed', 'aborted', 'interrupted')),
+  last_sequence INTEGER NOT NULL CHECK (last_sequence >= 0),
+  projection_json TEXT NOT NULL CHECK (json_valid(projection_json) AND json_type(projection_json) = 'object' AND length(CAST(projection_json AS BLOB)) <= 33554432),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  terminal_at_ms INTEGER,
+  PRIMARY KEY (route_provenance_id, choice_index),
+  FOREIGN KEY (route_provenance_id, choice_index, message_id)
+    REFERENCES compatible_route_choices(route_provenance_id, choice_index, message_id) ON DELETE CASCADE,
+  CHECK (json_extract(projection_json, '$.routeProvenanceId') = route_provenance_id),
+  CHECK (json_extract(projection_json, '$.messageId') = message_id),
+  CHECK (json_extract(projection_json, '$.choiceIndex') = choice_index),
+  CHECK (json_extract(projection_json, '$.status') = status),
+  CHECK (json_extract(projection_json, '$.lastSequence') = last_sequence),
+  CHECK ((status = 'streaming' AND terminal_at_ms IS NULL) OR (status != 'streaming' AND terminal_at_ms = updated_at_ms))
+);
+
+CREATE INDEX IF NOT EXISTS idx_compatible_choice_display_message
+  ON compatible_choice_display_projections(message_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_compatible_choice_display_response_usage
+  ON compatible_choice_display_projections(route_provenance_id)
+  WHERE json_extract(projection_json, '$.usage.scope') = 'response';
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_choice_display_monotonic
+BEFORE UPDATE ON compatible_choice_display_projections
+WHEN
+  new.route_provenance_id IS NOT old.route_provenance_id OR
+  new.message_id IS NOT old.message_id OR
+  new.choice_index IS NOT old.choice_index OR
+  new.checkpoint_version IS NOT old.checkpoint_version OR
+  new.last_sequence < old.last_sequence OR
+  new.updated_at_ms < old.updated_at_ms OR
+  old.status != 'streaming'
+BEGIN
+  SELECT RAISE(ABORT, 'compatible display projection identity/state is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_reasoning_choice_monotonic
+BEFORE UPDATE ON compatible_reasoning_choice_state
+WHEN
+  new.route_provenance_id IS NOT old.route_provenance_id OR
+  new.message_id IS NOT old.message_id OR
+  new.choice_index IS NOT old.choice_index OR
+  new.reasoning_mapping_id IS NOT old.reasoning_mapping_id OR
+  new.reasoning_mapping_version IS NOT old.reasoning_mapping_version OR
+  new.mode IS NOT old.mode OR
+  (old.locked_source IS NOT NULL AND (new.locked_source IS NOT old.locked_source OR new.locked_source_key IS NOT old.locked_source_key)) OR
+  (old.status = 'terminal' AND new.status IS NOT 'terminal') OR
+  (old.status = 'terminal' AND (new.locked_source IS NOT old.locked_source OR new.locked_source_key IS NOT old.locked_source_key OR new.reasoning_text IS NOT old.reasoning_text OR new.segment_ids_json IS NOT old.segment_ids_json OR new.conflicts_json IS NOT old.conflicts_json OR new.updated_at_ms IS NOT old.updated_at_ms)) OR
+  (old.status = 'locked' AND new.status = 'unselected')
+BEGIN
+  SELECT RAISE(ABORT, 'compatible reasoning choice identity/state is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_reasoning_choice_route_pin_insert
+BEFORE INSERT ON compatible_reasoning_choice_state
+WHEN NOT EXISTS (
+  SELECT 1 FROM compatible_route_provenance route
+  WHERE route.route_provenance_id = new.route_provenance_id
+    AND route.reasoning_mapping_id = new.reasoning_mapping_id
+    AND route.reasoning_mapping_version = new.reasoning_mapping_version
+    AND route.reasoning_mode = new.mode
+)
+BEGIN
+  SELECT RAISE(ABORT, 'compatible reasoning choice must match route mapping pin');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_credential_descriptor_identity_immutable
+BEFORE UPDATE ON compatible_credential_descriptors
+WHEN
+  new.credential_version_ref IS NOT old.credential_version_ref OR
+  new.provider_instance_id IS NOT old.provider_instance_id OR
+  new.version IS NOT old.version OR
+  new.auth_mode IS NOT old.auth_mode OR
+  new.backend IS NOT old.backend OR
+  new.masked_summary_json IS NOT old.masked_summary_json OR
+  new.created_at_ms IS NOT old.created_at_ms
+BEGIN
+  SELECT RAISE(ABORT, 'compatible credential descriptor versions are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_endpoint_revision_immutable
+BEFORE UPDATE ON compatible_endpoint_revisions
+BEGIN
+  SELECT RAISE(ABORT, 'compatible endpoint revisions are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_request_profile_immutable
+BEFORE UPDATE ON compatible_request_profiles
+BEGIN
+  SELECT RAISE(ABORT, 'compatible request profile versions are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_request_mapping_immutable
+BEFORE UPDATE ON compatible_request_field_mappings
+BEGIN
+  SELECT RAISE(ABORT, 'compatible request field mapping versions are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_reasoning_mapping_immutable
+BEFORE UPDATE ON compatible_reasoning_mappings
+BEGIN
+  SELECT RAISE(ABORT, 'compatible reasoning mapping versions are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_inline_policy_immutable
+BEFORE UPDATE ON compatible_inline_policies
+BEGIN
+  SELECT RAISE(ABORT, 'compatible inline policy versions are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_response_profile_immutable
+BEFORE UPDATE ON compatible_response_profiles
+BEGIN
+  SELECT RAISE(ABORT, 'compatible response profile versions are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_catalog_snapshot_immutable
+BEFORE UPDATE ON compatible_catalog_snapshots
+BEGIN
+  SELECT RAISE(ABORT, 'compatible catalog snapshots are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_route_provenance_pin_immutable
+BEFORE UPDATE ON compatible_route_provenance
+WHEN
+  new.route_provenance_id IS NOT old.route_provenance_id OR
+  new.request_id IS NOT old.request_id OR
+  new.request_message_id IS NOT old.request_message_id OR
+  new.protocol_key IS NOT old.protocol_key OR
+  new.provider_instance_id IS NOT old.provider_instance_id OR
+  new.model_id IS NOT old.model_id OR
+  new.endpoint_revision_id IS NOT old.endpoint_revision_id OR
+  new.credential_version_ref IS NOT old.credential_version_ref OR
+  new.request_profile_id IS NOT old.request_profile_id OR
+  new.request_profile_version IS NOT old.request_profile_version OR
+  new.response_profile_id IS NOT old.response_profile_id OR
+  new.response_profile_version IS NOT old.response_profile_version OR
+  new.reasoning_mapping_id IS NOT old.reasoning_mapping_id OR
+  new.reasoning_mapping_version IS NOT old.reasoning_mapping_version OR
+  new.reasoning_mode IS NOT old.reasoning_mode OR
+  new.inline_policy_id IS NOT old.inline_policy_id OR
+  new.inline_policy_version IS NOT old.inline_policy_version OR
+  new.created_at_ms IS NOT old.created_at_ms
+BEGIN
+  SELECT RAISE(ABORT, 'compatible route provenance pin is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_route_initial_state
+BEFORE INSERT ON compatible_route_provenance
+WHEN new.state != 'prepared' OR new.updated_at_ms != new.created_at_ms OR new.terminal_at_ms IS NOT NULL
+BEGIN
+  SELECT RAISE(ABORT, 'compatible route provenance must start prepared');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_route_request_message_valid
+BEFORE INSERT ON compatible_route_provenance
+WHEN NOT EXISTS (
+  SELECT 1 FROM message request_message
+  WHERE request_message.id = new.request_message_id
+    AND request_message.role = 'user'
+)
+BEGIN
+  SELECT RAISE(ABORT, 'compatible route request message must be a persisted user message');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_route_pin_consistent
+BEFORE INSERT ON compatible_route_provenance
+WHEN
+  NOT EXISTS (
+    SELECT 1 FROM compatible_endpoint_revisions endpoint
+    WHERE endpoint.endpoint_revision_id = new.endpoint_revision_id
+      AND endpoint.provider_instance_id = new.provider_instance_id
+      AND endpoint.credential_version_ref IS new.credential_version_ref
+      AND endpoint.request_profile_id = new.request_profile_id
+      AND endpoint.request_profile_version = new.request_profile_version
+      AND endpoint.response_profile_id = new.response_profile_id
+      AND endpoint.response_profile_version = new.response_profile_version
+  ) OR
+  NOT EXISTS (
+    SELECT 1 FROM compatible_response_profiles profile
+    JOIN compatible_reasoning_mappings reasoning
+      ON reasoning.mapping_id = profile.reasoning_mapping_id
+      AND reasoning.version = profile.reasoning_mapping_version
+    WHERE profile.response_profile_id = new.response_profile_id
+      AND profile.version = new.response_profile_version
+      AND profile.reasoning_mapping_id = new.reasoning_mapping_id
+      AND profile.reasoning_mapping_version = new.reasoning_mapping_version
+      AND reasoning.mode = new.reasoning_mode
+      AND profile.inline_policy_id = new.inline_policy_id
+      AND profile.inline_policy_version = new.inline_policy_version
+  )
+BEGIN
+  SELECT RAISE(ABORT, 'compatible route provenance pin is inconsistent');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_route_state_transition
+BEFORE UPDATE ON compatible_route_provenance
+WHEN NOT (
+  (
+    new.state = old.state AND
+    new.updated_at_ms = old.updated_at_ms AND
+    new.terminal_at_ms IS old.terminal_at_ms
+  ) OR
+  (
+    old.state = 'prepared' AND new.state = 'streaming' AND
+    new.updated_at_ms >= old.updated_at_ms AND new.terminal_at_ms IS NULL
+  ) OR
+  (
+    old.state = 'prepared' AND new.state IN ('aborted', 'interrupted') AND
+    new.updated_at_ms >= old.updated_at_ms AND new.terminal_at_ms = new.updated_at_ms
+  ) OR
+  (
+    old.state = 'streaming' AND new.state IN ('completed', 'failed', 'aborted', 'interrupted') AND
+    new.updated_at_ms >= old.updated_at_ms AND new.terminal_at_ms = new.updated_at_ms
+  )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'invalid compatible route provenance state transition');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_route_choice_message_valid
+BEFORE INSERT ON compatible_route_choices
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM compatible_route_provenance route
+  JOIN message request_message ON request_message.id = route.request_message_id
+  JOIN message choice_message ON choice_message.id = new.message_id
+  WHERE route.route_provenance_id = new.route_provenance_id
+    AND choice_message.role = 'assistant'
+    AND choice_message.convo_id = request_message.convo_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'compatible route choice must be an assistant message in the request conversation');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_route_choice_immutable
+BEFORE UPDATE ON compatible_route_choices
+BEGIN
+  SELECT RAISE(ABORT, 'compatible route choices are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_tool_call_identity_immutable
+BEFORE UPDATE ON compatible_tool_calls
+WHEN old.route_provenance_id <> new.route_provenance_id
+  OR old.message_id <> new.message_id
+  OR old.choice_index <> new.choice_index
+  OR old.tool_index <> new.tool_index
+  OR old.sequence_start <> new.sequence_start
+  OR old.created_at_ms <> new.created_at_ms
+  OR old.execution_state <> new.execution_state
+BEGIN
+  SELECT RAISE(ABORT, 'compatible tool call identity is immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_tool_call_monotonic
+BEFORE UPDATE ON compatible_tool_calls
+WHEN new.sequence_end < old.sequence_end
+  OR new.updated_at_ms < old.updated_at_ms
+  OR (old.tool_type IS NOT NULL AND (new.tool_type IS NULL OR new.tool_type <> old.tool_type))
+  OR (old.tool_call_id IS NOT NULL AND (new.tool_call_id IS NULL OR substr(new.tool_call_id, 1, length(old.tool_call_id)) <> old.tool_call_id))
+  OR (old.function_name IS NOT NULL AND (new.function_name IS NULL OR substr(new.function_name, 1, length(old.function_name)) <> old.function_name))
+  OR substr(new.arguments_text, 1, length(old.arguments_text)) <> old.arguments_text
+BEGIN
+  SELECT RAISE(ABORT, 'compatible tool call updates must be monotonic');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_tool_call_terminal_immutable
+BEFORE UPDATE ON compatible_tool_calls
+WHEN old.status <> 'streaming'
+BEGIN
+  SELECT RAISE(ABORT, 'compatible terminal tool calls are immutable');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_tool_call_arguments_bounded_insert
+BEFORE INSERT ON compatible_tool_calls
+WHEN new.status = 'complete' AND (
+  (SELECT count(*) FROM json_tree(new.arguments_json)) > 100000 OR
+  EXISTS (
+    WITH RECURSIVE depths(id, depth) AS (
+      SELECT id, 0 FROM json_tree(new.arguments_json) WHERE parent IS NULL
+      UNION ALL
+      SELECT child.id, depths.depth + 1
+      FROM json_tree(new.arguments_json) child
+      JOIN depths ON child.parent = depths.id
+      WHERE depths.depth < 65
+    )
+    SELECT 1 FROM depths WHERE depth > 64
+  )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'compatible tool arguments exceed structural limits');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_tool_call_arguments_bounded_update
+BEFORE UPDATE ON compatible_tool_calls
+WHEN new.status = 'complete' AND (
+  (SELECT count(*) FROM json_tree(new.arguments_json)) > 100000 OR
+  EXISTS (
+    WITH RECURSIVE depths(id, depth) AS (
+      SELECT id, 0 FROM json_tree(new.arguments_json) WHERE parent IS NULL
+      UNION ALL
+      SELECT child.id, depths.depth + 1
+      FROM json_tree(new.arguments_json) child
+      JOIN depths ON child.parent = depths.id
+      WHERE depths.depth < 65
+    )
+    SELECT 1 FROM depths WHERE depth > 64
+  )
+)
+BEGIN
+  SELECT RAISE(ABORT, 'compatible tool arguments exceed structural limits');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_tool_result_binding_valid
+BEFORE INSERT ON compatible_tool_results
+WHEN NOT EXISTS (
+  SELECT 1
+  FROM compatible_tool_calls call
+  JOIN message call_message ON call_message.id = call.message_id
+  JOIN message result_message ON result_message.id = new.tool_result_message_id
+  JOIN message_body result_body ON result_body.message_id = result_message.id
+  WHERE call.route_provenance_id = new.route_provenance_id
+    AND call.tool_call_id = new.tool_call_id
+    AND call.status = 'complete'
+    AND result_message.role = 'tool'
+    AND result_message.convo_id = call_message.convo_id
+    AND result_message.seq > call_message.seq
+    AND EXISTS (
+      WITH RECURSIVE lineage(id, parent_id, depth) AS (
+        SELECT id, parent_id, 0 FROM message WHERE id = new.tool_result_message_id
+        UNION ALL
+        SELECT parent.id, parent.parent_id, lineage.depth + 1
+        FROM message parent
+        JOIN lineage ON parent.id = lineage.parent_id
+        WHERE lineage.depth < 1024
+      )
+      SELECT 1 FROM lineage WHERE id = call.message_id
+    )
+    AND result_body.body = CASE
+      WHEN json_type(new.content_json) = 'text' THEN json_extract(new.content_json, '$')
+      ELSE new.content_json
+    END
+)
+BEGIN
+  SELECT RAISE(ABORT, 'compatible tool result binding is invalid');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_compatible_tool_result_immutable
+BEFORE UPDATE ON compatible_tool_results
+BEGIN
+  SELECT RAISE(ABORT, 'compatible tool results are immutable');
+END;
