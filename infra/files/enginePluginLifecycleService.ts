@@ -44,8 +44,8 @@ import {
   isProxyFetchInitFailure,
   normalizeNetworkProxySettings,
   type NetworkProxySettings,
-} from '../../src/next/plugin-distribution/networkProxy'
-import { sanitizePluginDistributionText } from '../../src/next/plugin-distribution/sanitization'
+} from '../../src/shared/plugin-distribution/networkProxy'
+import { sanitizePluginDistributionText } from '../../src/shared/plugin-distribution/sanitization'
 import { validatePluginPackageInventory } from '../../src/next/plugin-distribution/artifactInventory'
 import {
   isOfficialInstallOperationActive,
