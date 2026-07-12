@@ -45,8 +45,8 @@ describe('streamEventBridge', () => {
       'message.content_block_append',
       'message.tool_call_delta',
       'message.annotation_batch',
-      'message.reasoning_detail',
-      'message.reasoning_detail_batch',
+      'message.reasoning_raw_detail',
+      'message.reasoning_raw_detail_batch',
       'usage.delta',
       'stream.done',
     ]
@@ -65,8 +65,8 @@ describe('streamEventBridge', () => {
       { type: 'message.content_block_append', messageId: 'm', choiceIndex: 0, block: { type: 'image', url: 'u' } },
       { type: 'message.tool_call_delta', messageId: 'm', choiceIndex: 0, mergeStrategy: 'append', toolCallDeltas: [] },
       { type: 'message.annotation_batch', messageId: 'm', choiceIndex: 0, mergeStrategy: 'replace', annotations: [] },
-      { type: 'message.reasoning_detail', messageId: 'm', choiceIndex: 0, detail: {} },
-      { type: 'message.reasoning_detail_batch', messageId: 'm', choiceIndex: 0, details: [] },
+      { type: 'message.reasoning_raw_detail', messageId: 'm', choiceIndex: 0, detail: {} },
+      { type: 'message.reasoning_raw_detail_batch', messageId: 'm', choiceIndex: 0, details: [] },
       { type: 'usage.delta', usage: {} },
       { type: 'stream.done' },
       { type: 'stream.error', error: {} as any, terminal: true },
@@ -108,6 +108,34 @@ describe('streamEventBridge', () => {
     const streamEvent = domainEventToStreamEvent(original)
     const roundtripped = streamEventToDomainEvent(streamEvent)
     expect(roundtripped).toEqual(original)
+  })
+
+  it('accepts legacy reasoning_detail stream events as raw reasoning compatibility input', () => {
+    expect(streamEventToDomainEvent({
+      type: 'message.reasoning_detail',
+      messageId: 'm',
+      choiceIndex: 0,
+      detail: { text: 'legacy raw' },
+      chunkNo: 2,
+    })).toEqual({
+      type: 'MessageDeltaReasoningDetail',
+      messageId: 'm',
+      choiceIndex: 0,
+      detail: { text: 'legacy raw' },
+      chunkNo: 2,
+    })
+
+    expect(streamEventToDomainEvent({
+      type: 'message.reasoning_detail_batch',
+      messageId: 'm',
+      choiceIndex: 0,
+      details: [{ text: 'legacy raw batch' }],
+    })).toEqual({
+      type: 'MessageDeltaReasoningDetailBatch',
+      messageId: 'm',
+      choiceIndex: 0,
+      details: [{ text: 'legacy raw batch' }],
+    })
   })
 
   it('roundtrip preserves field values for meta delta', () => {
@@ -360,7 +388,7 @@ describe('streamViaOpenRouter', () => {
     }
   })
 
-  it('preserves request body semantics (reasoning.effort=none)', async () => {
+  it('keeps legacy requested reasoning controls out of the request body', async () => {
     const originalFetch = globalThis.fetch
     const calls: any[] = []
     globalThis.fetch = vi.fn(async (url: any, init: any) => {
@@ -386,8 +414,8 @@ describe('streamViaOpenRouter', () => {
       }
 
       const bodyText = String(calls[0]?.init?.body ?? '')
-      expect(bodyText).toContain('"reasoning":')
-      expect(bodyText).toContain('"effort":"none"')
+      expect(bodyText).not.toContain('"reasoning":')
+      expect(bodyText).not.toContain('"effort":"none"')
       expect(bodyText).not.toContain('"enabled":')
     } finally {
       globalThis.fetch = originalFetch
@@ -563,7 +591,7 @@ describe('streamViaOpenRouter', () => {
     }
   })
 
-  it('preserves legacy baseUrl behavior through adapter facade', async () => {
+  it('ignores legacy request baseUrl and uses the official OpenRouter endpoint', async () => {
     const originalFetch = globalThis.fetch
     const calls: any[] = []
     const rawKey = 'sk-or-adapter-baseurl-secret'
@@ -592,7 +620,7 @@ describe('streamViaOpenRouter', () => {
       }
 
       expect(calls).toHaveLength(1)
-      expect(calls[0]?.url).toBe('https://openrouter-proxy.example.test/custom/v1/chat/completions')
+      expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/chat/completions')
       expect(calls[0]?.init?.headers?.Authorization).toBe(`Bearer ${rawKey}`)
       const serializedEvents = JSON.stringify(events)
       expect(serializedEvents).not.toContain(rawKey)
@@ -603,7 +631,7 @@ describe('streamViaOpenRouter', () => {
     }
   })
 
-  it('resolver seam sends the same legacy Authorization and baseUrl behavior as raw path', async () => {
+  it('resolver seam uses the same official endpoint and Authorization as the raw path', async () => {
     const originalFetch = globalThis.fetch
     const calls: any[] = []
     const rawKey = 'sk-or-openrouter-resolved-secret'
@@ -629,7 +657,7 @@ describe('streamViaOpenRouter', () => {
       }
 
       expect(calls).toHaveLength(2)
-      expect(calls[0]?.url).toBe('https://openrouter-proxy.example.test/custom/v1/chat/completions')
+      expect(calls[0]?.url).toBe('https://openrouter.ai/api/v1/chat/completions')
       expect(calls[1]?.url).toBe(calls[0]?.url)
       expect(calls[0]?.init?.headers?.Authorization).toBe(`Bearer ${rawKey}`)
       expect(calls[1]?.init?.headers?.Authorization).toBe(calls[0]?.init?.headers?.Authorization)

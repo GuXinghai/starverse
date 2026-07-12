@@ -75,6 +75,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronApi = (globalThis as any).electronAPI
   const originalElectronStore = (globalThis as any).electronStore
+  const originalOpenRouterCredential = (globalThis as any).openRouterCredential
   let invoke: ReturnType<typeof vi.fn>
   let selectLocalFiles: ReturnType<typeof vi.fn>
   let draftResponse: ReturnType<typeof baseDraft>
@@ -87,6 +88,11 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   let convoRows: Array<Record<string, unknown>> = []
   let historyIncompatibleMessageIds: string[] = []
   let historyAttachmentRowsByMessageId: Record<string, Array<Record<string, unknown>>> = {}
+
+  async function firstModelPickerItem(modelId: string): Promise<HTMLElement> {
+    const items = await screen.findAllByTestId(`model-picker-item-${modelId}`)
+    return items[0] as HTMLElement
+  }
 
   function mockAttachmentMenuLayout() {
     const rect = {
@@ -727,7 +733,13 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     dfcAttachmentDefaultsValue = null
     forceBlockedOnSecondSendPlanBuild = false
     contextMessages = []
-    convoRows = [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 2, meta: { selectedModelKey: 'openai/gpt-4o' } }]
+    convoRows = [{
+      id: 'c1',
+      title: 'Chat 1',
+      createdAt: 1,
+      updatedAt: 2,
+      meta: { selectedProviderId: 'openrouter', selectedModelKey: 'openai/gpt-4o' },
+    }]
     historyIncompatibleMessageIds = []
     historyAttachmentRowsByMessageId = {}
     selectLocalFiles = vi.fn(async (options?: { context?: 'file' | 'image' }) => {
@@ -749,7 +761,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'settings.getReasoningPrefs') return { value: null }
       if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
       if (method === 'settings.getUserMessageRenderDefault') return { value: null }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
       if (method === 'settings.getDfcAttachmentDefaults') return { value: dfcAttachmentDefaultsValue }
@@ -759,6 +771,8 @@ describe('ui-app AppChatApp attachment entry flow', () => {
       }
       if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
       if (method === 'settings.setChatReasoningDisplayMode') return { ok: true }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
 
       if (method === 'convo.list') {
         return convoRows
@@ -1410,9 +1424,11 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
         if (key === 'openRouterApiKey') return 'sk-test'
-        if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
         return undefined
       }),
+    }
+    ;(globalThis as any).openRouterCredential = {
+      getStatus: vi.fn(async () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })),
     }
   })
 
@@ -1421,6 +1437,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronAPI = originalElectronApi
     ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
     vi.restoreAllMocks()
   })
 
@@ -1908,41 +1925,26 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     expect(invoke.mock.calls.some((call) => call[0] === 'branch.beginTurn')).toBe(false)
   })
 
-  it('defers draft persistence while attachment confirmation is active and flushes after cancel', async () => {
-    vi.useFakeTimers()
-    try {
-      draftResponse = {
-        ...baseDraft(),
-        attachments: [makeDraftAttachment('asset-draft-excluded', { attachmentOrder: 0 })],
-        attachedAssetIds: ['asset-draft-excluded'],
-      }
-
-      render(AppChatApp)
-
-      await waitFor(() => {
-        expect(screen.getByTestId('composer-send')).toBeEnabled()
-      })
-
-      fireEvent.input(screen.getByTestId('composer-draft'), { target: { value: 'draft body updated' } })
-      fireEvent.click(screen.getByTestId('composer-send'))
-
-      await screen.findByTestId('attachment-confirm-panel')
-      await vi.advanceTimersByTimeAsync(300)
-
-      const updateCallsWhileActive = invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateText')
-      expect(updateCallsWhileActive).toHaveLength(0)
-
-      fireEvent.click(screen.getByTestId('attachment-confirm-cancel'))
-
-      await waitFor(() => {
-        expect(screen.queryByTestId('attachment-confirm-panel')).toBeNull()
-      })
-      await waitFor(() => {
-        expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateText')).toHaveLength(1)
-      })
-    } finally {
-      vi.useRealTimers()
+  it('flushes the draft before attachment confirmation and does not duplicate it after cancel', async () => {
+    draftResponse = {
+      ...baseDraft(),
+      attachments: [makeDraftAttachment('asset-draft-excluded', { attachmentOrder: 0 })],
+      attachedAssetIds: ['asset-draft-excluded'],
     }
+
+    render(AppChatApp)
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeEnabled())
+    fireEvent.input(screen.getByTestId('composer-draft'), { target: { value: 'draft body updated' } })
+    fireEvent.click(screen.getByTestId('composer-send'))
+
+    await screen.findByTestId('attachment-confirm-panel')
+    await waitFor(() => {
+      expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateText')).toHaveLength(1)
+    })
+
+    fireEvent.click(screen.getByTestId('attachment-confirm-cancel'))
+    await waitFor(() => expect(screen.queryByTestId('attachment-confirm-panel')).toBeNull())
+    expect(invoke.mock.calls.filter((call) => call[0] === 'conversationDraft.updateText')).toHaveLength(1)
   })
 
   it('keeps current attachment remove decisions staged until confirmation is accepted', async () => {
@@ -2035,7 +2037,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     const callsBeforeModelSwitch = sendPlanBuildCallCount
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-openai/gpt-4o'))
+    await user.click(await firstModelPickerItem('openai/gpt-4o'))
 
     await waitFor(() => {
       expect(sendPlanBuildCallCount).toBeGreaterThan(callsBeforeModelSwitch)
@@ -2118,8 +2120,8 @@ describe('ui-app AppChatApp attachment entry flow', () => {
   it('recomputes and clears history incompatible warning when switching conversations', async () => {
     const user = userEvent.setup()
     convoRows = [
-      { id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 2, meta: { selectedModelKey: 'openai/gpt-4o' } },
-      { id: 'c2', title: 'Chat 2', createdAt: 1, updatedAt: 2, meta: { selectedModelKey: 'openai/gpt-4o' } },
+      { id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 2, meta: { selectedProviderId: 'openrouter', selectedModelKey: 'openai/gpt-4o' } },
+      { id: 'c2', title: 'Chat 2', createdAt: 1, updatedAt: 2, meta: { selectedProviderId: 'openrouter', selectedModelKey: 'openai/gpt-4o' } },
     ]
     contextMessages = [makeContextMessage('m-history-1', 1, 'user')]
     historyIncompatibleMessageIds = ['m-history-1']
@@ -2159,7 +2161,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     const callsBeforeModelSwitch = sendPlanBuildCallCount
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-openai/gpt-4o'))
+    await user.click(await firstModelPickerItem('openai/gpt-4o'))
 
     await waitFor(() => {
       expect(sendPlanBuildCallCount).toBeGreaterThan(callsBeforeModelSwitch)
@@ -2284,7 +2286,7 @@ describe('ui-app AppChatApp attachment entry flow', () => {
     render(AppChatApp)
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId('model-picker-item-openai/gpt-4o'))
+    await user.click(await firstModelPickerItem('openai/gpt-4o'))
 
     await user.click(await screen.findByTestId('composer-attach-toggle'))
     await waitFor(() => {

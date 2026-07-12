@@ -1,5 +1,7 @@
 import { computed, ref } from 'vue'
 import { ReasoningDetailStreamMerger } from '@/next/state/reasoningDetailStreamMerger'
+import type { ReasoningDisplayBlock } from '@/next/state/types'
+import type { ProviderNativeSnapshot } from '@/next/provider/providerNativeSnapshot'
 
 export type ActiveStream = Readonly<{
   abort: AbortController
@@ -10,7 +12,10 @@ export type ActiveStream = Readonly<{
   flushing: { value: boolean }
   flushTimer: { id: ReturnType<typeof setTimeout> | null }
   pendingReasoningDetails: { value: unknown[] }
+  pendingReasoningDisplayBlocks: { value: ReasoningDisplayBlock[] }
   reasoningFlushTimer: { id: ReturnType<typeof setTimeout> | null }
+  pendingProviderNativeContents: { value: ProviderNativeSnapshot[] }
+  providerNativeFlushTimer: { id: ReturnType<typeof setTimeout> | null }
   annotationsBuffer: { value: Record<string, unknown>[] | undefined }
   annotationsTouched: { value: boolean }
   reasoningMerger: ReasoningDetailStreamMerger
@@ -43,7 +48,10 @@ export function useLiveStreamController() {
       flushing: { value: false },
       flushTimer: { id: null },
       pendingReasoningDetails: { value: [] },
+      pendingReasoningDisplayBlocks: { value: [] },
       reasoningFlushTimer: { id: null },
+      pendingProviderNativeContents: { value: [] },
+      providerNativeFlushTimer: { id: null },
       annotationsBuffer: { value: undefined },
       annotationsTouched: { value: false },
       reasoningMerger: new ReasoningDetailStreamMerger(),

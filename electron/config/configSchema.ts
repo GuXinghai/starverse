@@ -1,4 +1,8 @@
 import { isProviderCredentialSecureStoreKey } from '../credentials/providerCredentialService'
+import {
+  COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
+  isCompatibleCredentialSecureStoreKey,
+} from '../credentials/compatibleCredentialService'
 
 /**
  * configSchema.ts - 应用配置 Schema 定义
@@ -76,7 +80,6 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'googleAIStudioApiKey', // Experimental Google AI Studio API Key（main-process only）
   'anthropicApiKey',      // Experimental Anthropic Messages API Key（main-process only）
   'deepSeekApiKey',       // Experimental DeepSeek official API Key（main-process only）
-  'openRouterBaseUrl',    // OpenRouter Base URL（自定义端点）
   'openRouterCatalogLocalSecret', // Internal: OpenRouter catalog scope HMAC secret（禁止 renderer 读取）
   'openRouterCatalogStartupSyncPolicy', // OpenRouter 模型目录启动同步策略
   'openRouterCatalogPickerOpenSyncPolicy', // OpenRouter 模型选择器打开同步策略
@@ -114,6 +117,7 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'netExp.forceHttp1',
   'netExp.tcpKeepAliveEnable',
   'netExp.tcpKeepAliveIdleMs',
+  'networkProxyPolicy',   // Electron session proxy policy（system/direct/fixed_servers/pac_script/auto_detect）
 
   // ========== Database Dev Rebuild (dev-only) ==========
   'dbExp',                           // DB 开发态实验开关（破坏性重建）
@@ -145,7 +149,9 @@ export const ALLOWED_CONFIG_KEYS = new Set([
 function isAllowedConfigKey(key: string): boolean {
   return ALLOWED_CONFIG_KEYS.has(key) ||
     key === 'providerCredentials' ||
-    isProviderCredentialSecureStoreKey(key)
+    key === COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT ||
+    isProviderCredentialSecureStoreKey(key) ||
+    isCompatibleCredentialSecureStoreKey(key)
 }
 
 /**

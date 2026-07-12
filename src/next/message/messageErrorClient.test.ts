@@ -16,13 +16,17 @@ describe('messageErrorClient', () => {
 
   it('sanitizes and computes bytes before persisting', async () => {
     const longMessage = 'a'.repeat(5000)
+    const networkError = {
+      safeDetailCode: 'provider_access_unverified_or_forbidden',
+      retryable: false,
+    }
     const envelope: ErrorEnvelope = {
       phase: 'pre_stream',
       completionClass: 'error',
       openrouter: {
         code: '400',
         message: longMessage,
-        metadata: { provider_name: 'p1', raw: { shouldNotPersist: true } },
+        metadata: { provider_name: 'p1', raw: { shouldNotPersist: true }, networkError },
       },
       raw: { raw_error: { token: 'secret' } },
       truncated: false,
@@ -39,6 +43,7 @@ describe('messageErrorClient', () => {
     expect(params?.isTruncated).toBe(true)
     expect(params?.metaPatch?.error_ref).toBe(true)
     expect(params?.metaPatch?.error_summary?.completionClass).toBe('error')
+    expect(params?.metaPatch?.error_summary?.networkError).toEqual(networkError)
 
     const json = String(params?.envelopeJson ?? '')
     const parsed = JSON.parse(json)

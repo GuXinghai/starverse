@@ -2,8 +2,8 @@ import { buildOpenRouterChatCompletionsRequest } from '@/next/openrouter/buildRe
 import type { OpenRouterImageConfig, OpenRouterOutputModality } from '@/next/openrouter/buildRequest'
 import type { OpenRouterAdditionalPlugin } from '@/next/openrouter/buildRequest'
 import type { OpenRouterWebRequestPatch } from '@/next/openrouter/searchSettingsResolver'
-import type { OpenRouterSamplingParamsPatch } from '@/next/openrouter/samplingParamsResolver'
 import { decodeOpenRouterSSE } from '@/next/openrouter/sse/decoder'
+import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
 import { resolveImageGenerationRequestModalities } from '@/next/openrouter/imageGenerationContract'
 import type { ImageCapabilityClass } from '@/next/openrouter/imageGenerationContract'
 import {
@@ -28,6 +28,7 @@ import { getOpenRouterProviderRequireParameters } from '@/next/settings/openRout
 import { getNetExpSettings } from '@/next/netExp/netExpClient'
 import type { ReasoningEffort, RequestedReasoningMode, StreamEndReason } from '@/next/state/types'
 import type { DomainEvent } from '@/next/state/types'
+import type { StreamJsonChunkMapper } from '@/next/streaming/core/types'
 import { buildOpenRouterMessages, type ContextMode, type InternalMessage } from '@/next/context/buildMessages'
 import {
   buildAbortEnvelope,
@@ -64,6 +65,14 @@ function logTiming(tag: string, data: Record<string, unknown>) {
     // ignore
   }
 }
+
+const mapOpenRouterJsonChunkToEvents: StreamJsonChunkMapper = (input) =>
+  mapChunkToEvents({
+    chunk: input.chunk as any,
+    messageId: input.messageId,
+    choiceIndex: input.choiceIndex,
+    chunkNo: input.chunkNo,
+  }) as unknown as readonly DomainEvent[]
 
 function extractWebPluginFromBody(body: unknown):
   | Readonly<{
@@ -278,6 +287,13 @@ export const ipcTransportStrategy: OpenRouterTransportStrategy<OpenRouterIpcTran
         contextMessages: options.contextMessages,
         contextMode: options.contextMode,
         requestBody: options.requestBody,
+        rawGenerationContext: {
+          operationId: requestId,
+          answerRootId: assistantMessageId,
+          requestSequence: 1,
+          providerId: 'openrouter',
+          modelId: String(options.config.model ?? ''),
+        },
         config: options.config,
       })
       if (result && result.ok === false) {
@@ -317,6 +333,7 @@ export const ipcTransportStrategy: OpenRouterTransportStrategy<OpenRouterIpcTran
         requestContext,
         tRequestStart: Date.now(),
         signal,
+        mapJsonChunkToEvents: mapOpenRouterJsonChunkToEvents,
         logTiming,
         logStreamError,
         mapAppPhaseToEnvelopePhase,
@@ -350,7 +367,7 @@ export type LiveRequestConfig = Readonly<{
     requestPatch: OpenRouterWebRequestPatch
     resolvedMode?: 'enable' | 'default' | 'disable'
   }>
-  samplingParams?: OpenRouterSamplingParamsPatch
+  generationParams?: Record<string, unknown>
   imageGeneration?: Readonly<{
     capabilityClass?: ImageCapabilityClass
     modalities?: ReadonlyArray<OpenRouterOutputModality>
@@ -440,6 +457,7 @@ export const fetchTransportStrategy: OpenRouterTransportStrategy<OpenRouterFetch
       requestContext,
       tRequestStart: timing.tRequestStart,
       signal,
+      mapJsonChunkToEvents: mapOpenRouterJsonChunkToEvents,
       logTiming,
       logStreamError,
       mapAppPhaseToEnvelopePhase,
@@ -574,13 +592,6 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
 
   const messages = buildOpenRouterMessages(internalMessages, { mode: options.contextMode ?? 'default' })
 
-  const reasoning =
-    options.config.requestedReasoningMode === 'auto'
-      ? undefined
-      : {
-        effort: options.config.requestedReasoningEffort ?? 'none',
-        ...(options.config.requestedReasoningExclude === true ? { exclude: true } : {}),
-      }
   const imageGenerationPatch = resolveImageGenerationPatch({
     imageGeneration: options.config.imageGeneration,
   })
@@ -593,9 +604,8 @@ export async function* streamOpenRouterChatAsEvents(options: LiveStreamOptions):
     tools: options.config.tools ?? [],
     ...imageGenerationPatch,
     ...(options.config.webSearch?.requestPatch ? { webSearchPatch: options.config.webSearch.requestPatch } : {}),
-    ...(options.config.samplingParams ? { samplingParams: options.config.samplingParams } : {}),
+    ...(options.config.generationParams ? { generationParams: options.config.generationParams } : {}),
     ...(providerRequireParameters === true ? { providerRequireParameters: true } : {}),
-    ...(reasoning ? { reasoning } : {}),
     ...(options.config.openRouterAdditionalPlugins ? { additionalPlugins: options.config.openRouterAdditionalPlugins } : {}),
     ...streamDebugPatch,
   })

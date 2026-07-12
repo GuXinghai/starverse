@@ -1,6 +1,7 @@
 import { render, screen, waitFor, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import AppChatApp from './AppChatApp.vue'
 
 const streamOpenRouterChatCallArgs: any[] = []
@@ -65,6 +66,10 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
       updatedAt: 1,
     }
     const historyAttachmentsByMessageId: Record<string, Array<Record<string, unknown>>> = {}
+    const assistantRouteMeta = {
+      providerId: 'openrouter',
+      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+    }
 
     const resolveQuestionBodyById = (questionId: string): string => {
       if (questionId === 'u1') return base.u1.body
@@ -99,12 +104,25 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
       if (method === 'project.list') return []
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
       if (method === 'settings.getUserMessageRenderDefault') return { value: null }
       if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
       if (method === 'settings.getChatDraft') return { value: null }
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
+      if (method === 'convo.list') {
+        return [{
+          id: convoId,
+          title: 'Chat 1',
+          createdAt: 1,
+          updatedAt: 1,
+          meta: {
+            selectedProviderId: 'openrouter',
+            selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
+          },
+        }]
+      }
       if (method === 'branch.ensureDefault') {
         const { a2 } = renderPath()
         return { id: branchId, convoId, headMessageId: a2.id, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
@@ -147,7 +165,7 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
               answerRootId: base.a1.answerRootId,
               questionId: base.a1.questionId,
               body: base.a1.body,
-              meta: null,
+              meta: assistantRouteMeta,
             },
             { id: u2.id, convoId, role: 'user', seq: u2.seq, createdAt: u2.seq, parentId: u2.parentId, status: 'final', answerRootId: null, questionId: null, body: u2.body, meta: null },
             {
@@ -161,7 +179,7 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
               answerRootId: a2.answerRootId,
               questionId: a2.questionId,
               body: a2.body,
-              meta: null,
+              meta: assistantRouteMeta,
             },
           ],
           turns: [
@@ -177,9 +195,9 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
         return {
           messages: [
             { id: base.u1.id, convoId, role: 'user', seq: base.u1.seq, createdAt: 1, parentId: base.u1.parentId, status: 'final', answerRootId: null, questionId: null, body: base.u1.body, meta: null },
-            { id: base.a1.id, convoId, role: 'assistant', seq: base.a1.seq, createdAt: 2, parentId: base.a1.parentId, status: 'final', answerRootId: base.a1.answerRootId, questionId: base.a1.questionId, body: base.a1.body, meta: null },
+            { id: base.a1.id, convoId, role: 'assistant', seq: base.a1.seq, createdAt: 2, parentId: base.a1.parentId, status: 'final', answerRootId: base.a1.answerRootId, questionId: base.a1.questionId, body: base.a1.body, meta: assistantRouteMeta },
             { id: u2.id, convoId, role: 'user', seq: u2.seq, createdAt: u2.seq, parentId: u2.parentId, status: 'final', answerRootId: null, questionId: null, body: u2.body, meta: null },
-            { id: a2.id, convoId, role: 'assistant', seq: a2.seq, createdAt: a2.seq, parentId: a2.parentId, status: a2.status, answerRootId: a2.answerRootId, questionId: a2.questionId, body: a2.body, meta: null },
+            { id: a2.id, convoId, role: 'assistant', seq: a2.seq, createdAt: a2.seq, parentId: a2.parentId, status: a2.status, answerRootId: a2.answerRootId, questionId: a2.questionId, body: a2.body, meta: assistantRouteMeta },
           ],
           debug: { branchId, excludedQuestionIds: [], includedMessageIds: [], chosenAnswerRootByQuestionId: {} },
         }
@@ -480,7 +498,7 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
     await user.click(screen.getByTestId('edit-q-u1'))
     await screen.findByTestId('question-edit-controls')
     expect(screen.getByTestId('question-edit-replace')).toBeDisabled()
-    await user.click(within(screen.getByTestId('question-edit-controls')).getByText('Cancel'))
+    await user.click(within(screen.getByTestId('question-edit-controls')).getByText(/Cancel|取消/))
 
     await user.click(screen.getByTestId('edit-q-u2'))
     await screen.findByTestId('question-edit-controls')

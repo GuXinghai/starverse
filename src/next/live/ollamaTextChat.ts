@@ -9,6 +9,8 @@ import {
   streamWireSemanticCore,
 } from '@/next/streaming/core'
 import { buildAbortEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import { mapLocalOpenAIChatCompletionsChunkToEvents } from '@/next/streaming/core/localOpenAIChatCompletionsStreamMapper'
+import { mapOllamaNativeChunkToEvents } from '@/next/provider/ollama/ollamaNativeStreamMapper'
 import {
   buildOpenAICompatibleUserContent,
   type OpenAICompatibleChatContentPart,
@@ -237,6 +239,9 @@ export async function* streamOllamaTextChatAsDomainEvents(
       requestContext,
       tRequestStart: Date.now(),
       signal: options.signal,
+      mapJsonChunkToEvents: options.config.chatMode === 'native_rest'
+        ? mapOllamaNativeChunkToEvents
+        : mapLocalOpenAIChatCompletionsChunkToEvents,
       mapAppPhaseToEnvelopePhase,
       mapAppPhaseToEndReason,
       buildStreamErrorFromAppError,

@@ -25,10 +25,12 @@ describe('ui-app AppChatApp (conversation management)', () => {
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
       if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
       if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
       if (method === 'settings.getUserMessageRenderDefault') return { value: false }
       if (method === 'settings.deleteChatDraftsByPrefix') return { deleted: 0 }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
 
       if (method === 'convo.list') {
         const sorted = [...convos].sort((a, b) => b.updatedAt - a.updatedAt)

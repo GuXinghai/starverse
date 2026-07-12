@@ -1,5 +1,5 @@
 import type { PdpInstallOperationPhase } from './installRecovery'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 
 const URL_LIKE_RE = /[a-z][a-z0-9+.-]*:\/\/[^\s"'`]+/giu
 const EMBEDDED_SHA256_RE = /[a-f0-9]{64}/giu

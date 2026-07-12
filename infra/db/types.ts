@@ -28,6 +28,7 @@ import type {
   DfcSendStrategy,
   DfcTargetKind,
 } from '../../src/shared/files/documentFormatConversion'
+import type { ProviderNativeSnapshot } from '../../src/next/provider/providerNativeSnapshot'
 
 export type JsonObject = Record<string, unknown>
 
@@ -39,6 +40,8 @@ export type ProjectRecord = {
   createdAt: number
   updatedAt: number
   meta: JsonObject | null
+  isSystem: boolean
+  systemKey: string | null
 }
 
 export type CreateProjectInput = {
@@ -75,7 +78,46 @@ export type ConvoRecord = {
   createdAt: number
   updatedAt: number
   meta: JsonObject | null
+  systemKey: string | null
+  templateRevision: number
 }
+
+export type StartupNavigation = 'open_new' | 'restore_last_formal' | 'projects_only'
+export type PostSendTemplateReset = 'reset_all' | 'preserve_model_config'
+export type NewChatLifecycleSettings = Readonly<{
+  startupNavigation: StartupNavigation
+  startupTemplateReset: Readonly<{ modelConfig: boolean; draftAttachments: boolean }>
+  postSendTemplateReset: PostSendTemplateReset
+}>
+
+export type SystemChatTemplateResetInput = Readonly<{
+  templateConversationId: string
+  expectedTemplateRevision: number
+  resetModelConfig: boolean
+  resetDraftAttachments: boolean
+}>
+
+export type SystemChatTemplateMaterializeInput = Readonly<{
+  templateConversationId: string
+  expectedTemplateRevision: number
+  requestId: string
+  userMeta?: JsonObject | null
+  sentAssetIds?: string[]
+  dfcAttachmentSendSnapshots?: DfcAttachmentSendSnapshot[]
+}>
+
+export type SystemChatTemplateMaterializeResult = Readonly<{
+  ok: true
+  idempotent: boolean
+  templateConversationId: string
+  templateRevision: number
+  convoId: string
+  branchId: string
+  questionId: string
+  questionSeq: number
+  assistantId: string
+  assistantSeq: number
+}>
 
 export type MessageRecord = {
   id: string
@@ -85,6 +127,8 @@ export type MessageRecord = {
   createdAt: number
   body: string
   meta: JsonObject | null
+  routeProvenanceId?: string | null
+  choiceIndex?: number | null
 }
 
 export type MessageErrorRecord = {
@@ -105,9 +149,83 @@ export type FinalizeReasoningDetailsInput = Readonly<{
   messageId: string
 }>
 
+export type FinalizeReasoningDisplayBlocksInput = Readonly<{
+  messageId: string
+}>
+
+export type ReasoningDisplayBlockRecord = Readonly<{
+  blockId: string
+  messageId: string
+  ordinal: number
+  type: 'text' | 'image' | 'opaque'
+  text: string | null
+  semanticRole: 'summary' | 'reasoning' | 'thinking' | 'thought' | null
+  assetId: string | null
+  fileAssetId: string | null
+  url: string | null
+  mimeType: string | null
+  width: number | null
+  height: number | null
+  alt: string | null
+  label: string | null
+  warning: string | null
+  providerKey: string
+  sourceEventType: string | null
+  sourceRawSegmentId: number | null
+  finalAt: number | null
+}>
+
+export type ReasoningDisplayBlockInput = Readonly<{
+  blockId: string
+  ordinal: number
+  type: 'text' | 'image' | 'opaque'
+  text?: string
+  semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+  assetId?: string
+  fileAssetId?: string
+  url?: string
+  mimeType?: string
+  width?: number
+  height?: number
+  alt?: string
+  label?: string
+  warning?: string
+  providerKey: string
+  sourceEventType?: string
+  sourceRawSegmentId?: number
+}>
+
+export type AppendReasoningDisplayBlocksInput = Readonly<{
+  messageId: string
+  blocks: ReasoningDisplayBlockInput[]
+}>
+
+export type ListReasoningDisplayBlocksByMessageIdsInput = Readonly<{
+  messageIds: string[]
+}>
+
 export type SetReasoningRequestConfigInput = Readonly<{
   messageId: string
   value?: unknown
+}>
+
+export type ProviderNativeContentStatus = 'streaming' | 'final' | 'error' | 'cancelled'
+
+export type ProviderNativeContentSnapshot = ProviderNativeSnapshot
+
+export type UpsertProviderNativeContentInput = Readonly<{
+  messageId: string
+  snapshot: ProviderNativeContentSnapshot
+}>
+
+export type ListProviderNativeContentsByMessageIdsInput = Readonly<{
+  messageIds: string[]
+}>
+
+export type ProviderNativeContentRecord = ProviderNativeContentSnapshot & Readonly<{
+  messageId: string
+  createdAt: number
+  updatedAt: number
 }>
 
 export type GetReasoningSegmentsStatsInput = Readonly<{
@@ -231,6 +349,7 @@ export type ListMessageErrorByIdsInput = {
 export type PersistMessageAssetsFromDataUrlsInput = Readonly<{
   messageId: string
   imageDataUrls: string[]
+  linkToMessage?: boolean
 }>
 
 export type ListMessageAssetsByMessageIdsInput = Readonly<{
@@ -1526,6 +1645,8 @@ export type BuildContextForBranchResult = Readonly<{
       questionId: string | null
       body: string
       meta: JsonObject | null
+      routeProvenanceId: string | null
+      choiceIndex: number | null
     }>
   >
   debug?: Readonly<{
@@ -1919,6 +2040,45 @@ export type WorkerInitConfig = {
   electronConversionBridge?: import('../files/electronConversionBridge').ElectronConversionBridge
   officePdfProcessRunner?: import('../files/dfcLibreOfficePdfAdapter').DfcLibreOfficePdfProcessRunner
   officePdfRuntimeSummary?: () => import('../files/dfcManagedLibreOfficeRuntime').DfcOfficePdfRuntimeAvailabilitySummary | null
+}
+
+export type AssistantAnswerGenerationActionKind = 'regenerate' | 'retry_replace' | 'retry_as_new'
+export type AssistantAnswerGenerationOperationState = 'committed' | 'streaming' | 'completed' | 'failed' | 'cancelled'
+
+export type AssistantAnswerGenerationCommandResult = {
+  ok: true
+  operationId: string
+  actionKind: AssistantAnswerGenerationActionKind
+  newAnswerRootId: string
+  newAssistantSeq: number
+  chosenAnswerRootId: string
+  headMessageId: string
+  snapshot: JsonObject
+  state: AssistantAnswerGenerationOperationState
+  idempotentReplay: boolean
+}
+
+export type RegenerateQuestionWithCurrentConfigInput = {
+  operationId: string
+  branchId: string
+  questionId: string
+  snapshot: JsonObject
+  compatibleExecutionPins?: JsonObject
+}
+
+export type RetryChosenAnswerInput = {
+  operationId: string
+  branchId: string
+  questionId: string
+  targetAnswerRootId: string
+  compatibleExecutionPins?: JsonObject
+}
+
+export type FinalizeAssistantAnswerGenerationInput = {
+  answerRootId: string
+  state: 'completed' | 'failed' | 'cancelled'
+  errorCode?: string | null
+  errorMessage?: string | null
 }
 
 export type { DbMethod } from './dbMethodsRegistry'
@@ -2418,6 +2578,18 @@ export type ElectronPackageDownloadWorkerProgressMessage = {
   progress: import('../../src/next/plugin-distribution/packageDownloader').PackageDownloadProgress
 }
 
+export type ElectronProviderFetchWorkerRequestMessage = {
+  type: 'electron-provider-fetch-request'
+  id: string
+  request: import('../files/electronConversionBridge').ElectronProviderFetchRequest
+}
+
+export type ElectronProviderFetchWorkerResponseMessage = {
+  type: 'electron-provider-fetch-response'
+  id: string
+  response: import('../files/electronConversionBridge').ElectronProviderFetchResult
+}
+
 // ========== Model Data Types ==========
 // 参考规范：/docs/openrouter-model-sync-spec.md
 
@@ -2494,3 +2666,59 @@ export type ListModelParams = {
   limit?: number
   offset?: number
 }
+
+// OpenAI Chat Completions-compatible records are non-secret DB/domain projections.
+export type {
+  CompatibleCatalogSnapshot,
+  CompatibleCatalogSyncState,
+  CompatibleCredentialDescriptor,
+  CompatibleDiscoveredResponseField,
+  CompatibleEndpointRevision,
+  CompatibleInlineReasoningPolicy,
+  CompatibleModelRecord,
+  CompatibleProviderInstance,
+  CompatibleRawExtensionRecord,
+  CompatibleReasoningMapping,
+  CompatibleRequestFieldMapping,
+  CompatibleRequestProfile,
+  CompatibleResponseProfile,
+  CompatibleRouteChoice,
+  CompatibleRouteProvenance,
+  CompatibleToolCall,
+  CompatibleToolResult,
+} from '../../src/shared/provider/openai-chat-compatible'
+export type {
+  CreateCompatibleCredentialDescriptorInput,
+  CreateCompatibleEndpointRevisionInput,
+  CreateCompatibleProviderInput,
+  DeleteCompatibleCredentialDescriptorInput,
+  TombstoneCompatibleProviderInput,
+  UpdateCompatibleProviderInput,
+} from './repo/compatibleProviderRepo'
+export type {
+  CreateCompatibleInlinePolicyInput,
+  CreateCompatibleReasoningMappingInput,
+  CreateCompatibleRequestFieldMappingInput,
+  CreateCompatibleRequestProfileInput,
+  CreateCompatibleResponseProfileInput,
+} from './repo/compatibleProfileRepo'
+export type {
+  ApplyCompatibleRemoteSyncSuccessInput,
+  RecordCompatibleCatalogSyncFailureInput,
+  UpsertCompatibleCatalogSyncStateInput,
+  UpsertCompatibleManualModelInput,
+} from './repo/compatibleCatalogRepo'
+export type {
+  CreateCompatibleRouteChoiceInput,
+  CreateCompatibleRouteProvenanceInput,
+} from './repo/compatibleRouteRepo'
+export type {
+  CreateCompatibleToolResultInput,
+  SaveCompatibleToolCallInput,
+} from './repo/compatibleToolRepo'
+export type {
+  CreateCompatibleRawExtensionRecordInput,
+  UpsertCompatibleDiscoveredFieldInput,
+} from './repo/compatibleDiagnosticsRepo'
+export type { SaveCompatibleReasoningChoiceInput, CompatiblePersistedReasoningChoice } from './repo/compatibleReasoningRepo'
+export type { CompatiblePersistedChoiceProjection } from './repo/compatibleTurnProjectionRepo'

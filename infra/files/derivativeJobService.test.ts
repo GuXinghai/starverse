@@ -33,7 +33,7 @@ describeIfBetterSqlite('DerivativeJobService', () => {
     }
   })
 
-  async function createHarness() {
+  async function createHarness(options: Readonly<{ openRouterDerivativeFetch?: typeof fetch | null }> = {}) {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     rootDir = await mkdtemp(path.join(os.tmpdir(), 'starverse-derivatives-'))
@@ -48,6 +48,12 @@ describeIfBetterSqlite('DerivativeJobService', () => {
       derivativeJobRepo,
       modelCatalogRepo,
       storageRootDir: rootDir,
+      openRouterDerivativeFetch: options.openRouterDerivativeFetch === null
+        ? undefined
+        : options.openRouterDerivativeFetch ?? ((
+            input: Parameters<typeof fetch>[0],
+            init?: Parameters<typeof fetch>[1]
+          ) => globalThis.fetch(input, init)),
       now: () => 100,
     })
     return { db, fileAssetRepo, fileDerivativeRepo, derivativeJobRepo, modelCatalogRepo, service }
@@ -662,6 +668,43 @@ describeIfBetterSqlite('DerivativeJobService', () => {
     })
     const notAudio = await service.runDerivativeJob({ jobId: notAudioJob.id, apiKey: 'key' })
     expect(notAudio.job).toMatchObject({ status: 'failed', errorCode: 'transcript_model_not_audio_capable' })
+    expect(fetchSpy).not.toHaveBeenCalled()
+  })
+
+  it('fails provider-backed transcript jobs without falling back to global fetch when no transport is injected', async () => {
+    const { db, fileAssetRepo, service } = await createHarness({ openRouterDerivativeFetch: null })
+    const modelId = insertAudioModel(db)
+    const localAudio = fileAssetRepo.create({
+      id: 'asset-audio-no-provider-fetch',
+      filename: 'local.wav',
+      extension: 'wav',
+      mime: 'audio/wav',
+      sizeBytes: 8,
+      assetKind: 'audio',
+      sourceKind: 'local_upload',
+      storageUri: 'assets/original/as/asset-audio-no-provider-fetch.wav',
+      ingestStatus: 'stored',
+    })
+    await writeAssetFile(rootDir, localAudio.storageUri, new Uint8Array([0, 1, 2, 3]))
+    const fetchSpy = vi.fn(async () => new Response('{}', { status: 200 }))
+    vi.stubGlobal('fetch', fetchSpy)
+    const job = service.createDerivativeJob({
+      id: 'job-audio-no-provider-fetch',
+      assetId: localAudio.id,
+      derivativeKind: 'transcript',
+      taskFamily: 'transcription',
+      generator: 'phase-7-test',
+      modelId,
+      configJson: audioModelConfig(modelId),
+    })
+
+    const result = await service.runDerivativeJob({ jobId: job.id, apiKey: 'key' })
+
+    expect(result.job).toMatchObject({
+      status: 'failed',
+      errorCode: 'transcript_request_failed',
+      errorMessage: 'OpenRouter derivative fetch transport is unavailable.',
+    })
     expect(fetchSpy).not.toHaveBeenCalled()
   })
 

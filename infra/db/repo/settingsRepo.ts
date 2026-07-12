@@ -1,22 +1,27 @@
 import BetterSqlite3 from 'better-sqlite3'
 import {
+  SETTINGS_KEY_CHAT_REASONING_PANEL_AUTO_COLLAPSE_AFTER_REASONING,
   SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED,
   SETTINGS_KEY_CHAT_REASONING_DISPLAY_MODE,
   SETTINGS_KEY_DFC_ATTACHMENT_DEFAULTS,
+  SETTINGS_KEY_GENERATION_PARAMS_DEFAULTS,
   SETTINGS_KEY_NETWORK_PROXY,
+  SETTINGS_KEY_NEW_CHAT_LIFECYCLE,
+  SETTINGS_KEY_LAST_FORMAL_CONVERSATION,
   SETTINGS_KEY_IMAGE_GENERATION_DEFAULT,
   SETTINGS_KEY_OPENROUTER_PROVIDER_REQUIRE_PARAMETERS,
   SETTINGS_KEY_REASONING_PREFS,
-  SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS,
   SETTINGS_KEY_USER_MESSAGE_RENDER_DEFAULT,
   SETTINGS_KEY_WEB_SEARCH_DEFAULTS,
 } from './settingsKeys'
 import { normalizeDfcAttachmentDefaults } from '../../../src/shared/files/dfcAttachmentDefaults'
 import {
   normalizeNetworkProxySettings,
+  parseNetworkProxySettingsStrict,
   proxyUrlContainsCredentials,
   type NetworkProxySettings,
-} from '../../../src/next/plugin-distribution/networkProxy'
+} from '../../../src/shared/plugin-distribution/networkProxy'
+import type { NewChatLifecycleSettings } from '../types'
 
 type SqlDatabase = BetterSqlite3.Database
 
@@ -112,13 +117,13 @@ export class SettingsRepo {
     this.writeJson(SETTINGS_KEY_WEB_SEARCH_DEFAULTS, value)
   }
 
-  getSamplingParamsDefaults(): unknown | null {
-    const value = this.readJson(SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS)
+  getGenerationParamsDefaults(): unknown | null {
+    const value = this.readJson(SETTINGS_KEY_GENERATION_PARAMS_DEFAULTS)
     return value === undefined ? null : value
   }
 
-  setSamplingParamsDefaults(value: unknown): void {
-    this.writeJson(SETTINGS_KEY_SAMPLING_PARAMS_DEFAULTS, value)
+  setGenerationParamsDefaults(value: unknown): void {
+    this.writeJson(SETTINGS_KEY_GENERATION_PARAMS_DEFAULTS, value)
   }
 
   getImageGenerationDefault(): unknown | null {
@@ -169,8 +174,22 @@ export class SettingsRepo {
     this.writeJson(SETTINGS_KEY_CHAT_REASONING_PANEL_DEFAULT_EXPANDED, value)
   }
 
+  getChatReasoningPanelAutoCollapseAfterReasoning(): boolean {
+    const value = this.readJson(SETTINGS_KEY_CHAT_REASONING_PANEL_AUTO_COLLAPSE_AFTER_REASONING)
+    return value === true
+  }
+
+  setChatReasoningPanelAutoCollapseAfterReasoning(value: boolean): void {
+    if (typeof value !== 'boolean') throw new Error('value must be boolean')
+    this.writeJson(SETTINGS_KEY_CHAT_REASONING_PANEL_AUTO_COLLAPSE_AFTER_REASONING, value)
+  }
+
   getNetworkProxySettings(): NetworkProxySettings {
     return normalizeNetworkProxySettings(this.readJson(SETTINGS_KEY_NETWORK_PROXY))
+  }
+
+  getNetworkProxySettingsStrict(): NetworkProxySettings {
+    return parseNetworkProxySettingsStrict(this.readJson(SETTINGS_KEY_NETWORK_PROXY))
   }
 
   setNetworkProxySettings(value: unknown): void {
@@ -179,6 +198,41 @@ export class SettingsRepo {
       throw new Error('proxy credentials require secure storage and are not accepted in the proxy URL')
     }
     this.writeJson(SETTINGS_KEY_NETWORK_PROXY, normalized)
+  }
+
+  getNewChatLifecycleSettings(): NewChatLifecycleSettings {
+    const raw = this.readJson(SETTINGS_KEY_NEW_CHAT_LIFECYCLE) as any
+    return {
+      startupNavigation: raw?.startupNavigation === 'restore_last_formal' || raw?.startupNavigation === 'projects_only'
+        ? raw.startupNavigation
+        : 'open_new',
+      startupTemplateReset: {
+        modelConfig: raw?.startupTemplateReset?.modelConfig !== false,
+        draftAttachments: raw?.startupTemplateReset?.draftAttachments !== false,
+      },
+      postSendTemplateReset: raw?.postSendTemplateReset === 'preserve_model_config'
+        ? 'preserve_model_config'
+        : 'reset_all',
+    }
+  }
+
+  setNewChatLifecycleSettings(value: NewChatLifecycleSettings): void {
+    this.writeJson(SETTINGS_KEY_NEW_CHAT_LIFECYCLE, value)
+  }
+
+  getLastFormalConversationId(): string | null {
+    const value = this.readJson(SETTINGS_KEY_LAST_FORMAL_CONVERSATION)
+    const normalized = typeof value === 'string' ? value.trim() : ''
+    return normalized || null
+  }
+
+  setLastFormalConversationId(conversationId: string | null): void {
+    const normalized = String(conversationId ?? '').trim()
+    if (!normalized) {
+      this.deleteKey(SETTINGS_KEY_LAST_FORMAL_CONVERSATION)
+      return
+    }
+    this.writeJson(SETTINGS_KEY_LAST_FORMAL_CONVERSATION, normalized)
   }
 
   getChatDraft(key: string): string | null {

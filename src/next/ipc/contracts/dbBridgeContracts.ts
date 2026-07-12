@@ -19,8 +19,73 @@ import {
   type DfcTargetKind,
 } from '@/shared/files/documentFormatConversion'
 import { normalizeDfcAttachmentDefaults, type DfcAttachmentDefaults } from '@/shared/files/dfcAttachmentDefaults'
+import {
+  compatibleOrdinaryHeadersSchema,
+  compatibleEndpointSecurityPolicySchema,
+  compatibleProfileVersionSchema,
+  compatibleQueryConfigSchema,
+  compatibleSensitiveHeaderRefsSchema,
+  credentialVersionRefSchema,
+  endpointRevisionIdSchema,
+  providerInstanceIdSchema,
+  requestProfileIdSchema,
+  responseProfileIdSchema,
+  type CompatibleRendererCredentialDescriptor,
+  type CompatibleRendererEndpointRevision,
+  type CompatibleRendererProviderInstance,
+} from '@/shared/provider/openai-chat-compatible'
 
 const nonEmpty = z.string().trim().min(1)
+
+const compatibleRendererProviderSchema = z.object({
+  providerInstanceId: providerInstanceIdSchema,
+  protocolKey: z.literal('openai_chat_compatible'),
+  displayName: z.string().trim().min(1).max(256),
+  status: z.enum(['active', 'disabled', 'deleted']),
+  createdAtMs: z.number().int().nonnegative(),
+  updatedAtMs: z.number().int().nonnegative(),
+  deletedAtMs: z.number().int().nonnegative().nullable(),
+}).strict()
+
+const compatibleRendererCredentialSchema = z.object({
+  credentialVersionRef: credentialVersionRefSchema,
+  providerInstanceId: providerInstanceIdSchema,
+  version: compatibleProfileVersionSchema,
+  authMode: z.enum(['none', 'bearer', 'basic', 'custom_headers']),
+  configured: z.boolean(),
+  maskState: z.enum(['not_applicable', 'not_configured', 'configured_masked']),
+  sensitiveHeaderNames: z.array(z.string().trim().min(1).max(128)).max(32),
+  deletedAtMs: z.number().int().nonnegative().nullable(),
+}).strict().superRefine((value, ctx) => {
+  const expectedMaskState = value.authMode === 'none'
+    ? 'not_applicable'
+    : value.configured ? 'configured_masked' : 'not_configured'
+  if (value.maskState !== expectedMaskState) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['maskState'], message: 'Credential mask state is inconsistent.' })
+  }
+  if (value.authMode !== 'custom_headers' && value.sensitiveHeaderNames.length > 0) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ['sensitiveHeaderNames'], message: 'Sensitive header names require custom_headers auth.' })
+  }
+})
+
+const compatibleRendererEndpointSchema = z.object({
+  endpointRevisionId: endpointRevisionIdSchema,
+  providerInstanceId: providerInstanceIdSchema,
+  revision: compatibleProfileVersionSchema,
+  baseUrl: z.string().url().max(2048),
+  allowInsecureHttp: z.boolean(),
+  securityPolicy: compatibleEndpointSecurityPolicySchema,
+  authMode: z.enum(['none', 'bearer', 'basic', 'custom_headers']),
+  credentialVersionRef: credentialVersionRefSchema.nullable(),
+  ordinaryHeaders: compatibleOrdinaryHeadersSchema,
+  sensitiveHeaderRefs: compatibleSensitiveHeaderRefsSchema,
+  query: compatibleQueryConfigSchema,
+  requestProfileId: requestProfileIdSchema,
+  requestProfileVersion: compatibleProfileVersionSchema,
+  responseProfileId: responseProfileIdSchema,
+  responseProfileVersion: compatibleProfileVersionSchema,
+  createdAtMs: z.number().int().nonnegative(),
+}).strict()
 
 export type DecodedProjectSummary = Readonly<{
   id: string
@@ -49,6 +114,8 @@ export type DecodedPersistedMessage = Readonly<{
   createdAt: number
   body: string
   meta: unknown
+  routeProvenanceId?: string
+  choiceIndex?: number
 }>
 
 export type DecodedMessageAsset = Readonly<{
@@ -73,6 +140,48 @@ export type DecodedMessageAssetRender = Readonly<{
   width: number | null
   height: number | null
   assetUrl: string
+}>
+
+export type DecodedReasoningDisplayBlock = Readonly<{
+  blockId: string
+  messageId: string
+  ordinal: number
+  type: 'text' | 'image' | 'opaque'
+  text: string | null
+  semanticRole: 'summary' | 'reasoning' | 'thinking' | 'thought' | null
+  assetId: string | null
+  fileAssetId: string | null
+  url: string | null
+  mimeType: string | null
+  width: number | null
+  height: number | null
+  alt: string | null
+  label: string | null
+  warning: string | null
+  providerKey: string
+  sourceEventType: string | null
+  sourceRawSegmentId: number | null
+  finalAt: number | null
+}>
+
+export type DecodedProviderNativeContent = Readonly<{
+  messageId: string
+  providerKey: string
+  sourceApi: string
+  snapshotKey: string
+  candidateIndex?: number
+  status: 'streaming' | 'final' | 'error' | 'cancelled'
+  content: unknown
+  role?: string
+  finishReason?: string
+  stopReason?: string
+  stopSequence?: string | null
+  usageMetadata?: Readonly<Record<string, unknown>>
+  usage?: unknown
+  model?: string
+  modelVersion?: string
+  createdAt: number
+  updatedAt: number
 }>
 
 export type DecodedFileAsset = Readonly<{
@@ -371,6 +480,8 @@ const persistedMessageSchema = z.object({
   createdAt: z.number().finite().default(0),
   body: z.string().default(''),
   meta: z.unknown().optional(),
+  routeProvenanceId: z.string().trim().min(1).optional(),
+  choiceIndex: z.number().int().nonnegative().max(1024).optional(),
 }).transform((row) => ({
   ...row,
   meta: row.meta ?? null,
@@ -1128,6 +1239,94 @@ const appendReasoningDetailSegmentsResultSchema = z.object({
   sumDeltaLenInserted: z.number().finite(),
 })
 
+const appendReasoningDisplayBlocksResultSchema = z.object({
+  ok: z.boolean(),
+  received: z.number().finite(),
+  inserted: z.number().finite(),
+  updated: z.number().finite().optional().default(0),
+  ignored: z.number().finite(),
+})
+
+const reasoningDisplayBlockSchema = z.object({
+  blockId: nonEmpty,
+  messageId: nonEmpty,
+  ordinal: z.number().int().nonnegative(),
+  type: z.enum(['text', 'image', 'opaque']),
+  text: z.string().nullable().optional(),
+  semanticRole: z.enum(['summary', 'reasoning', 'thinking', 'thought']).nullable().optional(),
+  assetId: z.string().nullable().optional(),
+  fileAssetId: z.string().nullable().optional(),
+  url: z.string().nullable().optional(),
+  mimeType: z.string().nullable().optional(),
+  width: z.number().int().positive().nullable().optional(),
+  height: z.number().int().positive().nullable().optional(),
+  alt: z.string().nullable().optional(),
+  label: z.string().nullable().optional(),
+  warning: z.string().nullable().optional(),
+  providerKey: nonEmpty,
+  sourceEventType: z.string().nullable().optional(),
+  sourceRawSegmentId: z.number().int().positive().nullable().optional(),
+  finalAt: z.number().int().nonnegative().nullable().optional(),
+}).transform((row): DecodedReasoningDisplayBlock => ({
+  blockId: row.blockId,
+  messageId: row.messageId,
+  ordinal: row.ordinal,
+  type: row.type,
+  text: row.text ?? null,
+  semanticRole: row.semanticRole ?? null,
+  assetId: row.assetId ?? null,
+  fileAssetId: row.fileAssetId ?? null,
+  url: row.url ?? null,
+  mimeType: row.mimeType ?? null,
+  width: row.width ?? null,
+  height: row.height ?? null,
+  alt: row.alt ?? null,
+  label: row.label ?? null,
+  warning: row.warning ?? null,
+  providerKey: row.providerKey,
+  sourceEventType: row.sourceEventType ?? null,
+  sourceRawSegmentId: row.sourceRawSegmentId ?? null,
+  finalAt: row.finalAt ?? null,
+}))
+
+const providerNativeContentRecordSchema = z.object({
+  messageId: nonEmpty,
+  providerKey: nonEmpty,
+  sourceApi: nonEmpty,
+  snapshotKey: nonEmpty,
+  candidateIndex: z.number().int().nonnegative().optional(),
+  status: z.enum(['streaming', 'final', 'error', 'cancelled']),
+  content: z.any(),
+  role: z.string().optional(),
+  finishReason: z.string().optional(),
+  stopReason: z.string().optional(),
+  stopSequence: z.string().nullable().optional(),
+  usageMetadata: z.record(z.any()).optional(),
+  usage: z.any().optional(),
+  model: z.string().optional(),
+  modelVersion: z.string().optional(),
+  createdAt: z.number().int().nonnegative(),
+  updatedAt: z.number().int().nonnegative(),
+}).transform((row): DecodedProviderNativeContent => ({
+  messageId: row.messageId,
+  providerKey: row.providerKey,
+  sourceApi: row.sourceApi,
+  snapshotKey: row.snapshotKey,
+  ...(typeof row.candidateIndex === 'number' ? { candidateIndex: row.candidateIndex } : {}),
+  status: row.status,
+  content: row.content,
+  ...(row.role ? { role: row.role } : {}),
+  ...(row.finishReason ? { finishReason: row.finishReason } : {}),
+  ...(row.stopReason ? { stopReason: row.stopReason } : {}),
+  ...(row.stopSequence !== undefined ? { stopSequence: row.stopSequence } : {}),
+  ...(row.usageMetadata ? { usageMetadata: row.usageMetadata } : {}),
+  ...(row.usage !== undefined ? { usage: row.usage } : {}),
+  ...(row.model ? { model: row.model } : {}),
+  ...(row.modelVersion ? { modelVersion: row.modelVersion } : {}),
+  createdAt: row.createdAt,
+  updatedAt: row.updatedAt,
+}))
+
 const beginTurnResultSchema = z.object({
   ok: z.literal(true),
   convoId: nonEmpty,
@@ -1204,9 +1403,54 @@ const webSearchDefaultsSchema = z.object({
   value: definedUnknownSchema.nullable(),
 })
 
-const samplingParamsDefaultsSchema = z.object({
+const generationParamsDefaultsSchema = z.object({
   value: definedUnknownSchema.nullable(),
 })
+
+const contextBuiltMessageSchema = z.object({
+  id: nonEmpty,
+  convoId: nonEmpty,
+  role: nonEmpty,
+  seq: z.number().int().nonnegative(),
+  createdAt: z.number().int().nonnegative(),
+  parentId: nonEmpty.nullable(),
+  status: nonEmpty,
+  answerRootId: nonEmpty.nullable(),
+  questionId: nonEmpty.nullable(),
+  body: z.string(),
+  meta: z.unknown().nullable(),
+  routeProvenanceId: z.string().trim().min(1).nullable().optional(),
+  choiceIndex: z.number().int().nonnegative().max(1024).nullable().optional(),
+}).strict().transform((row) => ({
+  ...row,
+  routeProvenanceId: row.routeProvenanceId ?? null,
+  choiceIndex: row.choiceIndex ?? null,
+}))
+
+const contextBuildDebugSchema = z.object({
+  branchId: nonEmpty,
+  excludedQuestionIds: z.array(nonEmpty),
+  includedMessageIds: z.array(nonEmpty),
+  chosenAnswerRootByQuestionId: z.record(nonEmpty),
+}).strict()
+
+const contextBuildResultSchema = z.object({
+  messages: z.array(contextBuiltMessageSchema),
+  debug: contextBuildDebugSchema.optional(),
+}).strict()
+
+const renderableTurnSchema = z.object({
+  questionId: nonEmpty,
+  chosenAnswerRootId: nonEmpty.nullable(),
+  questionMode: z.enum(['include', 'exclude']),
+  answerMode: z.enum(['include', 'exclude']),
+  effectiveMode: z.enum(['include', 'exclude']),
+  lockedByQuestionExclude: z.boolean(),
+}).strict()
+
+const renderableTurnsResultSchema = contextBuildResultSchema.extend({
+  turns: z.array(renderableTurnSchema),
+}).strict()
 
 const imageGenerationDefaultSchema = z.object({
   value: definedUnknownSchema.nullable(),
@@ -1225,6 +1469,10 @@ const chatReasoningDisplayModeSchema = z.object({
 })
 
 const chatReasoningPanelDefaultExpandedSchema = z.object({
+  value: z.boolean(),
+})
+
+const chatReasoningPanelAutoCollapseAfterReasoningSchema = z.object({
   value: z.boolean(),
 })
 
@@ -1340,6 +1588,8 @@ export function decodeMessageListResponse(raw: unknown): DecodedPersistedMessage
     createdAt: row.createdAt ?? 0,
     body: row.body ?? '',
     meta: row.meta ?? null,
+    ...(row.routeProvenanceId ? { routeProvenanceId: row.routeProvenanceId } : {}),
+    ...(row.choiceIndex !== undefined ? { choiceIndex: row.choiceIndex } : {}),
   }))
 }
 
@@ -1353,6 +1603,8 @@ export function decodeMessageAppendResponse(raw: unknown): DecodedPersistedMessa
     createdAt: row.createdAt ?? 0,
     body: row.body ?? '',
     meta: row.meta ?? null,
+    ...(row.routeProvenanceId ? { routeProvenanceId: row.routeProvenanceId } : {}),
+    ...(row.choiceIndex !== undefined ? { choiceIndex: row.choiceIndex } : {}),
   }
 }
 
@@ -1642,6 +1894,26 @@ export function decodeAppendReasoningDetailSegmentsResponse(raw: unknown) {
   return decodeWithSchema('message.appendReasoningDetailSegments', appendReasoningDetailSegmentsResultSchema, raw)
 }
 
+export function decodeAppendReasoningDisplayBlocksResponse(raw: unknown) {
+  return decodeWithSchema('message.appendReasoningDisplayBlocks', appendReasoningDisplayBlocksResultSchema, raw)
+}
+
+export function decodeMessageFinalizeReasoningDisplayBlocksResponse(raw: unknown): boolean {
+  return decodeStrictAck('message.finalizeReasoningDisplayBlocks', raw)
+}
+
+export function decodeReasoningDisplayBlockListResponse(raw: unknown): DecodedReasoningDisplayBlock[] {
+  return decodeWithSchema('message.listReasoningDisplayBlocksByMessageIds', z.array(reasoningDisplayBlockSchema), raw)
+}
+
+export function decodeMessageUpsertProviderNativeContentResponse(raw: unknown): boolean {
+  return decodeBooleanAck('message.upsertProviderNativeContent', raw)
+}
+
+export function decodeProviderNativeContentListResponse(raw: unknown): DecodedProviderNativeContent[] {
+  return decodeWithSchema('message.listProviderNativeContentsByMessageIds', z.array(providerNativeContentRecordSchema), raw)
+}
+
 export function decodeBranchBeginTurnResponse(raw: unknown): DecodedBeginTurnResult {
   const row = decodeWithSchema('branch.beginTurn', beginTurnResultSchema, raw)
   return {
@@ -1729,8 +2001,16 @@ export function decodeWebSearchDefaultsResponse(raw: unknown): unknown | null {
   return decodeWithSchema('settings.getWebSearchDefaults', webSearchDefaultsSchema, raw).value
 }
 
-export function decodeSamplingParamsDefaultsResponse(raw: unknown): unknown | null {
-  return decodeWithSchema('settings.getSamplingParamsDefaults', samplingParamsDefaultsSchema, raw).value
+export function decodeGenerationParamsDefaultsResponse(raw: unknown): unknown | null {
+  return decodeWithSchema('settings.getGenerationParamsDefaults', generationParamsDefaultsSchema, raw).value
+}
+
+export function decodeContextBuildForBranchResponse(raw: unknown) {
+  return decodeWithSchema('context.buildForBranch', contextBuildResultSchema, raw)
+}
+
+export function decodeContextRenderableTurnsResponse(raw: unknown) {
+  return decodeWithSchema('context.getRenderableTurns', renderableTurnsResultSchema, raw)
 }
 
 export function decodeImageGenerationDefaultResponse(raw: unknown): unknown | null {
@@ -1753,6 +2033,10 @@ export function decodeChatReasoningPanelDefaultExpandedResponse(raw: unknown): b
   return decodeWithSchema('settings.getChatReasoningPanelDefaultExpanded', chatReasoningPanelDefaultExpandedSchema, raw).value
 }
 
+export function decodeChatReasoningPanelAutoCollapseAfterReasoningResponse(raw: unknown): boolean {
+  return decodeWithSchema('settings.getChatReasoningPanelAutoCollapseAfterReasoning', chatReasoningPanelAutoCollapseAfterReasoningSchema, raw).value
+}
+
 export function decodeChatDraftResponse(raw: unknown): string | null {
   return decodeWithSchema('settings.getChatDraft', chatDraftSchema, raw).value
 }
@@ -1771,4 +2055,16 @@ export function decodeMessageFinalizeReasoningDetailsResponse(raw: unknown): boo
 
 export function decodeBranchSetHeadResponse(raw: unknown): boolean {
   return decodeStrictAck('branch.setHead', raw)
+}
+
+export function decodeCompatibleRendererProvider(raw: unknown): CompatibleRendererProviderInstance {
+  return decodeWithSchema('compatibleProvider.rendererSafe', compatibleRendererProviderSchema, raw)
+}
+
+export function decodeCompatibleRendererCredential(raw: unknown): CompatibleRendererCredentialDescriptor {
+  return decodeWithSchema('compatibleCredential.rendererSafe', compatibleRendererCredentialSchema, raw)
+}
+
+export function decodeCompatibleRendererEndpoint(raw: unknown): CompatibleRendererEndpointRevision {
+  return decodeWithSchema('compatibleEndpoint.rendererSafe', compatibleRendererEndpointSchema, raw)
 }

@@ -16,8 +16,16 @@ type Story = StoryObj<typeof ChatReasoningPanel>
 const shownView: ReasoningView = {
   visibility: 'shown',
   panelState: 'expanded',
-  summaryText: 'This is a short summary.',
-  reasoningText: 'Step 1...\nStep 2...\nConclusion.',
+  displayBlocks: [
+    {
+      blockId: 'display-1',
+      ordinal: 0,
+      type: 'text',
+      text: 'Step 1...\nStep 2...\nConclusion.',
+      semanticRole: 'summary',
+      providerKey: 'openrouter',
+    },
+  ],
   hasEncrypted: false,
 }
 

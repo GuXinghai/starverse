@@ -1,11 +1,11 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, onMounted, ref, watch, type Ref } from 'vue'
 import { getOpenRouterProviderRequireParameters, setOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
 import { getUserMessageRenderDefault, setUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
 import { getChatReasoningPanelDefaultExpanded, setChatReasoningPanelDefaultExpanded } from '@/next/settings/reasoningPanelDefaultClient'
 import { getWebSearchDefaults, setWebSearchDefaults } from '@/next/settings/webSearchDefaultsClient'
-import { getSamplingParamsDefaults, setSamplingParamsDefaults } from '@/next/settings/samplingParamsDefaultsClient'
+import { getGenerationParamsDefaults, setGenerationParamsDefaults } from '@/next/settings/generationParamsDefaultsClient'
 import {
   getNetworkProxySettings,
   probeLibreOfficeOfficialDownloadNetwork,
@@ -16,7 +16,7 @@ import {
   DEFAULT_NETWORK_PROXY_SETTINGS,
   normalizeNetworkProxySettings,
   type NetworkProxyMode,
-} from '@/next/plugin-distribution/networkProxyShared'
+} from '@/shared/plugin-distribution/networkProxyShared'
 import {
   DEFAULT_NETEXP_SETTINGS,
   getNetExpRuntimeInfo,
@@ -29,11 +29,13 @@ import { formatNetExpRunReport, getLastNetExpRunReport } from '@/next/netExp/net
 import type { ReasoningEffort, ReasoningPrefs } from '@/next/state/types'
 import { normalizeSearchSettingsLayer } from '@/next/openrouter/searchSettingsPersistence'
 import { resolveSearchSettings, type SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
-import { normalizeSamplingParamsLayer } from '@/next/openrouter/samplingParamsPersistence'
-import { resolveSamplingParams, type SamplingParamsLayer } from '@/next/openrouter/samplingParamsResolver'
+import { normalizeGenerationParamsLayer } from '@/next/generation-params/generationParamPersistence'
+import type { GenerationParamsLayer } from '@/next/generation-params/generationParamTypes'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
-import SamplingParamsSettingsEditor from './SamplingParamsSettingsEditor.vue'
+import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import PluginManagementPanel from './PluginManagementPanel.vue'
+import CompatibleProviderSettingsPanel from './compatible/CompatibleProviderSettingsPanel.vue'
+import NewChatLifecycleSettingsPanel from './NewChatLifecycleSettingsPanel.vue'
 import { t, tf, useLanguagePrefs, LOCALE_DISPLAY_NAMES, type SupportedLocale, type LocaleMode } from '@/shared/i18n'
 import { saveLanguagePref, saveLanguagePrefSystem, getSystemLocale } from '@/next/settings/languagePrefs'
 import {
@@ -63,9 +65,10 @@ const props = defineProps<{
 }>()
 const isDev = import.meta.env?.DEV === true
 
-function credentialStatusText(configured: boolean, maskedValue: string): string {
-  if (!configured) return t('settings.credentials.notConfigured')
-  return tf('settings.credentials.configured', { value: maskedValue || '***' })
+const CONFIGURED_API_KEY_PLACEHOLDER = '••••••'
+
+function apiKeyPlaceholder(configured: boolean, fallback: string): string {
+  return configured ? CONFIGURED_API_KEY_PLACEHOLDER : fallback
 }
 
 function networkProxyModeText(mode: NetworkProxyMode): string {
@@ -112,30 +115,12 @@ type OpenRouterEndpointMetadataBase = Readonly<{
   rendererVisible: true
 }>
 
-type OpenRouterEndpointMetadata =
-  | Readonly<OpenRouterEndpointMetadataBase & {
+type OpenRouterEndpointMetadata = Readonly<OpenRouterEndpointMetadataBase & {
     endpointId: 'openrouter-official'
     endpointStatus: 'official'
     displayName: 'OpenRouter official endpoint'
     baseUrlConfigured: false
-    baseUrlInvalid?: false
     displayBaseUrl: 'https://openrouter.ai/api/v1'
-  }>
-  | Readonly<OpenRouterEndpointMetadataBase & {
-    endpointId: 'openrouter-custom-legacy-store'
-    endpointStatus: 'custom'
-    displayName: 'OpenRouter custom endpoint'
-    baseUrlConfigured: true
-    baseUrlInvalid?: false
-    displayBaseUrl: string
-  }>
-  | Readonly<OpenRouterEndpointMetadataBase & {
-    endpointId: 'openrouter-custom-legacy-store'
-    endpointStatus: 'invalid_custom'
-    displayName: 'OpenRouter custom endpoint'
-    baseUrlConfigured: true
-    baseUrlInvalid: true
-    displayBaseUrl?: never
   }>
 
 type OpenRouterCredentialStatus = Readonly<{
@@ -145,9 +130,8 @@ type OpenRouterCredentialStatus = Readonly<{
   maskedApiKey?: string
   migratedFromLegacy?: boolean
   warnings?: string[]
-  baseUrlConfigured: boolean
-  baseUrlInvalid?: boolean
-  displayBaseUrl?: string
+  baseUrlConfigured: false
+  displayBaseUrl: 'https://openrouter.ai/api/v1'
   defaultBaseUrl?: string
   endpoint?: OpenRouterEndpointMetadata
 }>
@@ -158,9 +142,19 @@ type OpenRouterCredentialResult = Readonly<{
   message?: string
 }>
 
+type ProviderCredentialRevealResult = Readonly<
+  | { ok: true; apiKey: string }
+  | { ok: false; code?: string; message?: string }
+>
+
+type ProviderCredentialRevealBridge = Readonly<{
+  reveal: () => Promise<ProviderCredentialRevealResult>
+}>
+
 type OpenRouterCredentialBridge = Readonly<{
   getStatus: () => Promise<OpenRouterCredentialResult>
-  update: (payload: Readonly<{ apiKey?: string; baseUrl?: string | null }>) => Promise<OpenRouterCredentialResult>
+  reveal: () => Promise<ProviderCredentialRevealResult>
+  update: (payload: Readonly<{ apiKey?: string }>) => Promise<OpenRouterCredentialResult>
   clear: () => Promise<OpenRouterCredentialResult>
 }>
 
@@ -185,6 +179,7 @@ type OpenAIResponsesCredentialResult = Readonly<{
 
 type OpenAIResponsesCredentialBridge = Readonly<{
   getStatus: () => Promise<OpenAIResponsesCredentialResult>
+  reveal: () => Promise<ProviderCredentialRevealResult>
   update: (payload: Readonly<{ apiKey?: string }>) => Promise<OpenAIResponsesCredentialResult>
   clear: () => Promise<OpenAIResponsesCredentialResult>
 }>
@@ -210,6 +205,7 @@ type GoogleAIStudioCredentialResult = Readonly<{
 
 type GoogleAIStudioCredentialBridge = Readonly<{
   getStatus: () => Promise<GoogleAIStudioCredentialResult>
+  reveal: () => Promise<ProviderCredentialRevealResult>
   update: (payload: Readonly<{ apiKey?: string }>) => Promise<GoogleAIStudioCredentialResult>
   clear: () => Promise<GoogleAIStudioCredentialResult>
 }>
@@ -235,6 +231,7 @@ type AnthropicCredentialResult = Readonly<{
 
 type AnthropicCredentialBridge = Readonly<{
   getStatus: () => Promise<AnthropicCredentialResult>
+  reveal: () => Promise<ProviderCredentialRevealResult>
   update: (payload: Readonly<{ apiKey?: string }>) => Promise<AnthropicCredentialResult>
   clear: () => Promise<AnthropicCredentialResult>
 }>
@@ -260,6 +257,7 @@ type DeepSeekCredentialResult = Readonly<{
 
 type DeepSeekCredentialBridge = Readonly<{
   getStatus: () => Promise<DeepSeekCredentialResult>
+  reveal: () => Promise<ProviderCredentialRevealResult>
   update: (payload: Readonly<{ apiKey?: string }>) => Promise<DeepSeekCredentialResult>
   clear: () => Promise<DeepSeekCredentialResult>
 }>
@@ -330,16 +328,16 @@ type LocalEndpointDiagnosticsBridge = Readonly<{
 }>
 
 const LOCAL_ENDPOINT_CHAT_URL_KEY = 'starverse.localEndpointTextChat.url'
-const LOCAL_ENDPOINT_CHAT_MODEL_KEY = 'starverse.localEndpointTextChat.model'
 const LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT = 'settings:localEndpointTextChatUpdated'
-const OPENAI_RESPONSES_CHAT_MODEL_KEY = 'starverse.openAIResponsesTextChat.model'
-const OPENAI_RESPONSES_CHAT_SETTINGS_EVENT = 'settings:openAIResponsesTextChatUpdated'
-const GOOGLE_AI_STUDIO_CHAT_MODEL_KEY = 'starverse.googleAIStudioTextChat.model'
-const GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT = 'settings:googleAIStudioTextChatUpdated'
-const ANTHROPIC_CHAT_MODEL_KEY = 'starverse.anthropicMessagesTextChat.model'
-const ANTHROPIC_CHAT_SETTINGS_EVENT = 'settings:anthropicMessagesTextChatUpdated'
-const DEEPSEEK_CHAT_MODEL_KEY = 'starverse.deepSeekTextChat.model'
-const DEEPSEEK_CHAT_SETTINGS_EVENT = 'settings:deepSeekTextChatUpdated'
+const LEGACY_MODEL_STORAGE_KEYS = [
+  'starverse.lmStudio.model',
+  'starverse.ollama.model',
+  'starverse.localEndpointTextChat.model',
+  'starverse.openAIResponsesTextChat.model',
+  'starverse.googleAIStudioTextChat.model',
+  'starverse.anthropicMessagesTextChat.model',
+  'starverse.deepSeekTextChat.model',
+] as const
 
 function getElectronStore(): ElectronStoreLike | null {
   const store = (globalThis as any).electronStore as ElectronStoreLike | undefined
@@ -353,6 +351,7 @@ function getOpenRouterCredentialBridge(): OpenRouterCredentialBridge | null {
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
+    typeof bridge.reveal !== 'function' ||
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
@@ -364,6 +363,7 @@ function getOpenAIResponsesCredentialBridge(): OpenAIResponsesCredentialBridge |
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
+    typeof bridge.reveal !== 'function' ||
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
@@ -375,6 +375,7 @@ function getGoogleAIStudioCredentialBridge(): GoogleAIStudioCredentialBridge | n
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
+    typeof bridge.reveal !== 'function' ||
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
@@ -386,6 +387,7 @@ function getAnthropicCredentialBridge(): AnthropicCredentialBridge | null {
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
+    typeof bridge.reveal !== 'function' ||
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
@@ -397,6 +399,7 @@ function getDeepSeekCredentialBridge(): DeepSeekCredentialBridge | null {
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
+    typeof bridge.reveal !== 'function' ||
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
@@ -413,8 +416,6 @@ const OPENROUTER_DEBUG_ECHO_UPSTREAM_BODY_KEY = 'sv_debug_openrouter_echo_upstre
 const MAX_RECENT_MODELS_KEY = 'maxRecentModels'
 
 const apiKey = ref('')
-const baseUrl = ref('')
-const loadedBaseUrl = ref('')
 const apiKeyConfigured = ref(false)
 const maskedApiKey = ref('')
 const credentialWarnings = ref<string[]>([])
@@ -422,30 +423,18 @@ const openAIResponsesApiKey = ref('')
 const openAIResponsesApiKeyConfigured = ref(false)
 const openAIResponsesMaskedApiKey = ref('')
 const openAIResponsesCredentialWarnings = ref<string[]>([])
-const openAIResponsesModel = ref('')
-const openAIResponsesChatApplyMessage = ref<string | null>(null)
 const googleAIStudioApiKey = ref('')
 const googleAIStudioApiKeyConfigured = ref(false)
 const googleAIStudioMaskedApiKey = ref('')
 const googleAIStudioCredentialWarnings = ref<string[]>([])
-const googleAIStudioModel = ref('')
-const googleAIStudioChatApplyMessage = ref<string | null>(null)
 const anthropicApiKey = ref('')
 const anthropicApiKeyConfigured = ref(false)
 const anthropicMaskedApiKey = ref('')
 const anthropicCredentialWarnings = ref<string[]>([])
-const anthropicModel = ref('')
-const anthropicChatApplyMessage = ref<string | null>(null)
 const deepSeekApiKey = ref('')
 const deepSeekApiKeyConfigured = ref(false)
 const deepSeekMaskedApiKey = ref('')
 const deepSeekCredentialWarnings = ref<string[]>([])
-const deepSeekModel = ref('')
-const deepSeekChatApplyMessage = ref<string | null>(null)
-const endpointDisplayName = ref(t('settings.openrouter.endpointNameOfficial'))
-const endpointDisplayStatus = ref(t('settings.openrouter.endpointOfficial'))
-const endpointDisplayBaseUrl = ref('')
-const endpointBaseUrlInvalid = ref(false)
 const catalogStartupSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogPickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
@@ -454,13 +443,18 @@ const catalogRetentionMs = ref<CatalogRetentionMs>(DEFAULT_CATALOG_RETENTION_MS)
 const requireParameters = ref(false)
 const debugEchoUpstreamBody = ref(false)
 const showApiKey = ref(false)
+const showOpenAIResponsesApiKey = ref(false)
+const showGoogleAIStudioApiKey = ref(false)
+const showAnthropicApiKey = ref(false)
+const showDeepSeekApiKey = ref(false)
+const credentialRevealLoading = ref<string | null>(null)
 const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
 const requestedReasoningExclude = ref(false)
 const reasoningPanelDefaultExpanded = ref(true)
 const userMessageRenderDefault = ref(false)
 const maxRecentModelsDraft = ref('8')
 const webSearchDefaults = ref<SearchSettingsLayer | null>(null)
-const samplingParamsDefaults = ref<SamplingParamsLayer | null>(null)
+const generationParamsDefaults = ref<GenerationParamsLayer | null>(null)
 const netExpDisableHttp2 = ref(DEFAULT_NETEXP_SETTINGS.disableHttp2)
 const netExpDisableQuic = ref(DEFAULT_NETEXP_SETTINGS.disableQuic)
 const netExpStreamInMainProcess = ref(DEFAULT_NETEXP_SETTINGS.streamInMainProcess)
@@ -476,9 +470,6 @@ const networkProxyStrictSsl = ref(DEFAULT_NETWORK_PROXY_SETTINGS.strictSSL)
 const networkProxyProbeLoading = ref(false)
 const networkProxyProbeResult = ref<LibreOfficeProxyProbeResult | null>(null)
 const localEndpointUrl = ref('http://localhost:1234')
-const localEndpointSelectedModel = ref('')
-const localEndpointManualModel = ref('')
-const localEndpointChatApplyMessage = ref<string | null>(null)
 const localEndpointProbeLoading = ref(false)
 const localEndpointProbeResult = ref<LocalEndpointProbeResult | null>(null)
 const localEndpointStreamProbeLoading = ref(false)
@@ -507,47 +498,9 @@ const canEdit = computed(() => !props.disabled && !props.isRunning && storeAvail
 const localEndpointDiagnosticsAvailable = computed(() => !!getLocalEndpointDiagnosticsBridge())
 const canProbeLocalEndpoint = computed(() => !props.disabled && !props.isRunning && localEndpointDiagnosticsAvailable.value)
 const openAIResponsesCredentialAvailable = computed(() => !!getOpenAIResponsesCredentialBridge())
-const canApplyOpenAIResponsesChatSettings = computed(() =>
-  !props.disabled &&
-  !props.isRunning &&
-  openAIResponsesModel.value.trim().length > 0
-)
 const googleAIStudioCredentialAvailable = computed(() => !!getGoogleAIStudioCredentialBridge())
-const canApplyGoogleAIStudioChatSettings = computed(() =>
-  !props.disabled &&
-  !props.isRunning &&
-  googleAIStudioModel.value.trim().length > 0
-)
 const anthropicCredentialAvailable = computed(() => !!getAnthropicCredentialBridge())
-const canApplyAnthropicChatSettings = computed(() =>
-  !props.disabled &&
-  !props.isRunning &&
-  anthropicModel.value.trim().length > 0
-)
 const deepSeekCredentialAvailable = computed(() => !!getDeepSeekCredentialBridge())
-const canApplyDeepSeekChatSettings = computed(() =>
-  !props.disabled &&
-  !props.isRunning &&
-  deepSeekModel.value.trim().length > 0
-)
-const localEndpointProbedModels = computed(() => {
-  const result = localEndpointProbeResult.value
-  if (!result?.ok || !result.diagnostics.modelList.ok) return []
-  return result.diagnostics.modelList.models
-})
-const localEndpointModelForChat = computed(() => {
-  const selected = localEndpointSelectedModel.value.trim()
-  if (selected) return selected
-  return localEndpointManualModel.value.trim()
-})
-const canApplyLocalEndpointChatSettings = computed(() =>
-  !props.disabled &&
-  !props.isRunning &&
-  localEndpointUrl.value.trim().length > 0 &&
-  localEndpointModelForChat.value.length > 0 &&
-  !localEndpointProbeLoading.value &&
-  !localEndpointStreamProbeLoading.value
-)
 const globalWebSearchResolved = computed(() =>
   resolveSearchSettings(
     { global: webSearchDefaults.value },
@@ -561,24 +514,6 @@ const globalWebSearchInheritanceHint = computed(() => {
   }
   return t('settings.search.hintGlobal')
 })
-const globalSamplingParamsResolved = computed(() =>
-  resolveSamplingParams({ global: samplingParamsDefaults.value })
-)
-
-function isValidUrlOrEmpty(value: string): boolean {
-  const trimmed = value.trim()
-  if (!trimmed) return true
-  try {
-    // eslint-disable-next-line no-new
-    new URL(trimmed)
-    return true
-  } catch {
-    return false
-  }
-}
-
-const baseUrlValid = computed(() => isValidUrlOrEmpty(baseUrl.value))
-
 const DEFAULT_REASONING_PREFS: ReasoningPrefs = { mode: 'auto', effort: 'auto', exclude: false }
 const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
 const catalogAutoSyncPolicyOptions: ReadonlyArray<Readonly<{ value: CatalogAutoSyncPolicy; labelKey: string }>> = [
@@ -604,6 +539,16 @@ const catalogRetentionOptions: ReadonlyArray<Readonly<{ value: CatalogRetentionM
   { value: CATALOG_RETENTION_PRESETS_MS[3], labelKey: 'settings.openrouter.catalogRetention180d' },
   { value: 'never', labelKey: 'settings.openrouter.catalogRetentionNever' },
 ]
+
+type ApiKeyVisibilityInput = Readonly<{
+  id: string
+  value: Ref<string>
+  visible: Ref<boolean>
+  configured: Ref<boolean>
+  getBridge: () => ProviderCredentialRevealBridge | null
+  missingBridgeMessage: string
+  revealFailedMessage: string
+}>
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return typeof value === 'string' && (REASONING_EFFORTS as string[]).includes(value)
@@ -650,32 +595,109 @@ function parsePositiveIntegerText(value: string): number | null {
   return parsed
 }
 
-function applyOpenRouterCredentialStatus(status: OpenRouterCredentialStatus) {
-  const endpoint = status.endpoint
-  const safeDisplayBaseUrl = String(status.displayBaseUrl ?? '').trim()
-  let endpointSafeDisplayBaseUrl: string | undefined
-  if (endpoint?.endpointStatus === 'official' || endpoint?.endpointStatus === 'custom') {
-    endpointSafeDisplayBaseUrl = endpoint.displayBaseUrl
-  } else if (!endpoint && status.baseUrlConfigured === false) {
-    endpointSafeDisplayBaseUrl = status.defaultBaseUrl
+async function toggleApiKeyVisibility(input: ApiKeyVisibilityInput) {
+  error.value = null
+  savedMessage.value = null
+
+  if (input.visible.value) {
+    input.visible.value = false
+    if (input.configured.value) {
+      input.value.value = ''
+    }
+    return
   }
 
+  if (!input.value.value.trim() && input.configured.value) {
+    const credentialBridge = input.getBridge()
+    if (!credentialBridge) {
+      error.value = input.missingBridgeMessage
+      return
+    }
+
+    credentialRevealLoading.value = input.id
+    try {
+      const result = await credentialBridge.reveal()
+      if (!result?.ok) {
+        throw new Error(result?.message || input.revealFailedMessage)
+      }
+      input.value.value = result.apiKey
+    } catch (err: any) {
+      error.value = err?.message ? String(err.message) : input.revealFailedMessage
+      return
+    } finally {
+      credentialRevealLoading.value = null
+    }
+  }
+
+  input.visible.value = true
+}
+
+function toggleOpenRouterApiKeyVisibility() {
+  void toggleApiKeyVisibility({
+    id: 'openrouter',
+    value: apiKey,
+    visible: showApiKey,
+    configured: apiKeyConfigured,
+    getBridge: getOpenRouterCredentialBridge,
+    missingBridgeMessage: t('settings.runtime.missingOpenRouterCredentialBridge'),
+    revealFailedMessage: t('settings.runtime.openRouterCredentialStatusUnavailable'),
+  })
+}
+
+function toggleOpenAIResponsesApiKeyVisibility() {
+  void toggleApiKeyVisibility({
+    id: 'openai_responses',
+    value: openAIResponsesApiKey,
+    visible: showOpenAIResponsesApiKey,
+    configured: openAIResponsesApiKeyConfigured,
+    getBridge: getOpenAIResponsesCredentialBridge,
+    missingBridgeMessage: t('settings.runtime.missingOpenAIResponsesCredentialBridge'),
+    revealFailedMessage: t('settings.runtime.openAIResponsesCredentialStatusUnavailable'),
+  })
+}
+
+function toggleGoogleAIStudioApiKeyVisibility() {
+  void toggleApiKeyVisibility({
+    id: 'google_ai_studio',
+    value: googleAIStudioApiKey,
+    visible: showGoogleAIStudioApiKey,
+    configured: googleAIStudioApiKeyConfigured,
+    getBridge: getGoogleAIStudioCredentialBridge,
+    missingBridgeMessage: t('settings.runtime.missingGoogleAIStudioCredentialBridge'),
+    revealFailedMessage: t('settings.runtime.googleAIStudioCredentialStatusUnavailable'),
+  })
+}
+
+function toggleAnthropicApiKeyVisibility() {
+  void toggleApiKeyVisibility({
+    id: 'anthropic',
+    value: anthropicApiKey,
+    visible: showAnthropicApiKey,
+    configured: anthropicApiKeyConfigured,
+    getBridge: getAnthropicCredentialBridge,
+    missingBridgeMessage: t('settings.runtime.missingAnthropicCredentialBridge'),
+    revealFailedMessage: t('settings.runtime.anthropicCredentialStatusUnavailable'),
+  })
+}
+
+function toggleDeepSeekApiKeyVisibility() {
+  void toggleApiKeyVisibility({
+    id: 'deepseek',
+    value: deepSeekApiKey,
+    visible: showDeepSeekApiKey,
+    configured: deepSeekApiKeyConfigured,
+    getBridge: getDeepSeekCredentialBridge,
+    missingBridgeMessage: t('settings.runtime.missingDeepSeekCredentialBridge'),
+    revealFailedMessage: t('settings.runtime.deepSeekCredentialStatusUnavailable'),
+  })
+}
+
+function applyOpenRouterCredentialStatus(status: OpenRouterCredentialStatus) {
   apiKey.value = ''
+  showApiKey.value = false
   apiKeyConfigured.value = status.apiKeyConfigured === true
   maskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
   credentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
-  endpointDisplayName.value = endpoint?.endpointStatus === 'custom' || endpoint?.endpointStatus === 'invalid_custom'
-    ? t('settings.openrouter.endpointNameCustom')
-    : t('settings.openrouter.endpointNameOfficial')
-  endpointDisplayStatus.value = endpoint?.endpointStatus === 'invalid_custom'
-    ? t('settings.openrouter.endpointInvalidCustom')
-    : endpoint?.endpointStatus === 'custom'
-      ? t('settings.openrouter.endpointCustom')
-      : t('settings.openrouter.endpointOfficial')
-  endpointDisplayBaseUrl.value = String(endpointSafeDisplayBaseUrl ?? '').trim()
-  endpointBaseUrlInvalid.value = endpoint?.baseUrlInvalid === true || status.baseUrlInvalid === true
-  baseUrl.value = safeDisplayBaseUrl
-  loadedBaseUrl.value = baseUrl.value
 }
 
 async function loadOpenRouterCredentialStatus() {
@@ -693,6 +715,7 @@ async function loadOpenRouterCredentialStatus() {
 
 function applyOpenAIResponsesCredentialStatus(status: OpenAIResponsesCredentialStatus) {
   openAIResponsesApiKey.value = ''
+  showOpenAIResponsesApiKey.value = false
   openAIResponsesApiKeyConfigured.value = status.apiKeyConfigured === true
   openAIResponsesMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
   openAIResponsesCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
@@ -700,6 +723,7 @@ function applyOpenAIResponsesCredentialStatus(status: OpenAIResponsesCredentialS
 
 function applyGoogleAIStudioCredentialStatus(status: GoogleAIStudioCredentialStatus) {
   googleAIStudioApiKey.value = ''
+  showGoogleAIStudioApiKey.value = false
   googleAIStudioApiKeyConfigured.value = status.apiKeyConfigured === true
   googleAIStudioMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
   googleAIStudioCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
@@ -707,6 +731,7 @@ function applyGoogleAIStudioCredentialStatus(status: GoogleAIStudioCredentialSta
 
 function applyAnthropicCredentialStatus(status: AnthropicCredentialStatus) {
   anthropicApiKey.value = ''
+  showAnthropicApiKey.value = false
   anthropicApiKeyConfigured.value = status.apiKeyConfigured === true
   anthropicMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
   anthropicCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
@@ -714,6 +739,7 @@ function applyAnthropicCredentialStatus(status: AnthropicCredentialStatus) {
 
 function applyDeepSeekCredentialStatus(status: DeepSeekCredentialStatus) {
   deepSeekApiKey.value = ''
+  showDeepSeekApiKey.value = false
   deepSeekApiKeyConfigured.value = status.apiKeyConfigured === true
   deepSeekMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
   deepSeekCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
@@ -783,35 +809,13 @@ async function loadDeepSeekCredentialStatus() {
   applyDeepSeekCredentialStatus(result.status)
 }
 
-function loadOpenAIResponsesChatModelPreference() {
+function cleanupLegacyModelStorage() {
   try {
-    openAIResponsesModel.value = String(globalThis.localStorage?.getItem(OPENAI_RESPONSES_CHAT_MODEL_KEY) ?? '').trim()
+    for (const key of LEGACY_MODEL_STORAGE_KEYS) {
+      globalThis.localStorage?.removeItem(key)
+    }
   } catch {
-    openAIResponsesModel.value = ''
-  }
-}
-
-function loadGoogleAIStudioChatModelPreference() {
-  try {
-    googleAIStudioModel.value = String(globalThis.localStorage?.getItem(GOOGLE_AI_STUDIO_CHAT_MODEL_KEY) ?? '').trim()
-  } catch {
-    googleAIStudioModel.value = ''
-  }
-}
-
-function loadAnthropicChatModelPreference() {
-  try {
-    anthropicModel.value = String(globalThis.localStorage?.getItem(ANTHROPIC_CHAT_MODEL_KEY) ?? '').trim()
-  } catch {
-    anthropicModel.value = ''
-  }
-}
-
-function loadDeepSeekChatModelPreference() {
-  try {
-    deepSeekModel.value = String(globalThis.localStorage?.getItem(DEEPSEEK_CHAT_MODEL_KEY) ?? '').trim()
-  } catch {
-    deepSeekModel.value = ''
+    // Legacy model cleanup is best-effort; Settings no longer reads these keys.
   }
 }
 
@@ -832,10 +836,7 @@ async function load() {
     await loadGoogleAIStudioCredentialStatus()
     await loadAnthropicCredentialStatus()
     await loadDeepSeekCredentialStatus()
-    loadOpenAIResponsesChatModelPreference()
-    loadGoogleAIStudioChatModelPreference()
-    loadAnthropicChatModelPreference()
-    loadDeepSeekChatModelPreference()
+    cleanupLegacyModelStorage()
     catalogStartupSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY))
     catalogPickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY))
     catalogListUpdateMode.value = normalizeCatalogListUpdateMode(await store.get(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY))
@@ -885,9 +886,9 @@ async function load() {
       webSearchDefaults.value = null
     }
     try {
-      samplingParamsDefaults.value = normalizeSamplingParamsLayer(await getSamplingParamsDefaults())
+      generationParamsDefaults.value = normalizeGenerationParamsLayer(await getGenerationParamsDefaults())
     } catch {
-      samplingParamsDefaults.value = null
+      generationParamsDefaults.value = null
     }
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
@@ -906,10 +907,6 @@ async function save() {
     return
   }
 
-  if (!baseUrlValid.value) {
-    error.value = t('settings.openrouter.baseUrlInvalid')
-    return
-  }
   const nextMaxRecentModels = parsePositiveIntegerText(maxRecentModelsDraft.value)
   if (nextMaxRecentModels === null) {
     error.value = t('settings.runtime.maxRecentModelsPositiveInteger')
@@ -922,11 +919,9 @@ async function save() {
     if (!credentialBridge) {
       throw new Error(t('settings.runtime.missingOpenRouterCredentialBridge'))
     }
-    const credentialPayload: { apiKey?: string; baseUrl?: string } = {}
+    const credentialPayload: { apiKey?: string } = {}
     const nextApiKey = apiKey.value.trim()
     if (nextApiKey) credentialPayload.apiKey = nextApiKey
-    const nextBaseUrl = baseUrl.value.trim()
-    if (nextBaseUrl !== loadedBaseUrl.value.trim()) credentialPayload.baseUrl = nextBaseUrl
     const credentialResult = await credentialBridge.update(credentialPayload)
     if (!credentialResult?.ok || !credentialResult.status) {
       throw new Error(credentialResult?.message || t('settings.runtime.openRouterCredentialUpdateFailed'))
@@ -1032,15 +1027,15 @@ async function save() {
       }
     }
     const normalizedWebSearchDefaults = normalizeSearchSettingsLayer(webSearchDefaults.value)
-    const normalizedSamplingParamsDefaults = normalizeSamplingParamsLayer(samplingParamsDefaults.value)
+    const normalizedGenerationParamsDefaults = normalizeGenerationParamsLayer(generationParamsDefaults.value)
     await setWebSearchDefaults(normalizedWebSearchDefaults)
-    await setSamplingParamsDefaults(normalizedSamplingParamsDefaults)
+    await setGenerationParamsDefaults(normalizedGenerationParamsDefaults)
     try {
       window.dispatchEvent(new CustomEvent('settings:reasoningPrefsUpdated', { detail: nextReasoningPrefs }))
       window.dispatchEvent(new CustomEvent('settings:reasoningPanelDefaultExpandedUpdated', { detail: reasoningPanelDefaultExpanded.value === true }))
       window.dispatchEvent(new CustomEvent('settings:userMessageRenderDefaultUpdated', { detail: userMessageRenderDefault.value === true }))
       window.dispatchEvent(new CustomEvent('settings:webSearchDefaultsUpdated', { detail: normalizedWebSearchDefaults }))
-      window.dispatchEvent(new CustomEvent('settings:samplingParamsDefaultsUpdated', { detail: normalizedSamplingParamsDefaults }))
+      window.dispatchEvent(new CustomEvent('settings:generationParamsDefaultsUpdated', { detail: normalizedGenerationParamsDefaults }))
       window.dispatchEvent(new CustomEvent('settings:maxRecentModelsUpdated', { detail: nextMaxRecentModels }))
       window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
         detail: {
@@ -1095,40 +1090,6 @@ async function clearApiKey() {
           hasApiKey: false,
           baseUrlChanged: false,
           reason: 'api_key_cleared',
-        },
-      }))
-    } catch {
-      // no-op
-    }
-  } catch (err: any) {
-    error.value = err?.message ? String(err.message) : String(err)
-  } finally {
-    saving.value = false
-  }
-}
-
-async function clearBaseUrl() {
-  error.value = null
-  savedMessage.value = null
-  const credentialBridge = getOpenRouterCredentialBridge()
-  if (!credentialBridge) {
-    error.value = t('settings.runtime.missingOpenRouterCredentialBridge')
-    return
-  }
-  saving.value = true
-  try {
-    const result = await credentialBridge.update({ baseUrl: null })
-    if (!result?.ok || !result.status) {
-      throw new Error(result?.message || t('settings.runtime.openRouterBaseUrlClearFailed'))
-    }
-    applyOpenRouterCredentialStatus(result.status)
-    savedMessage.value = t('settings.openrouter.baseUrlCleared')
-    try {
-      window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
-        detail: {
-          hasApiKey: apiKeyConfigured.value,
-          baseUrlChanged: true,
-          reason: 'base_url_cleared',
         },
       }))
     } catch {
@@ -1257,74 +1218,6 @@ async function clearDeepSeekApiKey() {
   }
 }
 
-function applyOpenAIResponsesChatSettings() {
-  const model = openAIResponsesModel.value.trim()
-  if (!model) return
-
-  try {
-    globalThis.localStorage?.setItem(OPENAI_RESPONSES_CHAT_MODEL_KEY, model)
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(OPENAI_RESPONSES_CHAT_SETTINGS_EVENT, {
-        detail: { model },
-      }))
-    }
-    openAIResponsesChatApplyMessage.value = 'Applied to experimental OpenAI Responses chat. Enable it explicitly in Console to send.'
-  } catch {
-    openAIResponsesChatApplyMessage.value = 'OpenAI Responses chat settings could not be saved locally.'
-  }
-}
-
-function applyGoogleAIStudioChatSettings() {
-  const model = googleAIStudioModel.value.trim()
-  if (!model) return
-
-  try {
-    globalThis.localStorage?.setItem(GOOGLE_AI_STUDIO_CHAT_MODEL_KEY, model)
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(GOOGLE_AI_STUDIO_CHAT_SETTINGS_EVENT, {
-        detail: { model },
-      }))
-    }
-    googleAIStudioChatApplyMessage.value = 'Applied to experimental Google AI Studio chat. Enable it explicitly in Console to send.'
-  } catch {
-    googleAIStudioChatApplyMessage.value = 'Google AI Studio chat settings could not be saved locally.'
-  }
-}
-
-function applyAnthropicChatSettings() {
-  const model = anthropicModel.value.trim()
-  if (!model) return
-
-  try {
-    globalThis.localStorage?.setItem(ANTHROPIC_CHAT_MODEL_KEY, model)
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(ANTHROPIC_CHAT_SETTINGS_EVENT, {
-        detail: { model },
-      }))
-    }
-    anthropicChatApplyMessage.value = 'Applied to experimental Anthropic Messages chat. Enable it explicitly in Console to send.'
-  } catch {
-    anthropicChatApplyMessage.value = 'Anthropic Messages chat settings could not be saved locally.'
-  }
-}
-
-function applyDeepSeekChatSettings() {
-  const model = deepSeekModel.value.trim()
-  if (!model) return
-
-  try {
-    globalThis.localStorage?.setItem(DEEPSEEK_CHAT_MODEL_KEY, model)
-    if (typeof window !== 'undefined') {
-      window.dispatchEvent(new CustomEvent(DEEPSEEK_CHAT_SETTINGS_EVENT, {
-        detail: { model },
-      }))
-    }
-    deepSeekChatApplyMessage.value = 'Applied to experimental DeepSeek official chat. Enable it explicitly in Console to send.'
-  } catch {
-    deepSeekChatApplyMessage.value = 'DeepSeek official chat settings could not be saved locally.'
-  }
-}
-
 async function verifyAndSync() {
   error.value = null
   savedMessage.value = null
@@ -1336,11 +1229,6 @@ async function verifyAndSync() {
     return
   }
 
-  if (!baseUrlValid.value) {
-    error.value = t('settings.openrouter.baseUrlInvalid')
-    return
-  }
-
   verifySyncLoading.value = true
   try {
     const credentialBridge = getOpenRouterCredentialBridge()
@@ -1348,11 +1236,9 @@ async function verifyAndSync() {
       error.value = t('settings.runtime.missingOpenRouterCredentialBridge')
       return
     }
-    const credentialPayload: { apiKey?: string; baseUrl?: string } = {}
+    const credentialPayload: { apiKey?: string } = {}
     const nextApiKey = apiKey.value.trim()
     if (nextApiKey) credentialPayload.apiKey = nextApiKey
-    const nextBaseUrl = baseUrl.value.trim()
-    if (nextBaseUrl !== loadedBaseUrl.value.trim()) credentialPayload.baseUrl = nextBaseUrl
     const credentialResult = await credentialBridge.update(credentialPayload)
     if (!credentialResult?.ok || !credentialResult.status) {
       throw new Error(credentialResult?.message || t('settings.runtime.openRouterCredentialUpdateFailed'))
@@ -1468,34 +1354,21 @@ function safeLocalEndpointChatUrlForStorage(): string {
   }
 }
 
-function chooseLocalEndpointProbeModel(modelId: string) {
-  localEndpointSelectedModel.value = modelId
-  if (modelId) localEndpointManualModel.value = ''
-  localEndpointChatApplyMessage.value = null
-}
-
-function updateLocalEndpointManualModel(modelId: string) {
-  localEndpointManualModel.value = modelId
-  if (modelId.trim()) localEndpointSelectedModel.value = ''
-  localEndpointChatApplyMessage.value = null
-}
-
 function applyLocalEndpointChatSettings() {
   const endpointUrl = safeLocalEndpointChatUrlForStorage()
-  const model = localEndpointModelForChat.value
-  if (!endpointUrl || !model) return
+  if (!endpointUrl) return
 
   try {
     globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_URL_KEY, endpointUrl)
-    globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_MODEL_KEY, model)
+    cleanupLegacyModelStorage()
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, {
-        detail: { endpointUrl, model },
+        detail: { endpointUrl },
       }))
     }
-    localEndpointChatApplyMessage.value = 'Applied to experimental LocalEndpoint chat. Enable it explicitly in Console to send.'
+    savedMessage.value = t('common.saved') + ''
   } catch {
-    localEndpointChatApplyMessage.value = 'LocalEndpoint chat settings could not be saved locally.'
+    error.value = 'LocalEndpoint endpoint URL could not be saved locally.'
   }
 }
 
@@ -1504,7 +1377,6 @@ async function probeLocalEndpoint() {
   savedMessage.value = null
   localEndpointProbeResult.value = null
   localEndpointStreamProbeResult.value = null
-  localEndpointChatApplyMessage.value = null
 
   const bridge = getLocalEndpointDiagnosticsBridge()
   if (!bridge) {
@@ -1522,10 +1394,6 @@ async function probeLocalEndpoint() {
       url: localEndpointUrl.value,
       timeoutMs: 5000,
     })
-    const models = localEndpointProbedModels.value
-    if (models.length > 0 && !localEndpointSelectedModel.value && !localEndpointManualModel.value.trim()) {
-      localEndpointSelectedModel.value = models[0] ?? ''
-    }
   } catch {
     localEndpointProbeResult.value = {
       ok: false,
@@ -1541,7 +1409,6 @@ async function streamProbeLocalEndpoint() {
   error.value = null
   savedMessage.value = null
   localEndpointStreamProbeResult.value = null
-  localEndpointChatApplyMessage.value = null
 
   const bridge = getLocalEndpointDiagnosticsBridge()
   if (!bridge) {
@@ -1633,6 +1500,8 @@ onMounted(() => {
         {{ savedMessage }}
       </div>
 
+      <CompatibleProviderSettingsPanel :disabled="props.disabled || props.isRunning" />
+
       <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('common.language') }}</div>
 
@@ -1695,15 +1564,17 @@ onMounted(() => {
           <input
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
             :type="showApiKey ? 'text' : 'password'"
-            :placeholder="t('settings.openrouter.apiKeyPlaceholder')"
+            :placeholder="apiKeyPlaceholder(apiKeyConfigured, t('settings.openrouter.apiKeyPlaceholder'))"
             :disabled="!canEdit || loading || saving"
+            data-testid="settings-openrouter-api-key"
             v-model="apiKey"
           />
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="props.disabled || loading || saving"
-            @click="showApiKey = !showApiKey"
+            :disabled="!canEdit || loading || saving || credentialRevealLoading !== null || (!showApiKey && !apiKey.trim() && !apiKeyConfigured)"
+            data-testid="settings-openrouter-toggle-key-visibility"
+            @click="toggleOpenRouterApiKeyVisibility"
           >
             {{ showApiKey ? t('common.hide') : t('common.show') }}
           </button>
@@ -1716,40 +1587,11 @@ onMounted(() => {
             {{ t('common.clear') }}
           </button>
         </div>
-        <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-openrouter-key-status">
-          {{ credentialStatusText(apiKeyConfigured, maskedApiKey) }}
+        <div v-if="!apiKeyConfigured" class="mt-1 text-[11px] text-gray-500" data-testid="settings-openrouter-key-status">
+          {{ t('settings.credentials.notConfigured') }}
         </div>
         <div v-if="credentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openrouter-credential-warnings">
           <div v-for="warning in credentialWarnings" :key="warning">{{ warning }}</div>
-        </div>
-
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.baseUrl') }}</label>
-        <div class="mt-1 flex items-center gap-2">
-          <input
-            class="min-w-0 flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
-            :class="baseUrlValid ? 'border-gray-200' : 'border-red-300'"
-            :placeholder="t('settings.openrouter.baseUrlPlaceholder')"
-            :disabled="!canEdit || loading || saving"
-            v-model="baseUrl"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving"
-            @click="clearBaseUrl"
-          >
-            {{ t('common.clear') }}
-          </button>
-        </div>
-        <div v-if="!baseUrlValid" class="mt-1 text-[11px] text-red-700">{{ t('settings.openrouter.baseUrlInvalid') }}</div>
-        <div
-          class="mt-1 text-[11px] text-gray-500"
-          data-testid="settings-openrouter-endpoint-metadata"
-        >
-          <span data-testid="settings-openrouter-endpoint-status">{{ endpointDisplayStatus }}</span>
-          <span> · {{ endpointDisplayName }}</span>
-          <span v-if="endpointDisplayBaseUrl"> · {{ endpointDisplayBaseUrl }}</span>
-          <span v-if="endpointBaseUrlInvalid" data-testid="settings-openrouter-endpoint-warning"> · {{ t('settings.openrouter.endpointCustomBaseUrlInvalid') }}</span>
         </div>
 
         <div class="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
@@ -1925,12 +1767,21 @@ onMounted(() => {
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="openAIResponsesApiKey"
-            type="password"
-            :placeholder="t('settings.experimentalChat.placeholder.openAIKey')"
+            :type="showOpenAIResponsesApiKey ? 'text' : 'password'"
+            :placeholder="apiKeyPlaceholder(openAIResponsesApiKeyConfigured, t('settings.experimentalChat.placeholder.openAIKey'))"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
             :disabled="!canEdit || loading || saving || !openAIResponsesCredentialAvailable"
             data-testid="settings-openai-responses-api-key"
           />
+          <button
+            type="button"
+            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!canEdit || loading || saving || !openAIResponsesCredentialAvailable || credentialRevealLoading !== null || (!showOpenAIResponsesApiKey && !openAIResponsesApiKey.trim() && !openAIResponsesApiKeyConfigured)"
+            data-testid="settings-openai-responses-toggle-key-visibility"
+            @click="toggleOpenAIResponsesApiKeyVisibility"
+          >
+            {{ showOpenAIResponsesApiKey ? t('common.hide') : t('common.show') }}
+          </button>
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -1941,39 +1792,13 @@ onMounted(() => {
             {{ t('settings.experimentalChat.clearKey') }}
           </button>
         </div>
-        <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-openai-responses-key-status">
-          {{ credentialStatusText(openAIResponsesApiKeyConfigured, openAIResponsesMaskedApiKey) }}
+        <div v-if="!openAIResponsesApiKeyConfigured" class="mt-1 text-[11px] text-gray-500" data-testid="settings-openai-responses-key-status">
+          {{ t('settings.credentials.notConfigured') }}
         </div>
         <div v-if="openAIResponsesCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openai-responses-credential-warnings">
           <div v-for="warning in openAIResponsesCredentialWarnings" :key="warning">{{ warning }}</div>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.openAIResponses.modelLabel') }}</label>
-        <div class="mt-1 flex items-center gap-2">
-          <input
-            v-model="openAIResponsesModel"
-            type="text"
-            :placeholder="t('settings.experimentalChat.placeholder.openAIModel')"
-            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
-            :disabled="props.disabled || props.isRunning || loading || saving"
-            data-testid="settings-openai-responses-model"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-blue-700 bg-blue-700 px-3 py-2 text-xs font-semibold text-white hover:bg-blue-800 disabled:opacity-50"
-            :disabled="!canApplyOpenAIResponsesChatSettings"
-            data-testid="settings-openai-responses-apply-chat"
-            @click="applyOpenAIResponsesChatSettings"
-          >
-            {{ t('settings.experimentalChat.useModelForChat') }}
-          </button>
-        </div>
-        <div class="mt-1 text-[11px] text-blue-800" data-testid="settings-openai-responses-chat-note">
-          {{ t('settings.experimentalChat.openAIResponses.note') }}
-        </div>
-        <div v-if="openAIResponsesChatApplyMessage" class="mt-1 text-[11px] text-blue-900" data-testid="settings-openai-responses-chat-apply-result">
-          {{ openAIResponsesChatApplyMessage }}
-        </div>
       </div>
 
       <div class="rounded-lg border border-emerald-200 bg-white p-3" data-testid="settings-google-ai-studio-experimental">
@@ -1993,12 +1818,21 @@ onMounted(() => {
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="googleAIStudioApiKey"
-            type="password"
-            :placeholder="t('settings.experimentalChat.placeholder.geminiKey')"
+            :type="showGoogleAIStudioApiKey ? 'text' : 'password'"
+            :placeholder="apiKeyPlaceholder(googleAIStudioApiKeyConfigured, t('settings.experimentalChat.placeholder.geminiKey'))"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-gray-50"
             :disabled="!canEdit || loading || saving || !googleAIStudioCredentialAvailable"
             data-testid="settings-google-ai-studio-api-key"
           />
+          <button
+            type="button"
+            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!canEdit || loading || saving || !googleAIStudioCredentialAvailable || credentialRevealLoading !== null || (!showGoogleAIStudioApiKey && !googleAIStudioApiKey.trim() && !googleAIStudioApiKeyConfigured)"
+            data-testid="settings-google-ai-studio-toggle-key-visibility"
+            @click="toggleGoogleAIStudioApiKeyVisibility"
+          >
+            {{ showGoogleAIStudioApiKey ? t('common.hide') : t('common.show') }}
+          </button>
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -2009,39 +1843,13 @@ onMounted(() => {
             {{ t('settings.experimentalChat.clearKey') }}
           </button>
         </div>
-        <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-google-ai-studio-key-status">
-          {{ credentialStatusText(googleAIStudioApiKeyConfigured, googleAIStudioMaskedApiKey) }}
+        <div v-if="!googleAIStudioApiKeyConfigured" class="mt-1 text-[11px] text-gray-500" data-testid="settings-google-ai-studio-key-status">
+          {{ t('settings.credentials.notConfigured') }}
         </div>
         <div v-if="googleAIStudioCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-google-ai-studio-credential-warnings">
           <div v-for="warning in googleAIStudioCredentialWarnings" :key="warning">{{ warning }}</div>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.googleAIStudio.modelLabel') }}</label>
-        <div class="mt-1 flex items-center gap-2">
-          <input
-            v-model="googleAIStudioModel"
-            type="text"
-            :placeholder="t('settings.experimentalChat.placeholder.geminiModel')"
-            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-gray-50"
-            :disabled="props.disabled || props.isRunning || loading || saving"
-            data-testid="settings-google-ai-studio-model"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-emerald-700 bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-800 disabled:opacity-50"
-            :disabled="!canApplyGoogleAIStudioChatSettings"
-            data-testid="settings-google-ai-studio-apply-chat"
-            @click="applyGoogleAIStudioChatSettings"
-          >
-            {{ t('settings.experimentalChat.useModelForChat') }}
-          </button>
-        </div>
-        <div class="mt-1 text-[11px] text-emerald-800" data-testid="settings-google-ai-studio-chat-note">
-          {{ t('settings.experimentalChat.googleAIStudio.note') }}
-        </div>
-        <div v-if="googleAIStudioChatApplyMessage" class="mt-1 text-[11px] text-emerald-900" data-testid="settings-google-ai-studio-chat-apply-result">
-          {{ googleAIStudioChatApplyMessage }}
-        </div>
       </div>
 
       <div class="rounded-lg border border-rose-200 bg-white p-3" data-testid="settings-anthropic-experimental">
@@ -2061,12 +1869,21 @@ onMounted(() => {
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="anthropicApiKey"
-            type="password"
-            :placeholder="t('settings.experimentalChat.placeholder.anthropicKey')"
+            :type="showAnthropicApiKey ? 'text' : 'password'"
+            :placeholder="apiKeyPlaceholder(anthropicApiKeyConfigured, t('settings.experimentalChat.placeholder.anthropicKey'))"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 disabled:bg-gray-50"
             :disabled="!canEdit || loading || saving || !anthropicCredentialAvailable"
             data-testid="settings-anthropic-api-key"
           />
+          <button
+            type="button"
+            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!canEdit || loading || saving || !anthropicCredentialAvailable || credentialRevealLoading !== null || (!showAnthropicApiKey && !anthropicApiKey.trim() && !anthropicApiKeyConfigured)"
+            data-testid="settings-anthropic-toggle-key-visibility"
+            @click="toggleAnthropicApiKeyVisibility"
+          >
+            {{ showAnthropicApiKey ? t('common.hide') : t('common.show') }}
+          </button>
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -2077,39 +1894,13 @@ onMounted(() => {
             {{ t('settings.experimentalChat.clearKey') }}
           </button>
         </div>
-        <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-anthropic-key-status">
-          {{ credentialStatusText(anthropicApiKeyConfigured, anthropicMaskedApiKey) }}
+        <div v-if="!anthropicApiKeyConfigured" class="mt-1 text-[11px] text-gray-500" data-testid="settings-anthropic-key-status">
+          {{ t('settings.credentials.notConfigured') }}
         </div>
         <div v-if="anthropicCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-anthropic-credential-warnings">
           <div v-for="warning in anthropicCredentialWarnings" :key="warning">{{ warning }}</div>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.anthropic.modelLabel') }}</label>
-        <div class="mt-1 flex items-center gap-2">
-          <input
-            v-model="anthropicModel"
-            type="text"
-            :placeholder="t('settings.experimentalChat.placeholder.anthropicModel')"
-            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 disabled:bg-gray-50"
-            :disabled="props.disabled || props.isRunning || loading || saving"
-            data-testid="settings-anthropic-model"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-rose-700 bg-rose-700 px-3 py-2 text-xs font-semibold text-white hover:bg-rose-800 disabled:opacity-50"
-            :disabled="!canApplyAnthropicChatSettings"
-            data-testid="settings-anthropic-apply-chat"
-            @click="applyAnthropicChatSettings"
-          >
-            {{ t('settings.experimentalChat.useModelForChat') }}
-          </button>
-        </div>
-        <div class="mt-1 text-[11px] text-rose-800" data-testid="settings-anthropic-chat-note">
-          {{ t('settings.experimentalChat.anthropic.note') }}
-        </div>
-        <div v-if="anthropicChatApplyMessage" class="mt-1 text-[11px] text-rose-900" data-testid="settings-anthropic-chat-apply-result">
-          {{ anthropicChatApplyMessage }}
-        </div>
       </div>
 
       <div class="rounded-lg border border-cyan-200 bg-white p-3" data-testid="settings-deepseek-experimental">
@@ -2129,12 +1920,21 @@ onMounted(() => {
         <div class="mt-1 flex items-center gap-2">
           <input
             v-model="deepSeekApiKey"
-            type="password"
-            :placeholder="t('settings.experimentalChat.placeholder.deepSeekKey')"
+            :type="showDeepSeekApiKey ? 'text' : 'password'"
+            :placeholder="apiKeyPlaceholder(deepSeekApiKeyConfigured, t('settings.experimentalChat.placeholder.deepSeekKey'))"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 disabled:bg-gray-50"
             :disabled="!canEdit || loading || saving || !deepSeekCredentialAvailable"
             data-testid="settings-deepseek-api-key"
           />
+          <button
+            type="button"
+            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!canEdit || loading || saving || !deepSeekCredentialAvailable || credentialRevealLoading !== null || (!showDeepSeekApiKey && !deepSeekApiKey.trim() && !deepSeekApiKeyConfigured)"
+            data-testid="settings-deepseek-toggle-key-visibility"
+            @click="toggleDeepSeekApiKeyVisibility"
+          >
+            {{ showDeepSeekApiKey ? t('common.hide') : t('common.show') }}
+          </button>
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -2145,39 +1945,13 @@ onMounted(() => {
             {{ t('settings.experimentalChat.clearKey') }}
           </button>
         </div>
-        <div class="mt-1 text-[11px] text-gray-500" data-testid="settings-deepseek-key-status">
-          {{ credentialStatusText(deepSeekApiKeyConfigured, deepSeekMaskedApiKey) }}
+        <div v-if="!deepSeekApiKeyConfigured" class="mt-1 text-[11px] text-gray-500" data-testid="settings-deepseek-key-status">
+          {{ t('settings.credentials.notConfigured') }}
         </div>
         <div v-if="deepSeekCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-deepseek-credential-warnings">
           <div v-for="warning in deepSeekCredentialWarnings" :key="warning">{{ warning }}</div>
         </div>
 
-        <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.deepSeek.modelLabel') }}</label>
-        <div class="mt-1 flex items-center gap-2">
-          <input
-            v-model="deepSeekModel"
-            type="text"
-            :placeholder="t('settings.experimentalChat.placeholder.deepSeekModel')"
-            class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 disabled:bg-gray-50"
-            :disabled="props.disabled || props.isRunning || loading || saving"
-            data-testid="settings-deepseek-model"
-          />
-          <button
-            type="button"
-            class="rounded-md border border-cyan-700 bg-cyan-700 px-3 py-2 text-xs font-semibold text-white hover:bg-cyan-800 disabled:opacity-50"
-            :disabled="!canApplyDeepSeekChatSettings"
-            data-testid="settings-deepseek-apply-chat"
-            @click="applyDeepSeekChatSettings"
-          >
-            {{ t('settings.experimentalChat.useModelForChat') }}
-          </button>
-        </div>
-        <div class="mt-1 text-[11px] text-cyan-800" data-testid="settings-deepseek-chat-note">
-          {{ t('settings.experimentalChat.deepSeek.note') }}
-        </div>
-        <div v-if="deepSeekChatApplyMessage" class="mt-1 text-[11px] text-cyan-900" data-testid="settings-deepseek-chat-apply-result">
-          {{ deepSeekChatApplyMessage }}
-        </div>
       </div>
 
       <div class="rounded-lg border border-gray-200 bg-white p-3" data-testid="settings-local-endpoint-diagnostics">
@@ -2219,6 +1993,15 @@ onMounted(() => {
           >
             {{ localEndpointStreamProbeLoading ? t('settings.localEndpoint.testing') : t('settings.localEndpoint.testStreaming') }}
           </button>
+          <button
+            type="button"
+            class="rounded-md border border-amber-700 bg-amber-700 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-amber-800 disabled:opacity-50"
+            :disabled="!canProbeLocalEndpoint || loading || saving || localEndpointProbeLoading || localEndpointStreamProbeLoading || !localEndpointUrl.trim()"
+            data-testid="settings-local-endpoint-save-url"
+            @click="applyLocalEndpointChatSettings"
+          >
+            保存端点
+          </button>
         </div>
 
         <div
@@ -2247,73 +2030,10 @@ onMounted(() => {
             <div class="mt-1" data-testid="settings-local-endpoint-probe-capabilities">
               {{ t('settings.localEndpoint.textCapabilitySummary') }}
             </div>
-            <div class="mt-3 grid gap-2 rounded-md border border-amber-100 bg-white px-3 py-2">
-              <label class="block text-[11px] font-semibold text-amber-900">{{ t('settings.localEndpoint.chooseProbedModel') }}</label>
-              <select
-                class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm disabled:bg-amber-50"
-                :disabled="localEndpointProbedModels.length === 0"
-                :value="localEndpointSelectedModel"
-                data-testid="settings-local-endpoint-probed-model-select"
-                @change="chooseLocalEndpointProbeModel(($event.target as HTMLSelectElement).value)"
-              >
-                <option value="">{{ t('settings.localEndpoint.selectProbedModel') }}</option>
-                <option v-for="modelId in localEndpointProbedModels" :key="modelId" :value="modelId">
-                  {{ modelId }}
-                </option>
-              </select>
-              <label class="block text-[11px] font-semibold text-amber-900">{{ t('settings.localEndpoint.manualModelOverride') }}</label>
-              <input
-                class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm"
-                :value="localEndpointManualModel"
-                :placeholder="t('settings.localEndpoint.placeholderModel')"
-                data-testid="settings-local-endpoint-manual-model"
-                @input="updateLocalEndpointManualModel(($event.target as HTMLInputElement).value)"
-              />
-              <button
-                type="button"
-                class="w-fit rounded-md border border-amber-700 bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
-                :disabled="!canApplyLocalEndpointChatSettings"
-                data-testid="settings-local-endpoint-apply-chat"
-                @click="applyLocalEndpointChatSettings"
-              >
-                {{ t('settings.localEndpoint.useEndpointAndModel') }}
-              </button>
-              <div class="text-[11px] text-amber-800" data-testid="settings-local-endpoint-chat-note">
-                {{ t('settings.localEndpoint.note') }}
-              </div>
-              <div v-if="localEndpointChatApplyMessage" class="text-[11px] text-amber-900" data-testid="settings-local-endpoint-chat-apply-result">
-                {{ localEndpointChatApplyMessage }}
-              </div>
-            </div>
           </template>
           <template v-else>
             <div data-testid="settings-local-endpoint-probe-error">
               {{ localEndpointProbeResult.message }}
-            </div>
-            <div class="mt-3 grid gap-2 rounded-md border border-amber-100 bg-white px-3 py-2">
-              <label class="block text-[11px] font-semibold text-amber-900">{{ t('settings.localEndpoint.manualModelForChat') }}</label>
-              <input
-                class="w-full rounded border border-amber-200 bg-white px-2 py-1.5 text-sm"
-                :value="localEndpointManualModel"
-                :placeholder="t('settings.localEndpoint.placeholderModel')"
-                data-testid="settings-local-endpoint-manual-model"
-                @input="updateLocalEndpointManualModel(($event.target as HTMLInputElement).value)"
-              />
-              <button
-                type="button"
-                class="w-fit rounded-md border border-amber-700 bg-amber-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-800 disabled:opacity-50"
-                :disabled="!canApplyLocalEndpointChatSettings"
-                data-testid="settings-local-endpoint-apply-chat"
-                @click="applyLocalEndpointChatSettings"
-              >
-                {{ t('settings.localEndpoint.useManualEndpointAndModel') }}
-              </button>
-              <div class="text-[11px] text-amber-800" data-testid="settings-local-endpoint-chat-note">
-                {{ t('settings.localEndpoint.manualNote') }}
-              </div>
-              <div v-if="localEndpointChatApplyMessage" class="text-[11px] text-amber-900" data-testid="settings-local-endpoint-chat-apply-result">
-                {{ localEndpointChatApplyMessage }}
-              </div>
             </div>
           </template>
         </div>
@@ -2536,10 +2256,9 @@ onMounted(() => {
       <div class="rounded-lg border border-gray-200 bg-white p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-600">{{ t('settings.customParams.title') }}</div>
         <div class="mt-3">
-          <SamplingParamsSettingsEditor
-            v-model="samplingParamsDefaults"
+          <GenerationParamsSettingsEditor
+            v-model="generationParamsDefaults"
             :disabled="!canEdit || loading || saving"
-            :resolved="globalSamplingParamsResolved"
             :defaultCollapsed="true"
           />
         </div>
@@ -2644,6 +2363,8 @@ onMounted(() => {
       </div>
 
       <PluginManagementPanel />
+
+      <NewChatLifecycleSettingsPanel />
 
       <div class="text-[11px] text-gray-500">
         {{ t('settings.footer') }}

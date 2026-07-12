@@ -75,6 +75,7 @@ const mergeMetaWithReasoning = (
 
 export class ContextRepo {
   private selectAnswerGroupStmt: BetterSqlite3.Statement
+  private listProviderNativeContentsStmt: BetterSqlite3.Statement
 
   constructor(
     private db: SqlDatabase,
@@ -98,14 +99,103 @@ export class ContextRepo {
         m.reasoning_duration_ms AS reasoningDurationMs,
         m.reasoning_end_reason AS reasoningEndReason,
         m.reasoning_duration_is_fallback AS reasoningDurationIsFallback,
-        b.body
+        b.body,
+        COALESCE(route_choice.route_provenance_id, request_route.route_provenance_id) AS routeProvenanceId,
+        route_choice.choice_index AS choiceIndex
       FROM message m
       LEFT JOIN message_body b ON b.message_id = m.id
+      LEFT JOIN compatible_route_provenance request_route ON request_route.request_message_id = m.id
+      LEFT JOIN compatible_route_choices route_choice ON route_choice.message_id = m.id
       WHERE m.answer_root_id = @answerRootId
         AND m.question_id = @questionId
         AND m.role IN ('assistant','tool')
       ORDER BY m.seq ASC
     `)
+    this.listProviderNativeContentsStmt = this.db.prepare(`
+      SELECT
+        message_id AS messageId,
+        provider_key AS providerKey,
+        source_api AS sourceApi,
+        snapshot_key AS snapshotKey,
+        candidate_index AS candidateIndex,
+        status,
+        content_json AS contentJson,
+        role,
+        finish_reason AS finishReason,
+        stop_reason AS stopReason,
+        stop_sequence AS stopSequence,
+        usage_json AS usageJson,
+        model,
+        model_version AS modelVersion,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM message_provider_native_contents
+      WHERE message_id IN (
+        SELECT value FROM json_each(@messageIdsJson)
+      )
+      ORDER BY message_id ASC, provider_key ASC, source_api ASC, snapshot_key ASC
+    `)
+  }
+
+  private attachProviderNativeContents<T extends { id: string; meta: unknown }>(messages: T[], messageIds: string[]): T[] {
+    const ids = Array.from(new Set(messageIds.map((id) => String(id ?? '').trim()).filter(Boolean)))
+    if (ids.length === 0) return messages
+    const rows = this.listProviderNativeContentsStmt.all({ messageIdsJson: JSON.stringify(ids) }) as Array<{
+      messageId: string
+      providerKey: string
+      sourceApi: string
+      snapshotKey: string
+      candidateIndex: number | null
+      status: string
+      contentJson: string
+      role: string | null
+      finishReason: string | null
+      stopReason: string | null
+      stopSequence: string | null
+      usageJson: string | null
+      model: string | null
+      modelVersion: string | null
+      createdAt: number
+      updatedAt: number
+    }>
+    const byMessageId = new Map<string, unknown[]>()
+    for (const row of rows) {
+      try {
+        const content = JSON.parse(row.contentJson)
+        const usage = row.usageJson ? JSON.parse(row.usageJson) : undefined
+        const snapshot = {
+          providerKey: row.providerKey,
+          sourceApi: row.sourceApi,
+          snapshotKey: row.snapshotKey,
+          ...(typeof row.candidateIndex === 'number' ? { candidateIndex: row.candidateIndex } : {}),
+          status: row.status,
+          content,
+          ...(row.role ? { role: row.role } : {}),
+          ...(row.finishReason ? { finishReason: row.finishReason } : {}),
+          ...(row.stopReason ? { stopReason: row.stopReason } : {}),
+          ...(row.stopSequence !== null ? { stopSequence: row.stopSequence } : {}),
+          ...(usage !== undefined && row.providerKey === 'google_ai_studio' ? { usageMetadata: usage } : {}),
+          ...(usage !== undefined && row.providerKey === 'anthropic' ? { usage } : {}),
+          ...(row.model ? { model: row.model } : {}),
+          ...(row.modelVersion ? { modelVersion: row.modelVersion } : {}),
+        }
+        const existing = byMessageId.get(row.messageId) ?? []
+        existing.push(snapshot)
+        byMessageId.set(row.messageId, existing)
+      } catch {
+        // Ignore corrupt rows at context boundary.
+      }
+    }
+    if (byMessageId.size === 0) return messages
+    return messages.map((message) => {
+      const providerNativeContents = byMessageId.get(message.id)
+      if (!providerNativeContents || providerNativeContents.length === 0) return message
+      const meta = message.meta && typeof message.meta === 'object' && !Array.isArray(message.meta)
+        ? { ...(message.meta as Record<string, unknown>) }
+        : {}
+      meta.providerNativeContents = providerNativeContents
+      return { ...message, meta } as T
+    })
   }
 
   getRenderableTurns(branchId: string, params?: Readonly<{ limit?: number; debug?: boolean }>): GetRenderableTurnsResult {
@@ -191,14 +281,15 @@ export class ContextRepo {
           questionId: r.question_id ? String(r.question_id) : null,
           body: typeof r.body === 'string' ? r.body : String(r.body ?? ''),
           meta,
+          routeProvenanceId: r.routeProvenanceId ? String(r.routeProvenanceId) : null,
+          choiceIndex: typeof r.choiceIndex === 'number' ? r.choiceIndex : null,
         }
         messages.push(row)
         includedIds.push(row.id)
       }
     }
 
-    return {
-      messages: messages.map((m) => ({
+    const outputMessages = messages.map((m) => ({
         id: m.id,
         convoId: m.convoId,
         role: m.role,
@@ -210,7 +301,12 @@ export class ContextRepo {
         questionId: m.questionId,
         body: m.body,
         meta: (m.meta as any) ?? null,
-      })),
+        routeProvenanceId: m.routeProvenanceId,
+        choiceIndex: m.choiceIndex,
+      }))
+
+    return {
+      messages: this.attachProviderNativeContents(outputMessages, includedIds),
       turns,
       ...(debug
         ? {
@@ -291,14 +387,15 @@ export class ContextRepo {
           questionId: r.question_id ? String(r.question_id) : null,
           body: typeof r.body === 'string' ? r.body : String(r.body ?? ''),
           meta,
+          routeProvenanceId: r.routeProvenanceId ? String(r.routeProvenanceId) : null,
+          choiceIndex: typeof r.choiceIndex === 'number' ? r.choiceIndex : null,
         }
         filtered.push(row)
         includedIds.push(row.id)
       }
     }
 
-    return {
-      messages: filtered.map((m) => ({
+    const outputMessages = filtered.map((m) => ({
         id: m.id,
         convoId: m.convoId,
         role: m.role,
@@ -310,7 +407,12 @@ export class ContextRepo {
         questionId: m.questionId,
         body: m.body,
         meta: (m.meta as any) ?? null,
-      })),
+        routeProvenanceId: m.routeProvenanceId,
+        choiceIndex: m.choiceIndex,
+      }))
+
+    return {
+      messages: this.attachProviderNativeContents(outputMessages, includedIds),
       ...(debug
         ? {
             debug: {

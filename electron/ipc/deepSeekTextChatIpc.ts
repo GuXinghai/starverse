@@ -3,10 +3,14 @@ import type { RegisterInvoke } from './types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaDeepSeek, type DeepSeekFetchFn } from '../../src/next/provider/deepseek/deepSeekAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
+import { sanitizeProviderNetworkError } from './providerNetworkError'
 import {
   sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
+import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 
 export const DEEPSEEK_TEXT_CHAT_IPC_CHANNELS = [
   'deepseek-chat:stream-text',
@@ -24,6 +28,7 @@ export type DeepSeekTextChatPayload = Readonly<{
   model?: unknown
   messages?: unknown
   currentUserContentBlocks?: unknown
+  generationParams?: unknown
   timeoutMs?: unknown
 }>
 
@@ -44,7 +49,8 @@ export type DeepSeekTextChatWireEvent =
 type RegisterDeepSeekTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
-  fetchImpl?: typeof fetch
+  fetchImpl?: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -54,6 +60,7 @@ type ValidatedTextChatSuccess = Readonly<{
   model: string
   messages: DeepSeekTextChatMessage[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  generationParams?: ProviderStreamRequest['config']['generationParams']
   timeoutMs: number
 }>
 
@@ -124,6 +131,10 @@ export function validateDeepSeekTextChatPayload(payload: unknown): ValidatedText
   if (!messages) {
     return staticFailure('invalid_payload', 'DeepSeek official text chat requires user and assistant messages.')
   }
+  const generationParams = validateProviderGenerationParamsPayload(record.generationParams)
+  if (generationParams === null) {
+    return staticFailure('invalid_payload', 'DeepSeek official generation params payload is invalid.')
+  }
 
   return {
     ok: true,
@@ -132,6 +143,7 @@ export function validateDeepSeekTextChatPayload(payload: unknown): ValidatedText
     model,
     messages,
     ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
+    ...(generationParams ? { generationParams } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
 }
@@ -146,40 +158,33 @@ function readDeepSeekApiKey(credentialService: ProviderCredentialService): DeepS
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
-  const category = error.category === 'auth'
-    ? 'auth'
-    : error.category === 'rate_limit'
-      ? 'rate_limit'
-      : error.category === 'aborted'
-        ? 'aborted'
-        : error.category === 'bad_request'
-          ? 'bad_request'
-          : error.category === 'network'
-            ? 'network'
-            : 'provider_error'
-
-  return {
-    phase: error.phase,
-    provider: 'deepseek',
-    category,
-    message: category === 'auth'
-      ? 'DeepSeek credential was rejected.'
-      : category === 'rate_limit'
-        ? 'DeepSeek rate limit was reached.'
-        : category === 'aborted'
-          ? 'DeepSeek official text chat was aborted.'
-          : category === 'bad_request' && error.code === 'unsupported_provider'
-            ? 'DeepSeek official runtime does not support image or file attachments in Starverse.'
-          : 'DeepSeek official text chat failed safely.',
-    ...(error.code ? { code: String(error.code) } : {}),
-    ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
-    ...(error.retryable ? { retryable: true } : {}),
-    ...(error.requestId ? { requestId: error.requestId } : {}),
+  if (error.category === 'bad_request' && error.code === 'unsupported_provider') {
+    return {
+      phase: error.phase,
+      provider: 'deepseek',
+      category: 'bad_request',
+      code: 'unsupported_provider',
+      message: 'DeepSeek official runtime does not support image or file attachments in Starverse.',
+      ...(error.requestId ? { requestId: error.requestId } : {}),
+    }
   }
+  return sanitizeProviderNetworkError({
+    providerId: 'deepseek',
+    providerWireName: 'deepseek',
+    providerLabel: 'DeepSeek',
+    error,
+  })
 }
 
 function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent | null {
-  if (event.type === 'message.reasoning_detail' || event.type === 'message.reasoning_detail_batch') {
+  if (
+    event.type === 'message.reasoning_raw_detail' ||
+    event.type === 'message.reasoning_raw_detail_batch' ||
+    event.type === 'message.reasoning_detail' ||
+    event.type === 'message.reasoning_detail_batch' ||
+    event.type === 'message.reasoning_display_block' ||
+    event.type === 'message.reasoning_display_block_upsert'
+  ) {
     return null
   }
   if (event.type === 'stream.error') {
@@ -223,6 +228,7 @@ function buildProviderRequest(input: Readonly<{
     config: {
       model: input.request.model,
       requestedReasoningMode: 'auto',
+      ...(input.request.generationParams ? { generationParams: input.request.generationParams } : {}),
     },
   }
 }
@@ -231,7 +237,8 @@ async function forwardDeepSeekStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
   credentialService: ProviderCredentialService
-  fetchImpl: typeof fetch
+  fetchImpl: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const apiKey = readDeepSeekApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -267,6 +274,10 @@ async function forwardDeepSeekStream(input: Readonly<{
       baseUrl: DEEPSEEK_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
+      captureSerializedRequest: (serializedBody) => input.rawGenerationRequestStore?.tryPersist({
+        operationId: input.request.requestId, answerRootId: input.request.assistantMessageId, requestSequence: 1,
+        providerId: 'deepseek', modelId: input.request.model,
+      }, serializedBody),
     })
     for await (const event of events) {
       const safeEvent = safeStreamEvent(event)
@@ -276,20 +287,19 @@ async function forwardDeepSeekStream(input: Readonly<{
         event: safeEvent,
       })
     }
-  } catch {
+  } catch (error) {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
       event: {
         type: 'stream.error',
-        error: {
-          phase: 'transport',
-          provider: 'deepseek',
-          category: controller.signal.aborted ? 'aborted' : 'network',
-          code: controller.signal.aborted ? 'aborted' : 'network_error',
-          message: controller.signal.aborted
-            ? 'DeepSeek official text chat was aborted.'
-            : 'DeepSeek official text chat failed safely.',
-        },
+        error: sanitizeProviderNetworkError({
+          providerId: 'deepseek',
+          providerWireName: 'deepseek',
+          providerLabel: 'DeepSeek',
+          thrown: error,
+          abortReason: controller.signal.reason,
+          fallbackPhase: 'transport',
+        }),
         terminal: true,
       },
     })
@@ -315,12 +325,12 @@ export function registerDeepSeekTextChatIpc(
     if (!validated.ok) return validated
 
     const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
     if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
       return staticFailure('invalid_payload', 'DeepSeek official text chat bridge is unavailable.')
     }
 
-    void forwardDeepSeekStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl })
+    void forwardDeepSeekStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl, rawGenerationRequestStore: input.rawGenerationRequestStore })
     return { ok: true }
   })
 

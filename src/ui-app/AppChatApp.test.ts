@@ -28,7 +28,7 @@ describe('ui-app (read-only) AppChatApp', () => {
         return { value: null }
       }
 
-      if (method === 'settings.getSamplingParamsDefaults') {
+      if (method === 'settings.getGenerationParamsDefaults') {
         return { value: null }
       }
 
@@ -63,6 +63,9 @@ describe('ui-app (read-only) AppChatApp', () => {
       if (method === 'settings.setChatReasoningDisplayMode') {
         return { ok: true }
       }
+
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
 
       if (method === 'convo.list') {
         return [

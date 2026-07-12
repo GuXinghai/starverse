@@ -1,15 +1,19 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
-import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
+import type { ProviderStreamConfig, ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaOpenAIResponses, type ResponsesFetchFn } from '../../src/next/provider/openai-responses/openaiResponsesAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
+import { sanitizeProviderNetworkError } from './providerNetworkError'
 import {
   isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
+import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
 
 export const OPENAI_RESPONSES_TEXT_CHAT_IPC_CHANNELS = [
   'openai-responses-chat:stream-text',
@@ -27,6 +31,8 @@ export type OpenAIResponsesTextChatPayload = Readonly<{
   model?: unknown
   messages?: unknown
   currentUserContentBlocks?: unknown
+  generationParams?: unknown
+  imageGeneration?: unknown
   timeoutMs?: unknown
 }>
 
@@ -48,7 +54,8 @@ type RegisterOpenAIResponsesTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
-  fetchImpl?: typeof fetch
+  fetchImpl?: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -58,6 +65,8 @@ type ValidatedTextChatSuccess = Readonly<{
   model: string
   messages: OpenAIResponsesTextChatMessage[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  generationParams?: ProviderStreamConfig['generationParams']
+  imageGeneration?: ProviderStreamConfig['imageGeneration']
   timeoutMs: number
 }>
 
@@ -107,6 +116,69 @@ function normalizeMessages(raw: unknown, allowEmptyCurrentUser = false): OpenAIR
   return out
 }
 
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
+}
+
+function clonePlainJsonObject(value: unknown): Record<string, unknown> | null | undefined {
+  if (value === undefined || value === null) return undefined
+  if (!isPlainRecord(value)) return null
+  try {
+    const text = JSON.stringify(value)
+    if (text.length > 20000) return null
+    const parsed = JSON.parse(text)
+    return isPlainRecord(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+function validateImageGenerationConfig(raw: unknown): ProviderStreamConfig['imageGeneration'] | null | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (!isPlainRecord(raw)) return null
+
+  const out: {
+    capabilityClass?: string
+    modalities?: string[]
+    outputMode?: 'auto' | 'image_only' | 'image_and_text'
+    aspectRatio?: string
+    imageSize?: '1K' | '2K' | '4K' | ''
+    imageConfig?: Record<string, unknown>
+  } = {}
+
+  if ('capabilityClass' in raw) {
+    const value = String(raw.capabilityClass ?? '').trim()
+    if (!value || value.length > 128) return null
+    out.capabilityClass = value
+  }
+  if ('modalities' in raw) {
+    if (!Array.isArray(raw.modalities)) return null
+    const modalities = raw.modalities.map((item) => String(item ?? '').trim()).filter((item) => item === 'image' || item === 'text')
+    if (modalities.length !== raw.modalities.length) return null
+    if (modalities.length > 0) out.modalities = modalities
+  }
+  if ('outputMode' in raw) {
+    if (raw.outputMode !== 'auto' && raw.outputMode !== 'image_only' && raw.outputMode !== 'image_and_text') return null
+    out.outputMode = raw.outputMode
+  }
+  if ('aspectRatio' in raw) {
+    const value = String(raw.aspectRatio ?? '').trim()
+    if (value.length > 32) return null
+    if (value) out.aspectRatio = value
+  }
+  if ('imageSize' in raw) {
+    if (raw.imageSize !== '' && raw.imageSize !== '1K' && raw.imageSize !== '2K' && raw.imageSize !== '4K') return null
+    out.imageSize = raw.imageSize
+  }
+  if ('imageConfig' in raw) {
+    const imageConfig = clonePlainJsonObject(raw.imageConfig)
+    if (imageConfig === null) return null
+    if (imageConfig) out.imageConfig = imageConfig
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
 export function validateOpenAIResponsesTextChatPayload(payload: unknown): ValidatedTextChatPayload {
   if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
     return staticFailure('invalid_payload', 'OpenAI Responses text chat payload is invalid.')
@@ -128,6 +200,14 @@ export function validateOpenAIResponsesTextChatPayload(payload: unknown): Valida
   if (!messages) {
     return staticFailure('invalid_payload', 'OpenAI Responses text chat requires user and assistant messages.')
   }
+  const imageGeneration = validateImageGenerationConfig(record.imageGeneration)
+  if (imageGeneration === null) {
+    return staticFailure('invalid_payload', 'OpenAI Responses image generation payload is invalid.')
+  }
+  const generationParams = validateProviderGenerationParamsPayload(record.generationParams)
+  if (generationParams === null) {
+    return staticFailure('invalid_payload', 'OpenAI Responses generation params payload is invalid.')
+  }
 
   return {
     ok: true,
@@ -136,6 +216,8 @@ export function validateOpenAIResponsesTextChatPayload(payload: unknown): Valida
     model,
     messages,
     ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
+    ...(generationParams ? { generationParams } : {}),
+    ...(imageGeneration ? { imageGeneration } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
 }
@@ -150,34 +232,12 @@ function readOpenAIResponsesApiKey(credentialService: ProviderCredentialService)
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
-  const category = error.category === 'auth'
-    ? 'auth'
-    : error.category === 'rate_limit'
-      ? 'rate_limit'
-      : error.category === 'aborted'
-        ? 'aborted'
-        : error.category === 'bad_request'
-          ? 'bad_request'
-          : error.category === 'network'
-            ? 'network'
-            : 'provider_error'
-
-  return {
-    phase: error.phase,
-    provider: 'openai-responses',
-    category,
-    message: category === 'auth'
-      ? 'OpenAI Responses credential was rejected.'
-      : category === 'rate_limit'
-        ? 'OpenAI Responses rate limit was reached.'
-        : category === 'aborted'
-          ? 'OpenAI Responses text chat was aborted.'
-          : 'OpenAI Responses text chat failed safely.',
-    ...(error.code ? { code: String(error.code) } : {}),
-    ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
-    ...(error.retryable ? { retryable: true } : {}),
-    ...(error.requestId ? { requestId: error.requestId } : {}),
-  }
+  return sanitizeProviderNetworkError({
+    providerId: 'openai_responses',
+    providerWireName: 'openai-responses',
+    providerLabel: 'OpenAI Responses',
+    error,
+  })
 }
 
 function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent {
@@ -222,6 +282,8 @@ function buildProviderRequest(input: Readonly<{
     config: {
       model: input.request.model,
       requestedReasoningMode: 'auto',
+      ...(input.request.generationParams ? { generationParams: input.request.generationParams } : {}),
+      ...(input.request.imageGeneration ? { imageGeneration: input.request.imageGeneration } : {}),
     },
   }
 }
@@ -231,7 +293,8 @@ async function forwardOpenAIResponsesStream(input: Readonly<{
   sender: WebContents
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
-  fetchImpl: typeof fetch
+  fetchImpl: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const apiKey = readOpenAIResponsesApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -292,6 +355,10 @@ async function forwardOpenAIResponsesStream(input: Readonly<{
       baseUrl: OPENAI_RESPONSES_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
+      captureSerializedRequest: (serializedBody) => input.rawGenerationRequestStore?.tryPersist({
+        operationId: input.request.requestId, answerRootId: input.request.assistantMessageId, requestSequence: 1,
+        providerId: 'openai_responses', modelId: input.request.model,
+      }, serializedBody),
     })
     for await (const event of events) {
       const safeEvent = safeStreamEvent(event)
@@ -305,20 +372,19 @@ async function forwardOpenAIResponsesStream(input: Readonly<{
         event: safeEvent,
       })
     }
-  } catch {
+  } catch (error) {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
       event: {
         type: 'stream.error',
-        error: {
-          phase: 'transport',
-          provider: 'openai-responses',
-          category: controller.signal.aborted ? 'aborted' : 'network',
-          code: controller.signal.aborted ? 'aborted' : 'network_error',
-          message: controller.signal.aborted
-            ? 'OpenAI Responses text chat was aborted.'
-            : 'OpenAI Responses text chat failed safely.',
-        },
+        error: sanitizeProviderNetworkError({
+          providerId: 'openai_responses',
+          providerWireName: 'openai-responses',
+          providerLabel: 'OpenAI Responses',
+          thrown: error,
+          abortReason: controller.signal.reason,
+          fallbackPhase: 'transport',
+        }),
         terminal: true,
       },
     })
@@ -344,7 +410,7 @@ export function registerOpenAIResponsesTextChatIpc(
     if (!validated.ok) return validated
 
     const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
     if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
       return staticFailure('invalid_payload', 'OpenAI Responses text chat bridge is unavailable.')
     }
@@ -355,6 +421,7 @@ export function registerOpenAIResponsesTextChatIpc(
       credentialService: input.credentialService,
       providerFileUploadService: input.providerFileUploadService,
       fetchImpl,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     })
     return { ok: true }
   })

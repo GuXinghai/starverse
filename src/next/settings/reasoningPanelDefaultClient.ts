@@ -1,5 +1,6 @@
 import {
   decodeBooleanAck,
+  decodeChatReasoningPanelAutoCollapseAfterReasoningResponse,
   decodeChatReasoningPanelDefaultExpandedResponse,
 } from '@/next/ipc/contracts/dbBridgeContracts'
 
@@ -29,6 +30,28 @@ export async function setChatReasoningPanelDefaultExpanded(value: boolean): Prom
   try {
     const result = await bridge.invoke('settings.setChatReasoningPanelDefaultExpanded', { value })
     return decodeBooleanAck('settings.setChatReasoningPanelDefaultExpanded', result)
+  } catch {
+    return false
+  }
+}
+
+export async function getChatReasoningPanelAutoCollapseAfterReasoning(): Promise<boolean> {
+  const bridge = getDbBridge()
+  if (!bridge) return false
+  try {
+    const result = await bridge.invoke('settings.getChatReasoningPanelAutoCollapseAfterReasoning')
+    return decodeChatReasoningPanelAutoCollapseAfterReasoningResponse(result)
+  } catch {
+    return false
+  }
+}
+
+export async function setChatReasoningPanelAutoCollapseAfterReasoning(value: boolean): Promise<boolean> {
+  const bridge = getDbBridge()
+  if (!bridge) return false
+  try {
+    const result = await bridge.invoke('settings.setChatReasoningPanelAutoCollapseAfterReasoning', { value })
+    return decodeBooleanAck('settings.setChatReasoningPanelAutoCollapseAfterReasoning', result)
   } catch {
     return false
   }

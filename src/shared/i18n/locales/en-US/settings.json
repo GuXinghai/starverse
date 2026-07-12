@@ -31,7 +31,6 @@
       "anthropicCredentialUpdateFailed": "Anthropic credential update failed.",
       "deepSeekCredentialUpdateFailed": "DeepSeek credential update failed.",
       "openRouterCredentialClearFailed": "OpenRouter credential clear failed.",
-      "openRouterBaseUrlClearFailed": "OpenRouter base URL clear failed.",
       "openAIResponsesCredentialClearFailed": "OpenAI Responses credential clear failed.",
       "googleAIStudioCredentialClearFailed": "Google AI Studio credential clear failed.",
       "anthropicCredentialClearFailed": "Anthropic credential clear failed.",
@@ -340,7 +339,39 @@
       "hintGlobal": "Global defaults apply when project/session keeps mode=default."
     },
     "customParams": {
-      "title": "Global Custom Parameters"
+      "title": "Global Generation Parameters"
+    },
+    "openAICompatible": {
+      "title": "OpenAI-compatible cloud providers",
+      "description": "Configure independent Chat Completions-compatible instances. Sending remains disabled until runtime activation.",
+      "addInstance": "Add instance",
+      "empty": "No compatible provider instances configured.",
+      "name": "Instance name",
+      "baseUrl": "Base URL",
+      "securityPolicy": "Security policy",
+      "auth": "Authentication",
+      "username": "Username",
+      "organization": "Organization",
+      "project": "Project",
+      "secret": "Write-only secret",
+      "headers": "Ordinary headers (name=value)",
+      "query": "Public query parameters (name=value)",
+      "secretHeaders": "Write-only sensitive headers (name=value)",
+      "httpWarning": "Plain HTTP is persisted explicitly and is not upgraded or rewritten.",
+      "saved": "Compatible provider saved.",
+      "deleteConfirm": "Delete this provider for future requests? Historical routes remain pinned.",
+      "deleteCredentialConfirm": "Delete this inactive credential version from secure storage?",
+      "deleteManualConfirm": "Delete this manual model record? Remote catalog data is not changed.",
+      "test": "Test connection",
+      "models": "Instance-scoped models",
+      "sync": "Sync /models",
+      "manualModel": "Manual model ID",
+      "profiles": "Pinned request/response profiles",
+      "saveProfiles": "Save as new revision",
+      "profilesSaved": "Profile revision saved.",
+      "discovery": "Discovered response fields",
+      "acceptReasoning": "Use as reasoning field",
+      "ignore": "Ignore"
     },
     "footer": "ui-app reads OpenRouter settings from electron-store (not env) to avoid hidden overrides."
   }

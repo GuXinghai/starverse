@@ -8,7 +8,6 @@ export type ProviderFileInputProvider =
   | 'anthropic_messages'
   | 'google_ai_studio'
   | 'openrouter'
-  | 'generic_openai_compatible'
   | 'local_endpoint'
   | 'lm_studio'
   | 'ollama_local'
@@ -143,7 +142,6 @@ const SUPPORTED_PROVIDERS: ReadonlySet<string> = new Set([
   'anthropic_messages',
   'google_ai_studio',
   'openrouter',
-  'generic_openai_compatible',
   'local_endpoint',
   'lm_studio',
   'ollama_local',
@@ -541,7 +539,6 @@ function buildInlineRequestPart(input: Readonly<{
       return input.kind === 'image'
         ? { type: 'image_url', image_url: { url: input.dataUrl } }
         : { type: 'file', file: { filename: input.filename, file_data: input.dataUrl } }
-    case 'generic_openai_compatible':
     case 'local_endpoint':
     case 'lm_studio':
     case 'ollama_local':
@@ -571,7 +568,6 @@ function buildUrlRequestPart(input: Readonly<{
       return input.kind === 'image'
         ? { type: 'image_url', image_url: { url: input.url } }
         : { type: 'file', file: { filename: input.filename, file_data: input.url } }
-    case 'generic_openai_compatible':
     case 'local_endpoint':
     case 'lm_studio':
     case 'ollama_local':
@@ -630,7 +626,7 @@ function assertAssetReady(
 
 function supportsProviderUrl(provider: ProviderFileInputProvider, kind: ProviderFileInputKind): boolean {
   if (kind === 'image') return true
-  if (provider === 'generic_openai_compatible' || provider === 'local_endpoint' || provider === 'lm_studio' || provider === 'ollama_local') {
+  if (provider === 'local_endpoint' || provider === 'lm_studio' || provider === 'ollama_local') {
     return false
   }
   if (kind === 'pdf') return true
@@ -638,7 +634,7 @@ function supportsProviderUrl(provider: ProviderFileInputProvider, kind: Provider
 }
 
 function supportsProviderInlineKind(provider: ProviderFileInputProvider, kind: ProviderFileInputKind): boolean {
-  if (provider === 'generic_openai_compatible' || provider === 'local_endpoint' || provider === 'lm_studio' || provider === 'ollama_local') {
+  if (provider === 'local_endpoint' || provider === 'lm_studio' || provider === 'ollama_local') {
     return kind === 'image'
   }
   if (kind === 'image' || kind === 'pdf') return true

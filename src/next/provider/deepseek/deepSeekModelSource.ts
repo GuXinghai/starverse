@@ -4,6 +4,11 @@ import {
   type ProviderModelCapabilitySeed,
   type ProviderModelSourceKind as CommonProviderModelSourceKind,
 } from '../modelAvailabilityEnvelope'
+import {
+  buildNetworkErrorEnvelope,
+  providerNetworkFailureMessage,
+  type NetworkErrorEnvelope,
+} from '../../../shared/network/networkErrorEnvelope'
 
 export const DEEPSEEK_OFFICIAL_PROVIDER_KEY = 'deepseek' as const
 export const DEEPSEEK_OFFICIAL_ENDPOINT_ID = 'deepseek-official' as const
@@ -104,6 +109,7 @@ export type DeepSeekModelAvailabilityFailure = Readonly<{
     | 'network_error'
   message: string
   httpStatus?: number
+  networkError?: NetworkErrorEnvelope
 }>
 
 export type DeepSeekModelAvailabilityResult =
@@ -199,9 +205,11 @@ function normalizeBaseUrl(raw: string | null | undefined): string {
 }
 
 function safeHttpErrorMessage(status: number): string {
-  if (status === 401 || status === 403) return 'DeepSeek model source credential was rejected.'
+  if (status === 401) return 'DeepSeek model source credential was rejected.'
+  if (status === 403) return 'DeepSeek model source access was forbidden.'
+  if (status === 404) return 'DeepSeek model source endpoint or model list was not found.'
   if (status === 429) return 'DeepSeek model source rate limit was reached.'
-  return 'DeepSeek model source request failed safely.'
+  return `DeepSeek model source returned HTTP ${status}.`
 }
 
 async function readJsonSafely(response: Response): Promise<unknown> {
@@ -499,7 +507,14 @@ export async function listDeepSeekProviderModelAvailability(
       signal: input.signal ?? undefined,
       redirect: 'error',
     })
-  } catch {
+  } catch (error) {
+    const networkError = buildNetworkErrorEnvelope({
+      requestPurpose: 'provider_availability',
+      providerId: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+      transportKind: 'electron_session_fetch',
+      error,
+      abortReason: input.signal?.aborted ? input.signal.reason ?? 'aborted' : undefined,
+    })
     return {
       ok: false,
       providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
@@ -507,12 +522,19 @@ export async function listDeepSeekProviderModelAvailability(
       profileId: DEEPSEEK_OFFICIAL_PROFILE_ID,
       observedAtMs,
       code: 'network_error',
-      message: 'DeepSeek model source request failed safely.',
+      message: providerNetworkFailureMessage('DeepSeek model source', networkError),
+      networkError,
     }
   }
 
   const payload = await readJsonSafely(response)
   if (!response.ok) {
+    const networkError = buildNetworkErrorEnvelope({
+      requestPurpose: 'provider_availability',
+      providerId: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+      transportKind: 'electron_session_fetch',
+      httpStatus: response.status,
+    })
     return {
       ok: false,
       providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
@@ -522,6 +544,7 @@ export async function listDeepSeekProviderModelAvailability(
       code: 'http_error',
       message: safeHttpErrorMessage(response.status),
       httpStatus: response.status,
+      networkError,
     }
   }
 

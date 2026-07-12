@@ -1,5 +1,5 @@
 import type { PdpPluginRegistryRecord } from './registryModel'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import { containsUnsafeRefSyntax } from './installPlan'
 
 export const PDP_INSTALL_OPERATION_PHASES = [

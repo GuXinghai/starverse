@@ -1,10 +1,12 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
+import { createLocalEndpointDirectFetch } from '../net/localEndpointTransport'
 import { openAiChatCompletionsUrl, validateLocalEndpointProbeUrl } from './localEndpointDiagnosticsIpc'
 import {
   sanitizeProviderRuntimeImageContentBlocks,
   type OpenAICompatibleChatContentPart,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 
 export const LOCAL_ENDPOINT_TEXT_CHAT_IPC_CHANNELS = [
   'local-endpoint-chat:stream-text',
@@ -18,6 +20,7 @@ export type LocalEndpointTextChatMessage = Readonly<{
 
 export type LocalEndpointTextChatPayload = Readonly<{
   requestId?: unknown
+  assistantMessageId?: unknown
   url?: unknown
   model?: unknown
   messages?: unknown
@@ -56,11 +59,13 @@ export type LocalEndpointTextChatWireEvent =
 type RegisterLocalEndpointTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   fetchImpl?: typeof fetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
   ok: true
   requestId: string
+  assistantMessageId: string
   url: URL
   safeBaseUrl: string
   model: string
@@ -140,8 +145,9 @@ export function validateLocalEndpointTextChatPayload(payload: unknown): Validate
   }
   const record = payload as LocalEndpointTextChatPayload
   const requestId = String(record.requestId ?? '').trim()
+  const assistantMessageId = String(record.assistantMessageId ?? requestId).trim()
   const model = String(record.model ?? '').trim()
-  if (!requestId || !model) {
+  if (!requestId || !assistantMessageId || !model) {
     return staticFailure('invalid_payload', 'Local endpoint text chat payload is invalid.')
   }
 
@@ -158,6 +164,7 @@ export function validateLocalEndpointTextChatPayload(payload: unknown): Validate
   return {
     ok: true,
     requestId,
+    assistantMessageId,
     url: urlValidation.url,
     safeBaseUrl: urlValidation.safeBaseUrl,
     model,
@@ -209,6 +216,7 @@ async function forwardFetchStream(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
   fetchImpl: typeof fetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const controller = new AbortController()
   activeControllers.set(input.request.requestId, controller)
@@ -216,17 +224,16 @@ async function forwardFetchStream(input: Readonly<{
   const emit = (event: LocalEndpointTextChatWireEvent) => sendWireEvent(input.sender, input.request.requestId, event)
 
   try {
+    const serializedBody = JSON.stringify({ model: input.request.model, messages: input.request.messages, stream: true })
+    input.rawGenerationRequestStore?.tryPersist({ operationId: input.request.requestId, answerRootId: input.request.assistantMessageId,
+      requestSequence: 1, providerId: 'local_endpoint', modelId: input.request.model }, serializedBody)
     const response = await input.fetchImpl(openAiChatCompletionsUrl(input.request.url), {
       method: 'POST',
       headers: {
         Accept: 'text/event-stream',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({
-        model: input.request.model,
-        messages: input.request.messages,
-        stream: true,
-      }),
+      body: serializedBody,
       redirect: 'error',
       signal: controller.signal,
     })
@@ -309,12 +316,12 @@ export function registerLocalEndpointTextChatIpc(
     if (!validated.ok) return validated
 
     const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createLocalEndpointDirectFetch()
     if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
       return staticFailure('invalid_payload', 'Local endpoint text chat bridge is unavailable.')
     }
 
-    void forwardFetchStream({ request: validated, sender, fetchImpl })
+    void forwardFetchStream({ request: validated, sender, fetchImpl, rawGenerationRequestStore: input.rawGenerationRequestStore })
     return { ok: true }
   })
 

@@ -5,7 +5,7 @@ import { mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises'
 import path from 'node:path'
 import { validatePluginPackageInventory } from '../../src/next/plugin-distribution/artifactInventory'
 import { validatePluginPackageManifest } from '../../src/next/plugin-distribution/packageManifest'
-import { sanitizePluginDistributionText } from '../../src/next/plugin-distribution/sanitization'
+import { sanitizePluginDistributionText } from '../../src/shared/plugin-distribution/sanitization'
 import type { PluginPackageArtifact } from '../../src/next/plugin-distribution/types'
 import { validateSafeRelativePath } from '../../src/next/plugin-distribution/validation'
 import {

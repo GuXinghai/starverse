@@ -1,7 +1,10 @@
 /* eslint-disable max-lines-per-function, max-statements, complexity, max-depth */
 import type { DbWorkerRuntime } from '../runtime'
 import type { RegisterHandler } from './types'
+import { beginTurnPersistenceCore } from '../turnPersistence'
 import { DbWorkerError } from '../../errors'
+import { randomUUID } from 'node:crypto'
+import { recoverOrphanAssistantStreaming } from '../orphanStreamingRecovery'
 import {
   EnsureDefaultBranchSchema,
   ListBranchSchema,
@@ -15,6 +18,9 @@ import {
   SwitchCandidateSchema,
   SwitchQuestionCandidateSchema,
   RegenerateFromQuestionSchema,
+  RegenerateQuestionWithCurrentConfigSchema,
+  RetryChosenAnswerSchema,
+  FinalizeAssistantAnswerGenerationSchema,
   ForkQuestionSchema,
   RetryReplaceQuestionSchema,
   TruncateBranchFromQuestionSchema,
@@ -36,6 +42,207 @@ export function registerBranchContextHandlers(register: RegisterHandler, runtime
     (typeof rt.requireNonToolHead === 'function' ? rt.requireNonToolHead(headMessageId, context) : undefined)
   const requireHeadEquals = (_db: unknown, branchId: string, expectedHeadMessageId: string, context: Record<string, unknown>) =>
     (typeof rt.requireHeadEquals === 'function' ? rt.requireHeadEquals(branchId, expectedHeadMessageId, context) : undefined)
+
+  const assertSnapshotSafe = (value: unknown, path = 'snapshot'): void => {
+    if (Array.isArray(value)) {
+      value.forEach((item, index) => assertSnapshotSafe(item, `${path}[${index}]`))
+      return
+    }
+    if (!value || typeof value !== 'object') return
+    for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+      if (/(api[_-]?key|authorization|credential|password|proxy[_-]?(?:key|token|password)|access[_-]?token|secret|data[_-]?url|abort[_-]?controller)/i.test(key)) {
+        throw new DbWorkerError('ERR_VALIDATION', `generation_snapshot_forbidden_field:${path}.${key}`)
+      }
+      assertSnapshotSafe(child, `${path}.${key}`)
+    }
+  }
+
+  const assertSnapshotV1 = (snapshot: Record<string, unknown>): void => {
+    const route = snapshot.route as Record<string, unknown> | undefined
+    const tools = snapshot.tools as Record<string, unknown> | undefined
+    const attachments = snapshot.attachments as Record<string, unknown> | undefined
+    const requiredObjects = ['generationParams', 'reasoning', 'webSearch', 'imageGeneration', 'providerOptions']
+    if (snapshot.schemaVersion !== 1 || !route || typeof route.providerId !== 'string' || !route.providerId.trim() ||
+        typeof route.modelId !== 'string' || !route.modelId.trim() || typeof route.endpointId !== 'string' || !route.endpointId.trim() ||
+        typeof route.profileId !== 'string' || !route.profileId.trim() || requiredObjects.some((key) => !snapshot[key] || typeof snapshot[key] !== 'object' || Array.isArray(snapshot[key])) ||
+        !tools || typeof tools.enabled !== 'boolean' || !Array.isArray(tools.allowedToolIds) || typeof tools.requireExternalSideEffectConfirmation !== 'boolean' ||
+        !attachments || typeof attachments.sourceQuestionId !== 'string' || !Array.isArray(attachments.items)) {
+      throw new DbWorkerError('ERR_VALIDATION', 'ANSWER_GENERATION_SNAPSHOT_INVALID')
+    }
+    if (Object.prototype.hasOwnProperty.call(snapshot.providerOptions, 'geminiThinking')) {
+      throw new DbWorkerError('ERR_VALIDATION', 'ANSWER_GENERATION_SNAPSHOT_LEGACY_GEMINI_THINKING')
+    }
+    for (const item of attachments.items as unknown[]) {
+      if (!item || typeof item !== 'object' || typeof (item as any).assetId !== 'string' || typeof (item as any).include !== 'boolean') {
+        throw new DbWorkerError('ERR_VALIDATION', 'ANSWER_GENERATION_SNAPSHOT_ATTACHMENT_INVALID')
+      }
+    }
+    for (const endpointUrl of [(snapshot.providerOptions as any)?.endpointUrl, (snapshot.providerOptions as any)?.baseUrl]) {
+      if (typeof endpointUrl !== 'string' || !endpointUrl) continue
+      let parsed: URL
+      try { parsed = new URL(endpointUrl) } catch { throw new DbWorkerError('ERR_VALIDATION', 'ANSWER_GENERATION_SNAPSHOT_ENDPOINT_INVALID') }
+      if (parsed.username || parsed.password || [...parsed.searchParams.keys()].some((key) => /(key|token|secret|password|auth)/i.test(key))) {
+        throw new DbWorkerError('ERR_VALIDATION', 'ANSWER_GENERATION_SNAPSHOT_ENDPOINT_CONTAINS_SECRET')
+      }
+    }
+    assertSnapshotSafe(snapshot)
+  }
+
+  const createAnswerGeneration = (input: Readonly<{
+    operationId: string
+    actionKind: 'regenerate' | 'retry_replace' | 'retry_as_new'
+    branchId: string
+    questionId: string
+    targetAnswerRootId?: string | null
+    suppliedSnapshot?: Record<string, unknown> | null
+    compatibleExecutionPins?: Record<string, unknown> | null
+  }>) => {
+    const existing = rt.db.prepare(`
+      SELECT operation_id AS operationId, action_kind AS actionKind, branch_id AS branchId,
+             question_id AS questionId, target_answer_root_id AS targetAnswerRootId,
+             result_answer_root_id AS resultAnswerRootId, state
+      FROM assistant_answer_generation_operations WHERE operation_id=@operationId
+    `).get({ operationId: input.operationId }) as any
+    if (existing) {
+      const snapshotRow = rt.db.prepare(`SELECT snapshot_json AS snapshotJson FROM assistant_answer_generation_snapshots WHERE answer_root_id=?`)
+        .get(String(existing.resultAnswerRootId)) as any
+      const snapshot = snapshotRow?.snapshotJson ? JSON.parse(String(snapshotRow.snapshotJson)) : null
+      const sameIdentity = existing.actionKind === input.actionKind && existing.branchId === input.branchId &&
+        existing.questionId === input.questionId && String(existing.targetAnswerRootId ?? '') === String(input.targetAnswerRootId ?? '')
+      const sameSnapshot = input.suppliedSnapshot == null || JSON.stringify(snapshot) === JSON.stringify(input.suppliedSnapshot)
+      if (!sameIdentity || !sameSnapshot) throw new DbWorkerError('ERR_INVALID', 'answer_generation_operation_conflict')
+      if (input.compatibleExecutionPins) {
+        const route = rt.compatibleRouteRepo.getRouteByChoiceMessageId(String(existing.resultAnswerRootId))
+        const pins = input.compatibleExecutionPins as any
+        if (!route || route.providerInstanceId !== pins.providerInstanceId || route.modelId !== pins.modelId ||
+            route.endpointRevisionId !== pins.endpointRevisionId || route.credentialVersionRef !== (pins.credentialVersionRef ?? null) ||
+            route.requestProfileId !== pins.requestProfileId || route.requestProfileVersion !== pins.requestProfileVersion ||
+            route.responseProfileId !== pins.responseProfileId || route.responseProfileVersion !== pins.responseProfileVersion ||
+            route.reasoningMappingId !== pins.reasoningMappingId || route.reasoningMappingVersion !== pins.reasoningMappingVersion) {
+          throw new DbWorkerError('ERR_INVALID', 'answer_generation_operation_conflict')
+        }
+      }
+      const message = rt.db.prepare(`SELECT seq FROM message WHERE id=?`).get(String(existing.resultAnswerRootId)) as any
+      const projection = rt.db.prepare(`
+        SELECT b.head_message_id AS headMessageId, bc.chosen_answer_root_id AS chosenAnswerRootId
+        FROM branch b LEFT JOIN branch_choice bc ON bc.branch_id=b.id AND bc.question_id=@questionId
+        WHERE b.id=@branchId
+      `).get({ branchId: input.branchId, questionId: input.questionId }) as any
+      const compatibleRoute = rt.db.prepare(`SELECT route_provenance_id AS routeProvenanceId FROM compatible_route_choices WHERE message_id=?`)
+        .get(String(existing.resultAnswerRootId)) as any
+      return {
+        ok: true, operationId: input.operationId, actionKind: input.actionKind,
+        newAnswerRootId: String(existing.resultAnswerRootId), newAssistantSeq: Number(message?.seq),
+        chosenAnswerRootId: String(projection?.chosenAnswerRootId ?? ''), headMessageId: String(projection?.headMessageId ?? ''),
+        snapshot, state: String(existing.state), idempotentReplay: true,
+        ...(compatibleRoute?.routeProvenanceId ? { compatibleRouteProvenanceId: String(compatibleRoute.routeProvenanceId) } : {}),
+      }
+    }
+
+    const conflicting = rt.db.prepare(`
+      SELECT operation_id AS operationId FROM assistant_answer_generation_operations
+      WHERE branch_id=@branchId AND question_id=@questionId AND state IN ('committed', 'streaming')
+      LIMIT 1
+    `).get({ branchId: input.branchId, questionId: input.questionId }) as any
+    if (conflicting) throw new DbWorkerError('ERR_INVALID', 'ANSWER_GENERATION_ALREADY_RUNNING')
+
+    const branch = rt.branchRepo.get(input.branchId)
+    if (!branch?.convoId) throw new DbWorkerError('ERR_NOT_FOUND', `Branch not found: ${input.branchId}`)
+    if (branch.deletedAt != null) throw new DbWorkerError('ERR_INVALID', `Branch is deleted: ${input.branchId}`)
+    const question = rt.db.prepare(`SELECT 1 FROM message WHERE id=@id AND convo_id=@convoId AND role='user'`)
+      .get({ id: input.questionId, convoId: branch.convoId })
+    if (!question) throw new DbWorkerError('ERR_VALIDATION', `Question not found in conversation: ${input.questionId}`)
+
+    let snapshot = input.suppliedSnapshot ?? null
+    if (input.actionKind !== 'regenerate') {
+      const target = String(input.targetAnswerRootId ?? '')
+      try {
+        rt.branchRepo.canRetryReplace(input.branchId, input.questionId, target)
+      } catch (error) {
+        throw new DbWorkerError('ERR_INVALID', `STALE_CHOSEN_ANSWER:${error instanceof Error ? error.message : String(error)}`)
+      }
+      if (rt.db.prepare(`SELECT 1 FROM branch_answer_hide WHERE branch_id=? AND answer_root_id=?`).get(input.branchId, target)) {
+        throw new DbWorkerError('ERR_INVALID', 'TARGET_ANSWER_HIDDEN')
+      }
+      const row = rt.db.prepare(`SELECT snapshot_json AS snapshotJson FROM assistant_answer_generation_snapshots WHERE answer_root_id=?`).get(target) as any
+      if (!row?.snapshotJson) throw new DbWorkerError('ERR_INVALID', 'ANSWER_GENERATION_SNAPSHOT_MISSING')
+      snapshot = JSON.parse(String(row.snapshotJson)) as Record<string, unknown>
+    }
+    if (!snapshot || Number((snapshot as any).schemaVersion) !== 1) throw new DbWorkerError('ERR_VALIDATION', 'ANSWER_GENERATION_SNAPSHOT_INVALID')
+    assertSnapshotV1(snapshot)
+    const snapshotJson = JSON.stringify(snapshot)
+    if (Buffer.byteLength(snapshotJson, 'utf8') > 1048576) throw new DbWorkerError('ERR_VALIDATION', 'ANSWER_GENERATION_SNAPSHOT_TOO_LARGE')
+    const now = Date.now()
+    const created = rt.messageRepo.append({
+      convoId: branch.convoId, role: 'assistant', body: '', parentId: input.questionId, status: 'streaming',
+      meta: { providerId: (snapshot as any).route?.providerId ?? null, modelId: (snapshot as any).route?.modelId ?? null },
+    })
+    if (input.actionKind === 'retry_replace') {
+      rt.branchRepo.setAnswerHide(input.branchId, input.questionId, String(input.targetAnswerRootId), true)
+    }
+    rt.db.prepare(`INSERT INTO assistant_answer_generation_snapshots (answer_root_id, schema_version, snapshot_json, created_at_ms) VALUES (?, 1, ?, ?)`)
+      .run(created.id, snapshotJson, now)
+    rt.db.prepare(`
+      INSERT INTO assistant_answer_generation_operations (
+        operation_id, action_kind, branch_id, question_id, target_answer_root_id,
+        result_answer_root_id, state, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, 'committed', ?, ?)
+    `).run(input.operationId, input.actionKind, input.branchId, input.questionId, input.targetAnswerRootId ?? null, created.id, now, now)
+    rt.branchRepo.setChoice(input.branchId, input.questionId, created.id)
+    rt.branchRepo.setHead(input.branchId, created.id)
+    let compatibleRouteProvenanceId: string | undefined
+    if ((snapshot as any).route?.providerId === 'openai_chat_compatible') {
+      const pins = input.compatibleExecutionPins as any
+      if (!pins || pins.providerInstanceId !== (snapshot as any).providerOptions?.compatible?.providerInstanceId ||
+          pins.modelId !== (snapshot as any).route?.modelId || pins.endpointRevisionId !== (snapshot as any).route?.endpointId) {
+        throw new DbWorkerError('ERR_INVALID', 'COMPATIBLE_EXECUTION_PINS_MISSING_OR_STALE')
+      }
+      const endpoint = rt.compatibleProviderRepo.getEndpointRevision(String(pins.endpointRevisionId))
+      const responseProfile = endpoint
+        ? rt.compatibleProfileRepo.getResponseProfile(endpoint.responseProfileId, endpoint.responseProfileVersion)
+        : null
+      const reasoning = responseProfile
+        ? rt.compatibleProfileRepo.getReasoningMapping(responseProfile.reasoningMappingId, responseProfile.reasoningMappingVersion)
+        : null
+      if (!endpoint || endpoint.providerInstanceId !== pins.providerInstanceId || endpoint.credentialVersionRef !== (pins.credentialVersionRef ?? null) ||
+          endpoint.requestProfileId !== pins.requestProfileId || endpoint.requestProfileVersion !== pins.requestProfileVersion ||
+          endpoint.responseProfileId !== pins.responseProfileId || endpoint.responseProfileVersion !== pins.responseProfileVersion ||
+          !responseProfile || responseProfile.reasoningMappingId !== pins.reasoningMappingId ||
+          responseProfile.reasoningMappingVersion !== pins.reasoningMappingVersion ||
+          responseProfile.inlinePolicyId !== pins.inlinePolicyId || responseProfile.inlinePolicyVersion !== pins.inlinePolicyVersion || !reasoning) {
+        throw new DbWorkerError('ERR_INVALID', 'COMPATIBLE_EXECUTION_PINS_STALE')
+      }
+      compatibleRouteProvenanceId = `ocp_route_${randomUUID()}`
+      rt.compatibleRouteRepo.createRouteWithChoices({
+        routeProvenanceId: compatibleRouteProvenanceId,
+        requestId: `answer_generation_${randomUUID()}`,
+        requestMessageId: input.questionId,
+        protocolKey: 'openai_chat_compatible',
+        providerInstanceId: String(pins.providerInstanceId),
+        modelId: String(pins.modelId),
+        endpointRevisionId: String(pins.endpointRevisionId),
+        credentialVersionRef: pins.credentialVersionRef ?? null,
+        requestProfileId: String(pins.requestProfileId),
+        requestProfileVersion: Number(pins.requestProfileVersion),
+        responseProfileId: String(pins.responseProfileId),
+        responseProfileVersion: Number(pins.responseProfileVersion),
+        reasoningMappingId: String(pins.reasoningMappingId),
+        reasoningMappingVersion: Number(pins.reasoningMappingVersion),
+        reasoningMode: reasoning.mode,
+        inlinePolicyId: String(pins.inlinePolicyId),
+        inlinePolicyVersion: Number(pins.inlinePolicyVersion),
+        state: 'prepared',
+        createdAtMs: now,
+      }, [{ routeProvenanceId: compatibleRouteProvenanceId, choiceIndex: 0, messageId: created.id, createdAtMs: now }])
+    }
+    return {
+      ok: true, operationId: input.operationId, actionKind: input.actionKind,
+      newAnswerRootId: created.id, newAssistantSeq: created.seq,
+      chosenAnswerRootId: created.id, headMessageId: created.id,
+      snapshot, state: 'committed', idempotentReplay: false,
+      ...(compatibleRouteProvenanceId ? { compatibleRouteProvenanceId } : {}),
+    }
+  }
   register('branch.ensureDefault', (raw) => {
       const input = EnsureDefaultBranchSchema.parse(raw)
       return rt.branchRepo.ensureDefault(input.convoId, input.name)
@@ -92,64 +299,7 @@ export function registerBranchContextHandlers(register: RegisterHandler, runtime
 
   register('branch.beginTurn', (raw) => {
       const input = BeginTurnSchema.parse(raw)
-      const branch = rt.branchRepo.get(input.branchId)
-      if (!branch?.convoId) {
-        throw new DbWorkerError('ERR_NOT_FOUND', `Branch not found: ${input.branchId}`)
-      }
-      if (branch.deletedAt != null) {
-        throw new DbWorkerError('ERR_INVALID', `Branch is deleted: ${input.branchId}`)
-      }
-
-      const txn = rt.db.transaction(() => {
-        const latest = rt.branchRepo.get(input.branchId)
-        if (!latest?.convoId) throw new DbWorkerError('ERR_NOT_FOUND', `Branch not found: ${input.branchId}`)
-        if (latest.deletedAt != null) throw new DbWorkerError('ERR_INVALID', `Branch is deleted: ${input.branchId}`)
-
-        const question = rt.messageRepo.append({
-          convoId: latest.convoId,
-          role: 'user',
-          body: input.userBody,
-          ...(input.userMeta !== undefined ? { meta: input.userMeta } : {}),
-          parentId: latest.headMessageId,
-        })
-
-        const questionDoc = rt.loadMessageSearchDoc(question.id)
-        if (questionDoc) {
-          rt.searchRepo.upsertDoc(questionDoc)
-        }
-
-        if (input.attachConversationDraft === true) {
-          rt.conversationAttachmentService.attachDraftToMessage({
-            conversationId: latest.convoId,
-            messageId: question.id,
-            ...(input.sentAssetIds && input.sentAssetIds.length > 0 ? { sentAssetIds: input.sentAssetIds } : {}),
-            ...(input.dfcAttachmentSendSnapshots && input.dfcAttachmentSendSnapshots.length > 0
-              ? { dfcAttachmentSendSnapshots: input.dfcAttachmentSendSnapshots }
-              : {}),
-          })
-        }
-
-        const assistant = rt.messageRepo.append({
-          convoId: latest.convoId,
-          role: 'assistant',
-          body: '',
-          parentId: question.id,
-          status: 'streaming',
-        })
-
-        rt.branchRepo.setChoice(input.branchId, question.id, assistant.id)
-        rt.branchRepo.setHead(input.branchId, assistant.id)
-
-        return {
-          ok: true as const,
-          convoId: latest.convoId,
-          branchId: input.branchId,
-          questionId: question.id,
-          questionSeq: question.seq,
-          assistantId: assistant.id,
-          assistantSeq: assistant.seq,
-        }
-      })
+      const txn = rt.db.transaction(() => beginTurnPersistenceCore(runtime, input))
 
       const result = txn()
       // 事务提交后发射 activity_updated
@@ -278,6 +428,134 @@ export function registerBranchContextHandlers(register: RegisterHandler, runtime
         })
       }
       return out
+    })
+
+  register('branch.regenerateQuestionWithCurrentConfig', (raw) => {
+      const input = RegenerateQuestionWithCurrentConfigSchema.parse(raw)
+      return rt.db.transaction(() => createAnswerGeneration({
+        operationId: input.operationId,
+        actionKind: 'regenerate',
+        branchId: input.branchId,
+        questionId: input.questionId,
+        suppliedSnapshot: input.snapshot,
+        compatibleExecutionPins: input.compatibleExecutionPins,
+      }))()
+    })
+
+  register('branch.retryChosenAnswerReplacing', (raw) => {
+      const input = RetryChosenAnswerSchema.parse(raw)
+      return rt.db.transaction(() => createAnswerGeneration({
+        operationId: input.operationId,
+        actionKind: 'retry_replace',
+        branchId: input.branchId,
+        questionId: input.questionId,
+        targetAnswerRootId: input.targetAnswerRootId,
+        compatibleExecutionPins: input.compatibleExecutionPins,
+      }))()
+    })
+
+  register('branch.retryChosenAnswerAsNew', (raw) => {
+      const input = RetryChosenAnswerSchema.parse(raw)
+      return rt.db.transaction(() => createAnswerGeneration({
+        operationId: input.operationId,
+        actionKind: 'retry_as_new',
+        branchId: input.branchId,
+        questionId: input.questionId,
+        targetAnswerRootId: input.targetAnswerRootId,
+        compatibleExecutionPins: input.compatibleExecutionPins,
+      }))()
+    })
+
+  register('answerGeneration.finalize', (raw) => {
+      const input = FinalizeAssistantAnswerGenerationSchema.parse(raw)
+      return rt.db.transaction(() => {
+        const existing = rt.db.prepare(`SELECT state FROM assistant_answer_generation_operations WHERE result_answer_root_id=?`)
+          .get(input.answerRootId) as { state?: string } | undefined
+        if (!existing) return { ok: true, found: false }
+        if (['completed', 'failed', 'cancelled'].includes(String(existing.state))) {
+          return { ok: true, found: true, state: existing.state, idempotentReplay: true }
+        }
+        const now = Date.now()
+        rt.db.prepare(`
+          UPDATE assistant_answer_generation_operations
+          SET state=@state, error_code=@errorCode, error_message=@errorMessage,
+              updated_at_ms=@now, terminal_at_ms=@now
+          WHERE result_answer_root_id=@answerRootId
+        `).run({
+          answerRootId: input.answerRootId,
+          state: input.state,
+          errorCode: input.errorCode ?? null,
+          errorMessage: input.errorMessage ?? null,
+          now,
+        })
+        rt.db.prepare(`
+          UPDATE message SET meta=json_patch(
+            COALESCE(meta, '{}'),
+            json_object(
+              'answerGenerationState', @state,
+              'answerGenerationErrorCode', @errorCode,
+              'answerGenerationErrorMessage', @errorMessage
+            )
+          ), status=@messageStatus WHERE id=@answerRootId
+        `).run({
+          answerRootId: input.answerRootId,
+          state: input.state,
+          errorCode: input.errorCode ?? null,
+          errorMessage: input.errorMessage ?? null,
+          messageStatus: input.state === 'failed' ? 'error' : 'final',
+        })
+        return { ok: true, found: true, state: input.state, idempotentReplay: false }
+      })()
+  })
+
+  register('answerGeneration.claimStream', (raw) => {
+    const operationId = String((raw as any)?.operationId ?? '').trim()
+    const answerRootId = String((raw as any)?.answerRootId ?? '').trim()
+    if (!operationId || !answerRootId) throw new DbWorkerError('ERR_VALIDATION', 'Missing operationId/answerRootId')
+    return rt.db.transaction(() => {
+      const row = rt.db.prepare(`SELECT state, result_answer_root_id AS answerRootId FROM assistant_answer_generation_operations WHERE operation_id=?`)
+        .get(operationId) as { state?: string; answerRootId?: string } | undefined
+      if (!row || row.answerRootId !== answerRootId) throw new DbWorkerError('ERR_INVALID', 'ANSWER_GENERATION_OPERATION_MISMATCH')
+      if (row.state !== 'committed') return { ok: true, claimed: false, state: row.state }
+      const changed = rt.db.prepare(`UPDATE assistant_answer_generation_operations SET state='streaming', updated_at_ms=? WHERE operation_id=? AND state='committed'`)
+        .run(Date.now(), operationId).changes
+      return { ok: true, claimed: changed === 1, state: changed === 1 ? 'streaming' : row.state }
+    })()
+  })
+
+  register('answerGeneration.recoverInterrupted', (raw) => {
+    const atMs = Number((raw as any)?.atMs)
+    return recoverOrphanAssistantStreaming(rt.db, atMs)
+  })
+
+  register('answerGeneration.getSnapshot', (raw) => {
+      const answerRootId = String((raw as any)?.answerRootId ?? '').trim()
+      if (!answerRootId) throw new DbWorkerError('ERR_VALIDATION', 'Missing answerRootId')
+      const row = rt.db.prepare(`SELECT schema_version AS schemaVersion, snapshot_json AS snapshotJson FROM assistant_answer_generation_snapshots WHERE answer_root_id=?`)
+        .get(answerRootId) as any
+      if (!row?.snapshotJson) return { ok: true, snapshot: null }
+      return { ok: true, snapshot: JSON.parse(String(row.snapshotJson)), schemaVersion: Number(row.schemaVersion) }
+    })
+
+  register('answerGeneration.persistSnapshot', (raw) => {
+      const answerRootId = String((raw as any)?.answerRootId ?? '').trim()
+      const snapshot = (raw as any)?.snapshot as Record<string, unknown> | undefined
+      if (!answerRootId || !snapshot || Number(snapshot.schemaVersion) !== 1) {
+        throw new DbWorkerError('ERR_VALIDATION', 'ANSWER_GENERATION_SNAPSHOT_INVALID')
+      }
+      assertSnapshotV1(snapshot)
+      const message = rt.db.prepare(`SELECT 1 FROM message WHERE id=? AND role='assistant' AND answer_root_id=id`).get(answerRootId)
+      if (!message) throw new DbWorkerError('ERR_VALIDATION', 'ANSWER_ROOT_NOT_FOUND')
+      const snapshotJson = JSON.stringify(snapshot)
+      if (Buffer.byteLength(snapshotJson, 'utf8') > 1048576) throw new DbWorkerError('ERR_VALIDATION', 'ANSWER_GENERATION_SNAPSHOT_TOO_LARGE')
+      const existing = rt.db.prepare(`SELECT snapshot_json AS snapshotJson FROM assistant_answer_generation_snapshots WHERE answer_root_id=?`).get(answerRootId) as any
+      if (existing) {
+        if (String(existing.snapshotJson) !== snapshotJson) throw new DbWorkerError('ERR_INVALID', 'ANSWER_GENERATION_SNAPSHOT_IMMUTABLE')
+        return { ok: true, idempotentReplay: true }
+      }
+      rt.db.prepare(`INSERT INTO assistant_answer_generation_snapshots (answer_root_id, schema_version, snapshot_json, created_at_ms) VALUES (?, 1, ?, ?)`)
+        .run(answerRootId, snapshotJson, Date.now())
+      return { ok: true, idempotentReplay: false }
     })
 
   register('branch.forkQuestion', (raw) => {

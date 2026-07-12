@@ -27,6 +27,53 @@ function coerceIndex(value: unknown): number | null {
   return value
 }
 
+function shouldPreserveStandaloneRawSegment(segment: ReasoningDetailSegmentRow, payload: Record<string, unknown> | null): boolean {
+  const type = String(payload?.type ?? segment.type ?? '')
+  return type === 'thought_image'
+}
+
+function buildStandaloneRawSegmentDetail(
+  segment: ReasoningDetailSegmentRow,
+  payload: Record<string, unknown> | null,
+): Record<string, unknown> {
+  const detail: Record<string, unknown> = {}
+  const lastId = payload?.id ?? segment.detailId ?? undefined
+  const lastFormat = payload?.format ?? segment.format ?? undefined
+  const lastIndex = payload?.index ?? segment.index ?? undefined
+  const lastType = payload?.type ?? segment.type ?? undefined
+
+  if (lastId !== undefined && lastId !== null && String(lastId).length > 0) detail.id = lastId
+  if (lastFormat !== undefined && lastFormat !== null && String(lastFormat).length > 0) detail.format = lastFormat
+  if (lastIndex !== undefined && lastIndex !== null) detail.index = lastIndex
+  if (lastType !== undefined && lastType !== null && String(lastType).length > 0) detail.type = lastType
+
+  if (segment.deltaText != null && segment.deltaText.length > 0) {
+    detail.text = segment.deltaText
+  } else if (payload?.text !== undefined) {
+    detail.text = payload.text
+  }
+
+  if (segment.deltaData != null && segment.deltaData.length > 0) {
+    detail.data = segment.deltaData
+  } else if (payload?.data !== undefined) {
+    detail.data = payload.data
+  }
+
+  if (segment.deltaSummary != null && segment.deltaSummary.length > 0) {
+    detail.summary = segment.deltaSummary
+  } else if (payload?.summary !== undefined) {
+    detail.summary = payload.summary
+  }
+
+  if (payload?.signature !== undefined) detail.signature = payload.signature
+  if (payload?.encrypted !== undefined) detail.encrypted = payload.encrypted
+  if (payload?.thinking !== undefined) detail.thinking = payload.thinking
+  if (payload?.thought_signature !== undefined) detail.thought_signature = payload.thought_signature
+  if (detail.type === 'thought_image' && payload?.image !== undefined) detail.image = payload.image
+
+  return detail
+}
+
 /**
  * 构建 segment 分组键
  * 与 reasoningDetailStreamMerger.buildDetailKey 保持一致的语义
@@ -59,9 +106,23 @@ export function buildReasoningDetailsArray(segments: ReadonlyArray<ReasoningDeta
     firstSegmentId: number
     index: number | null
   }>()
+  const results: Array<{
+    detail: Record<string, unknown>
+    firstSegmentId: number
+    indexValue: number | null
+  }> = []
 
   for (const segment of segments) {
     const payload = safeParseJson(segment.payload)
+    if (shouldPreserveStandaloneRawSegment(segment, payload)) {
+      results.push({
+        detail: buildStandaloneRawSegmentDetail(segment, payload),
+        firstSegmentId: segment.segmentId,
+        indexValue: coerceIndex(payload?.index ?? segment.index),
+      })
+      continue
+    }
+
     const key = buildKey(segment, payload)
 
     if (!byKey.has(key)) {
@@ -79,12 +140,6 @@ export function buildReasoningDetailsArray(segments: ReadonlyArray<ReasoningDeta
   }
 
   // 对每个 key 分组：拼接 deltaText/deltaData/deltaSummary，收集最后一次 metadata
-  const results: Array<{
-    detail: Record<string, unknown>
-    firstSegmentId: number
-    indexValue: number | null
-  }> = []
-
   for (const [_key, group] of byKey) {
     // 拼接真正的增量数据
     const textParts: string[] = []
@@ -171,6 +226,9 @@ export function buildReasoningDetailsArray(segments: ReadonlyArray<ReasoningDeta
     if (lastEncrypted !== undefined) detail.encrypted = lastEncrypted
     if (lastThinking !== undefined) detail.thinking = lastThinking
     if (lastThoughtSignature !== undefined) detail.thought_signature = lastThoughtSignature
+    if (detail.type === 'thought_image' && lastPayload?.image !== undefined) {
+      detail.image = lastPayload.image
+    }
 
     results.push({
       detail,

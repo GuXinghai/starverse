@@ -9,6 +9,7 @@ export const OPENAI_RESPONSES_API_KEY_STORE_KEY = PROVIDER_CREDENTIAL_LEGACY_STO
 
 export const OPENAI_RESPONSES_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
   'openai-responses-credential:get-status',
+  'openai-responses-credential:reveal',
   'openai-responses-credential:update',
   'openai-responses-credential:clear',
 ] as const
@@ -33,6 +34,10 @@ export type OpenAIResponsesCredentialSettingsUpdatePayload = Readonly<{
 export type OpenAIResponsesCredentialSettingsResult =
   | Readonly<{ ok: true; status: OpenAIResponsesCredentialSettingsStatus }>
   | Readonly<{ ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }>
+
+export type OpenAIResponsesCredentialRevealResult =
+  | Readonly<{ ok: true; apiKey: string }>
+  | Readonly<{ ok: false; code: 'credential_missing' | 'store_unavailable'; message: string }>
 
 type RegisterOpenAIResponsesCredentialSettingsIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
@@ -71,6 +76,16 @@ function safeFailure(code: 'invalid_payload' | 'store_unavailable'): OpenAIRespo
   }
 }
 
+function safeRevealFailure(code: 'credential_missing' | 'store_unavailable'): OpenAIResponsesCredentialRevealResult {
+  return {
+    ok: false,
+    code,
+    message: code === 'credential_missing'
+      ? 'OpenAI Responses API key is not configured.'
+      : 'OpenAI Responses credential settings store is unavailable.',
+  }
+}
+
 export function registerOpenAIResponsesCredentialSettingsIpc(
   input: RegisterOpenAIResponsesCredentialSettingsIpcInput,
 ): string[] {
@@ -81,6 +96,16 @@ export function registerOpenAIResponsesCredentialSettingsIpc(
       return { ok: true, status: readStatus(credentialService) } satisfies OpenAIResponsesCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
+    }
+  })
+
+  registerInvoke('openai-responses-credential:reveal', () => {
+    try {
+      const result = credentialService.readApiKey('openai_responses')
+      if (!result.ok) return safeRevealFailure(result.code === 'credential_missing' ? 'credential_missing' : 'store_unavailable')
+      return { ok: true, apiKey: result.apiKey } satisfies OpenAIResponsesCredentialRevealResult
+    } catch {
+      return safeRevealFailure('store_unavailable')
     }
   })
 

@@ -23,6 +23,7 @@ import {
 import type { ReasoningArtifactProvider } from '@/next/provider/reasoningArtifact'
 import type { DomainEvent } from '@/next/state/types'
 import type { ProviderRuntimeContentBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
+import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
 
 export type ExperimentalRuntimeTextProviderKey = Exclude<RuntimeProviderKey, 'openrouter'>
 
@@ -65,6 +66,8 @@ export type ExperimentalRuntimeTextEventInput = Readonly<{
   lmStudioConfig?: LMStudioTextChatConfig
   ollamaConfig?: OllamaTextChatConfig
   localEndpointUrl?: string
+  generationParams?: ProviderStreamConfig['generationParams']
+  imageGeneration?: ProviderStreamConfig['imageGeneration']
 }>
 
 export function resolveProviderRuntimeTextSendPreflight(
@@ -221,6 +224,8 @@ export function createExperimentalRuntimeTextEvents(
         userText: input.userText,
         contextMessages: input.contextMessages,
         currentUserContentBlocks: input.currentUserContentBlocks,
+        ...(input.generationParams ? { generationParams: input.generationParams } : {}),
+        ...(input.imageGeneration ? { imageGeneration: input.imageGeneration } : {}),
         signal: input.signal,
       })
     case 'google_ai_studio':
@@ -231,6 +236,8 @@ export function createExperimentalRuntimeTextEvents(
         userText: input.userText,
         contextMessages: input.contextMessages,
         currentUserContentBlocks: input.currentUserContentBlocks,
+        ...(input.generationParams ? { generationParams: input.generationParams } : {}),
+        ...(input.imageGeneration ? { imageGeneration: input.imageGeneration } : {}),
         signal: input.signal,
       })
     case 'anthropic_messages':
@@ -241,6 +248,7 @@ export function createExperimentalRuntimeTextEvents(
         userText: input.userText,
         contextMessages: input.contextMessages,
         currentUserContentBlocks: input.currentUserContentBlocks,
+        ...(input.generationParams ? { generationParams: input.generationParams } : {}),
         signal: input.signal,
       })
     case 'deepseek':
@@ -251,6 +259,7 @@ export function createExperimentalRuntimeTextEvents(
         userText: input.userText,
         contextMessages: input.contextMessages,
         currentUserContentBlocks: input.currentUserContentBlocks,
+        ...(input.generationParams ? { generationParams: input.generationParams } : {}),
         signal: input.signal,
       })
   }

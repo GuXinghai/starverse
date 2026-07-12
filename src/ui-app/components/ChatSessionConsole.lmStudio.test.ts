@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { resetI18nForTests, t, tf } from '@/shared/i18n'
 import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
@@ -15,7 +16,14 @@ function defaultSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
+  }
+}
+
+function lmStudioSessionConfig() {
+  return {
+    ...defaultSessionConfig(),
+    model: { selectedProviderId: 'lm_studio' as const, selectedModelKey: 'openai/gpt-oss-20b' },
   }
 }
 
@@ -56,6 +64,10 @@ function lmStudioChat(overrides: Partial<{
 
 describe('ChatSessionConsole LM Studio controls', () => {
   const originalLMStudioProvider = (globalThis as any).lmStudioProvider
+
+  beforeEach(() => {
+    resetI18nForTests()
+  })
 
   afterEach(() => {
     ;(globalThis as any).lmStudioProvider = originalLMStudioProvider
@@ -98,12 +110,12 @@ describe('ChatSessionConsole LM Studio controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: lmStudioSessionConfig(),
         lmStudioChat: lmStudioChat(),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -114,6 +126,7 @@ describe('ChatSessionConsole LM Studio controls', () => {
     expect(screen.queryByText(/download/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/OpenRouter catalog/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/ModelPicker/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('lm-studio-model')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('lm-studio-chat-mode-native'))
     await user.click(screen.getByTestId('lm-studio-openai-endpoint-responses'))
@@ -121,10 +134,13 @@ describe('ChatSessionConsole LM Studio controls', () => {
     await user.click(screen.getByTestId('lm-studio-auto-unload-after-send-enabled'))
     await user.click(screen.getByTestId('lm-studio-auto-unload-after-idle-enabled'))
     await user.type(screen.getByTestId('lm-studio-endpoint-url'), '1')
-    await user.type(screen.getByTestId('lm-studio-model'), '-alt')
 
     await user.click(screen.getByTestId('lm-studio-probe'))
-    await waitFor(() => expect(screen.getByTestId('lm-studio-models').textContent).toContain('GPT OSS 20B'))
+    await waitFor(() => expect(screen.getByTestId('lm-studio-models').textContent).toContain(tf('chat.console.common.modelCount', { count: 1 })))
+    expect(screen.getByTestId('lm-studio-models').textContent).not.toContain('GPT OSS 20B')
+    expect((screen.getByTestId('lm-studio-model-use-list') as HTMLDetailsElement).open).toBe(false)
+    await user.click(screen.getByTestId('lm-studio-model-use-toggle'))
+    await user.click(screen.getByTestId('lm-studio-model-use'))
     await user.click(screen.getByTestId('lm-studio-load-model'))
     await waitFor(() => expect(screen.getByTestId('lm-studio-action-result').textContent).toContain('inst-loaded'))
     await user.click(screen.getByTestId('lm-studio-unload-model'))
@@ -140,7 +156,8 @@ describe('ChatSessionConsole LM Studio controls', () => {
       ['autoUnloadAfterIdleEnabled', true],
     ])
     expect(view.emitted('updateLMStudioEndpointUrl')?.length).toBeGreaterThan(0)
-    expect(view.emitted('updateLMStudioModel')?.length).toBeGreaterThan(0)
+    expect(view.emitted('updateLMStudioModel')).toBeUndefined()
+    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'lm_studio', modelId: 'openai/gpt-oss-20b' }])
     const chatEnabledEvents = view.emitted('updateLMStudioChatEnabled') ?? []
     expect(chatEnabledEvents[chatEnabledEvents.length - 1]).toEqual([false])
     expect(view.emitted('clearLMStudioChat')).toHaveLength(1)
@@ -173,12 +190,12 @@ describe('ChatSessionConsole LM Studio controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: lmStudioSessionConfig(),
         lmStudioChat: lmStudioChat({ diagnosticsEnabled: false }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
@@ -186,6 +203,40 @@ describe('ChatSessionConsole LM Studio controls', () => {
     expect(probeButton).toBeDisabled()
     await user.click(probeButton)
     expect(probe).not.toHaveBeenCalled()
+  })
+
+  it('shows a specific local policy rejection for LM Studio probe failures', async () => {
+    const user = userEvent.setup()
+    ;(globalThis as any).lmStudioProvider = {
+      probe: vi.fn(async () => ({
+        ok: false,
+        code: 'remote_host_rejected',
+        message: 'LM Studio probe failed safely.',
+      })),
+      loadModel: vi.fn(),
+      unloadModel: vi.fn(),
+    }
+
+    render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: lmStudioSessionConfig(),
+        lmStudioChat: lmStudioChat(),
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        generationParamsResolved: null,
+      },
+    })
+
+    await user.click(screen.getByTestId('lm-studio-probe'))
+
+    await waitFor(() => {
+      expect(screen.getByTestId('lm-studio-probe-error').textContent)
+        .toContain(t('errors.network.reason.localEndpointRejectedRemoteHost'))
+    })
+    expect(screen.getByTestId('lm-studio-probe-error').textContent).not.toContain('failed safely')
   })
 
   it('emits the auto-unload-after-idle toggle separately from implemented after-send unload', async () => {
@@ -200,12 +251,12 @@ describe('ChatSessionConsole LM Studio controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: lmStudioSessionConfig(),
         lmStudioChat: lmStudioChat({ autoUnloadAfterIdleEnabled: false }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 

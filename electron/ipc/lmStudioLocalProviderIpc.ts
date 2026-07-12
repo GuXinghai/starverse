@@ -1,5 +1,7 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
+import { createLocalEndpointDirectFetch } from '../net/localEndpointTransport'
 import {
   sanitizeProviderRuntimeImageContentBlocks,
   type OpenAICompatibleChatContentPart,
@@ -170,6 +172,7 @@ export type LMStudioTextChatWireEvent =
 type RegisterLMStudioLocalProviderIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   fetchImpl?: typeof fetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedEndpointUrl =
@@ -641,7 +644,7 @@ export async function probeLMStudioLocalProvider(
   const endpoint = validateLMStudioEndpointUrl(payload.endpointUrl)
   if (!endpoint.ok) return endpoint
 
-  const fetchImpl = options?.fetchImpl ?? globalThis.fetch
+  const fetchImpl = options?.fetchImpl ?? createLocalEndpointDirectFetch()
   if (typeof fetchImpl !== 'function') {
     return {
       ok: true,
@@ -779,7 +782,7 @@ export async function loadLMStudioModel(
   if (!endpoint.ok) return safeControlFailure(endpoint.code, endpoint.safeUrl)
   const model = String(payload.model ?? '').trim()
   if (!model) return safeControlFailure('invalid_payload', endpoint.safeBaseUrl)
-  const fetchImpl = options?.fetchImpl ?? globalThis.fetch
+  const fetchImpl = options?.fetchImpl ?? createLocalEndpointDirectFetch()
   if (typeof fetchImpl !== 'function') return safeControlFailure('network_error', endpoint.safeBaseUrl)
   return loadLMStudioModelInternal({
     fetchImpl,
@@ -798,7 +801,7 @@ export async function unloadLMStudioModel(
   if (!endpoint.ok) return safeControlFailure(endpoint.code, endpoint.safeUrl)
   const instanceId = String(payload.instanceId ?? '').trim()
   if (!instanceId) return safeControlFailure('invalid_payload', endpoint.safeBaseUrl)
-  const fetchImpl = options?.fetchImpl ?? globalThis.fetch
+  const fetchImpl = options?.fetchImpl ?? createLocalEndpointDirectFetch()
   if (typeof fetchImpl !== 'function') return safeControlFailure('network_error', endpoint.safeBaseUrl)
   return unloadLMStudioModelInternal({
     fetchImpl,
@@ -955,8 +958,12 @@ async function forwardOpenAICompatibleStream(input: Readonly<{
   sender: WebContents
   fetchImpl: typeof fetch
   controller: AbortController
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<boolean> {
   const preferred = input.request.config.openAICompatible.preferredEndpoint
+  const serializedBody = JSON.stringify(preferred === 'responses' ? responsesBody(input.request) : openAIChatBody(input.request))
+  input.rawGenerationRequestStore?.tryPersist({ operationId: input.request.requestId, answerRootId: input.request.assistantMessageId,
+    requestSequence: 1, providerId: 'lm_studio', modelId: input.request.model }, serializedBody)
   const response = await input.fetchImpl(
     lmStudioUrl(input.request.endpoint, preferred === 'responses' ? '/v1/responses' : '/v1/chat/completions'),
     {
@@ -965,7 +972,7 @@ async function forwardOpenAICompatibleStream(input: Readonly<{
         Accept: 'text/event-stream',
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(preferred === 'responses' ? responsesBody(input.request) : openAIChatBody(input.request)),
+      body: serializedBody,
       redirect: 'error',
       signal: input.controller.signal,
     },
@@ -1015,14 +1022,18 @@ async function forwardNativeRestStream(input: Readonly<{
   sender: WebContents
   fetchImpl: typeof fetch
   controller: AbortController
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<boolean> {
+  const serializedBody = JSON.stringify(nativeRestChatBody(input.request))
+  input.rawGenerationRequestStore?.tryPersist({ operationId: input.request.requestId, answerRootId: input.request.assistantMessageId,
+    requestSequence: 1, providerId: 'lm_studio', modelId: input.request.model }, serializedBody)
   const response = await input.fetchImpl(lmStudioUrl(input.request.endpoint, '/api/v1/chat'), {
     method: 'POST',
     headers: {
       Accept: 'text/event-stream',
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(nativeRestChatBody(input.request)),
+    body: serializedBody,
     redirect: 'error',
     signal: input.controller.signal,
   })
@@ -1141,6 +1152,7 @@ async function forwardLMStudioTextChat(input: Readonly<{
   request: ValidatedTextChatSuccess
   sender: WebContents
   fetchImpl: typeof fetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const controller = new AbortController()
   activeControllers.set(input.request.requestId, controller)
@@ -1248,12 +1260,12 @@ export function registerLMStudioLocalProviderIpc(
     if (!validated.ok) return validated
 
     const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createLocalEndpointDirectFetch()
     if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
       return staticStartFailure('invalid_payload', 'LM Studio text chat bridge is unavailable.')
     }
 
-    void forwardLMStudioTextChat({ request: validated, sender, fetchImpl })
+    void forwardLMStudioTextChat({ request: validated, sender, fetchImpl, rawGenerationRequestStore: input.rawGenerationRequestStore })
     return { ok: true }
   })
 

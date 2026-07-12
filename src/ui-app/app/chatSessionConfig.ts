@@ -5,9 +5,10 @@ import {
 } from '@/next/openrouter/searchSettingsPersistence'
 import type { SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
 import {
-  mergeConvoSamplingParamsOverrideMeta,
-} from '@/next/openrouter/samplingParamsPersistence'
-import type { SamplingParamsLayer } from '@/next/openrouter/samplingParamsResolver'
+  extractConvoGenerationParamsOverride,
+  mergeConvoGenerationParamsOverrideMeta,
+} from '@/next/generation-params/generationParamPersistence'
+import type { GenerationParamsLayer } from '@/next/generation-params/generationParamTypes'
 import {
   mergeConvoImageGenerationMeta,
   normalizeImageGenerationUserConfig,
@@ -20,23 +21,37 @@ import {
   resolveReasoningPrefsFromStoredLayers,
 } from '@/next/settings/reasoningPrefsScope'
 import {
-  DEFAULT_CHAT_PROVIDER_ID,
-  DEFAULT_OPENROUTER_MODEL_ID,
-  isSameChatModelSelection,
   normalizeRuntimeProviderId,
   type ChatModelSelection,
 } from '@/next/provider/modelSelection'
 import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
+import { compatibleConfigurationSelectionSchema, type CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
 
 export type ChatSessionConfigReasoningEffort = 'low' | 'medium' | 'high'
 export type ChatSessionConfigWebSearchLevel = 'low' | 'high'
-export type ChatSessionConfigImageResolution = '1K' | '2K' | '4K'
-export type ChatSessionConfigAspectRatio = '16:9' | '3:4' | '1:1' | '4:3'
+export type ChatSessionConfigImageResolution = '512' | '1K' | '2K' | '4K'
+export type ChatSessionConfigAspectRatio =
+  | 'auto'
+  | '1:1'
+  | '9:16'
+  | '16:9'
+  | '3:4'
+  | '4:3'
+  | '3:2'
+  | '2:3'
+  | '5:4'
+  | '4:5'
+  | '21:9'
+  | '4:1'
+  | '1:4'
+  | '8:1'
+  | '1:8'
 
 export type ChatSessionConfig = Readonly<{
   model: Readonly<{
     selectedProviderId?: RuntimeProviderKey | null
     selectedModelKey: string | null
+    compatibleSelection?: CompatibleConfigurationSelection | null
   }>
   reasoning: Readonly<{
     enabled: boolean
@@ -54,8 +69,8 @@ export type ChatSessionConfig = Readonly<{
     mode: ConvoImageGenerationMode
     detail: ImageGenerationUserConfig | null
   }>
-  samplingParams: Readonly<{
-    detail: SamplingParamsLayer | null
+  generationParams: Readonly<{
+    detail: GenerationParamsLayer | null
   }>
 }>
 
@@ -64,10 +79,9 @@ export type ChatSessionConfigSources = Readonly<{
   projectMeta?: unknown
   globalReasoningPrefs?: unknown
   globalWebSearchDefaults?: unknown
-  globalSamplingParamsDefaults?: unknown
+  globalGenerationParamsDefaults?: unknown
   globalImageGenerationDefault?: unknown
   defaultModelKey: string
-  defaultProviderId?: RuntimeProviderKey
 }>
 
 export type ChatSessionConfigPatch = Readonly<Partial<{
@@ -75,13 +89,30 @@ export type ChatSessionConfigPatch = Readonly<Partial<{
   reasoning: Partial<ChatSessionConfig['reasoning']>
   webSearch: Partial<ChatSessionConfig['webSearch']>
   imageGeneration: Partial<ChatSessionConfig['imageGeneration']>
-  samplingParams: Partial<ChatSessionConfig['samplingParams']>
+  generationParams: Partial<ChatSessionConfig['generationParams']>
 }>>
 
 const MODEL_META_KEY = 'selectedModelKey'
 const PROVIDER_META_KEY = 'selectedProviderId'
-const IMAGE_ASPECT_RATIO_OPTIONS: readonly ChatSessionConfigAspectRatio[] = ['16:9', '3:4', '1:1', '4:3']
-const IMAGE_RESOLUTION_OPTIONS: readonly ChatSessionConfigImageResolution[] = ['1K', '2K', '4K']
+const COMPATIBLE_SELECTION_META_KEY = 'compatibleConfigurationSelection'
+const IMAGE_ASPECT_RATIO_OPTIONS: readonly ChatSessionConfigAspectRatio[] = [
+  'auto',
+  '1:1',
+  '9:16',
+  '16:9',
+  '3:4',
+  '4:3',
+  '3:2',
+  '2:3',
+  '5:4',
+  '4:5',
+  '21:9',
+  '4:1',
+  '1:4',
+  '8:1',
+  '1:8',
+]
+const IMAGE_RESOLUTION_OPTIONS: readonly ChatSessionConfigImageResolution[] = ['512', '1K', '2K', '4K']
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
@@ -91,16 +122,6 @@ function asRecord(value: unknown): Record<string, unknown> | null {
 function normalizeModelKey(value: unknown, fallback: string): string {
   const normalized = String(value ?? '').trim()
   return normalized.length > 0 ? normalized : fallback
-}
-
-function defaultModelSelection(input: Readonly<{
-  defaultModelKey?: string
-  defaultProviderId?: RuntimeProviderKey
-}>): ChatModelSelection {
-  return {
-    providerId: input.defaultProviderId ?? DEFAULT_CHAT_PROVIDER_ID,
-    modelId: normalizeModelKey(input.defaultModelKey, DEFAULT_OPENROUTER_MODEL_ID),
-  }
 }
 
 function extractSelectedModelKey(meta: unknown): string | null {
@@ -118,12 +139,11 @@ function extractSelectedProviderId(meta: unknown): RuntimeProviderKey | null {
 
 function mergeSelectedModelSelectionIntoMeta(
   meta: unknown,
-  selection: ChatModelSelection,
-  defaultSelection: ChatModelSelection,
+  selection: ChatModelSelection | null,
 ): Record<string, unknown> | null {
   const root = asRecord(meta)
   const next = root ? { ...root } : {}
-  if (isSameChatModelSelection(selection, defaultSelection)) {
+  if (!selection) {
     delete next[PROVIDER_META_KEY]
     delete next[MODEL_META_KEY]
   } else {
@@ -193,9 +213,8 @@ function buildImageGenerationDetail(input: Readonly<{
 
 export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConfigSources): ChatSessionConfig {
   const selectedModelKey = extractSelectedModelKey(input.convoMeta) ?? null
-  const selectedProviderId = selectedModelKey
-    ? extractSelectedProviderId(input.convoMeta) ?? defaultModelSelection(input).providerId
-    : null
+  const selectedProviderId = extractSelectedProviderId(input.convoMeta)
+  const hasCompleteSelection = Boolean(selectedProviderId && selectedModelKey)
 
   const reasoningResolved = resolveReasoningPrefsFromStoredLayers({
     convoMeta: input.convoMeta,
@@ -217,14 +236,19 @@ export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConf
   })
 
   const rawConvoRecord = asRecord(input.convoMeta)
+  const compatibleSelection = (() => {
+    const parsed = compatibleConfigurationSelectionSchema.safeParse(rawConvoRecord?.[COMPATIBLE_SELECTION_META_KEY])
+    return parsed.success ? parsed.data : null
+  })()
   const webSearchDetail = asRecord(rawConvoRecord?.webSearchOverride)
-  const samplingDetail = asRecord(rawConvoRecord?.samplingParamsOverride)
+  const generationDetail = extractConvoGenerationParamsOverride(input.convoMeta)
   const imageDetail = imageResolved.mode === 'custom' ? imageResolved.effective : null
 
   return {
     model: {
-      selectedProviderId,
-      selectedModelKey,
+      selectedModelKey: compatibleSelection ? compatibleSelection.modelId : hasCompleteSelection ? selectedModelKey : null,
+      selectedProviderId: compatibleSelection ? null : hasCompleteSelection ? selectedProviderId : null,
+      compatibleSelection,
     },
     reasoning: {
       enabled: reasoningResolved.mode === 'effort' && reasoningResolved.effort !== 'none',
@@ -242,8 +266,8 @@ export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConf
       mode: imageResolved.mode,
       detail: imageDetail,
     },
-    samplingParams: {
-      detail: (samplingDetail as SamplingParamsLayer | null) ?? null,
+    generationParams: {
+      detail: generationDetail,
     },
   }
 }
@@ -266,9 +290,9 @@ export function mergeChatSessionConfig(current: ChatSessionConfig, patch: ChatSe
       ...current.imageGeneration,
       ...(patch.imageGeneration ?? {}),
     },
-    samplingParams: {
-      ...current.samplingParams,
-      ...(patch.samplingParams ?? {}),
+    generationParams: {
+      ...current.generationParams,
+      ...(patch.generationParams ?? {}),
     },
   }
 }
@@ -278,7 +302,6 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
   config: ChatSessionConfig
   convoProjectId?: string | null
   defaultModelKey: string
-  defaultProviderId?: RuntimeProviderKey
 }>): Record<string, unknown> | null {
   const reasoningPrefs = toReasoningPrefs(input.config.reasoning)
   const reasoningPlan = buildReasoningPrefsSavePlan({
@@ -287,18 +310,31 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
     prefs: reasoningPrefs,
   })
 
-  const defaultSelection = defaultModelSelection(input)
-  const selectedSelection: ChatModelSelection = {
-    providerId: input.config.model.selectedProviderId ?? defaultSelection.providerId,
-    modelId: normalizeModelKey(
-      input.config.model.selectedModelKey ?? input.defaultModelKey,
-      input.defaultModelKey,
-    ),
-  }
-  const withModel = mergeSelectedModelSelectionIntoMeta(reasoningPlan.nextConvoMeta, selectedSelection, defaultSelection)
+  const selectedProviderId = input.config.model.selectedProviderId
+  const selectedModelKey = normalizeModelKey(input.config.model.selectedModelKey, '')
+  const selectedSelection: ChatModelSelection | null = selectedProviderId && selectedModelKey
+    ? { providerId: selectedProviderId, modelId: selectedModelKey }
+    : null
+  const withModel = mergeSelectedModelSelectionIntoMeta(reasoningPlan.nextConvoMeta, selectedSelection)
+  const withCompatibleSelection = (() => {
+    const next = withModel ? { ...withModel } : {}
+    if (input.config.model.compatibleSelection) {
+      next[COMPATIBLE_SELECTION_META_KEY] = compatibleConfigurationSelectionSchema.parse(input.config.model.compatibleSelection)
+      delete next.selectedProviderId
+      delete next.selectedModelKey
+    } else {
+      delete next[COMPATIBLE_SELECTION_META_KEY]
+    }
+    return Object.keys(next).length > 0 ? next : null
+  })()
+  const withoutLegacyGoogleThinking = (() => {
+    const next = withCompatibleSelection ? { ...withCompatibleSelection } : {}
+    delete next.googleAIStudioThinking
+    return Object.keys(next).length > 0 ? next : null
+  })()
 
   const withWebSearch = mergeConvoWebSearchOverrideMeta(
-    withModel,
+    withoutLegacyGoogleThinking,
     buildWebSearchDetail({
       enabled: input.config.webSearch.enabled,
       level: input.config.webSearch.level,
@@ -306,9 +342,9 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
     }),
   )
 
-  const withSampling = mergeConvoSamplingParamsOverrideMeta(withWebSearch, input.config.samplingParams.detail)
+  const withGenerationParams = mergeConvoGenerationParamsOverrideMeta(withWebSearch, input.config.generationParams.detail)
 
-  return mergeConvoImageGenerationMeta(withSampling, {
+  return mergeConvoImageGenerationMeta(withGenerationParams, {
     mode: input.config.imageGeneration.mode,
     custom: buildImageGenerationDetail({
       enabled: input.config.imageGeneration.enabled,

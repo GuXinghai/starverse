@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { DEFAULT_OPENROUTER_MODEL_ID } from './modelSelection'
 import {
   deriveCurrentRuntimeSelection,
   formatRuntimeCapabilitySummaryLite,
@@ -38,15 +39,15 @@ describe('CurrentRuntimeSelection', () => {
 
   it('selects OpenRouter only from explicit OpenRouter selection', () => {
     expect(deriveCurrentRuntimeSelection({
-      openrouter: { selected: true, modelKey: 'openrouter/auto', credentialStatus: 'configured' },
+      openrouter: { selected: true, modelKey: DEFAULT_OPENROUTER_MODEL_ID, credentialStatus: 'configured' },
     })).toEqual({
       state: 'selected',
       providerKey: 'openrouter',
       providerId: 'openrouter',
       endpointId: 'openrouter-official',
       profileId: 'openrouter_v1_chat',
-      modelId: 'openrouter/auto',
-      modelKey: 'openrouter/auto',
+      modelId: DEFAULT_OPENROUTER_MODEL_ID,
+      modelKey: DEFAULT_OPENROUTER_MODEL_ID,
       nativeModelId: null,
       source: 'explicit_user_selection',
       mode: 'production',
@@ -165,7 +166,7 @@ describe('CurrentRuntimeSelection', () => {
 
   it('uses deterministic conflict priority when multiple experimental flags are set', () => {
     expect(deriveCurrentRuntimeSelection({
-      openrouter: { selected: true, modelKey: 'openrouter/auto' },
+      openrouter: { selected: true, modelKey: DEFAULT_OPENROUTER_MODEL_ID },
       localEndpoint: { selected: true, modelKey: 'local-model' },
       openAIResponses: { selected: true, modelKey: 'gpt-4.1-mini' },
       googleAIStudio: { selected: true, modelKey: 'gemini-2.5-flash' },
@@ -206,7 +207,7 @@ describe('CurrentRuntimeSelection', () => {
 
 describe('RuntimeCapabilitySummaryLite', () => {
   it('summarizes OpenRouter existing capabilities without changing its advanced path', () => {
-    const cap = getRuntimeCapabilitySummaryLite(selected('openrouter', 'openrouter/auto'))
+    const cap = getRuntimeCapabilitySummaryLite(selected('openrouter', DEFAULT_OPENROUTER_MODEL_ID))
     expect(cap).toMatchObject({
       textChat: true,
       streamingText: true,
@@ -229,7 +230,7 @@ describe('RuntimeCapabilitySummaryLite', () => {
       webSearch: 'blocked',
       tools: 'blocked',
       reasoningArtifacts: 'filtered',
-      imageGeneration: 'blocked',
+      imageGeneration: 'supported',
       structuredOutput: 'blocked',
       source: 'experimental_image_inline',
     })
@@ -321,7 +322,7 @@ describe('getRuntimeTextChatBlockReason', () => {
   })
 
   it('blocks empty text when there is no attachment payload', () => {
-    const selection = selected('openrouter', 'openrouter/auto')
+    const selection = selected('openrouter', DEFAULT_OPENROUTER_MODEL_ID)
     expect(getRuntimeTextChatBlockReason({
       selection,
       capability: getRuntimeCapabilitySummaryLite(selection),
@@ -387,12 +388,47 @@ describe('getRuntimeTextChatBlockReason', () => {
     })).toContain('does not support reasoning controls')
   })
 
+  it('does not block Google AI Studio native thinking when legacy reasoning flag remains enabled', () => {
+    const selection = selected('google_ai_studio', 'gemini-2.5-flash')
+    expect(getRuntimeTextChatBlockReason({
+      selection,
+      capability: getRuntimeCapabilitySummaryLite(selection),
+      text: 'hello',
+      hasDraftAttachments: false,
+      sessionConfig: { ...baseSessionConfig, reasoning: { enabled: true } },
+    })).toBeNull()
+  })
+
   it('blocks image generation for experimental text-only providers', () => {
     const selection = selected('local_endpoint', 'local-model')
     expect(getRuntimeTextChatBlockReason({
       selection,
       capability: getRuntimeCapabilitySummaryLite(selection),
       text: 'hello',
+      hasDraftAttachments: false,
+      sessionConfig: { ...baseSessionConfig, imageGeneration: { enabled: true } },
+    })).toContain('does not support image generation')
+  })
+
+  it('allows image generation for OpenAI Responses and Google AI Studio', () => {
+    for (const providerKey of ['openai_responses', 'google_ai_studio'] as const) {
+      const selection = selected(providerKey, `${providerKey}-model`)
+      expect(getRuntimeTextChatBlockReason({
+        selection,
+        capability: getRuntimeCapabilitySummaryLite(selection),
+        text: 'draw a small icon',
+        hasDraftAttachments: false,
+        sessionConfig: { ...baseSessionConfig, imageGeneration: { enabled: true } },
+      })).toBeNull()
+    }
+  })
+
+  it('keeps Anthropic image generation explicitly unsupported', () => {
+    const selection = selected('anthropic_messages', 'claude-sonnet-4-5')
+    expect(getRuntimeTextChatBlockReason({
+      selection,
+      capability: getRuntimeCapabilitySummaryLite(selection),
+      text: 'draw a small icon',
       hasDraftAttachments: false,
       sessionConfig: { ...baseSessionConfig, imageGeneration: { enabled: true } },
     })).toContain('does not support image generation')
@@ -411,7 +447,7 @@ describe('getRuntimeTextChatBlockReason', () => {
   })
 
   it('does not downgrade OpenRouter advanced capability path', () => {
-    const selection = selected('openrouter', 'openrouter/auto')
+    const selection = selected('openrouter', DEFAULT_OPENROUTER_MODEL_ID)
     expect(getRuntimeTextChatBlockReason({
       selection,
       capability: getRuntimeCapabilitySummaryLite(selection),
@@ -439,7 +475,7 @@ describe('resolveRuntimeTextSendRoute', () => {
   })
 
   it('routes selected OpenRouter to the existing OpenRouter path', () => {
-    expect(resolveRuntimeTextSendRoute(selected('openrouter', 'openrouter/auto'))).toEqual({
+    expect(resolveRuntimeTextSendRoute(selected('openrouter', DEFAULT_OPENROUTER_MODEL_ID))).toEqual({
       kind: 'openrouter_existing',
     })
   })
@@ -459,20 +495,4 @@ describe('resolveRuntimeTextSendRoute', () => {
     })
   })
 
-  it('does not route Generic OpenAI-compatible live traffic', () => {
-    expect(resolveRuntimeTextSendRoute({
-      state: 'selected',
-      providerKey: 'generic_openai_compatible' as RuntimeProviderKey,
-      providerId: 'generic_openai_compatible' as RuntimeProviderKey,
-      endpointId: 'generic-fixture',
-      profileId: 'generic_openai_compatible_fixture',
-      modelId: 'generic-model',
-      modelKey: 'generic-model',
-      source: 'explicit_user_selection',
-      mode: 'experimental',
-    })).toEqual({
-      kind: 'none',
-      reason: 'Generic OpenAI-compatible live routing is deferred.',
-    })
-  })
 })

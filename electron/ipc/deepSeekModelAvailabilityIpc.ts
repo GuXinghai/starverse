@@ -1,5 +1,6 @@
 import type { RegisterInvoke } from './types'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import {
   DEEPSEEK_OFFICIAL_ENDPOINT_ID,
   DEEPSEEK_OFFICIAL_PROFILE_ID,
@@ -16,7 +17,7 @@ export const DEEPSEEK_MODEL_AVAILABILITY_IPC_CHANNELS = [
 type RegisterDeepSeekModelAvailabilityIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
-  fetchImpl?: typeof fetch
+  fetchImpl?: ProviderFetch
 }>
 
 type DeepSeekModelAvailabilityPayload = Readonly<{
@@ -99,7 +100,7 @@ export function registerDeepSeekModelAvailabilityIpc(
     const apiKey = readDeepSeekApiKey(input.credentialService)
     if (typeof apiKey !== 'string') return apiKey
 
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
     if (typeof fetchImpl !== 'function') {
       return safeFailure('invalid_payload', 'DeepSeek model availability bridge is unavailable.')
     }

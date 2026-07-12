@@ -73,15 +73,17 @@ describe('mapAnthropicStreamEventToStarverse', () => {
   // =========================================================================
 
   describe('thinking', () => {
-    it('maps thinking_delta to message.reasoning_detail', () => {
+    it('maps thinking_delta to message.reasoning_raw_detail', () => {
       const events = mapAnthropicStreamEventToStarverse(thinkingDeltaEvent('Let me think...'), msgId)
 
       expect(events).toHaveLength(1)
-      expect(events[0].type).toBe('message.reasoning_detail')
-      if (events[0].type === 'message.reasoning_detail') {
+      expect(events[0].type).toBe('message.reasoning_raw_detail')
+      if (events[0].type === 'message.reasoning_raw_detail') {
         expect(events[0].detail).toEqual({ type: 'thinking_delta', thinking: 'Let me think...' })
         expect(events[0].messageId).toBe(msgId)
       }
+      expect(events.some((event) => event.type === 'message.reasoning_display_block')).toBe(false)
+      expect(events.some((event) => event.type === 'message.reasoning_display_block_upsert')).toBe(false)
     })
 
     it('thinking NEVER becomes visible text', () => {
@@ -101,12 +103,12 @@ describe('mapAnthropicStreamEventToStarverse', () => {
   // =========================================================================
 
   describe('signature', () => {
-    it('maps signature_delta to message.reasoning_detail', () => {
+    it('maps signature_delta to message.reasoning_raw_detail', () => {
       const events = mapAnthropicStreamEventToStarverse(signatureDeltaEvent('abc123sig'), msgId)
 
       expect(events).toHaveLength(1)
-      expect(events[0].type).toBe('message.reasoning_detail')
-      if (events[0].type === 'message.reasoning_detail') {
+      expect(events[0].type).toBe('message.reasoning_raw_detail')
+      if (events[0].type === 'message.reasoning_raw_detail') {
         expect(events[0].detail).toEqual({ type: 'signature_delta', signature: 'abc123sig' })
       }
     })
@@ -141,10 +143,12 @@ describe('mapAnthropicStreamEventToStarverse', () => {
         allEvents.push(...mapAnthropicStreamEventToStarverse(ev, msgId))
       }
 
-      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
+      const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
 
       expect(reasoningEvents).toHaveLength(2)
+      expect(displayEvents).toHaveLength(0)
       expect(textEvents).toHaveLength(2)
 
       // Reasoning appears before text
@@ -165,8 +169,8 @@ describe('mapAnthropicStreamEventToStarverse', () => {
         allEvents.push(...mapAnthropicStreamEventToStarverse(ev, msgId))
       }
 
-      expect(allEvents[0].type).toBe('message.reasoning_detail')
-      expect(allEvents[1].type).toBe('message.reasoning_detail')
+      expect(allEvents[0].type).toBe('message.reasoning_raw_detail')
+      expect(allEvents[1].type).toBe('message.reasoning_raw_detail')
       expect(allEvents[2].type).toBe('message.text_delta')
     })
   })
@@ -435,7 +439,8 @@ describe('mapAnthropicStreamEventToStarverse', () => {
         allEvents.push(...mapAnthropicStreamEventToStarverse(ev, msgId))
       }
 
-      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
+      const displayEvents = allEvents.filter((e) => e.type === 'message.reasoning_display_block')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
       const usageEvents = allEvents.filter((e) => e.type === 'usage.delta')
       const metaEvents = allEvents.filter((e) => e.type === 'meta.delta')
@@ -443,6 +448,7 @@ describe('mapAnthropicStreamEventToStarverse', () => {
 
       // Exact counts
       expect(reasoningEvents).toHaveLength(3) // 2 thinking + 1 signature
+      expect(displayEvents).toHaveLength(0)
       expect(textEvents).toHaveLength(1)
       expect(usageEvents).toHaveLength(2) // message_start + message_delta
       expect(doneEvents).toHaveLength(1)

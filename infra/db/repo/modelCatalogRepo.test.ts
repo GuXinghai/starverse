@@ -2156,6 +2156,26 @@ describe('ModelCatalogRepo scoped catalog foundation', () => {
     expect(repo.queryScopedActiveModels({ providerKey: 'openrouter', catalogScopeKey: 'scope-b' }).items.map((row) => row.modelId)).toEqual(['openai/b'])
   })
 
+  it('queryScopedActiveModels returns only visible active rows from the active snapshot', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelCatalogRepo(db)
+
+    writeScopedSnapshot(repo, 'scope-filtered', 'snapshot-filtered', [
+      makeScopedModel('openai/active-visible', { status: 'active', visibility: 'visible' }),
+      makeScopedModel('openai/active-hidden', { status: 'active', visibility: 'hidden' }),
+      makeScopedModel('openai/deprecated-visible', { status: 'deprecated', visibility: 'visible' }),
+      makeScopedModel('openai/archived-visible', { status: 'archived', visibility: 'visible' }),
+    ])
+
+    expect(scopedModelIds(repo, 'scope-filtered')).toEqual(['openai/active-visible'])
+    expect(repo.getScopedMeta('openrouter', 'scope-filtered')).toMatchObject({
+      modelCount: 4,
+      visibleModelCount: 3,
+      hiddenModelCount: 1,
+    })
+  })
+
   it('does not persist raw API keys in scoped tables', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
@@ -2361,6 +2381,10 @@ describe('ModelCatalogRepo scoped catalog foundation', () => {
       lastErrorMessage: '网络不可达',
     })
     expect(scopedModelIds(repo, 'scope-error-preserve')).toEqual(['openai/a'])
+    expect(repo.queryScopedActiveModels({
+      providerKey: 'openrouter',
+      catalogScopeKey: 'scope-error-preserve',
+    }).items.map((row) => row.modelId)).toEqual(['openai/a'])
   })
 
   it('writeScopedSnapshot validates row counts before replacing active snapshot', () => {

@@ -18,7 +18,6 @@ const PROVIDERS = [
 ] as const satisfies readonly ProviderFileInputProvider[]
 
 const OPENAI_COMPAT_IMAGE_PROVIDERS = [
-  'generic_openai_compatible',
   'local_endpoint',
   'lm_studio',
   'ollama_local',
@@ -944,7 +943,6 @@ function expectedInlinePart(
       return kind === 'image'
         ? { type: 'image_url', image_url: { url: dataUrl } }
         : { type: 'file', file: { filename, file_data: dataUrl } }
-    case 'generic_openai_compatible':
     case 'local_endpoint':
     case 'lm_studio':
     case 'ollama_local':
@@ -974,7 +972,6 @@ function expectedUrlPart(
       return kind === 'image'
         ? { type: 'image_url', image_url: { url } }
         : { type: 'file', file: { filename, file_data: url } }
-    case 'generic_openai_compatible':
     case 'local_endpoint':
     case 'lm_studio':
     case 'ollama_local':

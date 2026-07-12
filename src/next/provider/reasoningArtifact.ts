@@ -259,6 +259,21 @@ export function reasoningArtifactFromDetail(input: ReasoningArtifactFromDetailIn
     })
   }
 
+  if (
+    input.providerKey === 'google_ai_studio' &&
+    (detailType === 'thought_summary' || detailType === 'thinking_summary' || detailType === 'reasoning_summary')
+  ) {
+    const summaryText = asNonEmptyString(detail.summary) ?? asNonEmptyString(detail.text)
+    if (!summaryText) return null
+    return createReasoningArtifact({
+      ...input,
+      kind: 'reasoning_summary',
+      visibility: 'diagnostic_collapsed',
+      summaryText,
+      providerSpecific: common,
+    })
+  }
+
   if (input.providerKey === 'openrouter') {
     if (detailType === 'reasoning.text') {
       const text = asNonEmptyString(detail.text)

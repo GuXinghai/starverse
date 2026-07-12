@@ -68,8 +68,8 @@ const errorText = computed(() => {
 
       <div v-if="props.error" class="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-900 shadow-sm">
         <div class="mb-2 flex items-center justify-between gap-2">
-          <div class="text-xs font-semibold uppercase tracking-wide">Error</div>
-          <div class="text-[11px] text-red-700">run terminated</div>
+          <div class="text-xs font-semibold uppercase tracking-wide">{{ t('chat.transcript.error') }}</div>
+          <div class="text-[11px] text-red-700">{{ t('chat.transcript.runTerminated') }}</div>
         </div>
         <pre class="whitespace-pre-wrap text-xs">{{ errorText }}</pre>
       </div>

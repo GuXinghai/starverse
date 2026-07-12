@@ -2,7 +2,6 @@ import type {
   CompletionOutcome,
   MessageAnnotation,
   MessageState,
-  ReasoningPiece,
   RootState,
   RunState,
   StreamEndReason,
@@ -10,10 +9,7 @@ import type {
   ToolCallVM,
 } from '../types'
 import type { CompletionClass, ErrorPhase, ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
-import { ReasoningDetailStreamMerger } from '../reasoningDetailStreamMerger'
 import type { ReducerCoreOptions } from './reducerTypes'
-
-const REASONING_PIECE_MAX_CHARS = 2048
 
 export function getNow(options?: ReducerCoreOptions): number {
   return options?.now ? options.now() : 0
@@ -22,59 +18,6 @@ export function getNow(options?: ReducerCoreOptions): number {
 export function createGeneratedId(prefix: string, options?: ReducerCoreOptions): string {
   if (options?.generateId) return options.generateId(prefix)
   throw new Error(`startGenerationCore requires options.generateId when ${prefix} id is missing`)
-}
-
-export function createSeededReasoningMerger(seedDetails?: ReadonlyArray<unknown>): ReasoningDetailStreamMerger {
-  const merger = new ReasoningDetailStreamMerger()
-  if (Array.isArray(seedDetails) && seedDetails.length > 0) {
-    for (const detail of seedDetails) {
-      merger.merge(detail)
-    }
-  }
-  return merger
-}
-
-function nextPieceIdFrom(pieces: ReasoningPiece[]): number {
-  let maxId = 0
-  for (const piece of pieces) {
-    if (typeof piece.id === 'number' && piece.id > maxId) {
-      maxId = piece.id
-    }
-  }
-  return maxId + 1
-}
-
-export function appendReasoningPieces(prevPieces: ReasoningPiece[] | undefined, deltaText: string): { pieces: ReasoningPiece[]; lastLen: number } {
-  if (!deltaText) {
-    const lastLen = prevPieces && prevPieces.length > 0 ? prevPieces[prevPieces.length - 1].text.length : 0
-    return { pieces: prevPieces ?? [], lastLen }
-  }
-
-  const pieces: ReasoningPiece[] = Array.isArray(prevPieces) && prevPieces.length > 0
-    ? [...prevPieces]
-    : [{ id: 1, text: '' }]
-  let nextPieceId = nextPieceIdFrom(pieces)
-  let remaining = deltaText
-
-  const lastIndex = pieces.length - 1
-  const last = pieces[lastIndex]
-  if (last.text.length < REASONING_PIECE_MAX_CHARS) {
-    const space = REASONING_PIECE_MAX_CHARS - last.text.length
-    if (space > 0) {
-      const head = remaining.slice(0, space)
-      pieces[lastIndex] = { ...last, text: last.text + head }
-      remaining = remaining.slice(head.length)
-    }
-  }
-
-  while (remaining.length > 0) {
-    const chunk = remaining.slice(0, REASONING_PIECE_MAX_CHARS)
-    pieces.push({ id: nextPieceId++, text: chunk })
-    remaining = remaining.slice(chunk.length)
-  }
-
-  const lastLen = pieces.length > 0 ? pieces[pieces.length - 1].text.length : 0
-  return { pieces, lastLen }
 }
 
 export function updateMessage(state: RootState, messageId: string, updater: (m: MessageState) => MessageState): RootState {

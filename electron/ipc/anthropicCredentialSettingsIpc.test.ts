@@ -67,6 +67,14 @@ describe('anthropicCredentialSettingsIpc', () => {
     expect(JSON.stringify(result)).not.toContain('Authorization')
   })
 
+  it('reveals the API key only through the explicit reveal channel', async () => {
+    const { handlers } = registerHandlers({ [ANTHROPIC_API_KEY_STORE_KEY]: 'sk-ant-secret' })
+
+    const result = await handlers.get('anthropic-credential:reveal')?.({})
+
+    expect(result).toEqual({ ok: true, apiKey: 'sk-ant-secret' })
+  })
+
   it('updates and clears the service-backed API key without returning it', async () => {
     const { handlers, store } = registerHandlers()
 

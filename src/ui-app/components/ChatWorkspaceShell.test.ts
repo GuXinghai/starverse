@@ -22,4 +22,24 @@ describe('ChatWorkspaceShell', () => {
     await fireEvent.click(screen.getByTestId('right-rail-floating-backdrop'))
     expect(view.emitted().closeRightRail).toHaveLength(1)
   })
+
+  it('gives the floating right rail a definite height so nested panels can scroll', async () => {
+    render(ChatWorkspaceShell, {
+      props: {
+        rightRailOpen: true,
+      },
+      slots: {
+        sidebar: '<div>Sidebar</div>',
+        transcript: '<div>Transcript</div>',
+        'right-rail': '<div data-testid="right-rail-panel" class="h-full overflow-y-auto">Panel</div>',
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('right-rail-floating-panel')).toBeInTheDocument()
+    })
+
+    expect(screen.getByTestId('right-rail-floating-panel')).toHaveClass('h-[min(80vh,56rem)]')
+    expect(screen.getByTestId('right-rail-panel')).toHaveClass('h-full')
+  })
 })

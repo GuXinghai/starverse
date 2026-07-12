@@ -1,1 +1,4 @@
-export { syncOpenRouterModelCatalog } from '../../src/shared/modelCatalog/catalogSyncJob'
+export {
+  runProviderCatalogSyncJob,
+  type ProviderCatalogSyncJobInput,
+} from './providerCatalogSyncJob'

@@ -1,4 +1,4 @@
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import type { ReadOnlyCatalogEntryDto } from './catalogReadModel'
 import { isValidSha256, normalizeSha256, readFiniteNonNegativeInteger, readNonEmptyString } from './validation'
 

@@ -8,7 +8,7 @@ import {
   type PackageDownloadTransport,
 } from '../../src/next/plugin-distribution/packageDownloader'
 import type { DownloadPolicyCatalogPackageRef } from '../../src/next/plugin-distribution/downloadPolicy'
-import { sanitizePluginDistributionText } from '../../src/next/plugin-distribution/sanitization'
+import { sanitizePluginDistributionText } from '../../src/shared/plugin-distribution/sanitization'
 import {
   DFC_OFFICE_PDF_PLUGIN_ID,
   DFC_OFFICE_PDF_RUNTIME_ID,

@@ -2,6 +2,7 @@ import { render, screen, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { describe, expect, it } from 'vitest'
 import ChatSessionConsole from './ChatSessionConsole.vue'
+import { t, tf } from '@/shared/i18n'
 
 function defaultSessionConfig() {
   return {
@@ -15,7 +16,14 @@ function defaultSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
+  }
+}
+
+function deepSeekSessionConfig() {
+  return {
+    ...defaultSessionConfig(),
+    model: { selectedProviderId: 'deepseek' as const, selectedModelKey: 'deepseek-chat' },
   }
 }
 
@@ -26,7 +34,7 @@ describe('ChatSessionConsole DeepSeek official chat controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: deepSeekSessionConfig(),
         deepSeekChat: {
           enabled: true,
           model: 'deepseek-chat',
@@ -35,29 +43,27 @@ describe('ChatSessionConsole DeepSeek official chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
     expect(screen.getByTestId('deepseek-chat-controls').textContent).toContain('Experimental')
     expect(screen.getByTestId('deepseek-chat-controls').textContent).toContain('not OpenRouter')
-    expect(screen.getByTestId('deepseek-chat-warning').textContent).toContain('DeepSeek official API text-only')
-    expect(screen.getByTestId('deepseek-chat-warning').textContent).toContain('reasoning_content display')
-    expect(screen.getByTestId('deepseek-chat-warning').textContent).toContain('Generic compatibility routing are disabled')
-    expect(screen.getByTestId('deepseek-chat-selected-status').textContent).toContain('DeepSeek official chat is active')
-    expect(screen.getByTestId('deepseek-chat-selected-status').textContent).toContain('Selected DeepSeek model: deepseek-chat')
-    expect(screen.getByTestId('deepseek-chat-selected-status').textContent).toContain('does not expose API keys')
+    expect(screen.getByTestId('deepseek-chat-warning').textContent).toContain(t('chat.console.provider.deepSeek.warning'))
+    expect(screen.getByTestId('deepseek-chat-selected-status').textContent).toContain(tf('chat.console.provider.deepSeek.status', { status: t('chat.console.status.active') }))
+    expect(screen.getByTestId('deepseek-chat-selected-status').textContent).toContain(tf('chat.console.provider.deepSeek.selectedModel', { model: 'deepseek-chat' }))
+    expect(screen.getByTestId('deepseek-chat-selected-status').textContent).toContain(t('chat.console.provider.deepSeek.credentialBridge'))
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('deepseek-chat-model')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('deepseek-chat-enabled'))
-    await user.type(screen.getByTestId('deepseek-chat-model'), 'deepseek')
     await user.click(screen.getByTestId('deepseek-chat-disable'))
     await user.click(screen.getByTestId('deepseek-chat-clear'))
 
     expect(view.emitted('updateDeepSeekChatEnabled')?.[0]).toEqual([false])
     expect(view.emitted('updateDeepSeekChatEnabled')?.[1]).toEqual([false])
-    expect(view.emitted('updateDeepSeekChatModel')?.length).toBeGreaterThan(0)
+    expect(view.emitted('updateDeepSeekChatModel')).toBeUndefined()
     expect(view.emitted('clearDeepSeekChat')).toHaveLength(1)
   })
 
@@ -138,24 +144,30 @@ describe('ChatSessionConsole DeepSeek official chat controls', () => {
           { modelId: 'openrouter::anthropic/claude-3', name: 'OpenRouter Claude 3' } as any,
         ],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
     const diagnostics = screen.getByTestId('deepseek-models-diagnostics')
-    expect(diagnostics.textContent).toContain('2 DeepSeek model availability records')
+    expect(diagnostics.textContent).toContain(tf('chat.console.availability.records', {
+      count: 2,
+      source: t('chat.console.provider.deepSeek.sourceName'),
+      observedAt: '2026-06-21T00:00:00.000Z',
+    }))
     expect(diagnostics.textContent).toContain('deepseek-v4-flash')
     expect(diagnostics.textContent).toContain('deepseek_models_api')
     expect(diagnostics.textContent).toContain('provider_reported')
     expect(diagnostics.textContent).toContain('deepseek-chat')
     expect(diagnostics.textContent).toContain('deprecated compatibility alias')
     expect(diagnostics.textContent).toContain('deepseek_list_models_api_docs')
+    expect((screen.getByTestId('deepseek-models-list') as HTMLDetailsElement).open).toBe(false)
 
     await user.click(screen.getByTestId('deepseek-models-refresh'))
+    await user.click(screen.getByTestId('deepseek-models-toggle'))
     await user.click(screen.getAllByTestId('deepseek-model-use')[0])
 
     expect(view.emitted('refreshDeepSeekModels')).toHaveLength(1)
-    expect(view.emitted('updateDeepSeekChatModel')?.[0]).toEqual(['deepseek-v4-flash'])
+    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'deepseek', modelId: 'deepseek-v4-flash' }])
 
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()

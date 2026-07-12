@@ -1,0 +1,26 @@
+{
+  "generatedAt": "2026-07-07T22:31:19.365Z",
+  "prompt": "Reply with OK.",
+  "provider": "openai_responses",
+  "baseUrlHost": "api.openai.com",
+  "modelSource": "--models",
+  "noModelsDiscovery": true,
+  "testedModels": [
+    "o3"
+  ],
+  "skippedModels": [],
+  "results": [],
+  "currentConfigReplays": [],
+  "summary": {
+    "models": {},
+    "replayCriticalCount": 0
+  },
+  "scriptStatus": "failed_config",
+  "notes": [
+    "configPath=C:\\Users\\m1389\\AppData\\Roaming\\Starverse\\config.json",
+    "proxyPolicy=applied:system",
+    "current-config replay sends only model/input/stream=false plus resolved reasoning.effort; non-reasoning generation parameters are intentionally omitted by this diagnostic scope",
+    "model source: --models argument; no /models discovery performed",
+    "credential=decrypt failed: Error while decrypting the ciphertext provided to safeStorage.decryptString."
+  ]
+}

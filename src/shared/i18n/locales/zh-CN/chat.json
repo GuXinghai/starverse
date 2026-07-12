@@ -1,0 +1,396 @@
+{
+  "chat": {
+    "topBar": {
+      "untitledConversation": "未命名对话",
+      "console": "控制台",
+      "hideConsole": "隐藏控制台",
+      "modelSummary": "模型 · {model}",
+      "modelSummaryWithProvider": "模型 · {provider} · {model}"
+    },
+    "rightRail": {
+      "closePanel": "关闭面板"
+    },
+    "message": {
+      "role": {
+        "user": "你",
+        "assistant": "助手",
+        "tool": "工具"
+      },
+      "avatar": {
+        "assistant": "助",
+        "tool": "工"
+      },
+      "actions": {
+        "copyRaw": "复制原文",
+        "restoreQuestion": "恢复问题",
+        "excludeQuestion": "排除问题",
+        "regenerate": "重新生成",
+        "edit": "编辑",
+        "confirmDelete": "确认删除",
+        "copyText": "复制文本",
+        "copyWithReferences": "复制 + 引用",
+        "regenerateImage": "重新生成图片",
+        "restoreAnswer": "恢复回答",
+        "excludeAnswer": "排除回答",
+        "retryReplace": "重试并替换回答",
+        "retryAsNew": "重试并生成新回答",
+        "newQuestion": "作为新问题发送",
+        "replaceQuestion": "替换问题"
+      },
+      "editingQuestion": "正在编辑问题",
+      "linkOnly": "仅链接",
+      "linkWithLocalCopy": "链接 + 本地副本",
+      "imageAlt": "图片-{index}",
+      "imagePreviewAlt": "预览",
+      "copyImage": "复制图片",
+      "copyPath": "复制路径",
+      "exportImage": "导出",
+      "persisting": "正在持久化...",
+      "imageGenerating": "图片正在生成...",
+      "untitledSource": "未命名来源",
+      "unknownTool": "未知",
+      "type": "类型",
+      "arguments": "参数"
+    },
+    "attachmentConfirm": {
+      "openPanel": "打开面板",
+      "closeLocator": "关闭定位条",
+      "previous": "上一个",
+      "next": "下一个",
+      "pendingLocked": "附件确认待处理，草稿已锁定。",
+      "cancelSend": "取消发送",
+      "collapsePanel": "收起面板",
+      "historyUnsupportedTitle": "不受支持的历史消息附件",
+      "historyUnsupportedDesc": "这些附件仍会显示在历史消息中，但无法纳入本次发送给模型的上下文。继续发送前，你必须确认将该类目下全部附件从本次模型上下文中排除。",
+      "allAttachments": "所有附件",
+      "excludeCheckbox": "exclude 勾选项",
+      "locate": "定位",
+      "currentUnsupportedTitle": "当前不受支持的用户消息附件",
+      "currentUnsupportedDesc": "这些附件属于当前将要发送的用户消息，但当前模型或发送规则无法纳入它们。你必须选择排除它们，或从当前草稿中移除它们。",
+      "excludeAll": "exclude 全选",
+      "excludeNone": "exclude 全不选",
+      "removeAll": "delete/remove 全选",
+      "removeNone": "delete/remove 全不选",
+      "exclude": "排除",
+      "remove": "移除",
+      "confirmAndContinue": "确认并继续"
+    },
+    "attachmentUrl": {
+      "addTitle": "添加 URL 附件",
+      "followDefault": "跟随默认设置",
+      "addUrl": "添加 URL"
+    },
+    "projectWebSearch": {
+      "title": "项目联网搜索",
+      "titleWithTarget": "项目联网搜索：{name}"
+    },
+    "console": {
+      "section": {
+        "display": "显示",
+        "runtime": "运行时",
+        "model": "模型",
+        "reasoning": "推理",
+        "webSearch": "联网搜索",
+        "generationParams": "生成参数",
+        "imageGeneration": "图像生成"
+      },
+      "display": {
+        "inlineReasoning": "消息内推理",
+        "rightRailReasoning": "右侧推理面板",
+        "expandReasoningWhileThinking": "生成推理时自动展开",
+        "collapseReasoningWhenAnswerStarts": "正文开始后自动收起推理"
+      },
+      "status": {
+        "enabled": "已启用",
+        "use": "使用",
+        "active": "启用",
+        "inactive": "停用",
+        "selected": "已选择",
+        "unset": "未设置",
+        "none": "无",
+        "unknown": "未知",
+        "source": "来源 {source}"
+      },
+      "runtime": {
+        "noProviderSelected": "尚未选择运行时提供方",
+        "textChatBlocked": "文本聊天不可用",
+        "selectProviderAndModel": "发送前请选择运行时提供方和模型。"
+      },
+      "common": {
+        "refreshing": "正在刷新...",
+        "refreshModels": "刷新模型",
+        "useModelId": "使用模型 ID",
+        "sourceDocs": "来源文档：",
+        "sourceObserved": "{source} 观测于 {observedAt}",
+        "ownedBy": "归属 {owner}",
+        "created": "创建于 {createdAt}",
+        "type": "类型 {type}",
+        "modelCount": "{count} 个模型",
+        "modelListToggle": "模型列表（{count}）",
+        "openGlobalSettings": "打开全局设置"
+      },
+      "capability": {
+        "unknown": "能力种子未知",
+        "pricingUnknown": "价格种子未知",
+        "textChat": "文本聊天",
+        "textChatBlocked": "文本聊天不可用",
+        "responsesApi": "Responses API",
+        "responsesApiBlocked": "Responses API 不可用",
+        "thinking": "推理 {value}",
+        "reasoning": "推理 {value}",
+        "effort": "档位 {value}",
+        "context": "上下文 {value}",
+        "maxOutput": "最大输出 {value}",
+        "maxInput": "最大输入 {value}",
+        "input": "输入 {value}",
+        "output": "输出 {value}",
+        "methods": "方法 {value}",
+        "functionCalling": "函数调用 {value}",
+        "hostedTools": "托管工具 {value}",
+        "structuredOutput": "结构化输出 {value}",
+        "imageInput": "图像输入 {value}",
+        "fileInput": "文件输入 {value}",
+        "audioInput": "音频输入 {value}",
+        "adaptiveThinking": "自适应推理 {value}",
+        "toolUse": "工具使用 {value}",
+        "files": "文件 {value}",
+        "citations": "引用 {value}",
+        "vision": "视觉 {value}",
+        "rawCapabilityKeys": "原始能力键 {value}",
+        "pricing": "{currency}/百万 token 输入命中 {hit} · 未命中 {miss} · 输出 {output}"
+      },
+      "availability": {
+        "refreshing": "正在刷新 {source} 模型...",
+        "notRefreshed": "本会话尚未刷新 {source} 模型。",
+        "records": "{count} 条 {source} 模型可用性记录。观测于 {observedAt}。"
+      },
+      "provider": {
+        "openRouter": {
+          "title": "OpenRouter 聊天",
+          "providerLabelDefault": "OpenRouter · 一级提供方",
+          "warning": "显式一级提供方选择。现有 OpenRouter 发送计划、附件、联网搜索、推理、图像生成和 legacy-store 凭据来源仍走 OpenRouter 路径。",
+          "status": "OpenRouter 聊天当前为{status}。",
+          "selectedModel": "已选 OpenRouter 模型：{model}",
+          "notFallback": "OpenRouter 不是隐式 fallback；使用 OpenRouter 发送前请在这里选择它。",
+          "disable": "停用 OpenRouter 聊天",
+          "clear": "清除 OpenRouter 聊天设置"
+        },
+        "openAIResponses": {
+          "title": "OpenAI Responses 聊天",
+          "experimentalLabel": "实验性 · OpenAI Responses 纯文本 · 非 OpenRouter",
+          "warning": "原生 OpenAI Responses API 纯文本流式输出。附件、联网、工具、图像生成和推理均已禁用。",
+          "status": "实验性 OpenAI Responses 聊天当前为{status}。",
+          "selectedModel": "已选 Responses 模型：{model}",
+          "credentialBridge": "OpenAI Responses 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
+          "sourceTitle": "OpenAI 官方模型来源",
+          "sourceName": "OpenAI 官方",
+          "disable": "停用 OpenAI Responses 聊天",
+          "clear": "清除 OpenAI Responses 聊天设置"
+        },
+        "anthropic": {
+          "title": "Anthropic Messages 聊天",
+          "experimentalLabel": "实验性 · Anthropic Messages 纯文本 · 非 OpenRouter",
+          "warning": "原生 Anthropic Messages API 纯文本流式输出。附件、联网、工具、图像生成、reasoning/thinking 和签名均已禁用。",
+          "status": "实验性 Anthropic Messages 聊天当前为{status}。",
+          "selectedModel": "已选 Claude 模型：{model}",
+          "credentialBridge": "Anthropic 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
+          "sourceTitle": "Anthropic 官方模型来源",
+          "sourceName": "Anthropic",
+          "disable": "停用 Anthropic Messages 聊天",
+          "clear": "清除 Anthropic Messages 聊天设置"
+        },
+        "deepSeek": {
+          "title": "DeepSeek 官方聊天",
+          "experimentalLabel": "实验性 · DeepSeek 官方纯文本 · 非 OpenRouter",
+          "warning": "DeepSeek 官方 API 纯文本流式输出。附件、联网、工具、图像生成、reasoning/thinking 和 reasoning_content 展示均已禁用。",
+          "status": "实验性 DeepSeek 官方聊天当前为{status}。",
+          "selectedModel": "已选 DeepSeek 模型：{model}",
+          "credentialBridge": "DeepSeek 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
+          "sourceTitle": "DeepSeek 官方模型来源",
+          "sourceName": "DeepSeek 官方",
+          "disable": "停用 DeepSeek 官方聊天",
+          "clear": "清除 DeepSeek 聊天设置"
+        },
+        "googleAIStudio": {
+          "title": "Google AI Studio 聊天",
+          "experimentalLabel": "实验性 · Google AI Studio Gemini 纯文本 · 非 OpenRouter",
+          "warning": "原生 Google AI Studio Gemini 纯文本流式输出。附件、联网、工具、图像生成、推理和旧 Gemini runtime 均已禁用。",
+          "status": "实验性 Google AI Studio 聊天当前为{status}。",
+          "selectedModel": "已选 Gemini 模型：{model}",
+          "credentialBridge": "Google AI Studio 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
+          "sourceTitle": "Gemini 官方模型来源",
+          "sourceName": "Gemini",
+          "disable": "停用 Google AI Studio 聊天",
+          "clear": "清除 Google AI Studio 聊天设置"
+        },
+        "localEndpoint": {
+          "title": "LocalEndpoint 聊天",
+          "experimentalLabel": "实验性 · LocalEndpoint 纯文本 · 非 OpenRouter",
+          "endpointUrl": "Loopback endpoint URL",
+          "warning": "仅限 loopback OpenAI-compatible 纯文本流式输出。附件、联网、工具、图像生成、推理、密钥和模型选择器发布均已禁用。",
+          "status": "实验性 LocalEndpoint 聊天当前为{status}。",
+          "selectedEndpoint": "已选 endpoint：{endpoint}",
+          "selectedModel": "已选本地模型：{model}",
+          "boundary": "实验性本地聊天独立于 OpenRouter，且不使用 API Key 或自定义 header。",
+          "disable": "停用 LocalEndpoint 聊天",
+          "clear": "清除 LocalEndpoint 聊天设置"
+        }
+      },
+      "reasoning": {
+        "thinkingBudget": "thinkingBudget",
+        "thinkingLevel": "thinkingLevel",
+        "includeThoughts": "返回推理摘要",
+        "providerManaged": "开启",
+        "geminiImageProviderManaged": "Gemini 生图模型使用提供方托管的推理。模型支持时，Starverse 可以请求返回推理摘要。",
+        "geminiUnsupported": "该模型不可使用 Gemini 推理控制。",
+        "openAIResponsesUnsupported": "该 OpenAI Responses 模型不提供显式推理努力程度控制。",
+        "effort": {
+          "low": "低",
+          "medium": "中",
+          "high": "高"
+        }
+      },
+      "webSearch": {
+        "level": {
+          "low": "低",
+          "high": "高"
+        }
+      }
+    },
+    "generationParams": {
+      "title": "参数",
+      "show": "显示",
+      "hide": "隐藏",
+      "showAdvanced": "显示高级参数",
+      "hideAdvanced": "隐藏高级参数",
+      "reset": "重置",
+      "configuredCount": "已配置 {count} 项",
+      "empty": "当前提供方/模型没有可用的生成参数。",
+      "unsupportedForModel": "当前提供方/模型不支持 {param}。",
+      "mode": {
+        "inherit": "继承",
+        "custom": "自定义",
+        "omit": "省略"
+      },
+      "source": {
+        "session": "会话",
+        "project": "项目",
+        "global": "全局",
+        "inherit": "继承"
+      },
+      "state": {
+        "omitted": "已省略",
+        "notSent": "未发送"
+      },
+      "reasoning": {
+        "effort": "推理努力程度",
+        "summary": "返回推理摘要",
+        "off": "关闭",
+        "auto": "自动",
+        "concise": "简洁",
+        "detailed": "详细"
+      },
+      "description": {
+        "temperature": "采样随机性。",
+        "topP": "核采样阈值。",
+        "topK": "Top-k 候选 token 数量上限。",
+        "minP": "最小概率采样阈值。",
+        "topA": "自适应采样阈值。",
+        "frequencyPenalty": "频率惩罚。",
+        "presencePenalty": "存在惩罚。",
+        "repetitionPenalty": "重复惩罚。",
+        "seed": "尽力保持确定性的随机种子。",
+        "maxOutputTokens": "输出 token 上限。",
+        "reasoningEffort": "提供方推理努力程度。",
+        "reasoningSummary": "推理摘要请求。",
+        "thinkingEnabled": "提供方 thinking 开关。",
+        "thinkingBudget": "提供方 thinking budget。",
+        "thinkingLevel": "提供方 thinking level。",
+        "includeThoughts": "请求返回 Gemini 推理摘要。",
+        "thoughtSummaryMode": "Gemini 思考摘要模式。",
+        "stopSequences": "停止序列。",
+        "googleSearch": "Google 搜索接地。",
+        "imageSearch": "图片搜索接地。",
+        "verbosity": "输出详细程度。"
+      }
+    },
+    "reasoning": {
+      "title": "推理",
+      "emptyPayload": "没有推理内容。",
+      "emptyAssistant": "还没有助手消息。",
+      "encryptedTitle": "推理已加密",
+      "encryptedDescription": "本次推理内容被提供方加密，无法显示。",
+      "noPayloadShort": "（没有推理内容）",
+      "excluded": "本次请求已要求不返回推理内容（excluded）。",
+      "notReturned": "模型未返回推理内容，或该模型不支持推理内容。"
+    },
+    "errorPanel": {
+      "unknownError": "未知错误",
+      "summary": "阶段：{phase} · 代码：{code} · {message} · 提供方：{provider}",
+      "truncated": "已截断",
+      "trimmed": "已裁剪",
+      "expand": "展开",
+      "collapse": "收起",
+      "details": "详情",
+      "bytes": "字节：{count}",
+      "detailsLoading": "详情加载中...",
+      "detailsUnavailable": "详情不可用。",
+      "detailsPending": "详情待加载。"
+    },
+    "status": {
+      "title": "聊天",
+      "model": "模型",
+      "provider": "提供方",
+      "generation": "生成",
+      "finish": "结束",
+      "truncated": "已截断",
+      "thisTurn": "本轮",
+      "sessionTotalDerived": "会话总计（派生）",
+      "promptShort": "输入",
+      "completionShort": "输出",
+      "totalShort": "总计",
+      "cost": "费用",
+      "abort": "中止",
+      "reset": "重置",
+      "error": "错误"
+    },
+    "transcript": {
+      "error": "错误",
+      "runTerminated": "运行已终止"
+    },
+    "attachment": {
+      "link": "链接",
+      "history": "历史",
+      "type": "类型",
+      "route": "路由",
+      "notAvailable": "不可用",
+      "needsJob": "需要任务",
+      "engineUnavailable": "引擎不可用",
+      "typeConflictDetected": "检测到类型冲突",
+      "compatibility": {
+        "blocked": "已阻止",
+        "warning": "警告",
+        "compatible": "兼容",
+        "unknown": "未知"
+      },
+      "excluded": "已排除"
+    },
+    "newTemplate": {
+      "reset": "重置临时聊天",
+      "modelConfig": "模型与配置",
+      "draftAttachments": "草稿与附件",
+      "confirmReset": "确认重置",
+      "cancel": "取消",
+      "settingsTitle": "新聊天生命周期",
+      "startupNavigation": "启动时打开",
+      "openNew": "新聊天",
+      "restoreFormal": "上次正式聊天",
+      "projectsOnly": "仅项目列表",
+      "startupResetModel": "启动时重置模型与配置",
+      "startupResetDraft": "启动时重置草稿与附件",
+      "postSendReset": "首次发送后",
+      "resetAll": "全部重置",
+      "preserveModel": "保留模型与配置"
+    }
+  }
+}

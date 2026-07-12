@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, ref } from 'vue'
 import ChatTranscript from '@/ui-kit/chat/ChatTranscript.vue'
 import ChatMessageBubble from '@/ui-kit/chat/ChatMessageBubble.vue'
 import ChatAppReasoningPanel from './components/ChatAppReasoningPanel.vue'
@@ -17,18 +17,19 @@ import ChatAppComposer from './components/ChatAppComposer.vue'
 import SettingsPanel from './components/SettingsPanel.vue'
 import SettingsModal from './components/SettingsModal.vue'
 import WebSearchSettingsEditor from './components/WebSearchSettingsEditor.vue'
-import SamplingParamsSettingsEditor from './components/SamplingParamsSettingsEditor.vue'
+import GenerationParamsSettingsEditor from './components/GenerationParamsSettingsEditor.vue'
 import SearchModal from './components/SearchModal.vue'
-import { t, tf } from '@/shared/i18n'
 import { useAppChatAppLogic } from './app/appChatApp.logic'
 import { formatModelIndicatorName } from './components/modelIndicatorName'
-import { DEFAULT_CHAT_PROVIDER_ID, DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
+import { OPENROUTER_PROVIDER_ID } from '@/next/provider/modelSelection'
+import { t, tf } from '@/shared/i18n'
 
 const {
   isReady,
   loadError,
   convoListItems,
   activeConvoId,
+  workspaceMode,
   activeProjectId,
   inboxId,
   projectListItems,
@@ -40,6 +41,7 @@ const {
   onDeleteProject,
   onSelectConvo,
   onCreateConvo,
+  onResetSystemTemplate,
   refreshConvos,
   onRenameConvo,
   onDeleteConvo,
@@ -56,6 +58,8 @@ const {
   activeTitle,
   activeBranch,
   reasoningDisplayMode,
+  reasoningPanelDefaultExpanded,
+  reasoningPanelAutoCollapseAfterReasoning,
   reasoningRailMode,
   rightRailOpen,
   closeRightRailPanel,
@@ -95,14 +99,13 @@ const {
   onToggleAnswerExclude,
   canRetryReplaceInUi,
   onRetryReplaceAnswer,
+  onRetryAnswerAsNew,
   getCandidatePager,
   candidatesLoading,
   onCandidateShift,
-  questionIdForMessage,
   lastAssistantReasoningView,
   lastAssistantReasoningVersion,
   lastAssistantIsStreaming,
-  lastAssistantReasoningPieces,
   lastAssistantMessage,
   draft,
   draftAttachmentViewModels,
@@ -156,31 +159,31 @@ const {
   providerModelPickerSources,
   modelCatalogNotice,
   modelPrefsScopeForUi,
-  activeSessionSamplingParamsResolved,
+  activeSessionGenerationParamsResolved,
   activeSessionWebSearchResolved,
   onUpdateModel,
   onUpdateReasoningEnabled,
   onUpdateReasoningEffortLevel,
+  onUpdateReasoningPanelDefaultExpanded,
+  onUpdateReasoningPanelAutoCollapseAfterReasoning,
   onUpdateWebSearchEnabled,
   onUpdateWebSearchLevel,
   onUpdateImageGenerationEnabled,
   onUpdateImageGenerationResolution,
   onUpdateImageGenerationAspectRatio,
   onUpdateReasoningDisplayMode,
-  onComposerUpdateSamplingParamsLayer,
+  onComposerUpdateGenerationParamsLayer,
   onComposerUpdateWebSearchLayer,
   onUpdateImageGeneration,
   onUpdateOpenRouterChatEnabled,
   onUpdateLMStudioChatEnabled,
   onUpdateLMStudioEndpointUrl,
-  onUpdateLMStudioModel,
   onUpdateLMStudioChatMode,
   onUpdateLMStudioOpenAICompatiblePreferredEndpoint,
   onUpdateLMStudioNativeRestControl,
   onClearLMStudioChat,
   onUpdateOllamaChatEnabled,
   onUpdateOllamaEndpointUrl,
-  onUpdateOllamaModel,
   onUpdateOllamaChatMode,
   onUpdateOllamaNativeRestPreferredEndpoint,
   onUpdateOllamaOpenAICompatiblePreferredEndpoint,
@@ -188,23 +191,18 @@ const {
   onClearOllamaChat,
   onUpdateLocalEndpointChatEnabled,
   onUpdateLocalEndpointChatUrl,
-  onUpdateLocalEndpointChatModel,
   onClearLocalEndpointChat,
   onUpdateOpenAIResponsesChatEnabled,
-  onUpdateOpenAIResponsesChatModel,
   onClearOpenAIResponsesChat,
   onRefreshOpenAIResponsesModels,
   onRefreshProviderModelPickerSources,
   onUpdateGoogleAIStudioChatEnabled,
-  onUpdateGoogleAIStudioChatModel,
   onClearGoogleAIStudioChat,
   onRefreshGoogleAIStudioModels,
   onUpdateAnthropicChatEnabled,
-  onUpdateAnthropicChatModel,
   onClearAnthropicChat,
   onRefreshAnthropicModels,
   onUpdateDeepSeekChatEnabled,
-  onUpdateDeepSeekChatModel,
   onClearDeepSeekChat,
   onRefreshDeepSeekModels,
   onAttachFilesRequested,
@@ -231,6 +229,7 @@ const {
   closeAttachmentUrlDialog,
   submitAttachmentUrl,
   onSend,
+  compatibleRunning,
   onAbort,
   settingsOpen,
   openSettings,
@@ -238,8 +237,8 @@ const {
   projectWebSearchSettingsOpen,
   projectWebSearchSettingsTarget,
   closeProjectWebSearchSettings,
-  projectSamplingParamsDraft,
-  projectSamplingParamsResolved,
+  projectGenerationParamsDraft,
+  projectGenerationParamsResolved,
   projectWebSearchDraft,
   projectWebSearchResolved,
   projectWebSearchDraftHint,
@@ -257,6 +256,13 @@ const {
   confirmDeleteQuestion,
   onOpenReasoningDisplayForMessage,
 } = useAppChatAppLogic()
+const effectiveIsRunning = computed(() => isRunning.value || compatibleRunning.value)
+const templateResetOpen = ref(false)
+const resetTemplateModelConfig = ref(true)
+const resetTemplateDraftAttachments = ref(true)
+function onComposerSend() {
+  void onSend()
+}
 
 const branchSummary = computed(() => {
   if (!activeBranch.value) return 'Branch unavailable'
@@ -272,41 +278,21 @@ const runSummary = computed(() => {
 })
 
 const modelSummary = computed(() => {
-  if (lmStudioChatConfig.value.enabled) {
-    const model = lmStudioChatConfig.value.model.trim() || t('settings.lmStudio.manualModelRequired')
-    return tf('settings.lmStudio.modelSummary', { model })
+  const compatible = activeSessionConfig.value.model.compatibleSelection
+  if (compatible) {
+    return tf('chat.topBar.modelSummaryWithProvider', {
+      provider: compatible.providerName,
+      model: formatModelIndicatorName(compatible.modelId),
+    })
   }
-  if (ollamaChatConfig.value.enabled) {
-    const model = ollamaChatConfig.value.model.trim() || t('settings.ollama.manualModelRequired')
-    return tf('settings.ollama.modelSummary', { model })
-  }
-  if (deepSeekChatConfig.value.enabled) {
-    const model = deepSeekChatConfig.value.model.trim() || 'manual model required'
-    return `DeepSeek official · ${model}`
-  }
-  if (anthropicChatConfig.value.enabled) {
-    const model = anthropicChatConfig.value.model.trim() || 'manual model required'
-    return `Anthropic Messages · ${model}`
-  }
-  if (googleAIStudioChatConfig.value.enabled) {
-    const model = googleAIStudioChatConfig.value.model.trim() || 'manual model required'
-    return `Google AI Studio · ${model}`
-  }
-  if (openAIResponsesChatConfig.value.enabled) {
-    const model = openAIResponsesChatConfig.value.model.trim() || 'manual model required'
-    return `OpenAI Responses · ${model}`
-  }
-  if (localEndpointChatConfig.value.enabled) {
-    const model = localEndpointChatConfig.value.model.trim() || 'manual model required'
-    return `LocalEndpoint · ${model}`
-  }
-  const selectedProvider = activeSessionConfig.value.model.selectedProviderId ?? DEFAULT_CHAT_PROVIDER_ID
-  const selected = activeSessionConfig.value.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
+  const selectedProvider = activeSessionConfig.value.model.selectedProviderId
+  const selected = activeSessionConfig.value.model.selectedModelKey
+  if (!selectedProvider || !selected) return t('chat.console.runtime.noProviderSelected')
   const match = modelCatalogForPicker.value.find((item) => item.modelId === selected)
   const modelLabel = formatModelIndicatorName(match?.name ?? selected)
-  return selectedProvider === DEFAULT_CHAT_PROVIDER_ID
-    ? `Model · ${modelLabel}`
-    : `Model · ${selectedProvider} · ${modelLabel}`
+  return selectedProvider === OPENROUTER_PROVIDER_ID
+    ? tf('chat.topBar.modelSummary', { model: modelLabel })
+    : tf('chat.topBar.modelSummaryWithProvider', { provider: selectedProvider, model: modelLabel })
 })
 
 const webSummary = computed(() => {
@@ -320,9 +306,44 @@ function shouldShowInlineReasoning(message: any): boolean {
   if (!view) return false
   if (view.visibility === 'shown' || view.visibility === 'excluded') return true
   if (view.hasEncrypted === true) return true
-  if (typeof view.summaryText === 'string' && view.summaryText.trim().length > 0) return true
-  if (typeof view.reasoningText === 'string' && view.reasoningText.trim().length > 0) return true
+  if (Array.isArray(view.displayBlocks) && view.displayBlocks.length > 0) return true
   return false
+}
+
+type RawRequestRecord = Readonly<{
+  id: string; requestSequence: number; providerId: string; modelId: string
+  serializedBody: string; bodyBytes: number; bodySha256: string; capturedAtMs: number
+}>
+const rawDataOpen = ref(false)
+const rawDataLoading = ref(false)
+const rawDataAnswerRootId = ref('')
+const rawDataRecords = ref<readonly RawRequestRecord[]>([])
+const rawDataError = ref<string | null>(null)
+
+async function openRawData(answerRootId: string) {
+  rawDataAnswerRootId.value = answerRootId
+  rawDataOpen.value = true
+  rawDataLoading.value = true
+  rawDataError.value = null
+  try {
+    const debugBridge = window.rawGenerationDebug
+    if (!debugBridge) throw new Error('RAW_DEBUG_BRIDGE_UNAVAILABLE')
+    const status = await debugBridge.getStatus()
+    if (!status.available || !status.schemaReady) {
+      throw new Error(status.errorCode ?? 'RAW_DEBUG_STORE_UNAVAILABLE')
+    }
+    rawDataRecords.value = await debugBridge.listByAnswerRootId(answerRootId)
+  } catch (error) {
+    rawDataRecords.value = []
+    rawDataError.value = error instanceof Error ? error.message : String(error)
+  } finally {
+    rawDataLoading.value = false
+  }
+}
+
+function closeRawData() { rawDataOpen.value = false }
+function formatRawRequestBody(body: string): string {
+  try { return JSON.stringify(JSON.parse(body), null, 2) } catch { return body }
 }
 </script>
 
@@ -370,6 +391,7 @@ function shouldShowInlineReasoning(message: any): boolean {
 
       <template #topbar>
         <ChatTopSummaryBar
+          v-if="workspaceMode !== 'none'"
           :title="activeTitle || 'No active conversation'"
           :branchSummary="branchSummary"
           :runSummary="runSummary"
@@ -382,10 +404,24 @@ function shouldShowInlineReasoning(message: any): boolean {
           @openSettings="openSettings"
           @toggleConsolePanel="toggleConsolePanel"
         />
+        <div v-if="workspaceMode === 'template'" class="relative px-3 pb-2">
+          <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700" data-testid="new-template-reset-open" @click="templateResetOpen = !templateResetOpen">
+            {{ t('chat.newTemplate.reset') }}
+          </button>
+          <div v-if="templateResetOpen" class="absolute left-3 top-8 z-30 w-64 space-y-2 rounded-lg border border-gray-200 bg-white p-3 text-xs shadow-lg" data-testid="new-template-reset-panel">
+            <label class="flex items-center gap-2"><input v-model="resetTemplateModelConfig" type="checkbox" />{{ t('chat.newTemplate.modelConfig') }}</label>
+            <label class="flex items-center gap-2"><input v-model="resetTemplateDraftAttachments" type="checkbox" />{{ t('chat.newTemplate.draftAttachments') }}</label>
+            <div class="flex justify-end gap-2">
+              <button type="button" class="rounded border px-2 py-1" @click="templateResetOpen = false">{{ t('chat.newTemplate.cancel') }}</button>
+              <button type="button" class="rounded bg-gray-900 px-2 py-1 text-white" :disabled="!resetTemplateModelConfig && !resetTemplateDraftAttachments" data-testid="new-template-reset-confirm" @click="void onResetSystemTemplate({ resetModelConfig: resetTemplateModelConfig, resetDraftAttachments: resetTemplateDraftAttachments }).then(() => { templateResetOpen = false })">{{ t('chat.newTemplate.confirmReset') }}</button>
+            </div>
+          </div>
+        </div>
       </template>
 
       <template #transcript>
         <ChatTranscript
+          v-if="workspaceMode !== 'none'"
           :messageIds="transcriptMessageIds"
           :messagesById="transcriptMessagesById"
           :activeMessageId="activeCursorMessageId"
@@ -413,10 +449,11 @@ function shouldShowInlineReasoning(message: any): boolean {
                 <template #before-content>
                   <ChatInlineReasoning
                     v-if="message.role === 'assistant' && shouldShowInlineReasoning(message)"
+                    :messageId="message.messageId"
                     :reasoningView="message.reasoningView"
-                    :reasoningPieces="message.messageId === lastAssistantMessageId ? lastAssistantReasoningPieces : null"
                     :collapsed="reasoningRailMode ? !(rightRailOpen && effectiveRightRailView === 'reasoning') : message.reasoningView.panelState === 'collapsed'"
                     :display-mode="reasoningRailMode ? 'rail' : 'inline'"
+                    :isStreaming="message.streaming?.isTarget === true && message.streaming?.isComplete !== true"
                     @toggle="onOpenReasoningDisplayForMessage(message.messageId)"
                   />
                 </template>
@@ -444,7 +481,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`copy-raw-q-${message.messageId}`"
                   @click="copyUserMessageRaw(message as any)"
                 >
-                  Copy raw
+                  {{ t('chat.message.actions.copyRaw') }}
                 </button>
 
                 <button
@@ -453,7 +490,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`toggle-q-${message.messageId}`"
                   @click="onToggleQuestionExclude(message.messageId)"
                 >
-                  {{ turnFiltersByQuestionId.get(message.messageId)?.questionMode === 'exclude' ? 'Restore question' : 'Exclude question' }}
+                  {{ turnFiltersByQuestionId.get(message.messageId)?.questionMode === 'exclude' ? t('chat.message.actions.restoreQuestion') : t('chat.message.actions.excludeQuestion') }}
                 </button>
 
                 <button
@@ -463,7 +500,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`regen-q-${message.messageId}`"
                   @click="onRegenerateFromQuestion(message.messageId)"
                 >
-                  Regenerate
+                  {{ t('chat.message.actions.regenerate') }}
                 </button>
 
                 <button
@@ -473,7 +510,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`edit-q-${message.messageId}`"
                   @click="openQuestionEdit(message.messageId)"
                 >
-                  Edit
+                  {{ t('chat.message.actions.edit') }}
                 </button>
 
                 <template v-if="pendingDeleteQuestionId === message.messageId">
@@ -484,14 +521,14 @@ function shouldShowInlineReasoning(message: any): boolean {
                     :data-testid="`confirm-delete-q-${message.messageId}`"
                     @click="confirmDeleteQuestion(message.messageId)"
                   >
-                    Confirm delete
+                    {{ t('chat.message.actions.confirmDelete') }}
                   </button>
                   <button
                     type="button"
                     class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
                     @click="cancelDeleteQuestion"
                   >
-                    Cancel
+                    {{ t('common.cancel') }}
                   </button>
                 </template>
                 <button
@@ -502,7 +539,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`delete-q-${message.messageId}`"
                   @click="requestDeleteQuestion(message.messageId)"
                 >
-                  Delete
+                  {{ t('common.delete') }}
                 </button>
 
                 <div class="ml-auto flex items-center gap-3 text-gray-600">
@@ -555,7 +592,15 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`copy-assistant-text-${message.messageId}`"
                   @click="copyAssistantMessage(message as any, 'plain')"
                 >
-                  Copy text
+                  {{ t('chat.message.actions.copyText') }}
+                </button>
+                <button
+                  type="button"
+                  class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50"
+                  :data-testid="`raw-data-a-${message.messageId}`"
+                  @click="openRawData(message.messageId)"
+                >
+                  Raw Data
                 </button>
                 <button
                   v-if="hasAssistantCitations(message as any)"
@@ -565,7 +610,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                   :data-testid="`copy-assistant-with-refs-${message.messageId}`"
                   @click="copyAssistantMessage(message as any, 'with_refs')"
                 >
-                  Copy + refs
+                  {{ t('chat.message.actions.copyWithReferences') }}
                 </button>
                 <template v-if="chosenQuestionIdForAnswerRootMessage(message.messageId)">
                   <button
@@ -579,7 +624,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                     :data-testid="`regen-image-a-${message.messageId}`"
                     @click="onRegenerateFromQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!)"
                   >
-                    Regenerate image
+                    {{ t('chat.message.actions.regenerateImage') }}
                   </button>
                   <button
                     type="button"
@@ -592,8 +637,8 @@ function shouldShowInlineReasoning(message: any): boolean {
                   >
                     {{
                       turnFiltersByQuestionId.get(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.answerMode === 'exclude'
-                        ? 'Restore answer'
-                        : 'Exclude answer'
+                        ? t('chat.message.actions.restoreAnswer')
+                        : t('chat.message.actions.excludeAnswer')
                     }}
                   </button>
                   <button
@@ -607,9 +652,21 @@ function shouldShowInlineReasoning(message: any): boolean {
                     :data-testid="`retry-a-${message.messageId}`"
                     @click="onRetryReplaceAnswer(chosenQuestionIdForAnswerRootMessage(message.messageId)!, message.messageId)"
                   >
-                    Retry replace
+                    {{ t('chat.message.actions.retryReplace') }}
                   </button>
-
+                  <button
+                    type="button"
+                    class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+                    :disabled="
+                      activeAssistantMessageId != null ||
+                      isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
+                      !canRetryReplaceInUi(chosenQuestionIdForAnswerRootMessage(message.messageId)!, message.messageId)
+                    "
+                    :data-testid="`retry-new-a-${message.messageId}`"
+                    @click="onRetryAnswerAsNew(chosenQuestionIdForAnswerRootMessage(message.messageId)!, message.messageId)"
+                  >
+                    {{ t('chat.message.actions.retryAsNew') }}
+                  </button>
                   <div v-if="(getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.total ?? 0) > 1" class="ml-auto flex items-center gap-1 text-gray-600">
                     <button
                       type="button"
@@ -646,9 +703,6 @@ function shouldShowInlineReasoning(message: any): boolean {
                     </button>
                   </div>
                 </template>
-                <div v-else-if="questionIdForMessage(message.messageId, message.role)" class="text-[11px] text-gray-400">
-                  answer not selected for context
-                </div>
               </div>
             </div>
           </template>
@@ -663,10 +717,10 @@ function shouldShowInlineReasoning(message: any): boolean {
             data-testid="attachment-confirm-locator-bar"
           >
             <div class="flex flex-wrap items-center gap-2">
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-open-panel" @click="openAttachmentConfirmationPanel">打开面板</button>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-close" @click="closeAttachmentConfirmationLocatorBar">关闭定位条</button>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-prev" @click="navigateAttachmentConfirmationHistory(-1)">上一个</button>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-next" @click="navigateAttachmentConfirmationHistory(1)">下一个</button>
+              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-open-panel" @click="openAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.openPanel') }}</button>
+              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-close" @click="closeAttachmentConfirmationLocatorBar">{{ t('chat.attachmentConfirm.closeLocator') }}</button>
+              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-prev" @click="navigateAttachmentConfirmationHistory(-1)">{{ t('chat.attachmentConfirm.previous') }}</button>
+              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-locator-next" @click="navigateAttachmentConfirmationHistory(1)">{{ t('chat.attachmentConfirm.next') }}</button>
               <span class="font-mono text-[11px]" data-testid="attachment-confirm-locator-index">{{ attachmentConfirmationHistoryLocatorLabel }}</span>
             </div>
           </div>
@@ -676,29 +730,29 @@ function shouldShowInlineReasoning(message: any): boolean {
             data-testid="attachment-confirm-collapsed-banner"
           >
             <div class="flex flex-wrap items-center gap-2">
-              <span>附件确认待处理，草稿已锁定。</span>
-              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-banner-open-panel" @click="openAttachmentConfirmationPanel">打开面板</button>
-              <button type="button" class="rounded border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50" data-testid="attachment-confirm-banner-cancel" @click="closeAttachmentConfirmationByCancel">取消发送</button>
+              <span>{{ t('chat.attachmentConfirm.pendingLocked') }}</span>
+              <button type="button" class="rounded border border-amber-300 bg-white px-2 py-1 text-[11px] hover:bg-amber-100" data-testid="attachment-confirm-banner-open-panel" @click="openAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.openPanel') }}</button>
+              <button type="button" class="rounded border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50" data-testid="attachment-confirm-banner-cancel" @click="closeAttachmentConfirmationByCancel">{{ t('chat.attachmentConfirm.cancelSend') }}</button>
             </div>
           </div>
           <div v-if="attachmentConfirmationVisible && attachmentConfirmationSession" class="mx-4 rounded-xl border border-amber-300 bg-white p-3 shadow-sm" data-testid="attachment-confirm-panel">
             <div class="flex items-center justify-between gap-2">
               <div class="text-sm font-semibold text-gray-900">{{ attachmentConfirmationSession.title }}</div>
               <div class="flex items-center gap-2">
-                <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-collapse" @click="collapseAttachmentConfirmationPanel">收起面板</button>
-                <button type="button" class="rounded border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50" data-testid="attachment-confirm-cancel" @click="closeAttachmentConfirmationByCancel">取消发送</button>
+                <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-collapse" @click="collapseAttachmentConfirmationPanel">{{ t('chat.attachmentConfirm.collapsePanel') }}</button>
+                <button type="button" class="rounded border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50" data-testid="attachment-confirm-cancel" @click="closeAttachmentConfirmationByCancel">{{ t('chat.attachmentConfirm.cancelSend') }}</button>
               </div>
             </div>
             <div v-if="attachmentConfirmationSession.validationMessage" class="mt-2 rounded border border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800" data-testid="attachment-confirm-validation">
               {{ attachmentConfirmationSession.validationMessage }}
             </div>
             <div v-if="attachmentConfirmationSession.historyItems.length > 0" class="mt-3 rounded border border-gray-200 p-2" data-testid="attachment-confirm-history-section">
-              <button type="button" class="w-full text-left text-sm font-semibold text-gray-900" data-testid="attachment-confirm-history-toggle" @click="toggleAttachmentConfirmationHistorySection">不受支持的历史消息附件</button>
-              <p class="mt-1 text-xs text-gray-600">这些附件仍会显示在历史消息中，但无法纳入本次发送给模型的上下文。继续发送前，你必须确认将该类目下全部附件从本次模型上下文中排除。</p>
+              <button type="button" class="w-full text-left text-sm font-semibold text-gray-900" data-testid="attachment-confirm-history-toggle" @click="toggleAttachmentConfirmationHistorySection">{{ t('chat.attachmentConfirm.historyUnsupportedTitle') }}</button>
+              <p class="mt-1 text-xs text-gray-600">{{ t('chat.attachmentConfirm.historyUnsupportedDesc') }}</p>
               <div v-if="attachmentConfirmationSession.historySectionExpanded" class="mt-2 space-y-2">
                 <div class="flex items-center justify-between gap-2 rounded border border-gray-200 bg-gray-50 px-2 py-1" :class="attachmentConfirmationSession.showHistoryValidation ? 'ring-2 ring-red-300' : ''" data-testid="attachment-confirm-history-exclude-all">
                   <div class="flex items-center gap-3 text-xs text-gray-700">
-                    <span class="font-medium text-gray-900">所有附件</span>
+                    <span class="font-medium text-gray-900">{{ t('chat.attachmentConfirm.allAttachments') }}</span>
                     <label class="flex items-center gap-1">
                       <input
                         type="checkbox"
@@ -706,10 +760,10 @@ function shouldShowInlineReasoning(message: any): boolean {
                         data-testid="attachment-confirm-history-exclude-all-checkbox"
                         @change="setAttachmentConfirmationHistoryExcludeAll(($event.target as HTMLInputElement).checked)"
                       />
-                      exclude 勾选项
+                      {{ t('chat.attachmentConfirm.excludeCheckbox') }}
                     </label>
                   </div>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-history-locate-all" @click="locateAttachmentConfirmationHistoryAll">定位</button>
+                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-history-locate-all" @click="locateAttachmentConfirmationHistoryAll">{{ t('chat.attachmentConfirm.locate') }}</button>
                 </div>
                 <div v-for="item in attachmentConfirmationSession.historyItems" :key="item.attachmentId" class="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1" :data-testid="`attachment-confirm-history-row-${item.attachmentId}`">
                   <div class="min-w-0">
@@ -719,20 +773,20 @@ function shouldShowInlineReasoning(message: any): boolean {
                   </div>
                   <div class="flex items-center gap-2">
                     <img v-if="item.previewDataUrl" :src="item.previewDataUrl" class="h-8 w-8 rounded border border-gray-200 object-cover" alt="" />
-                    <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" :data-testid="`attachment-confirm-history-locate-${item.attachmentId}`" @click="locateAttachmentConfirmationHistoryByAttachmentId(item.attachmentId)">定位</button>
+                    <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50" :data-testid="`attachment-confirm-history-locate-${item.attachmentId}`" @click="locateAttachmentConfirmationHistoryByAttachmentId(item.attachmentId)">{{ t('chat.attachmentConfirm.locate') }}</button>
                   </div>
                 </div>
               </div>
             </div>
             <div v-if="attachmentConfirmationSession.currentItems.length > 0" class="mt-3 rounded border border-gray-200 p-2" data-testid="attachment-confirm-current-section">
-              <button type="button" class="w-full text-left text-sm font-semibold text-gray-900" data-testid="attachment-confirm-current-toggle" @click="toggleAttachmentConfirmationCurrentSection">当前不受支持的用户消息附件</button>
-              <p class="mt-1 text-xs text-gray-600">这些附件属于当前将要发送的用户消息，但当前模型或发送规则无法纳入它们。你必须选择排除它们，或从当前草稿中移除它们。</p>
+              <button type="button" class="w-full text-left text-sm font-semibold text-gray-900" data-testid="attachment-confirm-current-toggle" @click="toggleAttachmentConfirmationCurrentSection">{{ t('chat.attachmentConfirm.currentUnsupportedTitle') }}</button>
+              <p class="mt-1 text-xs text-gray-600">{{ t('chat.attachmentConfirm.currentUnsupportedDesc') }}</p>
               <div v-if="attachmentConfirmationSession.currentSectionExpanded" class="mt-2 space-y-2">
                 <div class="flex flex-wrap items-center gap-2 text-[11px]">
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-exclude-all" @click="setAttachmentConfirmationCurrentDecisionForAll('exclude')">exclude 全选</button>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-exclude-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">exclude 全不选</button>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-remove-all" @click="setAttachmentConfirmationCurrentDecisionForAll('remove')">delete/remove 全选</button>
-                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-remove-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">delete/remove 全不选</button>
+                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-exclude-all" @click="setAttachmentConfirmationCurrentDecisionForAll('exclude')">{{ t('chat.attachmentConfirm.excludeAll') }}</button>
+                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-exclude-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">{{ t('chat.attachmentConfirm.excludeNone') }}</button>
+                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-remove-all" @click="setAttachmentConfirmationCurrentDecisionForAll('remove')">{{ t('chat.attachmentConfirm.removeAll') }}</button>
+                  <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-gray-700 hover:bg-gray-50" data-testid="attachment-confirm-current-remove-none" @click="setAttachmentConfirmationCurrentDecisionForAll(null)">{{ t('chat.attachmentConfirm.removeNone') }}</button>
                 </div>
                 <div v-for="item in attachmentConfirmationSession.currentItems" :key="item.attachmentId" class="flex items-center justify-between gap-2 rounded border border-gray-200 px-2 py-1" :class="attachmentConfirmationSession.currentValidationAttachmentId === item.attachmentId ? 'ring-2 ring-red-300' : ''" :data-testid="`attachment-confirm-current-row-${item.attachmentId}`">
                   <div class="min-w-0">
@@ -744,18 +798,18 @@ function shouldShowInlineReasoning(message: any): boolean {
                     <img v-if="item.previewDataUrl" :src="item.previewDataUrl" class="h-8 w-8 rounded border border-gray-200 object-cover" alt="" />
                     <label class="flex items-center gap-1 text-[11px] text-gray-700">
                       <input type="checkbox" :checked="attachmentConfirmationSession.currentDecisionsByAttachmentId[item.attachmentId] === 'exclude'" :data-testid="`attachment-confirm-current-exclude-${item.attachmentId}`" @change="setAttachmentConfirmationCurrentDecision(item.attachmentId, ($event.target as HTMLInputElement).checked ? 'exclude' : null)" />
-                      exclude
+                      {{ t('chat.attachmentConfirm.exclude') }}
                     </label>
                     <label class="flex items-center gap-1 text-[11px] text-gray-700">
                       <input type="checkbox" :checked="attachmentConfirmationSession.currentDecisionsByAttachmentId[item.attachmentId] === 'remove'" :data-testid="`attachment-confirm-current-remove-${item.attachmentId}`" @change="setAttachmentConfirmationCurrentDecision(item.attachmentId, ($event.target as HTMLInputElement).checked ? 'remove' : null)" />
-                      remove
+                      {{ t('chat.attachmentConfirm.remove') }}
                     </label>
                   </div>
                 </div>
               </div>
             </div>
             <div class="mt-3 flex justify-end">
-              <button type="button" class="rounded bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800" data-testid="attachment-confirm-confirm" @click="confirmAttachmentConfirmationSession">确认并继续</button>
+              <button type="button" class="rounded bg-gray-900 px-3 py-1.5 text-sm font-semibold text-white hover:bg-gray-800" data-testid="attachment-confirm-confirm" @click="confirmAttachmentConfirmationSession">{{ t('chat.attachmentConfirm.confirmAndContinue') }}</button>
             </div>
           </div>
           <DraftAttachmentStrip
@@ -768,10 +822,10 @@ function shouldShowInlineReasoning(message: any): boolean {
             class="mx-4 mt-2 rounded-xl border border-blue-200 bg-blue-50 p-3"
             data-testid="question-edit-controls"
           >
-            <div class="text-sm font-semibold text-blue-900">Editing question</div>
+            <div class="text-sm font-semibold text-blue-900">{{ t('chat.message.editingQuestion') }}</div>
             <div class="mt-2 flex items-center justify-end gap-2">
               <button type="button" class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50" :disabled="isDraftInteractionLocked" @click="closeQuestionEdit">
-                Cancel
+                {{ t('common.cancel') }}
               </button>
               <button
                 type="button"
@@ -780,7 +834,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                 data-testid="question-edit-new"
                 @click="submitQuestionEdit('new')"
               >
-                New question
+                {{ t('chat.message.actions.newQuestion') }}
               </button>
               <button
                 type="button"
@@ -789,11 +843,12 @@ function shouldShowInlineReasoning(message: any): boolean {
                 data-testid="question-edit-replace"
                 @click="submitQuestionEdit('replace')"
               >
-                Replace question
+                {{ t('chat.message.actions.replaceQuestion') }}
               </button>
             </div>
           </div>
           <ChatAppComposer
+            v-if="workspaceMode !== 'none'"
             v-model:draft="draft"
             :disabled="!isReady || isDraftInteractionLocked"
             :isRunning="isRunning"
@@ -813,16 +868,18 @@ function shouldShowInlineReasoning(message: any): boolean {
             :sendPlanWarningSummary="composerSendGateWarningReason"
             :isSendPlanLoading="composerSendPlanLoading"
             :historyIncompatibleSummary="historyIncompatibleAttachmentSummary"
+            :generationParamsResolved="activeSessionGenerationParamsResolved"
             @updateModel="onUpdateModel"
             @refreshProviderModelsRequested="onRefreshProviderModelPickerSources"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
+            @updateGenerationParamsLayer="onComposerUpdateGenerationParamsLayer"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"
             @updateWebSearchLevel="onUpdateWebSearchLevel"
             @updateImageGenerationEnabled="onUpdateImageGenerationEnabled"
             @updateImageGenerationResolution="onUpdateImageGenerationResolution"
             @updateImageGenerationAspectRatio="onUpdateImageGenerationAspectRatio"
-            @send="onSend"
+            @send="onComposerSend"
             @abort="onAbort"
             @attachFilesRequested="onAttachFilesRequested"
             @attachImagesRequested="onAttachImagesRequested"
@@ -838,6 +895,7 @@ function shouldShowInlineReasoning(message: any): boolean {
 
       <template #right-rail="{ rightRailMode }">
         <ChatRightRail
+          v-if="workspaceMode !== 'none'"
           :floating="rightRailMode === 'floating'"
           @close="closeRightRailPanel"
         >
@@ -847,13 +905,12 @@ function shouldShowInlineReasoning(message: any): boolean {
             :reasoningView="lastAssistantReasoningView"
             :reasoningVersion="lastAssistantReasoningVersion"
             :isStreaming="lastAssistantIsStreaming"
-            :reasoningPieces="lastAssistantReasoningPieces"
             :localProcessingDurationMs="lastAssistantMessage?.reasoningDurationMs ?? undefined"
           />
           <ChatSessionConsole
             v-else
             :disabled="!isReady || isDraftInteractionLocked"
-            :isRunning="isRunning"
+            :isRunning="effectiveIsRunning"
             :sessionConfig="activeSessionConfig"
             :openRouterChat="openRouterChatConfig"
             :lmStudioChat="lmStudioChatConfig"
@@ -871,16 +928,18 @@ function shouldShowInlineReasoning(message: any): boolean {
             :currentRuntimeCapability="currentRuntimeCapability"
             :currentRuntimeStatus="currentRuntimeStatus"
             :reasoningDisplayMode="reasoningDisplayMode"
+            :reasoningPanelDefaultExpanded="reasoningPanelDefaultExpanded"
+            :reasoningPanelAutoCollapseAfterReasoning="reasoningPanelAutoCollapseAfterReasoning"
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
-            :samplingParamsResolved="activeSessionSamplingParamsResolved"
+            :generationParamsResolved="activeSessionGenerationParamsResolved"
             @updateModel="onUpdateModel"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"
             @updateWebSearchLevel="onUpdateWebSearchLevel"
             @updateWebSearchLayer="onComposerUpdateWebSearchLayer"
-            @updateSamplingParamsLayer="onComposerUpdateSamplingParamsLayer"
+            @updateGenerationParamsLayer="onComposerUpdateGenerationParamsLayer"
             @updateImageGenerationEnabled="onUpdateImageGenerationEnabled"
             @updateImageGenerationResolution="onUpdateImageGenerationResolution"
             @updateImageGenerationAspectRatio="onUpdateImageGenerationAspectRatio"
@@ -888,14 +947,12 @@ function shouldShowInlineReasoning(message: any): boolean {
             @updateOpenRouterChatEnabled="onUpdateOpenRouterChatEnabled"
             @updateLMStudioChatEnabled="onUpdateLMStudioChatEnabled"
             @updateLMStudioEndpointUrl="onUpdateLMStudioEndpointUrl"
-            @updateLMStudioModel="onUpdateLMStudioModel"
             @updateLMStudioChatMode="onUpdateLMStudioChatMode"
             @updateLMStudioOpenAICompatiblePreferredEndpoint="onUpdateLMStudioOpenAICompatiblePreferredEndpoint"
             @updateLMStudioNativeRestControl="onUpdateLMStudioNativeRestControl"
             @clearLMStudioChat="onClearLMStudioChat"
             @updateOllamaChatEnabled="onUpdateOllamaChatEnabled"
             @updateOllamaEndpointUrl="onUpdateOllamaEndpointUrl"
-            @updateOllamaModel="onUpdateOllamaModel"
             @updateOllamaChatMode="onUpdateOllamaChatMode"
             @updateOllamaNativeRestPreferredEndpoint="onUpdateOllamaNativeRestPreferredEndpoint"
             @updateOllamaOpenAICompatiblePreferredEndpoint="onUpdateOllamaOpenAICompatiblePreferredEndpoint"
@@ -903,25 +960,22 @@ function shouldShowInlineReasoning(message: any): boolean {
             @clearOllamaChat="onClearOllamaChat"
             @updateLocalEndpointChatEnabled="onUpdateLocalEndpointChatEnabled"
             @updateLocalEndpointChatUrl="onUpdateLocalEndpointChatUrl"
-            @updateLocalEndpointChatModel="onUpdateLocalEndpointChatModel"
             @clearLocalEndpointChat="onClearLocalEndpointChat"
             @updateOpenAIResponsesChatEnabled="onUpdateOpenAIResponsesChatEnabled"
-            @updateOpenAIResponsesChatModel="onUpdateOpenAIResponsesChatModel"
             @clearOpenAIResponsesChat="onClearOpenAIResponsesChat"
             @refreshOpenAIResponsesModels="onRefreshOpenAIResponsesModels"
             @updateGoogleAIStudioChatEnabled="onUpdateGoogleAIStudioChatEnabled"
-            @updateGoogleAIStudioChatModel="onUpdateGoogleAIStudioChatModel"
             @clearGoogleAIStudioChat="onClearGoogleAIStudioChat"
             @refreshGoogleAIStudioModels="onRefreshGoogleAIStudioModels"
             @updateAnthropicChatEnabled="onUpdateAnthropicChatEnabled"
-            @updateAnthropicChatModel="onUpdateAnthropicChatModel"
             @clearAnthropicChat="onClearAnthropicChat"
             @refreshAnthropicModels="onRefreshAnthropicModels"
             @updateDeepSeekChatEnabled="onUpdateDeepSeekChatEnabled"
-            @updateDeepSeekChatModel="onUpdateDeepSeekChatModel"
             @clearDeepSeekChat="onClearDeepSeekChat"
             @refreshDeepSeekModels="onRefreshDeepSeekModels"
             @updateReasoningDisplayMode="onUpdateReasoningDisplayMode"
+            @updateReasoningPanelDefaultExpanded="onUpdateReasoningPanelDefaultExpanded"
+            @updateReasoningPanelAutoCollapseAfterReasoning="onUpdateReasoningPanelAutoCollapseAfterReasoning"
             @openSettings="openSettings"
           />
         </ChatRightRail>
@@ -948,7 +1002,7 @@ function shouldShowInlineReasoning(message: any): boolean {
       @keydown.esc="closeAttachmentUrlDialog"
     >
       <div class="w-full max-w-lg rounded-lg bg-white p-4 shadow-xl">
-        <div class="text-sm font-semibold text-gray-900">Add URL attachment</div>
+        <div class="text-sm font-semibold text-gray-900">{{ t('chat.attachmentUrl.addTitle') }}</div>
         <div class="mt-2 space-y-3">
           <input
             class="w-full rounded border border-gray-200 px-3 py-2 text-sm text-gray-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -965,7 +1019,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                 :checked="attachmentUrlRetentionMode === 'default'"
                 @change="attachmentUrlRetentionMode = 'default'"
               />
-              Follow default
+              {{ t('chat.attachmentUrl.followDefault') }}
             </label>
             <label class="flex items-center gap-2">
               <input
@@ -974,7 +1028,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                 :checked="attachmentUrlRetentionMode === 'link_only'"
                 @change="attachmentUrlRetentionMode = 'link_only'"
               />
-              Link only
+              {{ t('chat.message.linkOnly') }}
             </label>
             <label class="flex items-center gap-2">
               <input
@@ -983,7 +1037,7 @@ function shouldShowInlineReasoning(message: any): boolean {
                 :checked="attachmentUrlRetentionMode === 'link_and_file'"
                 @change="attachmentUrlRetentionMode = 'link_and_file'"
               />
-              Link + local copy
+              {{ t('chat.message.linkWithLocalCopy') }}
             </label>
           </div>
         </div>
@@ -993,7 +1047,7 @@ function shouldShowInlineReasoning(message: any): boolean {
             class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50"
             @click="closeAttachmentUrlDialog"
           >
-            Cancel
+            {{ t('common.cancel') }}
           </button>
           <button
             type="button"
@@ -1002,29 +1056,29 @@ function shouldShowInlineReasoning(message: any): boolean {
             data-testid="attachment-url-confirm"
             @click="submitAttachmentUrl"
           >
-            Add URL
+            {{ t('chat.attachmentUrl.addUrl') }}
           </button>
         </div>
       </div>
     </div>
 
-    <SettingsModal :open="settingsOpen" :disabled="!isReady" :isRunning="isRunning" @close="closeSettings">
-      <SettingsPanel :disabled="!isReady" :isRunning="isRunning" />
+    <SettingsModal :open="settingsOpen" :disabled="!isReady" :isRunning="effectiveIsRunning" @close="closeSettings">
+      <SettingsPanel :disabled="!isReady" :isRunning="effectiveIsRunning" />
     </SettingsModal>
 
     <SettingsModal
       :open="projectWebSearchSettingsOpen"
       :disabled="!isReady"
-      :isRunning="isRunning"
-      :title="`Project Web Search${projectWebSearchSettingsTarget ? `: ${projectWebSearchSettingsTarget.name}` : ''}`"
+      :isRunning="effectiveIsRunning"
+      :title="projectWebSearchSettingsTarget ? tf('chat.projectWebSearch.titleWithTarget', { name: projectWebSearchSettingsTarget.name }) : t('chat.projectWebSearch.title')"
       @close="closeProjectWebSearchSettings"
     >
       <div class="space-y-3 p-4">
         <div class="rounded-md border border-gray-100 bg-gray-50/60 p-3">
-          <SamplingParamsSettingsEditor
-            v-model="projectSamplingParamsDraft"
+          <GenerationParamsSettingsEditor
+            v-model="projectGenerationParamsDraft"
             :disabled="!isReady || isRunning || projectWebSearchSettingsSaving || !projectWebSearchSettingsTarget"
-            :resolved="projectSamplingParamsResolved"
+            :resolved="projectGenerationParamsResolved"
             :defaultCollapsed="true"
           />
         </div>
@@ -1063,6 +1117,31 @@ function shouldShowInlineReasoning(message: any): boolean {
         </div>
       </div>
     </SettingsModal>
+
+    <div v-if="rawDataOpen" class="fixed inset-0 z-[100] flex items-center justify-center bg-black/50 p-6" data-testid="raw-data-dialog">
+      <div class="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-white shadow-xl">
+        <div class="flex items-center justify-between border-b px-4 py-3">
+          <div>
+            <div class="font-semibold">Raw Request Data</div>
+            <div class="text-xs text-gray-500">Answer {{ rawDataAnswerRootId }}</div>
+          </div>
+          <button type="button" class="rounded border px-3 py-1 text-sm" data-testid="raw-data-close" @click="closeRawData">Close</button>
+        </div>
+        <div class="min-h-0 flex-1 overflow-auto p-4">
+          <div v-if="rawDataLoading" class="text-sm text-gray-500">Loading...</div>
+          <div v-else-if="rawDataError" class="text-sm text-red-700">{{ rawDataError }}</div>
+          <div v-else-if="rawDataRecords.length === 0" class="text-sm text-gray-500">No persisted raw request body for this answer.</div>
+          <div v-else class="space-y-4">
+            <section v-for="record in rawDataRecords" :key="record.id" class="rounded border">
+              <div class="border-b bg-gray-50 px-3 py-2 text-xs text-gray-600">
+                Request #{{ record.requestSequence }} · {{ record.providerId }} · {{ record.modelId }} · {{ record.bodyBytes }} bytes · SHA-256 {{ record.bodySha256 }}
+              </div>
+              <pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all p-3 text-xs" :data-testid="`raw-data-request-${record.requestSequence}`">{{ formatRawRequestBody(record.serializedBody) }}</pre>
+            </section>
+          </div>
+        </div>
+      </div>
+    </div>
 
   </div>
 </template>

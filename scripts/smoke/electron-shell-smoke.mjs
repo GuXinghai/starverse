@@ -139,6 +139,156 @@ function buildRunInfoBase() {
   }
 }
 
+async function runCompatibleE2e(page) {
+  return await page.evaluate(async () => {
+    const registry = window.compatibleProviderRegistry
+    const catalog = window.compatibleCatalog
+    const chat = window.compatibleChat
+    const db = window.dbBridge
+    if (!registry || !catalog || !chat || !db) throw new Error('compatible E2E bridges are unavailable')
+
+    const created = await registry.create({
+      displayName: 'Electron Compatible Smoke',
+      endpoint: {
+        baseUrl: 'https://compatible-smoke.example/v1',
+        securityPolicy: 'compatibility_first',
+        ordinaryHeaders: [{ name: 'X-Smoke', value: 'public', classification: 'public_non_secret' }],
+        query: [{ name: 'fixture', value: 'electron', classification: 'public_non_secret' }],
+      },
+      credential: { mode: 'none' },
+    })
+    if (!created.ok) throw new Error(`compatible provider create failed: ${created.error?.code}`)
+    const details = created.value
+    const providerInstanceId = details.provider.providerInstanceId
+    const endpoint = details.endpointRevisions[0]
+    const config = details.activeConfiguration
+    if (!endpoint || !config) throw new Error('compatible provider configuration was not persisted')
+
+    const sync = await catalog.sync({ providerInstanceId, requestId: 'compatible-smoke-catalog', force: true })
+    await catalog.upsertManual({
+      providerInstanceId,
+      modelId: 'manual-smoke-model',
+      metadata: {
+        schemaVersion: 1,
+        displayName: 'Manual Smoke Model', contextLength: 4096, maxOutputTokens: null,
+        capabilities: { text: true, vision: null, tools: null, structuredOutputs: null, reasoning: null },
+        pricing: { prompt: null, completion: null, request: null, image: null },
+      },
+    })
+    const models = await catalog.query({ providerInstanceId, limit: 20 })
+    const modelIds = models.items.map((model) => model.modelId).sort()
+    if (!modelIds.includes('smoke-model') || !modelIds.includes('manual-smoke-model')) {
+      throw new Error('compatible remote/manual catalog merge is incomplete')
+    }
+
+    const requestBundle = config.requestBundle
+    const responseProfile = config.responseProfile
+    const reasoningMapping = config.reasoningMapping
+    const inlinePolicy = config.inlinePolicy
+    const selection = {
+      providerInstanceId,
+      modelId: 'smoke-model',
+      endpointRevisionId: endpoint.endpointRevisionId,
+      credentialVersionRef: null,
+      requestProfileId: requestBundle.profile.requestProfileId,
+      requestProfileVersion: requestBundle.profile.version,
+      responseProfileId: responseProfile.responseProfileId,
+      responseProfileVersion: responseProfile.version,
+      reasoningMappingId: reasoningMapping.mappingId,
+      reasoningMappingVersion: reasoningMapping.version,
+      inlinePolicyId: inlinePolicy.inlinePolicyId,
+      inlinePolicyVersion: inlinePolicy.version,
+    }
+    const initialTemplate = await db.invoke('systemChatTemplate.get')
+    const configuredTemplate = await db.invoke('systemChatTemplate.updateConfig', {
+      templateConversationId: initialTemplate.conversation.id,
+      expectedTemplateRevision: initialTemplate.conversation.templateRevision,
+      meta: {
+        compatibleConfigurationSelection: {
+          kind: 'openai_chat_compatible_configuration', providerName: details.provider.displayName, ...selection,
+        },
+      },
+    })
+    await db.invoke('conversationDraft.updateText', {
+      conversationId: configuredTemplate.conversation.id,
+      draftText: 'smoke stream',
+      draftMode: 'compose',
+      editingSourceMessageId: null,
+    })
+    const readyTemplate = await db.invoke('systemChatTemplate.get')
+    const eligibility = await chat.preflight(selection)
+    if (!eligibility.ok || !eligibility.route) throw new Error(`compatible template preflight failed: ${eligibility.code}`)
+    const materialized = await db.invoke('systemChatTemplate.materializeAndBeginTurn', {
+      templateConversationId: readyTemplate.conversation.id,
+      expectedTemplateRevision: readyTemplate.conversation.templateRevision,
+      requestId: 'compatible-smoke-materialize',
+      compatibleRoute: { route: eligibility.route, pins: selection },
+    })
+    const visibleConversations = await db.invoke('convo.list', {})
+    const resetTemplate = await db.invoke('systemChatTemplate.get')
+    if (!visibleConversations.some((item) => item.id === materialized.convoId) ||
+        visibleConversations.some((item) => item.id === readyTemplate.conversation.id) ||
+        resetTemplate.draft.draftText !== '') {
+      throw new Error('compatible New template materialization visibility/reset contract failed')
+    }
+    const branch = { id: materialized.branchId }
+    const events = []
+    const offEvent = chat.onEvent((payload) => events.push(payload))
+    const streamed = await chat.start({
+      requestId: 'compatible-smoke-stream', selection,
+      turn: { branchId: branch.id, userBody: 'smoke stream' },
+      existingPreparedTurn: {
+        routeProvenanceId: materialized.routeProvenanceId,
+        branchId: branch.id,
+        questionId: materialized.questionId,
+        assistantId: materialized.assistantId,
+      },
+      messages: [{ role: 'user', content: 'smoke stream' }], stream: true,
+    })
+    offEvent()
+    if (!streamed.ok) throw new Error(`compatible stream failed: ${streamed.error}`)
+    if (!events.some((item) => item.event?.kind === 'choice_content')) throw new Error('compatible stream content event missing')
+    if (!events.some((item) => item.event?.kind === 'terminal')) throw new Error('compatible terminal event missing')
+
+    const routeProvenanceId = streamed.prepared.route.routeProvenanceId
+    const bundleBeforeReload = await db.invoke('compatibleProjection.loadBundle', { routeProvenanceId })
+    const persistedContent = bundleBeforeReload?.choices?.[0]?.blocks
+      ?.filter((block) => block.kind === 'content')
+      .map((block) => block.text)
+      .join('')
+    if (persistedContent !== 'smoke complete') throw new Error('compatible projection was not persisted')
+    const historical = await chat.resolveHistorical({ kind: 'route', routeProvenanceId })
+    if (!historical.ok || historical.route.providerInstanceId !== providerInstanceId || historical.route.modelId !== 'smoke-model') {
+      throw new Error('compatible historical route identity did not round-trip')
+    }
+
+    const abortPromise = chat.start({
+      requestId: 'compatible-smoke-abort', selection,
+      turn: { branchId: branch.id, userBody: 'smoke-abort' },
+      messages: [{ role: 'user', content: 'smoke-abort' }], stream: true,
+    })
+    await new Promise((resolve) => setTimeout(resolve, 50))
+    const abort = await chat.abort({ requestId: 'compatible-smoke-abort' })
+    const aborted = await abortPromise
+    if (!abort.aborted || aborted.ok || aborted.error !== 'compatible_aborted') throw new Error('compatible abort lifecycle failed')
+
+    return {
+      providerInstanceId,
+      endpointRevisionId: endpoint.endpointRevisionId,
+      modelIds,
+      catalogStatus: sync.ok ? 'ok' : sync.error?.code,
+      streamContent: persistedContent,
+      routeProvenanceId,
+      newTemplateConversationId: readyTemplate.conversation.id,
+      materializedConversationId: materialized.convoId,
+      templateHidden: true,
+      templateDraftReset: true,
+      historicalIdentity: historical.route,
+      abortCode: aborted.error,
+    }
+  })
+}
+
 function createDiagnostics() {
   const pageIds = new WeakMap()
   let nextPageId = 1
@@ -403,6 +553,37 @@ async function main() {
     if (!result.electronAPIExposed) throw new Error('electronAPI scoped preload object is missing')
     if (!result.electronStoreExposed) throw new Error('electronStore scoped preload object is missing')
     if (!result.dbBridgeExposed) throw new Error('dbBridge scoped preload object is missing')
+
+    if (process.env.SV_ELECTRON_COMPATIBLE_E2E === '1') {
+      section('Assert OpenAI-compatible Electron end-to-end journey')
+      const compatible = await runCompatibleE2e(page)
+      console.log(JSON.stringify(compatible, null, 2))
+      await page.reload({ waitUntil: 'domcontentloaded' })
+      await waitForMountedApp(page, 120_000)
+      const reloaded = await page.evaluate(async (routeProvenanceId) => {
+        return await window.dbBridge.invoke('compatibleProjection.loadBundle', { routeProvenanceId })
+      }, compatible.routeProvenanceId)
+      const reloadedContent = reloaded?.choices?.[0]?.blocks
+        ?.filter((block) => block.kind === 'content')
+        .map((block) => block.text)
+        .join('')
+      if (reloadedContent !== 'smoke complete') throw new Error('compatible projection did not survive renderer reload')
+      await writeRunInfo({
+        status: 'passed', completedAt: new Date().toISOString(), ...buildRunInfoBase(),
+        mode: 'compatible-e2e', selectedPage: await describePage(page), assertions: result, compatible,
+      })
+      console.log('\nPASS: OpenAI-compatible Electron E2E completed')
+      return
+    }
+
+    if (process.env.SV_ELECTRON_SHELL_ONLY === '1') {
+      await writeRunInfo({
+        status: 'passed', completedAt: new Date().toISOString(), ...buildRunInfoBase(),
+        mode: 'shell-only', selectedPage: await describePage(page), assertions: result,
+      })
+      console.log('\nPASS: Electron shell-only smoke completed')
+      return
+    }
 
     section('Assert DFC attachment smoke seam')
     await page.waitForFunction(

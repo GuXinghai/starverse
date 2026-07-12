@@ -44,8 +44,8 @@ import {
   isProxyFetchInitFailure,
   normalizeNetworkProxySettings,
   type NetworkProxySettings,
-} from '../../src/next/plugin-distribution/networkProxy'
-import { sanitizePluginDistributionText } from '../../src/next/plugin-distribution/sanitization'
+} from '../../src/shared/plugin-distribution/networkProxy'
+import { sanitizePluginDistributionText } from '../../src/shared/plugin-distribution/sanitization'
 import { validatePluginPackageInventory } from '../../src/next/plugin-distribution/artifactInventory'
 import {
   isOfficialInstallOperationActive,
@@ -390,6 +390,7 @@ export type EnginePluginLifecycleServiceDeps = Readonly<{
   dfcLibreOfficeAppManagedRootDir?: string
   dfcLibreOfficeRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
   networkProxySettingsProvider?: () => NetworkProxySettings | unknown
+  officialDownloadProbeFetch?: typeof fetch
 }>
 
 export type LibreOfficeNetworkProxyProbeResult = Readonly<{
@@ -1204,7 +1205,12 @@ export class EnginePluginLifecycleService {
       }
     }
     const proxy = this.getNetworkProxySettings()
-    const init = buildProxyFetchInit(proxy, sourceUrl, {
+    const fetchImpl = this.deps.officialDownloadProbeFetch
+    const init = fetchImpl ? {
+      method: 'HEAD',
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+    } satisfies RequestInit : buildProxyFetchInit(proxy, sourceUrl, {
       method: 'HEAD',
       redirect: 'follow',
       signal: AbortSignal.timeout(15000),
@@ -1225,7 +1231,7 @@ export class EnginePluginLifecycleService {
 
     let head: Response
     try {
-      head = await fetch(sourceUrl, init)
+      head = await (fetchImpl ?? fetch)(sourceUrl, init)
     } catch (err: any) {
       return failedLibreOfficeNetworkProbe(proxy, 'metadata_reachable_head_failed', sanitizeNetworkErrorCode(err))
     }
@@ -1248,7 +1254,11 @@ export class EnginePluginLifecycleService {
       }
     }
 
-    const rangeInit = buildProxyFetchInit(proxy, sourceUrl, {
+    const rangeInit = fetchImpl ? {
+      headers: { Range: 'bytes=0-1023' },
+      redirect: 'follow',
+      signal: AbortSignal.timeout(15000),
+    } satisfies RequestInit : buildProxyFetchInit(proxy, sourceUrl, {
       headers: { Range: 'bytes=0-1023' },
       redirect: 'follow',
       signal: AbortSignal.timeout(15000),
@@ -1267,7 +1277,7 @@ export class EnginePluginLifecycleService {
       }
     }
     try {
-      const range = await fetch(sourceUrl, rangeInit)
+      const range = await (fetchImpl ?? fetch)(sourceUrl, rangeInit)
       const rangeAllowed = isAllowedLibreOfficeOfficialDownloadHost(range.url)
       const body = new Uint8Array(await range.arrayBuffer())
       const rangePassed = range.status === 206 && rangeAllowed && body.byteLength === 1024

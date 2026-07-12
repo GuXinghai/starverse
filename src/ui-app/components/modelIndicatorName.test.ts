@@ -18,7 +18,7 @@ describe('ChatAppComposer model indicator', () => {
         disabled: false,
         isRunning: false,
         sessionConfig: {
-          model: { selectedModelKey: 'deepseek/deepseek-v4-flash' },
+          model: { selectedProviderId: 'openrouter', selectedModelKey: 'deepseek/deepseek-v4-flash' },
           reasoning: { enabled: false, effort: 'medium' },
           webSearch: { enabled: false, level: 'high', detail: null },
           imageGeneration: {
@@ -28,7 +28,7 @@ describe('ChatAppComposer model indicator', () => {
             mode: 'default',
             detail: null,
           },
-          samplingParams: { detail: null },
+          generationParams: { detail: null },
         },
         modelCatalog: [
           {

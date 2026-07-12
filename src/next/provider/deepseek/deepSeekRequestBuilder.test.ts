@@ -32,7 +32,7 @@ describe('buildDeepSeekRequest', () => {
     const req = buildDeepSeekRequest({
       model: 'deepseek-chat',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { temperature: 0.7 } }),
+      config: baseConfig({ generationParams: { temperature: 0.7 } }),
     })
 
     expect(req.temperature).toBe(0.7)
@@ -44,7 +44,7 @@ describe('buildDeepSeekRequest', () => {
     const req = buildDeepSeekRequest({
       model: 'deepseek-chat',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { top_p: 0.9 } }),
+      config: baseConfig({ generationParams: { top_p: 0.9 } }),
     })
 
     expect(req.top_p).toBe(0.9)
@@ -55,17 +55,17 @@ describe('buildDeepSeekRequest', () => {
     const req = buildDeepSeekRequest({
       model: 'deepseek-chat',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { max_tokens: 4096 } }),
+      config: baseConfig({ generationParams: { max_tokens: 4096 } }),
     })
 
     expect(req.max_tokens).toBe(4096)
   })
 
-  it('includes multiple sampling params together', () => {
+  it('includes multiple generation params together', () => {
     const req = buildDeepSeekRequest({
       model: 'deepseek-chat',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { temperature: 0.5, top_p: 0.8, max_tokens: 2048 } }),
+      config: baseConfig({ generationParams: { temperature: 0.5, top_p: 0.8, max_tokens: 2048 } }),
     })
 
     expect(req.temperature).toBe(0.5)
@@ -73,7 +73,7 @@ describe('buildDeepSeekRequest', () => {
     expect(req.max_tokens).toBe(2048)
   })
 
-  it('does not include sampling params when absent', () => {
+  it('does not include generation params when absent', () => {
     const req = buildDeepSeekRequest({
       model: 'deepseek-chat',
       messages: baseMessages,
@@ -116,20 +116,19 @@ describe('buildDeepSeekRequest', () => {
     expect(req.tools).toBeUndefined()
   })
 
-  it('includes reasoning_effort when mode is effort', () => {
+  it('includes reasoning_effort from generationParams', () => {
     const req = buildDeepSeekRequest({
       model: 'deepseek-reasoner',
       messages: baseMessages,
       config: baseConfig({
-        requestedReasoningMode: 'effort',
-        requestedReasoningEffort: 'high',
+        generationParams: { reasoning_effort: 'high' },
       }),
     })
 
     expect(req.reasoning_effort).toBe('high')
   })
 
-  it('does not include reasoning_effort when mode is auto', () => {
+  it('does not derive reasoning_effort from legacy requested reasoning controls', () => {
     const req = buildDeepSeekRequest({
       model: 'deepseek-reasoner',
       messages: baseMessages,
@@ -142,11 +141,11 @@ describe('buildDeepSeekRequest', () => {
     expect(req.reasoning_effort).toBeUndefined()
   })
 
-  it('does not include reasoning_effort when effort is not set', () => {
+  it('does not include reasoning_effort when generationParams omit it', () => {
     const req = buildDeepSeekRequest({
       model: 'deepseek-reasoner',
       messages: baseMessages,
-      config: baseConfig({ requestedReasoningMode: 'effort' }),
+      config: baseConfig({ generationParams: { max_tokens: 1024 } }),
     })
 
     expect(req.reasoning_effort).toBeUndefined()
@@ -184,7 +183,6 @@ describe('buildDeepSeekRequest', () => {
 
     expect((req as any).reasoning).toBeUndefined()
     expect((req as any).exclude).toBeUndefined()
-    // reasoning_effort is still present (DeepSeek top-level param)
-    expect(req.reasoning_effort).toBe('high')
+    expect(req.reasoning_effort).toBeUndefined()
   })
 })

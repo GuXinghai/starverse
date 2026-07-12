@@ -1,5 +1,6 @@
 import type { RegisterInvoke } from './types'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import {
   ANTHROPIC_MESSAGES_ENDPOINT_ID,
   ANTHROPIC_MESSAGES_PROFILE_ID,
@@ -16,7 +17,7 @@ export const ANTHROPIC_MODEL_AVAILABILITY_IPC_CHANNELS = [
 type RegisterAnthropicModelAvailabilityIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
-  fetchImpl?: typeof fetch
+  fetchImpl?: ProviderFetch
 }>
 
 type AnthropicModelAvailabilityPayload = Readonly<{
@@ -101,7 +102,7 @@ export function registerAnthropicModelAvailabilityIpc(
     const apiKey = readAnthropicApiKey(input.credentialService)
     if (typeof apiKey !== 'string') return apiKey
 
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
     if (typeof fetchImpl !== 'function') {
       return safeFailure('invalid_payload', 'Anthropic model availability bridge is unavailable.')
     }

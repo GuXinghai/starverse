@@ -1,18 +1,6 @@
-import type { MessageState, MessageVM, ReasoningPiece, ReasoningViewVisibility, RootState, RunVM } from './types'
-import { ReasoningDetailStreamMerger, buildDetailKey } from './reasoningDetailStreamMerger'
-import { beginDeriveMeasure, endDeriveMeasure, recordDerive, recordFallbackReplay } from './perfMetrics'
-import { getDiagnosticsFlags } from '@/shared/diagnostics/flags'
-import { createDiagnosticsLogger, publishPhase3PieceSnapshot } from '@/shared/diagnostics/bridge'
+import type { MessageState, MessageVM, ReasoningDisplayBlock, ReasoningViewVisibility, RootState, RunVM } from './types'
+import { beginDeriveMeasure, endDeriveMeasure, recordDerive } from './perfMetrics'
 import { recordSelectorsDerive, isSchedDiagEnabled, startTimer } from './schedulerDiagnostics'
-
-// fallbackReplayCount 监控
-let fallbackReplayCount = 0
-let lastFallbackReportTime = Date.now()
-let lastPieceReportTime = Date.now()
-const lastPieceCounts = new Map<string, { count: number; t: number }>()
-const isDev = typeof import.meta !== 'undefined' && (import.meta as any).env?.DEV === true
-const diagnosticsFlags = getDiagnosticsFlags()
-const diagnosticsLogger = createDiagnosticsLogger(diagnosticsFlags)
 
 type MessageCacheEntry = Readonly<{ source: MessageState; derived: MessageVM }>
 const messageCache = new Map<string, MessageCacheEntry>()
@@ -24,61 +12,12 @@ type TranscriptCacheEntry = Readonly<{
 }>
 const transcriptCache = new Map<string, TranscriptCacheEntry>()
 
-function recordFallbackReplayLocal(): void {
-  if (!diagnosticsFlags.perf) return
-  fallbackReplayCount++
-  const now = Date.now()
-  if (now - lastFallbackReportTime >= 1000) {
-    const rate = fallbackReplayCount / ((now - lastFallbackReportTime) / 1000)
-    diagnosticsLogger.log('fallback-replay', { rate: Number(rate.toFixed(2)), total: fallbackReplayCount })
-    fallbackReplayCount = 0
-    lastFallbackReportTime = now
-  }
-  // 同时记录到全局性能指标
-  recordFallbackReplay()
-}
-
-function normalizeReasoningPieces(raw: ReadonlyArray<ReasoningPiece> | undefined): ReasoningPiece[] | undefined {
-  if (!Array.isArray(raw)) return undefined
-  const pieces = raw.filter((piece) => typeof piece?.text === 'string' && piece.text.trim().length > 0)
-  return pieces.length > 0 ? pieces : undefined
-}
-
-function logPieceCount(messageId: string, pieces: ReasoningPiece[], lastPieceLen?: number): void {
-  if (!diagnosticsFlags.phase3Audit) return
-  if (!Array.isArray(pieces) || pieces.length === 0) return
-  const now = Date.now()
-  if (now - lastPieceReportTime < 1000) return
-  lastPieceReportTime = now
-  const count = pieces.length
-  const totalChars = pieces.reduce((sum, piece) => sum + (piece?.text?.length ?? 0), 0)
-  const resolvedLastLen =
-    typeof lastPieceLen === 'number'
-      ? lastPieceLen
-      : (pieces[count - 1]?.text?.length ?? 0)
-  const prev = lastPieceCounts.get(messageId)
-  const elapsedMs = prev ? Math.max(1, now - prev.t) : 1000
-  const delta = prev ? Math.max(0, count - prev.count) : 0
-  const pieceSplitCountPerSec = delta / (elapsedMs / 1000)
-  lastPieceCounts.set(messageId, { count, t: now })
-  diagnosticsLogger.log('piece-count', { messageId: messageId.slice(-8), count })
-  if (isDev) {
-    publishPhase3PieceSnapshot({
-      t: now,
-      messageId,
-      count,
-      reasoningTotalChars: totalChars,
-      reasoningLastPieceLen: resolvedLastLen,
-      pieceSplitCountPerSec,
-    })
-  }
-}
-
 export function selectRun(state: RootState, runId: string): RunVM | null {
   const s = state.runs[runId]
   if (!s) return null
   return {
     runId: s.runId,
+    ...(s.routeProvenanceId ? { routeProvenanceId: s.routeProvenanceId } : {}),
     status: s.status,
     requestId: s.requestId,
     generationId: s.generationId,
@@ -106,10 +45,11 @@ export function selectRun(state: RootState, runId: string): RunVM | null {
 function computeReasoningVisibility(
   hasEncryptedReasoning: boolean,
   reasoningDetailsRaw: unknown[],
+  hasReasoningDisplayBlocks: boolean,
   requestedReasoningExclude: boolean
 ): ReasoningViewVisibility {
   // If we have encrypted signal or actual reasoning content → shown
-  if (hasEncryptedReasoning || reasoningDetailsRaw.length > 0) {
+  if (hasEncryptedReasoning || reasoningDetailsRaw.length > 0 || hasReasoningDisplayBlocks) {
     return 'shown'
   }
   // No reasoning content: distinguish excluded vs not_returned
@@ -119,55 +59,15 @@ function computeReasoningVisibility(
   return 'not_returned'
 }
 
-function deriveReasoningDisplayFromDetails(reasoningDetailsRaw: unknown[]): {
-  summaryText?: string
-  reasoningText?: string
-} {
-  // 使用 Merger 重放，统一快照/增量语义
-  const merger = new ReasoningDetailStreamMerger()
-  const firstSeenOrder = new Map<string, number>()
-  let order = 0
-
-  for (const detail of reasoningDetailsRaw) {
-    if (!detail || typeof detail !== 'object') continue
-    merger.merge(detail)
-    const key = buildDetailKey(detail as any)
-    if (!firstSeenOrder.has(key)) {
-      firstSeenOrder.set(key, order++)
-    }
-  }
-
-  const snapshots = merger.getMergedSnapshots()
-  const sortedSnapshots = [...snapshots].sort((a, b) => {
-    const ai = typeof a.index === 'number' ? a.index : Number.POSITIVE_INFINITY
-    const bi = typeof b.index === 'number' ? b.index : Number.POSITIVE_INFINITY
-    if (ai !== bi) return ai - bi
-    const aKey = buildDetailKey(a)
-    const bKey = buildDetailKey(b)
-    return (firstSeenOrder.get(aKey) ?? 0) - (firstSeenOrder.get(bKey) ?? 0)
-  })
-
-  let summaryText: string | undefined
-  const reasoningTextParts: string[] = []
-
-  for (const detail of sortedSnapshots) {
-    const type = (detail as any).type
-
-    if (type === 'reasoning.text') {
-      const text = (detail as any).text
-      if (typeof text === 'string' && text.length > 0) reasoningTextParts.push(text)
-      continue
-    }
-
-    if (type === 'reasoning.summary') {
-      const summary = (detail as any).summary ?? (detail as any).text
-      if (typeof summary === 'string' && summary.length > 0) summaryText = summary
-      continue
-    }
-  }
-
-  const reasoningText = reasoningTextParts.length > 0 ? reasoningTextParts.join('') : undefined
-  return { summaryText, reasoningText }
+function normalizeReasoningDisplayBlocks(raw: ReadonlyArray<ReasoningDisplayBlock> | undefined): ReasoningDisplayBlock[] | undefined {
+  if (!Array.isArray(raw)) return undefined
+  const blocks = raw.filter((block) => {
+    if (block?.type === 'text') return block.text.trim().length > 0
+    if (block?.type === 'image') return block.url.trim().length > 0
+    if (block?.type === 'opaque') return block.label.trim().length > 0
+    return false
+  }).slice().sort((a, b) => a.ordinal - b.ordinal)
+  return blocks.length > 0 ? blocks : undefined
 }
 
 export function selectMessage(state: RootState, messageId: string): MessageVM | null {
@@ -181,49 +81,20 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   // 诊断计时
   const diagEnabled = isSchedDiagEnabled()
   const endTimer = diagEnabled ? startTimer() : null
-  let usedFallback = false
 
-  const normalizedPieces = normalizeReasoningPieces(m.reasoningPieces)
-  const hasPieces = Array.isArray(normalizedPieces) && normalizedPieces.length > 0
-  const hasDetails = Array.isArray(m.reasoningDetailsRaw) && m.reasoningDetailsRaw.length > 0
-
-  // 监控 piece 数量
-  if (hasPieces && normalizedPieces) {
-    logPieceCount(messageId, normalizedPieces, m.reasoningLastPieceLen)
-  }
-
-  let summaryText = m.reasoningSummaryText
-  let reasoningText: string | undefined
-  let reasoningPieces: ReasoningPiece[] | undefined
-
-  // 优先使用增量 pieces，必要时才回退全量重放
-  if (hasPieces) {
-    reasoningPieces = normalizedPieces
-    // 使用 pieces 时不需要 reasoningText
-  } else if (summaryText) {
-    // 仅有 summary（常见于 summary-only 流）
-    reasoningText = m.reasoningStreamingText
-  } else if (hasDetails) {
-    // 回退到全量重放
-    usedFallback = true
-    recordFallbackReplayLocal()
-    const derived = deriveReasoningDisplayFromDetails(m.reasoningDetailsRaw)
-    summaryText = summaryText ?? derived.summaryText
-    reasoningText = derived.reasoningText
-  }
-
-  if (!reasoningText && !reasoningPieces) {
-    reasoningText = m.reasoningStreamingText
-  }
+  const displayBlocks = normalizeReasoningDisplayBlocks(m.reasoningDisplayBlocks)
 
   const visibility = computeReasoningVisibility(
     m.hasEncryptedReasoning,
     m.reasoningDetailsRaw,
+    !!displayBlocks,
     m.requestedReasoningExclude
   )
 
   const derived: MessageVM = {
     messageId: m.messageId,
+    ...(m.routeProvenanceId ? { routeProvenanceId: m.routeProvenanceId } : {}),
+    ...(m.choiceIndex !== undefined ? { choiceIndex: m.choiceIndex } : {}),
     role: m.role,
     contentBlocks: m.contentBlocks,
     ...(m.requestedImageGeneration === true ? { requestedImageGeneration: true } : {}),
@@ -232,9 +103,7 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
     errorEnvelope: m.errorEnvelope ?? null,
     errorSummary: m.errorSummary ?? null,
     reasoningView: {
-      summaryText,
-      reasoningText,
-      reasoningPieces,
+      ...(displayBlocks ? { displayBlocks } : {}),
       hasEncrypted: m.hasEncryptedReasoning,
       visibility,
       panelState: m.reasoningPanelState,
@@ -251,7 +120,7 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   if (diagEnabled && endTimer) {
     recordSelectorsDerive({
       deriveMs: endTimer(),
-      fallbackReplay: usedFallback,
+      fallbackReplay: false,
     })
   }
 

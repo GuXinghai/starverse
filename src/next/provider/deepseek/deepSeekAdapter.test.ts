@@ -121,6 +121,75 @@ describe('streamViaDeepSeek', () => {
     expect(body.messages).toEqual([{ role: 'user', content: 'Hello' }])
   })
 
+  it('captures and sends the exact same serialized body string', async () => {
+    const fetch = mockFetch(makeSseResponse(textSseChunk('gen_1', 'deepseek-chat', 'ok')))
+    const captured: string[] = []
+    await collectEvents(streamViaDeepSeek(makeRequest(), {
+      baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-test', fetch,
+      captureSerializedRequest: (body) => captured.push(body),
+    }))
+    expect(captured).toHaveLength(1)
+    expect(captured[0]).toBe((fetch as any).mock.calls[0][1].body)
+  })
+
+  it('does not block transport when raw request capture fails', async () => {
+    const fetch = mockFetch(makeSseResponse(textSseChunk('gen_1', 'deepseek-chat', 'ok')))
+    await collectEvents(streamViaDeepSeek(makeRequest(), {
+      baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-test', fetch,
+      captureSerializedRequest: () => { throw new Error('raw store failed') },
+    }))
+    expect(fetch).toHaveBeenCalledTimes(1)
+  })
+
+  it('serializes DeepSeek context messages through an outbound allowlist without mutating source messages', async () => {
+    const response = makeSseResponse(
+      textSseChunk('gen_1', 'deepseek-chat', 'hi'),
+    )
+    const fetch = mockFetch(response)
+    const contextMessage: any = {
+      role: 'assistant',
+      content: 'visible answer',
+      name: 'assistant_alias',
+      toolCalls: [{ id: 'call_1', type: 'function', function: { name: 'lookup', arguments: '{}' } }],
+      reasoningDisplayBlocks: [
+        {
+          blockId: 'assistant_0:deepseek:0:reasoning_content',
+          ordinal: 0,
+          type: 'text',
+          text: 'hidden visible reasoning',
+          providerKey: 'deepseek',
+        },
+      ],
+      reasoningDetailsRaw: [{ type: 'reasoning_content', text: 'hidden raw reasoning' }],
+      providerMeta: { model: 'deepseek-reasoner', secret: 'not for wire' },
+    }
+    const originalSnapshot = JSON.parse(JSON.stringify(contextMessage))
+
+    await collectEvents(streamViaDeepSeek({
+      ...makeRequest(),
+      contextMessages: [contextMessage],
+    }, {
+      baseUrl: 'https://api.deepseek.com/v1',
+      apiKey: 'sk-test',
+      fetch,
+    }))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.messages[0]).toEqual({
+      role: 'assistant',
+      content: 'visible answer',
+      name: 'assistant_alias',
+      tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'lookup', arguments: '{}' } }],
+    })
+    expect(JSON.stringify(body)).not.toContain('reasoningDisplayBlocks')
+    expect(JSON.stringify(body)).not.toContain('reasoningDetailsRaw')
+    expect(JSON.stringify(body)).not.toContain('hidden visible reasoning')
+    expect(JSON.stringify(body)).not.toContain('hidden raw reasoning')
+    expect(JSON.stringify(body)).not.toContain('providerMeta')
+    expect(contextMessage).toEqual(originalSnapshot)
+  })
+
   it('rejects image attachments before fetch without text downgrade', async () => {
     const fetch = vi.fn(async () => makeSseResponse(textSseChunk('gen_1', 'deepseek-chat', 'hi'))) as DeepSeekFetchFn
 
@@ -211,11 +280,22 @@ describe('streamViaDeepSeek', () => {
       { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-test', fetch },
     ))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
 
     expect(reasoningEvents).toHaveLength(2)
+    expect(displayEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(0)
+    if (displayEvents[0].type === 'message.reasoning_display_block_upsert' && displayEvents[1].type === 'message.reasoning_display_block_upsert') {
+      expect(displayEvents[0].block.blockId).toBe(displayEvents[1].block.blockId)
+      expect(displayEvents[0].block.type).toBe('text')
+      expect(displayEvents[1].block.type).toBe('text')
+      if (displayEvents[0].block.type === 'text' && displayEvents[1].block.type === 'text') {
+        expect(displayEvents[0].block.text).toBe('Let me think...')
+        expect(displayEvents[1].block.text).toBe('Let me think... Okay.')
+      }
+    }
   })
 
   it('visible content fixture yields text events', async () => {
@@ -253,7 +333,7 @@ describe('streamViaDeepSeek', () => {
       { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-test', fetch },
     ))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
 
     expect(reasoningEvents).toHaveLength(1)
@@ -455,7 +535,7 @@ describe('streamViaDeepSeek', () => {
       { baseUrl: 'https://api.deepseek.com/v1', apiKey: 'sk-test', fetch },
     ))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     const metaEvents = events.filter((e) => e.type === 'meta.delta')
     const usageEvents = events.filter((e) => e.type === 'usage.delta')

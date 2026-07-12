@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '@/shared/i18n'
+
 const props = defineProps<{
   title: string
   branchSummary: string
@@ -21,7 +23,7 @@ const emit = defineEmits<{
   <div class="flex flex-col">
     <div class="flex items-center justify-between gap-3 px-4 py-2">
       <div class="min-w-0">
-        <div class="truncate text-sm font-semibold text-gray-900">{{ props.title || 'Untitled conversation' }}</div>
+        <div class="truncate text-sm font-semibold text-gray-900">{{ props.title || t('chat.topBar.untitledConversation') }}</div>
         <div class="mt-0.5 flex flex-wrap items-center gap-2 text-[11px] text-gray-500">
           <span>{{ props.branchSummary }}</span>
           <span>{{ props.runSummary }}</span>
@@ -36,7 +38,7 @@ const emit = defineEmits<{
           class="inline-flex items-center gap-1 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm hover:bg-gray-50"
           @click="emit('openSettings')"
         >
-          <span>Settings</span>
+          <span>{{ t('common.settings') }}</span>
         </button>
         <button
           type="button"
@@ -44,7 +46,7 @@ const emit = defineEmits<{
           @click="emit('toggleConsolePanel')"
         >
           <span aria-hidden="true">{{ props.consolePanelOpen ? '→' : '←' }}</span>
-          <span>{{ props.consolePanelOpen ? 'Hide Console' : 'Console' }}</span>
+          <span>{{ props.consolePanelOpen ? t('chat.topBar.hideConsole') : t('chat.topBar.console') }}</span>
         </button>
       </div>
     </div>

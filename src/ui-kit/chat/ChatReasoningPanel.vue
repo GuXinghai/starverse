@@ -1,12 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ReasoningPiece, ReasoningView } from './types'
+import type { ReasoningView } from './types'
+import ReasoningRichText from './ReasoningRichText.vue'
 import { t } from '@/shared/i18n'
 
 const props = withDefaults(
   defineProps<{
+    messageId?: string | null
     reasoningView: ReasoningView | null
-    reasoningPieces?: ReasoningPiece[] | null
+    isStreaming?: boolean
     title?: string
     emptyText?: string
     localProcessingDurationMs?: number
@@ -17,20 +19,19 @@ const props = withDefaults(
   },
 )
 
-const reasoningPieces = computed(() => {
-  const pieces = props.reasoningPieces ?? props.reasoningView?.reasoningPieces
-  if (!Array.isArray(pieces)) return null
-  const normalized = pieces.filter((piece) => typeof piece?.text === 'string' && piece.text.trim().length > 0)
+const displayBlocks = computed(() => {
+  const blocks = props.reasoningView?.displayBlocks
+  if (!Array.isArray(blocks)) return null
+  const normalized = blocks.filter((block) => {
+    if (block?.type === 'text') return block.text.trim().length > 0
+    if (block?.type === 'image') return block.url.trim().length > 0
+    if (block?.type === 'opaque') return block.label.trim().length > 0
+    return false
+  })
   return normalized.length > 0 ? normalized : null
 })
 
-const hasPieces = computed(() => Array.isArray(reasoningPieces.value) && reasoningPieces.value.length > 0)
-
-const hasAnyReasoningText = computed(() => {
-  if (!props.reasoningView) return false
-  const hasText = Boolean(props.reasoningView.summaryText || props.reasoningView.reasoningText)
-  return hasText || hasPieces.value
-})
+const hasDisplayBlocks = computed(() => Array.isArray(displayBlocks.value) && displayBlocks.value.length > 0)
 
 const showEncryptedBadge = computed(() => props.reasoningView?.hasEncrypted === true)
 
@@ -39,6 +40,7 @@ const formattedDuration = computed(() => {
   if (typeof ms !== 'number' || ms < 0) return null
   return `${(ms / 1000).toFixed(2)}s`
 })
+
 </script>
 
 <template>
@@ -75,38 +77,44 @@ const formattedDuration = computed(() => {
       <div class="space-y-2 text-sm">
         <template v-if="props.reasoningView.visibility === 'shown'">
           <div v-if="props.reasoningView.hasEncrypted === true" class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-amber-900">
-            <div class="text-xs font-semibold uppercase tracking-wide">Encrypted reasoning</div>
-            <div class="mt-1 text-sm">本次推理内容被提供方加密/不可见（encrypted）。</div>
+            <div class="text-xs font-semibold uppercase tracking-wide">{{ t('chat.reasoning.encryptedTitle') }}</div>
+            <div class="mt-1 text-sm">{{ t('chat.reasoning.encryptedDescription') }}</div>
           </div>
 
-          <div v-if="props.reasoningView.summaryText" class="rounded border border-gray-200 bg-white p-2">
-            <div class="mb-1 text-xs font-semibold text-gray-700">{{ t('common.summary') }}</div>
-            <div>{{ props.reasoningView.summaryText }}</div>
-          </div>
-          <div v-if="props.reasoningView.reasoningText" class="rounded border border-gray-200 bg-white p-2">
-            <div class="whitespace-pre-wrap">{{ props.reasoningView.reasoningText }}</div>
-          </div>
-
-          <div v-if="hasPieces" class="rounded border border-gray-200 bg-white p-2">
-            <div class="space-y-2">
-              <div v-for="piece in reasoningPieces" :key="piece.id" class="whitespace-pre-wrap">
-                {{ piece.text }}
+          <div v-if="hasDisplayBlocks" class="space-y-2 rounded border border-gray-200 bg-white p-2">
+            <template v-for="block in displayBlocks ?? []" :key="block.blockId">
+              <ReasoningRichText
+                v-if="block.type === 'text'"
+                :text="block.text"
+                :streaming="props.isStreaming === true"
+              />
+              <img
+                v-if="block.type === 'image'"
+                :src="block.url"
+                class="max-h-96 max-w-full rounded border border-gray-200 object-contain"
+                alt=""
+              />
+              <div
+                v-if="block.type === 'opaque'"
+                class="rounded border border-gray-200 bg-gray-50 px-2 py-1 text-xs text-gray-600"
+              >
+                {{ block.label }}
               </div>
-            </div>
+            </template>
           </div>
 
-          <div v-if="!hasAnyReasoningText" class="text-sm text-gray-500">(no reasoning payload)</div>
+          <div v-if="!hasDisplayBlocks" class="text-sm text-gray-500">{{ t('chat.reasoning.noPayloadShort') }}</div>
         </template>
 
         <template v-else-if="props.reasoningView.visibility === 'excluded'">
           <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
-            本次请求已要求不返回推理内容（excluded）
+            {{ t('chat.reasoning.excluded') }}
           </div>
         </template>
 
         <template v-else-if="props.reasoningView.visibility === 'not_returned'">
           <div class="rounded-2xl border border-gray-200 bg-gray-50 p-4 text-sm text-gray-700">
-            模型未返回推理内容 / 或该模型不支持
+            {{ t('chat.reasoning.notReturned') }}
           </div>
         </template>
 

@@ -36,7 +36,7 @@ describe('catalogScope', () => {
     expect(deriveCatalogScopeKey(input)).toBe(deriveCatalogScopeKey(input))
   })
 
-  it('changes catalogScopeKey for different API keys, baseUrls, and dataSources', () => {
+  it('changes catalogScopeKey for different provider keys, API keys, baseUrls, and dataSources', () => {
     const base = {
       localSecret: 'local-secret-for-test-only',
       providerKey: 'openrouter',
@@ -46,6 +46,7 @@ describe('catalogScope', () => {
     }
     const original = deriveCatalogScopeKey(base)
 
+    expect(deriveCatalogScopeKey({ ...base, providerKey: 'google-ai-studio' })).not.toBe(original)
     expect(deriveCatalogScopeKey({ ...base, apiKey: 'sk-key-b' })).not.toBe(original)
     expect(deriveCatalogScopeKey({ ...base, baseUrl: 'https://example.test/api/v1' })).not.toBe(original)
     expect(deriveCatalogScopeKey({ ...base, dataSource: 'models_fallback' })).not.toBe(original)
@@ -79,7 +80,6 @@ describe('catalogScope', () => {
   it('characterizes catalog local secret as the only catalog store key blocked from renderer store IPC', () => {
     expect(isSensitiveCatalogStoreKey(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)).toBe(true)
     expect(isSensitiveCatalogStoreKey('openRouterApiKey')).toBe(false)
-    expect(isSensitiveCatalogStoreKey('openRouterBaseUrl')).toBe(false)
     expect(isSensitiveCatalogStoreKey('geminiApiKey')).toBe(false)
     expect(isSensitiveCatalogStoreKey('apiKey')).toBe(false)
     expect(isSensitiveCatalogStoreKey('activeProvider')).toBe(false)

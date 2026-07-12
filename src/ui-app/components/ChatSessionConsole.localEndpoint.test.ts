@@ -15,7 +15,14 @@ function defaultSessionConfig() {
       mode: 'default' as const,
       detail: null,
     },
-    samplingParams: { detail: null },
+    generationParams: { detail: null },
+  }
+}
+
+function localEndpointSessionConfig() {
+  return {
+    ...defaultSessionConfig(),
+    model: { selectedProviderId: 'local_endpoint' as const, selectedModelKey: 'local-model-a' },
   }
 }
 
@@ -26,7 +33,7 @@ describe('ChatSessionConsole LocalEndpoint chat controls', () => {
       props: {
         disabled: false,
         isRunning: false,
-        sessionConfig: defaultSessionConfig(),
+        sessionConfig: localEndpointSessionConfig(),
         localEndpointChat: {
           enabled: true,
           endpointUrl: 'http://localhost:1234/v1',
@@ -36,30 +43,30 @@ describe('ChatSessionConsole LocalEndpoint chat controls', () => {
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
-        samplingParamsResolved: null,
+        generationParamsResolved: null,
       },
     })
 
     expect(screen.getByTestId('local-endpoint-chat-controls').textContent).toContain('Experimental')
     expect(screen.getByTestId('local-endpoint-chat-controls').textContent).toContain('not OpenRouter')
-    expect(screen.getByTestId('local-endpoint-chat-warning').textContent).toContain('Text-only loopback')
-    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('LocalEndpoint chat is active')
-    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('Selected endpoint: http://localhost:1234/v1')
-    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('Selected local model: local-model-a')
-    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('does not use API keys or custom headers')
+    expect(screen.getByTestId('local-endpoint-chat-warning').textContent).toContain('loopback')
+    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('LocalEndpoint')
+    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('http://localhost:1234/v1')
+    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('local-model-a')
+    expect(screen.getByTestId('local-endpoint-chat-selected-status').textContent).toContain('API Key')
     expect(screen.queryByText(/endpoint picker/i)).not.toBeInTheDocument()
     expect(screen.queryByText(/profile picker/i)).not.toBeInTheDocument()
+    expect(screen.queryByTestId('local-endpoint-chat-model')).not.toBeInTheDocument()
 
     await user.click(screen.getByTestId('local-endpoint-chat-enabled'))
     await user.type(screen.getByTestId('local-endpoint-chat-url'), 'http://localhost:4321/v1')
-    await user.type(screen.getByTestId('local-endpoint-chat-model'), 'local-model')
     await user.click(screen.getByTestId('local-endpoint-chat-disable'))
     await user.click(screen.getByTestId('local-endpoint-chat-clear'))
 
     expect(view.emitted('updateLocalEndpointChatEnabled')?.[0]).toEqual([false])
     expect(view.emitted('updateLocalEndpointChatEnabled')?.[1]).toEqual([false])
     expect(view.emitted('updateLocalEndpointChatUrl')?.length).toBeGreaterThan(0)
-    expect(view.emitted('updateLocalEndpointChatModel')?.length).toBeGreaterThan(0)
+    expect(view.emitted('updateLocalEndpointChatModel')).toBeUndefined()
     expect(view.emitted('clearLocalEndpointChat')).toHaveLength(1)
   })
 })

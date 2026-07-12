@@ -1,6 +1,6 @@
 import { validatePluginPackageInventory } from './artifactInventory'
 import { validatePluginPackageManifest } from './packageManifest'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import { validatePluginSignatureEnvelope } from './trustPolicy'
 import type {
   PluginFailureReason,

@@ -18,6 +18,11 @@
  */
 
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import {
+  appendDeepSeekReasoningDelta,
+  buildDeepSeekFinalReasoningDisplayBlock,
+  type DeepSeekReasoningDisplayAssemblerState,
+} from '@/next/provider/deepseek/deepseekReasoningDisplayAssembler'
 
 // ---------------------------------------------------------------------------
 // DeepSeek chunk types — provider-native schema, contained here only
@@ -35,9 +40,17 @@ export type DeepSeekDelta = Readonly<{
   }>>
 }>
 
+export type DeepSeekMessage = Readonly<{
+  role?: string
+  content?: string | null
+  reasoning_content?: string | null
+  tool_calls?: ReadonlyArray<unknown>
+}>
+
 export type DeepSeekChoice = Readonly<{
   index: number
   delta?: DeepSeekDelta
+  message?: DeepSeekMessage
   finish_reason?: string | null
 }>
 
@@ -84,6 +97,7 @@ export type DeepSeekChunkInput = Readonly<{
   messageId: string
   choiceIndex?: number
   chunkNo?: number
+  reasoningDisplayState?: DeepSeekReasoningDisplayAssemblerState
 }>
 
 /**
@@ -130,21 +144,34 @@ export function mapDeepSeekChunkToEvents(input: DeepSeekChunkInput): StarverseSt
   if (!choice) return events
 
   const delta = choice.delta
-  if (!delta) return events
 
   // Reasoning content — NEVER visible text
-  if (typeof delta.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
+  if (typeof delta?.reasoning_content === 'string' && delta.reasoning_content.length > 0) {
     events.push({
-      type: 'message.reasoning_detail',
+      type: 'message.reasoning_raw_detail',
       messageId,
       choiceIndex,
       detail: { text: delta.reasoning_content, type: 'reasoning_content' },
       chunkNo: input.chunkNo,
     })
+    const displayBlock = appendDeepSeekReasoningDelta({
+      messageId,
+      choiceIndex,
+      text: delta.reasoning_content,
+      state: input.reasoningDisplayState,
+    })
+    if (displayBlock) {
+      events.push({
+        type: 'message.reasoning_display_block_upsert',
+        messageId,
+        choiceIndex,
+        block: displayBlock,
+      })
+    }
   }
 
   // Visible text content
-  if (typeof delta.content === 'string' && delta.content.length > 0) {
+  if (typeof delta?.content === 'string' && delta.content.length > 0) {
     events.push({
       type: 'message.text_delta',
       messageId,
@@ -154,7 +181,7 @@ export function mapDeepSeekChunkToEvents(input: DeepSeekChunkInput): StarverseSt
   }
 
   // Tool calls
-  if (delta.tool_calls && delta.tool_calls.length > 0) {
+  if (delta?.tool_calls && delta.tool_calls.length > 0) {
     events.push({
       type: 'message.tool_call_delta',
       messageId,
@@ -167,6 +194,35 @@ export function mapDeepSeekChunkToEvents(input: DeepSeekChunkInput): StarverseSt
         function: tc.function ? { name: tc.function.name, arguments: tc.function.arguments } : undefined,
       })),
     })
+  }
+
+  const finalReasoning = choice.message?.reasoning_content
+  if (typeof finalReasoning === 'string' && finalReasoning.length > 0) {
+    events.push({
+      type: 'message.reasoning_raw_detail',
+      messageId,
+      choiceIndex,
+      detail: {
+        text: finalReasoning,
+        type: 'reasoning_content',
+        source: 'message.reasoning_content',
+      },
+      chunkNo: input.chunkNo,
+    })
+    const displayBlock = buildDeepSeekFinalReasoningDisplayBlock({
+      messageId,
+      choiceIndex,
+      text: finalReasoning,
+      state: input.reasoningDisplayState,
+    })
+    if (displayBlock) {
+      events.push({
+        type: 'message.reasoning_display_block_upsert',
+        messageId,
+        choiceIndex,
+        block: displayBlock,
+      })
+    }
   }
 
   // Finish reason → meta + done

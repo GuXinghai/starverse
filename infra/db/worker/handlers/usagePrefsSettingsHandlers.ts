@@ -332,15 +332,15 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return { ok: true }
     })
 
-  register('settings.getSamplingParamsDefaults', () => {
-        return { value: rt.settingsRepo.getSamplingParamsDefaults() }
+  register('settings.getGenerationParamsDefaults', () => {
+        return { value: rt.settingsRepo.getGenerationParamsDefaults() }
     })
 
-  register('settings.setSamplingParamsDefaults', (raw) => {
+  register('settings.setGenerationParamsDefaults', (raw) => {
         if (!raw || typeof raw !== 'object' || !('value' in raw)) {
-          throw new DbWorkerError('ERR_VALIDATION', 'settings.setSamplingParamsDefaults requires value')
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setGenerationParamsDefaults requires value')
         }
-        rt.settingsRepo.setSamplingParamsDefaults((raw as any).value ?? null)
+        rt.settingsRepo.setGenerationParamsDefaults((raw as any).value ?? null)
         return { ok: true }
     })
 
@@ -407,8 +407,25 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
         return { ok: true }
     })
 
+  register('settings.getChatReasoningPanelAutoCollapseAfterReasoning', () => {
+        return { value: rt.settingsRepo.getChatReasoningPanelAutoCollapseAfterReasoning() }
+    })
+
+  register('settings.setChatReasoningPanelAutoCollapseAfterReasoning', (raw) => {
+        const value = raw?.value
+        if (typeof value !== 'boolean') {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setChatReasoningPanelAutoCollapseAfterReasoning requires boolean value')
+        }
+        rt.settingsRepo.setChatReasoningPanelAutoCollapseAfterReasoning(value)
+        return { ok: true }
+    })
+
   register('settings.getNetworkProxySettings', () => {
         return { value: rt.settingsRepo.getNetworkProxySettings() }
+    })
+
+  register('settings.getNetworkProxySettingsStrict', () => {
+        return { value: rt.settingsRepo.getNetworkProxySettingsStrict() }
     })
 
   register('settings.setNetworkProxySettings', (raw) => {
@@ -416,6 +433,41 @@ export function registerUsagePrefsSettingsHandlers(register: RegisterHandler, ru
           throw new DbWorkerError('ERR_VALIDATION', 'settings.setNetworkProxySettings requires value')
         }
         rt.settingsRepo.setNetworkProxySettings((raw as any).value)
+        return { ok: true }
+    })
+
+  register('settings.getNewChatLifecycle', () => {
+        return { value: rt.settingsRepo.getNewChatLifecycleSettings() }
+    })
+
+  register('settings.setNewChatLifecycle', (raw) => {
+        const value = raw?.value
+        const startupNavigation = value?.startupNavigation
+        const postSendTemplateReset = value?.postSendTemplateReset
+        if (!['open_new', 'restore_last_formal', 'projects_only'].includes(startupNavigation) ||
+            !['reset_all', 'preserve_model_config'].includes(postSendTemplateReset) ||
+            typeof value?.startupTemplateReset?.modelConfig !== 'boolean' ||
+            typeof value?.startupTemplateReset?.draftAttachments !== 'boolean') {
+          throw new DbWorkerError('ERR_VALIDATION', 'settings.setNewChatLifecycle requires a valid lifecycle policy')
+        }
+        rt.settingsRepo.setNewChatLifecycleSettings(value)
+        return { ok: true }
+    })
+
+  register('settings.getLastFormalConversation', () => {
+        return { conversationId: rt.settingsRepo.getLastFormalConversationId() }
+    })
+
+  register('settings.setLastFormalConversation', (raw) => {
+        const conversationId = raw?.conversationId == null ? null : String(raw.conversationId).trim()
+        if (conversationId) {
+          const row = runtime.db.prepare(`
+            SELECT c.id FROM convo c JOIN project p ON p.id = c.project_id
+            WHERE c.id = ? AND c.system_key IS NULL AND p.system_key != 'new'
+          `).get(conversationId)
+          if (!row) throw new DbWorkerError('ERR_VALIDATION', 'last_formal_conversation_invalid')
+        }
+        rt.settingsRepo.setLastFormalConversationId(conversationId)
         return { ok: true }
     })
 

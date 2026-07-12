@@ -212,13 +212,6 @@ function backfillLegacyAnswerGrouping(db: SqlDatabase) {
   for (const c of convoIds) txn(c.convoId)
 }
 
-function markStaleStreamingAsError(db: SqlDatabase) {
-  if (!tableExists(db, 'message')) return
-  const cols = listColumns(db, 'message')
-  if (!cols.has('status')) return
-  db.exec(`UPDATE message SET status='error' WHERE status='streaming'`)
-}
-
 /**
  * Ensure branching schema is available for legacy DB files.
  *
@@ -236,7 +229,6 @@ export function ensureBranchingSchema(db: SqlDatabase) {
     ensureBranchTables(db)
     backfillLegacyParentChain(db)
     backfillLegacyAnswerGrouping(db)
-    markStaleStreamingAsError(db)
   })
   txn()
 }

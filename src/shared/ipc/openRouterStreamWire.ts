@@ -28,6 +28,13 @@ export type OpenRouterStreamWireRequest = Readonly<{
   contextMode?: string
   // Preferred payload for wireVersion>=1.
   requestBody?: unknown
+  rawGenerationContext?: Readonly<{
+    operationId: string
+    answerRootId: string
+    requestSequence: number
+    providerId: string
+    modelId: string
+  }>
   config: OpenRouterStreamWireRequestConfig
 }>
 
@@ -86,5 +93,11 @@ export function isOpenRouterStreamWireRequest(value: unknown): value is OpenRout
   const hasResolverBackedSource = config.credentialSource === 'legacy_store'
   if (!hasLegacyApiKey && !hasResolverBackedSource) return false
   if ('wireVersion' in v && typeof v.wireVersion !== 'number') return false
+  if ('rawGenerationContext' in v) {
+    const context = v.rawGenerationContext as Record<string, unknown>
+    if (!context || typeof context !== 'object' || typeof context.operationId !== 'string' ||
+        typeof context.answerRootId !== 'string' || typeof context.providerId !== 'string' ||
+        typeof context.modelId !== 'string' || !Number.isInteger(context.requestSequence) || Number(context.requestSequence) < 1) return false
+  }
   return true
 }

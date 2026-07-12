@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, nextTick, onBeforeUnmount } from 'vue'
+import { ref, computed, nextTick, onBeforeUnmount, useSlots } from 'vue'
 import { useFloatingDropdown } from '../composables/useFloatingDropdown'
 import { t } from '@/shared/i18n'
 
@@ -10,6 +10,7 @@ const props = defineProps<{
   kind?: 'reasoning' | 'webSearch' | 'image'
   disabled?: boolean
   options?: readonly string[]
+  optionLabels?: Readonly<Record<string, string>>
   selectedOption?: string | null
   dataTestId?: string
 }>()
@@ -19,6 +20,7 @@ const emit = defineEmits<{
   (e: 'selectOption', value: string): void
 }>()
 
+const slots = useSlots()
 const menuOpen = ref(false)
 const menuRef = ref<HTMLElement | null>(null)
 const triggerRef = ref<HTMLElement | null>(null)
@@ -57,6 +59,8 @@ const titleText = computed(() => {
   }
   return fullLabel.value
 })
+const hasCustomMenu = computed(() => Boolean(slots.menu))
+const hasMenu = computed(() => hasCustomMenu.value || (props.options?.length ?? 0) > 0)
 
 function onBodyClick(event: MouseEvent) {
   const target = event.target as Node | null
@@ -104,6 +108,10 @@ function onOptionClick(option: string) {
   closeMenu()
 }
 
+function optionLabel(option: string): string {
+  return props.optionLabels?.[option] ?? option
+}
+
 onBeforeUnmount(() => {
   document.removeEventListener('mousedown', onBodyClick)
   document.removeEventListener('keydown', onKeydown)
@@ -135,7 +143,7 @@ onBeforeUnmount(() => {
       <span class="flex-1 text-center">{{ displayText }}</span>
     </button>
     <button
-      v-if="options && options.length > 0"
+      v-if="hasMenu"
       ref="triggerRef"
       type="button"
       class="shrink-0 inline-flex items-center rounded-r-md border border-l-0 px-0.5 py-1 text-[10px] leading-none transition-colors disabled:opacity-50"
@@ -162,32 +170,35 @@ onBeforeUnmount(() => {
 
     <Teleport to="body">
       <div
-        v-if="menuOpen && options && options.length > 0"
+        v-if="menuOpen && hasMenu"
         ref="menuRef"
         class="fixed z-[var(--z-popover)] min-w-[80px] rounded-md border border-gray-200 bg-white py-1 shadow-lg"
         :style="dropdownStyle"
         data-testid="capability-chip-menu"
       >
-        <template v-for="option in options" :key="option">
-          <div
-            v-if="option === '—'"
-            class="my-1 border-t border-gray-100"
-            data-testid="capability-chip-divider"
-          />
-          <button
-            v-else
-            type="button"
-            class="block w-full px-3 py-1.5 text-left text-[11px] transition-colors hover:bg-gray-50"
-            :class="
-              selectedOption === option
-                ? 'font-medium text-gray-900'
-                : 'text-gray-600'
-            "
-            data-testid="capability-chip-option"
-            @click="onOptionClick(option)"
-          >
-            {{ option }}
-          </button>
+        <slot v-if="hasCustomMenu" name="menu" :close="closeMenu" />
+        <template v-else>
+          <template v-for="option in options" :key="option">
+            <div
+              v-if="option === '—'"
+              class="my-1 border-t border-gray-100"
+              data-testid="capability-chip-divider"
+            />
+            <button
+              v-else
+              type="button"
+              class="block w-full px-3 py-1.5 text-left text-[11px] transition-colors hover:bg-gray-50"
+              :class="
+                selectedOption === option
+                  ? 'font-medium text-gray-900'
+                  : 'text-gray-600'
+              "
+              data-testid="capability-chip-option"
+              @click="onOptionClick(option)"
+            >
+              {{ optionLabel(option) }}
+            </button>
+          </template>
         </template>
       </div>
     </Teleport>

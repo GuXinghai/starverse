@@ -190,7 +190,10 @@ describe('Gemini model availability transport errors', () => {
     expect(result).toMatchObject({
       ok: false,
       code: 'network_error',
-      message: 'Google AI Studio model source request failed safely.',
+      message: 'Google AI Studio model source: Connection timed out.',
+      networkError: {
+        safeDetailCode: 'connection_timeout',
+      },
       transportCause: {
         name: 'TypeError',
         code: 'UND_ERR_CONNECT_TIMEOUT',
