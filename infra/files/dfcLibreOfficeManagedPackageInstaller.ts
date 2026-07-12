@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import { cp, lstat, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { sanitizePluginDistributionText } from '../../src/next/plugin-distribution/sanitization'
+import { sanitizePluginDistributionText } from '../../src/shared/plugin-distribution/sanitization'
 import {
   DFC_OFFICE_PDF_RUNTIME_MANIFEST,
   createDfcLibreOfficeQuarantinedAvailabilitySummary,
