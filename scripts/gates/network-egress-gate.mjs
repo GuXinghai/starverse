@@ -57,6 +57,16 @@ const NETWORK_RULES = [
   },
 ]
 
+const CLASSIFIED_PRODUCTION_TRANSPORTS = [
+  {
+    id: 'compatible-provider-node-dual-transport',
+    reason: 'canonical compatible broker preserves the explicitly selected manual/environment/direct Node-Undici route; system remains Electron session transport',
+    path: /^electron\/net\/compatibleProviderTransport\.ts$/u,
+    rules: ['undici-import'],
+    line: /import\s+\{\s*fetch\s+as\s+undiciFetch\s*\}\s+from\s+['"]undici['"]/u,
+  },
+]
+
 const ALLOWLIST = [
   {
     id: 'renderer-local-build-id',
@@ -102,8 +112,8 @@ const ALLOWLIST = [
   },
   {
     id: 'official-package-node-proxy-fallback',
-    reason: 'undici is limited to the explicit Node fallback downloader proxy helper',
-    path: /^src\/next\/plugin-distribution\/networkProxy\.ts$/u,
+    reason: 'undici is limited to the shared explicit Node fallback/manual/environment/direct proxy helper',
+    path: /^src\/shared\/plugin-distribution\/networkProxy\.ts$/u,
     rules: ['undici-import'],
     line: /from\s+['"]undici['"]/u,
   },
@@ -190,7 +200,18 @@ function allowlistFor(relPath, line, ruleId) {
   return null
 }
 
+function classifiedProductionTransportFor(relPath, line, ruleId) {
+  for (const entry of CLASSIFIED_PRODUCTION_TRANSPORTS) {
+    if (!entry.path.test(relPath)) continue
+    if (!entry.rules.includes(ruleId)) continue
+    if (entry.line && !entry.line.test(line)) continue
+    return entry
+  }
+  return null
+}
+
 function scanText(relPath, text) {
+  const classified = []
   const allowed = []
   const violations = []
   const lines = text.split(/\r?\n/u)
@@ -203,7 +224,8 @@ function scanText(relPath, text) {
       rule.regex.lastIndex = 0
       if (!rule.regex.test(line)) continue
 
-      const allow = allowlistFor(relPath, line, rule.id)
+      const classification = classifiedProductionTransportFor(relPath, line, rule.id)
+      const allow = classification ? null : allowlistFor(relPath, line, rule.id)
       const hit = {
         file: relPath,
         line: index + 1,
@@ -211,7 +233,9 @@ function scanText(relPath, text) {
         description: rule.description,
         excerpt: lineExcerpt(line),
       }
-      if (allow) {
+      if (classification) {
+        classified.push({ ...hit, classificationId: classification.id, reason: classification.reason })
+      } else if (allow) {
         allowed.push({ ...hit, allowlistId: allow.id, reason: allow.reason })
       } else {
         violations.push({ ...hit, reason: 'unclassified network egress call in production source' })
@@ -219,7 +243,7 @@ function scanText(relPath, text) {
     }
   }
 
-  return { allowed, violations }
+  return { classified, allowed, violations }
 }
 
 function walkFiles(dirAbs, files) {
@@ -253,6 +277,7 @@ function collectFiles() {
 function scanRepo() {
   const files = collectFiles()
   const allowed = []
+  const classified = []
   const violations = []
 
   for (const fileAbs of files) {
@@ -264,11 +289,12 @@ function scanRepo() {
       continue
     }
     const result = scanText(relPath, text)
+    classified.push(...result.classified)
     allowed.push(...result.allowed)
     violations.push(...result.violations)
   }
 
-  return { filesScanned: files.length, allowed, violations }
+  return { filesScanned: files.length, classified, allowed, violations }
 }
 
 function summarizeAllowed(allowed) {
@@ -281,6 +307,10 @@ function summarizeAllowed(allowed) {
 
 function printResult(result) {
   console.log(`[network-egress-gate] scanned files=${result.filesScanned}`)
+  console.log(`[network-egress-gate] classified production transport hits=${result.classified.length}`)
+  for (const item of result.classified) {
+    console.log(`  - ${item.classificationId}: ${item.file}:${item.line} (${item.reason})`)
+  }
   console.log(`[network-egress-gate] allowed hits=${result.allowed.length}`)
   for (const [id, count] of summarizeAllowed(result.allowed)) {
     const allow = ALLOWLIST.find((entry) => entry.id === id)
@@ -339,6 +369,20 @@ function runSelfTest() {
     "import { fetch as undiciFetch } from 'undici'\n",
   )
   assertSelfTest('provider undici import is rejected', providerUndici.violations.some((hit) => hit.rule === 'undici-import'))
+
+  const compatibleUndici = scanText(
+    'electron/net/compatibleProviderTransport.ts',
+    "import { fetch as undiciFetch } from 'undici'\n",
+  )
+  assertSelfTest('compatible canonical Node transport is classified', compatibleUndici.classified.length === 1)
+  assertSelfTest('compatible canonical Node transport is not allowlisted', compatibleUndici.allowed.length === 0)
+  assertSelfTest('compatible canonical Node transport has no violation', compatibleUndici.violations.length === 0)
+
+  const compatibleUndiciElsewhere = scanText(
+    'electron/ipc/compatibleProviderTransportIpc.ts',
+    "import { fetch as undiciFetch } from 'undici'\n",
+  )
+  assertSelfTest('compatible Undici outside canonical broker is rejected', compatibleUndiciElsewhere.violations.length === 1)
 
   const localWrapper = scanText(
     'electron/net/localEndpointTransport.ts',
