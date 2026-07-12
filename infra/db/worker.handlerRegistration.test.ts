@@ -5,9 +5,12 @@ import { registerProjectHandlers } from './worker/handlers/projectHandlers'
 import { registerConvoMessageHandlers } from './worker/handlers/convoMessageHandlers'
 import { registerBranchContextHandlers } from './worker/handlers/branchContextHandlers'
 import { registerFilePipelineHandlers } from './worker/handlers/filePipelineHandlers'
+import { registerProviderFileInputHandlers } from './worker/handlers/providerFileInputHandlers'
 import { registerEnginePluginLifecycleHandlers } from './worker/handlers/enginePluginLifecycleHandlers'
 import { registerSearchMaintenanceHandlers } from './worker/handlers/searchMaintenanceHandlers'
 import { registerUsagePrefsSettingsHandlers } from './worker/handlers/usagePrefsSettingsHandlers'
+import { registerCompatibleProviderHandlers } from './worker/handlers/compatibleProviderHandlers'
+import { registerSystemChatTemplateHandlers } from './worker/handlers/systemChatTemplateHandlers'
 import { dispatchWorkerMessage } from './worker/router'
 
 type HandlerHarness = Readonly<{
@@ -27,10 +30,13 @@ function registerAllWorkerHandlerModules(harness: HandlerHarness, runtime: any) 
   registerProjectHandlers(harness.register, runtime)
   registerConvoMessageHandlers(harness.register, runtime)
   registerFilePipelineHandlers(harness.register, runtime)
+  registerProviderFileInputHandlers(harness.register, runtime)
   registerEnginePluginLifecycleHandlers(harness.register, runtime)
   registerBranchContextHandlers(harness.register, runtime)
   registerSearchMaintenanceHandlers(harness.register, runtime)
   registerUsagePrefsSettingsHandlers(harness.register, runtime)
+  registerCompatibleProviderHandlers(harness.register, runtime)
+  registerSystemChatTemplateHandlers(harness.register, runtime)
 }
 
 function expectHandlersPresent(handlers: ReadonlyMap<DbMethod, DbHandler>, methods: readonly DbMethod[]) {

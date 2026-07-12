@@ -132,12 +132,34 @@ describe('mapChunkToEvents', () => {
     const details = [{ type: 'reasoning.text', text: 'a' }, { type: 'reasoning.text', text: 'b' }]
     const events = mapChunkToEvents({
       messageId: 'm1',
+      chunkNo: 3,
       chunk: {
         choices: [{ index: 0, delta: { reasoning_details: details } }],
       },
     })
     const mapped = events.filter((e) => e.type === 'MessageDeltaReasoningDetail')
     expect(mapped.map((e: any) => e.detail)).toEqual(details)
+    const display = events.filter((e) => e.type === 'MessageAppendReasoningDisplayBlock')
+    expect(display).toHaveLength(2)
+    expect(display[0]).toMatchObject({
+      type: 'MessageAppendReasoningDisplayBlock',
+      messageId: 'm1',
+      choiceIndex: 0,
+      block: {
+        type: 'text',
+        text: 'a',
+        semanticRole: 'reasoning',
+        providerKey: 'openrouter',
+        ordinal: 3000,
+      },
+    })
+    expect(display[1]).toMatchObject({
+      block: {
+        type: 'text',
+        text: 'b',
+        ordinal: 3001,
+      },
+    })
   })
 
   it('maps non-stream message.reasoning_details', () => {
@@ -154,6 +176,62 @@ describe('mapChunkToEvents', () => {
       messageId: 'm1',
       choiceIndex: 0,
       detail: details[0],
+    })
+    expect(events).toContainEqual({
+      type: 'MessageAppendReasoningDisplayBlock',
+      messageId: 'm1',
+      choiceIndex: 0,
+      block: {
+        blockId: 'm1:reasoning-display:openrouter:reasoning_details.reasoning.text:0:0',
+        ordinal: 0,
+        type: 'text',
+        text: 'x',
+        semanticRole: 'reasoning',
+        providerKey: 'openrouter',
+        sourceEventType: 'reasoning_details.reasoning.text',
+      },
+    })
+  })
+
+  it('maps OpenRouter reasoning summary and thought image to reasoning display blocks', () => {
+    const events = mapChunkToEvents({
+      messageId: 'm1',
+      chunkNo: 1,
+      chunk: {
+        choices: [{
+          index: 0,
+          delta: {
+            reasoning_details: [
+              { type: 'reasoning.summary', summary: 'short summary' },
+              { type: 'thought_image', image: { url: 'data:image/png;base64,AAAA', mimeType: 'image/png' } },
+              { type: 'reasoning.encrypted', data: 'opaque' },
+            ],
+          },
+        }],
+      },
+    })
+
+    const raw = events.filter((event) => event.type === 'MessageDeltaReasoningDetail')
+    const display = events.filter((event) => event.type === 'MessageAppendReasoningDisplayBlock')
+
+    expect(raw).toHaveLength(3)
+    expect(display).toHaveLength(2)
+    expect(display[0]).toMatchObject({
+      block: {
+        type: 'text',
+        text: 'short summary',
+        semanticRole: 'summary',
+        ordinal: 1000,
+      },
+    })
+    expect(display[1]).toMatchObject({
+      block: {
+        type: 'image',
+        url: 'data:image/png;base64,AAAA',
+        mimeType: 'image/png',
+        semanticRole: 'thought',
+        ordinal: 1001,
+      },
     })
   })
 

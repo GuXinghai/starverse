@@ -12,7 +12,7 @@
  * 4. Converts DomainEvent output to StarverseStreamEvent (provider-neutral IR)
  *
  * Future adapters (OpenAI Responses, Anthropic Messages, Gemini native,
- * DeepSeek profile, Generic OpenAI-compatible) will implement the same
+ * DeepSeek profile) will implement the same
  * yield signature from their native stream formats.
  *
  * @see docs/architecture/provider-architecture/STARVERSE_PROVIDER_TARGET_ARCHITECTURE.md §4.1
@@ -51,7 +51,6 @@ export async function* streamViaOpenRouter(
 ): AsyncGenerator<StarverseStreamEvent> {
   const legacyCredential = openRouterLegacyCredentialFromRaw({
     apiKey: credentials.apiKey,
-    ...(request.config.baseUrl !== undefined ? { baseUrl: request.config.baseUrl } : {}),
   })
 
   yield* streamViaOpenRouterLegacyCredential(request, legacyCredential)
@@ -62,7 +61,7 @@ export async function* streamViaOpenRouter(
  *
  * Proves that a future main-process ProviderCredentialRef/resolver can feed
  * the existing OpenRouter legacy facade without changing active runtime
- * behavior. This is not secure store, not Generic, not renderer/preload/IPC,
+ * behavior. This is not secure store, not renderer/preload/IPC,
  * and not OpenRouter credential migration.
  */
 export async function* streamViaOpenRouterWithCredentialResolver(
@@ -73,7 +72,6 @@ export async function* streamViaOpenRouterWithCredentialResolver(
   const legacyCredential = resolveOpenRouterLegacyCredential({
     credentialRef,
     resolveCredential,
-    ...(request.config.baseUrl !== undefined ? { baseUrl: request.config.baseUrl } : {}),
   })
 
   if ('code' in legacyCredential) {
@@ -111,11 +109,10 @@ async function* streamViaOpenRouterLegacyCredential(
     ...(c.requestedReasoningExclude === true ? { requestedReasoningExclude: true as const } : {}),
     ...(c.tools !== undefined ? { tools: c.tools } : {}),
     ...(c.webSearch !== undefined ? { webSearch: c.webSearch } : {}),
-    ...(c.samplingParams !== undefined ? { samplingParams: c.samplingParams } : {}),
+    ...(c.generationParams !== undefined ? { generationParams: c.generationParams } : {}),
     ...(c.imageGeneration !== undefined ? { imageGeneration: c.imageGeneration } : {}),
     ...(c.additionalPlugins !== undefined ? { openRouterAdditionalPlugins: c.additionalPlugins } : {}),
     ...(c.timeoutMs !== undefined ? { timeoutMs: c.timeoutMs } : {}),
-    ...(legacyCredential.baseUrl !== undefined ? { baseUrl: legacyCredential.baseUrl } : {}),
   } as LiveRequestConfig
 
   const options: LiveStreamOptions = {
@@ -144,7 +141,7 @@ async function* streamViaOpenRouterLegacyStoreCredential(
     ...(c.requestedReasoningExclude === true ? { requestedReasoningExclude: true as const } : {}),
     ...(c.tools !== undefined ? { tools: c.tools } : {}),
     ...(c.webSearch !== undefined ? { webSearch: c.webSearch } : {}),
-    ...(c.samplingParams !== undefined ? { samplingParams: c.samplingParams } : {}),
+    ...(c.generationParams !== undefined ? { generationParams: c.generationParams } : {}),
     ...(c.imageGeneration !== undefined ? { imageGeneration: c.imageGeneration } : {}),
     ...(c.additionalPlugins !== undefined ? { openRouterAdditionalPlugins: c.additionalPlugins } : {}),
     ...(c.timeoutMs !== undefined ? { timeoutMs: c.timeoutMs } : {}),

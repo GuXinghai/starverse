@@ -52,6 +52,20 @@ describe('SettingsRepo', () => {
     expect(repo.getChatReasoningPanelDefaultExpanded()).toBe(true)
   })
 
+  it('persists chat.reasoning_panel.auto_collapse_after_reasoning and defaults to false', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new SettingsRepo(db)
+
+    expect(repo.getChatReasoningPanelAutoCollapseAfterReasoning()).toBe(false)
+
+    repo.setChatReasoningPanelAutoCollapseAfterReasoning(true)
+    expect(repo.getChatReasoningPanelAutoCollapseAfterReasoning()).toBe(true)
+
+    repo.setChatReasoningPanelAutoCollapseAfterReasoning(false)
+    expect(repo.getChatReasoningPanelAutoCollapseAfterReasoning()).toBe(false)
+  })
+
   it('persists web_search.defaults and defaults to null', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
@@ -72,23 +86,33 @@ describe('SettingsRepo', () => {
     expect(repo.getWebSearchDefaults()).toBeNull()
   })
 
-  it('persists sampling_params.defaults and defaults to null', () => {
+  it('persists generation_params.defaults without reading legacy sampling params', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     const repo = new SettingsRepo(db)
 
-    expect(repo.getSamplingParamsDefaults()).toBeNull()
+    expect(repo.getGenerationParamsDefaults()).toBeNull()
+
+    db.prepare(`
+      INSERT INTO settings_kv(key, value_json, created_at_ms, updated_at_ms)
+      VALUES ('sampling_params.defaults', @valueJson, 1, 1)
+    `).run({
+      valueJson: JSON.stringify({ top_p: { mode: 'custom', value: 0.2 } }),
+    })
+    expect(repo.getGenerationParamsDefaults()).toBeNull()
 
     const value = {
-      temperature: { mode: 'custom', value: 0.8 },
-      top_p: { mode: 'custom', value: 0.95 },
-      max_tokens: { mode: 'custom', value: 1200 },
+      version: 1,
+      params: {
+        topP: { mode: 'custom', value: 0.95 },
+        maxOutputTokens: { mode: 'omit' },
+      },
     }
-    repo.setSamplingParamsDefaults(value)
-    expect(repo.getSamplingParamsDefaults()).toEqual(value)
+    repo.setGenerationParamsDefaults(value)
+    expect(repo.getGenerationParamsDefaults()).toEqual(value)
 
-    repo.setSamplingParamsDefaults(null)
-    expect(repo.getSamplingParamsDefaults()).toBeNull()
+    repo.setGenerationParamsDefaults(null)
+    expect(repo.getGenerationParamsDefaults()).toBeNull()
   })
 
   it('persists image_generation.default and defaults to null', () => {
@@ -103,7 +127,6 @@ describe('SettingsRepo', () => {
       outputMode: 'image_only',
       aspectRatio: '16:9',
       imageSize: '1024x1024',
-      advancedJson: '{"seed":7}',
     }
     repo.setImageGenerationDefault(value)
     expect(repo.getImageGenerationDefault()).toEqual(value)
@@ -123,6 +146,12 @@ describe('SettingsRepo', () => {
       noProxy: '',
       strictSSL: true,
     })
+    expect(repo.getNetworkProxySettingsStrict()).toEqual({
+      proxyMode: 'environment',
+      manualProxyUrl: '',
+      noProxy: '',
+      strictSSL: true,
+    })
 
     repo.setNetworkProxySettings({
       proxyMode: 'manual',
@@ -136,6 +165,24 @@ describe('SettingsRepo', () => {
       noProxy: 'localhost,.github.com',
       strictSSL: true,
     })
+    expect(repo.getNetworkProxySettingsStrict()).toEqual({
+      proxyMode: 'manual',
+      manualProxyUrl: 'http://127.0.0.1:7890',
+      noProxy: 'localhost,.github.com',
+      strictSSL: true,
+    })
+  })
+
+  it('compatible strict proxy reads reject a corrupt stored route without changing legacy normalization', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new SettingsRepo(db)
+    db.prepare(`
+      INSERT INTO settings_kv (key, value_json, created_at_ms, updated_at_ms)
+      VALUES ('network.proxy', @value, 1, 1)
+    `).run({ value: JSON.stringify({ proxyMode: 'unknown', manualProxyUrl: '', noProxy: '', strictSSL: true }) })
+    expect(repo.getNetworkProxySettings().proxyMode).toBe('environment')
+    expect(() => repo.getNetworkProxySettingsStrict()).toThrow(/invalid/u)
   })
 
   it('rejects credential-bearing proxy URLs before persistence', () => {
@@ -150,5 +197,26 @@ describe('SettingsRepo', () => {
       strictSSL: true,
     })).toThrow(/proxy credentials/u)
     expect(repo.getNetworkProxySettings().manualProxyUrl).toBe('')
+  })
+
+  it('defaults new chat lifecycle to a clean template and persists explicit policy', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new SettingsRepo(db)
+    expect(repo.getNewChatLifecycleSettings()).toEqual({
+      startupNavigation: 'open_new',
+      startupTemplateReset: { modelConfig: true, draftAttachments: true },
+      postSendTemplateReset: 'reset_all',
+    })
+    repo.setNewChatLifecycleSettings({
+      startupNavigation: 'projects_only',
+      startupTemplateReset: { modelConfig: false, draftAttachments: true },
+      postSendTemplateReset: 'preserve_model_config',
+    })
+    expect(repo.getNewChatLifecycleSettings()).toEqual({
+      startupNavigation: 'projects_only',
+      startupTemplateReset: { modelConfig: false, draftAttachments: true },
+      postSendTemplateReset: 'preserve_model_config',
+    })
   })
 })

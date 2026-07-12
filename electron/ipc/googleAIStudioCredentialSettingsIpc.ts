@@ -9,6 +9,7 @@ export const GOOGLE_AI_STUDIO_API_KEY_STORE_KEY = PROVIDER_CREDENTIAL_LEGACY_STO
 
 export const GOOGLE_AI_STUDIO_CREDENTIAL_SETTINGS_IPC_CHANNELS = [
   'google-ai-studio-credential:get-status',
+  'google-ai-studio-credential:reveal',
   'google-ai-studio-credential:update',
   'google-ai-studio-credential:clear',
 ] as const
@@ -33,6 +34,10 @@ export type GoogleAIStudioCredentialSettingsUpdatePayload = Readonly<{
 export type GoogleAIStudioCredentialSettingsResult =
   | Readonly<{ ok: true; status: GoogleAIStudioCredentialSettingsStatus }>
   | Readonly<{ ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }>
+
+export type GoogleAIStudioCredentialRevealResult =
+  | Readonly<{ ok: true; apiKey: string }>
+  | Readonly<{ ok: false; code: 'credential_missing' | 'store_unavailable'; message: string }>
 
 type RegisterGoogleAIStudioCredentialSettingsIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
@@ -71,6 +76,16 @@ function safeFailure(code: 'invalid_payload' | 'store_unavailable'): GoogleAIStu
   }
 }
 
+function safeRevealFailure(code: 'credential_missing' | 'store_unavailable'): GoogleAIStudioCredentialRevealResult {
+  return {
+    ok: false,
+    code,
+    message: code === 'credential_missing'
+      ? 'Google AI Studio API key is not configured.'
+      : 'Google AI Studio credential settings store is unavailable.',
+  }
+}
+
 export function registerGoogleAIStudioCredentialSettingsIpc(
   input: RegisterGoogleAIStudioCredentialSettingsIpcInput,
 ): string[] {
@@ -81,6 +96,16 @@ export function registerGoogleAIStudioCredentialSettingsIpc(
       return { ok: true, status: readStatus(credentialService) } satisfies GoogleAIStudioCredentialSettingsResult
     } catch {
       return safeFailure('store_unavailable')
+    }
+  })
+
+  registerInvoke('google-ai-studio-credential:reveal', () => {
+    try {
+      const result = credentialService.readApiKey('google_ai_studio')
+      if (!result.ok) return safeRevealFailure(result.code === 'credential_missing' ? 'credential_missing' : 'store_unavailable')
+      return { ok: true, apiKey: result.apiKey } satisfies GoogleAIStudioCredentialRevealResult
+    } catch {
+      return safeRevealFailure('store_unavailable')
     }
   })
 

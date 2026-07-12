@@ -4,6 +4,7 @@ import { createHash, randomUUID } from 'node:crypto'
 import { parentPort } from 'node:worker_threads'
 import BetterSqlite3 from 'better-sqlite3'
 import { DB_SCHEMA_VERSION } from '../schemaVersion'
+import { ensureNewChatTemplateSchema } from '../migrations/ensureNewChatTemplateSchema'
 import { ProjectRepo } from '../repo/projectRepo'
 import { ConvoRepo } from '../repo/convoRepo'
 import { MessageRepo } from '../repo/messageRepo'
@@ -28,6 +29,14 @@ import { ModelCatalogRepo } from '../repo/modelCatalogRepo'
 import { ReasoningModelIndexRepo } from '../repo/reasoningModelIndexRepo'
 import { SettingsRepo } from '../repo/settingsRepo'
 import { ProviderFileUploadCacheRepo } from '../repo/providerFileUploadCacheRepo'
+import { CompatibleProviderRepo } from '../repo/compatibleProviderRepo'
+import { CompatibleProfileRepo } from '../repo/compatibleProfileRepo'
+import { CompatibleCatalogRepo } from '../repo/compatibleCatalogRepo'
+import { CompatibleRouteRepo } from '../repo/compatibleRouteRepo'
+import { CompatibleToolRepo } from '../repo/compatibleToolRepo'
+import { CompatibleDiagnosticsRepo } from '../repo/compatibleDiagnosticsRepo'
+import { CompatibleReasoningRepo } from '../repo/compatibleReasoningRepo'
+import { CompatibleTurnProjectionRepo } from '../repo/compatibleTurnProjectionRepo'
 import { ensureBranchingSchema } from '../migrations/ensureBranchingSchema'
 import { ensureSearchSchema } from '../migrations/ensureSearchSchema'
 import { ensureFilePipelineSchema } from '../migrations/ensureFilePipelineSchema'
@@ -43,6 +52,7 @@ import { FileTypeDetectionCoordinator } from '../../files/fileTypeDetectionCoord
 import { EnginePluginLifecycleService } from '../../files/enginePluginLifecycleService'
 import { createDfcLibreOfficeOfficialAssetBodyInterceptFromEnv } from '../../files/dfcLibreOfficeOfficialAssetBodyIntercept'
 import { fetchPackageToFileWithFetch, type PackageDownloadTransport } from '../../../src/next/plugin-distribution/packageDownloader'
+import { createElectronBridgeHttpFetch } from '../../files/electronConversionBridge'
 import {
   getDfcLibreOfficeManagedRuntimeRoot,
   type DfcOfficePdfRuntimeAvailabilitySummary,
@@ -92,31 +102,68 @@ export function collectActiveMagikaRuntimePluginDirs(input: {
   return [resolveEnginePluginDir(input.storageRootDir, activeMagika.installRootKind, activeMagika.installRef)]
 }
 
-function createElectronSystemAwareOfficialPackageTransport(
+export function createElectronSystemAwareOfficialPackageTransport(
   bridge: WorkerInitConfig['electronConversionBridge']
 ): PackageDownloadTransport {
   return {
-    async fetchPackage() {
+    async fetchPackage(request) {
+      if (bridge?.fetchProvider) {
+        const fetchImpl = createElectronBridgeHttpFetch(bridge)
+        let response: Response
+        try {
+          response = await fetchImpl(request.transportRef, { signal: request.signal })
+        } catch (error) {
+          return {
+            ok: false,
+            code: request.signal?.aborted ? 'cancelled' : 'download_failed',
+            detail: request.signal?.aborted ? 'download cancelled' : sanitizeElectronBridgeDownloadError(error),
+          }
+        }
+        if (!response.ok) return { ok: false, code: 'download_failed', detail: `http_${response.status}`, finalRef: response.url }
+        const contentLength = Number(response.headers.get('content-length') ?? NaN)
+        if (Number.isFinite(contentLength) && contentLength > request.maxBytes) {
+          return { ok: false, code: 'too_large', finalRef: response.url }
+        }
+        const bytes = new Uint8Array(await response.arrayBuffer())
+        if (bytes.byteLength > request.maxBytes) return { ok: false, code: 'too_large', finalRef: response.url }
+        return { ok: true, bytes, finalRef: response.url }
+      }
       return {
         ok: false,
         code: 'download_failed',
-        detail: 'memory_fetch_unavailable_for_large_official_package',
+        detail: 'electron_package_download_service_unavailable',
       }
     },
     async fetchPackageToFile(request) {
-      if (request.proxy?.proxyMode === 'system') {
-        if (!bridge?.fetchPackageToFile) {
-          return {
-            ok: false,
-            code: 'download_failed',
-            detail: 'electron_package_download_service_unavailable',
-          }
-        }
+      if (bridge?.fetchPackageToFile) {
         return bridge.fetchPackageToFile(request)
+      }
+      if (request.proxy?.proxyMode === 'system') {
+        return {
+          ok: false,
+          code: 'download_failed',
+          detail: 'electron_package_download_service_unavailable',
+        }
       }
       return fetchPackageToFileWithFetch(request)
     },
   }
+}
+
+function sanitizeElectronBridgeDownloadError(error: unknown): string {
+  const code = String((error as any)?.code ?? (error as any)?.message ?? '').trim()
+  if (/timeout|timedout|etimedout|abort/iu.test(code)) return 'download_body_timeout'
+  if (/econnreset|socket|network|closed|interrupted/iu.test(code)) return 'network_transport_failed'
+  return 'download_failed'
+}
+
+function createElectronBridgeFetchIfAvailable(
+  bridge: WorkerInitConfig['electronConversionBridge'],
+  timeoutMs?: number
+): typeof fetch | undefined {
+  return bridge?.fetchProvider
+    ? createElectronBridgeHttpFetch(bridge, { timeoutMs })
+    : undefined
 }
 
 export function createRegistryGatedMagikaRuntimeLoader(input: Readonly<{
@@ -210,9 +257,19 @@ export class DbWorkerRuntime {
   readonly reasoningModelIndexRepo: ReasoningModelIndexRepo
   readonly settingsRepo: SettingsRepo
   readonly providerFileUploadCacheRepo: ProviderFileUploadCacheRepo
+  readonly compatibleProviderRepo: CompatibleProviderRepo
+  readonly compatibleProfileRepo: CompatibleProfileRepo
+  readonly compatibleCatalogRepo: CompatibleCatalogRepo
+  readonly compatibleRouteRepo: CompatibleRouteRepo
+  readonly compatibleToolRepo: CompatibleToolRepo
+  readonly compatibleDiagnosticsRepo: CompatibleDiagnosticsRepo
+  readonly compatibleReasoningRepo: CompatibleReasoningRepo
+  readonly compatibleTurnProjectionRepo: CompatibleTurnProjectionRepo
   readonly officePdfRuntimeSummary?: () => DfcOfficePdfRuntimeAvailabilitySummary | null
   private handlers: WorkerHandlerMap = new Map()
   inboxId: string = ''
+  newProjectId: string = ''
+  newTemplateConvoId: string = ''
   private activityThrottle = new Map<string, { timer: ReturnType<typeof setTimeout>; updatedAt: number }>()
   private activityThrottleMs = 200
 
@@ -242,6 +299,8 @@ export class DbWorkerRuntime {
     this.ensureUsageLogSchema()
     console.log('[DbWorkerRuntime] 确保 Reasoning Schema...')
     this.ensureReasoningSchema()
+    console.log('[DbWorkerRuntime] 确保 Provider Native Content Schema...')
+    this.ensureProviderNativeContentSchema()
     console.log('[DbWorkerRuntime] 确保 Message Error Schema...')
     this.ensureMessageErrorSchema()
     console.log('[DbWorkerRuntime] 确保 Message Asset Schema...')
@@ -266,6 +325,8 @@ export class DbWorkerRuntime {
     ensureSearchSchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Project System Columns and Index...')
     this.ensureProjectSystemColumnsAndIndex()
+    console.log('[DbWorkerRuntime] 确保 New Chat Template Schema...')
+    ensureNewChatTemplateSchema(this.db)
     console.log('[DbWorkerRuntime] 确保 Convo Project Activity Index...')
     this.ensureConvoProjectActivityIndex()
     console.log('[DbWorkerRuntime] 确保 Core Indexes...')
@@ -281,6 +342,8 @@ export class DbWorkerRuntime {
     }
     console.log('[DbWorkerRuntime] 确保 Inbox Project Data...')
     this.ensureInboxProjectData()
+    console.log('[DbWorkerRuntime] 确保 New Chat Template Data...')
+    this.ensureNewChatTemplateData()
 
     if (config.logSlowQueryMs || config.logDirectory) {
       configureLogging({ slowQueryMs: config.logSlowQueryMs, directory: config.logDirectory })
@@ -330,6 +393,7 @@ export class DbWorkerRuntime {
       fileAssetRepo: this.fileAssetRepo,
       fileAssetStoreRepo: this.fileAssetStoreRepo,
       storageRootDir: this.fileStorageRootDir,
+      fetch: createElectronBridgeFetchIfAvailable(config.electronConversionBridge),
     })
     const magikaRuntimeLoader = this.buildMagikaRuntimeLoader()
     this.fileTypeDetectionService = new FileTypeDetectionService({
@@ -363,6 +427,7 @@ export class DbWorkerRuntime {
       dfcLibreOfficeManagedRuntimeRootDir: getDfcLibreOfficeManagedRuntimeRoot(this.fileStorageRootDir),
       officialPackageTransport,
       networkProxySettingsProvider: () => this.settingsRepo.getNetworkProxySettings(),
+      officialDownloadProbeFetch: createElectronBridgeFetchIfAvailable(config.electronConversionBridge, 15_000),
     })
     this.contextRepo = new ContextRepo(this.db, this.branchRepo)
     this.searchRepo = new SearchRepo(this.db)
@@ -370,6 +435,14 @@ export class DbWorkerRuntime {
     this.dashboardPrefRepo = new DashboardPrefRepo(this.db)
     this.modelPreferencesRepo = new ModelPreferencesRepo(this.db)
     this.modelCatalogRepo = new ModelCatalogRepo(this.db)
+    this.compatibleProviderRepo = new CompatibleProviderRepo(this.db)
+    this.compatibleProfileRepo = new CompatibleProfileRepo(this.db)
+    this.compatibleCatalogRepo = new CompatibleCatalogRepo(this.db)
+    this.compatibleRouteRepo = new CompatibleRouteRepo(this.db)
+    this.compatibleToolRepo = new CompatibleToolRepo(this.db)
+    this.compatibleDiagnosticsRepo = new CompatibleDiagnosticsRepo(this.db)
+    this.compatibleReasoningRepo = new CompatibleReasoningRepo(this.db)
+    this.compatibleTurnProjectionRepo = new CompatibleTurnProjectionRepo(this.db)
     this.derivativeJobService = new DerivativeJobService({
       db: this.db,
       fileAssetRepo: this.fileAssetRepo,
@@ -496,11 +569,14 @@ export class DbWorkerRuntime {
       this.db.exec('ALTER TABLE message_reasoning_detail_segments ADD COLUMN segment_fingerprint TEXT')
     }
 
+    this.ensureReasoningDisplayBlocksHardCutover()
+
     const indexStatements = [
       'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message ON message_reasoning_detail_segments(message_id)',
       'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_message_order ON message_reasoning_detail_segments(message_id, segment_id)',
       'CREATE INDEX IF NOT EXISTS idx_reasoning_segment_group ON message_reasoning_detail_segments(message_id, detail_id, detail_index, type, format, segment_id)',
-      'CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint ON message_reasoning_detail_segments(message_id, segment_fingerprint)'
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint ON message_reasoning_detail_segments(message_id, segment_fingerprint)',
+      'CREATE INDEX IF NOT EXISTS idx_reasoning_display_blocks_message_ordinal ON message_reasoning_display_blocks(message_id, ordinal)'
     ]
     for (const sql of indexStatements) {
       this.db.exec(sql)
@@ -508,6 +584,299 @@ export class DbWorkerRuntime {
 
     // Backfill segment_fingerprint for historical rows (idempotent, batch processing)
     this.backfillSegmentFingerprints()
+  }
+
+  private createReasoningDisplayBlocksTable(tableName = 'message_reasoning_display_blocks') {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ${tableName} (
+        block_id TEXT PRIMARY KEY,
+        message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+        ordinal INTEGER NOT NULL,
+        block_type TEXT NOT NULL CHECK (block_type IN ('text', 'image', 'opaque')),
+        text TEXT,
+        semantic_role TEXT CHECK (
+          semantic_role IS NULL OR semantic_role IN ('summary', 'reasoning', 'thinking', 'thought')
+        ),
+        asset_id TEXT REFERENCES asset(id) ON DELETE SET NULL,
+        file_asset_id TEXT REFERENCES file_assets(id) ON DELETE SET NULL,
+        url TEXT,
+        mime TEXT,
+        width INTEGER,
+        height INTEGER,
+        alt TEXT,
+        label TEXT,
+        warning TEXT,
+        provider_key TEXT NOT NULL CHECK (length(provider_key) > 0),
+        source_event_type TEXT,
+        source_raw_segment_id INTEGER REFERENCES message_reasoning_detail_segments(segment_id) ON DELETE SET NULL,
+        payload_json TEXT,
+        created_at INTEGER NOT NULL,
+        final_at INTEGER,
+        segment_fingerprint TEXT,
+        UNIQUE (message_id, ordinal),
+        UNIQUE (message_id, segment_fingerprint)
+      )
+    `)
+  }
+
+  private ensureReasoningDisplayBlocksHardCutover() {
+    const tableExists = !!this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'message_reasoning_display_blocks'")
+      .get()
+
+    if (!tableExists) {
+      this.createReasoningDisplayBlocksTable()
+      this.setReasoningDisplayBlocksSchemaVersion()
+      return
+    }
+
+    if (this.reasoningDisplayBlocksSchemaVersion() === 2 && this.reasoningDisplayBlocksSchemaMatchesExpected()) {
+      return
+    }
+
+    this.db.exec('DROP TABLE IF EXISTS message_reasoning_display_blocks')
+    this.createReasoningDisplayBlocksTable()
+    this.setReasoningDisplayBlocksSchemaVersion()
+  }
+
+  private reasoningDisplayBlocksSchemaVersion(): number | null {
+    const row = this.db.prepare("SELECT value_json FROM settings_kv WHERE key = 'reasoning_display_blocks_schema_version'").get() as
+      | { value_json?: string }
+      | undefined
+    if (!row?.value_json) return null
+    try {
+      const parsed = JSON.parse(row.value_json)
+      return typeof parsed === 'number' && Number.isFinite(parsed) ? parsed : null
+    } catch {
+      return null
+    }
+  }
+
+  private setReasoningDisplayBlocksSchemaVersion() {
+    const now = Date.now()
+    this.db.prepare(`
+      INSERT INTO settings_kv(key, value_json, created_at_ms, updated_at_ms)
+      VALUES ('reasoning_display_blocks_schema_version', '2', @now, @now)
+      ON CONFLICT(key) DO UPDATE SET
+        value_json = excluded.value_json,
+        updated_at_ms = excluded.updated_at_ms
+    `).run({ now })
+  }
+
+  private reasoningDisplayBlocksSchemaMatchesExpected(): boolean {
+    const columns = this.db.prepare('PRAGMA table_info(message_reasoning_display_blocks)').all() as Array<{
+      name: string
+      notnull: number
+    }>
+    const columnNames = new Set(columns.map((col) => col.name))
+    const requiredColumns = [
+      'block_id',
+      'message_id',
+      'ordinal',
+      'block_type',
+      'asset_id',
+      'file_asset_id',
+      'provider_key',
+      'source_raw_segment_id',
+      'final_at',
+      'segment_fingerprint',
+    ]
+    const providerKey = columns.find((col) => col.name === 'provider_key')
+    const foreignKeys = this.db.prepare('PRAGMA foreign_key_list(message_reasoning_display_blocks)').all() as Array<{
+      from: string
+      table: string
+      to: string
+      on_delete: string
+    }>
+    const hasForeignKey = (from: string, table: string, to: string, onDelete: string) =>
+      foreignKeys.some((fk) =>
+        fk.from === from &&
+        fk.table === table &&
+        fk.to === to &&
+        fk.on_delete.toUpperCase() === onDelete
+      )
+
+    if (requiredColumns.some((column) => !columnNames.has(column))) return false
+    if (providerKey?.notnull !== 1) return false
+    if (!hasForeignKey('asset_id', 'asset', 'id', 'SET NULL')) return false
+    if (!hasForeignKey('file_asset_id', 'file_assets', 'id', 'SET NULL')) return false
+    if (!hasForeignKey('source_raw_segment_id', 'message_reasoning_detail_segments', 'segment_id', 'SET NULL')) return false
+
+    const uniqueIndexes = this.db.prepare('PRAGMA index_list(message_reasoning_display_blocks)').all() as Array<{
+      name: string
+      unique: number
+    }>
+    const uniqueColumnGroups = uniqueIndexes
+      .filter((index) => index.unique === 1)
+      .map((index) => {
+        const escapedName = index.name.replace(/"/g, '""')
+        return (this.db.prepare(`PRAGMA index_info("${escapedName}")`).all() as Array<{ name: string }>)
+          .map((column) => column.name)
+      })
+    const hasUnique = (columns: string[]) => uniqueColumnGroups.some((group) =>
+      group.length === columns.length && group.every((column, index) => column === columns[index])
+    )
+
+    return hasUnique(['message_id', 'ordinal']) && hasUnique(['message_id', 'segment_fingerprint'])
+  }
+
+  private ensureProviderNativeContentSchema() {
+    const exists = !!this.db
+      .prepare("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'message_provider_native_contents'")
+      .get()
+    if (!exists) {
+      this.createProviderNativeContentTable()
+      return
+    }
+    if (!this.providerNativeContentSchemaMatchesExpected()) {
+      this.recreateProviderNativeContentTable()
+    }
+    this.db.exec(`
+      CREATE INDEX IF NOT EXISTS idx_provider_native_contents_message
+        ON message_provider_native_contents(message_id);
+    `)
+  }
+
+  private createProviderNativeContentTable(tableName = 'message_provider_native_contents') {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS ${tableName} (
+        message_id TEXT NOT NULL REFERENCES message(id) ON DELETE CASCADE,
+        provider_key TEXT NOT NULL CHECK (length(provider_key) > 0),
+        source_api TEXT NOT NULL CHECK (length(source_api) > 0),
+        snapshot_key TEXT NOT NULL CHECK (length(snapshot_key) > 0),
+        candidate_index INTEGER CHECK (candidate_index IS NULL OR candidate_index >= 0),
+        status TEXT NOT NULL CHECK (status IN ('streaming', 'final', 'error', 'cancelled')),
+        content_json TEXT NOT NULL,
+        role TEXT,
+        finish_reason TEXT,
+        stop_reason TEXT,
+        stop_sequence TEXT,
+        usage_json TEXT,
+        model TEXT,
+        model_version TEXT,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        PRIMARY KEY (message_id, provider_key, source_api, snapshot_key)
+      );
+    `)
+  }
+
+  private providerNativeContentSchemaMatchesExpected(): boolean {
+    const columns = this.db.prepare('PRAGMA table_info(message_provider_native_contents)').all() as Array<{
+      name: string
+      notnull: number
+    }>
+    const columnNames = new Set(columns.map((column) => column.name))
+    const required = [
+      'message_id',
+      'provider_key',
+      'source_api',
+      'snapshot_key',
+      'candidate_index',
+      'status',
+      'content_json',
+      'role',
+      'finish_reason',
+      'stop_reason',
+      'stop_sequence',
+      'usage_json',
+      'model',
+      'model_version',
+      'created_at',
+      'updated_at',
+    ]
+    if (required.some((name) => !columnNames.has(name))) return false
+    const snapshotKey = columns.find((column) => column.name === 'snapshot_key')
+    if (snapshotKey?.notnull !== 1) return false
+    const indexList = this.db.prepare('PRAGMA index_list(message_provider_native_contents)').all() as Array<{
+      name: string
+      unique: number
+    }>
+    const uniqueColumnGroups = indexList
+      .filter((index) => index.unique === 1)
+      .map((index) => {
+        const escaped = index.name.replace(/"/g, '""')
+        return (this.db.prepare(`PRAGMA index_info("${escaped}")`).all() as Array<{ name: string }>)
+          .map((column) => column.name)
+      })
+    return uniqueColumnGroups.some((group) =>
+      group.length === 4 &&
+      group[0] === 'message_id' &&
+      group[1] === 'provider_key' &&
+      group[2] === 'source_api' &&
+      group[3] === 'snapshot_key'
+    )
+  }
+
+  private recreateProviderNativeContentTable() {
+    const oldColumns = this.db.prepare('PRAGMA table_info(message_provider_native_contents)').all() as Array<{ name: string }>
+    const oldColumnNames = new Set(oldColumns.map((column) => column.name))
+    const tempName = 'message_provider_native_contents_new'
+    this.db.exec(`DROP TABLE IF EXISTS ${tempName}`)
+    this.createProviderNativeContentTable(tempName)
+
+    const selectExpr = (column: string, fallback: string) =>
+      oldColumnNames.has(column) ? column : fallback
+    const candidateSnapshotExpr = oldColumnNames.has('candidate_index')
+      ? "CASE WHEN candidate_index IS NOT NULL THEN 'candidate:' || candidate_index ELSE 'snapshot' END"
+      : "'snapshot'"
+    const snapshotKeyExpr = oldColumnNames.has('snapshot_key')
+      ? `COALESCE(NULLIF(snapshot_key, ''), ${candidateSnapshotExpr})`
+      : candidateSnapshotExpr
+    const candidateIndexExpr = selectExpr('candidate_index', 'NULL')
+    const usageExpr = oldColumnNames.has('usage_json')
+      ? 'usage_json'
+      : selectExpr('usage_metadata_json', 'NULL')
+
+    this.db.exec(`
+      INSERT OR REPLACE INTO ${tempName} (
+        message_id,
+        provider_key,
+        source_api,
+        snapshot_key,
+        candidate_index,
+        status,
+        content_json,
+        role,
+        finish_reason,
+        stop_reason,
+        stop_sequence,
+        usage_json,
+        model,
+        model_version,
+        created_at,
+        updated_at
+      )
+      SELECT
+        message_id,
+        provider_key,
+        source_api,
+        ${snapshotKeyExpr},
+        ${candidateIndexExpr},
+        status,
+        content_json,
+        ${selectExpr('role', 'NULL')},
+        ${selectExpr('finish_reason', 'NULL')},
+        ${selectExpr('stop_reason', 'NULL')},
+        ${selectExpr('stop_sequence', 'NULL')},
+        ${usageExpr},
+        ${selectExpr('model', 'NULL')},
+        ${selectExpr('model_version', 'NULL')},
+        created_at,
+        updated_at
+      FROM message_provider_native_contents
+      WHERE message_id IS NOT NULL
+        AND provider_key IS NOT NULL
+        AND source_api IS NOT NULL
+        AND status IN ('streaming', 'final', 'error', 'cancelled')
+        AND content_json IS NOT NULL
+    `)
+    this.db.exec(`
+      DROP TABLE message_provider_native_contents;
+      ALTER TABLE ${tempName} RENAME TO message_provider_native_contents;
+      CREATE INDEX IF NOT EXISTS idx_provider_native_contents_message
+        ON message_provider_native_contents(message_id);
+    `)
   }
 
   private ensureMessageErrorSchema() {
@@ -934,9 +1303,9 @@ export class DbWorkerRuntime {
    * 3. 迁移历史 NULL 会话到 Inbox（分批 500 条，幂等安全）
    */
   private ensureInboxProjectData() {
-    // 1. 幂等创建 Inbox
-    const existing = this.db.prepare('SELECT id FROM project WHERE system_key = ?').get('inbox') as { id: string } | undefined
-    if (!existing) {
+    const ensureIdentity = this.db.transaction(() => {
+      const existing = this.db.prepare('SELECT id FROM project WHERE system_key = ?').get('inbox') as { id: string } | undefined
+      if (existing) return existing.id
       const inboxId = randomUUID()
       const now = Date.now()
       this.db.prepare(`
@@ -944,11 +1313,9 @@ export class DbWorkerRuntime {
         VALUES (?, 'Inbox', 1, 'inbox', ?, ?, '{"isSystemInbox":true}')
       `).run(inboxId, now, now)
       console.log('[DbWorkerRuntime] Created Inbox project:', inboxId)
-    }
-    
-    // 2. 缓存 inboxId
-    const inboxRow = this.db.prepare('SELECT id FROM project WHERE system_key = ?').get('inbox') as { id: string }
-    this.inboxId = inboxRow.id
+      return inboxId
+    })
+    this.inboxId = ensureIdentity.immediate()
     console.log('[DbWorkerRuntime] Inbox ID cached:', this.inboxId)
     
     // 3. 迁移历史 NULL 会话（分批，不修改 updated_at，幂等安全）
@@ -969,6 +1336,60 @@ export class DbWorkerRuntime {
 
     // 4. 清理历史伪项目（unassigned / No Project 系统占位）
     this.migrateLegacyUnassignedProjectData()
+  }
+
+  private ensureNewChatTemplateData() {
+    const txn = this.db.transaction(() => {
+      let project = this.db.prepare("SELECT id FROM project WHERE system_key = 'new'").get() as { id: string } | undefined
+      if (!project) {
+        const id = randomUUID()
+        const now = Date.now()
+        this.db.prepare(`
+          INSERT INTO project (id, name, is_system, system_key, created_at, updated_at, meta)
+          VALUES (?, 'New', 1, 'new', ?, ?, '{"isSystemNew":true}')
+        `).run(id, now, now)
+        project = { id }
+      }
+      const rows = this.db.prepare(`
+        SELECT id, system_key
+        FROM convo
+        WHERE project_id = ? OR system_key = 'new_template'
+        ORDER BY created_at ASC, id ASC
+      `).all(project.id) as Array<{ id: string; system_key: string | null }>
+      if (rows.length > 1) {
+        throw new DbWorkerError('ERR_INVALID', 'new_chat_template_duplicate')
+      }
+      let template = rows[0]
+      if (template && template.system_key !== 'new_template') {
+        throw new DbWorkerError('ERR_INVALID', 'new_chat_template_identity_invalid')
+      }
+      if (!template) {
+        const id = randomUUID()
+        const now = Date.now()
+        this.db.prepare(`
+          INSERT INTO convo(id, project_id, title, created_at, updated_at, meta, system_key, template_revision)
+          VALUES (?, ?, 'New Chat', ?, ?, NULL, 'new_template', 0)
+        `).run(id, project.id, now, now)
+        this.db.prepare(`
+          INSERT INTO conversation_drafts(conversation_id, draft_text, draft_mode, editing_source_message_id, updated_at)
+          VALUES (?, '', 'compose', NULL, ?)
+        `).run(id, now)
+        template = { id, system_key: 'new_template' }
+      }
+      const contamination = this.db.prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM message WHERE convo_id = @id) AS message_count,
+          (SELECT COUNT(*) FROM compatible_route_provenance r
+             JOIN message m ON m.id = r.request_message_id
+            WHERE m.convo_id = @id) AS route_count
+      `).get({ id: template.id }) as { message_count: number; route_count: number }
+      if (Number(contamination.message_count) > 0 || Number(contamination.route_count) > 0) {
+        throw new DbWorkerError('ERR_INVALID', 'new_chat_template_contaminated')
+      }
+      this.newProjectId = project.id
+      this.newTemplateConvoId = template.id
+    })
+    txn.immediate()
   }
 
   /**
@@ -1198,9 +1619,11 @@ export class DbWorkerRuntime {
 
   loadConvoRow(convoId: string) {
     return this.db.prepare(`
-      SELECT id, project_id, title, created_at, updated_at
-      FROM convo
-      WHERE id = @id
+      SELECT c.id, c.project_id, c.title, c.created_at, c.updated_at
+      FROM convo c
+      WHERE c.id = @id
+        AND COALESCE(c.system_key, '') <> 'new_template'
+        AND NOT EXISTS (SELECT 1 FROM project p WHERE p.id = c.project_id AND p.system_key = 'new')
       LIMIT 1
     `).get({ id: convoId }) as { id: string; project_id: string | null; title: string; created_at: number; updated_at: number } | undefined
   }
@@ -1217,7 +1640,10 @@ export class DbWorkerRuntime {
       FROM message m
       LEFT JOIN message_body mb ON mb.message_id = m.id
       LEFT JOIN convo c ON c.id = m.convo_id
+      LEFT JOIN project p ON p.id = c.project_id
       WHERE m.id = @id
+        AND COALESCE(c.system_key, '') <> 'new_template'
+        AND COALESCE(p.system_key, '') <> 'new'
       LIMIT 1
     `).get({ id: messageId }) as {
       id: string
@@ -1279,6 +1705,7 @@ export class DbWorkerRuntime {
     const stmt = this.db.prepare(`
       SELECT id, name, created_at, updated_at
       FROM project
+      WHERE COALESCE(system_key, '') <> 'new'
       ORDER BY created_at ASC
     `)
     const rows = stmt.all() as Array<{ id: string; name: string; created_at: number; updated_at: number }>
@@ -1294,8 +1721,11 @@ export class DbWorkerRuntime {
 
   *iterateConvoDocs(): Iterable<SearchDocInput> {
     const stmt = this.db.prepare(`
-      SELECT id, project_id, title, created_at, updated_at
-      FROM convo
+      SELECT c.id, c.project_id, c.title, c.created_at, c.updated_at
+      FROM convo c
+      LEFT JOIN project p ON p.id = c.project_id
+      WHERE COALESCE(c.system_key, '') <> 'new_template'
+        AND COALESCE(p.system_key, '') <> 'new'
       ORDER BY created_at ASC
     `)
     const rows = stmt.all() as Array<{ id: string; project_id: string | null; title: string; created_at: number; updated_at: number }>
@@ -1315,7 +1745,10 @@ export class DbWorkerRuntime {
       FROM message m
       LEFT JOIN message_body mb ON mb.message_id = m.id
       LEFT JOIN convo c ON c.id = m.convo_id
+      LEFT JOIN project p ON p.id = c.project_id
       WHERE m.status = 'final'
+        AND COALESCE(c.system_key, '') <> 'new_template'
+        AND COALESCE(p.system_key, '') <> 'new'
       ORDER BY m.created_at ASC
     `)
 

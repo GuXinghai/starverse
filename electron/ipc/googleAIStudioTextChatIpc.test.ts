@@ -77,35 +77,133 @@ describe('googleAIStudioTextChatIpc', () => {
     })).toMatchObject({ ok: false, code: 'invalid_payload' })
   })
 
+  it('accepts Gemini thinking only through generation params', () => {
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_thinking',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-3.1-flash-lite',
+      messages: [{ role: 'user', content: 'hello' }],
+      generationParams: {
+        generationConfig: {
+          thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+        },
+      },
+    })).toMatchObject({
+      ok: true,
+      generationParams: {
+        generationConfig: {
+          thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+        },
+      },
+    })
+
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_bad_generation_params',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-3.1-flash-lite',
+      messages: [{ role: 'user', content: 'hello' }],
+      generationParams: [],
+    })).toMatchObject({ ok: false, code: 'invalid_payload' })
+  })
+
+  it('validates image generation config as safe plain data', () => {
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_image',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-3.1-flash-image',
+      messages: [{ role: 'user', content: 'draw' }],
+      imageGeneration: {
+        outputMode: 'image_only',
+        aspectRatio: '16:9',
+        imageSize: '2K',
+      },
+    })).toMatchObject({
+      ok: true,
+      imageGeneration: {
+        outputMode: 'image_only',
+        aspectRatio: '16:9',
+        imageSize: '2K',
+      },
+    })
+
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_bad_image',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-3.1-flash-lite-image',
+      messages: [{ role: 'user', content: 'draw' }],
+      imageGeneration: { imageSize: '4K' },
+    })).toMatchObject({ ok: false, code: 'invalid_payload' })
+
+    expect(validateGoogleAIStudioTextChatPayload({
+      requestId: 'google_ai_studio_req_bad_known_image_size',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-3.1-flash-lite-image',
+      messages: [{ role: 'user', content: 'draw' }],
+      imageGeneration: { imageSize: '4K' },
+    })).toMatchObject({
+      ok: false,
+      code: 'invalid_payload',
+      error: 'Google AI Studio image size is not supported for this model. Supported sizes: 1K.',
+    })
+  })
+
   it('streams native Gemini text deltas with main-process Google AI Studio credential resolution', async () => {
+    let fetchedBody = ''
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
-      expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:streamGenerateContent?alt=sse')
+      expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/models/gemini-3.1-flash-lite:streamGenerateContent?alt=sse')
       expect(init?.method).toBe('POST')
       expect(init?.redirect).toBe('error')
       expect((init?.headers as Record<string, string>)?.['x-goog-api-key']).toBe('fake-google-secret')
       expect((init?.headers as Record<string, string>)?.Authorization).toBeUndefined()
-      const body = JSON.parse(String(init?.body ?? '{}'))
+      fetchedBody = String(init?.body ?? '{}')
+      const body = JSON.parse(fetchedBody)
       expect(body).toMatchObject({
         contents: [{ role: 'user', parts: [{ text: 'hello' }] }],
       })
+      expect(body.generationConfig?.thinkingConfig).toEqual({
+        thinkingLevel: 'medium',
+        includeThoughts: true,
+      })
+      expect(body.reasoning_effort).toBeUndefined()
+      expect(body.reasoning).toBeUndefined()
+      expect(body.thinking).toBeUndefined()
       return makeSseResponse(textChunk('gemini hello'), doneChunk())
     }) as unknown as typeof fetch
 
     const registerInvoke = vi.fn()
-    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('fake-google-secret'), fetchImpl })
+    const tryPersist = vi.fn()
+    registerGoogleAIStudioTextChatIpc({
+      registerInvoke,
+      credentialService: createCredentialService('fake-google-secret'),
+      fetchImpl,
+      rawGenerationRequestStore: { tryPersist } as any,
+    })
     const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
     const sender = createSender()
 
     const start = await handler({ sender }, {
       requestId: 'google_ai_studio_req_ok',
       assistantMessageId: 'assistant_1',
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-lite',
       messages: [{ role: 'user', content: 'hello' }],
+      generationParams: {
+        generationConfig: {
+          thinkingConfig: {
+            thinkingLevel: 'medium',
+            includeThoughts: true,
+          },
+        },
+      },
       timeoutMs: 1000,
     })
 
     expect(start).toEqual({ ok: true })
     await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('google-ai-studio-chat:end:google_ai_studio_req_ok'))
+    expect(tryPersist).toHaveBeenCalledWith(expect.objectContaining({
+      answerRootId: 'assistant_1',
+      providerId: 'google_ai_studio',
+      modelId: 'gemini-3.1-flash-lite',
+    }), fetchedBody)
     const events = sentEvents(sender, 'google_ai_studio_req_ok')
     expect(events.some((event) =>
       event.type === 'event' &&
@@ -235,12 +333,57 @@ describe('googleAIStudioTextChatIpc', () => {
     })
 
     await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('google-ai-studio-chat:end:google_ai_studio_req_error'))
-    const serialized = JSON.stringify(sentEvents(sender, 'google_ai_studio_req_error'))
+    const events = sentEvents(sender, 'google_ai_studio_req_error')
+    const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('fake-google-secret')
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('Bearer')
     expect(serialized).not.toContain('public.example.test')
-    expect(serialized).toContain('Google AI Studio text chat failed safely.')
+    expect(events.some((event) =>
+      event.type === 'event' &&
+      event.event.type === 'stream.error' &&
+      event.event.error.networkError?.safeDetailCode === 'network_unknown' &&
+      event.event.error.message === 'Google AI Studio: Network request failed.',
+    )).toBe(true)
+  })
+
+  it('preserves Gemini stream provider errors instead of rewriting them as network_unknown', async () => {
+    const fetchImpl = vi.fn(async () => makeSseResponse(`data: ${JSON.stringify({
+      error: {
+        code: 400,
+        status: 'INVALID_ARGUMENT',
+        message: 'Bad request Authorization: Bearer fake-google-secret at https://public.example.test',
+      },
+    })}`)) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerGoogleAIStudioTextChatIpc({ registerInvoke, credentialService: createCredentialService('fake-google-secret'), fetchImpl })
+    const handler = registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-chat:stream-text')?.[1]
+    const sender = createSender()
+
+    await handler({ sender }, {
+      requestId: 'google_ai_studio_req_stream_error',
+      assistantMessageId: 'assistant_1',
+      model: 'gemini-2.5-flash',
+      messages: [{ role: 'user', content: 'hello' }],
+    })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('google-ai-studio-chat:end:google_ai_studio_req_stream_error'))
+    const events = sentEvents(sender, 'google_ai_studio_req_stream_error')
+    const errorEvent = events.find((event) => event.type === 'event' && event.event.type === 'stream.error')
+    expect(errorEvent?.type).toBe('event')
+    if (errorEvent?.type === 'event' && errorEvent.event.type === 'stream.error') {
+      expect(errorEvent.event.error.provider).toBe('google-ai-studio')
+      expect(errorEvent.event.error.category).toBe('provider_error')
+      expect(errorEvent.event.error.code).toBe('400')
+      expect(errorEvent.event.error.message).toContain('Bad request')
+      expect(errorEvent.event.error.message).not.toBe('Google AI Studio: Network request failed.')
+      expect(errorEvent.event.error.networkError).toBeUndefined()
+    }
+    const serialized = JSON.stringify(events)
+    expect(serialized).not.toContain('fake-google-secret')
+    expect(serialized).not.toContain('Authorization')
+    expect(serialized).not.toContain('Bearer')
+    expect(serialized).not.toContain('public.example.test')
   })
 
   it('maps provider 404 to a clearer sanitized model/version/streaming cause', async () => {
@@ -274,7 +417,8 @@ describe('googleAIStudioTextChatIpc', () => {
       event.event.type === 'stream.error' &&
       event.event.error.httpStatus === 404 &&
       event.event.error.code === '404' &&
-      event.event.error.message === 'Google AI Studio model was not found for the selected API version or does not support streaming text chat.',
+      event.event.error.message === 'Google AI Studio: Endpoint or model was not found.' &&
+      event.event.error.networkError?.safeDetailCode === 'http_404_not_found_or_model_missing'
     )).toBe(true)
     const serialized = JSON.stringify(events)
     expect(serialized).not.toContain('streamGenerateContent. Authorization')

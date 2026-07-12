@@ -1,17 +1,26 @@
 import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
-import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
+import type { ProviderStreamConfig, ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaGemini, type GeminiFetchFn } from '../../src/next/provider/gemini/geminiAdapter'
 import type { GeminiContent } from '../../src/next/provider/gemini/geminiRequestBuilder'
+import {
+  cloneGeminiProviderNativeContent,
+  normalizeGeminiProviderNativeSnapshot,
+  type GeminiProviderNativeSnapshot,
+} from '../../src/next/provider/gemini/geminiProviderNativeContent'
+import { validateGeminiImageGenerationImageSize } from '../../src/next/provider/gemini/geminiImageGenerationPolicy'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
+import { sanitizeProviderNetworkError } from './providerNetworkError'
 import {
   isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
+import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
 
 export const GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS = [
   'google-ai-studio-chat:stream-text',
@@ -21,6 +30,7 @@ export const GOOGLE_AI_STUDIO_TEXT_CHAT_IPC_CHANNELS = [
 export type GoogleAIStudioTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
   content: string
+  geminiNativeContent?: GeminiProviderNativeSnapshot
 }>
 
 export type GoogleAIStudioTextChatPayload = Readonly<{
@@ -29,6 +39,8 @@ export type GoogleAIStudioTextChatPayload = Readonly<{
   model?: unknown
   messages?: unknown
   currentUserContentBlocks?: unknown
+  generationParams?: unknown
+  imageGeneration?: unknown
   timeoutMs?: unknown
 }>
 
@@ -51,6 +63,7 @@ type RegisterGoogleAIStudioTextChatIpcInput = Readonly<{
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
   fetchImpl?: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -60,6 +73,8 @@ type ValidatedTextChatSuccess = Readonly<{
   model: string
   messages: GoogleAIStudioTextChatMessage[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  generationParams?: ProviderStreamConfig['generationParams']
+  imageGeneration?: ProviderStreamConfig['imageGeneration']
   timeoutMs: number
 }>
 
@@ -103,17 +118,80 @@ function normalizeMessages(raw: unknown, allowEmptyCurrentUser = false): GoogleA
     if (!item || typeof item !== 'object') return null
     const role = (item as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant') return null
-    const content = String((item as Record<string, unknown>).content ?? '').trim()
+    const record = item as Record<string, unknown>
+    const content = String(record.content ?? '').trim()
+    let geminiNativeContent: GeminiProviderNativeSnapshot | undefined
+    if (role === 'assistant' && record.geminiNativeContent !== undefined) {
+      try {
+        const snapshot = normalizeGeminiProviderNativeSnapshot(record.geminiNativeContent)
+        if (snapshot.status !== 'final') return null
+        geminiNativeContent = snapshot
+      } catch {
+        return null
+      }
+    }
     if (!content) {
       if (allowEmptyCurrentUser && index === sliced.length - 1 && role === 'user') {
         out.push({ role, content: '' })
+      } else if (role === 'assistant' && geminiNativeContent) {
+        out.push({ role, content: '', geminiNativeContent })
       }
       continue
     }
-    out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS) })
+    out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS), ...(geminiNativeContent ? { geminiNativeContent } : {}) })
   }
   if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
   return out
+}
+
+function isPlainRecord(value: unknown): value is Record<string, unknown> {
+  return !!value && typeof value === 'object' && !Array.isArray(value) && Object.getPrototypeOf(value) === Object.prototype
+}
+
+function validateImageGenerationConfig(raw: unknown): ProviderStreamConfig['imageGeneration'] | null | undefined {
+  if (raw === undefined || raw === null) return undefined
+  if (!isPlainRecord(raw)) return null
+
+  const out: {
+    capabilityClass?: string
+    modalities?: string[]
+    outputMode?: 'auto' | 'image_only' | 'image_and_text'
+    aspectRatio?: string
+    imageSize?: '512' | '1K' | '2K' | '4K' | ''
+  } = {}
+
+  if ('capabilityClass' in raw) {
+    const value = String(raw.capabilityClass ?? '').trim()
+    if (!value || value.length > 128) return null
+    out.capabilityClass = value
+  }
+  if ('modalities' in raw) {
+    if (!Array.isArray(raw.modalities)) return null
+    const modalities = raw.modalities.map((item) => String(item ?? '').trim()).filter((item) => item === 'image' || item === 'text')
+    if (modalities.length !== raw.modalities.length) return null
+    if (modalities.length > 0) out.modalities = modalities
+  }
+  if ('outputMode' in raw) {
+    if (raw.outputMode !== 'auto' && raw.outputMode !== 'image_only' && raw.outputMode !== 'image_and_text') return null
+    out.outputMode = raw.outputMode
+  }
+  if ('aspectRatio' in raw) {
+    const value = String(raw.aspectRatio ?? '').trim()
+    if (value.length > 32) return null
+    if (value) out.aspectRatio = value
+  }
+  if ('imageSize' in raw) {
+    if (raw.imageSize !== '' && raw.imageSize !== '512' && raw.imageSize !== '1K' && raw.imageSize !== '2K' && raw.imageSize !== '4K') return null
+    out.imageSize = raw.imageSize
+  }
+
+  return Object.keys(out).length > 0 ? out : undefined
+}
+
+function extractImageSizeForValidation(imageGeneration: ProviderStreamConfig['imageGeneration']): unknown {
+  if (!imageGeneration) return undefined
+  if (imageGeneration.imageSize) return imageGeneration.imageSize
+  return undefined
 }
 
 export function validateGoogleAIStudioTextChatPayload(payload: unknown): ValidatedTextChatPayload {
@@ -138,6 +216,24 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     return staticFailure('invalid_payload', 'Google AI Studio text chat requires user and assistant messages.')
   }
 
+  const imageGeneration = validateImageGenerationConfig(record.imageGeneration)
+  if (imageGeneration === null) {
+    return staticFailure('invalid_payload', 'Google AI Studio image generation payload is invalid.')
+  }
+  const generationParams = validateProviderGenerationParamsPayload(record.generationParams)
+  if (generationParams === null) {
+    return staticFailure('invalid_payload', 'Google AI Studio generation params payload is invalid.')
+  }
+  if (imageGeneration) {
+    const imageSizeValidation = validateGeminiImageGenerationImageSize({
+      model,
+      imageSize: extractImageSizeForValidation(imageGeneration),
+    })
+    if (!imageSizeValidation.ok) {
+      return staticFailure('invalid_payload', `Google AI Studio image size is not supported for this model. Supported sizes: ${imageSizeValidation.supportedImageSizes.join(', ')}.`)
+    }
+  }
+
   return {
     ok: true,
     requestId,
@@ -145,6 +241,8 @@ export function validateGoogleAIStudioTextChatPayload(payload: unknown): Validat
     model,
     messages,
     ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
+    ...(generationParams ? { generationParams } : {}),
+    ...(imageGeneration ? { imageGeneration } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
 }
@@ -159,36 +257,42 @@ function readGoogleAIStudioApiKey(credentialService: ProviderCredentialService):
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
-  const category = error.category === 'auth'
-    ? 'auth'
-    : error.category === 'rate_limit'
-      ? 'rate_limit'
-      : error.category === 'aborted'
-        ? 'aborted'
-        : error.category === 'bad_request'
-          ? 'bad_request'
-          : error.category === 'network'
-            ? 'network'
-            : 'provider_error'
-
-  return {
-    phase: error.phase,
-    provider: 'google-ai-studio',
-    category,
-    message: category === 'auth'
-      ? 'Google AI Studio credential was rejected.'
-      : category === 'rate_limit'
-        ? 'Google AI Studio rate limit was reached.'
-        : category === 'aborted'
-          ? 'Google AI Studio text chat was aborted.'
-          : error.httpStatus === 404
-            ? 'Google AI Studio model was not found for the selected API version or does not support streaming text chat.'
-          : 'Google AI Studio text chat failed safely.',
-    ...(error.code ? { code: String(error.code) } : {}),
-    ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
-    ...(error.retryable ? { retryable: true } : {}),
-    ...(error.requestId ? { requestId: error.requestId } : {}),
+  if (error.phase !== 'transport' && error.phase !== 'http' && error.phase !== 'abort' && error.category !== 'network') {
+    return {
+      phase: error.phase,
+      provider: 'google-ai-studio',
+      category: error.category,
+      message: sanitizeProviderMessage(error.message),
+      ...(error.code ? { code: sanitizeProviderCode(error.code) } : {}),
+      ...(typeof error.httpStatus === 'number' ? { httpStatus: error.httpStatus } : {}),
+      ...(error.retryable ? { retryable: true } : {}),
+      ...(error.requestId ? { requestId: sanitizeProviderCode(error.requestId) } : {}),
+    }
   }
+  return sanitizeProviderNetworkError({
+    providerId: 'google_ai_studio',
+    providerWireName: 'google-ai-studio',
+    providerLabel: 'Google AI Studio',
+    error,
+  })
+}
+
+function sanitizeProviderMessage(message: unknown): string {
+  const value = typeof message === 'string' && message.trim() ? message : 'Google AI Studio stream failed.'
+  return redactProviderDiagnosticText(value).slice(0, 1000)
+}
+
+function sanitizeProviderCode(code: unknown): string {
+  const value = typeof code === 'string' && code.trim() ? code : String(code ?? 'error')
+  return redactProviderDiagnosticText(value).slice(0, 120)
+}
+
+function redactProviderDiagnosticText(value: string): string {
+  return value
+    .replace(/\bAuthorization\b\s*:?\s*Bearer\s+[A-Za-z0-9._~+/-]+/giu, '[redacted-auth]')
+    .replace(/\bBearer\s+[A-Za-z0-9._~+/-]+/giu, '[redacted-auth]')
+    .replace(/\b(x-goog-api-key|api[_ -]?key)\b\s*[:=]\s*[A-Za-z0-9._~+/-]+/giu, '$1=[redacted]')
+    .replace(/https?:\/\/[^\s"'<>]+/giu, '[redacted-url]')
 }
 
 function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent {
@@ -218,6 +322,9 @@ function sendWireEnd(sender: WebContents, requestId: string) {
 }
 
 function toGeminiContent(message: GoogleAIStudioTextChatMessage): GeminiContent {
+  if (message.role === 'assistant' && message.geminiNativeContent) {
+    return cloneGeminiProviderNativeContent(message.geminiNativeContent.content) as GeminiContent
+  }
   return {
     role: message.role === 'assistant' ? 'model' : 'user',
     parts: [{ text: message.content }],
@@ -240,6 +347,8 @@ function buildProviderRequest(input: Readonly<{
     config: {
       model: input.request.model,
       requestedReasoningMode: 'auto',
+      ...(input.request.generationParams ? { generationParams: input.request.generationParams } : {}),
+      ...(input.request.imageGeneration ? { imageGeneration: input.request.imageGeneration } : {}),
     },
   }
 }
@@ -250,6 +359,7 @@ async function forwardGoogleAIStudioStream(input: Readonly<{
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
   fetchImpl: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const apiKey = readGoogleAIStudioApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -310,6 +420,10 @@ async function forwardGoogleAIStudioStream(input: Readonly<{
       baseUrl: GOOGLE_AI_STUDIO_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
+      captureSerializedRequest: (serializedBody) => input.rawGenerationRequestStore?.tryPersist({
+        operationId: input.request.requestId, answerRootId: input.request.assistantMessageId, requestSequence: 1,
+        providerId: 'google_ai_studio', modelId: input.request.model,
+      }, serializedBody),
     })
     for await (const event of events) {
       const safeEvent = safeStreamEvent(event)
@@ -323,20 +437,19 @@ async function forwardGoogleAIStudioStream(input: Readonly<{
         event: safeEvent,
       })
     }
-  } catch {
+  } catch (error) {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
       event: {
         type: 'stream.error',
-        error: {
-          phase: 'transport',
-          provider: 'google-ai-studio',
-          category: controller.signal.aborted ? 'aborted' : 'network',
-          code: controller.signal.aborted ? 'aborted' : 'network_error',
-          message: controller.signal.aborted
-            ? 'Google AI Studio text chat was aborted.'
-            : 'Google AI Studio text chat failed safely.',
-        },
+        error: sanitizeProviderNetworkError({
+          providerId: 'google_ai_studio',
+          providerWireName: 'google-ai-studio',
+          providerLabel: 'Google AI Studio',
+          thrown: error,
+          abortReason: controller.signal.reason,
+          fallbackPhase: 'transport',
+        }),
         terminal: true,
       },
     })
@@ -373,6 +486,7 @@ export function registerGoogleAIStudioTextChatIpc(
       credentialService: input.credentialService,
       providerFileUploadService: input.providerFileUploadService,
       fetchImpl,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     })
     return { ok: true }
   })

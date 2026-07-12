@@ -9,8 +9,8 @@
  *
  * Key quirks handled here:
  * - `response.output_text.delta` → visible text (message.text_delta)
- * - `response.reasoning_summary_text.delta` → reasoning (message.reasoning_detail)
- * - `response.reasoning_text.delta` → reasoning (message.reasoning_detail)
+ * - `response.reasoning_summary_text.delta` → reasoning (message.reasoning_raw_detail)
+ * - `response.reasoning_text.delta` → reasoning (message.reasoning_raw_detail)
  * - Reasoning text NEVER becomes visible text
  * - `response.completed` → usage.delta + stream.done
  * - `response.failed` / `response.incomplete` → stream.error terminal
@@ -20,6 +20,11 @@
  */
 
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import {
+  appendOpenAIResponsesReasoningDelta,
+  buildOpenAIResponsesFinalSummaryDisplayBlocks,
+  type OpenAIResponsesReasoningDisplayAssemblerState,
+} from './openaiResponsesReasoningDisplayAssembler'
 
 // ---------------------------------------------------------------------------
 // OpenAI Responses event types — provider-native schema, contained here only
@@ -29,6 +34,19 @@ export type OpenAIResponsesStreamEvent = Readonly<{
   type: string
   [key: string]: unknown
 }>
+
+export type OpenAIResponsesStreamMapOptions = Readonly<{
+  eventOrdinal?: number
+  reasoningSummaryDedupe?: OpenAIResponsesReasoningSummaryDedupeState
+}>
+
+export type OpenAIResponsesReasoningSummaryDedupeState = {
+  emittedSummaryKeys: Set<string>
+  streamedSummaryTextByItemKey: Map<string, string>
+  displayTextByPartKey?: Map<string, string>
+}
+
+export type OpenAIResponsesReasoningDisplayState = OpenAIResponsesReasoningDisplayAssemblerState
 
 // ---------------------------------------------------------------------------
 // mapOpenAIResponsesEventToStarverse — pure function
@@ -48,6 +66,7 @@ export type OpenAIResponsesStreamEvent = Readonly<{
 export function mapOpenAIResponsesEventToStarverse(
   event: OpenAIResponsesStreamEvent,
   messageId: string,
+  options: OpenAIResponsesStreamMapOptions = {},
 ): StarverseStreamEvent[] {
   const events: StarverseStreamEvent[] = []
 
@@ -79,11 +98,25 @@ export function mapOpenAIResponsesEventToStarverse(
       const delta = typeof event.delta === 'string' ? event.delta : ''
       if (delta.length > 0) {
         events.push({
-          type: 'message.reasoning_detail',
+          type: 'message.reasoning_raw_detail',
           messageId,
           choiceIndex: 0,
           detail: { type: 'reasoning_summary', text: delta },
         })
+        const displayBlock = appendOpenAIResponsesReasoningDelta({
+          event,
+          messageId,
+          state: options.reasoningSummaryDedupe,
+          semanticRole: 'summary',
+        })
+        if (displayBlock) {
+          events.push({
+            type: 'message.reasoning_display_block_upsert',
+            messageId,
+            choiceIndex: 0,
+            block: displayBlock,
+          })
+        }
       }
       break
     }
@@ -99,11 +132,25 @@ export function mapOpenAIResponsesEventToStarverse(
       const delta = typeof event.delta === 'string' ? event.delta : ''
       if (delta.length > 0) {
         events.push({
-          type: 'message.reasoning_detail',
+          type: 'message.reasoning_raw_detail',
           messageId,
           choiceIndex: 0,
           detail: { type: 'reasoning_text', text: delta },
         })
+        const displayBlock = appendOpenAIResponsesReasoningDelta({
+          event,
+          messageId,
+          state: options.reasoningSummaryDedupe,
+          semanticRole: 'reasoning',
+        })
+        if (displayBlock) {
+          events.push({
+            type: 'message.reasoning_display_block_upsert',
+            messageId,
+            choiceIndex: 0,
+            block: displayBlock,
+          })
+        }
       }
       break
     }
@@ -117,24 +164,46 @@ export function mapOpenAIResponsesEventToStarverse(
     // -----------------------------------------------------------------------
     case 'response.output_item.done': {
       const item = event.item as Record<string, unknown> | undefined
+      if (item?.type === 'image_generation_call') {
+        const imageEvent = imageGenerationItemToContentBlockEvent(item, messageId)
+        if (imageEvent) events.push(imageEvent)
+      }
       if (item?.type === 'reasoning') {
         // Reasoning output item finalized — emit as opaque artifact
         const summary = Array.isArray(item.summary) ? item.summary : []
+        const normalizedSummary = normalizeReasoningSummaryItems(summary)
         const encryptedContent = typeof item.encrypted_content === 'string' ? item.encrypted_content : null
         const status = typeof item.status === 'string' ? item.status : undefined
 
         events.push({
-          type: 'message.reasoning_detail',
+          type: 'message.reasoning_raw_detail',
           messageId,
           choiceIndex: 0,
           detail: {
             type: 'reasoning_item',
             id: typeof item.id === 'string' ? item.id : undefined,
-            summary: summary.map((s: any) => ({ text: typeof s?.text === 'string' ? s.text : '', type: 'summary_text' })),
+            summary: normalizedSummary,
             ...(encryptedContent ? { encrypted_content: encryptedContent } : {}),
             ...(status ? { status } : {}),
           },
         })
+
+        const summaryTexts = extractReasoningSummaryTexts(normalizedSummary)
+        const displayBlocks = buildOpenAIResponsesFinalSummaryDisplayBlocks({
+          event,
+          item,
+          messageId,
+          summaryTexts,
+          state: options.reasoningSummaryDedupe,
+        })
+        for (const block of displayBlocks) {
+          events.push({
+            type: 'message.reasoning_display_block_upsert',
+            messageId,
+            choiceIndex: 0,
+            block,
+          })
+        }
       }
       break
     }
@@ -144,6 +213,15 @@ export function mapOpenAIResponsesEventToStarverse(
     // -----------------------------------------------------------------------
     case 'response.completed': {
       const response = event.response as Record<string, unknown> | undefined
+      const output = Array.isArray(response?.output) ? response.output : []
+      for (const item of output) {
+        if (!item || typeof item !== 'object') continue
+        const record = item as Record<string, unknown>
+        if (record.type !== 'image_generation_call') continue
+        const imageEvent = imageGenerationItemToContentBlockEvent(record, messageId)
+        if (imageEvent) events.push(imageEvent)
+      }
+
       if (response?.usage) {
         events.push({ type: 'usage.delta', usage: response.usage })
       }
@@ -241,4 +319,49 @@ export function mapOpenAIResponsesEventToStarverse(
   }
 
   return events
+}
+
+function normalizeReasoningSummaryItems(summary: unknown[]): Array<Record<string, unknown>> {
+  return summary.map((item) => {
+    if (typeof item === 'string') {
+      return { text: item, type: 'summary_text' }
+    }
+    if (item && typeof item === 'object' && !Array.isArray(item)) {
+      const record = item as Record<string, unknown>
+      if (typeof record.text === 'string') {
+        return {
+          text: record.text,
+          type: typeof record.type === 'string' ? record.type : 'summary_text',
+        }
+      }
+    }
+    return { raw: item }
+  })
+}
+
+function extractReasoningSummaryTexts(summary: Array<Record<string, unknown>>): string[] {
+  return summary
+    .map((item) => typeof item.text === 'string' ? item.text : '')
+    .filter((text) => text.trim().length > 0)
+}
+
+function imageGenerationItemToContentBlockEvent(
+  item: Record<string, unknown>,
+  messageId: string,
+): StarverseStreamEvent | null {
+  const result = typeof item.result === 'string' ? item.result.trim() : ''
+  if (!result) return null
+  const outputFormat = typeof item.output_format === 'string' ? item.output_format.trim().toLowerCase() : ''
+  const mimeType = outputFormat && /^[a-z0-9.+-]+$/i.test(outputFormat)
+    ? `image/${outputFormat}`
+    : 'image/png'
+  return {
+    type: 'message.content_block_append',
+    messageId,
+    choiceIndex: 0,
+    block: {
+      type: 'image',
+      url: result.startsWith('data:image/') ? result : `data:${mimeType};base64,${result}`,
+    },
+  }
 }

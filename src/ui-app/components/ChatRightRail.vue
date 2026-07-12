@@ -1,4 +1,6 @@
 <script setup lang="ts">
+import { t } from '@/shared/i18n'
+
 const props = withDefaults(
   defineProps<{
     floating?: boolean
@@ -22,7 +24,7 @@ const emit = defineEmits<{
       <button
         type="button"
         class="h-1 w-16 rounded-full bg-gray-200 hover:bg-gray-300"
-        aria-label="Close panel"
+        :aria-label="t('chat.rightRail.closePanel')"
         data-testid="right-rail-floating-close-handle"
         @click="emit('close')"
       />

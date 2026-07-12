@@ -2,7 +2,7 @@ import type {
   LocalControlledRootKind,
   LocalInstallSource,
 } from './localPackageRegistration'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import type {
   PluginFailureReason,
   PluginHealthStatus,

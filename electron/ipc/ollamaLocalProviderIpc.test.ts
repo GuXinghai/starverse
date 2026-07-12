@@ -278,7 +278,7 @@ describe('ollamaLocalProviderIpc', () => {
     )).toBe(true)
   })
 
-  it('auto-loads before native REST chat, filters thinking metadata, and unloads after a normal send', async () => {
+  it('auto-loads before native REST chat, forwards structured thinking, and unloads after a normal send', async () => {
     const urls: string[] = []
     const bodies: unknown[] = []
     const fetchImpl = vi.fn(async (url: string, init?: RequestInit) => {
@@ -335,12 +335,47 @@ describe('ollamaLocalProviderIpc', () => {
       .filter((event) => event.type === 'chunk')
       .map((event) => event.data)
       .join('')
+    expect(chunks).toContain('"thinking":"hidden"')
     expect(chunks).toContain('"content":"O"')
     expect(chunks).toContain('"content":"K"')
     expect(chunks).toContain('[DONE]')
     const serialized = JSON.stringify(events)
-    expect(serialized).not.toContain('hidden')
     expect(serialized).not.toContain('total_duration')
+  })
+
+  it('does not extract think tags from native REST content in the bridge', async () => {
+    const fetchImpl = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/ps')) return jsonResponse(ollamaPs([{ name: 'llama3.2:latest', model: 'llama3.2:latest' }]))
+      if (url.endsWith('/api/chat')) {
+        return streamResponse([
+          '{"model":"llama3.2:latest","message":{"role":"assistant","content":"<think>hidden</think>visible"},"done":false}',
+          '{"model":"llama3.2:latest","done":true}',
+          '',
+        ].join('\n'))
+      }
+      throw new Error(`unexpected url: ${url}`)
+    }) as unknown as typeof fetch
+    const registerInvoke = vi.fn()
+    registerOllamaLocalProviderIpc({ registerInvoke, fetchImpl })
+    const startHandler = registeredHandler(registerInvoke, 'ollama-chat:stream-text')
+    const sender = createSender()
+
+    expect(startHandler({ sender }, {
+      requestId: 'ollama_req_native_think_tag',
+      assistantMessageId: 'assistant_1',
+      config: defaultConfig(),
+      model: 'llama3.2:latest',
+      messages: [{ role: 'user', content: 'please say OK' }],
+      timeoutMs: 750,
+    })).toEqual({ ok: true })
+
+    await vi.waitFor(() => expect(sender.send).toHaveBeenCalledWith('ollama-chat:end:ollama_req_native_think_tag'))
+    const chunks = sentEvents(sender, 'ollama_req_native_think_tag')
+      .filter((event) => event.type === 'chunk')
+      .map((event) => event.data)
+      .join('')
+    expect(chunks).toContain('"content":"<think>hidden</think>visible"')
+    expect(chunks).not.toContain('"thinking"')
   })
 
   it('supports native generate and OpenAI-compatible chat modes as explicit options', async () => {

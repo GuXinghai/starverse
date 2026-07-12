@@ -118,6 +118,7 @@ type ScenarioSummary = {
   completionClasses: string[]
   reasoningSegmentCalls: number
   reasoningSegmentItems: number
+  finalizeReasoningDisplayCalls: number
   finalizeReasoningCalls: number
 }
 
@@ -128,6 +129,22 @@ function createDbBridge(mode: ScenarioMode) {
   const questionId = 'u1'
   const oldAnswerId = 'a_old'
   const streamAnswerId = 'a_stream'
+  const generationSnapshot = {
+    schemaVersion: 1 as const,
+    route: {
+      providerId: 'openrouter',
+      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      endpointId: 'openrouter-official',
+      profileId: 'openrouter_v1_chat',
+    },
+    generationParams: { requestPatch: {}, requestParams: {} },
+    reasoning: { mode: 'auto', effort: null, exclude: false },
+    webSearch: { enabled: false },
+    imageGeneration: {},
+    providerOptions: {},
+    tools: { enabled: false, allowedToolIds: [], requireExternalSideEffectConfirmation: true },
+    attachments: { sourceQuestionId: questionId, items: [] },
+  }
 
   const store: {
     headMessageId: string | null
@@ -166,7 +183,10 @@ function createDbBridge(mode: ScenarioMode) {
               answerRootId: oldAnswerId,
               questionId,
               body: 'A-old',
-              meta: null,
+              meta: {
+                providerId: 'openrouter',
+                modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+              },
             },
           },
   }
@@ -174,8 +194,30 @@ function createDbBridge(mode: ScenarioMode) {
   const orderedMessages = () => Object.values(store.messagesById).sort((a, b) => a.seq - b.seq)
 
   const invoke = vi.fn(async (method: string, params?: any) => {
-    if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-    if (method === 'convo.create') return { id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }
+    if (method === 'convo.list') {
+      return [{
+        id: convoId,
+        title: 'Chat 1',
+        createdAt: 1,
+        updatedAt: 1,
+        meta: {
+          selectedProviderId: 'openrouter',
+          selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
+        },
+      }]
+    }
+    if (method === 'convo.create') {
+      return {
+        id: convoId,
+        title: 'Chat 1',
+        createdAt: 1,
+        updatedAt: 1,
+        meta: {
+          selectedProviderId: 'openrouter',
+          selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
+        },
+      }
+    }
     if (method === 'project.list') return []
     if (method === 'project.create') return { id: 'p1', name: String(params?.name ?? 'Inbox'), createdAt: 1, updatedAt: 1, meta: null }
     if (method === 'project.findById') return null
@@ -354,7 +396,11 @@ function createDbBridge(mode: ScenarioMode) {
       return { ok: true, convoId, branchId, questionId, questionSeq: 1, assistantId: streamAnswerId, assistantSeq: 2 }
     }
 
-    if (method === 'branch.regenerateFromQuestion') {
+    if (method === 'answerGeneration.getSnapshot') return { ok: true, snapshot: generationSnapshot }
+    if (method === 'answerGeneration.persistSnapshot' || method === 'answerGeneration.finalize') return { ok: true }
+    if (method === 'answerGeneration.claimStream') return { ok: true, claimed: true, state: 'streaming' }
+
+    if (method === 'branch.regenerateQuestionWithCurrentConfig') {
       const ts = Date.now()
       store.messagesById[streamAnswerId] = {
         id: streamAnswerId,
@@ -375,10 +421,25 @@ function createDbBridge(mode: ScenarioMode) {
         { answerRootId: streamAnswerId, createdAt: ts + 1, status: 'streaming' },
         ...store.candidates.filter((c) => c.answerRootId !== streamAnswerId),
       ]
-      return { ok: true, newAnswerRootId: streamAnswerId, newAssistantSeq: 3 }
+      return {
+        ok: true,
+        operationId: String(params?.operationId ?? 'op-regenerate'),
+        actionKind: 'regenerate',
+        branchId,
+        questionId,
+        targetAnswerRootId: null,
+        newAnswerRootId: streamAnswerId,
+        newAssistantSeq: 3,
+        chosenAnswerRootId: streamAnswerId,
+        headMessageId: streamAnswerId,
+        visibleAnswerRootIds: store.candidates.map((candidate) => candidate.answerRootId),
+        snapshot: generationSnapshot,
+        state: 'committed',
+        idempotentReplay: false,
+      }
     }
 
-    if (method === 'branch.retryReplaceAnswer') {
+    if (method === 'branch.retryChosenAnswerReplacing') {
       const ts = Date.now()
       store.messagesById[streamAnswerId] = {
         id: streamAnswerId,
@@ -399,7 +460,22 @@ function createDbBridge(mode: ScenarioMode) {
         { answerRootId: streamAnswerId, createdAt: ts + 1, status: 'streaming' },
         ...store.candidates.filter((c) => c.answerRootId !== streamAnswerId),
       ]
-      return { ok: true, newAnswerRootId: streamAnswerId, newAssistantSeq: 3 }
+      return {
+        ok: true,
+        operationId: String(params?.operationId ?? 'op-retry'),
+        actionKind: 'retry_replace',
+        branchId,
+        questionId,
+        targetAnswerRootId: oldAnswerId,
+        newAnswerRootId: streamAnswerId,
+        newAssistantSeq: 3,
+        chosenAnswerRootId: streamAnswerId,
+        headMessageId: streamAnswerId,
+        visibleAnswerRootIds: store.candidates.map((candidate) => candidate.answerRootId),
+        snapshot: generationSnapshot,
+        state: 'committed',
+        idempotentReplay: false,
+      }
     }
 
     if (method === 'branch.truncateFromQuestion') {
@@ -438,9 +514,17 @@ function createDbBridge(mode: ScenarioMode) {
       }, 0)
       return { ok: true, received: details.length, inserted: details.length, skipped: 0, ignored: 0, sumDeltaLenInserted }
     }
+    if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
+    if (method === 'message.appendReasoningDisplayBlocks') return { ok: true, received: 0, inserted: 0, ignored: 0 }
+    if (method === 'message.finalizeReasoningDisplayBlocks') return { ok: true }
     if (method === 'message.finalizeReasoningDetails') return { ok: true }
     if (method === 'messageError.upsert') return { ok: true }
     if (method === 'messageError.listByMessageIds') return []
+    if (method === 'messageAsset.listByMessageIds') return []
+    if (method === 'settings.getGenerationParamsDefaults') return { value: null }
+    if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
+    if (method === 'settings.getImageGenerationDefault') return { value: null }
+    if (method === 'settings.getDfcAttachmentDefaults') return { value: null }
     if (method === 'message.list') return orderedMessages()
 
     return { ok: true }
@@ -499,6 +583,7 @@ async function runScenario(mode: ScenarioMode, options?: { expectHello?: boolean
   const completionClasses: string[] = []
   let reasoningSegmentCalls = 0
   let reasoningSegmentItems = 0
+  let finalizeReasoningDisplayCalls = 0
   let finalizeReasoningCalls = 0
 
   for (const [method, params] of calls) {
@@ -527,6 +612,10 @@ async function runScenario(mode: ScenarioMode, options?: { expectHello?: boolean
       reasoningSegmentItems += Array.isArray((params as any)?.details) ? (params as any).details.length : 0
       continue
     }
+    if (method === 'message.finalizeReasoningDisplayBlocks') {
+      finalizeReasoningDisplayCalls += 1
+      continue
+    }
     if (method === 'message.finalizeReasoningDetails') {
       finalizeReasoningCalls += 1
     }
@@ -540,6 +629,7 @@ async function runScenario(mode: ScenarioMode, options?: { expectHello?: boolean
     completionClasses,
     reasoningSegmentCalls,
     reasoningSegmentItems,
+    finalizeReasoningDisplayCalls,
     finalizeReasoningCalls,
   }
 }
@@ -570,7 +660,6 @@ describe('ui-app AppChatApp stream session parity', () => {
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
         if (key === 'openRouterApiKey') return 'sk-test'
-        if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
         return undefined
       }),
     }
@@ -613,6 +702,7 @@ describe('ui-app AppChatApp stream session parity', () => {
       expect(summary.completionClasses).toEqual(['error'])
       expect(summary.reasoningSegmentCalls).toBe(1)
       expect(summary.reasoningSegmentItems).toBe(1)
+      expect(summary.finalizeReasoningDisplayCalls).toBe(1)
       expect(summary.finalizeReasoningCalls).toBe(1)
     }
   )
@@ -650,7 +740,7 @@ describe('ui-app AppChatApp stream session parity', () => {
     await waitFor(() => {
       expect(copyButton).not.toBeDisabled()
     })
-    expect(copyButton.textContent).toContain('Copy text')
+    expect(copyButton.textContent).toContain(t('chat.message.actions.copyText'))
     expect(diagnostics.textContent?.toLowerCase()).not.toContain('copy')
     expect(clipboardWriteText).not.toHaveBeenCalledWith(expect.stringContaining('reasoning-fixture'))
 

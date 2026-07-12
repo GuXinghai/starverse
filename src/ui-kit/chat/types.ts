@@ -33,10 +33,43 @@ export type MessageAnnotation = Readonly<Record<string, unknown>>
 export type ReasoningViewVisibility = 'shown' | 'excluded' | 'not_returned'
 export type ReasoningPanelState = 'collapsed' | 'expanded'
 
-export type ReasoningPiece = Readonly<{
-  id: number
-  text: string
-}>
+export type ReasoningDisplayBlock =
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'text'
+      text: string
+      semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+      providerKey: string
+      sourceEventType?: string
+      sourceRawSegmentId?: number
+    }>
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'image'
+      url: string
+      assetId?: string
+      fileAssetId?: string
+      mimeType?: string
+      width?: number
+      height?: number
+      alt?: string
+      semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+      providerKey: string
+      sourceEventType?: string
+      sourceRawSegmentId?: number
+    }>
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'opaque'
+      label: string
+      warning?: string
+      providerKey: string
+      sourceEventType?: string
+      sourceRawSegmentId?: number
+    }>
 
 export type ToolCallVM = Readonly<{
   index: number
@@ -77,9 +110,7 @@ export type ErrorPanelViewModel = Readonly<{
 }>
 
 export type ReasoningView = Readonly<{
-  summaryText?: string
-  reasoningText?: string
-  reasoningPieces?: ReasoningPiece[]
+  displayBlocks?: ReasoningDisplayBlock[]
   hasEncrypted?: boolean
   visibility: ReasoningViewVisibility
   panelState: ReasoningPanelState

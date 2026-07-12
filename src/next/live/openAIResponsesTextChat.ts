@@ -1,5 +1,5 @@
 import type { DomainEvent } from '@/next/state/types'
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
 import type { ProviderRuntimeContentBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
 
@@ -15,6 +15,8 @@ export type OpenAIResponsesTextChatOptions = Readonly<{
   userText: string
   contextMessages?: readonly unknown[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  generationParams?: ProviderStreamConfig['generationParams']
+  imageGeneration?: ProviderStreamConfig['imageGeneration']
   signal?: AbortSignal
   timeoutMs?: number
 }>
@@ -107,6 +109,10 @@ function isWireStreamEvent(payload: unknown): payload is Readonly<{ type: 'event
   if (record.type !== 'event') return false
   const event = record.event as Record<string, unknown> | undefined
   return !!event && typeof event === 'object' && typeof event.type === 'string'
+}
+
+function isWireEnd(payload: unknown): payload is Readonly<{ type: 'end' }> {
+  return !!payload && typeof payload === 'object' && (payload as Record<string, unknown>).type === 'end'
 }
 
 async function* wireEventStream(input: Readonly<{
@@ -211,12 +217,15 @@ export async function* streamOpenAIResponsesTextChatAsDomainEvents(
         assistantMessageId: options.assistantMessageId,
         model: options.model,
         messages,
+        ...(options.generationParams ? { generationParams: options.generationParams } : {}),
+        ...(options.imageGeneration ? { imageGeneration: options.imageGeneration } : {}),
         ...(hasContentBlocks ? { currentUserContentBlocks: options.currentUserContentBlocks } : {}),
         ...(typeof options.timeoutMs === 'number' ? { timeoutMs: options.timeoutMs } : {}),
       }),
     })
 
     for await (const payload of wireEvents) {
+      if (isWireEnd(payload)) continue
       if (!isWireStreamEvent(payload)) {
         yield streamError('invalid_wire_event', 'OpenAI Responses text chat returned an invalid stream event.', 'bad_request')
         continue

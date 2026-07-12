@@ -1,14 +1,14 @@
 <script setup lang="ts">
 import { computed } from 'vue'
-import type { ReasoningView, ReasoningPiece } from '@/next/state/types'
+import type { ReasoningView } from '@/next/state/types'
 import ChatReasoningPanel from '@/ui-kit/chat/ChatReasoningPanel.vue'
+import { t } from '@/shared/i18n'
 
 const props = defineProps<{
   messageId?: string | null
   reasoningView: ReasoningView | null
   reasoningVersion?: number
   isStreaming?: boolean
-  reasoningPieces?: ReasoningPiece[] | null
   localProcessingDurationMs?: number
 }>()
 
@@ -25,10 +25,10 @@ const memoKey = computed(() => {
     v-memo="memoKey"
     :messageId="props.messageId"
     :reasoningView="reasoningView"
-    :reasoningPieces="props.reasoningPieces"
     :reasoningVersion="props.reasoningVersion"
+    :isStreaming="props.isStreaming"
     :localProcessingDurationMs="props.localProcessingDurationMs"
-    emptyText="No assistant message yet."
+    :emptyText="t('chat.reasoning.emptyAssistant')"
   >
   </ChatReasoningPanel>
 </template>

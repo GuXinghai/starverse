@@ -1,11 +1,74 @@
-import type { RootState } from '../types'
+import type { ReasoningDisplayBlock, RootState } from '../types'
 import type { EventByType, HandlerContext } from './reducerTypes'
 import {
-  appendReasoningPieces,
-  createSeededReasoningMerger,
   inferHasEncrypted,
   updateMessage,
 } from './stateUtils'
+
+function normalizeDisplayBlock(block: ReasoningDisplayBlock): ReasoningDisplayBlock | null {
+  if (!block || typeof block !== 'object') return null
+  const ordinal = Number(block.ordinal)
+  if (!Number.isFinite(ordinal) || ordinal < 0) return null
+  const blockId = String(block.blockId ?? '').trim()
+  if (!blockId) return null
+  const providerKey = String(block.providerKey ?? '').trim()
+  if (!providerKey) return null
+  if (block.type === 'text') {
+    const text = typeof block.text === 'string' ? block.text : ''
+    if (!text) return null
+    return { ...block, blockId, ordinal, providerKey }
+  }
+  if (block.type === 'image') {
+    const url = typeof block.url === 'string' ? block.url.trim() : ''
+    if (!url) return null
+    return { ...block, blockId, ordinal, providerKey, url }
+  }
+  if (block.type === 'opaque') {
+    const label = typeof block.label === 'string' ? block.label.trim() : ''
+    if (!label) return null
+    return { ...block, blockId, ordinal, providerKey, label }
+  }
+  return null
+}
+
+export function handleMessageAppendReasoningDisplayBlock(
+  ctx: HandlerContext,
+  event: EventByType<'MessageAppendReasoningDisplayBlock'>
+): RootState {
+  const block = normalizeDisplayBlock(event.block)
+  if (!block) return ctx.state
+  return updateMessage(ctx.state, event.messageId, (m) => {
+    const prev = Array.isArray(m.reasoningDisplayBlocks) ? m.reasoningDisplayBlocks : []
+    if (prev.some((item) => item.blockId === block.blockId || item.ordinal === block.ordinal)) return m
+    const nextBlocks = [...prev, block].sort((a, b) => a.ordinal - b.ordinal)
+    return {
+      ...m,
+      reasoningDisplayBlocks: nextBlocks,
+      reasoningVersion: m.reasoningVersion + 1,
+    }
+  })
+}
+
+export function handleMessageUpsertReasoningDisplayBlock(
+  ctx: HandlerContext,
+  event: EventByType<'MessageUpsertReasoningDisplayBlock'>
+): RootState {
+  const block = normalizeDisplayBlock(event.block)
+  if (!block) return ctx.state
+  return updateMessage(ctx.state, event.messageId, (m) => {
+    const prev = Array.isArray(m.reasoningDisplayBlocks) ? m.reasoningDisplayBlocks : []
+    const existingIndex = prev.findIndex((item) => item.blockId === block.blockId)
+    const nextBlocks = existingIndex >= 0
+      ? prev.map((item, index) => index === existingIndex ? block : item)
+      : [...prev, block]
+    nextBlocks.sort((a, b) => a.ordinal - b.ordinal || a.blockId.localeCompare(b.blockId))
+    return {
+      ...m,
+      reasoningDisplayBlocks: nextBlocks,
+      reasoningVersion: m.reasoningVersion + 1,
+    }
+  })
+}
 
 export function handleMessageDeltaReasoningDetail(ctx: HandlerContext, event: EventByType<'MessageDeltaReasoningDetail'>): RootState {
   return updateMessage(ctx.state, event.messageId, (m) => {
@@ -13,32 +76,11 @@ export function handleMessageDeltaReasoningDetail(ctx: HandlerContext, event: Ev
     const nextVersion = m.reasoningVersion + 1
     const hasEncryptedReasoning = m.hasEncryptedReasoning || inferHasEncrypted(event.detail)
 
-    const merger = createSeededReasoningMerger(m.reasoningDetailsRaw)
-    const merged = merger.merge(event.detail)
-    const deltaText = merged?.deltaText ?? ''
-    const deltaSummary = merged?.deltaSummary ?? ''
-
-    let reasoningSummaryText = m.reasoningSummaryText
-    if (deltaSummary) {
-      reasoningSummaryText = (reasoningSummaryText ?? '') + deltaSummary
-    }
-
-    let reasoningPieces = m.reasoningPieces
-    let reasoningLastPieceLen = m.reasoningLastPieceLen
-    if (deltaText) {
-      const nextPieces = appendReasoningPieces(m.reasoningPieces, deltaText)
-      reasoningPieces = nextPieces.pieces
-      reasoningLastPieceLen = nextPieces.lastLen
-    }
-
     return {
       ...m,
       reasoningDetailsRaw: nextDetails,
       hasEncryptedReasoning,
       reasoningVersion: nextVersion,
-      reasoningSummaryText,
-      reasoningPieces,
-      reasoningLastPieceLen,
     }
   })
 }
@@ -51,34 +93,11 @@ export function handleMessageDeltaReasoningDetailBatch(ctx: HandlerContext, even
     const nextDetails = [...m.reasoningDetailsRaw, ...details]
     const nextVersion = m.reasoningVersion + 1
 
-    const merger = createSeededReasoningMerger(m.reasoningDetailsRaw)
-    let reasoningSummaryText = m.reasoningSummaryText
-    let reasoningPieces = m.reasoningPieces
-    let reasoningLastPieceLen = m.reasoningLastPieceLen
-
-    for (const detail of details) {
-      const merged = merger.merge(detail)
-      const deltaText = merged?.deltaText ?? ''
-      const deltaSummary = merged?.deltaSummary ?? ''
-
-      if (deltaSummary) {
-        reasoningSummaryText = (reasoningSummaryText ?? '') + deltaSummary
-      }
-      if (deltaText) {
-        const nextPieces = appendReasoningPieces(reasoningPieces, deltaText)
-        reasoningPieces = nextPieces.pieces
-        reasoningLastPieceLen = nextPieces.lastLen
-      }
-    }
-
     return {
       ...m,
       reasoningDetailsRaw: nextDetails,
       hasEncryptedReasoning: m.hasEncryptedReasoning || hasEncrypted,
       reasoningVersion: nextVersion,
-      reasoningSummaryText,
-      reasoningPieces,
-      reasoningLastPieceLen,
     }
   })
 }

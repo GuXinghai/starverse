@@ -105,6 +105,302 @@ describe('streamViaGemini', () => {
 
     const body = JSON.parse(init.body)
     expect(body.contents).toEqual([{ role: 'user', parts: [{ text: 'Hello' }] }])
+    expect(body.generationConfig).toEqual({ candidateCount: 1 })
+  })
+
+  it('emits provider-native Gemini content snapshots for stream continuation', async () => {
+    const response = makeSseResponse(
+      `data: ${JSON.stringify({
+        candidates: [{
+          content: {
+            role: 'model',
+            parts: [
+              { text: 'thinking', thought: true, thoughtSignature: 'sig-a' },
+              { text: ' answer' },
+            ],
+          },
+        }],
+        usageMetadata: { totalTokenCount: 9, thoughtsTokenCount: 3 },
+        modelVersion: 'gemini-test-version',
+      })}`,
+      finishChunkSse('STOP'),
+    )
+
+    const events = await collectEvents(streamViaGemini(makeRequest(), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch: mockFetch(response),
+    }))
+
+    const nativeEvents = events.filter((event) => event.type === 'message.provider_native_content_upsert')
+    expect(nativeEvents.length).toBeGreaterThan(0)
+    const finalSnapshot = (nativeEvents[nativeEvents.length - 1] as any).snapshot
+    expect(finalSnapshot).toMatchObject({
+      providerKey: 'google_ai_studio',
+      sourceApi: 'gemini_generate_content',
+      candidateIndex: 0,
+      status: 'final',
+      content: {
+        role: 'model',
+        parts: [
+          { text: 'thinking', thought: true, thoughtSignature: 'sig-a' },
+          { text: ' answer' },
+        ],
+      },
+      usageMetadata: { totalTokenCount: 9, thoughtsTokenCount: 3 },
+      modelVersion: 'gemini-test-version',
+    })
+  })
+
+  it('routes image generation requests through Gemini Interactions API', async () => {
+    const fetch = vi.fn(async () => new Response(JSON.stringify({
+      interaction: {
+        output_image: {
+          data: 'iVBORw0KGgo=',
+          mime_type: 'image/png',
+        },
+      },
+    }), { status: 200 }))
+
+    const events = await collectEvents(streamViaGemini(makeRequest({
+      model: 'gemini-3.1-flash-image',
+      imageGeneration: {
+        outputMode: 'image_only',
+        aspectRatio: '1:1',
+        imageSize: '1K',
+      },
+    }), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    expect(fetch).toHaveBeenCalledTimes(1)
+    const [url, init] = (fetch as any).mock.calls[0]
+    expect(url).toBe('https://generativelanguage.googleapis.com/v1beta/interactions')
+    const body = JSON.parse(init.body)
+    expect(body).toMatchObject({
+      model: 'models/gemini-3.1-flash-image',
+      input: 'Hello',
+      response_format: {
+        type: 'image',
+        aspect_ratio: '1:1',
+        image_size: '1K',
+      },
+    })
+    expect(events).toContainEqual({
+      type: 'message.content_block_append',
+      messageId: 'assistant_1',
+      choiceIndex: 0,
+      block: {
+        type: 'image',
+        url: 'data:image/png;base64,iVBORw0KGgo=',
+      },
+    })
+    expect(events.at(-1)).toEqual({ type: 'stream.done' })
+  })
+
+  it('rejects Gemini Interactions image generation when prior context is present', async () => {
+    const fetch = vi.fn(async () => new Response('{}', { status: 200 }))
+
+    const events = await collectEvents(streamViaGemini({
+      ...makeRequest({
+        model: 'gemini-3.1-flash-image',
+        imageGeneration: {
+          outputMode: 'image_only',
+          aspectRatio: '1:1',
+          imageSize: '1K',
+        },
+      }),
+      contextMessages: [
+        { role: 'model', parts: [{ text: 'previous image turn' }] },
+      ],
+    }, {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(events).toEqual([
+      {
+        type: 'stream.error',
+        error: {
+          phase: 'request_build',
+          provider: 'gemini',
+          category: 'bad_request',
+          code: 'gemini_interactions_continuation_unsupported',
+          message: 'Google AI Studio image generation continuation is not supported in this Starverse build.',
+        },
+        terminal: true,
+      },
+    ])
+  })
+
+  it('streams Gemini Interactions thought summaries before generated image blocks', async () => {
+    const response = makeSseResponse(
+      `data: ${JSON.stringify({ type: 'thought_summary', text: 'Planning the scene.', thought_signature: 'sig_1' })}`,
+      `data: ${JSON.stringify({ type: 'output_image', data: 'iVBORw0KGgo=', mime_type: 'image/png' })}`,
+    )
+    response.headers.set('content-type', 'text/event-stream')
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaGemini(makeRequest({
+      model: 'gemini-3.1-flash-image',
+      imageGeneration: {
+        outputMode: 'image_and_text',
+        aspectRatio: '1:1',
+      },
+      generationParams: {
+        generation_config: {
+          thinking_level: 'high',
+          thinking_summaries: 'auto',
+        },
+      },
+    }), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.generation_config).toEqual({
+      thinking_level: 'high',
+      thinking_summaries: 'auto',
+    })
+    expect(body.thinking_config).toBeUndefined()
+    expect(events).toEqual([
+      {
+        type: 'message.reasoning_raw_detail',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        detail: {
+          index: 0,
+          type: 'thought_summary',
+          summary: 'Planning the scene.',
+          thought_signature: 'sig_1',
+        },
+      },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          blockId: 'assistant_1:gemini-interaction:0',
+          ordinal: 0,
+          type: 'text',
+          text: 'Planning the scene.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_summary',
+        },
+      },
+      {
+        type: 'message.content_block_append',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+      { type: 'stream.done' },
+    ])
+  })
+
+  it('keeps multiple Gemini Interactions thought summary display blocks across stream chunks', async () => {
+    const response = makeSseResponse(
+      `data: ${JSON.stringify({ type: 'thought_summary', text: 'Define the scene.', thought_signature: 'sig_1' })}`,
+      `data: ${JSON.stringify({ type: 'thought_summary', text: 'Refine the pose.', thought_signature: 'sig_2' })}`,
+      `data: ${JSON.stringify({ type: 'output_image', data: 'iVBORw0KGgo=', mime_type: 'image/png' })}`,
+    )
+    response.headers.set('content-type', 'text/event-stream')
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaGemini(makeRequest({
+      model: 'gemini-3.1-flash-image',
+      imageGeneration: {
+        outputMode: 'image_and_text',
+        aspectRatio: '1:1',
+      },
+      generationParams: {
+        generation_config: {
+          thinking_level: 'high',
+          thinking_summaries: 'auto',
+        },
+      },
+    }), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    const displayBlocks = events
+      .filter((event) => event.type === 'message.reasoning_display_block')
+      .map((event) => event.block)
+
+    expect(displayBlocks).toEqual([
+      {
+        blockId: 'assistant_1:gemini-interaction:0',
+        ordinal: 0,
+        type: 'text',
+        text: 'Define the scene.',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+        sourceEventType: 'thought_summary',
+      },
+      {
+        blockId: 'assistant_1:gemini-interaction:1000',
+        ordinal: 1000,
+        type: 'text',
+        text: 'Refine the pose.',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+        sourceEventType: 'thought_summary',
+      },
+    ])
+    expect(events.at(-1)).toEqual({ type: 'stream.done' })
+  })
+
+  it('keeps repeated Gemini Interactions image blocks across stream chunks', async () => {
+    const imageChunk = `data: ${JSON.stringify({ type: 'output_image', data: 'iVBORw0KGgo=', mime_type: 'image/png' })}`
+    const response = makeSseResponse(imageChunk, imageChunk)
+    response.headers.set('content-type', 'text/event-stream')
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaGemini(makeRequest({
+      model: 'gemini-3.1-flash-image',
+      imageGeneration: {
+        outputMode: 'image_and_text',
+      },
+    }), {
+      baseUrl: 'https://generativelanguage.googleapis.com',
+      apiKey: 'test-key',
+      fetch,
+    }))
+
+    expect(events.filter((event) => event.type === 'message.content_block_append')).toEqual([
+      {
+        type: 'message.content_block_append',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+      {
+        type: 'message.content_block_append',
+        messageId: 'assistant_1',
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+    ])
+    expect(events.at(-1)).toEqual({ type: 'stream.done' })
   })
 
   it('adds inlineData image part for text plus image requests without leaking local paths', async () => {
@@ -215,9 +511,16 @@ describe('streamViaGemini', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     expect(reasoningEvents).toHaveLength(2)
+    expect(displayEvents).toHaveLength(2)
+    if (displayEvents[0].type === 'message.reasoning_display_block_upsert' && displayEvents[1].type === 'message.reasoning_display_block_upsert') {
+      expect(displayEvents[0].block.blockId).toBe(displayEvents[1].block.blockId)
+      expect(displayEvents[0].block.type === 'text' ? displayEvents[0].block.text : undefined).toBe('Let me think...')
+      expect(displayEvents[1].block.type === 'text' ? displayEvents[1].block.text : undefined).toBe('Let me think... Okay.')
+    }
     expect(textEvents).toHaveLength(0)
   })
 
@@ -447,16 +750,22 @@ describe('streamViaGemini', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     const usageEvents = events.filter((e) => e.type === 'usage.delta')
     const doneEvents = events.filter((e) => e.type === 'stream.done')
 
     // Exact counts
     expect(reasoningEvents).toHaveLength(2)
+    expect(displayEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(1)
     expect(usageEvents).toHaveLength(1)
     expect(doneEvents).toHaveLength(1)
+    if (displayEvents[0].type === 'message.reasoning_display_block_upsert' && displayEvents[1].type === 'message.reasoning_display_block_upsert') {
+      expect(displayEvents[0].block.blockId).toBe(displayEvents[1].block.blockId)
+      expect(displayEvents[1].block.type === 'text' ? displayEvents[1].block.text : undefined).toBe('Let me analyze this... The answer is 42.')
+    }
 
     // stream.done is last
     expect(events[events.length - 1].type).toBe('stream.done')

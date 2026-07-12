@@ -24,12 +24,13 @@ async function collectEvents(input?: Readonly<{
   signal?: AbortSignal
   userText?: string
   contextMessages?: readonly unknown[]
+  config?: OllamaTextChatConfig
 }>) {
   const out: any[] = []
   for await (const event of streamOllamaTextChatAsDomainEvents({
     requestId: 'ollama_req_renderer',
     assistantMessageId: 'assistant_1',
-    config,
+    config: input?.config ?? config,
     model: 'llama3.2:latest',
     userText: input?.userText ?? 'hello',
     contextMessages: input?.contextMessages ?? [{ role: 'assistant', content: 'previous answer' }],
@@ -110,6 +111,92 @@ describe('Ollama text chat renderer bridge', () => {
     expect(events.some((event) => event.type === 'MessageDeltaText' && event.text === 'OK')).toBe(true)
     expect(events.filter((event) => event.type === 'StreamDone')).toHaveLength(1)
     expect(events.some((event) => event.type === 'StreamError')).toBe(false)
+  })
+
+  it('maps native REST structured thinking through the Ollama native mapper', async () => {
+    const chunkListeners = new Map<string, (payload: unknown) => void>()
+    const endListeners = new Map<string, () => void>()
+    ;(globalThis as any).ollamaChat = {
+      startTextChat: vi.fn(async (payload: any) => {
+        chunkListeners.get(payload.requestId)?.({
+          type: 'responseMeta',
+          status: 200,
+          requestId: payload.requestId,
+          provider: 'ollama_local',
+          headers: {},
+        })
+        chunkListeners.get(payload.requestId)?.({
+          type: 'chunk',
+          data: 'data: {"choices":[{"index":0,"delta":{"thinking":"thinking natively","content":"OK"},"finish_reason":null}]}\n\n',
+        })
+        chunkListeners.get(payload.requestId)?.({ type: 'chunk', data: 'data: [DONE]\n\n' })
+        endListeners.get(payload.requestId)?.()
+        return { ok: true }
+      }),
+      abortTextChat: vi.fn(async () => ({ ok: true })),
+      onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
+        chunkListeners.set(requestId, callback)
+        return () => chunkListeners.delete(requestId)
+      },
+      onTextChatEnd: (requestId: string, callback: () => void) => {
+        endListeners.set(requestId, callback)
+        return () => endListeners.delete(requestId)
+      },
+    }
+
+    const events = await collectEvents()
+
+    expect(events.some((event) =>
+      event.type === 'MessageDeltaReasoningDetail'
+      && event.detail?.thinking === 'thinking natively'
+    )).toBe(true)
+    expect(events.some((event) =>
+      event.type === 'MessageAppendReasoningDisplayBlock'
+      && event.block?.type === 'text'
+      && event.block?.text === 'thinking natively'
+    )).toBe(true)
+    expect(events.some((event) => event.type === 'MessageDeltaText' && event.text === 'OK')).toBe(true)
+  })
+
+  it('keeps think tags as visible text on the native REST path unless a profile quirk opts in', async () => {
+    const chunkListeners = new Map<string, (payload: unknown) => void>()
+    const endListeners = new Map<string, () => void>()
+    ;(globalThis as any).ollamaChat = {
+      startTextChat: vi.fn(async (payload: any) => {
+        chunkListeners.get(payload.requestId)?.({
+          type: 'responseMeta',
+          status: 200,
+          requestId: payload.requestId,
+          provider: 'ollama_local',
+          headers: {},
+        })
+        chunkListeners.get(payload.requestId)?.({
+          type: 'chunk',
+          data: 'data: {"choices":[{"index":0,"delta":{"content":"<think>hidden</think>visible"},"finish_reason":null}]}\n\n',
+        })
+        chunkListeners.get(payload.requestId)?.({ type: 'chunk', data: 'data: [DONE]\n\n' })
+        endListeners.get(payload.requestId)?.()
+        return { ok: true }
+      }),
+      abortTextChat: vi.fn(async () => ({ ok: true })),
+      onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
+        chunkListeners.set(requestId, callback)
+        return () => chunkListeners.delete(requestId)
+      },
+      onTextChatEnd: (requestId: string, callback: () => void) => {
+        endListeners.set(requestId, callback)
+        return () => endListeners.delete(requestId)
+      },
+    }
+
+    const events = await collectEvents()
+
+    expect(events.some((event) =>
+      event.type === 'MessageDeltaText'
+      && event.text === '<think>hidden</think>visible'
+    )).toBe(true)
+    expect(events.some((event) => event.type === 'MessageDeltaReasoningDetail')).toBe(false)
+    expect(events.some((event) => event.type === 'MessageAppendReasoningDisplayBlock')).toBe(false)
   })
 
   it('returns a terminal stream error when the renderer bridge is unavailable', async () => {

@@ -1,4 +1,17 @@
 import { describe, expect, it, vi } from 'vitest'
+
+const electronMock = vi.hoisted(() => ({
+  sessionFetch: vi.fn(),
+}))
+
+vi.mock('electron', () => ({
+  session: {
+    defaultSession: {
+      fetch: electronMock.sessionFetch,
+    },
+  },
+}))
+
 import {
   DEFAULT_CATALOG_FRESHNESS_MS,
   OPENROUTER_DEPRECATED_CATALOG_CACHE_CLEARED_AT_MS_KEY,
@@ -156,6 +169,95 @@ describe('startupBackgroundJobs catalog policy', () => {
     expect(cleanupExpiredScopedCaches).toHaveBeenCalledTimes(1)
     expect(clearDeprecatedCatalogCacheOnce).toHaveBeenCalledTimes(1)
     expect(result.postWindowNotifications).toEqual([])
+  })
+
+  it('runs provider registry startup sync when credential service is available', async () => {
+    const runCatalogSync = vi.fn(async (input: any) => makeSyncResult({
+      providerKey: input.providerKey,
+      modelCountAfter: input.providerKey === 'openrouter' ? 2 : 1,
+    }))
+    const cleanupExpiredScopedCaches = vi.fn(async () => ({
+      ok: true,
+      skipped: false,
+      reason: null,
+      deletedScopeCount: 0,
+      deleted: {},
+    }))
+    const clearDeprecatedCatalogCacheOnce = vi.fn(async () => ({
+      ok: true,
+      skipped: false,
+      reason: null,
+      deletedScopeCount: 0,
+      deleted: {},
+    }))
+    const store = createStore()
+    const credentialService = {
+      getLegacyStoreValue: vi.fn((key: string) => store.get(key)),
+    } as any
+
+    const result = await runStartupBackgroundJobs({
+      store,
+      credentialService,
+      dbWorkerManager: {} as any,
+      runCatalogSync,
+      cleanupExpiredScopedCaches,
+      clearDeprecatedCatalogCacheOnce,
+    })
+
+    expect(runCatalogSync.mock.calls.map((call) => call[0].providerKey)).toEqual([
+      'openrouter',
+      'google_ai_studio',
+      'anthropic_messages',
+      'openai_responses',
+      'deepseek',
+    ])
+    expect(runCatalogSync).toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: 'google_ai_studio',
+      credentialService,
+      force: false,
+      freshnessMs: DEFAULT_CATALOG_FRESHNESS_MS,
+    }))
+    expect(result.postWindowNotifications.map((notification) => (notification.payload as any).routerSource)).toEqual([
+      'openrouter',
+      'google_ai_studio',
+      'anthropic_messages',
+      'openai_responses',
+      'deepseek',
+    ])
+    expect(JSON.stringify(result.postWindowNotifications)).not.toContain('sk-')
+  })
+
+  it('default startup retention cleanup scans all provider scoped caches', async () => {
+    const runCatalogSync = vi.fn(async () => makeSyncResult())
+    const dbWorkerManager = {
+      call: vi.fn(async () => ({ deleted: {}, deletedScopeCount: 0 })),
+    } as any
+    const clearDeprecatedCatalogCacheOnce = vi.fn(async () => ({
+      ok: true,
+      skipped: false,
+      reason: null,
+      deletedScopeCount: 0,
+      deleted: {},
+    }))
+
+    await runStartupBackgroundJobs({
+      store: createStore(),
+      dbWorkerManager,
+      runCatalogSync,
+      clearDeprecatedCatalogCacheOnce,
+    })
+
+    expect((dbWorkerManager.call.mock.calls as Array<[string, any]>)
+      .filter(([method]) => method === 'modelCatalog.cleanupExpiredScopedCatalogCaches')
+      .map(([, params]) => params.providerKey)).toEqual([
+        'openrouter',
+        'google_ai_studio',
+        'anthropic_messages',
+        'openai_responses',
+        'deepseek',
+      ])
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain('sk-')
+    expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain('catalogScopeKey')
   })
 
   it('startup catalog cleanup failure does not block sync notifications', async () => {

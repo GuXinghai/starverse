@@ -67,6 +67,14 @@ describe('deepSeekCredentialSettingsIpc', () => {
     expect(JSON.stringify(result)).not.toContain('Authorization')
   })
 
+  it('reveals the API key only through the explicit reveal channel', async () => {
+    const { handlers } = registerHandlers({ [DEEPSEEK_API_KEY_STORE_KEY]: 'sk-deepseek-secret' })
+
+    const result = await handlers.get('deepseek-credential:reveal')?.({})
+
+    expect(result).toEqual({ ok: true, apiKey: 'sk-deepseek-secret' })
+  })
+
   it('updates and clears the service-backed API key without returning it', async () => {
     const { handlers, store } = registerHandlers()
 

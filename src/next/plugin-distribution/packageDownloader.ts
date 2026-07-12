@@ -3,7 +3,7 @@ import { once } from 'node:events'
 import { createReadStream, createWriteStream } from 'node:fs'
 import { mkdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 import {
   validateDownloadPolicy,
   type AcceptedDownloadPolicy,
@@ -15,7 +15,12 @@ import {
   buildProxyFetchInit,
   isProxyFetchInitFailure,
   type NetworkProxySettings,
-} from './networkProxy'
+} from '@/shared/plugin-distribution/networkProxy'
+import {
+  buildNetworkErrorEnvelope,
+  networkFailureReasonFromDownloadFailure,
+  type NetworkErrorEnvelope,
+} from '../../shared/network/networkErrorEnvelope'
 
 export type PackageDownloadTransportRequest = Readonly<{
   transportRef: string
@@ -72,6 +77,7 @@ export type PackageDownloadTransportResult =
       code: 'cancelled' | 'download_failed' | 'redirect_rejected' | 'too_large'
       detail?: string | null
       finalRef?: string | null
+      networkError?: NetworkErrorEnvelope
     }>
 
 export type PackageDownloadFileTransportResult =
@@ -95,6 +101,7 @@ export type PackageDownloadFileTransportResult =
         | 'resume_retries_exhausted'
       detail?: string | null
       finalRef?: string | null
+      networkError?: NetworkErrorEnvelope
     }>
 
 export type PackageDownloadTransport = Readonly<{
@@ -167,6 +174,7 @@ export type PackageDownloadFailureResult = Readonly<{
   status: 'failed' | 'cancelled'
   failureReasons: readonly PackageDownloadFailureReason[]
   diagnostics: readonly PackageDownloadDiagnostic[]
+  networkError?: NetworkErrorEnvelope
 }>
 
 export type PackageDownloadMemoryResult =
@@ -364,7 +372,7 @@ export async function fetchPackageToFileWithFetch(
   }
   const init = buildProxyFetchInit(request.proxy, request.transportRef, { signal: request.signal })
   if (isProxyFetchInitFailure(init)) {
-    return { ok: false, code: 'download_failed', detail: init.diagnosticCode }
+    return { ok: false, code: 'download_failed', detail: init.diagnosticCode, networkError: buildDownloadNetworkError('download_failed') }
   }
   let response: Response
   try {
@@ -374,17 +382,18 @@ export async function fetchPackageToFileWithFetch(
       ok: false,
       code: request.signal?.aborted ? 'cancelled' : 'download_failed',
       detail: request.signal?.aborted ? 'download cancelled' : sanitizeNetworkDetail(error),
+      networkError: buildDownloadNetworkError(request.signal?.aborted ? 'cancelled' : 'download_failed'),
     }
   }
   if (!response.ok) {
-    return { ok: false, code: 'download_failed', detail: `http_${response.status}` }
+    return { ok: false, code: 'download_failed', detail: `http_${response.status}`, networkError: buildDownloadNetworkError('download_failed') }
   }
   const contentLength = parseContentLength(response.headers.get('content-length'))
   if (contentLength != null && contentLength > request.maxBytes) {
-    return { ok: false, code: 'too_large', finalRef: response.url }
+    return { ok: false, code: 'too_large', finalRef: response.url, networkError: buildDownloadNetworkError('download_too_large') }
   }
   if (!response.body) {
-    return { ok: false, code: 'download_failed', detail: 'response body unavailable', finalRef: response.url }
+    return { ok: false, code: 'download_failed', detail: 'response body unavailable', finalRef: response.url, networkError: buildDownloadNetworkError('download_failed') }
   }
   return streamReadableResponseToFile({
     body: response.body,
@@ -418,13 +427,13 @@ async function fetchPackageToFileWithResume(
   while (true) {
     if (request.signal?.aborted) {
       await Promise.all([removeQuietly(partialPath), removeQuietly(metadataPath)])
-      return { ok: false, code: 'cancelled', detail: 'download cancelled' }
+      return { ok: false, code: 'cancelled', detail: 'download cancelled', networkError: buildDownloadNetworkError('cancelled') }
     }
 
     const currentBytes = await verifiedPartialSize(partialPath, metadata.currentBytesWritten)
     if (currentBytes === null) {
       await Promise.all([removeQuietly(partialPath), removeQuietly(metadataPath)])
-      return { ok: false, code: 'download_failed', detail: 'resume_partial_metadata_mismatch' }
+      return { ok: false, code: 'download_failed', detail: 'resume_partial_metadata_mismatch', networkError: buildDownloadNetworkError('download_failed') }
     }
     metadata = { ...metadata, currentBytesWritten: currentBytes, updatedAt: new Date().toISOString() }
     await writeResumeMetadata(metadataPath, metadata)
@@ -492,7 +501,7 @@ async function fetchPackageToFileWithResume(
       await delay(resume.retryDelayMs, request.signal)
     } catch {
       await Promise.all([removeQuietly(partialPath), removeQuietly(metadataPath)])
-      return { ok: false, code: 'cancelled', detail: 'download cancelled' }
+      return { ok: false, code: 'cancelled', detail: 'download cancelled', networkError: buildDownloadNetworkError('cancelled') }
     }
   }
 }
@@ -518,6 +527,7 @@ async function fetchResumeAttempt(input: Readonly<{
         ok: false,
         code: input.request.signal?.aborted ? 'cancelled' : 'download_failed',
         detail: input.request.signal?.aborted ? 'download cancelled' : init.diagnosticCode,
+        networkError: buildDownloadNetworkError(input.request.signal?.aborted ? 'cancelled' : 'download_failed'),
       }
     }
     response = await fetch(input.request.transportRef, init)
@@ -526,6 +536,7 @@ async function fetchResumeAttempt(input: Readonly<{
       ok: false,
       code: input.request.signal?.aborted ? 'cancelled' : 'download_failed',
       detail: input.request.signal?.aborted ? 'download cancelled' : sanitizeNetworkDetail(error),
+      networkError: buildDownloadNetworkError(input.request.signal?.aborted ? 'cancelled' : 'download_failed'),
     }
   }
 
@@ -533,7 +544,7 @@ async function fetchResumeAttempt(input: Readonly<{
   if (input.currentBytes > 0) {
     if (response.status === 200) {
       await response.body?.cancel().catch(() => undefined)
-      return { ok: false, code: 'resume_range_ignored', detail: 'resume range ignored', finalRef }
+      return { ok: false, code: 'resume_range_ignored', detail: 'resume range ignored', finalRef, networkError: buildDownloadNetworkError('resume_range_ignored') }
     }
     if (response.status === 416) {
       await response.body?.cancel().catch(() => undefined)
@@ -541,11 +552,11 @@ async function fetchResumeAttempt(input: Readonly<{
       if (localSize === input.resume.descriptor.expectedSizeBytes) {
         return completeExistingPartial(input.partialPath, finalRef)
       }
-      return { ok: false, code: 'resume_range_rejected', detail: 'resume range rejected', finalRef }
+      return { ok: false, code: 'resume_range_rejected', detail: 'resume range rejected', finalRef, networkError: buildDownloadNetworkError('resume_range_rejected') }
     }
     if (response.status !== 206) {
       await response.body?.cancel().catch(() => undefined)
-      return { ok: false, code: 'download_failed', detail: `http_${response.status}`, finalRef }
+      return { ok: false, code: 'download_failed', detail: `http_${response.status}`, finalRef, networkError: buildDownloadNetworkError('download_failed') }
     }
     const contentRange = parseContentRange(response.headers.get('content-range'))
     if (
@@ -554,21 +565,21 @@ async function fetchResumeAttempt(input: Readonly<{
       contentRange.total !== input.resume.descriptor.expectedSizeBytes
     ) {
       await response.body?.cancel().catch(() => undefined)
-      return { ok: false, code: 'resume_content_range_invalid', detail: 'resume content range invalid', finalRef }
+      return { ok: false, code: 'resume_content_range_invalid', detail: 'resume content range invalid', finalRef, networkError: buildDownloadNetworkError('resume_content_range_invalid') }
     }
   } else if (!response.ok) {
     await response.body?.cancel().catch(() => undefined)
-    return { ok: false, code: 'download_failed', detail: `http_${response.status}`, finalRef }
+    return { ok: false, code: 'download_failed', detail: `http_${response.status}`, finalRef, networkError: buildDownloadNetworkError('download_failed') }
   }
 
   const totalBytes = input.resume.descriptor.expectedSizeBytes
   const contentLength = parseContentLength(response.headers.get('content-length'))
   if (input.currentBytes === 0 && contentLength != null && contentLength > input.request.maxBytes) {
     await response.body?.cancel().catch(() => undefined)
-    return { ok: false, code: 'too_large', finalRef }
+    return { ok: false, code: 'too_large', finalRef, networkError: buildDownloadNetworkError('download_too_large') }
   }
   if (!response.body) {
-    return { ok: false, code: 'download_failed', detail: 'response body unavailable', finalRef }
+    return { ok: false, code: 'download_failed', detail: 'response body unavailable', finalRef, networkError: buildDownloadNetworkError('download_failed') }
   }
 
   return appendReadableResponseToPartialFile({
@@ -995,15 +1006,27 @@ function fail(
   failureReasons: readonly PackageDownloadFailureReason[],
   diagnostics: readonly PackageDownloadDiagnostic[]
 ): PackageDownloadFailureResult {
+  const unique = uniqueFailures(failureReasons)
+  const reason = unique[0]
   return {
     ok: false,
     status,
-    failureReasons: uniqueFailures(failureReasons),
+    failureReasons: unique,
     diagnostics: diagnostics.map((entry) => ({
       ...entry,
       detail: sanitizePluginDistributionText(entry.detail),
     })),
+    networkError: buildDownloadNetworkError(reason),
   }
+}
+
+function buildDownloadNetworkError(reason: unknown): NetworkErrorEnvelope {
+  return buildNetworkErrorEnvelope({
+    requestPurpose: 'download',
+    transportKind: 'electron_session_fetch',
+    providerId: 'plugin_runtime_download',
+    reason: networkFailureReasonFromDownloadFailure(reason),
+  })
 }
 
 function uniqueFailures(values: readonly PackageDownloadFailureReason[]): readonly PackageDownloadFailureReason[] {

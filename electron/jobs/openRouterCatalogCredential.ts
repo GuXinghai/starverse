@@ -10,9 +10,6 @@ import {
   createBearerCredential,
 } from '@/next/provider/credentials/providerCredential'
 import {
-  validateOpenRouterOfficialBaseUrl,
-} from '../openrouter/openRouterEndpointPolicy'
-import {
   providerCredentialResolutionFailure,
   providerCredentialResolutionFromCredential,
   resolveProviderCredential,
@@ -22,7 +19,6 @@ import {
 } from '@/next/provider/credentials/providerCredentialResolver'
 
 export const OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY = 'openRouterApiKey'
-export const OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY = 'openRouterBaseUrl'
 export const OPENROUTER_CATALOG_LEGACY_CREDENTIAL_REF: ProviderCredentialRef = {
   kind: 'credential_ref',
   id: 'openrouter-catalog-legacy-store',
@@ -75,7 +71,6 @@ export type OpenRouterCatalogCredentialSourceResult =
 export type OpenRouterCatalogCredentialResolutionInput = Readonly<{
   credentialRef: ProviderCredentialRef
   resolveCredential: ProviderCredentialResolver
-  baseUrl?: string | null
 }>
 
 export function readOpenRouterCatalogLegacyCredentialFromStore(
@@ -84,13 +79,10 @@ export function readOpenRouterCatalogLegacyCredentialFromStore(
   const apiKey = String(store.get(OPENROUTER_CATALOG_LEGACY_API_KEY_STORE_KEY) ?? '').trim()
   if (!apiKey) return null
 
-  const rawBaseUrl = String(store.get(OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY) ?? '').trim()
-  const baseUrl = rawBaseUrl ? validateOpenRouterOfficialBaseUrl(rawBaseUrl) : null
-  if (baseUrl && !baseUrl.ok) return null
   return {
     kind: 'openrouter_catalog_legacy_credential',
     apiKey,
-    baseUrl: baseUrl?.baseUrl ?? null,
+    baseUrl: null,
   }
 }
 
@@ -118,15 +110,6 @@ function openRouterCatalogCredentialResolutionFailure(
     code: 'credential_unresolved',
     status: 'missing',
     message: 'Credential could not be resolved.',
-  }
-}
-
-function openRouterCatalogBaseUrlPolicyFailure(): OpenRouterCatalogCredentialResolutionFailure {
-  return {
-    kind: 'openrouter_catalog_credential_resolution_error',
-    code: 'credential_invalid',
-    status: 'invalid',
-    message: 'Credential material is invalid.',
   }
 }
 
@@ -161,7 +144,7 @@ export function resolveOpenRouterCatalogLegacyCredential(
   return {
     kind: 'openrouter_catalog_legacy_credential',
     apiKey: resolution.credential.token,
-    baseUrl: input.baseUrl ?? null,
+    baseUrl: null,
   }
 }
 
@@ -210,27 +193,11 @@ export function resolveOpenRouterCatalogCredentialFromLegacyStore(
     }
   }
 
-  const rawBaseUrl = String(store.get(OPENROUTER_CATALOG_LEGACY_BASE_URL_STORE_KEY) ?? '').trim()
-  const baseUrl = rawBaseUrl ? validateOpenRouterOfficialBaseUrl(rawBaseUrl) : null
-  if (baseUrl && !baseUrl.ok) {
-    const failure = openRouterCatalogBaseUrlPolicyFailure()
-    return {
-      ok: false,
-      source: 'legacy_store',
-      failure,
-      diagnostics: toSafeOpenRouterCatalogCredentialDiagnostics(failure),
-    }
-  }
-
-  const credential = {
-    ...resolved,
-    baseUrl: baseUrl?.baseUrl ?? null,
-  }
   return {
     ok: true,
     source: 'legacy_store',
-    credential,
-    diagnostics: toSafeOpenRouterCatalogCredentialDiagnostics(credential),
+    credential: resolved,
+    diagnostics: toSafeOpenRouterCatalogCredentialDiagnostics(resolved),
   }
 }
 
@@ -250,6 +217,6 @@ export function toSafeOpenRouterCatalogCredentialDiagnostics(
     kind: 'openrouter_catalog_legacy_credential',
     status: credential ? 'configured' : 'missing',
     code: credential ? 'credential_configured' : 'credential_missing',
-    baseUrlConfigured: typeof credential?.baseUrl === 'string' && credential.baseUrl.length > 0,
+    baseUrlConfigured: false,
   }
 }

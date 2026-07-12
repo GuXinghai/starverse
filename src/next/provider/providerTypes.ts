@@ -12,10 +12,13 @@
 import type {
   ContentBlock,
   MessageAnnotation,
+  ReasoningDisplayBlock,
   ReasoningEffort,
   RequestedReasoningMode,
   ToolCallDelta,
 } from '@/next/state/types'
+import type { ProviderNativeSnapshot } from '@/next/provider/providerNativeSnapshot'
+import type { NetworkErrorEnvelope } from '@/shared/network/networkErrorEnvelope'
 
 // ---------------------------------------------------------------------------
 // StarverseProviderError — provider-neutral error shape
@@ -43,6 +46,7 @@ export type StarverseProviderError = Readonly<{
   httpStatus?: number
   code?: string
   requestId?: string
+  networkError?: NetworkErrorEnvelope
   raw?: unknown
 }>
 
@@ -52,7 +56,7 @@ export type StarverseProviderError = Readonly<{
 // This is the canonical event vocabulary that all RuntimeProviderAdapters
 // must produce. The OpenRouter adapter maps existing DomainEvent shapes
 // into this vocabulary; future adapters (OpenAI Responses, Anthropic Messages,
-// Gemini native, DeepSeek profile, Generic OpenAI-compatible) will produce
+// Gemini native and DeepSeek profile) will produce
 // the same vocabulary from their native stream formats.
 //
 // Field semantics mirror the existing DomainEvent union to preserve
@@ -88,8 +92,13 @@ export type StarverseStreamEvent =
       mergeStrategy: 'append' | 'replace'
       annotations: MessageAnnotation[]
     }>
+  | Readonly<{ type: 'message.reasoning_raw_detail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
+  | Readonly<{ type: 'message.reasoning_raw_detail_batch'; messageId: string; choiceIndex: number; details: unknown[] }>
   | Readonly<{ type: 'message.reasoning_detail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'message.reasoning_detail_batch'; messageId: string; choiceIndex: number; details: unknown[] }>
+  | Readonly<{ type: 'message.reasoning_display_block'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
+  | Readonly<{ type: 'message.reasoning_display_block_upsert'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
+  | Readonly<{ type: 'message.provider_native_content_upsert'; messageId: string; choiceIndex: number; snapshot: ProviderNativeSnapshot }>
   | Readonly<{ type: 'usage.delta'; usage: unknown }>
   | Readonly<{
       type: 'meta.delta'
@@ -119,10 +128,13 @@ export type ProviderStreamConfig = Readonly<{
     requestPatch: unknown
     resolvedMode?: 'enable' | 'default' | 'disable'
   }>
-  samplingParams?: unknown
+  generationParams?: unknown
   imageGeneration?: Readonly<{
     capabilityClass?: string
     modalities?: ReadonlyArray<string>
+    outputMode?: 'auto' | 'image_only' | 'image_and_text'
+    aspectRatio?: string
+    imageSize?: '512' | '1K' | '2K' | '4K' | ''
     imageConfig?: unknown
   }>
   additionalPlugins?: ReadonlyArray<unknown>

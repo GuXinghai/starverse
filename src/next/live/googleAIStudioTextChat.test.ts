@@ -40,6 +40,61 @@ describe('googleAIStudioTextChat renderer bridge', () => {
     ])
   })
 
+  it('carries final Gemini native content for Google assistant history', () => {
+    const snapshot = {
+      providerKey: 'google_ai_studio',
+      sourceApi: 'gemini_generate_content',
+      candidateIndex: 0,
+      snapshotKey: 'candidate:0',
+      status: 'final',
+      content: {
+        role: 'model',
+        parts: [
+          { text: 'signed thought', thought: true, thoughtSignature: 'sig-1' },
+          { text: 'visible answer' },
+        ],
+      },
+    }
+
+    expect(buildGoogleAIStudioTextChatMessages({
+      contextMessages: [
+        {
+          role: 'assistant',
+          providerId: 'google_ai_studio',
+          contentText: 'visible answer',
+          reasoningDisplayBlocks: [
+            {
+              blockId: 'display-1',
+              ordinal: 0,
+              type: 'text',
+              text: 'display-only thought',
+              providerKey: 'google_ai_studio',
+            },
+          ],
+          reasoningDetailsRaw: [{ type: 'thought', text: 'raw-only thought' }],
+          providerNativeContents: [snapshot],
+        },
+      ],
+      userText: 'current user',
+    })).toEqual([
+      { role: 'assistant', content: 'visible answer', geminiNativeContent: snapshot },
+      { role: 'user', content: 'current user' },
+    ])
+  })
+
+  it('rejects Google assistant history without final Gemini native content', () => {
+    expect(() => buildGoogleAIStudioTextChatMessages({
+      contextMessages: [
+        {
+          role: 'assistant',
+          providerId: 'google_ai_studio',
+          contentText: 'visible answer',
+        },
+      ],
+      userText: 'current user',
+    })).toThrow(/missing final Gemini native content/)
+  })
+
   it('streams native Gemini text deltas into DomainEvents', async () => {
     const listeners = new Map<string, (payload: unknown) => void>()
     const endListeners = new Map<string, () => void>()
@@ -49,6 +104,11 @@ describe('googleAIStudioTextChat renderer bridge', () => {
         assistantMessageId: 'assistant_1',
         model: 'gemini-2.5-flash',
         messages: [{ role: 'user', content: 'hello' }],
+        generationParams: {
+          generationConfig: {
+            thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+          },
+        },
       })
       queueMicrotask(() => {
         listeners.get('google_ai_studio_req_1')?.({
@@ -64,6 +124,7 @@ describe('googleAIStudioTextChat renderer bridge', () => {
           type: 'event',
           event: { type: 'stream.done' },
         })
+        listeners.get('google_ai_studio_req_1')?.({ type: 'end' })
         endListeners.get('google_ai_studio_req_1')?.()
       })
       return { ok: true }
@@ -82,9 +143,16 @@ describe('googleAIStudioTextChat renderer bridge', () => {
       },
     }
 
-    const events = await collect()
+    const events = await collect({
+      generationParams: {
+        generationConfig: {
+          thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+        },
+      },
+    })
     expect(events.some((event: any) => event.type === 'MessageDeltaText' && event.text === 'gemini hi')).toBe(true)
     expect(events.some((event: any) => event.type === 'StreamDone')).toBe(true)
+    expect(events.some((event: any) => event.type === 'StreamError' && event.error?.openrouter?.code === 'invalid_wire_event')).toBe(false)
     expect(JSON.stringify(events)).not.toContain('AIza-')
     expect(JSON.stringify(events)).not.toContain('Authorization')
   })

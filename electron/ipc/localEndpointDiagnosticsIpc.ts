@@ -1,4 +1,5 @@
 import type { RegisterInvoke } from './types'
+import { createLocalEndpointDirectFetch } from '../net/localEndpointTransport'
 
 export const LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS = [
   'local-endpoint-diagnostics:probe',
@@ -422,7 +423,7 @@ export async function probeLocalEndpointDiagnostics(
   const validation = validateLocalEndpointProbeUrl(payload.url)
   if (!validation.ok) return validation
 
-  const fetchImpl = options?.fetchImpl ?? globalThis.fetch
+  const fetchImpl = options?.fetchImpl ?? createLocalEndpointDirectFetch()
   if (typeof fetchImpl !== 'function') {
     return {
       ok: false,
@@ -502,7 +503,7 @@ export async function probeLocalEndpointStreamDiagnostics(
   const validation = validateLocalEndpointProbeUrl(payload.url)
   if (!validation.ok) return validation
 
-  const fetchImpl = options?.fetchImpl ?? globalThis.fetch
+  const fetchImpl = options?.fetchImpl ?? createLocalEndpointDirectFetch()
   if (typeof fetchImpl !== 'function') {
     return {
       ok: false,

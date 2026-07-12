@@ -7,6 +7,8 @@ export type ScopedCurrentModelCatalogListResult = Readonly<{
   notice?: string | null
   catalogRevision?: string | null
   modelCount?: number
+  visibleModelCount?: number
+  hiddenModelCount?: number
   lastSyncAtMs?: number
 }>
 
@@ -34,6 +36,8 @@ export async function listScopedCurrentModelCatalog(
   let notice: string | null | undefined
   let catalogRevision: string | null = null
   let modelCount: number | undefined
+  let visibleModelCount: number | undefined
+  let hiddenModelCount: number | undefined
   let lastSyncAtMs: number | undefined
 
   for (let page = 0; page < 50; page += 1) {
@@ -46,6 +50,8 @@ export async function listScopedCurrentModelCatalog(
     notice = result.notice ?? null
     catalogRevision = result.catalogRevision ?? catalogRevision
     modelCount = result.modelCount ?? modelCount
+    visibleModelCount = result.visibleModelCount ?? visibleModelCount
+    hiddenModelCount = result.hiddenModelCount ?? hiddenModelCount
     lastSyncAtMs = result.lastSyncAtMs ?? lastSyncAtMs
 
     for (const item of result.items) {
@@ -65,6 +71,8 @@ export async function listScopedCurrentModelCatalog(
     notice,
     catalogRevision,
     ...(modelCount !== undefined ? { modelCount } : {}),
+    ...(visibleModelCount !== undefined ? { visibleModelCount } : {}),
+    ...(hiddenModelCount !== undefined ? { hiddenModelCount } : {}),
     ...(lastSyncAtMs !== undefined ? { lastSyncAtMs } : {}),
   }
 }

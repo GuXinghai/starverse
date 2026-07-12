@@ -49,6 +49,8 @@ const POST_ERROR_OUTPUT_EVENT_TYPES = new Set<StreamEventType>([
   'message.content_block_append',
   'message.tool_call_delta',
   'message.annotation_batch',
+  'message.reasoning_raw_detail',
+  'message.reasoning_raw_detail_batch',
   'message.reasoning_detail',
   'message.reasoning_detail_batch',
   'usage.delta',
@@ -257,11 +259,11 @@ export function assertReasoningNotInVisibleText(events: StarverseStreamEvent[]):
 
   // Collect reasoning content from reasoning_detail events
   for (const ev of events) {
-    if (ev.type === 'message.reasoning_detail' && ev.detail) {
+    if ((ev.type === 'message.reasoning_raw_detail' || ev.type === 'message.reasoning_detail') && ev.detail) {
       const detail = ev.detail as any
       if (typeof detail.text === 'string') reasoningTexts.push(detail.text)
     }
-    if (ev.type === 'message.reasoning_detail_batch' && ev.details) {
+    if ((ev.type === 'message.reasoning_raw_detail_batch' || ev.type === 'message.reasoning_detail_batch') && ev.details) {
       for (const d of ev.details as any[]) {
         if (typeof d?.text === 'string') reasoningTexts.push(d.text)
       }

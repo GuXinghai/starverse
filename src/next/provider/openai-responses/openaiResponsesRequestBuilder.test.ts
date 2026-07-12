@@ -49,7 +49,7 @@ describe('buildResponsesRequest', () => {
     expect(req.instructions).toBeUndefined()
   })
 
-  it('includes reasoning config when mode is effort', () => {
+  it('does not derive reasoning config from legacy requested reasoning controls', () => {
     const req = buildResponsesRequest({
       model: 'o3',
       messages: baseMessages,
@@ -59,20 +59,65 @@ describe('buildResponsesRequest', () => {
       }),
     })
 
-    expect(req.reasoning).toBeDefined()
-    expect((req.reasoning as any).effort).toBe('high')
-    expect((req.reasoning as any).summary).toBe('concise')
+    expect(req.reasoning).toBeUndefined()
   })
 
-  it('maps reasoning effort levels correctly', () => {
-    for (const [input, expected] of [['low', 'low'], ['minimal', 'low'], ['medium', 'medium'], ['high', 'high'], ['xhigh', 'high']] as const) {
+  it('includes reasoning config from generationParams only', () => {
+    for (const effort of ['none', 'minimal', 'low', 'medium', 'high', 'xhigh'] as const) {
       const req = buildResponsesRequest({
         model: 'o3',
         messages: baseMessages,
-        config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: input }),
+        config: baseConfig({ generationParams: { reasoning: { effort, summary: 'concise' } } }),
       })
-      expect((req.reasoning as any).effort).toBe(expected)
+      expect(req.reasoning).toEqual({ effort, summary: 'concise' })
     }
+  })
+
+  it('rejects provider-native reasoning effort auto because auto must omit the wire field', () => {
+    expect(() => buildResponsesRequest({
+      model: 'gpt-5.4-nano',
+      messages: baseMessages,
+      config: baseConfig({ generationParams: { reasoning: { effort: 'auto' } } }),
+    })).toThrow(/effort=auto is not a wire value/)
+  })
+
+  it('allows reasoning summary without explicit reasoning effort', () => {
+    const req = buildResponsesRequest({
+      model: 'gpt-5.4-nano',
+      messages: baseMessages,
+      config: baseConfig({ generationParams: { reasoning: { summary: 'concise' } } }),
+    })
+
+    expect(req.reasoning).toEqual({ summary: 'concise' })
+  })
+
+  it.each(['auto', 'concise', 'detailed'] as const)('allows reasoning summary %s as a wire value', (summary) => {
+    const req = buildResponsesRequest({
+      model: 'gpt-5.4-nano',
+      messages: baseMessages,
+      config: baseConfig({ generationParams: { reasoning: { summary } } }),
+    })
+
+    expect(req.reasoning).toEqual({ summary })
+  })
+
+  it.each(['none', 'off', null, false, 'verbose'] as const)('rejects provider-native reasoning summary %s', (summary) => {
+    expect(() => buildResponsesRequest({
+      model: 'gpt-5.4-nano',
+      messages: baseMessages,
+      config: baseConfig({ generationParams: { reasoning: { summary } } }),
+    })).toThrow(/reasoning\.summary must be omitted or one of auto, concise, detailed/)
+  })
+
+  it('omits empty reasoning objects instead of sending reasoning: {}', () => {
+    const req = buildResponsesRequest({
+      model: 'gpt-5.4-nano',
+      messages: baseMessages,
+      config: baseConfig({ generationParams: { reasoning: {} } }),
+    })
+
+    expect(req.reasoning).toBeUndefined()
+    expect(Object.prototype.hasOwnProperty.call(req, 'reasoning')).toBe(false)
   })
 
   it('does not include reasoning when mode is auto', () => {
@@ -85,26 +130,44 @@ describe('buildResponsesRequest', () => {
     expect(req.reasoning).toBeUndefined()
   })
 
-  it('includes reasoning with summary only when mode is effort but no effort set', () => {
+  it('does not synthesize a default reasoning summary from legacy effort mode', () => {
     const req = buildResponsesRequest({
       model: 'o3',
       messages: baseMessages,
       config: baseConfig({ requestedReasoningMode: 'effort' }),
     })
 
-    expect(req.reasoning).toBeDefined()
-    expect((req.reasoning as any).effort).toBeUndefined()
-    expect((req.reasoning as any).summary).toBe('concise')
+    expect(req.reasoning).toBeUndefined()
   })
 
-  it('includes max_output_tokens from samplingParams.max_tokens', () => {
+  it('includes max_output_tokens from generationParams.max_output_tokens', () => {
     const req = buildResponsesRequest({
       model: 'o3',
       messages: baseMessages,
-      config: baseConfig({ samplingParams: { max_tokens: 4096 } }),
+      config: baseConfig({ generationParams: { max_output_tokens: 4096 } }),
     })
 
     expect(req.max_output_tokens).toBe(4096)
+  })
+
+  it('includes provider-native generation params when present', () => {
+    const req = buildResponsesRequest({
+      model: 'gpt-5.1',
+      messages: baseMessages,
+      config: baseConfig({
+        generationParams: {
+          temperature: 0.4,
+          top_p: 0.8,
+          reasoning: { effort: 'low', summary: 'detailed' },
+          text: { verbosity: 'high' },
+        },
+      }),
+    })
+
+    expect(req.temperature).toBe(0.4)
+    expect(req.top_p).toBe(0.8)
+    expect(req.reasoning).toEqual({ effort: 'low', summary: 'detailed' })
+    expect(req.text).toEqual({ verbosity: 'high' })
   })
 
   it('does not include max_output_tokens when absent', () => {
@@ -154,6 +217,49 @@ describe('buildResponsesRequest', () => {
     expect((req as any).web_search_options).toBeUndefined()
     expect((req as any).modalities).toBeUndefined()
     expect((req as any).image_config).toBeUndefined()
+  })
+
+  it('adds image_generation tool when image generation is enabled', () => {
+    const req = buildResponsesRequest({
+      model: 'gpt-5-mini',
+      messages: baseMessages,
+      config: baseConfig({
+        imageGeneration: {
+          outputMode: 'image_and_text',
+          aspectRatio: '3:4',
+          imageSize: '1K',
+          imageConfig: { quality: 'high' },
+        },
+      }),
+    })
+
+    expect(req.tools).toEqual([
+      {
+        type: 'image_generation',
+        quality: 'high',
+        size: '1024x1536',
+      },
+    ])
+  })
+
+  it('appends image_generation after existing tools and does not emit OpenRouter aliases', () => {
+    const req = buildResponsesRequest({
+      model: 'gpt-5-mini',
+      messages: baseMessages,
+      config: baseConfig({
+        tools: [{ type: 'function', name: 'lookup' }],
+        imageGeneration: {
+          aspectRatio: '1:1',
+          imageSize: '4K',
+          imageConfig: { aspect_ratio: '16:9', image_size: '2K', size: 'auto' },
+        },
+      }),
+    })
+
+    expect(req.tools).toEqual([
+      { type: 'function', name: 'lookup' },
+      { type: 'image_generation', size: 'auto' },
+    ])
   })
 
   it('does not include DeepSeek-specific fields', () => {

@@ -15,12 +15,12 @@ describe('ChatAppComposer web search send guard', () => {
     webSearch: { enabled: boolean; level: 'low' | 'high'; detail: null }
     imageGeneration: {
       enabled: boolean
-      resolution: '1K' | '2K' | '4K'
+      resolution: '512' | '1K' | '2K' | '4K'
       aspectRatio: '16:9' | '3:4' | '1:1' | '4:3'
       mode: 'default'
       detail: null
     }
-    samplingParams: { detail: null }
+    generationParams: { detail: null }
   }
 
   afterEach(() => {
@@ -53,7 +53,7 @@ describe('ChatAppComposer web search send guard', () => {
         mode: 'default' as const,
         detail: null,
       },
-      samplingParams: { detail: null },
+      generationParams: { detail: null },
     }
   }
 
@@ -92,7 +92,7 @@ describe('ChatAppComposer web search send guard', () => {
               imageGeneration: { ...sessionConfig.value.imageGeneration, enabled: value },
             }
           },
-          onUpdateImageGenerationResolution(value: '1K' | '2K' | '4K') {
+          onUpdateImageGenerationResolution(value: '512' | '1K' | '2K' | '4K') {
             sessionConfig.value = {
               ...sessionConfig.value,
               imageGeneration: { ...sessionConfig.value.imageGeneration, enabled: true, resolution: value },

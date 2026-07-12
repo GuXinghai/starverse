@@ -5,7 +5,7 @@ import {
   canEnableAfterVerification,
 } from './packageVerification'
 import { readNonEmptyString } from './validation'
-import { sanitizePluginDistributionText } from './sanitization'
+import { sanitizePluginDistributionText } from '@/shared/plugin-distribution/sanitization'
 
 export const LOCAL_CONTROLLED_ROOT_KINDS = ['user_local', 'portable', 'dev_only'] as const
 export type LocalControlledRootKind = (typeof LOCAL_CONTROLLED_ROOT_KINDS)[number]

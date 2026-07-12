@@ -5,10 +5,18 @@ import type { ReasoningView } from '@/next/state/types'
 
 describe('ChatAppReasoningPanel - 推理时间显示', () => {
   const mockReasoningView: ReasoningView = {
-    summaryText: 'Test summary',
-    reasoningText: 'Test reasoning',
     visibility: 'shown',
-    panelState: 'expanded'
+    panelState: 'expanded',
+    displayBlocks: [
+      {
+        blockId: 'display-1',
+        ordinal: 0,
+        type: 'text',
+        text: 'Test reasoning',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+      },
+    ],
   }
 
   it('应该在展开时显示推理时间', () => {

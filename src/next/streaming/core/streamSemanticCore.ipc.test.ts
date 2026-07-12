@@ -3,6 +3,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import type { DomainEvent } from '@/next/state/types'
+import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
 import {
   buildStreamErrorFromAppError,
   mapAppPhaseToEndReason,
@@ -11,8 +12,18 @@ import {
 } from '@/next/streaming/core'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import type { OpenRouterStreamWireEvent } from '@/shared/ipc/openRouterStreamWire'
+import { mapLocalOpenAIChatCompletionsChunkToEvents } from './localOpenAIChatCompletionsStreamMapper'
+import type { StreamJsonChunkMapper } from '@/next/streaming/core/types'
 
 const testModel = DEFAULT_OPENROUTER_TEST_MODEL
+
+const mapOpenRouterJsonChunkToEvents: StreamJsonChunkMapper = (input) =>
+  mapChunkToEvents({
+    chunk: input.chunk as any,
+    messageId: input.messageId,
+    choiceIndex: input.choiceIndex,
+    chunkNo: input.chunkNo,
+  }) as DomainEvent[]
 
 function readFixtureText(fileName: string): string {
   const fullPath = path.join(process.cwd(), 'src/next/openrouter/sse/fixtures', fileName)
@@ -73,6 +84,24 @@ async function collect(events: readonly unknown[]): Promise<DomainEvent[]> {
     assistantMessageId: 'assistant_fixture',
     requestContext: { model: testModel, stream: true },
     tRequestStart: Date.now(),
+    mapJsonChunkToEvents: mapOpenRouterJsonChunkToEvents,
+    mapAppPhaseToEnvelopePhase,
+    mapAppPhaseToEndReason,
+    buildStreamErrorFromAppError,
+  })) {
+    out.push(event)
+  }
+  return out
+}
+
+async function collectWithGenericMapper(events: readonly unknown[]): Promise<DomainEvent[]> {
+  const out: DomainEvent[] = []
+  for await (const event of streamWireSemanticCore({
+    wireEvents: wireStream(events),
+    assistantMessageId: 'assistant_fixture',
+    requestContext: { model: 'generic-local-model', stream: true },
+    tRequestStart: Date.now(),
+    mapJsonChunkToEvents: mapLocalOpenAIChatCompletionsChunkToEvents,
     mapAppPhaseToEnvelopePhase,
     mapAppPhaseToEndReason,
     buildStreamErrorFromAppError,
@@ -236,6 +265,27 @@ describe('streamWireSemanticCore', () => {
     const textDelta = events.find((event) => event.type === 'MessageDeltaText') as Extract<DomainEvent, { type: 'MessageDeltaText' }> | undefined
 
     expect(textDelta?.text).toContain('你好🌍')
+    expect(terminalEvents(events)).toHaveLength(1)
+    expect(terminalEvents(events)[0]?.type).toBe('StreamDone')
+  })
+
+  it('uses an injected generic mapper instead of OpenRouter reasoning semantics', async () => {
+    const events = await collectWithGenericMapper(wireEventsFromText([
+      'data: {"id":"gen_generic","model":"local-model","choices":[{"index":0,"delta":{"reasoning_content":"hidden","content":"visible"},"finish_reason":null}]}',
+      '',
+      'data: [DONE]',
+      '',
+    ].join('\n')))
+
+    expect(events).toContainEqual({
+      type: 'MessageDeltaText',
+      messageId: 'assistant_fixture',
+      choiceIndex: 0,
+      text: 'visible',
+    })
+    expect(events.some((event) => event.type === 'MessageDeltaReasoningDetail')).toBe(false)
+    expect(events.some((event) => event.type === 'MessageAppendReasoningDisplayBlock')).toBe(false)
+    expect(JSON.stringify(events)).not.toContain('hidden')
     expect(terminalEvents(events)).toHaveLength(1)
     expect(terminalEvents(events)[0]?.type).toBe('StreamDone')
   })

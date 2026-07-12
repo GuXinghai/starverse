@@ -1,9 +1,35 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
-import { syncOpenRouterModelCatalog } from '../modelCatalog/catalogSyncJob'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+
+const electronMock = vi.hoisted(() => ({
+  sessionFetch: vi.fn(),
+}))
+
+const openRouterSourceMock = vi.hoisted(() => ({
+  fetchSnapshot: vi.fn(),
+}))
+
+vi.mock('electron', () => ({
+  session: {
+    defaultSession: {
+      fetch: electronMock.sessionFetch,
+    },
+  },
+}))
+
+import { requireProviderCatalogSource } from '../../src/shared/modelCatalog/providerCatalogSourceRegistry'
+import type { ProviderCatalogSnapshot } from '../../src/shared/modelCatalog/providerCatalogContracts'
+import type { CatalogModel } from '../../src/shared/modelCatalog/internalSchema'
 import { resolveCurrentOpenRouterCatalogScope, runCatalogSyncAtStartup } from './catalogSyncStartup'
 
-vi.mock('../modelCatalog/catalogSyncJob', () => ({
-  syncOpenRouterModelCatalog: vi.fn(),
+vi.mock('../../src/shared/modelCatalog/providerCatalogSourceRegistry', () => ({
+  requireProviderCatalogSource: vi.fn(() => ({
+    descriptor: {
+      providerKey: 'openrouter',
+      defaultBaseUrl: 'https://openrouter.ai/api/v1',
+      defaultDataSource: 'models_user_primary',
+    },
+    fetchSnapshot: openRouterSourceMock.fetchSnapshot,
+  })),
 }))
 
 function createStore(initial: Record<string, unknown>) {
@@ -34,33 +60,59 @@ function makeScopedMeta(partial: Record<string, unknown> = {}) {
   }
 }
 
-function makeModel() {
+function makeModel(partial: Partial<CatalogModel> = {}): CatalogModel {
+  const nowMs = Date.now()
   return {
     modelId: 'openai/a',
-    modelKey: 'openrouter::openai/a',
+    modelKey: 'openrouter::openai/a' as const,
+    providerKey: 'openrouter',
     displayName: 'A',
     status: 'active' as const,
     visibility: 'visible' as const,
-    inputModalitiesJson: '["text"]',
-    outputModalitiesJson: '["text"]',
-    supportedParametersJson: '["temperature"]',
-    capabilitiesJson: '{}',
-    firstSeenAtMs: Date.now(),
-    lastSeenAtMs: Date.now(),
-    syncedAtMs: Date.now(),
+    inputModalities: ['text'] as const,
+    outputModalities: ['text'] as const,
+    supportedParameters: ['temperature'],
+    capabilities: {
+      reasoning: false,
+      tools: false,
+      structuredOutputs: false,
+      vision: false,
+      longContext: false,
+    },
+    tags: [],
+    firstSeenAtMs: nowMs,
+    lastSeenAtMs: nowMs,
+    syncedAtMs: nowMs,
+    ...partial,
+  }
+}
+
+function makeSnapshot(partial: Partial<ProviderCatalogSnapshot> = {}): ProviderCatalogSnapshot {
+  return {
+    providerKey: 'openrouter',
+    baseUrl: 'https://openrouter.ai/api/v1',
+    dataSource: 'models_user_primary' as const,
+    fetchedAtMs: 123,
+    models: [makeModel()],
+    ...partial,
   }
 }
 
 describe('runCatalogSyncAtStartup scoped catalog path', () => {
   beforeEach(() => {
-    vi.mocked(syncOpenRouterModelCatalog).mockReset()
+    vi.mocked(requireProviderCatalogSource).mockClear()
+    openRouterSourceMock.fetchSnapshot.mockReset()
+    electronMock.sessionFetch.mockReset()
   })
 
-  it('characterizes current startup scope as resolver-backed legacy openRouterApiKey and official openRouterBaseUrl reads', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('characterizes current startup scope as resolver-backed legacy OpenRouter API key with the official endpoint', () => {
     const rawApiKey = 'sk-startup-direct-read-secret'
     const store = createStore({
       openRouterApiKey: `  ${rawApiKey}  `,
-      openRouterBaseUrl: ' https://openrouter.ai/api/v1/ ',
       openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
     })
 
@@ -72,7 +124,6 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
       scopeDataSource: 'models_user_primary',
     })
     expect(store.get).toHaveBeenCalledWith('openRouterApiKey')
-    expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
     expect(store.get).toHaveBeenCalledWith('openRouterCatalogLocalSecret')
     expect(JSON.stringify(scope)).not.toContain(rawApiKey)
     expect(JSON.stringify(scope)).not.toContain('local-secret-for-startup-tests-1234567890')
@@ -91,14 +142,13 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
       failureMessage: 'missing_api_key',
     })
     expect(dbWorkerManager.call).not.toHaveBeenCalled()
-    expect(syncOpenRouterModelCatalog).not.toHaveBeenCalled()
+    expect(openRouterSourceMock.fetchSnapshot).not.toHaveBeenCalled()
   })
 
   it('writes remote sync results to current scoped snapshot only', async () => {
     const rawApiKey = 'sk-startup-secret-a'
     const store = createStore({
       openRouterApiKey: rawApiKey,
-      openRouterBaseUrl: 'https://openrouter.ai/api/v1/',
       openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
     })
     const scope = resolveCurrentOpenRouterCatalogScope(store)!
@@ -109,40 +159,22 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
         throw new Error(`unexpected method ${method}`)
       }),
     } as any
-    vi.mocked(syncOpenRouterModelCatalog).mockImplementation(async (options: any) => {
-      await options.writer.writeScopedSnapshot({
-        providerKey: 'openrouter',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        dataSource: 'models_user_primary',
-        snapshotId: 'snap-scoped',
-        snapshotChecksum: 'checksum-scoped',
-        models: [makeModel()],
-        syncedAtMs: 123,
-        schemaVersion: 1,
-      })
-      return {
-        ok: true,
-        snapshotId: 'snap-scoped',
-        modelCount: 1,
-        dataSource: 'models_user_primary',
-        baseUrl: 'https://openrouter.ai/api/v1',
-      }
-    })
+    openRouterSourceMock.fetchSnapshot.mockResolvedValue(makeSnapshot())
 
     const result = await runCatalogSyncAtStartup({ store, dbWorkerManager, force: true })
 
     expect(result).toMatchObject({
       syncAttempted: true,
       syncSucceeded: true,
-      syncSnapshotId: 'snap-scoped',
       modelCountAfter: 1,
     })
+    expect(result.syncSnapshotId).toEqual(expect.any(String))
     expect(dbWorkerManager.call).toHaveBeenCalledWith('modelCatalog.writeScopedSnapshot', expect.objectContaining({
       providerKey: 'openrouter',
       catalogScopeKey: scope.catalogScopeKey,
       baseUrl: 'https://openrouter.ai/api/v1',
       dataSource: 'models_user_primary',
-      snapshotId: 'snap-scoped',
+      snapshotId: result.syncSnapshotId,
     }))
     expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.syncSnapshot', expect.anything())
     expect(dbWorkerManager.call).not.toHaveBeenCalledWith('modelCatalog.syncCoreSnapshot', expect.anything())
@@ -154,7 +186,6 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
     const rawApiKey = 'sk-startup-sync-job-secret'
     const store = createStore({
       openRouterApiKey: rawApiKey,
-      openRouterBaseUrl: 'https://openrouter.ai/api/v1/',
       openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
     })
     const dbWorkerManager = {
@@ -164,42 +195,93 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
         throw new Error(`unexpected method ${method}`)
       }),
     } as any
-    vi.mocked(syncOpenRouterModelCatalog).mockResolvedValue({
-      ok: true,
-      snapshotId: 'snap-direct-key',
-      modelCount: 0,
-      dataSource: 'models_user_primary',
-      baseUrl: 'https://openrouter.ai/api/v1',
-    })
+    openRouterSourceMock.fetchSnapshot.mockResolvedValue(makeSnapshot({ models: [] }))
 
     await runCatalogSyncAtStartup({ store, dbWorkerManager, force: true })
 
-    expect(syncOpenRouterModelCatalog).toHaveBeenCalledTimes(1)
-    expect(syncOpenRouterModelCatalog).toHaveBeenCalledWith(expect.objectContaining({
+    expect(requireProviderCatalogSource).toHaveBeenCalledWith('openrouter')
+    expect(openRouterSourceMock.fetchSnapshot).toHaveBeenCalledTimes(1)
+    expect(openRouterSourceMock.fetchSnapshot).toHaveBeenCalledWith(expect.objectContaining({
       apiKey: rawApiKey,
       baseUrl: 'https://openrouter.ai/api/v1',
     }))
     expect(JSON.stringify(dbWorkerManager.call.mock.calls)).not.toContain(rawApiKey)
   })
 
-  it('does not run catalog sync with saved OpenRouter key when baseUrl is an attacker host', async () => {
+  it('uses Electron session fetch for catalog sync by default instead of global fetch', async () => {
+    const globalFetch = vi.fn(async () => {
+      throw new Error('global fetch should not be used')
+    }) as unknown as typeof fetch
+    vi.stubGlobal('fetch', globalFetch)
+    electronMock.sessionFetch.mockResolvedValueOnce(new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    }))
     const store = createStore({
-      openRouterApiKey: 'sk-startup-attacker-base-secret',
-      openRouterBaseUrl: 'https://attacker.example.test/custom/v1/',
+      openRouterApiKey: 'sk-startup-sync-job-secret',
       openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
     })
-    const dbWorkerManager = { call: vi.fn() } as any
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'modelCatalog.getScopedMeta') return null
+        if (method === 'modelCatalog.writeScopedSnapshot') return { ok: true, ...params }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    } as any
+    openRouterSourceMock.fetchSnapshot.mockImplementation(async (input: any) => {
+      expect(input.fetchImpl).toBeTypeOf('function')
+      await input.fetchImpl('https://openrouter.ai/api/v1/models', {
+        method: 'GET',
+        redirect: 'error',
+      })
+      return makeSnapshot({ models: [] })
+    })
 
     const result = await runCatalogSyncAtStartup({ store, dbWorkerManager, force: true })
 
     expect(result).toMatchObject({
       syncAttempted: true,
-      syncSucceeded: false,
-      reason: 'missing_api_key_no_cache',
-      failureMessage: 'missing_api_key',
+      syncSucceeded: true,
+      modelCountAfter: 0,
     })
-    expect(dbWorkerManager.call).not.toHaveBeenCalled()
-    expect(syncOpenRouterModelCatalog).not.toHaveBeenCalled()
+    expect(result.syncSnapshotId).toEqual(expect.any(String))
+    expect(electronMock.sessionFetch).toHaveBeenCalledWith('https://openrouter.ai/api/v1/models', {
+      method: 'GET',
+      redirect: 'error',
+    })
+    expect(globalFetch).not.toHaveBeenCalled()
+  })
+
+  it('preserves explicit fetchImpl injection for catalog sync tests', async () => {
+    const injectedFetch = vi.fn(async () => new Response(JSON.stringify({ data: [] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    })) as unknown as typeof fetch
+    const store = createStore({
+      openRouterApiKey: 'sk-startup-sync-job-secret',
+      openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
+    })
+    const dbWorkerManager = {
+      call: vi.fn(async (method: string, params: any) => {
+        if (method === 'modelCatalog.getScopedMeta') return null
+        if (method === 'modelCatalog.writeScopedSnapshot') return { ok: true, ...params }
+        throw new Error(`unexpected method ${method}`)
+      }),
+    } as any
+    openRouterSourceMock.fetchSnapshot.mockImplementation(async (input: any) => {
+      expect(input.fetchImpl).toBe(injectedFetch)
+      return makeSnapshot({ models: [] })
+    })
+
+    await runCatalogSyncAtStartup({
+      store,
+      dbWorkerManager,
+      fetchImpl: injectedFetch,
+      force: true,
+    })
+
+    expect(openRouterSourceMock.fetchSnapshot).toHaveBeenCalledTimes(1)
+    expect(electronMock.sessionFetch).not.toHaveBeenCalled()
   })
 
   it('keeps startup catalog sync failure logs and diagnostics free of raw key material', async () => {
@@ -216,7 +298,7 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
         throw new Error(`unexpected method ${method}`)
       }),
     } as any
-    vi.mocked(syncOpenRouterModelCatalog).mockRejectedValue(new Error('remote catalog unavailable'))
+    openRouterSourceMock.fetchSnapshot.mockRejectedValue(new Error('remote catalog unavailable'))
 
     try {
       const result = await runCatalogSyncAtStartup({ store, dbWorkerManager, force: true })
@@ -260,7 +342,7 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
       syncAttempted: false,
       modelCountAfter: 1,
     })
-    expect(syncOpenRouterModelCatalog).not.toHaveBeenCalled()
+    expect(openRouterSourceMock.fetchSnapshot).not.toHaveBeenCalled()
   })
 
   it('uses configured freshness to decide whether current scoped meta is stale', async () => {
@@ -277,18 +359,7 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
         throw new Error(`unexpected method ${method}`)
       }),
     } as any
-    vi.mocked(syncOpenRouterModelCatalog).mockImplementation(async (options: any) => {
-      await options.writer.writeScopedSnapshot({
-        providerKey: 'openrouter',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        dataSource: 'models_user_primary',
-        snapshotId: 'snap-stale',
-        models: [makeModel()],
-        syncedAtMs: 123,
-        schemaVersion: 1,
-      })
-      return { ok: true, snapshotId: 'snap-stale', modelCount: 1, dataSource: 'models_user_primary', baseUrl: 'https://openrouter.ai/api/v1' }
-    })
+    openRouterSourceMock.fetchSnapshot.mockResolvedValue(makeSnapshot())
 
     const freshResult = await runCatalogSyncAtStartup({
       store,
@@ -297,7 +368,7 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
       freshnessMs: 24 * 60 * 60 * 1000,
     })
     expect(freshResult.reason).toBe('cache_fresh')
-    expect(syncOpenRouterModelCatalog).not.toHaveBeenCalled()
+    expect(openRouterSourceMock.fetchSnapshot).not.toHaveBeenCalled()
 
     const staleResult = await runCatalogSyncAtStartup({
       store,
@@ -306,7 +377,7 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
       freshnessMs: 15 * 60 * 1000,
     })
     expect(staleResult.reason).toBe('synced')
-    expect(syncOpenRouterModelCatalog).toHaveBeenCalledTimes(1)
+    expect(openRouterSourceMock.fetchSnapshot).toHaveBeenCalledTimes(1)
   })
 
   it('force=true bypasses current scoped cache freshness', async () => {
@@ -322,26 +393,15 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
         throw new Error(`unexpected method ${method}`)
       }),
     } as any
-    vi.mocked(syncOpenRouterModelCatalog).mockImplementation(async (options: any) => {
-      await options.writer.writeScopedSnapshot({
-        providerKey: 'openrouter',
-        baseUrl: 'https://openrouter.ai/api/v1',
-        dataSource: 'models_user_primary',
-        snapshotId: 'snap-force',
-        models: [makeModel()],
-        syncedAtMs: 123,
-        schemaVersion: 1,
-      })
-      return { ok: true, snapshotId: 'snap-force', modelCount: 1, dataSource: 'models_user_primary', baseUrl: 'https://openrouter.ai/api/v1' }
-    })
+    openRouterSourceMock.fetchSnapshot.mockResolvedValue(makeSnapshot())
 
     const result = await runCatalogSyncAtStartup({ store, dbWorkerManager, force: true })
 
     expect(result).toMatchObject({
       reason: 'synced',
       syncAttempted: true,
-      syncSnapshotId: 'snap-force',
     })
-    expect(syncOpenRouterModelCatalog).toHaveBeenCalledTimes(1)
+    expect(result.syncSnapshotId).toEqual(expect.any(String))
+    expect(openRouterSourceMock.fetchSnapshot).toHaveBeenCalledTimes(1)
   })
 })

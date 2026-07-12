@@ -1,8 +1,29 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  ANTHROPIC_ASSISTANT_SNAPSHOT_KEY,
+  ANTHROPIC_MESSAGES_SOURCE_API,
+  ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY,
+  type AnthropicProviderNativeSnapshot,
+} from '@/next/provider/anthropic/anthropicProviderNativeContent'
+import {
   buildAnthropicTextChatMessages,
   streamAnthropicTextChatAsDomainEvents,
 } from './anthropicTextChat'
+
+function anthropicSnapshot(): AnthropicProviderNativeSnapshot {
+  return {
+    providerKey: ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY,
+    sourceApi: ANTHROPIC_MESSAGES_SOURCE_API,
+    snapshotKey: ANTHROPIC_ASSISTANT_SNAPSHOT_KEY,
+    role: 'assistant',
+    status: 'final',
+    content: [
+      { type: 'thinking', thinking: 'private', signature: 'sig-ant' },
+      { type: 'text', text: 'previous answer' },
+    ],
+    stopReason: 'end_turn',
+  }
+}
 
 async function collectEvents(input?: Readonly<{ signal?: AbortSignal }>) {
   const out: any[] = []
@@ -11,7 +32,12 @@ async function collectEvents(input?: Readonly<{ signal?: AbortSignal }>) {
     assistantMessageId: 'assistant_1',
     model: 'claude-sonnet-4-5',
     userText: 'hello',
-    contextMessages: [{ role: 'assistant', content: 'previous answer' }],
+    contextMessages: [{
+      role: 'assistant',
+      providerId: 'anthropic_messages',
+      content: 'previous answer',
+      providerNativeContents: [anthropicSnapshot()],
+    }],
     signal: input?.signal,
   })) {
     out.push(event)
@@ -26,19 +52,33 @@ describe('anthropicTextChat renderer bridge', () => {
     ;(globalThis as any).anthropicChat = originalAnthropicChat
   })
 
-  it('builds text-only Anthropic Messages from normal chat context', () => {
+  it('builds Anthropic Messages from native assistant history', () => {
     expect(buildAnthropicTextChatMessages({
       contextMessages: [
         { role: 'system', content: 'ignored' },
         { role: 'user', content: [{ type: 'text', text: 'prior question' }, { type: 'image', url: 'asset://x' }] },
-        { role: 'assistant', content: 'prior answer' },
+        {
+          role: 'assistant',
+          providerId: 'anthropic_messages',
+          content: 'prior answer',
+          providerNativeContents: [anthropicSnapshot()],
+        },
       ],
       userText: 'next question',
     })).toEqual([
       { role: 'user', content: 'prior question' },
-      { role: 'assistant', content: 'prior answer' },
+      { role: 'assistant', content: 'prior answer', anthropicNativeContent: anthropicSnapshot() },
       { role: 'user', content: 'next question' },
     ])
+  })
+
+  it('fails before bridge when Anthropic assistant history lacks native content', () => {
+    expect(() => buildAnthropicTextChatMessages({
+      contextMessages: [
+        { role: 'assistant', providerId: 'anthropic_messages', content: 'legacy answer' },
+      ],
+      userText: 'next question',
+    })).toThrow('missing final native content')
   })
 
   it('streams native Messages text deltas into DomainEvents', async () => {
@@ -48,9 +88,9 @@ describe('anthropicTextChat renderer bridge', () => {
       expect(payload).toMatchObject({
         requestId: 'anthropic_req_renderer',
         assistantMessageId: 'assistant_1',
-        model: 'claude-sonnet-4-5',
-        messages: [
-          { role: 'assistant', content: 'previous answer' },
+          model: 'claude-sonnet-4-5',
+          messages: [
+          { role: 'assistant', content: 'previous answer', anthropicNativeContent: anthropicSnapshot() },
           { role: 'user', content: 'hello' },
         ],
       })

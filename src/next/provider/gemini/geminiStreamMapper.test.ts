@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { mapGeminiStreamChunkToStarverse, type GeminiStreamChunk } from '@/next/provider/gemini/geminiStreamMapper'
+import { mapGeminiInteractionResponseToStarverse, mapGeminiStreamChunkToStarverse, type GeminiStreamChunk } from '@/next/provider/gemini/geminiStreamMapper'
 import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
 
 // ---------------------------------------------------------------------------
@@ -115,15 +115,17 @@ describe('mapGeminiStreamChunkToStarverse', () => {
   // =========================================================================
 
   describe('thinking / thought', () => {
-    it('maps thought part to message.reasoning_detail', () => {
+    it('maps thought part to message.reasoning_raw_detail', () => {
       const events = mapGeminiStreamChunkToStarverse(thoughtChunk('Let me think...'), msgId)
 
-      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+      const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block')
       expect(reasoningEvents).toHaveLength(1)
-      if (reasoningEvents[0].type === 'message.reasoning_detail') {
+      if (reasoningEvents[0].type === 'message.reasoning_raw_detail') {
         expect(reasoningEvents[0].detail).toEqual({ type: 'thought', text: 'Let me think...' })
         expect(reasoningEvents[0].messageId).toBe(msgId)
       }
+      expect(displayEvents).toHaveLength(0)
     })
 
     it('thought NEVER becomes visible text', () => {
@@ -134,23 +136,119 @@ describe('mapGeminiStreamChunkToStarverse', () => {
 
     it('ignores empty thought part', () => {
       const events = mapGeminiStreamChunkToStarverse(thoughtChunk(''), msgId)
-      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
       expect(reasoningEvents).toHaveLength(0)
     })
 
     it('preserves mixed thought + text order', () => {
       const events = mapGeminiStreamChunkToStarverse(mixedChunk('thinking...', 'visible answer'), msgId)
 
-      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+      const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block')
       const textEvents = events.filter((e) => e.type === 'message.text_delta')
 
       expect(reasoningEvents).toHaveLength(1)
+      expect(displayEvents).toHaveLength(0)
       expect(textEvents).toHaveLength(1)
 
       // Reasoning comes before text
       const reasoningIdx = events.indexOf(reasoningEvents[0])
       const textIdx = events.indexOf(textEvents[0])
       expect(reasoningIdx).toBeLessThan(textIdx)
+    })
+
+    it('maps thought inline image to raw reasoning and ordered display image block', () => {
+      const events = mapGeminiStreamChunkToStarverse({
+        candidates: [{
+          content: {
+            parts: [
+              { text: 'Sketch.', thought: true },
+              {
+                thought: true,
+                inlineData: {
+                  mimeType: 'image/jpeg',
+                  data: 'iVBORw0KGthought=',
+                },
+              },
+              { text: 'Refine.', thought: true },
+            ],
+            role: 'model',
+          },
+          index: 0,
+        }],
+      }, msgId, { eventOrdinal: 2 })
+
+      expect(events).toEqual([
+        {
+          type: 'message.reasoning_raw_detail',
+          messageId: msgId,
+          choiceIndex: 0,
+          detail: { type: 'thought', text: 'Sketch.' },
+        },
+        {
+          type: 'message.reasoning_raw_detail',
+          messageId: msgId,
+          choiceIndex: 0,
+          detail: {
+            type: 'thought_image',
+            image: {
+              url: 'data:image/jpeg;base64,iVBORw0KGthought=',
+              mimeType: 'image/jpeg',
+            },
+          },
+        },
+        {
+          type: 'message.reasoning_display_block',
+          messageId: msgId,
+          choiceIndex: 0,
+          block: {
+            blockId: `${msgId}:reasoning-display:google_ai_studio:candidate.part.thought.inlineData:2001:image`,
+            ordinal: 2001,
+            type: 'image',
+            url: 'data:image/jpeg;base64,iVBORw0KGthought=',
+            mimeType: 'image/jpeg',
+            semanticRole: 'thought',
+            providerKey: 'google_ai_studio',
+            sourceEventType: 'candidate.part.thought.inlineData',
+          },
+        },
+        {
+          type: 'message.reasoning_raw_detail',
+          messageId: msgId,
+          choiceIndex: 0,
+          detail: { type: 'thought', text: 'Refine.' },
+        },
+      ])
+      expect(events.some((event) => event.type === 'message.content_block_append')).toBe(false)
+    })
+
+    it('maps non-thought inline image to assistant content block', () => {
+      const events = mapGeminiStreamChunkToStarverse({
+        candidates: [{
+          content: {
+            parts: [{
+              inlineData: {
+                mimeType: 'image/png',
+                data: 'iVBORw0KGvisible=',
+              },
+            }],
+            role: 'model',
+          },
+          index: 0,
+        }],
+      }, msgId)
+
+      expect(events).toEqual([
+        {
+          type: 'message.content_block_append',
+          messageId: msgId,
+          choiceIndex: 0,
+          block: {
+            type: 'image',
+            url: 'data:image/png;base64,iVBORw0KGvisible=',
+          },
+        },
+      ])
     })
   })
 
@@ -326,6 +424,12 @@ describe('mapGeminiStreamChunkToStarverse', () => {
       if (metaEvents[0].type === 'meta.delta') {
         expect(metaEvents[0].meta.native_finish_reason).toBe('BLOCKED:SAFETY')
       }
+      const errorEvents = events.filter((e) => e.type === 'stream.error')
+      expect(errorEvents).toHaveLength(1)
+      if (errorEvents[0].type === 'stream.error') {
+        expect(errorEvents[0].terminal).toBe(true)
+        expect(errorEvents[0].error.code).toBe('prompt_blocked_safety')
+      }
     })
 
     it('promptFeedback without blockReason emits no meta', () => {
@@ -474,7 +578,7 @@ describe('mapGeminiStreamChunkToStarverse', () => {
         allEvents.push(...mapGeminiStreamChunkToStarverse(chunk, msgId))
       }
 
-      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_detail')
+      const reasoningEvents = allEvents.filter((e) => e.type === 'message.reasoning_raw_detail')
       const textEvents = allEvents.filter((e) => e.type === 'message.text_delta')
       const usageEvents = allEvents.filter((e) => e.type === 'usage.delta')
       const metaEvents = allEvents.filter((e) => e.type === 'meta.delta')
@@ -501,5 +605,348 @@ describe('mapGeminiStreamChunkToStarverse', () => {
         expect((lastUsage.usage as any).thoughtsTokenCount).toBe(30)
       }
     })
+  })
+})
+
+describe('mapGeminiInteractionResponseToStarverse', () => {
+  const msgId = 'assistant_1'
+
+  it('maps output_image data to image content block', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      interaction: {
+        output_image: {
+          data: 'iVBORw0KGgo=',
+          mime_type: 'image/png',
+        },
+      },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+    ])
+  })
+
+  it('maps text and nested image blocks without duplicating images', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      output_text: 'done',
+      steps: [
+        {
+          type: 'output_image',
+          data: 'iVBORw0KGgo=',
+          mimeType: 'image/png',
+        },
+        {
+          output_image: {
+            data: 'iVBORw0KGgo=',
+            mime_type: 'image/png',
+          },
+        },
+      ],
+      usageMetadata: { totalTokenCount: 10 },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.text_delta',
+        messageId: msgId,
+        choiceIndex: 0,
+        text: 'done',
+      },
+      {
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+      { type: 'usage.delta', usage: { totalTokenCount: 10 } },
+    ])
+  })
+
+  it('maps thought summaries to reasoning details before image blocks', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      type: 'thought_summary',
+      text: 'I will plan the composition.',
+      thought_signature: 'sig_1',
+      output_image: {
+        data: 'iVBORw0KGgo=',
+        mime_type: 'image/png',
+      },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.reasoning_raw_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 0,
+          type: 'thought_summary',
+          summary: 'I will plan the composition.',
+          thought_signature: 'sig_1',
+        },
+      },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:0`,
+          ordinal: 0,
+          type: 'text',
+          text: 'I will plan the composition.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_summary',
+        },
+      },
+      {
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+    ])
+  })
+
+  it('maps official Interactions thought summary text and images to ordered reasoning details', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      steps: [
+        {
+          type: 'thought',
+          summary: [
+            { type: 'text', text: 'Sketch the silhouette.' },
+            { type: 'image', data: 'iVBORw0KGthought=', mime_type: 'image/png' },
+            { type: 'text', text: 'Refine the lighting.' },
+          ],
+          thought_signature: 'sig_2',
+        },
+      ],
+      model_output: [
+        {
+          type: 'image',
+          data: 'iVBORw0KGgo=',
+        },
+      ],
+    }, msgId)
+
+    const reasoningEvents = events.filter((event) => event.type === 'message.reasoning_raw_detail')
+    const displayEvents = events.filter((event) => event.type === 'message.reasoning_display_block')
+    expect(reasoningEvents).toEqual([
+      {
+        type: 'message.reasoning_raw_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 0,
+          type: 'thought_summary',
+          summary: 'Sketch the silhouette.',
+          thought_signature: 'sig_2',
+        },
+      },
+      {
+        type: 'message.reasoning_raw_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 1,
+          type: 'thought_image',
+          image: {
+            url: 'data:image/png;base64,iVBORw0KGthought=',
+            mimeType: 'image/png',
+          },
+          thought_signature: 'sig_2',
+        },
+      },
+      {
+        type: 'message.reasoning_raw_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 2,
+          type: 'thought_summary',
+          summary: 'Refine the lighting.',
+          thought_signature: 'sig_2',
+        },
+      },
+    ])
+    expect(displayEvents).toEqual([
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:0`,
+          ordinal: 0,
+          type: 'text',
+          text: 'Sketch the silhouette.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_summary',
+        },
+      },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:1`,
+          ordinal: 1,
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGthought=',
+          mimeType: 'image/png',
+          semanticRole: 'thought',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_image',
+        },
+      },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:2`,
+          ordinal: 2,
+          type: 'text',
+          text: 'Refine the lighting.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_summary',
+        },
+      },
+    ])
+    expect(events.filter((event) => event.type === 'message.content_block_append')).toEqual([
+      {
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGgo=',
+        },
+      },
+    ])
+  })
+
+  it('maps official streaming Interactions thought_summary content text to reasoning summary detail and display block', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      event: 'step.delta',
+      delta: {
+        type: 'thought_summary',
+        content: {
+          type: 'text',
+          text: 'Plan the scene before rendering.',
+        },
+        thought_signature: 'sig_stream_1',
+      },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.reasoning_raw_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 0,
+          type: 'thought_summary',
+          summary: 'Plan the scene before rendering.',
+          thought_signature: 'sig_stream_1',
+        },
+      },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:0`,
+          ordinal: 0,
+          type: 'text',
+          text: 'Plan the scene before rendering.',
+          semanticRole: 'summary',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_summary',
+        },
+      },
+    ])
+  })
+
+  it('keeps streaming thought_summary content image out of final image blocks and maps it to display block', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      delta: {
+        type: 'thought_summary',
+        content: {
+          type: 'image',
+          data: 'iVBORw0KGthought=',
+          mime_type: 'image/png',
+        },
+        thought_signature: 'sig_stream_image',
+      },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.reasoning_raw_detail',
+        messageId: msgId,
+        choiceIndex: 0,
+        detail: {
+          index: 0,
+          type: 'thought_image',
+          image: {
+            url: 'data:image/png;base64,iVBORw0KGthought=',
+            mimeType: 'image/png',
+          },
+          thought_signature: 'sig_stream_image',
+        },
+      },
+      {
+        type: 'message.reasoning_display_block',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          blockId: `${msgId}:gemini-interaction:0`,
+          ordinal: 0,
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGthought=',
+          mimeType: 'image/png',
+          semanticRole: 'thought',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'thought_image',
+        },
+      },
+    ])
+  })
+  it('keeps final streaming image deltas as final image blocks', () => {
+    const events = mapGeminiInteractionResponseToStarverse({
+      delta: {
+        type: 'image',
+        data: 'iVBORw0KGfinal=',
+        mime_type: 'image/png',
+      },
+    }, msgId)
+
+    expect(events).toEqual([
+      {
+        type: 'message.content_block_append',
+        messageId: msgId,
+        choiceIndex: 0,
+        block: {
+          type: 'image',
+          url: 'data:image/png;base64,iVBORw0KGfinal=',
+        },
+      },
+    ])
   })
 })

@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CatalogSyncRunner, type CatalogSyncRunnerMeta } from './catalogSyncRunner'
+import { buildNetworkErrorEnvelope } from '../network/networkErrorEnvelope'
 
 function buildMeta(partial: Partial<CatalogSyncRunnerMeta> = {}): CatalogSyncRunnerMeta {
   return {
@@ -73,6 +74,44 @@ describe('CatalogSyncRunner', () => {
       modelCountBefore: 99,
       modelCountAfter: 99,
     })
+  })
+
+  it('preserves structured network error details when sync fails', async () => {
+    const networkError = buildNetworkErrorEnvelope({
+      requestPurpose: 'provider_catalog',
+      providerId: 'openrouter',
+      transportKind: 'electron_session_fetch',
+      reason: 'connection_timeout',
+    })
+    const readMeta = vi.fn(async () => buildMeta({ modelCount: 99, lastSyncAtMs: 0 }))
+    const runSync = vi.fn(async () => {
+      throw Object.assign(new Error('OpenRouter catalog: Connection timed out.'), { networkError })
+    })
+    const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
+    const runner = new CatalogSyncRunner({
+      providerKey: 'openrouter',
+      expectedSchemaVersion: 1,
+      fixedTtlMs: 1,
+      readMeta,
+      runSync,
+      now: () => 10_000,
+      logger,
+    })
+
+    const result = await runner.run()
+    expect(result).toMatchObject({
+      syncSucceeded: false,
+      reason: 'sync_failed_with_cache',
+      failureMessage: 'OpenRouter catalog: Connection timed out.',
+      networkError: {
+        requestPurpose: 'provider_catalog',
+        providerId: 'openrouter',
+        safeDetailCode: 'connection_timeout',
+      },
+    })
+    expect(logger.warn).toHaveBeenCalledWith('[CatalogSyncRunner] sync failed', expect.objectContaining({
+      networkError: 'connection_timeout',
+    }))
   })
 
   it('skips sync when cache is fresh', async () => {

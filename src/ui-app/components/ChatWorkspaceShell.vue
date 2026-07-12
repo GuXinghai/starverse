@@ -148,7 +148,8 @@ onUnmounted(() => {
         @click="emit('closeRightRail')"
       />
       <div
-        class="relative max-h-[min(80vh,56rem)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+        class="relative h-[min(80vh,56rem)] max-h-[min(80vh,56rem)] overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-2xl"
+        data-testid="right-rail-floating-panel"
         :style="floatingRailStyle"
       >
         <slot name="right-rail" :rightRailMode="rightRailMode" />

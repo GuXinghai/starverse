@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue'
 import type { RunVM } from './types'
+import { t } from '@/shared/i18n'
 
 type TokenUsage = Readonly<{
   promptTokens: number
@@ -21,7 +22,7 @@ const props = withDefaults(
     showSessionTotalDerived?: boolean
   }>(),
   {
-    title: 'Chat',
+    title: '',
     showAbort: true,
     showReset: false,
     showUsage: true,
@@ -147,7 +148,7 @@ const usageCostSummary = computed(() => {
   <div class="border-b border-gray-200 bg-white">
     <div class="flex flex-wrap items-center gap-3 px-4 py-3 text-xs text-gray-700">
       <div class="flex items-center gap-2">
-        <div class="font-semibold text-gray-900">{{ props.title }}</div>
+        <div class="font-semibold text-gray-900">{{ props.title || t('chat.status.title') }}</div>
         <span
           v-if="props.run"
           class="rounded-full px-2 py-0.5 text-[11px] font-semibold ring-1"
@@ -159,38 +160,38 @@ const usageCostSummary = computed(() => {
 
       <div v-if="props.run" class="flex flex-wrap items-center gap-3">
         <div v-if="props.run.model">
-          model: <span class="font-mono">{{ props.run.model }}</span>
+          {{ t('chat.status.model') }}: <span class="font-mono">{{ props.run.model }}</span>
         </div>
         <div v-if="props.run.provider">
-          provider: <span class="font-mono">{{ props.run.provider }}</span>
+          {{ t('chat.status.provider') }}: <span class="font-mono">{{ props.run.provider }}</span>
         </div>
         <div v-if="props.run.generationId">
-          gen: <span class="font-mono">{{ props.run.generationId }}</span>
+          {{ t('chat.status.generation') }}: <span class="font-mono">{{ props.run.generationId }}</span>
         </div>
         <div v-if="props.run.finishReason">
-          finish: <span class="font-mono">{{ props.run.finishReason }}</span>
+          {{ t('chat.status.finish') }}: <span class="font-mono">{{ props.run.finishReason }}</span>
         </div>
         <div
           v-if="props.run.completionOutcome === 'truncated'"
           class="rounded bg-amber-100 px-2 py-0.5 font-semibold text-amber-900 ring-1 ring-amber-200"
         >
-          Truncated
+          {{ t('chat.status.truncated') }}
         </div>
         <div v-if="props.showUsage && usageSummary" class="flex flex-wrap items-center gap-2">
-          <span class="text-gray-500">This turn</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">p={{ usageSummary.pt }}</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">c={{ usageSummary.ct }}</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">t={{ usageSummary.tt }}</span>
-          <span v-if="usageCostSummary" class="rounded bg-black/5 px-2 py-0.5 font-mono">cost={{ usageCostSummary.text }}</span>
+          <span class="text-gray-500">{{ t('chat.status.thisTurn') }}</span>
+          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.promptShort') }}={{ usageSummary.pt }}</span>
+          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.completionShort') }}={{ usageSummary.ct }}</span>
+          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.totalShort') }}={{ usageSummary.tt }}</span>
+          <span v-if="usageCostSummary" class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.cost') }}={{ usageCostSummary.text }}</span>
         </div>
         <div
           v-if="props.showUsage && props.showSessionTotalDerived && derivedUsageSummary"
           class="flex flex-wrap items-center gap-2"
         >
-          <span class="text-gray-500">Session total (derived)</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">p={{ derivedUsageSummary.pt }}</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">c={{ derivedUsageSummary.ct }}</span>
-          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">t={{ derivedUsageSummary.tt }}</span>
+          <span class="text-gray-500">{{ t('chat.status.sessionTotalDerived') }}</span>
+          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.promptShort') }}={{ derivedUsageSummary.pt }}</span>
+          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.completionShort') }}={{ derivedUsageSummary.ct }}</span>
+          <span class="rounded bg-black/5 px-2 py-0.5 font-mono">{{ t('chat.status.totalShort') }}={{ derivedUsageSummary.tt }}</span>
         </div>
       </div>
 
@@ -202,20 +203,20 @@ const usageCostSummary = computed(() => {
           :disabled="!props.isRunning"
           @click="emit('abort')"
         >
-          Abort
+          {{ t('chat.status.abort') }}
         </button>
         <button
           v-if="props.showReset"
           class="rounded-lg bg-gray-100 px-3 py-1 text-xs hover:bg-gray-200"
           @click="emit('reset')"
         >
-          Reset
+          {{ t('chat.status.reset') }}
         </button>
       </div>
     </div>
 
     <div v-if="errorText" class="border-t border-red-200 bg-red-50 px-4 py-2 text-xs text-red-900">
-      <span class="font-semibold">error:</span> <span class="font-mono">{{ errorText }}</span>
+      <span class="font-semibold">{{ t('chat.status.error') }}:</span> <span class="font-mono">{{ errorText }}</span>
     </div>
   </div>
 </template>

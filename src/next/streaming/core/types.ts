@@ -1,7 +1,7 @@
 import type { AppError, AppErrorPhase } from '@/next/errors/appError'
 import type { ErrorEnvelope, ErrorPhase } from '@/next/errors/openRouterErrorEnvelope'
 import type { SSEDecodedEvent } from '@/next/openrouter/sse/decoder'
-import type { StreamEndReason } from '@/next/state/types'
+import type { DomainEvent, StreamEndReason } from '@/next/state/types'
 
 export type StreamRequestContext = Readonly<{
   model?: string
@@ -21,6 +21,13 @@ export type StreamCoreErrorTools = Readonly<{
   buildStreamErrorFromAppError: (input: BuildStreamErrorFromAppErrorInput) => ErrorEnvelope
 }>
 
+export type StreamJsonChunkMapper = (input: Readonly<{
+  chunk: unknown
+  messageId: string
+  choiceIndex?: number
+  chunkNo?: number
+}>) => readonly DomainEvent[]
+
 export type StreamSemanticCoreInput = StreamCoreErrorTools &
   Readonly<{
     decodedEvents: AsyncIterable<SSEDecodedEvent>
@@ -28,6 +35,7 @@ export type StreamSemanticCoreInput = StreamCoreErrorTools &
     requestContext: StreamRequestContext
     tRequestStart: number
     signal?: AbortSignal | null
+    mapJsonChunkToEvents: StreamJsonChunkMapper
     logTiming?: (tag: string, data: Record<string, unknown>) => void
     logStreamError?: (tag: string, payload: unknown) => void
   }>
@@ -39,6 +47,7 @@ export type StreamWireSemanticCoreInput = StreamCoreErrorTools &
     requestContext: StreamRequestContext
     tRequestStart: number
     signal?: AbortSignal | null
+    mapJsonChunkToEvents: StreamJsonChunkMapper
     logTiming?: (tag: string, data: Record<string, unknown>) => void
     logStreamError?: (tag: string, payload: unknown) => void
   }>

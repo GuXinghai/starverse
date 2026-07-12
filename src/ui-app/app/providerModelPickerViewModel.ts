@@ -7,8 +7,6 @@ export type ProviderModelPickerStatusKind =
   | 'not_loaded'
   | 'credential_missing'
   | 'unavailable'
-  | 'manual_required'
-  | 'manual_configured'
 
 export type ProviderModelPickerItem = Readonly<{
   providerId: RuntimeProviderKey
@@ -39,15 +37,6 @@ export type ProviderModelPickerSource = Readonly<{
 export type ProviderModelPickerAvailabilityStatus = Readonly<{
   loading: boolean
   result: unknown | null
-}>
-
-export type LocalProviderModelPickerInput = Readonly<{
-  providerId: RuntimeProviderKey
-  providerName: string
-  modelId?: string | null
-  enabled?: boolean
-  modeLabel?: string | null
-  endpointLabel?: string | null
 }>
 
 type AvailabilityModel = Readonly<{
@@ -220,50 +209,5 @@ export function buildProviderAvailabilityModelSource(input: Readonly<{
     ...failure,
     loading: input.status.loading,
     items: [],
-  }
-}
-
-export function buildLocalProviderModelSource(input: LocalProviderModelPickerInput): ProviderModelPickerSource {
-  const modelId = safeString(input.modelId)
-  if (!modelId) {
-    return {
-      providerId: input.providerId,
-      providerName: input.providerName,
-      statusKind: 'manual_required',
-      statusLabel: 'manual model required',
-      loading: false,
-      items: [],
-    }
-  }
-
-  const detailParts = [
-    input.modeLabel ? safeString(input.modeLabel) : null,
-    input.endpointLabel ? safeString(input.endpointLabel) : null,
-  ].filter((part): part is string => !!part)
-  const statusLabel = input.enabled === true ? 'selected local runtime' : 'configured'
-  const item: ProviderModelPickerItem = {
-    providerId: input.providerId,
-    providerName: input.providerName,
-    modelId,
-    modelKey: buildProviderModelKey({ providerId: input.providerId, modelId }),
-    displayName: modelId,
-    description: detailParts.length > 0 ? detailParts.join(' · ') : null,
-    vendor: input.providerName,
-    capabilitySummary: 'text · local capability unknown',
-    statusKind: 'manual_configured',
-    statusLabel,
-    sourceLabel: 'manual local setting',
-    selectable: true,
-    inputModalities: ['text'],
-    outputModalities: ['text'],
-  }
-
-  return {
-    providerId: input.providerId,
-    providerName: input.providerName,
-    statusKind: 'manual_configured',
-    statusLabel,
-    loading: false,
-    items: [item],
   }
 }

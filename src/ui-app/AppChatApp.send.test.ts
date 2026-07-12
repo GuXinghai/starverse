@@ -227,6 +227,32 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   const originalSetTimeout = globalThis.setTimeout
   let convoListMeta: Record<string, unknown> | null = null
 
+  function selectRuntimeProvider(providerId: string, modelId: string) {
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      selectedProviderId: providerId,
+      selectedModelKey: modelId,
+    }
+  }
+
+  async function expectProviderlessSendBlocked(user: ReturnType<typeof userEvent.setup>, prompt: string) {
+    await user.click(draftBox())
+    await user.type(draftBox(), prompt)
+    await user.click(sendButton())
+    await new Promise<void>((resolve) => originalSetTimeout(resolve, 20))
+    expect(draftBox().value).toBe(prompt)
+    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
+    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('branch.beginTurn')
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(localEndpointTextChatCallArgs).toHaveLength(0)
+    expect(lmStudioTextChatCallArgs).toHaveLength(0)
+    expect(ollamaTextChatCallArgs).toHaveLength(0)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
+    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
+    expect(anthropicTextChatCallArgs).toHaveLength(0)
+    expect(deepSeekTextChatCallArgs).toHaveLength(0)
+  }
+
   beforeEach(() => {
     vi.useFakeTimers()
     streamOpenRouterChatCallArgs.length = 0
@@ -360,7 +386,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
         if (key === 'openRouterApiKey') return 'redacted-test-key'
-        if (key === 'openRouterBaseUrl') return 'https://openrouter.ai/api/v1'
         return undefined
       }),
     }
@@ -417,9 +442,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'settings.getImageGenerationDefault') return { value: null }
       if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getSamplingParamsDefaults') return { value: null }
+      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
       if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
       if (method === 'settings.getUserMessageRenderDefault') return { value: false }
+      if (method === 'messageAsset.listByMessageIds') return []
+      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
+      if (method === 'messageAsset.persistFromDataUrls') return { ok: true, assets: [] }
       if (method === 'convo.list') {
         return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1, meta: convoListMeta }]
       }
@@ -647,25 +675,19 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     vi.useRealTimers()
   })
 
-  it('blocks send when no runtime provider is selected and does not call OpenRouter', async () => {
+  it('keeps provider selection unset when only legacy model storage is present', async () => {
     globalThis.localStorage?.removeItem('starverse.openRouterTextChat.enabled')
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
+    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'local-model')
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
 
-    await user.click(draftBox())
-    await user.type(draftBox(), 'no provider selected ping')
-    await user.click(sendButton())
+    await expectProviderlessSendBlocked(user, 'legacy storage ignored ping')
 
-    expect(draftBox().value).toBe('no provider selected ping')
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(lmStudioTextChatCallArgs).toHaveLength(0)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
-    expect(anthropicTextChatCallArgs).toHaveLength(0)
-    expect(deepSeekTextChatCallArgs).toHaveLength(0)
+    expect(globalThis.localStorage?.getItem('starverse.openAIResponsesTextChat.model')).toBeNull()
+    expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBeNull()
   })
 
   it.each([
@@ -681,7 +703,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       prompt: 'openai missing key ping',
       setup: () => {
         globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
-        globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
+        selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')
       },
     },
     {
@@ -690,7 +712,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       prompt: 'anthropic missing key ping',
       setup: () => {
         globalThis.localStorage?.setItem('starverse.anthropicMessagesTextChat.enabled', '1')
-        globalThis.localStorage?.setItem('starverse.anthropicMessagesTextChat.model', 'claude-sonnet-4-5')
+        selectRuntimeProvider('anthropic_messages', 'claude-sonnet-4-5')
       },
     },
     {
@@ -699,7 +721,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       prompt: 'gemini missing key ping',
       setup: () => {
         globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
-        globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
+        selectRuntimeProvider('google_ai_studio', 'gemini-2.5-flash')
       },
     },
     {
@@ -708,7 +730,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       prompt: 'deepseek missing key ping',
       setup: () => {
         globalThis.localStorage?.setItem('starverse.deepSeekTextChat.enabled', '1')
-        globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
+        selectRuntimeProvider('deepseek', 'deepseek-chat')
       },
     },
   ])('blocks $label before provider stream when credential is missing', async ({ credentialBridge, prompt, setup }) => {
@@ -741,7 +763,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       setup: () => {
         globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
         globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:1234/v1')
-        globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'local-model')
+        selectRuntimeProvider('local_endpoint', 'local-model')
         ;(globalThis as any).localEndpointDiagnostics = { probe: vi.fn(async () => ({ ok: false, code: 'network_error', message: 'Local endpoint unavailable.' })) }
       },
     },
@@ -751,8 +773,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       setup: () => {
         globalThis.localStorage?.setItem('starverse.lmStudioTextChat.enabled', '1')
         globalThis.localStorage?.setItem('starverse.lmStudio.endpointUrl', 'http://127.0.0.1:1234')
-        globalThis.localStorage?.setItem('starverse.lmStudio.model', 'openai/gpt-oss-20b')
         globalThis.localStorage?.setItem('starverse.lmStudio.chatMode', 'openai_compatible')
+        selectRuntimeProvider('lm_studio', 'openai/gpt-oss-20b')
         ;(globalThis as any).lmStudioProvider = { probe: vi.fn(async () => ({ ok: false, code: 'network_error', message: 'LM Studio unavailable.' })) }
       },
     },
@@ -762,8 +784,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
       setup: () => {
         globalThis.localStorage?.setItem('starverse.ollamaTextChat.enabled', '1')
         globalThis.localStorage?.setItem('starverse.ollama.endpointUrl', 'http://127.0.0.1:11434')
-        globalThis.localStorage?.setItem('starverse.ollama.model', 'llama3.2:latest')
         globalThis.localStorage?.setItem('starverse.ollama.chatMode', 'native_rest')
+        selectRuntimeProvider('ollama_local', 'llama3.2:latest')
         ;(globalThis as any).ollamaProvider = { probe: vi.fn(async () => ({ ok: false, code: 'network_error', message: 'Ollama unavailable.' })) }
       },
     },
@@ -790,6 +812,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   })
 
   it('appends user+assistant, streams text, persists via message.appendDelta', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -839,7 +862,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   it('routes experimental LocalEndpoint text chat through the normal transcript without OpenRouter send', async () => {
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:1234/v1')
-    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'local-model')
+    selectRuntimeProvider('local_endpoint', 'local-model')
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -868,12 +891,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
   })
 
-  it('routes explicit Ollama Local text chat through the normal transcript without OpenRouter or Generic send', async () => {
+  it('routes explicit Ollama Local text chat through the normal transcript without OpenRouter send', async () => {
     globalThis.localStorage?.setItem('starverse.ollamaTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.ollama.endpointUrl', 'http://127.0.0.1:11434')
-    globalThis.localStorage?.setItem('starverse.ollama.model', 'llama3.2:latest')
     globalThis.localStorage?.setItem('starverse.ollama.chatMode', 'native_rest')
     globalThis.localStorage?.setItem('starverse.ollama.nativeRest.preferredEndpoint', 'chat')
+    selectRuntimeProvider('ollama_local', 'llama3.2:latest')
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -908,8 +931,9 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
   })
 
-  it('syncs SettingsPanel-selected LocalEndpoint model for explicitly enabled chat only', async () => {
+  it('uses session-selected LocalEndpoint model with SettingsPanel endpoint updates', async () => {
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
+    selectRuntimeProvider('local_endpoint', 'settings-selected-model')
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -918,7 +942,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     window.dispatchEvent(new CustomEvent('settings:localEndpointTextChatUpdated', {
       detail: {
         endpointUrl: 'http://localhost:4321/v1',
-        model: 'settings-selected-model',
       },
     }))
 
@@ -938,7 +961,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     })
   })
 
-  it('keeps LocalEndpoint chat default-off when SettingsPanel only applies endpoint and model defaults', async () => {
+  it('keeps provider selection unset when SettingsPanel only applies LocalEndpoint defaults', async () => {
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:4321/v1')
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'settings-selected-model')
     const user = userEvent.setup()
@@ -946,20 +969,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
     await waitForAppReady()
 
-    await user.click(draftBox())
-    await user.type(draftBox(), 'default off ping')
-    await user.click(sendButton())
-
-    await screen.findByText('default off ping')
-    await screen.findByText('hi')
-
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+    await expectProviderlessSendBlocked(user, 'default off ping')
   })
 
-  it('routes explicit OpenAI Responses text chat through the normal transcript without OpenRouter or Generic send', async () => {
+  it('routes explicit OpenAI Responses text chat through the normal transcript without OpenRouter send', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
-    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
+    selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -988,9 +1003,237 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
   })
 
-  it('routes explicit Google AI Studio text chat through the normal transcript without OpenRouter, old Gemini, or Generic send', async () => {
+  it('passes resolved generation params to experimental provider sends', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          temperature: { mode: 'custom', value: 0.2 },
+          topP: { mode: 'omit' },
+          maxOutputTokens: { mode: 'custom', value: 64 },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai generation params ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai generation params ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-4.1-mini',
+      userText: 'openai generation params ping',
+      generationParams: {
+        temperature: 0.2,
+        max_output_tokens: 64,
+      },
+    })
+    expect(openAIResponsesTextChatCallArgs[0].generationParams).not.toHaveProperty('top_p')
+  })
+
+  it('omits OpenAI Responses reasoning effort when provider auto is selected', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
+    selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          reasoningEffort: { mode: 'custom', value: 'auto' },
+          maxOutputTokens: { mode: 'custom', value: 64 },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai auto reasoning ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai auto reasoning ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-5.4-nano',
+      generationParams: {
+        max_output_tokens: 64,
+      },
+    })
+    expect(openAIResponsesTextChatCallArgs[0].generationParams).not.toHaveProperty('reasoning')
+  })
+
+  it('sends explicit OpenAI Responses reasoning effort when supported by the selected model', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
+    selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          reasoningEffort: { mode: 'custom', value: 'low' },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai explicit reasoning ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai explicit reasoning ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-5.4-nano',
+      generationParams: {
+        reasoning: { effort: 'low' },
+      },
+    })
+  })
+
+  it('sends OpenAI Responses reasoning summary without explicit effort when configured', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
+    selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          reasoningEffort: { mode: 'custom', value: 'auto' },
+          reasoningSummary: { mode: 'custom', value: 'concise' },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai reasoning summary ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai reasoning summary ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-5.4-nano',
+      generationParams: {
+        reasoning: { summary: 'concise' },
+      },
+    })
+    expect(openAIResponsesTextChatCallArgs[0].generationParams?.reasoning).not.toHaveProperty('effort')
+  })
+
+  it('omits OpenAI Responses reasoning summary when configured off', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
+    selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          reasoningEffort: { mode: 'custom', value: 'auto' },
+          reasoningSummary: { mode: 'omit' },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai reasoning summary off ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai reasoning summary off ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-5.4-nano',
+    })
+    expect(openAIResponsesTextChatCallArgs[0].generationParams ?? {}).not.toHaveProperty('reasoning')
+  })
+
+  it('does not send OpenAI Responses reasoning effort for models without explicit effort support', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          reasoningEffort: { mode: 'custom', value: 'high' },
+        },
+      },
+    }
+    const user = userEvent.setup()
+    render(AppChatApp)
+
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'openai unsupported reasoning ping')
+    await user.click(sendButton())
+
+    await screen.findByText('openai unsupported reasoning ping')
+    await screen.findByText('openai hi')
+    await vi.runAllTimersAsync()
+
+    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
+    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
+      model: 'gpt-4.1-mini',
+    })
+    expect(openAIResponsesTextChatCallArgs[0].generationParams ?? {}).not.toHaveProperty('reasoning')
+  })
+
+  it('routes explicit Google AI Studio text chat through the normal transcript without OpenRouter or old Gemini send', async () => {
     globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
-    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
+    ;(globalThis as any).googleAIStudioModels = {
+      listAvailability: vi.fn(async () => availability('google_ai_studio', 'gemini-3.1-flash-lite')),
+    }
+    selectRuntimeProvider('google_ai_studio', 'gemini-3.1-flash-lite')
+    convoListMeta = {
+      ...(convoListMeta ?? {}),
+      generationParamsOverride: {
+        version: 1,
+        params: {
+          thinkingLevel: { mode: 'custom', value: 'medium' },
+          includeThoughts: { mode: 'custom', value: true },
+        },
+      },
+    }
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1010,9 +1253,30 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
     expect(googleAIStudioTextChatCallArgs).toHaveLength(1)
     expect(googleAIStudioTextChatCallArgs[0]).toMatchObject({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3.1-flash-lite',
       userText: 'gemini ping',
+      generationParams: {
+        generationConfig: {
+          thinkingConfig: {
+            thinkingLevel: 'medium',
+            includeThoughts: true,
+          },
+        },
+      },
     })
+    const snapshotCall = invoke.mock.calls.find((call) => call[0] === 'answerGeneration.persistSnapshot')
+    expect(snapshotCall?.[1]?.snapshot).toMatchObject({
+      route: { providerId: 'google_ai_studio', modelId: 'gemini-3.1-flash-lite' },
+      generationParams: {
+        requestParams: { thinkingLevel: 'medium', includeThoughts: true },
+        requestPatch: {
+          generationConfig: {
+            thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
+          },
+        },
+      },
+    })
+    expect(snapshotCall?.[1]?.snapshot?.providerOptions).not.toHaveProperty('geminiThinking')
     expect(googleAIStudioTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
     expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'gemini ping' }))
     expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
@@ -1020,9 +1284,9 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
   })
 
-  it('routes explicit DeepSeek official text chat through the normal transcript without OpenRouter, Anthropic-compatible, or Generic send', async () => {
+  it('routes explicit DeepSeek official text chat through the normal transcript without OpenRouter or Anthropic-compatible send', async () => {
     globalThis.localStorage?.setItem('starverse.deepSeekTextChat.enabled', '1')
-    globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
+    selectRuntimeProvider('deepseek', 'deepseek-chat')
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1054,58 +1318,34 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
   })
 
-  it('keeps OpenAI Responses default-off when SettingsPanel only applies a model default', async () => {
+  it('keeps provider selection unset when SettingsPanel only applies an OpenAI Responses model default', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
 
-    await user.click(draftBox())
-    await user.type(draftBox(), 'openai default off ping')
-    await user.click(sendButton())
-
-    await screen.findByText('openai default off ping')
-    await screen.findByText('hi')
-
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+    await expectProviderlessSendBlocked(user, 'openai default off ping')
   })
 
-  it('keeps Google AI Studio default-off when SettingsPanel only applies a model default', async () => {
+  it('keeps provider selection unset when SettingsPanel only applies a Google AI Studio model default', async () => {
     globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
 
-    await user.click(draftBox())
-    await user.type(draftBox(), 'google default off ping')
-    await user.click(sendButton())
-
-    await screen.findByText('google default off ping')
-    await screen.findByText('hi')
-
-    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+    await expectProviderlessSendBlocked(user, 'google default off ping')
   })
 
-  it('keeps DeepSeek official default-off when SettingsPanel only applies a model default', async () => {
+  it('keeps provider selection unset when SettingsPanel only applies a DeepSeek model default', async () => {
     globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
 
-    await user.click(draftBox())
-    await user.type(draftBox(), 'deepseek default off ping')
-    await user.click(sendButton())
-
-    await screen.findByText('deepseek default off ping')
-    await screen.findByText('hi')
-
-    expect(deepSeekTextChatCallArgs).toHaveLength(0)
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+    await expectProviderlessSendBlocked(user, 'deepseek default off ping')
   })
 
   it('keeps DeepSeek, Anthropic, Google AI Studio, OpenAI Responses, and LocalEndpoint experimental modes mutually exclusive', async () => {
@@ -1120,6 +1360,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.setItem('starverse.anthropicMessagesTextChat.model', 'claude-sonnet-4-5')
     globalThis.localStorage?.setItem('starverse.deepSeekTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
+    selectRuntimeProvider('deepseek', 'deepseek-chat')
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1145,6 +1386,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   })
 
   it('uses the explicit OpenRouter path when OpenAI Responses chat is disabled or cleared', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
     const user = userEvent.setup()
@@ -1170,6 +1412,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   })
 
   it('uses the explicit OpenRouter path when Google AI Studio chat is disabled or cleared', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
     globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
     const user = userEvent.setup()
@@ -1195,6 +1438,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   })
 
   it('uses the explicit OpenRouter path when LocalEndpoint chat is disabled or cleared', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:4321/v1')
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'settings-selected-model')
@@ -1222,6 +1466,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   })
 
   it('uses the explicit OpenRouter path when DeepSeek official chat is disabled or cleared', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
     globalThis.localStorage?.setItem('starverse.deepSeekTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
     const user = userEvent.setup()
@@ -1247,6 +1492,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   })
 
   it('uses selected model for next send and persists convo.meta.selectedModelKey', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1260,7 +1506,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('hi')
 
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
+    const imageCapableModelItems = await screen.findAllByTestId(`model-picker-item-${imageCapableModel}`)
+    await user.click(imageCapableModelItems[0]!)
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     await waitFor(() => {
@@ -1303,6 +1550,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
   it('passes persisted image generation config for an image-capable model', async () => {
     convoListMeta = {
+      selectedProviderId: 'openrouter',
       selectedModelKey: imageCapableModel,
       imageGenerationMode: 'custom',
       imageGenerationCustom: {
@@ -1310,7 +1558,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         outputMode: 'image_only',
         aspectRatio: '16:9',
         imageSize: '2K',
-        advancedJson: '',
       },
     }
     const user = userEvent.setup()
@@ -1339,6 +1586,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
   it('does not include aspect_ratio when persisted image aspect ratio is default', async () => {
     convoListMeta = {
+      selectedProviderId: 'openrouter',
       selectedModelKey: imageCapableModel,
       imageGenerationMode: 'custom',
       imageGenerationCustom: {
@@ -1346,7 +1594,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         outputMode: 'image_only',
         aspectRatio: '',
         imageSize: '2K',
-        advancedJson: '',
       },
     }
     const user = userEvent.setup()
@@ -1371,6 +1618,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
   it('uses persisted image size selection', async () => {
     convoListMeta = {
+      selectedProviderId: 'openrouter',
       selectedModelKey: imageCapableModel,
       imageGenerationMode: 'custom',
       imageGenerationCustom: {
@@ -1378,7 +1626,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         outputMode: 'image_only',
         aspectRatio: '',
         imageSize: '4K',
-        advancedJson: '',
       },
     }
     const user = userEvent.setup()
@@ -1400,6 +1647,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
   it('does not send legacy pixel image_size from persisted convo config', async () => {
     convoListMeta = {
+      selectedProviderId: 'openrouter',
       selectedModelKey: imageCapableModel,
       imageGenerationMode: 'custom',
       imageGenerationCustom: {
@@ -1407,7 +1655,6 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         outputMode: 'image_only',
         aspectRatio: '',
         imageSize: '1024x1024',
-        advancedJson: '',
       },
     }
     const user = userEvent.setup()
@@ -1436,7 +1683,8 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
     await waitForAppReady()
     await user.click(await screen.findByTestId('current-model-pill'))
-    await user.click(await screen.findByTestId(`model-picker-item-${imageCapableModel}`))
+    const imageCapableModelItems = await screen.findAllByTestId(`model-picker-item-${imageCapableModel}`)
+    await user.click(imageCapableModelItems[0]!)
     await waitForAppReady()
 
     const box = draftBox()

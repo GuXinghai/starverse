@@ -1,11 +1,19 @@
 import type { DomainEvent } from '@/next/state/types'
-import type { StarverseStreamEvent } from '@/next/provider/providerTypes'
+import type { ProviderStreamConfig, StarverseStreamEvent } from '@/next/provider/providerTypes'
 import { streamEventToDomainEvent } from '@/next/provider/streamEventBridge'
 import type { ProviderRuntimeContentBlock } from '@/next/multimodal/providerRuntimeContentBlocks'
+import {
+  ANTHROPIC_ASSISTANT_SNAPSHOT_KEY,
+  ANTHROPIC_MESSAGES_SOURCE_API,
+  ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY,
+  assertFinalAnthropicProviderNativeSnapshot,
+  type AnthropicProviderNativeSnapshot,
+} from '@/next/provider/anthropic/anthropicProviderNativeContent'
 
 export type AnthropicTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
   content: string
+  anthropicNativeContent?: AnthropicProviderNativeSnapshot
 }>
 
 export type AnthropicTextChatOptions = Readonly<{
@@ -15,6 +23,7 @@ export type AnthropicTextChatOptions = Readonly<{
   userText: string
   contextMessages?: readonly unknown[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  generationParams?: ProviderStreamConfig['generationParams']
   signal?: AbortSignal
   timeoutMs?: number
 }>
@@ -49,6 +58,65 @@ function textFromContent(content: unknown): string {
     .join('')
 }
 
+export class AnthropicNativeHistoryError extends Error {
+  constructor(
+    readonly code:
+      | 'anthropic_native_history_missing'
+      | 'anthropic_native_history_not_final'
+      | 'anthropic_native_history_unsupported',
+    message: string,
+  ) {
+    super(message)
+    this.name = 'AnthropicNativeHistoryError'
+  }
+}
+
+function isAnthropicAssistantRecord(record: Record<string, unknown>): boolean {
+  const providerId = typeof record.providerId === 'string' ? record.providerId : undefined
+  const providerKey = typeof record.providerKey === 'string' ? record.providerKey : undefined
+  if (providerId === ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY || providerId === ANTHROPIC_MESSAGES_SOURCE_API) return true
+  if (providerKey === ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY || providerKey === ANTHROPIC_MESSAGES_SOURCE_API) return true
+  const raw = record.providerNativeContents
+  return Array.isArray(raw) && raw.some((item) =>
+    !!item &&
+    typeof item === 'object' &&
+    (item as Record<string, unknown>).providerKey === ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY &&
+    (item as Record<string, unknown>).sourceApi === ANTHROPIC_MESSAGES_SOURCE_API
+  )
+}
+
+function selectFinalAnthropicNativeSnapshot(record: Record<string, unknown>): AnthropicProviderNativeSnapshot | null {
+  const raw = record.providerNativeContents
+  if (!Array.isArray(raw)) return null
+  let sawNonFinal = false
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const candidate = item as Record<string, unknown>
+    if (candidate.providerKey !== ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY) continue
+    if (candidate.sourceApi !== ANTHROPIC_MESSAGES_SOURCE_API) continue
+    if (candidate.snapshotKey !== ANTHROPIC_ASSISTANT_SNAPSHOT_KEY) continue
+    if (candidate.status !== 'final') {
+      sawNonFinal = true
+      continue
+    }
+    try {
+      return assertFinalAnthropicProviderNativeSnapshot(candidate)
+    } catch {
+      throw new AnthropicNativeHistoryError(
+        'anthropic_native_history_not_final',
+        'Anthropic assistant history contains invalid native content.',
+      )
+    }
+  }
+  if (sawNonFinal) {
+    throw new AnthropicNativeHistoryError(
+      'anthropic_native_history_not_final',
+      'Anthropic assistant history contains non-final native content.',
+    )
+  }
+  return null
+}
+
 export function buildAnthropicTextChatMessages(input: Readonly<{
   contextMessages?: readonly unknown[]
   userText: string
@@ -59,6 +127,23 @@ export function buildAnthropicTextChatMessages(input: Readonly<{
     const record = item as Record<string, unknown>
     const role = record.role
     if (role !== 'user' && role !== 'assistant') continue
+    if (role === 'assistant') {
+      if (!isAnthropicAssistantRecord(record)) {
+        throw new AnthropicNativeHistoryError(
+          'anthropic_native_history_unsupported',
+          'Anthropic Messages history cannot include non-Anthropic assistant messages.',
+        )
+      }
+      const nativeSnapshot = selectFinalAnthropicNativeSnapshot(record)
+      if (!nativeSnapshot) {
+        throw new AnthropicNativeHistoryError(
+          'anthropic_native_history_missing',
+          'Anthropic assistant history is missing final native content.',
+        )
+      }
+      messages.push({ role, content: textFromContent(record.content).trim(), anthropicNativeContent: nativeSnapshot })
+      continue
+    }
     const content = textFromContent(record.content).trim()
     if (!content) continue
     messages.push({ role, content })
@@ -192,10 +277,19 @@ export async function* streamAnthropicTextChatAsDomainEvents(
     return
   }
 
-  const messages = buildAnthropicTextChatMessages({
-    contextMessages: options.contextMessages,
-    userText: options.userText,
-  })
+  let messages: AnthropicTextChatMessage[]
+  try {
+    messages = buildAnthropicTextChatMessages({
+      contextMessages: options.contextMessages,
+      userText: options.userText,
+    })
+  } catch (err) {
+    if (err instanceof AnthropicNativeHistoryError) {
+      yield streamError(err.code, err.message, 'bad_request')
+      return
+    }
+    throw err
+  }
   const hasContentBlocks = (options.currentUserContentBlocks?.length ?? 0) > 0
   if (messages.length === 0 && hasContentBlocks) {
     messages.push({ role: 'user', content: '' })
@@ -215,6 +309,7 @@ export async function* streamAnthropicTextChatAsDomainEvents(
         assistantMessageId: options.assistantMessageId,
         model: options.model,
         messages,
+        ...(options.generationParams ? { generationParams: options.generationParams } : {}),
         ...(hasContentBlocks ? { currentUserContentBlocks: options.currentUserContentBlocks } : {}),
         ...(typeof options.timeoutMs === 'number' ? { timeoutMs: options.timeoutMs } : {}),
       }),

@@ -1,9 +1,13 @@
-import { describe, expect, it, vi } from 'vitest'
+import { describe, expect, it } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { ModelCatalogRepo } from '../../infra/db/repo/modelCatalogRepo'
-import { syncOpenRouterModelCatalog } from '../../src/next/modelCatalog/catalogSyncJob'
+import { createOpenRouterCatalogSource } from '../../src/shared/modelCatalog/providers/openrouter/openRouterCatalogSource'
+import { mapProviderCatalogSnapshotToScopedWriterInput } from '../../src/shared/modelCatalog/providerCatalogSnapshotMapper'
+
+const OPENROUTER_SCOPE_KEY = 'test-openrouter-scope'
+const OPENROUTER_BASE_URL = 'https://openrouter.ai/api/v1'
 
 function loadSchema(db: BetterSqlite3.Database) {
   const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
@@ -47,8 +51,40 @@ function buildBulkModelsFixture(count: number): { data: Array<Record<string, unk
   }
 }
 
-describe('integration: model catalog sync fixture -> sqlite query', () => {
-  it('runs one-shot sync and enables FTS/tag/vendor filters from persisted snapshot', async () => {
+async function writeOpenRouterScopedSnapshot(input: Readonly<{
+  repo: ModelCatalogRepo
+  fetchImpl: typeof fetch
+  snapshotId: string
+  enableCountProbe?: boolean
+}>) {
+  const source = createOpenRouterCatalogSource({
+    fetchImpl: input.fetchImpl,
+    enableCountProbe: input.enableCountProbe === true,
+  })
+  const snapshot = await source.fetchSnapshot({
+    providerKey: 'openrouter',
+    apiKey: 'sk-integration',
+    baseUrl: OPENROUTER_BASE_URL,
+    fetchImpl: input.fetchImpl,
+    preferUserScopedModels: true,
+  })
+  const writerInput = mapProviderCatalogSnapshotToScopedWriterInput({
+    snapshot,
+    snapshotId: input.snapshotId,
+    snapshotChecksum: input.snapshotId,
+    syncedAtMs: snapshot.fetchedAtMs,
+    schemaVersion: 1,
+  })
+  const writeResult = input.repo.writeScopedSnapshot({
+    ...writerInput,
+    catalogScopeKey: OPENROUTER_SCOPE_KEY,
+    pruneOldSnapshots: true,
+  })
+  return { snapshot, writeResult }
+}
+
+describe('integration: provider catalog source -> scoped sqlite query', () => {
+  it('persists OpenRouter fixtures into scoped snapshots and queries the active snapshot', async () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     const repo = new ModelCatalogRepo(db)
@@ -57,44 +93,43 @@ describe('integration: model catalog sync fixture -> sqlite query', () => {
     const providersFixture = loadFixtureJson('openrouter-providers.fixture.json')
     const modelsCountFixture = loadFixtureJson('openrouter-models-count.fixture.json')
 
-    const logger = {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    }
-
-    const fakeFetch = async (url: string): Promise<Response> => {
+    const fetchImpl = (async (url: string): Promise<Response> => {
       if (url.endsWith('/models/user')) return jsonResponse(modelsUserFixture)
       if (url.endsWith('/providers')) return jsonResponse(providersFixture)
       if (url.endsWith('/models/count')) return jsonResponse(modelsCountFixture)
       return jsonResponse({ error: { code: 404, message: 'not found' } }, 404)
-    }
+    }) as typeof fetch
 
-    const result = await syncOpenRouterModelCatalog({
-      apiKey: 'sk-integration',
-      baseUrl: 'https://openrouter.ai/api/v1',
-      fetchImpl: fakeFetch as any,
-      snapshotId: 'snap_fixture_sync_1',
+    const { snapshot, writeResult } = await writeOpenRouterScopedSnapshot({
+      repo,
+      fetchImpl,
+      snapshotId: 'scoped_fixture_sync_1',
       enableCountProbe: true,
-      logger,
-      writer: {
-        syncSnapshot: (input) => repo.syncSnapshot(input),
-        syncCoreSnapshot: (input) => repo.syncCoreSnapshot(input),
-      },
     })
 
-    expect(result).toMatchObject({
-      ok: true,
-      snapshotId: 'snap_fixture_sync_1',
-      modelCount: 3,
-    })
-
-    const meta = repo.getCoreMeta('openrouter')
-    expect(meta).toMatchObject({
+    expect(snapshot).toMatchObject({
       providerKey: 'openrouter',
       dataSource: 'models_user_primary',
+      countProbe: { count: 3 },
+    })
+    expect(writeResult).toMatchObject({
+      providerKey: 'openrouter',
+      catalogScopeKey: OPENROUTER_SCOPE_KEY,
+      activeSnapshotId: 'scoped_fixture_sync_1',
       modelCount: 3,
-      lastCountProbe: 3,
+      visibleModelCount: 3,
+      hiddenModelCount: 0,
+    })
+
+    const meta = repo.getScopedMeta('openrouter', OPENROUTER_SCOPE_KEY)
+    expect(meta).toMatchObject({
+      providerKey: 'openrouter',
+      catalogScopeKey: OPENROUTER_SCOPE_KEY,
+      activeSnapshotId: 'scoped_fixture_sync_1',
+      dataSource: 'models_user_primary',
+      modelCount: 3,
+      visibleModelCount: 3,
+      hiddenModelCount: 0,
     })
 
     const visionStored = db
@@ -102,63 +137,33 @@ describe('integration: model catalog sync fixture -> sqlite query', () => {
         `
           SELECT
             created_at_sec AS createdAtSec,
-            tokenizer,
-            instruct_type AS instructType,
-            architecture_modality AS architectureModality,
             input_modalities_json AS inputModalitiesJson,
             output_modalities_json AS outputModalitiesJson,
             supported_parameters_json AS supportedParametersJson,
-            per_request_limits_json AS perRequestLimitsJson,
-            default_parameters_json AS defaultParametersJson,
-            expiration_date AS expirationDate,
-            top_provider_is_moderated AS topProviderIsModerated,
-            top_provider_context_length AS topProviderContextLength,
-            price_web_search AS priceWebSearch,
-            price_internal_reasoning AS priceInternalReasoning,
-            price_input_cache_read AS priceInputCacheRead,
-            price_input_cache_write AS priceInputCacheWrite
-          FROM models
+            capabilities_json AS capabilitiesJson,
+            pricing_json AS pricingJson,
+            raw_json AS rawJson
+          FROM catalog_models
           WHERE provider_key = 'openrouter'
+            AND catalog_scope_key = @catalogScopeKey
+            AND snapshot_id = 'scoped_fixture_sync_1'
             AND model_id = 'openai/vision-pro'
           LIMIT 1
         `
       )
-      .get() as
+      .get({ catalogScopeKey: OPENROUTER_SCOPE_KEY }) as
       | {
           createdAtSec: number | null
-          tokenizer: string | null
-          instructType: string | null
-          architectureModality: string | null
           inputModalitiesJson: string
           outputModalitiesJson: string
           supportedParametersJson: string
-          perRequestLimitsJson: string | null
-          defaultParametersJson: string | null
-          expirationDate: string | null
-          topProviderIsModerated: 0 | 1 | null
-          topProviderContextLength: number | null
-          priceWebSearch: string | null
-          priceInternalReasoning: string | null
-          priceInputCacheRead: string | null
-          priceInputCacheWrite: string | null
+          capabilitiesJson: string
+          pricingJson: string | null
+          rawJson: string | null
         }
       | undefined
 
-    expect(visionStored).toMatchObject({
-      createdAtSec: 1701000001,
-      tokenizer: 'cl100k_base',
-      instructType: 'chatml',
-      architectureModality: 'text->text',
-      perRequestLimitsJson: '{"max_input_tokens":180000}',
-      defaultParametersJson: '{"temperature":0.2}',
-      expirationDate: '2099-01-01T00:00:00.000Z',
-      topProviderIsModerated: 1,
-      topProviderContextLength: 200000,
-      priceWebSearch: '0.0009',
-      priceInternalReasoning: '0.0011',
-      priceInputCacheRead: '0.000004',
-      priceInputCacheWrite: '0.000008',
-    })
+    expect(visionStored?.createdAtSec).toBe(1701000001)
     expect(JSON.parse(String(visionStored?.inputModalitiesJson))).toEqual(['text', 'image'])
     expect(JSON.parse(String(visionStored?.outputModalitiesJson))).toEqual(['text'])
     expect(JSON.parse(String(visionStored?.supportedParametersJson))).toEqual([
@@ -166,42 +171,43 @@ describe('integration: model catalog sync fixture -> sqlite query', () => {
       'tools',
       'response_format',
     ])
+    expect(JSON.parse(String(visionStored?.capabilitiesJson))).toMatchObject({
+      tools: true,
+      structuredOutputs: true,
+      vision: true,
+      longContext: true,
+    })
+    expect(JSON.parse(String(visionStored?.pricingJson))).toMatchObject({
+      webSearch: '0.0009',
+      internalReasoning: '0.0011',
+      inputCacheRead: '0.000004',
+      inputCacheWrite: '0.000008',
+    })
+    expect(visionStored?.rawJson).toContain('"id":"openai/vision-pro"')
 
-    const textFastCreated = db
-      .prepare(
-        `
-          SELECT created_at_sec AS createdAtSec
-          FROM models
-          WHERE provider_key = 'openrouter'
-            AND model_id = 'anthropic/text-fast'
-          LIMIT 1
-        `
-      )
-      .get() as { createdAtSec: number | null } | undefined
-    expect(textFastCreated?.createdAtSec).toBe(1701000003)
-
-    const visionSearch = repo.queryCore({
+    const visionSearch = repo.queryScopedActiveModels({
       providerKey: 'openrouter',
+      catalogScopeKey: OPENROUTER_SCOPE_KEY,
       searchText: 'vision analysis',
+      includeDescriptionInSearch: true,
       limit: 10,
     })
     expect(visionSearch.items.map((item) => item.modelId)).toEqual(['openai/vision-pro'])
 
-    const reasoningOpenai = repo.queryCore({
+    const reasoningOpenai = repo.queryScopedActiveModels({
       providerKey: 'openrouter',
+      catalogScopeKey: OPENROUTER_SCOPE_KEY,
       vendors: ['openai'],
-      tags: ['capability:reasoning'],
-      contextBuckets: ['xlarge'],
-      priceBuckets: ['cheap'],
+      capabilities: { reasoning: true },
+      contextLength: { min: 128000 },
       limit: 10,
     })
     expect(reasoningOpenai.items.map((item) => item.modelId)).toEqual(['openai/reasoner-mini'])
 
-    const structuredFilters = repo.queryCore({
+    const structuredFilters = repo.queryScopedActiveModels({
       providerKey: 'openrouter',
-      topProviderIsModerated: true,
-      tokenizers: ['cl100k_base'],
-      instructTypes: ['chatml'],
+      catalogScopeKey: OPENROUTER_SCOPE_KEY,
+      capabilities: { tools: true, structuredOutputs: true, vision: true },
       inputModalities: ['image'],
       outputModalities: ['text'],
       supportedParameters: ['tools', 'response_format'],
@@ -209,14 +215,16 @@ describe('integration: model catalog sync fixture -> sqlite query', () => {
     })
     expect(structuredFilters.items.map((item) => item.modelId)).toEqual(['openai/vision-pro'])
 
-    const page1 = repo.queryCore({
+    const page1 = repo.queryScopedActiveModels({
       providerKey: 'openrouter',
+      catalogScopeKey: OPENROUTER_SCOPE_KEY,
       sortBy: 'name',
       sortOrder: 'asc',
       limit: 2,
     })
-    const page2 = repo.queryCore({
+    const page2 = repo.queryScopedActiveModels({
       providerKey: 'openrouter',
+      catalogScopeKey: OPENROUTER_SCOPE_KEY,
       sortBy: 'name',
       sortOrder: 'asc',
       limit: 2,
@@ -227,49 +235,11 @@ describe('integration: model catalog sync fixture -> sqlite query', () => {
     expect(overlap).toHaveLength(0)
 
     const ftsCountRow = db.prepare('SELECT COUNT(1) AS count FROM models_fts').get() as { count: number }
-    expect(ftsCountRow.count).toBe(3)
-    const triggerRows = db
-      .prepare(`
-        SELECT name
-        FROM sqlite_master
-        WHERE type = 'trigger'
-          AND name IN ('trg_models_fts_ai', 'trg_models_fts_au', 'trg_models_fts_ad')
-        ORDER BY name ASC
-      `)
-      .all() as Array<{ name: string }>
-    expect(triggerRows.map((row) => row.name)).toEqual([
-      'trg_models_fts_ad',
-      'trg_models_fts_ai',
-      'trg_models_fts_au',
-    ])
-    const missingFtsRows = db
-      .prepare(`
-        SELECT COUNT(1) AS count
-        FROM models
-        LEFT JOIN models_fts
-          ON models_fts.rowid = models.rowid
-        WHERE models.provider_key = 'openrouter'
-          AND models_fts.rowid IS NULL
-      `)
-      .get() as { count: number }
-    expect(missingFtsRows.count).toBe(0)
-
-    expect(logger.info).toHaveBeenCalledWith(
-      '[CatalogSyncJob] sync end',
-      expect.objectContaining({
-        status: 'ok',
-        snapshotId: 'snap_fixture_sync_1',
-        modelCount: 3,
-        coreModelRows: 3,
-        coreTagRows: 9,
-        ftsBuildStatus: 'trigger_managed',
-      })
-    )
-    expect(logger.error).not.toHaveBeenCalled()
+    expect(ftsCountRow.count).toBe(0)
     db.close()
   })
 
-  it('handles models/user=401 fallback without clearing providers or mass-hiding models', async () => {
+  it('handles models/user=401 fallback by replacing only the active scoped snapshot', async () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     const repo = new ModelCatalogRepo(db)
@@ -278,86 +248,85 @@ describe('integration: model catalog sync fixture -> sqlite query', () => {
     const fallbackModelsFixture = loadFixtureJson('openrouter-models-fallback-small.fixture.json')
     const bulkModelsFixture = buildBulkModelsFixture(20)
     const calls: string[] = []
-    const logger = {
-      info: vi.fn(),
-      warn: vi.fn(),
-      error: vi.fn(),
-    }
 
-    const fetchRound1 = async (url: string): Promise<Response> => {
+    const fetchRound1 = (async (url: string): Promise<Response> => {
       calls.push(`r1:${url}`)
       if (url.endsWith('/models/user')) return jsonResponse(bulkModelsFixture)
       if (url.endsWith('/providers')) return jsonResponse(providersFixture)
       return jsonResponse({ error: { code: 404, message: 'not found' } }, 404)
-    }
+    }) as typeof fetch
 
-    const fetchRound2 = async (url: string): Promise<Response> => {
+    const fetchRound2 = (async (url: string): Promise<Response> => {
       calls.push(`r2:${url}`)
       if (url.endsWith('/models/user')) return jsonResponse(modelsUser401Fixture, 401)
       if (url.endsWith('/models')) return jsonResponse(fallbackModelsFixture)
       if (url.endsWith('/providers')) return jsonResponse({ error: { code: 503, message: 'provider_down' } }, 503)
       return jsonResponse({ error: { code: 404, message: 'not found' } }, 404)
-    }
+    }) as typeof fetch
 
-    await syncOpenRouterModelCatalog({
-      apiKey: 'sk-integration',
-      baseUrl: 'https://openrouter.ai/api/v1',
-      fetchImpl: fetchRound1 as any,
-      snapshotId: 'snap_guard_round_1',
-      logger,
-      writer: {
-        syncSnapshot: (input) => repo.syncSnapshot(input),
-        syncCoreSnapshot: (input) => repo.syncCoreSnapshot(input),
-      },
+    await writeOpenRouterScopedSnapshot({
+      repo,
+      fetchImpl: fetchRound1,
+      snapshotId: 'scoped_guard_round_1',
+    })
+    expect(repo.getScopedMeta('openrouter', OPENROUTER_SCOPE_KEY)).toMatchObject({
+      activeSnapshotId: 'scoped_guard_round_1',
+      modelCount: 20,
+      dataSource: 'models_user_primary',
     })
 
-    const providersBefore = db
-      .prepare(`SELECT provider_key AS providerKey FROM providers ORDER BY provider_key ASC`)
-      .all() as Array<{ providerKey: string }>
-    expect(providersBefore.map((row) => row.providerKey)).toEqual(['anthropic', 'openai', 'openrouter'])
-
-    await syncOpenRouterModelCatalog({
-      apiKey: 'sk-integration',
-      baseUrl: 'https://openrouter.ai/api/v1',
-      fetchImpl: fetchRound2 as any,
-      snapshotId: 'snap_guard_round_2',
-      logger,
-      writer: {
-        syncSnapshot: (input) => repo.syncSnapshot(input),
-        syncCoreSnapshot: (input) => repo.syncCoreSnapshot(input),
-      },
+    const { snapshot, writeResult } = await writeOpenRouterScopedSnapshot({
+      repo,
+      fetchImpl: fetchRound2,
+      snapshotId: 'scoped_guard_round_2',
     })
 
     expect(calls).toContain('r2:https://openrouter.ai/api/v1/models/user')
     expect(calls).toContain('r2:https://openrouter.ai/api/v1/models')
+    expect(snapshot).toMatchObject({
+      dataSource: 'mixed',
+      degradedStages: expect.arrayContaining([
+        expect.objectContaining({ stage: 'fetch_providers' }),
+      ]),
+    })
+    expect(writeResult).toMatchObject({
+      activeSnapshotId: 'scoped_guard_round_2',
+      modelCount: 5,
+      visibleModelCount: 5,
+      hiddenModelCount: 0,
+    })
 
-    const providersAfter = db
-      .prepare(`SELECT provider_key AS providerKey FROM providers ORDER BY provider_key ASC`)
-      .all() as Array<{ providerKey: string }>
-    expect(providersAfter.map((row) => row.providerKey)).toEqual(['anthropic', 'openai', 'openrouter'])
+    const meta = repo.getScopedMeta('openrouter', OPENROUTER_SCOPE_KEY)
+    expect(meta).toMatchObject({
+      activeSnapshotId: 'scoped_guard_round_2',
+      dataSource: 'mixed',
+      modelCount: 5,
+      hiddenModelCount: 0,
+    })
 
-    const hiddenCountRow = db
+    const activeRows = repo.queryScopedActiveModels({
+      providerKey: 'openrouter',
+      catalogScopeKey: OPENROUTER_SCOPE_KEY,
+      limit: 100,
+    })
+    expect(activeRows.items.map((item) => item.modelId)).toEqual([
+      'openai/bulk-00',
+      'openai/bulk-01',
+      'openai/bulk-02',
+      'openai/bulk-03',
+      'openai/bulk-04',
+    ])
+
+    const oldSnapshotRows = db
       .prepare(`
         SELECT COUNT(1) AS count
-        FROM models
+        FROM catalog_models
         WHERE provider_key = 'openrouter'
-          AND visibility = 'hidden'
+          AND catalog_scope_key = @catalogScopeKey
+          AND snapshot_id = 'scoped_guard_round_1'
       `)
-      .get() as { count: number }
-    expect(hiddenCountRow.count).toBe(0)
-
-    const meta = repo.getCoreMeta('openrouter')
-    expect(meta).toMatchObject({
-      snapshotId: 'snap_guard_round_2',
-      dataSource: 'mixed',
-      providerCount: null,
-    })
-    expect(logger.warn).toHaveBeenCalledWith(
-      '[CatalogSyncJob] stage degraded',
-      expect.objectContaining({
-        stage: 'fetch_providers',
-      })
-    )
+      .get({ catalogScopeKey: OPENROUTER_SCOPE_KEY }) as { count: number }
+    expect(oldSnapshotRows.count).toBe(0)
     db.close()
   })
 })

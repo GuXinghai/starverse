@@ -1,16 +1,20 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
-import type { ReasoningView, ReasoningPiece } from '@/next/state/types'
+import type { ReasoningView } from '@/next/state/types'
+import ReasoningRichText from '@/ui-kit/chat/ReasoningRichText.vue'
+import { t } from '@/shared/i18n'
 
 const props = withDefaults(
   defineProps<{
+    messageId?: string | null
     reasoningView: ReasoningView | null
-    reasoningPieces?: ReasoningPiece[] | null
     collapsed: boolean
     displayMode?: 'inline' | 'rail'
+    isStreaming?: boolean
   }>(),
   {
     displayMode: 'inline',
+    isStreaming: false,
   },
 )
 
@@ -41,6 +45,20 @@ const indicator = computed(() => {
   if (props.displayMode === 'rail') return props.collapsed ? '<' : '>'
   return props.collapsed ? 'v' : '^'
 })
+
+const displayBlocks = computed(() => {
+  const blocks = props.reasoningView?.displayBlocks
+  if (!Array.isArray(blocks)) return []
+  return blocks.filter((block) => {
+    if (block?.type === 'text') return block.text.trim().length > 0
+    if (block?.type === 'image') return block.url.trim().length > 0
+    if (block?.type === 'opaque') return block.label.trim().length > 0
+    return false
+  })
+})
+
+const hasReasoningPayload = computed(() => displayBlocks.value.length > 0)
+
 </script>
 
 <template>
@@ -55,16 +73,32 @@ const indicator = computed(() => {
       @touchend="onPressEnd"
       @touchcancel="onPressCancel"
     >
-      <span>Reasoning</span>
+      <span>{{ t('chat.reasoning.title') }}</span>
       <span aria-hidden="true">{{ indicator }}</span>
     </button>
 
     <div v-if="props.displayMode === 'inline' && !props.collapsed" class="mt-2 space-y-2 text-xs text-gray-600">
-      <div v-if="props.reasoningView?.summaryText">{{ props.reasoningView.summaryText }}</div>
-      <div v-if="props.reasoningView?.reasoningText" class="whitespace-pre-wrap">{{ props.reasoningView.reasoningText }}</div>
-      <div v-for="piece in props.reasoningPieces ?? []" :key="piece.id" class="whitespace-pre-wrap">{{ piece.text }}</div>
-      <div v-if="!props.reasoningView?.summaryText && !props.reasoningView?.reasoningText && !(props.reasoningPieces?.length)">
-        No reasoning payload.
+      <template v-for="block in displayBlocks" :key="block.blockId">
+        <ReasoningRichText
+          v-if="block.type === 'text'"
+          :text="block.text"
+          :streaming="props.isStreaming"
+        />
+        <img
+          v-if="block.type === 'image'"
+          :src="block.url"
+          class="max-h-72 max-w-full rounded border border-gray-200 object-contain"
+          alt=""
+        />
+        <div
+          v-if="block.type === 'opaque'"
+          class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-600"
+        >
+          {{ block.label }}
+        </div>
+      </template>
+      <div v-if="!hasReasoningPayload">
+        {{ t('chat.reasoning.emptyPayload') }}
       </div>
     </div>
   </div>

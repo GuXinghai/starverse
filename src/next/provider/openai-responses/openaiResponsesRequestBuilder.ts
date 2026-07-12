@@ -8,6 +8,7 @@
  */
 
 import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
+import { applyProviderGenerationParamsPatch, asProviderGenerationParamsRecord } from '@/next/provider/providerGenerationParams'
 
 // ---------------------------------------------------------------------------
 // OpenAI Responses request types — provider-native schema, contained here
@@ -26,16 +27,24 @@ export type ResponsesInputMessage = Readonly<{
 }>
 
 export type ResponsesReasoningConfig = Readonly<{
-  effort?: 'low' | 'medium' | 'high'
-  summary?: 'auto' | 'none' | 'concise'
+  effort?: 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+  summary?: 'auto' | 'concise' | 'detailed'
 }>
+
+export type ResponsesImageGenerationTool = Readonly<{
+  type: 'image_generation'
+  size?: string
+} & Record<string, unknown>>
 
 export type ResponsesRequest = Readonly<{
   model: string
   input: string | ReadonlyArray<ResponsesInputMessage>
   stream: true
+  temperature?: number
+  top_p?: number
   reasoning?: ResponsesReasoningConfig
   max_output_tokens?: number
+  text?: Readonly<{ verbosity?: 'low' | 'medium' | 'high' }>
   tools?: ReadonlyArray<unknown>
   instructions?: string
 }>
@@ -61,7 +70,7 @@ export type ResponsesRequestInput = Readonly<{
  * - `model` and `messages` (as `input`) are required.
  * - `stream: true` is always set.
  * - `reasoning` config is included only when explicitly set.
- * - `max_output_tokens` is included only when present.
+ * - Generation params are included only when present.
  * - `tools` is passed through only when non-empty.
  * - `instructions` is included only when present.
  * - No OpenRouter plugins, no provider.require_parameters, no DeepSeek reasoning_effort.
@@ -80,50 +89,126 @@ export function buildResponsesRequest(input: ResponsesRequestInput): ResponsesRe
     request.instructions = instructions
   }
 
-  // Reasoning config — only when mode is 'effort'
-  if (config.requestedReasoningMode === 'effort') {
-    const reasoning: Record<string, unknown> = {}
-    if (config.requestedReasoningEffort) {
-      // Map Starverse effort levels to Responses effort levels
-      const effort = mapReasoningEffort(config.requestedReasoningEffort)
-      if (effort) reasoning.effort = effort
-    }
-    // Default to concise summary for reasoning models
-    reasoning.summary = 'concise'
-    if (Object.keys(reasoning).length > 0) {
-      request.reasoning = reasoning
-    }
-  }
+  validateOpenAIResponsesGenerationParams(config.generationParams)
+  applyProviderGenerationParamsPatch({
+    target: request,
+    raw: config.generationParams,
+    allowedKeys: new Set(['temperature', 'top_p', 'max_output_tokens', 'reasoning', 'text']),
+    providerLabel: 'OpenAI Responses',
+  })
+  sanitizeOpenAIResponsesReasoning(request)
 
-  // Max output tokens
-  const sampling = config.samplingParams as Record<string, unknown> | undefined
-  if (sampling && typeof sampling.max_tokens === 'number') {
-    request.max_output_tokens = sampling.max_tokens
-  }
-
-  // Tools — pass-through only when non-empty
-  if (config.tools && config.tools.length > 0) {
-    request.tools = config.tools
+  const tools = [
+    ...(config.tools && config.tools.length > 0 ? config.tools : []),
+    ...(config.imageGeneration ? [buildImageGenerationTool(config)] : []),
+  ]
+  if (tools.length > 0) {
+    request.tools = tools
   }
 
   return request as ResponsesRequest
 }
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-
-function mapReasoningEffort(effort: string): 'low' | 'medium' | 'high' | undefined {
-  switch (effort) {
-    case 'low':
-    case 'minimal':
-      return 'low'
-    case 'medium':
-      return 'medium'
-    case 'high':
-    case 'xhigh':
-      return 'high'
-    default:
-      return undefined
+function validateOpenAIResponsesGenerationParams(raw: unknown): void {
+  const patch = asProviderGenerationParamsRecord(raw)
+  if (!patch) return
+  const reasoning = patch.reasoning
+  if (!reasoning || typeof reasoning !== 'object' || Array.isArray(reasoning)) return
+  const effort = (reasoning as Record<string, unknown>).effort
+  if (effort === 'auto') {
+    throw new Error('OpenAI Responses generationParams.reasoning.effort=auto is not a wire value; omit reasoning.effort instead.')
   }
+  const summary = (reasoning as Record<string, unknown>).summary
+  if (summary !== undefined && !isOpenAIResponsesReasoningSummary(summary)) {
+    throw new Error('OpenAI Responses generationParams.reasoning.summary must be omitted or one of auto, concise, detailed.')
+  }
+}
+
+function sanitizeOpenAIResponsesReasoning(request: Record<string, unknown>): void {
+  const rawReasoning = request.reasoning
+  if (rawReasoning === undefined) return
+  if (!rawReasoning || typeof rawReasoning !== 'object' || Array.isArray(rawReasoning)) {
+    throw new Error('OpenAI Responses generationParams.reasoning must be an object.')
+  }
+
+  const reasoning = rawReasoning as Record<string, unknown>
+  const normalized: Record<string, unknown> = {}
+
+  const effort = reasoning.effort
+  if (effort !== undefined) {
+    if (!isOpenAIResponsesReasoningEffort(effort)) {
+      throw new Error('OpenAI Responses generationParams.reasoning.effort must be omitted or one of none, minimal, low, medium, high, xhigh.')
+    }
+    normalized.effort = effort
+  }
+
+  const summary = reasoning.summary
+  if (summary !== undefined) {
+    if (!isOpenAIResponsesReasoningSummary(summary)) {
+      throw new Error('OpenAI Responses generationParams.reasoning.summary must be omitted or one of auto, concise, detailed.')
+    }
+    normalized.summary = summary
+  }
+
+  if (Object.keys(normalized).length === 0) {
+    delete request.reasoning
+    return
+  }
+
+  request.reasoning = normalized
+}
+
+function isOpenAIResponsesReasoningEffort(value: unknown): value is NonNullable<ResponsesReasoningConfig['effort']> {
+  return value === 'none' ||
+    value === 'minimal' ||
+    value === 'low' ||
+    value === 'medium' ||
+    value === 'high' ||
+    value === 'xhigh'
+}
+
+function isOpenAIResponsesReasoningSummary(value: unknown): value is NonNullable<ResponsesReasoningConfig['summary']> {
+  return value === 'auto' || value === 'concise' || value === 'detailed'
+}
+
+function buildImageGenerationTool(config: ProviderStreamConfig): ResponsesImageGenerationTool {
+  const imageGeneration = config.imageGeneration
+  const imageConfig = imageGeneration?.imageConfig && typeof imageGeneration.imageConfig === 'object' && !Array.isArray(imageGeneration.imageConfig)
+    ? imageGeneration.imageConfig as Record<string, unknown>
+    : {}
+
+  const tool: Record<string, unknown> = {
+    ...stripOpenRouterImageConfigAliases(imageConfig),
+    type: 'image_generation',
+  }
+  const explicitSize = typeof imageConfig.size === 'string' ? imageConfig.size.trim() : ''
+  if (explicitSize) {
+    tool.size = explicitSize
+  } else {
+    const mappedSize = mapOpenAIImageToolSize({
+      aspectRatio: imageGeneration?.aspectRatio ?? (typeof imageConfig.aspect_ratio === 'string' ? imageConfig.aspect_ratio : ''),
+      imageSize: imageGeneration?.imageSize ?? (typeof imageConfig.image_size === 'string' ? imageConfig.image_size : ''),
+    })
+    if (mappedSize) tool.size = mappedSize
+  }
+  return tool as ResponsesImageGenerationTool
+}
+
+function stripOpenRouterImageConfigAliases(value: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = {}
+  for (const [key, item] of Object.entries(value)) {
+    if (key === 'aspect_ratio' || key === 'image_size' || key === 'response_format') continue
+    out[key] = item
+  }
+  return out
+}
+
+function mapOpenAIImageToolSize(input: Readonly<{ aspectRatio: unknown; imageSize: unknown }>): string | undefined {
+  const imageSize = typeof input.imageSize === 'string' ? input.imageSize.trim() : ''
+  if (imageSize && imageSize !== '1K') return undefined
+
+  const aspectRatio = typeof input.aspectRatio === 'string' ? input.aspectRatio.trim() : ''
+  if (aspectRatio === '3:4') return '1024x1536'
+  if (aspectRatio === '4:3' || aspectRatio === '16:9') return '1536x1024'
+  return '1024x1024'
 }

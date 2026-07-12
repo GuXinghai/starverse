@@ -43,10 +43,8 @@ function createEmptyAssistantMessage(
     contentBlocks: [],
     toolCalls: [],
     reasoningDetailsRaw: [],
-    reasoningStreamingText: '',
-    reasoningSummaryText: undefined,
-    reasoningPieces: [],
-    reasoningLastPieceLen: 0,
+    reasoningDisplayBlocks: [],
+    providerNativeContents: [],
     reasoningPanelState,
     hasEncryptedReasoning: false,
     reasoningDurationMs: undefined,
@@ -73,10 +71,8 @@ function createUserMessage(messageId: string, text: string): MessageState {
     contentBlocks: contentText ? [{ type: 'text', text: contentText }] : [],
     toolCalls: [],
     reasoningDetailsRaw: [],
-    reasoningStreamingText: '',
-    reasoningSummaryText: undefined,
-    reasoningPieces: [],
-    reasoningLastPieceLen: 0,
+    reasoningDisplayBlocks: [],
+    providerNativeContents: [],
     reasoningPanelState: 'expanded',
     hasEncryptedReasoning: false,
     reasoningDurationMs: undefined,
@@ -116,6 +112,7 @@ export function startGenerationCore(
 
   const run: RunState = {
     runId: input.runId,
+    ...(input.routeProvenanceId ? { routeProvenanceId: input.routeProvenanceId } : {}),
     status: 'requesting',
     requestId: input.requestId,
     targetAssistantMessageId: assistantMessageId,
@@ -146,17 +143,21 @@ export function startGenerationCore(
           [userMessageId]: createUserMessage(userMessageId, input.userMessageText as string),
         }
       : {}),
-    [assistantMessageId]: createEmptyAssistantMessage(
-      assistantMessageId,
-      true,
-      {
-        mode: requestedReasoningMode,
-        effort: requestedReasoningEffort,
-        exclude: requestedReasoningExclude,
-        imageGeneration: requestedImageGeneration,
-      },
-      reasoningPanelState
-    ),
+    [assistantMessageId]: {
+      ...createEmptyAssistantMessage(
+        assistantMessageId,
+        true,
+        {
+          mode: requestedReasoningMode,
+          effort: requestedReasoningEffort,
+          exclude: requestedReasoningExclude,
+          imageGeneration: requestedImageGeneration,
+        },
+        reasoningPanelState
+      ),
+      ...(input.routeProvenanceId ? { routeProvenanceId: input.routeProvenanceId } : {}),
+      ...(input.choiceIndex !== undefined ? { choiceIndex: input.choiceIndex } : {}),
+    },
   }
 
   const nextRunMessageIds = {

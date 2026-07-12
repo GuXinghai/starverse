@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsPanel from './SettingsPanel.vue'
 import { resetI18nForTests, t, tf } from '@/shared/i18n'
 
-const configuredMaskText = () => tf('settings.credentials.configured', { value: '***' })
+const CONFIGURED_API_KEY_PLACEHOLDER = '••••••'
 
 function createElectronStoreMock() {
   const get = vi.fn(async (_key: string) => {
@@ -27,59 +27,47 @@ function createElectronStoreMockWith(values: Record<string, unknown>) {
 
 function createOpenRouterCredentialMock(input?: {
   apiKeyConfigured?: boolean
-  baseUrlConfigured?: boolean
-  baseUrlInvalid?: boolean
-  displayBaseUrl?: string
+  apiKey?: string
 }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
-    baseUrlConfigured: input?.baseUrlConfigured ?? true,
-    baseUrlInvalid: input?.baseUrlInvalid ?? false,
-    displayBaseUrl: input?.displayBaseUrl ?? 'https://openrouter.ai/api/v1',
+    apiKey: input?.apiKey ?? 'sk-openrouter-saved',
   }
-  const buildEndpoint = () => {
-    const hasSafeCustomBaseUrl = !state.baseUrlInvalid && state.baseUrlConfigured && state.displayBaseUrl.trim().length > 0
-    return {
+  const buildEndpoint = () => ({
       kind: 'openrouter_endpoint',
-      endpointId: state.baseUrlConfigured ? 'openrouter-custom-legacy-store' : 'openrouter-official',
-      endpointStatus: !state.baseUrlConfigured ? 'official' : state.baseUrlInvalid ? 'invalid_custom' : 'custom',
+      endpointId: 'openrouter-official',
+      endpointStatus: 'official',
       providerId: 'openrouter',
       profileId: 'openrouter_v1_chat',
-      displayName: state.baseUrlConfigured ? 'OpenRouter custom endpoint' : 'OpenRouter official endpoint',
+      displayName: 'OpenRouter official endpoint',
       source: 'legacy_store',
-      baseUrlConfigured: state.baseUrlConfigured,
-      ...(state.baseUrlInvalid ? { baseUrlInvalid: true } : {}),
-      ...(hasSafeCustomBaseUrl ? { displayBaseUrl: state.displayBaseUrl } : {}),
-      ...(!state.baseUrlConfigured ? { displayBaseUrl: 'https://openrouter.ai/api/v1' } : {}),
+      baseUrlConfigured: false,
+      displayBaseUrl: 'https://openrouter.ai/api/v1',
       defaultBaseUrl: 'https://openrouter.ai/api/v1',
       credentialRef: { kind: 'credential_ref', id: 'openrouter-chat-legacy-store' },
       catalogCredentialRef: { kind: 'credential_ref', id: 'openrouter-catalog-legacy-store' },
       rendererVisible: true,
-    }
-  }
+    })
   const buildStatus = () => ({
     source: 'legacy_store',
     apiKeyConfigured: state.apiKeyConfigured,
     ...(state.apiKeyConfigured ? { maskedApiKey: '***' } : {}),
-    baseUrlConfigured: state.baseUrlConfigured,
-    ...(state.baseUrlInvalid ? { baseUrlInvalid: true } : {}),
-    ...(!state.baseUrlInvalid && state.displayBaseUrl.trim().length > 0 ? { displayBaseUrl: state.displayBaseUrl } : {}),
+    baseUrlConfigured: false,
+    displayBaseUrl: 'https://openrouter.ai/api/v1',
     defaultBaseUrl: 'https://openrouter.ai/api/v1',
     endpoint: buildEndpoint(),
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
-    update: vi.fn(async (payload: { apiKey?: string; baseUrl?: string | null }) => {
-      if (payload.apiKey && payload.apiKey.trim()) state.apiKeyConfigured = true
-      if (payload.baseUrl === null) {
-        state.displayBaseUrl = ''
-        state.baseUrlConfigured = false
-        state.baseUrlInvalid = false
-      }
-      if (typeof payload.baseUrl === 'string') {
-        state.displayBaseUrl = payload.baseUrl.trim()
-        state.baseUrlConfigured = state.displayBaseUrl.length > 0
-        state.baseUrlInvalid = false
+    reveal: vi.fn(async () => (
+      state.apiKeyConfigured
+        ? { ok: true, apiKey: state.apiKey }
+        : { ok: false, code: 'credential_missing', message: 'OpenRouter API key is not configured.' }
+    )),
+    update: vi.fn(async (payload: { apiKey?: string }) => {
+      if (payload.apiKey && payload.apiKey.trim()) {
+        state.apiKeyConfigured = true
+        state.apiKey = payload.apiKey.trim()
       }
       return { ok: true, status: buildStatus() }
     }),
@@ -93,6 +81,7 @@ function createOpenRouterCredentialMock(input?: {
 function createOpenAIResponsesCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
+    apiKey: 'sk-openai-responses-saved',
   }
   const buildStatus = () => ({
     source: 'legacy_store',
@@ -105,8 +94,16 @@ function createOpenAIResponsesCredentialMock(input?: { apiKeyConfigured?: boolea
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
+    reveal: vi.fn(async () => (
+      state.apiKeyConfigured
+        ? { ok: true, apiKey: state.apiKey }
+        : { ok: false, code: 'credential_missing', message: 'OpenAI Responses API key is not configured.' }
+    )),
     update: vi.fn(async (payload: { apiKey?: string }) => {
-      if (payload.apiKey && payload.apiKey.trim()) state.apiKeyConfigured = true
+      if (payload.apiKey && payload.apiKey.trim()) {
+        state.apiKeyConfigured = true
+        state.apiKey = payload.apiKey.trim()
+      }
       return { ok: true, status: buildStatus() }
     }),
     clear: vi.fn(async () => {
@@ -119,6 +116,7 @@ function createOpenAIResponsesCredentialMock(input?: { apiKeyConfigured?: boolea
 function createGoogleAIStudioCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
+    apiKey: 'AIza-google-saved',
   }
   const buildStatus = () => ({
     source: 'legacy_store',
@@ -131,8 +129,16 @@ function createGoogleAIStudioCredentialMock(input?: { apiKeyConfigured?: boolean
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
+    reveal: vi.fn(async () => (
+      state.apiKeyConfigured
+        ? { ok: true, apiKey: state.apiKey }
+        : { ok: false, code: 'credential_missing', message: 'Google AI Studio API key is not configured.' }
+    )),
     update: vi.fn(async (payload: { apiKey?: string }) => {
-      if (payload.apiKey && payload.apiKey.trim()) state.apiKeyConfigured = true
+      if (payload.apiKey && payload.apiKey.trim()) {
+        state.apiKeyConfigured = true
+        state.apiKey = payload.apiKey.trim()
+      }
       return { ok: true, status: buildStatus() }
     }),
     clear: vi.fn(async () => {
@@ -145,6 +151,7 @@ function createGoogleAIStudioCredentialMock(input?: { apiKeyConfigured?: boolean
 function createAnthropicCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
+    apiKey: 'sk-ant-saved',
   }
   const buildStatus = () => ({
     source: 'legacy_store',
@@ -157,8 +164,16 @@ function createAnthropicCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
+    reveal: vi.fn(async () => (
+      state.apiKeyConfigured
+        ? { ok: true, apiKey: state.apiKey }
+        : { ok: false, code: 'credential_missing', message: 'Anthropic API key is not configured.' }
+    )),
     update: vi.fn(async (payload: { apiKey?: string }) => {
-      if (payload.apiKey && payload.apiKey.trim()) state.apiKeyConfigured = true
+      if (payload.apiKey && payload.apiKey.trim()) {
+        state.apiKeyConfigured = true
+        state.apiKey = payload.apiKey.trim()
+      }
       return { ok: true, status: buildStatus() }
     }),
     clear: vi.fn(async () => {
@@ -171,6 +186,7 @@ function createAnthropicCredentialMock(input?: { apiKeyConfigured?: boolean }) {
 function createDeepSeekCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
+    apiKey: 'sk-deepseek-saved',
   }
   const buildStatus = () => ({
     source: 'legacy_store',
@@ -183,8 +199,16 @@ function createDeepSeekCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
+    reveal: vi.fn(async () => (
+      state.apiKeyConfigured
+        ? { ok: true, apiKey: state.apiKey }
+        : { ok: false, code: 'credential_missing', message: 'DeepSeek API key is not configured.' }
+    )),
     update: vi.fn(async (payload: { apiKey?: string }) => {
-      if (payload.apiKey && payload.apiKey.trim()) state.apiKeyConfigured = true
+      if (payload.apiKey && payload.apiKey.trim()) {
+        state.apiKeyConfigured = true
+        state.apiKey = payload.apiKey.trim()
+      }
       return { ok: true, status: buildStatus() }
     }),
     clear: vi.fn(async () => {
@@ -206,8 +230,8 @@ function createDbBridgeMock() {
     if (method === 'settings.setUserMessageRenderDefault') return { ok: true }
     if (method === 'settings.getWebSearchDefaults') return { value: null }
     if (method === 'settings.setWebSearchDefaults') return { ok: true }
-    if (method === 'settings.getSamplingParamsDefaults') return { value: null }
-    if (method === 'settings.setSamplingParamsDefaults') return { ok: true }
+    if (method === 'settings.getGenerationParamsDefaults') return { value: null }
+    if (method === 'settings.setGenerationParamsDefaults') return { ok: true }
     return { ok: true }
   })
   return { invoke }
@@ -365,10 +389,11 @@ describe('ui-app SettingsPanel', () => {
     await screen.findByText('设置')
     await waitFor(() => expect((globalThis as any).electronStore.get).toHaveBeenCalled())
 
-    const keyInput = screen.getByPlaceholderText('sk-…') as HTMLInputElement
+    const keyInput = screen.getByTestId('settings-openrouter-api-key') as HTMLInputElement
     await waitFor(() => expect(keyInput).not.toBeDisabled())
     expect(keyInput.value).toBe('')
-    expect(screen.getByTestId('settings-openrouter-key-status').textContent).toContain(configuredMaskText())
+    expect(keyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
+    expect(screen.queryByTestId('settings-openrouter-key-status')).not.toBeInTheDocument()
 
     await user.clear(keyInput)
     await user.type(keyInput, 'sk-new')
@@ -382,7 +407,6 @@ describe('ui-app SettingsPanel', () => {
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
-    expect(storeSet).not.toHaveBeenCalledWith('openRouterBaseUrl', expect.anything())
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogStartupSyncPolicy', 'stale_only')
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogPickerOpenSyncPolicy', 'stale_only')
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogListUpdateMode', 'manual')
@@ -395,7 +419,7 @@ describe('ui-app SettingsPanel', () => {
     expect(invoke).toHaveBeenCalledWith('settings.setChatReasoningPanelDefaultExpanded', { value: true })
     expect(invoke).toHaveBeenCalledWith('settings.setUserMessageRenderDefault', { value: false })
     expect(invoke).toHaveBeenCalledWith('settings.setWebSearchDefaults', { value: null })
-    expect(invoke).toHaveBeenCalledWith('settings.setSamplingParamsDefaults', { value: null })
+    expect(invoke).toHaveBeenCalledWith('settings.setGenerationParamsDefaults', { value: null })
     const credentialUpdate = (globalThis as any).openRouterCredential.update as ReturnType<typeof vi.fn>
     expect(credentialUpdate).toHaveBeenCalledWith({ apiKey: 'sk-new' })
   })
@@ -411,14 +435,13 @@ describe('ui-app SettingsPanel', () => {
       expect((globalThis as any).openRouterCredential.getStatus).toHaveBeenCalled()
     })
     expect(storeGet).not.toHaveBeenCalledWith('openRouterApiKey')
-    expect(storeGet).not.toHaveBeenCalledWith('openRouterBaseUrl')
 
-    const keyInput = screen.getByPlaceholderText('sk-…') as HTMLInputElement
+    const keyInput = screen.getByTestId('settings-openrouter-api-key') as HTMLInputElement
     await waitFor(() => expect(keyInput).not.toBeDisabled())
     expect(keyInput).toHaveValue('')
     expect(screen.queryByDisplayValue('sk-old')).toBeNull()
-    expect(screen.getByTestId('settings-openrouter-key-status').textContent).toContain(configuredMaskText())
-    expect(screen.getByDisplayValue('https://openrouter.ai/api/v1')).toBeTruthy()
+    expect(keyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
+    expect(screen.queryByTestId('settings-openrouter-key-status')).not.toBeInTheDocument()
 
     await user.clear(keyInput)
     await user.type(keyInput, 'sk-c4c-replacement-key')
@@ -426,7 +449,6 @@ describe('ui-app SettingsPanel', () => {
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
-    expect(storeSet).not.toHaveBeenCalledWith('openRouterBaseUrl', expect.anything())
     expect((globalThis as any).openRouterCredential.update).toHaveBeenCalledWith({
       apiKey: 'sk-c4c-replacement-key',
     })
@@ -450,8 +472,9 @@ describe('ui-app SettingsPanel', () => {
     const openAIKeyInput = screen.getByTestId('settings-openai-responses-api-key') as HTMLInputElement
     await waitFor(() => expect(openAIKeyInput).not.toBeDisabled())
     expect(panel.textContent).toContain(t('settings.experimentalChat.openAIResponses.desc'))
-    expect(screen.getByTestId('settings-openai-responses-key-status').textContent).toContain(configuredMaskText())
     expect(openAIKeyInput).toHaveValue('')
+    expect(openAIKeyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
+    expect(screen.queryByTestId('settings-openai-responses-key-status')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('sk-openai-old')).toBeNull()
 
     await user.type(openAIKeyInput, 'sk-openai-replacement')
@@ -479,9 +502,10 @@ describe('ui-app SettingsPanel', () => {
     const googleKeyInput = screen.getByTestId('settings-google-ai-studio-api-key') as HTMLInputElement
     await waitFor(() => expect(googleKeyInput).not.toBeDisabled())
     expect(panel.textContent).toContain(t('settings.experimentalChat.googleAIStudio.desc'))
-    expect(panel.textContent).toContain(t('settings.experimentalChat.googleAIStudio.note'))
-    expect(screen.getByTestId('settings-google-ai-studio-key-status').textContent).toContain(configuredMaskText())
+    expect(screen.queryByTestId('settings-google-ai-studio-model')).not.toBeInTheDocument()
     expect(googleKeyInput).toHaveValue('')
+    expect(googleKeyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
+    expect(screen.queryByTestId('settings-google-ai-studio-key-status')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('AIza-old-google-key')).toBeNull()
 
     await user.type(googleKeyInput, 'AIza-google-replacement')
@@ -509,8 +533,9 @@ describe('ui-app SettingsPanel', () => {
     const anthropicKeyInput = screen.getByTestId('settings-anthropic-api-key') as HTMLInputElement
     await waitFor(() => expect(anthropicKeyInput).not.toBeDisabled())
     expect(panel.textContent).toContain(t('settings.experimentalChat.anthropic.desc'))
-    expect(screen.getByTestId('settings-anthropic-key-status').textContent).toContain(configuredMaskText())
     expect(anthropicKeyInput).toHaveValue('')
+    expect(anthropicKeyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
+    expect(screen.queryByTestId('settings-anthropic-key-status')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('sk-ant-old-key')).toBeNull()
 
     await user.type(anthropicKeyInput, 'sk-ant-replacement')
@@ -537,8 +562,9 @@ describe('ui-app SettingsPanel', () => {
     const deepSeekKeyInput = screen.getByTestId('settings-deepseek-api-key') as HTMLInputElement
     await waitFor(() => expect(deepSeekKeyInput).not.toBeDisabled())
     expect(panel.textContent).toContain(t('settings.experimentalChat.deepSeek.desc'))
-    expect(screen.getByTestId('settings-deepseek-key-status').textContent).toContain(configuredMaskText())
     expect(deepSeekKeyInput).toHaveValue('')
+    expect(deepSeekKeyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
+    expect(screen.queryByTestId('settings-deepseek-key-status')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('sk-deepseek-old-key')).toBeNull()
 
     await user.type(deepSeekKeyInput, 'sk-deepseek-replacement')
@@ -551,162 +577,103 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).not.toHaveBeenCalledWith('deepSeekApiKey', expect.anything())
   })
 
-  it('applies OpenAI Responses model defaults without enabling chat or publishing models to the main picker', async () => {
+  it('reveals saved API keys on show and hides them again without using generic store reads', async () => {
     const user = userEvent.setup()
-    const dispatched: Event[] = []
-    const originalDispatch = window.dispatchEvent
-    window.dispatchEvent = ((event: Event) => {
-      dispatched.push(event)
-      return originalDispatch.call(window, event)
-    }) as typeof window.dispatchEvent
-    try {
-      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-      await screen.findByText('设置')
-      const modelInput = await screen.findByTestId('settings-openai-responses-model')
-      await waitFor(() => expect(modelInput).not.toBeDisabled())
-      await user.type(modelInput, 'gpt-4.1-mini')
-      await waitFor(() => expect(screen.getByTestId('settings-openai-responses-apply-chat')).not.toBeDisabled())
-      await user.click(screen.getByTestId('settings-openai-responses-apply-chat'))
-
-      expect(globalThis.localStorage?.getItem('starverse.openAIResponsesTextChat.model')).toBe('gpt-4.1-mini')
-      expect(globalThis.localStorage?.getItem('starverse.openAIResponsesTextChat.enabled')).toBeNull()
-      expect(screen.getByTestId('settings-openai-responses-chat-apply-result').textContent).toContain('Enable it explicitly in Console')
-      const customEvents = dispatched.filter((event) => event.type === 'settings:openAIResponsesTextChatUpdated') as CustomEvent[]
-      expect(customEvents.at(-1)?.detail).toEqual({ model: 'gpt-4.1-mini' })
-      expect(document.body.textContent).not.toContain('endpoint picker')
-    } finally {
-      window.dispatchEvent = originalDispatch
-    }
-  })
-
-  it('applies Google AI Studio model defaults without enabling chat or publishing models to the main picker', async () => {
-    const user = userEvent.setup()
-    const dispatched: Event[] = []
-    const originalDispatch = window.dispatchEvent
-    window.dispatchEvent = ((event: Event) => {
-      dispatched.push(event)
-      return originalDispatch.call(window, event)
-    }) as typeof window.dispatchEvent
-    try {
-      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-      await screen.findByText('设置')
-      const modelInput = await screen.findByTestId('settings-google-ai-studio-model')
-      await waitFor(() => expect(modelInput).not.toBeDisabled())
-      await user.type(modelInput, 'gemini-2.5-flash')
-      await waitFor(() => expect(screen.getByTestId('settings-google-ai-studio-apply-chat')).not.toBeDisabled())
-      await user.click(screen.getByTestId('settings-google-ai-studio-apply-chat'))
-
-      expect(globalThis.localStorage?.getItem('starverse.googleAIStudioTextChat.model')).toBe('gemini-2.5-flash')
-      expect(globalThis.localStorage?.getItem('starverse.googleAIStudioTextChat.enabled')).toBeNull()
-      expect(screen.getByTestId('settings-google-ai-studio-chat-apply-result').textContent).toContain('Enable it explicitly in Console')
-      const customEvents = dispatched.filter((event) => event.type === 'settings:googleAIStudioTextChatUpdated') as CustomEvent[]
-      expect(customEvents.at(-1)?.detail).toEqual({ model: 'gemini-2.5-flash' })
-      expect(document.body.textContent).not.toContain('endpoint picker')
-    } finally {
-      window.dispatchEvent = originalDispatch
-    }
-  })
-
-  it('applies Anthropic model defaults without enabling chat or publishing models to the main picker', async () => {
-    const user = userEvent.setup()
-    const dispatched: Event[] = []
-    const originalDispatch = window.dispatchEvent
-    window.dispatchEvent = ((event: Event) => {
-      dispatched.push(event)
-      return originalDispatch.call(window, event)
-    }) as typeof window.dispatchEvent
-    try {
-      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-      await screen.findByText('设置')
-      const modelInput = await screen.findByTestId('settings-anthropic-model')
-      await waitFor(() => expect(modelInput).not.toBeDisabled())
-      await user.type(modelInput, 'claude-sonnet-4-5')
-      await waitFor(() => expect(screen.getByTestId('settings-anthropic-apply-chat')).not.toBeDisabled())
-      await user.click(screen.getByTestId('settings-anthropic-apply-chat'))
-
-      expect(globalThis.localStorage?.getItem('starverse.anthropicMessagesTextChat.model')).toBe('claude-sonnet-4-5')
-      expect(globalThis.localStorage?.getItem('starverse.anthropicMessagesTextChat.enabled')).toBeNull()
-      expect(screen.getByTestId('settings-anthropic-chat-apply-result').textContent).toContain('Enable it explicitly in Console')
-      const customEvents = dispatched.filter((event) => event.type === 'settings:anthropicMessagesTextChatUpdated') as CustomEvent[]
-      expect(customEvents.at(-1)?.detail).toEqual({ model: 'claude-sonnet-4-5' })
-      expect(document.body.textContent).not.toContain('endpoint picker')
-    } finally {
-      window.dispatchEvent = originalDispatch
-    }
-  })
-
-  it('applies DeepSeek model defaults without enabling chat or publishing models to the main picker', async () => {
-    const user = userEvent.setup()
-    const dispatched: Event[] = []
-    const originalDispatch = window.dispatchEvent
-    window.dispatchEvent = ((event: Event) => {
-      dispatched.push(event)
-      return originalDispatch.call(window, event)
-    }) as typeof window.dispatchEvent
-    try {
-      render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-      await screen.findByText('设置')
-      const modelInput = await screen.findByTestId('settings-deepseek-model')
-      await waitFor(() => expect(modelInput).not.toBeDisabled())
-      await user.type(modelInput, 'deepseek-chat')
-      await waitFor(() => expect(screen.getByTestId('settings-deepseek-apply-chat')).not.toBeDisabled())
-      await user.click(screen.getByTestId('settings-deepseek-apply-chat'))
-
-      expect(globalThis.localStorage?.getItem('starverse.deepSeekTextChat.model')).toBe('deepseek-chat')
-      expect(globalThis.localStorage?.getItem('starverse.deepSeekTextChat.enabled')).toBeNull()
-      expect(screen.getByTestId('settings-deepseek-chat-apply-result').textContent).toContain('Enable it explicitly in Console')
-      const customEvents = dispatched.filter((event) => event.type === 'settings:deepSeekTextChatUpdated') as CustomEvent[]
-      expect(customEvents.at(-1)?.detail).toEqual({ model: 'deepseek-chat' })
-      expect(document.body.textContent).not.toContain('endpoint picker')
-      expect(document.body.textContent).toContain(t('settings.experimentalChat.deepSeek.note'))
-    } finally {
-      window.dispatchEvent = originalDispatch
-    }
-  })
-
-  it('shows OpenRouter endpoint metadata without adding endpoint registry controls', async () => {
-    ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock({
-      apiKeyConfigured: true,
-      baseUrlConfigured: true,
-      displayBaseUrl: 'https://openrouter.ai/api/v1',
-    })
-
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
     await screen.findByText('设置')
 
-    const endpointMetadata = await screen.findByTestId('settings-openrouter-endpoint-metadata')
-    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain(t('settings.openrouter.endpointCustom'))
-    expect(endpointMetadata.textContent).toContain(t('settings.openrouter.endpointNameCustom'))
-    expect(endpointMetadata.textContent).toContain('https://openrouter.ai/api/v1')
-    expect(endpointMetadata.textContent).not.toContain('Authorization')
-    expect(endpointMetadata.textContent).not.toContain('Bearer')
-    expect(endpointMetadata.textContent).not.toContain('sk-')
-    expect(screen.queryByLabelText(/endpoint/i)).toBeNull()
-    expect(screen.queryByLabelText(/profile/i)).toBeNull()
+    const cases = [
+      {
+        input: screen.getByTestId('settings-openrouter-api-key') as HTMLInputElement,
+        toggle: screen.getByTestId('settings-openrouter-toggle-key-visibility'),
+        bridge: (globalThis as any).openRouterCredential,
+        value: 'sk-openrouter-saved',
+      },
+      {
+        input: screen.getByTestId('settings-openai-responses-api-key') as HTMLInputElement,
+        toggle: screen.getByTestId('settings-openai-responses-toggle-key-visibility'),
+        bridge: (globalThis as any).openAIResponsesCredential,
+        value: 'sk-openai-responses-saved',
+      },
+      {
+        input: screen.getByTestId('settings-google-ai-studio-api-key') as HTMLInputElement,
+        toggle: screen.getByTestId('settings-google-ai-studio-toggle-key-visibility'),
+        bridge: (globalThis as any).googleAIStudioCredential,
+        value: 'AIza-google-saved',
+      },
+      {
+        input: screen.getByTestId('settings-anthropic-api-key') as HTMLInputElement,
+        toggle: screen.getByTestId('settings-anthropic-toggle-key-visibility'),
+        bridge: (globalThis as any).anthropicCredential,
+        value: 'sk-ant-saved',
+      },
+      {
+        input: screen.getByTestId('settings-deepseek-api-key') as HTMLInputElement,
+        toggle: screen.getByTestId('settings-deepseek-toggle-key-visibility'),
+        bridge: (globalThis as any).deepSeekCredential,
+        value: 'sk-deepseek-saved',
+      },
+    ] as const
+
+    for (const item of cases) {
+      await waitFor(() => expect(item.input).not.toBeDisabled())
+      expect(item.input.type).toBe('password')
+      expect(item.input).toHaveValue('')
+
+      await user.click(item.toggle)
+
+      await waitFor(() => expect(item.input).toHaveValue(item.value))
+      expect(item.input.type).toBe('text')
+      expect(item.toggle.textContent).toContain(t('common.hide'))
+      expect(item.bridge.reveal).toHaveBeenCalledTimes(1)
+
+      await user.click(item.toggle)
+
+      expect(item.input.type).toBe('password')
+      expect(item.input).toHaveValue('')
+      expect(item.input.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
+      expect(item.toggle.textContent).toContain(t('common.show'))
+    }
+
+    const storeGet = (globalThis as any).electronStore.get as ReturnType<typeof vi.fn>
+    expect(storeGet).not.toHaveBeenCalledWith('openRouterApiKey')
+    expect(storeGet).not.toHaveBeenCalledWith('openAIResponsesApiKey')
+    expect(storeGet).not.toHaveBeenCalledWith('googleAIStudioApiKey')
+    expect(storeGet).not.toHaveBeenCalledWith('anthropicApiKey')
+    expect(storeGet).not.toHaveBeenCalledWith('deepSeekApiKey')
   })
 
-  it('shows official endpoint metadata while leaving custom base URL input empty', async () => {
-    ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock({
-      apiKeyConfigured: true,
-      baseUrlConfigured: false,
-      displayBaseUrl: '',
-    })
+  it('removes cloud experimental manual model inputs and cleans legacy model keys while preserving credentials', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
+    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
+    globalThis.localStorage?.setItem('starverse.anthropicMessagesTextChat.model', 'claude-sonnet-4-5')
+    globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
 
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
     await screen.findByText('设置')
-    const endpointMetadata = await screen.findByTestId('settings-openrouter-endpoint-metadata')
-    const baseUrlInput = screen.getByPlaceholderText('https://openrouter.ai/api/v1') as HTMLInputElement
+    expect(screen.getByTestId('settings-openai-responses-api-key')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-google-ai-studio-api-key')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-anthropic-api-key')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-deepseek-api-key')).toBeInTheDocument()
 
-    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain(t('settings.openrouter.endpointOfficial'))
-    expect(endpointMetadata.textContent).toContain(t('settings.openrouter.endpointNameOfficial'))
-    expect(endpointMetadata.textContent).toContain('https://openrouter.ai/api/v1')
-    expect(baseUrlInput).toHaveValue('')
+    expect(screen.queryByTestId('settings-openai-responses-model')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-google-ai-studio-model')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-anthropic-model')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-deepseek-model')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-openai-responses-apply-chat')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-google-ai-studio-apply-chat')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-anthropic-apply-chat')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-deepseek-apply-chat')).not.toBeInTheDocument()
+
+    await waitFor(() => {
+      expect(globalThis.localStorage?.getItem('starverse.openAIResponsesTextChat.model')).toBeNull()
+      expect(globalThis.localStorage?.getItem('starverse.googleAIStudioTextChat.model')).toBeNull()
+      expect(globalThis.localStorage?.getItem('starverse.anthropicMessagesTextChat.model')).toBeNull()
+      expect(globalThis.localStorage?.getItem('starverse.deepSeekTextChat.model')).toBeNull()
+    })
+    expect(document.body.textContent).not.toContain('endpoint picker')
   })
 
 
@@ -782,59 +749,6 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogFreshnessMs', 15 * 60 * 1000)
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogRetentionMs', 'never')
     expect(JSON.stringify(storeSet.mock.calls.filter(([key]) => String(key).startsWith('openRouterCatalog')))).not.toContain('sk-')
-  })
-
-  it('updates base URL through the OpenRouter credential bridge without requiring API key re-entry', async () => {
-    const user = userEvent.setup()
-    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-    await screen.findByText('设置')
-    const baseUrlInput = await screen.findByDisplayValue('https://openrouter.ai/api/v1') as HTMLInputElement
-    await waitFor(() => expect(baseUrlInput).not.toBeDisabled())
-    await user.clear(baseUrlInput)
-    await user.type(baseUrlInput, 'https://openrouter.ai/api/v1/')
-    await user.click(screen.getByRole('button', { name: '保存' }))
-
-    expect((globalThis as any).openRouterCredential.update).toHaveBeenCalledWith({
-      baseUrl: 'https://openrouter.ai/api/v1/',
-    })
-    const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
-    expect(storeSet).not.toHaveBeenCalledWith('openRouterBaseUrl', expect.anything())
-    expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
-  })
-
-  it('does not place invalid stored base URL metadata into the editable input', async () => {
-    const user = userEvent.setup()
-    ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock({
-      apiKeyConfigured: true,
-      baseUrlConfigured: true,
-      baseUrlInvalid: true,
-      displayBaseUrl: 'https://user:pass@?token=sk-hidden',
-    })
-
-    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-    await screen.findByText('设置')
-    await waitFor(() => expect((globalThis as any).openRouterCredential.getStatus).toHaveBeenCalled())
-
-    const baseUrlInput = screen.getByPlaceholderText('https://openrouter.ai/api/v1') as HTMLInputElement
-    await waitFor(() => expect(baseUrlInput).not.toBeDisabled())
-    expect(baseUrlInput).toHaveValue('')
-    expect(screen.getByTestId('settings-openrouter-endpoint-status').textContent).toContain(t('settings.openrouter.endpointInvalidCustom'))
-    expect(screen.getByTestId('settings-openrouter-endpoint-warning').textContent).toContain(t('settings.openrouter.endpointCustomBaseUrlInvalid'))
-    expect(screen.queryByDisplayValue('[invalid-url]')).toBeNull()
-    expect(screen.queryByDisplayValue('https://user:pass@?token=sk-hidden')).toBeNull()
-    expect(screen.getByTestId('settings-openrouter-endpoint-metadata').textContent).not.toContain('user:pass')
-    expect(screen.getByTestId('settings-openrouter-endpoint-metadata').textContent).not.toContain('token=')
-
-    await fireEvent.update(baseUrlInput, 'https://openrouter.ai/api/v1')
-    await user.click(screen.getByRole('button', { name: '保存' }))
-
-    expect((globalThis as any).openRouterCredential.update).toHaveBeenCalledWith({
-      baseUrl: 'https://openrouter.ai/api/v1',
-    })
-    expect(JSON.stringify(document.body.textContent)).not.toContain('user:pass')
-    expect(JSON.stringify(document.body.textContent)).not.toContain('sk-hidden')
   })
 
   it('emits settings:openRouterConnectionUpdated after save without API key in payload', async () => {
@@ -1048,19 +962,16 @@ describe('ui-app SettingsPanel', () => {
       expect(result.textContent).not.toContain('Bearer')
       expect(document.body.textContent).toContain(t('settings.localEndpoint.desc'))
 
-      const select = screen.getByTestId('settings-local-endpoint-probed-model-select') as HTMLSelectElement
-      await waitFor(() => expect(select.value).toBe('local-model-a'))
-      await user.selectOptions(select, 'local-model-b')
-      await user.click(screen.getByTestId('settings-local-endpoint-apply-chat'))
+      expect(screen.queryByTestId('settings-local-endpoint-probed-model-select')).not.toBeInTheDocument()
+      expect(screen.queryByTestId('settings-local-endpoint-manual-model')).not.toBeInTheDocument()
+      await user.click(screen.getByTestId('settings-local-endpoint-save-url'))
 
       expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.url')).toBe('http://localhost:1234/v1')
-      expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBe('local-model-b')
+      expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBeNull()
       expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.enabled')).toBeNull()
-      expect(screen.getByTestId('settings-local-endpoint-chat-note').textContent).toContain(t('settings.localEndpoint.note'))
       expect(settingsUpdated).toHaveBeenCalledTimes(1)
       expect((settingsUpdated.mock.calls[0]?.[0] as CustomEvent).detail).toEqual({
         endpointUrl: 'http://localhost:1234/v1',
-        model: 'local-model-b',
       })
 
       expect((globalThis as any).electronAPI.startOpenRouterStream).toBeUndefined()
@@ -1072,7 +983,7 @@ describe('ui-app SettingsPanel', () => {
     }
   })
 
-  it('preserves manual LocalEndpoint model override when model listing is unavailable', async () => {
+  it('does not expose manual LocalEndpoint model override when endpoint probe fails', async () => {
     const user = userEvent.setup()
     ;(globalThis as any).localEndpointDiagnostics = createLocalEndpointDiagnosticsMock({
       ok: false,
@@ -1092,19 +1003,18 @@ describe('ui-app SettingsPanel', () => {
     await user.click(screen.getByTestId('settings-local-endpoint-probe'))
 
     await screen.findByTestId('settings-local-endpoint-probe-error')
-    const manualInput = screen.getByTestId('settings-local-endpoint-manual-model') as HTMLInputElement
-    await user.type(manualInput, 'manual-local-model')
-    await user.click(screen.getByTestId('settings-local-endpoint-apply-chat'))
+    expect(screen.queryByTestId('settings-local-endpoint-manual-model')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-local-endpoint-apply-chat')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('settings-local-endpoint-save-url'))
 
     expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.url')).toBe('http://localhost:4321/v1')
-    expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBe('manual-local-model')
+    expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBeNull()
     expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.enabled')).toBeNull()
-    expect(screen.getByTestId('settings-local-endpoint-chat-note').textContent).toContain(t('settings.localEndpoint.manualNote'))
     expect(document.body.textContent).not.toContain('Authorization')
     expect(document.body.textContent).not.toContain('Bearer')
   })
 
-  it('shows safe model-list failure status while preserving manual LocalEndpoint model entry', async () => {
+  it('shows safe model-list failure status without exposing manual LocalEndpoint model entry', async () => {
     const user = userEvent.setup()
     ;(globalThis as any).localEndpointDiagnostics = createLocalEndpointDiagnosticsMock({
       ok: true,
@@ -1140,11 +1050,10 @@ describe('ui-app SettingsPanel', () => {
     expect(await screen.findByTestId('settings-local-endpoint-probe-models')).toHaveTextContent(
       tf('settings.localEndpoint.modelListFailed', { message: 'Model list failed safely.' }),
     )
-    const manualInput = screen.getByTestId('settings-local-endpoint-manual-model') as HTMLInputElement
-    await user.type(manualInput, 'manual-after-list-failure')
-    await user.click(screen.getByTestId('settings-local-endpoint-apply-chat'))
+    expect(screen.queryByTestId('settings-local-endpoint-manual-model')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-local-endpoint-apply-chat')).not.toBeInTheDocument()
 
-    expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBe('manual-after-list-failure')
+    expect(globalThis.localStorage?.getItem('starverse.localEndpointTextChat.model')).toBeNull()
     expect(document.body.textContent).not.toContain('Authorization')
     expect(document.body.textContent).not.toContain('Bearer')
   })
@@ -1190,7 +1099,7 @@ describe('ui-app SettingsPanel', () => {
     await screen.findByText('设置')
 
     const clearButtons = screen.getAllByRole('button', { name: '清除' })
-    expect(clearButtons.length).toBeGreaterThanOrEqual(2)
+    expect(clearButtons.length).toBeGreaterThanOrEqual(1)
 
     await user.click(clearButtons[0])
 
@@ -1198,7 +1107,6 @@ describe('ui-app SettingsPanel', () => {
     expect(storeDelete).not.toHaveBeenCalledWith('openRouterApiKey')
     expect((globalThis as any).openRouterCredential.clear).toHaveBeenCalledTimes(1)
     await waitFor(() => expect(screen.getByTestId('settings-openrouter-key-status').textContent).toContain(t('settings.credentials.notConfigured')))
-    expect(screen.getByDisplayValue('https://openrouter.ai/api/v1')).toBeTruthy()
   })
 
   it('persists debug echo toggle in localStorage (dev-only control)', async () => {

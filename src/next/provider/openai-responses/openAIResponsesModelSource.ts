@@ -4,6 +4,15 @@ import {
   type ProviderModelCapabilitySeed,
   type ProviderModelSourceKind as CommonProviderModelSourceKind,
 } from '../modelAvailabilityEnvelope'
+import {
+  buildNetworkErrorEnvelope,
+  providerNetworkFailureMessage,
+  type NetworkErrorEnvelope,
+} from '../../../shared/network/networkErrorEnvelope'
+import {
+  getOpenAIResponsesReasoningSpec,
+  isKnownOpenAIResponsesNonReasoningModel,
+} from './openaiResponsesReasoningPolicy'
 
 export const OPENAI_RESPONSES_PROVIDER_KEY = 'openai_responses' as const
 export const OPENAI_RESPONSES_ENDPOINT_ID = 'openai-responses-official' as const
@@ -81,6 +90,7 @@ export type OpenAIModelAvailabilityFailure = Readonly<{
     | 'network_error'
   message: string
   httpStatus?: number
+  networkError?: NetworkErrorEnvelope
 }>
 
 export type OpenAIModelAvailabilityResult =
@@ -175,9 +185,11 @@ function normalizeBaseUrl(raw: string | null | undefined): string {
 }
 
 function safeHttpErrorMessage(status: number): string {
-  if (status === 401 || status === 403) return 'OpenAI Responses model source credential was rejected.'
+  if (status === 401) return 'OpenAI Responses model source credential was rejected.'
+  if (status === 403) return 'OpenAI Responses model source access was forbidden.'
+  if (status === 404) return 'OpenAI Responses model source endpoint or model list was not found.'
   if (status === 429) return 'OpenAI Responses model source rate limit was reached.'
-  return 'OpenAI Responses model source request failed safely.'
+  return `OpenAI Responses model source returned HTTP ${status}.`
 }
 
 async function readJsonSafely(response: Response): Promise<unknown> {
@@ -199,6 +211,7 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): OpenAIPr
 
   const ownedBy = asTrimmedString(record.owned_by) ?? undefined
   const createdAtSec = asSafeCreatedAtSec(record.created)
+  const capabilitySeed = responsesTextCapabilitySeed(id)
   return {
     ...availabilityBase({
       nativeModelId: id,
@@ -208,6 +221,7 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): OpenAIPr
     }),
     ...(ownedBy ? { ownedBy } : {}),
     ...(createdAtSec !== undefined ? { createdAtSec } : {}),
+    ...(capabilitySeed ? { capabilitySeed } : {}),
     providerSpecific: {
       ...(ownedBy ? { ownedBy } : {}),
       ...(createdAtSec !== undefined ? { createdAtSec } : {}),
@@ -252,11 +266,19 @@ function curatedWarning(): string {
   return 'OpenAI /models reports availability/basic ownership only; Responses capability hints are Starverse curated metadata.'
 }
 
-function responsesTextCapabilitySeed(): NonNullable<OpenAIProviderModelAvailability['capabilitySeed']> {
+function responsesTextCapabilitySeed(modelId: string): NonNullable<OpenAIProviderModelAvailability['capabilitySeed']> | null {
+  const reasoningSpec = getOpenAIResponsesReasoningSpec(modelId)
+  const reasoning = reasoningSpec
+    ? 'supported'
+    : isKnownOpenAIResponsesNonReasoningModel(modelId)
+      ? 'unsupported'
+      : null
+  if (!reasoning) return null
   return {
     textChat: true,
     responsesApi: true,
-    reasoning: 'unknown',
+    reasoning,
+    ...(reasoningSpec ? { reasoningEffort: reasoningSpec.efforts } : {}),
     imageInput: 'unknown',
     fileInput: 'unknown',
     functionCalling: 'unknown',
@@ -267,6 +289,8 @@ function responsesTextCapabilitySeed(): NonNullable<OpenAIProviderModelAvailabil
 }
 
 export function getOpenAICuratedModelAvailabilitySeeds(observedAtMs: number): OpenAIProviderModelAvailability[] {
+  const gpt41Seed = responsesTextCapabilitySeed('gpt-4.1')
+  const gpt41MiniSeed = responsesTextCapabilitySeed('gpt-4.1-mini')
   return [
     {
       ...availabilityBase({
@@ -277,7 +301,7 @@ export function getOpenAICuratedModelAvailabilitySeeds(observedAtMs: number): Op
         warnings: [curatedWarning()],
       }),
       displayName: 'GPT-4.1',
-      capabilitySeed: responsesTextCapabilitySeed(),
+      ...(gpt41Seed ? { capabilitySeed: gpt41Seed } : {}),
       providerSpecific: {},
     },
     {
@@ -289,7 +313,7 @@ export function getOpenAICuratedModelAvailabilitySeeds(observedAtMs: number): Op
         warnings: [curatedWarning()],
       }),
       displayName: 'GPT-4.1 mini',
-      capabilitySeed: responsesTextCapabilitySeed(),
+      ...(gpt41MiniSeed ? { capabilitySeed: gpt41MiniSeed } : {}),
       providerSpecific: {},
     },
   ]
@@ -382,7 +406,14 @@ export async function listOpenAIProviderModelAvailability(
       signal: input.signal ?? undefined,
       redirect: 'error',
     })
-  } catch {
+  } catch (error) {
+    const networkError = buildNetworkErrorEnvelope({
+      requestPurpose: 'provider_availability',
+      providerId: OPENAI_RESPONSES_PROVIDER_KEY,
+      transportKind: 'electron_session_fetch',
+      error,
+      abortReason: input.signal?.aborted ? input.signal.reason ?? 'aborted' : undefined,
+    })
     return {
       ok: false,
       providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
@@ -390,12 +421,19 @@ export async function listOpenAIProviderModelAvailability(
       profileId: OPENAI_RESPONSES_PROFILE_ID,
       observedAtMs,
       code: 'network_error',
-      message: 'OpenAI Responses model source request failed safely.',
+      message: providerNetworkFailureMessage('OpenAI Responses model source', networkError),
+      networkError,
     }
   }
 
   const payload = await readJsonSafely(response)
   if (!response.ok) {
+    const networkError = buildNetworkErrorEnvelope({
+      requestPurpose: 'provider_availability',
+      providerId: OPENAI_RESPONSES_PROVIDER_KEY,
+      transportKind: 'electron_session_fetch',
+      httpStatus: response.status,
+    })
     return {
       ok: false,
       providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
@@ -405,6 +443,7 @@ export async function listOpenAIProviderModelAvailability(
       code: 'http_error',
       message: safeHttpErrorMessage(response.status),
       httpStatus: response.status,
+      networkError,
     }
   }
 

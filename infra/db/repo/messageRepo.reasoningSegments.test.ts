@@ -417,4 +417,353 @@ describe('MessageRepo.appendReasoningDetailSegments (aggregation consistency)', 
     expect(rebuilt).toHaveLength(1)
     expect((rebuilt[0] as any).data).toBe('encrypted-chunk-1encrypted-chunk-2')
   })
+
+  it('finalizeReasoningDisplayBlocks marks ordered display blocks without changing replay order', () => {
+    const now = Date.now()
+    db.prepare(`
+      INSERT INTO asset (id, hash, mime, width, height, bytes, path, created_at, updated_at)
+      VALUES ('asset_reasoning_image', 'hash_reasoning_image', 'image/png', 16, 16, 128, 'reasoning-image.png', @now, @now)
+    `).run({ now })
+
+    const append = repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId: 'display-1',
+          ordinal: 1,
+          type: 'text',
+          text: 'first',
+          semanticRole: 'thought',
+          providerKey: 'google-ai-studio',
+          sourceEventType: 'message.reasoning_display_block',
+        },
+        {
+          blockId: 'display-2',
+          ordinal: 2,
+          type: 'image',
+          url: 'asset://reasoning-image',
+          assetId: 'asset_reasoning_image',
+          mimeType: 'image/png',
+          providerKey: 'google-ai-studio',
+          sourceEventType: 'message.reasoning_display_block',
+        },
+        {
+          blockId: 'display-3',
+          ordinal: 3,
+          type: 'text',
+          text: 'second',
+          semanticRole: 'thought',
+          providerKey: 'google-ai-studio',
+          sourceEventType: 'message.reasoning_display_block',
+        },
+      ],
+    })
+
+    expect(append).toMatchObject({ ok: true, received: 3, inserted: 3, ignored: 0 })
+
+    const finalize = repo.finalizeReasoningDisplayBlocks({ messageId: 'm1' })
+    expect(finalize).toMatchObject({ ok: true, finalized: 3 })
+    expect(finalize.finalAt).toBeGreaterThan(0)
+
+    const rows = repo.listReasoningDisplayBlocksByMessageIds({ messageIds: ['m1'] })
+    expect(rows.map((row) => row.ordinal)).toEqual([1, 2, 3])
+    expect(rows.map((row) => row.type)).toEqual(['text', 'image', 'text'])
+    expect(rows[1]?.assetId).toBe('asset_reasoning_image')
+    expect(rows.every((row) => row.finalAt === finalize.finalAt)).toBe(true)
+  })
+
+  it('upserts reasoning display blocks by blockId while keeping raw display rows unique', () => {
+    const first = repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId: 'openai-summary-part-0',
+          ordinal: 0,
+          type: 'text',
+          text: "I'm",
+          semanticRole: 'summary',
+          providerKey: 'openai-responses',
+          sourceEventType: 'response.reasoning_summary_text.delta',
+        },
+      ],
+    })
+
+    expect(first).toMatchObject({ ok: true, received: 1, inserted: 1, updated: 0, ignored: 0 })
+
+    const second = repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId: 'openai-summary-part-0',
+          ordinal: 0,
+          type: 'text',
+          text: "I'm considering",
+          semanticRole: 'summary',
+          providerKey: 'openai-responses',
+          sourceEventType: 'response.reasoning_summary_text.delta',
+        },
+      ],
+    })
+
+    expect(second).toMatchObject({ ok: true, received: 1, inserted: 0, updated: 1, ignored: 0 })
+
+    const rows = repo.listReasoningDisplayBlocksByMessageIds({ messageIds: ['m1'] })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      blockId: 'openai-summary-part-0',
+      ordinal: 0,
+      type: 'text',
+      text: "I'm considering",
+      semanticRole: 'summary',
+      providerKey: 'openai-responses',
+      sourceEventType: 'response.reasoning_summary_text.delta',
+    })
+  })
+
+  it('reloads a single continuous DeepSeek reasoning display block after repeated upserts', () => {
+    repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId: 'm1:deepseek:0:reasoning_content',
+          ordinal: 0,
+          type: 'text',
+          text: 'I am',
+          semanticRole: 'reasoning',
+          providerKey: 'deepseek',
+          sourceEventType: 'reasoning_content',
+        },
+      ],
+    })
+
+    const second = repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId: 'm1:deepseek:0:reasoning_content',
+          ordinal: 0,
+          type: 'text',
+          text: 'I am thinking.',
+          semanticRole: 'reasoning',
+          providerKey: 'deepseek',
+          sourceEventType: 'reasoning_content',
+        },
+      ],
+    })
+
+    expect(second).toMatchObject({ ok: true, received: 1, inserted: 0, updated: 1, ignored: 0 })
+
+    const rows = repo.listReasoningDisplayBlocksByMessageIds({ messageIds: ['m1'] })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      blockId: 'm1:deepseek:0:reasoning_content',
+      ordinal: 0,
+      type: 'text',
+      text: 'I am thinking.',
+      semanticRole: 'reasoning',
+      providerKey: 'deepseek',
+      sourceEventType: 'reasoning_content',
+    })
+  })
+
+  it('reloads a single continuous Gemini thought summary display block after repeated upserts', () => {
+    const blockId = 'm1:reasoning-display:google_ai_studio:gemini_generate_content:0:thought_summary'
+    repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId,
+          ordinal: 0,
+          type: 'text',
+          text: 'I am',
+          semanticRole: 'thought',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'candidate.part.thought.text',
+        },
+      ],
+    })
+
+    const second = repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId,
+          ordinal: 0,
+          type: 'text',
+          text: 'I am thinking.',
+          semanticRole: 'thought',
+          providerKey: 'google_ai_studio',
+          sourceEventType: 'candidate.part.thought.text',
+        },
+      ],
+    })
+
+    expect(second).toMatchObject({ ok: true, received: 1, inserted: 0, updated: 1, ignored: 0 })
+
+    const rows = repo.listReasoningDisplayBlocksByMessageIds({ messageIds: ['m1'] })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      blockId,
+      ordinal: 0,
+      type: 'text',
+      text: 'I am thinking.',
+      semanticRole: 'thought',
+      providerKey: 'google_ai_studio',
+      sourceEventType: 'candidate.part.thought.text',
+    })
+  })
+
+  it('reloads a single continuous Anthropic thinking display block after repeated upserts', () => {
+    const blockId = 'm1:reasoning-display:anthropic:anthropic_messages:0:thinking'
+    repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId,
+          ordinal: 0,
+          type: 'text',
+          text: 'I am',
+          semanticRole: 'thinking',
+          providerKey: 'anthropic',
+          sourceEventType: 'content_block_delta.thinking_delta',
+        },
+      ],
+    })
+
+    const second = repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId,
+          ordinal: 0,
+          type: 'text',
+          text: 'I am thinking.',
+          semanticRole: 'thinking',
+          providerKey: 'anthropic',
+          sourceEventType: 'content_block_delta.thinking_delta',
+        },
+      ],
+    })
+
+    expect(second).toMatchObject({ ok: true, received: 1, inserted: 0, updated: 1, ignored: 0 })
+
+    const rows = repo.listReasoningDisplayBlocksByMessageIds({ messageIds: ['m1'] })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      blockId,
+      ordinal: 0,
+      type: 'text',
+      text: 'I am thinking.',
+      semanticRole: 'thinking',
+      providerKey: 'anthropic',
+      sourceEventType: 'content_block_delta.thinking_delta',
+    })
+  })
+
+  it('rejects reasoning display blocks without providerKey', () => {
+    expect(() => repo.appendReasoningDisplayBlocks({
+      messageId: 'm1',
+      blocks: [
+        {
+          blockId: 'display-missing-provider',
+          ordinal: 1,
+          type: 'text',
+          text: 'orphan display block',
+          semanticRole: 'thought',
+          sourceEventType: 'message.reasoning_display_block',
+        } as any,
+      ],
+    })).toThrow('providerKey is required')
+  })
+})
+
+describe('MessageRepo provider native content persistence', () => {
+  let db: Database
+  let repo: MessageRepo
+
+  beforeEach(() => {
+    db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    repo = new MessageRepo(db)
+    insertConvo(db, 'c1')
+    insertMessage(db, 'c1', 'm1')
+  })
+
+  it('upserts and lists final Gemini native content without losing thoughtSignature', () => {
+    const snapshot = {
+      providerKey: 'google_ai_studio' as const,
+      sourceApi: 'gemini_generate_content' as const,
+      snapshotKey: 'candidate:0',
+      candidateIndex: 0,
+      status: 'final' as const,
+      content: {
+        role: 'model',
+        parts: [
+          { text: 'thinking', thought: true, thoughtSignature: 'sig-1' },
+          { functionCall: { name: 'lookup', args: { q: 'x' } }, thought_signature: 'sig-2' },
+          { text: 'answer' },
+        ],
+      },
+      finishReason: 'STOP',
+      usageMetadata: { totalTokenCount: 12, thoughtsTokenCount: 4 },
+      modelVersion: 'gemini-test',
+    }
+
+    const result = repo.upsertProviderNativeContent({ messageId: 'm1', snapshot })
+    expect(result).toEqual({ ok: true, status: 'final' })
+
+    const rows = repo.listProviderNativeContentsByMessageIds({ messageIds: ['m1'] })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      messageId: 'm1',
+      providerKey: 'google_ai_studio',
+      sourceApi: 'gemini_generate_content',
+      snapshotKey: 'candidate:0',
+      candidateIndex: 0,
+      status: 'final',
+      content: snapshot.content,
+      finishReason: 'STOP',
+      usageMetadata: { totalTokenCount: 12, thoughtsTokenCount: 4 },
+      modelVersion: 'gemini-test',
+    })
+  })
+
+  it('upserts and lists final Anthropic native content without losing signature or redacted data', () => {
+    const snapshot = {
+      providerKey: 'anthropic' as const,
+      sourceApi: 'anthropic_messages' as const,
+      snapshotKey: 'assistant' as const,
+      role: 'assistant' as const,
+      status: 'final' as const,
+      content: [
+        { type: 'thinking', thinking: 'private', signature: 'sig-ant-1' },
+        { type: 'redacted_thinking', data: 'opaque-redacted' },
+        { type: 'tool_use', id: 'toolu_1', name: 'lookup', input: { q: 'x' } },
+        { type: 'text', text: 'answer' },
+      ],
+      model: 'claude-sonnet-4-5',
+      stopReason: 'tool_use',
+      stopSequence: null,
+      usage: { input_tokens: 7, output_tokens: 11 },
+    }
+
+    const result = repo.upsertProviderNativeContent({ messageId: 'm1', snapshot })
+    expect(result).toEqual({ ok: true, status: 'final' })
+
+    const rows = repo.listProviderNativeContentsByMessageIds({ messageIds: ['m1'] })
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      messageId: 'm1',
+      providerKey: 'anthropic',
+      sourceApi: 'anthropic_messages',
+      snapshotKey: 'assistant',
+      role: 'assistant',
+      status: 'final',
+      content: snapshot.content,
+      model: 'claude-sonnet-4-5',
+      stopReason: 'tool_use',
+      stopSequence: null,
+      usage: { input_tokens: 7, output_tokens: 11 },
+    })
+  })
 })

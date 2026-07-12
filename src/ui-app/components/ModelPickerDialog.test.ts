@@ -1,8 +1,10 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
+import { defineComponent, ref } from 'vue'
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
+import { t, tf } from '@/shared/i18n'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 
 function createResult(
@@ -73,6 +75,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -130,7 +133,7 @@ describe('ModelPickerDialog', () => {
             ],
           },
           {
-            providerId: 'anthropic',
+            providerId: 'anthropic_messages',
             providerName: 'Anthropic Messages',
             statusKind: 'credential_missing',
             statusLabel: 'credential missing',
@@ -142,16 +145,18 @@ describe('ModelPickerDialog', () => {
     })
 
     expect(await screen.findByTestId('model-picker-provider-status-openai_responses')).toHaveTextContent('1 model')
-    expect(screen.getByTestId('model-picker-provider-status-anthropic')).toHaveTextContent('credential missing')
+    expect(screen.getByTestId('model-picker-provider-status-anthropic_messages')).toHaveTextContent('credential missing')
     expect(await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')).toHaveTextContent('OpenAI Responses')
 
-    await fireEvent.update(screen.getByTestId('model-picker-provider-filter'), 'anthropic')
+    await user.click(screen.getByTestId('model-picker-provider-select-none'))
+    await user.click(screen.getByTestId('model-picker-provider-filter-anthropic_messages'))
     await waitFor(() => {
       expect(screen.queryByTestId('model-picker-item-openai_responses-gpt-4.1-mini')).toBeNull()
-      expect(screen.getByText('No models found for current search/filter.')).toBeTruthy()
+      expect(screen.getByText(t('errors.modelCatalog.noModelsFound'))).toBeTruthy()
     })
 
-    await fireEvent.update(screen.getByTestId('model-picker-provider-filter'), 'openai_responses')
+    await user.click(screen.getByTestId('model-picker-provider-select-none'))
+    await user.click(screen.getByTestId('model-picker-provider-filter-openai_responses'))
     const openAIItem = await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')
     await user.hover(openAIItem)
     expect(await screen.findByTestId('model-picker-provider-detail')).toHaveTextContent('GPT-4.1 mini')
@@ -162,6 +167,167 @@ describe('ModelPickerDialog', () => {
     const events = view.emitted()
     expect(events.select?.[0]).toEqual([{ providerId: 'openai_responses', modelId: 'gpt-4.1-mini' }, 'GPT-4.1 mini'])
     expect(events.close).toBeTruthy()
+  })
+
+  it('temporarily preserves provider filters and list scroll across close and reopen', async () => {
+    const user = userEvent.setup()
+    const queryFn = vi.fn(async (input: CatalogQueryInput) => {
+      const providerKey = String(input.sourceProviderKey ?? input.providerKey ?? 'openrouter')
+      const modelId = providerKey === 'openai_responses' ? 'gpt-4.1' : 'openrouter-model'
+      const displayName = providerKey === 'openai_responses' ? 'GPT-4.1' : 'OpenRouter Model'
+      return createResult([
+        {
+          providerKey,
+          modelId,
+          modelKey: `${providerKey}::${modelId}`,
+          canonicalSlug: modelId,
+          displayName,
+          description: null,
+          vendor: providerKey,
+          contextLength: 8192,
+          maxOutputTokens: 4096,
+          createdAtSec: 1700000123,
+          pricing: { prompt: null, completion: null, request: null, image: null },
+          capabilities: {
+            reasoning: false,
+            tools: false,
+            structuredOutputs: false,
+            vision: false,
+            longContext: false,
+          },
+        },
+      ])
+    })
+
+    const Wrapper = defineComponent({
+      components: { ModelPickerDialog },
+      setup() {
+        const open = ref(true)
+        return {
+          open,
+          queryFn,
+          close: () => {
+            open.value = false
+          },
+          reopen: () => {
+            open.value = true
+          },
+        }
+      },
+      template: `
+        <button type="button" data-testid="reopen-model-picker" @click="reopen">Reopen</button>
+        <ModelPickerDialog
+          :open="open"
+          selectedProviderId="openrouter"
+          selectedModelId="openrouter-model"
+          :queryFn="queryFn"
+          :debounceMs="0"
+          :providerSources="[
+            {
+              providerId: 'openai_responses',
+              providerName: 'OpenAI Responses',
+              statusKind: 'not_loaded',
+              statusLabel: 'catalog',
+              loading: false,
+              items: [],
+            },
+          ]"
+          @close="close"
+        />
+      `,
+    })
+
+    render(Wrapper)
+
+    await screen.findByTestId('model-picker-item-openrouter-model')
+    await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1')
+
+    await user.click(screen.getByTestId('model-picker-provider-filter-openrouter'))
+    await waitFor(() => {
+      expect(screen.queryByTestId('model-picker-item-openrouter-model')).toBeNull()
+      expect(screen.getByTestId('model-picker-item-openai_responses-gpt-4.1')).toBeTruthy()
+    })
+
+    const list = screen.getByTestId('model-picker-list') as HTMLElement
+    list.scrollTop = 180
+    await fireEvent.scroll(list)
+    await user.click(screen.getByTestId('model-picker-close'))
+    expect(screen.queryByTestId('model-picker-dialog')).toBeNull()
+
+    await user.click(screen.getByTestId('reopen-model-picker'))
+    await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1')
+
+    expect(screen.queryByTestId('model-picker-item-openrouter-model')).toBeNull()
+    expect((screen.getByTestId('model-picker-provider-filter-openrouter') as HTMLInputElement).checked).toBe(false)
+    expect((screen.getByTestId('model-picker-provider-filter-openai_responses') as HTMLInputElement).checked).toBe(true)
+    await waitFor(() => {
+      expect((screen.getByTestId('model-picker-list') as HTMLElement).scrollTop).toBe(180)
+    })
+  })
+
+  it('keeps other catalog provider models visible after OpenRouter is unchecked', async () => {
+    const user = userEvent.setup()
+    const queryFn = vi.fn(async (input: CatalogQueryInput) => {
+      const providerKey = String(input.sourceProviderKey ?? input.providerKey ?? 'openrouter')
+      const modelId = providerKey === 'openrouter'
+        ? 'openrouter-model'
+        : providerKey === 'openai_responses'
+          ? 'gpt-4.1'
+          : 'gemini-2.5-flash'
+      const displayName = providerKey === 'openrouter'
+        ? 'OpenRouter Model'
+        : providerKey === 'openai_responses'
+          ? 'GPT-4.1'
+          : 'Gemini 2.5 Flash'
+      return createResult([
+        {
+          providerKey,
+          modelId,
+          modelKey: `${providerKey}::${modelId}`,
+          canonicalSlug: modelId,
+          displayName,
+          description: null,
+          vendor: providerKey,
+          contextLength: 8192,
+          maxOutputTokens: 4096,
+          createdAtSec: 1700000123,
+          pricing: { prompt: null, completion: null, request: null, image: null },
+          capabilities: {
+            reasoning: false,
+            tools: false,
+            structuredOutputs: false,
+            vision: false,
+            longContext: false,
+          },
+        },
+      ])
+    })
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedProviderId: 'openrouter',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+        providerSources: [
+          { providerId: 'openai_responses', providerName: 'OpenAI Responses', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+          { providerId: 'google_ai_studio', providerName: 'Google AI Studio', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+        ],
+      },
+    })
+
+    await screen.findByTestId('model-picker-item-openrouter-model')
+    await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1')
+    await screen.findByTestId('model-picker-item-google_ai_studio-gemini-2.5-flash')
+
+    await user.click(screen.getByTestId('model-picker-provider-filter-openrouter'))
+
+    await waitFor(() => {
+      expect(screen.queryByTestId('model-picker-item-openrouter-model')).toBeNull()
+      expect(screen.getByTestId('model-picker-item-openai_responses-gpt-4.1')).toBeTruthy()
+      expect(screen.getByTestId('model-picker-item-google_ai_studio-gemini-2.5-flash')).toBeTruthy()
+    })
   })
 
   it('uses scoped current query API as the default model list source', async () => {
@@ -223,6 +389,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'scoped/current-model',
         modelDetailFn: vi.fn(async () => ({
           providerKey: 'openrouter',
@@ -238,7 +405,7 @@ describe('ModelPickerDialog', () => {
 
     expect(scopedQuery).toHaveBeenCalledWith(expect.objectContaining({
       providerKey: 'openrouter',
-      limit: 60,
+      limit: 100,
     }))
     expect(legacyInvoke).not.toHaveBeenCalled()
     const payload = JSON.stringify(scopedQuery.mock.calls)
@@ -284,6 +451,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -358,6 +526,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         favoriteModelKeys: ['openrouter::openai/gpt-4o', 'openrouter::anthropic/claude-3'],
         queryFn,
@@ -389,6 +558,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'legacy/only-model',
         notice: 'Model catalog is empty. Fell back to reasoning model index cache.',
         favoriteModelKeys: ['openrouter::legacy/only-model'],
@@ -454,6 +624,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'missing/current-model',
         queryFn,
         modelDetailFn,
@@ -509,6 +680,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -550,6 +722,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -573,7 +746,7 @@ describe('ModelPickerDialog', () => {
     })
   })
 
-  it('supports pagination via load more and keeps dialog usable on query errors', async () => {
+  it('loads all catalog pages automatically and keeps dialog usable on query errors', async () => {
     const user = userEvent.setup()
     const endpointDetailFn = vi.fn(async (input: { modelId: string }) => ({
       providerKey: 'openrouter',
@@ -648,6 +821,7 @@ describe('ModelPickerDialog', () => {
     const view = render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -656,9 +830,8 @@ describe('ModelPickerDialog', () => {
     })
 
     await screen.findByTestId('model-picker-item-openai/page-1')
-
-    await user.click(screen.getByTestId('model-picker-load-more'))
     await screen.findByTestId('model-picker-item-openai/page-2')
+    expect(screen.queryByTestId('model-picker-load-more')).toBeNull()
 
     const search = screen.getByTestId('model-picker-search')
     await fireEvent.update(search, 'broken')
@@ -706,6 +879,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         endpointDetailFn,
@@ -719,30 +893,30 @@ describe('ModelPickerDialog', () => {
     await user.click(screen.getByTestId('model-picker-vendor-openai'))
     await user.selectOptions(screen.getByTestId('model-picker-category'), 'science')
 
-    await user.click(screen.getByText('Capability Limits'))
+    await user.click(screen.getByText(t('errors.modelCatalog.capabilityLimits')))
     await fireEvent.update(screen.getByTestId('model-picker-context-min'), '4096')
     await fireEvent.update(screen.getByTestId('model-picker-context-max'), '200000')
     await fireEvent.update(screen.getByTestId('model-picker-max-output-min'), '1024')
     await fireEvent.update(screen.getByTestId('model-picker-max-output-max'), '8192')
 
-    await user.click(screen.getByText('Modalities'))
+    await user.click(screen.getByText(t('errors.modelCatalog.modalities')))
     await user.click(screen.getByTestId('model-picker-arch-text->image'))
     await user.click(screen.getByTestId('model-picker-input-modality-image'))
     await user.click(screen.getByTestId('model-picker-output-modality-text'))
 
-    await user.click(screen.getByText('Features'))
+    await user.click(screen.getByText(t('errors.modelCatalog.features')))
     await user.click(screen.getByTestId('model-picker-supported-tools'))
     await fireEvent.update(screen.getByTestId('model-picker-tokenizers'), 'gpt, sentencepiece')
     await fireEvent.update(screen.getByTestId('model-picker-instruct-types'), 'chatml')
     await user.selectOptions(screen.getByTestId('model-picker-per-request-limits'), 'yes')
     await user.selectOptions(screen.getByTestId('model-picker-default-parameters'), 'no')
 
-    await user.click(screen.getByText('Compliance & Lifecycle'))
+    await user.click(screen.getByText(t('errors.modelCatalog.complianceLifecycle')))
     await user.selectOptions(screen.getByTestId('model-picker-is-moderated'), 'yes')
     await user.click(screen.getByTestId('model-picker-expiring-toggle'))
     await fireEvent.update(screen.getByTestId('model-picker-expiring-days'), '14')
 
-    await user.click(screen.getByText('Sort'))
+    await user.click(screen.getByText(t('errors.modelCatalog.sort')))
     await user.selectOptions(screen.getByTestId('model-picker-sort-by'), 'context_length')
     await user.selectOptions(screen.getByTestId('model-picker-sort-order'), 'desc')
 
@@ -893,6 +1067,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'openai/gpt-4o',
         queryFn,
         endpointDetailFn,
@@ -930,7 +1105,7 @@ describe('ModelPickerDialog', () => {
     expect(endpointDetailFn).toHaveBeenCalledTimes(2)
   })
 
-  it('shows synced status with model count and time', async () => {
+  it('shows synced status with total, visible, and hidden model counts when metadata has direct counts', async () => {
     const now = Date.now()
     ;(globalThis as any).electronAPI = {
       modelCatalogSyncNow: vi.fn(async () => ({
@@ -939,6 +1114,8 @@ describe('ModelPickerDialog', () => {
         syncSucceeded: true,
         providerKey: 'openrouter',
         modelCount: 150,
+        visibleModelCount: 140,
+        hiddenModelCount: 10,
         lastSyncAtMs: now,
         errorCode: null,
         errorMessage: null,
@@ -948,6 +1125,8 @@ describe('ModelPickerDialog', () => {
         syncState: 'ok',
         lastSyncAtMs: now,
         modelCount: 150,
+        visibleModelCount: 140,
+        hiddenModelCount: 10,
         lastErrorCode: null,
         lastErrorMessage: null,
       })),
@@ -957,6 +1136,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -965,8 +1145,181 @@ describe('ModelPickerDialog', () => {
 
     await waitFor(() => {
       expect(screen.getByText(/已同步/)).toBeTruthy()
-      expect(screen.getByText(/150/)).toBeTruthy()
+      const statusBar = screen.getByTestId('model-picker-sync-refresh').closest('[class*="border-t"]')
+      expect(statusBar?.textContent).toContain('150')
+      expect(statusBar?.textContent).toContain('140')
+      expect(statusBar?.textContent).toContain('10')
+      expect(statusBar?.textContent).toContain('显示')
+      expect(statusBar?.textContent).toContain('隐藏')
     })
+  })
+
+  it('shows direct hidden zero and keeps OpenRouter provider count on synced total instead of visible page size', async () => {
+    const now = Date.now()
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        syncAttempted: true,
+        syncSucceeded: true,
+        providerKey: 'openrouter',
+        modelCount: 338,
+        visibleModelCount: 338,
+        hiddenModelCount: 0,
+        lastSyncAtMs: now,
+        errorCode: null,
+        errorMessage: null,
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async () => ({
+        providerKey: 'openrouter',
+        syncState: 'ok',
+        lastSyncAtMs: now,
+        modelCount: 338,
+        visibleModelCount: 338,
+        hiddenModelCount: 0,
+        lastErrorCode: null,
+        lastErrorMessage: null,
+      })),
+    }
+    const queryFn = vi.fn(async () => createResult([
+      {
+        providerKey: 'openrouter',
+        modelId: 'openai/page-1',
+        modelKey: 'openrouter::openai/page-1',
+        canonicalSlug: 'openai/page-1',
+        displayName: 'Page 1',
+        description: null,
+        vendor: 'openai',
+        contextLength: 8192,
+        maxOutputTokens: 4096,
+        createdAtSec: 1700000123,
+        pricing: { prompt: null, completion: null, request: null, image: null },
+        capabilities: {
+          reasoning: false,
+          tools: false,
+          structuredOutputs: false,
+          vision: false,
+          longContext: false,
+        },
+      },
+    ], null, { catalogRevision: 'rev-counts', modelCount: 338, visibleModelCount: 338, hiddenModelCount: 0, lastSyncAtMs: now }))
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedProviderId: 'openrouter',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await waitFor(() => {
+      const statusBar = screen.getByTestId('model-picker-sync-refresh').closest('[class*="border-t"]')
+      expect(statusBar?.textContent).toContain('已同步')
+      expect(statusBar?.textContent).toContain('338')
+      expect(statusBar?.textContent).toContain('隐藏 0')
+      expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 338 }))
+    })
+    expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 338 }))
+  })
+
+  it('uses catalog sync status for non-active provider counts', async () => {
+    const now = Date.now()
+    const counts: Record<string, number> = {
+      openrouter: 340,
+      openai_responses: 2,
+      google_ai_studio: 39,
+      anthropic_messages: 9,
+      deepseek: 4,
+    }
+    ;(globalThis as any).electronAPI = {
+      modelCatalogSyncNow: vi.fn(async () => ({
+        ok: true,
+        syncAttempted: false,
+        syncSucceeded: true,
+        providerKey: 'openrouter',
+        modelCount: counts.openrouter,
+        visibleModelCount: counts.openrouter,
+        hiddenModelCount: 0,
+        lastSyncAtMs: now,
+        errorCode: null,
+        errorMessage: null,
+      })),
+      modelCatalogGetSyncStatus: vi.fn(async (options: any) => {
+        const providerKey = String(options?.providerKey ?? 'openrouter')
+        const count = counts[providerKey] ?? 0
+        return {
+          providerKey,
+          syncState: 'ok',
+          lastSyncAtMs: now,
+          modelCount: count,
+          visibleModelCount: count,
+          hiddenModelCount: 0,
+          lastErrorCode: null,
+          lastErrorMessage: null,
+        }
+      }),
+    }
+    const queryFn = vi.fn(async (input: CatalogQueryInput) => {
+      const providerKey = String(input.sourceProviderKey ?? input.providerKey ?? 'openrouter')
+      return createResult([
+        {
+          providerKey,
+          modelId: `${providerKey}/page-1`,
+          modelKey: `${providerKey}::${providerKey}/page-1`,
+          canonicalSlug: `${providerKey}/page-1`,
+          displayName: `${providerKey} Page 1`,
+          description: null,
+          vendor: providerKey,
+          contextLength: 8192,
+          maxOutputTokens: 4096,
+          createdAtSec: 1700000123,
+          pricing: { prompt: null, completion: null, request: null, image: null },
+          capabilities: {
+            reasoning: false,
+            tools: false,
+            structuredOutputs: false,
+            vision: false,
+            longContext: false,
+          },
+        },
+      ], null, {
+        catalogRevision: `rev-counts-${providerKey}`,
+        modelCount: counts[providerKey] ?? 0,
+        visibleModelCount: counts[providerKey] ?? 0,
+        hiddenModelCount: 0,
+        lastSyncAtMs: now,
+      })
+    })
+
+    render(ModelPickerDialog, {
+      props: {
+        open: true,
+        selectedProviderId: 'openrouter',
+        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        queryFn,
+        debounceMs: 0,
+        providerSources: [
+          { providerId: 'openai_responses', providerName: 'OpenAI Responses', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+          { providerId: 'google_ai_studio', providerName: 'Google AI Studio', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+          { providerId: 'anthropic_messages', providerName: 'Anthropic Messages', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+          { providerId: 'deepseek', providerName: 'DeepSeek', statusKind: 'not_loaded', statusLabel: 'catalog', loading: false, items: [] },
+        ],
+      },
+    })
+
+    await waitFor(() => {
+      expect(screen.getByTestId('model-picker-provider-status-openrouter').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 340 }))
+      expect(screen.getByTestId('model-picker-provider-status-openai_responses').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 2 }))
+      expect(screen.getByTestId('model-picker-provider-status-google_ai_studio').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 39 }))
+      expect(screen.getByTestId('model-picker-provider-status-anthropic_messages').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 9 }))
+      expect(screen.getByTestId('model-picker-provider-status-deepseek').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 4 }))
+    })
+
+    expect(screen.getByTestId('model-picker-provider-status-openai_responses').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 2 }))
+    expect(screen.getByTestId('model-picker-provider-status-google_ai_studio').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 39 }))
+    expect(screen.getByTestId('model-picker-provider-status-anthropic_messages').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 9 }))
+    expect(screen.getByTestId('model-picker-provider-status-deepseek').textContent).toContain(tf('errors.modelCatalog.shownCount', { shownCount: 1, totalCount: 4 }))
   })
 
   it('shows failed status with error reason', async () => {
@@ -995,6 +1348,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1002,8 +1356,7 @@ describe('ModelPickerDialog', () => {
     })
 
     await waitFor(() => {
-      expect(screen.getByText(/同步失败/)).toBeTruthy()
-      expect(screen.getByText(/API Key 无效/)).toBeTruthy()
+      expect(screen.getByText('同步失败：API Key 无效')).toBeTruthy()
     })
   })
 
@@ -1033,6 +1386,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1080,6 +1434,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1128,6 +1483,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1175,6 +1531,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1184,7 +1541,10 @@ describe('ModelPickerDialog', () => {
     await waitFor(() => {
       expect(getSyncStatus).toHaveBeenCalled()
       expect(screen.getByText(/已同步/)).toBeTruthy()
-      expect(screen.getByText(/300/)).toBeTruthy()
+      const statusBar = screen.getByTestId('model-picker-sync-refresh').closest('[class*="border-t"]')
+      expect(statusBar?.textContent).toContain('300')
+      expect(statusBar?.textContent).not.toContain('显示')
+      expect(statusBar?.textContent).not.toContain('隐藏')
     })
   })
 
@@ -1215,6 +1575,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1259,6 +1620,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn,
         debounceMs: 0,
@@ -1303,6 +1665,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn: vi.fn(async () => createResult([])),
         debounceMs: 0,
@@ -1345,6 +1708,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn: vi.fn(async () => createResult([], null, { catalogRevision: 'rev-fresh' })),
         debounceMs: 0,
@@ -1388,6 +1752,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
         queryFn: vi.fn(async () => createResult([], null, { catalogRevision: 'rev-fresh' })),
         debounceMs: 0,
@@ -1403,7 +1768,7 @@ describe('ModelPickerDialog', () => {
     })
   })
 
-  it('manual update mode shows update prompt and waits for immediate update click', async () => {
+  it('manual refresh applies changed catalog list immediately', async () => {
     setCatalogSettings({
       openRouterCatalogPickerOpenSyncPolicy: 'never',
       openRouterCatalogListUpdateMode: 'manual',
@@ -1457,6 +1822,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'openai/old',
         queryFn,
         debounceMs: 100000,
@@ -1466,13 +1832,9 @@ describe('ModelPickerDialog', () => {
     await screen.findByTestId('model-picker-item-openai/old')
     await user.click(screen.getByTestId('model-picker-sync-refresh'))
 
-    await screen.findByTestId('model-picker-update-available')
-    expect(screen.getByText('模型列表有更新')).toBeTruthy()
-    expect(screen.getByRole('button', { name: '立即更新' })).toBeTruthy()
-    expect(screen.queryByTestId('model-picker-item-openai/new')).toBeNull()
-
-    await user.click(screen.getByTestId('model-picker-apply-update'))
     await screen.findByTestId('model-picker-item-openai/new')
+    expect(screen.queryByTestId('model-picker-update-available')).toBeNull()
+    expect(queryFn).toHaveBeenCalledTimes(2)
   })
 
   it('automatic update mode applies changed list and preserves search text without auto-selecting first item', async () => {
@@ -1528,6 +1890,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'openai/old',
         queryFn,
         debounceMs: 100000,
@@ -1594,6 +1957,7 @@ describe('ModelPickerDialog', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
+        selectedProviderId: 'openrouter',
         selectedModelId: 'openai/stable',
         queryFn,
         debounceMs: 0,

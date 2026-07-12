@@ -23,7 +23,12 @@ import {
   ListMessageAssetsByMessageIdsSchema,
   GetMessageAssetByIdSchema,
   AppendReasoningDetailSegmentsSchema,
+  AppendReasoningDisplayBlocksSchema,
+  UpsertProviderNativeContentSchema,
   FinalizeReasoningDetailsSchema,
+  FinalizeReasoningDisplayBlocksSchema,
+  ListReasoningDisplayBlocksByMessageIdsSchema,
+  ListProviderNativeContentsByMessageIdsSchema,
   SetReasoningRequestConfigSchema,
   GetReasoningSegmentsStatsSchema,
   ListMessageSchema,
@@ -32,6 +37,21 @@ import {
 } from '../../validation'
 export function registerConvoMessageHandlers(register: RegisterHandler, runtime: DbWorkerRuntime) {
   const rt = runtime as any
+  const assertMutableConvo = (id: string) => {
+    const row = rt.db.prepare(`
+      SELECT c.system_key, p.system_key AS project_system_key
+      FROM convo c LEFT JOIN project p ON p.id = c.project_id
+      WHERE c.id = ?
+    `).get(id) as { system_key?: string | null; project_system_key?: string | null } | undefined
+    if (row?.system_key === 'new_template' || row?.project_system_key === 'new') {
+      throw new DbWorkerError('ERR_INVALID', 'new_chat_template_mutation_forbidden')
+    }
+  }
+  const assertMutableProjectTarget = (projectId: string | null | undefined) => {
+    if (!projectId) return
+    const row = rt.db.prepare('SELECT system_key FROM project WHERE id = ?').get(projectId) as { system_key?: string | null } | undefined
+    if (row?.system_key === 'new') throw new DbWorkerError('ERR_INVALID', 'new_chat_project_target_forbidden')
+  }
 
   register('convo.create', (raw) => {
       const input = CreateConvoSchema.parse(raw)
@@ -41,6 +61,7 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
       // null = 显式传 null → 保留 null（不推荐，但保留能力）
       // string = 指定项目 → 使用指定值
       const effectiveProjectId = input.projectId !== undefined ? input.projectId : rt.inboxId
+      assertMutableProjectTarget(effectiveProjectId)
 
       const createTxn = rt.db.transaction(() => {
         const convo = rt.convoRepo.create({
@@ -59,6 +80,8 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
 
   register('convo.save', (raw) => {
       const input = SaveConvoSchema.parse(raw)
+      assertMutableConvo(input.id)
+      assertMutableProjectTarget(input.projectId)
       const saveTxn = rt.db.transaction(() => {
         rt.convoRepo.save(input)
         const row = rt.loadConvoRow(input.id)
@@ -74,6 +97,8 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
 
   register('convo.saveWithMessages', (raw) => {
       const input = SaveConvoWithMessagesSchema.parse(raw)
+      assertMutableConvo(input.convo.id)
+      assertMutableProjectTarget(input.convo.projectId)
       const messages = input.messages.map((message, index) => ({
         convoId: input.convo.id,
         role: message.role,
@@ -104,6 +129,7 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
 
   register('convo.delete', (raw) => {
       const input = DeleteConvoSchema.parse(raw)
+      assertMutableConvo(input.id)
       const deleteTxn = rt.db.transaction(() => {
         rt.convoRepo.delete(input.id)
         rt.searchRepo.deleteByConvoId(input.id)
@@ -115,6 +141,7 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
 
   register('convo.deleteMany', (raw) => {
       const input = BatchDeleteSchema.parse(raw)
+      for (const id of input.ids) assertMutableConvo(id)
       const deleteTxn = rt.db.transaction(() => {
         const deleted = rt.convoRepo.deleteMany(input.ids)
         for (const id of input.ids) {
@@ -129,12 +156,14 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
 
   register('convo.archive', (raw) => {
       const input = ArchiveConvoSchema.parse(raw)
+      assertMutableConvo(input.id)
       rt.convoRepo.archive(input.id)
       return { ok: true }
     })
 
   register('convo.archiveMany', (raw) => {
       const input = BatchDeleteSchema.parse(raw) // 复用 BatchDeleteSchema，因为参数相同
+      for (const id of input.ids) assertMutableConvo(id)
       const result = rt.convoRepo.archiveMany(input.ids)
       return result
     })
@@ -156,6 +185,8 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
 
   register('convo.setProject', (raw) => {
       const input = SetConvoProjectSchema.parse(raw)
+      assertMutableConvo(input.id)
+      assertMutableProjectTarget(input.projectId)
       
       // 查询当前 projectId 用于事件发射
       const current = rt.db.prepare('SELECT project_id FROM convo WHERE id = ?').get(input.id) as { project_id: string | null } | undefined
@@ -181,6 +212,8 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
 
   register('convo.setProjectMany', (raw) => {
       const input = SetConvoProjectManySchema.parse(raw)
+      for (const id of input.ids) assertMutableConvo(id)
+      assertMutableProjectTarget(input.projectId)
 
       const updateTxn = rt.db.transaction(() => {
         const result = rt.convoRepo.setProjectMany(input.ids, input.projectId)
@@ -290,13 +323,13 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
     })
 
   register('messageAsset.persistFromDataUrls', (raw) => {
-      void PersistMessageAssetsFromDataUrlsSchema.parse(raw)
-      return { ok: true, assets: [] }
+      const input = PersistMessageAssetsFromDataUrlsSchema.parse(raw)
+      return rt.messageAssetRepo.persistFromDataUrls(input)
     })
 
   register('messageAsset.listByMessageIds', (raw) => {
-      void ListMessageAssetsByMessageIdsSchema.parse(raw)
-      return []
+      const input = ListMessageAssetsByMessageIdsSchema.parse(raw)
+      return rt.messageAssetRepo.listByMessageIds(input)
     })
 
   register('messageAsset.getById', (raw) => {
@@ -312,6 +345,31 @@ export function registerConvoMessageHandlers(register: RegisterHandler, runtime:
   register('message.finalizeReasoningDetails', (raw) => {
       const input = FinalizeReasoningDetailsSchema.parse(raw)
       return rt.messageRepo.finalizeReasoningDetails(input)
+    })
+
+  register('message.appendReasoningDisplayBlocks', (raw) => {
+      const input = AppendReasoningDisplayBlocksSchema.parse(raw)
+      return rt.messageRepo.appendReasoningDisplayBlocks(input)
+    })
+
+  register('message.finalizeReasoningDisplayBlocks', (raw) => {
+      const input = FinalizeReasoningDisplayBlocksSchema.parse(raw)
+      return rt.messageRepo.finalizeReasoningDisplayBlocks(input)
+    })
+
+  register('message.listReasoningDisplayBlocksByMessageIds', (raw) => {
+      const input = ListReasoningDisplayBlocksByMessageIdsSchema.parse(raw)
+      return rt.messageRepo.listReasoningDisplayBlocksByMessageIds(input)
+    })
+
+  register('message.upsertProviderNativeContent', (raw) => {
+      const input = UpsertProviderNativeContentSchema.parse(raw)
+      return rt.messageRepo.upsertProviderNativeContent(input)
+    })
+
+  register('message.listProviderNativeContentsByMessageIds', (raw) => {
+      const input = ListProviderNativeContentsByMessageIdsSchema.parse(raw)
+      return rt.messageRepo.listProviderNativeContentsByMessageIds(input)
     })
 
   register('message.getReasoningSegmentsStats', (raw) => {

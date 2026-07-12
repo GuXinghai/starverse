@@ -1,5 +1,4 @@
 import { ipcMain, net, type WebContents } from 'electron'
-import type Store from 'electron-store'
 import {
   OPENROUTER_STREAM_WIRE_VERSION,
   isOpenRouterStreamWireRequest,
@@ -7,16 +6,13 @@ import {
   type OpenRouterStreamWireEvent,
   type OpenRouterStreamWireRequest,
 } from '../../src/shared/ipc/openRouterStreamWire'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import {
-  OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY,
   openRouterLegacyCredentialFromRaw,
   type OpenRouterLegacyCredentialMaterial,
 } from '../../src/next/provider/openrouter/openRouterLegacyCredential'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
-import {
-  OPENROUTER_DEFAULT_BASE_URL,
-  validateOpenRouterOfficialBaseUrl,
-} from '../openrouter/openRouterEndpointPolicy'
+import { OPENROUTER_DEFAULT_BASE_URL } from '../openrouter/openRouterEndpointPolicy'
 
 /**
  * Narrow interface for HTTP response objects.
@@ -141,8 +137,6 @@ function safeStringifyForLog(value: unknown, maxChars: number): { text: string; 
 
 function buildFallbackRequestBody(payload: OpenRouterStreamWireRequest): Record<string, unknown> {
   const userText = typeof payload.userText === 'string' ? payload.userText : ''
-  const reasoningMode = String(payload.config.requestedReasoningMode ?? 'auto')
-  const reasoningEffort = String(payload.config.requestedReasoningEffort ?? 'none')
   const body: Record<string, unknown> = {
     model: String(payload.config.model ?? ''),
     stream: true,
@@ -161,12 +155,6 @@ function buildFallbackRequestBody(payload: OpenRouterStreamWireRequest): Record<
   ) {
     body.image_config = payload.config.imageConfig
   }
-  if (reasoningMode !== 'auto') {
-    body.reasoning = {
-      effort: reasoningEffort,
-      ...(payload.config.requestedReasoningExclude === true ? { exclude: true } : {}),
-    }
-  }
   if (payload.config.providerRequireParameters === true) {
     body.provider = { require_parameters: true }
   }
@@ -175,7 +163,6 @@ function buildFallbackRequestBody(payload: OpenRouterStreamWireRequest): Record<
 
 function resolveOpenRouterStreamCredential(
   payload: OpenRouterStreamWireRequest,
-  store: Store | undefined,
   credentialService?: ProviderCredentialService,
 ): OpenRouterStreamCredentialResolution {
   if (payload.config.credentialSource !== 'legacy_store') {
@@ -203,23 +190,9 @@ function resolveOpenRouterStreamCredential(
     }
   }
 
-  const rawBaseUrl = store
-    ? String(store.get(OPENROUTER_CHAT_LEGACY_BASE_URL_STORE_KEY) ?? '').trim() || undefined
-    : undefined
-  const baseUrlValidation = validateOpenRouterOfficialBaseUrl(rawBaseUrl)
-  if (!baseUrlValidation.ok) {
-    return {
-      ok: false,
-      code: 'base_url_untrusted',
-      error: 'OpenRouter base URL is not trusted for the saved official credential.',
-    }
-  }
   return {
     ok: true,
-    credential: openRouterLegacyCredentialFromRaw({
-      apiKey: apiKey.apiKey,
-      ...(rawBaseUrl ? { baseUrl: baseUrlValidation.baseUrl } : {}),
-    }),
+    credential: openRouterLegacyCredentialFromRaw({ apiKey: apiKey.apiKey }),
   }
 }
 
@@ -361,6 +334,7 @@ async function startStream(
   sender: WebContents,
   payload: OpenRouterStreamWireRequest,
   credential: OpenRouterLegacyCredentialMaterial,
+  rawGenerationRequestStore?: RawGenerationRequestStore,
 ): Promise<void> {
   const controller = new AbortController()
   activeControllers.set(payload.requestId, controller)
@@ -372,13 +346,8 @@ async function startStream(
   try {
     const body = payload.requestBody ?? buildFallbackRequestBody(payload)
     const requestBody = JSON.stringify(body)
-    const baseUrlValidation = validateOpenRouterOfficialBaseUrl(credential.baseUrl || OPENROUTER_DEFAULT_BASE_URL)
-    if (!baseUrlValidation.ok) {
-      const error = new Error('OpenRouter base URL is not trusted for the saved official credential.')
-      ;(error as any).code = 'base_url_untrusted'
-      throw error
-    }
-    const baseUrl = baseUrlValidation.baseUrl.replace(/\/+$/, '')
+    if (payload.rawGenerationContext) rawGenerationRequestStore?.tryPersist(payload.rawGenerationContext, requestBody)
+    const baseUrl = OPENROUTER_DEFAULT_BASE_URL.replace(/\/+$/, '')
     const url = new URL(baseUrl)
     const origin = `${url.protocol}//${url.host}`
     const basePath = url.pathname.replace(/\/+$/, '')
@@ -500,8 +469,8 @@ async function startStream(
 }
 
 export function registerOpenRouterStreamBridge(input?: Readonly<{
-  store?: Store
   credentialService?: ProviderCredentialService
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): string[] {
   ipcMain.handle('openrouter:stream-chat', async (event, payload: unknown) => {
     const validated = validateOpenRouterStreamRequest(payload)
@@ -513,7 +482,7 @@ export function registerOpenRouterStreamBridge(input?: Readonly<{
         supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
       }
     }
-    const credential = resolveOpenRouterStreamCredential(validated.payload, input?.store, input?.credentialService)
+    const credential = resolveOpenRouterStreamCredential(validated.payload, input?.credentialService)
     if (!credential.ok) {
       return {
         ok: false,
@@ -522,7 +491,7 @@ export function registerOpenRouterStreamBridge(input?: Readonly<{
         supportedWireVersion: OPENROUTER_STREAM_WIRE_VERSION,
       }
     }
-    void startStream(event.sender, validated.payload, credential.credential)
+    void startStream(event.sender, validated.payload, credential.credential, input?.rawGenerationRequestStore)
     return { ok: true }
   })
 

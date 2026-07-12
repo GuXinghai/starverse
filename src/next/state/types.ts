@@ -1,4 +1,5 @@
 import type { ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import type { ProviderNativeSnapshot } from '@/next/provider/providerNativeSnapshot'
 
 export type RunStatus =
   | 'idle'
@@ -54,10 +55,43 @@ export type ReasoningViewVisibility = 'shown' | 'excluded' | 'not_returned'
 
 export type ReasoningPanelState = 'collapsed' | 'expanded'
 
-export type ReasoningPiece = Readonly<{
-  id: number
-  text: string
-}>
+export type ReasoningDisplayBlock =
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'text'
+      text: string
+      semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+      providerKey: string
+      sourceEventType?: string
+      sourceRawSegmentId?: number
+    }>
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'image'
+      url: string
+      assetId?: string
+      fileAssetId?: string
+      mimeType?: string
+      width?: number
+      height?: number
+      alt?: string
+      semanticRole?: 'summary' | 'reasoning' | 'thinking' | 'thought'
+      providerKey: string
+      sourceEventType?: string
+      sourceRawSegmentId?: number
+    }>
+  | Readonly<{
+      blockId: string
+      ordinal: number
+      type: 'opaque'
+      label: string
+      warning?: string
+      providerKey: string
+      sourceEventType?: string
+      sourceRawSegmentId?: number
+    }>
 
 export type ToolCallVM = Readonly<{
   index: number
@@ -78,9 +112,7 @@ export type ToolCallDelta = Readonly<{
 }>
 
 export type ReasoningView = Readonly<{
-  summaryText?: string
-  reasoningText?: string
-  reasoningPieces?: ReasoningPiece[]
+  displayBlocks?: ReasoningDisplayBlock[]
   hasEncrypted?: boolean
   visibility: ReasoningViewVisibility
   panelState: ReasoningPanelState
@@ -88,6 +120,8 @@ export type ReasoningView = Readonly<{
 
 export type MessageVM = Readonly<{
   messageId: string
+  routeProvenanceId?: string
+  choiceIndex?: number
   role: MessageRole
   contentBlocks: ContentBlock[]
   requestedImageGeneration?: boolean
@@ -110,6 +144,7 @@ export type MessageVM = Readonly<{
 
 export type RunVM = Readonly<{
   runId: string
+  routeProvenanceId?: string
   status: RunStatus
   requestId?: string
   generationId?: string
@@ -155,6 +190,9 @@ export type DomainEvent =
   }>
   | Readonly<{ type: 'MessageDeltaReasoningDetail'; messageId: string; choiceIndex: number; detail: unknown; chunkNo?: number }>
   | Readonly<{ type: 'MessageDeltaReasoningDetailBatch'; messageId: string; choiceIndex: number; details: unknown[] }>
+  | Readonly<{ type: 'MessageAppendReasoningDisplayBlock'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
+  | Readonly<{ type: 'MessageUpsertReasoningDisplayBlock'; messageId: string; choiceIndex: number; block: ReasoningDisplayBlock }>
+  | Readonly<{ type: 'MessageUpsertProviderNativeContent'; messageId: string; choiceIndex: number; snapshot: ProviderNativeSnapshot }>
   | Readonly<{ type: 'UsageDelta'; usage: unknown }>
   | Readonly<{
     type: 'MetaDelta'
@@ -169,6 +207,8 @@ export type DomainEvent =
 
 export type MessageState = Readonly<{
   messageId: string
+  routeProvenanceId?: string
+  choiceIndex?: number
   role: MessageRole
   contentText: string
   contentBlocks: ContentBlock[]
@@ -176,10 +216,8 @@ export type MessageState = Readonly<{
   annotations?: MessageAnnotation[]
   toolCalls: ToolCallVM[]
   reasoningDetailsRaw: unknown[]
-  reasoningStreamingText: string
-  reasoningSummaryText?: string
-  reasoningPieces?: ReasoningPiece[]
-  reasoningLastPieceLen?: number
+  reasoningDisplayBlocks?: ReasoningDisplayBlock[]
+  providerNativeContents?: ProviderNativeSnapshot[]
   reasoningPanelState: ReasoningPanelState
   hasEncryptedReasoning: boolean
   reasoningDurationMs?: number | null
@@ -207,6 +245,7 @@ export type MessageState = Readonly<{
 
 export type RunState = Readonly<{
   runId: string
+  routeProvenanceId?: string
   status: RunStatus
   requestId?: string
   targetAssistantMessageId?: string
@@ -244,6 +283,8 @@ export type RootState = Readonly<{
 export type StartGenerationInput = Readonly<{
   runId: string
   requestId: string
+  routeProvenanceId?: string
+  choiceIndex?: number
   model?: string
   assistantMessageId?: string
   userMessageId?: string

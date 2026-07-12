@@ -3,7 +3,7 @@ import path from 'node:path'
 import { EventEmitter } from 'node:events'
 import { Readable } from 'node:stream'
 import { mkdir, rm, stat } from 'node:fs/promises'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { STARTUP_IPC_CHANNELS } from '../ipc/startupIpcAudit'
 import {
   createMainProcessElectronConversionService,
@@ -139,5 +139,51 @@ describe('main-process electron conversion service skeleton', () => {
     } finally {
       await rm(tempRoot, { recursive: true, force: true })
     }
+  })
+
+  it('routes provider fetch through the injected provider fetch implementation', async () => {
+    const providerFetch = vi.fn(async (url: string, init?: RequestInit) => {
+      expect(url).toBe('https://openrouter.ai/api/v1/embeddings')
+      expect(init?.method).toBe('POST')
+      expect(init?.headers).toMatchObject({ Authorization: 'Bearer test' })
+      expect(init?.body).toBe('{"input":"hello"}')
+      return new Response('{"id":"resp-provider-fetch"}', {
+        status: 201,
+        statusText: 'Created',
+        headers: { 'x-provider': 'openrouter' },
+      })
+    })
+    const service = createMainProcessElectronConversionService({ providerFetch: providerFetch as typeof fetch })
+
+    const result = await service.fetchProvider({
+      url: 'https://openrouter.ai/api/v1/embeddings',
+      method: 'POST',
+      headers: { Authorization: 'Bearer test', 'Content-Type': 'application/json' },
+      body: '{"input":"hello"}',
+      timeoutMs: 1000,
+    })
+
+    expect(result).toMatchObject({
+      ok: true,
+      status: 201,
+      statusText: 'Created',
+      headers: { 'x-provider': 'openrouter' },
+      bodyText: '{"id":"resp-provider-fetch"}',
+    })
+  })
+
+  it('fails provider fetch closed when no provider fetch is injected', async () => {
+    const result = await createMainProcessElectronConversionService().fetchProvider({
+      url: 'https://openrouter.ai/api/v1/embeddings',
+      method: 'POST',
+      headers: {},
+      body: '{}',
+    })
+
+    expect(result).toEqual({
+      ok: false,
+      code: 'provider_fetch_unavailable',
+      detail: 'electron_provider_fetch_service_unavailable',
+    })
   })
 })

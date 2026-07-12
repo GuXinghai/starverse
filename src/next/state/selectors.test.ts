@@ -112,6 +112,295 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     expect(vm?.reasoningView.visibility).toBe('shown')
   })
 
+  it('uses reasoning display blocks as the only UI display payload', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-3.1-flash-image',
+    })
+    const messages = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [{ type: 'thought_summary', summary: 'raw summary' }],
+        reasoningDisplayBlocks: [
+          {
+            blockId: 'b1',
+            ordinal: 0,
+            type: 'text' as const,
+            text: 'display text',
+            semanticRole: 'summary' as const,
+            providerKey: 'google_ai_studio',
+          },
+          {
+            blockId: 'b2',
+            ordinal: 1,
+            type: 'image' as const,
+            url: 'asset://image-1',
+            semanticRole: 'thought' as const,
+            providerKey: 'google_ai_studio',
+          },
+        ],
+      },
+    }
+    const vm = selectMessage({
+      ...s1,
+      messages,
+      entities: { ...s1.entities, messagesById: messages },
+    }, assistantMessageId)
+
+    expect(vm?.reasoningView.displayBlocks).toEqual([
+      {
+        blockId: 'b1',
+        ordinal: 0,
+        type: 'text',
+        text: 'display text',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+      },
+      {
+        blockId: 'b2',
+        ordinal: 1,
+        type: 'image',
+        url: 'asset://image-1',
+        semanticRole: 'thought',
+        providerKey: 'google_ai_studio',
+      },
+    ])
+  })
+
+  it('returns "shown" when display blocks exist even without raw details', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-3.1-flash-image',
+      requestedReasoningMode: 'effort',
+      requestedReasoningEffort: 'high',
+      requestedReasoningExclude: true,
+    })
+    const messages = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [],
+        reasoningDisplayBlocks: [
+          {
+            blockId: 'display-1',
+            ordinal: 0,
+            type: 'image' as const,
+            url: 'asset://reasoning-image-1',
+            semanticRole: 'thought' as const,
+            providerKey: 'google_ai_studio',
+          },
+        ],
+      },
+    }
+
+    const vm = selectMessage({
+      ...s1,
+      messages,
+      entities: { ...s1.entities, messagesById: messages },
+    }, assistantMessageId)
+
+    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.displayBlocks).toEqual([
+      {
+        blockId: 'display-1',
+        ordinal: 0,
+        type: 'image',
+        url: 'asset://reasoning-image-1',
+        semanticRole: 'thought',
+        providerKey: 'google_ai_studio',
+      },
+    ])
+  })
+
+  it('does not derive UI display text from raw reasoning details', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-2.5-flash',
+    })
+
+    const messagesWithThought = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [{ type: 'thought', text: 'Gemini thought text' }],
+      },
+    }
+    const stateWithThought = {
+      ...s1,
+      messages: messagesWithThought,
+      entities: { ...s1.entities, messagesById: messagesWithThought },
+    }
+
+    const vm = selectMessage(stateWithThought, assistantMessageId)
+
+    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.displayBlocks).toBeUndefined()
+  })
+
+  it('does not derive UI summary text from raw reasoning summaries', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-3.1-flash-image',
+    })
+
+    const messagesWithThoughtSummary = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [{ type: 'thought_summary', summary: 'Gemini image reasoning summary' }],
+      },
+    }
+    const stateWithThoughtSummary = {
+      ...s1,
+      messages: messagesWithThoughtSummary,
+      entities: { ...s1.entities, messagesById: messagesWithThoughtSummary },
+    }
+
+    const vm = selectMessage(stateWithThoughtSummary, assistantMessageId)
+
+    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.displayBlocks).toBeUndefined()
+  })
+
+  it('does not derive display image blocks from raw thought images', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-3.1-flash-image',
+    })
+
+    const messagesWithThoughtImage = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [
+          {
+            type: 'thought_image',
+            image: {
+              url: 'asset://message-images/reasoning-image.png',
+              mimeType: 'image/png',
+            },
+          },
+        ],
+      },
+    }
+    const stateWithThoughtImage = {
+      ...s1,
+      messages: messagesWithThoughtImage,
+      entities: { ...s1.entities, messagesById: messagesWithThoughtImage },
+    }
+
+    const vm = selectMessage(stateWithThoughtImage, assistantMessageId)
+
+    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.displayBlocks).toBeUndefined()
+  })
+
+  it('uses display blocks, not raw details, to preserve Gemini reasoning display order', () => {
+    const state = createInitialState()
+    const { state: s1, assistantMessageId } = startGeneration(state, {
+      runId: 'run1',
+      requestId: 'req1',
+      model: 'gemini-3.1-flash-image',
+    })
+
+    const messagesWithInterleavedPieces = {
+      ...s1.messages,
+      [assistantMessageId]: {
+        ...s1.messages[assistantMessageId],
+        reasoningDetailsRaw: [
+          {
+            type: 'thought_summary',
+            summary: 'before image',
+          },
+          {
+            type: 'thought_image',
+            image: {
+              url: 'asset://message-images/reasoning-image.png',
+              mimeType: 'image/png',
+            },
+          },
+          {
+            type: 'thought_summary',
+            summary: 'after image',
+          },
+        ],
+        reasoningDisplayBlocks: [
+          {
+            blockId: 'b1',
+            ordinal: 0,
+            type: 'text' as const,
+            text: 'before image',
+            semanticRole: 'summary' as const,
+            providerKey: 'google_ai_studio',
+          },
+          {
+            blockId: 'b2',
+            ordinal: 1,
+            type: 'image' as const,
+            url: 'asset://message-images/reasoning-image.png',
+            mimeType: 'image/png',
+            semanticRole: 'thought' as const,
+            providerKey: 'google_ai_studio',
+          },
+          {
+            blockId: 'b3',
+            ordinal: 2,
+            type: 'text' as const,
+            text: 'after image',
+            semanticRole: 'summary' as const,
+            providerKey: 'google_ai_studio',
+          },
+        ],
+      },
+    }
+    const stateWithInterleavedPieces = {
+      ...s1,
+      messages: messagesWithInterleavedPieces,
+      entities: { ...s1.entities, messagesById: messagesWithInterleavedPieces },
+    }
+
+    const vm = selectMessage(stateWithInterleavedPieces, assistantMessageId)
+
+    expect(vm?.reasoningView.displayBlocks).toEqual([
+      {
+        blockId: 'b1',
+        ordinal: 0,
+        type: 'text',
+        text: 'before image',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+      },
+      {
+        blockId: 'b2',
+        ordinal: 1,
+        type: 'image',
+        url: 'asset://message-images/reasoning-image.png',
+        mimeType: 'image/png',
+        semanticRole: 'thought',
+        providerKey: 'google_ai_studio',
+      },
+      {
+        blockId: 'b3',
+        ordinal: 2,
+        type: 'text',
+        text: 'after image',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+      },
+    ])
+  })
+
   it('returns "shown" when hasEncryptedReasoning is true', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {

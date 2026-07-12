@@ -98,7 +98,10 @@ describe('googleAIStudioModelAvailabilityIpc', () => {
       ok: false,
       code: 'http_error',
       httpStatus: 403,
-      message: 'Google AI Studio model source credential was rejected.',
+      message: 'Google AI Studio model source access was forbidden.',
+      networkError: {
+        safeDetailCode: 'http_403_forbidden',
+      },
     })
     const serialized = JSON.stringify(result)
     expect(serialized).not.toContain('AIza-google-secret')

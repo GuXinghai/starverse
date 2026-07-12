@@ -3,13 +3,21 @@ import type { RegisterInvoke } from './types'
 import type { ProviderStreamRequest, StarverseProviderError, StarverseStreamEvent } from '../../src/next/provider/providerTypes'
 import { streamViaAnthropic, type AnthropicFetchFn } from '../../src/next/provider/anthropic/anthropicAdapter'
 import type { ProviderCredentialService } from '../credentials/providerCredentialService'
+import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
+import { sanitizeProviderNetworkError } from './providerNetworkError'
 import {
   isProviderRuntimeUploadRequestBlock,
   sanitizeProviderRuntimeFileContentBlocks,
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
+import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
+import {
+  assertFinalAnthropicProviderNativeSnapshot,
+  type AnthropicProviderNativeSnapshot,
+} from '../../src/next/provider/anthropic/anthropicProviderNativeContent'
 
 export const ANTHROPIC_TEXT_CHAT_IPC_CHANNELS = [
   'anthropic-chat:stream-text',
@@ -19,6 +27,7 @@ export const ANTHROPIC_TEXT_CHAT_IPC_CHANNELS = [
 export type AnthropicTextChatMessage = Readonly<{
   role: 'user' | 'assistant'
   content: string
+  anthropicNativeContent?: AnthropicProviderNativeSnapshot
 }>
 
 export type AnthropicTextChatPayload = Readonly<{
@@ -27,6 +36,7 @@ export type AnthropicTextChatPayload = Readonly<{
   model?: unknown
   messages?: unknown
   currentUserContentBlocks?: unknown
+  generationParams?: unknown
   timeoutMs?: unknown
 }>
 
@@ -48,7 +58,8 @@ type RegisterAnthropicTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
-  fetchImpl?: typeof fetch
+  fetchImpl?: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -58,6 +69,7 @@ type ValidatedTextChatSuccess = Readonly<{
   model: string
   messages: AnthropicTextChatMessage[]
   currentUserContentBlocks?: ReadonlyArray<ProviderRuntimeContentBlock>
+  generationParams?: ProviderStreamRequest['config']['generationParams']
   timeoutMs: number
 }>
 
@@ -95,13 +107,29 @@ function normalizeMessages(raw: unknown, allowEmptyCurrentUser = false): Anthrop
     const role = (item as Record<string, unknown>).role
     if (role !== 'user' && role !== 'assistant') return null
     const content = String((item as Record<string, unknown>).content ?? '').trim()
+    let anthropicNativeContent: AnthropicProviderNativeSnapshot | undefined
+    if (role === 'assistant' && (item as Record<string, unknown>).anthropicNativeContent !== undefined) {
+      try {
+        anthropicNativeContent = assertFinalAnthropicProviderNativeSnapshot((item as Record<string, unknown>).anthropicNativeContent)
+      } catch {
+        return null
+      }
+    }
     if (!content) {
+      if (anthropicNativeContent) {
+        out.push({ role, content: '', anthropicNativeContent })
+        continue
+      }
       if (allowEmptyCurrentUser && index === sliced.length - 1 && role === 'user') {
         out.push({ role, content: '' })
       }
       continue
     }
-    out.push({ role, content: content.slice(0, MAX_MESSAGE_CHARS) })
+    out.push({
+      role,
+      content: content.slice(0, MAX_MESSAGE_CHARS),
+      ...(anthropicNativeContent ? { anthropicNativeContent } : {}),
+    })
   }
   if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
   return out
@@ -128,6 +156,10 @@ export function validateAnthropicTextChatPayload(payload: unknown): ValidatedTex
   if (!messages) {
     return staticFailure('invalid_payload', 'Anthropic Messages text chat requires user and assistant messages.')
   }
+  const generationParams = validateProviderGenerationParamsPayload(record.generationParams)
+  if (generationParams === null) {
+    return staticFailure('invalid_payload', 'Anthropic Messages generation params payload is invalid.')
+  }
 
   return {
     ok: true,
@@ -136,6 +168,7 @@ export function validateAnthropicTextChatPayload(payload: unknown): ValidatedTex
     model,
     messages,
     ...(contentBlocks.blocks.length > 0 ? { currentUserContentBlocks: contentBlocks.blocks } : {}),
+    ...(generationParams ? { generationParams } : {}),
     timeoutMs: normalizeTimeoutMs(record.timeoutMs),
   }
 }
@@ -150,34 +183,12 @@ function readAnthropicApiKey(credentialService: ProviderCredentialService): Anth
 }
 
 function safeProviderError(error: StarverseProviderError): StarverseProviderError {
-  const category = error.category === 'auth'
-    ? 'auth'
-    : error.category === 'rate_limit'
-      ? 'rate_limit'
-      : error.category === 'aborted'
-        ? 'aborted'
-        : error.category === 'bad_request'
-          ? 'bad_request'
-          : error.category === 'network'
-            ? 'network'
-            : 'provider_error'
-
-  return {
-    phase: error.phase,
-    provider: 'anthropic',
-    category,
-    message: category === 'auth'
-      ? 'Anthropic credential was rejected.'
-      : category === 'rate_limit'
-        ? 'Anthropic rate limit was reached.'
-        : category === 'aborted'
-          ? 'Anthropic Messages text chat was aborted.'
-          : 'Anthropic Messages text chat failed safely.',
-    ...(error.code ? { code: String(error.code) } : {}),
-    ...(error.httpStatus ? { httpStatus: error.httpStatus } : {}),
-    ...(error.retryable ? { retryable: true } : {}),
-    ...(error.requestId ? { requestId: error.requestId } : {}),
-  }
+  return sanitizeProviderNetworkError({
+    providerId: 'anthropic',
+    providerWireName: 'anthropic',
+    providerLabel: 'Anthropic',
+    error,
+  })
 }
 
 function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent {
@@ -222,6 +233,7 @@ function buildProviderRequest(input: Readonly<{
     config: {
       model: input.request.model,
       requestedReasoningMode: 'auto',
+      ...(input.request.generationParams ? { generationParams: input.request.generationParams } : {}),
     },
   }
 }
@@ -231,7 +243,8 @@ async function forwardAnthropicStream(input: Readonly<{
   sender: WebContents
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
-  fetchImpl: typeof fetch
+  fetchImpl: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const apiKey = readAnthropicApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -292,6 +305,10 @@ async function forwardAnthropicStream(input: Readonly<{
       baseUrl: ANTHROPIC_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
+      captureSerializedRequest: (serializedBody) => input.rawGenerationRequestStore?.tryPersist({
+        operationId: input.request.requestId, answerRootId: input.request.assistantMessageId, requestSequence: 1,
+        providerId: 'anthropic_messages', modelId: input.request.model,
+      }, serializedBody),
     })
     for await (const event of events) {
       const safeEvent = safeStreamEvent(event)
@@ -305,20 +322,19 @@ async function forwardAnthropicStream(input: Readonly<{
         event: safeEvent,
       })
     }
-  } catch {
+  } catch (error) {
     sendWireEvent(input.sender, input.request.requestId, {
       type: 'event',
       event: {
         type: 'stream.error',
-        error: {
-          phase: 'transport',
-          provider: 'anthropic',
-          category: controller.signal.aborted ? 'aborted' : 'network',
-          code: controller.signal.aborted ? 'aborted' : 'network_error',
-          message: controller.signal.aborted
-            ? 'Anthropic Messages text chat was aborted.'
-            : 'Anthropic Messages text chat failed safely.',
-        },
+        error: sanitizeProviderNetworkError({
+          providerId: 'anthropic',
+          providerWireName: 'anthropic',
+          providerLabel: 'Anthropic',
+          thrown: error,
+          abortReason: controller.signal.reason,
+          fallbackPhase: 'transport',
+        }),
         terminal: true,
       },
     })
@@ -344,7 +360,7 @@ export function registerAnthropicTextChatIpc(
     if (!validated.ok) return validated
 
     const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? globalThis.fetch
+    const fetchImpl = input.fetchImpl ?? createElectronSessionProviderFetch()
     if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
       return staticFailure('invalid_payload', 'Anthropic Messages text chat bridge is unavailable.')
     }
@@ -355,6 +371,7 @@ export function registerAnthropicTextChatIpc(
       credentialService: input.credentialService,
       providerFileUploadService: input.providerFileUploadService,
       fetchImpl,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     })
     return { ok: true }
   })

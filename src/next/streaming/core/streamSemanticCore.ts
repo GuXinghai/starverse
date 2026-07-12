@@ -12,13 +12,16 @@ import {
   buildTransportErrorEnvelope,
 } from '@/next/errors/openRouterErrorEnvelope'
 import type { ErrorEnvelope, ErrorPhase } from '@/next/errors/openRouterErrorEnvelope'
-import { mapChunkToEvents } from '@/next/openrouter/mapChunkToEvents'
 import { mapResponsesEventToTerminal } from '@/next/openrouter/responsesEventMapper'
 import type { DomainEvent, StreamEndReason } from '@/next/state/types'
 import { normalizeTransportError } from '@/next/errors/normalizeOpenRouterError'
-import { TerminalArbiter } from '@/next/streaming/core/terminalArbiter'
+import { TerminalArbiter } from '@/shared/streaming/terminalArbiter'
 import { TimingMachine } from '@/next/streaming/core/timingMachine'
-import type { BuildStreamErrorFromAppErrorInput, StreamRequestContext, StreamSemanticCoreInput } from '@/next/streaming/core/types'
+import type {
+  BuildStreamErrorFromAppErrorInput,
+  StreamRequestContext,
+  StreamSemanticCoreInput,
+} from '@/next/streaming/core/types'
 
 export function mapAppPhaseToEnvelopePhase(appPhase: AppErrorPhase, fallback: ErrorPhase): ErrorPhase {
   if (appPhase === 'pre_stream_request_error') return 'pre_stream'
@@ -177,11 +180,11 @@ export async function* streamFetchSemanticCore(input: StreamSemanticCoreInput): 
     }
 
     chunkNo++
-    const mapped = mapChunkToEvents({
-      chunk: ev.value as any,
+    const mapped = input.mapJsonChunkToEvents({
+      chunk: ev.value,
       messageId: input.assistantMessageId,
       chunkNo,
-    }) as any as DomainEvent[]
+    }) as DomainEvent[]
 
     for (const mappedEvent of mapped) {
       if (mappedEvent.type === 'MetaDelta') {

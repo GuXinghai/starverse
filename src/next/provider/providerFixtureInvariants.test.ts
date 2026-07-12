@@ -5,20 +5,12 @@
  * - Terminal event semantics (exactly one terminal, no done after error)
  * - Unexpected EOF as protocol error
  * - No visible-text leakage from unsupported tool/function/reasoning fields
- * - No raw credential leakage in Generic errors/events
  *
  * This is a test/gate construction, not a production abstraction.
  * OpenRouter preservation checks remain separate in openRouterAdapter.test.ts.
  */
 
 import { describe, expect, it, vi } from 'vitest'
-
-// — Generic —
-import { streamViaGeneric, streamViaGenericConfig, type GenericFetchFn } from '@/next/provider/generic/genericAdapter'
-import { GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID } from '@/next/provider/generic/genericEndpointDescriptor'
-import { createBearerCredential } from '@/next/provider/credentials/providerCredential'
-import { providerCredentialResolutionFromCredential } from '@/next/provider/credentials/providerCredentialResolver'
-import type { GenericEndpointConfig } from '@/next/provider/generic/genericEndpointConfig'
 
 // — DeepSeek —
 import { streamViaDeepSeek, type DeepSeekFetchFn } from '@/next/provider/deepseek/deepSeekAdapter'
@@ -44,7 +36,6 @@ import {
   assertTerminalErrorsValid,
   assertNoVisibleTextContains,
   assertReasoningNotInVisibleText,
-  assertNoCredentialLeakage,
 } from '@/next/provider/testUtils/providerFixtureInvariants'
 
 // ===========================================================================
@@ -73,65 +64,6 @@ function makeResponseFromText(body: string): Response {
     },
   })
   return new Response(stream as any, { status: 200 })
-}
-
-// ===========================================================================
-// Generic fixtures
-// ===========================================================================
-
-function genericTextChunk(content: string): string {
-  return `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content }, finish_reason: null }] })}`
-}
-
-function genericFinishChunk(finishReason: string): string {
-  return `data: ${JSON.stringify({ choices: [{ index: 0, delta: {}, finish_reason: finishReason }] })}`
-}
-
-function genericErrorChunk(code: string, message: string): string {
-  return `data: ${JSON.stringify({ error: { code, message } })}`
-}
-
-function genericToolCallChunk(): string {
-  return `data: ${JSON.stringify({ choices: [{ index: 0, delta: { tool_calls: [{ index: 0, function: { name: 'fn', arguments: '{}' } }] } }] })}`
-}
-
-function genericFunctionCallChunk(): string {
-  return `data: ${JSON.stringify({ choices: [{ index: 0, delta: { function_call: { name: 'legacy_fn', arguments: '{}' } } }] })}`
-}
-
-function genericReasoningChunk(): string {
-  return `data: ${JSON.stringify({ choices: [{ index: 0, delta: { reasoning_content: 'thinking...' } }] })}`
-}
-
-function genericSseWithDone(...lines: string[]): Response {
-  return makeResponseFromText(sseFixture(...lines, '', 'data: [DONE]', ''))
-}
-
-function genericSseNoDone(...lines: string[]): Response {
-  return makeResponseFromText(sseFixture(...lines))
-}
-
-function genericRequest(overrides?: Partial<ProviderStreamRequest['config']>): ProviderStreamRequest {
-  return {
-    requestId: 'req_1',
-    assistantMessageId: 'assistant_1',
-    userText: 'Hello',
-    config: { model: 'gpt-4o-mini', requestedReasoningMode: 'auto', ...overrides },
-  }
-}
-
-function mockGenericFetch(response: Response): GenericFetchFn {
-  return vi.fn(async () => response)
-}
-
-const GENERIC_VALID_API_KEY = 'sk-test'
-
-const VALID_GENERIC_CONFIG: GenericEndpointConfig = {
-  endpointId: 'ep-test',
-  profileId: GENERIC_OPENAI_COMPAT_CHAT_COMPLETIONS_PROFILE_ID,
-  baseUrl: 'https://api.example.com/v1',
-  model: 'gpt-4o-mini',
-  credentialRef: { kind: 'credential_ref', id: 'default' },
 }
 
 // ===========================================================================
@@ -371,109 +303,6 @@ describe('provider fixture invariants', () => {
         terminalErrorEvent(),
         { type: 'usage.delta', usage: { output_tokens: 1 } },
       ])).toThrowError(/must not be followed by output event usage\.delta/)
-    })
-  })
-
-  // =========================================================================
-  // Generic OpenAI-compatible
-  // =========================================================================
-
-  describe('Generic', () => {
-    describe('terminal invariants', () => {
-      it('happy path: text + exactly one stream.done', async () => {
-        const response = genericSseWithDone(genericTextChunk('Hi'), genericFinishChunk('stop'))
-        const events = await collectEvents(streamViaGeneric(genericRequest(), {
-          baseUrl: 'https://api.example.com/v1', apiKey: GENERIC_VALID_API_KEY, fetch: mockGenericFetch(response),
-        }))
-        assertHappyPathTerminal(events)
-        assertExactlyOneTerminalEvent(events)
-      })
-
-      it('provider error: stream.error and no stream.done', async () => {
-        const response = genericSseWithDone(genericErrorChunk('invalid_key', 'Bad key'))
-        const events = await collectEvents(streamViaGeneric(genericRequest(), {
-          baseUrl: 'https://api.example.com/v1', apiKey: 'sk-bad', fetch: mockGenericFetch(response),
-        }))
-        assertErrorPathTerminal(events)
-        assertNoDoneAfterError(events)
-        assertTerminalErrorsValid(events)
-      })
-
-      it('malformed JSON: parse error and no stream.done', async () => {
-        const body = sseFixture('data: {invalid json}\n\n', 'data: [DONE]\n\n')
-        const events = await collectEvents(streamViaGeneric(genericRequest(), {
-          baseUrl: 'https://api.example.com/v1', apiKey: GENERIC_VALID_API_KEY, fetch: mockGenericFetch(makeResponseFromText(body)),
-        }))
-        assertErrorPathTerminal(events)
-        assertNoDoneAfterError(events)
-      })
-
-      it('unexpected EOF: protocol error and no stream.done', async () => {
-        const response = genericSseNoDone(genericTextChunk('some text'))
-        const events = await collectEvents(streamViaGeneric(genericRequest(), {
-          baseUrl: 'https://api.example.com/v1', apiKey: GENERIC_VALID_API_KEY, fetch: mockGenericFetch(response),
-        }))
-        assertEofPathTerminal(events)
-        assertNoDoneAfterError(events)
-      })
-    })
-
-    describe('content leakage invariants', () => {
-      // This cross-provider gate samples recurring leakage shapes. It is not a
-      // full provider semantic matrix; provider-local tests keep exhaustive
-      // mapper/request coverage.
-      it('tool_calls do not become visible text', async () => {
-        const response = genericSseWithDone(genericToolCallChunk(), genericFinishChunk('stop'))
-        const events = await collectEvents(streamViaGeneric(genericRequest(), {
-          baseUrl: 'https://api.example.com/v1', apiKey: GENERIC_VALID_API_KEY, fetch: mockGenericFetch(response),
-        }))
-        assertNoVisibleTextContains(events, ['tool_calls', 'function'])
-      })
-
-      it('legacy function_call does not become visible text', async () => {
-        const response = genericSseWithDone(genericFunctionCallChunk(), genericFinishChunk('function_call'))
-        const events = await collectEvents(streamViaGeneric(genericRequest(), {
-          baseUrl: 'https://api.example.com/v1', apiKey: GENERIC_VALID_API_KEY, fetch: mockGenericFetch(response),
-        }))
-        assertNoVisibleTextContains(events, ['legacy_fn', 'function_call'])
-      })
-
-      it('reasoning_content does not become visible text', async () => {
-        const response = genericSseWithDone(genericReasoningChunk(), genericFinishChunk('stop'))
-        const events = await collectEvents(streamViaGeneric(genericRequest(), {
-          baseUrl: 'https://api.example.com/v1', apiKey: GENERIC_VALID_API_KEY, fetch: mockGenericFetch(response),
-        }))
-        assertNoVisibleTextContains(events, ['thinking...'])
-      })
-    })
-
-    describe('credential leakage invariants', () => {
-      const SECRET = 'sk-super-secret-token-12345'
-
-      it('error path does not leak raw token', async () => {
-        const response = genericSseWithDone(genericErrorChunk('error', `Invalid: ${SECRET}`))
-        const events = await collectEvents(streamViaGeneric(genericRequest(), {
-          baseUrl: 'https://api.example.com/v1', apiKey: SECRET, fetch: mockGenericFetch(response),
-        }))
-        assertNoCredentialLeakage(events, SECRET)
-      })
-
-      it('descriptor validation failure does not leak raw token', async () => {
-        const events = await collectEvents(streamViaGeneric(genericRequest(), {
-          baseUrl: '', apiKey: SECRET, fetch: mockGenericFetch(genericSseWithDone(genericTextChunk('Hi'))),
-        }))
-        assertNoCredentialLeakage(events, SECRET)
-      })
-
-      it('config-based failure does not leak raw token', async () => {
-        const events = await collectEvents(streamViaGenericConfig(
-          genericRequest(),
-          { ...VALID_GENERIC_CONFIG, baseUrl: '' },
-          () => providerCredentialResolutionFromCredential(createBearerCredential(SECRET)),
-          mockGenericFetch(genericSseWithDone(genericTextChunk('Hi'))),
-        ))
-        assertNoCredentialLeakage(events, SECRET)
-      })
     })
   })
 

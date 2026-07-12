@@ -26,6 +26,14 @@ function inputJsonDeltaSse(partialJson: string, index = 2): string {
   return `event: content_block_delta\ndata: ${JSON.stringify({ type: 'content_block_delta', index, delta: { type: 'input_json_delta', partial_json: partialJson } })}`
 }
 
+function contentBlockStartSse(index: number, contentBlock: Record<string, unknown>): string {
+  return `event: content_block_start\ndata: ${JSON.stringify({ type: 'content_block_start', index, content_block: contentBlock })}`
+}
+
+function contentBlockStopSse(index: number): string {
+  return `event: content_block_stop\ndata: ${JSON.stringify({ type: 'content_block_stop', index })}`
+}
+
 function messageStartSse(message: Record<string, unknown>): string {
   return `event: message_start\ndata: ${JSON.stringify({ type: 'message_start', message })}`
 }
@@ -74,6 +82,23 @@ function makeRequest(overrides?: Partial<ProviderStreamRequest['config']>): Prov
       requestedReasoningMode: 'auto',
       ...overrides,
     },
+  }
+}
+
+function makeAnthropicNativeSnapshot(overrides?: Record<string, unknown>) {
+  return {
+    providerKey: 'anthropic',
+    sourceApi: 'anthropic_messages',
+    snapshotKey: 'assistant',
+    role: 'assistant',
+    status: 'final',
+    content: [
+      { type: 'thinking', thinking: 'private thought', signature: 'sig_1' },
+      { type: 'text', text: 'previous answer' },
+    ],
+    stopReason: 'end_turn',
+    usage: { output_tokens: 10 },
+    ...overrides,
   }
 }
 
@@ -210,6 +235,173 @@ describe('streamViaAnthropic', () => {
     expect(serialized).not.toContain('token=secret')
   })
 
+  it('uses final Anthropic native content for Anthropic assistant history without leaking Starverse fields', async () => {
+    const response = makeSseResponse(
+      messageStartSse({ id: 'msg_1', model: 'claude-sonnet-4-5', usage: { input_tokens: 10, output_tokens: 0 } }),
+      messageStopSse(),
+    )
+    const fetch = mockFetch(response)
+    const nativeSnapshot = makeAnthropicNativeSnapshot()
+
+    await collectEvents(streamViaAnthropic({
+      ...makeRequest(),
+      contextMessages: [
+        {
+          role: 'assistant',
+          providerId: 'anthropic_messages',
+          content: 'visible fallback must not be used',
+          reasoningDisplayBlocks: [{ text: 'do not send' }],
+          reasoningDetailsRaw: [{ type: 'raw', text: 'do not send' }],
+          providerNativeContents: [nativeSnapshot],
+        },
+      ],
+    }, {
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKey: 'sk-ant-test',
+      fetch,
+    }))
+
+    const [, init] = (fetch as any).mock.calls[0]
+    const body = JSON.parse(init.body)
+    expect(body.messages[0]).toEqual({
+      role: 'assistant',
+      content: nativeSnapshot.content,
+    })
+    const serialized = JSON.stringify(body)
+    expect(serialized).toContain('sig_1')
+    expect(serialized).not.toContain('visible fallback must not be used')
+    expect(serialized).not.toContain('reasoningDisplayBlocks')
+    expect(serialized).not.toContain('reasoningDetailsRaw')
+    expect(serialized).not.toContain('providerNativeContents')
+  })
+
+  it('fails before fetch when Anthropic assistant history is missing native content', async () => {
+    const fetch = vi.fn()
+
+    const events = await collectEvents(streamViaAnthropic({
+      ...makeRequest(),
+      contextMessages: [
+        { role: 'assistant', providerId: 'anthropic_messages', content: 'legacy answer' },
+      ],
+    }, {
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKey: 'sk-ant-test',
+      fetch,
+    }))
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'stream.error',
+        error: expect.objectContaining({ code: 'anthropic_native_history_missing' }),
+      }),
+    ])
+  })
+
+  it('fails before fetch when assistant history is from another provider', async () => {
+    const fetch = vi.fn()
+
+    const events = await collectEvents(streamViaAnthropic({
+      ...makeRequest(),
+      contextMessages: [
+        { role: 'assistant', providerId: 'openai_responses', content: 'foreign answer' },
+      ],
+    }, {
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKey: 'sk-ant-test',
+      fetch,
+    }))
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'stream.error',
+        error: expect.objectContaining({ code: 'anthropic_native_history_unsupported' }),
+      }),
+    ])
+  })
+
+  it('fails before fetch for unmatched Anthropic tool_use history', async () => {
+    const fetch = vi.fn()
+
+    const events = await collectEvents(streamViaAnthropic({
+      ...makeRequest(),
+      contextMessages: [
+        {
+          role: 'assistant',
+          providerId: 'anthropic_messages',
+          content: '',
+          providerNativeContents: [
+            makeAnthropicNativeSnapshot({
+              content: [
+                { type: 'thinking', thinking: 'tool thought', signature: 'sig-tool' },
+                { type: 'tool_use', id: 'toolu_1', name: 'lookup', input: { q: 'x' } },
+              ],
+              stopReason: 'tool_use',
+            }),
+          ],
+        },
+      ],
+    }, {
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKey: 'sk-ant-test',
+      fetch,
+    }))
+
+    expect(fetch).not.toHaveBeenCalled()
+    expect(events).toEqual([
+      expect.objectContaining({
+        type: 'stream.error',
+        error: expect.objectContaining({ code: 'anthropic_tool_continuation_unsupported' }),
+      }),
+    ])
+  })
+
+  it('emits final native content only after content blocks stop and message_stop arrives', async () => {
+    const response = makeSseResponse(
+      messageStartSse({ id: 'msg_1', model: 'claude-sonnet-4-5', usage: { input_tokens: 10, output_tokens: 0 } }),
+      contentBlockStartSse(0, { type: 'thinking', thinking: '' }),
+      thinkingDeltaSse('I think', 0),
+      signatureDeltaSse('sig_abc123', 0),
+      contentBlockStopSse(0),
+      contentBlockStartSse(1, { type: 'text', text: '' }),
+      textDeltaSse('answer', 1),
+      contentBlockStopSse(1),
+      messageDeltaSse('end_turn', { output_tokens: 12 }),
+      messageStopSse(),
+    )
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaAnthropic(makeRequest(), {
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKey: 'sk-ant-test',
+      fetch,
+    }))
+
+    const nativeEvents = events.filter((event) => event.type === 'message.provider_native_content_upsert')
+    expect(nativeEvents.length).toBeGreaterThan(0)
+    const finalNative = nativeEvents[nativeEvents.length - 1]
+    expect(finalNative).toMatchObject({
+      type: 'message.provider_native_content_upsert',
+      snapshot: {
+        providerKey: 'anthropic',
+        sourceApi: 'anthropic_messages',
+        snapshotKey: 'assistant',
+        status: 'final',
+        content: [
+          { type: 'thinking', thinking: 'I think', signature: 'sig_abc123' },
+          { type: 'text', text: 'answer' },
+        ],
+        stopReason: 'end_turn',
+        usage: { output_tokens: 12 },
+        model: 'claude-sonnet-4-5',
+      },
+    })
+    const doneIndex = events.findIndex((event) => event.type === 'stream.done')
+    const finalIndex = events.indexOf(finalNative)
+    expect(finalIndex).toBeLessThan(doneIndex)
+  })
+
   it('text_delta yields visible text', async () => {
     const response = makeSseResponse(
       messageStartSse({ id: 'msg_1', model: 'claude-sonnet-4-5', usage: { input_tokens: 10, output_tokens: 0 } }),
@@ -248,10 +440,68 @@ describe('streamViaAnthropic', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert' || e.type === 'message.reasoning_display_block')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     expect(reasoningEvents).toHaveLength(2)
+    expect(displayEvents).toHaveLength(0)
     expect(textEvents).toHaveLength(0)
+  })
+
+  it('registered thinking block deltas produce one stable visible display block path', async () => {
+    const response = makeSseResponse(
+      messageStartSse({ id: 'msg_1', model: 'claude-sonnet-4-5', usage: { input_tokens: 10, output_tokens: 0 } }),
+      contentBlockStartSse(0, { type: 'thinking', thinking: '' }),
+      thinkingDeltaSse('I', 0),
+      thinkingDeltaSse(' am', 0),
+      thinkingDeltaSse(' thinking', 0),
+      thinkingDeltaSse('.', 0),
+      signatureDeltaSse('sig_abc123', 0),
+      contentBlockStopSse(0),
+      messageDeltaSse('end_turn', { output_tokens: 50 }),
+      messageStopSse(),
+    )
+    const fetch = mockFetch(response)
+
+    const events = await collectEvents(streamViaAnthropic(makeRequest(), {
+      baseUrl: 'https://api.anthropic.com/v1',
+      apiKey: 'sk-ant-test',
+      fetch,
+    }))
+
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert')
+    const legacyDisplayEvents = events.filter((e) => e.type === 'message.reasoning_display_block')
+    expect(reasoningEvents).toHaveLength(5)
+    expect(legacyDisplayEvents).toHaveLength(0)
+    expect(displayEvents).toHaveLength(4)
+    const blockIds = new Set(displayEvents.map((event) =>
+      event.type === 'message.reasoning_display_block_upsert' ? event.block.blockId : ''
+    ))
+    expect(blockIds).toEqual(new Set(['assistant_1:reasoning-display:anthropic:anthropic_messages:0:thinking']))
+    expect(displayEvents.map((event) =>
+      event.type === 'message.reasoning_display_block_upsert' && event.block.type === 'text'
+        ? event.block.text
+        : null
+    )).toEqual([
+      'I',
+      'I am',
+      'I am thinking',
+      'I am thinking.',
+    ])
+    expect(JSON.stringify(displayEvents)).not.toContain('sig_abc123')
+
+    const nativeEvents = events.filter((event) => event.type === 'message.provider_native_content_upsert')
+    const finalNative = nativeEvents[nativeEvents.length - 1]
+    expect(finalNative).toMatchObject({
+      type: 'message.provider_native_content_upsert',
+      snapshot: {
+        status: 'final',
+        content: [
+          { type: 'thinking', thinking: 'I am thinking.', signature: 'sig_abc123' },
+        ],
+      },
+    })
   })
 
   it('signature_delta yields reasoning only', async () => {
@@ -270,9 +520,11 @@ describe('streamViaAnthropic', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
+    const displayEvents = events.filter((e) => e.type === 'message.reasoning_display_block_upsert')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     expect(reasoningEvents).toHaveLength(2) // thinking + signature
+    expect(displayEvents).toHaveLength(0)
     expect(textEvents).toHaveLength(0)
   })
 
@@ -313,7 +565,7 @@ describe('streamViaAnthropic', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     expect(reasoningEvents).toHaveLength(2)
     expect(textEvents).toHaveLength(1)
@@ -554,7 +806,7 @@ describe('streamViaAnthropic', () => {
       fetch,
     }))
 
-    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_detail')
+    const reasoningEvents = events.filter((e) => e.type === 'message.reasoning_raw_detail')
     const textEvents = events.filter((e) => e.type === 'message.text_delta')
     const usageEvents = events.filter((e) => e.type === 'usage.delta')
     const doneEvents = events.filter((e) => e.type === 'stream.done')

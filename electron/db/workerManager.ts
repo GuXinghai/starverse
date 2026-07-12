@@ -49,6 +49,7 @@ import type {
   WorkerEventMessage,
   ElectronConversionWorkerRequestMessage,
   ElectronPackageDownloadWorkerRequestMessage,
+  ElectronProviderFetchWorkerRequestMessage,
   WorkerInitConfig,
 } from '../../infra/db/types'
 import { DbWorkerError } from '../../infra/db/errors'
@@ -189,7 +190,7 @@ export class DbWorkerManager {
             this.worker = undefined
             this.startPromise = undefined
           })
-          worker.on('message', (message: WorkerResponseMessage | WorkerEventMessage | ElectronConversionWorkerRequestMessage | ElectronPackageDownloadWorkerRequestMessage) => this.handleMessage(message))
+          worker.on('message', (message: WorkerResponseMessage | WorkerEventMessage | ElectronConversionWorkerRequestMessage | ElectronPackageDownloadWorkerRequestMessage | ElectronProviderFetchWorkerRequestMessage) => this.handleMessage(message))
           worker.on('exit', (code) => {
             const wasStopping = this.stopping
             this.stopping = false
@@ -437,13 +438,17 @@ export class DbWorkerManager {
    * - Worker 返回的错误会被包装为 DbWorkerError
    * - 错误码 (errorCode) 用于区分错误类型
    */
-  private handleMessage(message: WorkerResponseMessage | WorkerEventMessage | ElectronConversionWorkerRequestMessage | ElectronPackageDownloadWorkerRequestMessage) {
+  private handleMessage(message: WorkerResponseMessage | WorkerEventMessage | ElectronConversionWorkerRequestMessage | ElectronPackageDownloadWorkerRequestMessage | ElectronProviderFetchWorkerRequestMessage) {
     if ('type' in message && message.type === 'electron-conversion-request') {
       this.handleElectronConversionRequest(message)
       return
     }
     if ('type' in message && message.type === 'electron-package-download-request') {
       this.handleElectronPackageDownloadRequest(message)
+      return
+    }
+    if ('type' in message && message.type === 'electron-provider-fetch-request') {
+      this.handleElectronProviderFetchRequest(message)
       return
     }
     // 处理事件消息
@@ -544,6 +549,42 @@ export class DbWorkerManager {
           response: {
             ok: false,
             code: 'download_failed',
+            detail: error instanceof Error ? error.message : String(error),
+          },
+        })
+      })
+  }
+
+  private handleElectronProviderFetchRequest(message: ElectronProviderFetchWorkerRequestMessage) {
+    const worker = this.worker
+    const bridge = this.options.electronConversionBridge
+    if (!bridge?.fetchProvider) {
+      worker?.postMessage({
+        type: 'electron-provider-fetch-response',
+        id: message.id,
+        response: {
+          ok: false,
+          code: 'provider_fetch_unavailable',
+          detail: 'electron_provider_fetch_service_unavailable',
+        },
+      })
+      return
+    }
+    Promise.resolve(bridge.fetchProvider(message.request))
+      .then((response) => {
+        worker?.postMessage({
+          type: 'electron-provider-fetch-response',
+          id: message.id,
+          response,
+        })
+      })
+      .catch((error) => {
+        worker?.postMessage({
+          type: 'electron-provider-fetch-response',
+          id: message.id,
+          response: {
+            ok: false,
+            code: 'provider_fetch_failed',
             detail: error instanceof Error ? error.message : String(error),
           },
         })

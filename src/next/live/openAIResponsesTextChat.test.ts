@@ -69,6 +69,7 @@ describe('openAIResponsesTextChat renderer bridge', () => {
         type: 'event',
         event: { type: 'stream.done' },
       })
+      chunkListeners.get(payload.requestId)?.({ type: 'end' })
       endListeners.get(payload.requestId)?.()
       return { ok: true }
     })

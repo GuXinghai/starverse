@@ -26,6 +26,7 @@ function registerWithStore(store: any) {
   registerGoogleAIStudioCredentialSettingsIpc({ registerInvoke, credentialService })
   return {
     get: registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-credential:get-status')?.[1],
+    reveal: registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-credential:reveal')?.[1],
     update: registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-credential:update')?.[1],
     clear: registerInvoke.mock.calls.find(([channel]) => channel === 'google-ai-studio-credential:clear')?.[1],
   }
@@ -61,6 +62,19 @@ describe('googleAIStudioCredentialSettingsIpc', () => {
     expect(serialized).not.toContain('AIza-raw-google-secret')
     expect(serialized).not.toContain('Authorization')
     expect(serialized).not.toContain('Bearer')
+  })
+
+  it('reveals the API key only through the explicit reveal channel', async () => {
+    const store = {
+      get: vi.fn((key: string) => key === GOOGLE_AI_STUDIO_API_KEY_STORE_KEY ? 'AIza-raw-google-secret' : undefined),
+      set: vi.fn(),
+      delete: vi.fn(),
+    }
+    const handlers = registerWithStore(store)
+
+    const result = await handlers.reveal({})
+
+    expect(result).toEqual({ ok: true, apiKey: 'AIza-raw-google-secret' })
   })
 
   it('updates and clears Google AI Studio API key through the narrow bridge only', async () => {

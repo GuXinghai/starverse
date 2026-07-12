@@ -78,6 +78,7 @@ describe('ui-app AppChatApp user message render prefs', () => {
       if (method === 'project.countConversationsBatch') return { counts: {} }
       if (method === 'project.countConversations') return { count: 0 }
       if (method === 'settings.getReasoningPrefs') return { value: null }
+      if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
       if (method === 'settings.getOpenRouterProviderRequireParameters') return { value: false }
       if (method === 'settings.getUserMessageRenderDefault') return { value: true }
       if (method === 'modelCatalog.list') return []

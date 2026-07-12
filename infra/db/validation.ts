@@ -51,7 +51,12 @@ import type {
   DetectFileTypeInput,
   MarkFileTypeVerdictStaleInput,
   AppendReasoningDetailSegmentsInput,
+  AppendReasoningDisplayBlocksInput,
+  FinalizeReasoningDisplayBlocksInput,
   FinalizeReasoningDetailsInput,
+  ListReasoningDisplayBlocksByMessageIdsInput,
+  UpsertProviderNativeContentInput,
+  ListProviderNativeContentsByMessageIdsInput,
   SetReasoningRequestConfigInput,
   GetReasoningSegmentsStatsInput,
   CreateConvoInput,
@@ -104,6 +109,43 @@ import type {
 } from './types'
 
 export const jsonSchema = z.record(z.any())
+
+// Compatible provider schemas are strict and secret-aware; do not use jsonSchema for them.
+export {
+  CreateCompatibleProviderInputSchema,
+  UpdateCompatibleProviderInputSchema,
+  TombstoneCompatibleProviderInputSchema,
+  CreateCompatibleCredentialDescriptorInputSchema,
+  DeleteCompatibleCredentialDescriptorInputSchema,
+  CreateCompatibleEndpointRevisionInputSchema,
+} from './repo/compatibleProviderRepo'
+export {
+  CreateCompatibleRequestProfileInputSchema,
+  CreateCompatibleRequestFieldMappingInputSchema,
+  CreateCompatibleReasoningMappingInputSchema,
+  CreateCompatibleInlinePolicyInputSchema,
+  CreateCompatibleResponseProfileInputSchema,
+} from './repo/compatibleProfileRepo'
+export {
+  ApplyCompatibleRemoteSyncSuccessInputSchema,
+  RecordCompatibleCatalogSyncFailureInputSchema,
+  UpsertCompatibleManualModelInputSchema,
+  UpsertCompatibleCatalogSyncStateInputSchema,
+} from './repo/compatibleCatalogRepo'
+export {
+  CreateCompatibleRouteProvenanceInputSchema,
+  CreateCompatibleRouteChoiceInputSchema,
+} from './repo/compatibleRouteRepo'
+export {
+  SaveCompatibleToolCallInputSchema,
+  CreateCompatibleToolResultInputSchema,
+  CompatibleToolCallKeySchema,
+} from './repo/compatibleToolRepo'
+export {
+  UpsertCompatibleDiscoveredFieldInputSchema,
+  CreateCompatibleRawExtensionRecordInputSchema,
+} from './repo/compatibleDiagnosticsRepo'
+export { SaveCompatibleReasoningChoiceInputSchema } from './repo/compatibleReasoningRepo'
 
 // ========== Project Schemas ==========
 
@@ -214,6 +256,7 @@ export const ListMessageErrorByIdsSchema: ZodType<ListMessageErrorByIdsInput> = 
 export const PersistMessageAssetsFromDataUrlsSchema: ZodType<PersistMessageAssetsFromDataUrlsInput> = z.object({
   messageId: z.string().min(1),
   imageDataUrls: z.array(z.string().min(1)).max(64),
+  linkToMessage: z.boolean().optional(),
 })
 
 export const ListMessageAssetsByMessageIdsSchema: ZodType<ListMessageAssetsByMessageIdsInput> = z.object({
@@ -647,6 +690,66 @@ export const AppendReasoningDetailSegmentsSchema: ZodType<AppendReasoningDetailS
   details: z.array(z.any()).min(1)
 })
 
+const ReasoningDisplayBlockSchema = z.object({
+  blockId: z.string().min(1),
+  ordinal: z.number().int().nonnegative(),
+  type: z.enum(['text', 'image', 'opaque']),
+  text: z.string().optional(),
+  semanticRole: z.enum(['summary', 'reasoning', 'thinking', 'thought']).optional(),
+  assetId: z.string().min(1).optional(),
+  fileAssetId: z.string().min(1).optional(),
+  url: z.string().optional(),
+  mimeType: z.string().optional(),
+  width: z.number().int().positive().optional(),
+  height: z.number().int().positive().optional(),
+  alt: z.string().optional(),
+  label: z.string().optional(),
+  warning: z.string().optional(),
+  providerKey: z.string().min(1),
+  sourceEventType: z.string().optional(),
+  sourceRawSegmentId: z.number().int().positive().optional(),
+})
+
+export const AppendReasoningDisplayBlocksSchema: ZodType<AppendReasoningDisplayBlocksInput> = z.object({
+  messageId: z.string().min(1),
+  blocks: z.array(ReasoningDisplayBlockSchema).min(1).max(256),
+})
+
+export const ListReasoningDisplayBlocksByMessageIdsSchema: ZodType<ListReasoningDisplayBlocksByMessageIdsInput> = z.object({
+  messageIds: z.array(z.string().min(1)).min(1).max(500),
+})
+
+const ProviderNativeContentSnapshotSchema = z.object({
+  providerKey: z.string().min(1),
+  sourceApi: z.string().min(1),
+  snapshotKey: z.string().min(1),
+  candidateIndex: z.number().int().nonnegative().optional(),
+  status: z.enum(['streaming', 'final', 'error', 'cancelled']),
+  content: z.any(),
+  role: z.string().min(1).optional(),
+  finishReason: z.string().min(1).optional(),
+  stopReason: z.string().min(1).optional(),
+  stopSequence: z.string().nullable().optional(),
+  usageMetadata: z.record(z.any()).optional(),
+  usage: z.any().optional(),
+  model: z.string().min(1).optional(),
+  diagnostics: z.array(z.record(z.any())).optional(),
+  modelVersion: z.string().min(1).optional(),
+}).passthrough()
+
+export const UpsertProviderNativeContentSchema = z.object({
+  messageId: z.string().min(1),
+  snapshot: ProviderNativeContentSnapshotSchema,
+}) as unknown as ZodType<UpsertProviderNativeContentInput>
+
+export const ListProviderNativeContentsByMessageIdsSchema: ZodType<ListProviderNativeContentsByMessageIdsInput> = z.object({
+  messageIds: z.array(z.string().min(1)).min(1).max(500),
+})
+
+export const FinalizeReasoningDisplayBlocksSchema: ZodType<FinalizeReasoningDisplayBlocksInput> = z.object({
+  messageId: z.string().min(1),
+})
+
 export const FinalizeReasoningDetailsSchema: ZodType<FinalizeReasoningDetailsInput> = z.object({
   messageId: z.string().min(1)
 })
@@ -759,6 +862,29 @@ export const SwitchCandidateSchema: ZodType<SwitchCandidateInput> = z.object({
 export const RegenerateFromQuestionSchema: ZodType<RegenerateFromQuestionInput> = z.object({
   branchId: z.string().min(1),
   questionId: z.string().min(1),
+})
+
+export const RegenerateQuestionWithCurrentConfigSchema = z.object({
+  operationId: z.string().trim().min(1).max(256),
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+  snapshot: jsonSchema,
+  compatibleExecutionPins: jsonSchema.optional(),
+})
+
+export const RetryChosenAnswerSchema = z.object({
+  operationId: z.string().trim().min(1).max(256),
+  branchId: z.string().min(1),
+  questionId: z.string().min(1),
+  targetAnswerRootId: z.string().min(1),
+  compatibleExecutionPins: jsonSchema.optional(),
+})
+
+export const FinalizeAssistantAnswerGenerationSchema = z.object({
+  answerRootId: z.string().min(1),
+  state: z.enum(['completed', 'failed', 'cancelled']),
+  errorCode: z.string().max(256).nullable().optional(),
+  errorMessage: z.string().max(4096).nullable().optional(),
 })
 
 export const GetBranchPathSchema: ZodType<GetBranchPathParams> = z.object({

@@ -9,6 +9,7 @@ import {
   streamWireSemanticCore,
 } from '@/next/streaming/core'
 import { buildAbortEnvelope } from '@/next/errors/openRouterErrorEnvelope'
+import { mapLocalOpenAIChatCompletionsChunkToEvents } from '@/next/streaming/core/localOpenAIChatCompletionsStreamMapper'
 import {
   buildOpenAICompatibleUserContent,
   type OpenAICompatibleChatContentPart,
@@ -236,6 +237,7 @@ export async function* streamLMStudioTextChatAsDomainEvents(
       requestContext,
       tRequestStart: Date.now(),
       signal: options.signal,
+      mapJsonChunkToEvents: mapLocalOpenAIChatCompletionsChunkToEvents,
       mapAppPhaseToEnvelopePhase,
       mapAppPhaseToEndReason,
       buildStreamErrorFromAppError,

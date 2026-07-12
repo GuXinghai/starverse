@@ -276,6 +276,80 @@ describe('buildReasoningDetailsArray', () => {
       const result = buildReasoningDetailsArray(segments)
       expect((result[0] as any).text).toBe('旧格式数据')
     })
+
+    it('保留 Gemini thought image 的 asset URL', () => {
+      const segments: ReasoningDetailSegmentRow[] = [
+        makeSegment({
+          segmentId: 1,
+          type: 'thought_image',
+          payload: JSON.stringify({
+            type: 'thought_image',
+            index: 0,
+            image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
+          }),
+        }),
+      ]
+
+      const result = buildReasoningDetailsArray(segments)
+      expect(result).toHaveLength(1)
+      expect(result[0]).toMatchObject({
+        type: 'thought_image',
+        index: 0,
+        image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
+      })
+    })
+
+    it('聚合 Gemini raw summaries separately from standalone thought images', () => {
+      const segments: ReasoningDetailSegmentRow[] = [
+        makeSegment({
+          segmentId: 1,
+          type: 'thought_summary',
+          index: 0,
+          payload: JSON.stringify({
+            type: 'thought_summary',
+            index: 0,
+            summary: 'before image',
+          }),
+          deltaSummary: 'before image',
+        }),
+        makeSegment({
+          segmentId: 2,
+          type: 'thought_image',
+          index: 0,
+          payload: JSON.stringify({
+            type: 'thought_image',
+            index: 0,
+            image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
+          }),
+        }),
+        makeSegment({
+          segmentId: 3,
+          type: 'thought_summary',
+          index: 0,
+          payload: JSON.stringify({
+            type: 'thought_summary',
+            index: 0,
+            summary: 'after image',
+          }),
+          deltaSummary: 'after image',
+        }),
+      ]
+
+      const result = buildReasoningDetailsArray(segments)
+
+      expect(result).toEqual([
+        {
+          type: 'thought_summary',
+          index: 0,
+          summary: 'before imageafter image',
+        },
+        {
+          type: 'thought_image',
+          index: 0,
+          image: { url: 'asset://reasoning-image-1', mimeType: 'image/png' },
+        },
+      ])
+    })
   })
 })
 

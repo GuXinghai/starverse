@@ -210,6 +210,7 @@ export async function* streamWireSemanticCore(input: StreamWireSemanticCoreInput
     requestContext: input.requestContext,
     tRequestStart: input.tRequestStart,
     signal,
+    mapJsonChunkToEvents: input.mapJsonChunkToEvents,
     logTiming: input.logTiming,
     logStreamError: input.logStreamError,
     mapAppPhaseToEnvelopePhase: input.mapAppPhaseToEnvelopePhase,

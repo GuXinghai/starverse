@@ -1,5 +1,9 @@
 import type { InternalMessage } from './buildMessages'
 import { toInternalMessagesFromBranchPath } from './loadBranchContext'
+import {
+  decodeContextBuildForBranchResponse,
+  decodeContextRenderableTurnsResponse,
+} from '@/next/ipc/contracts/dbBridgeContracts'
 
 export type ContextBuiltMessage = Readonly<{
   id: string
@@ -13,6 +17,8 @@ export type ContextBuiltMessage = Readonly<{
   questionId: string | null
   body: string
   meta: unknown
+  routeProvenanceId: string | null
+  choiceIndex: number | null
 }>
 
 export type ContextBuildDebug = Readonly<{
@@ -76,6 +82,8 @@ function coerceMessage(raw: any): ContextBuiltMessage | null {
     questionId: raw?.questionId ? String(raw.questionId) : null,
     body: typeof raw?.body === 'string' ? raw.body : String(raw?.body ?? ''),
     meta: raw?.meta ?? null,
+    routeProvenanceId: raw?.routeProvenanceId ? String(raw.routeProvenanceId) : null,
+    choiceIndex: typeof raw?.choiceIndex === 'number' ? raw.choiceIndex : null,
   } satisfies ContextBuiltMessage
 }
 
@@ -87,9 +95,8 @@ export async function buildContextForBranchInternalMessages(
   const bid = String(branchId ?? '').trim()
   if (!bid) throw new Error('Missing branchId')
 
-  const raw = await bridge.invoke('context.buildForBranch', { branchId: bid, ...(params ?? {}) })
-  const rowsRaw = Array.isArray(raw?.messages) ? raw.messages : []
-  const rows = rowsRaw
+  const raw = decodeContextBuildForBranchResponse(await bridge.invoke('context.buildForBranch', { branchId: bid, ...(params ?? {}) }))
+  const rows = raw.messages
     .map(coerceMessage)
     .filter((m: ContextBuiltMessage | null): m is ContextBuiltMessage => !!m)
 
@@ -122,13 +129,12 @@ export async function getRenderableTurnsForBranch(
   const bid = String(branchId ?? '').trim()
   if (!bid) throw new Error('Missing branchId')
 
-  const raw = await bridge.invoke('context.getRenderableTurns', { branchId: bid, ...(params ?? {}) })
-  const rowsRaw = Array.isArray(raw?.messages) ? raw.messages : []
-  const messages = rowsRaw
+  const raw = decodeContextRenderableTurnsResponse(await bridge.invoke('context.getRenderableTurns', { branchId: bid, ...(params ?? {}) }))
+  const messages = raw.messages
     .map(coerceMessage)
     .filter((m: ContextBuiltMessage | null): m is ContextBuiltMessage => !!m)
 
-  const turnsRaw = Array.isArray(raw?.turns) ? raw.turns : []
+  const turnsRaw = raw.turns
   const turns: RenderableTurnSummary[] = turnsRaw
     .map((t: any) => {
       const questionId = String(t?.questionId ?? '').trim()

@@ -29,6 +29,8 @@ describe('preload scoped API exposure', () => {
     expect(exposedNames).not.toContain('ipcRenderer')
     expect(exposedNames).toEqual(expect.arrayContaining([
       'electronStore',
+      'compatibleProviderRegistry',
+      'compatibleProviderTransport',
       'openRouterCredential',
       'openAIResponsesCredential',
       'openAIResponsesModels',
@@ -38,6 +40,7 @@ describe('preload scoped API exposure', () => {
       'deepSeekCredential',
       'deepSeekModels',
       'googleAIStudioModels',
+      'networkProxy',
       'localEndpointDiagnostics',
       'localEndpointChat',
       'lmStudioProvider',
@@ -93,6 +96,7 @@ describe('preload scoped API exposure', () => {
     const deepSeekCredential = exposeInMainWorld.mock.calls.find(([name]) => name === 'deepSeekCredential')?.[1]
     const deepSeekModels = exposeInMainWorld.mock.calls.find(([name]) => name === 'deepSeekModels')?.[1]
     const googleAIStudioModels = exposeInMainWorld.mock.calls.find(([name]) => name === 'googleAIStudioModels')?.[1]
+    const networkProxy = exposeInMainWorld.mock.calls.find(([name]) => name === 'networkProxy')?.[1]
     const localEndpointDiagnostics = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointDiagnostics')?.[1]
     const localEndpointChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'localEndpointChat')?.[1]
     const lmStudioProvider = exposeInMainWorld.mock.calls.find(([name]) => name === 'lmStudioProvider')?.[1]
@@ -104,6 +108,11 @@ describe('preload scoped API exposure', () => {
     const anthropicChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'anthropicChat')?.[1]
     const deepSeekChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'deepSeekChat')?.[1]
     const electronApi = exposeInMainWorld.mock.calls.find(([name]) => name === 'electronAPI')?.[1]
+    const compatibleProviderTransport = exposeInMainWorld.mock.calls.find(([name]) => name === 'compatibleProviderTransport')?.[1]
+    expect(compatibleProviderTransport).toEqual({
+      testConnection: expect.any(Function),
+      abortConnectionTest: expect.any(Function),
+    })
     expect(electronStore).toEqual(expect.objectContaining({
       get: expect.any(Function),
       set: expect.any(Function),
@@ -113,11 +122,13 @@ describe('preload scoped API exposure', () => {
     }))
     expect(openRouterCredential).toEqual({
       getStatus: expect.any(Function),
+      reveal: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
     expect(openAIResponsesCredential).toEqual({
       getStatus: expect.any(Function),
+      reveal: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
@@ -126,11 +137,13 @@ describe('preload scoped API exposure', () => {
     })
     expect(googleAIStudioCredential).toEqual({
       getStatus: expect.any(Function),
+      reveal: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
     expect(anthropicCredential).toEqual({
       getStatus: expect.any(Function),
+      reveal: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
@@ -139,6 +152,7 @@ describe('preload scoped API exposure', () => {
     })
     expect(deepSeekCredential).toEqual({
       getStatus: expect.any(Function),
+      reveal: expect.any(Function),
       update: expect.any(Function),
       clear: expect.any(Function),
     })
@@ -147,6 +161,12 @@ describe('preload scoped API exposure', () => {
     })
     expect(googleAIStudioModels).toEqual({
       listAvailability: expect.any(Function),
+    })
+    expect(networkProxy).toEqual({
+      getPolicy: expect.any(Function),
+      updatePolicy: expect.any(Function),
+      resetPolicy: expect.any(Function),
+      resolveProxy: expect.any(Function),
     })
     expect(localEndpointDiagnostics).toEqual({
       probe: expect.any(Function),
@@ -246,6 +266,9 @@ describe('preload scoped API exposure', () => {
     expect(googleAIStudioModels.apiKey).toBeUndefined()
     expect(googleAIStudioModels.update).toBeUndefined()
     expect(googleAIStudioModels.endpointRegistry).toBeUndefined()
+    expect(networkProxy.credentialResolver).toBeUndefined()
+    expect(networkProxy.secretStore).toBeUndefined()
+    expect(networkProxy.session).toBeUndefined()
     expect(openAIResponsesChat.getStatus).toBeUndefined()
     expect(openAIResponsesChat.update).toBeUndefined()
     expect(openAIResponsesChat.endpointRegistry).toBeUndefined()
@@ -267,24 +290,33 @@ describe('preload scoped API exposure', () => {
     await electronStore.clearSafe(['language'])
     await electronStore.checkIntegrity()
     await openRouterCredential.getStatus()
+    await openRouterCredential.reveal()
     await openRouterCredential.update({ apiKey: 'raw-openrouter-key', baseUrl: 'https://openrouter.ai/api/v1' })
     await openRouterCredential.clear()
     await openAIResponsesCredential.getStatus()
+    await openAIResponsesCredential.reveal()
     await openAIResponsesCredential.update({ apiKey: 'raw-openai-key' })
     await openAIResponsesCredential.clear()
     await openAIResponsesModels.listAvailability({ timeoutMs: 5000 })
     await googleAIStudioCredential.getStatus()
+    await googleAIStudioCredential.reveal()
     await googleAIStudioCredential.update({ apiKey: 'raw-google-key' })
     await googleAIStudioCredential.clear()
     await anthropicCredential.getStatus()
+    await anthropicCredential.reveal()
     await anthropicCredential.update({ apiKey: 'raw-anthropic-key' })
     await anthropicCredential.clear()
     await anthropicModels.listAvailability({ timeoutMs: 5000 })
     await deepSeekCredential.getStatus()
+    await deepSeekCredential.reveal()
     await deepSeekCredential.update({ apiKey: 'raw-deepseek-key' })
     await deepSeekCredential.clear()
     await deepSeekModels.listAvailability({ timeoutMs: 5000 })
     await googleAIStudioModels.listAvailability({ timeoutMs: 5000 })
+    await networkProxy.getPolicy()
+    await networkProxy.updatePolicy({ mode: 'direct' })
+    await networkProxy.resetPolicy()
+    await networkProxy.resolveProxy({ url: 'https://example.test' })
     await localEndpointDiagnostics.probe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointDiagnostics.streamProbe({ url: 'http://localhost:1234', timeoutMs: 5000 })
     await localEndpointChat.startTextChat({
@@ -365,12 +397,14 @@ describe('preload scoped API exposure', () => {
     expect(invoke).toHaveBeenCalledWith('store-clear-safe', ['language'])
     expect(invoke).toHaveBeenCalledWith('store-check-integrity')
     expect(invoke).toHaveBeenCalledWith('openrouter-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('openrouter-credential:reveal')
     expect(invoke).toHaveBeenCalledWith('openrouter-credential:update', {
       apiKey: 'raw-openrouter-key',
       baseUrl: 'https://openrouter.ai/api/v1',
     })
     expect(invoke).toHaveBeenCalledWith('openrouter-credential:clear')
     expect(invoke).toHaveBeenCalledWith('openai-responses-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('openai-responses-credential:reveal')
     expect(invoke).toHaveBeenCalledWith('openai-responses-credential:update', {
       apiKey: 'raw-openai-key',
     })
@@ -379,11 +413,13 @@ describe('preload scoped API exposure', () => {
       timeoutMs: 5000,
     })
     expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:reveal')
     expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:update', {
       apiKey: 'raw-google-key',
     })
     expect(invoke).toHaveBeenCalledWith('google-ai-studio-credential:clear')
     expect(invoke).toHaveBeenCalledWith('anthropic-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('anthropic-credential:reveal')
     expect(invoke).toHaveBeenCalledWith('anthropic-credential:update', {
       apiKey: 'raw-anthropic-key',
     })
@@ -392,6 +428,7 @@ describe('preload scoped API exposure', () => {
       timeoutMs: 5000,
     })
     expect(invoke).toHaveBeenCalledWith('deepseek-credential:get-status')
+    expect(invoke).toHaveBeenCalledWith('deepseek-credential:reveal')
     expect(invoke).toHaveBeenCalledWith('deepseek-credential:update', {
       apiKey: 'raw-deepseek-key',
     })
@@ -402,6 +439,10 @@ describe('preload scoped API exposure', () => {
     expect(invoke).toHaveBeenCalledWith('google-ai-studio-models:list-availability', {
       timeoutMs: 5000,
     })
+    expect(invoke).toHaveBeenCalledWith('network-proxy:get-policy')
+    expect(invoke).toHaveBeenCalledWith('network-proxy:update-policy', { mode: 'direct' })
+    expect(invoke).toHaveBeenCalledWith('network-proxy:reset-policy')
+    expect(invoke).toHaveBeenCalledWith('network-proxy:resolve-proxy', { url: 'https://example.test' })
     expect(invoke).toHaveBeenCalledWith('local-endpoint-diagnostics:probe', {
       url: 'http://localhost:1234',
       timeoutMs: 5000,
@@ -499,6 +540,7 @@ describe('preload scoped API exposure', () => {
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('deepSeekCredential'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('deepSeekModels'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioModels'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('networkProxy'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointDiagnostics'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('localEndpointChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('lmStudioProvider'")
@@ -509,16 +551,21 @@ describe('preload scoped API exposure', () => {
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('anthropicChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('deepSeekChat'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('compatibleProviderRegistry'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('compatibleProviderTransport'")
+    expect(preloadSource).toContain("ipcRenderer.invoke('compatible-provider:test-connection'")
+    expect(preloadSource).not.toContain('compatibleProviderTransport.fetch')
+    expect(preloadSource).not.toContain('compatibleProviderTransport.send')
+    expect(preloadSource).not.toContain('compatibleProviderTransport.stream')
+    expect(preloadSource).toContain("ipcRenderer.invoke('compatible-provider:rotate-credential'")
     expect(preloadSource).not.toContain('credentialRef')
     expect(preloadSource).not.toContain('credentialResolver')
     expect(preloadSource).not.toContain('secretStore')
     expect(preloadSource).not.toContain('EndpointRegistry')
-    expect(preloadSource).not.toContain('ProviderRegistry')
     expect(preloadSource).not.toContain('endpointRegistry')
-    expect(preloadSource).not.toContain('providerRegistry')
+    expect(preloadSource).not.toContain('compatible-provider:reveal')
     expect(preloadSource).not.toContain('Authorization')
     expect(preloadSource).not.toContain('Bearer')
     expect(preloadSource).not.toContain('openRouterApiKey')
-    expect(preloadSource).not.toContain('openRouterBaseUrl')
   })
 })

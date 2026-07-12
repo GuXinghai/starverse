@@ -3,11 +3,20 @@ import { sanitizeErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import {
   decodeBooleanAck,
   decodeAppendReasoningDetailSegmentsResponse,
+  decodeAppendReasoningDisplayBlocksResponse,
+  decodeMessageAssetListResponse,
+  decodeMessageAssetPersistResponse,
   decodeMessageAppendResponse,
+  decodeMessageFinalizeReasoningDisplayBlocksResponse,
   decodeMessageFinalizeReasoningDetailsResponse,
   decodeMessageListResponse,
+  decodeMessageUpsertProviderNativeContentResponse,
+  decodeProviderNativeContentListResponse,
   decodeMessageSetStatusResponse,
+  decodeReasoningDisplayBlockListResponse,
 } from '@/next/ipc/contracts/dbBridgeContracts'
+import type { ReasoningDisplayBlock } from '@/next/state/types'
+import { normalizeProviderNativeSnapshot, type ProviderNativeSnapshot } from '@/next/provider/providerNativeSnapshot'
 
 export type PersistedMessageRole = 'user' | 'assistant' | 'tool' | 'notice' | 'openrouter' | string
 
@@ -19,6 +28,8 @@ export type PersistedMessage = Readonly<{
   createdAt: number
   body: string
   meta: unknown
+  routeProvenanceId?: string
+  choiceIndex?: number
 }>
 
 export type PersistedMessageError = Readonly<{
@@ -183,13 +194,49 @@ export async function persistMessageImageAssetsFromDataUrls(input: Readonly<{
   messageId: string
   imageDataUrls: string[]
 }>): Promise<PersistedMessageImageAsset[]> {
-  void input
-  return []
+  const bridge = getDbBridge()
+  if (!bridge) return []
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) return []
+  const imageDataUrls = Array.isArray(input.imageDataUrls)
+    ? input.imageDataUrls.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+  if (imageDataUrls.length === 0) return []
+  const result = await bridge.invoke('messageAsset.persistFromDataUrls', { messageId, imageDataUrls })
+  return decodeMessageAssetPersistResponse(result)
+}
+
+export async function persistDetachedImageAssetsFromDataUrls(input: Readonly<{
+  messageId: string
+  imageDataUrls: string[]
+}>): Promise<PersistedMessageImageAsset[]> {
+  const bridge = getDbBridge()
+  if (!bridge) return []
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) return []
+  const imageDataUrls = Array.isArray(input.imageDataUrls)
+    ? input.imageDataUrls.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
+    : []
+  if (imageDataUrls.length === 0) return []
+  const result = await bridge.invoke('messageAsset.persistFromDataUrls', {
+    messageId,
+    imageDataUrls,
+    linkToMessage: false,
+  })
+  return decodeMessageAssetPersistResponse(result)
 }
 
 export async function listMessageImageAssetsByMessageIds(messageIds: ReadonlyArray<string>): Promise<PersistedMessageImageAsset[]> {
-  void messageIds
-  return []
+  const bridge = getDbBridge()
+  if (!bridge) return []
+  const ids = Array.from(new Set(
+    (Array.isArray(messageIds) ? messageIds : [])
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean)
+  ))
+  if (ids.length === 0) return []
+  const result = await bridge.invoke('messageAsset.listByMessageIds', { messageIds: ids })
+  return decodeMessageAssetListResponse(result)
 }
 
 /** DB 写入统计 */
@@ -201,6 +248,21 @@ export interface AppendReasoningDetailSegmentsResult {
   ignored: number
   sumDeltaLenInserted: number
 }
+
+export interface AppendReasoningDisplayBlocksResult {
+  ok: boolean
+  received: number
+  inserted: number
+  updated: number
+  ignored: number
+}
+
+export type PersistedReasoningDisplayBlock = ReasoningDisplayBlock & Readonly<{ messageId: string }>
+export type PersistedProviderNativeContent = ProviderNativeSnapshot & Readonly<{
+  messageId: string
+  createdAt: number
+  updatedAt: number
+}>
 
 export async function appendReasoningDetailSegments(input: Readonly<{ messageId: string; details: unknown[] }>): Promise<AppendReasoningDetailSegmentsResult> {
   const bridge = requireDbBridge()
@@ -214,12 +276,139 @@ export async function appendReasoningDetailSegments(input: Readonly<{ messageId:
   return decodeAppendReasoningDetailSegmentsResponse(result)
 }
 
+export async function appendReasoningDisplayBlocks(input: Readonly<{ messageId: string; blocks: ReasoningDisplayBlock[] }>): Promise<AppendReasoningDisplayBlocksResult> {
+  const bridge = requireDbBridge()
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) throw new Error('Missing messageId')
+  const blocks = Array.isArray(input.blocks) ? input.blocks : []
+  if (blocks.length === 0) return { ok: true, received: 0, inserted: 0, updated: 0, ignored: 0 }
+  const result = await bridge.invoke('message.appendReasoningDisplayBlocks', { messageId, blocks })
+  return decodeAppendReasoningDisplayBlocksResponse(result)
+}
+
+export async function listReasoningDisplayBlocksByMessageIds(messageIds: ReadonlyArray<string>): Promise<PersistedReasoningDisplayBlock[]> {
+  const bridge = getDbBridge()
+  if (!bridge) return []
+  const ids = Array.from(new Set(
+    (Array.isArray(messageIds) ? messageIds : [])
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean)
+  ))
+  if (ids.length === 0) return []
+  const rows = decodeReasoningDisplayBlockListResponse(
+    await bridge.invoke('message.listReasoningDisplayBlocksByMessageIds', { messageIds: ids })
+  )
+  return rows
+    .map((row): PersistedReasoningDisplayBlock | null => {
+      if (row.type === 'text') {
+        const text = row.text ?? ''
+        return text ? ({
+          messageId: row.messageId,
+          blockId: row.blockId,
+          ordinal: row.ordinal,
+          type: 'text',
+          text,
+          ...(row.semanticRole ? { semanticRole: row.semanticRole } : {}),
+          providerKey: row.providerKey,
+          ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
+          ...(row.sourceRawSegmentId ? { sourceRawSegmentId: row.sourceRawSegmentId } : {}),
+        } as PersistedReasoningDisplayBlock) : null
+      }
+      if (row.type === 'image') {
+        const assetId = row.assetId ?? ''
+        const url = row.url ?? (assetId ? `asset://${assetId}` : '')
+        return url ? ({
+          messageId: row.messageId,
+          blockId: row.blockId,
+          ordinal: row.ordinal,
+          type: 'image',
+          url,
+          ...(assetId ? { assetId } : {}),
+          ...(row.fileAssetId ? { fileAssetId: row.fileAssetId } : {}),
+          ...(row.mimeType ? { mimeType: row.mimeType } : {}),
+          ...(row.width ? { width: row.width } : {}),
+          ...(row.height ? { height: row.height } : {}),
+          ...(row.alt ? { alt: row.alt } : {}),
+          ...(row.semanticRole ? { semanticRole: row.semanticRole } : {}),
+          providerKey: row.providerKey,
+          ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
+          ...(row.sourceRawSegmentId ? { sourceRawSegmentId: row.sourceRawSegmentId } : {}),
+        } as PersistedReasoningDisplayBlock) : null
+      }
+      const label = row.label ?? ''
+      return label ? ({
+        messageId: row.messageId,
+        blockId: row.blockId,
+        ordinal: row.ordinal,
+        type: 'opaque',
+        label,
+        ...(row.warning ? { warning: row.warning } : {}),
+        providerKey: row.providerKey,
+        ...(row.sourceEventType ? { sourceEventType: row.sourceEventType } : {}),
+        ...(row.sourceRawSegmentId ? { sourceRawSegmentId: row.sourceRawSegmentId } : {}),
+      } as PersistedReasoningDisplayBlock) : null
+    })
+    .filter((block): block is PersistedReasoningDisplayBlock => !!block)
+    .sort((a, b) => a.ordinal - b.ordinal)
+}
+
+export async function upsertProviderNativeContent(input: Readonly<{
+  messageId: string
+  snapshot: ProviderNativeSnapshot
+}>): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) throw new Error('Missing messageId')
+  const snapshot = normalizeProviderNativeSnapshot(input.snapshot)
+  const result = await bridge.invoke('message.upsertProviderNativeContent', { messageId, snapshot })
+  return decodeMessageUpsertProviderNativeContentResponse(result)
+}
+
+export async function listProviderNativeContentsByMessageIds(
+  messageIds: ReadonlyArray<string>,
+): Promise<PersistedProviderNativeContent[]> {
+  const bridge = getDbBridge()
+  if (!bridge) return []
+  const ids = Array.from(new Set(
+    (Array.isArray(messageIds) ? messageIds : [])
+      .map((item) => String(item ?? '').trim())
+      .filter(Boolean)
+  ))
+  if (ids.length === 0) return []
+  const rows = decodeProviderNativeContentListResponse(
+    await bridge.invoke('message.listProviderNativeContentsByMessageIds', { messageIds: ids })
+  )
+  return rows
+    .map((row): PersistedProviderNativeContent | null => {
+      try {
+        const snapshot = normalizeProviderNativeSnapshot(row)
+        return {
+          messageId: row.messageId,
+          ...snapshot,
+          createdAt: row.createdAt,
+          updatedAt: row.updatedAt,
+        }
+      } catch {
+        return null
+      }
+    })
+    .filter((row): row is PersistedProviderNativeContent => !!row)
+}
+
 export async function finalizeReasoningDetails(input: Readonly<{ messageId: string }>): Promise<boolean> {
   const bridge = requireDbBridge()
   const messageId = String(input.messageId ?? '').trim()
   if (!messageId) throw new Error('Missing messageId')
   const result = await bridge.invoke('message.finalizeReasoningDetails', { messageId })
   return decodeMessageFinalizeReasoningDetailsResponse(result)
+}
+
+export async function finalizeReasoningDisplayBlocks(input: Readonly<{ messageId: string }>): Promise<boolean> {
+  const bridge = requireDbBridge()
+  const messageId = String(input.messageId ?? '').trim()
+  if (!messageId) throw new Error('Missing messageId')
+  const result = await bridge.invoke('message.finalizeReasoningDisplayBlocks', { messageId })
+  return decodeMessageFinalizeReasoningDisplayBlocksResponse(result)
 }
 
 export async function setMessageReasoningRequestConfig(input: Readonly<{ messageId: string; value: unknown }>): Promise<boolean> {
@@ -279,12 +468,14 @@ function getErrorProvider(envelope: ErrorEnvelope): string | undefined {
 }
 
 function buildErrorSummary(envelope: ErrorEnvelope): Record<string, unknown> {
+  const meta = envelope.openrouter?.metadata as any
   return {
     completionClass: envelope.completionClass,
     phase: envelope.phase,
     code: envelope.openrouter?.code,
     message: envelope.openrouter?.message,
     provider: getErrorProvider(envelope),
+    ...(meta?.networkError ? { networkError: meta.networkError } : {}),
   }
 }
 

@@ -46,9 +46,9 @@ export function classifyProviderResolvedProxy(value: unknown): ProviderHttpResol
 export function createElectronSessionProviderFetch(input?: Readonly<{
   session?: ElectronSessionLike
 }>): ProviderFetch {
-  const sessionFetch = (input?.session ?? session.defaultSession).fetch
   return (url, init) => {
+    const electronSession = input?.session ?? session.defaultSession
     const sessionInput = url instanceof URL ? url.toString() : url
-    return sessionFetch(sessionInput as string | Request, init)
+    return electronSession.fetch(sessionInput as string | Request, init)
   }
 }

@@ -1,9 +1,20 @@
 /* eslint-disable max-lines-per-function, complexity */
 import BetterSqlite3 from 'better-sqlite3'
 import { randomUUID, createHash } from 'node:crypto'
-import type { AppendMessageInput, ListMessageParams, MessageRecord, AppendReasoningDetailSegmentsInput, FinalizeReasoningDetailsInput, SetReasoningRequestConfigInput, SetMessageAnnotationsInput } from '../../db/types'
+import type { AppendMessageInput, ListMessageParams, MessageRecord, AppendReasoningDetailSegmentsInput, AppendReasoningDisplayBlocksInput, FinalizeReasoningDetailsInput, FinalizeReasoningDisplayBlocksInput, ListReasoningDisplayBlocksByMessageIdsInput, ReasoningDisplayBlockRecord, SetReasoningRequestConfigInput, SetMessageAnnotationsInput, UpsertProviderNativeContentInput, ListProviderNativeContentsByMessageIdsInput, ProviderNativeContentRecord } from '../../db/types'
 import { buildReasoningDetailsArray, stableStringifyReasoningDetails, type ReasoningDetailSegmentRow } from './reasoningDetailsAggregator'
 import { mergeMetaWithReasoning, safeParseMessageMeta } from './shared/messageMetaMerge'
+import {
+  ANTHROPIC_MESSAGES_SOURCE_API,
+  ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY,
+  type AnthropicProviderNativeSnapshot,
+} from '../../../src/next/provider/anthropic/anthropicProviderNativeContent'
+import {
+  GEMINI_GENERATE_CONTENT_SOURCE_API,
+  GEMINI_PROVIDER_NATIVE_PROVIDER_KEY,
+  type GeminiProviderNativeSnapshot,
+} from '../../../src/next/provider/gemini/geminiProviderNativeContent'
+import { normalizeProviderNativeSnapshot } from '../../../src/next/provider/providerNativeSnapshot'
 
 type SqlDatabase = BetterSqlite3.Database
 
@@ -26,7 +37,98 @@ const mapRow = (row: any): MessageRecord => {
     createdAt: row.created_at,
     body: row.body,
     meta,
+    ...(row.routeProvenanceId ? { routeProvenanceId: String(row.routeProvenanceId) } : {}),
+    ...(typeof row.choiceIndex === 'number' ? { choiceIndex: row.choiceIndex } : {}),
   }
+}
+
+type ProviderNativeRow = Readonly<{
+  providerKey: string
+  sourceApi: string
+  snapshotKey: string
+  candidateIndex: number | null
+  status: string
+  contentJson: string
+  role: string | null
+  finishReason: string | null
+  stopReason: string | null
+  stopSequence: string | null
+  usageJson: string | null
+  model: string | null
+  modelVersion: string | null
+}>
+
+function providerNativeSnapshotToRow(snapshot: ReturnType<typeof normalizeProviderNativeSnapshot>) {
+  if (snapshot.providerKey === GEMINI_PROVIDER_NATIVE_PROVIDER_KEY && snapshot.sourceApi === GEMINI_GENERATE_CONTENT_SOURCE_API) {
+    const gemini = snapshot as GeminiProviderNativeSnapshot
+    return {
+      providerKey: gemini.providerKey,
+      sourceApi: gemini.sourceApi,
+      snapshotKey: gemini.snapshotKey,
+      candidateIndex: gemini.candidateIndex,
+      status: gemini.status,
+      contentJson: JSON.stringify(gemini.content),
+      role: gemini.content.role,
+      finishReason: gemini.finishReason ?? null,
+      stopReason: null,
+      stopSequence: null,
+      usageJson: gemini.usageMetadata ? JSON.stringify(gemini.usageMetadata) : null,
+      model: null,
+      modelVersion: gemini.modelVersion ?? null,
+    }
+  }
+  if (snapshot.providerKey === ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY && snapshot.sourceApi === ANTHROPIC_MESSAGES_SOURCE_API) {
+    const anthropic = snapshot as AnthropicProviderNativeSnapshot
+    return {
+      providerKey: anthropic.providerKey,
+      sourceApi: anthropic.sourceApi,
+      snapshotKey: anthropic.snapshotKey,
+      candidateIndex: null,
+      status: anthropic.status,
+      contentJson: JSON.stringify(anthropic.content),
+      role: anthropic.role,
+      finishReason: null,
+      stopReason: anthropic.stopReason ?? null,
+      stopSequence: anthropic.stopSequence ?? null,
+      usageJson: anthropic.usage !== undefined ? JSON.stringify(anthropic.usage) : null,
+      model: anthropic.model ?? null,
+      modelVersion: null,
+    }
+  }
+  throw new Error('Unsupported provider native snapshot')
+}
+
+function providerNativeRowToSnapshot(row: ProviderNativeRow) {
+  const content = JSON.parse(row.contentJson)
+  const usage = row.usageJson ? JSON.parse(row.usageJson) : undefined
+  if (row.providerKey === GEMINI_PROVIDER_NATIVE_PROVIDER_KEY && row.sourceApi === GEMINI_GENERATE_CONTENT_SOURCE_API) {
+    return normalizeProviderNativeSnapshot({
+      providerKey: row.providerKey,
+      sourceApi: row.sourceApi,
+      snapshotKey: row.snapshotKey,
+      candidateIndex: typeof row.candidateIndex === 'number' ? row.candidateIndex : 0,
+      status: row.status,
+      content,
+      ...(row.finishReason ? { finishReason: row.finishReason } : {}),
+      ...(usage ? { usageMetadata: usage } : {}),
+      ...(row.modelVersion ? { modelVersion: row.modelVersion } : {}),
+    })
+  }
+  if (row.providerKey === ANTHROPIC_PROVIDER_NATIVE_PROVIDER_KEY && row.sourceApi === ANTHROPIC_MESSAGES_SOURCE_API) {
+    return normalizeProviderNativeSnapshot({
+      providerKey: row.providerKey,
+      sourceApi: row.sourceApi,
+      snapshotKey: row.snapshotKey,
+      role: row.role ?? 'assistant',
+      status: row.status,
+      content,
+      ...(row.model ? { model: row.model } : {}),
+      ...(row.stopReason ? { stopReason: row.stopReason } : {}),
+      stopSequence: row.stopSequence,
+      ...(usage !== undefined ? { usage } : {}),
+    })
+  }
+  throw new Error('Unsupported provider native row')
 }
 
 export class MessageRepo {
@@ -47,6 +149,12 @@ export class MessageRepo {
   private updateAnnotationsStmt: BetterSqlite3.Statement
   private insertReasoningSegmentStmt: BetterSqlite3.Statement
   private listReasoningSegmentsStmt: BetterSqlite3.Statement
+  private insertReasoningDisplayBlockStmt: BetterSqlite3.Statement
+  private updateReasoningDisplayBlockStmt: BetterSqlite3.Statement
+  private finalizeReasoningDisplayBlocksStmt: BetterSqlite3.Statement
+  private listReasoningDisplayBlocksStmt: BetterSqlite3.Statement
+  private upsertProviderNativeContentStmt: BetterSqlite3.Statement
+  private listProviderNativeContentsStmt: BetterSqlite3.Statement
   private updateReasoningFinalStmt: BetterSqlite3.Statement
   private updateReasoningRequestConfigStmt: BetterSqlite3.Statement
   private getReasoningSegmentsStatsStmt: BetterSqlite3.Statement
@@ -175,6 +283,192 @@ export class MessageRepo {
       ORDER BY segment_id ASC
     `)
 
+    this.insertReasoningDisplayBlockStmt = this.db.prepare(`
+      INSERT OR IGNORE INTO message_reasoning_display_blocks (
+        block_id,
+        message_id,
+        ordinal,
+        block_type,
+        text,
+        semantic_role,
+        asset_id,
+        file_asset_id,
+        url,
+        mime,
+        width,
+        height,
+        alt,
+        label,
+        warning,
+        provider_key,
+        source_event_type,
+        source_raw_segment_id,
+        payload_json,
+        created_at,
+        final_at,
+        segment_fingerprint
+      )
+      VALUES (
+        @blockId,
+        @messageId,
+        @ordinal,
+        @blockType,
+        @text,
+        @semanticRole,
+        @assetId,
+        @fileAssetId,
+        @url,
+        @mime,
+        @width,
+        @height,
+        @alt,
+        @label,
+        @warning,
+        @providerKey,
+        @sourceEventType,
+        @sourceRawSegmentId,
+        @payloadJson,
+        @createdAt,
+        NULL,
+        @fingerprint
+      )
+    `)
+
+    this.updateReasoningDisplayBlockStmt = this.db.prepare(`
+      UPDATE message_reasoning_display_blocks
+      SET ordinal = @ordinal,
+          block_type = @blockType,
+          text = @text,
+          semantic_role = @semanticRole,
+          asset_id = @assetId,
+          file_asset_id = @fileAssetId,
+          url = @url,
+          mime = @mime,
+          width = @width,
+          height = @height,
+          alt = @alt,
+          label = @label,
+          warning = @warning,
+          provider_key = @providerKey,
+          source_event_type = @sourceEventType,
+          source_raw_segment_id = @sourceRawSegmentId,
+          payload_json = @payloadJson,
+          segment_fingerprint = @fingerprint
+      WHERE block_id = @blockId
+        AND message_id = @messageId
+    `)
+
+    this.finalizeReasoningDisplayBlocksStmt = this.db.prepare(`
+      UPDATE message_reasoning_display_blocks
+      SET final_at = @finalAt
+      WHERE message_id = @messageId
+        AND final_at IS NULL
+    `)
+
+    this.listReasoningDisplayBlocksStmt = this.db.prepare(`
+      SELECT
+        block_id AS blockId,
+        message_id AS messageId,
+        ordinal,
+        block_type AS type,
+        text,
+        semantic_role AS semanticRole,
+        asset_id AS assetId,
+        file_asset_id AS fileAssetId,
+        url,
+        mime AS mimeType,
+        width,
+        height,
+        alt,
+        label,
+        warning,
+        provider_key AS providerKey,
+        source_event_type AS sourceEventType,
+        source_raw_segment_id AS sourceRawSegmentId,
+        final_at AS finalAt
+      FROM message_reasoning_display_blocks
+      WHERE message_id IN (
+        SELECT value FROM json_each(@messageIdsJson)
+      )
+      ORDER BY message_id ASC, ordinal ASC
+    `)
+
+    this.upsertProviderNativeContentStmt = this.db.prepare(`
+      INSERT INTO message_provider_native_contents (
+        message_id,
+        provider_key,
+        source_api,
+        snapshot_key,
+        candidate_index,
+        status,
+        content_json,
+        role,
+        finish_reason,
+        stop_reason,
+        stop_sequence,
+        usage_json,
+        model,
+        model_version,
+        created_at,
+        updated_at
+      )
+      VALUES (
+        @messageId,
+        @providerKey,
+        @sourceApi,
+        @snapshotKey,
+        @candidateIndex,
+        @status,
+        @contentJson,
+        @role,
+        @finishReason,
+        @stopReason,
+        @stopSequence,
+        @usageJson,
+        @model,
+        @modelVersion,
+        @createdAt,
+        @updatedAt
+      )
+      ON CONFLICT(message_id, provider_key, source_api, snapshot_key) DO UPDATE SET
+        candidate_index = excluded.candidate_index,
+        status = excluded.status,
+        content_json = excluded.content_json,
+        role = excluded.role,
+        finish_reason = excluded.finish_reason,
+        stop_reason = excluded.stop_reason,
+        stop_sequence = excluded.stop_sequence,
+        usage_json = excluded.usage_json,
+        model = excluded.model,
+        model_version = excluded.model_version,
+        updated_at = excluded.updated_at
+    `)
+
+    this.listProviderNativeContentsStmt = this.db.prepare(`
+      SELECT
+        message_id AS messageId,
+        provider_key AS providerKey,
+        source_api AS sourceApi,
+        snapshot_key AS snapshotKey,
+        candidate_index AS candidateIndex,
+        status,
+        content_json AS contentJson,
+        role,
+        finish_reason AS finishReason,
+        stop_reason AS stopReason,
+        stop_sequence AS stopSequence,
+        usage_json AS usageJson,
+        model,
+        model_version AS modelVersion,
+        created_at AS createdAt,
+        updated_at AS updatedAt
+      FROM message_provider_native_contents
+      WHERE message_id IN (
+        SELECT value FROM json_each(@messageIdsJson)
+      )
+      ORDER BY message_id ASC, provider_key ASC, source_api ASC, snapshot_key ASC
+    `)
+
     this.updateReasoningFinalStmt = this.db.prepare(`
       UPDATE message
       SET reasoning_details_final_json = @finalJson,
@@ -266,9 +560,13 @@ export class MessageRepo {
         m.reasoning_duration_ms AS reasoningDurationMs,
         m.reasoning_end_reason AS reasoningEndReason,
         m.reasoning_duration_is_fallback AS reasoningDurationIsFallback,
-        b.body
+        b.body,
+        COALESCE(route_choice.route_provenance_id, request_route.route_provenance_id) AS routeProvenanceId,
+        route_choice.choice_index AS choiceIndex
       FROM message m
       JOIN message_body b ON b.message_id = m.id
+      LEFT JOIN compatible_route_provenance request_route ON request_route.request_message_id = m.id
+      LEFT JOIN compatible_route_choices route_choice ON route_choice.message_id = m.id
       WHERE m.convo_id = @convoId
         ${params.fromSeq !== undefined ? 'AND m.seq >= @fromSeq' : ''}
       ORDER BY m.seq ${direction}
@@ -583,6 +881,145 @@ export class MessageRepo {
 
     txn()
     return { ok: true }
+  }
+
+  appendReasoningDisplayBlocks(input: AppendReasoningDisplayBlocksInput) {
+    const messageId = String(input.messageId ?? '').trim()
+    if (!messageId) throw new Error('Missing messageId')
+    const blocks = Array.isArray(input.blocks) ? input.blocks : []
+    if (blocks.length === 0) return { ok: true, received: 0, inserted: 0, updated: 0, ignored: 0 }
+
+    const now = Date.now()
+    let inserted = 0
+    let updated = 0
+    let ignored = 0
+    const txn = this.db.transaction(() => {
+      for (const block of blocks) {
+        const blockId = String(block.blockId ?? '').trim()
+        const ordinal = Number(block.ordinal)
+        const type = String(block.type ?? '').trim()
+        if (!blockId || !Number.isFinite(ordinal) || ordinal < 0) continue
+        if (type !== 'text' && type !== 'image' && type !== 'opaque') continue
+        const providerKey = String(block.providerKey ?? '').trim()
+        if (!providerKey) throw new Error('Reasoning display block providerKey is required')
+        const assetId = String(block.assetId ?? '').trim()
+        const fileAssetId = String(block.fileAssetId ?? '').trim()
+
+        const payloadJson = JSON.stringify(block)
+        const fingerprint = createHash('sha256')
+          .update([messageId, String(ordinal), type, payloadJson].join('\n'))
+          .digest('hex')
+        const payload = {
+          blockId,
+          messageId,
+          ordinal,
+          blockType: type,
+          text: type === 'text' ? String(block.text ?? '') : null,
+          semanticRole: block.semanticRole ?? null,
+          assetId: type === 'image' && assetId ? assetId : null,
+          fileAssetId: type === 'image' && fileAssetId ? fileAssetId : null,
+          url: type === 'image' ? String(block.url ?? '') : null,
+          mime: type === 'image' ? (block.mimeType ?? null) : null,
+          width: typeof block.width === 'number' ? block.width : null,
+          height: typeof block.height === 'number' ? block.height : null,
+          alt: block.alt ?? null,
+          label: type === 'opaque' ? String(block.label ?? '') : null,
+          warning: block.warning ?? null,
+          providerKey,
+          sourceEventType: block.sourceEventType ?? null,
+          sourceRawSegmentId: typeof block.sourceRawSegmentId === 'number' ? block.sourceRawSegmentId : null,
+          payloadJson,
+          createdAt: now,
+          fingerprint,
+        }
+        const updateResult = this.updateReasoningDisplayBlockStmt.run(payload)
+        if (updateResult.changes > 0) {
+          updated++
+          continue
+        }
+        const result = this.insertReasoningDisplayBlockStmt.run(payload)
+        if (result.changes > 0) inserted++
+        else ignored++
+      }
+    })
+    txn()
+    return { ok: true, received: blocks.length, inserted, updated, ignored }
+  }
+
+  finalizeReasoningDisplayBlocks(input: FinalizeReasoningDisplayBlocksInput) {
+    const messageId = String(input.messageId ?? '').trim()
+    if (!messageId) throw new Error('Missing messageId')
+
+    const finalAt = Date.now()
+    const result = this.finalizeReasoningDisplayBlocksStmt.run({ messageId, finalAt })
+    return { ok: true, finalized: result.changes, finalAt }
+  }
+
+  listReasoningDisplayBlocksByMessageIds(input: ListReasoningDisplayBlocksByMessageIdsInput): ReasoningDisplayBlockRecord[] {
+    const ids = Array.from(new Set(
+      (Array.isArray(input.messageIds) ? input.messageIds : [])
+        .map((id) => String(id ?? '').trim())
+        .filter(Boolean)
+    ))
+    if (ids.length === 0) return []
+    return this.listReasoningDisplayBlocksStmt.all({ messageIdsJson: JSON.stringify(ids) }) as ReasoningDisplayBlockRecord[]
+  }
+
+  upsertProviderNativeContent(input: UpsertProviderNativeContentInput) {
+    const messageId = String(input.messageId ?? '').trim()
+    if (!messageId) throw new Error('Missing messageId')
+    const snapshot = normalizeProviderNativeSnapshot(input.snapshot)
+    const now = Date.now()
+    const row = providerNativeSnapshotToRow(snapshot)
+    this.upsertProviderNativeContentStmt.run({
+      messageId,
+      ...row,
+      createdAt: now,
+      updatedAt: now,
+    })
+    return { ok: true, status: snapshot.status }
+  }
+
+  listProviderNativeContentsByMessageIds(input: ListProviderNativeContentsByMessageIdsInput): ProviderNativeContentRecord[] {
+    const ids = Array.from(new Set(
+      (Array.isArray(input.messageIds) ? input.messageIds : [])
+        .map((id) => String(id ?? '').trim())
+        .filter(Boolean)
+    ))
+    if (ids.length === 0) return []
+    const rows = this.listProviderNativeContentsStmt.all({ messageIdsJson: JSON.stringify(ids) }) as Array<{
+      messageId: string
+      providerKey: string
+      sourceApi: string
+      snapshotKey: string
+      candidateIndex: number | null
+      status: string
+      contentJson: string
+      role: string | null
+      finishReason: string | null
+      stopReason: string | null
+      stopSequence: string | null
+      usageJson: string | null
+      model: string | null
+      modelVersion: string | null
+      createdAt: number
+      updatedAt: number
+    }>
+    const out: ProviderNativeContentRecord[] = []
+    for (const row of rows) {
+      try {
+        const snapshot = providerNativeRowToSnapshot(row)
+        out.push({
+          messageId: row.messageId,
+          ...snapshot,
+          createdAt: Number(row.createdAt),
+          updatedAt: Number(row.updatedAt),
+        })
+      } catch {
+        // Corrupt provider-native rows are diagnostic-only and must not enter continuation.
+      }
+    }
+    return out
   }
 
   setReasoningRequestConfig(input: SetReasoningRequestConfigInput) {
