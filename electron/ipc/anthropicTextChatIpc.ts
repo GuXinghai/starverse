@@ -11,6 +11,7 @@ import {
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 import type { ProviderFileUploadCacheEvent, ProviderFileUploadService } from '../services/providerFileUploadService'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { invalidateProviderFileUploadCacheOnReferenceError } from '../services/providerFileUploadInvalidation'
 import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
 import {
@@ -58,6 +59,7 @@ type RegisterAnthropicTextChatIpcInput = Readonly<{
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
   fetchImpl?: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -242,6 +244,7 @@ async function forwardAnthropicStream(input: Readonly<{
   credentialService: ProviderCredentialService
   providerFileUploadService?: ProviderFileUploadService
   fetchImpl: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const apiKey = readAnthropicApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -302,6 +305,10 @@ async function forwardAnthropicStream(input: Readonly<{
       baseUrl: ANTHROPIC_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
+      captureSerializedRequest: (serializedBody) => input.rawGenerationRequestStore?.tryPersist({
+        operationId: input.request.requestId, answerRootId: input.request.assistantMessageId, requestSequence: 1,
+        providerId: 'anthropic_messages', modelId: input.request.model,
+      }, serializedBody),
     })
     for await (const event of events) {
       const safeEvent = safeStreamEvent(event)
@@ -364,6 +371,7 @@ export function registerAnthropicTextChatIpc(
       credentialService: input.credentialService,
       providerFileUploadService: input.providerFileUploadService,
       fetchImpl,
+      rawGenerationRequestStore: input.rawGenerationRequestStore,
     })
     return { ok: true }
   })

@@ -109,11 +109,10 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
     vi.unstubAllGlobals()
   })
 
-  it('characterizes current startup scope as resolver-backed legacy openRouterApiKey and official openRouterBaseUrl reads', () => {
+  it('characterizes current startup scope as resolver-backed legacy OpenRouter API key with the official endpoint', () => {
     const rawApiKey = 'sk-startup-direct-read-secret'
     const store = createStore({
       openRouterApiKey: `  ${rawApiKey}  `,
-      openRouterBaseUrl: ' https://openrouter.ai/api/v1/ ',
       openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
     })
 
@@ -125,7 +124,6 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
       scopeDataSource: 'models_user_primary',
     })
     expect(store.get).toHaveBeenCalledWith('openRouterApiKey')
-    expect(store.get).toHaveBeenCalledWith('openRouterBaseUrl')
     expect(store.get).toHaveBeenCalledWith('openRouterCatalogLocalSecret')
     expect(JSON.stringify(scope)).not.toContain(rawApiKey)
     expect(JSON.stringify(scope)).not.toContain('local-secret-for-startup-tests-1234567890')
@@ -151,7 +149,6 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
     const rawApiKey = 'sk-startup-secret-a'
     const store = createStore({
       openRouterApiKey: rawApiKey,
-      openRouterBaseUrl: 'https://openrouter.ai/api/v1/',
       openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
     })
     const scope = resolveCurrentOpenRouterCatalogScope(store)!
@@ -189,7 +186,6 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
     const rawApiKey = 'sk-startup-sync-job-secret'
     const store = createStore({
       openRouterApiKey: rawApiKey,
-      openRouterBaseUrl: 'https://openrouter.ai/api/v1/',
       openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
     })
     const dbWorkerManager = {
@@ -223,7 +219,6 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
     }))
     const store = createStore({
       openRouterApiKey: 'sk-startup-sync-job-secret',
-      openRouterBaseUrl: 'https://openrouter.ai/api/v1/',
       openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
     })
     const dbWorkerManager = {
@@ -264,7 +259,6 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
     })) as unknown as typeof fetch
     const store = createStore({
       openRouterApiKey: 'sk-startup-sync-job-secret',
-      openRouterBaseUrl: 'https://openrouter.ai/api/v1/',
       openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
     })
     const dbWorkerManager = {
@@ -288,26 +282,6 @@ describe('runCatalogSyncAtStartup scoped catalog path', () => {
 
     expect(openRouterSourceMock.fetchSnapshot).toHaveBeenCalledTimes(1)
     expect(electronMock.sessionFetch).not.toHaveBeenCalled()
-  })
-
-  it('does not run catalog sync with saved OpenRouter key when baseUrl is an attacker host', async () => {
-    const store = createStore({
-      openRouterApiKey: 'sk-startup-attacker-base-secret',
-      openRouterBaseUrl: 'https://attacker.example.test/custom/v1/',
-      openRouterCatalogLocalSecret: 'local-secret-for-startup-tests-1234567890',
-    })
-    const dbWorkerManager = { call: vi.fn() } as any
-
-    const result = await runCatalogSyncAtStartup({ store, dbWorkerManager, force: true })
-
-    expect(result).toMatchObject({
-      syncAttempted: true,
-      syncSucceeded: false,
-      reason: 'missing_api_key_no_cache',
-      failureMessage: 'missing_api_key',
-    })
-    expect(dbWorkerManager.call).not.toHaveBeenCalled()
-    expect(openRouterSourceMock.fetchSnapshot).not.toHaveBeenCalled()
   })
 
   it('keeps startup catalog sync failure logs and diagnostics free of raw key material', async () => {

@@ -10,6 +10,7 @@ import {
   type ProviderRuntimeContentBlock,
 } from '../../src/next/multimodal/providerRuntimeContentBlocks'
 import { validateProviderGenerationParamsPayload } from './providerGenerationParamsPayload'
+import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 
 export const DEEPSEEK_TEXT_CHAT_IPC_CHANNELS = [
   'deepseek-chat:stream-text',
@@ -49,6 +50,7 @@ type RegisterDeepSeekTextChatIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   credentialService: ProviderCredentialService
   fetchImpl?: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedTextChatSuccess = Readonly<{
@@ -180,7 +182,8 @@ function safeStreamEvent(event: StarverseStreamEvent): StarverseStreamEvent | nu
     event.type === 'message.reasoning_raw_detail_batch' ||
     event.type === 'message.reasoning_detail' ||
     event.type === 'message.reasoning_detail_batch' ||
-    event.type === 'message.reasoning_display_block'
+    event.type === 'message.reasoning_display_block' ||
+    event.type === 'message.reasoning_display_block_upsert'
   ) {
     return null
   }
@@ -235,6 +238,7 @@ async function forwardDeepSeekStream(input: Readonly<{
   sender: WebContents
   credentialService: ProviderCredentialService
   fetchImpl: ProviderFetch
+  rawGenerationRequestStore?: RawGenerationRequestStore
 }>): Promise<void> {
   const apiKey = readDeepSeekApiKey(input.credentialService)
   if (typeof apiKey !== 'string') {
@@ -270,6 +274,10 @@ async function forwardDeepSeekStream(input: Readonly<{
       baseUrl: DEEPSEEK_BASE_URL,
       apiKey,
       fetch: fetchWithRedirectError,
+      captureSerializedRequest: (serializedBody) => input.rawGenerationRequestStore?.tryPersist({
+        operationId: input.request.requestId, answerRootId: input.request.assistantMessageId, requestSequence: 1,
+        providerId: 'deepseek', modelId: input.request.model,
+      }, serializedBody),
     })
     for await (const event of events) {
       const safeEvent = safeStreamEvent(event)
@@ -322,7 +330,7 @@ export function registerDeepSeekTextChatIpc(
       return staticFailure('invalid_payload', 'DeepSeek official text chat bridge is unavailable.')
     }
 
-    void forwardDeepSeekStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl })
+    void forwardDeepSeekStream({ request: validated, sender, credentialService: input.credentialService, fetchImpl, rawGenerationRequestStore: input.rawGenerationRequestStore })
     return { ok: true }
   })
 

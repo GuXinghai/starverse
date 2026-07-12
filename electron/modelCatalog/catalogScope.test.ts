@@ -80,7 +80,6 @@ describe('catalogScope', () => {
   it('characterizes catalog local secret as the only catalog store key blocked from renderer store IPC', () => {
     expect(isSensitiveCatalogStoreKey(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)).toBe(true)
     expect(isSensitiveCatalogStoreKey('openRouterApiKey')).toBe(false)
-    expect(isSensitiveCatalogStoreKey('openRouterBaseUrl')).toBe(false)
     expect(isSensitiveCatalogStoreKey('geminiApiKey')).toBe(false)
     expect(isSensitiveCatalogStoreKey('apiKey')).toBe(false)
     expect(isSensitiveCatalogStoreKey('activeProvider')).toBe(false)

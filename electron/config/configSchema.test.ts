@@ -67,4 +67,21 @@ describe('configSchema provider credential secure-store keys', () => {
 
     expect(checkConfigIntegrity(store)).toEqual({ ok: true })
   })
+
+  it('keeps versioned compatible credential ciphertext records during cleanup and integrity checks', () => {
+    const key = 'compatibleCredentials.v1.ocp_credential_12345678'
+    const record = {
+      version: 1,
+      credentialVersionRef: 'ocp_credential_12345678',
+      backend: 'electron_safe_storage',
+      ciphertextBase64: 'encrypted',
+      createdAtMs: 1,
+    }
+    const compatibleCredentials = { v1: { ocp_credential_12345678: record } }
+    const result = validateAndCleanConfig({ configVersion: 2, compatibleCredentials, [key]: record, unknown: true })
+    expect(result.cleaned.compatibleCredentials).toEqual(compatibleCredentials)
+    expect(result.cleaned[key]).toEqual(record)
+    expect(result.removed.map((item) => item.key)).toEqual(['unknown'])
+    expect(checkConfigIntegrity({ store: { configVersion: 2, compatibleCredentials } })).toEqual({ ok: true })
+  })
 })

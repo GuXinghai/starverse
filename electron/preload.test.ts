@@ -29,6 +29,8 @@ describe('preload scoped API exposure', () => {
     expect(exposedNames).not.toContain('ipcRenderer')
     expect(exposedNames).toEqual(expect.arrayContaining([
       'electronStore',
+      'compatibleProviderRegistry',
+      'compatibleProviderTransport',
       'openRouterCredential',
       'openAIResponsesCredential',
       'openAIResponsesModels',
@@ -106,6 +108,11 @@ describe('preload scoped API exposure', () => {
     const anthropicChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'anthropicChat')?.[1]
     const deepSeekChat = exposeInMainWorld.mock.calls.find(([name]) => name === 'deepSeekChat')?.[1]
     const electronApi = exposeInMainWorld.mock.calls.find(([name]) => name === 'electronAPI')?.[1]
+    const compatibleProviderTransport = exposeInMainWorld.mock.calls.find(([name]) => name === 'compatibleProviderTransport')?.[1]
+    expect(compatibleProviderTransport).toEqual({
+      testConnection: expect.any(Function),
+      abortConnectionTest: expect.any(Function),
+    })
     expect(electronStore).toEqual(expect.objectContaining({
       get: expect.any(Function),
       set: expect.any(Function),
@@ -544,16 +551,21 @@ describe('preload scoped API exposure', () => {
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('googleAIStudioChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('anthropicChat'")
     expect(preloadSource).toContain("contextBridge.exposeInMainWorld('deepSeekChat'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('compatibleProviderRegistry'")
+    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('compatibleProviderTransport'")
+    expect(preloadSource).toContain("ipcRenderer.invoke('compatible-provider:test-connection'")
+    expect(preloadSource).not.toContain('compatibleProviderTransport.fetch')
+    expect(preloadSource).not.toContain('compatibleProviderTransport.send')
+    expect(preloadSource).not.toContain('compatibleProviderTransport.stream')
+    expect(preloadSource).toContain("ipcRenderer.invoke('compatible-provider:rotate-credential'")
     expect(preloadSource).not.toContain('credentialRef')
     expect(preloadSource).not.toContain('credentialResolver')
     expect(preloadSource).not.toContain('secretStore')
     expect(preloadSource).not.toContain('EndpointRegistry')
-    expect(preloadSource).not.toContain('ProviderRegistry')
     expect(preloadSource).not.toContain('endpointRegistry')
-    expect(preloadSource).not.toContain('providerRegistry')
+    expect(preloadSource).not.toContain('compatible-provider:reveal')
     expect(preloadSource).not.toContain('Authorization')
     expect(preloadSource).not.toContain('Bearer')
     expect(preloadSource).not.toContain('openRouterApiKey')
-    expect(preloadSource).not.toContain('openRouterBaseUrl')
   })
 })

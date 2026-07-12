@@ -16,7 +16,6 @@ describe('providerCatalogScopeResolver', () => {
     const rawApiKey = 'sk-scope-secret'
     const store = createStore({
       openRouterApiKey: rawApiKey,
-      openRouterBaseUrl: 'https://openrouter.ai/api/v1/',
       openRouterCatalogLocalSecret: 'local-secret-for-scope-resolver-tests-1234567890',
     })
 
@@ -29,15 +28,5 @@ describe('providerCatalogScopeResolver', () => {
     })
     expect(scope?.catalogScopeKey).toMatch(/^[a-f0-9]{64}$/)
     expect(JSON.stringify(scope)).not.toContain(rawApiKey)
-  })
-
-  it('returns null when the legacy OpenRouter catalog credential is unsafe', () => {
-    const store = createStore({
-      openRouterApiKey: 'sk-scope-secret',
-      openRouterBaseUrl: 'https://attacker.example.test/v1',
-      openRouterCatalogLocalSecret: 'local-secret-for-scope-resolver-tests-1234567890',
-    })
-
-    expect(resolveCurrentOpenRouterCatalogScope(store)).toBeNull()
   })
 })
