@@ -36,4 +36,3 @@ export function compatibleExtensionPathMatches(pattern: CompatibleExtensionPath,
 function invalid(): Error {
   return new Error('compatible_extension_path_invalid')
 }
-
