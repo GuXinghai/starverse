@@ -349,7 +349,7 @@ async function smokeOpenRouter(config, imageDataUrl, fixturePath) {
   const key = readSecureKey(config, 'openrouter')
   if (!key.ok) return { provider: 'openrouter', status: 'skipped', reason: key.reason }
 
-  const baseUrl = String(config.openRouterBaseUrl || OPENROUTER_BASE_URL).trim() || OPENROUTER_BASE_URL
+  const baseUrl = OPENROUTER_BASE_URL
   const picked = await pickOpenRouterImageModel(key.apiKey, baseUrl)
   if (!picked.ok) {
     return {
