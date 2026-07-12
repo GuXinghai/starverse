@@ -2188,3 +2188,36 @@ structured_and_inline_overlap
 10. 空 delta 不得错误触发来源锁定或永久失败。
 11. mapping mode、mapping version 和最终 source 必须可诊断。
 12. retry、regenerate、reload 不得动态套用新的 mapping mode 重新解释旧消息。
+
+## D16. 代理路由与云端兼容端点安全策略正交
+
+Starverse 现有代理模型及双 transport 架构必须保留。代理路由只允许显式选择：
+
+* `system`
+* `manual`
+* `environment`
+* `direct`
+
+不得用“浏览器兼容”或“严格安全”等安全概念替代、重命名或隐式选择代理模式。通用云端 OpenAI-compatible endpoint 独立增加且只增加两种地址安全策略：
+
+* `compatibility_first`
+* `strict_ssrf`
+
+`compatibility_first`：
+
+* 保留所选代理路由及其既有 transport 的原生行为；
+* 在首次请求前解析并检查目标地址；
+* 每次手动重定向后重新解析并检查；
+* 一个 blocked DNS answer 即阻断该次请求；
+* 不声称请求前检查等价于 connect-time lease 证明。
+
+`strict_ssrf`：
+
+* 实际连接必须可证明消费当前请求、当前 redirect hop 已审核的地址租约；
+* transport capability 必须显式声明并由对抗测试证明；
+* 当前所选 transport 无法证明时，在发起请求、发送 credential 或正文前返回 typed block；
+* 不得自动改用 `compatibility_first`，不得自动改用另一 transport 或代理路由。
+
+两条轴必须独立持久化、显示和诊断。两种安全策略与四种代理路由均不得静默切换、fallback 或降级。历史 route 固定 endpoint revision 中的安全策略；代理路由选择按实际发送时明确选定的现有网络配置执行，不得由安全策略重写。
+
+本决策修订此前“所有 compatible 请求都必须具备 connect-time lease”这一全局要求：connect-time lease 是 `strict_ssrf` 的强制条件；`compatibility_first` 的正式契约是保留既有代理/transport 行为并执行首次请求前及每次重定向后的地址检查。
