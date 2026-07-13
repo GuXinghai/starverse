@@ -104,42 +104,41 @@ Disposition: no version conflict. The V2 contract must type `previous_interactio
 Official sources:
 
 - <https://openrouter.ai/docs/guides/overview/multimodal/image-generation>
+- <https://openrouter.ai/docs/guides/routing/provider-selection>
 - <https://openrouter.ai/openapi.json>
 
-Official-schema facts:
+Current official facts, re-verified 2026-07-14:
 
 - Per-endpoint records expose `provider_tag`, `provider_slug`, definitive `supported_parameters`, `allowed_passthrough_parameters`, and `supports_streaming`.
-- Endpoint descriptors expose a non-null `provider_tag` for the two tested Google endpoints.
-- The current official `ImageGenerationRequest` OpenAPI schema contains only `provider.options` under `provider`; it contains no `provider_tag`, `provider.only`, `provider.order`, or `allow_fallbacks` selector.
-- The dedicated Images guide's request parameter table likewise lists only `provider.options`. No official example serializes `provider_tag` into a generation request.
-- The Goal 1 request example uses `provider.only` plus `allow_fallbacks:false`, but that is not part of the current dedicated Images request schema.
+- The Images guide now explicitly defines `provider.only`, `order`, `ignore`, `sort`, and `allow_fallbacks`, shows an Images request with `provider.only:["google-ai-studio"]` and `allow_fallbacks:false`, and instructs clients to use descriptor `provider_tag` values as routing slugs.
+- The provider-routing guide permits a complete endpoint variant slug such as `google-vertex/global`; the base slug matches its variants.
+- The raw OpenAPI observed during the corrected smoke was 1,615,258 UTF-8 bytes with SHA-256 `abaf90acc89dc3a2b4cd8824afcbf87734c8d0a5f4429ea85dca0d9eb02e353b`. `ImageGenerationRequest.provider` still resolved only `options`, so the machine schema lags the readable official documentation.
 
-Owner-authorized authenticated smoke, executed 2026-07-14 local time:
+Incorrect-field smoke retained as negative evidence:
 
 - Discovery used `GET /api/v1/images/models`, selected the stable non-Lite/non-preview Nano Banana 2 model `google/gemini-3.1-flash-image`, then followed its advertised `/api/v1/images/models/google/gemini-3.1-flash-image/endpoints` link.
 - The current descriptors returned `google-ai-studio` for Google AI Studio and `google-vertex/global` for Google Vertex. Both supported the same lowest-cost request used by the smoke: one image, `resolution:"512"`, `aspect_ratio:"1:1"`, non-streaming, and the same prompt.
-- The fetched OpenAPI was 1,593,457 bytes with SHA-256 `d129cf2f5ee98c0eae272591532ffebe2a4a576275e3c7daffe13e00263115de`; its Images request schema still did not declare top-level `provider_tag`.
-- A follow-up raw `/endpoints` evidence refresh returned HTTP 200, 1,183 UTF-8 bytes, SHA-256 `be9d700ee208a564ac7aa4b36a014195320b191a6571e54a7bcdd3be1b26984e`, and exactly the two recorded descriptor identities. That response did not expose endpoint IDs.
 - Exactly three successful requests were sent: no-pin baseline, top-level `provider_tag:"google-ai-studio"`, and top-level `provider_tag:"google-vertex/global"`. No `provider.only`, `provider.order`, fallback flag, or other candidate selector was sent. No repeat was required.
 - All three returned HTTP 200 and one PNG. The authoritative `GET /api/v1/generation?id=...` metadata for all three reported `provider_name:"Google"` and the same `provider_responses[0].endpoint_id:"275d7d39-ae50-4df3-8140-5dd69c3ab883"`.
-- Because the descriptor response exposes no endpoint ID, the generation endpoint ID cannot be mapped independently to either descriptor. The AI Studio and Vertex tags therefore produced no distinct, attributable routing evidence; the Vertex-tagged request was also indistinguishable from baseline. A successful image did not count as pin evidence.
 - Each request cost USD 0.0448255; total smoke cost was USD 0.1344765.
-- Full exact bodies, body hashes, redacted descriptors/responses, generation metadata, costs, and the OpenAPI hash are retained in [`evidence/openrouter-images-provider-tag-smoke-20260714.json`](evidence/openrouter-images-provider-tag-smoke-20260714.json).
+- This proves only that top-level `provider_tag` produced no reliable routing difference. It does not test or refute the documented `provider.only` contract. Evidence remains in [`evidence/openrouter-images-provider-tag-smoke-20260714.json`](evidence/openrouter-images-provider-tag-smoke-20260714.json).
 
-Revised consequences:
+Corrected Owner-authorized `provider.only` smoke:
 
-- Requests containing top-level `provider_tag` succeeded, but no reliable routing effect was observed. This does not prove the endpoint/parser recognized the field. It is not registered as an experimental observed extension and must not be serialized by V2.
-- Starverse must fetch the selected image model's advertised `/endpoints` resource and expose/compile only the intersection of every descriptor returned by the latest complete successful response.
-- The descriptor set may not be filtered by current intent support, price, `provider_tag`, provider preference, or user preference. A descriptor may leave the set only when a later complete successful refresh no longer returns it; a malformed/incomplete response or any hard-expired member blocks compilation.
-- Endpoint-specific parameters and `provider.options[provider_slug]` remain unavailable because the router may choose another endpoint.
-- Missing, stale-hard-expired, or failed descriptor discovery blocks compilation; model-level unions cannot authorize a field.
-- A generation POST failure is terminal for that attempt and must not trigger endpoint switching or resend.
+- Two requests used the same dynamically discovered model, `n:1`, `resolution:"512"`, `aspect_ratio:"1:1"`, and prompt. No baseline repeat was sent.
+- AI Studio exact body used `provider.only:["google-ai-studio"]` and `allow_fallbacks:false`; HTTP 200 metadata reported `provider_name:"Google AI Studio"` and endpoint ID `a5c8267a-c7ec-42d3-9a53-08f34bce6af9`.
+- Vertex Global exact body used `provider.only:["google-vertex/global"]` and `allow_fallbacks:false`; HTTP 200 metadata reported canonical provider name `Google` and endpoint ID `275d7d39-ae50-4df3-8140-5dd69c3ab883`, distinct from AI Studio and identical to the previously observed default Vertex endpoint.
+- The authenticated OpenRouter Logs UI independently labeled the two corrected-smoke rows `Google AI Studio` and `Google Vertex`; their displayed costs (`$0.046` and `$0.0448`) and application label match the exact generation records. This closes the canonical `Google` metadata ambiguity for the Vertex request.
+- The two responses and dashboard records therefore provide positive routing evidence for both discovered tags. No fallback or additional provider appeared in `provider_responses`.
+- Costs were USD 0.045996 and USD 0.0448255; corrected-smoke total was USD 0.0908215.
+- Exact serialized bodies and hashes, complete redacted responses/metadata, descriptors, OpenAPI hash/schema discrepancy, costs, and verdicts are retained in [`evidence/openrouter-images-provider-only-smoke-20260714.json`](evidence/openrouter-images-provider-only-smoke-20260714.json).
 
-Disposition: **the OpenRouter Images pinning blocker is closed by the Owner's conservative intersection decision. Endpoint-specific capability remains disabled unless a future versioned official contract and new smoke prove reliable pinning.**
+Disposition: **the OpenRouter Images request-side pinning contract is closed positively. V2 pins the selected fresh descriptor's exact `provider_tag` through `provider.only` with `allow_fallbacks:false`, limits `provider.options` to that descriptor's allowlist, and never emits top-level `provider_tag`, silently drops fields, switches endpoint, or resends after POST failure. The compile-time binding uses provider-owned selector identity (`provider_tag`, `provider_slug`, descriptor revision/digest), not the post-request generation endpoint ID. The readable-doc/OpenAPI discrepancy remains a versioned contract risk. Endpoint-specific capability implementation remains blocked only on the Owner decision for deterministic selection when multiple fresh descriptors satisfy the complete explicit intent.**
 
 ## Remaining Owner decisions
 
 - Exact canonical Electron `appId` (repository proves only `productName=Starverse`).
+- OpenRouter Images multiple-eligible-descriptor selection authority and deterministic tie-break policy; API order, observed price, and implicit provider preference are forbidden defaults.
 - OpenAI client-managed native-items continuation approval.
 - LM Studio native conflict resolution listed above.
 - Explicit endpoint protocol pinning for LM Studio/Ollama/local profiles.
