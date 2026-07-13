@@ -113,7 +113,9 @@ Continuation is output state, not configuration:
 | Gemini Interactions | interaction id plus native thought/tool steps as required by bound version |
 | Gemini GenerateContent | candidate parts with thought signatures and tool calls |
 | DeepSeek | assistant `reasoning_content` + tool calls for every tool subturn |
-| Local protocols | only artifacts defined by the selected fixed protocol; no synthetic OpenAI normalization as storage truth |
+| LM Studio OpenResponses | complete ordered message/reasoning/function-call/output items returned by the qualified endpoint; `store:false`, no server-state ID |
+| LM Studio OpenAI Chat Completions | complete ordered messages including assistant tool calls/reasoning fields and tool results; only when this fixed alternative is separately qualified |
+| Other local protocols | only artifacts defined by the selected fixed protocol; no synthetic OpenAI normalization as storage truth |
 
 Each artifact is contract-versioned, hashed, append-only by request sequence, and size-limited. Large encrypted/native payloads may use an epoch-owned blob reference. Visible text/reasoning projection is derived and cannot replace the native artifact.
 
@@ -214,4 +216,4 @@ DeepSeek continuation artifact excerpt:
 | High | Attachment asset mutates | Immutable revision/hash binding and preflight. |
 | Blocker | OpenAI continuation mode | Owner must choose default stateful (`previous_response_id`/conversation) or client-managed items; never mix/fallback. |
 | Fixed constraint | Gemini Developer API version | All Gemini contracts bind the provider-owned `v1beta` version while keeping GenerateContent, Interactions, and future Agents artifacts/codecs independent; no version fallback or model/operation version table exists. |
-| Owner | LM Studio native storage | Choose server-stateful `store:true` versus client-managed `store:false` per endpoint profile. |
+| Fixed constraint | LM Studio continuation | Qualified endpoints bind `lmstudio-openresponses`, persist/replay complete ordered Responses items, always send `store:false`, and never send `previous_response_id`; Chat Completions requires a repeatable Responses contract failure on a healthy runtime plus a separate explicit qualification, and is never runtime fallback. |

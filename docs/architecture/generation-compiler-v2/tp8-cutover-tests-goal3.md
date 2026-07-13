@@ -21,7 +21,7 @@ Prerequisite gate (no production edits until all are resolved):
 1. Reconcile current HEAD's two ahead commits onto a branch based on local main; re-run evidence map if main changes.
 2. Correct canonical appId/productName identity and implement the frozen `%APPDATA%\Starverse\workspace\epoch-2\starverse.db` root.
 3. Bind every Gemini Developer API codec to the provider-owned `v1beta` version and add guards against scattered version literals or fallback.
-4. Freeze OpenAI/LM Studio continuation modes, OpenRouter beta-tool exposure, transport retry policy, and then implement the already-fixed reset and endpoint-descriptor policies.
+4. Freeze OpenAI continuation, OpenRouter beta-tool exposure and transport retry policy; carry forward the already-fixed LM Studio `lmstudio-openresponses` qualification result, reset and endpoint-descriptor policies.
 5. Freeze current Anthropic model rule matrix.
 
 Implementation batches:
@@ -82,14 +82,15 @@ Some filenames may remain only if fully repurposed with no old symbol/contract; 
 2. Capability evidence/revision/UI projection matrix, including OpenRouter complete-intent endpoint selection, Owner-frozen multiple-eligible tie-break fixtures, provider tag/slug descriptor binding, missing-bound-tag invalidation, and descriptor revision fixtures.
 3. Snapshot/continuation/attachment artifact integrity.
 4. Exact provider-native serialized request fixtures, including OpenRouter Images `provider.only:[provider_tag]` plus `allow_fallbacks:false` and no top-level tag.
-5. End-to-end semantic→capability→codec→bytes composition, including selected-descriptor parameter rejection.
-6. Exhaustive disposition/no-silent-drop tests.
-7. Commands/branch transaction/idempotency/concurrency/orphan terminal invariants.
-8. Transport/request/attempt/Raw Debug exact-byte tests.
-9. Data epoch path safety/crash recovery/credential preservation/downgrade isolation.
-10. UI selector/generating/failed/cancelled/error projection tests.
-11. Architecture guards and zero-residual search.
-12. Representative live provider/protocol smoke plus packaged fresh-profile smoke; retain both 2026-07-14 OpenRouter Images fixtures: incorrect top-level tag negative evidence and corrected two-endpoint pin evidence corroborated by authenticated OpenRouter Logs.
+5. LM Studio 0.4.19+ conformance fixtures reproduce the local exact bodies and complete Responses items: `store:false`, no `previous_response_id`, multi-turn, branch, persisted-artifact process restart, reasoning, function call/output and SSE events. Separate Starverse coordinator fixtures cover completed/failed/incomplete/cancelled/connection-close with exactly one terminal. Qualification taxonomy proves transient/inconclusive failures leave the endpoint unbound and never start Chat; the endpoint profile is fixed before sending and no runtime error changes it.
+6. End-to-end semantic→capability→codec→bytes composition, including selected-descriptor parameter rejection.
+7. Exhaustive disposition/no-silent-drop tests.
+8. Commands/branch transaction/idempotency/concurrency/orphan terminal invariants.
+9. Transport/request/attempt/Raw Debug exact-byte tests.
+10. Data epoch path safety/crash recovery/credential preservation/downgrade isolation.
+11. UI selector/generating/failed/cancelled/error projection tests.
+12. Architecture guards and zero-residual search, including no LM Studio `/api/v1/chat` ordinary route and no Responses→Chat mapper reuse.
+13. Representative live provider/protocol smoke plus packaged fresh-profile smoke; retain both 2026-07-14 OpenRouter Images fixtures and the local LM Studio Responses compliance evidence.
 
 Validation order:
 
@@ -139,7 +140,7 @@ Baseline IDs remain stable; AC-18 and AC-19 are corrected by current official ev
 | AC-24 | One fresh selected endpoint descriptor supports the complete image intent and limits UI/compiler; multiple eligible descriptors resolve only through the Owner-frozen deterministic policy; the binding persists provider tag/slug plus descriptor revision/digest; the request pins the exact `provider_tag` via `provider.only` with `allow_fallbacks:false`, exposes only descriptor-allowlisted options, stale-rejects when the bound tag disappears, and never silently downgrades, switches, or resends after POST failure. |
 | AC-25 | DeepSeek thinking sends no explicit no-effect sampling. |
 | AC-26 | DeepSeek tool continuation returns reasoning content. |
-| AC-27 | Generic/local advanced capability defaults off and protocol is fixed. |
+| AC-27 | Generic/local advanced capability defaults off and protocol is fixed. LM Studio 0.4.19+ qualifies Responses first; the selected binding persists as `lmstudio-openresponses` only after full native-item/branch/restart/tool/SSE compliance and separate Starverse terminal tests. Transient/inconclusive qualification failure leaves the endpoint unbound; only a repeatable contract failure on a healthy runtime permits a separately invoked and proven `lmstudio-openai-chat-completions` qualification. Runtime requests never switch, and `/api/v1/chat` is unavailable for ordinary conversations. |
 | AC-28 | Legacy project/conversation/message/branch rows are zero. |
 | AC-29 | V1 snapshots are zero. |
 | AC-30 | Legacy managed attachments/images/derived/cache are removed. |

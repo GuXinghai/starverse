@@ -141,19 +141,20 @@ Code evidence:
 
 - Main Generic body is minimal (`main:src/next/provider/generic/genericRequestBuilder.ts:15-68`) but adapter has config/resolver and raw compatibility entries and ignores reasoning/tools (`genericAdapter.ts:66-110,236`).
 - HEAD compatible registry/revision pinning and exact serialized-body transport are useful (`domain.ts:185-209`, `routeSchemas.ts:16-105`, `compatibleChatRuntimeService.ts:219-260`), but `extraBody`, arbitrary target paths, unknown promotion, and built-in fallback are forbidden (`buildCompatibleChatRequest.ts:124-163`, `semanticDecoder.ts:12-98`, `extensionCapture.ts:19-47`, `schemas.ts:246-249`).
+- Current LM Studio IPC still exposes OpenAI Chat/Responses plus native REST. Its Responses body reduces history to role/content messages and omits forced `store:false` (`electron/ipc/lmStudioLocalProviderIpc.ts:855-887`); native REST flattens prior messages into a string.
+- Current LM Studio renderer always applies the Chat Completions mapper to its JSON stream (`src/next/live/lmStudioTextChat.ts:224-244`). That mapper reads only `choices[].delta/message` (`src/next/streaming/core/localOpenAIChatCompletionsStreamMapper.ts:12-69`), so it cannot consume Responses text/reasoning/function item events. The Gate 0 provider pass does not make this production path compliant; V2 must replace it.
 
 Official protocol evidence:
 
-- LM Studio: [REST overview](https://lmstudio.ai/docs/developer/rest), [native chat](https://lmstudio.ai/docs/developer/rest/chat), [Responses](https://lmstudio.ai/docs/developer/openai-compat/responses), [Chat Completions](https://lmstudio.ai/docs/developer/openai-compat/chat-completions). Native `/api/v1/chat` is stateful with `previous_response_id/store`; Responses and Chat Completions are distinct.
+- LM Studio: [REST overview](https://lmstudio.ai/docs/developer/rest), [native chat](https://lmstudio.ai/docs/developer/rest/chat), [Responses](https://lmstudio.ai/docs/developer/openai-compat/responses), [Chat Completions](https://lmstudio.ai/docs/developer/openai-compat/chat-completions), [0.4.19 changelog](https://lmstudio.ai/changelog/lmstudio-v0.4.19). Native `/api/v1/chat` cannot accept assistant history and is forbidden for ordinary Starverse multi-turn. Responses and Chat Completions are distinct fixed protocol candidates; 0.4.19 is the minimum Responses qualification version because it fixes reasoning replay.
 - Ollama: [native chat](https://docs.ollama.com/api/chat), [thinking](https://docs.ollama.com/capabilities/thinking), [tool calling](https://docs.ollama.com/capabilities/tool-calling), [OpenAI compatibility](https://docs.ollama.com/api/openai-compatibility). Native `/api/chat`/`api/generate`, OpenAI Chat, and OpenAI Responses are distinct; Ollama Responses does not support stateful continuation.
 
 Independent bindings required:
 
 ```text
 GenericOpenAIChatContract
-LmStudioNativeChatContract
-LmStudioResponsesContract
-LmStudioOpenAIChatContract
+LmStudioOpenResponsesContract (`lmstudio-openresponses`)
+LmStudioOpenAIChatCompletionsContract (`lmstudio-openai-chat-completions`)
 OllamaNativeChatContract
 OllamaNativeGenerateContract
 OllamaOpenAIChatContract
@@ -161,8 +162,19 @@ OllamaOpenAIResponsesContract
 ```
 
 ```json
-POST /api/v1/chat
-{"model":"ibm/granite-4-micro","input":"继续解释","previous_response_id":"resp_...","store":true}
+POST /v1/responses
+{
+  "model":"local-qualified-model",
+  "store":false,
+  "input":[
+    {"role":"user","content":[{"type":"input_text","text":"Call add_numbers."}]},
+    {"id":"fc_1","call_id":"call_1","type":"function_call","name":"add_numbers","arguments":"{\"a\":2,\"b\":3}","status":"completed"},
+    {"type":"function_call_output","call_id":"call_1","output":"5"},
+    {"role":"user","content":[{"type":"input_text","text":"Use the result."}]}
+  ],
+  "tools":[{"type":"function","name":"add_numbers","parameters":{"type":"object","properties":{"a":{"type":"integer"},"b":{"type":"integer"}},"required":["a","b"],"additionalProperties":false},"strict":true}],
+  "stream":true
+}
 ```
 
 ```json
@@ -175,6 +187,11 @@ Ollama `think` is contract/model-specific (boolean for many models; effort-like 
 Decisions:
 
 - Endpoint profile pins exactly one protocol and codec revision. Failure blocks; it never tries a second protocol.
+- LM Studio qualification tries `/v1/responses` first. Every required native item must round-trip unchanged with `store:false` and no `previous_response_id`; success fixes `lmstudio-openresponses` for that endpoint.
+- If Responses qualification fails, the endpoint may instead be qualified once against `/v1/chat/completions` and fixed to `lmstudio-openai-chat-completions`, which replays complete ordered messages. This is setup-time contract selection, not runtime fallback.
+- Auth/connect/timeout/5xx/model-unavailable/runtime/cancel/inconclusive failures fail closed and cannot start the alternative. Chat eligibility requires a repeatable native-item contract failure on an otherwise healthy runtime and a separate explicit setup qualification operation; the same send/qualification transaction never changes protocol.
+- Ordinary conversations never use LM Studio `/api/v1/chat`. A request failure, stream interruption or terminal error never switches the fixed protocol.
+- The 2026-07-14 local suite on LM Studio `0.4.19+2` / runtime `2.24.0` passed text multi-turn, branching, auditable fresh-process persisted-artifact replay, reasoning item, function call/output and the provider SSE terminal shape; exact evidence is [`evidence/lmstudio-openresponses-compliance-20260714.json`](evidence/lmstudio-openresponses-compliance-20260714.json). Starverse terminal coordinator paths remain implementation tests.
 - Generic defaults to verified text/basic streaming/basic sampling only.
 - Override can only narrow/select codec-implemented capabilities; it cannot invent request paths.
 - Native streams get native decoders/artifacts; do not normalize to synthetic OpenAI chunks as persistence truth.
@@ -192,6 +209,10 @@ Tests:
 - Gemini provider-version ownership guard, `v1beta` endpoint fixtures for each codec, search/image/thinking fields, thought signatures, and no-version-fallback tests.
 - DeepSeek thinking/sampling rejection and multi-tool `reasoning_content` replay.
 - Endpoint profile protocol pinning; simulated failure proves no alternate route.
+- LM Studio 0.4.19+ exact-body qualification: `store:false`, no `previous_response_id`, complete ordered input/output item equality, text multi-turn, two branches, fresh-process persisted artifact hash/PID evidence, reasoning, function call/output and native SSE event coverage.
+- Qualification failure taxonomy tests prove transient/inconclusive failures leave the endpoint unbound and never start Chat; a repeatable contract failure can only enable a separately invoked Chat qualification.
+- LM Studio Responses decoder consumes `response.*` events directly; architecture test forbids reuse of the Chat Completions mapper and forbids `/api/v1/chat` for ordinary conversations.
+- Qualification-failure Chat Completions path, when selected, must independently prove complete `messages` replay before its contract ID is persisted.
 - Native decoders preserve provider artifacts; architecture guards forbid shared Generic codec.
 
 Acceptance:
@@ -205,6 +226,6 @@ Acceptance:
 1. **Fixed:** Gemini Developer API is `v1beta`-only and provider-contract-owned; no model/operation version table or fallback.
 2. **Blocker:** freeze Anthropic current model thinking/effort/sampling/web-tool matrix.
 3. **Blocker:** remove Anthropic/DeepSeek boolean mapper before enabling V2.
-4. **Owner:** pin each LM Studio/Ollama endpoint profile protocol; choose LM Studio native `store:true` stateful versus client-managed.
+4. **Fixed:** LM Studio 0.4.19+ Responses-first qualification selects exactly one endpoint binding. The tested endpoint is `lmstudio-openresponses`; Chat Completions is only the separately qualified failure alternative, and native `/api/v1/chat` is forbidden for ordinary conversations. Ollama profiles still require explicit protocol selection.
 5. **Owner:** define OpenRouter beta server-tool exposure policy; Gemini API version is not part of this choice.
 6. **Owner:** decide whether Anthropic `thinking.display` is user-facing; continuation preservation is mandatory either way.
