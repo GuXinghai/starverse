@@ -29,6 +29,8 @@
 - `origin/main` merged cleanly with no conflict as `082ed083`. Post-merge divergence is 0 behind / 5 ahead. The tree diff from `origin/main` contains only the 11 Goal 1 documentation files; post-merge TP/BL/AC/local-link/fence/whitespace validation passed and non-document diff count is zero.
 - Owner authorized the controlled local-main replacement workflow on 2026-07-13. Before any destructive ref move, the exact pre-replacement local `main` (`6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b`) was preserved as `backup/main-before-generation-compiler-goal1-20260713`; the backup ref was read back and matched that SHA. The worktree, index, and untracked set were all empty.
 - Pre-replacement audit recorded `origin/main=fd65a8023849e0079569b5f8320d8748b55fff6e`, Goal 1 branch `=8d9e24fcc86b06e26d8ad17bd82f38f3ecc15488`, local `main...origin/main = 54 ahead / 2 behind`, and Goal 1 branch `...origin/main = 8 ahead / 0 behind`. The current tree delta from `origin/main` is exactly 11 files under `docs/architecture/generation-compiler-v2/`; out-of-scope path count is zero and `git diff --check` passes.
+- After the backup record commit, Goal 1 was `ec83eb469122d697283e32881e9c5f6d821dafd6`. A second `git fetch origin` confirmed `origin/main` had not moved from `fd65a8023849e0079569b5f8320d8748b55fff6e`. Pre-reset ancestry, path-scope, whitespace, backup-ref, and clean-worktree checks all passed.
+- Local `main` was then reset exactly to `fd65a8023849e0079569b5f8320d8748b55fff6e` under the Owner authorization and fast-forwarded with `git merge --ff-only codex/rewrite-readme` to `ec83eb469122d697283e32881e9c5f6d821dafd6`. No rebase, cherry-pick, force push, non-fast-forward merge, production conflict resolution, remote push, or backup deletion occurred.
 
 ## Status
 
@@ -45,8 +47,8 @@
 | TP8 Atomic cutover, deletion, tests, Goal 3 input | Complete | `tp8-cutover-tests-goal3.md` |
 | Baseline traceability | Complete — 100%, zero uncovered | `traceability-matrix.md` |
 | Owner-decision revision | Complete | Existing eight packages, final plan, traceability, and acceptance matrix |
-| Git reconciliation | Owner-authorized controlled replacement in progress | Original local `main` is preserved by the verified backup branch; final fetch/reset/fast-forward checks remain |
-| Final implementation plan | Owner-decision revision complete; final Git verification pending | `generation-compiler-v2-final-plan.md` |
+| Git reconciliation | Complete | Original local `main` is preserved by the verified backup branch; local `main` was reset to latest `origin/main` and then fast-forwarded to Goal 1 |
+| Final implementation plan | Complete — ready for Goal 2 | `generation-compiler-v2-final-plan.md` |
 
 ## Files inspected
 
@@ -96,7 +98,7 @@
 
 ## Blockers
 
-- Goal 1 investigation is not blocked. The previous local-main reconciliation blocker is closed by the Owner-authorized backup-plus-reset workflow; final execution verification is in progress.
+- Goal 1 has no remaining blocker. The previous local-main reconciliation blocker was closed by the Owner-authorized backup-plus-reset workflow.
 - The original divergent local `main` history must remain preserved at `backup/main-before-generation-compiler-goal1-20260713`. No push, backup deletion, rebase, cherry-pick, force push, non-fast-forward merge, or production conflict resolution is authorized.
 - Gemini version, V2 epoch root, OpenAI reasoning scope, and OpenRouter Images endpoint freshness/selection are no longer Owner blockers; they are frozen implementation constraints.
 - Provider-specific implementation evidence still required by Goal 2 (for example Anthropic exact model rules) remains a package acceptance input, not a reason to reopen these Owner decisions.
@@ -104,9 +106,8 @@
 
 ## Remaining work
 
-1. Fetch and confirm `origin/main` remains `fd65a8023849e0079569b5f8320d8748b55fff6e`; if it moved, reconcile and re-audit the Goal 1 branch before touching local `main`.
-2. With the verified backup retained, align local `main` to `origin/main`, fast-forward it to the Goal 1 branch, record the final state, and rerun every document/Git validation.
-3. Goal 2 executes the frozen plan; Goal 3 performs the independent Critical/High review defined by TP8.
+1. Goal 2 executes the frozen plan and its prerequisite checks.
+2. Goal 3 performs the independent Critical/High review defined by TP8.
 
 ## Product links
 
@@ -138,6 +139,8 @@
 - 2026-07-13: Switched to local `main` and ran the required `git pull --ff-only`; Git refused because local `main` is 54 ahead / 2 behind `origin/main`. The two sides contain broad, non-equivalent production histories (526-file tree diff). Stopped without merge/rebase/reset/force and recorded this as the sole remaining Goal 1 closure blocker.
 - 2026-07-13: Simulated the only forward-preserving alternative with `git merge-tree`; it reports extensive production conflicts and cannot yield a docs-only merge. No merge was attempted in the worktree. Owner must select which production lineage is canonical before Goal 1 can be fast-forwarded into local `main`.
 - 2026-07-13: Owner selected the backup-plus-reset reconciliation. Re-recorded local `main=6fb6ad59`, `origin/main=fd65a802`, Goal 1 `=8d9e24fc`, clean index/worktree/untracked state, and the full docs-only final delta. Created and verified `backup/main-before-generation-compiler-goal1-20260713` at the exact original local-main SHA before proceeding.
+- 2026-07-13: Committed the backup/audit ledger update as `ec83eb46`; fetched again and confirmed `origin/main` remained `fd65a802`. Repeated ancestry, docs-only scope, `git diff --check`, clean-worktree, and backup-ref checks before moving local `main`.
+- 2026-07-13: Switched to local `main`, performed the explicitly authorized hard reset to `fd65a802`, and used `git merge --ff-only codex/rewrite-readme` to reach `ec83eb46`. The backup remains at `6fb6ad59`; no remote ref was changed. Goal 1 is completed and may enter Goal 2 after the final validation recorded by the closing commit.
 - 2026-07-13: Re-verified OpenRouter Web Search and the dedicated Image API. Frozen the server-tool form as the sole web-search target, recorded the plugin form as deletion-only legacy evidence, and made per-endpoint image capability records authoritative over model-level unions.
 - 2026-07-13: Completed TP1. Confirmed main's mixed historical-route/current-config behavior, split provider entrypoints, implicit message-group fallback, and missing tool/image continuation. Defined the single command/transaction/runner boundary and recorded the branch-reconciliation prerequisite.
 - 2026-07-13: Completed TP2. Enumerated every SQLite/config/asset/debug/runtime/session/temp boundary, froze the exact epoch-2 workspace and crash-safe journal design, and restricted credential preservation to five validated `electron_safe_storage` leaves. Packaged app identity correction remains a Goal 2 implementation prerequisite; the root itself is Owner-frozen.
