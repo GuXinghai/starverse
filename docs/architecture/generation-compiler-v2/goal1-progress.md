@@ -43,7 +43,7 @@
 | TP8 Atomic cutover, deletion, tests, Goal 3 input | Complete | `tp8-cutover-tests-goal3.md` |
 | Baseline traceability | Complete — 100%, zero uncovered | `traceability-matrix.md` |
 | Owner-decision revision | Complete | Existing eight packages, final plan, traceability, and acceptance matrix |
-| Git reconciliation | In progress | Commit docs only, fetch/merge latest `origin/main`, fast-forward local `main` |
+| Git reconciliation | Stopped at mandated safety boundary | Latest `origin/main` merged into Goal 1 branch; local `main` cannot fast-forward because it has a separate 54-commit production history |
 | Final implementation plan | Owner-decision revision complete; Git reconciliation pending | `generation-compiler-v2-final-plan.md` |
 
 ## Files inspected
@@ -96,14 +96,15 @@
 
 - Goal 1 investigation is not blocked. Goal 2 implementation is blocked until the prerequisite table in the final plan is Owner-approved.
 - Remaining execution gate: reconcile this Goal 1 branch with latest `origin/main` using the Owner-specified stop-on-conflict fast-forward workflow.
+- Local `main` fast-forward is blocked: after switching to `main`, `git pull --ff-only` failed because local `main` is 54 commits ahead and 2 behind `origin/main` with merge base `de955f96`. Read-only comparison reports 526 changed files and broad production-code differences; this is an unexpected-history/production boundary, so no merge, rebase, reset, or speculative conflict resolution was attempted.
 - Gemini version, V2 epoch root, OpenAI reasoning scope, and OpenRouter Images endpoint freshness/selection are no longer Owner blockers; they are frozen implementation constraints.
 - Provider-specific implementation evidence still required by Goal 2 (for example Anthropic exact model rules) remains a package acceptance input, not a reason to reopen these Owner decisions.
 - Any new official field or protocol not confirmed from a primary vendor source remains unavailable rather than guessed.
 
 ## Remaining work
 
-1. Commit the validated Goal 1 documentation only.
-2. Complete the Owner-specified Git reconciliation and remain on clean `main`.
+1. Owner chooses how to reconcile the divergent local `main` history with the squashed two-commit `origin/main` history while preserving the intended production state.
+2. After that decision, fast-forward the chosen `main` to the Goal 1 branch result and rerun final validation.
 3. Goal 2 executes the frozen plan; Goal 3 performs the independent Critical/High review defined by TP8.
 
 ## Product links
@@ -133,6 +134,7 @@
 - 2026-07-13: Staged only `docs/architecture/generation-compiler-v2/`, passed `git diff --cached --check`, confirmed all 11 staged paths are Goal 1 Markdown, and created docs-only commit `2da943b9`.
 - 2026-07-13: Retried a transiently failed fetch successfully. Latest `origin/main` is `fd65a802`; refreshed divergence is 1 behind / 3 ahead, with the README commits patch-equivalent and only the two Goal 1 docs commits remaining in `--cherry-pick` output.
 - 2026-07-13: Merged latest `origin/main` into the Goal 1 branch without conflict (`082ed083`). Revalidated 8 TP, 23 BL, 42 AC, local links, fences, `git diff --check`, and confirmed zero production/non-Goal-1 path differences from `origin/main`.
+- 2026-07-13: Switched to local `main` and ran the required `git pull --ff-only`; Git refused because local `main` is 54 ahead / 2 behind `origin/main`. The two sides contain broad, non-equivalent production histories (526-file tree diff). Stopped without merge/rebase/reset/force and recorded this as the sole remaining Goal 1 closure blocker.
 - 2026-07-13: Re-verified OpenRouter Web Search and the dedicated Image API. Frozen the server-tool form as the sole web-search target, recorded the plugin form as deletion-only legacy evidence, and made per-endpoint image capability records authoritative over model-level unions.
 - 2026-07-13: Completed TP1. Confirmed main's mixed historical-route/current-config behavior, split provider entrypoints, implicit message-group fallback, and missing tool/image continuation. Defined the single command/transaction/runner boundary and recorded the branch-reconciliation prerequisite.
 - 2026-07-13: Completed TP2. Enumerated every SQLite/config/asset/debug/runtime/session/temp boundary, froze the exact epoch-2 workspace and crash-safe journal design, and restricted credential preservation to five validated `electron_safe_storage` leaves. Packaged app identity correction remains a Goal 2 implementation prerequisite; the root itself is Owner-frozen.
