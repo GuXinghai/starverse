@@ -50,10 +50,13 @@ Decisions:
 Official evidence:
 
 - [Image API](https://openrouter.ai/docs/guides/overview/multimodal/image-generation) — `POST /api/v1/images`; discovery at `/api/v1/images/models` and per-model `/endpoints`.
-- [OpenRouter OpenAPI](https://openrouter.ai/openapi.json) — endpoint records provide `provider_tag`, `provider_slug`, `supported_parameters`, `allowed_passthrough_parameters`, and `supports_streaming`, but the Images request schema does not declare `provider_tag` or another endpoint selector. Missing capability key means unsupported; model-level values are only a union.
-- [2026-07-14 exact-body evidence](evidence/openrouter-images-provider-tag-smoke-20260714.json) — baseline and both dynamically discovered Google tags all resolved to the same endpoint ID; requests containing top-level `provider_tag` succeeded but showed no reliable routing effect.
+- [Image Generation Provider Routing](https://openrouter.ai/docs/guides/overview/multimodal/image-generation#provider-routing) — Images supports `provider.only`, `order`, `ignore`, `sort`, and `allow_fallbacks`; the documented pin example uses `provider.only:["google-ai-studio"]` and `allow_fallbacks:false`.
+- [Provider Routing](https://openrouter.ai/docs/guides/routing/provider-selection) — a complete endpoint variant slug such as `google-vertex/global` targets that variant; the base slug may match all variants.
+- [OpenRouter OpenAPI](https://openrouter.ai/openapi.json) — endpoint records provide `provider_tag`, `provider_slug`, `supported_parameters`, `allowed_passthrough_parameters`, and `supports_streaming`. The raw `ImageGenerationRequest.provider` schema observed in the corrected smoke still resolves only `options`, so the schema lags the readable official routing docs.
+- [Incorrect top-level tag smoke](evidence/openrouter-images-provider-tag-smoke-20260714.json) — retained only to prove top-level `provider_tag` produced no reliable routing difference; it did not test the documented selector.
+- [Corrected `provider.only` smoke](evidence/openrouter-images-provider-only-smoke-20260714.json) — dynamically discovered tags routed AI Studio and Vertex Global to distinct matching provider metadata and endpoint IDs with fallbacks disabled.
 
-Native request fields verified by schema: `model`, `prompt`, `n` (1–10), `resolution` (`512|1K|2K|4K` subject to endpoint), `aspect_ratio`, `size`, `quality` (`auto|low|medium|high`), `output_format` (`png|jpeg|webp|svg` where supported), `background`, `output_compression` (0–100 for jpeg/webp), `seed`, `stream`, `input_references`, and `provider.options`. V2 does not expose `provider.options` while routing is provider-managed because it is endpoint-specific.
+Native request fields verified: `model`, `prompt`, `n` (1–10), `resolution` (`512|1K|2K|4K` subject to endpoint), `aspect_ratio`, `size`, `quality` (`auto|low|medium|high`), `output_format` (`png|jpeg|webp|svg` where supported), `background`, `output_compression` (0–100 for jpeg/webp), `seed`, `stream`, `input_references`, documented provider routing, and descriptor-limited `provider.options`.
 
 ```json
 POST /api/v1/images
@@ -62,21 +65,23 @@ POST /api/v1/images
   "prompt":"A small blue circle centered on a plain white background.",
   "n":1,
   "resolution":"512",
-  "aspect_ratio":"1:1"
+  "aspect_ratio":"1:1",
+  "provider":{"only":["google-ai-studio"],"allow_fallbacks":false}
 }
 ```
 
-No endpoint selector is serialized. The codec may emit a field only when every descriptor in the latest complete successful model `/endpoints` response supports the exact value. The set cannot be filtered by intent, price, tag, or provider/user preference. No generic provider-routing object or endpoint-specific option is exposed to semantic config.
+The typed Images codec owns this selector; generic semantic config does not expose a free-form provider-routing object. `provider.only` contains exactly the selected descriptor's non-null `provider_tag`, and `allow_fallbacks` is always `false`.
 
 Decisions:
 
-- The complete latest-successful advertised endpoint descriptor set is authoritative. Compilation rejects a field/value absent from any member; a single supporting endpoint is insufficient. A member leaves the set only after a later complete successful refresh no longer returns it.
-- The compiled request omits `provider_tag` and all other endpoint selectors. It never drops a field, lowers resolution, disables streaming, or resends after a generation POST failure.
+- The selected endpoint descriptor is authoritative. Selection succeeds only when a fresh descriptor supports the complete explicit image intent; compilation rejects absent fields/values instead of modifying intent. When multiple descriptors qualify, the resolver must use the Owner-frozen selection authority/tie-break policy or block; API order, observed price, and implicit provider preference are forbidden defaults.
+- The compiled request pins exactly that endpoint through `provider.only:[provider_tag]` plus `allow_fallbacks:false`. It never emits top-level `provider_tag`, drops a field, lowers resolution, disables streaming, switches endpoint, or resends after a generation POST failure.
+- The preflight binding stores provider-owned selector identity (`provider_tag`, `provider_slug`, descriptor revision/digest). The generation endpoint ID is response/log evidence and is not available as a compile-time descriptor key.
 - `size` explicit pixels conflicts with mismatched `resolution/aspect_ratio` and is rejected before network.
-- Endpoint-specific `provider.options[slug]` is unavailable while routing cannot be pinned. A future enablement requires a versioned official contract plus exact-body routing smoke, not a generic passthrough.
+- `provider.options[provider_slug]` is a typed selected-provider extension limited to the selected descriptor's `allowed_passthrough_parameters`, never an arbitrary object.
 - Image response decoder preserves media type, final/partial event identity, usage, and error. Partial previews are not continuation truth.
-- Descriptor cache identity is credential scope + model + endpoint, and the derived intersection stores its complete ordered endpoint/revision set. User settings use preset-normalized V2 keys `openrouter.images.endpointDescriptor.refreshAfterMs` (default 6h) and `hardExpireAfterMs` (default 24h), with `refreshAfter < hardExpireAfter`; 90-day diagnostic history is fixed and not user-configurable.
-- Before refresh age, use the complete successful descriptor set; between refresh and hard expiry, try a complete refresh and retain/use stale-good on failure; at/after hard expiry, a complete successful refresh is mandatory. Refresh failure never overwrites success, `401/403` blocks, and `404` invalidates the entire binding until model rediscovery plus a complete successful advertised-endpoints refresh. Only that complete response may change set membership.
+- Descriptor cache identity is credential scope + model + `provider_tag` + endpoint revision. User settings use preset-normalized V2 keys `openrouter.images.endpointDescriptor.refreshAfterMs` (default 6h) and `hardExpireAfterMs` (default 24h), with `refreshAfter < hardExpireAfter`; 90-day diagnostic history is fixed and not user-configurable.
+- Before refresh age, use the selected successful descriptor; between refresh and hard expiry, try refresh and retain/use stale-good on failure; at/after hard expiry, successful refresh is mandatory. Refresh failure never overwrites success, `401/403` blocks, and `404` immediately invalidates the selected descriptor. A successful refresh that omits the bound tag invalidates the old capability revision and stale-rejects the command. A different endpoint requires a new resolver run under the frozen policy; refresh, compiler, and transport never substitute one inside the same command.
 
 ## OpenAI Responses
 
@@ -151,20 +156,20 @@ Tests/acceptance:
 
 - Exact serialized-body fixtures for all three contracts from semantic intent.
 - No-silent-drop ledger for every exposed field.
-- OpenRouter endpoint-set capability missing/conflict rejection, strict intersection, and descriptor-set revision pinning.
+- OpenRouter selected-endpoint capability missing/conflict rejection, complete-intent selection, descriptor revision pinning, and exact `provider.only` body.
 - `reasoning_details` byte/order round-trip; OpenAI encrypted/native item round-trip.
 - Server tool plus user tool composition; OpenAI web/image tool event decoding.
 - Live smoke through compiler only, with exact raw-body/hash assertion.
-- Versioned regression fixture for the 2026-07-14 observed extension result: request contains no routing selector and capability never relies on `provider_tag`.
+- Versioned regression fixtures for both 2026-07-14 results: top-level `provider_tag` is forbidden, while `provider.only:[provider_tag]` plus `allow_fallbacks:false` is required and routes both tested endpoints correctly.
 
 ## Risks and Goal 2 prerequisites
 
 | Severity | Item | Resolution |
 |---|---|---|
 | P0 | OpenAI current continuation drops reasoning items | Implement chosen native continuation mode before enabling contract. |
-| P1 | OpenRouter image model union, filtered set, or single endpoint mistaken for routable support | Cache the complete advertised endpoint response, compile only its strict intersection, forbid intent/price/tag/preference filtering, and enforce refresh/hard-expiry before compilation. |
+| P1 | OpenRouter image model union mistaken for exact endpoint support | Select/cache one descriptor that supports the complete intent, pin its revision/tag, and enforce refresh/hard-expiry before compilation. |
 | P1 | Beta server tool changes | Visible beta gate and evidence revision; no plugin fallback. |
 | Owner | OpenAI default continuation mode | Choose previous-response, conversation, or client-managed items. |
 | Owner | OpenRouter Beta exposure | Choose hidden, explicit opt-in, or production disabled. |
 | Fixed | Endpoint descriptor freshness | Preset settings/defaults, stale-good window, hard expiry, status handling, cache scope, and no-POST-fallback behavior are frozen above and in TP4. |
-| Fixed | Images endpoint routing | 2026-07-14 requests containing top-level `provider_tag` succeeded but showed no reliable routing effect; it is not registered as an extension. Use the complete latest-successful advertised-descriptor intersection and emit no endpoint selector. |
+| Fixed | Images endpoint routing | Current readable docs plus corrected 2026-07-14 smoke establish `provider.only:[provider_tag]` and `allow_fallbacks:false`; top-level `provider_tag` is forbidden. Raw OpenAPI lag is recorded and guarded by versioned exact-body/live fixtures. |

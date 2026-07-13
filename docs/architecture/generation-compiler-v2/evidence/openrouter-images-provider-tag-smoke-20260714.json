@@ -289,8 +289,9 @@
     "requestContainingProviderTagAccepted": true,
     "provider_tagReliablyPinsEndpoint": false,
     "classification": "no_reliable_routing_effect_observed",
-    "decision": "Do not expose endpoint-specific image parameters. Compile against the intersection of every descriptor returned by the latest complete successful model /endpoints response and do not serialize provider_tag.",
+    "decision": "Do not serialize top-level provider_tag. This smoke did not test the documented provider.only wire shape and therefore cannot decide whether endpoint-specific routing is available.",
     "experimentalObservedExtensionRegistered": false,
-    "extraRepeatsRequired": false
+    "extraRepeatsRequired": false,
+    "supersededBy": "openrouter-images-provider-only-smoke-20260714.json"
   }
 }
