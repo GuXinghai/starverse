@@ -99,33 +99,43 @@ Verified facts:
 
 Disposition: no version conflict. The V2 contract must type `previous_interaction_id` and native steps rather than reconstructing continuation from visible text.
 
-## OpenRouter Images endpoint pinning gap
+## OpenRouter Images endpoint pinning smoke and revised decision
 
 Official sources:
 
 - <https://openrouter.ai/docs/guides/overview/multimodal/image-generation>
 - <https://openrouter.ai/openapi.json>
 
-Verified facts:
+Official-schema facts:
 
 - Per-endpoint records expose `provider_tag`, `provider_slug`, definitive `supported_parameters`, `allowed_passthrough_parameters`, and `supports_streaming`.
-- Documentation says `provider_tag` is for request-side selection and may be null.
+- Endpoint descriptors expose a non-null `provider_tag` for the two tested Google endpoints.
 - The current official `ImageGenerationRequest` OpenAPI schema contains only `provider.options` under `provider`; it contains no `provider_tag`, `provider.only`, `provider.order`, or `allow_fallbacks` selector.
 - The dedicated Images guide's request parameter table likewise lists only `provider.options`. No official example serializes `provider_tag` into a generation request.
 - The Goal 1 request example uses `provider.only` plus `allow_fallbacks:false`, but that is not part of the current dedicated Images request schema.
 
-Consequences:
+Owner-authorized authenticated smoke, executed 2026-07-14 local time:
 
-- Starverse cannot implement the frozen complete-intent endpoint pin using an undocumented field.
-- Model selection alone is insufficient when several endpoint descriptors exist.
-- `provider.options[provider_slug]` is passthrough configuration, not evidence of routing pinning.
+- Discovery used `GET /api/v1/images/models`, selected the stable non-Lite/non-preview Nano Banana 2 model `google/gemini-3.1-flash-image`, then followed its advertised `/api/v1/images/models/google/gemini-3.1-flash-image/endpoints` link.
+- The current descriptors returned `google-ai-studio` for Google AI Studio and `google-vertex/global` for Google Vertex. Both supported the same lowest-cost request used by the smoke: one image, `resolution:"512"`, `aspect_ratio:"1:1"`, non-streaming, and the same prompt.
+- The fetched OpenAPI was 1,593,457 bytes with SHA-256 `d129cf2f5ee98c0eae272591532ffebe2a4a576275e3c7daffe13e00263115de`; its Images request schema still did not declare top-level `provider_tag`.
+- A follow-up raw `/endpoints` evidence refresh returned HTTP 200, 1,183 UTF-8 bytes, SHA-256 `be9d700ee208a564ac7aa4b36a014195320b191a6571e54a7bcdd3be1b26984e`, and exactly the two recorded descriptor identities. That response did not expose endpoint IDs.
+- Exactly three successful requests were sent: no-pin baseline, top-level `provider_tag:"google-ai-studio"`, and top-level `provider_tag:"google-vertex/global"`. No `provider.only`, `provider.order`, fallback flag, or other candidate selector was sent. No repeat was required.
+- All three returned HTTP 200 and one PNG. The authoritative `GET /api/v1/generation?id=...` metadata for all three reported `provider_name:"Google"` and the same `provider_responses[0].endpoint_id:"275d7d39-ae50-4df3-8140-5dd69c3ab883"`.
+- Because the descriptor response exposes no endpoint ID, the generation endpoint ID cannot be mapped independently to either descriptor. The AI Studio and Vertex tags therefore produced no distinct, attributable routing evidence; the Vertex-tagged request was also indistinguishable from baseline. A successful image did not count as pin evidence.
+- Each request cost USD 0.0448255; total smoke cost was USD 0.1344765.
+- Full exact bodies, body hashes, redacted descriptors/responses, generation metadata, costs, and the OpenAPI hash are retained in [`evidence/openrouter-images-provider-tag-smoke-20260714.json`](evidence/openrouter-images-provider-tag-smoke-20260714.json).
 
-Required evidence before enabling OpenRouter Images:
+Revised consequences:
 
-1. an updated official request schema/example that defines how `provider_tag` is serialized; or
-2. an authenticated real smoke, retained with exact request bytes and response/provider evidence, that proves the accepted pin shape and no fallback behavior.
+- Requests containing top-level `provider_tag` succeeded, but no reliable routing effect was observed. This does not prove the endpoint/parser recognized the field. It is not registered as an experimental observed extension and must not be serialized by V2.
+- Starverse must fetch the selected image model's advertised `/endpoints` resource and expose/compile only the intersection of every descriptor returned by the latest complete successful response.
+- The descriptor set may not be filtered by current intent support, price, `provider_tag`, provider preference, or user preference. A descriptor may leave the set only when a later complete successful refresh no longer returns it; a malformed/incomplete response or any hard-expired member blocks compilation.
+- Endpoint-specific parameters and `provider.options[provider_slug]` remain unavailable because the router may choose another endpoint.
+- Missing, stale-hard-expired, or failed descriptor discovery blocks compilation; model-level unions cannot authorize a field.
+- A generation POST failure is terminal for that attempt and must not trigger endpoint switching or resend.
 
-Disposition: **hard blocker; OpenRouter Images contract and all production cutover work remain stopped because the release has no compatibility or partial-enable path**.
+Disposition: **the OpenRouter Images pinning blocker is closed by the Owner's conservative intersection decision. Endpoint-specific capability remains disabled unless a future versioned official contract and new smoke prove reliable pinning.**
 
 ## Remaining Owner decisions
 

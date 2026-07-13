@@ -79,17 +79,17 @@ Some filenames may remain only if fully repurposed with no old symbol/contract; 
 ## Test layers and commands
 
 1. Semantic schema/inheritance/sensitive-field tests.
-2. Capability evidence/revision/UI projection matrix.
+2. Capability evidence/revision/UI projection matrix, including OpenRouter eligible-endpoint set intersection and revision fixtures.
 3. Snapshot/continuation/attachment artifact integrity.
-4. Exact provider-native serialized request fixtures.
-5. End-to-end semantic→capability→codec→bytes composition.
+4. Exact provider-native serialized request fixtures, including OpenRouter Images with no routing selector.
+5. End-to-end semantic→capability→codec→bytes composition, including endpoint-only parameter rejection.
 6. Exhaustive disposition/no-silent-drop tests.
 7. Commands/branch transaction/idempotency/concurrency/orphan terminal invariants.
 8. Transport/request/attempt/Raw Debug exact-byte tests.
 9. Data epoch path safety/crash recovery/credential preservation/downgrade isolation.
 10. UI selector/generating/failed/cancelled/error projection tests.
 11. Architecture guards and zero-residual search.
-12. Representative live provider/protocol smoke plus packaged fresh-profile smoke.
+12. Representative live provider/protocol smoke plus packaged fresh-profile smoke; retain the 2026-07-14 OpenRouter Images observed no-pin result as a versioned regression input.
 
 Validation order:
 
@@ -109,7 +109,7 @@ Native rebuild output, `node_modules`, rebuild-only lock changes, `public/build-
 
 ## Corrected acceptance matrix
 
-Baseline IDs remain stable; AC-18 and AC-19 are corrected by current official evidence.
+Baseline IDs remain stable; AC-18 and AC-19 are corrected by current official evidence, and AC-24 is corrected by the Owner-authorized 2026-07-14 OpenRouter Images routing smoke.
 
 | ID | Acceptance |
 |---|---|
@@ -136,7 +136,7 @@ Baseline IDs remain stable; AC-18 and AC-19 are corrected by current official ev
 | AC-21 | Gemini image response format emits only verified MIME values. |
 | AC-22 | OpenRouter web uses server tool without plugin fallback. |
 | AC-23 | OpenRouter image generation uses only `/api/v1/images`. |
-| AC-24 | One selected endpoint descriptor supports the complete image intent, limits UI/compiler, is pinned by its `provider_tag`, and obeys the configured refresh/hard-expiry policy without silent downgrade or endpoint fallback. |
+| AC-24 | Every descriptor in the selected model's latest complete successful advertised `/endpoints` response supports the complete image intent; UI/compiler expose only their strict intersection, never filter the set by intent/price/tag/preference, serialize no endpoint selector or endpoint-specific option, and obey configured refresh/hard-expiry policy without silent downgrade or POST resend. |
 | AC-25 | DeepSeek thinking sends no explicit no-effect sampling. |
 | AC-26 | DeepSeek tool continuation returns reasoning content. |
 | AC-27 | Generic/local advanced capability defaults off and protocol is fixed. |

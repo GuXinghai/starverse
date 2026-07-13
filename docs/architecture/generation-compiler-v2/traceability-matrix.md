@@ -13,10 +13,10 @@ This matrix partitions every normative baseline line from the first architecture
 | BL-03 | 114–161 | Target end-to-end data-flow diagram | TP1, TP5; final plan | Complete | Concrete command/transaction/compiler/prepared-bytes/transport/finalizer chain defined. |
 | BL-04 | 162–176 | Unique owner by fact category | TP1, TP3, TP4, TP5 | Complete | Semantic config, capability, codec, bytes, branch projection, and artifact owners frozen. |
 | BL-05 | 177–358 | Unified semantic config, inheritance, extensions, reasoning/web/image intent | TP3 | Complete | Closed semantic schema, sparse inheritance, snapshot exclusions, and extension boundary defined. |
-| BL-06 | 359–449 | Runtime capability model, evidence precedence, revision, UI/compiler consistency | TP4 | Complete | Evidence precedence, exact binding, revision race, and UI projection defined. |
+| BL-06 | 359–449 | Runtime capability model, evidence precedence, revision, UI/compiler consistency | TP4 | Complete | Evidence precedence, pinned-endpoint or provider-managed endpoint-set binding, revision race, and UI projection defined. |
 | BL-07 | 450–608 | Compiler entry, ledger, prepared request, serialization, retry/regenerate | TP5 | Complete | Exhaustive disposition, exact bytes, request/attempt ledger, and committed retry semantics defined. |
 | BL-08 | 609–647 | Provider Contract Package structure and ownership boundary | TP5, TP6, TP7 | Complete | One closed package per protocol; no generic wire codec. |
-| BL-09 | 648–826 | OpenRouter Chat/Images and OpenAI Responses contracts | TP6 | Complete | OpenAI converges existing `effort/summary` only; OpenRouter exact endpoint selection, `provider_tag`, and freshness are frozen. |
+| BL-09 | 648–826 | OpenRouter Chat/Images and OpenAI Responses contracts | TP6 | Complete | OpenAI converges existing `effort/summary` only; OpenRouter Images uses the Owner-revised complete advertised-endpoint-response intersection, no client filtering or request-side pin, and frozen freshness. |
 | BL-10 | 827–910 | Anthropic thinking, sampling, web, continuation, image capability | TP7 | Complete | Official model-rule requirement and native continuation frozen; matrix is Goal 2 prerequisite. |
 | BL-11 | 911–1048 | Gemini Interactions/GenerateContent, search, images, protocol binding, continuation | TP7 | Complete | Owner-frozen provider contract owns `v1beta`; separate codecs have no version table or fallback. |
 | BL-12 | 1049–1112 | DeepSeek official and Generic/OpenAI-compatible/local contracts | TP7 | Complete | DeepSeek native semantics separated from eight fixed local/generic protocols. |
@@ -26,7 +26,7 @@ This matrix partitions every normative baseline line from the first architecture
 | BL-16 | 1346–1457 | Target directory/package layout | TP1–TP8; final plan | Complete | Concrete target paths supplied per package and sequenced in final plan. |
 | BL-17 | 1458–1493 | Mandatory legacy deletion list | TP1, TP8 | Complete | Expanded to symbol/path/key/table/fixture zero-residual audit. |
 | BL-18 | 1494–1695 | Eleven test/acceptance layers and required quality gates | TP8 | Complete | Twelve executable layers, ABI order, live/package smoke ownership defined. |
-| BL-19 | 1698–1753 | Forty-two final acceptance conditions | TP8; final plan | Complete | AC-01…AC-42 expanded; AC-18/19 evidence-corrected without renumbering. |
+| BL-19 | 1698–1753 | Forty-two final acceptance conditions | TP8; final plan | Complete | AC-01…AC-42 expanded; AC-18/19 official-evidence corrections and AC-24 observed-routing correction retain the original numbering. |
 | BL-20 | 1756–1780 | Fourteen-step atomic production cutover | TP8 | Complete | One-release cutover, epoch-before-startup, and rollback isolation defined. |
 | BL-21 | 1781–1887 | Goal 1/2/3 handoff, deliverables, implementation dependencies, risk review | Final plan; Goal 3 input | Complete | Eight package artifacts and Goal 3 review inputs produced. |
 | BL-22 | 1888–1906 | Twelve named risks and controls | TP2, TP4, TP5, TP6, TP7, TP8 | Complete | Severity, trigger/control, prerequisites, and release blocking consolidated. |
@@ -36,7 +36,7 @@ Coverage rule: the union of `BL-01` through `BL-23` is the continuous normative 
 
 ## Explicit acceptance IDs
 
-`AC-01` through `AC-42` are expanded individually in [TP8](./tp8-cutover-tests-goal3.md#corrected-acceptance-matrix). AC-18 now limits OpenAI reasoning to the verified and already-implemented `effort/summary` fields and compiler-rejects unsupported explicit fields. AC-19 fixes Gemini Developer API at provider-owned `v1beta` with independent codecs and no fallback. All remaining IDs retain their baseline intent.
+`AC-01` through `AC-42` are expanded individually in [TP8](./tp8-cutover-tests-goal3.md#corrected-acceptance-matrix). AC-18 now limits OpenAI reasoning to the verified and already-implemented `effort/summary` fields and compiler-rejects unsupported explicit fields. AC-19 fixes Gemini Developer API at provider-owned `v1beta` with independent codecs and no fallback. AC-24 now requires strict capability intersection across every descriptor in the latest complete successful advertised OpenRouter Images endpoint response, no intent/price/tag/preference filtering, no endpoint selector or endpoint-only option, descriptor-set revision control, and no client resend. All remaining IDs retain their baseline intent.
 
 ## Coverage status
 
