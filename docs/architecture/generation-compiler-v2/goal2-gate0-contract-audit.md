@@ -22,7 +22,7 @@ Verified facts:
 
 Disposition: **contract evidence complete; Owner approval of the recommended mode remains required by Gate 0**.
 
-## LM Studio continuation conflict
+## LM Studio Responses-first qualification and fixed protocol binding
 
 Official sources:
 
@@ -31,23 +31,37 @@ Official sources:
 - <https://lmstudio.ai/docs/developer/rest>
 - <https://lmstudio.ai/docs/developer/openai-compat/responses>
 - <https://lmstudio.ai/docs/developer/openai-compat/chat-completions>
+- <https://lmstudio.ai/changelog/lmstudio-v0.4.19>
 
 Verified facts:
 
 - Native `/api/v1/chat` defaults to `store:true`, returns `response_id`, and continues with `previous_response_id`.
 - With `store:false`, native chat returns no continuation id.
 - The native chat contract does not allow assistant messages in request input. Therefore a `store:false` native request cannot implement client-managed multi-turn replay; it is one-shot only.
-- LM Studio Responses and Chat Completions are different protocols. Chat Completions can replay messages but is not a Responses-native continuation contract. The current LM Studio Responses documentation does not prove OpenAI-style `reasoning.encrypted_content` replay.
+- LM Studio Responses accepts assistant/native output items in request input and supports custom tools and SSE. Chat Completions can replay complete messages but is a different protocol.
+- LM Studio 0.4.19 specifically fixes reasoning replay through `/v1/responses`; 0.4.19 is therefore the minimum V2 qualification version.
+- LM Studio does not expose OpenAI-hosted `reasoning.encrypted_content`; qualification instead requires lossless replay of every native item actually returned by the local Responses endpoint.
 
-Conflict with Goal 1: the final plan recommends client-managed native `store:false`. Current official LM Studio semantics show this cannot preserve native multi-turn conversation state.
+Owner-frozen protocol selection:
 
-Required Owner resolution before enabling LM Studio native chat:
+- first candidate: `lmstudio-openresponses` at `/v1/responses`;
+- qualification-failure alternative: `lmstudio-openai-chat-completions` at `/v1/chat/completions` with Starverse-owned complete `messages` replay;
+- native `/api/v1/chat` is forbidden for ordinary multi-turn Starverse conversations;
+- the endpoint profile persists exactly one successful contract ID/revision; transport errors never switch protocol and a single failed request never invokes the alternative.
+- Authentication/authorization failure, connection refusal, timeout, 5xx, unavailable/unloaded model, transient runtime failure, cancellation, or an inconclusive smoke result fail closed and leave the endpoint unbound. They never trigger Chat Completions qualification.
+- Only a repeatable Responses contract/item round-trip failure on an otherwise healthy qualified runtime may make Chat Completions eligible, and then only through a separate explicit setup qualification operation. It cannot run in the same send or qualification transaction; Chat is persisted only after its own complete-message suite passes.
 
-1. use server-managed `store:true + previous_response_id` and persist the native id; or
-2. expose native `/api/v1/chat` as one-shot only; or
-3. disable native chat and enable only independently proven fixed protocols.
+Local exact-body qualification, 2026-07-14:
 
-Disposition: **hard blocker; no fallback or synthetic assistant-history replay is allowed**.
+- LM Studio `0.4.19+2` (`ProductVersion 0.4.19.0`), CLI commit `9902c3a`, selected runtime `llama.cpp-win-x86_64-nvidia-cuda12-avx2@2.24.0`.
+- Loopback-only server at `127.0.0.1:1234`; local models `gate0-qwen3-4b` and `gate0-qwen35-2b`; zero external provider requests and USD 0 cost.
+- Eleven exact `/v1/responses` requests all returned HTTP 200. Every request serialized `store:false`; none contained `previous_response_id`.
+- Complete client-owned replay passed for pure-text multi-turn and two branches from one persisted prefix. A separate restart audit serialized that prefix, recorded artifact SHA-256 `06de481179c4025664b140e6e32ddcdd3e9abe09fa52237ba5b75834f29dafc0`, and reloaded it in fresh child PID `16092` launched by PID `27916` before the next successful request.
+- Native reasoning item and `reasoning_text` were captured unchanged and accepted in the next input. Native `function_call` retained its ID/call ID/name/arguments/status; the matching `function_call_output` round-trip produced the expected final message.
+- The provider SSE sample included `response.created`, output deltas and exactly one final `response.completed`; no event followed it. This proves the observed provider event sequence, not Starverse's terminal coordinator, which remains an implementation acceptance test across completed/failed/incomplete/cancelled/connection-close paths.
+- Exact serialized bodies/hashes, complete local responses and SSE fields, environment versions, assertions and conclusion are retained in [`evidence/lmstudio-openresponses-compliance-20260714.json`](evidence/lmstudio-openresponses-compliance-20260714.json).
+
+Disposition: **qualification passed; bind this endpoint explicitly to `lmstudio-openresponses`. Starverse V2 must implement and persist the complete ordered Responses item union before enabling the binding. `lmstudio-openai-chat-completions` remains only the fixed qualification-failure alternative for a separately tested endpoint; it is not a runtime fallback. `/api/v1/chat` is not registered for ordinary conversations.**
 
 ## Ollama protocol findings
 
@@ -140,11 +154,10 @@ Disposition: **the OpenRouter Images request-side pinning contract is closed pos
 - Exact canonical Electron `appId` (repository proves only `productName=Starverse`).
 - OpenRouter Images multiple-eligible-descriptor selection authority and deterministic tie-break policy; API order, observed price, and implicit provider preference are forbidden defaults.
 - OpenAI client-managed native-items continuation approval.
-- LM Studio native conflict resolution listed above.
-- Explicit endpoint protocol pinning for LM Studio/Ollama/local profiles.
+- Explicit endpoint protocol pinning for Ollama/other local profiles; LM Studio is resolved above.
 - OpenRouter beta server web-tool exposure.
 - Automatic transport retry policy.
 - Image continuation first-release scope.
 - Whether Anthropic `thinking.display` is user-facing; the compiler/capability type must support the official field either way.
 
-No production file may change until these decisions and both hard contract blockers are resolved in an ADR.
+No production file may change until the remaining decisions and hard contract blockers are resolved in an ADR.

@@ -1,6 +1,6 @@
 # Generation Compiler V2 — Final implementation plan
 
-Status: Goal 1 complete pending only the explicitly listed Goal 2 prerequisite decisions. Investigation baseline is local `main@6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b`; branch-only transition evidence is `HEAD@067171a4c4d55f147340677c7e7f046e95311bd0`. Official contracts were verified 2026-07-13 and OpenRouter Images routing was re-verified 2026-07-14. The corrected smoke and authenticated Logs restore the endpoint-specific routing wire decision with `provider.only:[provider_tag]` plus `allow_fallbacks:false`; the earlier top-level `provider_tag` smoke remains negative evidence for that incorrect field placement only. Deterministic selection among multiple eligible descriptors remains an explicit Goal 2 Owner prerequisite.
+Status: Goal 1 complete pending only the explicitly listed Goal 2 prerequisite decisions. Investigation baseline is local `main@6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b`; branch-only transition evidence is `HEAD@067171a4c4d55f147340677c7e7f046e95311bd0`. Official contracts were verified 2026-07-13 and the OpenRouter Images plus LM Studio decisions were live-qualified 2026-07-14. OpenRouter uses `provider.only:[provider_tag]` plus `allow_fallbacks:false`; the earlier top-level `provider_tag` smoke remains negative evidence only, while deterministic selection among multiple eligible descriptors remains an Owner prerequisite. LM Studio 0.4.19+ passed the Responses-first item/branch/restart/tool/SSE suite and is fixed to `lmstudio-openresponses`; its current production adapter remains scheduled for replacement.
 
 ## Executive decision
 
@@ -131,7 +131,9 @@ Stale/invalid target, unsupported/missing snapshot, failed confirmation/prefligh
 | Gemini GenerateContent | provider contract + `/models/{model}:streamGenerateContent` | provider-owned `v1beta`; independent native codec; no Interactions fallback |
 | Gemini Interactions | provider contract + `/interactions` | provider-owned `v1beta`; independent typed codec; no version/operation fallback |
 | DeepSeek Chat V4 | `/chat/completions` | typed thinking; reject no-effect sampling; replay reasoning/tool subturns |
-| Generic/LM Studio/Ollama | profile-pinned protocol | eight independent bindings; advanced default off; no protocol fallback |
+| LM Studio OpenResponses | `/v1/responses` | minimum 0.4.19; `store:false`; no `previous_response_id`; complete ordered item replay; fixed `lmstudio-openresponses` binding after exact-body qualification |
+| LM Studio OpenAI Chat Completions | `/v1/chat/completions` | only after repeatable Responses contract failure on a healthy runtime and a separate explicit qualification; complete `messages` replay; never runtime fallback |
+| Generic/Ollama | profile-pinned protocol | independent bindings; advanced default off; no protocol fallback |
 
 Exact requests and official source URLs are in TP6 and TP7; every field is scoped to its contract/model/operation evidence and verification date.
 
@@ -150,7 +152,7 @@ Exact requests and official source URLs are in TP6 and TP7; every field is scope
 | Gemini Developer API version | Provider contract owns `v1beta` for all codecs; no table/fallback | Owner-frozen whole-provider version policy. |
 | Anthropic rule matrix | Reviewed exact model/version matrix before enablement | Current modes/efforts/sampling vary by model. |
 | OpenAI continuation | Prefer client-managed native items for auditability, unless Owner chooses provider-stateful | Modes are mutually exclusive and persist different artifacts. |
-| LM Studio native continuation | Prefer client-managed `store:false` unless Owner explicitly accepts server state | Determines privacy/retry artifacts. |
+| LM Studio protocol | Fixed `lmstudio-openresponses` for the qualified 0.4.19+ endpoint; `/api/v1/chat` forbidden for ordinary multi-turn; Chat Completions only after repeatable contract failure and a separate explicit qualification | Owner-frozen and proven by the 2026-07-14 local exact-body suite; transient/inconclusive failures leave the endpoint unbound, and current implementation must still gain complete item persistence and native SSE decoding. |
 | Transport auto retry | Disabled initially | Provider idempotency/cost behavior is not uniform. |
 | OpenRouter endpoint descriptor routing | One fresh exact descriptor must support every explicit field and expose non-null `provider_tag`; compiler emits `provider.only:[provider_tag]` and `allow_fallbacks:false`; hard-expired/missing descriptor blocks | Current Images docs define this wire shape and the corrected 2026-07-14 smoke plus authenticated Logs routed AI Studio and Vertex Global accurately; POST may not be resent. |
 | OpenRouter multiple-eligible-descriptor selection | Owner must freeze the selection authority and deterministic tie-break; do not infer API order, observed price, or provider preference | The wire contract is proven, but more than one fresh descriptor may satisfy the complete intent and the repository contains no approved deterministic selection rule. |
@@ -173,6 +175,7 @@ Rows marked by an Owner-frozen value are implementation constraints, not unresol
 | High | Provider docs drift | Wrong field/version | Evidence revision, verification date, blocking conflict policy. |
 | High | Retry/network attempt conflation | Duplicate answers/charges | Separate operation/request/attempt ids; auto retry off. |
 | High | OpenRouter selected descriptor drifts or pin is omitted/malformed | Router may select an endpoint that cannot honor an exposed image field | Fresh exact descriptor revision, complete-intent validation, typed `provider.only` pin, `allow_fallbacks:false`, and exact-body regression. |
+| High | LM Studio Responses is routed through the current Chat Completions mapper or role/text history | Text/reasoning/function items are dropped although HTTP completes | Dedicated `lmstudio-openresponses` codec, complete ordered item artifact, native SSE fixtures, `store:false` guard and architecture test forbidding runtime protocol fallback. |
 
 ## Validation and completion
 
