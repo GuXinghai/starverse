@@ -22,16 +22,16 @@ Create one revisioned runtime capability snapshot for a specific provider + endp
 From strongest to weakest:
 
 1. Contract codec invariant for the selected protocol/version.
-2. Exact selected endpoint descriptor or signed/provider-fetched model capability record.
+2. Exact provider-fetched endpoint descriptors and their conservative operation-specific intersection, or a signed provider capability record.
 3. Current official vendor model/version documentation encoded as a reviewed rule record.
 4. Successful versioned live probe for this endpoint/model/operation.
 5. User endpoint override that can only narrow or choose among codec-implemented fields.
 
-Conflicts resolve conservatively: a stronger `unsupported` wins; missing evidence means unavailable. Catalog/model-level unions may discover candidates but never override an exact endpoint. Regex is not evidence. Provider failure never causes protocol fallback.
+Conflicts resolve conservatively: a stronger `unsupported` wins; missing evidence means unavailable. Catalog/model-level unions may discover candidates but never override exact endpoint evidence. Where routing cannot be pinned, every descriptor in the latest complete successful advertised endpoint response must authorize a field. Regex is not evidence. Provider failure never causes protocol fallback.
 
 ## OpenRouter Images endpoint descriptor freshness
 
-The per-endpoint descriptor is the final runtime fact. Cache identity is `(credentialScopeId, modelId, endpointId, descriptorRevision)`; model-level `supported_parameters` is discovery/display only and never authorizes a field.
+Each per-endpoint descriptor is a runtime fact. Because the 2026-07-14 authenticated requests containing top-level `provider_tag` succeeded but showed no reliable routing effect, the final OpenRouter Images capability is the strict intersection of every descriptor returned by the latest complete successful response from the selected model's advertised `/endpoints` resource. This closed set may not exclude a descriptor because of current intent support, price, tag, provider/user preference, or past routing. A member is removed only after a later complete successful refresh no longer returns it. Cache identity remains `(credentialScopeId, modelId, endpointId, descriptorRevision)`; the derived intersection additionally records the sorted endpoint/revision set and intersection digest. Model-level `supported_parameters` is discovery/display only and never authorizes a field.
 
 V2 follows the existing settings convention with explicit presets rather than a free-form duration:
 
@@ -41,7 +41,7 @@ V2 follows the existing settings convention with explicit presets rather than a 
 - these keys live in the fresh V2 settings repository/table, not `electron-store`, legacy catalog keys, answer snapshot, or provider descriptor rows;
 - successful descriptors and fetch state live in the endpoint-capability cache; diagnostic history is retained for a fixed internal 90 days and is not user-configurable.
 
-At age `< refreshAfter`, use the successful descriptor. At `refreshAfter <= age < hardExpireAfter`, attempt refresh before send; failure preserves and may use the last successful descriptor. At `age >= hardExpireAfter`, refresh must succeed or compilation blocks. A failed refresh never overwrites the last successful record. Descriptor fetch `401/403` blocks, `404` immediately invalidates that endpoint record, and a generation POST failure never switches endpoint or resends.
+At age `< refreshAfter`, use the complete successful descriptor set. At `refreshAfter <= age < hardExpireAfter`, attempt refresh before send; failure preserves and may use the last complete successful set. At `age >= hardExpireAfter`, a complete successful refresh is mandatory or compilation blocks. A malformed/incomplete response or a hard-expired member blocks and never narrows the set. A failed refresh never overwrites the last successful records. Descriptor fetch `401/403` blocks; `404` invalidates the set and requires a successful model rediscovery plus complete advertised-endpoints refresh; a generation POST failure never resends.
 
 ## Target type
 
@@ -52,7 +52,9 @@ type RuntimeCapabilitySnapshotV2 = {
   binding: {
     providerId: string
     endpointProfileId: string
-    endpointRevision: string
+    endpointBinding:
+      | { kind: "pinned"; endpointId: string; endpointRevision: string }
+      | { kind: "provider_managed_set"; endpointSetRevision: string; descriptors: ReadonlyArray<{endpointId:string; descriptorRevision:string}> }
     protocolContractId: string
     contractRevision: string
     modelId: string
@@ -70,7 +72,7 @@ type RuntimeCapabilitySnapshotV2 = {
 }
 ```
 
-Every field contains source URL/record id, verification or fetch time, protocol/model/operation scope, and evidence kind. The snapshot hash includes endpoint/model/contract revisions and exact evidence records.
+Every field contains source URL/record id, verification or fetch time, protocol/model/operation scope, and evidence kind. The snapshot hash includes the pinned endpoint revision or sorted endpoint-set IDs/revisions plus the intersection digest, model/contract revisions, and exact evidence records.
 
 ## UI projection
 
@@ -107,7 +109,7 @@ Delete:
 
 ## Exact projection examples
 
-OpenRouter Images endpoint without `background` descriptor:
+OpenRouter Images where any descriptor in the closed advertised endpoint set lacks `background`:
 
 ```json
 {
@@ -134,8 +136,9 @@ Anthropic's model-specific manual/adaptive/disabled legality is encoded as revie
 
 - Evidence precedence/conflict/missing/stale/revoked cases.
 - Deterministic revision/evidence digest and cache invalidation.
-- Exact endpoint beats model union; override only narrows codec capability.
-- Provider/model/endpoint/protocol/operation binding isolation.
+- Exact endpoint evidence beats model union; for provider-managed routing, no single endpoint may widen the complete-set intersection; override only narrows codec capability.
+- Enum intersection, range intersection, missing-field rejection, empty-intersection blocking, and endpoint-set add/remove/revision cases.
+- Provider/model/pinned-endpoint-or-endpoint-set/protocol/operation binding isolation.
 - UI visibility/value domains/help/beta badge from the same snapshot used by compiler.
 - Unsupported explicit config remains visible and blocks; no silent drop.
 - Stale revision command rejection and UI refresh.
@@ -153,12 +156,12 @@ Anthropic's model-specific manual/adaptive/disabled legality is encoded as revie
 
 | Severity | Risk | Control / prerequisite |
 |---|---|---|
-| High | Dynamic endpoint capability changes after UI render | Revision pin + transaction stale rejection. |
+| High | Dynamic endpoint set/capability changes after UI render | Sorted endpoint-set revision + intersection digest + transaction stale rejection. |
 | High | Official docs conflict | Mark the affected field/binding blocked unless an Owner-frozen provider contract resolves the version policy. Gemini Developer API is resolved as provider-owned `v1beta`; field-level capability conflicts still fail closed. |
 | High | Probe failure accidentally widens capability | Failure yields unavailable/stale, never support or fallback. |
-| High | Descriptor refresh corrupts a good cache | Store success and failure separately; only a validated success may advance the active descriptor revision. |
+| High | Descriptor-set refresh corrupts a good cache or loses a candidate | Store success and failure separately; only a validated complete candidate set may advance the active endpoint-set revision. |
 | Owner | Beta tools | Decide whether OpenRouter beta server tools are hidden, opt-in, or blocked in production. Gemini API version is already fixed to `v1beta` and is not an automatic beta fallback. |
 
 ## Implementation prerequisite
 
-Endpoint descriptor freshness, presets, persistence, and failure behavior are frozen above. Before enabling beta server tools, Owner must freeze their exposure policy. Provider-specific field/model rule matrices from TP6/TP7 remain capability-fixture inputs; Gemini API version is no longer a blocker.
+Endpoint descriptor freshness, presets, persistence, failure behavior, and the 2026-07-14 OpenRouter Images provider-managed-set intersection decision are frozen above. Before enabling beta server tools, Owner must freeze their exposure policy. Provider-specific field/model rule matrices from TP6/TP7 remain capability-fixture inputs; Gemini API version is no longer a blocker.

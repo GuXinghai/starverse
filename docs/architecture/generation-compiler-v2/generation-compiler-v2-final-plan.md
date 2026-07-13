@@ -1,6 +1,6 @@
 # Generation Compiler V2 — Final implementation plan
 
-Status: Goal 1 complete pending only the explicitly listed Goal 2 prerequisite decisions. Investigation baseline is local `main@6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b`; branch-only transition evidence is `HEAD@067171a4c4d55f147340677c7e7f046e95311bd0`. Official contracts were verified 2026-07-13.
+Status: Goal 1 complete pending only the explicitly listed Goal 2 prerequisite decisions. Investigation baseline is local `main@6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b`; branch-only transition evidence is `HEAD@067171a4c4d55f147340677c7e7f046e95311bd0`. Official contracts were verified 2026-07-13. The Owner-authorized 2026-07-14 OpenRouter Images smoke supersedes Goal 1's endpoint-pin implementation constraint with the conservative eligible-endpoint descriptor intersection recorded below; the historical Goal 1 ledger remains unchanged.
 
 ## Executive decision
 
@@ -44,7 +44,7 @@ Unique ownership:
 | Fact | Sole owner |
 |---|---|
 | User generation meaning/inheritance | `GenerationConfigV2` + resolver |
-| Model/endpoint/protocol/operation support | `RuntimeCapabilitySnapshotV2` and evidence records |
+| Model/endpoint-set or pinned-endpoint/protocol/operation support | `RuntimeCapabilitySnapshotV2` and evidence records |
 | Answer retry truth | `AssistantAnswerGenerationSnapshotV2` |
 | Native wire shape | Selected provider contract codec |
 | Exact sent body | `PreparedProviderRequestV2.body` |
@@ -125,7 +125,7 @@ Stale/invalid target, unsupported/missing snapshot, failed confirmation/prefligh
 | Contract | Endpoint/protocol | Key current decisions |
 |---|---|---|
 | OpenRouter Chat V1 | `/api/v1/chat/completions` | server web tool only; ordered reasoning/tool artifacts; no chat image generation |
-| OpenRouter Images V1 | `/api/v1/images` | complete-intent endpoint match, `provider_tag` pin, typed passthrough allowlist, configurable 6h/24h freshness |
+| OpenRouter Images V1 | `/api/v1/images` | strict capability intersection across every descriptor in the latest complete successful model `/endpoints` response; no client filtering, `provider_tag` serialization, or endpoint-specific options; configurable 6h/24h freshness |
 | OpenAI Responses V1 | `/v1/responses` | migrate existing `reasoning.effort/summary`; native web/image tools; one continuation mode; unsupported reasoning rejects |
 | Anthropic Messages | `/v1/messages` | exact model rule matrix; ordered native blocks; no image output |
 | Gemini GenerateContent | provider contract + `/models/{model}:streamGenerateContent` | provider-owned `v1beta`; independent native codec; no Interactions fallback |
@@ -152,7 +152,7 @@ Exact requests and official source URLs are in TP6 and TP7; every field is scope
 | OpenAI continuation | Prefer client-managed native items for auditability, unless Owner chooses provider-stateful | Modes are mutually exclusive and persist different artifacts. |
 | LM Studio native continuation | Prefer client-managed `store:false` unless Owner explicitly accepts server state | Determines privacy/retry artifacts. |
 | Transport auto retry | Disabled initially | Provider idempotency/cost behavior is not uniform. |
-| OpenRouter endpoint descriptor selection | Exact endpoint must satisfy all fields and expose non-null `provider_tag`; hard-expired/missing descriptor blocks | Model union is insufficient and POST may not switch endpoint. |
+| OpenRouter endpoint descriptor selection | Every descriptor in the latest complete successful model `/endpoints` response must support every explicit field; intent/price/tag/preference filtering is forbidden; hard-expired/malformed/incomplete sets block; no endpoint selector is serialized | 2026-07-14 requests containing top-level `provider_tag` succeeded but showed no reliable routing effect; model union is insufficient and POST may not be resent. |
 | Image continuation product scope | First release supports only contracts with official native edit/continuation artifacts; otherwise explicit unavailable | Current app only has sibling regenerate. |
 
 Rows marked by an Owner-frozen value are implementation constraints, not unresolved questions. The remaining choices are explicit Goal 2 pre-enable prerequisites and may not be guessed at implementation time.
@@ -171,6 +171,7 @@ Rows marked by an Owner-frozen value are implementation constraints, not unresol
 | High | Snapshot written after answer | Unretryable current answer | Single transaction FK/unique invariants. |
 | High | Provider docs drift | Wrong field/version | Evidence revision, verification date, blocking conflict policy. |
 | High | Retry/network attempt conflation | Duplicate answers/charges | Separate operation/request/attempt ids; auto retry off. |
+| High | OpenRouter advertised endpoint set drifts, is filtered, or intersects incorrectly | Router may select an endpoint that cannot honor an exposed image field | Latest complete successful descriptor set, no intent/price/tag/preference filtering, deterministic intersection/revision, no endpoint-only options, and fail-closed compilation. |
 
 ## Validation and completion
 
@@ -186,7 +187,7 @@ Goal 1 did not run production tests because it changed planning documentation on
 
 ## Final ADR
 
-Starverse Generation Compiler V2 SHALL resolve one sparse semantic generation configuration into one revisioned provider/model/endpoint/protocol/operation capability binding, persist an immutable semantic snapshot in the same transaction that creates and chooses the answer, compile through exactly one entry into a closed provider-native request type, exhaustively consume or reject every explicit semantic path, deterministically serialize one immutable body used unchanged by request ledger, Raw Debug, and transport, and persist provider-native continuation artifacts by request sequence. The V2 release SHALL destructively establish an isolated data epoch, preserve only approved encrypted standard credentials and shell preferences, and remove every legacy schema, config owner, request path, generic wire mechanism, unknown patch, dual read/write, fallback, compatibility path, and test fixture. Unsupported, stale, missing, or conflicting evidence SHALL block before transport; no runtime path may infer or silently downgrade semantics.
+Starverse Generation Compiler V2 SHALL resolve one sparse semantic generation configuration into one revisioned provider/model/effective-endpoint-set-or-pinned-endpoint/protocol/operation capability binding, persist an immutable semantic snapshot in the same transaction that creates and chooses the answer, compile through exactly one entry into a closed provider-native request type, exhaustively consume or reject every explicit semantic path, deterministically serialize one immutable body used unchanged by request ledger, Raw Debug, and transport, and persist provider-native continuation artifacts by request sequence. The V2 release SHALL destructively establish an isolated data epoch, preserve only approved encrypted standard credentials and shell preferences, and remove every legacy schema, config owner, request path, generic wire mechanism, unknown patch, dual read/write, fallback, compatibility path, and test fixture. Unsupported, stale, missing, or conflicting evidence SHALL block before transport; no runtime path may infer or silently downgrade semantics.
 
 ## Traceability
 
