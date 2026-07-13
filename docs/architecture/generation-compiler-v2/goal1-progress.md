@@ -27,6 +27,8 @@
 - Validated Goal 1 artifacts were committed as `2da943b9` (`docs: finalize generation compiler v2 goal 1`): 11 documentation files, 1,788 inserted lines, no production file.
 - First `git fetch origin` attempt failed with `Recv failure: Connection was reset`; the immediate retry succeeded. Refreshed `origin/main` is `fd65a8023849e0079569b5f8320d8748b55fff6e`. The branch is 1 commit behind / 3 ahead; `git log --cherry-pick origin/main...HEAD` shows only the two Goal 1 documentation commits as non-equivalent because branch commit `067171a4` and `origin/main` commit `fd65a802` carry the same README patch.
 - `origin/main` merged cleanly with no conflict as `082ed083`. Post-merge divergence is 0 behind / 5 ahead. The tree diff from `origin/main` contains only the 11 Goal 1 documentation files; post-merge TP/BL/AC/local-link/fence/whitespace validation passed and non-document diff count is zero.
+- Owner authorized the controlled local-main replacement workflow on 2026-07-13. Before any destructive ref move, the exact pre-replacement local `main` (`6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b`) was preserved as `backup/main-before-generation-compiler-goal1-20260713`; the backup ref was read back and matched that SHA. The worktree, index, and untracked set were all empty.
+- Pre-replacement audit recorded `origin/main=fd65a8023849e0079569b5f8320d8748b55fff6e`, Goal 1 branch `=8d9e24fcc86b06e26d8ad17bd82f38f3ecc15488`, local `main...origin/main = 54 ahead / 2 behind`, and Goal 1 branch `...origin/main = 8 ahead / 0 behind`. The current tree delta from `origin/main` is exactly 11 files under `docs/architecture/generation-compiler-v2/`; out-of-scope path count is zero and `git diff --check` passes.
 
 ## Status
 
@@ -43,8 +45,8 @@
 | TP8 Atomic cutover, deletion, tests, Goal 3 input | Complete | `tp8-cutover-tests-goal3.md` |
 | Baseline traceability | Complete — 100%, zero uncovered | `traceability-matrix.md` |
 | Owner-decision revision | Complete | Existing eight packages, final plan, traceability, and acceptance matrix |
-| Git reconciliation | Stopped at mandated safety boundary | Latest `origin/main` merged into Goal 1 branch; local `main` cannot fast-forward because it has a separate 54-commit production history |
-| Final implementation plan | Owner-decision revision complete; Git reconciliation pending | `generation-compiler-v2-final-plan.md` |
+| Git reconciliation | Owner-authorized controlled replacement in progress | Original local `main` is preserved by the verified backup branch; final fetch/reset/fast-forward checks remain |
+| Final implementation plan | Owner-decision revision complete; final Git verification pending | `generation-compiler-v2-final-plan.md` |
 
 ## Files inspected
 
@@ -94,18 +96,16 @@
 
 ## Blockers
 
-- Goal 1 investigation is not blocked. Goal 2 implementation is blocked until the prerequisite table in the final plan is Owner-approved.
-- Remaining execution gate: reconcile this Goal 1 branch with latest `origin/main` using the Owner-specified stop-on-conflict fast-forward workflow.
-- Local `main` fast-forward is blocked: after switching to `main`, `git pull --ff-only` failed because local `main` is 54 commits ahead and 2 behind `origin/main` with merge base `de955f96`. Read-only comparison reports 526 changed files and broad production-code differences; this is an unexpected-history/production boundary, so no merge, rebase, reset, or speculative conflict resolution was attempted.
-- A read-only `git merge-tree --write-tree --messages codex/rewrite-readme main` simulation also failed (`exit=1`) and enumerated production conflicts across Electron IPC/main, provider builders/stream mappers, state/UI, i18n, tests, and `package.json`. Therefore “merge both histories, then fast-forward local main” is not a pure-document or conflict-free alternative and is forbidden without a new Owner reconciliation decision.
+- Goal 1 investigation is not blocked. The previous local-main reconciliation blocker is closed by the Owner-authorized backup-plus-reset workflow; final execution verification is in progress.
+- The original divergent local `main` history must remain preserved at `backup/main-before-generation-compiler-goal1-20260713`. No push, backup deletion, rebase, cherry-pick, force push, non-fast-forward merge, or production conflict resolution is authorized.
 - Gemini version, V2 epoch root, OpenAI reasoning scope, and OpenRouter Images endpoint freshness/selection are no longer Owner blockers; they are frozen implementation constraints.
 - Provider-specific implementation evidence still required by Goal 2 (for example Anthropic exact model rules) remains a package acceptance input, not a reason to reopen these Owner decisions.
 - Any new official field or protocol not confirmed from a primary vendor source remains unavailable rather than guessed.
 
 ## Remaining work
 
-1. Owner chooses how to reconcile the divergent local `main` history with the squashed two-commit `origin/main` history while preserving the intended production state.
-2. After that decision, fast-forward the chosen `main` to the Goal 1 branch result and rerun final validation.
+1. Fetch and confirm `origin/main` remains `fd65a8023849e0079569b5f8320d8748b55fff6e`; if it moved, reconcile and re-audit the Goal 1 branch before touching local `main`.
+2. With the verified backup retained, align local `main` to `origin/main`, fast-forward it to the Goal 1 branch, record the final state, and rerun every document/Git validation.
 3. Goal 2 executes the frozen plan; Goal 3 performs the independent Critical/High review defined by TP8.
 
 ## Product links
@@ -137,6 +137,7 @@
 - 2026-07-13: Merged latest `origin/main` into the Goal 1 branch without conflict (`082ed083`). Revalidated 8 TP, 23 BL, 42 AC, local links, fences, `git diff --check`, and confirmed zero production/non-Goal-1 path differences from `origin/main`.
 - 2026-07-13: Switched to local `main` and ran the required `git pull --ff-only`; Git refused because local `main` is 54 ahead / 2 behind `origin/main`. The two sides contain broad, non-equivalent production histories (526-file tree diff). Stopped without merge/rebase/reset/force and recorded this as the sole remaining Goal 1 closure blocker.
 - 2026-07-13: Simulated the only forward-preserving alternative with `git merge-tree`; it reports extensive production conflicts and cannot yield a docs-only merge. No merge was attempted in the worktree. Owner must select which production lineage is canonical before Goal 1 can be fast-forwarded into local `main`.
+- 2026-07-13: Owner selected the backup-plus-reset reconciliation. Re-recorded local `main=6fb6ad59`, `origin/main=fd65a802`, Goal 1 `=8d9e24fc`, clean index/worktree/untracked state, and the full docs-only final delta. Created and verified `backup/main-before-generation-compiler-goal1-20260713` at the exact original local-main SHA before proceeding.
 - 2026-07-13: Re-verified OpenRouter Web Search and the dedicated Image API. Frozen the server-tool form as the sole web-search target, recorded the plugin form as deletion-only legacy evidence, and made per-endpoint image capability records authoritative over model-level unions.
 - 2026-07-13: Completed TP1. Confirmed main's mixed historical-route/current-config behavior, split provider entrypoints, implicit message-group fallback, and missing tool/image continuation. Defined the single command/transaction/runner boundary and recorded the branch-reconciliation prerequisite.
 - 2026-07-13: Completed TP2. Enumerated every SQLite/config/asset/debug/runtime/session/temp boundary, froze the exact epoch-2 workspace and crash-safe journal design, and restricted credential preservation to five validated `electron_safe_storage` leaves. Packaged app identity correction remains a Goal 2 implementation prerequisite; the root itself is Owner-frozen.
