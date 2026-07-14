@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
 import {
   GenerationV2Identity,
   GenerationV2IdentityError,
@@ -173,6 +174,57 @@ function decodeRow(row: BindingRow): OpenRouterImageBindingRepositoryFactV2 {
   return fact
 }
 
+type PersistedSelectorProjection = Readonly<{
+  [K in keyof Extract<DecodedProviderBindingRecordV2['endpointBinding'], { kind: 'pinned' }>['selector']]-?: string
+}>
+
+type PersistedRecordProjection = Readonly<{
+  [K in Exclude<keyof DecodedProviderBindingRecordV2, 'trust' | 'endpointBinding'>]-?: string
+}> & Readonly<{
+  endpointBinding: Readonly<{ kind: 'pinned'; selector: PersistedSelectorProjection }>
+}>
+
+const nonPersistedRecordKeysAreClosed:
+  Exclude<keyof DecodedProviderBindingRecordV2, keyof PersistedRecordProjection | 'trust'> extends never
+    ? true : never = true
+void nonPersistedRecordKeysAreClosed
+
+function persistedRecordProjection(record: DecodedProviderBindingRecordV2): PersistedRecordProjection | null {
+  if (record.endpointBinding.kind !== 'pinned') return null
+  const selector = record.endpointBinding.selector
+  const selectorProjection = {
+    kind: selector.kind,
+    providerTag: selector.providerTag.value,
+    providerSlug: selector.providerSlug.value,
+    descriptorRevision: selector.descriptorRevision.value,
+    descriptorDigest: selector.descriptorDigest.value,
+    selectedBy: selector.selectedBy,
+    selectedAt: selector.selectedAt,
+  } satisfies PersistedSelectorProjection
+  return {
+    credentialScopeId: record.credentialScopeId.value,
+    providerId: record.providerId.value,
+    endpointProfileId: record.endpointProfileId.value,
+    endpointBinding: { kind: 'pinned', selector: selectorProjection },
+    protocolContractId: record.protocolContractId.value,
+    contractRevision: record.contractRevision.value,
+    contractDefinitionDigest: record.contractDefinitionDigest.value,
+    registryRevision: record.registryRevision.value,
+    modelId: record.modelId.value,
+    operation: record.operation,
+  } satisfies PersistedRecordProjection
+}
+
+function exactRecordMatch(
+  left: DecodedProviderBindingRecordV2,
+  right: DecodedProviderBindingRecordV2,
+): boolean {
+  const leftProjection = persistedRecordProjection(left)
+  const rightProjection = persistedRecordProjection(right)
+  return leftProjection !== null && rightProjection !== null &&
+    stableSerializeProviderRequestV2(leftProjection) === stableSerializeProviderRequestV2(rightProjection)
+}
+
 export function isOpenRouterImageBindingRepositoryFactV2(
   value: unknown,
 ): value is OpenRouterImageBindingRepositoryFactV2 {
@@ -281,7 +333,14 @@ export class OpenRouterImageBindingRepo {
       if (write.changes !== 1) {
         throw new OpenRouterImageBindingRepoV2Error('GENERATION_V2_OPENROUTER_BINDING_CAS_CONFLICT')
       }
-      return this.getBinding(key)!
+      const persisted = this.getBinding(key)
+      if (!persisted || persisted.bindingGeneration !== bindingGeneration ||
+          persisted.sourceDescriptorRowGeneration !== descriptor.rowGeneration ||
+          persisted.sourceEndpointSetRevision.value !== descriptor.endpointSetRevision.value ||
+          !exactRecordMatch(persisted.record, record)) {
+        throw new OpenRouterImageBindingRepoV2Error('GENERATION_V2_OPENROUTER_BINDING_STATE_INVALID')
+      }
+      return persisted
     })
     return this.runImmediate(transaction)
   }
