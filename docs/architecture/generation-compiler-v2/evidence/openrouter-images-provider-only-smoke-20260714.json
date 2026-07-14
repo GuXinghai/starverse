@@ -207,6 +207,7 @@
     "endpointPinVerifiedForBothTags": true,
     "independentDashboardVerification": "Authenticated OpenRouter Logs showed the two corrected-smoke rows as Google AI Studio and Google Vertex, with rounded costs matching the corresponding generation metadata.",
     "decision": "The endpoint-specific wire contract is verified: serialize provider.only=[selected provider_tag] with allow_fallbacks=false and reject before transport when no descriptor supports the complete explicit intent. Implementation still requires an Owner-frozen deterministic selection policy when multiple descriptors qualify.",
-    "previousTopLevelProviderTagEvidenceDisposition": "Retained only as evidence that top-level provider_tag produced no reliable routing effect; it does not contradict the documented provider.only contract."
+    "previousTopLevelProviderTagEvidenceDisposition": "Retained only as evidence that top-level provider_tag produced no reliable routing effect; it does not contradict the documented provider.only contract.",
+    "subsequentOwnerDecision": "After this smoke, the Owner closed selection policy: user-owned persistent binding by credential scope/model/image-generation; sole eligible auto-bind; multiple eligible explicit selection required; no automatic ranking or same-command endpoint switch. See goal2-gate0-contract-audit.md."
   }
 }

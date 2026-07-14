@@ -17,7 +17,7 @@
 
 | Phase | State | Evidence / output |
 |---|---|---|
-| G2-0 Baseline and implementation map | Complete — awaiting Gate 0 Owner decisions before production edits | Goal 1 artifacts read in full; command, epoch/reset/credential, provider/request, deletion and test maps captured |
+| G2-0 Baseline and implementation map | Complete — OpenRouter Images and LM Studio slices authorized; other surfaces remain gated | Goal 1 artifacts read in full; command, epoch/reset/credential, provider/request, deletion and test maps captured |
 | G2-1 Epoch-2 workspace and destructive reset | Pending | TP2, AC-01…AC-06 |
 | G2-2 Semantic intent, capability, persistence, UI projection | Pending | TP3/TP4 |
 | G2-3 Compiler, ledger, snapshot, prepared request | Pending | TP5 |
@@ -49,6 +49,7 @@
 | 2026-07-14 | OpenRouter Images routing correction | Reopened | Current official Image Generation docs explicitly define `provider.only` plus `allow_fallbacks:false`; the prior top-level `provider_tag` smoke did not test the documented wire shape, so endpoint-specific capability remains pending the corrected two-request smoke |
 | 2026-07-14 | Corrected OpenRouter Images `provider.only` smoke | Pass; wire contract closed | AI Studio and Vertex Global both routed to distinct matching generation endpoints with `allow_fallbacks:false`; authenticated OpenRouter Logs independently labeled both providers |
 | 2026-07-14 | LM Studio 0.4.19+ Responses exact-body qualification | Pass; binding fixed | Eleven local requests covered complete item replay, multi-turn, branches, audited fresh-process artifact reload, reasoning, function calls and provider SSE terminal shape; zero external cost |
+| 2026-07-14 | OpenRouter Images final selection rule | Pass; blocker closed | User-owned binding, sole-eligible auto-bind, explicit multiple-candidate selection, stable display ordering, stale/mismatch behavior and option cleanup frozen |
 
 ## Smoke log
 
@@ -62,14 +63,14 @@
 
 ## Risks and blockers
 
-- Gate 0 blocks production edits until the remaining Owner choices are frozen and recorded: canonical packaged `appId`; OpenRouter Images multiple-eligible-descriptor selection authority/tie-break; OpenAI continuation mode; OpenRouter beta server-tool exposure; automatic transport retry policy; image continuation first-release scope; Anthropic `thinking.display` exposure. Recommended defaults in the plan are not treated as implicit Owner decisions.
+- OpenRouter Images and LM Studio Gate 0 blockers are closed. Production implementation may begin for these two frozen contract slices only. Unrelated packages remain blocked on their own Owner choices: canonical packaged `appId`; OpenAI continuation mode; Ollama/local binding; OpenRouter beta server-tool exposure; automatic transport retry policy; image continuation first-release scope; Anthropic `thinking.display` exposure. No implementation may infer those values.
 - `package.json` proves `productName: "Starverse"`; `electron-builder.json5` still contains `appId: "YourAppID"` and `productName: "YourAppName"`. No canonical appId was found in repository architecture/ADR sources, so the epoch root marker cannot safely be implemented by guessing one.
 - Anthropic's exact current model × thinking × effort × sampling × web-tool matrix and Gemini Interactions continuation fields require fresh official-evidence fixtures before those contracts can be enabled; this is evidence work, not a reason to widen or fall back.
 - Current official evidence closes most of the Anthropic matrix and proves `thinking.display` is a formal capability-gated field. Older basic web-search combinations without exact evidence remain unavailable.
 - Resolved LM Studio decision: this tested endpoint binds `lmstudio-openresponses`. V2 must send `store:false`, never send `previous_response_id`, persist/replay the complete ordered native item union, and use a native Responses SSE decoder. `/api/v1/chat` is forbidden for ordinary multi-turn; `lmstudio-openai-chat-completions` is only the qualification-failure alternative for another endpoint, never a runtime fallback.
 - LM Studio qualification failures are classified: auth/connect/timeout/5xx/model/runtime/cancel/inconclusive failures block and leave the endpoint unbound. Only a repeatable native-item contract failure on a healthy runtime permits a separately and explicitly initiated Chat Completions qualification; never in the same transaction and never automatically.
 - Current production code does not yet satisfy that binding: it omits forced `store:false`, reduces Responses input to role/text, and sends Responses SSE through the Chat Completions mapper. The successful provider smoke authorizes the V2 contract, not the current implementation.
-- Resolved wire contract: endpoint-specific Images routing is emitted only through typed `provider.only:[selectedDescriptor.provider_tag]` plus `allow_fallbacks:false`. The selected fresh descriptor must support the complete intent; top-level `provider_tag` is forbidden. The current readable docs define this contract while raw OpenAPI still exposes only `provider.options`, so exact-body fixtures and live regression are mandatory. Compile-time identity is the provider-owned tag/slug plus descriptor revision/digest, not the generation endpoint ID. Implementation remains blocked until the Owner freezes a deterministic authority/tie-break policy for multiple eligible descriptors.
+- Resolved OpenRouter Images contract: selection belongs to the user and lookup key is `(credentialScopeId, modelId, image_generation)`. A valid persisted binding remains; a sole eligible unbound descriptor auto-binds; multiple eligible return `OPENROUTER_IMAGE_PROVIDER_SELECTION_REQUIRED`. Candidate sorting is display-only. Missing/incomplete/hard-expired binding stale-rejects; changed intent unsupported by the bound descriptor returns `BOUND_ENDPOINT_CAPABILITY_MISMATCH`. User rebind plus a new command is required. Exact `provider.only`/`allow_fallbacks:false` and providerSlug/allowlisted options are mandatory, with atomic invalid-option cleanup on binding change.
 - Current facts support but do not replace Owner choices: provider generation POSTs perform no automatic retry; OpenAI Responses has no native continuation artifact and replays only generic role/text history; Gemini Interactions image requests explicitly reject history; image regenerate is only question-level sibling generation.
 - Current startup constructs and migrates `Store(config.json)` before `app.whenReady`, then opens `<userData>/chat.db`, runs legacy schema/ensure helpers, opens `<userData>/debug/generation-raw.sqlite`, registers IPC/window/jobs, and never owns an epoch marker/lock/journal. Epoch V2 must move config/service construction after a successful coordinator and must never call legacy credential read/migration APIs while filtering.
 - The exact preservable records are `providerCredentials.v1.{openrouter,openai_responses,google_ai_studio,anthropic,deepseek}` with valid provider key, version 1, `electron_safe_storage`, non-empty ciphertext, valid timestamp, and successful decrypt. Plaintext fallback, legacy plaintext keys, catalog HMAC, compatible credentials, custom endpoints/secrets, and backups are deletion-only.
@@ -78,9 +79,9 @@
 
 ## Remaining work
 
-1. Obtain and record the remaining Gate 0 Owner decisions listed below; no production edit is allowed before they are frozen.
-2. Resolve the remaining Owner decisions and record the LM Studio fixed binding plus other decisions in the Gate 0 ADR.
-3. Implement G2-1 through G2-7 without compatibility or fallback paths.
+1. Begin production implementation of the closed OpenRouter Images and LM Studio slices without compatibility or fallback paths.
+2. Obtain and record the remaining package-specific Owner decisions before implementing those unrelated slices.
+3. Implement the remaining approved G2-1 through G2-7 batches as their gates close.
 4. Close every AC with direct code/test/smoke evidence and run the complete gate sequence.
 
 ## Gate 0 Owner decision packet
@@ -88,7 +89,6 @@
 | Decision | Plan-recommended value awaiting explicit approval |
 |---|---|
 | Canonical packaged identity | `productName = Starverse` is repository-proven; Owner must provide the exact stable `appId` (no inferred `com.*` value) |
-| OpenRouter Images descriptor selection | Owner must choose the selection authority and deterministic tie-break when more than one fresh descriptor supports the complete intent; API order, observed price, and implicit provider preference are not defaults |
 | OpenAI Responses continuation | Client-managed complete native response/reasoning/encrypted/tool/image items; no `previous_response_id` or conversation fallback |
 | Ollama/local protocol binding | Every endpoint profile requires one explicit protocol choice; no probing/fallback to another codec |
 | OpenRouter beta server web tool | Disabled by default; explicit experimental opt-in and capability/evidence gate |
@@ -109,3 +109,4 @@
 - 2026-07-14: Final P0/P1 risk and document-consistency reviews passed. Successful refresh missing the bound tag now invalidates the capability revision and stale-rejects without same-command endpoint substitution; AC-24 and all affected artifacts carry the same invariant. Both evidence JSON files parse, exact-body hashes and USD 0.0908215 corrected cost recompute, secret/image scans are clear, local links/code fences and all 42 unique AC entries pass, and `git diff --check` reports no error.
 - 2026-07-14: Owner replaced the blocked LM Studio native-chat decision with Responses-first qualification. Local LM Studio `0.4.19+2` and runtime `2.24.0` passed eleven exact-body checks at zero external cost, including an auditable fresh-process persisted-artifact replay, so the endpoint is fixed to `lmstudio-openresponses`; the inactive qualification-failure alternative is `lmstudio-openai-chat-completions`. Transient/inconclusive failures were explicitly excluded from alternative selection. The server and temporary model instances were restored to their pre-test off/unloaded state.
 - 2026-07-14: Final LM Studio risk review closed two evidence-boundary issues: qualification failures now fail closed unless a healthy-runtime contract failure is repeatable and followed by a separate explicit Chat qualification; restart evidence now embeds the exact persisted artifact, its byte count/hash and distinct parent/child PIDs. Provider SSE evidence is named as a single-terminal sample, while Starverse terminal coordination remains an implementation acceptance suite. Final P0/P1 review, JSON/body/artifact hashes, secret scan, 42 AC, links/fences and `git diff --check` passed.
+- 2026-07-14: Owner closed the OpenRouter Images selection blocker. User selection is authoritative; persisted binding reuse, sole-eligible auto-bind, multiple-eligible blocking, stable display-only ordering, duplicate-tag rejection, stale/mismatch errors and provider-option cleanup are frozen. Together with the qualified LM Studio binding, these two slices may now enter production implementation while unrelated Gate 0 decisions remain isolated blockers.

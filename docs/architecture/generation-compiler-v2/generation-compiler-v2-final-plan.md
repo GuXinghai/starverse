@@ -1,6 +1,6 @@
 # Generation Compiler V2 — Final implementation plan
 
-Status: Goal 1 complete pending only the explicitly listed Goal 2 prerequisite decisions. Investigation baseline is local `main@6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b`; branch-only transition evidence is `HEAD@067171a4c4d55f147340677c7e7f046e95311bd0`. Official contracts were verified 2026-07-13 and the OpenRouter Images plus LM Studio decisions were live-qualified 2026-07-14. OpenRouter uses `provider.only:[provider_tag]` plus `allow_fallbacks:false`; the earlier top-level `provider_tag` smoke remains negative evidence only, while deterministic selection among multiple eligible descriptors remains an Owner prerequisite. LM Studio 0.4.19+ passed the Responses-first item/branch/restart/tool/SSE suite and is fixed to `lmstudio-openresponses`; its current production adapter remains scheduled for replacement.
+Status: Goal 1 complete pending only the explicitly listed Goal 2 prerequisite decisions. Investigation baseline is local `main@6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b`; branch-only transition evidence is `HEAD@067171a4c4d55f147340677c7e7f046e95311bd0`. Official contracts were verified 2026-07-13 and the OpenRouter Images plus LM Studio decisions were live-qualified 2026-07-14. OpenRouter Images selection is user-owned: valid persisted binding wins, a sole eligible endpoint auto-binds, and multiple eligible endpoints block for explicit selection; every request emits `provider.only:[provider_tag]` plus `allow_fallbacks:false`. LM Studio 0.4.19+ passed the Responses-first item/branch/restart/tool/SSE suite and is fixed to `lmstudio-openresponses`; both Gate 0 blockers are closed while their production adapters remain implementation work.
 
 ## Executive decision
 
@@ -69,7 +69,7 @@ Unique ownership:
 
 ### Gate 0 — resolve prerequisites
 
-No production implementation starts until all blocking rows below have an Owner decision and an ADR entry.
+Production implementation may start for an individually closed contract slice. Every unresolved row below blocks its own package/epoch surface and may not be inferred, crossed, or implemented before its ADR entry exists.
 
 ### Batch 1 — fresh data foundation
 
@@ -125,7 +125,7 @@ Stale/invalid target, unsupported/missing snapshot, failed confirmation/prefligh
 | Contract | Endpoint/protocol | Key current decisions |
 |---|---|---|
 | OpenRouter Chat V1 | `/api/v1/chat/completions` | server web tool only; ordered reasoning/tool artifacts; no chat image generation |
-| OpenRouter Images V1 | `/api/v1/images` | choose one descriptor supporting the complete explicit intent; pin with `provider.only:[provider_tag]` plus `allow_fallbacks:false`; descriptor-limited options; configurable 6h/24h freshness |
+| OpenRouter Images V1 | `/api/v1/images` | user-owned binding by credential/model/image-generation; sole eligible auto-bind, multiple eligible selection-required; exact pin; descriptor-limited options; configurable 6h/24h freshness |
 | OpenAI Responses V1 | `/v1/responses` | migrate existing `reasoning.effort/summary`; native web/image tools; one continuation mode; unsupported reasoning rejects |
 | Anthropic Messages | `/v1/messages` | exact model rule matrix; ordered native blocks; no image output |
 | Gemini GenerateContent | provider contract + `/models/{model}:streamGenerateContent` | provider-owned `v1beta`; independent native codec; no Interactions fallback |
@@ -154,8 +154,7 @@ Exact requests and official source URLs are in TP6 and TP7; every field is scope
 | OpenAI continuation | Prefer client-managed native items for auditability, unless Owner chooses provider-stateful | Modes are mutually exclusive and persist different artifacts. |
 | LM Studio protocol | Fixed `lmstudio-openresponses` for the qualified 0.4.19+ endpoint; `/api/v1/chat` forbidden for ordinary multi-turn; Chat Completions only after repeatable contract failure and a separate explicit qualification | Owner-frozen and proven by the 2026-07-14 local exact-body suite; transient/inconclusive failures leave the endpoint unbound, and current implementation must still gain complete item persistence and native SSE decoding. |
 | Transport auto retry | Disabled initially | Provider idempotency/cost behavior is not uniform. |
-| OpenRouter endpoint descriptor routing | One fresh exact descriptor must support every explicit field and expose non-null `provider_tag`; compiler emits `provider.only:[provider_tag]` and `allow_fallbacks:false`; hard-expired/missing descriptor blocks | Current Images docs define this wire shape and the corrected 2026-07-14 smoke plus authenticated Logs routed AI Studio and Vertex Global accurately; POST may not be resent. |
-| OpenRouter multiple-eligible-descriptor selection | Owner must freeze the selection authority and deterministic tie-break; do not infer API order, observed price, or provider preference | The wire contract is proven, but more than one fresh descriptor may satisfy the complete intent and the repository contains no approved deterministic selection rule. |
+| OpenRouter endpoint descriptor routing | User owns selection; key is `(credentialScopeId, modelId, image_generation)`; valid binding persists, sole eligible auto-binds, multiple eligible returns `OPENROUTER_IMAGE_PROVIDER_SELECTION_REQUIRED`; compiler emits exact pin | Owner-frozen final algorithm. No price/order/latency/history/preference selection; stale/mismatch requires rebind plus new command. |
 | Image continuation product scope | First release supports only contracts with official native edit/continuation artifacts; otherwise explicit unavailable | Current app only has sibling regenerate. |
 
 Rows marked by an Owner-frozen value are implementation constraints, not unresolved questions. The remaining choices are explicit Goal 2 pre-enable prerequisites and may not be guessed at implementation time.
