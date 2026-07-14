@@ -32,6 +32,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/compiler/stableSerialize.ts',
       'src/next/generation-v2/domain/identityV2.ts',
       'src/next/generation-v2/domain/generationIntentV2.ts',
+      'src/next/generation-v2/domain/providerBindingV2.ts',
     ]) {
       expect(read(file), file).not.toMatch(/chatSessionConfig|appChatApp\.logic|generation-params|wirePath|requestPatch|extraBody|runtimeProviderAdapter|StreamBridge|TextChat/iu)
     }
@@ -64,6 +65,15 @@ describe('Generation Compiler V2 core boundary', () => {
           expect(targetsPackage, `${path.relative(process.cwd(), file)} -> ${specifier}`).toBe(false)
         }
       }
+    }
+  })
+
+  it('does not allow the decoded unverified binding record to become compiler or snapshot authority', () => {
+    const recordModule = path.resolve('src/next/generation-v2/domain/providerBindingV2.ts')
+    for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
+      if (file === recordModule) continue
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/DecodedProviderBindingRecordV2|decodeProviderBindingRecordV2/u)
     }
   })
 })

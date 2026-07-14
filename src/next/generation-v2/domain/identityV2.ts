@@ -3,7 +3,9 @@ export type GenerationV2IdentityKind =
   | 'model_id'
   | 'endpoint_profile_id'
   | 'provider_slug'
-  | 'provider_option_key'
+  | 'provider_tag'
+  | 'endpoint_set_revision'
+  | 'endpoint_id'
   | 'protocol_contract_id'
   | 'contract_revision'
   | 'credential_scope_id'
@@ -23,7 +25,8 @@ export type GenerationV2DigestKind =
   | 'body_sha256'
 
 const IDENTITY_KINDS = new Set<GenerationV2IdentityKind>([
-  'provider_id', 'model_id', 'endpoint_profile_id', 'provider_slug', 'provider_option_key',
+  'provider_id', 'model_id', 'endpoint_profile_id', 'provider_slug', 'provider_tag',
+  'endpoint_set_revision', 'endpoint_id',
   'protocol_contract_id', 'contract_revision',
   'credential_scope_id', 'config_revision', 'capability_revision', 'descriptor_revision',
   'asset_id', 'asset_revision_id', 'tool_id', 'operation_id',
