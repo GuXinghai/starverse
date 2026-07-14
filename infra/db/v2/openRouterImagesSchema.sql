@@ -34,6 +34,14 @@ CREATE TABLE IF NOT EXISTS openrouter_image_endpoint_descriptor_history (
   PRIMARY KEY (credential_scope_id, model_id, operation, row_generation)
 );
 
+CREATE TABLE IF NOT EXISTS openrouter_image_endpoint_descriptor_generation_clock (
+  credential_scope_id TEXT NOT NULL,
+  model_id TEXT NOT NULL,
+  operation TEXT NOT NULL CHECK (operation = 'image_generate'),
+  last_generation INTEGER NOT NULL CHECK (last_generation > 0 AND last_generation <= 9007199254740991),
+  PRIMARY KEY (credential_scope_id, model_id, operation)
+);
+
 CREATE INDEX IF NOT EXISTS idx_openrouter_image_descriptor_history_retention
   ON openrouter_image_endpoint_descriptor_history(fetched_at_ms);
 

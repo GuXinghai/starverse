@@ -24,12 +24,18 @@ type DescriptorSetRow = {
   descriptor_response_json: string
 }
 
+type DescriptorGenerationClockRow = {
+  last_generation: unknown
+}
+
 export class OpenRouterImageEndpointRepoV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_OPENROUTER_CACHE_IDENTITY_INVALID'
     | 'GENERATION_V2_OPENROUTER_CACHE_MODEL_MISMATCH'
     | 'GENERATION_V2_OPENROUTER_CACHE_RESPONSE_TOO_LARGE'
     | 'GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT'
+    | 'GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID'
+    | 'GENERATION_V2_OPENROUTER_CACHE_GENERATION_EXHAUSTED'
     | 'GENERATION_V2_OPENROUTER_CACHE_CLOCK_REGRESSION') {
     super(code)
     this.name = 'OpenRouterImageEndpointRepoV2Error'
@@ -77,8 +83,57 @@ export class OpenRouterImageEndpointRepo {
     }
 
     const transaction = this.db.transaction(() => {
-      const rowGeneration = (input.expectedGeneration ?? 0) + 1
-      if (!Number.isSafeInteger(rowGeneration)) {
+      const current = this.currentRow(input.credentialScopeId.value, input.requestedModelId.value)
+      const clock = this.generationClockRow(input.credentialScopeId.value, input.requestedModelId.value)
+      const lastGeneration = clock?.last_generation
+      if (clock && (!Number.isSafeInteger(lastGeneration) || (lastGeneration as number) <= 0)) {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
+      }
+      const highestHistoryGeneration = this.highestHistoryGeneration(
+        input.credentialScopeId.value,
+        input.requestedModelId.value,
+      )
+      if (highestHistoryGeneration !== null &&
+          (!clock || highestHistoryGeneration > (lastGeneration as number))) {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
+      }
+      if (current) {
+        if (input.expectedGeneration === null || current.row_generation !== input.expectedGeneration) {
+          throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+        }
+        if (!clock || lastGeneration !== current.row_generation) {
+          throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
+        }
+        if (fetchedAtMs < current.fetched_at_ms) {
+          throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CLOCK_REGRESSION')
+        }
+      } else if (input.expectedGeneration !== null) {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+      }
+      const priorGeneration = clock ? lastGeneration as number : 0
+      if (priorGeneration >= Number.MAX_SAFE_INTEGER) {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_GENERATION_EXHAUSTED')
+      }
+      const rowGeneration = priorGeneration + 1
+      const clockResult = clock
+        ? this.db.prepare(`
+          UPDATE openrouter_image_endpoint_descriptor_generation_clock
+          SET last_generation = ?
+          WHERE credential_scope_id = ? AND model_id = ? AND operation = ? AND last_generation = ?
+        `).run(
+          rowGeneration,
+          input.credentialScopeId.value,
+          input.requestedModelId.value,
+          OPERATION,
+          priorGeneration,
+        )
+        : this.db.prepare(`
+          INSERT INTO openrouter_image_endpoint_descriptor_generation_clock (
+            credential_scope_id, model_id, operation, last_generation
+          ) VALUES (?, ?, ?, ?)
+          ON CONFLICT(credential_scope_id, model_id, operation) DO NOTHING
+        `).run(input.credentialScopeId.value, input.requestedModelId.value, OPERATION, rowGeneration)
+      if (clockResult.changes !== 1) {
         throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
       }
       const values = [
@@ -90,7 +145,7 @@ export class OpenRouterImageEndpointRepo {
         fetchedAtMs,
         responseJson,
       ] as const
-      const result = input.expectedGeneration === null
+      const result = current === undefined
         ? this.db.prepare(`
           INSERT INTO openrouter_image_endpoint_descriptor_sets (
             credential_scope_id, model_id, operation, row_generation,
@@ -115,10 +170,6 @@ export class OpenRouterImageEndpointRepo {
           fetchedAtMs,
         )
       if (result.changes !== 1) {
-        const current = this.currentRow(input.credentialScopeId.value, input.requestedModelId.value)
-        if (current?.row_generation === input.expectedGeneration && fetchedAtMs < current.fetched_at_ms) {
-          throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CLOCK_REGRESSION')
-        }
         throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
       }
       this.db.prepare(`
@@ -131,16 +182,7 @@ export class OpenRouterImageEndpointRepo {
         .run(fetchedAtMs - HISTORY_RETENTION_MS)
       return this.getCurrentDescriptorSet(input.credentialScopeId, input.requestedModelId)!
     })
-    try {
-      return transaction.immediate()
-    } catch (error) {
-      if (error instanceof OpenRouterImageEndpointRepoV2Error) throw error
-      const code = (error as { code?: unknown })?.code
-      if (code === 'SQLITE_BUSY' || code === 'SQLITE_BUSY_SNAPSHOT' || code === 'SQLITE_LOCKED') {
-        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
-      }
-      throw error
-    }
+    return this.runImmediate(transaction)
   }
 
   getCurrentDescriptorSet(
@@ -153,6 +195,45 @@ export class OpenRouterImageEndpointRepo {
     return row ? decodeOpenRouterImageDescriptorCacheRecordV2(row) : null
   }
 
+  invalidateCurrentDescriptorSet(input: Readonly<{
+    credentialScopeId: GenerationV2Identity<'credential_scope_id'>
+    modelId: GenerationV2Identity<'model_id'>
+    expectedGeneration: number
+  }>): Readonly<{ invalidatedRowGeneration: number }> {
+    assertIdentity(input.credentialScopeId, 'credential_scope_id')
+    assertIdentity(input.modelId, 'model_id')
+    if (!Number.isSafeInteger(input.expectedGeneration) || input.expectedGeneration <= 0) {
+      throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+    }
+    const transaction = this.db.transaction(() => {
+      const current = this.currentRow(input.credentialScopeId.value, input.modelId.value)
+      if (!current || current.row_generation !== input.expectedGeneration) {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+      }
+      const clock = this.generationClockRow(input.credentialScopeId.value, input.modelId.value)
+      if (!clock || !Number.isSafeInteger(clock.last_generation) ||
+          clock.last_generation !== current.row_generation) {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
+      }
+      const highestHistoryGeneration = this.highestHistoryGeneration(
+        input.credentialScopeId.value,
+        input.modelId.value,
+      )
+      if (highestHistoryGeneration !== null && highestHistoryGeneration > (clock.last_generation as number)) {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
+      }
+      const result = this.db.prepare(`
+        DELETE FROM openrouter_image_endpoint_descriptor_sets
+        WHERE credential_scope_id = ? AND model_id = ? AND operation = ? AND row_generation = ?
+      `).run(input.credentialScopeId.value, input.modelId.value, OPERATION, input.expectedGeneration)
+      if (result.changes !== 1) {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+      }
+      return Object.freeze({ invalidatedRowGeneration: input.expectedGeneration })
+    })
+    return this.runImmediate(transaction)
+  }
+
   private currentRow(credentialScopeId: string, modelId: string): DescriptorSetRow | undefined {
     return this.db.prepare(`
       SELECT credential_scope_id, model_id, operation, row_generation,
@@ -160,5 +241,40 @@ export class OpenRouterImageEndpointRepo {
       FROM openrouter_image_endpoint_descriptor_sets
       WHERE credential_scope_id = ? AND model_id = ? AND operation = ?
     `).get(credentialScopeId, modelId, OPERATION) as DescriptorSetRow | undefined
+  }
+
+  private generationClockRow(credentialScopeId: string, modelId: string): DescriptorGenerationClockRow | undefined {
+    return this.db.prepare(`
+      SELECT last_generation
+      FROM openrouter_image_endpoint_descriptor_generation_clock
+      WHERE credential_scope_id = ? AND model_id = ? AND operation = ?
+    `).get(credentialScopeId, modelId, OPERATION) as DescriptorGenerationClockRow | undefined
+  }
+
+  private highestHistoryGeneration(credentialScopeId: string, modelId: string): number | null {
+    const row = this.db.prepare(`
+      SELECT MAX(row_generation) AS highest_generation
+      FROM openrouter_image_endpoint_descriptor_history
+      WHERE credential_scope_id = ? AND model_id = ? AND operation = ?
+    `).get(credentialScopeId, modelId, OPERATION) as { highest_generation: unknown }
+    if (row.highest_generation === null) return null
+    if (!Number.isSafeInteger(row.highest_generation) || (row.highest_generation as number) <= 0) {
+      throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
+    }
+    return row.highest_generation as number
+  }
+
+
+  private runImmediate<T>(transaction: { immediate(): T }): T {
+    try {
+      return transaction.immediate()
+    } catch (error) {
+      if (error instanceof OpenRouterImageEndpointRepoV2Error) throw error
+      const code = (error as { code?: unknown })?.code
+      if (code === 'SQLITE_BUSY' || code === 'SQLITE_BUSY_SNAPSHOT' || code === 'SQLITE_LOCKED') {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+      }
+      throw error
+    }
   }
 }

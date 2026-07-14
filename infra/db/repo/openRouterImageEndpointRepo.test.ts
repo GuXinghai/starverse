@@ -88,6 +88,167 @@ describe('OpenRouterImageEndpointRepo V2 successful descriptor facts', () => {
     } finally { db.close() }
   })
 
+  it('invalidates only the expected current generation and preserves diagnostic history', () => {
+    const { db, repo } = fixture([100, 200])
+    try {
+      repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
+      })
+      expect(repo.invalidateCurrentDescriptorSet({
+        credentialScopeId: scope, modelId: model, expectedGeneration: 1,
+      })).toEqual({ invalidatedRowGeneration: 1 })
+      expect(db.prepare(`
+        SELECT last_generation FROM openrouter_image_endpoint_descriptor_generation_clock
+        WHERE credential_scope_id = ? AND model_id = ? AND operation = 'image_generate'
+      `).get(scope.value, model.value)).toEqual({ last_generation: 1 })
+      expect(repo.getCurrentDescriptorSet(scope, model)).toBeNull()
+      expect(db.prepare('SELECT COUNT(*) AS count FROM openrouter_image_endpoint_descriptor_history').get())
+        .toEqual({ count: 1 })
+      expect(() => repo.invalidateCurrentDescriptorSet({
+        credentialScopeId: scope, modelId: model, expectedGeneration: 1,
+      })).toThrow('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+      const refreshed = repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model,
+        response: response('google-vertex/global'), expectedGeneration: null,
+      })
+      expect(refreshed.rowGeneration).toBe(2)
+      expect(db.prepare(`
+        SELECT row_generation FROM openrouter_image_endpoint_descriptor_history ORDER BY row_generation
+      `).all()).toEqual([{ row_generation: 1 }, { row_generation: 2 }])
+    } finally { db.close() }
+  })
+
+  it('fails without writes when the descriptor generation is exhausted after invalidation', () => {
+    const { db, repo } = fixture([100, 200])
+    try {
+      repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
+      })
+      repo.invalidateCurrentDescriptorSet({ credentialScopeId: scope, modelId: model, expectedGeneration: 1 })
+      db.pragma('ignore_check_constraints = ON')
+      db.prepare(`
+        UPDATE openrouter_image_endpoint_descriptor_generation_clock SET last_generation = ?
+        WHERE credential_scope_id = ? AND model_id = ? AND operation = 'image_generate'
+      `).run(Number.MAX_SAFE_INTEGER, scope.value, model.value)
+      db.pragma('ignore_check_constraints = OFF')
+      const before = db.serialize()
+      expect(() => repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
+      })).toThrow('GENERATION_V2_OPENROUTER_CACHE_GENERATION_EXHAUSTED')
+      expect(db.serialize()).toEqual(before)
+    } finally { db.close() }
+  })
+
+  it('fails closed without deleting current when its generation clock is missing or mismatched', () => {
+    const { db, repo } = fixture([100, 200])
+    try {
+      repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
+      })
+      repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model,
+        response: response('google-vertex/global'), expectedGeneration: 1,
+      })
+      for (const mutate of [
+        () => db.prepare('DELETE FROM openrouter_image_endpoint_descriptor_generation_clock').run(),
+        () => db.prepare(`
+          UPDATE openrouter_image_endpoint_descriptor_generation_clock SET last_generation = 1
+          WHERE credential_scope_id = ? AND model_id = ? AND operation = 'image_generate'
+        `).run(scope.value, model.value),
+        () => db.prepare(`
+          UPDATE openrouter_image_endpoint_descriptor_generation_clock SET last_generation = 3
+          WHERE credential_scope_id = ? AND model_id = ? AND operation = 'image_generate'
+        `).run(scope.value, model.value),
+      ]) {
+        db.prepare(`
+          INSERT INTO openrouter_image_endpoint_descriptor_generation_clock (
+            credential_scope_id, model_id, operation, last_generation
+          ) VALUES (?, ?, 'image_generate', 2)
+          ON CONFLICT(credential_scope_id, model_id, operation) DO UPDATE SET last_generation = 2
+        `).run(scope.value, model.value)
+        mutate()
+        const before = db.serialize()
+        expect(() => repo.invalidateCurrentDescriptorSet({
+          credentialScopeId: scope, modelId: model, expectedGeneration: 2,
+        })).toThrow('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
+        expect(db.serialize()).toEqual(before)
+        expect(repo.getCurrentDescriptorSet(scope, model)?.rowGeneration).toBe(2)
+      }
+    } finally { db.close() }
+  })
+
+  it('treats retained history with a missing clock/current pair as explicit state corruption', () => {
+    const { db, repo } = fixture([100, 200])
+    try {
+      repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
+      })
+      repo.invalidateCurrentDescriptorSet({ credentialScopeId: scope, modelId: model, expectedGeneration: 1 })
+      db.prepare('DELETE FROM openrouter_image_endpoint_descriptor_generation_clock').run()
+      const before = db.serialize()
+      expect(() => repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
+      })).toThrow('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
+      expect(db.serialize()).toEqual(before)
+    } finally { db.close() }
+  })
+
+  it('treats retained future history as a one-way corruption witness before commit or invalidation', () => {
+    const { db, repo } = fixture([100, 200])
+    try {
+      repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
+      })
+      const insertFutureHistory = () => db.prepare(`
+        INSERT INTO openrouter_image_endpoint_descriptor_history (
+          credential_scope_id, model_id, operation, row_generation,
+          endpoint_set_revision, fetched_at_ms, descriptor_response_json
+        )
+        SELECT credential_scope_id, model_id, operation, 3,
+               endpoint_set_revision, fetched_at_ms, descriptor_response_json
+        FROM openrouter_image_endpoint_descriptor_history
+        WHERE credential_scope_id = ? AND model_id = ? AND operation = 'image_generate' AND row_generation = 1
+      `).run(scope.value, model.value)
+
+      insertFutureHistory()
+      const beforeInvalidation = db.serialize()
+      expect(() => repo.invalidateCurrentDescriptorSet({
+        credentialScopeId: scope, modelId: model, expectedGeneration: 1,
+      })).toThrow('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
+      expect(db.serialize()).toEqual(beforeInvalidation)
+
+      db.prepare(`
+        DELETE FROM openrouter_image_endpoint_descriptor_history
+        WHERE credential_scope_id = ? AND model_id = ? AND operation = 'image_generate' AND row_generation = 3
+      `).run(scope.value, model.value)
+      repo.invalidateCurrentDescriptorSet({ credentialScopeId: scope, modelId: model, expectedGeneration: 1 })
+      insertFutureHistory()
+      const beforeCommit = db.serialize()
+      expect(() => repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
+      })).toThrow('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
+      expect(db.serialize()).toEqual(beforeCommit)
+    } finally { db.close() }
+  })
+
+  it('never invalidates a newer generation after a stale 404 result', () => {
+    const { db, repo } = fixture([100, 200])
+    try {
+      repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
+      })
+      const newer = repo.commitSuccessfulDescriptorResponse({
+        credentialScopeId: scope, requestedModelId: model,
+        response: response('google-vertex/global'), expectedGeneration: 1,
+      })
+      expect(() => repo.invalidateCurrentDescriptorSet({
+        credentialScopeId: scope, modelId: model, expectedGeneration: 1,
+      })).toThrow('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+      expect(repo.getCurrentDescriptorSet(scope, model)?.rowGeneration).toBe(newer.rowGeneration)
+      expect(repo.getCurrentDescriptorSet(scope, model)?.endpointSetRevision.value).toBe(newer.endpointSetRevision.value)
+    } finally { db.close() }
+  })
+
   it('rejects tampered persisted revision and non-canonical JSON on read', () => {
     const { db, repo } = fixture([100])
     try {
@@ -123,6 +284,9 @@ describe('OpenRouterImageEndpointRepo V2 successful descriptor facts', () => {
       try {
         expect(() => secondRepo.commitSuccessfulDescriptorResponse({
           credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: 1,
+        })).toThrow('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+        expect(() => secondRepo.invalidateCurrentDescriptorSet({
+          credentialScopeId: scope, modelId: model, expectedGeneration: 1,
         })).toThrow('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
       } finally {
         firstDb.exec('ROLLBACK')
