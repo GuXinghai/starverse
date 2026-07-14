@@ -10,7 +10,8 @@ import {
 } from './providerContractRegistryV2'
 
 function currentLookup() {
-  const [definition] = listReviewedProviderContractDefinitionsV2()
+  const definition = listReviewedProviderContractDefinitionsV2()
+    .find((item) => item.protocolContractId.value === 'openrouter-images-v1')!
   return Object.freeze({
     protocolContractId: definition.protocolContractId.value,
     contractRevision: definition.contractRevision.value,
@@ -65,9 +66,69 @@ describe('Generation V2 reviewed provider contract registry', () => {
 
   it('does not trust structural clones and exposes no duplicate contract revision', () => {
     const [definition] = listReviewedProviderContractDefinitionsV2()
-    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(1)
+    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(3)
     expect(isReviewedProviderContractDefinitionV2({ ...definition })).toBe(false)
     expect(new Set(listReviewedProviderContractDefinitionsV2().map((item) =>
-      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(1)
+      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(3)
+  })
+
+  it('registers GenerateContent and Interactions as separate non-executable v1beta contracts', () => {
+    const definitions = listReviewedProviderContractDefinitionsV2()
+      .filter((definition) => definition.providerId.value === 'google_ai_studio')
+    expect(definitions).toHaveLength(2)
+    expect(definitions.map((definition) => definition.apiSurface)).toEqual([
+      {
+        kind: 'gemini_generate_content',
+        providerFamilyContractId: 'gemini-developer-api-v1beta',
+        surfaceId: 'gemini-generate-content-v1beta',
+        apiOrigin: 'https://generativelanguage.googleapis.com',
+        apiVersion: 'v1beta',
+        auth: { kind: 'header', name: 'x-goog-api-key' },
+        method: 'POST',
+        responseProtocol: 'sse',
+        relativePathTemplate: '/models/{model}:streamGenerateContent',
+        fixedQuery: { alt: 'sse' },
+        codecKind: 'gemini_generate_content_v1beta',
+        continuationFamily: 'candidate_parts_thought_signatures_tool_calls',
+      },
+      {
+        kind: 'gemini_interactions',
+        providerFamilyContractId: 'gemini-developer-api-v1beta',
+        surfaceId: 'gemini-interactions-v1beta',
+        apiOrigin: 'https://generativelanguage.googleapis.com',
+        apiVersion: 'v1beta',
+        auth: { kind: 'header', name: 'x-goog-api-key' },
+        method: 'POST',
+        relativePathTemplate: '/interactions',
+        fixedQuery: {},
+        codecKind: 'gemini_interactions_v1beta',
+        streamRequestPolicy: {
+          location: 'body',
+          field: 'stream',
+          requiredValue: true,
+          responseProtocol: 'sse',
+        },
+        continuationFamily: 'interaction_id_and_native_steps',
+      },
+    ])
+    expect(definitions.map((definition) => definition.continuationPolicy)).toEqual([
+      'candidate_parts_thought_signatures_tool_calls',
+      'interaction_id_and_native_steps',
+    ])
+    expect(definitions.every((definition) => definition.executionAuthority === 'none')).toBe(true)
+    expect(definitions.every((definition) => definition.implementationStatus === 'definition_only')).toBe(true)
+    expect(definitions[0].evidence.openApiSha256).toBeNull()
+    expect(definitions[1].evidence.openApiSha256)
+      .toBe('5d62de8f9fe06bc7a4e595bef257c8909502922f1691eee179051b7a2ed84690')
+    expect(new Set(definitions.map((definition) => definition.contractRevision.value)).size).toBe(2)
+  })
+
+  it('binds every registered local evidence artifact to its committed bytes', () => {
+    for (const definition of listReviewedProviderContractDefinitionsV2()) {
+      for (const artifact of definition.evidence.localArtifacts) {
+        const actual = createHash('sha256').update(readFileSync(path.resolve(artifact.path))).digest('hex')
+        expect(actual, `${definition.protocolContractId.value}:${artifact.id}`).toBe(artifact.sha256)
+      }
+    }
   })
 })
