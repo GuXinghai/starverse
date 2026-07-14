@@ -74,7 +74,7 @@ The typed Images codec owns this selector; generic semantic config does not expo
 
 Decisions:
 
-- The selected endpoint descriptor is authoritative. Selection authority belongs to the user; price, API order, latency, historical success and hard-coded preference are forbidden inputs. Binding lookup key is `(credentialScopeId, modelId, image_generation)`.
+- The selected endpoint descriptor is authoritative. Selection authority belongs to the user; price, API order, latency, historical success and hard-coded preference are forbidden inputs. Binding lookup key is `(credentialScopeId, modelId, image_generate)`, where `image_generate` is the single canonical V2 operation value.
 - An existing tag remains bound while its latest complete fresh descriptor supports the complete intent. With no binding, exactly one eligible descriptor is atomically persisted; multiple eligible descriptors return `OPENROUTER_IMAGE_PROVIDER_SELECTION_REQUIRED`; zero block as unsupported. Duplicate tags invalidate the complete descriptor set.
 - Missing/incomplete/hard-expired/stale bound descriptor stale-rejects. A present fresh binding that cannot support changed parameters returns `BOUND_ENDPOINT_CAPABILITY_MISMATCH`; the user must explicitly rebind and submit a new command. Resolver/compiler/transport never substitute an endpoint in the same command.
 - The compiled request pins exactly that endpoint through `provider.only:[provider_tag]` plus `allow_fallbacks:false`. It never emits top-level `provider_tag`, drops a field, lowers resolution, disables streaming, switches endpoint, or resends after a generation POST failure.

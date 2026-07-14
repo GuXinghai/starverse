@@ -65,6 +65,7 @@ describe('Generation Compiler V2 core boundary', () => {
     const inactiveV2Adapters = new Set([
       path.resolve('infra/db/repo/openRouterImageEndpointRepo.ts'),
       path.resolve('infra/db/repo/openRouterImageSettingsRepo.ts'),
+      path.resolve('infra/db/repo/openRouterImageBindingRepo.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -83,12 +84,13 @@ describe('Generation Compiler V2 core boundary', () => {
     const adapters = new Set([
       path.resolve('infra/db/repo/openRouterImageEndpointRepo.ts'),
       path.resolve('infra/db/repo/openRouterImageSettingsRepo.ts'),
+      path.resolve('infra/db/repo/openRouterImageBindingRepo.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
         if (adapters.has(file)) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
-          .not.toMatch(/openRouterImage(?:Endpoint|Settings)Repo/iu)
+          .not.toMatch(/openRouterImage(?:Endpoint|Settings|Binding)Repo/iu)
       }
     }
   })

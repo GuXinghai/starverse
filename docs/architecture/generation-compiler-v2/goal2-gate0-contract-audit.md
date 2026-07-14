@@ -150,7 +150,7 @@ Corrected Owner-authorized `provider.only` smoke:
 Final Owner selection rule:
 
 - Selection authority belongs exclusively to the user. Resolver/compiler/transport never choose by price, API order, latency, historical success rate, or hard-coded provider preference.
-- Binding lookup key is `(credentialScopeId, modelId, image_generation)`. The persisted value owns `providerTag`, `providerSlug`, descriptor revision/digest and selection origin (`user` or `sole_eligible`).
+- Binding lookup key is `(credentialScopeId, modelId, image_generate)`. The persisted value owns `providerTag`, `providerSlug`, descriptor revision/digest and selection origin (`user` or `sole_eligible`).
 - A complete descriptor response containing duplicate `provider_tag` values is an invalid set and blocks before selection or cache replacement.
 - If a binding exists and its latest complete descriptor remains present, fresh and supports the complete request, it remains selected. The current binding is displayed first; other candidates are displayed by Unicode code-point ascending `providerTag`. Display order never selects.
 - Without a binding, zero eligible descriptors blocks as unsupported, one eligible descriptor is atomically bound/persisted, and multiple eligible descriptors return `OPENROUTER_IMAGE_PROVIDER_SELECTION_REQUIRED` until the user explicitly selects one.

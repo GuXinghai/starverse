@@ -45,6 +45,7 @@ describe('OpenRouter Images V2 production boundary', () => {
     expect(schema).toContain('Generation Compiler V2 only')
     expect(schema).toContain('openrouter_image_endpoint_descriptor_sets')
     expect(schema).toContain('openrouter_image_endpoint_settings')
+    expect(schema).toContain('openrouter_image_endpoint_bindings')
     expect(schema).not.toContain('provider_options_json')
     expect(schema).not.toContain('hard_expires_at_ms')
   })
@@ -59,5 +60,15 @@ describe('OpenRouter Images V2 production boundary', () => {
     ]) {
       expect(read(file), file).not.toMatch(/endpointDescriptor|openRouterImageSettingsRepo/iu)
     }
+  })
+
+  it('removes the inactive legacy binding/compiler island instead of preserving aliases or option filtering', () => {
+    for (const file of [
+      'src/next/openrouter/images/bindingResolver.ts',
+      'src/next/openrouter/images/endpointContract.ts',
+      'src/next/openrouter/images/requestCompiler.ts',
+      'src/next/openrouter/images/endpointSelection.test.ts',
+    ]) expect(() => read(file), file).toThrow()
+    expect(read('infra/db/v2/openRouterImagesSchema.sql')).not.toContain('provider_options_json')
   })
 })
