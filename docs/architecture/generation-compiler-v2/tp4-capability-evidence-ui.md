@@ -31,7 +31,17 @@ Conflicts resolve conservatively: a stronger `unsupported` wins; missing evidenc
 
 ## OpenRouter Images endpoint descriptor freshness
 
-The per-endpoint descriptor is the final OpenRouter Images runtime fact. The corrected 2026-07-14 smoke proved the documented selector: `provider.only:[selectedDescriptor.provider_tag]` with `allow_fallbacks:false` routed Google AI Studio and Google Vertex Global to distinct matching generation endpoints, and the authenticated OpenRouter Logs UI independently labeled those requests `Google AI Studio` and `Google Vertex`. Cache identity is `(credentialScopeId, modelId, providerTag, descriptorRevision)`; model-level `supported_parameters` is discovery/display only and never authorizes a field. Selection may choose only a fresh descriptor that supports the complete explicit intent; it may not drop parameters to make an endpoint eligible. If multiple fresh descriptors satisfy the complete intent, compilation remains blocked until the Owner freezes one deterministic selection authority and tie-break policy; API response order, lowest observed price, and implicit provider preference are not selection rules.
+The per-endpoint descriptor is the final OpenRouter Images runtime fact. The corrected 2026-07-14 smoke proved the documented selector: `provider.only:[selectedDescriptor.provider_tag]` with `allow_fallbacks:false` routed Google AI Studio and Google Vertex Global to distinct matching generation endpoints, and the authenticated OpenRouter Logs UI independently labeled those requests `Google AI Studio` and `Google Vertex`. Descriptor-cache identity includes `(credentialScopeId, modelId, providerTag, descriptorRevision)`; the persisted selection lookup key is exactly `(credentialScopeId, modelId, image_generation)`. Model-level `supported_parameters` is discovery/display only and never authorizes a field.
+
+Selection authority belongs to the user. Resolver/compiler/transport never select by price, descriptor/API order, latency, historical success rate, or hard-coded preference. The binding algorithm is closed:
+
+1. Reject a complete descriptor response containing duplicate `provider_tag` values as an invalid descriptor set; do not replace a prior successful cache.
+2. If a persisted binding exists and the latest complete descriptor with that tag is fresh and supports the complete explicit intent, keep it.
+3. If no binding exists, filter only complete/fresh descriptors that support the complete intent: zero blocks as unsupported; one atomically persists that sole descriptor; more than one returns `OPENROUTER_IMAGE_PROVIDER_SELECTION_REQUIRED` with candidates and creates no generation command.
+4. If the bound tag disappears, its descriptor is incomplete or hard-expired, or its capability revision is stale, stale-reject without selecting another endpoint.
+5. If the bound fresh descriptor exists but changed parameters are unsupported while another descriptor could support them, return `BOUND_ENDPOINT_CAPABILITY_MISMATCH`; only a user rebind followed by a new command may continue.
+
+Candidate UI places the current binding first. Every remaining candidate is ordered by Unicode code-point ascending `providerTag`; this order is display-only and never becomes a default. A user selection atomically persists the new tag/slug/revision/digest and revalidates provider options.
 
 V2 follows the existing settings convention with explicit presets rather than a free-form duration:
 
@@ -85,6 +95,22 @@ type RuntimeCapabilitySnapshotV2 = {
   tools: ToolCapability[]
   continuation: ContinuationCapability
   evidenceDigest: string
+}
+
+type OpenRouterImageProviderBindingKey = {
+  credentialScopeId: string
+  modelId: string
+  operation: "image_generation"
+}
+
+type OpenRouterImageProviderBinding = {
+  key: OpenRouterImageProviderBindingKey
+  providerTag: string
+  providerSlug: string
+  descriptorRevision: string
+  descriptorDigest: string
+  selectedBy: "user" | "sole_eligible"
+  selectedAt: string
 }
 ```
 
@@ -154,8 +180,14 @@ Anthropic's model-specific manual/adaptive/disabled legality is encoded as revie
 - Deterministic revision/evidence digest and cache invalidation.
 - Exact selected endpoint evidence beats model union; override only narrows codec capability.
 - Complete-intent endpoint selection, missing-field/value rejection, non-null tag requirement, and exact selector/body fixtures.
-- Multiple-eligible-descriptor cases use only the Owner-frozen authority/tie-break policy; absent policy blocks.
+- Existing valid binding reuse; sole-eligible atomic auto-binding; multiple eligible returns `OPENROUTER_IMAGE_PROVIDER_SELECTION_REQUIRED` and creates no operation/request.
+- User selection persistence by `(credentialScopeId, modelId, image_generation)`; no cross-credential/model reuse.
+- Candidate projection keeps current binding first and sorts only the rest by code-point `providerTag`; reorder tests prove display order never selects.
+- Price/API order/latency/history/hard-coded preference mutation tests prove resolver/compiler/transport output does not change.
+- Duplicate `provider_tag` in one complete descriptor response rejects the whole set and preserves prior successful cache/binding.
 - Successful refresh with a missing bound tag invalidates the old revision; no same-command endpoint substitution.
+- Bound descriptor capability mismatch returns `BOUND_ENDPOINT_CAPABILITY_MISMATCH`; only explicit rebind plus a new command succeeds.
+- Binding change removes provider options outside the new descriptor's `providerSlug` namespace and `allowed_passthrough_parameters` before compilation.
 - Provider/model/pinned-endpoint-or-endpoint-set/protocol/operation binding isolation.
 - UI visibility/value domains/help/beta badge from the same snapshot used by compiler.
 - Unsupported explicit config remains visible and blocks; no silent drop.
@@ -179,9 +211,8 @@ Anthropic's model-specific manual/adaptive/disabled legality is encoded as revie
 | High | Probe failure accidentally widens capability | Failure yields unavailable/stale, never support or fallback. |
 | High | Descriptor refresh corrupts a good cache | Store success and failure separately; only a validated success may advance the selected descriptor revision. |
 | High | Provider descriptor does not expose a compile-time endpoint ID | Bind the provider-owned selector identity (`providerTag`, `providerSlug`, descriptor revision/digest); generation endpoint IDs remain post-request diagnostic evidence. |
-| Owner | Multiple OpenRouter Images descriptors satisfy the complete intent | Freeze the selection authority and deterministic tie-break policy before endpoint-specific capability is implemented; do not infer API order, price, or provider preference. |
 | Owner | Beta tools | Decide whether OpenRouter beta server tools are hidden, opt-in, or blocked in production. Gemini API version is already fixed to `v1beta` and is not an automatic beta fallback. |
 
 ## Implementation prerequisite
 
-Endpoint descriptor freshness, presets, persistence, failure behavior, and the corrected 2026-07-14 OpenRouter Images wire contract are frozen above. Before implementing endpoint-specific selection, Owner must freeze the multiple-eligible-descriptor authority/tie-break policy; before enabling beta server tools, Owner must freeze their exposure policy. Provider-specific field/model rule matrices from TP6/TP7 remain capability-fixture inputs; Gemini API version is no longer a blocker.
+OpenRouter Images descriptor freshness, user-owned selection, binding key/persistence, candidate projection, failure codes, option cleanup and wire contract are frozen above; its Gate 0 blocker is closed. Before enabling beta server tools, Owner must freeze their exposure policy. Provider-specific field/model rule matrices from TP6/TP7 remain capability-fixture inputs; Gemini API version is no longer a blocker.

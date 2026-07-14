@@ -1,6 +1,6 @@
 # Generation Compiler V2 — Goal 2 Gate 0 Contract Audit
 
-Status: **blocked before production implementation**. Verified 2026-07-13 against current first-party documentation and OpenAPI where available.
+Status: **OpenRouter Images and LM Studio slices are closed and authorized for production implementation; seven unrelated Owner decisions still gate only their own package/epoch surfaces.** Verified 2026-07-13 through 2026-07-14 against current first-party documentation, OpenAPI and controlled live/local smokes.
 
 This audit records evidence discovered after Goal 1. It does not silently rewrite the implementation baseline. A conflict with the frozen plan blocks the affected contract and the production cutover until the Owner records a decision backed by an official schema or a real authenticated smoke.
 
@@ -147,12 +147,22 @@ Corrected Owner-authorized `provider.only` smoke:
 - Costs were USD 0.045996 and USD 0.0448255; corrected-smoke total was USD 0.0908215.
 - Exact serialized bodies and hashes, complete redacted responses/metadata, descriptors, OpenAPI hash/schema discrepancy, costs, and verdicts are retained in [`evidence/openrouter-images-provider-only-smoke-20260714.json`](evidence/openrouter-images-provider-only-smoke-20260714.json).
 
-Disposition: **the OpenRouter Images request-side pinning contract is closed positively. V2 pins the selected fresh descriptor's exact `provider_tag` through `provider.only` with `allow_fallbacks:false`, limits `provider.options` to that descriptor's allowlist, and never emits top-level `provider_tag`, silently drops fields, switches endpoint, or resends after POST failure. The compile-time binding uses provider-owned selector identity (`provider_tag`, `provider_slug`, descriptor revision/digest), not the post-request generation endpoint ID. The readable-doc/OpenAPI discrepancy remains a versioned contract risk. Endpoint-specific capability implementation remains blocked only on the Owner decision for deterministic selection when multiple fresh descriptors satisfy the complete explicit intent.**
+Final Owner selection rule:
+
+- Selection authority belongs exclusively to the user. Resolver/compiler/transport never choose by price, API order, latency, historical success rate, or hard-coded provider preference.
+- Binding lookup key is `(credentialScopeId, modelId, image_generation)`. The persisted value owns `providerTag`, `providerSlug`, descriptor revision/digest and selection origin (`user` or `sole_eligible`).
+- A complete descriptor response containing duplicate `provider_tag` values is an invalid set and blocks before selection or cache replacement.
+- If a binding exists and its latest complete descriptor remains present, fresh and supports the complete request, it remains selected. The current binding is displayed first; other candidates are displayed by Unicode code-point ascending `providerTag`. Display order never selects.
+- Without a binding, zero eligible descriptors blocks as unsupported, one eligible descriptor is atomically bound/persisted, and multiple eligible descriptors return `OPENROUTER_IMAGE_PROVIDER_SELECTION_REQUIRED` until the user explicitly selects one.
+- A missing/incomplete/hard-expired bound descriptor stale-rejects. If the bound fresh descriptor exists but the changed request is unsupported while another endpoint could support it, compilation returns `BOUND_ENDPOINT_CAPABILITY_MISMATCH`; the user must rebind and submit a new command. No same-command endpoint switch exists.
+- A selected request always emits `provider.only:[providerTag]` and `allow_fallbacks:false`. Endpoint-specific fields and `provider.options[providerSlug]` are available only from that descriptor; option keys must belong to `allowed_passthrough_parameters`.
+- Every binding change revalidates options and atomically removes values not valid for the new `providerSlug`/allowlist before a new command can compile.
+
+Disposition: **OpenRouter Images Gate 0 blocker closed. The wire contract, user-owned selection algorithm, binding key, candidate ordering, stale/mismatch behavior, option namespace/allowlist and no-switch invariant are fully frozen. The compile-time identity remains provider-owned selector data, never post-request generation endpoint ID. The readable-doc/OpenAPI discrepancy remains a versioned regression risk, not a blocker.**
 
 ## Remaining Owner decisions
 
 - Exact canonical Electron `appId` (repository proves only `productName=Starverse`).
-- OpenRouter Images multiple-eligible-descriptor selection authority and deterministic tie-break policy; API order, observed price, and implicit provider preference are forbidden defaults.
 - OpenAI client-managed native-items continuation approval.
 - Explicit endpoint protocol pinning for Ollama/other local profiles; LM Studio is resolved above.
 - OpenRouter beta server web-tool exposure.
@@ -160,4 +170,4 @@ Disposition: **the OpenRouter Images request-side pinning contract is closed pos
 - Image continuation first-release scope.
 - Whether Anthropic `thinking.display` is user-facing; the compiler/capability type must support the official field either way.
 
-No production file may change until the remaining decisions and hard contract blockers are resolved in an ADR.
+Production implementation may proceed for the closed OpenRouter Images and LM Studio contract slices only. Each remaining decision continues to block its own package/epoch surface; no implementation may infer or cross that unresolved boundary before its ADR entry exists.
