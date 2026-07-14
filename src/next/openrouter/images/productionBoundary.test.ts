@@ -1,0 +1,42 @@
+import { readFileSync } from 'node:fs'
+import path from 'node:path'
+import { describe, expect, it } from 'vitest'
+
+function read(relativePath: string): string {
+  return readFileSync(path.resolve(relativePath), 'utf8')
+}
+
+describe('OpenRouter Images V2 production boundary', () => {
+  it('does not activate endpoint binding against legacy chat.db or preload', () => {
+    for (const file of [
+      'electron/main.ts',
+      'electron/preload.ts',
+      'electron/ipc/startupIpcAudit.ts',
+      'infra/db/schema.sql',
+      'infra/db/dbMethodsRegistry.ts',
+      'infra/db/worker/runtime.ts',
+      'src/next/generation/assistantAnswerGenerationSnapshot.ts',
+    ]) {
+      expect(read(file), file).not.toMatch(/openRouterImagesEndpoint|openRouterImageEndpoint|openrouter_image_endpoint_/)
+    }
+  })
+
+  it('keeps verified Images routing out of Chat Completions builders and transports', () => {
+    for (const file of [
+      'src/next/openrouter/buildRequest.ts',
+      'src/next/live/openRouterLiveStream.ts',
+      'src/next/transport/openrouterFetch.ts',
+      'electron/ipc/openRouterStreamBridge.ts',
+    ]) {
+      const source = read(file)
+      expect(source, file).not.toContain("openrouter/images")
+      expect(source, file).not.toContain('allow_fallbacks')
+    }
+  })
+
+  it('keeps the endpoint schema isolated for epoch-2 application', () => {
+    const schema = read('infra/db/v2/openRouterImagesSchema.sql')
+    expect(schema).toContain('Generation Compiler V2 only')
+    expect(schema).toContain('openrouter_image_endpoint_bindings')
+  })
+})

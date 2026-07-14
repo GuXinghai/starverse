@@ -19,9 +19,9 @@
 |---|---|---|
 | G2-0 Baseline and implementation map | Complete — OpenRouter Images and LM Studio slices authorized; other surfaces remain gated | Goal 1 artifacts read in full; command, epoch/reset/credential, provider/request, deletion and test maps captured |
 | G2-1 Epoch-2 workspace and destructive reset | Pending | TP2, AC-01…AC-06 |
-| G2-2 Semantic intent, capability, persistence, UI projection | Pending | TP3/TP4 |
-| G2-3 Compiler, ledger, snapshot, prepared request | Pending | TP5 |
-| G2-4 Provider typed codecs and native transports | Pending | TP6/TP7 |
+| G2-2 Semantic intent, capability, persistence, UI projection | In progress — OpenRouter Images domain and epoch-2-only persistence contract staged; activation/UI pending epoch cutover | TP3/TP4 |
+| G2-3 Compiler, ledger, snapshot, prepared request | In progress — Images exact-body compiler staged; V2 snapshot/command ledger integration pending | TP5 |
+| G2-4 Provider typed codecs and native transports | In progress — strict descriptor codec and no-retry exact-body POST transport staged but deliberately unregistered until epoch-2 | TP6/TP7 |
 | G2-5 Native streaming decode and continuation | Pending | TP3/TP6/TP7 |
 | G2-6 Unified commands and legacy deletion | Pending | TP1/TP5/TP8 |
 | G2-7 Full AC-01…AC-42 acceptance and smoke | Pending | TP8 and traceability matrix |
@@ -33,6 +33,10 @@
 - `docs/architecture/generation-compiler-v2/evidence/openrouter-images-provider-tag-smoke-20260714.json` — retained negative evidence for incorrect top-level `provider_tag` only.
 - `docs/architecture/generation-compiler-v2/evidence/openrouter-images-provider-only-smoke-20260714.json` — corrected documented-wire exact bodies/hashes, descriptors, redacted responses/metadata, costs, routing verdicts, and OpenAPI discrepancy.
 - `docs/architecture/generation-compiler-v2/generation-compiler-v2-final-plan.md`, `tp4-capability-evidence-ui.md`, `tp6-openrouter-openai-contracts.md`, `tp8-cutover-tests-goal3.md`, and `traceability-matrix.md` — corrected endpoint-specific OpenRouter Images capability and pin semantics.
+- `src/next/openrouter/images/*` — strict descriptor/settings codecs, intent capability test, binding resolver, display projection and exact-body compiler.
+- `infra/db/v2/openRouterImagesSchema.sql`, `infra/db/repo/openRouterImageEndpointRepo.ts` — epoch-2-only descriptor/binding/history schema and CAS repository; neither is registered in the legacy worker.
+- `electron/openrouter/openRouterImagesTransport.ts` — dedicated no-retry exact serialized-body Images POST transport, not registered in current main/IPC.
+- `src/next/openrouter/images/productionBoundary.test.ts` — guards zero activation in legacy `chat.db`, preload/main and Chat Completions paths.
 
 ## Verification log
 
@@ -50,6 +54,7 @@
 | 2026-07-14 | Corrected OpenRouter Images `provider.only` smoke | Pass; wire contract closed | AI Studio and Vertex Global both routed to distinct matching generation endpoints with `allow_fallbacks:false`; authenticated OpenRouter Logs independently labeled both providers |
 | 2026-07-14 | LM Studio 0.4.19+ Responses exact-body qualification | Pass; binding fixed | Eleven local requests covered complete item replay, multi-turn, branches, audited fresh-process artifact reload, reasoning, function calls and provider SSE terminal shape; zero external cost |
 | 2026-07-14 | OpenRouter Images final selection rule | Pass; blocker closed | User-owned binding, sole-eligible auto-bind, explicit multiple-candidate selection, stable display ordering, stale/mismatch behavior and option cleanup frozen |
+| 2026-07-14 | OpenRouter Images staged production slice focused tests | Pass after P0 boundary correction | 20 tests cover official envelope, strict descriptor/binding/compiler, settings normalization, CAS repo, no-retry transport and zero legacy/Chat-path activation; `npx tsc --noEmit --pretty false` passed |
 
 ## Smoke log
 
@@ -79,7 +84,7 @@
 
 ## Remaining work
 
-1. Begin production implementation of the closed OpenRouter Images and LM Studio slices without compatibility or fallback paths.
+1. Complete epoch-2 coordinator/path cutover before registering the staged OpenRouter Images repo, settings, IPC or transport; then integrate command/UI so prepared `/images` bytes are exactly captured and sent.
 2. Obtain and record the remaining package-specific Owner decisions before implementing those unrelated slices.
 3. Implement the remaining approved G2-1 through G2-7 batches as their gates close.
 4. Close every AC with direct code/test/smoke evidence and run the complete gate sequence.
@@ -110,3 +115,4 @@
 - 2026-07-14: Owner replaced the blocked LM Studio native-chat decision with Responses-first qualification. Local LM Studio `0.4.19+2` and runtime `2.24.0` passed eleven exact-body checks at zero external cost, including an auditable fresh-process persisted-artifact replay, so the endpoint is fixed to `lmstudio-openresponses`; the inactive qualification-failure alternative is `lmstudio-openai-chat-completions`. Transient/inconclusive failures were explicitly excluded from alternative selection. The server and temporary model instances were restored to their pre-test off/unloaded state.
 - 2026-07-14: Final LM Studio risk review closed two evidence-boundary issues: qualification failures now fail closed unless a healthy-runtime contract failure is repeatable and followed by a separate explicit Chat qualification; restart evidence now embeds the exact persisted artifact, its byte count/hash and distinct parent/child PIDs. Provider SSE evidence is named as a single-terminal sample, while Starverse terminal coordination remains an implementation acceptance suite. Final P0/P1 review, JSON/body/artifact hashes, secret scan, 42 AC, links/fences and `git diff --check` passed.
 - 2026-07-14: Owner closed the OpenRouter Images selection blocker. User selection is authoritative; persisted binding reuse, sole-eligible auto-bind, multiple-eligible blocking, stable display-only ordering, duplicate-tag rejection, stale/mismatch errors and provider-option cleanup are frozen. Together with the qualified LM Studio binding, these two slices may now enter production implementation while unrelated Gate 0 decisions remain isolated blockers.
+- 2026-07-14: Began the authorized production slice with strict full-descriptor validation, binding resolution, code-point display projection, providerSlug allowlisting, verified `provider.only` exact-body compilation, an epoch-2 schema/repository and a dedicated no-retry transport. P0 review then caught that registering those tables/IPC before epoch cutover would mutate legacy `chat.db`; all main/preload/shared-schema/V1-snapshot activation was removed. The retained repository now uses compare-and-swap refresh/invalidation, the codec accepts the observed top-level `{id,endpoints}` envelope, explicit unsupported options reject instead of dropping, and command resolution supports expected descriptor revision stale rejection. An architecture guard locks zero legacy/Chat-Completions activation. This is production code staged for the correct V2 boundary, not an active compatibility path.
