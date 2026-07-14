@@ -39,6 +39,8 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/providers/openrouter-images/descriptorFreshnessDecisionV2.ts',
       'src/next/generation-v2/providers/openrouter-images/imageIntentCapabilityProjectionV2.ts',
       'src/next/generation-v2/providers/openrouter-images/selectionDecisionV2.ts',
+      'src/next/generation-v2/providers/lmstudio-openresponses/nativeItemsV1.ts',
+      'src/next/generation-v2/providers/lmstudio-openresponses/continuationArtifactV1.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
       'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
     ]) {
@@ -125,6 +127,15 @@ describe('Generation Compiler V2 core boundary', () => {
     const source = read('src/next/generation-v2/providers/openrouter-images/selectionDecisionV2.ts')
     expect(source).toContain("trust: 'selection_decision_non_executable'")
     expect(source).not.toMatch(/PreparedRequest|ResolvedProviderBinding|executionAuthority|fetch\(|net\.request|compareAndSetBinding/iu)
+  })
+
+  it('keeps LM Studio native continuation codecs isolated from legacy and cloud provider paths', () => {
+    for (const file of [
+      'src/next/generation-v2/providers/lmstudio-openresponses/nativeItemsV1.ts',
+      'src/next/generation-v2/providers/lmstudio-openresponses/continuationArtifactV1.ts',
+    ]) {
+      expect(read(file), file).not.toMatch(/lmStudioTextChat|lmStudioLocalProviderIpc|providerNativeSnapshot|openai-responses\/openai|ipcMain|fetch\(|net\.request/iu)
+    }
   })
 
   it('keeps reviewed contract definitions non-executable and out of legacy transport selection', () => {
