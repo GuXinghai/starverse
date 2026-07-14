@@ -274,6 +274,31 @@ describe('OpenRouter Images V2 binding repository', () => {
     } finally { db.close() }
   })
 
+  it('rolls back the binding and clock when the exact persisted-record postcondition is violated', () => {
+    const { db, repo, descriptorSet } = fixture([1_752_537_600_000])
+    try {
+      db.exec(`
+        CREATE TRIGGER tamper_binding_after_insert AFTER INSERT ON openrouter_image_endpoint_bindings
+        BEGIN
+          UPDATE openrouter_image_endpoint_bindings
+          SET endpoint_profile_id = 'tampered-profile'
+          WHERE credential_scope_id = NEW.credential_scope_id
+            AND model_id = NEW.model_id
+            AND operation = NEW.operation;
+        END;
+      `)
+      expect(() => repo.compareAndSetBinding({
+        record: record(descriptorSet.descriptorSet.descriptors[0]),
+        expectedBindingGeneration: null,
+        expectedDescriptorRowGeneration: 1,
+      })).toThrow('GENERATION_V2_OPENROUTER_BINDING_STATE_INVALID')
+      expect(db.prepare('SELECT COUNT(*) AS count FROM openrouter_image_endpoint_bindings').get())
+        .toEqual({ count: 0 })
+      expect(db.prepare('SELECT COUNT(*) AS count FROM openrouter_image_endpoint_binding_generation_clock').get())
+        .toEqual({ count: 0 })
+    } finally { db.close() }
+  })
+
   it('normalizes cross-connection lock contention and allows only one initial writer', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-or-binding-'))
     const databasePath = path.join(directory, 'starverse.db')
