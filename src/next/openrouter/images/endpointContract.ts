@@ -3,6 +3,7 @@ export const OPENROUTER_IMAGE_OPERATION = 'image-generation' as const
 export type OpenRouterImageParameterRule =
   | Readonly<{ type: 'enum'; values: readonly (string | number)[] }>
   | Readonly<{ type: 'range'; min: number; max: number }>
+  | Readonly<{ type: 'boolean' }>
 
 export type OpenRouterImageEndpointDescriptor = Readonly<{
   providerName: string
@@ -74,6 +75,7 @@ function parameterRule(value: unknown, path: string): OpenRouterImageParameterRu
     if (typeof raw.max !== 'number' || !Number.isFinite(raw.max) || raw.max < raw.min) throw new Error(`${path}.max must be finite and >= min`)
     return { type: 'range', min: raw.min, max: raw.max }
   }
+  if (raw.type === 'boolean') return { type: 'boolean' }
   throw new Error(`${path}.type is unsupported`)
 }
 
@@ -128,6 +130,9 @@ export function descriptorSupportsIntent(
       const measured = Array.isArray(value) ? value.length : value
       if (typeof measured !== 'number' || measured < rule.min || measured > rule.max) return false
     }
+    // The documented boolean descriptor is a presence flag (for example,
+    // `seed: { type: "boolean" }`), not the wire value's JSON type.
+    if (rule.type === 'boolean') continue
   }
   const options = intent.providerOptions ?? {}
   if (Object.keys(options).some((key) => !descriptor.allowedPassthroughParameters.includes(key))) return false

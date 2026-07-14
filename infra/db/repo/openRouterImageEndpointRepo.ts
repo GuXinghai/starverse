@@ -143,6 +143,7 @@ export class OpenRouterImageEndpointRepo {
   resolveOrAutoBind(input: Readonly<{
     credentialScope: string
     modelId: string
+    expectedDescriptorRevision: string
     intent: OpenRouterImageIntent
     nowMs: number
   }>): OpenRouterImageBindingResolution {
@@ -154,6 +155,7 @@ export class OpenRouterImageEndpointRepo {
         binding: this.getBinding(input.credentialScope, input.modelId),
         intent: input.intent,
         nowMs: input.nowMs,
+        expectedDescriptorRevision: input.expectedDescriptorRevision,
       })
       if (resolution.shouldPersist) this.persistBinding(resolution.binding, input.nowMs)
       return resolution
@@ -163,6 +165,7 @@ export class OpenRouterImageEndpointRepo {
   bindUserSelection(input: Readonly<{
     credentialScope: string
     modelId: string
+    expectedDescriptorRevision: string
     providerTag: string
     intent: OpenRouterImageIntent
     nowMs: number
@@ -170,6 +173,7 @@ export class OpenRouterImageEndpointRepo {
     return this.db.transaction(() => {
       const set = this.getDescriptorSet(input.credentialScope, input.modelId)
       if (!set || input.nowMs >= set.hardExpiresAtMs) throw new Error('OPENROUTER_IMAGE_ENDPOINT_STALE')
+      if (set.revision !== input.expectedDescriptorRevision) throw new Error('STALE_CAPABILITY_REVISION')
       const binding = createUserOpenRouterImageBinding({
         descriptorSet: set,
         providerTag: input.providerTag,

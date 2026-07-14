@@ -71,6 +71,22 @@ describe('OpenRouter Images endpoint selection', () => {
       .toThrow('descriptor.supports_streaming must be boolean')
   })
 
+  it('treats the documented boolean descriptor as parameter-presence evidence', () => {
+    const decoded = decodeOpenRouterImageEndpointResponse({ endpoints: [{
+      ...rawDescriptors[0],
+      supported_parameters: { seed: { type: 'boolean' } },
+    }] })[0]
+    expect(decoded.supportedParameters.seed).toEqual({ type: 'boolean' })
+    expect(createUserOpenRouterImageBinding({
+      descriptorSet: {
+        credentialScope: 'scope-1', modelId: 'model', revision: 'r1',
+        fetchedAtMs: 1, hardExpiresAtMs: 100, descriptors: [decoded],
+      },
+      providerTag: decoded.providerTag,
+      intent: { parameters: { seed: 42 }, stream: false },
+    }).providerTag).toBe(decoded.providerTag)
+  })
+
   it('requires user selection when multiple endpoints support the complete intent', () => {
     const { descriptorSet, intent } = fixture()
     expect(() => resolveOpenRouterImageBinding({ descriptorSet, intent, binding: null, nowMs: 500 }))

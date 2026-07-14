@@ -23,14 +23,36 @@ describe('OpenRouterImageEndpointRepo', () => {
       fetchedAtMs: 1, hardExpiresAtMs: 100, descriptors: descriptors(),
     }, null)
     const first = repo.resolveOrAutoBind({
-      credentialScope: 'scope', modelId: 'model', intent: { parameters: { n: 1 }, stream: false }, nowMs: 2,
+      credentialScope: 'scope', modelId: 'model', expectedDescriptorRevision: 'r1',
+      intent: { parameters: { n: 1 }, stream: false }, nowMs: 2,
     })
     const second = repo.resolveOrAutoBind({
-      credentialScope: 'scope', modelId: 'model', intent: { parameters: { n: 1 }, stream: false }, nowMs: 3,
+      credentialScope: 'scope', modelId: 'model', expectedDescriptorRevision: 'r1',
+      intent: { parameters: { n: 1 }, stream: false }, nowMs: 3,
     })
     expect(first.binding.selectedBy).toBe('sole_eligible')
     expect(second.shouldPersist).toBe(false)
     expect(repo.getBinding('scope', 'model')?.providerTag).toBe('provider-a')
+    db.close()
+  })
+
+  it('rejects stale descriptor revisions before auto-binding or user binding', () => {
+    const db = new BetterSqlite3(':memory:')
+    db.exec(readFileSync(path.resolve('infra/db/v2/openRouterImagesSchema.sql'), 'utf8'))
+    const repo = new OpenRouterImageEndpointRepo(db)
+    repo.replaceCompleteDescriptorSet({
+      credentialScope: 'scope', modelId: 'model', revision: 'r1',
+      fetchedAtMs: 1, hardExpiresAtMs: 100, descriptors: descriptors(),
+    }, null)
+    expect(() => repo.resolveOrAutoBind({
+      credentialScope: 'scope', modelId: 'model', expectedDescriptorRevision: 'stale',
+      intent: { parameters: { n: 1 }, stream: false }, nowMs: 2,
+    })).toThrow('STALE_CAPABILITY_REVISION')
+    expect(() => repo.bindUserSelection({
+      credentialScope: 'scope', modelId: 'model', expectedDescriptorRevision: 'stale',
+      providerTag: 'provider-a', intent: { parameters: { n: 1 }, stream: false }, nowMs: 2,
+    })).toThrow('STALE_CAPABILITY_REVISION')
+    expect(repo.getBinding('scope', 'model')).toBeNull()
     db.close()
   })
 

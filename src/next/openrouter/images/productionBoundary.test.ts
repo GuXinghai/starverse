@@ -8,16 +8,22 @@ function read(relativePath: string): string {
 
 describe('OpenRouter Images V2 production boundary', () => {
   it('does not activate endpoint binding against legacy chat.db or preload', () => {
+    const activationPattern = /openrouterimagesendpoint|openrouterimageendpoint|openrouter_image_endpoint_|openrouter\/images/iu
     for (const file of [
       'electron/main.ts',
       'electron/preload.ts',
+      'electron/electron-env.d.ts',
+      'electron/ipc/registerIpc.ts',
       'electron/ipc/startupIpcAudit.ts',
+      'electron/ipc/dbBridge.ts',
       'infra/db/schema.sql',
       'infra/db/dbMethodsRegistry.ts',
+      'infra/db/worker/container.ts',
       'infra/db/worker/runtime.ts',
+      'infra/db/worker/handlers/usagePrefsSettingsHandlers.ts',
       'src/next/generation/assistantAnswerGenerationSnapshot.ts',
     ]) {
-      expect(read(file), file).not.toMatch(/openRouterImagesEndpoint|openRouterImageEndpoint|openrouter_image_endpoint_/)
+      expect(read(file), file).not.toMatch(activationPattern)
     }
   })
 
