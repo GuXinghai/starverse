@@ -1,6 +1,6 @@
 # Generation Compiler V2 — Goal 2 Gate 0 Contract Audit
 
-Status: **OpenRouter Images and LM Studio slices are closed and authorized for production implementation; seven unrelated Owner decisions still gate only their own package/epoch surfaces.** Verified 2026-07-13 through 2026-07-14 against current first-party documentation, OpenAPI and controlled live/local smokes.
+Status: **OpenRouter Images routing and the LM Studio Responses-first binding/request/continuation slices are closed for their bounded implementation. LM Studio native terminal SSE decoding is reopened and blocked on its formal terminal schema plus coordinator acceptance; seven unrelated Owner decisions still gate only their own package/epoch surfaces.** Verified 2026-07-13 through 2026-07-15 against current first-party documentation, OpenAPI and controlled live/local smokes.
 
 This audit records evidence discovered after Goal 1. It does not silently rewrite the implementation baseline. A conflict with the frozen plan blocks the affected contract and the production cutover until the Owner records a decision backed by an official schema or a real authenticated smoke.
 
@@ -60,6 +60,13 @@ Local exact-body qualification, 2026-07-14:
 - Native reasoning item and `reasoning_text` were captured unchanged and accepted in the next input. Native `function_call` retained its ID/call ID/name/arguments/status; the matching `function_call_output` round-trip produced the expected final message.
 - The provider SSE sample included `response.created`, output deltas and exactly one final `response.completed`; no event followed it. This proves the observed provider event sequence, not Starverse's terminal coordinator, which remains an implementation acceptance test across completed/failed/incomplete/cancelled/connection-close paths.
 - Exact serialized bodies/hashes, complete local responses and SSE fields, environment versions, assertions and conclusion are retained in [`evidence/lmstudio-openresponses-compliance-20260714.json`](evidence/lmstudio-openresponses-compliance-20260714.json).
+
+Native SSE supplement, 2026-07-15:
+
+- Repeated loopback-only, zero-cost exact-body requests on the same LM Studio/runtime and the same two previously qualified models observed the complete reasoning success sequence (`response.reasoning_text.delta/done`) on `gate0-qwen35-2b` and function-call success sequence (`response.function_call_arguments.delta/done`) on `gate0-qwen3-4b`, each ending in exactly one `response.completed`.
+- A `max_output_tokens:1` reasoning probe also ended in `response.completed`; it did not produce `response.incomplete`. An invalid model failed before SSE with HTTP 400 and a JSON error; it did not produce `response.failed`.
+- Therefore the successful reasoning/function-call wire is now locally observed, but LM Studio `response.failed` and `response.incomplete` terminal wire shapes remain unobserved. They must not be inferred from the native `/api/v1/chat` protocol or from the successful samples. The V2 decoder/runtime registration remains blocked until the formal OpenAI-compatible terminal schema is frozen and the Starverse exactly-once terminal coordinator fixtures cover completed, failed, incomplete, cancellation and premature EOF independently.
+- Exact bodies/hashes, raw SSE, parsed full event objects and the HTTP failure body are recorded in [`evidence/lmstudio-openresponses-sse-contract-20260715.json`](evidence/lmstudio-openresponses-sse-contract-20260715.json), SHA-256 `d553ebeca66c21fc10884fcc835a4a85d8aed972d47fe732275cc0fda79bdee6`. After capture, both temporary models were unloaded and the loopback server was stopped and rechecked separately.
 
 Disposition: **qualification passed; bind this endpoint explicitly to `lmstudio-openresponses`. Starverse V2 must implement and persist the complete ordered Responses item union before enabling the binding. `lmstudio-openai-chat-completions` remains only the fixed qualification-failure alternative for a separately tested endpoint; it is not a runtime fallback. `/api/v1/chat` is not registered for ordinary conversations.**
 
