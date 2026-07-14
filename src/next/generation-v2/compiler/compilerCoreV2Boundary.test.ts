@@ -30,6 +30,7 @@ describe('Generation Compiler V2 core boundary', () => {
   it('has no dependency on V1 UI config, wire mappers, builders, adapters or transports', () => {
     for (const file of [
       'src/next/generation-v2/compiler/stableSerialize.ts',
+      'src/next/generation-v2/domain/identityV2.ts',
     ]) {
       expect(read(file), file).not.toMatch(/chatSessionConfig|appChatApp\.logic|generation-params|wirePath|requestPatch|extraBody|runtimeProviderAdapter|StreamBridge|TextChat/iu)
     }
