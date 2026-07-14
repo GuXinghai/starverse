@@ -37,6 +37,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2.ts',
       'src/next/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2.ts',
       'src/next/generation-v2/providers/openrouter-images/descriptorFreshnessDecisionV2.ts',
+      'src/next/generation-v2/providers/openrouter-images/imageIntentCapabilityProjectionV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
       'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
     ]) {
