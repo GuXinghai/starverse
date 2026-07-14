@@ -38,6 +38,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2.ts',
       'src/next/generation-v2/providers/openrouter-images/descriptorFreshnessDecisionV2.ts',
       'src/next/generation-v2/providers/openrouter-images/imageIntentCapabilityProjectionV2.ts',
+      'src/next/generation-v2/providers/openrouter-images/selectionDecisionV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
       'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
     ]) {
@@ -98,8 +99,11 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('does not allow the decoded unverified binding record to become compiler or snapshot authority', () => {
     const recordModule = path.resolve('src/next/generation-v2/domain/providerBindingV2.ts')
+    const nonExecutableSelection = path.resolve(
+      'src/next/generation-v2/providers/openrouter-images/selectionDecisionV2.ts',
+    )
     for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
-      if (file === recordModule) continue
+      if (file === recordModule || file === nonExecutableSelection) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/DecodedProviderBindingRecordV2|decodeProviderBindingRecordV2/u)
     }
@@ -107,11 +111,20 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('does not allow repository-decoded descriptor facts to become compiler or snapshot authority', () => {
     const factModule = path.resolve('src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2.ts')
+    const nonExecutableSelection = path.resolve(
+      'src/next/generation-v2/providers/openrouter-images/selectionDecisionV2.ts',
+    )
     for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
-      if (file === factModule) continue
+      if (file === factModule || file === nonExecutableSelection) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/DecodedOpenRouterImageDescriptorCacheRecordV2|decodeOpenRouterImageDescriptorCacheRecordV2/u)
     }
+  })
+
+  it('keeps endpoint selection decisions non-executable and outside snapshot or transport authority', () => {
+    const source = read('src/next/generation-v2/providers/openrouter-images/selectionDecisionV2.ts')
+    expect(source).toContain("trust: 'selection_decision_non_executable'")
+    expect(source).not.toMatch(/PreparedRequest|ResolvedProviderBinding|executionAuthority|fetch\(|net\.request|compareAndSetBinding/iu)
   })
 
   it('keeps reviewed contract definitions non-executable and out of legacy transport selection', () => {
