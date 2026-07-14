@@ -34,6 +34,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/domain/generationIntentV2.ts',
       'src/next/generation-v2/domain/providerBindingV2.ts',
       'src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2.ts',
+      'src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
       'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
     ]) {
@@ -59,14 +60,29 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('has no production import, export, require or dynamic-import edge outside the V2 package', () => {
     const packageRoot = path.resolve('src/next/generation-v2')
+    const inactiveV2Adapters = new Set([
+      path.resolve('infra/db/repo/openRouterImageEndpointRepo.ts'),
+    ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
         if (file === packageRoot || file.startsWith(`${packageRoot}${path.sep}`)) continue
+        if (inactiveV2Adapters.has(file)) continue
         for (const specifier of importSpecifiers(readFileSync(file, 'utf8'))) {
           const targetsPackage = specifier.includes('generation-v2') ||
             (specifier.startsWith('.') && path.resolve(path.dirname(file), specifier).startsWith(packageRoot))
           expect(targetsPackage, `${path.relative(process.cwd(), file)} -> ${specifier}`).toBe(false)
         }
+      }
+    }
+  })
+
+  it('keeps the inactive V2 descriptor repository adapter out of startup and legacy production imports', () => {
+    const adapter = path.resolve('infra/db/repo/openRouterImageEndpointRepo.ts')
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === adapter) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+          .not.toMatch(/openRouterImageEndpointRepo/iu)
       }
     }
   })
@@ -77,6 +93,15 @@ describe('Generation Compiler V2 core boundary', () => {
       if (file === recordModule) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/DecodedProviderBindingRecordV2|decodeProviderBindingRecordV2/u)
+    }
+  })
+
+  it('does not allow repository-decoded descriptor facts to become compiler or snapshot authority', () => {
+    const factModule = path.resolve('src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2.ts')
+    for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
+      if (file === factModule) continue
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/DecodedOpenRouterImageDescriptorCacheRecordV2|decodeOpenRouterImageDescriptorCacheRecordV2/u)
     }
   })
 

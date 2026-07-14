@@ -1,212 +1,164 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { isGenerationV2Identity, type GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
 import {
-  decodeOpenRouterImageEndpointResponse,
-  OPENROUTER_IMAGE_OPERATION,
-  type OpenRouterImageDescriptorSet,
-  type OpenRouterImageEndpointDescriptor,
-  type OpenRouterImageIntent,
-} from '../../../src/next/openrouter/images/endpointContract'
+  decodeCanonicalOpenRouterImageDescriptorSetV2,
+  OPENROUTER_IMAGE_DESCRIPTOR_CACHE_MAX_BYTES_V2,
+  projectCanonicalOpenRouterImageDescriptorSetForCacheV2,
+} from '../../../src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
 import {
-  createUserOpenRouterImageBinding,
-  resolveOpenRouterImageBinding,
-  type OpenRouterImageBindingResolution,
-  type OpenRouterImageEndpointBinding,
-} from '../../../src/next/openrouter/images/bindingResolver'
+  decodeOpenRouterImageDescriptorCacheRecordV2,
+  type DecodedOpenRouterImageDescriptorCacheRecordV2,
+} from '../../../src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2'
+
+const OPERATION = 'image_generate'
+const HISTORY_RETENTION_MS = 90 * 24 * 60 * 60 * 1_000
 
 type DescriptorSetRow = {
-  credential_scope: string
+  credential_scope_id: string
   model_id: string
-  revision: string
+  operation: string
+  row_generation: number
+  endpoint_set_revision: string
   fetched_at_ms: number
-  hard_expires_at_ms: number
-  descriptors_json: string
+  descriptor_response_json: string
 }
 
-type BindingRow = {
-  credential_scope: string
-  model_id: string
-  provider_tag: string
-  provider_slug: string
-  descriptor_revision: string
-  selected_by: 'user' | 'sole_eligible'
-  provider_options_json: string
+export class OpenRouterImageEndpointRepoV2Error extends Error {
+  constructor(readonly code:
+    | 'GENERATION_V2_OPENROUTER_CACHE_IDENTITY_INVALID'
+    | 'GENERATION_V2_OPENROUTER_CACHE_MODEL_MISMATCH'
+    | 'GENERATION_V2_OPENROUTER_CACHE_RESPONSE_TOO_LARGE'
+    | 'GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT'
+    | 'GENERATION_V2_OPENROUTER_CACHE_CLOCK_REGRESSION') {
+    super(code)
+    this.name = 'OpenRouterImageEndpointRepoV2Error'
+  }
 }
 
-function requireKey(value: unknown, name: string): string {
-  const normalized = String(value ?? '').trim()
-  if (!normalized) throw new Error(`${name} must be non-empty`)
-  return normalized
-}
-
-function descriptorsToWire(descriptors: readonly OpenRouterImageEndpointDescriptor[]): unknown[] {
-  return descriptors.map((descriptor) => descriptor.raw)
+function assertIdentity<K extends 'credential_scope_id' | 'model_id'>(
+  value: GenerationV2Identity<K>,
+  kind: K,
+): void {
+  if (!isGenerationV2Identity(value, kind)) {
+    throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_IDENTITY_INVALID')
+  }
 }
 
 export class OpenRouterImageEndpointRepo {
-  constructor(private readonly db: BetterSqlite3.Database) {}
+  constructor(
+    private readonly db: BetterSqlite3.Database,
+    private readonly nowMs: () => number = Date.now,
+  ) {}
 
-  replaceCompleteDescriptorSet(
-    set: OpenRouterImageDescriptorSet,
-    expectedRevision: string | null,
-  ): OpenRouterImageDescriptorSet {
-    const credentialScope = requireKey(set.credentialScope, 'credentialScope')
-    const modelId = requireKey(set.modelId, 'modelId')
-    const revision = requireKey(set.revision, 'revision')
-    if (!Number.isInteger(set.fetchedAtMs) || set.fetchedAtMs < 0) throw new Error('fetchedAtMs must be a non-negative integer')
-    if (!Number.isInteger(set.hardExpiresAtMs) || set.hardExpiresAtMs <= set.fetchedAtMs) throw new Error('hardExpiresAtMs must be greater than fetchedAtMs')
-    // Re-run the strict codec before replacing a previously successful set.
-    const descriptors = decodeOpenRouterImageEndpointResponse({ data: descriptorsToWire(set.descriptors) })
-    const descriptorsJson = JSON.stringify(descriptorsToWire(descriptors))
-    this.db.transaction(() => {
-      const current = this.db.prepare(`
-        SELECT revision FROM openrouter_image_endpoint_descriptor_sets
-        WHERE credential_scope = ? AND model_id = ? AND operation = ?
-      `).get(credentialScope, modelId, OPENROUTER_IMAGE_OPERATION) as { revision: string } | undefined
-      if ((current?.revision ?? null) !== expectedRevision) {
-        throw new Error('OPENROUTER_IMAGE_DESCRIPTOR_REFRESH_STALE')
+  commitSuccessfulDescriptorResponse(input: Readonly<{
+    credentialScopeId: GenerationV2Identity<'credential_scope_id'>
+    requestedModelId: GenerationV2Identity<'model_id'>
+    response: unknown
+    expectedGeneration: number | null
+  }>): DecodedOpenRouterImageDescriptorCacheRecordV2 {
+    assertIdentity(input.credentialScopeId, 'credential_scope_id')
+    assertIdentity(input.requestedModelId, 'model_id')
+    if (input.expectedGeneration !== null &&
+        (!Number.isSafeInteger(input.expectedGeneration) || input.expectedGeneration <= 0)) {
+      throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+    }
+    const descriptorSet = decodeCanonicalOpenRouterImageDescriptorSetV2(input.response)
+    if (descriptorSet.modelId.value !== input.requestedModelId.value) {
+      throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_MODEL_MISMATCH')
+    }
+    const responseJson = stableSerializeProviderRequestV2(projectCanonicalOpenRouterImageDescriptorSetForCacheV2(descriptorSet))
+    if (Buffer.byteLength(responseJson, 'utf8') > OPENROUTER_IMAGE_DESCRIPTOR_CACHE_MAX_BYTES_V2) {
+      throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_RESPONSE_TOO_LARGE')
+    }
+    const fetchedAtMs = this.nowMs()
+    if (!Number.isSafeInteger(fetchedAtMs) || fetchedAtMs < 0) {
+      throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CLOCK_REGRESSION')
+    }
+
+    const transaction = this.db.transaction(() => {
+      const rowGeneration = (input.expectedGeneration ?? 0) + 1
+      if (!Number.isSafeInteger(rowGeneration)) {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+      }
+      const values = [
+        input.credentialScopeId.value,
+        input.requestedModelId.value,
+        OPERATION,
+        rowGeneration,
+        descriptorSet.endpointSetRevision.value,
+        fetchedAtMs,
+        responseJson,
+      ] as const
+      const result = input.expectedGeneration === null
+        ? this.db.prepare(`
+          INSERT INTO openrouter_image_endpoint_descriptor_sets (
+            credential_scope_id, model_id, operation, row_generation,
+            endpoint_set_revision, fetched_at_ms, descriptor_response_json
+          ) VALUES (?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(credential_scope_id, model_id, operation) DO NOTHING
+        `).run(...values)
+        : this.db.prepare(`
+          UPDATE openrouter_image_endpoint_descriptor_sets SET
+            row_generation = ?, endpoint_set_revision = ?, fetched_at_ms = ?, descriptor_response_json = ?
+          WHERE credential_scope_id = ? AND model_id = ? AND operation = ?
+            AND row_generation = ? AND fetched_at_ms <= ?
+        `).run(
+          rowGeneration,
+          descriptorSet.endpointSetRevision.value,
+          fetchedAtMs,
+          responseJson,
+          input.credentialScopeId.value,
+          input.requestedModelId.value,
+          OPERATION,
+          input.expectedGeneration,
+          fetchedAtMs,
+        )
+      if (result.changes !== 1) {
+        const current = this.currentRow(input.credentialScopeId.value, input.requestedModelId.value)
+        if (current?.row_generation === input.expectedGeneration && fetchedAtMs < current.fetched_at_ms) {
+          throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CLOCK_REGRESSION')
+        }
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
       }
       this.db.prepare(`
-        INSERT INTO openrouter_image_endpoint_descriptor_sets (
-          credential_scope, model_id, operation, revision, fetched_at_ms,
-          hard_expires_at_ms, descriptors_json
-        ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(credential_scope, model_id, operation) DO UPDATE SET
-          revision = excluded.revision,
-          fetched_at_ms = excluded.fetched_at_ms,
-          hard_expires_at_ms = excluded.hard_expires_at_ms,
-          descriptors_json = excluded.descriptors_json
-      `).run(credentialScope, modelId, OPENROUTER_IMAGE_OPERATION, revision, set.fetchedAtMs, set.hardExpiresAtMs, descriptorsJson)
-      this.db.prepare(`
         INSERT INTO openrouter_image_endpoint_descriptor_history (
-          credential_scope, model_id, operation, revision, fetched_at_ms,
-          hard_expires_at_ms, descriptors_json
+          credential_scope_id, model_id, operation, row_generation,
+          endpoint_set_revision, fetched_at_ms, descriptor_response_json
         ) VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(credential_scope, model_id, operation, revision) DO NOTHING
-      `).run(credentialScope, modelId, OPENROUTER_IMAGE_OPERATION, revision, set.fetchedAtMs, set.hardExpiresAtMs, descriptorsJson)
+      `).run(...values)
       this.db.prepare(`DELETE FROM openrouter_image_endpoint_descriptor_history WHERE fetched_at_ms < ?`)
-        .run(set.fetchedAtMs - 90 * 24 * 60 * 60 * 1_000)
-    })()
-    return this.getDescriptorSet(credentialScope, modelId)!
-  }
-
-  getDescriptorSet(credentialScope: unknown, modelId: unknown): OpenRouterImageDescriptorSet | null {
-    const scope = requireKey(credentialScope, 'credentialScope')
-    const model = requireKey(modelId, 'modelId')
-    const row = this.db.prepare(`
-      SELECT credential_scope, model_id, revision, fetched_at_ms, hard_expires_at_ms, descriptors_json
-      FROM openrouter_image_endpoint_descriptor_sets
-      WHERE credential_scope = ? AND model_id = ? AND operation = ?
-    `).get(scope, model, OPENROUTER_IMAGE_OPERATION) as DescriptorSetRow | undefined
-    if (!row) return null
-    return {
-      credentialScope: row.credential_scope,
-      modelId: row.model_id,
-      revision: row.revision,
-      fetchedAtMs: row.fetched_at_ms,
-      hardExpiresAtMs: row.hard_expires_at_ms,
-      descriptors: decodeOpenRouterImageEndpointResponse({ data: JSON.parse(row.descriptors_json) }),
+        .run(fetchedAtMs - HISTORY_RETENTION_MS)
+      return this.getCurrentDescriptorSet(input.credentialScopeId, input.requestedModelId)!
+    })
+    try {
+      return transaction.immediate()
+    } catch (error) {
+      if (error instanceof OpenRouterImageEndpointRepoV2Error) throw error
+      const code = (error as { code?: unknown })?.code
+      if (code === 'SQLITE_BUSY' || code === 'SQLITE_BUSY_SNAPSHOT' || code === 'SQLITE_LOCKED') {
+        throw new OpenRouterImageEndpointRepoV2Error('GENERATION_V2_OPENROUTER_CACHE_CAS_CONFLICT')
+      }
+      throw error
     }
   }
 
-  invalidateDescriptorSet(credentialScope: unknown, modelId: unknown, expectedRevision: unknown): boolean {
-    const scope = requireKey(credentialScope, 'credentialScope')
-    const model = requireKey(modelId, 'modelId')
-    const revision = requireKey(expectedRevision, 'expectedRevision')
-    const result = this.db.prepare(`
-      DELETE FROM openrouter_image_endpoint_descriptor_sets
-      WHERE credential_scope = ? AND model_id = ? AND operation = ? AND revision = ?
-    `).run(scope, model, OPENROUTER_IMAGE_OPERATION, revision)
-    return result.changes > 0
+  getCurrentDescriptorSet(
+    credentialScopeId: GenerationV2Identity<'credential_scope_id'>,
+    modelId: GenerationV2Identity<'model_id'>,
+  ): DecodedOpenRouterImageDescriptorCacheRecordV2 | null {
+    assertIdentity(credentialScopeId, 'credential_scope_id')
+    assertIdentity(modelId, 'model_id')
+    const row = this.currentRow(credentialScopeId.value, modelId.value)
+    return row ? decodeOpenRouterImageDescriptorCacheRecordV2(row) : null
   }
 
-  getBinding(credentialScope: unknown, modelId: unknown): OpenRouterImageEndpointBinding | null {
-    const scope = requireKey(credentialScope, 'credentialScope')
-    const model = requireKey(modelId, 'modelId')
-    const row = this.db.prepare(`
-      SELECT credential_scope, model_id, provider_tag, provider_slug,
-             descriptor_revision, selected_by, provider_options_json
-      FROM openrouter_image_endpoint_bindings
-      WHERE credential_scope = ? AND model_id = ? AND operation = ?
-    `).get(scope, model, OPENROUTER_IMAGE_OPERATION) as BindingRow | undefined
-    return row ? {
-      credentialScope: row.credential_scope,
-      modelId: row.model_id,
-      operation: OPENROUTER_IMAGE_OPERATION,
-      providerTag: row.provider_tag,
-      providerSlug: row.provider_slug,
-      descriptorRevision: row.descriptor_revision,
-      selectedBy: row.selected_by,
-      providerOptions: JSON.parse(row.provider_options_json) as Record<string, unknown>,
-    } : null
-  }
-
-  resolveOrAutoBind(input: Readonly<{
-    credentialScope: string
-    modelId: string
-    expectedDescriptorRevision: string
-    intent: OpenRouterImageIntent
-    nowMs: number
-  }>): OpenRouterImageBindingResolution {
-    return this.db.transaction(() => {
-      const set = this.getDescriptorSet(input.credentialScope, input.modelId)
-      if (!set) throw new Error('OPENROUTER_IMAGE_ENDPOINT_STALE')
-      const resolution = resolveOpenRouterImageBinding({
-        descriptorSet: set,
-        binding: this.getBinding(input.credentialScope, input.modelId),
-        intent: input.intent,
-        nowMs: input.nowMs,
-        expectedDescriptorRevision: input.expectedDescriptorRevision,
-      })
-      if (resolution.shouldPersist) this.persistBinding(resolution.binding, input.nowMs)
-      return resolution
-    })()
-  }
-
-  bindUserSelection(input: Readonly<{
-    credentialScope: string
-    modelId: string
-    expectedDescriptorRevision: string
-    providerTag: string
-    intent: OpenRouterImageIntent
-    nowMs: number
-  }>): OpenRouterImageEndpointBinding {
-    return this.db.transaction(() => {
-      const set = this.getDescriptorSet(input.credentialScope, input.modelId)
-      if (!set || input.nowMs >= set.hardExpiresAtMs) throw new Error('OPENROUTER_IMAGE_ENDPOINT_STALE')
-      if (set.revision !== input.expectedDescriptorRevision) throw new Error('STALE_CAPABILITY_REVISION')
-      const binding = createUserOpenRouterImageBinding({
-        descriptorSet: set,
-        providerTag: input.providerTag,
-        intent: input.intent,
-      })
-      this.persistBinding(binding, input.nowMs)
-      return binding
-    })()
-  }
-
-  private persistBinding(binding: OpenRouterImageEndpointBinding, updatedAtMs: number): void {
-    this.db.prepare(`
-      INSERT INTO openrouter_image_endpoint_bindings (
-        credential_scope, model_id, operation, provider_tag, provider_slug,
-        descriptor_revision, selected_by, provider_options_json, updated_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(credential_scope, model_id, operation) DO UPDATE SET
-        provider_tag = excluded.provider_tag,
-        provider_slug = excluded.provider_slug,
-        descriptor_revision = excluded.descriptor_revision,
-        selected_by = excluded.selected_by,
-        provider_options_json = excluded.provider_options_json,
-        updated_at_ms = excluded.updated_at_ms
-    `).run(
-      binding.credentialScope,
-      binding.modelId,
-      binding.operation,
-      binding.providerTag,
-      binding.providerSlug,
-      binding.descriptorRevision,
-      binding.selectedBy,
-      JSON.stringify(binding.providerOptions),
-      updatedAtMs,
-    )
+  private currentRow(credentialScopeId: string, modelId: string): DescriptorSetRow | undefined {
+    return this.db.prepare(`
+      SELECT credential_scope_id, model_id, operation, row_generation,
+             endpoint_set_revision, fetched_at_ms, descriptor_response_json
+      FROM openrouter_image_endpoint_descriptor_sets
+      WHERE credential_scope_id = ? AND model_id = ? AND operation = ?
+    `).get(credentialScopeId, modelId, OPERATION) as DescriptorSetRow | undefined
   }
 }
