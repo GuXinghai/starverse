@@ -1,6 +1,6 @@
 # Generation Compiler V2 — Goal 2 Gate 0 Contract Audit
 
-Status: **OpenRouter Images routing and the LM Studio Responses-first binding/request/continuation slices are closed for their bounded implementation. LM Studio native terminal SSE decoding is reopened and blocked on its formal terminal schema plus coordinator acceptance; seven unrelated Owner decisions still gate only their own package/epoch surfaces.** Verified 2026-07-13 through 2026-07-15 against current first-party documentation, OpenAPI and controlled live/local smokes.
+Status: **OpenRouter Images routing and the LM Studio Responses-first binding/request/continuation slices are closed for their bounded implementation. LM Studio native terminal SSE decoding is reopened and blocked on its formal terminal schema plus coordinator acceptance; eight remaining Owner decisions gate only their own package/epoch surfaces.** Verified 2026-07-13 through 2026-07-15 against current first-party documentation, OpenAPI and controlled live/local smokes.
 
 This audit records evidence discovered after Goal 1. It does not silently rewrite the implementation baseline. A conflict with the frozen plan blocks the affected contract and the production cutover until the Owner records a decision backed by an official schema or a real authenticated smoke.
 
@@ -177,5 +177,6 @@ Disposition: **The OpenRouter Images provider-routing/request-pin Gate 0 blocker
 - Automatic transport retry policy.
 - Image continuation first-release scope.
 - Whether Anthropic `thinking.display` is user-facing; the compiler/capability type must support the official field either way.
+- OpenRouter first-party endpoint profile scope (one immutable versioned profile for Chat and Images versus an Images-specific profile) and its canonical profile ID.
 
-Production implementation may proceed for the closed OpenRouter Images and LM Studio contract slices only. Each remaining decision continues to block its own package/epoch surface; no implementation may infer or cross that unresolved boundary before its ADR entry exists.
+Production implementation may proceed only for the closed OpenRouter Images routing and LM Studio Responses-first binding/request/continuation slices. LM Studio native terminal SSE remains separately blocked. Each remaining decision continues to block its own package/epoch surface; no implementation may infer or cross that unresolved boundary before its ADR entry exists.

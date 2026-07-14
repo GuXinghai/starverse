@@ -41,6 +41,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/providers/openrouter-images/selectionDecisionV2.ts',
       'src/next/generation-v2/providers/lmstudio-openresponses/nativeItemsV1.ts',
       'src/next/generation-v2/providers/lmstudio-openresponses/continuationArtifactV1.ts',
+      'src/next/generation-v2/runner/generationRequestTerminalV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
       'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
     ]) {
@@ -136,6 +137,12 @@ describe('Generation Compiler V2 core boundary', () => {
     ]) {
       expect(read(file), file).not.toMatch(/lmStudioTextChat|lmStudioLocalProviderIpc|providerNativeSnapshot|openai-responses\/openai|ipcMain|fetch\(|net\.request/iu)
     }
+  })
+
+  it('keeps request terminal transition logic below operation, persistence and wire layers', () => {
+    const source = read('src/next/generation-v2/runner/generationRequestTerminalV2.ts')
+    expect(source).not.toMatch(/assistant_answer_generation|answerGeneration|orphanStreamingRecovery|TerminalArbiter|streamSemanticCore|branch|chosen|head|hide|ipcMain|fetch\(|net\.request/iu)
+    expect(source).not.toMatch(/infra\/db|electron\/|providers\//iu)
   })
 
   it('keeps reviewed contract definitions non-executable and out of legacy transport selection', () => {
