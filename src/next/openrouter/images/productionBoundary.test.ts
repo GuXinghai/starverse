@@ -43,6 +43,8 @@ describe('OpenRouter Images V2 production boundary', () => {
   it('keeps the endpoint schema isolated for epoch-2 application', () => {
     const schema = read('infra/db/v2/openRouterImagesSchema.sql')
     expect(schema).toContain('Generation Compiler V2 only')
-    expect(schema).toContain('openrouter_image_endpoint_bindings')
+    expect(schema).toContain('openrouter_image_endpoint_descriptor_sets')
+    expect(schema).not.toContain('provider_options_json')
+    expect(schema).not.toContain('hard_expires_at_ms')
   })
 })

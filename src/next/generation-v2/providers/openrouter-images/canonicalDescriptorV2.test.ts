@@ -110,4 +110,18 @@ describe('canonical OpenRouter Images descriptor V2', () => {
       .toThrow('GENERATION_V2_OPENROUTER_DESCRIPTOR_INVALID_SHAPE')
     expect(calls).toBe(0)
   })
+
+  it('rejects attacker-controlled sparse lengths before allocating expected keys', () => {
+    const huge = new Array(1_000_000_000)
+    expect(() => decodeCanonicalOpenRouterImageDescriptorSetV2({ id: 'google/model', endpoints: huge }))
+      .toThrow('GENERATION_V2_OPENROUTER_DESCRIPTOR_INVALID_VALUE')
+    const enumEndpoint = endpoint('enum', {
+      supported_parameters: { quality: { type: 'enum', values: huge } },
+    })
+    expect(() => decodeCanonicalOpenRouterImageDescriptorSetV2({ id: 'google/model', endpoints: [enumEndpoint] }))
+      .toThrow('GENERATION_V2_OPENROUTER_DESCRIPTOR_INVALID_VALUE')
+    const allowlistEndpoint = endpoint('allowlist', { allowed_passthrough_parameters: huge })
+    expect(() => decodeCanonicalOpenRouterImageDescriptorSetV2({ id: 'google/model', endpoints: [allowlistEndpoint] }))
+      .toThrow('GENERATION_V2_OPENROUTER_DESCRIPTOR_INVALID_VALUE')
+  })
 })
