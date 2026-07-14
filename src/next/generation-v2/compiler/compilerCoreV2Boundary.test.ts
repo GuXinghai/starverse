@@ -43,6 +43,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/providers/lmstudio-openresponses/continuationArtifactV1.ts',
       'src/next/generation-v2/runner/generationRequestTerminalV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
+      'src/next/generation-v2/contracts/geminiDeveloperApiContractV2.ts',
       'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
     ]) {
       expect(read(file), file).not.toMatch(/chatSessionConfig|appChatApp\.logic|generation-params|wirePath|requestPatch|extraBody|runtimeProviderAdapter|StreamBridge|TextChat/iu)
@@ -155,6 +156,28 @@ describe('Generation Compiler V2 core boundary', () => {
       if (file === registryModule) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/providerContractRegistryV2|ReviewedProviderContractDefinitionV2/iu)
+    }
+  })
+
+  it('keeps Gemini v1beta surface identity centralized and zero-activation', () => {
+    const contractModule = path.resolve(
+      'src/next/generation-v2/contracts/geminiDeveloperApiContractV2.ts',
+    )
+    const registryModule = path.resolve('src/next/generation-v2/contracts/providerContractRegistryV2.ts')
+    const contract = read('src/next/generation-v2/contracts/geminiDeveloperApiContractV2.ts')
+    expect(contract).toContain("apiVersion: 'v1beta'")
+    expect(contract).toContain("executionAuthority: 'none'")
+    expect(contract).not.toMatch(/apiVersion:\s*'v1'|versionFallback|fallbackVersion|probeVersion/iu)
+    expect(contract).not.toMatch(/gemini_agents_v1beta|fetch\(|net\.request|ipcMain/iu)
+
+    for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
+      if (file === contractModule || file === registryModule) continue
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/generativelanguage\.googleapis\.com|\/v1beta\/(?:models|interactions)|gemini_(?:generate_content|interactions)_v1beta/iu)
+    }
+    for (const file of productionSources(path.resolve('electron'))) {
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/geminiDeveloperApiContractV2|generation-v2\/contracts\/gemini/iu)
     }
   })
 })

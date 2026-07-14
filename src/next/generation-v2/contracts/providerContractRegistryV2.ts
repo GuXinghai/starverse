@@ -1,8 +1,31 @@
 import { createHash } from 'node:crypto'
 import { stableSerializeProviderRequestV2 } from '../compiler/stableSerialize'
 import { GenerationV2Digest, GenerationV2Identity } from '../domain/identityV2'
+import type {
+  GeminiDeveloperApiRegistrySurfaceV2,
+  GeminiDeveloperApiSurfaceDefinitionV2,
+} from './geminiDeveloperApiContractV2'
+import {
+  readGeminiDeveloperApiContractV2,
+  readGeminiDeveloperApiRegistrySurfaceV2,
+} from './geminiDeveloperApiContractV2'
 
 export type ProviderContractOperationV2 = 'text' | 'image_generate' | 'image_edit' | 'tool_continue'
+
+export type ProviderContractApiSurfaceV2 = Readonly<
+  | {
+    kind: 'openrouter_images'
+    apiVersion: 'v1'
+    requestPath: '/api/v1/images'
+  }
+  | GeminiDeveloperApiRegistrySurfaceV2
+>
+
+type ModelBindingPolicyV2 = 'descriptor_model_id' | 'runtime_capability_resolver'
+type EndpointBindingPolicyV2 = 'exact_descriptor_pin' | 'first_party_profile_authority_required'
+type ContinuationPolicyV2 =
+  | 'none'
+  | GeminiDeveloperApiSurfaceDefinitionV2['continuationFamily']
 
 export type ReviewedProviderContractDefinitionV2 = Readonly<{
   classification: 'reviewed_definition'
@@ -14,18 +37,14 @@ export type ReviewedProviderContractDefinitionV2 = Readonly<{
   definitionDigest: GenerationV2Digest<'contract_digest'>
   providerId: GenerationV2Identity<'provider_id'>
   operations: readonly ProviderContractOperationV2[]
-  apiSurface: Readonly<{
-    kind: 'openrouter_images'
-    apiVersion: 'v1'
-    requestPath: '/api/v1/images'
-  }>
-  modelBindingPolicy: 'descriptor_model_id'
-  endpointBindingPolicy: 'exact_descriptor_pin'
-  continuationPolicy: 'none'
+  apiSurface: ProviderContractApiSurfaceV2
+  modelBindingPolicy: ModelBindingPolicyV2
+  endpointBindingPolicy: EndpointBindingPolicyV2
+  continuationPolicy: ContinuationPolicyV2
   implementationStatus: 'definition_only'
   evidence: Readonly<{
-    verifiedAt: '2026-07-14'
-    openApiSha256: string
+    verifiedAt: string
+    openApiSha256: string | null
     provenanceUrls: readonly string[]
     localArtifacts: readonly Readonly<{
       id: string
@@ -49,18 +68,14 @@ type DefinitionProjection = Readonly<{
   protocolContractId: string
   providerId: string
   operations: readonly ProviderContractOperationV2[]
-  apiSurface: Readonly<{
-    kind: 'openrouter_images'
-    apiVersion: 'v1'
-    requestPath: '/api/v1/images'
-  }>
-  modelBindingPolicy: 'descriptor_model_id'
-  endpointBindingPolicy: 'exact_descriptor_pin'
-  continuationPolicy: 'none'
+  apiSurface: ProviderContractApiSurfaceV2
+  modelBindingPolicy: ModelBindingPolicyV2
+  endpointBindingPolicy: EndpointBindingPolicyV2
+  continuationPolicy: ContinuationPolicyV2
   implementationStatus: 'definition_only'
   evidence: Readonly<{
-    verifiedAt: '2026-07-14'
-    openApiSha256: string
+    verifiedAt: string
+    openApiSha256: string | null
     provenanceUrls: readonly string[]
     localArtifacts: readonly Readonly<{
       id: string
@@ -98,11 +113,65 @@ const OPENROUTER_IMAGES_PROJECTION: DefinitionProjection = Object.freeze({
   }),
 })
 
+const geminiDeveloperApiContract = readGeminiDeveloperApiContractV2()
+const geminiEvidenceArtifact = Object.freeze({
+  id: 'gemini-developer-api-contract-20260715',
+  path: 'docs/architecture/generation-compiler-v2/evidence/gemini-developer-api-contract-20260715.json',
+  sha256: '8fc121063a6591c2e624b779f4793c16dcd0b69c625b152a652f8d034c7cecac',
+})
+const geminiGenerateContentEvidence = Object.freeze({
+  verifiedAt: geminiDeveloperApiContract.evidence.verifiedAt,
+  openApiSha256: null,
+  provenanceUrls: Object.freeze([
+    'https://ai.google.dev/api/generate-content',
+    'https://ai.google.dev/gemini-api/docs/api-versions',
+  ]),
+  localArtifacts: Object.freeze([geminiEvidenceArtifact]),
+})
+const geminiInteractionsEvidence = Object.freeze({
+  verifiedAt: geminiDeveloperApiContract.evidence.verifiedAt,
+  openApiSha256: geminiDeveloperApiContract.evidence.interactionsOpenApiSha256,
+  provenanceUrls: Object.freeze([
+    'https://ai.google.dev/api/interactions-api',
+    'https://ai.google.dev/static/api/interactions.openapi.json',
+    'https://ai.google.dev/gemini-api/docs/api-versions',
+  ]),
+  localArtifacts: Object.freeze([geminiEvidenceArtifact]),
+})
+
+const GEMINI_GENERATE_CONTENT_PROJECTION: DefinitionProjection = Object.freeze({
+  protocolContractId: 'gemini-generate-content-v1beta',
+  providerId: geminiDeveloperApiContract.providerId,
+  operations: Object.freeze(['text', 'tool_continue'] as const),
+  apiSurface: readGeminiDeveloperApiRegistrySurfaceV2('gemini-generate-content-v1beta'),
+  modelBindingPolicy: 'runtime_capability_resolver',
+  endpointBindingPolicy: 'first_party_profile_authority_required',
+  continuationPolicy: readGeminiDeveloperApiRegistrySurfaceV2('gemini-generate-content-v1beta').continuationFamily,
+  implementationStatus: 'definition_only',
+  evidence: geminiGenerateContentEvidence,
+})
+
+const GEMINI_INTERACTIONS_PROJECTION: DefinitionProjection = Object.freeze({
+  protocolContractId: 'gemini-interactions-v1beta',
+  providerId: geminiDeveloperApiContract.providerId,
+  operations: Object.freeze(['image_generate'] as const),
+  apiSurface: readGeminiDeveloperApiRegistrySurfaceV2('gemini-interactions-v1beta'),
+  modelBindingPolicy: 'runtime_capability_resolver',
+  endpointBindingPolicy: 'first_party_profile_authority_required',
+  continuationPolicy: readGeminiDeveloperApiRegistrySurfaceV2('gemini-interactions-v1beta').continuationFamily,
+  implementationStatus: 'definition_only',
+  evidence: geminiInteractionsEvidence,
+})
+
 function digest(value: unknown): string {
   return createHash('sha256').update(stableSerializeProviderRequestV2(value), 'utf8').digest('hex')
 }
 
-const definitionProjections = Object.freeze([OPENROUTER_IMAGES_PROJECTION])
+const definitionProjections = Object.freeze([
+  OPENROUTER_IMAGES_PROJECTION,
+  GEMINI_GENERATE_CONTENT_PROJECTION,
+  GEMINI_INTERACTIONS_PROJECTION,
+])
 const registryRevisionValue = `provider-contract-registry-v1:${digest(definitionProjections)}`
 const registryRevision = GenerationV2Identity.create('registry_revision', registryRevisionValue)
 const reviewedDefinitions = new WeakSet<object>()
