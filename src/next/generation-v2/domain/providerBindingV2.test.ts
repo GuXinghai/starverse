@@ -2,11 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { decodeProviderBindingRecordV2 } from './providerBindingV2'
 
 const digest = 'a'.repeat(64)
+const contractDigest = 'b'.repeat(64)
+const registryDigest = 'c'.repeat(64)
 
 function base(endpointBinding: unknown, operation = 'image_generate') {
   return {
     credentialScopeId: 'scope-1', providerId: 'openrouter', endpointProfileId: 'first-party',
-    endpointBinding, protocolContractId: 'openrouter-images-v1', contractRevision: '2026-07-14',
+    endpointBinding, protocolContractId: 'openrouter-images-v1',
+    contractRevision: `openrouter-images-v1:${contractDigest}`, contractDefinitionDigest: contractDigest,
+    registryRevision: `provider-contract-registry-v1:${registryDigest}`,
     modelId: 'google/gemini-3.1-flash-image', operation,
   }
 }
@@ -23,6 +27,8 @@ describe('ProviderBindingV2 codec', () => {
     expect(binding.endpointBinding.kind).toBe('pinned')
     expect(binding.operation).toBe('image_generate')
     expect(binding.trust).toBe('decoded_unverified')
+    expect(binding.contractDefinitionDigest.value).toBe(contractDigest)
+    expect(binding.registryRevision.value).toBe(`provider-contract-registry-v1:${registryDigest}`)
     expect(Object.isFrozen(binding)).toBe(true)
     expect(Object.isFrozen(binding.endpointBinding)).toBe(true)
   })
@@ -33,7 +39,9 @@ describe('ProviderBindingV2 codec', () => {
         { endpointId: 'zeta', descriptorRevision: 'r2' },
         { endpointId: 'alpha', descriptorRevision: 'r1' },
       ],
-    }, 'text'), providerId: 'openai', protocolContractId: 'openai-responses-v1' })
+    }, 'text'), providerId: 'openai', protocolContractId: 'openai-responses-v1',
+    contractRevision: `openai-responses-v1:${contractDigest}` })
+    expect(binding.trust).toBe('decoded_unverified')
     expect(binding.endpointBinding.kind === 'provider_managed_set' &&
       binding.endpointBinding.descriptors.map((item) => item.endpointId.value)).toEqual(['alpha', 'zeta'])
   })
@@ -78,6 +86,25 @@ describe('ProviderBindingV2 codec', () => {
     expect(() => decodeProviderBindingRecordV2(base({
       kind: 'provider_managed_set', endpointSetRevision: 'set-1', descriptors: new Array(1),
     }))).toThrow('GENERATION_V2_BINDING_INVALID_SHAPE')
+  })
+
+  it('rejects independently edited contract digests, revisions and registry revisions', () => {
+    const managed = {
+      kind: 'provider_managed_set', endpointSetRevision: 'set-1',
+      descriptors: [{ endpointId: 'a', descriptorRevision: 'r' }],
+    }
+    const openAi = { ...base(managed, 'text'), providerId: 'openai', protocolContractId: 'openai-responses-v1' }
+    expect(() => decodeProviderBindingRecordV2(openAi)).toThrow('GENERATION_V2_BINDING_INVALID_VALUE')
+    expect(() => decodeProviderBindingRecordV2({
+      ...openAi,
+      contractRevision: `openai-responses-v1:${contractDigest}`,
+      contractDefinitionDigest: 'A'.repeat(64),
+    })).toThrow('GENERATION_V2_BINDING_INVALID_VALUE')
+    expect(() => decodeProviderBindingRecordV2({
+      ...openAi,
+      contractRevision: `openai-responses-v1:${contractDigest}`,
+      registryRevision: 'provider-contract-registry-v1:stale',
+    })).toThrow('GENERATION_V2_BINDING_INVALID_VALUE')
   })
 
   it('requires OpenRouter image generation to use the exact pinned contract in both directions', () => {

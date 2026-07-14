@@ -31,6 +31,8 @@ export type DecodedProviderBindingRecordV2 = Readonly<{
   endpointBinding: EndpointBindingV2
   protocolContractId: GenerationV2Identity<'protocol_contract_id'>
   contractRevision: GenerationV2Identity<'contract_revision'>
+  contractDefinitionDigest: GenerationV2Digest<'contract_digest'>
+  registryRevision: GenerationV2Identity<'registry_revision'>
   modelId: GenerationV2Identity<'model_id'>
   operation: GenerationOperationV2
 }>
@@ -156,13 +158,21 @@ function decodeEndpointBinding(value: unknown): EndpointBindingV2 {
 export function decodeProviderBindingRecordV2(value: unknown): DecodedProviderBindingRecordV2 {
   const input = closedObject(value, [
     'credentialScopeId', 'providerId', 'endpointProfileId', 'endpointBinding',
-    'protocolContractId', 'contractRevision', 'modelId', 'operation',
+    'protocolContractId', 'contractRevision', 'contractDefinitionDigest', 'registryRevision', 'modelId', 'operation',
   ])
   if (!['text', 'image_generate', 'image_edit', 'tool_continue'].includes(input.operation as string)) {
     throw new ProviderBindingV2Error('GENERATION_V2_BINDING_INVALID_VALUE')
   }
   const providerId = requiredString(input, 'providerId')
   const protocolContractId = requiredString(input, 'protocolContractId')
+  const contractDefinitionDigest = requiredString(input, 'contractDefinitionDigest')
+  const contractRevision = requiredString(input, 'contractRevision')
+  const registryRevision = requiredString(input, 'registryRevision')
+  if (!/^[0-9a-f]{64}$/u.test(contractDefinitionDigest) ||
+      contractRevision !== `${protocolContractId}:${contractDefinitionDigest}` ||
+      !/^provider-contract-registry-v1:[0-9a-f]{64}$/u.test(registryRevision)) {
+    throw new ProviderBindingV2Error('GENERATION_V2_BINDING_INVALID_VALUE')
+  }
   const endpointBinding = decodeEndpointBinding(input.endpointBinding)
   const isOpenRouterImageSurface = endpointBinding.kind === 'pinned' || protocolContractId === 'openrouter-images-v1' ||
     (providerId === 'openrouter' && input.operation === 'image_generate')
@@ -178,7 +188,9 @@ export function decodeProviderBindingRecordV2(value: unknown): DecodedProviderBi
     endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', requiredString(input, 'endpointProfileId')),
     endpointBinding,
     protocolContractId: GenerationV2Identity.create('protocol_contract_id', protocolContractId),
-    contractRevision: GenerationV2Identity.create('contract_revision', requiredString(input, 'contractRevision')),
+    contractRevision: GenerationV2Identity.create('contract_revision', contractRevision),
+    contractDefinitionDigest: GenerationV2Digest.create('contract_digest', contractDefinitionDigest),
+    registryRevision: GenerationV2Identity.create('registry_revision', registryRevision),
     modelId: GenerationV2Identity.create('model_id', requiredString(input, 'modelId')),
     operation: input.operation as GenerationOperationV2,
   })
