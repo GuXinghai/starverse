@@ -31,7 +31,7 @@ Conflicts resolve conservatively: a stronger `unsupported` wins; missing evidenc
 
 ## OpenRouter Images endpoint descriptor freshness
 
-The per-endpoint descriptor is the final OpenRouter Images runtime fact. The corrected 2026-07-14 smoke proved the documented selector: `provider.only:[selectedDescriptor.provider_tag]` with `allow_fallbacks:false` routed Google AI Studio and Google Vertex Global to distinct matching generation endpoints, and the authenticated OpenRouter Logs UI independently labeled those requests `Google AI Studio` and `Google Vertex`. Descriptor-cache identity includes `(credentialScopeId, modelId, providerTag, descriptorRevision)`; the persisted selection lookup key is exactly `(credentialScopeId, modelId, image_generation)`. Model-level `supported_parameters` is discovery/display only and never authorizes a field.
+The per-endpoint descriptor is the final OpenRouter Images runtime fact. The corrected 2026-07-14 smoke proved the documented selector: `provider.only:[selectedDescriptor.provider_tag]` with `allow_fallbacks:false` routed Google AI Studio and Google Vertex Global to distinct matching generation endpoints, and the authenticated OpenRouter Logs UI independently labeled both providers. Descriptor-cache identity includes `(credentialScopeId, modelId, providerTag, descriptorRevision)`; the persisted selection lookup key is exactly `(credentialScopeId, modelId, image_generate)`, using the canonical V2 domain operation rather than an alias. Model-level `supported_parameters` is discovery/display only and never authorizes a field.
 
 Selection authority belongs to the user. Resolver/compiler/transport never select by price, descriptor/API order, latency, historical success rate, or hard-coded preference. The binding algorithm is closed:
 
@@ -100,7 +100,7 @@ type RuntimeCapabilitySnapshotV2 = {
 type OpenRouterImageProviderBindingKey = {
   credentialScopeId: string
   modelId: string
-  operation: "image_generation"
+  operation: "image_generate"
 }
 
 type OpenRouterImageProviderBinding = {
@@ -181,7 +181,7 @@ Anthropic's model-specific manual/adaptive/disabled legality is encoded as revie
 - Exact selected endpoint evidence beats model union; override only narrows codec capability.
 - Complete-intent endpoint selection, missing-field/value rejection, non-null tag requirement, and exact selector/body fixtures.
 - Existing valid binding reuse; sole-eligible atomic auto-binding; multiple eligible returns `OPENROUTER_IMAGE_PROVIDER_SELECTION_REQUIRED` and creates no operation/request.
-- User selection persistence by `(credentialScopeId, modelId, image_generation)`; no cross-credential/model reuse.
+- User selection persistence by `(credentialScopeId, modelId, image_generate)`; no cross-credential/model reuse.
 - Candidate projection keeps current binding first and sorts only the rest by code-point `providerTag`; reorder tests prove display order never selects.
 - Price/API order/latency/history/hard-coded preference mutation tests prove resolver/compiler/transport output does not change.
 - Duplicate `provider_tag` in one complete descriptor response rejects the whole set and preserves prior successful cache/binding.
