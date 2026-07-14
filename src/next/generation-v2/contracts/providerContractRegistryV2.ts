@@ -1,6 +1,11 @@
 import { createHash } from 'node:crypto'
 import { stableSerializeProviderRequestV2 } from '../compiler/stableSerialize'
 import { GenerationV2Digest, GenerationV2Identity } from '../domain/identityV2'
+import type { AnthropicMessagesRegistrySurfaceV2 } from './anthropicDeveloperApiContractV2'
+import {
+  readAnthropicDeveloperApiContractV2,
+  readAnthropicMessagesRegistrySurfaceV2,
+} from './anthropicDeveloperApiContractV2'
 import type {
   GeminiDeveloperApiRegistrySurfaceV2,
   GeminiDeveloperApiSurfaceDefinitionV2,
@@ -18,6 +23,7 @@ export type ProviderContractApiSurfaceV2 = Readonly<
     apiVersion: 'v1'
     requestPath: '/api/v1/images'
   }
+  | AnthropicMessagesRegistrySurfaceV2
   | GeminiDeveloperApiRegistrySurfaceV2
 >
 
@@ -25,6 +31,7 @@ type ModelBindingPolicyV2 = 'descriptor_model_id' | 'runtime_capability_resolver
 type EndpointBindingPolicyV2 = 'exact_descriptor_pin' | 'first_party_profile_authority_required'
 type ContinuationPolicyV2 =
   | 'none'
+  | 'ordered_native_content_blocks_with_signatures'
   | GeminiDeveloperApiSurfaceDefinitionV2['continuationFamily']
 
 export type ReviewedProviderContractDefinitionV2 = Readonly<{
@@ -163,6 +170,29 @@ const GEMINI_INTERACTIONS_PROJECTION: DefinitionProjection = Object.freeze({
   evidence: geminiInteractionsEvidence,
 })
 
+const anthropicDeveloperApiContract = readAnthropicDeveloperApiContractV2()
+const anthropicMessagesSurface = readAnthropicMessagesRegistrySurfaceV2()
+const ANTHROPIC_MESSAGES_PROJECTION: DefinitionProjection = Object.freeze({
+  protocolContractId: 'anthropic-messages-2023-06-01',
+  providerId: anthropicDeveloperApiContract.providerId,
+  operations: Object.freeze(['text', 'tool_continue'] as const),
+  apiSurface: anthropicMessagesSurface,
+  modelBindingPolicy: 'runtime_capability_resolver',
+  endpointBindingPolicy: 'first_party_profile_authority_required',
+  continuationPolicy: anthropicMessagesSurface.continuationFamily,
+  implementationStatus: 'definition_only',
+  evidence: Object.freeze({
+    verifiedAt: anthropicDeveloperApiContract.evidence.verifiedAt,
+    openApiSha256: null,
+    provenanceUrls: anthropicDeveloperApiContract.evidence.provenanceUrls,
+    localArtifacts: Object.freeze([Object.freeze({
+      id: 'anthropic-developer-api-contract-20260715',
+      path: 'docs/architecture/generation-compiler-v2/evidence/anthropic-developer-api-contract-20260715.json',
+      sha256: '9ff68f8cfd7a7a500ccac5f889f8f6cc5125577a0e550f9839e155ea5bdb5111',
+    })]),
+  }),
+})
+
 function digest(value: unknown): string {
   return createHash('sha256').update(stableSerializeProviderRequestV2(value), 'utf8').digest('hex')
 }
@@ -171,6 +201,7 @@ const definitionProjections = Object.freeze([
   OPENROUTER_IMAGES_PROJECTION,
   GEMINI_GENERATE_CONTENT_PROJECTION,
   GEMINI_INTERACTIONS_PROJECTION,
+  ANTHROPIC_MESSAGES_PROJECTION,
 ])
 const registryRevisionValue = `provider-contract-registry-v1:${digest(definitionProjections)}`
 const registryRevision = GenerationV2Identity.create('registry_revision', registryRevisionValue)

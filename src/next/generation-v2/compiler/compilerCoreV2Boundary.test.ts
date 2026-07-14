@@ -43,6 +43,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/providers/lmstudio-openresponses/continuationArtifactV1.ts',
       'src/next/generation-v2/runner/generationRequestTerminalV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
+      'src/next/generation-v2/contracts/anthropicDeveloperApiContractV2.ts',
       'src/next/generation-v2/contracts/geminiDeveloperApiContractV2.ts',
       'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
     ]) {
@@ -178,6 +179,28 @@ describe('Generation Compiler V2 core boundary', () => {
     for (const file of productionSources(path.resolve('electron'))) {
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/geminiDeveloperApiContractV2|generation-v2\/contracts\/gemini/iu)
+    }
+  })
+
+  it('keeps Anthropic direct-API surface identity centralized and zero-activation', () => {
+    const contractModule = path.resolve(
+      'src/next/generation-v2/contracts/anthropicDeveloperApiContractV2.ts',
+    )
+    const registryModule = path.resolve('src/next/generation-v2/contracts/providerContractRegistryV2.ts')
+    const contract = read('src/next/generation-v2/contracts/anthropicDeveloperApiContractV2.ts')
+    expect(contract).toContain("executionAuthority: 'none'")
+    expect(contract).toContain("value: '2023-06-01'")
+    expect(contract).toContain("value: 'files-api-2025-04-14'")
+    expect(contract).not.toMatch(/fetch\(|net\.request|ipcMain|thinking\.display|model.*regex|fallback/iu)
+
+    for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
+      if (file === contractModule || file === registryModule) continue
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/api\.anthropic\.com|anthropic-version|files-api-2025-04-14|anthropic_messages_2023_06_01/iu)
+    }
+    for (const file of productionSources(path.resolve('electron'))) {
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/anthropicDeveloperApiContractV2|generation-v2\/contracts\/anthropic/iu)
     }
   })
 })

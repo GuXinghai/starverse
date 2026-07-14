@@ -66,10 +66,10 @@ describe('Generation V2 reviewed provider contract registry', () => {
 
   it('does not trust structural clones and exposes no duplicate contract revision', () => {
     const [definition] = listReviewedProviderContractDefinitionsV2()
-    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(3)
+    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(4)
     expect(isReviewedProviderContractDefinitionV2({ ...definition })).toBe(false)
     expect(new Set(listReviewedProviderContractDefinitionsV2().map((item) =>
-      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(3)
+      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(4)
   })
 
   it('registers GenerateContent and Interactions as separate non-executable v1beta contracts', () => {
@@ -130,5 +130,33 @@ describe('Generation V2 reviewed provider contract registry', () => {
         expect(actual, `${definition.protocolContractId.value}:${artifact.id}`).toBe(artifact.sha256)
       }
     }
+  })
+
+  it('registers Anthropic Messages without promoting its blocked capability matrix', () => {
+    const definition = listReviewedProviderContractDefinitionsV2()
+      .find((item) => item.protocolContractId.value === 'anthropic-messages-2023-06-01')!
+    expect(definition).toMatchObject({
+      executionAuthority: 'none',
+      implementationStatus: 'definition_only',
+      operations: ['text', 'tool_continue'],
+      modelBindingPolicy: 'runtime_capability_resolver',
+      endpointBindingPolicy: 'first_party_profile_authority_required',
+      continuationPolicy: 'ordered_native_content_blocks_with_signatures',
+      apiSurface: {
+        kind: 'anthropic_messages',
+        apiOrigin: 'https://api.anthropic.com',
+        auth: { kind: 'header', name: 'x-api-key' },
+        apiVersionHeader: { name: 'anthropic-version', value: '2023-06-01' },
+        relativePathTemplate: '/v1/messages',
+        streamRequestPolicy: {
+          location: 'body',
+          field: 'stream',
+          requiredValue: true,
+          responseProtocol: 'named_sse',
+          doneSentinel: 'forbidden',
+        },
+      },
+      evidence: { openApiSha256: null, verifiedAt: '2026-07-15' },
+    })
   })
 })
