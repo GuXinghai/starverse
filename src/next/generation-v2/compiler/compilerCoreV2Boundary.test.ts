@@ -35,6 +35,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/domain/providerBindingV2.ts',
       'src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
+      'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
     ]) {
       expect(read(file), file).not.toMatch(/chatSessionConfig|appChatApp\.logic|generation-params|wirePath|requestPatch|extraBody|runtimeProviderAdapter|StreamBridge|TextChat/iu)
     }
@@ -76,6 +77,19 @@ describe('Generation Compiler V2 core boundary', () => {
       if (file === recordModule) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/DecodedProviderBindingRecordV2|decodeProviderBindingRecordV2/u)
+    }
+  })
+
+  it('keeps reviewed contract definitions non-executable and out of legacy transport selection', () => {
+    const registryModule = path.resolve('src/next/generation-v2/contracts/providerContractRegistryV2.ts')
+    const registry = read('src/next/generation-v2/contracts/providerContractRegistryV2.ts')
+    expect(registry).toMatch(/implementationStatus: 'definition_only'/u)
+    expect(registry).toMatch(/executionAuthority: 'none'/u)
+    expect(registry).not.toMatch(/ResolvedProviderContract|issueResolved|fetch\(|runtimeSelection|StreamBridge/iu)
+    for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
+      if (file === registryModule) continue
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/providerContractRegistryV2|ReviewedProviderContractDefinitionV2/iu)
     }
   })
 })

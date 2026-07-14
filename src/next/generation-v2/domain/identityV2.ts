@@ -8,6 +8,7 @@ export type GenerationV2IdentityKind =
   | 'endpoint_id'
   | 'protocol_contract_id'
   | 'contract_revision'
+  | 'registry_revision'
   | 'credential_scope_id'
   | 'config_revision'
   | 'capability_revision'
@@ -23,17 +24,18 @@ export type GenerationV2DigestKind =
   | 'snapshot_hash'
   | 'asset_sha256'
   | 'body_sha256'
+  | 'contract_digest'
 
 const IDENTITY_KINDS = new Set<GenerationV2IdentityKind>([
   'provider_id', 'model_id', 'endpoint_profile_id', 'provider_slug', 'provider_tag',
   'endpoint_set_revision', 'endpoint_id',
-  'protocol_contract_id', 'contract_revision',
+  'protocol_contract_id', 'contract_revision', 'registry_revision',
   'credential_scope_id', 'config_revision', 'capability_revision', 'descriptor_revision',
   'asset_id', 'asset_revision_id', 'tool_id', 'operation_id',
 ])
 
 const DIGEST_KINDS = new Set<GenerationV2DigestKind>([
-  'evidence_digest', 'descriptor_digest', 'snapshot_hash', 'asset_sha256', 'body_sha256',
+  'evidence_digest', 'descriptor_digest', 'snapshot_hash', 'asset_sha256', 'body_sha256', 'contract_digest',
 ])
 
 export class GenerationV2IdentityError extends Error {
