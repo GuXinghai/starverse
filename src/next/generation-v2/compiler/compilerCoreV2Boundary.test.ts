@@ -31,6 +31,7 @@ describe('Generation Compiler V2 core boundary', () => {
     for (const file of [
       'src/next/generation-v2/compiler/stableSerialize.ts',
       'src/next/generation-v2/domain/identityV2.ts',
+      'src/next/generation-v2/domain/generationIntentV2.ts',
     ]) {
       expect(read(file), file).not.toMatch(/chatSessionConfig|appChatApp\.logic|generation-params|wirePath|requestPatch|extraBody|runtimeProviderAdapter|StreamBridge|TextChat/iu)
     }
