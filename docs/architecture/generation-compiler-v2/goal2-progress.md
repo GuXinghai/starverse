@@ -22,7 +22,7 @@
 | G2-2 Semantic intent, capability, persistence, UI projection | In progress — OpenRouter Images domain and epoch-2-only persistence contract staged; activation/UI pending epoch cutover | TP3/TP4 |
 | G2-3 Compiler, ledger, snapshot, prepared request | In progress — Images exact-body compiler staged; core V2 canonical serialization and immutable byte ownership implemented; same-invocation snapshot/capability/ledger/prepared-request facade pending | TP5 |
 | G2-4 Provider typed codecs and native transports | In progress — strict descriptor codec and no-retry exact-body POST transport staged but deliberately unregistered until epoch-2 | TP6/TP7 |
-| G2-5 Native streaming decode and continuation | Pending | TP3/TP6/TP7 |
+| G2-5 Native streaming decode and continuation | Blocked for OpenRouter Images — 2026-07-15 OpenAPI drift adds/clarifies native event and media semantics; other provider work remains independently pending | TP3/TP6/TP7; `evidence/openrouter-images-openapi-drift-20260715.json` |
 | G2-6 Unified commands and legacy deletion | Pending | TP1/TP5/TP8 |
 | G2-7 Full AC-01…AC-42 acceptance and smoke | Pending | TP8 and traceability matrix |
 
@@ -32,6 +32,7 @@
 - `docs/architecture/generation-compiler-v2/goal2-gate0-contract-audit.md` — current official contract audit and post-Goal-1 blocking conflicts.
 - `docs/architecture/generation-compiler-v2/evidence/openrouter-images-provider-tag-smoke-20260714.json` — retained negative evidence for incorrect top-level `provider_tag` only.
 - `docs/architecture/generation-compiler-v2/evidence/openrouter-images-provider-only-smoke-20260714.json` — corrected documented-wire exact bodies/hashes, descriptors, redacted responses/metadata, costs, routing verdicts, and OpenAPI discrepancy.
+- `docs/architecture/generation-compiler-v2/evidence/openrouter-images-openapi-drift-20260715.json` — current official OpenAPI size/hash and the response/SSE contract drift that blocks decoder activation.
 - `docs/architecture/generation-compiler-v2/generation-compiler-v2-final-plan.md`, `tp4-capability-evidence-ui.md`, `tp6-openrouter-openai-contracts.md`, `tp8-cutover-tests-goal3.md`, and `traceability-matrix.md` — corrected endpoint-specific OpenRouter Images capability and pin semantics.
 - `src/next/openrouter/images/*` — strict descriptor/settings codecs, intent capability test, binding resolver, display projection and exact-body compiler.
 - `infra/db/v2/openRouterImagesSchema.sql`, `infra/db/repo/openRouterImageEndpointRepo.ts` — epoch-2-only last-success descriptor/history schema and generation-CAS repository; the premature binding/generic-options tables were deleted and the adapter is not registered in the legacy worker.
@@ -58,6 +59,7 @@
 | 2026-07-14 | OpenRouter Images P1 hardening | Pass | Repository entry points now require descriptor-revision CAS for both automatic and user binding; activation guards cover all known startup/worker seams case-insensitively; 22 focused tests pass |
 | 2026-07-14 | Official Images capability descriptor recheck | Pass | Current [OpenRouter Image Generation documentation](https://openrouter.ai/docs/guides/overview/multimodal/image-generation) defines `enum`, `range`, and presence-style `boolean` (for example an integer-valued `seed`); V2 decodes all three and continues to reject unknown rule types |
 | 2026-07-14 | P1 hardening final gates | Pass | 22 focused Vitest assertions, `npx tsc --noEmit --pretty false`, `npx vue-tsc --noEmit`, `npm run gate:network-egress`, and `git diff --check` passed |
+| 2026-07-15 | OpenRouter Images native-response re-audit | Blocked before production edits | Official OpenAPI changed from 1,615,258 bytes / `abaf90ac...` to 1,609,078 bytes / `9a36929a...`; it now includes `image_generation.text_chunk` and changed/clarified media-type semantics. The registry remains pinned to the reviewed old hash and non-executable. |
 | 2026-07-14 | Epoch-2 foundation focused verification | Pass; P0/P1 review clean | 7 focused tests cover branded layout/on-disk manifest identity, synthetic repository overlap, transition-root junction rejection, journal monotonicity and pending recovery, exact credential projection, malformed/plaintext/decrypt rejection, and owned deletion planning/freshness; 18 related epoch/credential/config tests, TypeScript, Vue TypeScript and network-egress gate pass |
 
 ## Smoke log
@@ -72,7 +74,7 @@
 
 ## Risks and blockers
 
-- OpenRouter Images and LM Studio Gate 0 blockers are closed. Production implementation may begin for these two frozen contract slices only. Unrelated packages remain blocked on their own Owner choices: canonical packaged `appId`; OpenAI continuation mode; Ollama/local binding; OpenRouter beta server-tool exposure; automatic transport retry policy; image continuation first-release scope; Anthropic `thinking.display` exposure. No implementation may infer those values.
+- The OpenRouter Images routing/request-pin slice and the LM Studio Gate 0 contract are closed. Production implementation may proceed only for those frozen slices; the OpenRouter Images native response/SSE decoder slice remains blocked on the 2026-07-15 contract re-freeze. Unrelated packages remain blocked on their own Owner choices: canonical packaged `appId`; OpenAI continuation mode; Ollama/local binding; OpenRouter beta server-tool exposure; automatic transport retry policy; image continuation first-release scope; Anthropic `thinking.display` exposure. No implementation may infer those values.
 - `package.json` proves `productName: "Starverse"`; `electron-builder.json5` still contains `appId: "YourAppID"` and `productName: "YourAppName"`. No canonical appId was found in repository architecture/ADR sources, so the epoch root marker cannot safely be implemented by guessing one.
 - Anthropic's exact current model × thinking × effort × sampling × web-tool matrix and Gemini Interactions continuation fields require fresh official-evidence fixtures before those contracts can be enabled; this is evidence work, not a reason to widen or fall back.
 - Current official evidence closes most of the Anthropic matrix and proves `thinking.display` is a formal capability-gated field. Older basic web-search combinations without exact evidence remain unavailable.
@@ -84,6 +86,7 @@
 - Current startup constructs and migrates `Store(config.json)` before `app.whenReady`, then opens `<userData>/chat.db`, runs legacy schema/ensure helpers, opens `<userData>/debug/generation-raw.sqlite`, registers IPC/window/jobs, and never owns an epoch marker/lock/journal. Epoch V2 must move config/service construction after a successful coordinator and must never call legacy credential read/migration APIs while filtering.
 - The exact preservable records are `providerCredentials.v1.{openrouter,openai_responses,google_ai_studio,anthropic,deepseek}` with valid provider key, version 1, `electron_safe_storage`, non-empty ciphertext, valid timestamp, and successful decrypt. Plaintext fallback, legacy plaintext keys, catalog HMAC, compatible credentials, custom endpoints/secrets, and backups are deletion-only.
 - Any official-contract conflict, reset path outside the managed epoch root, credential outside the closed preservation whitelist, or explicit semantic intent that a provider codec cannot express is a stop condition.
+- OpenRouter Images native response/SSE activation is stopped on verified OpenAPI drift: current SHA-256 is `9a36929ad445b27a7010e11b474e8577c0c9b6f6570d67638db285b09adecdd8`, while the reviewed registry definition remains pinned to `abaf90acc89dc3a2b4cd8824afcbf87734c8d0a5f4429ea85dca0d9eb02e353b`. Re-freeze must decide `text_chunk` phases, multi-image streaming identity, completed-without-DONE, known-event extra fields, empty buffered output and omitted `media_type`; no decoder or registry activation may guess them.
 - `better-sqlite3` ABI must be switched deliberately: Node before DB/Vitest acceptance; Electron only for the final Electron smoke.
 
 ## Remaining work
@@ -92,6 +95,7 @@
 2. Obtain and record the remaining package-specific Owner decisions before implementing those unrelated slices.
 3. Implement the remaining approved G2-1 through G2-7 batches as their gates close.
 4. Close every AC with direct code/test/smoke evidence and run the complete gate sequence.
+5. Re-freeze the current OpenRouter Images response/SSE contract and update its reviewed definition/OpenAPI evidence before implementing or activating the native decoder.
 
 ## Current implementation batch — epoch-2 safety foundation
 

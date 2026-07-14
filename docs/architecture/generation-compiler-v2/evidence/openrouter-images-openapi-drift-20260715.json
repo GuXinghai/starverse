@@ -1,0 +1,33 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-07-15",
+  "source": "https://openrouter.ai/openapi.json",
+  "previous": {
+    "verifiedAt": "2026-07-14",
+    "utf8Bytes": 1615258,
+    "sha256": "abaf90acc89dc3a2b4cd8824afcbf87734c8d0a5f4429ea85dca0d9eb02e353b"
+  },
+  "current": {
+    "utf8Bytes": 1609078,
+    "sha256": "9a36929ad445b27a7010e11b474e8577c0c9b6f6570d67638db285b09adecdd8"
+  },
+  "observedContractChanges": {
+    "completedMediaType": "Optional; may be omitted only when the format could not be determined.",
+    "sseEventTypes": [
+      "image_generation.partial_image",
+      "image_generation.text_chunk",
+      "image_generation.completed",
+      "error"
+    ],
+    "textChunkPhases": ["content", "reasoning", "draft", "unknown_future_string"],
+    "partialImageIndex": "0-based sequence index",
+    "doneSentinel": "data: [DONE]"
+  },
+  "security": {
+    "containsCredential": false,
+    "containsAuthorization": false,
+    "containsImageBytes": false,
+    "containsRawOpenApi": false
+  },
+  "decision": "OpenRouter Images native decoder and contract activation remain blocked until the new OpenAPI revision and the listed streaming ambiguities are explicitly re-frozen. The previous reviewed definition stays non-executable."
+}

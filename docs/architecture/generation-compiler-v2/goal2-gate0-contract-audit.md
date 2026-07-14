@@ -127,6 +127,7 @@ Current official facts, re-verified 2026-07-14:
 - The Images guide now explicitly defines `provider.only`, `order`, `ignore`, `sort`, and `allow_fallbacks`, shows an Images request with `provider.only:["google-ai-studio"]` and `allow_fallbacks:false`, and instructs clients to use descriptor `provider_tag` values as routing slugs.
 - The provider-routing guide permits a complete endpoint variant slug such as `google-vertex/global`; the base slug matches its variants.
 - The raw OpenAPI observed during the corrected smoke was 1,615,258 UTF-8 bytes with SHA-256 `abaf90acc89dc3a2b4cd8824afcbf87734c8d0a5f4429ea85dca0d9eb02e353b`. `ImageGenerationRequest.provider` still resolved only `options`, so the machine schema lags the readable official documentation.
+- Decoder re-audit on 2026-07-15 found that the current OpenAPI is 1,609,078 bytes with SHA-256 `9a36929ad445b27a7010e11b474e8577c0c9b6f6570d67638db285b09adecdd8`. This does not reopen the proven provider-routing selection rule, but it reopens the native response/SSE codec gate: the machine contract now includes `image_generation.text_chunk`, describes omitted `media_type` differently, and leaves multi-image streaming/final framing ambiguities unresolved. Evidence: [`evidence/openrouter-images-openapi-drift-20260715.json`](evidence/openrouter-images-openapi-drift-20260715.json).
 
 Incorrect-field smoke retained as negative evidence:
 
@@ -158,7 +159,7 @@ Final Owner selection rule:
 - A selected request always emits `provider.only:[providerTag]` and `allow_fallbacks:false`. Endpoint-specific fields and `provider.options[providerSlug]` are available only from that descriptor; option keys must belong to `allowed_passthrough_parameters`.
 - Every binding change revalidates options and atomically removes values not valid for the new `providerSlug`/allowlist before a new command can compile.
 
-Disposition: **OpenRouter Images Gate 0 blocker closed. The wire contract, user-owned selection algorithm, binding key, candidate ordering, stale/mismatch behavior, option namespace/allowlist and no-switch invariant are fully frozen. The compile-time identity remains provider-owned selector data, never post-request generation endpoint ID. The readable-doc/OpenAPI discrepancy remains a versioned regression risk, not a blocker.**
+Disposition: **The OpenRouter Images provider-routing/request-pin Gate 0 blocker is closed. Its request-side wire shape, user-owned selection algorithm, binding key, candidate ordering, stale/mismatch behavior, option namespace/allowlist and no-switch invariant remain frozen. The compile-time identity remains provider-owned selector data, never post-request generation endpoint ID. The original readable-doc/request-schema discrepancy remains a versioned routing regression risk, not a routing blocker. The native response/SSE decoder Gate 0 is reopened and remains blocking until the 2026-07-15 OpenAPI drift and the enumerated response/framing ambiguities are explicitly re-frozen; no production decoder is authorized before then.**
 
 ## Remaining Owner decisions
 
