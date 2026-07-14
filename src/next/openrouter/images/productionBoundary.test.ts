@@ -44,7 +44,20 @@ describe('OpenRouter Images V2 production boundary', () => {
     const schema = read('infra/db/v2/openRouterImagesSchema.sql')
     expect(schema).toContain('Generation Compiler V2 only')
     expect(schema).toContain('openrouter_image_endpoint_descriptor_sets')
+    expect(schema).toContain('openrouter_image_endpoint_settings')
     expect(schema).not.toContain('provider_options_json')
     expect(schema).not.toContain('hard_expires_at_ms')
+  })
+
+  it('keeps V2 freshness settings out of legacy settings storage and worker methods', () => {
+    for (const file of [
+      'infra/db/repo/settingsRepo.ts',
+      'infra/db/repo/settingsKeys.ts',
+      'infra/db/dbMethodsRegistry.ts',
+      'infra/db/worker/runtime.ts',
+      'infra/db/worker/handlers/usagePrefsSettingsHandlers.ts',
+    ]) {
+      expect(read(file), file).not.toMatch(/endpointDescriptor|openRouterImageSettingsRepo/iu)
+    }
   })
 })

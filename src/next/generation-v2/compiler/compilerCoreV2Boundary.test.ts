@@ -35,6 +35,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/domain/providerBindingV2.ts',
       'src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2.ts',
       'src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2.ts',
+      'src/next/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
       'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
     ]) {
@@ -62,6 +63,7 @@ describe('Generation Compiler V2 core boundary', () => {
     const packageRoot = path.resolve('src/next/generation-v2')
     const inactiveV2Adapters = new Set([
       path.resolve('infra/db/repo/openRouterImageEndpointRepo.ts'),
+      path.resolve('infra/db/repo/openRouterImageSettingsRepo.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -77,12 +79,15 @@ describe('Generation Compiler V2 core boundary', () => {
   })
 
   it('keeps the inactive V2 descriptor repository adapter out of startup and legacy production imports', () => {
-    const adapter = path.resolve('infra/db/repo/openRouterImageEndpointRepo.ts')
+    const adapters = new Set([
+      path.resolve('infra/db/repo/openRouterImageEndpointRepo.ts'),
+      path.resolve('infra/db/repo/openRouterImageSettingsRepo.ts'),
+    ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === adapter) continue
+        if (adapters.has(file)) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
-          .not.toMatch(/openRouterImageEndpointRepo/iu)
+          .not.toMatch(/openRouterImage(?:Endpoint|Settings)Repo/iu)
       }
     }
   })
