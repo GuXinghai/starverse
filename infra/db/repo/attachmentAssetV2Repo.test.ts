@@ -8,9 +8,12 @@ import { decodeGenerationIntentLayerV2 } from '../../../src/next/generation-v2/d
 import { applyGenerationV2Schema } from '../v2/schemaComposerV2'
 import {
   AttachmentAssetV2Repo,
+  consumeVerifiedAttachmentSendBytesLeaseV2,
+  disposeVerifiedAttachmentSendBytesLeaseV2,
   isAttachmentAssetRevisionRepositoryFactV2,
   isAttachmentBlobRepositoryFactV2,
   isResolvedAttachmentAssetAuthorityV2,
+  isVerifiedAttachmentSendBytesLeaseV2,
 } from './attachmentAssetV2Repo'
 import type { ResolvedAttachmentAssetAuthorityV2 } from './attachmentAssetV2Repo'
 
@@ -22,11 +25,17 @@ function createDb() {
   return db
 }
 
-function attachment(assetId: string, assetRevisionId: string, assetSha256: string, conversion = 'none') {
+function attachment(
+  assetId: string,
+  assetRevisionId: string,
+  assetSha256: string,
+  conversion = 'none',
+  include = true,
+) {
   const intent = decodeGenerationIntentLayerV2({
     schemaVersion: 2,
     attachments: [{
-      assetId, assetRevisionId, assetSha256, include: true,
+      assetId, assetRevisionId, assetSha256, include,
       sendAs: 'inline_text', conversion,
     }],
   })
@@ -259,6 +268,213 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       expect(() => db.prepare('DELETE FROM file_asset_v2').run())
         .toThrow('GENERATION_V2_ASSET_IMMUTABLE')
     } finally { db.close() }
+  })
+
+  it('issues verified send bytes only inside B1 authority and consumes the lease once', async () => {
+    const db = createDb()
+    try {
+      const repo = new AttachmentAssetV2Repo(db, () => 10)
+      const input = new Uint8Array([1, 2, 3])
+      const blob = repo.recordBlobFromBytes(input, 'application/octet-stream')
+      repo.createAsset({ assetId: 'asset:1', assetKind: 'file', filename: 'a.bin', sourceKind: 'user_import' })
+      repo.appendSourceRevision({ assetId: 'asset:1', assetRevisionId: 'revision:1', blob })
+
+      let escapedAuthority: ResolvedAttachmentAssetAuthorityV2 | undefined
+      const verified = repo.withSynchronousSnapshotReferenceAuthority(
+        attachment('asset:1', 'revision:1', blob.sha256.value),
+        (authority) => {
+          escapedAuthority = authority
+          const lease = repo.verifyAttachmentSendBytes(authority, input)
+          expect(isVerifiedAttachmentSendBytesLeaseV2(lease)).toBe(false)
+          return lease
+        },
+      )
+      expect(isResolvedAttachmentAssetAuthorityV2(escapedAuthority)).toBe(false)
+      expect(isVerifiedAttachmentSendBytesLeaseV2(verified)).toBe(true)
+      expect(verified).toMatchObject({
+        trust: 'verified_attachment_send_bytes_lease',
+        filename: 'a.bin', mime: 'application/octet-stream', sizeBytes: 3,
+      })
+      expect(verified.assetId.value).toBe('asset:1')
+      expect(verified.assetRevisionId.value).toBe('revision:1')
+      expect(verified.assetSha256.value).toBe(blob.sha256.value)
+      expect(verified.blobId.value).toBe(blob.blobId.value)
+
+      input.fill(9)
+      const jsonCopy = JSON.parse(JSON.stringify(verified)) as unknown
+      expect(isVerifiedAttachmentSendBytesLeaseV2(jsonCopy)).toBe(false)
+      await expect(consumeVerifiedAttachmentSendBytesLeaseV2(jsonCopy as never, () => undefined))
+        .rejects.toThrow('GENERATION_V2_ASSET_INPUT_INVALID')
+      expect(() => repo.verifyAttachmentSendBytes(escapedAuthority!, new Uint8Array([1, 2, 3])))
+        .toThrow('GENERATION_V2_ASSET_INPUT_INVALID')
+      let escapedConsumerBytes: Uint8Array | undefined
+      await expect(consumeVerifiedAttachmentSendBytesLeaseV2(verified, async (bytes) => {
+        escapedConsumerBytes = bytes
+        expect([...bytes]).toEqual([1, 2, 3])
+        await Promise.resolve()
+        expect([...bytes]).toEqual([1, 2, 3])
+        return 'sent'
+      })).resolves.toBe('sent')
+      expect([...escapedConsumerBytes!]).toEqual([0, 0, 0])
+      expect(disposeVerifiedAttachmentSendBytesLeaseV2(verified)).toBe(false)
+      expect(disposeVerifiedAttachmentSendBytesLeaseV2(verified)).toBe(false)
+      expect(isVerifiedAttachmentSendBytesLeaseV2(verified)).toBe(false)
+      await expect(consumeVerifiedAttachmentSendBytesLeaseV2(verified, () => undefined))
+        .rejects.toThrow('GENERATION_V2_ASSET_BYTES_DISPOSED')
+
+      const failingLease = repo.withSynchronousSnapshotReferenceAuthority(
+        attachment('asset:1', 'revision:1', blob.sha256.value),
+        (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
+      )
+      let failedConsumerBytes: Uint8Array | undefined
+      await expect(consumeVerifiedAttachmentSendBytesLeaseV2(failingLease, async (bytes) => {
+        failedConsumerBytes = bytes
+        throw new Error('cancelled transport')
+      })).rejects.toThrow('cancelled transport')
+      expect([...failedConsumerBytes!]).toEqual([0, 0, 0])
+      expect(isVerifiedAttachmentSendBytesLeaseV2(failingLease)).toBe(false)
+
+      const poisonedLease = repo.withSynchronousSnapshotReferenceAuthority(
+        attachment('asset:1', 'revision:1', blob.sha256.value),
+        (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
+      )
+      let poisonedConsumerBytes: Uint8Array | undefined
+      await expect(consumeVerifiedAttachmentSendBytesLeaseV2(poisonedLease, (bytes) => {
+        poisonedConsumerBytes = bytes
+        Object.defineProperty(bytes, 'fill', {
+          value: () => { throw new Error('poisoned fill must not run') },
+        })
+        throw new Error('original consumer error')
+      })).rejects.toThrow('original consumer error')
+      expect([...poisonedConsumerBytes!]).toEqual([0, 0, 0])
+      expect(isVerifiedAttachmentSendBytesLeaseV2(poisonedLease)).toBe(false)
+      expect(disposeVerifiedAttachmentSendBytesLeaseV2(poisonedLease)).toBe(false)
+
+      const detachedLease = repo.withSynchronousSnapshotReferenceAuthority(
+        attachment('asset:1', 'revision:1', blob.sha256.value),
+        (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
+      )
+      await consumeVerifiedAttachmentSendBytesLeaseV2(detachedLease, (bytes) => {
+        structuredClone(bytes.buffer, { transfer: [bytes.buffer] })
+        expect(bytes.byteLength).toBe(0)
+      })
+      expect(isVerifiedAttachmentSendBytesLeaseV2(detachedLease)).toBe(false)
+      expect(disposeVerifiedAttachmentSendBytesLeaseV2(detachedLease)).toBe(false)
+
+      const manualLease = repo.withSynchronousSnapshotReferenceAuthority(
+        attachment('asset:1', 'revision:1', blob.sha256.value),
+        (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
+      )
+      expect(disposeVerifiedAttachmentSendBytesLeaseV2(manualLease)).toBe(true)
+      expect(disposeVerifiedAttachmentSendBytesLeaseV2(manualLease)).toBe(false)
+      await expect(consumeVerifiedAttachmentSendBytesLeaseV2(manualLease, () => undefined))
+        .rejects.toThrow('GENERATION_V2_ASSET_BYTES_DISPOSED')
+
+      const activeLease = repo.withSynchronousSnapshotReferenceAuthority(
+        attachment('asset:1', 'revision:1', blob.sha256.value),
+        (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
+      )
+      let releaseConsumer!: () => void
+      const activeConsumption = consumeVerifiedAttachmentSendBytesLeaseV2(activeLease, async () => {
+        await new Promise<void>((resolve) => { releaseConsumer = resolve })
+      })
+      await Promise.resolve()
+      await expect(consumeVerifiedAttachmentSendBytesLeaseV2(activeLease, () => undefined))
+        .rejects.toThrow('GENERATION_V2_ASSET_BYTES_LEASE_IN_USE')
+      expect(() => disposeVerifiedAttachmentSendBytesLeaseV2(activeLease))
+        .toThrow('GENERATION_V2_ASSET_BYTES_LEASE_IN_USE')
+      releaseConsumer()
+      await activeConsumption
+      expect(isVerifiedAttachmentSendBytesLeaseV2(activeLease)).toBe(false)
+
+      let failedLease: ReturnType<AttachmentAssetV2Repo['verifyAttachmentSendBytes']> | undefined
+      expect(() => repo.withSynchronousSnapshotReferenceAuthority(
+        attachment('asset:1', 'revision:1', blob.sha256.value),
+        (authority) => {
+          failedLease = repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3]))
+          throw new Error('abort after verification')
+        },
+      )).toThrow('abort after verification')
+      expect(isVerifiedAttachmentSendBytesLeaseV2(failedLease)).toBe(false)
+      await expect(consumeVerifiedAttachmentSendBytesLeaseV2(failedLease!, () => undefined))
+        .rejects.toThrow('GENERATION_V2_ASSET_BYTES_DISPOSED')
+
+      db.exec('BEGIN IMMEDIATE')
+      try {
+        expect(() => repo.withSynchronousSnapshotReferenceAuthority(
+          attachment('asset:1', 'revision:1', blob.sha256.value),
+          (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
+        )).toThrow('GENERATION_V2_ASSET_SEND_BYTES_NESTED_TRANSACTION')
+      } finally {
+        db.exec('ROLLBACK')
+      }
+    } finally { db.close() }
+  })
+
+  it('rejects mismatched, excluded, foreign-scope and hostile send-byte inputs', async () => {
+    const firstDb = createDb()
+    const secondDb = createDb()
+    try {
+      const first = new AttachmentAssetV2Repo(firstDb, () => 10)
+      const second = new AttachmentAssetV2Repo(secondDb, () => 10)
+      const exact = new Uint8Array([1, 2, 3])
+      const blob = first.recordBlobFromBytes(exact, 'application/octet-stream')
+      first.createAsset({ assetId: 'asset:1', assetKind: 'file', filename: 'a.bin', sourceKind: 'user_import' })
+      first.appendSourceRevision({ assetId: 'asset:1', assetRevisionId: 'revision:1', blob })
+
+      const viewLease = first.withSynchronousSnapshotReferenceAuthority(
+        attachment('asset:1', 'revision:1', blob.sha256.value),
+        (authority) => {
+          expect(() => first.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 4])))
+            .toThrow('GENERATION_V2_ASSET_BYTES_MISMATCH')
+          expect(() => second.verifyAttachmentSendBytes(authority, exact))
+            .toThrow('GENERATION_V2_ASSET_INPUT_INVALID')
+
+          const base = new Uint8Array([9, 1, 2, 3, 9])
+          const view = base.subarray(1, 4)
+          Object.defineProperty(view, Symbol.iterator, {
+            value: () => { throw new Error('iterator must not run') },
+          })
+          Object.defineProperty(view, 'byteLength', {
+            get: () => { throw new Error('byteLength getter must not run') },
+          })
+          if (typeof SharedArrayBuffer !== 'undefined') {
+            expect(() => first.verifyAttachmentSendBytes(
+              authority, new Uint8Array(new SharedArrayBuffer(3)),
+            )).toThrow('GENERATION_V2_ASSET_INPUT_INVALID')
+          }
+          const detachedBuffer = new ArrayBuffer(3)
+          const detached = new Uint8Array(detachedBuffer)
+          structuredClone(detachedBuffer, { transfer: [detachedBuffer] })
+          expect(() => first.verifyAttachmentSendBytes(authority, detached))
+            .toThrow('GENERATION_V2_ASSET_INPUT_INVALID')
+          return first.verifyAttachmentSendBytes(authority, view)
+        },
+      )
+      await expect(consumeVerifiedAttachmentSendBytesLeaseV2(viewLease, (bytes) => [...bytes]))
+        .resolves.toEqual([1, 2, 3])
+
+      first.withSynchronousSnapshotReferenceAuthority(
+        attachment('asset:1', 'revision:1', blob.sha256.value, 'none', false),
+        (authority) => {
+          expect(() => first.verifyAttachmentSendBytes(authority, exact))
+            .toThrow('GENERATION_V2_ASSET_SEND_BYTES_NOT_INCLUDED')
+        },
+      )
+
+      const emptyBlob = first.recordBlobFromBytes(new Uint8Array(), 'application/octet-stream')
+      first.createAsset({ assetId: 'asset:empty', assetKind: 'file', filename: 'empty.bin', sourceKind: 'user_import' })
+      first.appendSourceRevision({ assetId: 'asset:empty', assetRevisionId: 'revision:empty', blob: emptyBlob })
+      const empty = first.withSynchronousSnapshotReferenceAuthority(
+        attachment('asset:empty', 'revision:empty', emptyBlob.sha256.value),
+        (authority) => first.verifyAttachmentSendBytes(authority, new Uint8Array()),
+      )
+      await expect(consumeVerifiedAttachmentSendBytesLeaseV2(empty, (bytes) => bytes.byteLength))
+        .resolves.toBe(0)
+    } finally {
+      firstDb.close()
+      secondDb.close()
+    }
   })
 
   it('enables foreign keys per connection and normalizes cross-connection locks', () => {

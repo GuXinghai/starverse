@@ -52,6 +52,17 @@ export type ResolvedAttachmentAssetAuthorityV2 = Readonly<{
   revision: AttachmentAssetRevisionRepositoryFactV2
 }>
 
+export type VerifiedAttachmentSendBytesLeaseV2 = Readonly<{
+  trust: 'verified_attachment_send_bytes_lease'
+  assetId: GenerationV2Identity<'asset_id'>
+  assetRevisionId: GenerationV2Identity<'asset_revision_id'>
+  assetSha256: GenerationV2Digest<'asset_sha256'>
+  blobId: GenerationV2Identity<'blob_id'>
+  filename: string
+  mime: string
+  sizeBytes: number
+}>
+
 export class AttachmentAssetV2RepoError extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_ASSET_INPUT_INVALID'
@@ -60,6 +71,11 @@ export class AttachmentAssetV2RepoError extends Error {
     | 'GENERATION_V2_ASSET_NOT_FOUND'
     | 'GENERATION_V2_ASSET_RETIRED'
     | 'GENERATION_V2_ASSET_INTENT_MISMATCH'
+    | 'GENERATION_V2_ASSET_SEND_BYTES_NOT_INCLUDED'
+    | 'GENERATION_V2_ASSET_SEND_BYTES_NESTED_TRANSACTION'
+    | 'GENERATION_V2_ASSET_BYTES_MISMATCH'
+    | 'GENERATION_V2_ASSET_BYTES_DISPOSED'
+    | 'GENERATION_V2_ASSET_BYTES_LEASE_IN_USE'
     | 'GENERATION_V2_ASSET_LOCK_CONFLICT') {
     super(code)
     this.name = 'AttachmentAssetV2RepoError'
@@ -98,6 +114,14 @@ type AttachmentReferenceV2 = Readonly<{
 const blobFacts = new WeakSet<object>()
 const revisionFacts = new WeakSet<object>()
 const attachmentAuthorities = new WeakSet<object>()
+const verifiedSendBytesAuthorities = new WeakSet<object>()
+const disposedSendBytesAuthorities = new WeakSet<object>()
+const consumingSendBytesAuthorities = new WeakSet<object>()
+const verifiedSendBytesValues = new WeakMap<object, Uint8Array>()
+const pendingSendBytesByReferenceAuthority = new WeakMap<object, {
+  activationAllowed: boolean
+  values: VerifiedAttachmentSendBytesLeaseV2[]
+}>()
 const repositoryScopes = new WeakMap<object, object>()
 
 const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype) as object
@@ -105,7 +129,14 @@ const typedArrayBufferGetter = Object.getOwnPropertyDescriptor(typedArrayPrototy
 const typedArrayByteOffsetGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, 'byteOffset')?.get
 const typedArrayByteLengthGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, 'byteLength')?.get
 const typedArrayTagGetter = Object.getOwnPropertyDescriptor(typedArrayPrototype, Symbol.toStringTag)?.get
+const typedArrayFill = Object.getOwnPropertyDescriptor(typedArrayPrototype, 'fill')?.value as
+  ((value: number, start?: number, end?: number) => Uint8Array) | undefined
 const arrayBufferByteLengthGetter = Object.getOwnPropertyDescriptor(ArrayBuffer.prototype, 'byteLength')?.get
+
+function zeroUint8ArrayBestEffort(value: Uint8Array): void {
+  if (!typedArrayFill) return
+  try { Reflect.apply(typedArrayFill, value, [0]) } catch { /* detached buffers are already inaccessible */ }
+}
 
 function copyOwnedUint8Array(value: unknown): Uint8Array {
   if (!typedArrayBufferGetter || !typedArrayByteOffsetGetter || !typedArrayByteLengthGetter ||
@@ -146,6 +177,17 @@ function hasThenMember(value: unknown): boolean {
   } catch (error) {
     if (error instanceof AttachmentAssetV2RepoError) throw error
     throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+  }
+}
+
+function revokePendingVerifiedSendBytes(values: readonly VerifiedAttachmentSendBytesLeaseV2[]): void {
+  for (const value of values) {
+    const bytes = verifiedSendBytesValues.get(value)
+    if (bytes) zeroUint8ArrayBestEffort(bytes)
+    verifiedSendBytesValues.delete(value)
+    verifiedSendBytesAuthorities.delete(value)
+    repositoryScopes.delete(value)
+    disposedSendBytesAuthorities.add(value)
   }
 }
 
@@ -269,6 +311,66 @@ export function isResolvedAttachmentAssetAuthorityV2(
   return Boolean(value && typeof value === 'object' && attachmentAuthorities.has(value))
 }
 
+export function isVerifiedAttachmentSendBytesLeaseV2(
+  value: unknown,
+): value is VerifiedAttachmentSendBytesLeaseV2 {
+  return Boolean(value && typeof value === 'object' && verifiedSendBytesAuthorities.has(value))
+}
+
+function copyVerifiedAttachmentSendBytesLeaseV2(value: VerifiedAttachmentSendBytesLeaseV2): Uint8Array {
+  if (value && typeof value === 'object' && disposedSendBytesAuthorities.has(value)) {
+    throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_BYTES_DISPOSED')
+  }
+  if (!isVerifiedAttachmentSendBytesLeaseV2(value)) {
+    throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+  }
+  const bytes = verifiedSendBytesValues.get(value)
+  if (!bytes) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
+  return copyOwnedUint8Array(bytes)
+}
+
+export async function consumeVerifiedAttachmentSendBytesLeaseV2<T>(
+  value: VerifiedAttachmentSendBytesLeaseV2,
+  use: (bytes: Uint8Array) => T | Promise<T>,
+): Promise<T> {
+  if (typeof use !== 'function') throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+  if (value && typeof value === 'object' && consumingSendBytesAuthorities.has(value)) {
+    throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_BYTES_LEASE_IN_USE')
+  }
+  const bytes = copyVerifiedAttachmentSendBytesLeaseV2(value)
+  consumingSendBytesAuthorities.add(value)
+  try {
+    return await use(bytes)
+  } finally {
+    try {
+      zeroUint8ArrayBestEffort(bytes)
+    } finally {
+      consumingSendBytesAuthorities.delete(value)
+      disposeVerifiedAttachmentSendBytesLeaseV2(value)
+    }
+  }
+}
+
+export function disposeVerifiedAttachmentSendBytesLeaseV2(
+  value: VerifiedAttachmentSendBytesLeaseV2,
+): boolean {
+  if (value && typeof value === 'object' && disposedSendBytesAuthorities.has(value)) return false
+  if (value && typeof value === 'object' && consumingSendBytesAuthorities.has(value)) {
+    throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_BYTES_LEASE_IN_USE')
+  }
+  if (!isVerifiedAttachmentSendBytesLeaseV2(value)) {
+    throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+  }
+  const bytes = verifiedSendBytesValues.get(value)
+  if (!bytes) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
+  zeroUint8ArrayBestEffort(bytes)
+  verifiedSendBytesValues.delete(value)
+  verifiedSendBytesAuthorities.delete(value)
+  repositoryScopes.delete(value)
+  disposedSendBytesAuthorities.add(value)
+  return true
+}
+
 export class AttachmentAssetV2Repo {
   private readonly scope = Object.freeze({})
 
@@ -290,7 +392,7 @@ export class AttachmentAssetV2Repo {
     try {
       sha256 = sha256PreparedBytesV2(owned)
     } finally {
-      owned.fill(0)
+      zeroUint8ArrayBestEffort(owned)
     }
     const blobId = `blob-v2:${sha256}`
     const storageRef = `sha256/${sha256.slice(0, 2)}/${sha256}`
@@ -385,6 +487,8 @@ export class AttachmentAssetV2Repo {
       assetSha256: readGenerationV2Digest(intent.assetSha256, 'asset_sha256'),
       conversion: intent.conversion,
     })
+    const pendingSendBytes: VerifiedAttachmentSendBytesLeaseV2[] = []
+    const activationAllowed = !this.db.inTransaction
     const transaction = this.db.transaction(() => {
       const fact = this.resolveReferenceFact(reference)
       const authority = Object.freeze({
@@ -394,6 +498,11 @@ export class AttachmentAssetV2Repo {
         revision: fact,
       })
       attachmentAuthorities.add(authority)
+      repositoryScopes.set(authority, this.scope)
+      pendingSendBytesByReferenceAuthority.set(authority, {
+        activationAllowed,
+        values: pendingSendBytes,
+      })
       try {
         const result = use(authority)
         if (hasThenMember(result)) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
@@ -406,10 +515,60 @@ export class AttachmentAssetV2Repo {
         }
         return result
       } finally {
+        pendingSendBytesByReferenceAuthority.delete(authority)
         attachmentAuthorities.delete(authority)
       }
     })
-    return this.runImmediate(transaction)
+    try {
+      const result = this.runImmediate(transaction)
+      for (const value of pendingSendBytes) verifiedSendBytesAuthorities.add(value)
+      return result
+    } catch (error) {
+      revokePendingVerifiedSendBytes(pendingSendBytes)
+      throw error
+    }
+  }
+
+  verifyAttachmentSendBytes(
+    authority: ResolvedAttachmentAssetAuthorityV2,
+    bytes: Uint8Array,
+  ): VerifiedAttachmentSendBytesLeaseV2 {
+    if (!isResolvedAttachmentAssetAuthorityV2(authority) ||
+        repositoryScopes.get(authority) !== this.scope) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+    }
+    if (!authority.intent.include) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_SEND_BYTES_NOT_INCLUDED')
+    }
+    const pending = pendingSendBytesByReferenceAuthority.get(authority)
+    if (!pending || !pending.activationAllowed) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_SEND_BYTES_NESTED_TRANSACTION')
+    }
+    const owned = copyOwnedUint8Array(bytes)
+    try {
+      const sha256 = sha256PreparedBytesV2(owned)
+      if (owned.byteLength !== authority.revision.blob.sizeBytes ||
+          sha256 !== authority.revision.blob.sha256.value) {
+        throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_BYTES_MISMATCH')
+      }
+      const verified = Object.freeze({
+        trust: 'verified_attachment_send_bytes_lease' as const,
+        assetId: authority.revision.assetId,
+        assetRevisionId: authority.revision.assetRevisionId,
+        assetSha256: authority.revision.blob.sha256,
+        blobId: authority.revision.blob.blobId,
+        filename: authority.revision.filename,
+        mime: authority.revision.blob.mime,
+        sizeBytes: authority.revision.blob.sizeBytes,
+      })
+      verifiedSendBytesValues.set(verified, owned)
+      repositoryScopes.set(verified, this.scope)
+      pending.values.push(verified)
+      return verified
+    } catch (error) {
+      zeroUint8ArrayBestEffort(owned)
+      throw error
+    }
   }
 
   retireAsset(assetIdValue: string): void {
