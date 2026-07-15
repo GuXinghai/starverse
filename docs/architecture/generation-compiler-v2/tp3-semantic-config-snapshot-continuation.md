@@ -124,6 +124,19 @@ not authorize a conversion, and does not issue provider-file descriptors.
 Derived revisions remain blocked until a revisioned converter registry can issue
 their provenance; no legacy current-revision or upload-cache fallback is used.
 
+Verified send-byte status (2026-07-15): B2a-1 accepts actual Uint8Array bytes
+only while the B1 reference authority is active in a top-level transaction,
+copies through intrinsic typed-array slots, and requires exact revision byte
+length and SHA-256. Commit activates a one-shot in-memory lease. The lease has no
+public byte field and is consumed only by a controlled async callback (or
+explicitly disposed). Success, consumer rejection/cancel-as-rejection and failed
+outer validation always revoke the lease and deterministically zero its internal
+owned bytes. The callback view is zeroed best-effort while attached; copies or
+transferred buffers retained by the consumer are outside this guarantee.
+Concurrent consumers and nested transaction issuance reject. This verifies
+content independently of its origin, but does not locate/read a managed file and
+does not authorize provider encoding or transport.
+
 `AssistantAnswerGenerationSnapshotV2` contains:
 
 - complete resolved semantic config;
