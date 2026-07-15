@@ -66,10 +66,39 @@ describe('Generation V2 reviewed provider contract registry', () => {
 
   it('does not trust structural clones and exposes no duplicate contract revision', () => {
     const [definition] = listReviewedProviderContractDefinitionsV2()
-    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(5)
+    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(6)
     expect(isReviewedProviderContractDefinitionV2({ ...definition })).toBe(false)
     expect(new Set(listReviewedProviderContractDefinitionsV2().map((item) =>
-      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(5)
+      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(6)
+  })
+
+  it('registers OpenRouter Chat core without promoting extensions or runtime binding authority', () => {
+    const definition = listReviewedProviderContractDefinitionsV2()
+      .find((item) => item.protocolContractId.value === 'openrouter-chat-completions-v1')!
+    expect(definition).toMatchObject({
+      executionAuthority: 'none',
+      implementationStatus: 'definition_only',
+      operations: ['text', 'tool_continue'],
+      modelBindingPolicy: 'runtime_capability_resolver',
+      endpointBindingPolicy: 'first_party_profile_authority_required',
+      continuationPolicy: 'ordered_native_chat_messages_with_reasoning_details_and_tools',
+      apiSurface: {
+        kind: 'openrouter_chat',
+        providerFamilyContractId: 'openrouter-chat-api-v1',
+        apiOrigin: 'https://openrouter.ai',
+        auth: { kind: 'header', name: 'Authorization', scheme: 'Bearer' },
+        method: 'POST',
+        relativePathTemplate: '/api/v1/chat/completions',
+        requestContentType: 'application/json',
+        streamRequestPolicy: {
+          location: 'body', field: 'stream', requiredValue: true,
+          responseProtocol: 'data_only_sse', commentsMayAppear: true,
+          commentPolicy: 'ignore', doneSentinel: 'required',
+        },
+      },
+      evidence: { openApiSha256: null, verifiedAt: '2026-07-15' },
+    })
+    expect(JSON.stringify(definition)).not.toMatch(/plugins|:online|modalities|image_config/iu)
   })
 
   it('registers GenerateContent and Interactions as separate non-executable v1beta contracts', () => {

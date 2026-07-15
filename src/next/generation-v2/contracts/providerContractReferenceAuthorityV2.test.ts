@@ -95,6 +95,19 @@ describe('Verified provider contract reference V2', () => {
     }))).toThrow('GENERATION_V2_CONTRACT_REFERENCE_MISMATCH')
   })
 
+  it('limits OpenRouter Chat references to reviewed text and tool continuation operations', () => {
+    const definition = listReviewedProviderContractDefinitionsV2()
+      .find((item) => item.protocolContractId.value === 'openrouter-chat-completions-v1')!
+    for (const operation of ['text', 'tool_continue'] as const) {
+      expect(verifyProviderContractReferenceV2(record(definition, { operation })).operation)
+        .toBe(operation)
+    }
+    expect(() => verifyProviderContractReferenceV2(record(definition, { operation: 'image_generate' })))
+      .toThrow('GENERATION_V2_BINDING_INVALID_VALUE')
+    expect(() => verifyProviderContractReferenceV2(record(definition, { operation: 'image_edit' })))
+      .toThrow('GENERATION_V2_CONTRACT_REFERENCE_MISMATCH')
+  })
+
   it('rejects unknown/stale contract revisions and definition digests', () => {
     const definition = listReviewedProviderContractDefinitionsV2()
       .find((item) => item.protocolContractId.value === 'deepseek-stable-chat-v1')!

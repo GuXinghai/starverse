@@ -19,6 +19,11 @@ import {
   readGeminiDeveloperApiContractV2,
   readGeminiDeveloperApiRegistrySurfaceV2,
 } from './geminiDeveloperApiContractV2'
+import type { OpenRouterChatRegistrySurfaceV2 } from './openRouterChatApiContractV2'
+import {
+  readOpenRouterChatApiContractV2,
+  readOpenRouterChatRegistrySurfaceV2,
+} from './openRouterChatApiContractV2'
 
 export type ProviderContractOperationV2 = 'text' | 'image_generate' | 'image_edit' | 'tool_continue'
 
@@ -31,6 +36,7 @@ export type ProviderContractApiSurfaceV2 = Readonly<
   | AnthropicMessagesRegistrySurfaceV2
   | GeminiDeveloperApiRegistrySurfaceV2
   | DeepSeekStableChatRegistrySurfaceV2
+  | OpenRouterChatRegistrySurfaceV2
 >
 
 type ModelBindingPolicyV2 = 'descriptor_model_id' | 'runtime_capability_resolver'
@@ -40,6 +46,7 @@ type ContinuationPolicyV2 =
   | 'ordered_native_content_blocks_with_signatures'
   | GeminiDeveloperApiSurfaceDefinitionV2['continuationFamily']
   | DeepSeekStableChatRegistrySurfaceV2['continuationFamily']
+  | OpenRouterChatRegistrySurfaceV2['continuationFamily']
 
 export type ReviewedProviderContractDefinitionV2 = Readonly<{
   classification: 'reviewed_definition'
@@ -123,6 +130,29 @@ const OPENROUTER_IMAGES_PROJECTION: DefinitionProjection = Object.freeze({
       id: 'openrouter-images-provider-only-smoke-20260714',
       path: 'docs/architecture/generation-compiler-v2/evidence/openrouter-images-provider-only-smoke-20260714.json',
       sha256: '31002268f86ba7e08fe5af0622ce346e129f40c1900bd62b173a58b97ec4709f',
+    })]),
+  }),
+})
+
+const openRouterChatApiContract = readOpenRouterChatApiContractV2()
+const openRouterChatSurface = readOpenRouterChatRegistrySurfaceV2()
+const OPENROUTER_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
+  protocolContractId: 'openrouter-chat-completions-v1',
+  providerId: openRouterChatApiContract.providerId,
+  operations: Object.freeze(['text', 'tool_continue'] as const),
+  apiSurface: openRouterChatSurface,
+  modelBindingPolicy: 'runtime_capability_resolver',
+  endpointBindingPolicy: 'first_party_profile_authority_required',
+  continuationPolicy: openRouterChatSurface.continuationFamily,
+  implementationStatus: 'definition_only',
+  evidence: Object.freeze({
+    verifiedAt: openRouterChatApiContract.evidence.verifiedAt,
+    openApiSha256: null,
+    provenanceUrls: openRouterChatApiContract.evidence.provenanceUrls,
+    localArtifacts: Object.freeze([Object.freeze({
+      id: 'openrouter-chat-api-contract-20260715',
+      path: 'docs/architecture/generation-compiler-v2/evidence/openrouter-chat-api-contract-20260715.json',
+      sha256: '85ecd0b97ef9b6371e710797f072968a7718d837ef683526d9b5750dd8ce72b2',
     })]),
   }),
 })
@@ -229,6 +259,7 @@ function digest(value: unknown): string {
 
 const definitionProjections = Object.freeze([
   OPENROUTER_IMAGES_PROJECTION,
+  OPENROUTER_CHAT_PROJECTION,
   GEMINI_GENERATE_CONTENT_PROJECTION,
   GEMINI_INTERACTIONS_PROJECTION,
   ANTHROPIC_MESSAGES_PROJECTION,
