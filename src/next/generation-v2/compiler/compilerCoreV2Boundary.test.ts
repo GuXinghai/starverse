@@ -354,6 +354,30 @@ describe('Generation Compiler V2 core boundary', () => {
     }
   })
 
+  it('keeps OpenRouter Chat core contract definition-only and excludes unresolved extensions', () => {
+    const contractModule = path.resolve(
+      'src/next/generation-v2/contracts/openRouterChatApiContractV2.ts',
+    )
+    const registryModule = path.resolve('src/next/generation-v2/contracts/providerContractRegistryV2.ts')
+    const contract = read('src/next/generation-v2/contracts/openRouterChatApiContractV2.ts')
+    expect(contract).toContain("apiOrigin: 'https://openrouter.ai'")
+    expect(contract).toContain("relativePathTemplate: '/api/v1/chat/completions'")
+    expect(contract).toContain("doneSentinel: 'required'")
+    expect(contract).toContain('ordered_native_chat_messages_with_reasoning_details_and_tools')
+    expect(contract).toContain("executionAuthority: 'none'")
+    expect(contract).not.toMatch(/plugins|:online|modalities|image_config|providerFile|profileId|credentialScope|fetch\(|net\.request|ipcMain/iu)
+
+    for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
+      if (file === contractModule || file === registryModule) continue
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/openRouterChatApiContractV2|openrouter_chat_completions_v1/iu)
+    }
+    for (const file of productionSources(path.resolve('electron'))) {
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/openRouterChatApiContractV2|generation-v2\/contracts\/openRouterChat/iu)
+    }
+  })
+
   it('keeps DeepSeek stable identity centralized, native-history complete and zero-activation', () => {
     const contractModule = path.resolve(
       'src/next/generation-v2/contracts/deepSeekStableApiContractV2.ts',
