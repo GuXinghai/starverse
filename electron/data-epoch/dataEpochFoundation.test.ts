@@ -39,17 +39,19 @@ describe('Generation Compiler V2 epoch foundation', () => {
     })
     expect(layout.epochRoot).toBe(path.join(os.tmpdir(), 'epoch-foundation-appdata', 'Starverse', 'workspace', 'epoch-2'))
     expect(layout.databasePath).toBe(path.join(layout.epochRoot, 'starverse.db'))
-    const manifest = createEpoch2RootManifest({ applicationId: 'com.starverse.desktop', layout })
+    const manifest = createEpoch2RootManifest({ layout })
+    expect(manifest.applicationId).toBe('io.github.guxinghai.starverse')
+    expect(manifest.productDirectory).toBe('Starverse')
     expect(decodeAndVerifyEpoch2RootManifest({
       value: JSON.parse(JSON.stringify(manifest)),
-      expectedApplicationId: 'com.starverse.desktop',
       layout,
     })).toEqual(manifest)
-    expect(() => createEpoch2RootManifest({ applicationId: 'YourAppID', layout }))
-      .toThrow('EPOCH2_APPLICATION_ID_PLACEHOLDER')
     expect(() => decodeAndVerifyEpoch2RootManifest({
-      value: manifest,
-      expectedApplicationId: 'com.starverse.other',
+      value: { ...manifest, applicationId: 'com.starverse.desktop' },
+      layout,
+    })).toThrow('EPOCH2_ROOT_MANIFEST_MISMATCH')
+    expect(() => decodeAndVerifyEpoch2RootManifest({
+      value: { ...manifest, applicationId: 'io.github.guxinghai.starverse.dev' },
       layout,
     })).toThrow('EPOCH2_ROOT_MANIFEST_MISMATCH')
     expect(layout.journalPath.startsWith(layout.epochRoot)).toBe(false)
@@ -66,7 +68,6 @@ describe('Generation Compiler V2 epoch foundation', () => {
         .toThrow('EPOCH2_APP_DATA_ROOT_UNSAFE')
     }
     expect(() => createEpoch2RootManifest({
-      applicationId: 'com.starverse.desktop',
       layout: JSON.parse(JSON.stringify(layout)),
     })).toThrow('EPOCH2_APP_DATA_ROOT_UNSAFE')
   })
@@ -114,7 +115,7 @@ describe('Generation Compiler V2 epoch foundation', () => {
     const layout = resolveEpoch2WorkspaceLayout({
       appDataRoot: directory, homeRoot: os.homedir(), repositoryRoot: process.cwd(),
     })
-    const manifest = createEpoch2RootManifest({ applicationId: 'com.starverse.desktop', layout })
+    const manifest = createEpoch2RootManifest({ layout })
     writeEpoch2RootManifestAtomic({ layout, manifest })
     const ownedRoot = layout.productRoot
     const target = path.join(ownedRoot, 'assets')
@@ -124,7 +125,7 @@ describe('Generation Compiler V2 epoch foundation', () => {
     fs.writeFileSync(protectedPath, '{}')
     try {
       const authorization = {
-        layout, expectedApplicationId: 'com.starverse.desktop', rootScope: 'product' as const,
+        layout, rootScope: 'product' as const,
       }
       const plan = inspectEpoch2OwnedDeleteTarget({ ...authorization, target, protectedPaths: [protectedPath] })
       expect(plan.entriesPostOrder.at(-1)?.path).toBe(target)
@@ -176,7 +177,7 @@ describe('Generation Compiler V2 epoch foundation', () => {
       })
       fs.mkdirSync(layout.productRoot, { recursive: true })
       fs.symlinkSync(outside, layout.transitionRoot, process.platform === 'win32' ? 'junction' : 'dir')
-      const manifest = createEpoch2RootManifest({ applicationId: 'com.starverse.desktop', layout })
+      const manifest = createEpoch2RootManifest({ layout })
       expect(() => writeEpoch2RootManifestAtomic({ layout, manifest }))
         .toThrow('EPOCH2_ROOT_MANIFEST_REPARSE_POINT')
     } finally {

@@ -142,7 +142,7 @@ Exact requests and official source URLs are in TP6 and TP7; every field is scope
 | Owner decision / blocker | Recommended default | Why blocking |
 |---|---|---|
 | Goal 2 branch base | Rebase/replay branch-only useful changes onto current main without preserving V1/wire patch APIs | Current branches diverge materially. |
-| Canonical app identity | Set final Starverse appId/productName before epoch code | Reset root marker cannot be trusted with placeholders. |
+| Canonical app identity | Owner fixed production `io.github.guxinghai.starverse` / `Starverse` / `starverse-client`; only dev/E2E runtime AppUserModelID `.dev`/`.e2e` variants are valid | Builder, runtime, epoch marker and reset ownership share one production authority; ordinary launches in every channel explicitly share `%APPDATA%\Starverse`, while a non-empty explicit smoke/diagnostic `--user-data-dir` is not another managed identity; `com.starverse.desktop` is rejected. |
 | V2 workspace root | Fixed `%APPDATA%\Starverse\workspace\epoch-2\starverse.db`; V2 never opens legacy `chat.db` | Owner-frozen downgrade isolation. |
 | Managed runtimes/plugins | Clear with epoch | Registry is erased; preservation requires forbidden migration. |
 | Corrupt config credential handling | Block reset/startup and require manual recovery | Prevent silent loss of standard credentials. |

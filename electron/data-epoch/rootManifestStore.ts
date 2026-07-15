@@ -21,7 +21,7 @@ export function writeEpoch2RootManifestAtomic(input: Readonly<{
   layout: Epoch2WorkspaceLayout
   manifest: Epoch2RootManifest
 }>): void {
-  const verified = createEpoch2RootManifest({ applicationId: input.manifest.applicationId, layout: input.layout })
+  const verified = createEpoch2RootManifest({ layout: input.layout })
   if (JSON.stringify(verified) !== JSON.stringify(input.manifest)) throw new Error('EPOCH2_ROOT_MANIFEST_CONFLICT')
   const manifestPath = input.layout.transitionManifestPath
   const directory = path.dirname(manifestPath)
@@ -53,17 +53,15 @@ export function writeEpoch2RootManifestAtomic(input: Readonly<{
 }
 
 export function readAndVerifyEpoch2RootManifest(input: Readonly<{
-  expectedApplicationId: string
   layout: Epoch2WorkspaceLayout
 }>): Epoch2RootManifest {
-  createEpoch2RootManifest({ applicationId: input.expectedApplicationId, layout: input.layout })
+  createEpoch2RootManifest({ layout: input.layout })
   const manifestPath = input.layout.transitionManifestPath
   assertNoReparsePath(input.layout.transitionRoot)
   if (!fs.existsSync(manifestPath)) throw new Error('EPOCH2_ROOT_MANIFEST_MISSING')
   assertNoReparsePath(manifestPath)
   return decodeAndVerifyEpoch2RootManifest({
     value: JSON.parse(fs.readFileSync(manifestPath, 'utf8')),
-    expectedApplicationId: input.expectedApplicationId,
     layout: input.layout,
   })
 }

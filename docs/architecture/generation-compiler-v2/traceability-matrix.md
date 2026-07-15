@@ -36,7 +36,7 @@ Coverage rule: the union of `BL-01` through `BL-23` is the continuous normative 
 
 ## Explicit acceptance IDs
 
-`AC-01` through `AC-42` are expanded individually in [TP8](./tp8-cutover-tests-goal3.md#corrected-acceptance-matrix). AC-18 limits OpenAI reasoning to verified `effort/summary`. AC-19 fixes Gemini at provider-owned `v1beta`. AC-24 freezes OpenRouter Images user selection plus providerTag/providerSlug/revision/digest/selection-origin persistence, stable display ordering, exact pin, descriptor options and failure codes. AC-25/26 freeze DeepSeek stable endpoints, rejection of Beta-only tool `strict` and thinking `tool_choice`, and complete native reasoning/tool history. AC-27 freezes LM Studio Responses-first qualification and no runtime protocol fallback. All remaining IDs retain their baseline intent.
+`AC-01` through `AC-42` are expanded individually in [TP8](./tp8-cutover-tests-goal3.md#corrected-acceptance-matrix). AC-18 limits OpenAI reasoning to verified `effort/summary`. AC-19 fixes Gemini at provider-owned `v1beta`. AC-24 freezes OpenRouter Images user selection plus providerTag/providerSlug/revision/digest/selection-origin persistence, stable display ordering, exact pin, descriptor options and failure codes. AC-25/26 freeze DeepSeek stable endpoints, rejection of Beta-only tool `strict` and thinking `tool_choice`, and complete native reasoning/tool history. AC-27 freezes LM Studio Responses-first qualification and no runtime protocol fallback. AC-32/35/36 bind the Owner-fixed production identity `io.github.guxinghai.starverse` to the one explicitly shared epoch root, crash recovery and deletion containment; `.dev`/`.e2e` remain OS identity variants only. All remaining IDs retain their baseline intent.
 
 ## Coverage status
 

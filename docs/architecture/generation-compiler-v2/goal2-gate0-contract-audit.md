@@ -190,9 +190,9 @@ Final Owner selection rule:
 
 Disposition: **The OpenRouter Images provider-routing/request-pin Gate 0 blocker is closed. Its request-side wire shape, user-owned selection algorithm, binding key, candidate ordering, stale/mismatch behavior, option namespace/allowlist and no-switch invariant remain frozen. The compile-time identity remains provider-owned selector data, never post-request generation endpoint ID. The original readable-doc/request-schema discrepancy remains a versioned routing regression risk, not a routing blocker. The native response/SSE decoder Gate 0 is reopened and remains blocking until the 2026-07-15 OpenAPI drift and the enumerated response/framing ambiguities are explicitly re-frozen; no production decoder is authorized before then.**
 
-## Remaining Owner decisions
+## Resolved identity and remaining Owner decisions
 
-- Exact canonical Electron `appId` (repository proves only `productName=Starverse`).
+- Canonical packaged identity is resolved: production uses `appId=io.github.guxinghai.starverse`, `productName=Starverse`, and package name `starverse-client`. Only explicit `.dev`/`.e2e` Electron/OS application-ID variants are permitted; ordinary launches deliberately share the explicitly assigned `%APPDATA%\Starverse` userData/managed workspace, while a non-empty explicit `--user-data-dir` remains a smoke/diagnostic override. The managed manifest and ownership checks remain production-appId-bound. `com.starverse.desktop` is neither recognized nor migrated.
 - OpenAI client-managed native-items continuation approval.
 - Explicit endpoint protocol pinning for Ollama/other local profiles; LM Studio is resolved above.
 - OpenRouter beta server web-tool exposure.
@@ -201,4 +201,4 @@ Disposition: **The OpenRouter Images provider-routing/request-pin Gate 0 blocker
 - Whether Anthropic `thinking.display` is user-facing; the compiler/capability type must support the official field either way.
 - OpenRouter first-party endpoint profile scope (one immutable versioned profile for Chat and Images versus an Images-specific profile) and its canonical profile ID.
 
-Production implementation may proceed only for the closed OpenRouter Images routing, LM Studio Responses-first binding/request/continuation, and DeepSeek stable endpoint/thinking-history slices. LM Studio native terminal SSE remains separately blocked. Each remaining decision continues to block its own package/epoch surface; no implementation may infer or cross that unresolved boundary before its ADR entry exists.
+Production implementation may proceed for packaged-identity reconciliation as well as the closed OpenRouter Images routing, LM Studio Responses-first binding/request/continuation, and DeepSeek stable endpoint/thinking-history slices. Identity resolution does not authorize destructive epoch reset: the native Windows coordinator lease and handle-relative/no-follow deletion mechanism remain separate prerequisites. LM Studio native terminal SSE remains separately blocked. Each remaining decision continues to block its own package surface; no implementation may infer or cross that unresolved boundary before its ADR entry exists.

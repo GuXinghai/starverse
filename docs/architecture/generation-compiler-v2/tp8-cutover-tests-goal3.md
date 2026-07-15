@@ -19,7 +19,7 @@ Sequence the destructive epoch and Generation Compiler V2 implementation, enumer
 Prerequisite gate (a closed contract slice may enter production; each unresolved item blocks only its own package/epoch surface):
 
 1. Reconcile current HEAD's two ahead commits onto a branch based on local main; re-run evidence map if main changes.
-2. Correct canonical appId/productName identity and implement the frozen `%APPDATA%\Starverse\workspace\epoch-2\starverse.db` root.
+2. Apply the Owner-fixed `io.github.guxinghai.starverse` / `Starverse` packaged identity from one authority and implement the frozen `%APPDATA%\Starverse\workspace\epoch-2\starverse.db` root; `.dev`/`.e2e` change only dev/E2E runtime AppUserModelID, and ordinary launches explicitly share the production data root. A non-empty smoke/diagnostic `--user-data-dir` override creates no managed-root identity.
 3. Bind every Gemini Developer API codec to the provider-owned `v1beta` version and add guards against scattered version literals or fallback.
 4. Freeze OpenAI continuation, OpenRouter beta-tool exposure and transport retry policy; carry forward the already-fixed LM Studio `lmstudio-openresponses` qualification result, reset and endpoint-descriptor policies.
 5. Freeze current Anthropic model rule matrix.
@@ -145,11 +145,11 @@ Baseline IDs remain stable; AC-18 and AC-19 are corrected by current official ev
 | AC-29 | V1 snapshots are zero. |
 | AC-30 | Legacy managed attachments/images/derived/cache are removed. |
 | AC-31 | Legacy generation settings/meta keys are unregistered. |
-| AC-32 | `%APPDATA%\Starverse\workspace\epoch-2\starverse.db` contains only V2 schema; V2 never opens legacy `chat.db`. |
+| AC-32 | The production identity is exactly `io.github.guxinghai.starverse` / `Starverse` / `starverse-client`; its verified manifest owns `%APPDATA%\Starverse\workspace\epoch-2\starverse.db`, which contains only V2 schema and never opens legacy `chat.db`. Ordinary `.dev`/`.e2e` launches explicitly share that data root; a non-empty explicit `--user-data-dir` is a bounded smoke/diagnostic override, not another managed-root identity. |
 | AC-33 | Only the five named, schema-valid `providerCredentials.v1.*` records using `electron_safe_storage` survive. |
 | AC-34 | Custom endpoints/secrets are removed. |
-| AC-35 | Reset is crash-resumable and idempotent. |
-| AC-36 | Reset never deletes outside proven managed roots. |
+| AC-35 | Reset is crash-resumable and idempotent under the canonical production ownership identity used by its manifest and coordinator lease. |
+| AC-36 | Reset never deletes outside roots proven for the canonical production ownership identity; `.dev`/`.e2e`, `com.starverse.desktop` and arbitrary IDs grant no independent ownership of the shared root. |
 | AC-37 | All static checks pass. |
 | AC-38 | Full automated suite passes. |
 | AC-39 | Every enabled representative provider/protocol live smoke passes. |
