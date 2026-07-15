@@ -26,6 +26,14 @@ export type DecodedResolvedGenerationIntentV2 = Readonly<{
   value: ResolvedGenerationIntentV2
 }>
 
+const decodedResolvedGenerationIntentsV2 = new WeakSet<object>()
+
+export function isDecodedResolvedGenerationIntentV2(
+  value: unknown,
+): value is DecodedResolvedGenerationIntentV2 {
+  return Boolean(value && typeof value === 'object' && decodedResolvedGenerationIntentsV2.has(value))
+}
+
 export class ResolvedGenerationIntentV2Error extends Error {
   constructor(readonly code: 'GENERATION_V2_RESOLVED_INTENT_INCOMPLETE') {
     super(code)
@@ -40,7 +48,7 @@ export function decodeResolvedGenerationIntentV2(value: unknown): DecodedResolve
       decoded.providerExtension === undefined) {
     throw new ResolvedGenerationIntentV2Error('GENERATION_V2_RESOLVED_INTENT_INCOMPLETE')
   }
-  return Object.freeze({
+  const result = Object.freeze({
     trust: 'decoded_unverified',
     value: Object.freeze({
       schemaVersion: 2,
@@ -53,4 +61,6 @@ export function decodeResolvedGenerationIntentV2(value: unknown): DecodedResolve
       providerExtension: decoded.providerExtension,
     }),
   })
+  decodedResolvedGenerationIntentsV2.add(result)
+  return result
 }

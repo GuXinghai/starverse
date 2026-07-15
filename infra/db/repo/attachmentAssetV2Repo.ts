@@ -7,6 +7,10 @@ import {
   type AttachmentIntentV2,
 } from '../../../src/next/generation-v2/domain/generationIntentV2'
 import {
+  isDecodedResolvedGenerationIntentV2,
+  type DecodedResolvedGenerationIntentV2,
+} from '../../../src/next/generation-v2/domain/resolvedGenerationIntentV2'
+import {
   GenerationV2Digest,
   GenerationV2Identity,
   readGenerationV2Digest,
@@ -58,6 +62,20 @@ export type ResolvedAttachmentAssetAuthorityV2 = Readonly<{
   revision: AttachmentAssetRevisionRepositoryFactV2
 }>
 
+export type AttachmentProviderFileRequirementV2 = Readonly<{
+  assetId: GenerationV2Identity<'asset_id'>
+  assetRevisionId: GenerationV2Identity<'asset_revision_id'>
+  assetSha256: GenerationV2Digest<'asset_sha256'>
+}>
+
+export type ResolvedAttachmentSetAuthorityV2 = Readonly<{
+  trust: 'resolved_attachment_set_authority'
+  usage: 'resolved_intent_attachment_set_verified'
+  attachments: readonly ResolvedAttachmentAssetAuthorityV2[]
+  providerFileRequirements: readonly AttachmentProviderFileRequirementV2[]
+  requiresProviderFileAuthority: boolean
+}>
+
 export type VerifiedAttachmentSendBytesLeaseV2 = Readonly<{
   trust: 'verified_attachment_send_bytes_lease'
   assetId: GenerationV2Identity<'asset_id'>
@@ -77,6 +95,7 @@ export class AttachmentAssetV2RepoError extends Error {
     | 'GENERATION_V2_ASSET_NOT_FOUND'
     | 'GENERATION_V2_ASSET_RETIRED'
     | 'GENERATION_V2_ASSET_INTENT_MISMATCH'
+    | 'GENERATION_V2_ASSET_DUPLICATE_REFERENCE'
     | 'GENERATION_V2_ASSET_SEND_BYTES_NOT_INCLUDED'
     | 'GENERATION_V2_ASSET_BYTES_MISMATCH'
     | 'GENERATION_V2_ASSET_BYTES_DISPOSED'
@@ -119,6 +138,7 @@ type AttachmentReferenceV2 = Readonly<{
 const blobFacts = new WeakSet<object>()
 const revisionFacts = new WeakSet<object>()
 const attachmentAuthorities = new WeakSet<object>()
+const attachmentSetAuthorities = new WeakSet<object>()
 const verifiedSendBytesAuthorities = new WeakSet<object>()
 const disposedSendBytesAuthorities = new WeakSet<object>()
 const consumingSendBytesAuthorities = new WeakSet<object>()
@@ -127,6 +147,7 @@ const pendingSendBytesByReferenceAuthority = new WeakMap<object, {
   values: VerifiedAttachmentSendBytesLeaseV2[]
 }>()
 const attachmentAuthorityContexts = new WeakMap<object, GenerationV2AuthorityTransactionContextV2>()
+const attachmentSetAuthorityContexts = new WeakMap<object, GenerationV2AuthorityTransactionContextV2>()
 const repositoryScopes = new WeakMap<object, object>()
 
 const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype) as object
@@ -318,6 +339,14 @@ export function isResolvedAttachmentAssetAuthorityV2(
   return Boolean(context && isGenerationV2AuthorityTransactionContextV2(context))
 }
 
+export function isResolvedAttachmentSetAuthorityV2(
+  value: unknown,
+): value is ResolvedAttachmentSetAuthorityV2 {
+  if (!value || typeof value !== 'object' || !attachmentSetAuthorities.has(value)) return false
+  const context = attachmentSetAuthorityContexts.get(value)
+  return Boolean(context && isGenerationV2AuthorityTransactionContextV2(context))
+}
+
 export function isVerifiedAttachmentSendBytesLeaseV2(
   value: unknown,
 ): value is VerifiedAttachmentSendBytesLeaseV2 {
@@ -483,6 +512,106 @@ export class AttachmentAssetV2Repo {
       WHERE r.asset_id = ? AND r.asset_revision_id = ?`).get(assetId, assetRevisionId) as JoinedRevisionRow | undefined
     if (!row) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_NOT_FOUND')
     return decodeRevisionRow(row, this.scope)
+  }
+
+  withSynchronousResolvedIntentAttachmentSetAuthority<T>(
+    context: GenerationV2AuthorityTransactionContextV2,
+    resolvedIntent: DecodedResolvedGenerationIntentV2,
+    use: (authority: ResolvedAttachmentSetAuthorityV2) => T extends PromiseLike<unknown> ? never : T,
+  ): T {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    if (typeof use !== 'function') throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+    if (!isDecodedResolvedGenerationIntentV2(resolvedIntent)) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+    }
+    const intents = resolvedIntent.value.attachments
+    const references = intents.map((intent) => Object.freeze({
+      assetId: readGenerationV2Identity(intent.assetId, 'asset_id'),
+      assetRevisionId: readGenerationV2Identity(intent.assetRevisionId, 'asset_revision_id'),
+      assetSha256: readGenerationV2Digest(intent.assetSha256, 'asset_sha256'),
+      conversion: intent.conversion,
+    }))
+    const revisionKeys = references.map((reference) => reference.assetRevisionId)
+    if (new Set(revisionKeys).size !== revisionKeys.length) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_DUPLICATE_REFERENCE')
+    }
+    const facts = references.map((reference) => this.resolveReferenceFact(reference))
+    const pendingByAttachment: VerifiedAttachmentSendBytesLeaseV2[][] = facts.map(() => [])
+    const attachments = facts.map((fact, index) => {
+      const authority = Object.freeze({
+        trust: 'resolved_attachment_asset_authority' as const,
+        usage: 'snapshot_reference_verified' as const,
+        intent: intents[index],
+        revision: fact,
+      })
+      attachmentAuthorities.add(authority)
+      attachmentAuthorityContexts.set(authority, context)
+      repositoryScopes.set(authority, this.scope)
+      pendingSendBytesByReferenceAuthority.set(authority, { values: pendingByAttachment[index] })
+      return authority
+    })
+    const providerFileRequirements = attachments
+      .filter((attachment) => attachment.intent.include && attachment.intent.sendAs === 'provider_file')
+      .map((attachment) => Object.freeze({
+        assetId: attachment.revision.assetId,
+        assetRevisionId: attachment.revision.assetRevisionId,
+        assetSha256: attachment.revision.blob.sha256,
+      }))
+    const authority = Object.freeze({
+      trust: 'resolved_attachment_set_authority' as const,
+      usage: 'resolved_intent_attachment_set_verified' as const,
+      attachments: Object.freeze(attachments),
+      providerFileRequirements: Object.freeze(providerFileRequirements),
+      requiresProviderFileAuthority: providerFileRequirements.length > 0,
+    })
+    attachmentSetAuthorities.add(authority)
+    attachmentSetAuthorityContexts.set(authority, context)
+    repositoryScopes.set(authority, this.scope)
+    let completed = false
+    const revokeAuthorities = () => {
+      attachmentSetAuthorities.delete(authority)
+      attachmentSetAuthorityContexts.delete(authority)
+      repositoryScopes.delete(authority)
+      for (const attachment of attachments) {
+        pendingSendBytesByReferenceAuthority.delete(attachment)
+        attachmentAuthorities.delete(attachment)
+        attachmentAuthorityContexts.delete(attachment)
+        repositoryScopes.delete(attachment)
+      }
+    }
+    registerGenerationV2AuthorityTransactionParticipantV2(context, this.#db, {
+      preCommit: () => {
+        if (!completed) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
+        references.forEach((reference, index) => {
+          const finalFact = this.resolveReferenceFact(reference)
+          const initialFact = facts[index]
+          if (finalFact.assetId.value !== initialFact.assetId.value ||
+              finalFact.assetRevisionId.value !== initialFact.assetRevisionId.value ||
+              finalFact.blob.blobId.value !== initialFact.blob.blobId.value ||
+              finalFact.blob.sha256.value !== initialFact.blob.sha256.value) {
+            throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
+          }
+        })
+      },
+      committed: () => {
+        revokeAuthorities()
+        for (const pending of pendingByAttachment) {
+          for (const value of pending) verifiedSendBytesAuthorities.add(value)
+        }
+      },
+      rolledBack: () => {
+        revokeAuthorities()
+        for (const pending of pendingByAttachment) revokePendingVerifiedSendBytes(pending)
+      },
+    })
+    try {
+      const result = use(authority)
+      if (hasThenMember(result)) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+      completed = true
+      return result
+    } finally {
+      revokeAuthorities()
+    }
   }
 
   withSynchronousSnapshotReferenceAuthority<T>(

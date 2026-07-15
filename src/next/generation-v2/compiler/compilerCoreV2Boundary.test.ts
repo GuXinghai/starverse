@@ -122,13 +122,15 @@ describe('Generation Compiler V2 core boundary', () => {
       for (const file of productionSources(path.resolve(root))) {
         if (file === adapter) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
-          .not.toMatch(/attachmentAssetV2Repo|ResolvedAttachmentAssetAuthorityV2|VerifiedAttachmentSendBytesLeaseV2/iu)
+          .not.toMatch(/attachmentAssetV2Repo|ResolvedAttachment(?:Asset|Set)AuthorityV2|VerifiedAttachmentSendBytesLeaseV2/iu)
       }
     }
     const source = read('infra/db/repo/attachmentAssetV2Repo.ts')
     expect(source).not.toMatch(/fileAssetStoreRepo|providerFileUploadCache|providerFileInputMapper|apiKey|credentialFingerprint|baseUrl|dataUrl|fetch\(|net\.request|node:fs|ipcMain/iu)
     expect(source).toContain("usage: 'snapshot_reference_verified'")
+    expect(source).toContain("usage: 'resolved_intent_attachment_set_verified'")
     expect(source).toContain("trust: 'verified_attachment_send_bytes_lease'")
+    expect(source).not.toMatch(/providerFileDescriptor|provider_file_descriptor|upload|node:path/iu)
     expect(source).not.toMatch(/send_bytes_preflight_verified/iu)
   })
 

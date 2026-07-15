@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
-import { decodeResolvedGenerationIntentV2 } from './resolvedGenerationIntentV2'
+import {
+  decodeResolvedGenerationIntentV2,
+  isDecodedResolvedGenerationIntentV2,
+} from './resolvedGenerationIntentV2'
 
 const complete = {
   schemaVersion: 2,
@@ -16,6 +19,8 @@ describe('resolved Generation V2 intent structural codec', () => {
   it('requires every resolved semantic section and remains decoded-unverified', () => {
     const decoded = decodeResolvedGenerationIntentV2(complete)
     expect(decoded.trust).toBe('decoded_unverified')
+    expect(isDecodedResolvedGenerationIntentV2(decoded)).toBe(true)
+    expect(isDecodedResolvedGenerationIntentV2({ ...decoded })).toBe(false)
     expect(decoded.value).toEqual(complete)
     expect(Object.isFrozen(decoded)).toBe(true)
     expect(Object.isFrozen(decoded.value)).toBe(true)
