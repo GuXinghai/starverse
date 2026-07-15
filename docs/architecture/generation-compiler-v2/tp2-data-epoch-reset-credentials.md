@@ -158,7 +158,7 @@ Database-heavy tests must run after `npm run rebuild:node`; packaged Electron sm
 
 | Blocking decision | Required resolution |
 |---|---|
-| Stable application identity | Goal 2 must replace placeholder `electron-builder.json5` appId/productName with the canonical Starverse identity before creating root markers. This is an implementation prerequisite, not an open workspace-path decision. |
+| Stable application identity | Resolved by Owner: production is exactly `appId=io.github.guxinghai.starverse`, `productName=Starverse`, package name `starverse-client`. `.dev`/`.e2e` are the only Electron/OS application-ID variants; ordinary launches explicitly share `%APPDATA%\Starverse`, a non-empty explicit `--user-data-dir` remains a smoke/diagnostic override, and managed root marker/ownership/reset validation always use the production appId. `com.starverse.desktop` is not migrated or recognized. |
 | Fixed epoch root | Implement exactly `%APPDATA%\Starverse\workspace\epoch-2\starverse.db`; same-path or renamed legacy `chat.db` reuse is forbidden. |
 | Managed runtimes/plugins | Clear them with the legacy workspace. Their registry is erased, so preservation would require the forbidden rehydration/migration path. |
 | Preserved preferences | Preserve only `language`, `languageManual`, `theme`, `fontSize`, `windowBounds`, `windowMaximized`, `sidebarWidth`, `sidebarCollapsed`, and privacy/telemetry preference `analyticsEnabled`. Delete `enableNotifications` and every non-whitelisted config key. |
@@ -166,4 +166,4 @@ Database-heavy tests must run after `npm run rebuild:node`; packaged Electron sm
 | Corrupt config | Fail closed before reset if the five whitelisted encrypted records cannot be parsed/copied; provide manual recovery instructions instead of silently losing credentials. |
 | Legacy plaintext standard keys | Delete rather than migrate. Only the five schema-valid `electron_safe_storage` leaves survive. |
 
-The data boundary is frozen. Goal 2 remains gated only on correcting the packaged Starverse identity and implementing/verifying the coordinator safety machinery; no further Owner choice is required for the epoch root, deletion scope, preference whitelist, or credential policy.
+The data boundary and packaged identity are frozen. Goal 2 remains gated on implementing and verifying the coordinator safety machinery; no further Owner choice is required for the app identity, epoch root, deletion scope, preference whitelist, or credential policy.

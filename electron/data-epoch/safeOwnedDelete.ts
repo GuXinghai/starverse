@@ -91,12 +91,10 @@ function inspectTreePostOrder(target: string, output: OwnedEntry[]): void {
 
 function verifiedOwnedRoot(input: Readonly<{
   layout: Epoch2WorkspaceLayout
-  expectedApplicationId: string
   rootScope: 'product' | 'epoch'
 }>): Readonly<{ ownedRoot: string; manifestDigest: string }> {
   try {
     const manifest = readAndVerifyEpoch2RootManifest({
-      expectedApplicationId: input.expectedApplicationId,
       layout: input.layout,
     })
     return {
@@ -110,7 +108,6 @@ function verifiedOwnedRoot(input: Readonly<{
 
 export function inspectEpoch2OwnedDeleteTarget(input: Readonly<{
   layout: Epoch2WorkspaceLayout
-  expectedApplicationId: string
   rootScope: 'product' | 'epoch'
   target: string
   protectedPaths: readonly string[]
@@ -152,7 +149,6 @@ export function inspectEpoch2OwnedDeleteTarget(input: Readonly<{
 export function assertEpoch2OwnedDeletePlanFresh(input: Readonly<{
   plan: Epoch2OwnedDeletePlan
   layout: Epoch2WorkspaceLayout
-  expectedApplicationId: string
   rootScope: 'product' | 'epoch'
 }>): void {
   const plan = input.plan

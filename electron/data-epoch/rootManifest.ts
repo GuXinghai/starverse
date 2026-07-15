@@ -1,8 +1,12 @@
 import { createHash } from 'node:crypto'
 import path from 'node:path'
+import {
+  resolveStarverseProductIdentity,
+} from '../productIdentity'
 
 export const STARVERSE_DATA_EPOCH = 2 as const
-export const STARVERSE_PRODUCT_DIRECTORY = 'Starverse' as const
+const STARVERSE_PRODUCTION_IDENTITY = resolveStarverseProductIdentity('production')
+export const STARVERSE_PRODUCT_DIRECTORY = STARVERSE_PRODUCTION_IDENTITY.productDirectory
 export const STARVERSE_EPOCH_DIRECTORY = 'epoch-2' as const
 export const STARVERSE_EPOCH_DATABASE = 'starverse.db' as const
 const EPOCH2_LAYOUT_BRAND: unique symbol = Symbol('starverse.epoch2.workspace-layout')
@@ -31,31 +35,18 @@ export type Epoch2RootManifest = Readonly<{
   schemaVersion: 1
   dataEpoch: typeof STARVERSE_DATA_EPOCH
   applicationId: string
-  productName: typeof STARVERSE_PRODUCT_DIRECTORY
+  productDirectory: string
   rootId: string
 }>
 
 export class Epoch2RootManifestError extends Error {
   constructor(readonly code:
-    | 'EPOCH2_APPLICATION_ID_REQUIRED'
-    | 'EPOCH2_APPLICATION_ID_PLACEHOLDER'
     | 'EPOCH2_APP_DATA_ROOT_UNSAFE'
     | 'EPOCH2_ROOT_MANIFEST_INVALID'
     | 'EPOCH2_ROOT_MANIFEST_MISMATCH') {
     super(code)
     this.name = 'Epoch2RootManifestError'
   }
-}
-
-function requiredApplicationId(value: unknown): string {
-  if (typeof value !== 'string' || value.trim() === '') {
-    throw new Epoch2RootManifestError('EPOCH2_APPLICATION_ID_REQUIRED')
-  }
-  const applicationId = value.trim()
-  if (/yourapp|placeholder|example|changeme|todo/iu.test(applicationId)) {
-    throw new Epoch2RootManifestError('EPOCH2_APPLICATION_ID_PLACEHOLDER')
-  }
-  return applicationId
 }
 
 function canonicalPathKey(value: string): string {
@@ -164,39 +155,33 @@ function assertDerivedLayout(layout: Epoch2WorkspaceLayout): void {
 }
 
 export function createEpoch2RootManifest(input: Readonly<{
-  applicationId: unknown
   layout: Epoch2WorkspaceLayout
 }>): Epoch2RootManifest {
   assertDerivedLayout(input.layout)
-  const applicationId = requiredApplicationId(input.applicationId)
   return Object.freeze({
     schemaVersion: 1,
     dataEpoch: STARVERSE_DATA_EPOCH,
-    applicationId,
-    productName: STARVERSE_PRODUCT_DIRECTORY,
-    rootId: rootId(applicationId, input.layout.epochRoot),
+    applicationId: STARVERSE_PRODUCTION_IDENTITY.applicationId,
+    productDirectory: STARVERSE_PRODUCT_DIRECTORY,
+    rootId: rootId(STARVERSE_PRODUCTION_IDENTITY.applicationId, input.layout.epochRoot),
   })
 }
 
 export function decodeAndVerifyEpoch2RootManifest(input: Readonly<{
   value: unknown
-  expectedApplicationId: unknown
   layout: Epoch2WorkspaceLayout
 }>): Epoch2RootManifest {
-  const expected = createEpoch2RootManifest({
-    applicationId: input.expectedApplicationId,
-    layout: input.layout,
-  })
+  const expected = createEpoch2RootManifest({ layout: input.layout })
   if (!input.value || typeof input.value !== 'object' || Array.isArray(input.value)) {
     throw new Epoch2RootManifestError('EPOCH2_ROOT_MANIFEST_INVALID')
   }
   const value = input.value as Record<string, unknown>
   const keys = Object.keys(value).sort()
-  if (keys.join('\0') !== ['applicationId', 'dataEpoch', 'productName', 'rootId', 'schemaVersion'].sort().join('\0')) {
+  if (keys.join('\0') !== ['applicationId', 'dataEpoch', 'productDirectory', 'rootId', 'schemaVersion'].sort().join('\0')) {
     throw new Epoch2RootManifestError('EPOCH2_ROOT_MANIFEST_INVALID')
   }
   if (value.schemaVersion !== 1 || value.dataEpoch !== STARVERSE_DATA_EPOCH ||
-      value.productName !== STARVERSE_PRODUCT_DIRECTORY || typeof value.applicationId !== 'string' ||
+      value.productDirectory !== expected.productDirectory || typeof value.applicationId !== 'string' ||
       typeof value.rootId !== 'string') {
     throw new Epoch2RootManifestError('EPOCH2_ROOT_MANIFEST_INVALID')
   }

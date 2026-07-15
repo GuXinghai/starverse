@@ -81,9 +81,20 @@ import {
 import { DB_SCHEMA_VERSION } from '../infra/db/schemaVersion'
 import { initMainI18n, t } from './i18n/mainI18n'
 import { basenameForLog, summarizeErrorForLog } from './ipc/logSanitizer'
+import {
+  configureStarverseElectronIdentity,
+  hasExplicitUserDataOverride,
+} from './bootstrap/productIdentityBootstrap'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const nodeRequire = createRequire(import.meta.url)
+configureStarverseElectronIdentity({
+  app,
+  isPackaged: app.isPackaged,
+  isE2e: process.env.SV_ELECTRON_COMPATIBLE_E2E === '1',
+  platform: process.platform,
+  userDataOverrideRequested: hasExplicitUserDataOverride(process.argv),
+})
 const DB_LOG_DIR = path.join(app.getPath('userData'), 'logs')
 
 // 环境检测

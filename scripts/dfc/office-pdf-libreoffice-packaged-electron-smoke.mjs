@@ -160,8 +160,8 @@ async function buildPackagedAppDir() {
   await runPackageManager('npm', ['run', 'rebuild:electron'], { timeoutMs: 10 * 60 * 1000 })
   await runPackageManager('npm', ['run', 'build:worker'], { timeoutMs: 5 * 60 * 1000 })
   await runPackageManager('npx', ['vite', 'build', '--config', 'vite.config.ts'], { timeoutMs: 10 * 60 * 1000 })
-  await runPackageManager('npx', ['electron-builder', '--dir', '--win', '--x64', '--config', 'electron-builder.json5'], { timeoutMs: 20 * 60 * 1000 })
-  return path.join(repoRoot, 'release', packageJson.version, 'win-unpacked', 'YourAppName.exe')
+  await runPackageManager('npx', ['electron-builder', '--dir', '--win', '--x64'], { timeoutMs: 20 * 60 * 1000 })
+  return path.join(repoRoot, 'release', packageJson.version, 'win-unpacked', `${packageJson.productName}.exe`)
 }
 
 async function runPackageManager(command, args, options) {
