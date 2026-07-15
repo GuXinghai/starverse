@@ -89,6 +89,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/generationConfigV2Repo.ts'),
       path.resolve('infra/db/repo/attachmentAssetV2Repo.ts'),
       path.resolve('infra/db/repo/generationV2AuthorityTransactionInternal.ts'),
+      path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -104,10 +105,13 @@ describe('Generation Compiler V2 core boundary', () => {
   })
 
   it('keeps the epoch-2 config repository and resolved authority out of legacy runtime paths', () => {
-    const adapter = path.resolve('infra/db/repo/generationConfigV2Repo.ts')
+    const adapters = new Set([
+      path.resolve('infra/db/repo/generationConfigV2Repo.ts'),
+      path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts'),
+    ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === adapter) continue
+        if (adapters.has(file)) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/generationConfigV2Repo|ResolvedGenerationConfigAuthorityV2/iu)
       }
@@ -117,10 +121,13 @@ describe('Generation Compiler V2 core boundary', () => {
   })
 
   it('keeps attachment provenance local, immutable and outside legacy file/provider paths', () => {
-    const adapter = path.resolve('infra/db/repo/attachmentAssetV2Repo.ts')
+    const adapters = new Set([
+      path.resolve('infra/db/repo/attachmentAssetV2Repo.ts'),
+      path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts'),
+    ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === adapter) continue
+        if (adapters.has(file)) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/attachmentAssetV2Repo|ResolvedAttachment(?:Asset|Set)AuthorityV2|VerifiedAttachmentSendBytesLeaseV2/iu)
       }
@@ -139,6 +146,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/generationV2AuthorityTransactionInternal.ts'),
       path.resolve('infra/db/repo/generationConfigV2Repo.ts'),
       path.resolve('infra/db/repo/attachmentAssetV2Repo.ts'),
+      path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -153,6 +161,21 @@ describe('Generation Compiler V2 core boundary', () => {
       .not.toContain('runGenerationV2AuthorityTransactionOnOwnedConnectionV2')
     expect(read('infra/db/repo/attachmentAssetV2Repo.ts'))
       .not.toContain('runGenerationV2AuthorityTransactionOnOwnedConnectionV2')
+  })
+
+  it('keeps command facts authority transactional, non-executable and outside production consumers', () => {
+    const adapter = path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts')
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === adapter) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+          .not.toMatch(/generationCommandFactsAuthorityV2|GenerationCommandFactsAuthorityV2/iu)
+      }
+    }
+    const source = read('infra/db/repo/generationCommandFactsAuthorityV2.ts')
+    expect(source).toContain("usage: 'snapshot_semantics_and_attachment_provenance_only'")
+    expect(source).toContain("executionAuthority: 'none'")
+    expect(source).not.toMatch(/assistantAnswerGenerationSnapshot|operation|preparedRequest|providerFileDescriptor|providerFileUpload|apiKey|credential|fetch\(|net\.request|ipcMain|node:fs|node:path/iu)
   })
 
   it('keeps the inactive V2 descriptor repository adapter out of startup and legacy production imports', () => {
