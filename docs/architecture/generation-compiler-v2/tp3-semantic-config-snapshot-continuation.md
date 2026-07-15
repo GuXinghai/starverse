@@ -114,6 +114,16 @@ and includes config revisions plus provider/capability/attachment/tool evidence.
 It does not issue runtime/compiler authority; that remains dependent on private
 resolver-issued facts and the later atomic command transaction.
 
+Local attachment provenance status (2026-07-15): B1 is staged with zero
+activation in the epoch-2 schema composer. It persists content-addressed blobs
+and immutable source revisions only, resolves exactly
+`assetId + assetRevisionId + assetSha256`, and grants a branded reference
+authority only during a synchronous `BEGIN IMMEDIATE` consumer with pre/post
+validation. It does not prove that managed bytes are currently readable, does
+not authorize a conversion, and does not issue provider-file descriptors.
+Derived revisions remain blocked until a revisioned converter registry can issue
+their provenance; no legacy current-revision or upload-cache fallback is used.
+
 `AssistantAnswerGenerationSnapshotV2` contains:
 
 - complete resolved semantic config;

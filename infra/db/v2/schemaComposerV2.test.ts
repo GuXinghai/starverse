@@ -43,7 +43,9 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     const first = inspectGenerationV2SchemaBundle(root)
     const second = inspectGenerationV2SchemaBundle(root)
     expect(first).toEqual(second)
-    expect(first.fragmentIds).toEqual(['core_conversation_v1', 'generation_config_v1', 'openrouter_images_v1'])
+    expect(first.fragmentIds).toEqual([
+      'core_conversation_v1', 'generation_config_v1', 'attachment_asset_v1', 'openrouter_images_v1',
+    ])
     expect(first.schemaDigest).toMatch(/^[0-9a-f]{64}$/u)
     expect(Object.isFrozen(first)).toBe(true)
     expect(Object.isFrozen(first.fragmentIds)).toBe(true)
@@ -53,7 +55,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       expect(applyGenerationV2Schema(db, root)).toEqual(applied)
       expect(db.prepare('SELECT * FROM generation_v2_schema_manifest').get()).toEqual({
         manifest_id: 'generation_compiler_v2', schema_version: 1,
-        schema_digest: first.schemaDigest, fragment_count: 3,
+        schema_digest: first.schemaDigest, fragment_count: 4,
         object_projection_digest: applied.objectProjectionDigest,
       })
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='openrouter_image_endpoint_bindings'").get())
@@ -72,6 +74,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     fs.mkdirSync(v2, { recursive: true })
     fs.copyFileSync(path.resolve('infra/db/v2/coreConversationSchema.sql'), path.join(v2, 'coreConversationSchema.sql'))
     fs.copyFileSync(path.resolve('infra/db/v2/generationConfigSchema.sql'), path.join(v2, 'generationConfigSchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/attachmentAssetSchema.sql'), path.join(v2, 'attachmentAssetSchema.sql'))
     fs.writeFileSync(path.join(v2, 'openRouterImagesSchema.sql'), [
       '-- Generation Compiler V2 injected failure fixture.',
       'CREATE TABLE IF NOT EXISTS injected_partial_v2 (id TEXT PRIMARY KEY);',
