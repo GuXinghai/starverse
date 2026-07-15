@@ -140,6 +140,19 @@ Decisions:
 - No web/image output capability; never route DeepSeek through Generic.
 - Delete boolean mapper and model-name regex.
 
+Implementation status (2026-07-15): the stable request/native-history/SSE codecs
+remain zero-activation and now have a provider-owned exhaustive semantic
+projection in front of them. The projection re-decodes a complete resolved
+intent and emits only `encoded`, `accepted_no_wire`, or `rejected` dispositions;
+its classification is `deepseek_stable_intent_projection_non_executable` and it
+has no execution authority. Official Chat/Thinking fields and constraints were
+rechecked: low/medium/high effort maps to `high`, xhigh maps to `max`, and
+`minimal` rejects; thinking no-effect sampling, deprecated penalties, invalid
+temperature/stop values, web/image, enabled tools without definition authority,
+and included attachments without encoding authority all reject before request
+compilation. Attachment semantic paths use array indices and are globally unique.
+No endpoint, credential, DB ledger, transport, IPC or legacy path is activated.
+
 ## Generic, LM Studio, and Ollama
 
 Code evidence:

@@ -70,7 +70,7 @@ describe('Generation V2 DeepSeek stable provider-family contract', () => {
     ))
     const audit = JSON.parse(bytes.toString('utf8'))
     expect(createHash('sha256').update(bytes).digest('hex'))
-      .toBe('57534e5e44c2f8a8aa353827c61c4504c97541a433b8831a1f14b17a32e518b5')
+      .toBe('0022edabf76e51ce88fc6d45310ad889b8a84fd037c72c287944449ba8a42cc7')
     expect(audit.capturedAt).toBe(contract.evidence.verifiedAt)
     expect(audit.provider).toBe(contract.providerId)
     expect(audit.reviewedWireFacts.origin).toBe(contract.apiOrigin)

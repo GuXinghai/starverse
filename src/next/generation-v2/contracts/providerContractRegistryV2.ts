@@ -218,7 +218,7 @@ const DEEPSEEK_STABLE_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
     localArtifacts: Object.freeze([Object.freeze({
       id: 'deepseek-stable-api-contract-20260715',
       path: 'docs/architecture/generation-compiler-v2/evidence/deepseek-stable-api-contract-20260715.json',
-      sha256: '57534e5e44c2f8a8aa353827c61c4504c97541a433b8831a1f14b17a32e518b5',
+      sha256: '0022edabf76e51ce88fc6d45310ad889b8a84fd037c72c287944449ba8a42cc7',
     })]),
   }),
 })

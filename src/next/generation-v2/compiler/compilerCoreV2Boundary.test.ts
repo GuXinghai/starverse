@@ -47,6 +47,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/providers/lmstudio-openresponses/nativeItemsV1.ts',
       'src/next/generation-v2/providers/lmstudio-openresponses/continuationArtifactV1.ts',
       'src/next/generation-v2/providers/deepseek/nativeMessagesV1.ts',
+      'src/next/generation-v2/providers/deepseek/chatIntentProjectionV1.ts',
       'src/next/generation-v2/providers/deepseek/chatRequestV1.ts',
       'src/next/generation-v2/providers/deepseek/chatStreamV1.ts',
       'src/next/generation-v2/runner/generationRequestTerminalV2.ts',
@@ -282,6 +283,7 @@ describe('Generation Compiler V2 core boundary', () => {
     }
 
     const request = read('src/next/generation-v2/providers/deepseek/chatRequestV1.ts')
+    const projection = read('src/next/generation-v2/providers/deepseek/chatIntentProjectionV1.ts')
     const native = read('src/next/generation-v2/providers/deepseek/nativeMessagesV1.ts')
     const beta = read('src/next/generation-v2/contracts/deepSeekBetaApiContractV2.ts')
     expect(beta).toContain("apiOrigin: 'https://api.deepseek.com/beta'")
@@ -290,6 +292,9 @@ describe('Generation Compiler V2 core boundary', () => {
     expect(beta).not.toMatch(/readDeepSeekStableApiContract|deepseek-stable-chat|fetch\(|net\.request|ipcMain/iu)
     expect(request).toContain("'DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED'")
     expect(request).not.toMatch(/applyProviderGenerationParamsPatch|extraBody|wirePath|fetch\(|runtimeProviderAdapter/iu)
+    expect(projection).toContain("classification: 'deepseek_stable_intent_projection_non_executable'")
+    expect(projection).toContain("executionAuthority: 'none'")
+    expect(projection).not.toMatch(/better-sqlite3|infra\/db|ipcMain|fetch\(|net\.request|runtimeProviderAdapter|wirePath|extraBody/iu)
     expect(native).toContain('reasoning_content')
     expect(native).not.toMatch(/reasoningDisplay|DeepSeekTextChat|deepSeekAdapter|ipcMain/iu)
   })

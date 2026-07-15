@@ -43,6 +43,41 @@
         "tool_calls"
       ]
     },
+    "semanticProjection": {
+      "wireFields": {
+        "maxOutputTokens": "max_tokens",
+        "temperature": "temperature",
+        "topP": "top_p",
+        "stop": "stop",
+        "reasoningMode": "thinking.type",
+        "reasoningEffort": "reasoning_effort"
+      },
+      "reasoningEffortValues": [
+        "high",
+        "max"
+      ],
+      "documentedCompatibilityMapping": {
+        "low": "high",
+        "medium": "high",
+        "xhigh": "max"
+      },
+      "unsupportedCommonEffort": "minimal",
+      "thinkingNoEffectFieldsRejectedBeforeCompilation": [
+        "temperature",
+        "top_p",
+        "frequency_penalty",
+        "presence_penalty"
+      ],
+      "deprecatedFieldsRejectedBeforeCompilation": [
+        "frequency_penalty",
+        "presence_penalty"
+      ],
+      "providerValueConstraints": {
+        "temperature": "0..2",
+        "top_p": "0..1",
+        "stopMaximumSequenceCount": 16
+      }
+    },
     "finishReasons": [
       "stop",
       "length",
