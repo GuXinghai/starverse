@@ -98,6 +98,13 @@ provider_continuation_artifact_v2
 
 ## Immutable snapshot
 
+Implementation status (2026-07-15): the strict canonical value/JSON/hash codec is
+staged with zero activation and returns only `decoded_unverified`. It directly
+binds `answerRootId` and `operationId`, requires every resolved semantic section,
+and includes config revisions plus provider/capability/attachment/tool evidence.
+It does not issue runtime/compiler authority; that remains dependent on private
+resolver-issued facts and the later atomic command transaction.
+
 `AssistantAnswerGenerationSnapshotV2` contains:
 
 - complete resolved semantic config;
@@ -105,6 +112,9 @@ provider_continuation_artifact_v2
 - capability revision/evidence binding used at commit;
 - stable attachment asset id + immutable revision/hash, include decision, conversion/sending selection, and provider file descriptor reference;
 - tool enablement, allow scope, side-effect confirmation policy (not the confirmation result);
+- closed tool choice semantics: `omitted`, explicit `auto`, `none`, `required`,
+  or `named(toolId)` where the named tool is in the persisted allowlist; each
+  provider compiler still rejects choices unsupported by its bound contract;
 - snapshot schema/hash and config revision set.
 
 It does not contain compiled request objects/bytes. Every retry reloads snapshot semantics and recompiles against the frozen provider contract/capability binding. If that binding is unavailable or revoked, retry blocks visibly; it never silently rebinds.
