@@ -141,6 +141,8 @@ Decisions:
 
 ## Files, deletion, and tests
 
+The decision-independent OpenAI provider-family facts are staged in `src/next/generation-v2/contracts/openAIResponsesApiContractV2.ts`. This definition centralizes the first-party origin, Bearer authentication, independent Responses/Models/Files endpoint surfaces, typed Responses SSE terminal authority, and the approved `reasoning.effort/summary` field set. It intentionally does not enter the provider-contract registry or issue compiler/transport authority while the mutually exclusive continuation mode remains an Owner decision.
+
 Add separate packages:
 
 ```text
