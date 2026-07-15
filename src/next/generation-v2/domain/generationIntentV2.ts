@@ -42,11 +42,17 @@ export type ImageGenerationIntentV2 =
       stream?: boolean
     }>
 
+export type ToolChoiceIntentV2 =
+  | Readonly<{ mode: 'omitted' }>
+  | Readonly<{ mode: 'auto' | 'none' | 'required' }>
+  | Readonly<{ mode: 'named'; toolId: GenerationV2Identity<'tool_id'> }>
+
 export type ToolPolicyIntentV2 =
   | Readonly<{ mode: 'disabled' }>
   | Readonly<{
       mode: 'enabled'
       allowedToolIds: readonly GenerationV2Identity<'tool_id'>[]
+      toolChoice: ToolChoiceIntentV2
       sideEffectConfirmation: 'required_each_retry'
     }>
 
@@ -292,7 +298,7 @@ function decodeImage(value: unknown): ImageGenerationIntentV2 {
 }
 
 function decodeTools(value: unknown): ToolPolicyIntentV2 {
-  const input = closedObject(value, ['mode', 'allowedToolIds', 'sideEffectConfirmation'])
+  const input = closedObject(value, ['mode', 'allowedToolIds', 'toolChoice', 'sideEffectConfirmation'])
   if (input.mode === 'disabled') {
     if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
     return Object.freeze({ mode: 'disabled' })
@@ -310,9 +316,24 @@ function decodeTools(value: unknown): ToolPolicyIntentV2 {
     throw new GenerationIntentV2Error('GENERATION_V2_INTENT_DUPLICATE_VALUE')
   }
   values.sort((left, right) => compareCodePoints(left.value, right.value))
+  const choice = closedObject(input.toolChoice, ['mode', 'toolId'])
+  let toolChoice: ToolChoiceIntentV2
+  if (choice.mode === 'omitted' || choice.mode === 'auto' || choice.mode === 'none' || choice.mode === 'required') {
+    if (Object.keys(choice).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    toolChoice = Object.freeze({ mode: choice.mode })
+  } else if (choice.mode === 'named' && typeof choice.toolId === 'string' &&
+      values.some((item) => item.value === choice.toolId)) {
+    toolChoice = Object.freeze({
+      mode: 'named',
+      toolId: GenerationV2Identity.create('tool_id', choice.toolId),
+    })
+  } else {
+    throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  }
   return Object.freeze({
     mode: 'enabled',
     allowedToolIds: Object.freeze(values),
+    toolChoice,
     sideEffectConfirmation: 'required_each_retry',
   })
 }

@@ -19,7 +19,7 @@ describe('GenerationIntentLayerV2 codec', () => {
       reasoning: { mode: 'enabled', effort: 'medium', summary: 'auto' },
       web: { mode: 'provider_search', types: ['image', 'web'] },
       image: { mode: 'generate', aspectRatio: '1:1', resolution: '2K', quality: 'high', format: 'png', outputCompression: 80, stream: true },
-      tools: { mode: 'enabled', allowedToolIds: ['search', 'calculator'], sideEffectConfirmation: 'required_each_retry' },
+      tools: { mode: 'enabled', allowedToolIds: ['search', 'calculator'], toolChoice: { mode: 'omitted' }, sideEffectConfirmation: 'required_each_retry' },
       attachments: [{
         assetId: 'asset-1', assetRevisionId: 'rev-1', assetSha256: hash, include: true,
         sendAs: 'provider_file', conversion: 'none',
@@ -59,7 +59,7 @@ describe('GenerationIntentLayerV2 codec', () => {
   it('rejects duplicate tools, attachments and provider options', () => {
     expect(() => decodeGenerationIntentLayerV2({
       schemaVersion: 2,
-      tools: { mode: 'enabled', allowedToolIds: ['search', 'search'], sideEffectConfirmation: 'required_each_retry' },
+      tools: { mode: 'enabled', allowedToolIds: ['search', 'search'], toolChoice: { mode: 'omitted' }, sideEffectConfirmation: 'required_each_retry' },
     })).toThrow('GENERATION_V2_INTENT_DUPLICATE_VALUE')
     expect(() => decodeGenerationIntentLayerV2({
       schemaVersion: 2,
@@ -70,6 +70,35 @@ describe('GenerationIntentLayerV2 codec', () => {
     })).toThrow('GENERATION_V2_INTENT_DUPLICATE_VALUE')
     expect(() => decodeGenerationIntentLayerV2({ schemaVersion: 2, generation: { stop: ['END', 'END'] } }))
       .toThrow('GENERATION_V2_INTENT_DUPLICATE_VALUE')
+  })
+
+  it('preserves omitted and every explicit closed tool choice', () => {
+    for (const toolChoice of [
+      { mode: 'omitted' }, { mode: 'auto' }, { mode: 'none' }, { mode: 'required' },
+      { mode: 'named', toolId: 'search' },
+    ]) {
+      const intent = decodeGenerationIntentLayerV2({
+        schemaVersion: 2,
+        tools: {
+          mode: 'enabled', allowedToolIds: ['search'], toolChoice,
+          sideEffectConfirmation: 'required_each_retry',
+        },
+      })
+      expect(intent.tools?.mode === 'enabled' && intent.tools.toolChoice.mode).toBe(toolChoice.mode)
+      if (toolChoice.mode === 'named') {
+        expect(intent.tools?.mode === 'enabled' && intent.tools.toolChoice.mode === 'named' &&
+          intent.tools.toolChoice.toolId.value).toBe('search')
+      }
+    }
+    for (const toolChoice of [undefined, { mode: 'named', toolId: 'not-allowed' }, { mode: 'unknown' }]) {
+      expect(() => decodeGenerationIntentLayerV2({
+        schemaVersion: 2,
+        tools: {
+          mode: 'enabled', allowedToolIds: ['search'], toolChoice,
+          sideEffectConfirmation: 'required_each_retry',
+        },
+      })).toThrow()
+    }
   })
 
   it('rejects sparse, accessor, extended and symbol-bearing arrays without invoking getters', () => {

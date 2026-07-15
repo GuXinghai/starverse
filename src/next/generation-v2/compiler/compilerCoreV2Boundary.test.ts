@@ -32,6 +32,8 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/compiler/stableSerialize.ts',
       'src/next/generation-v2/domain/identityV2.ts',
       'src/next/generation-v2/domain/generationIntentV2.ts',
+      'src/next/generation-v2/domain/resolvedGenerationIntentV2.ts',
+      'src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2.ts',
       'src/next/generation-v2/domain/providerBindingV2.ts',
       'src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2.ts',
       'src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2.ts',
@@ -109,14 +111,25 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('does not allow the decoded unverified binding record to become compiler or snapshot authority', () => {
     const recordModule = path.resolve('src/next/generation-v2/domain/providerBindingV2.ts')
+    const snapshotCodec = path.resolve(
+      'src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2.ts',
+    )
     const nonExecutableSelection = path.resolve(
       'src/next/generation-v2/providers/openrouter-images/selectionDecisionV2.ts',
     )
     for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
-      if (file === recordModule || file === nonExecutableSelection) continue
+      if (file === recordModule || file === snapshotCodec || file === nonExecutableSelection) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/DecodedProviderBindingRecordV2|decodeProviderBindingRecordV2/u)
     }
+  })
+
+  it('keeps the snapshot codec structural, unverified and outside persistence or execution authority', () => {
+    const source = read('src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2.ts')
+    expect(source).toContain("trust: 'decoded_unverified'")
+    expect(source).not.toMatch(/executionAuthority|ResolvedProviderBindingAuthority|RuntimeCapabilityAuthority|issueAssistant|ipcMain|fetch\(|net\.request|infra\/db|electron\//iu)
+    expect(source).not.toMatch(/apiKey|authorization|credentialRevision|requestPatch|requestParams|extraBody|wirePath|previous_response_id/iu)
+    expect(read('infra/db/schema.sql')).not.toMatch(/assistant_generation_snapshot_v2/iu)
   })
 
   it('does not allow repository-decoded descriptor facts to become compiler or snapshot authority', () => {

@@ -77,7 +77,7 @@ describe('OpenRouter Images V2 intent capability projection', () => {
         format: 'webp', background: 'transparent', outputCompression: 80, stream: false,
       },
       tools: {
-        mode: 'enabled', allowedToolIds: ['tool-1'], sideEffectConfirmation: 'required_each_retry',
+        mode: 'enabled', allowedToolIds: ['tool-1'], toolChoice: { mode: 'omitted' }, sideEffectConfirmation: 'required_each_retry',
       },
       attachments: [
         {
@@ -162,7 +162,7 @@ describe('OpenRouter Images V2 intent capability projection', () => {
       generation: { temperature: 0, candidateCount: 11 },
       reasoning: { mode: 'enabled', effort: 'high' },
       web: { mode: 'provider_search', types: ['web'] },
-      tools: { mode: 'enabled', allowedToolIds: ['tool-1'], sideEffectConfirmation: 'required_each_retry' },
+      tools: { mode: 'enabled', allowedToolIds: ['tool-1'], toolChoice: { mode: 'omitted' }, sideEffectConfirmation: 'required_each_retry' },
     }))
     expect(projection.issues.map((item) => item.semanticPath)).toEqual([
       'generation.candidateCount', 'generation.temperature', 'reasoning', 'tools', 'web',
