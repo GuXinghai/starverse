@@ -131,12 +131,14 @@
 
 ## Remaining work
 
-1. Complete epoch-2 coordinator/path cutover before registering the staged OpenRouter Images repo, settings, IPC or transport; then integrate command/UI so prepared `/images` bytes are exactly captured and sent.
-2. Obtain and record the remaining package-specific Owner decisions before implementing those unrelated slices.
-3. Implement the remaining approved G2-1 through G2-7 batches as their gates close.
-4. Close every AC with direct code/test/smoke evidence and run the complete gate sequence.
-5. Re-freeze the current OpenRouter Images response/SSE contract and update its reviewed definition/OpenAPI evidence before implementing or activating the native decoder.
-6. Establish a revisioned, privately issued OpenRouter first-party profile fact bound to the current epoch-2 credential scope before implementing binding command orchestration.
+- The decision-independent, trustworthy zero-activation staging frontier is exhausted as of `main@93ee4344`. Further registry/schema/authority work would either persist caller self-report or prematurely choose an unresolved execution contract. Resume only when one of the following gates supplies real authority.
+
+1. Owner must provide the canonical packaged `appId`; in the same epoch-coordinator gate, a real Windows/packaged smoke must prove coordinator-held leases plus handle-relative/no-follow native deletion and the restricted key-store mechanism. `appId` alone does not authorize startup cutover or destructive reset.
+2. After that coordinator/vault fact chain exists, Owner must freeze the OpenRouter first-party profile scope and canonical ID so a revisioned profile fact can bind the epoch-2 credential scope and unlock binding/capability authority.
+3. Re-freeze the current OpenRouter Images response/SSE contract and update its reviewed definition/OpenAPI evidence before implementing or activating the native decoder.
+4. Obtain and record the remaining package-specific Owner decisions before implementing unrelated provider/continuation/transport slices.
+5. Complete epoch-2 coordinator/path cutover before registering any staged repo, settings, IPC or transport; then integrate commands/UI so compiled bytes are exactly the bytes captured and sent.
+6. Close every AC with direct code/test/smoke evidence and run the complete gate sequence.
 
 ## Current implementation batch — epoch-2 safety foundation
 
