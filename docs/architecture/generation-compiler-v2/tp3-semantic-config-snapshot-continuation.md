@@ -54,6 +54,16 @@ Rules:
 
 Fresh V2 schema only:
 
+The epoch-2 core graph and its unique schema composer are staged with zero
+activation and no production caller in `infra/db/v2/coreConversationSchema.sql`
+and `infra/db/v2/schemaComposerV2.ts`. They provide the strict
+project/conversation/message/answer-root/branch/choice/hide foreign-key anchors
+below. Snapshot, operation, continuation and request/attempt tables remain
+pending and may only enter through that composer; no standalone or legacy-database
+schema entrypoint is permitted. The next dependency is D1 immutable snapshot
+authority, followed by the B atomic command transaction and then the C
+request/attempt repository.
+
 ```text
 generation_config_v2
   owner_kind(global|project|conversation)

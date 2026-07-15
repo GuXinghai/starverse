@@ -1,5 +1,4 @@
-import { readFileSync } from 'node:fs'
-import fs from 'node:fs'
+import fs, { readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
@@ -10,6 +9,7 @@ import {
   OPENROUTER_IMAGE_HARD_EXPIRE_AFTER_PRESETS_MS_V2,
   OPENROUTER_IMAGE_REFRESH_AFTER_PRESETS_MS_V2,
 } from '../../../src/next/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2'
+import { applyGenerationV2Schema } from '../v2/schemaComposerV2'
 import {
   isOpenRouterImageDescriptorFreshnessSettingsFactV2,
   OpenRouterImageSettingsRepo,
@@ -17,7 +17,7 @@ import {
 
 function fixture(times: number[]) {
   const db = new BetterSqlite3(':memory:')
-  db.exec(readFileSync(path.resolve('infra/db/v2/openRouterImagesSchema.sql'), 'utf8'))
+  applyGenerationV2Schema(db, path.resolve(process.cwd()))
   const repo = new OpenRouterImageSettingsRepo(db, () => {
     const value = times.shift()
     if (value === undefined) throw new Error('missing test clock value')
@@ -264,7 +264,7 @@ describe('OpenRouter Images V2 descriptor freshness settings', () => {
     const secondDb = new BetterSqlite3(databasePath)
     try {
       firstDb.pragma('journal_mode = WAL')
-      firstDb.exec(readFileSync(path.resolve('infra/db/v2/openRouterImagesSchema.sql'), 'utf8'))
+      applyGenerationV2Schema(firstDb, path.resolve(process.cwd()))
       secondDb.pragma('busy_timeout = 1')
       const first = new OpenRouterImageSettingsRepo(firstDb, () => 100)
       const second = new OpenRouterImageSettingsRepo(secondDb, () => 200)
