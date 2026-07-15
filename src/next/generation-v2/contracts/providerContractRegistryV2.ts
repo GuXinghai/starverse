@@ -6,6 +6,11 @@ import {
   readAnthropicDeveloperApiContractV2,
   readAnthropicMessagesRegistrySurfaceV2,
 } from './anthropicDeveloperApiContractV2'
+import type { DeepSeekStableChatRegistrySurfaceV2 } from './deepSeekStableApiContractV2'
+import {
+  readDeepSeekStableApiContractV2,
+  readDeepSeekStableChatRegistrySurfaceV2,
+} from './deepSeekStableApiContractV2'
 import type {
   GeminiDeveloperApiRegistrySurfaceV2,
   GeminiDeveloperApiSurfaceDefinitionV2,
@@ -25,6 +30,7 @@ export type ProviderContractApiSurfaceV2 = Readonly<
   }
   | AnthropicMessagesRegistrySurfaceV2
   | GeminiDeveloperApiRegistrySurfaceV2
+  | DeepSeekStableChatRegistrySurfaceV2
 >
 
 type ModelBindingPolicyV2 = 'descriptor_model_id' | 'runtime_capability_resolver'
@@ -33,6 +39,7 @@ type ContinuationPolicyV2 =
   | 'none'
   | 'ordered_native_content_blocks_with_signatures'
   | GeminiDeveloperApiSurfaceDefinitionV2['continuationFamily']
+  | DeepSeekStableChatRegistrySurfaceV2['continuationFamily']
 
 export type ReviewedProviderContractDefinitionV2 = Readonly<{
   classification: 'reviewed_definition'
@@ -193,6 +200,29 @@ const ANTHROPIC_MESSAGES_PROJECTION: DefinitionProjection = Object.freeze({
   }),
 })
 
+const deepSeekStableApiContract = readDeepSeekStableApiContractV2()
+const deepSeekStableChatSurface = readDeepSeekStableChatRegistrySurfaceV2()
+const DEEPSEEK_STABLE_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
+  protocolContractId: 'deepseek-stable-chat-v1',
+  providerId: deepSeekStableApiContract.providerId,
+  operations: Object.freeze(['text', 'tool_continue'] as const),
+  apiSurface: deepSeekStableChatSurface,
+  modelBindingPolicy: 'runtime_capability_resolver',
+  endpointBindingPolicy: 'first_party_profile_authority_required',
+  continuationPolicy: deepSeekStableChatSurface.continuationFamily,
+  implementationStatus: 'definition_only',
+  evidence: Object.freeze({
+    verifiedAt: deepSeekStableApiContract.evidence.verifiedAt,
+    openApiSha256: null,
+    provenanceUrls: deepSeekStableApiContract.evidence.provenanceUrls,
+    localArtifacts: Object.freeze([Object.freeze({
+      id: 'deepseek-stable-api-contract-20260715',
+      path: 'docs/architecture/generation-compiler-v2/evidence/deepseek-stable-api-contract-20260715.json',
+      sha256: '57534e5e44c2f8a8aa353827c61c4504c97541a433b8831a1f14b17a32e518b5',
+    })]),
+  }),
+})
+
 function digest(value: unknown): string {
   return createHash('sha256').update(stableSerializeProviderRequestV2(value), 'utf8').digest('hex')
 }
@@ -202,6 +232,7 @@ const definitionProjections = Object.freeze([
   GEMINI_GENERATE_CONTENT_PROJECTION,
   GEMINI_INTERACTIONS_PROJECTION,
   ANTHROPIC_MESSAGES_PROJECTION,
+  DEEPSEEK_STABLE_CHAT_PROJECTION,
 ])
 const registryRevisionValue = `provider-contract-registry-v1:${digest(definitionProjections)}`
 const registryRevision = GenerationV2Identity.create('registry_revision', registryRevisionValue)

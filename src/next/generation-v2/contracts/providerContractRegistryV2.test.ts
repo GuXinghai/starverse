@@ -66,10 +66,10 @@ describe('Generation V2 reviewed provider contract registry', () => {
 
   it('does not trust structural clones and exposes no duplicate contract revision', () => {
     const [definition] = listReviewedProviderContractDefinitionsV2()
-    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(4)
+    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(5)
     expect(isReviewedProviderContractDefinitionV2({ ...definition })).toBe(false)
     expect(new Set(listReviewedProviderContractDefinitionsV2().map((item) =>
-      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(4)
+      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(5)
   })
 
   it('registers GenerateContent and Interactions as separate non-executable v1beta contracts', () => {
@@ -158,5 +158,31 @@ describe('Generation V2 reviewed provider contract registry', () => {
       },
       evidence: { openApiSha256: null, verifiedAt: '2026-07-15' },
     })
+  })
+
+  it('registers only DeepSeek stable Chat as a non-executable native-history contract', () => {
+    const definitions = listReviewedProviderContractDefinitionsV2()
+      .filter((item) => item.providerId.value === 'deepseek')
+    expect(definitions).toHaveLength(1)
+    expect(definitions[0]).toMatchObject({
+      executionAuthority: 'none',
+      implementationStatus: 'definition_only',
+      operations: ['text', 'tool_continue'],
+      modelBindingPolicy: 'runtime_capability_resolver',
+      endpointBindingPolicy: 'first_party_profile_authority_required',
+      continuationPolicy: 'ordered_native_chat_messages_with_reasoning_and_tools',
+      apiSurface: {
+        kind: 'deepseek_stable_chat',
+        apiOrigin: 'https://api.deepseek.com',
+        auth: { kind: 'header', name: 'Authorization', scheme: 'Bearer' },
+        relativePathTemplate: '/chat/completions',
+        streamRequestPolicy: {
+          responseProtocol: 'data_only_sse', doneSentinel: 'required',
+        },
+      },
+      evidence: { openApiSha256: null, verifiedAt: '2026-07-15' },
+    })
+    expect(JSON.stringify(definitions[0])).not.toContain('/v1')
+    expect(JSON.stringify(definitions[0])).not.toContain('/beta')
   })
 })

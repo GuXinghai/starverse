@@ -111,6 +111,7 @@ Official evidence:
   - `reasoning_effort` maps current compatibility values to `high|max` behavior;
   - when thinking, `temperature`, `top_p`, `presence_penalty`, and `frequency_penalty` are accepted but have no effect;
   - tool subturn continuation must return complete assistant `reasoning_content` and tool calls or the API returns 400.
+  - stable first-party requests use origin `https://api.deepseek.com`, Chat `/chat/completions`, and Models `/models` under the Owner-frozen V2 contract; `/v1` is neither appended nor probed;
 
 ```json
 POST /chat/completions
@@ -131,7 +132,11 @@ POST /chat/completions
 Decisions:
 
 - Compiler rejects explicit sampling when thinking is enabled rather than relying on provider no-effect behavior.
-- `reasoning_content` plus tool-call sequence is a required provider-native artifact.
+- The stable provider-family contract owns exactly `https://api.deepseek.com`, `POST /chat/completions`, and `GET /models`. `/v1` is forbidden; `/beta` is a separately selected Beta contract with no automatic switch or fallback.
+- Stable tool definitions reject the Beta-only `strict` field. Chat prefix and FIM remain separately typed Beta surfaces and are never inferred from a stable request.
+- Thinking may use function tools. An omitted `tool_choice` remains absent on the wire. Any explicit thinking-mode `tool_choice` (`auto`, `none`, `required`, or named function) is rejected before compilation with `DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED`; thinking-disabled requests use the formal Chat-schema encoding.
+- Complete assistant `content`, `reasoning_content`, and `tool_calls`, followed by the corresponding ordered tool messages, form the required provider-native artifact. Missing required thinking `reasoning_content` is a pre-transport error, never reconstructed from visible text or display details.
+- Native history round-trips unchanged through first send, later turns, tool continuation, restart, branch, retry, regenerate, and edit-resend. Streaming reasoning/tool deltas assemble into the same artifact before terminal persistence.
 - No web/image output capability; never route DeepSeek through Generic.
 - Delete boolean mapper and model-name regex.
 

@@ -41,10 +41,15 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/providers/openrouter-images/selectionDecisionV2.ts',
       'src/next/generation-v2/providers/lmstudio-openresponses/nativeItemsV1.ts',
       'src/next/generation-v2/providers/lmstudio-openresponses/continuationArtifactV1.ts',
+      'src/next/generation-v2/providers/deepseek/nativeMessagesV1.ts',
+      'src/next/generation-v2/providers/deepseek/chatRequestV1.ts',
+      'src/next/generation-v2/providers/deepseek/chatStreamV1.ts',
       'src/next/generation-v2/runner/generationRequestTerminalV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
       'src/next/generation-v2/contracts/anthropicDeveloperApiContractV2.ts',
       'src/next/generation-v2/contracts/geminiDeveloperApiContractV2.ts',
+      'src/next/generation-v2/contracts/deepSeekStableApiContractV2.ts',
+      'src/next/generation-v2/contracts/deepSeekBetaApiContractV2.ts',
       'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
     ]) {
       expect(read(file), file).not.toMatch(/chatSessionConfig|appChatApp\.logic|generation-params|wirePath|requestPatch|extraBody|runtimeProviderAdapter|StreamBridge|TextChat/iu)
@@ -202,5 +207,43 @@ describe('Generation Compiler V2 core boundary', () => {
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/anthropicDeveloperApiContractV2|generation-v2\/contracts\/anthropic/iu)
     }
+  })
+
+  it('keeps DeepSeek stable identity centralized, native-history complete and zero-activation', () => {
+    const contractModule = path.resolve(
+      'src/next/generation-v2/contracts/deepSeekStableApiContractV2.ts',
+    )
+    const betaContractModule = path.resolve(
+      'src/next/generation-v2/contracts/deepSeekBetaApiContractV2.ts',
+    )
+    const registryModule = path.resolve('src/next/generation-v2/contracts/providerContractRegistryV2.ts')
+    const contract = read('src/next/generation-v2/contracts/deepSeekStableApiContractV2.ts')
+    expect(contract).toContain("apiOrigin: 'https://api.deepseek.com'")
+    expect(contract).toContain("relativePathTemplate: '/chat/completions'")
+    expect(contract).toContain("relativePathTemplate: '/models'")
+    expect(contract).toContain("executionAuthority: 'none'")
+    expect(contract).not.toMatch(/api\.deepseek\.com\/v1|api\.deepseek\.com\/beta|probe|automaticFallback|fetch\(|net\.request|ipcMain/iu)
+
+    for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
+      if (file === contractModule || file === betaContractModule || file === registryModule) continue
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/api\.deepseek\.com|deepseek_stable_chat_v1/iu)
+    }
+    for (const file of productionSources(path.resolve('electron'))) {
+      expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+        .not.toMatch(/deepSeekStableApiContractV2|generation-v2\/providers\/deepseek/iu)
+    }
+
+    const request = read('src/next/generation-v2/providers/deepseek/chatRequestV1.ts')
+    const native = read('src/next/generation-v2/providers/deepseek/nativeMessagesV1.ts')
+    const beta = read('src/next/generation-v2/contracts/deepSeekBetaApiContractV2.ts')
+    expect(beta).toContain("apiOrigin: 'https://api.deepseek.com/beta'")
+    expect(beta).toContain('explicitSelectionRequired: true')
+    expect(beta).toContain("runtimeFallback: 'forbidden'")
+    expect(beta).not.toMatch(/readDeepSeekStableApiContract|deepseek-stable-chat|fetch\(|net\.request|ipcMain/iu)
+    expect(request).toContain("'DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED'")
+    expect(request).not.toMatch(/applyProviderGenerationParamsPatch|extraBody|wirePath|fetch\(|runtimeProviderAdapter/iu)
+    expect(native).toContain('reasoning_content')
+    expect(native).not.toMatch(/reasoningDisplay|DeepSeekTextChat|deepSeekAdapter|ipcMain/iu)
   })
 })
