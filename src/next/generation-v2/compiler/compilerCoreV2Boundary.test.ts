@@ -86,6 +86,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/openRouterImageBindingRepo.ts'),
       path.resolve('infra/db/repo/generationConfigV2Repo.ts'),
       path.resolve('infra/db/repo/attachmentAssetV2Repo.ts'),
+      path.resolve('infra/db/repo/generationV2AuthorityTransactionInternal.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -127,6 +128,27 @@ describe('Generation Compiler V2 core boundary', () => {
     expect(source).toContain("usage: 'snapshot_reference_verified'")
     expect(source).toContain("trust: 'verified_attachment_send_bytes_lease'")
     expect(source).not.toMatch(/send_bytes_preflight_verified/iu)
+  })
+
+  it('keeps the shared authority transaction limited to inactive epoch-2 repositories', () => {
+    const adapters = new Set([
+      path.resolve('infra/db/repo/generationV2AuthorityTransactionInternal.ts'),
+      path.resolve('infra/db/repo/generationConfigV2Repo.ts'),
+      path.resolve('infra/db/repo/attachmentAssetV2Repo.ts'),
+    ])
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (adapters.has(file)) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+          .not.toMatch(/generationV2AuthorityTransaction/iu)
+      }
+    }
+    const internal = read('infra/db/repo/generationV2AuthorityTransactionInternal.ts')
+    expect(internal).not.toMatch(/ipcMain|electron\/|fetch\(|net\.request|databasePath|chat\.db|starverse\.db/iu)
+    expect(read('infra/db/repo/generationConfigV2Repo.ts'))
+      .not.toContain('runGenerationV2AuthorityTransactionOnOwnedConnectionV2')
+    expect(read('infra/db/repo/attachmentAssetV2Repo.ts'))
+      .not.toContain('runGenerationV2AuthorityTransactionOnOwnedConnectionV2')
   })
 
   it('keeps the inactive V2 descriptor repository adapter out of startup and legacy production imports', () => {

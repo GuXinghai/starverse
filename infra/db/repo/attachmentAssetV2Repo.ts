@@ -12,6 +12,12 @@ import {
   readGenerationV2Digest,
   readGenerationV2Identity,
 } from '../../../src/next/generation-v2/domain/identityV2'
+import {
+  assertGenerationV2AuthorityTransactionContextV2,
+  isGenerationV2AuthorityTransactionContextV2,
+  registerGenerationV2AuthorityTransactionParticipantV2,
+  type GenerationV2AuthorityTransactionContextV2,
+} from './generationV2AuthorityTransactionInternal'
 
 export type AttachmentAssetKindV2 = 'file' | 'image'
 export type AttachmentAssetSourceKindV2 = 'user_import' | 'generated' | 'derived'
@@ -72,7 +78,6 @@ export class AttachmentAssetV2RepoError extends Error {
     | 'GENERATION_V2_ASSET_RETIRED'
     | 'GENERATION_V2_ASSET_INTENT_MISMATCH'
     | 'GENERATION_V2_ASSET_SEND_BYTES_NOT_INCLUDED'
-    | 'GENERATION_V2_ASSET_SEND_BYTES_NESTED_TRANSACTION'
     | 'GENERATION_V2_ASSET_BYTES_MISMATCH'
     | 'GENERATION_V2_ASSET_BYTES_DISPOSED'
     | 'GENERATION_V2_ASSET_BYTES_LEASE_IN_USE'
@@ -119,9 +124,9 @@ const disposedSendBytesAuthorities = new WeakSet<object>()
 const consumingSendBytesAuthorities = new WeakSet<object>()
 const verifiedSendBytesValues = new WeakMap<object, Uint8Array>()
 const pendingSendBytesByReferenceAuthority = new WeakMap<object, {
-  activationAllowed: boolean
   values: VerifiedAttachmentSendBytesLeaseV2[]
 }>()
+const attachmentAuthorityContexts = new WeakMap<object, GenerationV2AuthorityTransactionContextV2>()
 const repositoryScopes = new WeakMap<object, object>()
 
 const typedArrayPrototype = Object.getPrototypeOf(Uint8Array.prototype) as object
@@ -308,7 +313,9 @@ export function isAttachmentAssetRevisionRepositoryFactV2(
 export function isResolvedAttachmentAssetAuthorityV2(
   value: unknown,
 ): value is ResolvedAttachmentAssetAuthorityV2 {
-  return Boolean(value && typeof value === 'object' && attachmentAuthorities.has(value))
+  if (!value || typeof value !== 'object' || !attachmentAuthorities.has(value)) return false
+  const context = attachmentAuthorityContexts.get(value)
+  return Boolean(context && isGenerationV2AuthorityTransactionContextV2(context))
 }
 
 export function isVerifiedAttachmentSendBytesLeaseV2(
@@ -373,11 +380,15 @@ export function disposeVerifiedAttachmentSendBytesLeaseV2(
 
 export class AttachmentAssetV2Repo {
   private readonly scope = Object.freeze({})
+  readonly #db: BetterSqlite3.Database
+  readonly #nowMs: () => number
 
   constructor(
-    private readonly db: BetterSqlite3.Database,
-    private readonly nowMs: () => number = Date.now,
+    db: BetterSqlite3.Database,
+    nowMs: () => number = Date.now,
   ) {
+    this.#db = db
+    this.#nowMs = nowMs
     db.pragma('foreign_keys = ON')
     if (db.pragma('foreign_keys', { simple: true }) !== 1) {
       throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
@@ -396,8 +407,8 @@ export class AttachmentAssetV2Repo {
     }
     const blobId = `blob-v2:${sha256}`
     const storageRef = `sha256/${sha256.slice(0, 2)}/${sha256}`
-    const now = safeTime(this.nowMs())
-    const transaction = this.db.transaction(() => {
+    const now = safeTime(this.#nowMs())
+    const transaction = this.#db.transaction(() => {
       const existing = this.findBlob(blobId)
       if (existing) {
         if (existing.sha256.value !== sha256 || existing.sizeBytes !== sizeBytes || existing.mime !== mime ||
@@ -406,7 +417,7 @@ export class AttachmentAssetV2Repo {
         }
         return existing
       }
-      this.db.prepare(`INSERT INTO file_blob_v2 (
+      this.#db.prepare(`INSERT INTO file_blob_v2 (
         blob_id, sha256, size_bytes, mime, storage_ref, created_at_ms
       ) VALUES (?, ?, ?, ?, ?, ?)`).run(blobId, sha256, sizeBytes, mime, storageRef, now)
       return this.readBlob(blobId)
@@ -427,9 +438,9 @@ export class AttachmentAssetV2Repo {
         (input.sourceKind !== 'user_import' && input.sourceKind !== 'generated' && input.sourceKind !== 'derived')) {
       throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
     }
-    const now = safeTime(this.nowMs())
-    const transaction = this.db.transaction(() => {
-      const row = this.db.prepare(`SELECT asset_kind, filename, source_kind, created_at_ms, retired_at_ms
+    const now = safeTime(this.#nowMs())
+    const transaction = this.#db.transaction(() => {
+      const row = this.#db.prepare(`SELECT asset_kind, filename, source_kind, created_at_ms, retired_at_ms
         FROM file_asset_v2 WHERE asset_id = ?`).get(assetId) as Record<string, unknown> | undefined
       if (row) {
         if (row.asset_kind !== input.assetKind || row.filename !== filename ||
@@ -438,7 +449,7 @@ export class AttachmentAssetV2Repo {
         }
         return
       }
-      this.db.prepare(`INSERT INTO file_asset_v2 (
+      this.#db.prepare(`INSERT INTO file_asset_v2 (
         asset_id, asset_kind, filename, source_kind, created_at_ms, retired_at_ms
       ) VALUES (?, ?, ?, ?, ?, NULL)`).run(assetId, input.assetKind, filename, input.sourceKind, now)
     })
@@ -460,7 +471,7 @@ export class AttachmentAssetV2Repo {
   getRevision(assetIdValue: string, assetRevisionIdValue: string): AttachmentAssetRevisionRepositoryFactV2 {
     const assetId = GenerationV2Identity.create('asset_id', assetIdValue).value
     const assetRevisionId = GenerationV2Identity.create('asset_revision_id', assetRevisionIdValue).value
-    const row = this.db.prepare(`SELECT
+    const row = this.#db.prepare(`SELECT
       a.asset_id, r.asset_revision_id, a.asset_kind, a.filename, a.source_kind,
       a.created_at_ms AS asset_created_at_ms, a.retired_at_ms,
       b.blob_id, b.sha256, b.size_bytes, b.mime, b.storage_ref, b.created_at_ms AS blob_created_at_ms,
@@ -475,9 +486,11 @@ export class AttachmentAssetV2Repo {
   }
 
   withSynchronousSnapshotReferenceAuthority<T>(
+    context: GenerationV2AuthorityTransactionContextV2,
     intent: AttachmentIntentV2,
     use: (authority: ResolvedAttachmentAssetAuthorityV2) => T extends PromiseLike<unknown> ? never : T,
   ): T {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     if (!isAttachmentIntentV2(intent) || typeof use !== 'function') {
       throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
     }
@@ -488,24 +501,27 @@ export class AttachmentAssetV2Repo {
       conversion: intent.conversion,
     })
     const pendingSendBytes: VerifiedAttachmentSendBytesLeaseV2[] = []
-    const activationAllowed = !this.db.inTransaction
-    const transaction = this.db.transaction(() => {
-      const fact = this.resolveReferenceFact(reference)
-      const authority = Object.freeze({
-        trust: 'resolved_attachment_asset_authority' as const,
-        usage: 'snapshot_reference_verified' as const,
-        intent,
-        revision: fact,
-      })
-      attachmentAuthorities.add(authority)
-      repositoryScopes.set(authority, this.scope)
-      pendingSendBytesByReferenceAuthority.set(authority, {
-        activationAllowed,
-        values: pendingSendBytes,
-      })
-      try {
-        const result = use(authority)
-        if (hasThenMember(result)) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+    const fact = this.resolveReferenceFact(reference)
+    const authority = Object.freeze({
+      trust: 'resolved_attachment_asset_authority' as const,
+      usage: 'snapshot_reference_verified' as const,
+      intent,
+      revision: fact,
+    })
+    attachmentAuthorities.add(authority)
+    attachmentAuthorityContexts.set(authority, context)
+    repositoryScopes.set(authority, this.scope)
+    pendingSendBytesByReferenceAuthority.set(authority, { values: pendingSendBytes })
+    let completed = false
+    const revokeAuthority = () => {
+      pendingSendBytesByReferenceAuthority.delete(authority)
+      attachmentAuthorities.delete(authority)
+      attachmentAuthorityContexts.delete(authority)
+      repositoryScopes.delete(authority)
+    }
+    registerGenerationV2AuthorityTransactionParticipantV2(context, this.#db, {
+      preCommit: () => {
+        if (!completed) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
         const finalFact = this.resolveReferenceFact(reference)
         if (finalFact.assetId.value !== fact.assetId.value ||
             finalFact.assetRevisionId.value !== fact.assetRevisionId.value ||
@@ -513,19 +529,23 @@ export class AttachmentAssetV2Repo {
             finalFact.blob.sha256.value !== fact.blob.sha256.value) {
           throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
         }
-        return result
-      } finally {
-        pendingSendBytesByReferenceAuthority.delete(authority)
-        attachmentAuthorities.delete(authority)
-      }
+      },
+      committed: () => {
+        revokeAuthority()
+        for (const value of pendingSendBytes) verifiedSendBytesAuthorities.add(value)
+      },
+      rolledBack: () => {
+        revokeAuthority()
+        revokePendingVerifiedSendBytes(pendingSendBytes)
+      },
     })
     try {
-      const result = this.runImmediate(transaction)
-      for (const value of pendingSendBytes) verifiedSendBytesAuthorities.add(value)
+      const result = use(authority)
+      if (hasThenMember(result)) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+      completed = true
       return result
-    } catch (error) {
-      revokePendingVerifiedSendBytes(pendingSendBytes)
-      throw error
+    } finally {
+      revokeAuthority()
     }
   }
 
@@ -541,9 +561,7 @@ export class AttachmentAssetV2Repo {
       throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_SEND_BYTES_NOT_INCLUDED')
     }
     const pending = pendingSendBytesByReferenceAuthority.get(authority)
-    if (!pending || !pending.activationAllowed) {
-      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_SEND_BYTES_NESTED_TRANSACTION')
-    }
+    if (!pending) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
     const owned = copyOwnedUint8Array(bytes)
     try {
       const sha256 = sha256PreparedBytesV2(owned)
@@ -573,9 +591,9 @@ export class AttachmentAssetV2Repo {
 
   retireAsset(assetIdValue: string): void {
     const assetId = GenerationV2Identity.create('asset_id', assetIdValue).value
-    const now = safeTime(this.nowMs())
-    const transaction = this.db.transaction(() => {
-      const result = this.db.prepare(`UPDATE file_asset_v2 SET retired_at_ms = ?
+    const now = safeTime(this.#nowMs())
+    const transaction = this.#db.transaction(() => {
+      const result = this.#db.prepare(`UPDATE file_asset_v2 SET retired_at_ms = ?
         WHERE asset_id = ? AND retired_at_ms IS NULL`).run(now, assetId)
       if (result.changes !== 1) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_NOT_FOUND')
     })
@@ -598,7 +616,7 @@ export class AttachmentAssetV2Repo {
   }
 
   private findBlob(blobId: string): AttachmentBlobRepositoryFactV2 | null {
-    const row = this.db.prepare(`SELECT
+    const row = this.#db.prepare(`SELECT
       '' AS asset_id, '' AS asset_revision_id, 'file' AS asset_kind, 'placeholder' AS filename,
       'user_import' AS source_kind, 0 AS asset_created_at_ms, NULL AS retired_at_ms,
       blob_id, sha256, size_bytes, mime, storage_ref, created_at_ms AS blob_created_at_ms,
@@ -618,9 +636,9 @@ export class AttachmentAssetV2Repo {
     }
     const assetId = GenerationV2Identity.create('asset_id', assetIdValue).value
     const assetRevisionId = GenerationV2Identity.create('asset_revision_id', assetRevisionIdValue).value
-    const now = safeTime(this.nowMs())
-    const transaction = this.db.transaction(() => {
-      const asset = this.db.prepare('SELECT retired_at_ms FROM file_asset_v2 WHERE asset_id = ?')
+    const now = safeTime(this.#nowMs())
+    const transaction = this.#db.transaction(() => {
+      const asset = this.#db.prepare('SELECT retired_at_ms FROM file_asset_v2 WHERE asset_id = ?')
         .get(assetId) as { retired_at_ms: unknown } | undefined
       if (!asset) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_NOT_FOUND')
       if (asset.retired_at_ms !== null) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_RETIRED')
@@ -635,7 +653,7 @@ export class AttachmentAssetV2Repo {
           throw error
         }
       }
-      this.db.prepare(`INSERT INTO asset_revision_v2 (
+      this.#db.prepare(`INSERT INTO asset_revision_v2 (
         asset_revision_id, asset_id, blob_id, parent_asset_revision_id, revision_kind,
         conversion_kind, conversion_contract_id, conversion_revision, created_at_ms
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(

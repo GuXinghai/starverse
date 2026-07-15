@@ -9,6 +9,7 @@ import {
   isGenerationConfigScopeRepositoryFactV2,
   isResolvedGenerationConfigAuthorityV2,
 } from './generationConfigV2Repo'
+import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from './generationV2AuthorityTransactionInternal'
 
 const root = path.resolve(process.cwd())
 
@@ -37,11 +38,15 @@ describe('GenerationConfigV2Repo', () => {
       const global = repo.getScope('global', 'global')
       expect(isGenerationConfigScopeRepositoryFactV2(global)).toBe(true)
       expect(isGenerationConfigScopeRepositoryFactV2({ ...global })).toBe(false)
-      const authority = repo.resolveForConversation('conversation:1')
-      expect(isResolvedGenerationConfigAuthorityV2(authority)).toBe(true)
+      let authority: ReturnType<GenerationConfigV2Repo['resolveForConversation']> | undefined
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        authority = repo.resolveForConversation(context, 'conversation:1')
+        expect(isResolvedGenerationConfigAuthorityV2(authority)).toBe(true)
+      })
+      expect(isResolvedGenerationConfigAuthorityV2(authority)).toBe(false)
       expect(isResolvedGenerationConfigAuthorityV2({ ...authority })).toBe(false)
-      expect(authority.revisionSet.map((entry) => entry.ownerKind)).toEqual(['global', 'project', 'conversation'])
-      expect(authority.semanticIntent).toEqual({
+      expect(authority!.revisionSet.map((entry) => entry.ownerKind)).toEqual(['global', 'project', 'conversation'])
+      expect(authority!.semanticIntent).toEqual({
         schemaVersion: 2, generation: {}, reasoning: { mode: 'disabled' }, web: { mode: 'disabled' },
         image: { mode: 'disabled' }, tools: { mode: 'disabled' }, attachments: [],
         providerExtension: { kind: 'none' },
@@ -97,20 +102,28 @@ describe('GenerationConfigV2Repo', () => {
         schemaVersion: 2,
         reasoning: { mode: 'disabled' },
       })
-      const authority = repo.resolveForConversation('conversation:1')
+      const authority = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(
+        db, (context) => repo.resolveForConversation(context, 'conversation:1'),
+      )
       expect(authority.semanticIntent.generation).toEqual({})
       expect(authority.semanticIntent.reasoning).toEqual({ mode: 'disabled' })
       const expected = authority.revisionSet.map((entry) => ({
         ownerKind: entry.ownerKind, ownerId: entry.ownerId, revision: entry.revision.value,
       }))
-      expect(repo.resolveForConversation('conversation:1', expected).revisionSet).toEqual(authority.revisionSet)
+      expect(runGenerationV2AuthorityTransactionOnOwnedConnectionV2(
+        db, (context) => repo.resolveForConversation(context, 'conversation:1', expected),
+      ).revisionSet).toEqual(authority.revisionSet)
       expected[1] = { ...expected[1], revision: 'config-v2:stale' }
-      expect(() => repo.resolveForConversation('conversation:1', expected))
+      expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(
+        db, (context) => repo.resolveForConversation(context, 'conversation:1', expected),
+      ))
         .toThrow('GENERATION_V2_CONFIG_STALE_REVISION')
       const accessor = [...expected]
       const staleRevision = accessor[1].revision
       Object.defineProperty(accessor[1], 'revision', { enumerable: true, get: () => staleRevision })
-      expect(() => repo.resolveForConversation('conversation:1', accessor))
+      expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(
+        db, (context) => repo.resolveForConversation(context, 'conversation:1', accessor),
+      ))
         .toThrow('GENERATION_V2_CONFIG_STALE_REVISION')
     } finally { db.close() }
   })

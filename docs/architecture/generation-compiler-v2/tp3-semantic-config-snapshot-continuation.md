@@ -103,7 +103,10 @@ exactly three real FK-backed revisions. Omitted top-level semantic groups inheri
 an explicit group replaces the inherited group atomically, including arrays and
 `toolChoice:omitted`. Attachments are per-command facts and are rejected from scope
 configuration. Only the repository issues the private resolved-config authority;
-legacy meta/settings and renderer state are not inputs.
+legacy meta/settings and renderer state are not inputs. Authority issuance now
+requires the shared private-connection Unit of Work; the resolver no longer opens
+an independent deferred transaction or returns an authority that remains valid
+outside the synchronous command transaction.
 
 ## Immutable snapshot
 
@@ -113,6 +116,18 @@ binds `answerRootId` and `operationId`, requires every resolved semantic section
 and includes config revisions plus provider/capability/attachment/tool evidence.
 It does not issue runtime/compiler authority; that remains dependent on private
 resolver-issued facts and the later atomic command transaction.
+
+Authority-transaction status (2026-07-15): an inactive internal primitive now
+lets config and attachment facts share one branded synchronous context,
+`BEGIN IMMEDIATE`, pre-commit revalidation and rollback boundary. Both
+repositories keep their connection in JavaScript private fields, and pending
+verified-byte leases activate only after commit. The runner has no production
+caller and accepts no naked database path. Its future sole caller must be the
+epoch coordinator after canonical packaged identity can verify the root
+manifest, exact existing `epoch-2/starverse.db` and installed schema identity.
+This closes the repository coordination seam only; it does not create snapshot,
+operation, request or attempt rows and does not issue provider/capability/tool or
+execution authority.
 
 Local attachment provenance status (2026-07-15): B1 is staged with zero
 activation in the epoch-2 schema composer. It persists content-addressed blobs
