@@ -35,6 +35,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/domain/resolvedGenerationIntentV2.ts',
       'src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2.ts',
       'src/next/generation-v2/domain/providerBindingV2.ts',
+      'src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts',
       'src/next/generation-v2/config/generationConfigLayerV2.ts',
       'src/next/generation-v2/config/generationConfigRevisionV2.ts',
       'src/next/generation-v2/config/resolveGenerationConfigV2.ts',
@@ -174,10 +175,32 @@ describe('Generation Compiler V2 core boundary', () => {
     const nonExecutableSelection = path.resolve(
       'src/next/generation-v2/providers/openrouter-images/selectionDecisionV2.ts',
     )
+    const capabilitySnapshotCodec = path.resolve(
+      'src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts',
+    )
     for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
-      if (file === recordModule || file === snapshotCodec || file === nonExecutableSelection) continue
+      if (file === recordModule || file === snapshotCodec || file === nonExecutableSelection ||
+          file === capabilitySnapshotCodec) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/DecodedProviderBindingRecordV2|decodeProviderBindingRecordV2/u)
+    }
+  })
+
+  it('keeps runtime capability snapshots complete, structural and non-executable', () => {
+    const codecModule = path.resolve('src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts')
+    const source = read('src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts')
+    expect(source).toContain("trust: 'decoded_unverified'")
+    expect(source).toContain("executionAuthority: 'none'")
+    expect(source).toContain("| 'unavailable'")
+    expect(source).not.toMatch(/ResolvedProviderBindingAuthority|RuntimeCapabilityAuthority|issueRuntimeCapability|PreparedRequest|ipcMain|fetch\(|net\.request|infra\/db|electron\//iu)
+    expect(source).not.toMatch(/apiKey|authorization|credentialRevision|requestPatch|requestParams|extraBody|wirePath|previous_response_id/iu)
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === codecModule) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file)).not.toMatch(
+          /(?:Decoded|Persisted)RuntimeCapabilitySnapshotV2|canonicalizeUnverifiedRuntimeCapabilitySnapshotV2|decodeRuntimeCapabilitySnapshot(?:Json)?V2/u,
+        )
+      }
     }
   })
 

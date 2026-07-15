@@ -55,46 +55,43 @@ At age `< refreshAfter`, use the selected successful descriptor. At `refreshAfte
 
 ## Target type
 
+The first retained implementation is the strict persisted value codec in
+`src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts`. It is
+deliberately `decoded_unverified` with `executionAuthority:"none"`: canonical
+hashes prove structural integrity only. No resolver, compiler, UI, database or
+transport may consume it until a private evidence resolver has revalidated the
+binding and evidence and issued a separate non-serializable authority.
+
 ```ts
-type RuntimeCapabilitySnapshotV2 = {
+type PersistedRuntimeCapabilitySnapshotV2 = {
+  schemaVersion: 2
   revision: string
   resolvedAt: string
-  binding: {
-    providerId: string
-    endpointProfileId: string
-    endpointBinding:
-      | {
-          kind: "pinned"
-          selector:
-            | {
-                contractId: "openrouter-images-v1"
-                providerTag: string
-                providerSlug: string
-                descriptorRevision: string
-                descriptorDigest: string
-              }
-            | {
-                contractId: string
-                selectorId: string
-                descriptorRevision: string
-                descriptorDigest: string
-              }
-        }
-      | { kind: "provider_managed_set"; endpointSetRevision: string; descriptors: ReadonlyArray<{endpointId:string; descriptorRevision:string}> }
-    protocolContractId: string
-    contractRevision: string
-    modelId: string
-    operation: "text" | "image_generate" | "image_edit" | "tool_continue"
-  }
-  fields: Record<SemanticPath, {
-    state: "supported" | "unsupported" | "requires_confirmation"
-    domain?: {kind:"enum"|"range"|"boolean"; values?:unknown[]; min?:number; max?:number}
-    constraints: string[]
-    evidence: CapabilityEvidenceRef[]
-  }>
-  tools: ToolCapability[]
-  continuation: ContinuationCapability
+  binding: unknown // closed persisted JSON; never authority before strict decode
+  evidence: ReadonlyArray<PersistedRuntimeCapabilityEvidenceV2>
+  fields: ReadonlyArray<PersistedRuntimeCapabilityFieldV2>
+  tools: ReadonlyArray<PersistedRuntimeToolCapabilityV2>
+  continuation: PersistedRuntimeContinuationCapabilityV2
   evidenceDigest: string
+  semanticFieldsDigest: string
+  snapshotHash: string
+}
+
+type DecodedRuntimeCapabilitySnapshotV2 = {
+  trust: "decoded_unverified"
+  executionAuthority: "none"
+  schemaVersion: 2
+  resolvedAt: string
+  binding: DecodedProviderBindingRecordV2
+  evidence: ReadonlyArray<DecodedRuntimeCapabilityEvidenceV2>
+  fields: ReadonlyArray<PersistedRuntimeCapabilityFieldV2>
+  tools: ReadonlyArray<PersistedRuntimeToolCapabilityV2>
+  continuation: PersistedRuntimeContinuationCapabilityV2
+  evidenceDigest: GenerationV2Digest<"evidence_digest">
+  semanticFieldsDigest: GenerationV2Digest<"capability_fields_digest">
+  revision: GenerationV2Identity<"capability_revision">
+  snapshotHash: GenerationV2Digest<"snapshot_hash">
+  canonicalJson: string
 }
 
 type OpenRouterImageProviderBindingKey = {
@@ -114,7 +111,23 @@ type OpenRouterImageProviderBinding = {
 }
 ```
 
-Every field contains source URL/record id, verification or fetch time, protocol/model/operation scope, and evidence kind. The snapshot hash includes the pinned endpoint revision or sorted endpoint-set IDs/revisions plus the intersection digest, model/contract revisions, and exact evidence records.
+The common semantic path array is mechanically exhaustive against the current
+semantic intent types; every path occurs exactly once. Supported, rejected and
+confirmation states require only evidence with the matching effect. Missing
+evidence is represented only by explicit `unavailable`, never by support.
+Contradictory effects, future evidence/endpoint selection, wrong path/domain
+combinations, impossible or conflicting constraints, duplicate evidence/tools,
+sparse/accessor/unknown/sensitive data and non-canonical JSON all reject.
+
+Domains are closed and path-specific (`boolean`, `identity`, `enum`,
+`enum_list`, numeric `range`, `string_list`, `identity_list`, or exact
+`dimensions`). Constraints may reference only scalar domains and their values
+must belong to the target domain. Tool capability and continuation capability
+are separate from the `tools.*` configuration controls and both enter the
+content digests and snapshot hash. The binding scopes every evidence record to
+one credential scope, provider/profile/endpoint set or pin, contract/model and
+operation. Each evidence record carries a closed kind/effect, source reference,
+verification time, content digest and entry digest.
 
 ## UI projection
 
