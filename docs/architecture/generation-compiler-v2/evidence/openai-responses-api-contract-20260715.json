@@ -1,0 +1,60 @@
+{
+  "capturedAt": "2026-07-15",
+  "provider": "openai_responses",
+  "classification": "official-reference-backed-audit-projection",
+  "openApiSha256": null,
+  "officialEvidence": {
+    "responsesCreate": "https://developers.openai.com/api/reference/resources/responses/methods/create",
+    "responsesStreaming": "https://developers.openai.com/api/reference/resources/responses/streaming-events",
+    "conversationState": "https://developers.openai.com/api/docs/guides/conversation-state",
+    "reasoning": "https://developers.openai.com/api/docs/guides/reasoning",
+    "webSearch": "https://developers.openai.com/api/docs/guides/tools-web-search",
+    "imageGeneration": "https://developers.openai.com/api/docs/guides/tools-image-generation",
+    "modelsList": "https://developers.openai.com/api/reference/resources/models/methods/list",
+    "modelsRetrieve": "https://developers.openai.com/api/reference/resources/models/methods/retrieve",
+    "filesList": "https://developers.openai.com/api/reference/resources/files/methods/list",
+    "filesCreate": "https://developers.openai.com/api/reference/resources/files/methods/create",
+    "filesRetrieve": "https://developers.openai.com/api/reference/resources/files/methods/retrieve",
+    "filesContent": "https://developers.openai.com/api/reference/resources/files/methods/content",
+    "filesDelete": "https://developers.openai.com/api/reference/resources/files/methods/delete"
+  },
+  "reviewedWireFacts": {
+    "origin": "https://api.openai.com",
+    "authentication": {
+      "header": "Authorization",
+      "scheme": "Bearer"
+    },
+    "responses": {
+      "method": "POST",
+      "path": "/v1/responses",
+      "requestContentType": "application/json",
+      "streamField": "stream",
+      "streamRequiredValue": true,
+      "responseProtocol": "typed_sse",
+      "doneSentinel": "forbidden",
+      "terminalAuthority": "response_terminal_event",
+      "approvedReasoningRequestFields": ["effort", "summary"]
+    },
+    "models": [
+      { "operation": "list", "method": "GET", "path": "/v1/models" },
+      { "operation": "retrieve", "method": "GET", "path": "/v1/models/{model_id}" }
+    ],
+    "files": [
+      { "operation": "upload", "method": "POST", "path": "/v1/files", "requestKind": "multipart_form_data" },
+      { "operation": "list", "method": "GET", "path": "/v1/files" },
+      { "operation": "retrieve", "method": "GET", "path": "/v1/files/{file_id}" },
+      { "operation": "content", "method": "GET", "path": "/v1/files/{file_id}/content" },
+      { "operation": "delete", "method": "DELETE", "path": "/v1/files/{file_id}" }
+    ]
+  },
+  "implementationBoundary": {
+    "executionAuthority": "none",
+    "registryProjection": "blocked",
+    "requestCodec": "blocked",
+    "nativeContinuationCodec": "blocked",
+    "transport": "blocked",
+    "blocker": "OpenAI Responses continuation mode requires Owner decision",
+    "contextManagement": "not approved for Goal 2",
+    "deprecatedGenerateSummary": "not implemented"
+  }
+}
