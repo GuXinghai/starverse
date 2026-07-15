@@ -58,6 +58,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/contracts/deepSeekStableApiContractV2.ts',
       'src/next/generation-v2/contracts/deepSeekBetaApiContractV2.ts',
       'src/next/generation-v2/contracts/providerContractRegistryV2.ts',
+      'src/next/generation-v2/contracts/providerContractReferenceAuthorityV2.ts',
     ]) {
       expect(read(file), file).not.toMatch(/chatSessionConfig|appChatApp\.logic|generation-params|wirePath|requestPatch|extraBody|runtimeProviderAdapter|StreamBridge|TextChat/iu)
     }
@@ -178,9 +179,12 @@ describe('Generation Compiler V2 core boundary', () => {
     const capabilitySnapshotCodec = path.resolve(
       'src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts',
     )
+    const contractReferenceAuthority = path.resolve(
+      'src/next/generation-v2/contracts/providerContractReferenceAuthorityV2.ts',
+    )
     for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
       if (file === recordModule || file === snapshotCodec || file === nonExecutableSelection ||
-          file === capabilitySnapshotCodec) continue
+          file === capabilitySnapshotCodec || file === contractReferenceAuthority) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/DecodedProviderBindingRecordV2|decodeProviderBindingRecordV2/u)
     }
@@ -247,14 +251,37 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('keeps reviewed contract definitions non-executable and out of legacy transport selection', () => {
     const registryModule = path.resolve('src/next/generation-v2/contracts/providerContractRegistryV2.ts')
+    const referenceAuthorityModule = path.resolve(
+      'src/next/generation-v2/contracts/providerContractReferenceAuthorityV2.ts',
+    )
     const registry = read('src/next/generation-v2/contracts/providerContractRegistryV2.ts')
     expect(registry).toMatch(/implementationStatus: 'definition_only'/u)
     expect(registry).toMatch(/executionAuthority: 'none'/u)
     expect(registry).not.toMatch(/ResolvedProviderContract|issueResolved|fetch\(|runtimeSelection|StreamBridge/iu)
     for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
-      if (file === registryModule) continue
+      if (file === registryModule || file === referenceAuthorityModule) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/providerContractRegistryV2|ReviewedProviderContractDefinitionV2/iu)
+    }
+  })
+
+  it('limits verified contract references to non-executable snapshot provenance', () => {
+    const module = path.resolve(
+      'src/next/generation-v2/contracts/providerContractReferenceAuthorityV2.ts',
+    )
+    const source = read('src/next/generation-v2/contracts/providerContractReferenceAuthorityV2.ts')
+    expect(source).toContain("classification: 'verified_provider_contract_reference_non_executable'")
+    expect(source).toContain("usage: 'snapshot_contract_provenance_only'")
+    expect(source).toContain("executionAuthority: 'none'")
+    expect(source).not.toMatch(/credentialScopeId|endpointProfileId|modelId|endpointBinding|capabilityRevision|evidenceDigest|semanticFieldsDigest/iu)
+    expect(source).not.toMatch(/ResolvedProviderBindingAuthority|RuntimeCapabilityAuthority|PreparedRequest|ipcMain|fetch\(|net\.request|infra\/db|electron\//iu)
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === module) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file)).not.toMatch(
+          /VerifiedProviderContractReferenceV2|verifyProviderContractReferenceV2/u,
+        )
+      }
     }
   })
 
