@@ -35,6 +35,9 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/domain/resolvedGenerationIntentV2.ts',
       'src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2.ts',
       'src/next/generation-v2/domain/providerBindingV2.ts',
+      'src/next/generation-v2/config/generationConfigLayerV2.ts',
+      'src/next/generation-v2/config/generationConfigRevisionV2.ts',
+      'src/next/generation-v2/config/resolveGenerationConfigV2.ts',
       'src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2.ts',
       'src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2.ts',
       'src/next/generation-v2/providers/openrouter-images/descriptorFreshnessSettingsV2.ts',
@@ -80,6 +83,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/openRouterImageEndpointRepo.ts'),
       path.resolve('infra/db/repo/openRouterImageSettingsRepo.ts'),
       path.resolve('infra/db/repo/openRouterImageBindingRepo.ts'),
+      path.resolve('infra/db/repo/generationConfigV2Repo.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -92,6 +96,19 @@ describe('Generation Compiler V2 core boundary', () => {
         }
       }
     }
+  })
+
+  it('keeps the epoch-2 config repository and resolved authority out of legacy runtime paths', () => {
+    const adapter = path.resolve('infra/db/repo/generationConfigV2Repo.ts')
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === adapter) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+          .not.toMatch(/generationConfigV2Repo|ResolvedGenerationConfigAuthorityV2/iu)
+      }
+    }
+    const source = read('infra/db/repo/generationConfigV2Repo.ts')
+    expect(source).not.toMatch(/chatSessionConfig|reasoningPrefsScope|settingsRepo|conversation.*meta|requestPatch|wirePath|ipcMain|fetch\(|net\.request/iu)
   })
 
   it('keeps the inactive V2 descriptor repository adapter out of startup and legacy production imports', () => {

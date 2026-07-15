@@ -43,7 +43,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     const first = inspectGenerationV2SchemaBundle(root)
     const second = inspectGenerationV2SchemaBundle(root)
     expect(first).toEqual(second)
-    expect(first.fragmentIds).toEqual(['core_conversation_v1', 'openrouter_images_v1'])
+    expect(first.fragmentIds).toEqual(['core_conversation_v1', 'generation_config_v1', 'openrouter_images_v1'])
     expect(first.schemaDigest).toMatch(/^[0-9a-f]{64}$/u)
     expect(Object.isFrozen(first)).toBe(true)
     expect(Object.isFrozen(first.fragmentIds)).toBe(true)
@@ -53,7 +53,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       expect(applyGenerationV2Schema(db, root)).toEqual(applied)
       expect(db.prepare('SELECT * FROM generation_v2_schema_manifest').get()).toEqual({
         manifest_id: 'generation_compiler_v2', schema_version: 1,
-        schema_digest: first.schemaDigest, fragment_count: 2,
+        schema_digest: first.schemaDigest, fragment_count: 3,
         object_projection_digest: applied.objectProjectionDigest,
       })
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='openrouter_image_endpoint_bindings'").get())
@@ -71,6 +71,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     const v2 = path.join(directory, 'infra', 'db', 'v2')
     fs.mkdirSync(v2, { recursive: true })
     fs.copyFileSync(path.resolve('infra/db/v2/coreConversationSchema.sql'), path.join(v2, 'coreConversationSchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/generationConfigSchema.sql'), path.join(v2, 'generationConfigSchema.sql'))
     fs.writeFileSync(path.join(v2, 'openRouterImagesSchema.sql'), [
       '-- Generation Compiler V2 injected failure fixture.',
       'CREATE TABLE IF NOT EXISTS injected_partial_v2 (id TEXT PRIMARY KEY);',
@@ -227,6 +228,8 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       for (const table of ['conversation_v2', 'message_v2', 'message_body_v2', 'branch_v2', 'branch_choice_v2', 'branch_answer_hide_v2']) {
         expect(db.prepare(`SELECT count(*) AS count FROM ${table}`).get()).toEqual({ count: 0 })
       }
+      expect(db.prepare("SELECT owner_kind, owner_id FROM generation_config_v2 ORDER BY owner_kind").all())
+        .toEqual([{ owner_kind: 'global', owner_id: 'global' }])
       expect(db.pragma('foreign_key_check')).toEqual([])
     } finally { db.close() }
   })
