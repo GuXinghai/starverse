@@ -7,6 +7,7 @@ const MAX_FRAGMENT_BYTES = 4 * 1024 * 1024
 const MANIFEST_ID = 'generation_compiler_v2'
 const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'core_conversation_v1', fileName: 'coreConversationSchema.sql' }),
+  Object.freeze({ id: 'generation_config_v1', fileName: 'generationConfigSchema.sql' }),
   Object.freeze({ id: 'openrouter_images_v1', fileName: 'openRouterImagesSchema.sql' }),
 ] as const)
 

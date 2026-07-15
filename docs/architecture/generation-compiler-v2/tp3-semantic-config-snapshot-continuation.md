@@ -96,6 +96,15 @@ provider_continuation_artifact_v2
 
 `generation_config_v2` stores sparse scope values. `resolveGenerationConfigV2()` performs one deterministic global→project→conversation merge and returns both resolved semantics and exact revision set. No provider-specific persistence owner survives.
 
+Implementation status (2026-07-15): this scope schema/repository/resolver is staged
+with zero activation. The schema creates one canonical row for global and atomically
+creates project/conversation rows with their graph owners, so every resolution has
+exactly three real FK-backed revisions. Omitted top-level semantic groups inherit;
+an explicit group replaces the inherited group atomically, including arrays and
+`toolChoice:omitted`. Attachments are per-command facts and are rejected from scope
+configuration. Only the repository issues the private resolved-config authority;
+legacy meta/settings and renderer state are not inputs.
+
 ## Immutable snapshot
 
 Implementation status (2026-07-15): the strict canonical value/JSON/hash codec is

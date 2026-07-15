@@ -2,14 +2,18 @@ import {
   sha256PreparedBytesV2,
   stableSerializeProviderRequestBoundedV2,
 } from '../compiler/stableSerialize'
+import type {
+  GenerationConfigRevisionEntryV2,
+  GenerationConfigRevisionScopeV2,
+} from '../config/generationConfigRevisionV2'
 import {
   ConversationGraphV2Identity,
   type ConversationGraphV2Identity as GraphIdentity,
 } from './conversationGraphV2'
 import {
-  readImageAspectRatioV2,
   type AttachmentIntentV2,
 } from './generationIntentV2'
+import { projectGenerationIntentLayerV2 } from './generationIntentProjectionV2'
 import {
   GenerationV2Digest,
   GenerationV2Identity,
@@ -27,14 +31,6 @@ import {
 
 export const ASSISTANT_ANSWER_GENERATION_SNAPSHOT_V2_SCHEMA_VERSION = 2 as const
 export const ASSISTANT_ANSWER_GENERATION_SNAPSHOT_V2_MAX_UTF8_BYTES = 1024 * 1024
-
-export type GenerationConfigRevisionScopeV2 = 'global' | 'project' | 'conversation'
-
-export type GenerationConfigRevisionEntryV2 = Readonly<{
-  ownerKind: GenerationConfigRevisionScopeV2
-  ownerId: string
-  revision: GenerationV2Identity<'config_revision'>
-}>
 
 export type CapabilityBindingV2 = Readonly<{
   capabilityRevision: GenerationV2Identity<'capability_revision'>
@@ -160,62 +156,12 @@ function compareCodePoints(left: string, right: string): number {
   return a.length - b.length
 }
 
-function compact<T extends object>(value: T): T {
-  for (const key of Object.keys(value)) {
-    if ((value as ClosedInput)[key] === undefined) delete (value as Record<string, unknown>)[key]
-  }
-  return value
-}
-
 function deepFreeze<T>(value: T): T {
   if (value && typeof value === 'object' && !Object.isFrozen(value)) {
     for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
     Object.freeze(value)
   }
   return value
-}
-
-function projectSemanticIntent(intent: ResolvedGenerationIntentV2): unknown {
-  const generation = compact({
-    ...intent.generation,
-    stop: intent.generation.stop ? [...intent.generation.stop] : undefined,
-  })
-  const image = intent.image.mode === 'disabled' ? { mode: 'disabled' } : compact({
-    ...intent.image,
-    aspectRatio: intent.image.aspectRatio ? readImageAspectRatioV2(intent.image.aspectRatio) : undefined,
-    size: intent.image.size ? { ...intent.image.size } : undefined,
-  })
-  return {
-    schemaVersion: 2,
-    generation,
-    reasoning: { ...intent.reasoning },
-    web: intent.web.mode === 'disabled'
-      ? { mode: 'disabled' }
-      : { mode: 'provider_search', types: [...intent.web.types] },
-    image,
-    tools: intent.tools.mode === 'disabled'
-      ? { mode: 'disabled' }
-      : {
-          mode: 'enabled',
-          allowedToolIds: intent.tools.allowedToolIds.map((item) => readGenerationV2Identity(item, 'tool_id')),
-          toolChoice: intent.tools.toolChoice.mode === 'named'
-            ? {
-                mode: 'named',
-                toolId: readGenerationV2Identity(intent.tools.toolChoice.toolId, 'tool_id'),
-              }
-            : { mode: intent.tools.toolChoice.mode },
-          sideEffectConfirmation: 'required_each_retry',
-        },
-    attachments: intent.attachments.map((attachment) => ({
-      assetId: readGenerationV2Identity(attachment.assetId, 'asset_id'),
-      assetRevisionId: readGenerationV2Identity(attachment.assetRevisionId, 'asset_revision_id'),
-      assetSha256: readGenerationV2Digest(attachment.assetSha256, 'asset_sha256'),
-      include: attachment.include,
-      sendAs: attachment.sendAs,
-      conversion: attachment.conversion,
-    })),
-    providerExtension: { ...intent.providerExtension },
-  }
 }
 
 function projectProviderBinding(binding: DecodedProviderBindingRecordV2): unknown {
@@ -366,7 +312,7 @@ function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; proj
     schemaVersion: 2,
     answerRootId: answerRootId.value,
     operationId: readGenerationV2Identity(operationId, 'operation_id'),
-    semanticIntent: projectSemanticIntent(semanticIntent),
+    semanticIntent: projectGenerationIntentLayerV2(semanticIntent),
     resolvedConfigRevisions: resolvedConfigRevisions.map((item) => ({
       ownerKind: item.ownerKind,
       ownerId: item.ownerId,
