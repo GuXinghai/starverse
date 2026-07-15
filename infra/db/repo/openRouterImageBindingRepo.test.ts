@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
+import { applyGenerationV2Schema } from '../v2/schemaComposerV2'
 import type { CanonicalOpenRouterImageDescriptorV2 } from '../../../src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
 import { OpenRouterImageEndpointRepo } from './openRouterImageEndpointRepo'
 import {
@@ -64,7 +64,7 @@ function record(descriptor: CanonicalOpenRouterImageDescriptorV2,
 
 function fixture(times: number[]) {
   const db = new BetterSqlite3(':memory:')
-  db.exec(readFileSync(path.resolve('infra/db/v2/openRouterImagesSchema.sql'), 'utf8'))
+  applyGenerationV2Schema(db, path.resolve(process.cwd()))
   const endpointRepo = new OpenRouterImageEndpointRepo(db, () => 100)
   const descriptorSet = endpointRepo.commitSuccessfulDescriptorResponse({
     credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
@@ -306,7 +306,7 @@ describe('OpenRouter Images V2 binding repository', () => {
     const secondDb = new BetterSqlite3(databasePath)
     try {
       firstDb.pragma('journal_mode = WAL')
-      firstDb.exec(readFileSync(path.resolve('infra/db/v2/openRouterImagesSchema.sql'), 'utf8'))
+      applyGenerationV2Schema(firstDb, path.resolve(process.cwd()))
       secondDb.pragma('busy_timeout = 1')
       const endpointRepo = new OpenRouterImageEndpointRepo(firstDb, () => 100)
       const descriptorSet = endpointRepo.commitSuccessfulDescriptorResponse({

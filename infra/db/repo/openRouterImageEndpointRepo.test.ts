@@ -1,10 +1,10 @@
-import { readFileSync } from 'node:fs'
 import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
+import { applyGenerationV2Schema } from '../v2/schemaComposerV2'
 import { OpenRouterImageEndpointRepo } from './openRouterImageEndpointRepo'
 
 const scope = GenerationV2Identity.create('credential_scope_id', 'credential-scope-v2:test')
@@ -23,7 +23,7 @@ function response(tag = 'google-ai-studio', modelId = model.value) {
 
 function fixture(times: number[]) {
   const db = new BetterSqlite3(':memory:')
-  db.exec(readFileSync(path.resolve('infra/db/v2/openRouterImagesSchema.sql'), 'utf8'))
+  applyGenerationV2Schema(db, path.resolve(process.cwd()))
   const repo = new OpenRouterImageEndpointRepo(db, () => {
     const value = times.shift()
     if (value === undefined) throw new Error('missing test clock value')
@@ -270,7 +270,7 @@ describe('OpenRouterImageEndpointRepo V2 successful descriptor facts', () => {
     const secondDb = new BetterSqlite3(databasePath)
     try {
       firstDb.pragma('journal_mode = WAL')
-      firstDb.exec(readFileSync(path.resolve('infra/db/v2/openRouterImagesSchema.sql'), 'utf8'))
+      applyGenerationV2Schema(firstDb, path.resolve(process.cwd()))
       secondDb.pragma('busy_timeout = 1')
       const firstRepo = new OpenRouterImageEndpointRepo(firstDb, () => 100)
       const secondRepo = new OpenRouterImageEndpointRepo(secondDb, () => 200)
