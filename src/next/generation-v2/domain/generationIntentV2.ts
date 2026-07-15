@@ -67,6 +67,12 @@ export type AttachmentIntentV2 = Readonly<{
 
 export type ProviderSemanticExtensionV2 = Readonly<{ kind: 'none' }>
 
+const attachmentIntentsV2 = new WeakSet<object>()
+
+export function isAttachmentIntentV2(value: unknown): value is AttachmentIntentV2 {
+  return Boolean(value && typeof value === 'object' && attachmentIntentsV2.has(value))
+}
+
 export type GenerationIntentLayerV2 = Readonly<{
   schemaVersion: 2
   generation?: SamplingIntentV2
@@ -346,7 +352,7 @@ function decodeAttachment(value: unknown): AttachmentIntentV2 {
   const sendAs = optionalEnum(input, 'sendAs', ['provider_file', 'inline_text', 'image_reference', 'converted_document'])
   const conversion = optionalEnum(input, 'conversion', ['none', 'pdf', 'plain_text', 'images'])
   if (!sendAs || !conversion) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
-  return Object.freeze({
+  const attachment = Object.freeze({
     assetId: GenerationV2Identity.create('asset_id', input.assetId),
     assetRevisionId: GenerationV2Identity.create('asset_revision_id', input.assetRevisionId),
     assetSha256: GenerationV2Digest.create('asset_sha256', input.assetSha256),
@@ -354,6 +360,8 @@ function decodeAttachment(value: unknown): AttachmentIntentV2 {
     sendAs,
     conversion,
   })
+  attachmentIntentsV2.add(attachment)
+  return attachment
 }
 
 function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {

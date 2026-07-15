@@ -15,6 +15,7 @@ export type GenerationV2IdentityKind =
   | 'descriptor_revision'
   | 'asset_id'
   | 'asset_revision_id'
+  | 'blob_id'
   | 'tool_id'
   | 'tool_registry_revision'
   | 'provider_file_descriptor_id'
@@ -37,7 +38,8 @@ const IDENTITY_KINDS = new Set<GenerationV2IdentityKind>([
   'endpoint_set_revision', 'endpoint_id',
   'protocol_contract_id', 'contract_revision', 'registry_revision',
   'credential_scope_id', 'config_revision', 'capability_revision', 'descriptor_revision',
-  'asset_id', 'asset_revision_id', 'tool_id', 'operation_id',
+  'asset_id', 'asset_revision_id', 'blob_id',
+  'tool_id', 'operation_id',
   'tool_registry_revision', 'provider_file_descriptor_id', 'provider_file_descriptor_revision',
 ])
 

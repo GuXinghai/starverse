@@ -84,6 +84,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/openRouterImageSettingsRepo.ts'),
       path.resolve('infra/db/repo/openRouterImageBindingRepo.ts'),
       path.resolve('infra/db/repo/generationConfigV2Repo.ts'),
+      path.resolve('infra/db/repo/attachmentAssetV2Repo.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -109,6 +110,21 @@ describe('Generation Compiler V2 core boundary', () => {
     }
     const source = read('infra/db/repo/generationConfigV2Repo.ts')
     expect(source).not.toMatch(/chatSessionConfig|reasoningPrefsScope|settingsRepo|conversation.*meta|requestPatch|wirePath|ipcMain|fetch\(|net\.request/iu)
+  })
+
+  it('keeps attachment provenance local, immutable and outside legacy file/provider paths', () => {
+    const adapter = path.resolve('infra/db/repo/attachmentAssetV2Repo.ts')
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === adapter) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+          .not.toMatch(/attachmentAssetV2Repo|ResolvedAttachmentAssetAuthorityV2/iu)
+      }
+    }
+    const source = read('infra/db/repo/attachmentAssetV2Repo.ts')
+    expect(source).not.toMatch(/fileAssetStoreRepo|providerFileUploadCache|providerFileInputMapper|apiKey|credentialFingerprint|baseUrl|dataUrl|fetch\(|net\.request|node:fs|ipcMain/iu)
+    expect(source).toContain("usage: 'snapshot_reference_verified'")
+    expect(source).not.toMatch(/send_bytes_preflight_verified/iu)
   })
 
   it('keeps the inactive V2 descriptor repository adapter out of startup and legacy production imports', () => {
