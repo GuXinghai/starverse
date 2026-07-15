@@ -16,6 +16,7 @@ import {
   isVerifiedAttachmentSendBytesLeaseV2,
 } from './attachmentAssetV2Repo'
 import type { ResolvedAttachmentAssetAuthorityV2 } from './attachmentAssetV2Repo'
+import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from './generationV2AuthorityTransactionInternal'
 
 const root = path.resolve(process.cwd())
 
@@ -42,6 +43,19 @@ function attachment(
   return intent.attachments![0]
 }
 
+function withSnapshotReference<T>(
+  db: BetterSqlite3.Database,
+  repo: AttachmentAssetV2Repo,
+  intent: ReturnType<typeof attachment>,
+  use: (authority: ResolvedAttachmentAssetAuthorityV2) => T extends PromiseLike<unknown> ? never : T,
+): T {
+  return runGenerationV2AuthorityTransactionOnOwnedConnectionV2<T>(
+    db,
+    ((context: Parameters<AttachmentAssetV2Repo['withSynchronousSnapshotReferenceAuthority']>[0]) =>
+      repo.withSynchronousSnapshotReferenceAuthority<T>(context, intent, use as never)) as never,
+  )
+}
+
 describe('AttachmentAssetV2Repo immutable provenance', () => {
   it('records content-derived blob identity and resolves one exact source revision authority', () => {
     const db = createDb()
@@ -59,7 +73,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       expect(isAttachmentAssetRevisionRepositoryFactV2(revision)).toBe(true)
       expect(isAttachmentAssetRevisionRepositoryFactV2({ ...revision })).toBe(false)
       let escapedAuthority: unknown
-      const result = repo.withSynchronousSnapshotReferenceAuthority(
+      const result = withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', blob.sha256.value),
         (authority) => {
           escapedAuthority = authority
@@ -155,7 +169,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
         'revision:derived-sql', 'asset:1', ?, 'revision:source', 'derived', 'pdf',
         'converter:pdf', 'converter:pdf:1', 12
       )`).run(sourceBlob.blobId.value)).toThrow(/CHECK constraint failed/u)
-      expect(() => repo.withSynchronousSnapshotReferenceAuthority(
+      expect(() => withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:source', sourceBlob.sha256.value, 'pdf'),
         () => undefined,
       )).toThrow('GENERATION_V2_ASSET_INTENT_MISMATCH')
@@ -171,15 +185,15 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       repo.createAsset({ assetId: 'asset:1', assetKind: 'file', filename: 'a.txt', sourceKind: 'user_import' })
       repo.appendSourceRevision({ assetId: 'asset:1', assetRevisionId: 'revision:1', blob: first })
       repo.appendSourceRevision({ assetId: 'asset:1', assetRevisionId: 'revision:2', blob: second })
-      expect(() => repo.withSynchronousSnapshotReferenceAuthority(
+      expect(() => withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', second.sha256.value), () => undefined,
       ))
         .toThrow('GENERATION_V2_ASSET_INTENT_MISMATCH')
-      expect(() => repo.withSynchronousSnapshotReferenceAuthority(
+      expect(() => withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', first.sha256.value, 'pdf'), () => undefined,
       ))
         .toThrow('GENERATION_V2_ASSET_INTENT_MISMATCH')
-      expect(() => repo.withSynchronousSnapshotReferenceAuthority(
+      expect(() => withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:missing', first.sha256.value), () => undefined,
       ))
         .toThrow('GENERATION_V2_ASSET_NOT_FOUND')
@@ -198,7 +212,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
 
       const forged = { ...intent }
       let forgedCallbackCalls = 0
-      expect(() => repo.withSynchronousSnapshotReferenceAuthority(forged as never, () => {
+      expect(() => withSnapshotReference(db, repo, forged as never, () => {
         forgedCallbackCalls += 1
       })).toThrow('GENERATION_V2_ASSET_INPUT_INVALID')
       expect(forgedCallbackCalls).toBe(0)
@@ -207,21 +221,21 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
         enumerable: true,
         get: () => { accessorCalls += 1; return intent.assetId },
       })
-      expect(() => repo.withSynchronousSnapshotReferenceAuthority(accessorIntent as never, () => undefined))
+      expect(() => withSnapshotReference(db, repo, accessorIntent as never, () => undefined))
         .toThrow('GENERATION_V2_ASSET_INPUT_INVALID')
       expect(accessorCalls).toBe(0)
       expect(Object.isFrozen(intent)).toBe(true)
 
       now = 20
-      expect(() => repo.withSynchronousSnapshotReferenceAuthority(intent, (authority) => {
+      expect(() => withSnapshotReference(db, repo, intent, (authority) => {
         repo.retireAsset('asset:1')
         expect(isResolvedAttachmentAssetAuthorityV2(authority)).toBe(true)
         return 'must-roll-back'
       })).toThrow('GENERATION_V2_ASSET_RETIRED')
-      expect(repo.withSynchronousSnapshotReferenceAuthority(intent, () => 'still-active')).toBe('still-active')
+      expect(withSnapshotReference(db, repo, intent, () => 'still-active')).toBe('still-active')
 
       let validAfterAwait: boolean | undefined
-      expect(() => repo.withSynchronousSnapshotReferenceAuthority(intent, (async (
+      expect(() => withSnapshotReference(db, repo, intent, (async (
         authority: ResolvedAttachmentAssetAuthorityV2,
       ) => {
         await Promise.resolve()
@@ -259,7 +273,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
         .toThrow('GENERATION_V2_ASSET_REVISION_IMMUTABLE')
       now = 20
       repo.retireAsset('asset:1')
-      expect(() => repo.withSynchronousSnapshotReferenceAuthority(
+      expect(() => withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', blob.sha256.value), () => undefined,
       ))
         .toThrow('GENERATION_V2_ASSET_RETIRED')
@@ -280,7 +294,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       repo.appendSourceRevision({ assetId: 'asset:1', assetRevisionId: 'revision:1', blob })
 
       let escapedAuthority: ResolvedAttachmentAssetAuthorityV2 | undefined
-      const verified = repo.withSynchronousSnapshotReferenceAuthority(
+      const verified = withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', blob.sha256.value),
         (authority) => {
           escapedAuthority = authority
@@ -322,7 +336,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       await expect(consumeVerifiedAttachmentSendBytesLeaseV2(verified, () => undefined))
         .rejects.toThrow('GENERATION_V2_ASSET_BYTES_DISPOSED')
 
-      const failingLease = repo.withSynchronousSnapshotReferenceAuthority(
+      const failingLease = withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', blob.sha256.value),
         (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
       )
@@ -334,7 +348,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       expect([...failedConsumerBytes!]).toEqual([0, 0, 0])
       expect(isVerifiedAttachmentSendBytesLeaseV2(failingLease)).toBe(false)
 
-      const poisonedLease = repo.withSynchronousSnapshotReferenceAuthority(
+      const poisonedLease = withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', blob.sha256.value),
         (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
       )
@@ -350,7 +364,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       expect(isVerifiedAttachmentSendBytesLeaseV2(poisonedLease)).toBe(false)
       expect(disposeVerifiedAttachmentSendBytesLeaseV2(poisonedLease)).toBe(false)
 
-      const detachedLease = repo.withSynchronousSnapshotReferenceAuthority(
+      const detachedLease = withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', blob.sha256.value),
         (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
       )
@@ -361,7 +375,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       expect(isVerifiedAttachmentSendBytesLeaseV2(detachedLease)).toBe(false)
       expect(disposeVerifiedAttachmentSendBytesLeaseV2(detachedLease)).toBe(false)
 
-      const manualLease = repo.withSynchronousSnapshotReferenceAuthority(
+      const manualLease = withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', blob.sha256.value),
         (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
       )
@@ -370,7 +384,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       await expect(consumeVerifiedAttachmentSendBytesLeaseV2(manualLease, () => undefined))
         .rejects.toThrow('GENERATION_V2_ASSET_BYTES_DISPOSED')
 
-      const activeLease = repo.withSynchronousSnapshotReferenceAuthority(
+      const activeLease = withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', blob.sha256.value),
         (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
       )
@@ -388,7 +402,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       expect(isVerifiedAttachmentSendBytesLeaseV2(activeLease)).toBe(false)
 
       let failedLease: ReturnType<AttachmentAssetV2Repo['verifyAttachmentSendBytes']> | undefined
-      expect(() => repo.withSynchronousSnapshotReferenceAuthority(
+      expect(() => withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:1', blob.sha256.value),
         (authority) => {
           failedLease = repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3]))
@@ -401,10 +415,8 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
 
       db.exec('BEGIN IMMEDIATE')
       try {
-        expect(() => repo.withSynchronousSnapshotReferenceAuthority(
-          attachment('asset:1', 'revision:1', blob.sha256.value),
-          (authority) => repo.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 3])),
-        )).toThrow('GENERATION_V2_ASSET_SEND_BYTES_NESTED_TRANSACTION')
+        expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, () => undefined))
+          .toThrow('GENERATION_V2_AUTHORITY_TRANSACTION_NESTED')
       } finally {
         db.exec('ROLLBACK')
       }
@@ -422,7 +434,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       first.createAsset({ assetId: 'asset:1', assetKind: 'file', filename: 'a.bin', sourceKind: 'user_import' })
       first.appendSourceRevision({ assetId: 'asset:1', assetRevisionId: 'revision:1', blob })
 
-      const viewLease = first.withSynchronousSnapshotReferenceAuthority(
+      const viewLease = withSnapshotReference(firstDb, first,
         attachment('asset:1', 'revision:1', blob.sha256.value),
         (authority) => {
           expect(() => first.verifyAttachmentSendBytes(authority, new Uint8Array([1, 2, 4])))
@@ -454,7 +466,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       await expect(consumeVerifiedAttachmentSendBytesLeaseV2(viewLease, (bytes) => [...bytes]))
         .resolves.toEqual([1, 2, 3])
 
-      first.withSynchronousSnapshotReferenceAuthority(
+      withSnapshotReference(firstDb, first,
         attachment('asset:1', 'revision:1', blob.sha256.value, 'none', false),
         (authority) => {
           expect(() => first.verifyAttachmentSendBytes(authority, exact))
@@ -465,7 +477,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       const emptyBlob = first.recordBlobFromBytes(new Uint8Array(), 'application/octet-stream')
       first.createAsset({ assetId: 'asset:empty', assetKind: 'file', filename: 'empty.bin', sourceKind: 'user_import' })
       first.appendSourceRevision({ assetId: 'asset:empty', assetRevisionId: 'revision:empty', blob: emptyBlob })
-      const empty = first.withSynchronousSnapshotReferenceAuthority(
+      const empty = withSnapshotReference(firstDb, first,
         attachment('asset:empty', 'revision:empty', emptyBlob.sha256.value),
         (authority) => first.verifyAttachmentSendBytes(authority, new Uint8Array()),
       )
@@ -492,12 +504,13 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       const blob = repoA.recordBlobFromBytes(new Uint8Array([2]), 'application/octet-stream')
       repoA.createAsset({ assetId: 'asset:1', assetKind: 'file', filename: 'a.bin', sourceKind: 'user_import' })
       repoA.appendSourceRevision({ assetId: 'asset:1', assetRevisionId: 'revision:1', blob })
-      repoA.withSynchronousSnapshotReferenceAuthority(
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(first, (context) => repoA.withSynchronousSnapshotReferenceAuthority(
+        context,
         attachment('asset:1', 'revision:1', blob.sha256.value),
         () => {
           expect(() => repoB.retireAsset('asset:1')).toThrow('GENERATION_V2_ASSET_LOCK_CONFLICT')
         },
-      )
+      ))
       first.exec('BEGIN IMMEDIATE')
       expect(() => repoB.recordBlobFromBytes(new Uint8Array([1]), 'application/octet-stream'))
         .toThrow('GENERATION_V2_ASSET_LOCK_CONFLICT')

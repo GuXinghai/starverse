@@ -16,6 +16,12 @@ import {
 import { ConversationGraphV2Identity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
 import { GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
 import type { ResolvedGenerationIntentV2 } from '../../../src/next/generation-v2/domain/resolvedGenerationIntentV2'
+import {
+  assertGenerationV2AuthorityTransactionContextV2,
+  isGenerationV2AuthorityTransactionContextV2,
+  registerGenerationV2AuthorityTransactionParticipantV2,
+  type GenerationV2AuthorityTransactionContextV2,
+} from './generationV2AuthorityTransactionInternal'
 
 const MAX_SEMANTIC_BYTES = 1024 * 1024
 const MAX_GENERATION = Number.MAX_SAFE_INTEGER
@@ -68,6 +74,7 @@ export class GenerationConfigV2RepoError extends Error {
 
 const repositoryFacts = new WeakSet<object>()
 const resolvedAuthorities = new WeakSet<object>()
+const resolvedAuthorityContexts = new WeakMap<object, GenerationV2AuthorityTransactionContextV2>()
 
 function safeTime(value: number): number {
   if (!Number.isSafeInteger(value) || value < 0) {
@@ -161,14 +168,21 @@ export function isGenerationConfigScopeRepositoryFactV2(
 export function isResolvedGenerationConfigAuthorityV2(
   value: unknown,
 ): value is ResolvedGenerationConfigAuthorityV2 {
-  return Boolean(value && typeof value === 'object' && resolvedAuthorities.has(value))
+  if (!value || typeof value !== 'object' || !resolvedAuthorities.has(value)) return false
+  const context = resolvedAuthorityContexts.get(value)
+  return Boolean(context && isGenerationV2AuthorityTransactionContextV2(context))
 }
 
 export class GenerationConfigV2Repo {
+  readonly #db: BetterSqlite3.Database
+  readonly #nowMs: () => number
+
   constructor(
-    private readonly db: BetterSqlite3.Database,
-    private readonly nowMs: () => number = Date.now,
+    db: BetterSqlite3.Database,
+    nowMs: () => number = Date.now,
   ) {
+    this.#db = db
+    this.#nowMs = nowMs
     db.pragma('foreign_keys = ON')
     if (db.pragma('foreign_keys', { simple: true }) !== 1) {
       throw new GenerationConfigV2RepoError('GENERATION_V2_CONFIG_STATE_INVALID')
@@ -177,7 +191,7 @@ export class GenerationConfigV2Repo {
 
   getScope(ownerKind: GenerationConfigRevisionScopeV2, ownerId: string): GenerationConfigScopeRepositoryFactV2 {
     ownerIdentity(ownerKind, ownerId)
-    const row = this.db.prepare(`SELECT owner_kind, owner_id, project_id, conversation_id,
+    const row = this.#db.prepare(`SELECT owner_kind, owner_id, project_id, conversation_id,
       revision_generation, config_revision, semantic_json, semantic_hash, created_at_ms, updated_at_ms
       FROM generation_config_v2 WHERE owner_kind = ? AND owner_id = ?`).get(ownerKind, ownerId) as ConfigRow | undefined
     if (!row) throw new GenerationConfigV2RepoError('GENERATION_V2_CONFIG_NOT_FOUND')
@@ -194,7 +208,7 @@ export class GenerationConfigV2Repo {
     const semanticLayer = decodeGenerationConfigLayerV2(semanticValue)
     const semanticJson = serializeLayer(semanticLayer)
     const semanticHash = hashText(semanticJson)
-    const transaction = this.db.transaction(() => {
+    const transaction = this.#db.transaction(() => {
       const current = this.getScope(ownerKind, ownerId)
       if (current.configRevision.value !== expectedConfigRevision) {
         throw new GenerationConfigV2RepoError('GENERATION_V2_CONFIG_STALE_REVISION')
@@ -204,8 +218,8 @@ export class GenerationConfigV2Repo {
         throw new GenerationConfigV2RepoError('GENERATION_V2_CONFIG_REVISION_EXHAUSTED')
       }
       const nextGeneration = current.revisionGeneration + 1
-      const now = Math.max(safeTime(this.nowMs()), current.updatedAtMs)
-      const result = this.db.prepare(`UPDATE generation_config_v2 SET
+      const now = Math.max(safeTime(this.#nowMs()), current.updatedAtMs)
+      const result = this.#db.prepare(`UPDATE generation_config_v2 SET
         revision_generation = ?, config_revision = ?, semantic_json = ?, semantic_hash = ?, updated_at_ms = ?
         WHERE owner_kind = ? AND owner_id = ? AND config_revision = ? AND revision_generation = ?`)
         .run(
@@ -219,37 +233,57 @@ export class GenerationConfigV2Repo {
   }
 
   resolveForConversation(
+    context: GenerationV2AuthorityTransactionContextV2,
     conversationId: string,
     expectedRevisionSet?: unknown,
   ): ResolvedGenerationConfigAuthorityV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     ConversationGraphV2Identity.create('conversation_id', conversationId)
-    const transaction = this.db.transaction(() => {
-      const conversation = this.db.prepare(
-        'SELECT project_id FROM conversation_v2 WHERE conversation_id = ?',
-      ).get(conversationId) as { project_id: unknown } | undefined
-      if (!conversation || typeof conversation.project_id !== 'string') {
-        throw new GenerationConfigV2RepoError('GENERATION_V2_CONFIG_NOT_FOUND')
-      }
-      const facts = Object.freeze([
-        this.getScope('global', 'global'),
-        this.getScope('project', conversation.project_id),
-        this.getScope('conversation', conversationId),
-      ])
-      const revisionSet = Object.freeze(facts.map((fact) => Object.freeze({
-        ownerKind: fact.ownerKind,
-        ownerId: fact.ownerId,
-        revision: fact.configRevision,
-      })))
-      if (expectedRevisionSet !== undefined) this.assertExpectedRevisionSet(expectedRevisionSet, revisionSet)
-      const authority = Object.freeze({
-        trust: 'resolved_generation_config_authority' as const,
-        semanticIntent: mergeGenerationConfigLayersV2(facts.map((fact) => fact.semanticLayer)),
-        revisionSet,
-      })
-      resolvedAuthorities.add(authority)
-      return authority
+    const conversation = this.#db.prepare(
+      'SELECT project_id FROM conversation_v2 WHERE conversation_id = ?',
+    ).get(conversationId) as { project_id: unknown } | undefined
+    if (!conversation || typeof conversation.project_id !== 'string') {
+      throw new GenerationConfigV2RepoError('GENERATION_V2_CONFIG_NOT_FOUND')
+    }
+    const facts = Object.freeze([
+      this.getScope('global', 'global'),
+      this.getScope('project', conversation.project_id),
+      this.getScope('conversation', conversationId),
+    ])
+    const revisionSet = Object.freeze(facts.map((fact) => Object.freeze({
+      ownerKind: fact.ownerKind,
+      ownerId: fact.ownerId,
+      revision: fact.configRevision,
+    })))
+    if (expectedRevisionSet !== undefined) this.assertExpectedRevisionSet(expectedRevisionSet, revisionSet)
+    const authority = Object.freeze({
+      trust: 'resolved_generation_config_authority' as const,
+      semanticIntent: mergeGenerationConfigLayersV2(facts.map((fact) => fact.semanticLayer)),
+      revisionSet,
     })
-    return transaction.deferred()
+    resolvedAuthorities.add(authority)
+    resolvedAuthorityContexts.set(authority, context)
+    const revoke = () => {
+      resolvedAuthorities.delete(authority)
+      resolvedAuthorityContexts.delete(authority)
+    }
+    registerGenerationV2AuthorityTransactionParticipantV2(context, this.#db, {
+      preCommit: () => {
+        const current = Object.freeze(revisionSet.map((entry) => Object.freeze({
+          ownerKind: entry.ownerKind,
+          ownerId: entry.ownerId,
+          revision: this.getScope(entry.ownerKind, entry.ownerId).configRevision,
+        })))
+        this.assertExpectedRevisionSet(revisionSet.map((entry) => ({
+          ownerKind: entry.ownerKind,
+          ownerId: entry.ownerId,
+          revision: entry.revision.value,
+        })), current)
+      },
+      committed: revoke,
+      rolledBack: revoke,
+    })
+    return authority
   }
 
   private assertExpectedRevisionSet(
