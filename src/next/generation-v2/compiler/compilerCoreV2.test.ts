@@ -1,6 +1,10 @@
 import { createHash } from 'node:crypto'
 import { describe, expect, it } from 'vitest'
-import { ImmutablePreparedBodyV2, stableSerializeProviderRequestV2 } from './stableSerialize'
+import {
+  ImmutablePreparedBodyV2,
+  stableSerializeProviderRequestBoundedV2,
+  stableSerializeProviderRequestV2,
+} from './stableSerialize'
 
 describe('Generation Compiler V2 core', () => {
   it('serializes plain provider-native JSON deterministically by Unicode code point', () => {
@@ -55,6 +59,17 @@ describe('Generation Compiler V2 core', () => {
       .toThrow('GENERATION_V2_JSON_UNSUPPORTED_VALUE')
     expect(() => Object.setPrototypeOf(body, { copyBytes: () => new Uint8Array([0]) }))
       .toThrow()
+  })
+
+  it('stops canonical serialization at the exact UTF-8 byte boundary including JSON escaping', () => {
+    const value = { text: '\u0000\u0000' }
+    const exact = stableSerializeProviderRequestV2(value)
+    expect(exact).toBe('{"text":"\\u0000\\u0000"}')
+    expect(stableSerializeProviderRequestBoundedV2(value, new TextEncoder().encode(exact).byteLength)).toBe(exact)
+    expect(() => stableSerializeProviderRequestBoundedV2(value, new TextEncoder().encode(exact).byteLength - 1))
+      .toThrow('GENERATION_V2_JSON_BYTE_LIMIT_EXCEEDED')
+    expect(() => ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes({ a: '123', b: '456' }, 10))
+      .toThrow('GENERATION_V2_JSON_BYTE_LIMIT_EXCEEDED')
   })
 
 })

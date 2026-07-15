@@ -1,0 +1,60 @@
+{
+  "capturedAt": "2026-07-15",
+  "provider": "deepseek",
+  "classification": "reviewed_provider_family_definition",
+  "officialEvidence": {
+    "chatCreate": "https://api-docs.deepseek.com/api/create-chat-completion",
+    "modelsList": "https://api-docs.deepseek.com/api/list-models",
+    "thinkingMode": "https://api-docs.deepseek.com/guides/thinking_mode/",
+    "toolCalls": "https://api-docs.deepseek.com/guides/tool_calls/"
+  },
+  "reviewedWireFacts": {
+    "origin": "https://api.deepseek.com",
+    "auth": {
+      "kind": "header",
+      "name": "Authorization",
+      "scheme": "Bearer"
+    },
+    "chat": {
+      "method": "POST",
+      "relativePath": "/chat/completions",
+      "requestContentType": "application/json",
+      "streamProtocol": "data_only_sse",
+      "doneSentinel": "required"
+    },
+    "models": {
+      "method": "GET",
+      "relativePath": "/models",
+      "responseContentType": "application/json"
+    },
+    "stablePathPolicy": {
+      "appendOrProbeV1": false,
+      "automaticFallback": false,
+      "betaIsIndependentContract": true,
+      "betaOnlyToolStrictRejected": true
+    },
+    "thinkingToolPolicy": {
+      "functionToolsAllowed": true,
+      "omittedToolChoiceRemainsAbsent": true,
+      "explicitToolChoicePreflightError": "DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED",
+      "nativeAssistantFields": [
+        "content",
+        "reasoning_content",
+        "tool_calls"
+      ]
+    },
+    "finishReasons": [
+      "stop",
+      "length",
+      "content_filter",
+      "tool_calls",
+      "insufficient_system_resource"
+    ]
+  },
+  "openApiSha256": null,
+  "notes": [
+    "No official OpenAPI document was used or hashed.",
+    "The stable request contract is separate from the explicit beta origin.",
+    "Owner policy is stricter than the formal disabled-thinking tool_choice schema for thinking-enabled requests until exact-body smoke proves individual values."
+  ]
+}

@@ -1,6 +1,6 @@
 # Generation Compiler V2 — Goal 2 Gate 0 Contract Audit
 
-Status: **OpenRouter Images routing and the LM Studio Responses-first binding/request/continuation slices are closed for their bounded implementation. LM Studio native terminal SSE decoding is reopened and blocked on its formal terminal schema plus coordinator acceptance; eight remaining Owner decisions gate only their own package/epoch surfaces.** Verified 2026-07-13 through 2026-07-15 against current first-party documentation, OpenAPI and controlled live/local smokes.
+Status: **OpenRouter Images routing, LM Studio Responses-first binding/request/continuation, and DeepSeek stable endpoint/thinking-history slices are closed for their bounded implementation. LM Studio native terminal SSE decoding is reopened and blocked on its formal terminal schema plus coordinator acceptance; eight remaining Owner decisions gate only their own package/epoch surfaces.** Verified 2026-07-13 through 2026-07-15 against current first-party documentation, OpenAPI and controlled live/local smokes.
 
 This audit records evidence discovered after Goal 1. It does not silently rewrite the implementation baseline. A conflict with the frozen plan blocks the affected contract and the production cutover until the Owner records a decision backed by an official schema or a real authenticated smoke.
 
@@ -120,6 +120,28 @@ Verified facts:
 
 Disposition: no version conflict. The V2 contract must type `previous_interaction_id` and native steps rather than reconstructing continuation from visible text.
 
+## DeepSeek stable Chat contract and thinking tool continuation
+
+Official sources, reverified 2026-07-15:
+
+- <https://api-docs.deepseek.com/quick_start/pricing>
+- <https://api-docs.deepseek.com/api/create-chat-completion>
+- <https://api-docs.deepseek.com/api/list-models>
+- <https://api-docs.deepseek.com/guides/thinking_mode/>
+- <https://api-docs.deepseek.com/guides/tool_calls/>
+
+Owner-frozen contract:
+
+- The stable first-party origin is exactly `https://api.deepseek.com`; Chat is `POST /chat/completions` and Models is `GET /models`. V2 never appends, probes, or falls back to `/v1`.
+- `/beta` is an independently and explicitly selected Beta contract. Stable requests never switch to it automatically.
+- Beta-only fields such as function-tool `strict` are rejected by the stable codec; they cannot smuggle a stable request onto the Beta origin.
+- Thinking requests may send function-tool definitions. If no `tool_choice` is configured, the field is absent from the serialized body.
+- Every explicit `tool_choice` while thinking is enabled, including `auto`, `none`, `required`, and a named function, is rejected before compilation with `DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED`. Thinking-disabled requests encode the formal Chat-schema field normally.
+- Provider-native assistant history preserves `content`, `reasoning_content`, and `tool_calls`; following tool messages retain their original order and `tool_call_id`. A thinking tool continuation with a missing required `reasoning_content` blocks before transport instead of reconstructing it from visible text or display reasoning.
+- The same ordered native artifact is authoritative across ordinary continuation, tool continuation, restart, branch, retry, regenerate, and edit-resend. Streaming assembly must preserve reasoning and tool deltas before terminal persistence.
+
+Disposition: **the DeepSeek stable endpoint and thinking/tool-choice Gate 0 conflicts are closed by Owner decision.** Exact-body, native-history round-trip, missing-reasoning preflight, streaming assembly, and provider-400 regression tests are mandatory before activation. This decision does not authorize a `/v1` alias, a Beta fallback, or any inferred thinking-mode `tool_choice` value.
+
 ## OpenRouter Images endpoint pinning smoke and revised decision
 
 Official sources:
@@ -179,4 +201,4 @@ Disposition: **The OpenRouter Images provider-routing/request-pin Gate 0 blocker
 - Whether Anthropic `thinking.display` is user-facing; the compiler/capability type must support the official field either way.
 - OpenRouter first-party endpoint profile scope (one immutable versioned profile for Chat and Images versus an Images-specific profile) and its canonical profile ID.
 
-Production implementation may proceed only for the closed OpenRouter Images routing and LM Studio Responses-first binding/request/continuation slices. LM Studio native terminal SSE remains separately blocked. Each remaining decision continues to block its own package/epoch surface; no implementation may infer or cross that unresolved boundary before its ADR entry exists.
+Production implementation may proceed only for the closed OpenRouter Images routing, LM Studio Responses-first binding/request/continuation, and DeepSeek stable endpoint/thinking-history slices. LM Studio native terminal SSE remains separately blocked. Each remaining decision continues to block its own package/epoch surface; no implementation may infer or cross that unresolved boundary before its ADR entry exists.
