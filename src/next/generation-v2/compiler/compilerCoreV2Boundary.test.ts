@@ -90,6 +90,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/attachmentAssetV2Repo.ts'),
       path.resolve('infra/db/repo/generationV2AuthorityTransactionInternal.ts'),
       path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts'),
+      path.resolve('infra/db/repo/generationExecutionV2Repo.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -147,6 +148,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/generationConfigV2Repo.ts'),
       path.resolve('infra/db/repo/attachmentAssetV2Repo.ts'),
       path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts'),
+      path.resolve('infra/db/repo/generationExecutionV2Repo.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -176,6 +178,21 @@ describe('Generation Compiler V2 core boundary', () => {
     expect(source).toContain("usage: 'snapshot_semantics_and_attachment_provenance_only'")
     expect(source).toContain("executionAuthority: 'none'")
     expect(source).not.toMatch(/assistantAnswerGenerationSnapshot|operation|preparedRequest|providerFileDescriptor|providerFileUpload|apiKey|credential|fetch\(|net\.request|ipcMain|node:fs|node:path/iu)
+  })
+
+  it('keeps the execution repository dormant and its unproven write surfaces closed', () => {
+    const adapter = path.resolve('infra/db/repo/generationExecutionV2Repo.ts')
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === adapter) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+          .not.toMatch(/generationExecutionV2Repo|GenerationExecutionV2Repo/iu)
+      }
+    }
+    const source = read('infra/db/repo/generationExecutionV2Repo.ts')
+    expect(source).not.toMatch(/insertPreparedRequest|appendNativeArtifact/iu)
+    expect(source).not.toMatch(/INSERT INTO generation_request_v2|INSERT INTO generation_native_artifact_v2/iu)
+    expect(source).not.toMatch(/ipcMain|dbMethodsRegistry|branchContextHandlers|chat\.db|fetch\(|net\.request|raw.*body/iu)
   })
 
   it('keeps the inactive V2 descriptor repository adapter out of startup and legacy production imports', () => {
