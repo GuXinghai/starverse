@@ -104,6 +104,34 @@ app.whenReady().then(() => {
         ))) {
       throw new Error('EPOCH2_WIN32_NATIVE_EPOCH_ROOT_INVALID')
     }
+    const databasePath = path.join(
+      appDataRoot,
+      packageMetadata.productName,
+      'workspace',
+      'epoch-2',
+      'starverse.db',
+    )
+    const databaseAuthority = lease.acquireEpochDatabaseFile('create_or_open')
+    let database
+    try {
+      const initialDatabaseIdentity = databaseAuthority.identity()
+      if (!initialDatabaseIdentity || initialDatabaseIdentity.created !== true ||
+          initialDatabaseIdentity.sizeBytes !== '0') {
+        throw new Error('EPOCH2_WIN32_NATIVE_DATABASE_CREATE_INVALID')
+      }
+      const Database = require('better-sqlite3')
+      database = new Database(databasePath)
+      database.exec('CREATE TABLE native_database_smoke (id INTEGER PRIMARY KEY)')
+      const verifiedDatabaseIdentity = databaseAuthority.verifyPathIdentity()
+      if (!verifiedDatabaseIdentity ||
+          verifiedDatabaseIdentity.databaseFileId !== initialDatabaseIdentity.databaseFileId ||
+          BigInt(verifiedDatabaseIdentity.sizeBytes) <= 0n) {
+        throw new Error('EPOCH2_WIN32_NATIVE_DATABASE_IDENTITY_INVALID')
+      }
+    } finally {
+      database?.close()
+      databaseAuthority.release()
+    }
     const tempName = `.svtmp-${'a'.repeat(32)}`
     const tempPath = path.join(
       appDataRoot,
