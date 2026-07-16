@@ -89,7 +89,9 @@ Add:
 - `electron/data-epoch/dataEpochCoordinator.ts`
 - `electron/data-epoch/rootManifest.ts`
 - `electron/data-epoch/resetJournal.ts`
-- `electron/data-epoch/safeOwnedDelete.ts`
+- `electron/data-epoch/nativeOwnedDelete.ts`
+- `electron/data-epoch/win32EpochRootLease.ts`
+- `native/epoch-win32/*`
 - crash-injection and packaged smoke fixtures.
 
 Modify:

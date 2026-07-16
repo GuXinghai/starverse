@@ -8,14 +8,12 @@ import {
   decodeAndVerifyEpoch2RootManifest,
   resolveEpoch2WorkspaceLayout,
 } from './rootManifest'
-import { writeEpoch2RootManifestAtomic } from './rootManifestStore'
 import {
   advanceEpoch2ResetJournal,
   createEpoch2ResetJournal,
   decodeEpoch2ResetJournal,
 } from './resetJournal'
 import { readEpoch2ResetJournal, writeEpoch2ResetJournalAtomic } from './resetJournalStore'
-import { assertEpoch2OwnedDeletePlanFresh, inspectEpoch2OwnedDeleteTarget } from './safeOwnedDelete'
 import { acquireWin32EpochRootLease } from './win32EpochRootLease'
 
 const digest = 'a'.repeat(64)
@@ -118,66 +116,6 @@ describe('Generation Compiler V2 epoch foundation', () => {
       const fourth = advanceEpoch2ResetJournal(third, 'epoch_root_created')
       writeEpoch2ResetJournalAtomic({ layout, lease, journal: fourth })
       expect(readEpoch2ResetJournal({ layout, lease })).toEqual(fourth)
-    } finally {
-      lease.release()
-      fs.rmSync(directory, { recursive: true, force: true })
-    }
-  })
-
-  windowsIt('audits the complete owned subtree after lease-bound ownership verification', () => {
-    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-owned-delete-'))
-    const layout = resolveEpoch2WorkspaceLayout({
-      appDataRoot: directory, homeRoot: os.homedir(), repositoryRoot: process.cwd(),
-    })
-    const manifest = createEpoch2RootManifest({ layout })
-    const lease = acquireWin32EpochRootLease(layout)
-    writeEpoch2RootManifestAtomic({ layout, lease, manifest })
-    const ownedRoot = layout.productRoot
-    const target = path.join(ownedRoot, 'assets')
-    const protectedPath = path.join(ownedRoot, 'config.json')
-    fs.mkdirSync(path.join(target, 'nested'), { recursive: true })
-    fs.writeFileSync(path.join(target, 'nested', 'blob.bin'), 'data')
-    fs.writeFileSync(protectedPath, '{}')
-    try {
-      const authorization = {
-        layout, lease, rootScope: 'product' as const,
-      }
-      const plan = inspectEpoch2OwnedDeleteTarget({ ...authorization, target, protectedPaths: [protectedPath] })
-      expect(plan.entriesPostOrder.at(-1)?.path).toBe(target)
-      expect(() => assertEpoch2OwnedDeletePlanFresh({ ...authorization, plan })).not.toThrow()
-      expect(fs.existsSync(target)).toBe(true)
-      expect(fs.existsSync(protectedPath)).toBe(true)
-
-      const changedTarget = path.join(ownedRoot, 'changed')
-      fs.mkdirSync(changedTarget)
-      const changedFile = path.join(changedTarget, 'data.bin')
-      fs.writeFileSync(changedFile, 'before')
-      const changedPlan = inspectEpoch2OwnedDeleteTarget({
-        ...authorization, target: changedTarget, protectedPaths: [protectedPath],
-      })
-      fs.writeFileSync(changedFile, 'after')
-      expect(() => assertEpoch2OwnedDeletePlanFresh({
-        ...authorization, plan: changedPlan,
-      })).toThrow('EPOCH2_DELETE_PATH_CHANGED')
-      expect(fs.existsSync(changedTarget)).toBe(true)
-      expect(() => inspectEpoch2OwnedDeleteTarget({
-        ...authorization,
-        target: directory,
-        protectedPaths: [],
-      })).toThrow('EPOCH2_DELETE_TARGET_OUTSIDE_ROOT')
-
-      const outside = path.join(directory, 'outside')
-      const link = path.join(ownedRoot, 'linked')
-      fs.mkdirSync(outside)
-      fs.symlinkSync(outside, link, process.platform === 'win32' ? 'junction' : 'dir')
-      expect(() => inspectEpoch2OwnedDeleteTarget({ ...authorization, target: link, protectedPaths: [] }))
-        .toThrow('EPOCH2_DELETE_REPARSE_POINT')
-      expect(() => inspectEpoch2OwnedDeleteTarget({
-        ...authorization, target: layout.transitionRoot, protectedPaths: [],
-      })).toThrow('EPOCH2_DELETE_PROTECTED_PATH')
-      expect(() => inspectEpoch2OwnedDeleteTarget({
-        ...authorization, target: `${layout.journalPath}.pending`, protectedPaths: [],
-      })).toThrow('EPOCH2_DELETE_PROTECTED_PATH')
     } finally {
       lease.release()
       fs.rmSync(directory, { recursive: true, force: true })

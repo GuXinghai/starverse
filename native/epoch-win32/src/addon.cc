@@ -3,12 +3,16 @@
 #include <bcrypt.h>
 #include <winternl.h>
 
+#include "product_identity.h"
+
 #include <algorithm>
+#include <array>
 #include <cstddef>
 #include <cstdint>
 #include <cwctype>
 #include <iomanip>
 #include <sstream>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -19,17 +23,49 @@ using NtCreateFileFn = NTSTATUS(NTAPI*)(
     ULONG, ULONG, ULONG, ULONG, PVOID, ULONG);
 using NtSetInformationFileFn = NTSTATUS(NTAPI*)(
     HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, FILE_INFORMATION_CLASS);
+using NtQueryInformationFileFn = NTSTATUS(NTAPI*)(
+    HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, FILE_INFORMATION_CLASS);
 using RtlNtStatusToDosErrorFn = ULONG(WINAPI*)(NTSTATUS);
 constexpr FILE_INFORMATION_CLASS kFileRenameInformation =
     static_cast<FILE_INFORMATION_CLASS>(10);
 
 struct Lease {
   HANDLE mutex = nullptr;
+  std::vector<HANDLE> ancestry;
   HANDLE app_data = INVALID_HANDLE_VALUE;
   HANDLE product = INVALID_HANDLE_VALUE;
+  HANDLE protected_workspace = INVALID_HANDLE_VALUE;
+  HANDLE protected_epoch = INVALID_HANDLE_VALUE;
   HANDLE transition = INVALID_HANDLE_VALUE;
   HANDLE lock_file = INVALID_HANDLE_VALUE;
   bool released = false;
+  std::string expected_manifest;
+};
+
+struct NativeFileIdentity {
+  unsigned long long volume_serial = 0;
+  std::array<unsigned char, 16> file_id{};
+};
+
+struct DeleteEntry {
+  std::vector<std::wstring> segments;
+  NativeFileIdentity identity;
+  bool directory = false;
+};
+
+struct NativeDirectoryEntry {
+  std::wstring name;
+  LARGE_INTEGER file_id{};
+  bool directory = false;
+};
+
+struct ProductDeleteTarget {
+  std::wstring name;
+  bool reject_epoch_2_child = false;
+};
+
+struct FileInternalInformationValue {
+  LARGE_INTEGER index_number;
 };
 
 void CloseHandleIfValid(HANDLE& handle) {
@@ -43,8 +79,14 @@ void ReleaseLease(Lease* lease) {
   if (lease == nullptr || lease->released) return;
   CloseHandleIfValid(lease->lock_file);
   CloseHandleIfValid(lease->transition);
+  CloseHandleIfValid(lease->protected_epoch);
+  CloseHandleIfValid(lease->protected_workspace);
   CloseHandleIfValid(lease->product);
-  CloseHandleIfValid(lease->app_data);
+  for (auto iterator = lease->ancestry.rbegin(); iterator != lease->ancestry.rend(); ++iterator) {
+    CloseHandleIfValid(*iterator);
+  }
+  lease->ancestry.clear();
+  lease->app_data = INVALID_HANDLE_VALUE;
   if (lease->mutex != nullptr && lease->mutex != INVALID_HANDLE_VALUE) {
     ReleaseMutex(lease->mutex);
     CloseHandle(lease->mutex);
@@ -183,6 +225,13 @@ NtSetInformationFileFn ResolveNtSetInformationFile() {
       GetProcAddress(ntdll, "NtSetInformationFile"));
 }
 
+NtQueryInformationFileFn ResolveNtQueryInformationFile() {
+  HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+  if (ntdll == nullptr) return nullptr;
+  return reinterpret_cast<NtQueryInformationFileFn>(
+      GetProcAddress(ntdll, "NtQueryInformationFile"));
+}
+
 DWORD NtStatusToWin32(NTSTATUS status) {
   HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
   if (ntdll == nullptr) return ERROR_GEN_FAILURE;
@@ -215,6 +264,67 @@ HANDLE OpenRelative(
   return result;
 }
 
+HANDLE OpenRelativeAny(
+    NtCreateFileFn nt_create_file, HANDLE parent, const std::wstring& name,
+    ACCESS_MASK access, ULONG share_access) {
+  UNICODE_STRING unicode_name{};
+  unicode_name.Buffer = const_cast<PWSTR>(name.data());
+  unicode_name.Length = static_cast<USHORT>(name.size() * sizeof(wchar_t));
+  unicode_name.MaximumLength = unicode_name.Length;
+  OBJECT_ATTRIBUTES attributes{};
+  InitializeObjectAttributes(&attributes, &unicode_name, OBJ_CASE_INSENSITIVE, parent, nullptr);
+  IO_STATUS_BLOCK io_status{};
+  HANDLE result = INVALID_HANDLE_VALUE;
+  const NTSTATUS status = nt_create_file(
+      &result, access, &attributes, &io_status, nullptr, FILE_ATTRIBUTE_NORMAL,
+      share_access, FILE_OPEN,
+      FILE_SYNCHRONOUS_IO_NONALERT | FILE_OPEN_REPARSE_POINT,
+      nullptr, 0);
+  if (status < 0) {
+    SetLastError(NtStatusToWin32(status));
+    return INVALID_HANDLE_VALUE;
+  }
+  return result;
+}
+
+bool GetNativeFileIdentity(HANDLE handle, NativeFileIdentity* output) {
+  FILE_ID_INFO info{};
+  if (!GetFileInformationByHandleEx(handle, FileIdInfo, &info, sizeof(info))) return false;
+  output->volume_serial = info.VolumeSerialNumber;
+  std::copy(std::begin(info.FileId.Identifier), std::end(info.FileId.Identifier),
+            output->file_id.begin());
+  return true;
+}
+
+bool SameNativeFileIdentity(
+    const NativeFileIdentity& left, const NativeFileIdentity& right) {
+  return left.volume_serial == right.volume_serial && left.file_id == right.file_id;
+}
+
+bool IsDirectoryHandle(HANDLE handle, bool* directory) {
+  FILE_STANDARD_INFO info{};
+  if (!GetFileInformationByHandleEx(handle, FileStandardInfo, &info, sizeof(info))) return false;
+  *directory = info.Directory != FALSE;
+  return true;
+}
+
+bool GetInternalFileId(
+    NtQueryInformationFileFn nt_query_information_file, HANDLE handle,
+    LARGE_INTEGER* output) {
+  IO_STATUS_BLOCK io_status{};
+  FileInternalInformationValue info{};
+  constexpr FILE_INFORMATION_CLASS kFileInternalInformation =
+      static_cast<FILE_INFORMATION_CLASS>(6);
+  const NTSTATUS status = nt_query_information_file(
+      handle, &io_status, &info, sizeof(info), kFileInternalInformation);
+  if (status < 0) {
+    SetLastError(NtStatusToWin32(status));
+    return false;
+  }
+  *output = info.index_number;
+  return true;
+}
+
 HANDLE OpenDriveRoot(wchar_t drive_letter) {
   std::wstring path = L"\\\\?\\C:\\";
   path[4] = drive_letter;
@@ -230,7 +340,8 @@ const ACCESS_MASK kMutableDirectoryAccess =
     kReadDirectoryAccess | FILE_ADD_SUBDIRECTORY | FILE_ADD_FILE | FILE_WRITE_ATTRIBUTES;
 
 HANDLE OpenAppDataRoot(
-    NtCreateFileFn nt_create_file, const std::wstring& path, const char** error_code) {
+    NtCreateFileFn nt_create_file, const std::wstring& path,
+    std::vector<HANDLE>* ancestry, const char** error_code) {
   wchar_t drive = 0;
   std::vector<std::wstring> segments;
   if (!ParseLocalDrivePath(path, &drive, &segments)) {
@@ -243,19 +354,24 @@ HANDLE OpenAppDataRoot(
     *error_code = "EPOCH2_WIN32_ROOT_OPEN_FAILED";
     return INVALID_HANDLE_VALUE;
   }
+  ancestry->push_back(current);
   for (size_t index = 0; index < segments.size(); ++index) {
     const bool final_segment = index + 1 == segments.size();
     HANDLE child = OpenRelative(
         nt_create_file, current, segments[index], true, FILE_OPEN,
         final_segment ? kMutableDirectoryAccess : kReadDirectoryAccess,
         FILE_SHARE_READ | FILE_SHARE_WRITE);
-    CloseHandleIfValid(current);
     current = child;
     if (current == INVALID_HANDLE_VALUE || IsReparsePoint(current)) {
       CloseHandleIfValid(current);
+      for (auto iterator = ancestry->rbegin(); iterator != ancestry->rend(); ++iterator) {
+        CloseHandleIfValid(*iterator);
+      }
+      ancestry->clear();
       *error_code = "EPOCH2_WIN32_REPARSE_OR_ROOT_CHANGED";
       return INVALID_HANDLE_VALUE;
     }
+    ancestry->push_back(current);
   }
   return current;
 }
@@ -274,6 +390,102 @@ std::string BytesToHex(const unsigned char* bytes, size_t length) {
     stream << std::setw(2) << static_cast<unsigned int>(bytes[index]);
   }
   return stream.str();
+}
+
+bool Sha256Hex(const std::string& input, std::string* output) {
+  BCRYPT_ALG_HANDLE algorithm = nullptr;
+  BCRYPT_HASH_HANDLE hash = nullptr;
+  DWORD object_length = 0;
+  DWORD hash_length = 0;
+  DWORD copied = 0;
+  std::vector<unsigned char> hash_object;
+  std::vector<unsigned char> digest;
+  bool success = false;
+  if (BCryptOpenAlgorithmProvider(
+          &algorithm, BCRYPT_SHA256_ALGORITHM, nullptr, 0) != 0 ||
+      BCryptGetProperty(
+          algorithm, BCRYPT_OBJECT_LENGTH,
+          reinterpret_cast<PUCHAR>(&object_length), sizeof(object_length), &copied, 0) != 0 ||
+      BCryptGetProperty(
+          algorithm, BCRYPT_HASH_LENGTH,
+          reinterpret_cast<PUCHAR>(&hash_length), sizeof(hash_length), &copied, 0) != 0 ||
+      hash_length != 32) {
+    if (algorithm != nullptr) BCryptCloseAlgorithmProvider(algorithm, 0);
+    return false;
+  }
+  hash_object.resize(object_length);
+  digest.resize(hash_length);
+  if (BCryptCreateHash(
+          algorithm, &hash, hash_object.data(), object_length,
+          nullptr, 0, 0) == 0 &&
+      BCryptHashData(
+          hash, reinterpret_cast<PUCHAR>(const_cast<char*>(input.data())),
+          static_cast<ULONG>(input.size()), 0) == 0 &&
+      BCryptFinishHash(hash, digest.data(), hash_length, 0) == 0) {
+    *output = BytesToHex(digest.data(), digest.size());
+    success = true;
+  }
+  if (hash != nullptr) BCryptDestroyHash(hash);
+  BCryptCloseAlgorithmProvider(algorithm, 0);
+  return success;
+}
+
+bool CanonicalPathUtf8(const std::wstring& input, std::string* output) {
+  std::wstring normalized_input = input;
+  std::replace(normalized_input.begin(), normalized_input.end(), L'/', L'\\');
+  while (normalized_input.size() > 3 && normalized_input.back() == L'\\') {
+    normalized_input.pop_back();
+  }
+  std::wstring normalized(normalized_input.size() * 3 + 1, L'\0');
+  const int normalized_length = NormalizeString(
+          NormalizationC, normalized_input.data(),
+          static_cast<int>(normalized_input.size()), normalized.data(),
+          static_cast<int>(normalized.size()));
+  if (normalized_length <= 0) return false;
+  normalized.resize(static_cast<size_t>(normalized_length));
+  std::wstring lowered(normalized.size() + 1, L'\0');
+  const int lower_length = LCMapStringEx(
+          LOCALE_NAME_INVARIANT, LCMAP_LOWERCASE,
+          normalized.data(), static_cast<int>(normalized.size()),
+          lowered.data(), static_cast<int>(lowered.size()), nullptr, nullptr, 0);
+  if (lower_length <= 0) return false;
+  lowered.resize(static_cast<size_t>(lower_length));
+  const int utf8_length = WideCharToMultiByte(
+      CP_UTF8, WC_ERR_INVALID_CHARS, lowered.data(),
+      static_cast<int>(lowered.size()), nullptr, 0, nullptr, nullptr);
+  if (utf8_length <= 0) return false;
+  output->resize(static_cast<size_t>(utf8_length));
+  return WideCharToMultiByte(
+      CP_UTF8, WC_ERR_INVALID_CHARS, lowered.data(),
+      static_cast<int>(lowered.size()), output->data(), utf8_length,
+      nullptr, nullptr) == utf8_length;
+}
+
+bool BuildExpectedRootManifest(
+    const std::wstring& app_data_root, std::string* output) {
+  std::wstring epoch_root = app_data_root;
+  while (epoch_root.size() > 3 &&
+         (epoch_root.back() == L'\\' || epoch_root.back() == L'/')) {
+    epoch_root.pop_back();
+  }
+  epoch_root += L"\\" STARVERSE_PRODUCT_NAME_W L"\\workspace\\epoch-2";
+  std::string canonical_epoch_root;
+  if (!CanonicalPathUtf8(epoch_root, &canonical_epoch_root)) return false;
+  std::string root_input = "starverse";
+  root_input.push_back('\0');
+  root_input += STARVERSE_PACKAGED_APP_ID_UTF8;
+  root_input.push_back('\0');
+  root_input += canonical_epoch_root;
+  std::string root_id;
+  if (!Sha256Hex(root_input, &root_id)) return false;
+  *output = "{\n"
+      "  \"schemaVersion\": 1,\n"
+      "  \"dataEpoch\": 2,\n"
+      "  \"applicationId\": \"" STARVERSE_PACKAGED_APP_ID_UTF8 "\",\n"
+      "  \"productDirectory\": \"" STARVERSE_PRODUCT_NAME_UTF8 "\",\n"
+      "  \"rootId\": \"" + root_id + "\"\n"
+      "}\n";
+  return true;
 }
 
 bool GetWideStringValue(napi_env env, napi_value value, std::wstring* output) {
@@ -486,6 +698,504 @@ napi_value LeaseWriteTransitionFile(napi_env env, napi_callback_info info) {
   return written;
 }
 
+bool ResolveProductDeleteTarget(
+    napi_env env, napi_value value, ProductDeleteTarget* output) {
+  std::wstring target_id;
+  if (!GetWideStringValue(env, value, &target_id)) return false;
+  if (target_id == L"legacy_chat_db") output->name = L"chat.db";
+  else if (target_id == L"legacy_chat_db_wal") output->name = L"chat.db-wal";
+  else if (target_id == L"legacy_chat_db_shm") output->name = L"chat.db-shm";
+  else if (target_id == L"legacy_chat_db_journal") output->name = L"chat.db-journal";
+  else if (target_id == L"legacy_assets") output->name = L"assets";
+  else if (target_id == L"legacy_engine_plugins") output->name = L"engine-plugins";
+  else if (target_id == L"legacy_managed_runtimes") output->name = L"managed-runtimes";
+  else if (target_id == L"legacy_debug") output->name = L"debug";
+  else if (target_id == L"legacy_logs") output->name = L"logs";
+  else if (target_id == L"legacy_temp") output->name = L"temp";
+  else if (target_id == L"legacy_workspace") {
+    output->name = L"workspace";
+    output->reject_epoch_2_child = true;
+  } else {
+    return false;
+  }
+  return true;
+}
+
+bool VerifyDeletionOwnershipManifest(
+    NtCreateFileFn nt_create_file, const Lease* lease) {
+  HANDLE manifest = OpenRelative(
+      nt_create_file, lease->transition, L"root-manifest.json", false, FILE_OPEN,
+      GENERIC_READ | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_SHARE_READ);
+  if (manifest == INVALID_HANDLE_VALUE || IsReparsePoint(manifest)) {
+    CloseHandleIfValid(manifest);
+    return false;
+  }
+  LARGE_INTEGER size{};
+  if (!GetFileSizeEx(manifest, &size) || size.QuadPart < 0 ||
+      static_cast<unsigned long long>(size.QuadPart) != lease->expected_manifest.size()) {
+    CloseHandleIfValid(manifest);
+    return false;
+  }
+  std::string bytes(static_cast<size_t>(size.QuadPart), '\0');
+  size_t offset = 0;
+  while (offset < bytes.size()) {
+    DWORD read = 0;
+    if (!ReadFile(
+            manifest, bytes.data() + offset,
+            static_cast<DWORD>(bytes.size() - offset), &read, nullptr) || read == 0) {
+      CloseHandleIfValid(manifest);
+      return false;
+    }
+    offset += read;
+  }
+  CloseHandleIfValid(manifest);
+  return bytes == lease->expected_manifest;
+}
+
+HANDLE OpenProductTarget(
+    NtCreateFileFn nt_create_file, HANDLE product,
+    const ProductDeleteTarget& target, const char** error_code) {
+  HANDLE result = OpenRelativeAny(
+      nt_create_file, product, target.name,
+      FILE_READ_ATTRIBUTES | FILE_TRAVERSE | DELETE | SYNCHRONIZE,
+      FILE_SHARE_READ | FILE_SHARE_WRITE);
+  if (result == INVALID_HANDLE_VALUE) {
+    const DWORD error = GetLastError();
+    *error_code = error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND
+        ? "EPOCH2_WIN32_DELETE_TARGET_MISSING"
+        : "EPOCH2_WIN32_DELETE_TARGET_OPEN_FAILED";
+    return INVALID_HANDLE_VALUE;
+  }
+  if (IsReparsePoint(result)) {
+    CloseHandleIfValid(result);
+    *error_code = "EPOCH2_WIN32_DELETE_REPARSE_POINT";
+    return INVALID_HANDLE_VALUE;
+  }
+  return result;
+}
+
+bool EnumerateDirectoryEntries(
+    HANDLE directory, std::vector<NativeDirectoryEntry>* entries,
+    const char** error_code) {
+  alignas(FILE_ID_BOTH_DIR_INFO) std::array<unsigned char, 64 * 1024> buffer{};
+  bool restart = true;
+  std::set<std::wstring> canonical_names;
+  for (;;) {
+    std::fill(buffer.begin(), buffer.end(), 0);
+    const FILE_INFO_BY_HANDLE_CLASS info_class = restart
+        ? FileIdBothDirectoryRestartInfo
+        : FileIdBothDirectoryInfo;
+    if (!GetFileInformationByHandleEx(
+            directory, info_class, buffer.data(), static_cast<DWORD>(buffer.size()))) {
+      const DWORD error = GetLastError();
+      if (error == ERROR_NO_MORE_FILES) return true;
+      *error_code = "EPOCH2_WIN32_DELETE_ENUMERATION_FAILED";
+      return false;
+    }
+    restart = false;
+    size_t offset = 0;
+    for (;;) {
+      if (offset + offsetof(FILE_ID_BOTH_DIR_INFO, FileName) > buffer.size()) {
+        *error_code = "EPOCH2_WIN32_DELETE_ENUMERATION_INVALID";
+        return false;
+      }
+      const auto* entry = reinterpret_cast<const FILE_ID_BOTH_DIR_INFO*>(
+          buffer.data() + offset);
+      if (entry->FileNameLength % sizeof(wchar_t) != 0 ||
+          offset + offsetof(FILE_ID_BOTH_DIR_INFO, FileName) + entry->FileNameLength >
+              buffer.size()) {
+        *error_code = "EPOCH2_WIN32_DELETE_ENUMERATION_INVALID";
+        return false;
+      }
+      const std::wstring name(
+          entry->FileName, entry->FileNameLength / sizeof(wchar_t));
+      if (name != L"." && name != L"..") {
+        if (!IsSafeSegment(name) || !canonical_names.insert(Lower(name)).second) {
+          *error_code = "EPOCH2_WIN32_DELETE_ENUMERATION_INVALID";
+          return false;
+        }
+        entries->push_back(NativeDirectoryEntry{
+            name,
+            entry->FileId,
+            (entry->FileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0,
+        });
+      }
+      if (entry->NextEntryOffset == 0) break;
+      if (entry->NextEntryOffset < offsetof(FILE_ID_BOTH_DIR_INFO, FileName) ||
+          offset + entry->NextEntryOffset >= buffer.size()) {
+        *error_code = "EPOCH2_WIN32_DELETE_ENUMERATION_INVALID";
+        return false;
+      }
+      offset += entry->NextEntryOffset;
+    }
+  }
+}
+
+bool InspectDeleteSubtree(
+    NtCreateFileFn nt_create_file,
+    NtQueryInformationFileFn nt_query_information_file,
+    HANDLE handle,
+    const std::vector<std::wstring>& relative_segments,
+    size_t depth, size_t* total_characters,
+    std::vector<DeleteEntry>* entries, const char** error_code) {
+  if (depth > 256 || entries->size() >= 100000) {
+    *error_code = "EPOCH2_WIN32_DELETE_TREE_LIMIT_EXCEEDED";
+    return false;
+  }
+  if (IsReparsePoint(handle)) {
+    *error_code = "EPOCH2_WIN32_DELETE_REPARSE_POINT";
+    return false;
+  }
+  bool directory = false;
+  NativeFileIdentity identity;
+  if (!IsDirectoryHandle(handle, &directory) || !GetNativeFileIdentity(handle, &identity)) {
+    *error_code = "EPOCH2_WIN32_DELETE_IDENTITY_FAILED";
+    return false;
+  }
+  if (directory) {
+    std::vector<NativeDirectoryEntry> children;
+    if (!EnumerateDirectoryEntries(handle, &children, error_code)) return false;
+    std::sort(children.begin(), children.end(), [](const auto& left, const auto& right) {
+      return left.name < right.name;
+    });
+    for (const NativeDirectoryEntry& child_entry : children) {
+      *total_characters += child_entry.name.size();
+      if (*total_characters > 4 * 1024 * 1024) {
+        *error_code = "EPOCH2_WIN32_DELETE_TREE_LIMIT_EXCEEDED";
+        return false;
+      }
+      HANDLE child = OpenRelativeAny(
+          nt_create_file, handle, child_entry.name,
+          FILE_READ_ATTRIBUTES | FILE_TRAVERSE | SYNCHRONIZE |
+              (child_entry.directory ? FILE_LIST_DIRECTORY : 0),
+          FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE);
+      if (child == INVALID_HANDLE_VALUE) {
+        *error_code = "EPOCH2_WIN32_DELETE_TREE_CHANGED";
+        return false;
+      }
+      LARGE_INTEGER opened_file_id{};
+      bool opened_directory = false;
+      if (!GetInternalFileId(nt_query_information_file, child, &opened_file_id) ||
+          opened_file_id.QuadPart != child_entry.file_id.QuadPart ||
+          !IsDirectoryHandle(child, &opened_directory) ||
+          opened_directory != child_entry.directory) {
+        CloseHandleIfValid(child);
+        *error_code = "EPOCH2_WIN32_DELETE_TREE_CHANGED";
+        return false;
+      }
+      std::vector<std::wstring> child_segments = relative_segments;
+      child_segments.push_back(child_entry.name);
+      const bool inspected = InspectDeleteSubtree(
+          nt_create_file, nt_query_information_file, child,
+          child_segments, depth + 1,
+          total_characters, entries, error_code);
+      CloseHandleIfValid(child);
+      if (!inspected) return false;
+    }
+  }
+  entries->push_back(DeleteEntry{relative_segments, identity, directory});
+  return true;
+}
+
+HANDLE OpenDescendantForDelete(
+    NtCreateFileFn nt_create_file, HANDLE root,
+    const std::vector<std::wstring>& segments, const char** error_code) {
+  HANDLE parent = root;
+  bool owns_parent = false;
+  for (size_t index = 0; index < segments.size(); ++index) {
+    const bool final = index + 1 == segments.size();
+    HANDLE child = final
+        ? OpenRelativeAny(
+            nt_create_file, parent, segments[index],
+            FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE)
+        : OpenRelative(
+            nt_create_file, parent, segments[index], true, FILE_OPEN,
+            kReadDirectoryAccess, FILE_SHARE_READ | FILE_SHARE_WRITE);
+    if (owns_parent) CloseHandleIfValid(parent);
+    owns_parent = true;
+    parent = child;
+    if (parent == INVALID_HANDLE_VALUE) {
+      *error_code = "EPOCH2_WIN32_DELETE_TREE_CHANGED";
+      return INVALID_HANDLE_VALUE;
+    }
+    if (IsReparsePoint(parent)) {
+      CloseHandleIfValid(parent);
+      *error_code = "EPOCH2_WIN32_DELETE_REPARSE_POINT";
+      return INVALID_HANDLE_VALUE;
+    }
+  }
+  return parent;
+}
+
+bool MarkHandleForDelete(HANDLE handle, const char** error_code) {
+  FILE_DISPOSITION_INFO_EX disposition{};
+  disposition.Flags = FILE_DISPOSITION_FLAG_DELETE |
+      FILE_DISPOSITION_FLAG_POSIX_SEMANTICS |
+      FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE;
+  if (SetFileInformationByHandle(
+          handle, FileDispositionInfoEx, &disposition, sizeof(disposition))) {
+    return true;
+  }
+  const DWORD error = GetLastError();
+  *error_code = error == ERROR_INVALID_PARAMETER || error == ERROR_NOT_SUPPORTED
+      ? "EPOCH2_WIN32_DELETE_API_UNSUPPORTED"
+      : "EPOCH2_WIN32_DELETE_FAILED";
+  return false;
+}
+
+napi_value CreateDeleteSummary(
+    napi_env env, bool exists, size_t files, size_t directories,
+    const NativeFileIdentity* root_identity) {
+  napi_value result;
+  napi_value exists_value;
+  napi_value files_value;
+  napi_value directories_value;
+  napi_create_object(env, &result);
+  napi_get_boolean(env, exists, &exists_value);
+  napi_create_uint32(env, static_cast<uint32_t>(files), &files_value);
+  napi_create_uint32(env, static_cast<uint32_t>(directories), &directories_value);
+  napi_set_named_property(env, result, "exists", exists_value);
+  napi_set_named_property(env, result, "files", files_value);
+  napi_set_named_property(env, result, "directories", directories_value);
+  if (root_identity != nullptr) {
+    const std::string root_file_id = BytesToHex(
+        root_identity->file_id.data(), root_identity->file_id.size());
+    napi_value root_value;
+    napi_create_string_utf8(env, root_file_id.c_str(), NAPI_AUTO_LENGTH, &root_value);
+    napi_set_named_property(env, result, "rootFileId", root_value);
+  }
+  return result;
+}
+
+napi_value ProcessProductTree(
+    napi_env env, napi_callback_info info, bool delete_tree) {
+  napi_value args[1];
+  Lease* lease = GetLeaseCall(env, info, 1, args);
+  if (lease == nullptr) return nullptr;
+  ProductDeleteTarget target;
+  if (!ResolveProductDeleteTarget(env, args[0], &target)) {
+    return ThrowCode(env, "EPOCH2_WIN32_DELETE_TARGET_NOT_ALLOWED");
+  }
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  NtQueryInformationFileFn nt_query_information_file = ResolveNtQueryInformationFile();
+  if (nt_create_file == nullptr || nt_query_information_file == nullptr) {
+    return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  }
+  if (!VerifyDeletionOwnershipManifest(nt_create_file, lease)) {
+    return ThrowCode(env, "EPOCH2_WIN32_DELETE_OWNERSHIP_INVALID");
+  }
+  const char* error_code = nullptr;
+  HANDLE root = OpenProductTarget(
+      nt_create_file, lease->product, target, &error_code);
+  if (root == INVALID_HANDLE_VALUE) {
+    if (error_code != nullptr &&
+        std::string(error_code) == "EPOCH2_WIN32_DELETE_TARGET_MISSING") {
+      return CreateDeleteSummary(env, false, 0, 0, nullptr);
+    }
+    return ThrowCode(env, error_code == nullptr
+        ? "EPOCH2_WIN32_DELETE_TARGET_OPEN_FAILED" : error_code);
+  }
+  if (target.reject_epoch_2_child) {
+    if (lease->protected_epoch != INVALID_HANDLE_VALUE) {
+      CloseHandleIfValid(root);
+      return ThrowCode(env, "EPOCH2_WIN32_DELETE_PROTECTED_DESCENDANT");
+    }
+    HANDLE epoch = OpenRelativeAny(
+        nt_create_file, root, L"epoch-2",
+        FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE);
+    if (epoch != INVALID_HANDLE_VALUE) {
+      CloseHandleIfValid(epoch);
+      CloseHandleIfValid(root);
+      return ThrowCode(env, "EPOCH2_WIN32_DELETE_PROTECTED_DESCENDANT");
+    }
+    const DWORD epoch_error = GetLastError();
+    if (epoch_error != ERROR_FILE_NOT_FOUND && epoch_error != ERROR_PATH_NOT_FOUND) {
+      CloseHandleIfValid(root);
+      return ThrowCode(env, "EPOCH2_WIN32_DELETE_TREE_CHANGED");
+    }
+  }
+  bool root_is_directory = false;
+  if (!IsDirectoryHandle(root, &root_is_directory)) {
+    CloseHandleIfValid(root);
+    return ThrowCode(env, "EPOCH2_WIN32_DELETE_IDENTITY_FAILED");
+  }
+  HANDLE inspection = root;
+  if (root_is_directory) {
+    inspection = OpenRelative(
+        nt_create_file, lease->product, target.name, true, FILE_OPEN,
+        kReadDirectoryAccess, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE);
+    if (inspection == INVALID_HANDLE_VALUE || IsReparsePoint(inspection)) {
+      CloseHandleIfValid(inspection);
+      CloseHandleIfValid(root);
+      return ThrowCode(env, "EPOCH2_WIN32_DELETE_TREE_CHANGED");
+    }
+  }
+  std::vector<DeleteEntry> entries;
+  size_t total_characters = 0;
+  const bool inspected = InspectDeleteSubtree(
+      nt_create_file, nt_query_information_file, inspection,
+      {}, 0, &total_characters, &entries, &error_code);
+  if (inspection != root) CloseHandleIfValid(inspection);
+  if (!inspected || entries.empty()) {
+    CloseHandleIfValid(root);
+    return ThrowCode(env, error_code == nullptr
+        ? "EPOCH2_WIN32_DELETE_ENUMERATION_FAILED" : error_code);
+  }
+  size_t files = 0;
+  size_t directories = 0;
+  NativeFileIdentity protected_epoch_identity;
+  const bool has_protected_epoch = lease->protected_epoch != INVALID_HANDLE_VALUE;
+  if (has_protected_epoch &&
+      !GetNativeFileIdentity(lease->protected_epoch, &protected_epoch_identity)) {
+    CloseHandleIfValid(root);
+    return ThrowCode(env, "EPOCH2_WIN32_DELETE_IDENTITY_FAILED");
+  }
+  for (const DeleteEntry& entry : entries) {
+    entry.directory ? ++directories : ++files;
+    if (has_protected_epoch &&
+        SameNativeFileIdentity(entry.identity, protected_epoch_identity)) {
+      CloseHandleIfValid(root);
+      return ThrowCode(env, "EPOCH2_WIN32_DELETE_PROTECTED_DESCENDANT");
+    }
+    if (target.reject_epoch_2_child && entry.segments.size() == 1 &&
+        Lower(entry.segments[0]) == L"epoch-2") {
+      CloseHandleIfValid(root);
+      return ThrowCode(env, "EPOCH2_WIN32_DELETE_PROTECTED_DESCENDANT");
+    }
+  }
+  const NativeFileIdentity root_identity = entries.back().identity;
+  NativeFileIdentity held_root_identity;
+  if (!GetNativeFileIdentity(root, &held_root_identity) ||
+      !SameNativeFileIdentity(held_root_identity, root_identity)) {
+    CloseHandleIfValid(root);
+    return ThrowCode(env, "EPOCH2_WIN32_DELETE_TREE_CHANGED");
+  }
+  if (!delete_tree) {
+    CloseHandleIfValid(root);
+    return CreateDeleteSummary(env, true, files, directories, &root_identity);
+  }
+  for (size_t index = 0; index + 1 < entries.size(); ++index) {
+    const DeleteEntry& entry = entries[index];
+    HANDLE child = OpenDescendantForDelete(
+        nt_create_file, root, entry.segments, &error_code);
+    if (child == INVALID_HANDLE_VALUE) {
+      CloseHandleIfValid(root);
+      return ThrowCode(env, error_code);
+    }
+    bool child_directory = false;
+    NativeFileIdentity child_identity;
+    if (!IsDirectoryHandle(child, &child_directory) ||
+        !GetNativeFileIdentity(child, &child_identity) ||
+        child_directory != entry.directory ||
+        !SameNativeFileIdentity(child_identity, entry.identity)) {
+      CloseHandleIfValid(child);
+      CloseHandleIfValid(root);
+      return ThrowCode(env, "EPOCH2_WIN32_DELETE_TREE_CHANGED");
+    }
+    if (!MarkHandleForDelete(child, &error_code)) {
+      CloseHandleIfValid(child);
+      CloseHandleIfValid(root);
+      return ThrowCode(env, error_code);
+    }
+    CloseHandleIfValid(child);
+  }
+  NativeFileIdentity current_root_identity;
+  if (!GetNativeFileIdentity(root, &current_root_identity) ||
+      !SameNativeFileIdentity(current_root_identity, root_identity) ||
+      !MarkHandleForDelete(root, &error_code)) {
+    CloseHandleIfValid(root);
+    return ThrowCode(env, error_code == nullptr
+        ? "EPOCH2_WIN32_DELETE_TREE_CHANGED" : error_code);
+  }
+  CloseHandleIfValid(root);
+  return CreateDeleteSummary(env, true, files, directories, &root_identity);
+}
+
+napi_value LeaseInspectProductTree(napi_env env, napi_callback_info info) {
+  return ProcessProductTree(env, info, false);
+}
+
+napi_value LeaseDeleteProductTree(napi_env env, napi_callback_info info) {
+  return ProcessProductTree(env, info, true);
+}
+
+bool IsCrashTemporaryName(const std::wstring& name) {
+  if (name.size() != 39 || name.rfind(L".svtmp-", 0) != 0) return false;
+  return std::all_of(name.begin() + 7, name.end(), [](wchar_t ch) {
+    return (ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f');
+  });
+}
+
+bool IsKnownTransitionControlName(const std::wstring& name) {
+  return name == L"root-manifest.json" ||
+      name == L"epoch-transition.journal.json" ||
+      name == L"epoch-transition.lock";
+}
+
+napi_value LeaseCleanupTransitionTemps(napi_env env, napi_callback_info info) {
+  Lease* lease = GetLeaseCall(env, info, 0, nullptr);
+  if (lease == nullptr) return nullptr;
+  std::vector<NativeDirectoryEntry> entries;
+  const char* error_code = nullptr;
+  if (!EnumerateDirectoryEntries(lease->transition, &entries, &error_code)) {
+    return ThrowCode(env, error_code);
+  }
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  NtQueryInformationFileFn nt_query_information_file = ResolveNtQueryInformationFile();
+  if (nt_create_file == nullptr || nt_query_information_file == nullptr) {
+    return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  }
+  size_t removed = 0;
+  std::vector<HANDLE> temporary_handles;
+  std::sort(entries.begin(), entries.end(), [](const auto& left, const auto& right) {
+    return left.name < right.name;
+  });
+  for (const NativeDirectoryEntry& entry : entries) {
+    const std::wstring& name = entry.name;
+    if (IsKnownTransitionControlName(name)) continue;
+    if (name.rfind(L".svtmp-", 0) != 0) {
+      for (HANDLE& handle : temporary_handles) CloseHandleIfValid(handle);
+      return ThrowCode(env, "EPOCH2_WIN32_TEMP_NAME_INVALID");
+    }
+    if (!IsCrashTemporaryName(name)) {
+      for (HANDLE& handle : temporary_handles) CloseHandleIfValid(handle);
+      return ThrowCode(env, "EPOCH2_WIN32_TEMP_NAME_INVALID");
+    }
+    HANDLE temporary = OpenRelativeAny(
+        nt_create_file, lease->transition, name,
+        FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE);
+    if (temporary == INVALID_HANDLE_VALUE || IsReparsePoint(temporary)) {
+      CloseHandleIfValid(temporary);
+      for (HANDLE& handle : temporary_handles) CloseHandleIfValid(handle);
+      return ThrowCode(env, "EPOCH2_WIN32_TEMP_REPARSE_OR_CHANGED");
+    }
+    bool directory = false;
+    LARGE_INTEGER opened_file_id{};
+    if (!GetInternalFileId(nt_query_information_file, temporary, &opened_file_id) ||
+        opened_file_id.QuadPart != entry.file_id.QuadPart ||
+        !IsDirectoryHandle(temporary, &directory) || directory || entry.directory) {
+      CloseHandleIfValid(temporary);
+      for (HANDLE& handle : temporary_handles) CloseHandleIfValid(handle);
+      return ThrowCode(env, "EPOCH2_WIN32_TEMP_INVALID");
+    }
+    temporary_handles.push_back(temporary);
+  }
+  for (HANDLE& temporary : temporary_handles) {
+    if (!MarkHandleForDelete(temporary, &error_code)) {
+      for (HANDLE& handle : temporary_handles) CloseHandleIfValid(handle);
+      return ThrowCode(env, error_code);
+    }
+    CloseHandleIfValid(temporary);
+    ++removed;
+  }
+  napi_value result;
+  napi_create_uint32(env, static_cast<uint32_t>(removed), &result);
+  return result;
+}
+
 napi_value LeaseRelease(napi_env env, napi_callback_info info) {
   napi_value this_arg;
   void* data = nullptr;
@@ -558,13 +1268,20 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
     return nullptr;
   }
   if (!IsSafeMutexName(mutex_name) || !IsSafeSegment(product_directory) ||
-      !IsSafeSegment(transition_directory) || !IsSafeSegment(lock_file_name)) {
+      !IsSafeSegment(transition_directory) || !IsSafeSegment(lock_file_name) ||
+      product_directory != STARVERSE_PRODUCT_NAME_W ||
+      transition_directory != L".epoch-transition" ||
+      lock_file_name != L"epoch-transition.lock") {
     return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
   }
   NtCreateFileFn nt_create_file = ResolveNtCreateFile();
   if (nt_create_file == nullptr) return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
 
   auto* lease = new Lease();
+  if (!BuildExpectedRootManifest(app_data_root, &lease->expected_manifest)) {
+    delete lease;
+    return ThrowCode(env, "EPOCH2_WIN32_ROOT_IDENTITY_FAILED");
+  }
   lease->mutex = CreateMutexW(nullptr, FALSE, mutex_name.c_str());
   if (lease->mutex == nullptr) {
     delete lease;
@@ -582,7 +1299,8 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
     return ThrowCode(env, "EPOCH2_WIN32_MUTEX_WAIT_FAILED");
   }
   const char* open_error = nullptr;
-  lease->app_data = OpenAppDataRoot(nt_create_file, app_data_root, &open_error);
+  lease->app_data = OpenAppDataRoot(
+      nt_create_file, app_data_root, &lease->ancestry, &open_error);
   if (lease->app_data == INVALID_HANDLE_VALUE) {
     ReleaseLease(lease);
     delete lease;
@@ -595,6 +1313,36 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
     ReleaseLease(lease);
     delete lease;
     return ThrowCode(env, "EPOCH2_WIN32_REPARSE_OR_ROOT_CHANGED");
+  }
+  lease->protected_workspace = OpenRelative(
+      nt_create_file, lease->product, L"workspace", true, FILE_OPEN,
+      kReadDirectoryAccess,
+      FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE);
+  if (lease->protected_workspace != INVALID_HANDLE_VALUE) {
+    if (IsReparsePoint(lease->protected_workspace)) {
+      ReleaseLease(lease);
+      delete lease;
+      return ThrowCode(env, "EPOCH2_WIN32_REPARSE_OR_ROOT_CHANGED");
+    }
+    lease->protected_epoch = OpenRelativeAny(
+        nt_create_file, lease->protected_workspace, L"epoch-2",
+        FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE);
+    if (lease->protected_epoch == INVALID_HANDLE_VALUE) {
+      const DWORD epoch_error = GetLastError();
+      if (epoch_error != ERROR_FILE_NOT_FOUND && epoch_error != ERROR_PATH_NOT_FOUND) {
+        ReleaseLease(lease);
+        delete lease;
+        return ThrowCode(env, "EPOCH2_WIN32_REPARSE_OR_ROOT_CHANGED");
+      }
+    }
+  } else {
+    const DWORD workspace_error = GetLastError();
+    if (workspace_error != ERROR_FILE_NOT_FOUND && workspace_error != ERROR_PATH_NOT_FOUND) {
+      ReleaseLease(lease);
+      delete lease;
+      return ThrowCode(env, "EPOCH2_WIN32_REPARSE_OR_ROOT_CHANGED");
+    }
   }
   lease->transition = OpenRelative(
       nt_create_file, lease->product, transition_directory, true, FILE_OPEN_IF,
@@ -625,8 +1373,11 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
       {"rootIdentity", nullptr, LeaseRootIdentity, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"readTransitionFile", nullptr, LeaseReadTransitionFile, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"writeTransitionFile", nullptr, LeaseWriteTransitionFile, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"inspectOwnedTarget", nullptr, LeaseInspectProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"deleteOwnedTarget", nullptr, LeaseDeleteProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"cleanupTransitionTemps", nullptr, LeaseCleanupTransitionTemps, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
-  if (napi_define_properties(env, result, 4, properties) != napi_ok) {
+  if (napi_define_properties(env, result, 7, properties) != napi_ok) {
     void* removed = nullptr;
     napi_remove_wrap(env, result, &removed);
     ReleaseLease(lease);

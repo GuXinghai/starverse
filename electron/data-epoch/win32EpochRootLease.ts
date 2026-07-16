@@ -19,6 +19,28 @@ const ISSUED_WIN32_EPOCH_LEASES = new WeakMap<object, Epoch2WorkspaceLayout>()
 
 export type Win32EpochTransitionFileKey = keyof typeof TRANSITION_FILE_FACTS
 
+export const EPOCH2_OWNED_TARGET_IDS = Object.freeze([
+  'legacy_chat_db',
+  'legacy_chat_db_wal',
+  'legacy_chat_db_shm',
+  'legacy_chat_db_journal',
+  'legacy_assets',
+  'legacy_engine_plugins',
+  'legacy_managed_runtimes',
+  'legacy_debug',
+  'legacy_logs',
+  'legacy_temp',
+  'legacy_workspace',
+] as const)
+export type Epoch2OwnedTargetId = (typeof EPOCH2_OWNED_TARGET_IDS)[number]
+
+export type Win32OwnedDeleteSummary = Readonly<{
+  exists: boolean
+  files: number
+  directories: number
+  rootFileId?: string
+}>
+
 export type Win32EpochRootIdentity = Readonly<{
   volumeSerial: string
   transitionFileId: string
@@ -43,6 +65,9 @@ type NativeLease = Readonly<{
   rootIdentity(): unknown
   readTransitionFile(fileName: string, maxBytes: number): unknown
   writeTransitionFile(fileName: string, bytes: Buffer, replaceExisting: boolean): unknown
+  inspectOwnedTarget(targetId: string): unknown
+  deleteOwnedTarget(targetId: string): unknown
+  cleanupTransitionTemps(): unknown
   release(): unknown
 }>
 
@@ -50,6 +75,8 @@ type NativeAddon = Readonly<{
   selfTest(): unknown
   acquireEpochRootLease(input: Win32EpochLeaseRequest): unknown
 }>
+
+const NATIVE_WIN32_EPOCH_LEASES = new WeakMap<object, NativeLease>()
 
 export class Win32EpochRootLeaseError extends Error {
   constructor(readonly code:
@@ -74,7 +101,22 @@ export class Win32EpochRootLeaseError extends Error {
     | 'EPOCH2_WIN32_ATOMIC_REPLACE_FAILED'
     | 'EPOCH2_WIN32_TRANSITION_WRITE_FAILED'
     | 'EPOCH2_WIN32_TRANSITION_FLUSH_FAILED'
-    | 'EPOCH2_WIN32_TRANSITION_RENAME_FAILED') {
+    | 'EPOCH2_WIN32_TRANSITION_RENAME_FAILED'
+    | 'EPOCH2_WIN32_DELETE_TARGET_NOT_ALLOWED'
+    | 'EPOCH2_WIN32_DELETE_OWNERSHIP_INVALID'
+    | 'EPOCH2_WIN32_DELETE_TARGET_OPEN_FAILED'
+    | 'EPOCH2_WIN32_DELETE_REPARSE_POINT'
+    | 'EPOCH2_WIN32_DELETE_ENUMERATION_FAILED'
+    | 'EPOCH2_WIN32_DELETE_ENUMERATION_INVALID'
+    | 'EPOCH2_WIN32_DELETE_TREE_LIMIT_EXCEEDED'
+    | 'EPOCH2_WIN32_DELETE_IDENTITY_FAILED'
+    | 'EPOCH2_WIN32_DELETE_TREE_CHANGED'
+    | 'EPOCH2_WIN32_DELETE_PROTECTED_DESCENDANT'
+    | 'EPOCH2_WIN32_DELETE_API_UNSUPPORTED'
+    | 'EPOCH2_WIN32_DELETE_FAILED'
+    | 'EPOCH2_WIN32_TEMP_NAME_INVALID'
+    | 'EPOCH2_WIN32_TEMP_REPARSE_OR_CHANGED'
+    | 'EPOCH2_WIN32_TEMP_INVALID') {
     super(code)
     this.name = 'Win32EpochRootLeaseError'
   }
@@ -101,6 +143,21 @@ const NATIVE_ERROR_CODES = new Set<Win32EpochRootLeaseError['code']>([
   'EPOCH2_WIN32_TRANSITION_WRITE_FAILED',
   'EPOCH2_WIN32_TRANSITION_FLUSH_FAILED',
   'EPOCH2_WIN32_TRANSITION_RENAME_FAILED',
+  'EPOCH2_WIN32_DELETE_TARGET_NOT_ALLOWED',
+  'EPOCH2_WIN32_DELETE_OWNERSHIP_INVALID',
+  'EPOCH2_WIN32_DELETE_TARGET_OPEN_FAILED',
+  'EPOCH2_WIN32_DELETE_REPARSE_POINT',
+  'EPOCH2_WIN32_DELETE_ENUMERATION_FAILED',
+  'EPOCH2_WIN32_DELETE_ENUMERATION_INVALID',
+  'EPOCH2_WIN32_DELETE_TREE_LIMIT_EXCEEDED',
+  'EPOCH2_WIN32_DELETE_IDENTITY_FAILED',
+  'EPOCH2_WIN32_DELETE_TREE_CHANGED',
+  'EPOCH2_WIN32_DELETE_PROTECTED_DESCENDANT',
+  'EPOCH2_WIN32_DELETE_API_UNSUPPORTED',
+  'EPOCH2_WIN32_DELETE_FAILED',
+  'EPOCH2_WIN32_TEMP_NAME_INVALID',
+  'EPOCH2_WIN32_TEMP_REPARSE_OR_CHANGED',
+  'EPOCH2_WIN32_TEMP_INVALID',
 ])
 
 function nativeBinaryPath(): string {
@@ -210,6 +267,35 @@ function decodeRootIdentity(value: unknown): Win32EpochRootIdentity {
   })
 }
 
+function isOwnedTargetId(value: unknown): value is Epoch2OwnedTargetId {
+  return typeof value === 'string' && (EPOCH2_OWNED_TARGET_IDS as readonly string[]).includes(value)
+}
+
+function decodeDeleteSummary(value: unknown): Win32OwnedDeleteSummary {
+  if (!value || typeof value !== 'object') {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+  }
+  const record = value as Record<string, unknown>
+  const expectedKeys = record.exists === false
+    ? ['directories', 'exists', 'files']
+    : ['directories', 'exists', 'files', 'rootFileId']
+  if (!hasExactKeys(record, expectedKeys) ||
+      typeof record.exists !== 'boolean' ||
+      !Number.isSafeInteger(record.files) || (record.files as number) < 0 ||
+      !Number.isSafeInteger(record.directories) || (record.directories as number) < 0 ||
+      (record.exists === true &&
+        (typeof record.rootFileId !== 'string' || !/^[0-9a-f]{32}$/.test(record.rootFileId))) ||
+      (record.exists === false && (record.files !== 0 || record.directories !== 0))) {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+  }
+  return Object.freeze({
+    exists: record.exists,
+    files: record.files as number,
+    directories: record.directories as number,
+    ...(record.exists ? { rootFileId: record.rootFileId as string } : {}),
+  })
+}
+
 export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32EpochRootLease {
   const request = createWin32EpochLeaseRequest(layout)
   const addon = loadNativeAddon()
@@ -223,6 +309,9 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
     if (typeof candidate.rootIdentity !== 'function' ||
         typeof candidate.readTransitionFile !== 'function' ||
         typeof candidate.writeTransitionFile !== 'function' ||
+        typeof candidate.inspectOwnedTarget !== 'function' ||
+        typeof candidate.deleteOwnedTarget !== 'function' ||
+        typeof candidate.cleanupTransitionTemps !== 'function' ||
         typeof candidate.release !== 'function') {
       throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
     }
@@ -290,13 +379,64 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
       try {
         nativeLease.release()
         released = true
+        NATIVE_WIN32_EPOCH_LEASES.delete(lease)
       } catch (error) {
         return translateNativeError(error)
       }
     },
   })
   ISSUED_WIN32_EPOCH_LEASES.set(lease, layout)
+  NATIVE_WIN32_EPOCH_LEASES.set(lease, nativeLease)
   return lease
+}
+
+function nativeLeaseForOwnedOperation(lease: Win32EpochRootLease): NativeLease {
+  const nativeLease = NATIVE_WIN32_EPOCH_LEASES.get(lease)
+  if (!nativeLease) throw new Win32EpochRootLeaseError('EPOCH2_WIN32_LEASE_RELEASED')
+  return nativeLease
+}
+
+export function inspectWin32EpochOwnedTarget(
+  lease: Win32EpochRootLease,
+  targetId: Epoch2OwnedTargetId,
+): Win32OwnedDeleteSummary {
+  if (!isOwnedTargetId(targetId)) {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
+  }
+  try {
+    return decodeDeleteSummary(nativeLeaseForOwnedOperation(lease).inspectOwnedTarget(targetId))
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  }
+}
+
+export function deleteWin32EpochOwnedTarget(
+  lease: Win32EpochRootLease,
+  targetId: Epoch2OwnedTargetId,
+): Win32OwnedDeleteSummary {
+  if (!isOwnedTargetId(targetId)) {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
+  }
+  try {
+    return decodeDeleteSummary(nativeLeaseForOwnedOperation(lease).deleteOwnedTarget(targetId))
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  }
+}
+
+export function cleanupWin32EpochTransitionTemps(lease: Win32EpochRootLease): number {
+  try {
+    const removed = nativeLeaseForOwnedOperation(lease).cleanupTransitionTemps()
+    if (!Number.isSafeInteger(removed) || (removed as number) < 0) {
+      throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+    }
+    return removed as number
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  }
 }
 
 export function assertWin32EpochRootLeaseAuthority(

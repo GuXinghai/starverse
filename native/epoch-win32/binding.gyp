@@ -3,6 +3,7 @@
     {
       "target_name": "starverse_epoch_win32",
       "sources": ["src/addon.cc"],
+      "include_dirs": [".generated"],
       "libraries": ["bcrypt.lib"],
       "defines": [
         "NAPI_VERSION=8",

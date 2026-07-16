@@ -10,6 +10,7 @@ dist-native/
 out/
 build/
 native/epoch-win32/build/
+native/epoch-win32/.generated/
 public/build-id.json
 *.tsbuildinfo
 
