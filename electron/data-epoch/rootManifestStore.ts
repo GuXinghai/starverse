@@ -1,67 +1,81 @@
-import fs from 'node:fs'
-import path from 'node:path'
 import {
   createEpoch2RootManifest,
   decodeAndVerifyEpoch2RootManifest,
   type Epoch2RootManifest,
   type Epoch2WorkspaceLayout,
 } from './rootManifest'
+import {
+  assertWin32EpochRootLeaseAuthority,
+  type Win32EpochRootLease,
+} from './win32EpochRootLease'
 
-function assertNoReparsePath(value: string): void {
-  const parsedRoot = path.parse(value).root
-  let current = parsedRoot
-  for (const segment of path.relative(parsedRoot, value).split(path.sep).filter(Boolean)) {
-    current = path.join(current, segment)
-    if (!fs.existsSync(current)) continue
-    if (fs.lstatSync(current).isSymbolicLink()) throw new Error('EPOCH2_ROOT_MANIFEST_REPARSE_POINT')
+const encoder = new TextEncoder()
+const decoder = new TextDecoder('utf-8', { fatal: true })
+
+function decodeJson(bytes: Uint8Array): unknown {
+  try {
+    return JSON.parse(decoder.decode(bytes))
+  } catch {
+    throw new Error('EPOCH2_ROOT_MANIFEST_INVALID')
   }
+}
+
+function serialized(manifest: Epoch2RootManifest): Uint8Array {
+  return encoder.encode(`${JSON.stringify(manifest, null, 2)}\n`)
+}
+
+function assertAuthority(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+}>): void {
+  assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
+  createEpoch2RootManifest({ layout: input.layout })
 }
 
 export function writeEpoch2RootManifestAtomic(input: Readonly<{
   layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
   manifest: Epoch2RootManifest
 }>): void {
+  assertAuthority(input)
   const verified = createEpoch2RootManifest({ layout: input.layout })
-  if (JSON.stringify(verified) !== JSON.stringify(input.manifest)) throw new Error('EPOCH2_ROOT_MANIFEST_CONFLICT')
-  const manifestPath = input.layout.transitionManifestPath
-  const directory = path.dirname(manifestPath)
-  assertNoReparsePath(input.layout.productRoot)
-  fs.mkdirSync(directory, { recursive: true })
-  assertNoReparsePath(directory)
-  if (fs.existsSync(manifestPath)) {
-    assertNoReparsePath(manifestPath)
-    const current = JSON.parse(fs.readFileSync(manifestPath, 'utf8'))
-    if (JSON.stringify(current) !== JSON.stringify(input.manifest)) throw new Error('EPOCH2_ROOT_MANIFEST_CONFLICT')
+  if (JSON.stringify(verified) !== JSON.stringify(input.manifest)) {
+    throw new Error('EPOCH2_ROOT_MANIFEST_CONFLICT')
+  }
+  const currentBytes = input.lease.readTransitionFile('transition_manifest')
+  if (currentBytes !== null) {
+    const current = decodeAndVerifyEpoch2RootManifest({
+      value: decodeJson(currentBytes),
+      layout: input.layout,
+    })
+    if (JSON.stringify(current) !== JSON.stringify(input.manifest)) {
+      throw new Error('EPOCH2_ROOT_MANIFEST_CONFLICT')
+    }
     return
   }
-  const pending = `${manifestPath}.pending`
-  if (fs.existsSync(pending)) fs.unlinkSync(pending)
-  let descriptor: number | null = null
-  try {
-    fs.writeFileSync(pending, `${JSON.stringify(input.manifest, null, 2)}\n`, { encoding: 'utf8', flag: 'wx', mode: 0o600 })
-    descriptor = fs.openSync(pending, 'r+')
-    fs.fsyncSync(descriptor)
-    fs.closeSync(descriptor)
-    descriptor = null
-    fs.renameSync(pending, manifestPath)
-    assertNoReparsePath(manifestPath)
-  } catch (error) {
-    if (descriptor !== null) fs.closeSync(descriptor)
-    try { fs.unlinkSync(pending) } catch { /* uncommitted marker cleanup */ }
-    throw error
+  const publication = input.lease.writeTransitionFile('transition_manifest', serialized(verified))
+  if (publication === 'exists') {
+    const racedBytes = input.lease.readTransitionFile('transition_manifest')
+    if (racedBytes === null) throw new Error('EPOCH2_ROOT_MANIFEST_CONFLICT')
+    const raced = decodeAndVerifyEpoch2RootManifest({
+      value: decodeJson(racedBytes),
+      layout: input.layout,
+    })
+    if (JSON.stringify(raced) !== JSON.stringify(verified)) {
+      throw new Error('EPOCH2_ROOT_MANIFEST_CONFLICT')
+    }
   }
 }
 
 export function readAndVerifyEpoch2RootManifest(input: Readonly<{
   layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
 }>): Epoch2RootManifest {
-  createEpoch2RootManifest({ layout: input.layout })
-  const manifestPath = input.layout.transitionManifestPath
-  assertNoReparsePath(input.layout.transitionRoot)
-  if (!fs.existsSync(manifestPath)) throw new Error('EPOCH2_ROOT_MANIFEST_MISSING')
-  assertNoReparsePath(manifestPath)
+  assertAuthority(input)
+  const bytes = input.lease.readTransitionFile('transition_manifest')
+  if (bytes === null) throw new Error('EPOCH2_ROOT_MANIFEST_MISSING')
   return decodeAndVerifyEpoch2RootManifest({
-    value: JSON.parse(fs.readFileSync(manifestPath, 'utf8')),
+    value: decodeJson(bytes),
     layout: input.layout,
   })
 }

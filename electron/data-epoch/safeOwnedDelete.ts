@@ -5,6 +5,7 @@ import {
   type Epoch2WorkspaceLayout,
 } from './rootManifest'
 import { readAndVerifyEpoch2RootManifest } from './rootManifestStore'
+import type { Win32EpochRootLease } from './win32EpochRootLease'
 
 type OwnedEntry = Readonly<{ path: string; identityDigest: string }>
 
@@ -91,11 +92,13 @@ function inspectTreePostOrder(target: string, output: OwnedEntry[]): void {
 
 function verifiedOwnedRoot(input: Readonly<{
   layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
   rootScope: 'product' | 'epoch'
 }>): Readonly<{ ownedRoot: string; manifestDigest: string }> {
   try {
     const manifest = readAndVerifyEpoch2RootManifest({
       layout: input.layout,
+      lease: input.lease,
     })
     return {
       ownedRoot: input.rootScope === 'product' ? input.layout.productRoot : input.layout.epochRoot,
@@ -108,6 +111,7 @@ function verifiedOwnedRoot(input: Readonly<{
 
 export function inspectEpoch2OwnedDeleteTarget(input: Readonly<{
   layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
   rootScope: 'product' | 'epoch'
   target: string
   protectedPaths: readonly string[]
@@ -149,6 +153,7 @@ export function inspectEpoch2OwnedDeleteTarget(input: Readonly<{
 export function assertEpoch2OwnedDeletePlanFresh(input: Readonly<{
   plan: Epoch2OwnedDeletePlan
   layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
   rootScope: 'product' | 'epoch'
 }>): void {
   const plan = input.plan
