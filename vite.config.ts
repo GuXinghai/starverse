@@ -15,6 +15,8 @@ const generatedRuntimeWatchIgnores = [
   '**/.vite/**',
   '**/dist/**',
   '**/dist-electron/**',
+  '**/dist-native/**',
+  '**/native/epoch-win32/build/**',
   '**/release/**',
   '**/out/**',
 ]

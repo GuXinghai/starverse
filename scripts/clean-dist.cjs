@@ -2,7 +2,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..');
-const targets = ['dist', 'dist-electron'].map((dir) => path.join(ROOT, dir));
+const targets = ['dist', 'dist-electron', 'dist-native'].map((dir) => path.join(ROOT, dir));
 
 for (const target of targets) {
   try {

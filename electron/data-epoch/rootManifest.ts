@@ -10,6 +10,7 @@ export const STARVERSE_PRODUCT_DIRECTORY = STARVERSE_PRODUCTION_IDENTITY.product
 export const STARVERSE_EPOCH_DIRECTORY = 'epoch-2' as const
 export const STARVERSE_EPOCH_DATABASE = 'starverse.db' as const
 const EPOCH2_LAYOUT_BRAND: unique symbol = Symbol('starverse.epoch2.workspace-layout')
+const ISSUED_EPOCH2_LAYOUTS = new WeakSet<object>()
 
 export type Epoch2WorkspaceLayout = Readonly<{
   [EPOCH2_LAYOUT_BRAND]: true
@@ -103,7 +104,7 @@ export function resolveEpoch2WorkspaceLayout(input: Readonly<{
     (input.repositoryRoot ? pathsOverlap(candidate, input.repositoryRoot) : false))) {
     throw new Epoch2RootManifestError('EPOCH2_APP_DATA_ROOT_UNSAFE')
   }
-  return Object.freeze({
+  const layout: Epoch2WorkspaceLayout = {
     [EPOCH2_LAYOUT_BRAND]: true as const,
     appDataRoot,
     productRoot,
@@ -121,10 +122,18 @@ export function resolveEpoch2WorkspaceLayout(input: Readonly<{
     tempRoot: path.join(epochRoot, 'temp'),
     runtimesRoot: path.join(epochRoot, 'runtimes'),
     pluginsRoot: path.join(epochRoot, 'plugins'),
-  })
+  }
+  ISSUED_EPOCH2_LAYOUTS.add(layout)
+  return Object.freeze(layout)
 }
 
-function assertDerivedLayout(layout: Epoch2WorkspaceLayout): void {
+export function assertEpoch2WorkspaceLayoutAuthority(
+  value: unknown,
+): asserts value is Epoch2WorkspaceLayout {
+  if (!value || typeof value !== 'object' || !ISSUED_EPOCH2_LAYOUTS.has(value)) {
+    throw new Epoch2RootManifestError('EPOCH2_APP_DATA_ROOT_UNSAFE')
+  }
+  const layout = value as Epoch2WorkspaceLayout
   if (layout[EPOCH2_LAYOUT_BRAND] !== true) throw new Epoch2RootManifestError('EPOCH2_APP_DATA_ROOT_UNSAFE')
   const expectedProductRoot = path.join(layout.appDataRoot, STARVERSE_PRODUCT_DIRECTORY)
   const expectedWorkspaceRoot = path.join(expectedProductRoot, 'workspace')
@@ -157,7 +166,7 @@ function assertDerivedLayout(layout: Epoch2WorkspaceLayout): void {
 export function createEpoch2RootManifest(input: Readonly<{
   layout: Epoch2WorkspaceLayout
 }>): Epoch2RootManifest {
-  assertDerivedLayout(input.layout)
+  assertEpoch2WorkspaceLayoutAuthority(input.layout)
   return Object.freeze({
     schemaVersion: 1,
     dataEpoch: STARVERSE_DATA_EPOCH,
