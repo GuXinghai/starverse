@@ -3,6 +3,7 @@ const fs = require('node:fs')
 const os = require('node:os')
 const crypto = require('node:crypto')
 const { app } = require('electron')
+const packageMetadata = require('../../package.json')
 
 app.whenReady().then(() => {
   const addonPathArg = process.argv.find((value) => value.startsWith('--addon-path='))
@@ -28,18 +29,50 @@ app.whenReady().then(() => {
   const lease = addon.acquireEpochRootLease({
     mutexName: `Local\\Starverse.Epoch2.${digest}`,
     appDataRoot,
-    productDirectory: 'Starverse',
+    productDirectory: packageMetadata.productName,
     transitionDirectory: '.epoch-transition',
     lockFileName: 'epoch-transition.lock',
   })
   try {
-    const bytes = Buffer.from('{"smoke":true}\n', 'utf8')
+    const epochRoot = path.join(
+      appDataRoot,
+      packageMetadata.productName,
+      'workspace',
+      'epoch-2',
+    ).normalize('NFC').toLowerCase()
+    const rootId = crypto.createHash('sha256')
+      .update(`starverse\0${packageMetadata.build.appId}\0${epochRoot}`, 'utf8')
+      .digest('hex')
+    const bytes = Buffer.from(`${JSON.stringify({
+      schemaVersion: 1,
+      dataEpoch: 2,
+      applicationId: packageMetadata.build.appId,
+      productDirectory: packageMetadata.productName,
+      rootId,
+    }, null, 2)}\n`, 'utf8')
     if (lease.writeTransitionFile('root-manifest.json', bytes, false) !== true) {
       throw new Error('EPOCH2_WIN32_NATIVE_MANIFEST_PUBLISH_INVALID')
     }
     const read = lease.readTransitionFile('root-manifest.json', 4096)
     if (!Buffer.isBuffer(read) || !read.equals(bytes)) {
       throw new Error('EPOCH2_WIN32_NATIVE_FILE_IO_INVALID')
+    }
+    const legacyDb = path.join(appDataRoot, packageMetadata.productName, 'chat.db')
+    fs.writeFileSync(legacyDb, 'delete-smoke')
+    const deleted = lease.deleteOwnedTarget('legacy_chat_db')
+    if (!deleted || deleted.exists !== true || fs.existsSync(legacyDb)) {
+      throw new Error('EPOCH2_WIN32_NATIVE_DELETE_INVALID')
+    }
+    const tempName = `.svtmp-${'a'.repeat(32)}`
+    const tempPath = path.join(
+      appDataRoot,
+      packageMetadata.productName,
+      '.epoch-transition',
+      tempName,
+    )
+    fs.writeFileSync(tempPath, 'cleanup-smoke')
+    if (lease.cleanupTransitionTemps() !== 1 || fs.existsSync(tempPath)) {
+      throw new Error('EPOCH2_WIN32_NATIVE_TEMP_CLEANUP_INVALID')
     }
   } finally {
     lease.release()
