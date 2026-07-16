@@ -14,6 +14,7 @@ import {
 import {
   assertEpoch2ResetJournalInventory,
   decodeEpoch2ResetJournal,
+  type Epoch2ResetPhase,
 } from './resetJournal'
 
 const NATIVE_FILE_NAME = 'starverse_epoch_win32.node'
@@ -75,6 +76,7 @@ type NativeLease = Readonly<{
   writeTransitionFile(fileName: string, bytes: Buffer, replaceExisting: boolean): unknown
   readLegacyConfig(operationId: string): unknown
   replaceLegacyConfig(operationId: string, snapshotId: string, bytes: Buffer): unknown
+  inspectLegacyConfigBackups(): unknown
   deleteLegacyConfigBackups(): unknown
   inspectOwnedTarget(targetId: string): unknown
   deleteOwnedTarget(targetId: string): unknown
@@ -338,6 +340,7 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
         typeof candidate.writeTransitionFile !== 'function' ||
         typeof candidate.readLegacyConfig !== 'function' ||
         typeof candidate.replaceLegacyConfig !== 'function' ||
+        typeof candidate.inspectLegacyConfigBackups !== 'function' ||
         typeof candidate.deleteLegacyConfigBackups !== 'function' ||
         typeof candidate.inspectOwnedTarget !== 'function' ||
         typeof candidate.deleteOwnedTarget !== 'function' ||
@@ -497,6 +500,21 @@ function deleteWin32EpochLegacyConfigBackups(
   }
 }
 
+function inspectWin32EpochLegacyConfigBackups(
+  lease: Win32EpochRootLease,
+): number {
+  try {
+    const inspected = nativeLeaseForOwnedOperation(lease).inspectLegacyConfigBackups()
+    if (!Number.isSafeInteger(inspected) || (inspected as number) < 0) {
+      throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+    }
+    return inspected as number
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  }
+}
+
 export function inspectWin32EpochOwnedTarget(
   lease: Win32EpochRootLease,
   targetId: Epoch2OwnedTargetId,
@@ -562,6 +580,7 @@ type IssuedConfigReplacement = Readonly<{
   bytes: Uint8Array
   snapshotId: string
   operationId: string
+  journalPhase: Epoch2ResetPhase
 }>
 
 const ISSUED_CONFIG_REPLACEMENTS = new WeakMap<object, IssuedConfigReplacement>()
@@ -569,10 +588,10 @@ const legacyConfigDecoder = new TextDecoder('utf-8', { fatal: true })
 const projectedConfigEncoder = new TextEncoder()
 const persistedResetJournalDecoder = new TextDecoder('utf-8', { fatal: true })
 
-function readPersistedConfigPhaseJournal(input: Readonly<{
+function readPersistedConfigJournal(input: Readonly<{
   layout: Epoch2WorkspaceLayout
   lease: Win32EpochRootLease
-}>) {
+}>, allowedPhases: ReadonlySet<string>) {
   const bytes = input.lease.readTransitionFile('reset_journal')
   if (bytes === null) throw new Error('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
   let journal
@@ -582,11 +601,26 @@ function readPersistedConfigPhaseJournal(input: Readonly<{
   } catch {
     throw new Error('EPOCH2_RESET_JOURNAL_INVALID')
   }
-  if (journal.phase !== 'legacy_files_deleted') {
+  if (!allowedPhases.has(journal.phase)) {
     throw new Error('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
   }
   return journal
 }
+
+const CONFIG_PHASE_POLICY = Object.freeze({
+  prepared: 'prepare_only',
+  legacy_files_deleted: 'commit',
+  config_replaced: 'commit',
+  epoch_root_created: 'commit',
+  database_created: 'commit',
+  committed: 'commit',
+} satisfies Record<Epoch2ResetPhase, 'prepare_only' | 'commit'>)
+const CONFIG_PREPARE_PHASES: ReadonlySet<string> = new Set(Object.keys(CONFIG_PHASE_POLICY))
+const CONFIG_COMMIT_PHASES: ReadonlySet<string> = new Set(
+  Object.entries(CONFIG_PHASE_POLICY)
+    .filter(([, policy]) => policy === 'commit')
+    .map(([phase]) => phase),
+)
 
 function decodeLegacyConfig(bytes: Uint8Array | null): unknown {
   if (bytes === null) return {}
@@ -603,7 +637,7 @@ export function prepareEpoch2ConfigReplacement(input: Readonly<{
   validateDecrypt: Epoch2CredentialDecryptValidator
 }>): Epoch2ConfigReplacementAuthority {
   assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
-  const journal = readPersistedConfigPhaseJournal(input)
+  const journal = readPersistedConfigJournal(input, CONFIG_PREPARE_PHASES)
   const snapshot = readWin32EpochLegacyConfig(input.lease, journal.operationId)
   let rawConfig: unknown
   try {
@@ -630,6 +664,7 @@ export function prepareEpoch2ConfigReplacement(input: Readonly<{
     bytes: Uint8Array.from(bytes),
     snapshotId: snapshot.snapshotId,
     operationId: journal.operationId,
+    journalPhase: journal.phase,
   }))
   return authority
 }
@@ -645,8 +680,11 @@ export function commitEpoch2ConfigReplacement(input: Readonly<{
     throw new Error('EPOCH2_CONFIG_REPLACEMENT_AUTHORITY_INVALID')
   }
   try {
-    const journal = readPersistedConfigPhaseJournal(input)
-    if (journal.operationId !== issued.operationId) {
+    const journal = readPersistedConfigJournal(input, CONFIG_COMMIT_PHASES)
+    const phaseMatches = issued.journalPhase === 'prepared'
+      ? journal.phase === 'legacy_files_deleted'
+      : journal.phase === issued.journalPhase
+    if (journal.operationId !== issued.operationId || !phaseMatches) {
       throw new Error('EPOCH2_CONFIG_REPLACEMENT_AUTHORITY_INVALID')
     }
     replaceWin32EpochLegacyConfig(
@@ -661,11 +699,29 @@ export function commitEpoch2ConfigReplacement(input: Readonly<{
   }
 }
 
+export function disposeEpoch2ConfigReplacementAuthority(
+  authority: Epoch2ConfigReplacementAuthority,
+): void {
+  const issued = ISSUED_CONFIG_REPLACEMENTS.get(authority)
+  if (!issued) return
+  issued.bytes.fill(0)
+  ISSUED_CONFIG_REPLACEMENTS.delete(authority)
+}
+
 export function deleteEpoch2LegacyConfigBackups(input: Readonly<{
   layout: Epoch2WorkspaceLayout
   lease: Win32EpochRootLease
 }>): number {
   assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
-  readPersistedConfigPhaseJournal(input)
+  readPersistedConfigJournal(input, CONFIG_COMMIT_PHASES)
   return deleteWin32EpochLegacyConfigBackups(input.lease)
+}
+
+export function inspectEpoch2LegacyConfigBackups(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+}>): number {
+  assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
+  readPersistedConfigJournal(input, CONFIG_PREPARE_PHASES)
+  return inspectWin32EpochLegacyConfigBackups(input.lease)
 }
