@@ -8,8 +8,8 @@ import {
   resolveEpoch2WorkspaceLayout,
 } from './rootManifest'
 import {
-  readAndVerifyEpoch2RootManifest,
-  writeEpoch2RootManifestAtomic,
+  readAndVerifyEpoch2TransitionOwnershipManifest,
+  writeEpoch2TransitionOwnershipManifestAtomic,
 } from './rootManifestStore'
 import {
   advanceEpoch2ResetJournal,
@@ -49,9 +49,9 @@ describe('epoch-2 lease-bound transition stores', () => {
     const { layout, lease } = fixture()
     try {
       const manifest = createEpoch2RootManifest({ layout })
-      writeEpoch2RootManifestAtomic({ layout, lease, manifest })
-      writeEpoch2RootManifestAtomic({ layout, lease, manifest })
-      expect(readAndVerifyEpoch2RootManifest({ layout, lease })).toEqual(manifest)
+      writeEpoch2TransitionOwnershipManifestAtomic({ layout, lease, manifest })
+      writeEpoch2TransitionOwnershipManifestAtomic({ layout, lease, manifest })
+      expect(readAndVerifyEpoch2TransitionOwnershipManifest({ layout, lease })).toEqual(manifest)
 
       const prepared = createEpoch2ResetJournal({
         operationId,
@@ -76,7 +76,7 @@ describe('epoch-2 lease-bound transition stores', () => {
     const second = fixture()
     try {
       const secondManifest = createEpoch2RootManifest({ layout: second.layout })
-      expect(() => writeEpoch2RootManifestAtomic({
+      expect(() => writeEpoch2TransitionOwnershipManifestAtomic({
         layout: second.layout,
         lease: first.lease,
         manifest: secondManifest,
@@ -105,7 +105,7 @@ describe('epoch-2 lease-bound transition stores', () => {
         'transition_manifest',
         Buffer.from(`${JSON.stringify(expected)}\n`, 'utf8'),
       )).toBe('exists')
-      expect(() => writeEpoch2RootManifestAtomic({ layout, lease, manifest: expected }))
+      expect(() => writeEpoch2TransitionOwnershipManifestAtomic({ layout, lease, manifest: expected }))
         .toThrow('EPOCH2_ROOT_MANIFEST_MISMATCH')
       expect(Buffer.from(lease.readTransitionFile('transition_manifest')!)).toEqual(conflictingBytes)
     } finally {
@@ -121,13 +121,13 @@ describe('epoch-2 lease-bound transition stores', () => {
     fs.writeFileSync(outsideFile, '{"sentinel":true}\n')
     try {
       fs.symlinkSync(outsideFile, layout.transitionManifestPath, 'file')
-      expect(() => readAndVerifyEpoch2RootManifest({ layout, lease }))
+      expect(() => readAndVerifyEpoch2TransitionOwnershipManifest({ layout, lease }))
         .toThrowError(new Win32EpochRootLeaseError('EPOCH2_WIN32_TRANSITION_REPARSE_POINT'))
       expect(fs.readFileSync(outsideFile, 'utf8')).toBe('{"sentinel":true}\n')
       fs.unlinkSync(layout.transitionManifestPath)
 
       fs.writeFileSync(layout.transitionManifestPath, Buffer.alloc(4 * 1024 + 1))
-      expect(() => readAndVerifyEpoch2RootManifest({ layout, lease }))
+      expect(() => readAndVerifyEpoch2TransitionOwnershipManifest({ layout, lease }))
         .toThrowError(new Win32EpochRootLeaseError('EPOCH2_WIN32_TRANSITION_FILE_TOO_LARGE'))
     } finally {
       lease.release()
@@ -148,8 +148,8 @@ describe('epoch-2 lease-bound transition stores', () => {
         'file',
       )
       const manifest = createEpoch2RootManifest({ layout })
-      writeEpoch2RootManifestAtomic({ layout, lease, manifest })
-      expect(readAndVerifyEpoch2RootManifest({ layout, lease })).toEqual(manifest)
+      writeEpoch2TransitionOwnershipManifestAtomic({ layout, lease, manifest })
+      expect(readAndVerifyEpoch2TransitionOwnershipManifest({ layout, lease })).toEqual(manifest)
       expect(fs.readFileSync(outsideFile, 'utf8')).toBe('{"sentinel":true}\n')
       expect(fs.readdirSync(layout.transitionRoot).sort()).toEqual([
         `.svtmp-${'a'.repeat(32)}`,

@@ -92,6 +92,18 @@ app.whenReady().then(() => {
     if (!deleted || deleted.exists !== true || fs.existsSync(legacyDb)) {
       throw new Error('EPOCH2_WIN32_NATIVE_DELETE_INVALID')
     }
+    const rootAuthority = lease.ensureEpochRootMarker()
+    const verifiedRootAuthority = lease.verifyEpochRootMarker()
+    if (!rootAuthority || JSON.stringify(rootAuthority) !== JSON.stringify(verifiedRootAuthority) ||
+        fs.existsSync(path.join(
+          appDataRoot,
+          packageMetadata.productName,
+          'workspace',
+          'epoch-2',
+          'starverse.db',
+        ))) {
+      throw new Error('EPOCH2_WIN32_NATIVE_EPOCH_ROOT_INVALID')
+    }
     const tempName = `.svtmp-${'a'.repeat(32)}`
     const tempPath = path.join(
       appDataRoot,

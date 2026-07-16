@@ -10,7 +10,7 @@ import {
   inspectEpoch2OwnedTarget,
 } from './nativeOwnedDelete'
 import { createEpoch2RootManifest, resolveEpoch2WorkspaceLayout } from './rootManifest'
-import { writeEpoch2RootManifestAtomic } from './rootManifestStore'
+import { writeEpoch2TransitionOwnershipManifestAtomic } from './rootManifestStore'
 import { acquireWin32EpochRootLease, createWin32EpochLeaseRequest } from './win32EpochRootLease'
 
 const windowsIt = process.platform === 'win32' ? it : it.skip
@@ -48,7 +48,7 @@ function createFixture(name: string) {
 }
 
 function publishManifest(fixture: ReturnType<typeof createFixture>): void {
-  writeEpoch2RootManifestAtomic({
+  writeEpoch2TransitionOwnershipManifestAtomic({
     layout: fixture.layout,
     lease: fixture.lease,
     manifest: createEpoch2RootManifest({ layout: fixture.layout }),
@@ -80,6 +80,7 @@ describe('Win32 epoch owned deletion authority', () => {
         deleteOwnedTarget(targetId: string): unknown
         readLegacyConfig(operationId: string): unknown
         inspectLegacyConfigBackups(): unknown
+        ensureEpochRootMarker(): unknown
         release(): void
       }
     }
@@ -94,6 +95,8 @@ describe('Win32 epoch owned deletion authority', () => {
         .toThrow('EPOCH2_WIN32_CONFIG_OWNERSHIP_INVALID')
       expect(() => rawLease.inspectLegacyConfigBackups())
         .toThrow('EPOCH2_WIN32_CONFIG_OWNERSHIP_INVALID')
+      expect(() => rawLease.ensureEpochRootMarker())
+        .toThrow('EPOCH2_WIN32_EPOCH_ROOT_INVALID')
       expect(fs.readFileSync(path.join(layout.productRoot, 'chat.db'), 'utf8')).toBe('keep')
     } finally {
       rawLease.release()
@@ -117,7 +120,7 @@ describe('Win32 epoch owned deletion authority', () => {
     const exactManifest = `${JSON.stringify(manifest, null, 2)}\n`
     const lease = acquireWin32EpochRootLease(layout)
     try {
-      writeEpoch2RootManifestAtomic({ layout, lease, manifest })
+      writeEpoch2TransitionOwnershipManifestAtomic({ layout, lease, manifest })
       fs.writeFileSync(path.join(layout.productRoot, 'chat.db'), 'unicode vector')
       expect(deleteEpoch2OwnedTarget({
         layout,
@@ -328,7 +331,7 @@ describe('Win32 epoch owned deletion authority', () => {
     fs.writeFileSync(sentinel, 'current epoch')
     const lease = acquireWin32EpochRootLease(layout)
     try {
-      writeEpoch2RootManifestAtomic({
+      writeEpoch2TransitionOwnershipManifestAtomic({
         layout,
         lease,
         manifest: createEpoch2RootManifest({ layout }),

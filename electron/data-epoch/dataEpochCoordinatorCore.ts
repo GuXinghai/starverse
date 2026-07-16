@@ -17,7 +17,7 @@ import {
   createEpoch2RootManifest,
   type Epoch2WorkspaceLayout,
 } from './rootManifest'
-import { writeEpoch2RootManifestAtomic } from './rootManifestStore'
+import { writeEpoch2TransitionOwnershipManifestAtomic } from './rootManifestStore'
 import {
   commitEpoch2ConfigReplacement,
   deleteEpoch2LegacyConfigBackups,
@@ -82,7 +82,7 @@ export async function runEpoch2ResetThroughConfigReplacement(input: Readonly<{
   clearDefaultSessionData: Epoch2DefaultSessionReset
 }>): Promise<Epoch2ResetThroughConfigResult> {
   cleanupEpoch2TransitionTemps(input)
-  writeEpoch2RootManifestAtomic({
+  writeEpoch2TransitionOwnershipManifestAtomic({
     layout: input.layout,
     lease: input.lease,
     manifest: createEpoch2RootManifest({ layout: input.layout }),
@@ -96,6 +96,10 @@ export async function runEpoch2ResetThroughConfigReplacement(input: Readonly<{
       lease: input.lease,
       journal,
     })
+  }
+  if (journal.phase !== 'prepared' && journal.phase !== 'legacy_files_deleted' &&
+      journal.phase !== 'config_replaced') {
+    throw new Error('EPOCH2_CONFIG_COORDINATOR_PHASE_INVALID')
   }
 
   let replacementAuthority: Epoch2ConfigReplacementAuthority | undefined
