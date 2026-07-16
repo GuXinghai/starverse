@@ -6,8 +6,10 @@ node_modules/
 # Build outputs
 dist/
 dist-electron/
+dist-native/
 out/
 build/
+native/epoch-win32/build/
 public/build-id.json
 *.tsbuildinfo
 

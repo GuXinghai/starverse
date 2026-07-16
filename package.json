@@ -16,7 +16,11 @@
     "files": [
       "dist",
       "dist-electron",
+      "dist-native",
       "infra/db/schema.sql"
+    ],
+    "asarUnpack": [
+      "dist-native/win32-x64/*.node"
     ],
     "mac": {
       "target": [
@@ -49,12 +53,12 @@
     }
   },
   "engines": {
-    "node": ">=22 <23",
+    "node": ">=22.12 <23",
     "npm": ">=10 <11"
   },
   "scripts": {
     "dev": "npm run gen:build-id && npm run build:worker && chcp 65001 >nul 2>&1 & cross-env FORCE_COLOR=1 vite --host",
-    "build": "npm run clean:dist && npm run gen:build-id && npm run build:worker && vue-tsc && vite build && electron-builder install-app-deps && electron-builder",
+    "build": "npm run clean:dist && npm run gen:build-id && npm run build:worker && vue-tsc && vite build && electron-builder install-app-deps && npm run build:native:epoch:electron && electron-builder",
     "preview": "vite preview",
     "electron:dev": "chcp 65001 >nul 2>&1 & npm run rebuild:electron && cross-env FORCE_COLOR=1 concurrently --kill-others \"npm run watch:worker\" \"npm run dev\"",
     "electron": "npm run electron:dev",
@@ -65,8 +69,10 @@
     "dev:quiet": "npm run gen:build-id && chcp 65001 >nul 2>&1 & cross-env FORCE_COLOR=1 NODE_ENV=development vite --host --logLevel silent",
     "clean:dist": "node ./scripts/clean-dist.cjs",
     "gen:build-id": "node ./scripts/gen-build-id.cjs",
-    "rebuild:node": "npm rebuild better-sqlite3",
-    "rebuild:electron": "npx electron-rebuild -f -w better-sqlite3",
+    "build:native:epoch:node": "node ./scripts/build-epoch-native.cjs --runtime=node",
+    "build:native:epoch:electron": "node ./scripts/build-epoch-native.cjs --runtime=electron",
+    "rebuild:node": "npm rebuild better-sqlite3 && npm run build:native:epoch:node",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3 && npm run build:native:epoch:electron",
     "rebuild": "npm run rebuild:electron",
     "build:worker": "node ./scripts/build-db-worker.cjs",
     "watch:worker": "node ./scripts/build-db-worker.cjs --watch",
@@ -77,6 +83,7 @@
     "test:model-picker:smoke": "vitest --run tests/integration/model-catalog-sync-query-smoke.test.ts src/next/modelCatalog/catalogQueryService.test.ts src/next/modelCatalog/modelEndpointDetailService.test.ts src/ui-app/components/EndpointDetailPanel.test.ts src/ui-app/components/ModelPickerDialog.test.ts src/ui-app/components/ChatAppComposer.modelPicker.test.ts src/ui-app/AppChatApp.send.test.ts src/next/modelPrefs/modelPrefsService.test.ts infra/db/repo/modelPreferencesRepo.test.ts",
     "test:electron-smoke": "npm run rebuild:electron && npm run build:worker && npx vite build --mode development --config vite.config.ts && node scripts/smoke/electron-shell-smoke.mjs",
     "test:packaged-identity-smoke": "node scripts/smoke/packaged-identity-smoke.mjs",
+    "test:epoch-native:electron": "npm run build:native:epoch:electron && electron scripts/smoke/epoch-native-electron-smoke.cjs",
     "test:electron-compatible-e2e": "cross-env SV_ELECTRON_COMPATIBLE_E2E=1 npm run test:electron-smoke",
     "diagnose:openai-responses-o-reasoning": "electron scripts/diagnostics/probe-openai-responses-o-reasoning-effort.cjs",
     "smoke:generation-params-real-click": "node scripts/smoke/generation-params-real-click-smoke.mjs --use-main-user-data",
@@ -137,6 +144,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.0",
+    "@electron/rebuild": "4.2.0",
     "@storybook/addon-a11y": "^8.6.14",
     "@storybook/addon-essentials": "^8.6.14",
     "@storybook/vue3": "^8.6.14",
@@ -162,6 +170,7 @@
     "esbuild": "^0.23.0",
     "eslint": "^8.57.1",
     "jsdom": "^25.0.1",
+    "node-gyp": "12.4.0",
     "playwright": "^1.57.0",
     "postcss": "^8.5.6",
     "storybook": "^8.6.14",
