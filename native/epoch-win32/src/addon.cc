@@ -40,6 +40,14 @@ struct Lease {
   HANDLE lock_file = INVALID_HANDLE_VALUE;
   bool released = false;
   std::string expected_manifest;
+  bool config_snapshot_ready = false;
+  bool config_snapshot_exists = false;
+  unsigned long long config_volume_serial = 0;
+  std::array<unsigned char, 16> config_file_id{};
+  std::string config_content_sha256;
+  std::string config_snapshot_id;
+  std::string config_transaction_id;
+  bool config_snapshot_from_rollback = false;
 };
 
 struct NativeFileIdentity {
@@ -721,6 +729,45 @@ bool ResolveProductDeleteTarget(
   return true;
 }
 
+bool EnumerateDirectoryEntries(
+    HANDLE directory, std::vector<NativeDirectoryEntry>* entries,
+    const char** error_code);
+bool MarkHandleForDelete(HANDLE handle, const char** error_code);
+
+bool ParseConfigTransactionId(
+    napi_env env, napi_value value, std::string* compact) {
+  std::wstring transaction_id;
+  if (!GetWideStringValue(env, value, &transaction_id) ||
+      transaction_id.size() != 36) {
+    return false;
+  }
+  compact->clear();
+  for (size_t index = 0; index < transaction_id.size(); ++index) {
+    const wchar_t ch = transaction_id[index];
+    if (index == 8 || index == 13 || index == 18 || index == 23) {
+      if (ch != L'-') return false;
+      continue;
+    }
+    if (!((ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f'))) {
+      return false;
+    }
+    compact->push_back(static_cast<char>(ch));
+  }
+  return compact->size() == 32;
+}
+
+std::wstring ConfigRollbackName(const std::string& compact_transaction_id) {
+  return L".svcfg-old-" + std::wstring(
+      compact_transaction_id.begin(), compact_transaction_id.end());
+}
+
+bool IsConfigRollbackName(const std::wstring& name) {
+  return name.size() == 43 && name.rfind(L".svcfg-old-", 0) == 0 &&
+      std::all_of(name.begin() + 11, name.end(), [](wchar_t ch) {
+        return (ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f');
+      });
+}
+
 bool VerifyDeletionOwnershipManifest(
     NtCreateFileFn nt_create_file, const Lease* lease) {
   HANDLE manifest = OpenRelative(
@@ -750,6 +797,350 @@ bool VerifyDeletionOwnershipManifest(
   }
   CloseHandleIfValid(manifest);
   return bytes == lease->expected_manifest;
+}
+
+bool ReadBoundedFile(
+    HANDLE file, size_t max_bytes, std::string* output) {
+  LARGE_INTEGER size{};
+  if (!GetFileSizeEx(file, &size) || size.QuadPart < 0 ||
+      static_cast<unsigned long long>(size.QuadPart) > max_bytes) {
+    return false;
+  }
+  output->assign(static_cast<size_t>(size.QuadPart), '\0');
+  size_t offset = 0;
+  while (offset < output->size()) {
+    DWORD read = 0;
+    if (!ReadFile(
+            file, output->data() + offset,
+            static_cast<DWORD>(output->size() - offset), &read, nullptr) || read == 0) {
+      return false;
+    }
+    offset += read;
+  }
+  return true;
+}
+
+std::string RandomConfigSnapshotId() {
+  unsigned char random_bytes[16]{};
+  if (BCryptGenRandom(
+          nullptr, random_bytes, sizeof(random_bytes),
+          BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
+    return "";
+  }
+  return BytesToHex(random_bytes, sizeof(random_bytes));
+}
+
+napi_value CreateConfigReadResult(
+    napi_env env, const std::string* bytes, const std::string& snapshot_id) {
+  napi_value result;
+  napi_value bytes_value;
+  napi_value snapshot_value;
+  napi_create_object(env, &result);
+  if (bytes == nullptr) {
+    napi_get_null(env, &bytes_value);
+  } else if (napi_create_buffer_copy(
+                 env, bytes->size(), bytes->empty() ? nullptr : bytes->data(),
+                 nullptr, &bytes_value) != napi_ok) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_CONTRACT_INVALID");
+  }
+  napi_create_string_utf8(
+      env, snapshot_id.c_str(), snapshot_id.size(), &snapshot_value);
+  napi_set_named_property(env, result, "bytes", bytes_value);
+  napi_set_named_property(env, result, "snapshotId", snapshot_value);
+  return result;
+}
+
+bool RenameHandleRelative(
+    HANDLE source, HANDLE target_root, const std::wstring& target_name,
+    bool replace_existing, DWORD* win32_error) {
+  struct NativeRenameInformation {
+    BOOLEAN ReplaceIfExists;
+    HANDLE RootDirectory;
+    ULONG FileNameLength;
+    WCHAR FileName[1];
+  };
+  NtSetInformationFileFn nt_set_information_file = ResolveNtSetInformationFile();
+  if (nt_set_information_file == nullptr) {
+    *win32_error = ERROR_PROC_NOT_FOUND;
+    return false;
+  }
+  const size_t name_bytes = target_name.size() * sizeof(wchar_t);
+  std::vector<unsigned char> rename_buffer(
+      offsetof(NativeRenameInformation, FileName) + name_bytes);
+  auto* rename = reinterpret_cast<NativeRenameInformation*>(rename_buffer.data());
+  rename->ReplaceIfExists = replace_existing ? TRUE : FALSE;
+  rename->RootDirectory = target_root;
+  rename->FileNameLength = static_cast<DWORD>(name_bytes);
+  std::copy(target_name.begin(), target_name.end(), rename->FileName);
+  IO_STATUS_BLOCK rename_status{};
+  const NTSTATUS status = nt_set_information_file(
+      source, &rename_status, rename, static_cast<ULONG>(rename_buffer.size()),
+      kFileRenameInformation);
+  if (status < 0) {
+    *win32_error = NtStatusToWin32(status);
+    return false;
+  }
+  return true;
+}
+
+napi_value LeaseReadLegacyConfig(napi_env env, napi_callback_info info) {
+  napi_value args[1];
+  Lease* lease = GetLeaseCall(env, info, 1, args);
+  if (lease == nullptr) return nullptr;
+  std::string transaction_id;
+  if (!ParseConfigTransactionId(env, args[0], &transaction_id)) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  if (nt_create_file == nullptr) return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  if (!VerifyDeletionOwnershipManifest(nt_create_file, lease)) {
+    return ThrowCode(env, "EPOCH2_WIN32_CONFIG_OWNERSHIP_INVALID");
+  }
+  std::vector<NativeDirectoryEntry> transition_entries;
+  const char* enumeration_error = nullptr;
+  if (!EnumerateDirectoryEntries(
+          lease->transition, &transition_entries, &enumeration_error)) {
+    return ThrowCode(env, enumeration_error);
+  }
+  const std::wstring rollback_name = ConfigRollbackName(transaction_id);
+  bool rollback_exists = false;
+  for (const NativeDirectoryEntry& entry : transition_entries) {
+    if (entry.name.rfind(L".svcfg-old-", 0) != 0) continue;
+    const bool valid_name = IsConfigRollbackName(entry.name);
+    if (!valid_name || entry.name != rollback_name || rollback_exists) {
+      return ThrowCode(env, "EPOCH2_WIN32_CONFIG_TRANSACTION_CONFLICT");
+    }
+    rollback_exists = true;
+  }
+  HANDLE config = OpenRelative(
+      nt_create_file,
+      rollback_exists ? lease->transition : lease->product,
+      rollback_exists ? rollback_name : L"config.json", false, FILE_OPEN,
+      GENERIC_READ | FILE_READ_ATTRIBUTES | SYNCHRONIZE, 0);
+  if (config == INVALID_HANDLE_VALUE) {
+    const DWORD error = GetLastError();
+    if (rollback_exists ||
+        (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND)) {
+      return ThrowCode(env, "EPOCH2_WIN32_CONFIG_READ_FAILED");
+    }
+    const std::string snapshot_id = RandomConfigSnapshotId();
+    if (snapshot_id.empty()) return ThrowCode(env, "EPOCH2_WIN32_RANDOM_FAILED");
+    lease->config_snapshot_ready = true;
+    lease->config_snapshot_exists = false;
+    lease->config_snapshot_from_rollback = false;
+    lease->config_content_sha256.clear();
+    lease->config_snapshot_id = snapshot_id;
+    lease->config_transaction_id = transaction_id;
+    return CreateConfigReadResult(env, nullptr, snapshot_id);
+  }
+  if (IsReparsePoint(config)) {
+    CloseHandleIfValid(config);
+    return ThrowCode(env, "EPOCH2_WIN32_CONFIG_REPARSE_POINT");
+  }
+  NativeFileIdentity identity;
+  std::string bytes;
+  std::string content_sha256;
+  if (!GetNativeFileIdentity(config, &identity) ||
+      !ReadBoundedFile(config, 1024 * 1024, &bytes) ||
+      !Sha256Hex(bytes, &content_sha256)) {
+    CloseHandleIfValid(config);
+    return ThrowCode(env, "EPOCH2_WIN32_CONFIG_READ_FAILED");
+  }
+  CloseHandleIfValid(config);
+  const std::string snapshot_id = RandomConfigSnapshotId();
+  if (snapshot_id.empty()) return ThrowCode(env, "EPOCH2_WIN32_RANDOM_FAILED");
+  lease->config_snapshot_ready = true;
+  lease->config_snapshot_exists = true;
+  lease->config_snapshot_from_rollback = rollback_exists;
+  lease->config_volume_serial = identity.volume_serial;
+  lease->config_file_id = identity.file_id;
+  lease->config_content_sha256 = content_sha256;
+  lease->config_snapshot_id = snapshot_id;
+  lease->config_transaction_id = transaction_id;
+  return CreateConfigReadResult(env, &bytes, snapshot_id);
+}
+
+napi_value LeaseReplaceLegacyConfig(napi_env env, napi_callback_info info) {
+  napi_value args[3];
+  Lease* lease = GetLeaseCall(env, info, 3, args);
+  if (lease == nullptr) return nullptr;
+  std::string transaction_id;
+  std::wstring snapshot_id_wide;
+  bool is_buffer = false;
+  void* byte_data = nullptr;
+  size_t byte_length = 0;
+  if (!ParseConfigTransactionId(env, args[0], &transaction_id) ||
+      !GetWideStringValue(env, args[1], &snapshot_id_wide) ||
+      snapshot_id_wide.size() != 32 ||
+      !std::all_of(snapshot_id_wide.begin(), snapshot_id_wide.end(), [](wchar_t ch) {
+        return (ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f');
+      }) ||
+      napi_is_buffer(env, args[2], &is_buffer) != napi_ok || !is_buffer ||
+      napi_get_buffer_info(env, args[2], &byte_data, &byte_length) != napi_ok ||
+      byte_length == 0 || byte_length > 1024 * 1024) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  if (!lease->config_snapshot_ready ||
+      transaction_id != lease->config_transaction_id ||
+      std::string(snapshot_id_wide.begin(), snapshot_id_wide.end()) !=
+          lease->config_snapshot_id) {
+    return ThrowCode(env, "EPOCH2_WIN32_CONFIG_CHANGED");
+  }
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  if (nt_create_file == nullptr) return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  if (!VerifyDeletionOwnershipManifest(nt_create_file, lease)) {
+    return ThrowCode(env, "EPOCH2_WIN32_CONFIG_OWNERSHIP_INVALID");
+  }
+  const std::wstring rollback_name = ConfigRollbackName(transaction_id);
+  HANDLE current = OpenRelative(
+      nt_create_file,
+      lease->config_snapshot_from_rollback ? lease->transition : lease->product,
+      lease->config_snapshot_from_rollback ? rollback_name : L"config.json",
+      false, FILE_OPEN,
+      GENERIC_READ | DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, 0);
+  if (lease->config_snapshot_exists) {
+    NativeFileIdentity identity;
+    std::string current_bytes;
+    std::string current_sha256;
+    if (current == INVALID_HANDLE_VALUE || IsReparsePoint(current) ||
+        !GetNativeFileIdentity(current, &identity) ||
+        !ReadBoundedFile(current, 1024 * 1024, &current_bytes) ||
+        !Sha256Hex(current_bytes, &current_sha256) ||
+        identity.volume_serial != lease->config_volume_serial ||
+        identity.file_id != lease->config_file_id ||
+        current_sha256 != lease->config_content_sha256) {
+      CloseHandleIfValid(current);
+      return ThrowCode(env, "EPOCH2_WIN32_CONFIG_CHANGED");
+    }
+  } else if (current != INVALID_HANDLE_VALUE) {
+    CloseHandleIfValid(current);
+    return ThrowCode(env, "EPOCH2_WIN32_CONFIG_CHANGED");
+  } else {
+    const DWORD error = GetLastError();
+    if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND) {
+      return ThrowCode(env, "EPOCH2_WIN32_CONFIG_CHANGED");
+    }
+  }
+
+  const std::string replacement_bytes(
+      static_cast<const char*>(byte_data), byte_length);
+  std::string replacement_sha256;
+  if (!Sha256Hex(replacement_bytes, &replacement_sha256)) {
+    CloseHandleIfValid(current);
+    return ThrowCode(env, "EPOCH2_WIN32_CONFIG_REPLACE_FAILED");
+  }
+  if (lease->config_snapshot_from_rollback) {
+    HANDLE published = OpenRelative(
+        nt_create_file, lease->product, L"config.json", false, FILE_OPEN,
+        GENERIC_READ | FILE_READ_ATTRIBUTES | SYNCHRONIZE, 0);
+    if (published != INVALID_HANDLE_VALUE) {
+      std::string published_bytes;
+      std::string published_sha256;
+      if (IsReparsePoint(published) ||
+          !ReadBoundedFile(published, 1024 * 1024, &published_bytes) ||
+          !Sha256Hex(published_bytes, &published_sha256) ||
+          published_sha256 != replacement_sha256) {
+        CloseHandleIfValid(published);
+        CloseHandleIfValid(current);
+        return ThrowCode(env, "EPOCH2_WIN32_CONFIG_CHANGED");
+      }
+      CloseHandleIfValid(published);
+      const char* delete_error = nullptr;
+      if (!MarkHandleForDelete(current, &delete_error)) {
+        CloseHandleIfValid(current);
+        return ThrowCode(env, delete_error);
+      }
+      CloseHandleIfValid(current);
+      lease->config_snapshot_ready = false;
+      lease->config_snapshot_id.clear();
+      lease->config_transaction_id.clear();
+      napi_value recovered;
+      napi_get_boolean(env, true, &recovered);
+      return recovered;
+    }
+    const DWORD published_error = GetLastError();
+    if (published_error != ERROR_FILE_NOT_FOUND &&
+        published_error != ERROR_PATH_NOT_FOUND) {
+      CloseHandleIfValid(current);
+      return ThrowCode(env, "EPOCH2_WIN32_CONFIG_CHANGED");
+    }
+  }
+
+  HANDLE temporary = INVALID_HANDLE_VALUE;
+  for (size_t attempt = 0; attempt < 16 && temporary == INVALID_HANDLE_VALUE; ++attempt) {
+    const std::wstring temporary_name = RandomTemporaryName();
+    if (temporary_name.empty()) {
+      CloseHandleIfValid(current);
+      return ThrowCode(env, "EPOCH2_WIN32_RANDOM_FAILED");
+    }
+    temporary = OpenRelative(
+        nt_create_file, lease->transition, temporary_name, false, FILE_CREATE,
+        GENERIC_READ | GENERIC_WRITE | DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, 0);
+    if (temporary == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_EXISTS &&
+        GetLastError() != ERROR_ALREADY_EXISTS) {
+      CloseHandleIfValid(current);
+      return ThrowCode(env, "EPOCH2_WIN32_CONFIG_REPLACE_FAILED");
+    }
+  }
+  if (temporary == INVALID_HANDLE_VALUE) {
+    CloseHandleIfValid(current);
+    return ThrowCode(env, "EPOCH2_WIN32_RANDOM_COLLISION");
+  }
+  size_t offset = 0;
+  const auto* bytes = static_cast<const unsigned char*>(byte_data);
+  while (offset < byte_length) {
+    DWORD written = 0;
+    if (!WriteFile(
+            temporary, bytes + offset, static_cast<DWORD>(byte_length - offset),
+            &written, nullptr) || written == 0) {
+      CloseHandleIfValid(current);
+      DiscardTemporaryFile(temporary);
+      return ThrowCode(env, "EPOCH2_WIN32_CONFIG_REPLACE_FAILED");
+    }
+    offset += written;
+  }
+  if (!FlushFileBuffers(temporary)) {
+    CloseHandleIfValid(current);
+    DiscardTemporaryFile(temporary);
+    return ThrowCode(env, "EPOCH2_WIN32_CONFIG_REPLACE_FAILED");
+  }
+  DWORD rename_error = ERROR_SUCCESS;
+  if (lease->config_snapshot_exists &&
+      !lease->config_snapshot_from_rollback &&
+      !RenameHandleRelative(
+          current, lease->transition, rollback_name, false, &rename_error)) {
+    CloseHandleIfValid(current);
+    DiscardTemporaryFile(temporary);
+    return ThrowWin32Code(
+        env, rename_error == ERROR_ALREADY_EXISTS || rename_error == ERROR_FILE_EXISTS
+            ? "EPOCH2_WIN32_CONFIG_TRANSACTION_CONFLICT"
+            : "EPOCH2_WIN32_CONFIG_REPLACE_FAILED",
+        rename_error);
+  }
+  if (!RenameHandleRelative(
+          temporary, lease->product, L"config.json", false, &rename_error)) {
+    CloseHandleIfValid(current);
+    DiscardTemporaryFile(temporary);
+    if (rename_error == ERROR_ALREADY_EXISTS || rename_error == ERROR_FILE_EXISTS) {
+      return ThrowCode(env, "EPOCH2_WIN32_CONFIG_CHANGED");
+    }
+    return ThrowWin32Code(env, "EPOCH2_WIN32_CONFIG_REPLACE_FAILED", rename_error);
+  }
+  CloseHandleIfValid(temporary);
+  if (current != INVALID_HANDLE_VALUE) {
+    const char* delete_error = nullptr;
+    if (!MarkHandleForDelete(current, &delete_error)) {
+      CloseHandleIfValid(current);
+      return ThrowCode(env, delete_error);
+    }
+    CloseHandleIfValid(current);
+  }
+  lease->config_snapshot_ready = false;
+  lease->config_snapshot_id.clear();
+  lease->config_transaction_id.clear();
+  napi_value result;
+  napi_get_boolean(env, true, &result);
+  return result;
 }
 
 HANDLE OpenProductTarget(
@@ -1134,6 +1525,134 @@ bool IsKnownTransitionControlName(const std::wstring& name) {
       name == L"epoch-transition.lock";
 }
 
+bool IsStrictConfigBackupTimestamp(const std::wstring& value) {
+  if (value.size() != 24 || value[4] != L'-' || value[7] != L'-' ||
+      value[10] != L'T' || value[13] != L'-' || value[16] != L'-' ||
+      value[19] != L'-' || value[23] != L'Z') {
+    return false;
+  }
+  for (size_t index = 0; index < value.size(); ++index) {
+    if (index == 4 || index == 7 || index == 10 || index == 13 ||
+        index == 16 || index == 19 || index == 23) {
+      continue;
+    }
+    if (value[index] < L'0' || value[index] > L'9') return false;
+  }
+  const auto number = [&value](size_t offset, size_t length) {
+    unsigned int result = 0;
+    for (size_t index = offset; index < offset + length; ++index) {
+      result = result * 10 + static_cast<unsigned int>(value[index] - L'0');
+    }
+    return result;
+  };
+  const unsigned int year = number(0, 4);
+  const unsigned int month = number(5, 2);
+  const unsigned int day = number(8, 2);
+  const unsigned int hour = number(11, 2);
+  const unsigned int minute = number(14, 2);
+  const unsigned int second = number(17, 2);
+  const unsigned int millisecond = number(20, 3);
+  if (year < 1970 || month < 1 || month > 12 || hour > 23 ||
+      minute > 59 || second > 59 || millisecond > 999) {
+    return false;
+  }
+  static constexpr unsigned int days_per_month[] = {
+      31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
+  unsigned int max_day = days_per_month[month - 1];
+  const bool leap = year % 4 == 0 && (year % 100 != 0 || year % 400 == 0);
+  if (month == 2 && leap) max_day = 29;
+  return day >= 1 && day <= max_day;
+}
+
+bool IsStrictLegacyConfigBackupName(const std::wstring& name) {
+  const std::wstring standard_prefix = L"config.backup.";
+  const std::wstring standard_suffix = L".json";
+  if (name.rfind(standard_prefix, 0) == 0 &&
+      name.size() > standard_prefix.size() + standard_suffix.size() &&
+      name.substr(name.size() - standard_suffix.size()) == standard_suffix) {
+    return IsStrictConfigBackupTimestamp(name.substr(
+        standard_prefix.size(),
+        name.size() - standard_prefix.size() - standard_suffix.size()));
+  }
+  const std::wstring corrupted_prefix = L"config.json.corrupted.";
+  const std::wstring corrupted_suffix = L".bak";
+  if (name.rfind(corrupted_prefix, 0) == 0 &&
+      name.size() > corrupted_prefix.size() + corrupted_suffix.size() &&
+      name.substr(name.size() - corrupted_suffix.size()) == corrupted_suffix) {
+    const std::wstring middle = name.substr(
+        corrupted_prefix.size(),
+        name.size() - corrupted_prefix.size() - corrupted_suffix.size());
+    const size_t separator = middle.rfind(L'.');
+    if (separator == std::wstring::npos) return false;
+    const std::wstring reason = middle.substr(0, separator);
+    const std::wstring timestamp = middle.substr(separator + 1);
+    return (reason == L"invalid-format" || reason == L"parse-error") &&
+        timestamp.size() == 13 && timestamp[0] >= L'1' && timestamp[0] <= L'9' &&
+        std::all_of(timestamp.begin(), timestamp.end(), [](wchar_t ch) {
+          return ch >= L'0' && ch <= L'9';
+        });
+  }
+  return false;
+}
+
+napi_value LeaseDeleteLegacyConfigBackups(napi_env env, napi_callback_info info) {
+  Lease* lease = GetLeaseCall(env, info, 0, nullptr);
+  if (lease == nullptr) return nullptr;
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  NtQueryInformationFileFn nt_query_information_file = ResolveNtQueryInformationFile();
+  if (nt_create_file == nullptr || nt_query_information_file == nullptr) {
+    return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  }
+  if (!VerifyDeletionOwnershipManifest(nt_create_file, lease)) {
+    return ThrowCode(env, "EPOCH2_WIN32_CONFIG_OWNERSHIP_INVALID");
+  }
+  std::vector<NativeDirectoryEntry> entries;
+  const char* error_code = nullptr;
+  if (!EnumerateDirectoryEntries(lease->product, &entries, &error_code)) {
+    return ThrowCode(env, error_code);
+  }
+  std::sort(entries.begin(), entries.end(), [](const auto& left, const auto& right) {
+    return left.name < right.name;
+  });
+  std::vector<HANDLE> backup_handles;
+  for (const NativeDirectoryEntry& entry : entries) {
+    const bool backup_prefix = entry.name.rfind(L"config.backup.", 0) == 0 ||
+        entry.name.rfind(L"config.json.corrupted.", 0) == 0;
+    if (!backup_prefix) continue;
+    if (!IsStrictLegacyConfigBackupName(entry.name)) {
+      for (HANDLE& handle : backup_handles) CloseHandleIfValid(handle);
+      return ThrowCode(env, "EPOCH2_WIN32_CONFIG_BACKUP_NAME_INVALID");
+    }
+    HANDLE backup = OpenRelativeAny(
+        nt_create_file, lease->product, entry.name,
+        FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE);
+    LARGE_INTEGER opened_file_id{};
+    bool directory = false;
+    if (backup == INVALID_HANDLE_VALUE || IsReparsePoint(backup) || entry.directory ||
+        !GetInternalFileId(nt_query_information_file, backup, &opened_file_id) ||
+        opened_file_id.QuadPart != entry.file_id.QuadPart ||
+        !IsDirectoryHandle(backup, &directory) || directory) {
+      CloseHandleIfValid(backup);
+      for (HANDLE& handle : backup_handles) CloseHandleIfValid(handle);
+      return ThrowCode(env, "EPOCH2_WIN32_CONFIG_BACKUP_INVALID");
+    }
+    backup_handles.push_back(backup);
+  }
+  size_t removed = 0;
+  for (HANDLE& backup : backup_handles) {
+    if (!MarkHandleForDelete(backup, &error_code)) {
+      for (HANDLE& handle : backup_handles) CloseHandleIfValid(handle);
+      return ThrowCode(env, error_code);
+    }
+    CloseHandleIfValid(backup);
+    ++removed;
+  }
+  napi_value result;
+  napi_create_uint32(env, static_cast<uint32_t>(removed), &result);
+  return result;
+}
+
 napi_value LeaseCleanupTransitionTemps(napi_env env, napi_callback_info info) {
   Lease* lease = GetLeaseCall(env, info, 0, nullptr);
   if (lease == nullptr) return nullptr;
@@ -1155,6 +1674,13 @@ napi_value LeaseCleanupTransitionTemps(napi_env env, napi_callback_info info) {
   for (const NativeDirectoryEntry& entry : entries) {
     const std::wstring& name = entry.name;
     if (IsKnownTransitionControlName(name)) continue;
+    if (name.rfind(L".svcfg-old-", 0) == 0) {
+      if (!IsConfigRollbackName(name) || entry.directory) {
+        for (HANDLE& handle : temporary_handles) CloseHandleIfValid(handle);
+        return ThrowCode(env, "EPOCH2_WIN32_CONFIG_TRANSACTION_CONFLICT");
+      }
+      continue;
+    }
     if (name.rfind(L".svtmp-", 0) != 0) {
       for (HANDLE& handle : temporary_handles) CloseHandleIfValid(handle);
       return ThrowCode(env, "EPOCH2_WIN32_TEMP_NAME_INVALID");
@@ -1373,11 +1899,14 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
       {"rootIdentity", nullptr, LeaseRootIdentity, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"readTransitionFile", nullptr, LeaseReadTransitionFile, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"writeTransitionFile", nullptr, LeaseWriteTransitionFile, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"readLegacyConfig", nullptr, LeaseReadLegacyConfig, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"replaceLegacyConfig", nullptr, LeaseReplaceLegacyConfig, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"deleteLegacyConfigBackups", nullptr, LeaseDeleteLegacyConfigBackups, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"inspectOwnedTarget", nullptr, LeaseInspectProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"deleteOwnedTarget", nullptr, LeaseDeleteProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"cleanupTransitionTemps", nullptr, LeaseCleanupTransitionTemps, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
-  if (napi_define_properties(env, result, 7, properties) != napi_ok) {
+  if (napi_define_properties(env, result, 10, properties) != napi_ok) {
     void* removed = nullptr;
     napi_remove_wrap(env, result, &removed);
     ReleaseLease(lease);

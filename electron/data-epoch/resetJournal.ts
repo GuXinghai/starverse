@@ -1,4 +1,10 @@
 import { randomUUID } from 'node:crypto'
+import {
+  createEpoch2ResetInventory,
+  decodeEpoch2ResetInventory,
+  type Epoch2ResetInventoryV1,
+} from './resetInventory'
+import type { Epoch2WorkspaceLayout } from './rootManifest'
 
 export const EPOCH2_RESET_PHASES = [
   'prepared',
@@ -12,11 +18,11 @@ export const EPOCH2_RESET_PHASES = [
 export type Epoch2ResetPhase = typeof EPOCH2_RESET_PHASES[number]
 
 export type Epoch2ResetJournal = Readonly<{
-  schemaVersion: 1
+  schemaVersion: 2
   dataEpoch: 2
   operationId: string
   phase: Epoch2ResetPhase
-  pathDigests: Readonly<Record<string, string>>
+  inventory: Epoch2ResetInventoryV1
 }>
 
 export class Epoch2ResetJournalError extends Error {
@@ -29,41 +35,35 @@ export class Epoch2ResetJournalError extends Error {
   }
 }
 
-function isDigest(value: unknown): value is string {
-  return typeof value === 'string' && /^[a-f0-9]{64}$/u.test(value)
-}
-
 function isOperationId(value: unknown): value is string {
-  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu.test(value)
-}
-
-function normalizePathDigests(value: unknown): Readonly<Record<string, string>> {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new Epoch2ResetJournalError('EPOCH2_RESET_JOURNAL_INVALID')
-  }
-  const entries = Object.entries(value as Record<string, unknown>)
-  if (entries.length === 0 || entries.length > 64 || entries.some(([key, digest]) =>
-    key.length > 64 || !/^[a-z][a-zA-Z0-9_]*$/u.test(key) || !isDigest(digest))) {
-    throw new Epoch2ResetJournalError('EPOCH2_RESET_JOURNAL_INVALID')
-  }
-  return Object.freeze(Object.fromEntries(entries.sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) as Record<string, string>)
+  return typeof value === 'string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(value)
 }
 
 export function createEpoch2ResetJournal(input: Readonly<{
   operationId?: string
-  pathDigests: Readonly<Record<string, string>>
+  layout: Epoch2WorkspaceLayout
 }>): Epoch2ResetJournal {
   const operationId = input.operationId ?? randomUUID()
   if (!isOperationId(operationId)) {
     throw new Epoch2ResetJournalError('EPOCH2_RESET_JOURNAL_INVALID')
   }
   return Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     dataEpoch: 2,
     operationId,
     phase: 'prepared',
-    pathDigests: normalizePathDigests(input.pathDigests),
+    inventory: createEpoch2ResetInventory(input.layout),
   })
+}
+
+export function assertEpoch2ResetJournalInventory(
+  journal: Epoch2ResetJournal,
+  layout: Epoch2WorkspaceLayout,
+): void {
+  const expected = createEpoch2ResetInventory(layout)
+  if (JSON.stringify(journal.inventory) !== JSON.stringify(expected)) {
+    throw new Epoch2ResetJournalError('EPOCH2_RESET_JOURNAL_INVALID')
+  }
 }
 
 export function decodeEpoch2ResetJournal(value: unknown): Epoch2ResetJournal {
@@ -72,17 +72,17 @@ export function decodeEpoch2ResetJournal(value: unknown): Epoch2ResetJournal {
   }
   const raw = value as Record<string, unknown>
   const keys = Object.keys(raw).sort()
-  if (keys.join('\0') !== ['dataEpoch', 'operationId', 'pathDigests', 'phase', 'schemaVersion'].sort().join('\0') ||
-      raw.schemaVersion !== 1 || raw.dataEpoch !== 2 || !isOperationId(raw.operationId) ||
+  if (keys.join('\0') !== ['dataEpoch', 'inventory', 'operationId', 'phase', 'schemaVersion'].sort().join('\0') ||
+      raw.schemaVersion !== 2 || raw.dataEpoch !== 2 || !isOperationId(raw.operationId) ||
       !EPOCH2_RESET_PHASES.includes(raw.phase as Epoch2ResetPhase)) {
     throw new Epoch2ResetJournalError('EPOCH2_RESET_JOURNAL_INVALID')
   }
   return Object.freeze({
-    schemaVersion: 1,
+    schemaVersion: 2,
     dataEpoch: 2,
     operationId: raw.operationId,
     phase: raw.phase as Epoch2ResetPhase,
-    pathDigests: normalizePathDigests(raw.pathDigests),
+    inventory: decodeEpoch2ResetInventory(raw.inventory),
   })
 }
 
