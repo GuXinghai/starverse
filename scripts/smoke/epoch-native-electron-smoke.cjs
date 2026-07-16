@@ -57,6 +57,30 @@ app.whenReady().then(() => {
     if (!Buffer.isBuffer(read) || !read.equals(bytes)) {
       throw new Error('EPOCH2_WIN32_NATIVE_FILE_IO_INVALID')
     }
+    const legacyConfig = path.join(appDataRoot, packageMetadata.productName, 'config.json')
+    fs.writeFileSync(legacyConfig, '{"legacy":true}\n')
+    const configOperationId = '123e4567-e89b-42d3-a456-426614174000'
+    const configSnapshot = lease.readLegacyConfig(configOperationId)
+    const projectedConfig = Buffer.from('{"language":"zh-CN"}\n', 'utf8')
+    if (!configSnapshot || !Buffer.isBuffer(configSnapshot.bytes) ||
+        typeof configSnapshot.snapshotId !== 'string' ||
+        lease.replaceLegacyConfig(
+          configOperationId,
+          configSnapshot.snapshotId,
+          projectedConfig,
+        ) !== true ||
+        !fs.readFileSync(legacyConfig).equals(projectedConfig)) {
+      throw new Error('EPOCH2_WIN32_NATIVE_CONFIG_REPLACE_INVALID')
+    }
+    const configBackup = path.join(
+      appDataRoot,
+      packageMetadata.productName,
+      'config.backup.2026-07-17T12-34-56-789Z.json',
+    )
+    fs.writeFileSync(configBackup, 'backup-smoke')
+    if (lease.deleteLegacyConfigBackups() !== 1 || fs.existsSync(configBackup)) {
+      throw new Error('EPOCH2_WIN32_NATIVE_CONFIG_BACKUP_INVALID')
+    }
     const legacyDb = path.join(appDataRoot, packageMetadata.productName, 'chat.db')
     fs.writeFileSync(legacyDb, 'delete-smoke')
     const deleted = lease.deleteOwnedTarget('legacy_chat_db')

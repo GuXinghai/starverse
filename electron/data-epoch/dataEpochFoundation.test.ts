@@ -13,10 +13,10 @@ import {
   createEpoch2ResetJournal,
   decodeEpoch2ResetJournal,
 } from './resetJournal'
+import { createEpoch2ResetInventory } from './resetInventory'
 import { readEpoch2ResetJournal, writeEpoch2ResetJournalAtomic } from './resetJournalStore'
 import { acquireWin32EpochRootLease } from './win32EpochRootLease'
 
-const digest = 'a'.repeat(64)
 const operationId = '123e4567-e89b-42d3-a456-426614174000'
 const windowsIt = process.platform === 'win32' ? it : it.skip
 
@@ -73,21 +73,35 @@ describe('Generation Compiler V2 epoch foundation', () => {
   })
 
   it('keeps reset journal transitions monotonic, adjacent and idempotent', () => {
-    const prepared = createEpoch2ResetJournal({ operationId, pathDigests: { legacyDb: digest } })
+    const layout = resolveEpoch2WorkspaceLayout({
+      appDataRoot: path.join(os.tmpdir(), 'epoch-journal-contract'),
+      homeRoot: os.homedir(),
+      repositoryRoot: process.cwd(),
+    })
+    const inventory = createEpoch2ResetInventory(layout)
+    const prepared = createEpoch2ResetJournal({ operationId, layout })
     expect(decodeEpoch2ResetJournal(JSON.parse(JSON.stringify(prepared)))).toEqual(prepared)
+    expect(() => createEpoch2ResetJournal({ operationId: operationId.toUpperCase(), layout }))
+      .toThrow('EPOCH2_RESET_JOURNAL_INVALID')
+    expect(() => decodeEpoch2ResetJournal({
+      ...prepared,
+      operationId: operationId.toUpperCase(),
+    })).toThrow('EPOCH2_RESET_JOURNAL_INVALID')
     expect(advanceEpoch2ResetJournal(prepared, 'prepared')).toBe(prepared)
     const deleted = advanceEpoch2ResetJournal(prepared, 'legacy_files_deleted')
     expect(deleted.phase).toBe('legacy_files_deleted')
     expect(() => advanceEpoch2ResetJournal(deleted, 'prepared')).toThrow('EPOCH2_RESET_PHASE_REGRESSION')
     expect(() => advanceEpoch2ResetJournal(deleted, 'epoch_root_created')).toThrow('EPOCH2_RESET_PHASE_SKIP')
-    expect(() => createEpoch2ResetJournal({
-      operationId,
-      pathDigests: Object.fromEntries(Array.from({ length: 65 }, (_, index) => [`path${index}`, digest])),
-    })).toThrow('EPOCH2_RESET_JOURNAL_INVALID')
-    expect(() => createEpoch2ResetJournal({
-      operationId,
-      pathDigests: { [`p${'x'.repeat(64)}`]: digest },
-    })).toThrow('EPOCH2_RESET_JOURNAL_INVALID')
+    expect(() => decodeEpoch2ResetJournal({
+      ...prepared,
+      inventory: {
+        ...inventory,
+        legacyTargetPathDigests: {
+          ...inventory.legacyTargetPathDigests,
+          legacy_assets: undefined,
+        },
+      },
+    })).toThrow('EPOCH2_RESET_INVENTORY_INVALID')
   })
 
   windowsIt('atomically persists the strict reset journal through the epoch lease', () => {
@@ -99,7 +113,10 @@ describe('Generation Compiler V2 epoch foundation', () => {
     })
     const lease = acquireWin32EpochRootLease(layout)
     try {
-      const prepared = createEpoch2ResetJournal({ operationId, pathDigests: { legacyDb: digest } })
+      const prepared = createEpoch2ResetJournal({
+        operationId,
+        layout,
+      })
       writeEpoch2ResetJournalAtomic({ layout, lease, journal: prepared })
       expect(readEpoch2ResetJournal({ layout, lease })).toEqual(prepared)
       const next = advanceEpoch2ResetJournal(prepared, 'legacy_files_deleted')

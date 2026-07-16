@@ -26,7 +26,6 @@ import {
 
 const windowsIt = process.platform === 'win32' ? it : it.skip
 const roots: string[] = []
-const digest = 'a'.repeat(64)
 const operationId = '123e4567-e89b-42d3-a456-426614174000'
 const currentDirectory = path.dirname(fileURLToPath(import.meta.url))
 
@@ -54,7 +53,10 @@ describe('epoch-2 lease-bound transition stores', () => {
       writeEpoch2RootManifestAtomic({ layout, lease, manifest })
       expect(readAndVerifyEpoch2RootManifest({ layout, lease })).toEqual(manifest)
 
-      const prepared = createEpoch2ResetJournal({ operationId, pathDigests: { legacyDb: digest } })
+      const prepared = createEpoch2ResetJournal({
+        operationId,
+        layout,
+      })
       writeEpoch2ResetJournalAtomic({ layout, lease, journal: prepared })
       const next = advanceEpoch2ResetJournal(prepared, 'legacy_files_deleted')
       writeEpoch2ResetJournalAtomic({ layout, lease, journal: next })
@@ -164,12 +166,35 @@ describe('epoch-2 lease-bound transition stores', () => {
     const { layout, lease } = fixture()
     try {
       const forged = {
-        ...createEpoch2ResetJournal({ operationId, pathDigests: { legacyDb: digest } }),
+        ...createEpoch2ResetJournal({
+          operationId,
+          layout,
+        }),
         injected: true,
       } as never
       expect(() => writeEpoch2ResetJournalAtomic({ layout, lease, journal: forged }))
         .toThrow('EPOCH2_RESET_JOURNAL_INVALID')
       expect(readEpoch2ResetJournal({ layout, lease })).toBeNull()
+    } finally {
+      lease.release()
+    }
+  })
+
+  windowsIt('rejects a structurally valid persisted inventory from a different root', () => {
+    const { layout, lease } = fixture()
+    const otherLayout = resolveEpoch2WorkspaceLayout({
+      appDataRoot: path.join(os.tmpdir(), 'starverse-transition-other-root'),
+      homeRoot: os.homedir(),
+      repositoryRoot: process.cwd(),
+    })
+    try {
+      const wrongRootJournal = createEpoch2ResetJournal({ operationId, layout: otherLayout })
+      expect(lease.writeTransitionFile(
+        'reset_journal',
+        Buffer.from(`${JSON.stringify(wrongRootJournal, null, 2)}\n`),
+      )).toBe('written')
+      expect(() => readEpoch2ResetJournal({ layout, lease }))
+        .toThrow('EPOCH2_RESET_JOURNAL_INVALID')
     } finally {
       lease.release()
     }

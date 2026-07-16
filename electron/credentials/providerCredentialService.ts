@@ -2,13 +2,16 @@ import type Store from 'electron-store'
 import {
   OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY,
 } from '../../src/next/provider/openrouter/openRouterLegacyCredential'
-
-export type ProviderCredentialKey =
-  | 'openrouter'
-  | 'openai_responses'
-  | 'google_ai_studio'
-  | 'anthropic'
-  | 'deepseek'
+import {
+  PROVIDER_CREDENTIAL_KEYS,
+  PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
+  type ProviderCredentialKey,
+} from './providerCredentialContract'
+export {
+  PROVIDER_CREDENTIAL_KEYS,
+  PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
+  type ProviderCredentialKey,
+} from './providerCredentialContract'
 
 export type ProviderCredentialStatusSource =
   | 'secure_store'
@@ -17,8 +20,6 @@ export type ProviderCredentialStatusSource =
 
 export type ProviderCredentialBackendKind = 'electron_safe_storage' | 'plaintext_fallback' | 'unavailable'
 
-export const PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX = 'providerCredentials.v1.'
-
 export const PROVIDER_CREDENTIAL_LEGACY_STORE_KEYS = {
   openrouter: OPENROUTER_CHAT_LEGACY_API_KEY_STORE_KEY,
   openai_responses: 'openAIResponsesApiKey',
@@ -26,8 +27,6 @@ export const PROVIDER_CREDENTIAL_LEGACY_STORE_KEYS = {
   anthropic: 'anthropicApiKey',
   deepseek: 'deepSeekApiKey',
 } as const satisfies Record<ProviderCredentialKey, string>
-
-export const PROVIDER_CREDENTIAL_KEYS = Object.keys(PROVIDER_CREDENTIAL_LEGACY_STORE_KEYS) as ProviderCredentialKey[]
 
 export type ProviderCredentialReadResult =
   | Readonly<{

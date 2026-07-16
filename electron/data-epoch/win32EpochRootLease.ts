@@ -7,6 +7,14 @@ import {
   STARVERSE_PRODUCT_DIRECTORY,
   type Epoch2WorkspaceLayout,
 } from './rootManifest'
+import {
+  projectEpoch2Config,
+  type Epoch2CredentialDecryptValidator,
+} from './configProjection'
+import {
+  assertEpoch2ResetJournalInventory,
+  decodeEpoch2ResetJournal,
+} from './resetJournal'
 
 const NATIVE_FILE_NAME = 'starverse_epoch_win32.node'
 const TRANSITION_DIRECTORY = '.epoch-transition'
@@ -65,6 +73,9 @@ type NativeLease = Readonly<{
   rootIdentity(): unknown
   readTransitionFile(fileName: string, maxBytes: number): unknown
   writeTransitionFile(fileName: string, bytes: Buffer, replaceExisting: boolean): unknown
+  readLegacyConfig(operationId: string): unknown
+  replaceLegacyConfig(operationId: string, snapshotId: string, bytes: Buffer): unknown
+  deleteLegacyConfigBackups(): unknown
   inspectOwnedTarget(targetId: string): unknown
   deleteOwnedTarget(targetId: string): unknown
   cleanupTransitionTemps(): unknown
@@ -116,7 +127,15 @@ export class Win32EpochRootLeaseError extends Error {
     | 'EPOCH2_WIN32_DELETE_FAILED'
     | 'EPOCH2_WIN32_TEMP_NAME_INVALID'
     | 'EPOCH2_WIN32_TEMP_REPARSE_OR_CHANGED'
-    | 'EPOCH2_WIN32_TEMP_INVALID') {
+    | 'EPOCH2_WIN32_TEMP_INVALID'
+    | 'EPOCH2_WIN32_CONFIG_OWNERSHIP_INVALID'
+    | 'EPOCH2_WIN32_CONFIG_READ_FAILED'
+    | 'EPOCH2_WIN32_CONFIG_REPARSE_POINT'
+    | 'EPOCH2_WIN32_CONFIG_CHANGED'
+    | 'EPOCH2_WIN32_CONFIG_REPLACE_FAILED'
+    | 'EPOCH2_WIN32_CONFIG_BACKUP_NAME_INVALID'
+    | 'EPOCH2_WIN32_CONFIG_BACKUP_INVALID'
+    | 'EPOCH2_WIN32_CONFIG_TRANSACTION_CONFLICT') {
     super(code)
     this.name = 'Win32EpochRootLeaseError'
   }
@@ -158,6 +177,14 @@ const NATIVE_ERROR_CODES = new Set<Win32EpochRootLeaseError['code']>([
   'EPOCH2_WIN32_TEMP_NAME_INVALID',
   'EPOCH2_WIN32_TEMP_REPARSE_OR_CHANGED',
   'EPOCH2_WIN32_TEMP_INVALID',
+  'EPOCH2_WIN32_CONFIG_OWNERSHIP_INVALID',
+  'EPOCH2_WIN32_CONFIG_READ_FAILED',
+  'EPOCH2_WIN32_CONFIG_REPARSE_POINT',
+  'EPOCH2_WIN32_CONFIG_CHANGED',
+  'EPOCH2_WIN32_CONFIG_REPLACE_FAILED',
+  'EPOCH2_WIN32_CONFIG_BACKUP_NAME_INVALID',
+  'EPOCH2_WIN32_CONFIG_BACKUP_INVALID',
+  'EPOCH2_WIN32_CONFIG_TRANSACTION_CONFLICT',
 ])
 
 function nativeBinaryPath(): string {
@@ -309,6 +336,9 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
     if (typeof candidate.rootIdentity !== 'function' ||
         typeof candidate.readTransitionFile !== 'function' ||
         typeof candidate.writeTransitionFile !== 'function' ||
+        typeof candidate.readLegacyConfig !== 'function' ||
+        typeof candidate.replaceLegacyConfig !== 'function' ||
+        typeof candidate.deleteLegacyConfigBackups !== 'function' ||
         typeof candidate.inspectOwnedTarget !== 'function' ||
         typeof candidate.deleteOwnedTarget !== 'function' ||
         typeof candidate.cleanupTransitionTemps !== 'function' ||
@@ -396,6 +426,77 @@ function nativeLeaseForOwnedOperation(lease: Win32EpochRootLease): NativeLease {
   return nativeLease
 }
 
+function readWin32EpochLegacyConfig(
+  lease: Win32EpochRootLease,
+  operationId: string,
+): Readonly<{ bytes: Uint8Array | null; snapshotId: string }> {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(operationId)) {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
+  }
+  try {
+    const value = nativeLeaseForOwnedOperation(lease).readLegacyConfig(operationId)
+    if (!value || typeof value !== 'object' ||
+        !hasExactKeys(value, ['bytes', 'snapshotId'])) {
+      throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+    }
+    const record = value as Record<string, unknown>
+    if ((record.bytes !== null &&
+          (!Buffer.isBuffer(record.bytes) || record.bytes.byteLength > 1024 * 1024)) ||
+        typeof record.snapshotId !== 'string' || !/^[a-f0-9]{32}$/u.test(record.snapshotId)) {
+      throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+    }
+    return Object.freeze({
+      bytes: record.bytes === null ? null : Uint8Array.from(record.bytes as Buffer),
+      snapshotId: record.snapshotId,
+    })
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  }
+}
+
+function replaceWin32EpochLegacyConfig(
+  lease: Win32EpochRootLease,
+  operationId: string,
+  snapshotId: string,
+  bytes: Uint8Array,
+): void {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/u.test(operationId) ||
+      !/^[a-f0-9]{32}$/u.test(snapshotId) || !ArrayBuffer.isView(bytes) ||
+      Object.prototype.toString.call(bytes) !== '[object Uint8Array]' ||
+      Object.prototype.toString.call(bytes.buffer) === '[object SharedArrayBuffer]' ||
+      bytes.byteLength === 0 || bytes.byteLength > 1024 * 1024) {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
+  }
+  try {
+    if (nativeLeaseForOwnedOperation(lease).replaceLegacyConfig(
+      operationId,
+      snapshotId,
+      Buffer.from(bytes),
+    ) !== true) {
+      throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+    }
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  }
+}
+
+function deleteWin32EpochLegacyConfigBackups(
+  lease: Win32EpochRootLease,
+): number {
+  try {
+    const removed = nativeLeaseForOwnedOperation(lease).deleteLegacyConfigBackups()
+    if (!Number.isSafeInteger(removed) || (removed as number) < 0) {
+      throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+    }
+    return removed as number
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  }
+}
+
 export function inspectWin32EpochOwnedTarget(
   lease: Win32EpochRootLease,
   targetId: Epoch2OwnedTargetId,
@@ -447,4 +548,124 @@ export function assertWin32EpochRootLeaseAuthority(
   if (!lease || typeof lease !== 'object' || ISSUED_WIN32_EPOCH_LEASES.get(lease) !== layout) {
     throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
   }
+}
+
+export type Epoch2ConfigReplacementAuthority = Readonly<{
+  schemaVersion: 1
+  byteLength: number
+  sha256: string
+}>
+
+type IssuedConfigReplacement = Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  bytes: Uint8Array
+  snapshotId: string
+  operationId: string
+}>
+
+const ISSUED_CONFIG_REPLACEMENTS = new WeakMap<object, IssuedConfigReplacement>()
+const legacyConfigDecoder = new TextDecoder('utf-8', { fatal: true })
+const projectedConfigEncoder = new TextEncoder()
+const persistedResetJournalDecoder = new TextDecoder('utf-8', { fatal: true })
+
+function readPersistedConfigPhaseJournal(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+}>) {
+  const bytes = input.lease.readTransitionFile('reset_journal')
+  if (bytes === null) throw new Error('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
+  let journal
+  try {
+    journal = decodeEpoch2ResetJournal(JSON.parse(persistedResetJournalDecoder.decode(bytes)))
+    assertEpoch2ResetJournalInventory(journal, input.layout)
+  } catch {
+    throw new Error('EPOCH2_RESET_JOURNAL_INVALID')
+  }
+  if (journal.phase !== 'legacy_files_deleted') {
+    throw new Error('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
+  }
+  return journal
+}
+
+function decodeLegacyConfig(bytes: Uint8Array | null): unknown {
+  if (bytes === null) return {}
+  try {
+    return JSON.parse(legacyConfigDecoder.decode(bytes))
+  } catch {
+    throw new Error('EPOCH2_CONFIG_INVALID')
+  }
+}
+
+export function prepareEpoch2ConfigReplacement(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  validateDecrypt: Epoch2CredentialDecryptValidator
+}>): Epoch2ConfigReplacementAuthority {
+  assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
+  const journal = readPersistedConfigPhaseJournal(input)
+  const snapshot = readWin32EpochLegacyConfig(input.lease, journal.operationId)
+  let rawConfig: unknown
+  try {
+    rawConfig = decodeLegacyConfig(snapshot.bytes)
+  } finally {
+    snapshot.bytes?.fill(0)
+  }
+  const projected = projectEpoch2Config({
+    rawConfig,
+    validateDecrypt: input.validateDecrypt,
+  })
+  const bytes = projectedConfigEncoder.encode(`${JSON.stringify(projected, null, 2)}\n`)
+  if (bytes.byteLength === 0 || bytes.byteLength > 1024 * 1024) {
+    throw new Error('EPOCH2_CONFIG_INVALID')
+  }
+  const authority: Epoch2ConfigReplacementAuthority = Object.freeze({
+    schemaVersion: 1,
+    byteLength: bytes.byteLength,
+    sha256: createHash('sha256').update(bytes).digest('hex'),
+  })
+  ISSUED_CONFIG_REPLACEMENTS.set(authority, Object.freeze({
+    layout: input.layout,
+    lease: input.lease,
+    bytes: Uint8Array.from(bytes),
+    snapshotId: snapshot.snapshotId,
+    operationId: journal.operationId,
+  }))
+  return authority
+}
+
+export function commitEpoch2ConfigReplacement(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  authority: Epoch2ConfigReplacementAuthority
+}>): void {
+  assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
+  const issued = ISSUED_CONFIG_REPLACEMENTS.get(input.authority)
+  if (!issued || issued.layout !== input.layout || issued.lease !== input.lease) {
+    throw new Error('EPOCH2_CONFIG_REPLACEMENT_AUTHORITY_INVALID')
+  }
+  try {
+    const journal = readPersistedConfigPhaseJournal(input)
+    if (journal.operationId !== issued.operationId) {
+      throw new Error('EPOCH2_CONFIG_REPLACEMENT_AUTHORITY_INVALID')
+    }
+    replaceWin32EpochLegacyConfig(
+      input.lease,
+      issued.operationId,
+      issued.snapshotId,
+      issued.bytes,
+    )
+  } finally {
+    issued.bytes.fill(0)
+    ISSUED_CONFIG_REPLACEMENTS.delete(input.authority)
+  }
+}
+
+export function deleteEpoch2LegacyConfigBackups(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+}>): number {
+  assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
+  readPersistedConfigPhaseJournal(input)
+  return deleteWin32EpochLegacyConfigBackups(input.lease)
 }

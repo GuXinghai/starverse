@@ -1,4 +1,4 @@
-import type { ProviderCredentialKey } from '../credentials/providerCredentialService'
+import type { ProviderCredentialKey } from '../credentials/providerCredentialContract'
 
 export const EPOCH2_PRESERVED_PROVIDER_KEYS = Object.freeze([
   'openrouter',

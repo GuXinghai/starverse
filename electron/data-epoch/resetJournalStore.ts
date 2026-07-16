@@ -1,4 +1,5 @@
 import {
+  assertEpoch2ResetJournalInventory,
   decodeEpoch2ResetJournal,
   EPOCH2_RESET_PHASES,
   type Epoch2ResetJournal,
@@ -28,7 +29,7 @@ function decode(bytes: Uint8Array): Epoch2ResetJournal {
 
 function sameOperation(left: Epoch2ResetJournal, right: Epoch2ResetJournal): boolean {
   return left.operationId === right.operationId &&
-    JSON.stringify(left.pathDigests) === JSON.stringify(right.pathDigests)
+    JSON.stringify(left.inventory) === JSON.stringify(right.inventory)
 }
 
 function phaseIndex(journal: Epoch2ResetJournal): number {
@@ -49,6 +50,7 @@ export function writeEpoch2ResetJournalAtomic(input: Readonly<{
 }>): void {
   assertAuthority(input)
   const journal = decodeEpoch2ResetJournal(input.journal)
+  assertEpoch2ResetJournalInventory(journal, input.layout)
   const current = readEpoch2ResetJournal(input)
   if (current) {
     if (!sameOperation(current, journal) ||
@@ -71,5 +73,8 @@ export function readEpoch2ResetJournal(input: Readonly<{
 }>): Epoch2ResetJournal | null {
   assertAuthority(input)
   const bytes = input.lease.readTransitionFile('reset_journal')
-  return bytes === null ? null : decode(bytes)
+  if (bytes === null) return null
+  const journal = decode(bytes)
+  assertEpoch2ResetJournalInventory(journal, input.layout)
+  return journal
 }
