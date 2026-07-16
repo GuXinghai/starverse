@@ -1,4 +1,9 @@
 import type { ProviderCredentialKey } from '../credentials/providerCredentialContract'
+import {
+  decodeAndValidateEpoch2ProviderCredentialRecord,
+  type Epoch2ProviderCredentialDecryptValidator,
+  type Epoch2ProviderCredentialRecord,
+} from '../credentials/epoch2ProviderCredentialRecord'
 
 export const EPOCH2_PRESERVED_PROVIDER_KEYS = Object.freeze([
   'openrouter',
@@ -8,10 +13,7 @@ export const EPOCH2_PRESERVED_PROVIDER_KEYS = Object.freeze([
   'deepseek',
 ] as const satisfies readonly ProviderCredentialKey[])
 
-export type Epoch2CredentialDecryptValidator = (
-  providerKey: ProviderCredentialKey,
-  ciphertext: Buffer,
-) => string
+export type Epoch2CredentialDecryptValidator = Epoch2ProviderCredentialDecryptValidator
 
 export class Epoch2ConfigProjectionError extends Error {
   constructor(
@@ -23,58 +25,26 @@ export class Epoch2ConfigProjectionError extends Error {
   }
 }
 
-type SecureCredentialRecord = Readonly<{
-  version: 1
-  providerKey: ProviderCredentialKey
-  backend: 'electron_safe_storage'
-  ciphertextBase64: string
-  updatedAtMs: number
-}>
-
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value)
     ? value as Record<string, unknown>
     : null
 }
 
-function decodeStrictBase64(value: unknown): Buffer | null {
-  if (typeof value !== 'string' || value.trim() === '' || !/^[A-Za-z0-9+/]+={0,2}$/u.test(value)) return null
-  try {
-    const decoded = Buffer.from(value, 'base64')
-    if (decoded.length === 0 || decoded.toString('base64') !== value) return null
-    return decoded
-  } catch {
-    return null
-  }
-}
-
 function projectCredential(input: Readonly<{
   providerKey: ProviderCredentialKey
   value: unknown
   validateDecrypt: Epoch2CredentialDecryptValidator
-}>): SecureCredentialRecord {
-  const raw = record(input.value)
-  const ciphertext = decodeStrictBase64(raw?.ciphertextBase64)
-  const keys = Object.keys(raw ?? {}).sort()
-  if (!raw || keys.join('\0') !== ['backend', 'ciphertextBase64', 'providerKey', 'updatedAtMs', 'version'].sort().join('\0') ||
-      raw.version !== 1 || raw.providerKey !== input.providerKey ||
-      raw.backend !== 'electron_safe_storage' || !ciphertext ||
-      typeof raw.updatedAtMs !== 'number' || !Number.isSafeInteger(raw.updatedAtMs) || raw.updatedAtMs < 0) {
-    throw new Epoch2ConfigProjectionError('EPOCH2_CREDENTIAL_INVALID', input.providerKey)
-  }
+}>): Epoch2ProviderCredentialRecord {
   try {
-    const decrypted = input.validateDecrypt(input.providerKey, ciphertext)
-    if (typeof decrypted !== 'string' || decrypted.trim() === '') throw new Error('empty credential')
+    return decodeAndValidateEpoch2ProviderCredentialRecord({
+      value: input.value,
+      providerKey: input.providerKey,
+      validateDecrypt: input.validateDecrypt,
+    })
   } catch {
     throw new Epoch2ConfigProjectionError('EPOCH2_CREDENTIAL_INVALID', input.providerKey)
   }
-  return Object.freeze({
-    version: 1,
-    providerKey: input.providerKey,
-    backend: 'electron_safe_storage',
-    ciphertextBase64: raw.ciphertextBase64 as string,
-    updatedAtMs: raw.updatedAtMs,
-  })
 }
 
 function copyPreferences(raw: Record<string, unknown>): Record<string, unknown> {
@@ -115,7 +85,7 @@ export function projectEpoch2Config(input: Readonly<{
       (credentialRoot?.v1 !== undefined && !credentialV1)) {
     throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID', 'providerCredentials')
   }
-  const preserved: Partial<Record<ProviderCredentialKey, SecureCredentialRecord>> = {}
+  const preserved: Partial<Record<ProviderCredentialKey, Epoch2ProviderCredentialRecord>> = {}
   for (const providerKey of EPOCH2_PRESERVED_PROVIDER_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(credentialV1 ?? {}, providerKey)) continue
     preserved[providerKey] = projectCredential({

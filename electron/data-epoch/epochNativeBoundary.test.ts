@@ -63,4 +63,36 @@ describe('epoch native authority boundary', () => {
     }
     expect(consumers).toEqual([])
   })
+
+  it('keeps session reset narrow and credential records free of legacy compatibility', () => {
+    const sessionResetFile = path.join(
+      repositoryRoot,
+      'electron',
+      'data-epoch',
+      'defaultSessionReset.ts',
+    )
+    const credentialRecordFile = path.join(
+      repositoryRoot,
+      'electron',
+      'credentials',
+      'epoch2ProviderCredentialRecord.ts',
+    )
+    const sessionSource = fs.readFileSync(sessionResetFile, 'utf8')
+    const credentialSource = fs.readFileSync(credentialRecordFile, 'utf8')
+    expect(sessionSource).not.toMatch(/fromPartition|\.clearData\s*\(|clearStorageData\s*\(\s*\)/u)
+    expect(credentialSource).not.toMatch(
+      /electron-store|plaintext_fallback|Legacy|migrat|getLegacyStoreValue|credentialScope/u,
+    )
+
+    const sessionConsumers: string[] = []
+    for (const rootName of ['electron', 'src', 'infra']) {
+      for (const file of productionTypeScriptFiles(path.join(repositoryRoot, rootName))) {
+        if (file === sessionResetFile) continue
+        if (fs.readFileSync(file, 'utf8').includes('defaultSessionReset')) {
+          sessionConsumers.push(path.relative(repositoryRoot, file))
+        }
+      }
+    }
+    expect(sessionConsumers).toEqual([])
+  })
 })
