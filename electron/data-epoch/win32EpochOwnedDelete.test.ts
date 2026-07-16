@@ -79,6 +79,7 @@ describe('Win32 epoch owned deletion authority', () => {
       acquireEpochRootLease(request: unknown): {
         deleteOwnedTarget(targetId: string): unknown
         readLegacyConfig(operationId: string): unknown
+        inspectLegacyConfigBackups(): unknown
         release(): void
       }
     }
@@ -90,6 +91,8 @@ describe('Win32 epoch owned deletion authority', () => {
       expect(() => rawLease.deleteOwnedTarget('legacy_chat_db'))
         .toThrow('EPOCH2_WIN32_DELETE_OWNERSHIP_INVALID')
       expect(() => rawLease.readLegacyConfig('123e4567-e89b-42d3-a456-426614174000'))
+        .toThrow('EPOCH2_WIN32_CONFIG_OWNERSHIP_INVALID')
+      expect(() => rawLease.inspectLegacyConfigBackups())
         .toThrow('EPOCH2_WIN32_CONFIG_OWNERSHIP_INVALID')
       expect(fs.readFileSync(path.join(layout.productRoot, 'chat.db'), 'utf8')).toBe('keep')
     } finally {

@@ -72,13 +72,18 @@ app.whenReady().then(() => {
         !fs.readFileSync(legacyConfig).equals(projectedConfig)) {
       throw new Error('EPOCH2_WIN32_NATIVE_CONFIG_REPLACE_INVALID')
     }
+    fs.writeFileSync(legacyConfig, projectedConfig)
+    if (!fs.readFileSync(legacyConfig).equals(projectedConfig)) {
+      throw new Error('EPOCH2_WIN32_NATIVE_CONFIG_WRITE_INVALID')
+    }
     const configBackup = path.join(
       appDataRoot,
       packageMetadata.productName,
       'config.backup.2026-07-17T12-34-56-789Z.json',
     )
     fs.writeFileSync(configBackup, 'backup-smoke')
-    if (lease.deleteLegacyConfigBackups() !== 1 || fs.existsSync(configBackup)) {
+    if (lease.inspectLegacyConfigBackups() !== 1 || !fs.existsSync(configBackup) ||
+        lease.deleteLegacyConfigBackups() !== 1 || fs.existsSync(configBackup)) {
       throw new Error('EPOCH2_WIN32_NATIVE_CONFIG_BACKUP_INVALID')
     }
     const legacyDb = path.join(appDataRoot, packageMetadata.productName, 'chat.db')

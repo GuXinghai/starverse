@@ -86,14 +86,17 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('requires the exact legacy-files-deleted journal phase', () => {
+  windowsIt('prevalidates in prepared but cannot commit before legacy files are deleted', () => {
     const { layout, lease } = fixture('starverse-config-phase', 'prepared')
     try {
-      expect(() => prepareEpoch2ConfigReplacement({
+      const authority = prepareEpoch2ConfigReplacement({
         layout,
         lease,
         validateDecrypt: () => 'unused',
-      })).toThrow('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
+      })
+      expect(authority.sha256).toMatch(/^[a-f0-9]{64}$/u)
+      expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority }))
+        .toThrow('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
     } finally {
       lease.release()
     }
@@ -139,6 +142,10 @@ describe('epoch-2 config replacement authority', () => {
       })
       expect(JSON.stringify(replaced)).not.toContain('plaintext-must-go')
       expect(JSON.stringify(replaced)).not.toContain('generationParams')
+      expect(() => fs.writeFileSync(
+        path.join(layout.productRoot, 'config.json'),
+        `${JSON.stringify(replaced)}\n`,
+      )).not.toThrow()
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority }))
         .toThrow('EPOCH2_CONFIG_REPLACEMENT_AUTHORITY_INVALID')
     } finally {
@@ -187,7 +194,7 @@ describe('epoch-2 config replacement authority', () => {
         journal: advanceEpoch2ResetJournal(current!, 'config_replaced'),
       })
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority }))
-        .toThrow('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
+        .toThrow('EPOCH2_CONFIG_REPLACEMENT_AUTHORITY_INVALID')
       expect(fs.readFileSync(configPath, 'utf8')).toBe(original)
       expect(fs.existsSync(path.join(layout.transitionRoot, rollbackName))).toBe(false)
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority }))

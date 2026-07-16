@@ -250,7 +250,8 @@ DWORD NtStatusToWin32(NTSTATUS status) {
 
 HANDLE OpenRelative(
     NtCreateFileFn nt_create_file, HANDLE parent, const std::wstring& name,
-    bool directory, ULONG disposition, ACCESS_MASK access, ULONG share_access) {
+    bool directory, ULONG disposition, ACCESS_MASK access, ULONG share_access,
+    ULONG file_attributes = FILE_ATTRIBUTE_HIDDEN) {
   UNICODE_STRING unicode_name{};
   unicode_name.Buffer = const_cast<PWSTR>(name.data());
   unicode_name.Length = static_cast<USHORT>(name.size() * sizeof(wchar_t));
@@ -263,7 +264,7 @@ HANDLE OpenRelative(
       (directory ? FILE_DIRECTORY_FILE : FILE_NON_DIRECTORY_FILE);
   const NTSTATUS status = nt_create_file(
       &result, access, &attributes, &io_status, nullptr,
-      directory ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_HIDDEN,
+      directory ? FILE_ATTRIBUTE_DIRECTORY : file_attributes,
       share_access, disposition, options, nullptr, 0);
   if (status < 0) {
     SetLastError(NtStatusToWin32(status));
@@ -1075,7 +1076,8 @@ napi_value LeaseReplaceLegacyConfig(napi_env env, napi_callback_info info) {
     }
     temporary = OpenRelative(
         nt_create_file, lease->transition, temporary_name, false, FILE_CREATE,
-        GENERIC_READ | GENERIC_WRITE | DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, 0);
+        GENERIC_READ | GENERIC_WRITE | DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+        0, FILE_ATTRIBUTE_NORMAL);
     if (temporary == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_EXISTS &&
         GetLastError() != ERROR_ALREADY_EXISTS) {
       CloseHandleIfValid(current);
@@ -1595,7 +1597,8 @@ bool IsStrictLegacyConfigBackupName(const std::wstring& name) {
   return false;
 }
 
-napi_value LeaseDeleteLegacyConfigBackups(napi_env env, napi_callback_info info) {
+napi_value LeaseProcessLegacyConfigBackups(
+    napi_env env, napi_callback_info info, bool delete_backups) {
   Lease* lease = GetLeaseCall(env, info, 0, nullptr);
   if (lease == nullptr) return nullptr;
   NtCreateFileFn nt_create_file = ResolveNtCreateFile();
@@ -1640,6 +1643,13 @@ napi_value LeaseDeleteLegacyConfigBackups(napi_env env, napi_callback_info info)
     backup_handles.push_back(backup);
   }
   size_t removed = 0;
+  if (!delete_backups) {
+    const size_t inspected = backup_handles.size();
+    for (HANDLE& backup : backup_handles) CloseHandleIfValid(backup);
+    napi_value result;
+    napi_create_uint32(env, static_cast<uint32_t>(inspected), &result);
+    return result;
+  }
   for (HANDLE& backup : backup_handles) {
     if (!MarkHandleForDelete(backup, &error_code)) {
       for (HANDLE& handle : backup_handles) CloseHandleIfValid(handle);
@@ -1651,6 +1661,14 @@ napi_value LeaseDeleteLegacyConfigBackups(napi_env env, napi_callback_info info)
   napi_value result;
   napi_create_uint32(env, static_cast<uint32_t>(removed), &result);
   return result;
+}
+
+napi_value LeaseInspectLegacyConfigBackups(napi_env env, napi_callback_info info) {
+  return LeaseProcessLegacyConfigBackups(env, info, false);
+}
+
+napi_value LeaseDeleteLegacyConfigBackups(napi_env env, napi_callback_info info) {
+  return LeaseProcessLegacyConfigBackups(env, info, true);
 }
 
 napi_value LeaseCleanupTransitionTemps(napi_env env, napi_callback_info info) {
@@ -1901,12 +1919,14 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
       {"writeTransitionFile", nullptr, LeaseWriteTransitionFile, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"readLegacyConfig", nullptr, LeaseReadLegacyConfig, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"replaceLegacyConfig", nullptr, LeaseReplaceLegacyConfig, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"inspectLegacyConfigBackups", nullptr, LeaseInspectLegacyConfigBackups, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"deleteLegacyConfigBackups", nullptr, LeaseDeleteLegacyConfigBackups, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"inspectOwnedTarget", nullptr, LeaseInspectProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"deleteOwnedTarget", nullptr, LeaseDeleteProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"cleanupTransitionTemps", nullptr, LeaseCleanupTransitionTemps, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
-  if (napi_define_properties(env, result, 10, properties) != napi_ok) {
+  if (napi_define_properties(
+          env, result, sizeof(properties) / sizeof(properties[0]), properties) != napi_ok) {
     void* removed = nullptr;
     napi_remove_wrap(env, result, &removed);
     ReleaseLease(lease);
