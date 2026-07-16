@@ -10,6 +10,7 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'generation_config_v1', fileName: 'generationConfigSchema.sql' }),
   Object.freeze({ id: 'attachment_asset_v1', fileName: 'attachmentAssetSchema.sql' }),
   Object.freeze({ id: 'openrouter_images_v1', fileName: 'openRouterImagesSchema.sql' }),
+  Object.freeze({ id: 'generation_execution_v1', fileName: 'generationExecutionSchema.sql' }),
 ] as const)
 
 export class GenerationV2SchemaComposerError extends Error {
