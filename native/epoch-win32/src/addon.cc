@@ -29,6 +29,26 @@ using RtlNtStatusToDosErrorFn = ULONG(WINAPI*)(NTSTATUS);
 constexpr FILE_INFORMATION_CLASS kFileRenameInformation =
     static_cast<FILE_INFORMATION_CLASS>(10);
 
+struct NativeFileIdentity {
+  unsigned long long volume_serial = 0;
+  std::array<unsigned char, 16> file_id{};
+};
+
+struct Lease;
+
+struct DatabaseFileAuthority {
+  Lease* parent = nullptr;
+  HANDLE epoch = INVALID_HANDLE_VALUE;
+  HANDLE database = INVALID_HANDLE_VALUE;
+  NativeFileIdentity identity;
+  bool created = false;
+  bool released = false;
+};
+
+void ReleaseDatabaseFileAuthority(DatabaseFileAuthority* authority);
+
+void ReleaseDatabaseFileAuthorities(Lease* lease);
+
 struct Lease {
   HANDLE mutex = nullptr;
   std::vector<HANDLE> ancestry;
@@ -50,11 +70,7 @@ struct Lease {
   std::string config_transaction_id;
   bool config_snapshot_from_rollback = false;
   bool epoch_root_transition_started = false;
-};
-
-struct NativeFileIdentity {
-  unsigned long long volume_serial = 0;
-  std::array<unsigned char, 16> file_id{};
+  std::vector<DatabaseFileAuthority*> database_authorities;
 };
 
 struct DeleteEntry {
@@ -87,6 +103,7 @@ void CloseHandleIfValid(HANDLE& handle) {
 
 void ReleaseLease(Lease* lease) {
   if (lease == nullptr || lease->released) return;
+  ReleaseDatabaseFileAuthorities(lease);
   CloseHandleIfValid(lease->lock_file);
   CloseHandleIfValid(lease->transition);
   CloseHandleIfValid(lease->epoch_marker);
@@ -254,7 +271,8 @@ DWORD NtStatusToWin32(NTSTATUS status) {
 HANDLE OpenRelative(
     NtCreateFileFn nt_create_file, HANDLE parent, const std::wstring& name,
     bool directory, ULONG disposition, ACCESS_MASK access, ULONG share_access,
-    ULONG file_attributes = FILE_ATTRIBUTE_HIDDEN) {
+    ULONG file_attributes = FILE_ATTRIBUTE_HIDDEN,
+    ULONG_PTR* information = nullptr) {
   UNICODE_STRING unicode_name{};
   unicode_name.Buffer = const_cast<PWSTR>(name.data());
   unicode_name.Length = static_cast<USHORT>(name.size() * sizeof(wchar_t));
@@ -273,6 +291,7 @@ HANDLE OpenRelative(
     SetLastError(NtStatusToWin32(status));
     return INVALID_HANDLE_VALUE;
   }
+  if (information != nullptr) *information = io_status.Information;
   return result;
 }
 
@@ -1820,6 +1839,7 @@ napi_value LeaseProcessEpochRootMarker(
     napi_env env, napi_callback_info info, bool allow_create) {
   Lease* lease = GetLeaseCall(env, info, 0, nullptr);
   if (lease == nullptr) return nullptr;
+  ReleaseDatabaseFileAuthorities(lease);
   NtCreateFileFn nt_create_file = ResolveNtCreateFile();
   NtQueryInformationFileFn nt_query_information_file = ResolveNtQueryInformationFile();
   if (nt_create_file == nullptr || nt_query_information_file == nullptr) {
@@ -2037,6 +2057,250 @@ napi_value LeaseVerifyEpochRootMarker(napi_env env, napi_callback_info info) {
   return LeaseProcessEpochRootMarker(env, info, false);
 }
 
+void ReleaseDatabaseFileAuthority(DatabaseFileAuthority* authority) {
+  if (authority == nullptr || authority->released) return;
+  if (authority->parent != nullptr) {
+    auto& children = authority->parent->database_authorities;
+    children.erase(std::remove(children.begin(), children.end(), authority), children.end());
+    authority->parent = nullptr;
+  }
+  CloseHandleIfValid(authority->database);
+  CloseHandleIfValid(authority->epoch);
+  authority->released = true;
+}
+
+void ReleaseDatabaseFileAuthorities(Lease* lease) {
+  if (lease == nullptr) return;
+  const std::vector<DatabaseFileAuthority*> database_authorities =
+      lease->database_authorities;
+  lease->database_authorities.clear();
+  for (DatabaseFileAuthority* authority : database_authorities) {
+    if (authority != nullptr) authority->parent = nullptr;
+    ReleaseDatabaseFileAuthority(authority);
+  }
+}
+
+void FinalizeDatabaseFileAuthority(napi_env, void* data, void*) {
+  auto* authority = static_cast<DatabaseFileAuthority*>(data);
+  ReleaseDatabaseFileAuthority(authority);
+  delete authority;
+}
+
+DatabaseFileAuthority* GetDatabaseFileAuthorityCall(
+    napi_env env, napi_callback_info info, size_t expected_argc = 0,
+    napi_value* args = nullptr) {
+  napi_value this_arg;
+  size_t argc = expected_argc;
+  if (napi_get_cb_info(env, info, &argc, args, &this_arg, nullptr) != napi_ok ||
+      argc != expected_argc) {
+    ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+    return nullptr;
+  }
+  void* data = nullptr;
+  if (napi_unwrap(env, this_arg, &data) != napi_ok || data == nullptr) {
+    ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+    return nullptr;
+  }
+  auto* authority = static_cast<DatabaseFileAuthority*>(data);
+  if (authority->released) {
+    ThrowCode(env, "EPOCH2_WIN32_DATABASE_FILE_RELEASED");
+    return nullptr;
+  }
+  return authority;
+}
+
+bool ReadDatabaseFileFacts(
+    HANDLE handle, NativeFileIdentity* identity, unsigned long long* size) {
+  if (handle == INVALID_HANDLE_VALUE || IsReparsePoint(handle)) return false;
+  FILE_STANDARD_INFO standard{};
+  if (!GetFileInformationByHandleEx(handle, FileStandardInfo, &standard, sizeof(standard)) ||
+      standard.Directory || standard.NumberOfLinks != 1 || standard.EndOfFile.QuadPart < 0 ||
+      !GetNativeFileIdentity(handle, identity)) {
+    return false;
+  }
+  *size = static_cast<unsigned long long>(standard.EndOfFile.QuadPart);
+  return true;
+}
+
+napi_value CreateDatabaseFileIdentityResult(
+    napi_env env, const DatabaseFileAuthority& authority,
+    unsigned long long current_size) {
+  std::ostringstream volume;
+  volume << std::hex << std::setfill('0') << std::setw(16)
+         << authority.identity.volume_serial;
+  const std::string database_id = BytesToHex(
+      authority.identity.file_id.data(), authority.identity.file_id.size());
+  const std::string size = std::to_string(current_size);
+  napi_value result;
+  napi_value volume_value;
+  napi_value database_value;
+  napi_value size_value;
+  napi_value created_value;
+  napi_create_object(env, &result);
+  napi_create_string_utf8(env, volume.str().c_str(), NAPI_AUTO_LENGTH, &volume_value);
+  napi_create_string_utf8(env, database_id.c_str(), NAPI_AUTO_LENGTH, &database_value);
+  napi_create_string_utf8(env, size.c_str(), NAPI_AUTO_LENGTH, &size_value);
+  napi_get_boolean(env, authority.created, &created_value);
+  napi_set_named_property(env, result, "volumeSerial", volume_value);
+  napi_set_named_property(env, result, "databaseFileId", database_value);
+  napi_set_named_property(env, result, "sizeBytes", size_value);
+  napi_set_named_property(env, result, "created", created_value);
+  return result;
+}
+
+napi_value DatabaseFileIdentity(napi_env env, napi_callback_info info) {
+  DatabaseFileAuthority* authority = GetDatabaseFileAuthorityCall(env, info);
+  if (authority == nullptr) return nullptr;
+  NativeFileIdentity current;
+  unsigned long long size = 0;
+  if (!ReadDatabaseFileFacts(authority->database, &current, &size) ||
+      !SameNativeFileIdentity(current, authority->identity)) {
+    return ThrowCode(env, "EPOCH2_WIN32_DATABASE_FILE_CHANGED");
+  }
+  return CreateDatabaseFileIdentityResult(env, *authority, size);
+}
+
+napi_value DatabaseFileVerifyPathIdentity(napi_env env, napi_callback_info info) {
+  DatabaseFileAuthority* authority = GetDatabaseFileAuthorityCall(env, info);
+  if (authority == nullptr) return nullptr;
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  if (nt_create_file == nullptr) {
+    return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  }
+  HANDLE reopened = OpenRelative(
+      nt_create_file, authority->epoch, L"starverse.db", false, FILE_OPEN,
+      FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+      FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_ATTRIBUTE_NORMAL);
+  NativeFileIdentity reopened_identity;
+  NativeFileIdentity held_identity;
+  unsigned long long reopened_size = 0;
+  unsigned long long held_size = 0;
+  const bool valid = reopened != INVALID_HANDLE_VALUE &&
+      ReadDatabaseFileFacts(reopened, &reopened_identity, &reopened_size) &&
+      ReadDatabaseFileFacts(authority->database, &held_identity, &held_size) &&
+      SameNativeFileIdentity(reopened_identity, authority->identity) &&
+      SameNativeFileIdentity(held_identity, authority->identity);
+  CloseHandleIfValid(reopened);
+  if (!valid) return ThrowCode(env, "EPOCH2_WIN32_DATABASE_FILE_CHANGED");
+  return CreateDatabaseFileIdentityResult(env, *authority, held_size);
+}
+
+napi_value DatabaseFileRelease(napi_env env, napi_callback_info info) {
+  napi_value this_arg;
+  size_t argc = 0;
+  if (napi_get_cb_info(env, info, &argc, nullptr, &this_arg, nullptr) != napi_ok ||
+      argc != 0) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  void* data = nullptr;
+  if (napi_unwrap(env, this_arg, &data) != napi_ok || data == nullptr) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  auto* authority = static_cast<DatabaseFileAuthority*>(data);
+  ReleaseDatabaseFileAuthority(authority);
+  napi_value undefined;
+  napi_get_undefined(env, &undefined);
+  return undefined;
+}
+
+napi_value LeaseAcquireEpochDatabaseFile(napi_env env, napi_callback_info info) {
+  napi_value args[1];
+  Lease* lease = GetLeaseCall(env, info, 1, args);
+  if (lease == nullptr) return nullptr;
+  napi_valuetype type;
+  if (napi_typeof(env, args[0], &type) != napi_ok || type != napi_string) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  size_t length = 0;
+  if (napi_get_value_string_utf8(env, args[0], nullptr, 0, &length) != napi_ok ||
+      length == 0 || length > 32) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  std::vector<char> buffer(length + 1);
+  size_t copied = 0;
+  if (napi_get_value_string_utf8(
+          env, args[0], buffer.data(), buffer.size(), &copied) != napi_ok ||
+      copied != length) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  const std::string mode(buffer.data(), copied);
+  const bool allow_create = mode == "create_or_open";
+  if (!allow_create && mode != "verify_existing") {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  if (!lease->epoch_root_transition_started ||
+      lease->protected_epoch == INVALID_HANDLE_VALUE ||
+      lease->epoch_marker == INVALID_HANDLE_VALUE) {
+    return ThrowCode(env, "EPOCH2_WIN32_DATABASE_FILE_ROOT_INVALID");
+  }
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  if (nt_create_file == nullptr) {
+    return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  }
+  HANDLE epoch = INVALID_HANDLE_VALUE;
+  if (!DuplicateHandle(
+          GetCurrentProcess(), lease->protected_epoch, GetCurrentProcess(), &epoch,
+          0, FALSE, DUPLICATE_SAME_ACCESS)) {
+    return ThrowCode(env, "EPOCH2_WIN32_DATABASE_FILE_ROOT_INVALID");
+  }
+  ULONG_PTR information = 0;
+  HANDLE database = OpenRelative(
+      nt_create_file, epoch, L"starverse.db", false,
+      allow_create ? FILE_OPEN_IF : FILE_OPEN,
+      GENERIC_READ | GENERIC_WRITE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+      FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_ATTRIBUTE_NORMAL, &information);
+  if (database == INVALID_HANDLE_VALUE) {
+    CloseHandleIfValid(epoch);
+    return ThrowCode(env, allow_create
+        ? "EPOCH2_WIN32_DATABASE_FILE_OPEN_FAILED"
+        : "EPOCH2_WIN32_DATABASE_FILE_MISSING");
+  }
+  NativeFileIdentity identity;
+  unsigned long long size = 0;
+  if (!ReadDatabaseFileFacts(database, &identity, &size)) {
+    CloseHandleIfValid(database);
+    CloseHandleIfValid(epoch);
+    return ThrowCode(env, "EPOCH2_WIN32_DATABASE_FILE_INVALID");
+  }
+  HANDLE reopened = OpenRelative(
+      nt_create_file, epoch, L"starverse.db", false, FILE_OPEN,
+      FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+      FILE_SHARE_READ | FILE_SHARE_WRITE, FILE_ATTRIBUTE_NORMAL);
+  NativeFileIdentity reopened_identity;
+  unsigned long long reopened_size = 0;
+  if (reopened == INVALID_HANDLE_VALUE ||
+      !ReadDatabaseFileFacts(reopened, &reopened_identity, &reopened_size) ||
+      !SameNativeFileIdentity(identity, reopened_identity)) {
+    CloseHandleIfValid(reopened);
+    CloseHandleIfValid(database);
+    CloseHandleIfValid(epoch);
+    return ThrowCode(env, "EPOCH2_WIN32_DATABASE_FILE_CHANGED");
+  }
+  CloseHandleIfValid(reopened);
+  auto* authority = new DatabaseFileAuthority();
+  authority->parent = lease;
+  authority->epoch = epoch;
+  authority->database = database;
+  authority->identity = identity;
+  authority->created = information == FILE_CREATED;
+  lease->database_authorities.push_back(authority);
+  napi_value result;
+  napi_create_object(env, &result);
+  if (napi_wrap(
+          env, result, authority, FinalizeDatabaseFileAuthority, nullptr, nullptr) != napi_ok) {
+    ReleaseDatabaseFileAuthority(authority);
+    delete authority;
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_CONTRACT_INVALID");
+  }
+  napi_property_descriptor properties[] = {
+      {"identity", nullptr, DatabaseFileIdentity, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"verifyPathIdentity", nullptr, DatabaseFileVerifyPathIdentity, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"release", nullptr, DatabaseFileRelease, nullptr, nullptr, nullptr, napi_default, nullptr},
+  };
+  napi_define_properties(env, result, sizeof(properties) / sizeof(properties[0]), properties);
+  return result;
+}
+
 napi_value LeaseRelease(napi_env env, napi_callback_info info) {
   napi_value this_arg;
   void* data = nullptr;
@@ -2220,6 +2484,7 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
       {"deleteLegacyConfigBackups", nullptr, LeaseDeleteLegacyConfigBackups, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"ensureEpochRootMarker", nullptr, LeaseEnsureEpochRootMarker, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"verifyEpochRootMarker", nullptr, LeaseVerifyEpochRootMarker, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"acquireEpochDatabaseFile", nullptr, LeaseAcquireEpochDatabaseFile, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"inspectOwnedTarget", nullptr, LeaseInspectProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"deleteOwnedTarget", nullptr, LeaseDeleteProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"cleanupTransitionTemps", nullptr, LeaseCleanupTransitionTemps, nullptr, nullptr, nullptr, napi_default, nullptr},

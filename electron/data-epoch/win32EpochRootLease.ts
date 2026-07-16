@@ -80,9 +80,16 @@ type NativeLease = Readonly<{
   deleteLegacyConfigBackups(): unknown
   ensureEpochRootMarker(): unknown
   verifyEpochRootMarker(): unknown
+  acquireEpochDatabaseFile(mode: string): unknown
   inspectOwnedTarget(targetId: string): unknown
   deleteOwnedTarget(targetId: string): unknown
   cleanupTransitionTemps(): unknown
+  release(): unknown
+}>
+
+type NativeEpochDatabaseFileAuthority = Readonly<{
+  identity(): unknown
+  verifyPathIdentity(): unknown
   release(): unknown
 }>
 
@@ -145,7 +152,13 @@ export class Win32EpochRootLeaseError extends Error {
     | 'EPOCH2_WIN32_EPOCH_MARKER_CONFLICT'
     | 'EPOCH2_WIN32_EPOCH_MARKER_TEMP_INVALID'
     | 'EPOCH2_WIN32_EPOCH_PHASE_CLOSED'
-    | 'EPOCH2_WIN32_CONFIG_TRANSACTION_CONFLICT') {
+    | 'EPOCH2_WIN32_CONFIG_TRANSACTION_CONFLICT'
+    | 'EPOCH2_WIN32_DATABASE_FILE_ROOT_INVALID'
+    | 'EPOCH2_WIN32_DATABASE_FILE_OPEN_FAILED'
+    | 'EPOCH2_WIN32_DATABASE_FILE_MISSING'
+    | 'EPOCH2_WIN32_DATABASE_FILE_INVALID'
+    | 'EPOCH2_WIN32_DATABASE_FILE_CHANGED'
+    | 'EPOCH2_WIN32_DATABASE_FILE_RELEASED') {
     super(code)
     this.name = 'Win32EpochRootLeaseError'
   }
@@ -201,6 +214,12 @@ const NATIVE_ERROR_CODES = new Set<Win32EpochRootLeaseError['code']>([
   'EPOCH2_WIN32_EPOCH_MARKER_TEMP_INVALID',
   'EPOCH2_WIN32_EPOCH_PHASE_CLOSED',
   'EPOCH2_WIN32_CONFIG_TRANSACTION_CONFLICT',
+  'EPOCH2_WIN32_DATABASE_FILE_ROOT_INVALID',
+  'EPOCH2_WIN32_DATABASE_FILE_OPEN_FAILED',
+  'EPOCH2_WIN32_DATABASE_FILE_MISSING',
+  'EPOCH2_WIN32_DATABASE_FILE_INVALID',
+  'EPOCH2_WIN32_DATABASE_FILE_CHANGED',
+  'EPOCH2_WIN32_DATABASE_FILE_RELEASED',
 ])
 
 function nativeBinaryPath(): string {
@@ -358,6 +377,7 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
         typeof candidate.deleteLegacyConfigBackups !== 'function' ||
         typeof candidate.ensureEpochRootMarker !== 'function' ||
         typeof candidate.verifyEpochRootMarker !== 'function' ||
+        typeof candidate.acquireEpochDatabaseFile !== 'function' ||
         typeof candidate.inspectOwnedTarget !== 'function' ||
         typeof candidate.deleteOwnedTarget !== 'function' ||
         typeof candidate.cleanupTransitionTemps !== 'function' ||
@@ -426,6 +446,9 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
     release(): void {
       if (released) return
       try {
+        for (const authority of EPOCH_DATABASE_AUTHORITIES_BY_LEASE.get(lease) ?? []) {
+          authority.release()
+        }
         nativeLease.release()
         released = true
         NATIVE_WIN32_EPOCH_LEASES.delete(lease)
@@ -838,4 +861,152 @@ export function assertEpoch2RootAuthority(
     throw new Error('EPOCH2_WIN32_EPOCH_ROOT_INVALID')
   }
   input.lease.rootIdentity()
+}
+
+export type Win32EpochDatabaseFileMode = 'create_or_open' | 'verify_existing'
+
+export type Win32EpochDatabaseFileIdentity = Readonly<{
+  volumeSerial: string
+  databaseFileId: string
+  sizeBytes: bigint
+  created: boolean
+}>
+
+export interface Win32EpochDatabaseFileAuthority {
+  identity(): Win32EpochDatabaseFileIdentity
+  verifyPathIdentity(): Win32EpochDatabaseFileIdentity
+  release(): void
+}
+
+const NATIVE_EPOCH_DATABASE_AUTHORITIES = new WeakMap<object, NativeEpochDatabaseFileAuthority>()
+const EPOCH_DATABASE_AUTHORITY_BINDINGS = new WeakMap<object, Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  rootAuthority: Epoch2RootAuthority
+}>>()
+const EPOCH_DATABASE_AUTHORITIES_BY_LEASE = new WeakMap<
+  Win32EpochRootLease,
+  Set<Win32EpochDatabaseFileAuthority>
+>()
+
+function decodeEpochDatabaseFileIdentity(value: unknown): Win32EpochDatabaseFileIdentity {
+  if (!value || typeof value !== 'object' || Array.isArray(value) ||
+      !hasExactKeys(value, ['created', 'databaseFileId', 'sizeBytes', 'volumeSerial'])) {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+  }
+  const raw = value as Record<string, unknown>
+  if (typeof raw.volumeSerial !== 'string' || !/^[0-9a-f]{16}$/u.test(raw.volumeSerial) ||
+      typeof raw.databaseFileId !== 'string' || !/^[0-9a-f]{32}$/u.test(raw.databaseFileId) ||
+      typeof raw.sizeBytes !== 'string' || !/^(?:0|[1-9][0-9]*)$/u.test(raw.sizeBytes) ||
+      typeof raw.created !== 'boolean') {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+  }
+  let sizeBytes: bigint
+  try { sizeBytes = BigInt(raw.sizeBytes) } catch {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+  }
+  return Object.freeze({
+    volumeSerial: raw.volumeSerial,
+    databaseFileId: raw.databaseFileId,
+    sizeBytes,
+    created: raw.created,
+  })
+}
+
+function nativeEpochDatabaseAuthority(
+  authority: Win32EpochDatabaseFileAuthority,
+): NativeEpochDatabaseFileAuthority {
+  const native = NATIVE_EPOCH_DATABASE_AUTHORITIES.get(authority)
+  if (!native) throw new Win32EpochRootLeaseError('EPOCH2_WIN32_DATABASE_FILE_RELEASED')
+  return native
+}
+
+export function acquireWin32EpochDatabaseFileAuthority(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  rootAuthority: Epoch2RootAuthority
+  mode: Win32EpochDatabaseFileMode
+}>): Win32EpochDatabaseFileAuthority {
+  assertEpoch2RootAuthority(input.rootAuthority, input)
+  if (input.mode !== 'create_or_open' && input.mode !== 'verify_existing') {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
+  }
+  let native: NativeEpochDatabaseFileAuthority
+  try {
+    const value = nativeLeaseForOwnedOperation(input.lease).acquireEpochDatabaseFile(input.mode)
+    if (!value || typeof value !== 'object') {
+      throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+    }
+    const candidate = value as Partial<NativeEpochDatabaseFileAuthority>
+    if (typeof candidate.identity !== 'function' ||
+        typeof candidate.verifyPathIdentity !== 'function' ||
+        typeof candidate.release !== 'function') {
+      throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+    }
+    native = candidate as NativeEpochDatabaseFileAuthority
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  }
+  let released = false
+  const authority: Win32EpochDatabaseFileAuthority = Object.freeze({
+    identity(): Win32EpochDatabaseFileIdentity {
+      assertWin32EpochDatabaseFileAuthority(authority, input)
+      try { return decodeEpochDatabaseFileIdentity(nativeEpochDatabaseAuthority(authority).identity()) } catch (error) {
+        if (error instanceof Win32EpochRootLeaseError) throw error
+        return translateNativeError(error)
+      }
+    },
+    verifyPathIdentity(): Win32EpochDatabaseFileIdentity {
+      assertWin32EpochDatabaseFileAuthority(authority, input)
+      try {
+        return decodeEpochDatabaseFileIdentity(
+          nativeEpochDatabaseAuthority(authority).verifyPathIdentity(),
+        )
+      } catch (error) {
+        if (error instanceof Win32EpochRootLeaseError) throw error
+        return translateNativeError(error)
+      }
+    },
+    release(): void {
+      if (released) return
+      try { native.release() } catch (error) { return translateNativeError(error) }
+      released = true
+      NATIVE_EPOCH_DATABASE_AUTHORITIES.delete(authority)
+      EPOCH_DATABASE_AUTHORITY_BINDINGS.delete(authority)
+      EPOCH_DATABASE_AUTHORITIES_BY_LEASE.get(input.lease)?.delete(authority)
+    },
+  })
+  NATIVE_EPOCH_DATABASE_AUTHORITIES.set(authority, native)
+  EPOCH_DATABASE_AUTHORITY_BINDINGS.set(authority, Object.freeze({
+    layout: input.layout,
+    lease: input.lease,
+    rootAuthority: input.rootAuthority,
+  }))
+  const authorities = EPOCH_DATABASE_AUTHORITIES_BY_LEASE.get(input.lease) ?? new Set()
+  authorities.add(authority)
+  EPOCH_DATABASE_AUTHORITIES_BY_LEASE.set(input.lease, authorities)
+  try { authority.identity() } catch (error) {
+    authority.release()
+    throw error
+  }
+  return authority
+}
+
+export function assertWin32EpochDatabaseFileAuthority(
+  authority: unknown,
+  input: Readonly<{
+    layout: Epoch2WorkspaceLayout
+    lease: Win32EpochRootLease
+    rootAuthority: Epoch2RootAuthority
+  }>,
+): asserts authority is Win32EpochDatabaseFileAuthority {
+  const candidate = authority && typeof authority === 'object' ? authority : null
+  const binding = candidate ? EPOCH_DATABASE_AUTHORITY_BINDINGS.get(candidate) : undefined
+  if (!candidate || !binding || binding.layout !== input.layout || binding.lease !== input.lease ||
+      binding.rootAuthority !== input.rootAuthority ||
+      !NATIVE_EPOCH_DATABASE_AUTHORITIES.has(candidate)) {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_DATABASE_FILE_RELEASED')
+  }
+  assertEpoch2RootAuthority(input.rootAuthority, input)
 }
