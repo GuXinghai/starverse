@@ -78,6 +78,8 @@ type NativeLease = Readonly<{
   replaceLegacyConfig(operationId: string, snapshotId: string, bytes: Buffer): unknown
   inspectLegacyConfigBackups(): unknown
   deleteLegacyConfigBackups(): unknown
+  ensureEpochRootMarker(): unknown
+  verifyEpochRootMarker(): unknown
   inspectOwnedTarget(targetId: string): unknown
   deleteOwnedTarget(targetId: string): unknown
   cleanupTransitionTemps(): unknown
@@ -137,6 +139,12 @@ export class Win32EpochRootLeaseError extends Error {
     | 'EPOCH2_WIN32_CONFIG_REPLACE_FAILED'
     | 'EPOCH2_WIN32_CONFIG_BACKUP_NAME_INVALID'
     | 'EPOCH2_WIN32_CONFIG_BACKUP_INVALID'
+    | 'EPOCH2_WIN32_EPOCH_ROOT_INVALID'
+    | 'EPOCH2_WIN32_EPOCH_ROOT_CONFLICT'
+    | 'EPOCH2_WIN32_EPOCH_MARKER_INVALID'
+    | 'EPOCH2_WIN32_EPOCH_MARKER_CONFLICT'
+    | 'EPOCH2_WIN32_EPOCH_MARKER_TEMP_INVALID'
+    | 'EPOCH2_WIN32_EPOCH_PHASE_CLOSED'
     | 'EPOCH2_WIN32_CONFIG_TRANSACTION_CONFLICT') {
     super(code)
     this.name = 'Win32EpochRootLeaseError'
@@ -186,6 +194,12 @@ const NATIVE_ERROR_CODES = new Set<Win32EpochRootLeaseError['code']>([
   'EPOCH2_WIN32_CONFIG_REPLACE_FAILED',
   'EPOCH2_WIN32_CONFIG_BACKUP_NAME_INVALID',
   'EPOCH2_WIN32_CONFIG_BACKUP_INVALID',
+  'EPOCH2_WIN32_EPOCH_ROOT_INVALID',
+  'EPOCH2_WIN32_EPOCH_ROOT_CONFLICT',
+  'EPOCH2_WIN32_EPOCH_MARKER_INVALID',
+  'EPOCH2_WIN32_EPOCH_MARKER_CONFLICT',
+  'EPOCH2_WIN32_EPOCH_MARKER_TEMP_INVALID',
+  'EPOCH2_WIN32_EPOCH_PHASE_CLOSED',
   'EPOCH2_WIN32_CONFIG_TRANSACTION_CONFLICT',
 ])
 
@@ -342,6 +356,8 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
         typeof candidate.replaceLegacyConfig !== 'function' ||
         typeof candidate.inspectLegacyConfigBackups !== 'function' ||
         typeof candidate.deleteLegacyConfigBackups !== 'function' ||
+        typeof candidate.ensureEpochRootMarker !== 'function' ||
+        typeof candidate.verifyEpochRootMarker !== 'function' ||
         typeof candidate.inspectOwnedTarget !== 'function' ||
         typeof candidate.deleteOwnedTarget !== 'function' ||
         typeof candidate.cleanupTransitionTemps !== 'function' ||
@@ -724,4 +740,102 @@ export function inspectEpoch2LegacyConfigBackups(input: Readonly<{
   assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
   readPersistedConfigJournal(input, CONFIG_PREPARE_PHASES)
   return inspectWin32EpochLegacyConfigBackups(input.lease)
+}
+
+export type Epoch2RootAuthority = Readonly<{
+  schemaVersion: 1
+  volumeSerial: string
+  workspaceFileId: string
+  epochFileId: string
+  markerFileId: string
+}>
+
+const ISSUED_EPOCH2_ROOT_AUTHORITIES = new WeakMap<object, Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+}>>()
+const CURRENT_EPOCH2_ROOT_AUTHORITY_BY_LEASE = new WeakMap<Win32EpochRootLease, object>()
+
+function decodeEpoch2RootAuthorityResult(value: unknown): Epoch2RootAuthority {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('EPOCH2_WIN32_EPOCH_ROOT_INVALID')
+  }
+  const raw = value as Record<string, unknown>
+  if (Object.keys(raw).sort().join('\0') !== [
+    'epochFileId',
+    'markerFileId',
+    'volumeSerial',
+    'workspaceFileId',
+  ].join('\0') || typeof raw.volumeSerial !== 'string' ||
+      typeof raw.workspaceFileId !== 'string' || typeof raw.epochFileId !== 'string' ||
+      typeof raw.markerFileId !== 'string' || !/^[0-9a-f]{16}$/u.test(raw.volumeSerial) ||
+      !/^[0-9a-f]{32}$/u.test(raw.workspaceFileId) ||
+      !/^[0-9a-f]{32}$/u.test(raw.epochFileId) ||
+      !/^[0-9a-f]{32}$/u.test(raw.markerFileId)) {
+    throw new Error('EPOCH2_WIN32_EPOCH_ROOT_INVALID')
+  }
+  return Object.freeze({
+    schemaVersion: 1,
+    volumeSerial: raw.volumeSerial,
+    workspaceFileId: raw.workspaceFileId,
+    epochFileId: raw.epochFileId,
+    markerFileId: raw.markerFileId,
+  })
+}
+
+function issueEpoch2RootAuthority(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  mode: 'ensure' | 'verify'
+}>): Epoch2RootAuthority {
+  assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
+  const previous = CURRENT_EPOCH2_ROOT_AUTHORITY_BY_LEASE.get(input.lease)
+  if (previous) ISSUED_EPOCH2_ROOT_AUTHORITIES.delete(previous)
+  CURRENT_EPOCH2_ROOT_AUTHORITY_BY_LEASE.delete(input.lease)
+  try {
+    const nativeLease = nativeLeaseForOwnedOperation(input.lease)
+    const authority = decodeEpoch2RootAuthorityResult(input.mode === 'ensure'
+      ? nativeLease.ensureEpochRootMarker()
+      : nativeLease.verifyEpochRootMarker())
+    ISSUED_EPOCH2_ROOT_AUTHORITIES.set(authority, Object.freeze({
+      layout: input.layout,
+      lease: input.lease,
+    }))
+    CURRENT_EPOCH2_ROOT_AUTHORITY_BY_LEASE.set(input.lease, authority)
+    return authority
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  }
+}
+
+export function ensureEpoch2RootAuthority(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+}>): Epoch2RootAuthority {
+  return issueEpoch2RootAuthority({ ...input, mode: 'ensure' })
+}
+
+export function verifyEpoch2RootAuthority(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+}>): Epoch2RootAuthority {
+  return issueEpoch2RootAuthority({ ...input, mode: 'verify' })
+}
+
+export function assertEpoch2RootAuthority(
+  authority: unknown,
+  input: Readonly<{
+    layout: Epoch2WorkspaceLayout
+    lease: Win32EpochRootLease
+  }>,
+): asserts authority is Epoch2RootAuthority {
+  const issued = authority && typeof authority === 'object'
+    ? ISSUED_EPOCH2_ROOT_AUTHORITIES.get(authority)
+    : undefined
+  if (!issued || issued.layout !== input.layout || issued.lease !== input.lease ||
+      CURRENT_EPOCH2_ROOT_AUTHORITY_BY_LEASE.get(input.lease) !== authority) {
+    throw new Error('EPOCH2_WIN32_EPOCH_ROOT_INVALID')
+  }
+  input.lease.rootIdentity()
 }

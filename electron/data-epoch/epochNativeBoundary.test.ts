@@ -32,7 +32,7 @@ describe('epoch native authority boundary', () => {
       for (const file of productionTypeScriptFiles(path.join(repositoryRoot, rootName))) {
         if (file === authorityFile) continue
         const source = fs.readFileSync(file, 'utf8')
-        if (/starverse_epoch_win32|\.readLegacyConfig\s*\(|\.replaceLegacyConfig\s*\(|\.inspectLegacyConfigBackups\s*\(|\.deleteLegacyConfigBackups\s*\(/u.test(source)) {
+        if (/starverse_epoch_win32|\.readLegacyConfig\s*\(|\.replaceLegacyConfig\s*\(|\.inspectLegacyConfigBackups\s*\(|\.deleteLegacyConfigBackups\s*\(|\.ensureEpochRootMarker\s*\(|\.verifyEpochRootMarker\s*\(/u.test(source)) {
           violations.push(path.relative(repositoryRoot, file))
         }
       }
@@ -94,5 +94,26 @@ describe('epoch native authority boundary', () => {
       }
     }
     expect(sessionConsumers).toEqual([])
+  })
+
+  it('keeps epoch-root creation outside database and production startup owners', () => {
+    const rootCoordinatorFile = path.join(
+      repositoryRoot,
+      'electron',
+      'data-epoch',
+      'epochRootCoordinatorCore.ts',
+    )
+    const source = fs.readFileSync(rootCoordinatorFile, 'utf8')
+    expect(source).not.toMatch(/better-sqlite3|schemaComposerV2|workerManager|electron\/main|ipc|BrowserWindow/u)
+    const consumers: string[] = []
+    for (const rootName of ['electron', 'src', 'infra']) {
+      for (const file of productionTypeScriptFiles(path.join(repositoryRoot, rootName))) {
+        if (file === rootCoordinatorFile) continue
+        if (fs.readFileSync(file, 'utf8').includes('epochRootCoordinatorCore')) {
+          consumers.push(path.relative(repositoryRoot, file))
+        }
+      }
+    }
+    expect(consumers).toEqual([])
   })
 })

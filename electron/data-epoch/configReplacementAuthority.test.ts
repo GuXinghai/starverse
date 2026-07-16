@@ -10,7 +10,7 @@ import {
 } from './win32EpochRootLease'
 import { cleanupEpoch2TransitionTemps } from './nativeOwnedDelete'
 import { createEpoch2RootManifest, resolveEpoch2WorkspaceLayout } from './rootManifest'
-import { writeEpoch2RootManifestAtomic } from './rootManifestStore'
+import { writeEpoch2TransitionOwnershipManifestAtomic } from './rootManifestStore'
 import { advanceEpoch2ResetJournal, createEpoch2ResetJournal } from './resetJournal'
 import { writeEpoch2ResetJournalAtomic } from './resetJournalStore'
 import { readEpoch2ResetJournal } from './resetJournalStore'
@@ -32,7 +32,7 @@ function fixture(
     repositoryRoot: process.cwd(),
   })
   const lease = acquireWin32EpochRootLease(layout)
-  writeEpoch2RootManifestAtomic({
+  writeEpoch2TransitionOwnershipManifestAtomic({
     layout,
     lease,
     manifest: createEpoch2RootManifest({ layout }),

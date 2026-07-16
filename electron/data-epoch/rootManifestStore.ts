@@ -32,7 +32,7 @@ function assertAuthority(input: Readonly<{
   createEpoch2RootManifest({ layout: input.layout })
 }
 
-export function writeEpoch2RootManifestAtomic(input: Readonly<{
+export function writeEpoch2TransitionOwnershipManifestAtomic(input: Readonly<{
   layout: Epoch2WorkspaceLayout
   lease: Win32EpochRootLease
   manifest: Epoch2RootManifest
@@ -67,7 +67,7 @@ export function writeEpoch2RootManifestAtomic(input: Readonly<{
   }
 }
 
-export function readAndVerifyEpoch2RootManifest(input: Readonly<{
+export function readAndVerifyEpoch2TransitionOwnershipManifest(input: Readonly<{
   layout: Epoch2WorkspaceLayout
   lease: Win32EpochRootLease
 }>): Epoch2RootManifest {

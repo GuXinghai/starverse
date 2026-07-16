@@ -1,5 +1,5 @@
 import type { Epoch2WorkspaceLayout } from './rootManifest'
-import { readAndVerifyEpoch2RootManifest } from './rootManifestStore'
+import { readAndVerifyEpoch2TransitionOwnershipManifest } from './rootManifestStore'
 import {
   assertWin32EpochRootLeaseAuthority,
   cleanupWin32EpochTransitionTemps,
@@ -23,7 +23,7 @@ function assertDeleteAuthority(input: Readonly<{
 }>): void {
   try {
     assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
-    readAndVerifyEpoch2RootManifest(input)
+    readAndVerifyEpoch2TransitionOwnershipManifest(input)
   } catch {
     throw new Epoch2OwnedDeleteError('EPOCH2_DELETE_OWNERSHIP_INVALID')
   }

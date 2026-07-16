@@ -36,6 +36,7 @@ struct Lease {
   HANDLE product = INVALID_HANDLE_VALUE;
   HANDLE protected_workspace = INVALID_HANDLE_VALUE;
   HANDLE protected_epoch = INVALID_HANDLE_VALUE;
+  HANDLE epoch_marker = INVALID_HANDLE_VALUE;
   HANDLE transition = INVALID_HANDLE_VALUE;
   HANDLE lock_file = INVALID_HANDLE_VALUE;
   bool released = false;
@@ -48,6 +49,7 @@ struct Lease {
   std::string config_snapshot_id;
   std::string config_transaction_id;
   bool config_snapshot_from_rollback = false;
+  bool epoch_root_transition_started = false;
 };
 
 struct NativeFileIdentity {
@@ -87,6 +89,7 @@ void ReleaseLease(Lease* lease) {
   if (lease == nullptr || lease->released) return;
   CloseHandleIfValid(lease->lock_file);
   CloseHandleIfValid(lease->transition);
+  CloseHandleIfValid(lease->epoch_marker);
   CloseHandleIfValid(lease->protected_epoch);
   CloseHandleIfValid(lease->protected_workspace);
   CloseHandleIfValid(lease->product);
@@ -888,6 +891,9 @@ napi_value LeaseReadLegacyConfig(napi_env env, napi_callback_info info) {
   napi_value args[1];
   Lease* lease = GetLeaseCall(env, info, 1, args);
   if (lease == nullptr) return nullptr;
+  if (lease->epoch_root_transition_started) {
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_PHASE_CLOSED");
+  }
   std::string transaction_id;
   if (!ParseConfigTransactionId(env, args[0], &transaction_id)) {
     return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
@@ -965,6 +971,9 @@ napi_value LeaseReplaceLegacyConfig(napi_env env, napi_callback_info info) {
   napi_value args[3];
   Lease* lease = GetLeaseCall(env, info, 3, args);
   if (lease == nullptr) return nullptr;
+  if (lease->epoch_root_transition_started) {
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_PHASE_CLOSED");
+  }
   std::string transaction_id;
   std::wstring snapshot_id_wide;
   bool is_buffer = false;
@@ -1366,6 +1375,9 @@ napi_value ProcessProductTree(
   napi_value args[1];
   Lease* lease = GetLeaseCall(env, info, 1, args);
   if (lease == nullptr) return nullptr;
+  if (lease->epoch_root_transition_started) {
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_PHASE_CLOSED");
+  }
   ProductDeleteTarget target;
   if (!ResolveProductDeleteTarget(env, args[0], &target)) {
     return ThrowCode(env, "EPOCH2_WIN32_DELETE_TARGET_NOT_ALLOWED");
@@ -1601,6 +1613,9 @@ napi_value LeaseProcessLegacyConfigBackups(
     napi_env env, napi_callback_info info, bool delete_backups) {
   Lease* lease = GetLeaseCall(env, info, 0, nullptr);
   if (lease == nullptr) return nullptr;
+  if (lease->epoch_root_transition_started) {
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_PHASE_CLOSED");
+  }
   NtCreateFileFn nt_create_file = ResolveNtCreateFile();
   NtQueryInformationFileFn nt_query_information_file = ResolveNtQueryInformationFile();
   if (nt_create_file == nullptr || nt_query_information_file == nullptr) {
@@ -1738,6 +1753,288 @@ napi_value LeaseCleanupTransitionTemps(napi_env env, napi_callback_info info) {
   napi_value result;
   napi_create_uint32(env, static_cast<uint32_t>(removed), &result);
   return result;
+}
+
+bool IsEpochMarkerTemporaryName(const std::wstring& name) {
+  const std::wstring prefix = L".svmarker-";
+  if (name.rfind(prefix, 0) != 0 || name.size() != prefix.size() + 32) return false;
+  return std::all_of(name.begin() + static_cast<std::ptrdiff_t>(prefix.size()), name.end(),
+      [](wchar_t ch) {
+        return (ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f');
+      });
+}
+
+napi_value CreateEpochRootMarkerResult(
+    napi_env env, const NativeFileIdentity& workspace,
+    const NativeFileIdentity& epoch, const NativeFileIdentity& marker) {
+  if (workspace.volume_serial != epoch.volume_serial ||
+      workspace.volume_serial != marker.volume_serial) {
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_ROOT_INVALID");
+  }
+  std::ostringstream volume;
+  volume << std::hex << std::setfill('0') << std::setw(16) << workspace.volume_serial;
+  const std::string workspace_id = BytesToHex(
+      workspace.file_id.data(), workspace.file_id.size());
+  const std::string epoch_id = BytesToHex(epoch.file_id.data(), epoch.file_id.size());
+  const std::string marker_id = BytesToHex(marker.file_id.data(), marker.file_id.size());
+  napi_value result;
+  napi_value volume_value;
+  napi_value workspace_value;
+  napi_value epoch_value;
+  napi_value marker_value;
+  napi_create_object(env, &result);
+  napi_create_string_utf8(env, volume.str().c_str(), NAPI_AUTO_LENGTH, &volume_value);
+  napi_create_string_utf8(env, workspace_id.c_str(), NAPI_AUTO_LENGTH, &workspace_value);
+  napi_create_string_utf8(env, epoch_id.c_str(), NAPI_AUTO_LENGTH, &epoch_value);
+  napi_create_string_utf8(env, marker_id.c_str(), NAPI_AUTO_LENGTH, &marker_value);
+  napi_set_named_property(env, result, "volumeSerial", volume_value);
+  napi_set_named_property(env, result, "workspaceFileId", workspace_value);
+  napi_set_named_property(env, result, "epochFileId", epoch_value);
+  napi_set_named_property(env, result, "markerFileId", marker_value);
+  return result;
+}
+
+HANDLE OpenVerifiedEpochMarker(
+    NtCreateFileFn nt_create_file, HANDLE epoch, const std::string& expected_manifest,
+    NativeFileIdentity* identity) {
+  HANDLE marker = OpenRelative(
+      nt_create_file, epoch, L"root-manifest.json", false, FILE_OPEN,
+      GENERIC_READ | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_SHARE_READ);
+  if (marker == INVALID_HANDLE_VALUE || IsReparsePoint(marker)) {
+    CloseHandleIfValid(marker);
+    return INVALID_HANDLE_VALUE;
+  }
+  bool directory = false;
+  std::string bytes;
+  if (!IsDirectoryHandle(marker, &directory) || directory ||
+      !ReadBoundedFile(marker, 4 * 1024, &bytes) || bytes != expected_manifest ||
+      !GetNativeFileIdentity(marker, identity)) {
+    CloseHandleIfValid(marker);
+    SetLastError(ERROR_INVALID_DATA);
+    return INVALID_HANDLE_VALUE;
+  }
+  return marker;
+}
+
+napi_value LeaseProcessEpochRootMarker(
+    napi_env env, napi_callback_info info, bool allow_create) {
+  Lease* lease = GetLeaseCall(env, info, 0, nullptr);
+  if (lease == nullptr) return nullptr;
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  NtQueryInformationFileFn nt_query_information_file = ResolveNtQueryInformationFile();
+  if (nt_create_file == nullptr || nt_query_information_file == nullptr) {
+    return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  }
+  if (!VerifyDeletionOwnershipManifest(nt_create_file, lease)) {
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_ROOT_INVALID");
+  }
+  lease->epoch_root_transition_started = true;
+
+  CloseHandleIfValid(lease->epoch_marker);
+  CloseHandleIfValid(lease->protected_epoch);
+  CloseHandleIfValid(lease->protected_workspace);
+
+  HANDLE workspace = OpenRelative(
+      nt_create_file, lease->product, L"workspace", true,
+      allow_create ? FILE_OPEN_IF : FILE_OPEN,
+      allow_create ? kMutableDirectoryAccess : kReadDirectoryAccess,
+      FILE_SHARE_READ | FILE_SHARE_WRITE);
+  if (workspace == INVALID_HANDLE_VALUE || IsReparsePoint(workspace)) {
+    CloseHandleIfValid(workspace);
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_ROOT_INVALID");
+  }
+  bool workspace_directory = false;
+  if (!IsDirectoryHandle(workspace, &workspace_directory) || !workspace_directory) {
+    CloseHandleIfValid(workspace);
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_ROOT_INVALID");
+  }
+  if (allow_create) {
+    std::vector<NativeDirectoryEntry> workspace_entries;
+    const char* error_code = nullptr;
+    if (!EnumerateDirectoryEntries(workspace, &workspace_entries, &error_code) ||
+        std::any_of(workspace_entries.begin(), workspace_entries.end(), [](const auto& entry) {
+          return Lower(entry.name) != L"epoch-2" || !entry.directory;
+        })) {
+      CloseHandleIfValid(workspace);
+      return ThrowCode(env, "EPOCH2_WIN32_EPOCH_ROOT_CONFLICT");
+    }
+  }
+
+  HANDLE epoch = OpenRelative(
+      nt_create_file, workspace, L"epoch-2", true,
+      allow_create ? FILE_OPEN_IF : FILE_OPEN,
+      allow_create ? kMutableDirectoryAccess : kReadDirectoryAccess,
+      FILE_SHARE_READ | FILE_SHARE_WRITE);
+  if (epoch == INVALID_HANDLE_VALUE || IsReparsePoint(epoch)) {
+    CloseHandleIfValid(epoch);
+    CloseHandleIfValid(workspace);
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_ROOT_INVALID");
+  }
+  bool epoch_directory = false;
+  if (!IsDirectoryHandle(epoch, &epoch_directory) || !epoch_directory) {
+    CloseHandleIfValid(epoch);
+    CloseHandleIfValid(workspace);
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_ROOT_INVALID");
+  }
+
+  if (allow_create) {
+    std::vector<NativeDirectoryEntry> epoch_entries;
+    const char* error_code = nullptr;
+    if (!EnumerateDirectoryEntries(epoch, &epoch_entries, &error_code)) {
+      CloseHandleIfValid(epoch);
+      CloseHandleIfValid(workspace);
+      return ThrowCode(env, "EPOCH2_WIN32_EPOCH_ROOT_INVALID");
+    }
+    std::vector<HANDLE> marker_temps;
+    size_t marker_count = 0;
+    for (const NativeDirectoryEntry& entry : epoch_entries) {
+      if (Lower(entry.name) == L"root-manifest.json") {
+        if (entry.directory || ++marker_count > 1) {
+          for (HANDLE& handle : marker_temps) CloseHandleIfValid(handle);
+          CloseHandleIfValid(epoch);
+          CloseHandleIfValid(workspace);
+          return ThrowCode(env, "EPOCH2_WIN32_EPOCH_MARKER_INVALID");
+        }
+        continue;
+      }
+      if (!IsEpochMarkerTemporaryName(entry.name) || entry.directory) {
+        for (HANDLE& handle : marker_temps) CloseHandleIfValid(handle);
+        CloseHandleIfValid(epoch);
+        CloseHandleIfValid(workspace);
+        return ThrowCode(env, "EPOCH2_WIN32_EPOCH_ROOT_CONFLICT");
+      }
+      HANDLE temporary = OpenRelativeAny(
+          nt_create_file, epoch, entry.name,
+          FILE_READ_ATTRIBUTES | DELETE | SYNCHRONIZE,
+          FILE_SHARE_READ | FILE_SHARE_WRITE);
+      LARGE_INTEGER opened_file_id{};
+      bool directory = false;
+      if (temporary == INVALID_HANDLE_VALUE || IsReparsePoint(temporary) ||
+          !GetInternalFileId(nt_query_information_file, temporary, &opened_file_id) ||
+          opened_file_id.QuadPart != entry.file_id.QuadPart ||
+          !IsDirectoryHandle(temporary, &directory) || directory) {
+        CloseHandleIfValid(temporary);
+        for (HANDLE& handle : marker_temps) CloseHandleIfValid(handle);
+        CloseHandleIfValid(epoch);
+        CloseHandleIfValid(workspace);
+        return ThrowCode(env, "EPOCH2_WIN32_EPOCH_MARKER_TEMP_INVALID");
+      }
+      marker_temps.push_back(temporary);
+    }
+    for (HANDLE& temporary : marker_temps) {
+      if (!MarkHandleForDelete(temporary, &error_code)) {
+        for (HANDLE& handle : marker_temps) CloseHandleIfValid(handle);
+        CloseHandleIfValid(epoch);
+        CloseHandleIfValid(workspace);
+        return ThrowCode(env, error_code);
+      }
+      CloseHandleIfValid(temporary);
+    }
+
+    NativeFileIdentity existing_marker_identity;
+    HANDLE existing_marker = OpenVerifiedEpochMarker(
+        nt_create_file, epoch, lease->expected_manifest, &existing_marker_identity);
+    if (existing_marker == INVALID_HANDLE_VALUE) {
+      const DWORD existing_error = GetLastError();
+      if (existing_error != ERROR_FILE_NOT_FOUND && existing_error != ERROR_PATH_NOT_FOUND) {
+        CloseHandleIfValid(epoch);
+        CloseHandleIfValid(workspace);
+        return ThrowCode(env, "EPOCH2_WIN32_EPOCH_MARKER_CONFLICT");
+      }
+      HANDLE temporary = INVALID_HANDLE_VALUE;
+      for (size_t attempt = 0; attempt < 16 && temporary == INVALID_HANDLE_VALUE; ++attempt) {
+        const std::wstring random_name = RandomTemporaryName();
+        if (random_name.empty()) break;
+        const std::wstring marker_name = L".svmarker-" + random_name.substr(7);
+        temporary = OpenRelative(
+            nt_create_file, epoch, marker_name, false, FILE_CREATE,
+            GENERIC_READ | GENERIC_WRITE | DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE,
+            0, FILE_ATTRIBUTE_NORMAL);
+        if (temporary == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_EXISTS &&
+            GetLastError() != ERROR_ALREADY_EXISTS) break;
+      }
+      if (temporary == INVALID_HANDLE_VALUE) {
+        CloseHandleIfValid(epoch);
+        CloseHandleIfValid(workspace);
+        return ThrowCode(env, "EPOCH2_WIN32_EPOCH_MARKER_INVALID");
+      }
+      size_t offset = 0;
+      while (offset < lease->expected_manifest.size()) {
+        DWORD written = 0;
+        if (!WriteFile(
+                temporary, lease->expected_manifest.data() + offset,
+                static_cast<DWORD>(lease->expected_manifest.size() - offset),
+                &written, nullptr) || written == 0) {
+          DiscardTemporaryFile(temporary);
+          CloseHandleIfValid(epoch);
+          CloseHandleIfValid(workspace);
+          return ThrowCode(env, "EPOCH2_WIN32_EPOCH_MARKER_INVALID");
+        }
+        offset += written;
+      }
+      DWORD rename_error = ERROR_SUCCESS;
+      if (!FlushFileBuffers(temporary) || !RenameHandleRelative(
+              temporary, epoch, L"root-manifest.json", false, &rename_error)) {
+        DiscardTemporaryFile(temporary);
+        CloseHandleIfValid(epoch);
+        CloseHandleIfValid(workspace);
+        return ThrowCode(env, rename_error == ERROR_ALREADY_EXISTS || rename_error == ERROR_FILE_EXISTS
+            ? "EPOCH2_WIN32_EPOCH_MARKER_CONFLICT"
+            : "EPOCH2_WIN32_EPOCH_MARKER_INVALID");
+      }
+      CloseHandleIfValid(temporary);
+    } else {
+      CloseHandleIfValid(existing_marker);
+    }
+  }
+
+  NativeFileIdentity workspace_identity;
+  NativeFileIdentity epoch_identity;
+  NativeFileIdentity marker_identity;
+  HANDLE marker = OpenVerifiedEpochMarker(
+      nt_create_file, epoch, lease->expected_manifest, &marker_identity);
+  if (marker == INVALID_HANDLE_VALUE ||
+      !GetNativeFileIdentity(workspace, &workspace_identity) ||
+      !GetNativeFileIdentity(epoch, &epoch_identity)) {
+    CloseHandleIfValid(marker);
+    CloseHandleIfValid(epoch);
+    CloseHandleIfValid(workspace);
+    return ThrowCode(env, "EPOCH2_WIN32_EPOCH_MARKER_INVALID");
+  }
+  if (allow_create) {
+    std::vector<NativeDirectoryEntry> final_workspace_entries;
+    std::vector<NativeDirectoryEntry> final_epoch_entries;
+    const char* final_error = nullptr;
+    const bool workspace_exact = EnumerateDirectoryEntries(
+        workspace, &final_workspace_entries, &final_error) &&
+        final_workspace_entries.size() == 1 &&
+        Lower(final_workspace_entries[0].name) == L"epoch-2" &&
+        final_workspace_entries[0].directory;
+    const bool epoch_exact = EnumerateDirectoryEntries(
+        epoch, &final_epoch_entries, &final_error) &&
+        final_epoch_entries.size() == 1 &&
+        Lower(final_epoch_entries[0].name) == L"root-manifest.json" &&
+        !final_epoch_entries[0].directory;
+    if (!workspace_exact || !epoch_exact) {
+      CloseHandleIfValid(marker);
+      CloseHandleIfValid(epoch);
+      CloseHandleIfValid(workspace);
+      return ThrowCode(env, "EPOCH2_WIN32_EPOCH_ROOT_CONFLICT");
+    }
+  }
+  lease->protected_workspace = workspace;
+  lease->protected_epoch = epoch;
+  lease->epoch_marker = marker;
+  return CreateEpochRootMarkerResult(
+      env, workspace_identity, epoch_identity, marker_identity);
+}
+
+napi_value LeaseEnsureEpochRootMarker(napi_env env, napi_callback_info info) {
+  return LeaseProcessEpochRootMarker(env, info, true);
+}
+
+napi_value LeaseVerifyEpochRootMarker(napi_env env, napi_callback_info info) {
+  return LeaseProcessEpochRootMarker(env, info, false);
 }
 
 napi_value LeaseRelease(napi_env env, napi_callback_info info) {
@@ -1921,6 +2218,8 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
       {"replaceLegacyConfig", nullptr, LeaseReplaceLegacyConfig, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"inspectLegacyConfigBackups", nullptr, LeaseInspectLegacyConfigBackups, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"deleteLegacyConfigBackups", nullptr, LeaseDeleteLegacyConfigBackups, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"ensureEpochRootMarker", nullptr, LeaseEnsureEpochRootMarker, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"verifyEpochRootMarker", nullptr, LeaseVerifyEpochRootMarker, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"inspectOwnedTarget", nullptr, LeaseInspectProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"deleteOwnedTarget", nullptr, LeaseDeleteProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"cleanupTransitionTemps", nullptr, LeaseCleanupTransitionTemps, nullptr, nullptr, nullptr, napi_default, nullptr},
