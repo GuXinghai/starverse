@@ -1,8 +1,10 @@
 #include <node_api.h>
 #include <windows.h>
+#include <bcrypt.h>
 #include <winternl.h>
 
 #include <algorithm>
+#include <cstddef>
 #include <cstdint>
 #include <cwctype>
 #include <iomanip>
@@ -15,7 +17,11 @@ namespace {
 using NtCreateFileFn = NTSTATUS(NTAPI*)(
     PHANDLE, ACCESS_MASK, POBJECT_ATTRIBUTES, PIO_STATUS_BLOCK, PLARGE_INTEGER,
     ULONG, ULONG, ULONG, ULONG, PVOID, ULONG);
+using NtSetInformationFileFn = NTSTATUS(NTAPI*)(
+    HANDLE, PIO_STATUS_BLOCK, PVOID, ULONG, FILE_INFORMATION_CLASS);
 using RtlNtStatusToDosErrorFn = ULONG(WINAPI*)(NTSTATUS);
+constexpr FILE_INFORMATION_CLASS kFileRenameInformation =
+    static_cast<FILE_INFORMATION_CLASS>(10);
 
 struct Lease {
   HANDLE mutex = nullptr;
@@ -55,6 +61,21 @@ napi_value ThrowCode(napi_env env, const char* code) {
   napi_create_error(env, nullptr, message, &error);
   napi_create_string_utf8(env, code, NAPI_AUTO_LENGTH, &code_value);
   napi_set_named_property(env, error, "code", code_value);
+  napi_throw(env, error);
+  return nullptr;
+}
+
+napi_value ThrowWin32Code(napi_env env, const char* code, DWORD win32_error) {
+  napi_value message;
+  napi_value error;
+  napi_value code_value;
+  napi_value native_value;
+  napi_create_string_utf8(env, code, NAPI_AUTO_LENGTH, &message);
+  napi_create_error(env, nullptr, message, &error);
+  napi_create_string_utf8(env, code, NAPI_AUTO_LENGTH, &code_value);
+  napi_create_uint32(env, win32_error, &native_value);
+  napi_set_named_property(env, error, "code", code_value);
+  napi_set_named_property(env, error, "win32Error", native_value);
   napi_throw(env, error);
   return nullptr;
 }
@@ -155,6 +176,13 @@ NtCreateFileFn ResolveNtCreateFile() {
   return reinterpret_cast<NtCreateFileFn>(GetProcAddress(ntdll, "NtCreateFile"));
 }
 
+NtSetInformationFileFn ResolveNtSetInformationFile() {
+  HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
+  if (ntdll == nullptr) return nullptr;
+  return reinterpret_cast<NtSetInformationFileFn>(
+      GetProcAddress(ntdll, "NtSetInformationFile"));
+}
+
 DWORD NtStatusToWin32(NTSTATUS status) {
   HMODULE ntdll = GetModuleHandleW(L"ntdll.dll");
   if (ntdll == nullptr) return ERROR_GEN_FAILURE;
@@ -165,7 +193,7 @@ DWORD NtStatusToWin32(NTSTATUS status) {
 
 HANDLE OpenRelative(
     NtCreateFileFn nt_create_file, HANDLE parent, const std::wstring& name,
-    bool directory, bool create, ACCESS_MASK access, ULONG share_access) {
+    bool directory, ULONG disposition, ACCESS_MASK access, ULONG share_access) {
   UNICODE_STRING unicode_name{};
   unicode_name.Buffer = const_cast<PWSTR>(name.data());
   unicode_name.Length = static_cast<USHORT>(name.size() * sizeof(wchar_t));
@@ -179,7 +207,7 @@ HANDLE OpenRelative(
   const NTSTATUS status = nt_create_file(
       &result, access, &attributes, &io_status, nullptr,
       directory ? FILE_ATTRIBUTE_DIRECTORY : FILE_ATTRIBUTE_HIDDEN,
-      share_access, create ? FILE_OPEN_IF : FILE_OPEN, options, nullptr, 0);
+      share_access, disposition, options, nullptr, 0);
   if (status < 0) {
     SetLastError(NtStatusToWin32(status));
     return INVALID_HANDLE_VALUE;
@@ -218,7 +246,7 @@ HANDLE OpenAppDataRoot(
   for (size_t index = 0; index < segments.size(); ++index) {
     const bool final_segment = index + 1 == segments.size();
     HANDLE child = OpenRelative(
-        nt_create_file, current, segments[index], true, false,
+        nt_create_file, current, segments[index], true, FILE_OPEN,
         final_segment ? kMutableDirectoryAccess : kReadDirectoryAccess,
         FILE_SHARE_READ | FILE_SHARE_WRITE);
     CloseHandleIfValid(current);
@@ -246,6 +274,216 @@ std::string BytesToHex(const unsigned char* bytes, size_t length) {
     stream << std::setw(2) << static_cast<unsigned int>(bytes[index]);
   }
   return stream.str();
+}
+
+bool GetWideStringValue(napi_env env, napi_value value, std::wstring* output) {
+  napi_valuetype type;
+  if (napi_typeof(env, value, &type) != napi_ok || type != napi_string) return false;
+  size_t length = 0;
+  if (napi_get_value_string_utf16(env, value, nullptr, 0, &length) != napi_ok ||
+      length == 0 || length > 255) return false;
+  std::vector<char16_t> buffer(length + 1);
+  size_t copied = 0;
+  if (napi_get_value_string_utf16(env, value, buffer.data(), buffer.size(), &copied) != napi_ok ||
+      copied != length) return false;
+  output->assign(reinterpret_cast<const wchar_t*>(buffer.data()), copied);
+  return true;
+}
+
+bool IsAllowedTransitionDataFile(const std::wstring& name) {
+  return name == L"root-manifest.json" || name == L"epoch-transition.journal.json";
+}
+
+uint32_t TransitionFileMaxBytes(const std::wstring& name) {
+  if (name == L"root-manifest.json") return 4 * 1024;
+  if (name == L"epoch-transition.journal.json") return 64 * 1024;
+  return 0;
+}
+
+Lease* GetLeaseCall(
+    napi_env env, napi_callback_info info, size_t expected_argc, napi_value* args) {
+  napi_value this_arg;
+  void* data = nullptr;
+  size_t argc = expected_argc;
+  if (napi_get_cb_info(env, info, &argc, args, &this_arg, nullptr) != napi_ok ||
+      argc != expected_argc || napi_unwrap(env, this_arg, &data) != napi_ok || data == nullptr) {
+    ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+    return nullptr;
+  }
+  auto* lease = static_cast<Lease*>(data);
+  if (lease->released) {
+    ThrowCode(env, "EPOCH2_WIN32_LEASE_RELEASED");
+    return nullptr;
+  }
+  return lease;
+}
+
+napi_value LeaseReadTransitionFile(napi_env env, napi_callback_info info) {
+  napi_value args[2];
+  Lease* lease = GetLeaseCall(env, info, 2, args);
+  if (lease == nullptr) return nullptr;
+  std::wstring name;
+  uint32_t max_bytes = 0;
+  if (!GetWideStringValue(env, args[0], &name) || !IsSafeSegment(name) ||
+      !IsAllowedTransitionDataFile(name) ||
+      napi_get_value_uint32(env, args[1], &max_bytes) != napi_ok ||
+      max_bytes != TransitionFileMaxBytes(name)) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  if (nt_create_file == nullptr) return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  HANDLE file = OpenRelative(
+      nt_create_file, lease->transition, name, false, FILE_OPEN,
+      GENERIC_READ | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_SHARE_READ);
+  if (file == INVALID_HANDLE_VALUE) {
+    const DWORD error = GetLastError();
+    if (error == ERROR_FILE_NOT_FOUND || error == ERROR_PATH_NOT_FOUND) {
+      napi_value null_value;
+      napi_get_null(env, &null_value);
+      return null_value;
+    }
+    return ThrowCode(env, "EPOCH2_WIN32_TRANSITION_READ_FAILED");
+  }
+  if (IsReparsePoint(file)) {
+    CloseHandleIfValid(file);
+    return ThrowCode(env, "EPOCH2_WIN32_TRANSITION_REPARSE_POINT");
+  }
+  LARGE_INTEGER size{};
+  if (!GetFileSizeEx(file, &size) || size.QuadPart < 0 ||
+      static_cast<unsigned long long>(size.QuadPart) > max_bytes) {
+    CloseHandleIfValid(file);
+    return ThrowCode(env, "EPOCH2_WIN32_TRANSITION_FILE_TOO_LARGE");
+  }
+  std::vector<unsigned char> bytes(static_cast<size_t>(size.QuadPart));
+  size_t offset = 0;
+  while (offset < bytes.size()) {
+    DWORD read = 0;
+    const DWORD requested = static_cast<DWORD>(bytes.size() - offset);
+    if (!ReadFile(file, bytes.data() + offset, requested, &read, nullptr) || read == 0) {
+      CloseHandleIfValid(file);
+      return ThrowCode(env, "EPOCH2_WIN32_TRANSITION_READ_FAILED");
+    }
+    offset += read;
+  }
+  CloseHandleIfValid(file);
+  napi_value result;
+  if (napi_create_buffer_copy(
+          env, bytes.size(), bytes.empty() ? nullptr : bytes.data(), nullptr, &result) != napi_ok) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_CONTRACT_INVALID");
+  }
+  return result;
+}
+
+std::wstring RandomTemporaryName() {
+  unsigned char random_bytes[16]{};
+  if (BCryptGenRandom(
+          nullptr, random_bytes, sizeof(random_bytes), BCRYPT_USE_SYSTEM_PREFERRED_RNG) != 0) {
+    return L"";
+  }
+  const std::string hex = BytesToHex(random_bytes, sizeof(random_bytes));
+  return L".svtmp-" + std::wstring(hex.begin(), hex.end());
+}
+
+void DiscardTemporaryFile(HANDLE& file) {
+  if (file == nullptr || file == INVALID_HANDLE_VALUE) return;
+  FILE_DISPOSITION_INFO_EX disposition{};
+  disposition.Flags = FILE_DISPOSITION_FLAG_DELETE |
+      FILE_DISPOSITION_FLAG_POSIX_SEMANTICS |
+      FILE_DISPOSITION_FLAG_IGNORE_READONLY_ATTRIBUTE;
+  SetFileInformationByHandle(
+      file, FileDispositionInfoEx, &disposition, sizeof(disposition));
+  CloseHandleIfValid(file);
+}
+
+napi_value LeaseWriteTransitionFile(napi_env env, napi_callback_info info) {
+  napi_value args[3];
+  Lease* lease = GetLeaseCall(env, info, 3, args);
+  if (lease == nullptr) return nullptr;
+  std::wstring target_name;
+  bool is_buffer = false;
+  bool replace_existing = false;
+  void* byte_data = nullptr;
+  size_t byte_length = 0;
+  if (!GetWideStringValue(env, args[0], &target_name) || !IsSafeSegment(target_name) ||
+      !IsAllowedTransitionDataFile(target_name) ||
+      napi_is_buffer(env, args[1], &is_buffer) != napi_ok || !is_buffer ||
+      napi_get_buffer_info(env, args[1], &byte_data, &byte_length) != napi_ok ||
+      napi_get_value_bool(env, args[2], &replace_existing) != napi_ok ||
+      replace_existing != (target_name == L"epoch-transition.journal.json") ||
+      byte_length == 0 || byte_length > TransitionFileMaxBytes(target_name)) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  if (nt_create_file == nullptr) return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  HANDLE temporary = INVALID_HANDLE_VALUE;
+  for (size_t attempt = 0; attempt < 16 && temporary == INVALID_HANDLE_VALUE; ++attempt) {
+    const std::wstring temporary_name = RandomTemporaryName();
+    if (temporary_name.empty()) return ThrowCode(env, "EPOCH2_WIN32_RANDOM_FAILED");
+    temporary = OpenRelative(
+        nt_create_file, lease->transition, temporary_name, false, FILE_CREATE,
+        GENERIC_READ | GENERIC_WRITE | DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, 0);
+    if (temporary == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_EXISTS &&
+        GetLastError() != ERROR_ALREADY_EXISTS) {
+      return ThrowCode(env, "EPOCH2_WIN32_ATOMIC_REPLACE_FAILED");
+    }
+  }
+  if (temporary == INVALID_HANDLE_VALUE) return ThrowCode(env, "EPOCH2_WIN32_RANDOM_COLLISION");
+  if (IsReparsePoint(temporary)) {
+    DiscardTemporaryFile(temporary);
+    return ThrowCode(env, "EPOCH2_WIN32_TRANSITION_REPARSE_POINT");
+  }
+  size_t offset = 0;
+  const auto* bytes = static_cast<const unsigned char*>(byte_data);
+  while (offset < byte_length) {
+    DWORD written = 0;
+    const DWORD requested = static_cast<DWORD>(byte_length - offset);
+    if (!WriteFile(temporary, bytes + offset, requested, &written, nullptr) || written == 0) {
+      DiscardTemporaryFile(temporary);
+      return ThrowCode(env, "EPOCH2_WIN32_TRANSITION_WRITE_FAILED");
+    }
+    offset += written;
+  }
+  if (!FlushFileBuffers(temporary)) {
+    DiscardTemporaryFile(temporary);
+    return ThrowCode(env, "EPOCH2_WIN32_TRANSITION_FLUSH_FAILED");
+  }
+  struct NativeRenameInformation {
+    BOOLEAN ReplaceIfExists;
+    HANDLE RootDirectory;
+    ULONG FileNameLength;
+    WCHAR FileName[1];
+  };
+  NtSetInformationFileFn nt_set_information_file = ResolveNtSetInformationFile();
+  if (nt_set_information_file == nullptr) {
+    DiscardTemporaryFile(temporary);
+    return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  }
+  const size_t name_bytes = target_name.size() * sizeof(wchar_t);
+  std::vector<unsigned char> rename_buffer(
+      offsetof(NativeRenameInformation, FileName) + name_bytes);
+  auto* rename = reinterpret_cast<NativeRenameInformation*>(rename_buffer.data());
+  rename->ReplaceIfExists = replace_existing ? TRUE : FALSE;
+  rename->RootDirectory = lease->transition;
+  rename->FileNameLength = static_cast<DWORD>(name_bytes);
+  std::copy(target_name.begin(), target_name.end(), rename->FileName);
+  IO_STATUS_BLOCK rename_status{};
+  const NTSTATUS status = nt_set_information_file(
+      temporary, &rename_status, rename, static_cast<ULONG>(rename_buffer.size()),
+      kFileRenameInformation);
+  if (status < 0) {
+    const DWORD error = NtStatusToWin32(status);
+    DiscardTemporaryFile(temporary);
+    if (!replace_existing && (error == ERROR_ALREADY_EXISTS || error == ERROR_FILE_EXISTS)) {
+      napi_value exists;
+      napi_get_boolean(env, false, &exists);
+      return exists;
+    }
+    return ThrowWin32Code(env, "EPOCH2_WIN32_TRANSITION_RENAME_FAILED", error);
+  }
+  CloseHandleIfValid(temporary);
+  napi_value written;
+  napi_get_boolean(env, true, &written);
+  return written;
 }
 
 napi_value LeaseRelease(napi_env env, napi_callback_info info) {
@@ -351,7 +589,7 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
     return ThrowCode(env, open_error);
   }
   lease->product = OpenRelative(
-      nt_create_file, lease->app_data, product_directory, true, true,
+      nt_create_file, lease->app_data, product_directory, true, FILE_OPEN_IF,
       kMutableDirectoryAccess, FILE_SHARE_READ | FILE_SHARE_WRITE);
   if (lease->product == INVALID_HANDLE_VALUE || IsReparsePoint(lease->product)) {
     ReleaseLease(lease);
@@ -359,7 +597,7 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
     return ThrowCode(env, "EPOCH2_WIN32_REPARSE_OR_ROOT_CHANGED");
   }
   lease->transition = OpenRelative(
-      nt_create_file, lease->product, transition_directory, true, true,
+      nt_create_file, lease->product, transition_directory, true, FILE_OPEN_IF,
       kMutableDirectoryAccess, FILE_SHARE_READ | FILE_SHARE_WRITE);
   if (lease->transition == INVALID_HANDLE_VALUE || IsReparsePoint(lease->transition)) {
     ReleaseLease(lease);
@@ -367,7 +605,7 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
     return ThrowCode(env, "EPOCH2_WIN32_REPARSE_OR_ROOT_CHANGED");
   }
   lease->lock_file = OpenRelative(
-      nt_create_file, lease->transition, lock_file_name, false, true,
+      nt_create_file, lease->transition, lock_file_name, false, FILE_OPEN_IF,
       GENERIC_READ | GENERIC_WRITE | DELETE | SYNCHRONIZE, 0);
   if (lease->lock_file == INVALID_HANDLE_VALUE || IsReparsePoint(lease->lock_file)) {
     ReleaseLease(lease);
@@ -385,8 +623,10 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
   napi_property_descriptor properties[] = {
       {"release", nullptr, LeaseRelease, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"rootIdentity", nullptr, LeaseRootIdentity, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"readTransitionFile", nullptr, LeaseReadTransitionFile, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"writeTransitionFile", nullptr, LeaseWriteTransitionFile, nullptr, nullptr, nullptr, napi_default, nullptr},
   };
-  if (napi_define_properties(env, result, 2, properties) != napi_ok) {
+  if (napi_define_properties(env, result, 4, properties) != napi_ok) {
     void* removed = nullptr;
     napi_remove_wrap(env, result, &removed);
     ReleaseLease(lease);

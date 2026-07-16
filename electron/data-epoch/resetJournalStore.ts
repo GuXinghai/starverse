@@ -1,84 +1,75 @@
-import fs from 'node:fs'
-import path from 'node:path'
-import { decodeEpoch2ResetJournal, type Epoch2ResetJournal } from './resetJournal'
+import {
+  decodeEpoch2ResetJournal,
+  EPOCH2_RESET_PHASES,
+  type Epoch2ResetJournal,
+} from './resetJournal'
+import type { Epoch2WorkspaceLayout } from './rootManifest'
+import {
+  assertWin32EpochRootLeaseAuthority,
+  type Win32EpochRootLease,
+} from './win32EpochRootLease'
 
-function serialized(journal: Epoch2ResetJournal): string {
-  return `${JSON.stringify(journal, null, 2)}\n`
+const encoder = new TextEncoder()
+const decoder = new TextDecoder('utf-8', { fatal: true })
+
+function serialized(journal: Epoch2ResetJournal): Uint8Array {
+  const bytes = encoder.encode(`${JSON.stringify(journal, null, 2)}\n`)
+  if (bytes.byteLength > 64 * 1024) throw new Error('EPOCH2_RESET_JOURNAL_INVALID')
+  return bytes
 }
 
-function pendingPath(journalPath: string): string {
-  return `${journalPath}.pending`
-}
-
-function fsyncDirectory(directory: string): void {
-  if (process.platform === 'win32') return
-  const descriptor = fs.openSync(directory, 'r')
-  try { fs.fsyncSync(descriptor) } finally { fs.closeSync(descriptor) }
+function decode(bytes: Uint8Array): Epoch2ResetJournal {
+  try {
+    return decodeEpoch2ResetJournal(JSON.parse(decoder.decode(bytes)))
+  } catch {
+    throw new Error('EPOCH2_RESET_JOURNAL_INVALID')
+  }
 }
 
 function sameOperation(left: Epoch2ResetJournal, right: Epoch2ResetJournal): boolean {
-  return left.operationId === right.operationId && JSON.stringify(left.pathDigests) === JSON.stringify(right.pathDigests)
+  return left.operationId === right.operationId &&
+    JSON.stringify(left.pathDigests) === JSON.stringify(right.pathDigests)
 }
 
 function phaseIndex(journal: Epoch2ResetJournal): number {
-  return ['prepared', 'legacy_files_deleted', 'config_replaced', 'epoch_root_created', 'database_created', 'committed']
-    .indexOf(journal.phase)
+  return EPOCH2_RESET_PHASES.indexOf(journal.phase)
 }
 
-function replaceJournal(pending: string, journalPath: string): void {
-  fs.renameSync(pending, journalPath)
-  fsyncDirectory(path.dirname(journalPath))
+function assertAuthority(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+}>): void {
+  assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
 }
 
-function reconcilePendingJournal(journalPath: string): void {
-  const pending = pendingPath(journalPath)
-  if (!fs.existsSync(pending)) return
-  let candidate: Epoch2ResetJournal
-  try {
-    candidate = decodeEpoch2ResetJournal(JSON.parse(fs.readFileSync(pending, 'utf8')))
-  } catch {
-    fs.unlinkSync(pending)
-    return
-  }
-  const current = readEpoch2ResetJournal(journalPath)
-  if ((!current && candidate.phase !== 'prepared') ||
-      (current && (!sameOperation(current, candidate) || phaseIndex(candidate) < phaseIndex(current) ||
-        phaseIndex(candidate) > phaseIndex(current) + 1))) {
-    throw new Error('EPOCH2_RESET_PENDING_JOURNAL_CONFLICT')
-  }
-  replaceJournal(pending, journalPath)
-}
-
-export function writeEpoch2ResetJournalAtomic(journalPath: string, journal: Epoch2ResetJournal): void {
-  const directory = path.dirname(journalPath)
-  fs.mkdirSync(directory, { recursive: true })
-  reconcilePendingJournal(journalPath)
-  const current = readEpoch2ResetJournal(journalPath)
+export function writeEpoch2ResetJournalAtomic(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  journal: Epoch2ResetJournal
+}>): void {
+  assertAuthority(input)
+  const journal = decodeEpoch2ResetJournal(input.journal)
+  const current = readEpoch2ResetJournal(input)
   if (current) {
-    if (!sameOperation(current, journal) || phaseIndex(journal) < phaseIndex(current) || phaseIndex(journal) > phaseIndex(current) + 1) {
+    if (!sameOperation(current, journal) ||
+        phaseIndex(journal) < phaseIndex(current) ||
+        phaseIndex(journal) > phaseIndex(current) + 1) {
       throw new Error('EPOCH2_RESET_JOURNAL_TRANSITION_INVALID')
     }
     if (phaseIndex(journal) === phaseIndex(current)) return
   } else if (journal.phase !== 'prepared') {
     throw new Error('EPOCH2_RESET_JOURNAL_TRANSITION_INVALID')
   }
-  const temporaryPath = pendingPath(journalPath)
-  let descriptor: number | null = null
-  try {
-    fs.writeFileSync(temporaryPath, serialized(journal), { encoding: 'utf8', flag: 'wx', mode: 0o600 })
-    descriptor = fs.openSync(temporaryPath, 'r+')
-    fs.fsyncSync(descriptor)
-    fs.closeSync(descriptor)
-    descriptor = null
-    replaceJournal(temporaryPath, journalPath)
-  } catch (error) {
-    if (descriptor !== null) fs.closeSync(descriptor)
-    try { fs.unlinkSync(temporaryPath) } catch { /* best-effort cleanup of an uncommitted temp file */ }
-    throw error
+  if (input.lease.writeTransitionFile('reset_journal', serialized(journal)) !== 'written') {
+    throw new Error('EPOCH2_RESET_JOURNAL_TRANSITION_INVALID')
   }
 }
 
-export function readEpoch2ResetJournal(journalPath: string): Epoch2ResetJournal | null {
-  if (!fs.existsSync(journalPath)) return null
-  return decodeEpoch2ResetJournal(JSON.parse(fs.readFileSync(journalPath, 'utf8')))
+export function readEpoch2ResetJournal(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+}>): Epoch2ResetJournal | null {
+  assertAuthority(input)
+  const bytes = input.lease.readTransitionFile('reset_journal')
+  return bytes === null ? null : decode(bytes)
 }

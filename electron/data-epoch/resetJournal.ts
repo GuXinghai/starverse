@@ -42,7 +42,8 @@ function normalizePathDigests(value: unknown): Readonly<Record<string, string>> 
     throw new Epoch2ResetJournalError('EPOCH2_RESET_JOURNAL_INVALID')
   }
   const entries = Object.entries(value as Record<string, unknown>)
-  if (entries.length === 0 || entries.some(([key, digest]) => !/^[a-z][a-zA-Z0-9_]*$/u.test(key) || !isDigest(digest))) {
+  if (entries.length === 0 || entries.length > 64 || entries.some(([key, digest]) =>
+    key.length > 64 || !/^[a-z][a-zA-Z0-9_]*$/u.test(key) || !isDigest(digest))) {
     throw new Epoch2ResetJournalError('EPOCH2_RESET_JOURNAL_INVALID')
   }
   return Object.freeze(Object.fromEntries(entries.sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0)) as Record<string, string>)

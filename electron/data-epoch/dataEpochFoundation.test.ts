@@ -16,9 +16,11 @@ import {
 } from './resetJournal'
 import { readEpoch2ResetJournal, writeEpoch2ResetJournalAtomic } from './resetJournalStore'
 import { assertEpoch2OwnedDeletePlanFresh, inspectEpoch2OwnedDeleteTarget } from './safeOwnedDelete'
+import { acquireWin32EpochRootLease } from './win32EpochRootLease'
 
 const digest = 'a'.repeat(64)
 const operationId = '123e4567-e89b-42d3-a456-426614174000'
+const windowsIt = process.platform === 'win32' ? it : it.skip
 
 function secureRecord(providerKey: string, apiKey = `key-${providerKey}`) {
   return {
@@ -80,43 +82,56 @@ describe('Generation Compiler V2 epoch foundation', () => {
     expect(deleted.phase).toBe('legacy_files_deleted')
     expect(() => advanceEpoch2ResetJournal(deleted, 'prepared')).toThrow('EPOCH2_RESET_PHASE_REGRESSION')
     expect(() => advanceEpoch2ResetJournal(deleted, 'epoch_root_created')).toThrow('EPOCH2_RESET_PHASE_SKIP')
+    expect(() => createEpoch2ResetJournal({
+      operationId,
+      pathDigests: Object.fromEntries(Array.from({ length: 65 }, (_, index) => [`path${index}`, digest])),
+    })).toThrow('EPOCH2_RESET_JOURNAL_INVALID')
+    expect(() => createEpoch2ResetJournal({
+      operationId,
+      pathDigests: { [`p${'x'.repeat(64)}`]: digest },
+    })).toThrow('EPOCH2_RESET_JOURNAL_INVALID')
   })
 
-  it('atomically persists and recovers the strict reset journal', () => {
+  windowsIt('atomically persists the strict reset journal through the epoch lease', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-epoch-journal-'))
+    const layout = resolveEpoch2WorkspaceLayout({
+      appDataRoot: directory,
+      homeRoot: os.homedir(),
+      repositoryRoot: process.cwd(),
+    })
+    const lease = acquireWin32EpochRootLease(layout)
     try {
-      const journalPath = path.join(directory, 'epoch-2', 'transition.json')
       const prepared = createEpoch2ResetJournal({ operationId, pathDigests: { legacyDb: digest } })
-      writeEpoch2ResetJournalAtomic(journalPath, prepared)
-      expect(readEpoch2ResetJournal(journalPath)).toEqual(prepared)
+      writeEpoch2ResetJournalAtomic({ layout, lease, journal: prepared })
+      expect(readEpoch2ResetJournal({ layout, lease })).toEqual(prepared)
       const next = advanceEpoch2ResetJournal(prepared, 'legacy_files_deleted')
-      writeEpoch2ResetJournalAtomic(journalPath, next)
-      expect(readEpoch2ResetJournal(journalPath)).toEqual(next)
-      expect(fs.readdirSync(path.dirname(journalPath))).toEqual(['transition.json'])
+      writeEpoch2ResetJournalAtomic({ layout, lease, journal: next })
+      expect(readEpoch2ResetJournal({ layout, lease })).toEqual(next)
+      expect(fs.readdirSync(layout.transitionRoot).sort()).toEqual([
+        'epoch-transition.journal.json',
+        'epoch-transition.lock',
+      ])
 
       const third = advanceEpoch2ResetJournal(next, 'config_replaced')
-      fs.writeFileSync(`${journalPath}.pending`, `${JSON.stringify(third)}\n`)
-      writeEpoch2ResetJournalAtomic(journalPath, third)
-      expect(readEpoch2ResetJournal(journalPath)).toEqual(third)
-      expect(fs.existsSync(`${journalPath}.pending`)).toBe(false)
-
-      fs.writeFileSync(`${journalPath}.pending`, '{partial')
+      writeEpoch2ResetJournalAtomic({ layout, lease, journal: third })
+      expect(readEpoch2ResetJournal({ layout, lease })).toEqual(third)
       const fourth = advanceEpoch2ResetJournal(third, 'epoch_root_created')
-      writeEpoch2ResetJournalAtomic(journalPath, fourth)
-      expect(readEpoch2ResetJournal(journalPath)).toEqual(fourth)
-      expect(fs.existsSync(`${journalPath}.pending`)).toBe(false)
+      writeEpoch2ResetJournalAtomic({ layout, lease, journal: fourth })
+      expect(readEpoch2ResetJournal({ layout, lease })).toEqual(fourth)
     } finally {
+      lease.release()
       fs.rmSync(directory, { recursive: true, force: true })
     }
   })
 
-  it('audits the complete owned subtree before deletion and rejects escapes or reparse points', () => {
+  windowsIt('audits the complete owned subtree after lease-bound ownership verification', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-owned-delete-'))
     const layout = resolveEpoch2WorkspaceLayout({
       appDataRoot: directory, homeRoot: os.homedir(), repositoryRoot: process.cwd(),
     })
     const manifest = createEpoch2RootManifest({ layout })
-    writeEpoch2RootManifestAtomic({ layout, manifest })
+    const lease = acquireWin32EpochRootLease(layout)
+    writeEpoch2RootManifestAtomic({ layout, lease, manifest })
     const ownedRoot = layout.productRoot
     const target = path.join(ownedRoot, 'assets')
     const protectedPath = path.join(ownedRoot, 'config.json')
@@ -125,7 +140,7 @@ describe('Generation Compiler V2 epoch foundation', () => {
     fs.writeFileSync(protectedPath, '{}')
     try {
       const authorization = {
-        layout, rootScope: 'product' as const,
+        layout, lease, rootScope: 'product' as const,
       }
       const plan = inspectEpoch2OwnedDeleteTarget({ ...authorization, target, protectedPaths: [protectedPath] })
       expect(plan.entriesPostOrder.at(-1)?.path).toBe(target)
@@ -164,11 +179,12 @@ describe('Generation Compiler V2 epoch foundation', () => {
         ...authorization, target: `${layout.journalPath}.pending`, protectedPaths: [],
       })).toThrow('EPOCH2_DELETE_PROTECTED_PATH')
     } finally {
+      lease.release()
       fs.rmSync(directory, { recursive: true, force: true })
     }
   })
 
-  it('rejects an on-disk transition marker reached through a junction', () => {
+  windowsIt('rejects an on-disk transition root reached through a junction', () => {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-marker-junction-'))
     const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-marker-outside-'))
     try {
@@ -177,9 +193,8 @@ describe('Generation Compiler V2 epoch foundation', () => {
       })
       fs.mkdirSync(layout.productRoot, { recursive: true })
       fs.symlinkSync(outside, layout.transitionRoot, process.platform === 'win32' ? 'junction' : 'dir')
-      const manifest = createEpoch2RootManifest({ layout })
-      expect(() => writeEpoch2RootManifestAtomic({ layout, manifest }))
-        .toThrow('EPOCH2_ROOT_MANIFEST_REPARSE_POINT')
+      expect(() => acquireWin32EpochRootLease(layout))
+        .toThrow('EPOCH2_WIN32_REPARSE_OR_ROOT_CHANGED')
     } finally {
       fs.rmSync(directory, { recursive: true, force: true })
       fs.rmSync(outside, { recursive: true, force: true })

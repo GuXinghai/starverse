@@ -11,6 +11,13 @@ import {
 const NATIVE_FILE_NAME = 'starverse_epoch_win32.node'
 const TRANSITION_DIRECTORY = '.epoch-transition'
 const LOCK_FILE_NAME = 'epoch-transition.lock'
+const TRANSITION_FILE_FACTS = Object.freeze({
+  transition_manifest: Object.freeze({ fileName: 'root-manifest.json', maxBytes: 4 * 1024 }),
+  reset_journal: Object.freeze({ fileName: 'epoch-transition.journal.json', maxBytes: 64 * 1024 }),
+})
+const ISSUED_WIN32_EPOCH_LEASES = new WeakMap<object, Epoch2WorkspaceLayout>()
+
+export type Win32EpochTransitionFileKey = keyof typeof TRANSITION_FILE_FACTS
 
 export type Win32EpochRootIdentity = Readonly<{
   volumeSerial: string
@@ -19,6 +26,8 @@ export type Win32EpochRootIdentity = Readonly<{
 
 export interface Win32EpochRootLease {
   rootIdentity(): Win32EpochRootIdentity
+  readTransitionFile(key: Win32EpochTransitionFileKey): Uint8Array | null
+  writeTransitionFile(key: Win32EpochTransitionFileKey, bytes: Uint8Array): 'written' | 'exists'
   release(): void
 }
 
@@ -32,6 +41,8 @@ export type Win32EpochLeaseRequest = Readonly<{
 
 type NativeLease = Readonly<{
   rootIdentity(): unknown
+  readTransitionFile(fileName: string, maxBytes: number): unknown
+  writeTransitionFile(fileName: string, bytes: Buffer, replaceExisting: boolean): unknown
   release(): unknown
 }>
 
@@ -54,7 +65,16 @@ export class Win32EpochRootLeaseError extends Error {
     | 'EPOCH2_WIN32_NT_API_UNAVAILABLE'
     | 'EPOCH2_WIN32_LOCK_OPEN_FAILED'
     | 'EPOCH2_WIN32_ROOT_IDENTITY_FAILED'
-    | 'EPOCH2_WIN32_LEASE_RELEASED') {
+    | 'EPOCH2_WIN32_LEASE_RELEASED'
+    | 'EPOCH2_WIN32_TRANSITION_READ_FAILED'
+    | 'EPOCH2_WIN32_TRANSITION_REPARSE_POINT'
+    | 'EPOCH2_WIN32_TRANSITION_FILE_TOO_LARGE'
+    | 'EPOCH2_WIN32_RANDOM_FAILED'
+    | 'EPOCH2_WIN32_RANDOM_COLLISION'
+    | 'EPOCH2_WIN32_ATOMIC_REPLACE_FAILED'
+    | 'EPOCH2_WIN32_TRANSITION_WRITE_FAILED'
+    | 'EPOCH2_WIN32_TRANSITION_FLUSH_FAILED'
+    | 'EPOCH2_WIN32_TRANSITION_RENAME_FAILED') {
     super(code)
     this.name = 'Win32EpochRootLeaseError'
   }
@@ -72,6 +92,15 @@ const NATIVE_ERROR_CODES = new Set<Win32EpochRootLeaseError['code']>([
   'EPOCH2_WIN32_LOCK_OPEN_FAILED',
   'EPOCH2_WIN32_ROOT_IDENTITY_FAILED',
   'EPOCH2_WIN32_LEASE_RELEASED',
+  'EPOCH2_WIN32_TRANSITION_READ_FAILED',
+  'EPOCH2_WIN32_TRANSITION_REPARSE_POINT',
+  'EPOCH2_WIN32_TRANSITION_FILE_TOO_LARGE',
+  'EPOCH2_WIN32_RANDOM_FAILED',
+  'EPOCH2_WIN32_RANDOM_COLLISION',
+  'EPOCH2_WIN32_ATOMIC_REPLACE_FAILED',
+  'EPOCH2_WIN32_TRANSITION_WRITE_FAILED',
+  'EPOCH2_WIN32_TRANSITION_FLUSH_FAILED',
+  'EPOCH2_WIN32_TRANSITION_RENAME_FAILED',
 ])
 
 function nativeBinaryPath(): string {
@@ -191,7 +220,10 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
       throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
     }
     const candidate = acquired as Partial<NativeLease>
-    if (typeof candidate.rootIdentity !== 'function' || typeof candidate.release !== 'function') {
+    if (typeof candidate.rootIdentity !== 'function' ||
+        typeof candidate.readTransitionFile !== 'function' ||
+        typeof candidate.writeTransitionFile !== 'function' ||
+        typeof candidate.release !== 'function') {
       throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
     }
     nativeLease = candidate as NativeLease
@@ -200,11 +232,54 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
     return translateNativeError(error)
   }
   let released = false
-  return Object.freeze({
+  const lease: Win32EpochRootLease = Object.freeze({
     rootIdentity(): Win32EpochRootIdentity {
       if (released) throw new Win32EpochRootLeaseError('EPOCH2_WIN32_LEASE_RELEASED')
       try {
         return decodeRootIdentity(nativeLease.rootIdentity())
+      } catch (error) {
+        if (error instanceof Win32EpochRootLeaseError) throw error
+        return translateNativeError(error)
+      }
+    },
+    readTransitionFile(key: Win32EpochTransitionFileKey): Uint8Array | null {
+      if (released) throw new Win32EpochRootLeaseError('EPOCH2_WIN32_LEASE_RELEASED')
+      const fact = TRANSITION_FILE_FACTS[key]
+      if (!fact) throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
+      try {
+        const value = nativeLease.readTransitionFile(fact.fileName, fact.maxBytes)
+        if (value === null) return null
+        if (!Buffer.isBuffer(value) || value.byteLength > fact.maxBytes) {
+          throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+        }
+        return Uint8Array.from(value)
+      } catch (error) {
+        if (error instanceof Win32EpochRootLeaseError) throw error
+        return translateNativeError(error)
+      }
+    },
+    writeTransitionFile(
+      key: Win32EpochTransitionFileKey,
+      bytes: Uint8Array,
+    ): 'written' | 'exists' {
+      if (released) throw new Win32EpochRootLeaseError('EPOCH2_WIN32_LEASE_RELEASED')
+      const fact = TRANSITION_FILE_FACTS[key]
+      if (!fact || !ArrayBuffer.isView(bytes) ||
+          Object.prototype.toString.call(bytes) !== '[object Uint8Array]' ||
+          Object.prototype.toString.call(bytes.buffer) === '[object SharedArrayBuffer]' ||
+          bytes.byteLength === 0 || bytes.byteLength > fact.maxBytes) {
+        throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
+      }
+      try {
+        const result = nativeLease.writeTransitionFile(
+          fact.fileName,
+          Buffer.from(bytes),
+          key === 'reset_journal',
+        )
+        if (result !== true && result !== false) {
+          throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+        }
+        return result ? 'written' : 'exists'
       } catch (error) {
         if (error instanceof Win32EpochRootLeaseError) throw error
         return translateNativeError(error)
@@ -220,4 +295,16 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
       }
     },
   })
+  ISSUED_WIN32_EPOCH_LEASES.set(lease, layout)
+  return lease
+}
+
+export function assertWin32EpochRootLeaseAuthority(
+  lease: unknown,
+  layout: Epoch2WorkspaceLayout,
+): asserts lease is Win32EpochRootLease {
+  assertEpoch2WorkspaceLayoutAuthority(layout)
+  if (!lease || typeof lease !== 'object' || ISSUED_WIN32_EPOCH_LEASES.get(lease) !== layout) {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
+  }
 }

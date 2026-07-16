@@ -76,6 +76,33 @@ describe('win32 epoch root lease', () => {
     expect(fs.readdirSync(target)).toEqual(['nested'])
   })
 
+  windowsIt('reads and atomically replaces only the two bounded transition files', () => {
+    const layout = makeLayout()
+    const lease = acquireWin32EpochRootLease(layout)
+    try {
+      expect(lease.readTransitionFile('transition_manifest')).toBeNull()
+      const first = Buffer.from('{"version":1}\n', 'utf8')
+      const second = Buffer.from('{"version":2}\n', 'utf8')
+      expect(lease.writeTransitionFile('transition_manifest', first)).toBe('written')
+      expect(Buffer.from(lease.readTransitionFile('transition_manifest')!)).toEqual(first)
+      expect(lease.writeTransitionFile('transition_manifest', second)).toBe('exists')
+      expect(Buffer.from(lease.readTransitionFile('transition_manifest')!)).toEqual(first)
+      expect(lease.writeTransitionFile('reset_journal', second)).toBe('written')
+      expect(Buffer.from(lease.readTransitionFile('reset_journal')!)).toEqual(second)
+      expect(() => lease.writeTransitionFile(
+        'transition_manifest',
+        new Uint8Array(4 * 1024 + 1),
+      )).toThrowError(new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID'))
+      expect(fs.readdirSync(layout.transitionRoot).sort()).toEqual([
+        'epoch-transition.journal.json',
+        'epoch-transition.lock',
+        'root-manifest.json',
+      ])
+    } finally {
+      lease.release()
+    }
+  })
+
   windowsIt('recovers the OS-owned lock after an unclean holder exit', async () => {
     const layout = makeLayout()
     const addonPath = path.resolve('dist-native/win32-x64/starverse_epoch_win32.node')
