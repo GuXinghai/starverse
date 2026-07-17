@@ -14,6 +14,7 @@ vi.mock('../credentials/epoch2RuntimeCredentialService', () => ({
 
 import { createOpenAIResponsesPlainTextInitialSendCoordinatorV2 } from './openAIResponsesPlainTextInitialSendCoordinatorV2'
 import { createOpenAIResponsesInitialStreamRunnerV2 } from './openAIResponsesInitialStreamRunnerV2'
+import { createOpenAIResponsesPlainTextRetryCoordinatorV2 } from './openAIResponsesPlainTextRetryCoordinatorV2'
 
 const scope = 'credential-scope-v2:'.concat('d'.repeat(64)) as never
 
@@ -342,6 +343,89 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         .toEqual({ chosen: 'answer:2' })
       expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('retries only the chosen answer from its exact snapshot with as-new and replace semantics', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('original'))
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesInitialStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(initial)
+      const originalSnapshot = JSON.parse(initial.execution.snapshot.canonicalJson)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: { maxOutputTokens: 32 },
+      })
+      const asNewService = createOpenAIResponsesPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createAnswerId: () => 'answer:retry-new',
+      })
+      const asNewCommand = {
+        actionKind: 'retry_as_new', operationId: 'operation:retry-new', branchId: 'branch:1',
+        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+      }
+      const asNew = await asNewService.submit(asNewCommand)
+      expect(asNew.projection.visibleCandidates.map((candidate) => candidate.value))
+        .toEqual(['answer:2', 'answer:retry-new'])
+      expect(asNew.projection.branchProjection).toMatchObject({
+        chosenAnswerRootId: { value: 'answer:retry-new' }, headMessageId: { value: 'answer:retry-new' },
+      })
+      expect(JSON.parse(asNew.preparedRequest.body.copyUtf8Text())).not.toHaveProperty('max_output_tokens')
+      const copiedSnapshot = JSON.parse(asNew.execution.snapshot.canonicalJson)
+      for (const snapshot of [originalSnapshot, copiedSnapshot]) {
+        delete snapshot.answerRootId
+        delete snapshot.operationId
+        delete snapshot.snapshotHash
+      }
+      expect(copiedSnapshot).toEqual(originalSnapshot)
+      await expect(asNewService.submit(asNewCommand)).resolves.toMatchObject({ kind: 'idempotent_replay' })
+
+      const beforeStale = db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()
+      await expect(createOpenAIResponsesPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 121,
+        createAnswerId: () => 'answer:must-not-exist',
+      }).submit({ ...asNewCommand, operationId: 'operation:stale' }))
+        .rejects.toThrow('STALE_CHOSEN_ANSWER')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()).toEqual(beforeStale)
+
+      mocks.fetch.mockResolvedValueOnce(completedStream('retried'))
+      await createOpenAIResponsesInitialStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
+      }).run(asNew)
+      const replace = await createOpenAIResponsesPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 140,
+        createAnswerId: () => 'answer:replacement',
+      }).submit({
+        actionKind: 'retry_replace', operationId: 'operation:replace', branchId: 'branch:1',
+        questionId: 'question:1', targetAnswerRootId: 'answer:retry-new',
+        expectedHeadMessageId: 'answer:retry-new',
+      })
+      expect(replace.projection.visibleCandidates.map((candidate) => candidate.value))
+        .toEqual(['answer:2', 'answer:replacement'])
+      expect(db.prepare(`SELECT answer_root_id AS answerRootId FROM branch_answer_hide_v2
+        WHERE branch_id='branch:1' AND question_id='question:1'`).all())
+        .toEqual([{ answerRootId: 'answer:retry-new' }])
+      mocks.fetch.mockResolvedValueOnce(new Response('denied', {
+        status: 503, headers: { 'content-type': 'text/plain' },
+      }))
+      const failed = await createOpenAIResponsesInitialStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 150,
+      }).run(replace)
+      expect(failed.state).toBe('failed')
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:replacement' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:replacement' })
     } finally { db.close() }
   })
 })

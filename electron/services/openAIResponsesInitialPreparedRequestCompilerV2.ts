@@ -1,6 +1,6 @@
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
-import { isOpenAIResponsesInitialSendHistoryFactForContextV2, type OpenAIResponsesInitialSendHistoryFactV2 } from '../../infra/db/repo/openAIResponsesNativeHistoryV2Repo'
+import { isOpenAIResponsesRequestHistoryFactForContextV2, type OpenAIResponsesRequestHistoryFactV2 } from '../../infra/db/repo/openAIResponsesNativeHistoryV2Repo'
 import { isReviewedProviderContractDefinitionV2, readReviewedOpenAIResponsesDefinitionV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
 import { isVerifiedProviderContractReferenceV2, verifyProviderContractReferenceV2 } from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
@@ -26,14 +26,15 @@ export class OpenAIResponsesInitialPreparedRequestCompilerV2Error extends Error 
 export function compileOpenAIResponsesInitialPreparedRequestV2(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
   execution: GenerationExecutionOperationBundleV2
-  history: OpenAIResponsesInitialSendHistoryFactV2
+  history: OpenAIResponsesRequestHistoryFactV2
 }>): PreparedProviderRequestV2 {
   if (!isGenerationExecutionOperationBundleForContextV2(input.execution, input.context) ||
-      !isOpenAIResponsesInitialSendHistoryFactForContextV2(input.history, input.context)) {
+      !isOpenAIResponsesRequestHistoryFactForContextV2(input.history, input.context)) {
     throw new OpenAIResponsesInitialPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
-  if (operation.actionKind !== 'initial_send' || operation.operationId.value !== input.history.operationId.value ||
+  if (!['initial_send', 'retry_as_new', 'retry_replace'].includes(operation.actionKind) ||
+      operation.operationId.value !== input.history.operationId.value ||
       operation.resultAnswerRootId.value !== input.history.answerRootId.value ||
       snapshot.operationId.value !== operation.operationId.value || snapshot.answerRootId.value !== operation.resultAnswerRootId.value ||
       input.history.requestSequence !== 1) {
