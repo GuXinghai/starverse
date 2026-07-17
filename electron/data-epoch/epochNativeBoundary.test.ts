@@ -96,7 +96,7 @@ describe('epoch native authority boundary', () => {
     expect(sessionConsumers).toEqual([])
   })
 
-  it('keeps epoch-root creation outside database and production startup owners', () => {
+  it('limits epoch-root creation to the dormant database-phase coordinator', () => {
     const rootCoordinatorFile = path.join(
       repositoryRoot,
       'electron',
@@ -114,6 +114,25 @@ describe('epoch native authority boundary', () => {
         }
       }
     }
-    expect(consumers).toEqual([])
+    expect(consumers).toEqual([path.join('electron', 'data-epoch', 'epochDatabaseCoordinatorCore.ts')])
+
+    const databaseCoordinatorFile = path.join(
+      repositoryRoot,
+      'electron',
+      'data-epoch',
+      'epochDatabaseCoordinatorCore.ts',
+    )
+    const databaseCoordinatorSource = fs.readFileSync(databaseCoordinatorFile, 'utf8')
+    expect(databaseCoordinatorSource).not.toMatch(/workerManager|electron\/main|ipc|BrowserWindow/u)
+    const databaseCoordinatorConsumers: string[] = []
+    for (const rootName of ['electron', 'src', 'infra']) {
+      for (const file of productionTypeScriptFiles(path.join(repositoryRoot, rootName))) {
+        if (file === databaseCoordinatorFile) continue
+        if (fs.readFileSync(file, 'utf8').includes('epochDatabaseCoordinatorCore')) {
+          databaseCoordinatorConsumers.push(path.relative(repositoryRoot, file))
+        }
+      }
+    }
+    expect(databaseCoordinatorConsumers).toEqual([])
   })
 })
