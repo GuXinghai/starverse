@@ -17,7 +17,7 @@ export type ReasoningIntentV2 =
   | Readonly<{ mode: 'disabled' }>
   | Readonly<{
       mode: 'enabled'
-      effort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+      effort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
       summary?: 'auto' | 'concise' | 'detailed'
     }>
 
@@ -247,7 +247,7 @@ function decodeReasoning(value: unknown): ReasoningIntentV2 {
   if (input.mode !== 'enabled') throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   return compact({
     mode: 'enabled' as const,
-    effort: optionalEnum(input, 'effort', ['minimal', 'low', 'medium', 'high', 'xhigh']),
+    effort: optionalEnum(input, 'effort', ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
     summary: optionalEnum(input, 'summary', ['auto', 'concise', 'detailed']),
   })
 }

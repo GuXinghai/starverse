@@ -285,11 +285,18 @@ const OPENAI_RESPONSES_PROJECTION: DefinitionProjection = Object.freeze({
     verifiedAt: openAIResponsesApiContract.evidence.verifiedAt,
     openApiSha256: null,
     provenanceUrls: openAIResponsesApiContract.evidence.provenanceUrls,
-    localArtifacts: Object.freeze([Object.freeze({
-      id: 'openai-responses-api-contract-20260715',
-      path: 'docs/architecture/generation-compiler-v2/evidence/openai-responses-api-contract-20260715.json',
-      sha256: '2002b74420786ae4b2005bc9ccd32336885e92976b18849d75c5ec2d48563714',
-    })]),
+    localArtifacts: Object.freeze([
+      Object.freeze({
+        id: 'openai-responses-api-contract-20260715',
+        path: 'docs/architecture/generation-compiler-v2/evidence/openai-responses-api-contract-20260715.json',
+        sha256: '2002b74420786ae4b2005bc9ccd32336885e92976b18849d75c5ec2d48563714',
+      }),
+      Object.freeze({
+        id: 'openai-responses-gpt-5.6-capabilities-20260717',
+        path: 'docs/architecture/generation-compiler-v2/evidence/openai-responses-gpt-5.6-capabilities-20260717.json',
+        sha256: '41071866d51384c2b70ce2b429dcab65106e97c6b43c0252b93292c4855d2e83',
+      }),
+    ]),
   }),
 })
 

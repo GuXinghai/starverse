@@ -190,8 +190,8 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
     }),
     rule('reasoning.effort', 'supported_with_effort_mapping', OFFICIAL_THINKING, {
       wireKey: 'reasoning_effort',
-      domain: Object.freeze({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high', 'xhigh']) }),
-      mapping: Object.freeze({ low: 'high', medium: 'high', high: 'high', xhigh: 'max' }),
+      domain: Object.freeze({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']) }),
+      mapping: Object.freeze({ low: 'high', medium: 'high', high: 'high', xhigh: 'max', max: 'max' }),
       rejectionCode: 'DEEPSEEK_REASONING_EFFORT_UNSUPPORTED',
     }),
     rule('reasoning.mode', 'supported_static', OFFICIAL_THINKING, {

@@ -180,7 +180,7 @@ export function projectDeepSeekStableIntentV1(
         reject('reasoning.effort', 'DEEPSEEK_REASONING_EFFORT_UNSUPPORTED', 'reasoning_effort',
           OFFICIAL_THINKING_EVIDENCE)
       } else {
-        const effort = intent.reasoning.effort === 'xhigh' ? 'max' : 'high'
+        const effort = intent.reasoning.effort === 'xhigh' || intent.reasoning.effort === 'max' ? 'max' : 'high'
         encode('reasoning.effort', 'reasoning_effort', effort, OFFICIAL_THINKING_EVIDENCE)
       }
     }
