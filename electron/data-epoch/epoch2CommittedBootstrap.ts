@@ -1,3 +1,4 @@
+import BetterSqlite3 from 'better-sqlite3'
 import {
   createEpoch2RuntimeCredentialService,
   type CredentialConfigStore,
@@ -9,11 +10,17 @@ import { ensureEpoch2DatabaseCreated } from './epochDatabaseCoordinatorCore'
 import { advanceEpoch2ResetJournal, EPOCH2_RESET_PHASES, type Epoch2ResetJournal } from './resetJournal'
 import { readEpoch2ResetJournal, writeEpoch2ResetJournalAtomic } from './resetJournalStore'
 import type { Epoch2WorkspaceLayout } from './rootManifest'
-import { acquireWin32EpochRootLease } from './win32EpochRootLease'
+import {
+  acquireWin32EpochDatabaseFileAuthority,
+  acquireWin32EpochRootLease,
+  type Win32EpochDatabaseFileAuthority,
+} from './win32EpochRootLease'
 
 export type Epoch2CommittedRuntime = Readonly<{
   journal: Epoch2ResetJournal
   credentialService: Epoch2RuntimeCredentialService
+  database: BetterSqlite3.Database
+  assertCurrent: () => void
   close: () => Promise<void>
 }>
 
@@ -30,6 +37,8 @@ export async function bootstrapEpoch2ToCommitted(input: Readonly<{
   const lease = acquireWin32EpochRootLease(input.layout)
   let returned = false
   let credentialService: Epoch2RuntimeCredentialService | undefined
+  let databaseFileAuthority: Win32EpochDatabaseFileAuthority | undefined
+  let liveDatabase: BetterSqlite3.Database | undefined
   try {
     if (beforeOrAtConfigReplacement(readEpoch2ResetJournal({ layout: input.layout, lease }))) {
       await runEpoch2ResetThroughConfigReplacement({
@@ -57,20 +66,65 @@ export async function bootstrapEpoch2ToCommitted(input: Readonly<{
     }
     if (journal.phase !== 'committed') throw new Error('EPOCH2_BOOTSTRAP_PHASE_INVALID')
 
+    databaseFileAuthority = acquireWin32EpochDatabaseFileAuthority({
+      layout: input.layout,
+      lease,
+      rootAuthority: database.rootAuthority,
+      mode: 'verify_existing',
+    })
+    const liveIdentity = databaseFileAuthority.identity()
+    if (liveIdentity.databaseFileId !== database.database.databaseFileId) {
+      throw new Error('EPOCH2_BOOTSTRAP_DATABASE_IDENTITY_INVALID')
+    }
+    liveDatabase = new BetterSqlite3(input.layout.databasePath, { fileMustExist: true })
+    liveDatabase.pragma('foreign_keys = ON')
+    if (liveDatabase.pragma('foreign_keys', { simple: true }) !== 1) {
+      throw new Error('EPOCH2_BOOTSTRAP_DATABASE_PRAGMA_INVALID')
+    }
+    databaseFileAuthority.verifyPathIdentity()
+    const activeDatabase = liveDatabase
+    const activeDatabaseFileAuthority = databaseFileAuthority
+
     let closed = false
+    const assertCurrent = () => {
+      if (closed || !activeDatabase.open) throw new Error('EPOCH2_BOOTSTRAP_RUNTIME_CLOSED')
+      activeDatabaseFileAuthority.verifyPathIdentity()
+    }
     const close = async () => {
       if (closed) return
       closed = true
-      await activeCredentialService.close()
-      lease.release()
+      try {
+        if (activeDatabase.open) activeDatabase.close()
+      } finally {
+        activeDatabaseFileAuthority.release()
+        try {
+          await activeCredentialService.close()
+        } finally {
+          lease.release()
+        }
+      }
     }
-    const runtime = Object.freeze({ journal, credentialService: activeCredentialService, close })
+    const runtime = Object.freeze({
+      journal,
+      credentialService: activeCredentialService,
+      database: activeDatabase,
+      assertCurrent,
+      close,
+    })
     returned = true
     return runtime
   } finally {
     if (!returned) {
-      await credentialService?.close()
-      lease.release()
+      try {
+        if (liveDatabase?.open) liveDatabase.close()
+      } finally {
+        databaseFileAuthority?.release()
+        try {
+          await credentialService?.close()
+        } finally {
+          lease.release()
+        }
+      }
     }
   }
 }
