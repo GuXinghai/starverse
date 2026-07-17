@@ -212,7 +212,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/deepSeekPlainTextRegenerateCoordinatorV2.ts'),
       path.resolve('electron/services/deepSeekPlainTextEditResendCoordinatorV2.ts'),
       path.resolve('electron/services/deepSeekToolContinuationCoordinatorV2.ts'),
-      path.resolve('electron/services/deepSeekToolRegistryAuthorityV2.ts'),
+      path.resolve('electron/services/generationToolRegistryAuthorityV2.ts'),
       path.resolve('electron/services/openAIResponsesGenerationAuthorityV2Service.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextSnapshotCommitV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts'),
@@ -255,7 +255,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'electron/services/deepSeekPlainTextEditResendCoordinatorV2.ts',
     )
     const toolRegistryAuthority = path.resolve(
-      'electron/services/deepSeekToolRegistryAuthorityV2.ts',
+      'electron/services/generationToolRegistryAuthorityV2.ts',
     )
     const openAIGenerationAuthority = path.resolve(
       'electron/services/openAIResponsesGenerationAuthorityV2Service.ts',
@@ -322,7 +322,7 @@ describe('Generation Compiler V2 core boundary', () => {
     const regenerateCoordinator = path.resolve('electron/services/deepSeekPlainTextRegenerateCoordinatorV2.ts')
     const editResendCoordinator = path.resolve('electron/services/deepSeekPlainTextEditResendCoordinatorV2.ts')
     const toolContinuationCoordinator = path.resolve('electron/services/deepSeekToolContinuationCoordinatorV2.ts')
-    const toolRegistryAuthority = path.resolve('electron/services/deepSeekToolRegistryAuthorityV2.ts')
+    const toolRegistryAuthority = path.resolve('electron/services/generationToolRegistryAuthorityV2.ts')
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
         if (file === adapter || file === requestRepository || file === deepSeekHistoryRepository ||

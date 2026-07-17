@@ -71,7 +71,7 @@ async function issue<T>(db: BetterSqlite3.Database, use: (value: Readonly<{
         context, new GenerationConfigV2Repo(db), new AttachmentAssetV2Repo(db),
         'conversation:1', [], undefined,
         (commandFacts) => withVerifiedOpenAIResponsesGenerationAuthoritiesV2({
-          context, modelEvidence, commandFacts, operation: 'text', use: use as never,
+          context, modelEvidence, commandFacts, toolRegistry: null, operation: 'text', use: use as never,
         }),
       )),
   }) as Promise<T>

@@ -6,7 +6,7 @@ import {
 } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 
-export function resolveDeepSeekToolRegistryAuthorityV2(
+export function resolveGenerationToolRegistryAuthorityV2(
   context: GenerationV2AuthorityTransactionContextV2,
   repo: ToolRegistryV2Repo,
   commandFacts: GenerationCommandFactsAuthorityV2,
@@ -18,7 +18,7 @@ export function resolveDeepSeekToolRegistryAuthorityV2(
   )
 }
 
-export function loadDeepSeekSnapshotToolRegistryAuthorityV2(
+export function loadGenerationSnapshotToolRegistryAuthorityV2(
   context: GenerationV2AuthorityTransactionContextV2,
   repo: ToolRegistryV2Repo,
   execution: GenerationExecutionOperationBundleV2,
@@ -26,7 +26,7 @@ export function loadDeepSeekSnapshotToolRegistryAuthorityV2(
   const tools = execution.snapshot.semanticIntent.tools
   if (tools.mode === 'disabled') return null
   if (execution.snapshot.toolAuthority.kind !== 'registry') {
-    throw new Error('GENERATION_V2_DEEPSEEK_TOOL_REGISTRY_AUTHORITY_REQUIRED')
+    throw new Error('GENERATION_V2_TOOL_REGISTRY_AUTHORITY_REQUIRED')
   }
   return repo.loadSnapshotAuthority(
     context,

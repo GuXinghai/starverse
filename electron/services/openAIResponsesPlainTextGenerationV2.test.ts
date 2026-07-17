@@ -2,6 +2,7 @@ import BetterSqlite3 from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
+import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 
@@ -168,6 +169,54 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         (SELECT count(*) FROM assistant_generation_snapshot_v2) AS snapshots,
         (SELECT count(*) FROM generation_request_v2) AS requests`).get())
         .toEqual({ operations: 1, snapshots: 1, requests: 1 })
+    } finally { db.close() }
+  })
+
+  it('binds the current function registry into the OpenAI snapshot and exact request bytes', async () => {
+    const db = database()
+    try {
+      const registry = new ToolRegistryV2Repo(db, () => 50).installAndSelect({
+        schemaVersion: 2,
+        definitions: [{
+          toolId: 'tool:weather', kind: 'function', sideEffectPolicy: 'none',
+          function: {
+            name: 'weather', description: 'Lookup weather',
+            parameters: { type: 'object', properties: { city: { type: 'string' } } },
+          },
+        }],
+      }, null)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2,
+        tools: {
+          mode: 'enabled', allowedToolIds: ['tool:weather'], toolChoice: { mode: 'named', toolId: 'tool:weather' },
+          sideEffectConfirmation: 'required_each_retry',
+        },
+      })
+      mocks.fetch.mockResolvedValueOnce(modelResponse())
+      const result = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(result.execution.snapshot.toolAuthority).toMatchObject({
+        kind: 'registry', toolRegistryRevision: { value: registry.revision },
+        toolDefinitionsDigest: { value: registry.definitionsDigest },
+      })
+      expect(result.execution.capability.tools).toEqual([
+        expect.objectContaining({ toolId: 'tool:weather', state: 'supported' }),
+      ])
+      expect(JSON.parse(result.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        tools: [{
+          type: 'function', name: 'weather', description: 'Lookup weather', strict: false,
+          parameters: { type: 'object', properties: { city: { type: 'string' } } },
+        }],
+        tool_choice: { type: 'function', name: 'weather' },
+      })
+      expect(result.preparedRequest.ledger.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: 'tools.allowedToolIds', disposition: 'encoded', nativeField: 'tools' }),
+        expect.objectContaining({ path: 'tools.toolChoice', disposition: 'encoded', nativeField: 'tool_choice' }),
+        expect.objectContaining({ path: 'tools.sideEffectConfirmation', disposition: 'accepted_no_wire' }),
+      ]))
     } finally { db.close() }
   })
 

@@ -20,7 +20,7 @@ import {
   type GenerationTextCommandResultV2,
 } from './generationTextCommandResultV2'
 import { commitDeepSeekPlainTextRetrySnapshotV2 } from './deepSeekPlainTextSnapshotCommitV2'
-import { loadDeepSeekSnapshotToolRegistryAuthorityV2 } from './deepSeekToolRegistryAuthorityV2'
+import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
 
 export class DeepSeekPlainTextRetryCoordinatorV2Error extends Error {
   constructor(readonly code:
@@ -63,7 +63,7 @@ export function createDeepSeekPlainTextRetryCoordinatorV2(input: Readonly<{
       const history = historyRepo.loadRequestHistory(context, command.operationId.value)
       const preparedRequest = compileDeepSeekPreparedRequestV2({
         context, execution, history,
-        toolRegistry: loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution),
+        toolRegistry: loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution),
       })
       const request = requestRepo.replayPrepared(context, execution, preparedRequest)
       return issueGenerationTextCommandResultV2({
@@ -95,7 +95,7 @@ export function createDeepSeekPlainTextRetryCoordinatorV2(input: Readonly<{
             const history = historyRepo.loadRequestHistory(context, command.operationId.value)
             const preparedRequest = compileDeepSeekPreparedRequestV2({
               context, execution: raced, history,
-              toolRegistry: loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced),
+              toolRegistry: loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced),
             })
             const request = requestRepo.replayPrepared(context, raced, preparedRequest)
             return issueGenerationTextCommandResultV2({
@@ -137,7 +137,7 @@ export function createDeepSeekPlainTextRetryCoordinatorV2(input: Readonly<{
           const history = historyRepo.loadRequestHistory(context, command.operationId.value)
           const preparedRequest = compileDeepSeekPreparedRequestV2({
             context, execution: persisted.bundle, history,
-            toolRegistry: loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, persisted.bundle),
+            toolRegistry: loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, persisted.bundle),
           })
           const request = requestRepo.createPrepared(context, persisted.bundle, preparedRequest)
           return issueGenerationTextCommandResultV2({

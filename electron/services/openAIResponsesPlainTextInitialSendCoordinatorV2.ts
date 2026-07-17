@@ -9,6 +9,7 @@ import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2
 import { OpenAIResponsesNativeHistoryV2Repo } from '../../infra/db/repo/openAIResponsesNativeHistoryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
+import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import { decodeOpenAIResponsesPlainTextInitialSendCommandV2, type OpenAIResponsesPlainTextInitialSendCommandV2 } from '../../src/next/generation-v2/providers/openai-responses/plainTextInitialSendCommandV2'
@@ -17,6 +18,10 @@ import { createOpenAIResponsesModelEvidenceV2Service } from './openAIResponsesMo
 import { withVerifiedOpenAIResponsesGenerationAuthoritiesV2 } from './openAIResponsesGenerationAuthorityV2Service'
 import { commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2 } from './openAIResponsesPlainTextSnapshotCommitV2'
 import { compileOpenAIResponsesPreparedRequestV2 } from './openAIResponsesPreparedRequestCompilerV2'
+import {
+  loadGenerationSnapshotToolRegistryAuthorityV2,
+  resolveGenerationToolRegistryAuthorityV2,
+} from './generationToolRegistryAuthorityV2'
 import { issueGenerationTextCommandResultV2, isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 
 export type OpenAIResponsesPlainTextInitialSendResultV2 = GenerationTextCommandResultV2
@@ -41,6 +46,7 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
+  const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
   const modelEvidenceService = createOpenAIResponsesModelEvidenceV2Service({
     db: input.db, credentialService: input.credentialService, nowMs,
   })
@@ -59,7 +65,8 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
         throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       }
       const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-      const preparedRequest = compileOpenAIResponsesPreparedRequestV2({ context, execution, history })
+      const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
+      const preparedRequest = compileOpenAIResponsesPreparedRequestV2({ context, execution, history, toolRegistry })
       const request = requestRepo.replayPrepared(context, execution, preparedRequest)
       return issueGenerationTextCommandResultV2({
         kind: 'idempotent_replay', execution,
@@ -92,7 +99,10 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
                 throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
               }
               const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-              const preparedRequest = compileOpenAIResponsesPreparedRequestV2({ context, execution: raced, history })
+              const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced)
+              const preparedRequest = compileOpenAIResponsesPreparedRequestV2({
+                context, execution: raced, history, toolRegistry,
+              })
               return issueGenerationTextCommandResultV2({
                 kind: 'idempotent_replay', execution: raced,
                 projection: graphRepo.getInitialSendReplayProjectionInTransaction(context, command.operationId.value),
@@ -107,16 +117,19 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
             })
             return withSynchronousGenerationCommandFactsAuthorityV2(
               context, configRepo, attachmentRepo, pending.conversationId.value, [], undefined,
-              (commandFacts) => withVerifiedOpenAIResponsesGenerationAuthoritiesV2({
-                context, modelEvidence, commandFacts, operation: 'text',
+              (commandFacts) => {
+                const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
+                return withVerifiedOpenAIResponsesGenerationAuthoritiesV2({
+                context, modelEvidence, commandFacts, toolRegistry, operation: 'text',
                 use: ({ binding, capability }) => {
                   const persisted = commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2({
                     context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability,
+                    toolRegistry,
                   })
                   graphRepo.commitInitialTurnProjection(context, pending)
                   const history = historyRepo.loadRequestHistory(context, command.operationId.value)
                   const preparedRequest = compileOpenAIResponsesPreparedRequestV2({
-                    context, execution: persisted.bundle, history,
+                    context, execution: persisted.bundle, history, toolRegistry,
                   })
                   return issueGenerationTextCommandResultV2({
                     kind: 'created', execution: persisted.bundle,
@@ -124,7 +137,7 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
                     preparedRequest, request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest),
                   })
                 },
-              }),
+              })},
             )
           }),
         })

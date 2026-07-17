@@ -70,6 +70,20 @@ describe('OpenAI Responses V1 exact-body compiler', () => {
     expect(result.nativeRequest.reasoning).toEqual({ effort: 'max', summary: 'auto' })
   })
 
+  it('encodes a named function tool choice only when the exact function is present', () => {
+    const result = compileOpenAIResponsesRequestV1({
+      model: 'gpt-5.6-sol', priorArtifact: null, clientItems: [user('weather?')],
+      tools: [{ type: 'function', name: 'weather', parameters: { type: 'object' }, strict: false }],
+      toolChoice: { type: 'function', name: 'weather' },
+    })
+    expect(result.nativeRequest.tool_choice).toEqual({ type: 'function', name: 'weather' })
+    expect(() => compileOpenAIResponsesRequestV1({
+      model: 'gpt-5.6-sol', priorArtifact: null, clientItems: [user('weather?')],
+      tools: [{ type: 'function', name: 'weather', parameters: { type: 'object' }, strict: false }],
+      toolChoice: { type: 'function', name: 'unknown' },
+    })).toThrow('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+  })
+
   it('rejects unknown fields, unsupported reasoning fields, unsafe tool schemas and invalid explicit choices', () => {
     expect(() => compileOpenAIResponsesRequestV1({
       model: 'gpt-5.4', priorArtifact: null, clientItems: [user('x')], reasoning: { effort: 'medium', mode: 'auto' },

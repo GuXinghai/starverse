@@ -5,6 +5,7 @@ import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../..
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
 import { OpenAIResponsesNativeHistoryV2Repo } from '../../infra/db/repo/openAIResponsesNativeHistoryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import {
   decodeOpenAIResponsesPlainTextRetryCommandV2,
@@ -13,6 +14,7 @@ import {
 import { compileOpenAIResponsesPreparedRequestV2 } from './openAIResponsesPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { commitOpenAIResponsesPlainTextRetrySnapshotV2 } from './openAIResponsesPlainTextSnapshotCommitV2'
+import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
 
 export class OpenAIResponsesPlainTextRetryCoordinatorV2Error extends Error {
   constructor(readonly code:
@@ -35,6 +37,7 @@ export function createOpenAIResponsesPlainTextRetryCoordinatorV2(input: Readonly
   const requestRepo = new GenerationRequestV2Repo(input.db, nowMs)
   const historyRepo = new OpenAIResponsesNativeHistoryV2Repo(input.db)
   const graphRepo = new ConversationGraphV2Repo(input.db)
+  const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
 
   function replay(command: OpenAIResponsesPlainTextRetryCommandV2): GenerationTextCommandResultV2 | null {
     const observed = executionRepo.findOperation(command.operationId.value)
@@ -54,7 +57,8 @@ export function createOpenAIResponsesPlainTextRetryCoordinatorV2(input: Readonly
         throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       }
       const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-      const preparedRequest = compileOpenAIResponsesPreparedRequestV2({ context, execution, history })
+      const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
+      const preparedRequest = compileOpenAIResponsesPreparedRequestV2({ context, execution, history, toolRegistry })
       return issueGenerationTextCommandResultV2({
         kind: 'idempotent_replay', execution,
         projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
@@ -83,7 +87,10 @@ export function createOpenAIResponsesPlainTextRetryCoordinatorV2(input: Readonly
               throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
             }
             const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-            const preparedRequest = compileOpenAIResponsesPreparedRequestV2({ context, execution: raced, history })
+            const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced)
+            const preparedRequest = compileOpenAIResponsesPreparedRequestV2({
+              context, execution: raced, history, toolRegistry,
+            })
             return issueGenerationTextCommandResultV2({
               kind: 'idempotent_replay', execution: raced,
               projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
@@ -117,8 +124,11 @@ export function createOpenAIResponsesPlainTextRetryCoordinatorV2(input: Readonly
           })
           graphRepo.commitAnswerActionProjection(context, pending)
           const history = historyRepo.loadRequestHistory(context, command.operationId.value)
+          const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(
+            context, toolRegistryRepo, persisted.bundle,
+          )
           const preparedRequest = compileOpenAIResponsesPreparedRequestV2({
-            context, execution: persisted.bundle, history,
+            context, execution: persisted.bundle, history, toolRegistry,
           })
           return issueGenerationTextCommandResultV2({
             kind: 'created', execution: persisted.bundle,

@@ -22,6 +22,7 @@ export type OpenAIResponsesIntentProjectionV1 = Readonly<{
     reasoning?: Readonly<{ effort?: string; summary?: string }>
     generation: Readonly<{ maxOutputTokens?: number; verbosity?: string }>
     tools?: readonly OpenAIResponsesToolV1[]
+    functionToolChoice?: Readonly<{ mode: 'omitted' | 'auto' | 'none' | 'required' | 'named'; toolId?: string }>
     maxToolCalls?: number
     parallelToolCalls?: boolean
     serviceTier?: string
@@ -89,8 +90,18 @@ export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesInt
     }
     tools.push(Object.freeze(image) as OpenAIResponsesToolV1)
   }
+  let functionToolChoice: OpenAIResponsesIntentProjectionV1['request']['functionToolChoice']
   if (intent.tools.mode === 'disabled') accept('tools.mode')
-  else reject('tools.mode', 'OPENAI_CAPABILITY_UNAVAILABLE')
+  else {
+    encode('tools.mode', 'tools')
+    encode('tools.allowedToolIds', 'tools')
+    accept('tools.sideEffectConfirmation')
+    encode('tools.toolChoice', 'tool_choice')
+    functionToolChoice = Object.freeze({
+      mode: intent.tools.toolChoice.mode,
+      ...(intent.tools.toolChoice.mode === 'named' ? { toolId: intent.tools.toolChoice.toolId.value } : {}),
+    })
+  }
   for (const attachment of intent.attachments) {
     accept('attachments[].assetId'); accept('attachments[].assetRevisionId'); accept('attachments[].assetSha256')
     if (attachment.include) reject('attachments[].include', 'OPENAI_CAPABILITY_UNAVAILABLE')
@@ -132,6 +143,7 @@ export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesInt
     request: Object.freeze({
       ...(reasoning === undefined ? {} : { reasoning: Object.freeze(reasoning) }),
       generation: Object.freeze(generation), ...(tools.length === 0 ? {} : { tools: Object.freeze(tools) }),
+      ...(functionToolChoice === undefined ? {} : { functionToolChoice }),
       ...(maxToolCalls === undefined ? {} : { maxToolCalls }),
       ...(parallelToolCalls === undefined ? {} : { parallelToolCalls }),
       ...(serviceTier === undefined ? {} : { serviceTier }),
