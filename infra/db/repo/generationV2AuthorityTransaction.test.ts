@@ -18,6 +18,7 @@ import {
 } from './generationConfigV2Repo'
 import {
   isGenerationV2AuthorityTransactionContextV2,
+  registerGenerationV2AuthorityTransactionParticipantForContextV2,
   runGenerationV2AuthorityTransactionOnOwnedConnectionV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
@@ -163,6 +164,56 @@ describe('GenerationV2AuthorityTransaction internal Unit of Work primitive', () 
           })
         } catch { /* a failed participant cannot be ignored */ }
       })).toThrow('GENERATION_V2_ASSET_STATE_INVALID')
+    } finally { db.close() }
+  })
+
+  it('registers context-only participants with commit and reverse rollback cleanup', () => {
+    const db = createDb()
+    try {
+      const committed: string[] = []
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        registerGenerationV2AuthorityTransactionParticipantForContextV2(context, {
+          preCommit: () => committed.push('pre'),
+          committed: () => committed.push('commit'),
+          rolledBack: () => committed.push('rollback'),
+        })
+      })
+      expect(committed).toEqual(['pre', 'commit'])
+
+      const rolledBack: string[] = []
+      expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        for (const name of ['first', 'second']) {
+          registerGenerationV2AuthorityTransactionParticipantForContextV2(context, {
+            preCommit: () => rolledBack.push(`pre:${name}`),
+            committed: () => rolledBack.push(`commit:${name}`),
+            rolledBack: () => rolledBack.push(`rollback:${name}`),
+          })
+        }
+        throw new Error('abort')
+      })).toThrow('abort')
+      expect(rolledBack).toEqual(['rollback:second', 'rollback:first'])
+    } finally { db.close() }
+  })
+
+  it('rejects forged and expired contexts for context-only participant registration', () => {
+    const db = createDb()
+    try {
+      const participant = {
+        preCommit: () => undefined,
+        committed: () => undefined,
+        rolledBack: () => undefined,
+      }
+      expect(() => registerGenerationV2AuthorityTransactionParticipantForContextV2(
+        { trust: 'generation_v2_authority_transaction_context' } as never,
+        participant,
+      )).toThrow('GENERATION_V2_AUTHORITY_TRANSACTION_INVALID_CONTEXT')
+      let escaped: GenerationV2AuthorityTransactionContextV2 | undefined
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        escaped = context
+      })
+      expect(() => registerGenerationV2AuthorityTransactionParticipantForContextV2(
+        escaped!, participant,
+      )).toThrow('GENERATION_V2_AUTHORITY_TRANSACTION_INVALID_CONTEXT')
     } finally { db.close() }
   })
 })

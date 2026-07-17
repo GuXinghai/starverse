@@ -12,6 +12,10 @@ import {
   type ResolvedGenerationIntentV2,
 } from '../../../src/next/generation-v2/domain/resolvedGenerationIntentV2'
 import {
+  ConversationGraphV2Identity,
+  type ConversationGraphV2Identity as GraphIdentity,
+} from '../../../src/next/generation-v2/domain/conversationGraphV2'
+import {
   AttachmentAssetV2Repo,
   isResolvedAttachmentSetAuthorityV2,
   type ResolvedAttachmentSetAuthorityV2,
@@ -30,6 +34,7 @@ export type GenerationCommandFactsAuthorityV2 = Readonly<{
   trust: 'generation_command_facts_authority'
   usage: 'snapshot_semantics_and_attachment_provenance_only'
   executionAuthority: 'none'
+  conversationId: GraphIdentity<'conversation_id'>
   semanticIntent: ResolvedGenerationIntentV2
   resolvedConfigRevisions: readonly GenerationConfigRevisionEntryV2[]
   attachmentSet: ResolvedAttachmentSetAuthorityV2
@@ -63,6 +68,13 @@ export function isGenerationCommandFactsAuthorityV2(
     isResolvedAttachmentSetAuthorityV2(dependencies.attachments))
 }
 
+export function isGenerationCommandFactsAuthorityForContextV2(
+  value: unknown,
+  context: GenerationV2AuthorityTransactionContextV2,
+): value is GenerationCommandFactsAuthorityV2 {
+  return isGenerationCommandFactsAuthorityV2(value) && authorityContexts.get(value) === context
+}
+
 export function withSynchronousGenerationCommandFactsAuthorityV2<T>(
   context: GenerationV2AuthorityTransactionContextV2,
   configRepo: GenerationConfigV2Repo,
@@ -79,6 +91,12 @@ export function withSynchronousGenerationCommandFactsAuthorityV2<T>(
   if (commandAttachments === undefined) {
     throw new GenerationCommandFactsAuthorityV2Error('GENERATION_V2_COMMAND_ATTACHMENTS_REQUIRED')
   }
+  let exactConversationId: GraphIdentity<'conversation_id'>
+  try {
+    exactConversationId = ConversationGraphV2Identity.create('conversation_id', conversationId)
+  } catch {
+    throw new GenerationCommandFactsAuthorityV2Error('GENERATION_V2_COMMAND_FACTS_INVALID')
+  }
   const attachmentLayer = decodeGenerationIntentLayerV2({
     schemaVersion: 2,
     attachments: commandAttachments,
@@ -86,7 +104,7 @@ export function withSynchronousGenerationCommandFactsAuthorityV2<T>(
   if (attachmentLayer.attachments === undefined) {
     throw new GenerationCommandFactsAuthorityV2Error('GENERATION_V2_COMMAND_FACTS_INVALID')
   }
-  const config = configRepo.resolveForConversation(context, conversationId, expectedConfigRevisions)
+  const config = configRepo.resolveForConversation(context, exactConversationId.value, expectedConfigRevisions)
   const projectedConfig = projectGenerationIntentLayerV2(config.semanticIntent)
   const projectedAttachments = projectGenerationIntentLayerV2({
     schemaVersion: 2,
@@ -104,6 +122,7 @@ export function withSynchronousGenerationCommandFactsAuthorityV2<T>(
         trust: 'generation_command_facts_authority' as const,
         usage: 'snapshot_semantics_and_attachment_provenance_only' as const,
         executionAuthority: 'none' as const,
+        conversationId: exactConversationId,
         semanticIntent: resolvedIntent.value,
         resolvedConfigRevisions: config.revisionSet,
         attachmentSet,

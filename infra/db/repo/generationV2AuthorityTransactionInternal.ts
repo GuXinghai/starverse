@@ -99,6 +99,17 @@ export function registerGenerationV2AuthorityTransactionParticipantV2(
   }))
 }
 
+export function registerGenerationV2AuthorityTransactionParticipantForContextV2(
+  context: GenerationV2AuthorityTransactionContextV2,
+  participant: Participant,
+): void {
+  const state = context && typeof context === 'object' ? contexts.get(context) : undefined
+  if (!state) {
+    throw new GenerationV2AuthorityTransactionError('GENERATION_V2_AUTHORITY_TRANSACTION_INVALID_CONTEXT')
+  }
+  registerGenerationV2AuthorityTransactionParticipantV2(context, state.db, participant)
+}
+
 /** No production caller. A future verified epoch coordinator may own this connection boundary. */
 export function runGenerationV2AuthorityTransactionOnOwnedConnectionV2<T>(
   db: BetterSqlite3.Database,

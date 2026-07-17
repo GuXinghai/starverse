@@ -97,6 +97,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/conversationGraphV2Repo.ts'),
       path.resolve('electron/services/deepSeekStableModelEvidenceV2Service.ts'),
       path.resolve('electron/services/deepSeekStableGenerationAuthorityV2Service.ts'),
+      path.resolve('electron/services/deepSeekPlainTextSnapshotCommitV2.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -157,6 +158,8 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/generationExecutionV2Repo.ts'),
       path.resolve('infra/db/repo/runtimeCapabilityV2Repo.ts'),
       path.resolve('infra/db/repo/conversationGraphV2Repo.ts'),
+      path.resolve('electron/services/deepSeekStableGenerationAuthorityV2Service.ts'),
+      path.resolve('electron/services/deepSeekPlainTextSnapshotCommitV2.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -178,9 +181,12 @@ describe('Generation Compiler V2 core boundary', () => {
     const deepSeekGenerationAuthority = path.resolve(
       'electron/services/deepSeekStableGenerationAuthorityV2Service.ts',
     )
+    const deepSeekSnapshotCommit = path.resolve(
+      'electron/services/deepSeekPlainTextSnapshotCommitV2.ts',
+    )
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === adapter || file === deepSeekGenerationAuthority) continue
+        if (file === adapter || file === deepSeekGenerationAuthority || file === deepSeekSnapshotCommit) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/generationCommandFactsAuthorityV2|GenerationCommandFactsAuthorityV2/iu)
       }
@@ -193,9 +199,12 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('keeps the execution repository dormant and its unproven write surfaces closed', () => {
     const adapter = path.resolve('infra/db/repo/generationExecutionV2Repo.ts')
+    const deepSeekSnapshotCommit = path.resolve(
+      'electron/services/deepSeekPlainTextSnapshotCommitV2.ts',
+    )
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === adapter) continue
+        if (file === adapter || file === deepSeekSnapshotCommit) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/generationExecutionV2Repo|GenerationExecutionV2Repo/iu)
       }
@@ -208,9 +217,12 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('keeps the V2 conversation graph repository dormant and outside legacy or production entrypoints', () => {
     const adapter = path.resolve('infra/db/repo/conversationGraphV2Repo.ts')
+    const deepSeekSnapshotCommit = path.resolve(
+      'electron/services/deepSeekPlainTextSnapshotCommitV2.ts',
+    )
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === adapter) continue
+        if (file === adapter || file === deepSeekSnapshotCommit) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/conversationGraphV2Repo|ConversationGraphV2Repo/iu)
       }
@@ -264,6 +276,9 @@ describe('Generation Compiler V2 core boundary', () => {
     const deepSeekGenerationAuthority = path.resolve(
       'electron/services/deepSeekStableGenerationAuthorityV2Service.ts',
     )
+    const deepSeekSnapshotCommit = path.resolve(
+      'electron/services/deepSeekPlainTextSnapshotCommitV2.ts',
+    )
     const source = read('src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts')
     expect(source).toContain("trust: 'decoded_unverified'")
     expect(source).toContain("executionAuthority: 'none'")
@@ -273,7 +288,7 @@ describe('Generation Compiler V2 core boundary', () => {
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
         if (file === codecModule || file === repositoryAdapter || file === executionRepository ||
-            file === deepSeekGenerationAuthority) continue
+            file === deepSeekGenerationAuthority || file === deepSeekSnapshotCommit) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file)).not.toMatch(
           /(?:Decoded|Persisted)RuntimeCapabilitySnapshotV2|canonicalizeUnverifiedRuntimeCapabilitySnapshotV2|decodeRuntimeCapabilitySnapshot(?:Json)?V2/u,
         )
@@ -283,9 +298,12 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('keeps canonical runtime capability persistence dormant and out of legacy data paths', () => {
     const adapter = path.resolve('infra/db/repo/runtimeCapabilityV2Repo.ts')
+    const deepSeekSnapshotCommit = path.resolve(
+      'electron/services/deepSeekPlainTextSnapshotCommitV2.ts',
+    )
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === adapter) continue
+        if (file === adapter || file === deepSeekSnapshotCommit) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/runtimeCapabilityV2Repo|RuntimeCapabilityV2Repo/iu)
       }
@@ -404,9 +422,12 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('keeps DeepSeek binding and capability composition main-process-only, branded and dormant', () => {
     const adapter = path.resolve('electron/services/deepSeekStableGenerationAuthorityV2Service.ts')
+    const deepSeekSnapshotCommit = path.resolve(
+      'electron/services/deepSeekPlainTextSnapshotCommitV2.ts',
+    )
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === adapter) continue
+        if (file === adapter || file === deepSeekSnapshotCommit) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/deepSeekStableGenerationAuthorityV2Service|VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2/iu)
       }
@@ -418,6 +439,33 @@ describe('Generation Compiler V2 core boundary', () => {
     expect(source).toContain('isGenerationCommandFactsAuthorityV2')
     expect(source).not.toMatch(/ipcMain|BrowserWindow|chat\.db|capabilitySeed|modelCatalog|deepseek_official_openai_compat|\/v1|\/beta/iu)
     expect(source).not.toMatch(/fetch\(|net\.request|compileDeepSeekStableChatRequestV1|PreparedProviderRequest/iu)
+  })
+
+  it('makes the DeepSeek plain-text snapshot facade the sole dormant execution writer', () => {
+    const facade = path.resolve('electron/services/deepSeekPlainTextSnapshotCommitV2.ts')
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === facade || file.endsWith(`${path.sep}generationExecutionV2Repo.ts`)) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+          .not.toMatch(/\.insertOperationAndSnapshot\(/u)
+      }
+    }
+    const source = read('electron/services/deepSeekPlainTextSnapshotCommitV2.ts')
+    expect(source).toContain('commitVerifiedDeepSeekPlainTextInitialSnapshotV2')
+    expect(source).toContain("actionKind: 'initial_send'")
+    expect(source).toContain('canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2')
+    expect(source).toContain('isGenerationCommandFactsAuthorityForContextV2')
+    expect(source).toContain('isPendingInitialTurnForContextV2')
+    expect(source).not.toMatch(/ipcMain|BrowserWindow|chat\.db|activeSessionConfig|composer|generation-params|fetch\(|net\.request|PreparedProviderRequest/iu)
+    for (const file of [
+      'electron/main.ts',
+      'electron/preload.ts',
+      'electron/ipc/registerIpc.ts',
+      'src/ui-app/app/appChatApp.logic.ts',
+      'electron/ipc/openRouterStreamBridge.ts',
+    ]) {
+      expect(read(file), file).not.toMatch(/deepSeekPlainTextSnapshotCommitV2/iu)
+    }
   })
 
   it('limits verified contract references to non-executable snapshot provenance', () => {
@@ -534,6 +582,7 @@ describe('Generation Compiler V2 core boundary', () => {
     const deepSeekElectronServices = new Set([
       path.resolve('electron/services/deepSeekStableModelEvidenceV2Service.ts'),
       path.resolve('electron/services/deepSeekStableGenerationAuthorityV2Service.ts'),
+      path.resolve('electron/services/deepSeekPlainTextSnapshotCommitV2.ts'),
     ])
     for (const file of productionSources(path.resolve('electron'))) {
       if (deepSeekElectronServices.has(file)) continue
