@@ -12,6 +12,7 @@ import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2
 import { DeepSeekNativeHistoryV2Repo } from '../../infra/db/repo/deepSeekNativeHistoryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
+import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import {
@@ -21,6 +22,10 @@ import {
 import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
 import { createDeepSeekStableModelEvidenceV2Service } from './deepSeekStableModelEvidenceV2Service'
 import { withVerifiedDeepSeekStableGenerationAuthoritiesV2 } from './deepSeekStableGenerationAuthorityV2Service'
+import {
+  loadDeepSeekSnapshotToolRegistryAuthorityV2,
+  resolveDeepSeekToolRegistryAuthorityV2,
+} from './deepSeekToolRegistryAuthorityV2'
 import { compileDeepSeekPreparedRequestV2 } from './deepSeekInitialPreparedRequestCompilerV2'
 import {
   issueDeepSeekPlainTextCommandResultV2,
@@ -43,6 +48,7 @@ export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
+  const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
   const modelEvidenceService = createDeepSeekStableModelEvidenceV2Service({
     db: input.db, credentialService: input.credentialService, nowMs,
   })
@@ -62,7 +68,10 @@ export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
         throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       }
       const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-      const preparedRequest = compileDeepSeekPreparedRequestV2({ context, execution, history })
+      const preparedRequest = compileDeepSeekPreparedRequestV2({
+        context, execution, history,
+        toolRegistry: loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution),
+      })
       const request = requestRepo.replayPrepared(context, execution, preparedRequest)
       return issueDeepSeekPlainTextCommandResultV2({
         kind: 'idempotent_replay', execution,
@@ -99,7 +108,10 @@ export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
                   throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
                 }
                 const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-                const preparedRequest = compileDeepSeekPreparedRequestV2({ context, execution: raced, history })
+                const preparedRequest = compileDeepSeekPreparedRequestV2({
+                  context, execution: raced, history,
+                  toolRegistry: loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced),
+                })
                 const persistedRequest = requestRepo.replayPrepared(context, raced, preparedRequest)
                 return issueDeepSeekPlainTextCommandResultV2({
                   kind: 'idempotent_replay', execution: raced,
@@ -122,17 +134,20 @@ export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
               })
               return withSynchronousGenerationCommandFactsAuthorityV2(
                 context, configRepo, attachmentRepo, pending.conversationId.value, [], undefined,
-                (commandFacts) => withVerifiedDeepSeekStableGenerationAuthoritiesV2({
+                (commandFacts) => {
+                  const toolRegistry = resolveDeepSeekToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
+                  return withVerifiedDeepSeekStableGenerationAuthoritiesV2({
                   context, modelEvidence, commandFacts, operation: 'text',
+                  toolRegistry,
                   use: (authorities) => {
                     const persisted = commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2({
                       context, executionRepo, capabilityRepo, pending, command, commandFacts,
-                      binding: authorities.binding, capability: authorities.capability,
+                      binding: authorities.binding, capability: authorities.capability, toolRegistry,
                     })
                     graphRepo.commitAnswerActionProjection(context, pending)
                     const history = historyRepo.loadRequestHistory(context, command.operationId.value)
                     const preparedRequest = compileDeepSeekPreparedRequestV2({
-                      context, execution: persisted.bundle, history,
+                      context, execution: persisted.bundle, history, toolRegistry,
                     })
                     const persistedRequest = requestRepo.createPrepared(
                       context, persisted.bundle, preparedRequest,
@@ -145,7 +160,8 @@ export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
                       preparedRequest, request: persistedRequest,
                     })
                   },
-                }),
+                  })
+                },
               )
             },
           ),

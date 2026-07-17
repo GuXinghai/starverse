@@ -11,6 +11,7 @@ import {
   isGenerationRequestRepositoryFactV2,
 } from '../../infra/db/repo/generationRequestV2Repo'
 import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
+import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 
 const mocks = vi.hoisted(() => ({
@@ -212,6 +213,57 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       })
       expect(result.projection.visibleCandidates.map((value) => value.value)).toEqual(['answer:2'])
       expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    } finally { db.close() }
+  })
+
+  it('binds one exact tool registry revision into snapshot, capability and prepared bytes', async () => {
+    const db = database()
+    try {
+      const registry = new ToolRegistryV2Repo(db, () => 50).installAndSelect({
+        schemaVersion: 2,
+        definitions: [{
+          toolId: 'tool:weather', kind: 'function', sideEffectPolicy: 'none',
+          function: {
+            name: 'weather', description: 'Lookup weather',
+            parameters: { type: 'object', required: ['city'], properties: { city: { type: 'string' } } },
+          },
+        }],
+      }, null)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2,
+        tools: {
+          mode: 'enabled', allowedToolIds: ['tool:weather'], toolChoice: { mode: 'omitted' },
+          sideEffectConfirmation: 'required_each_retry',
+        },
+      })
+      mocks.fetch.mockResolvedValueOnce(response())
+      const result = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(result.execution.snapshot.toolAuthority).toMatchObject({
+        kind: 'registry',
+        toolRegistryRevision: { value: registry.revision },
+        toolDefinitionsDigest: { value: registry.definitionsDigest },
+      })
+      expect(result.execution.capability.tools).toEqual([
+        expect.objectContaining({ toolId: 'tool:weather', kind: 'function', state: 'supported' }),
+      ])
+      expect(JSON.parse(result.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'weather', description: 'Lookup weather',
+            parameters: { type: 'object', required: ['city'], properties: { city: { type: 'string' } } },
+          },
+        }],
+      })
+      expect(JSON.parse(result.preparedRequest.body.copyUtf8Text())).not.toHaveProperty('tool_choice')
+      expect(result.preparedRequest.ledger.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: 'tools.allowedToolIds', disposition: 'encoded', nativeField: 'tools' }),
+        expect.objectContaining({ path: 'tools.toolChoice', disposition: 'accepted_no_wire' }),
+      ]))
     } finally { db.close() }
   })
 

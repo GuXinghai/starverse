@@ -8,6 +8,10 @@ import {
   type DeepSeekRequestHistoryRepositoryFactV2,
 } from '../../infra/db/repo/deepSeekNativeHistoryV2Repo'
 import {
+  isToolRegistryRepositoryFactForContextV2,
+  type ToolRegistryRepositoryFactV2,
+} from '../../infra/db/repo/toolRegistryV2Repo'
+import {
   isReviewedProviderContractDefinitionV2,
   readReviewedDeepSeekStableChatDefinitionV2,
 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
@@ -16,6 +20,7 @@ import {
   verifyProviderContractReferenceV2,
 } from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
+import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
 import {
   DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
 } from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
@@ -65,12 +70,14 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
   execution: GenerationExecutionOperationBundleV2
   history: DeepSeekRequestHistoryRepositoryFactV2
+  toolRegistry?: ToolRegistryRepositoryFactV2 | null
 }>): PreparedProviderRequestV2 {
   if (!isGenerationExecutionOperationBundleForContextV2(input.execution, input.context) ||
       !isDeepSeekRequestHistoryRepositoryFactForContextV2(input.history, input.context)) {
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
+  const toolRegistry = input.toolRegistry ?? null
   if (!['initial_send', 'edit_resend', 'regenerate_question', 'retry_as_new', 'retry_replace']
         .includes(operation.actionKind) ||
       !['committed', 'streaming', 'completed', 'failed', 'cancelled'].includes(operation.state) ||
@@ -104,20 +111,40 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_BINDING_INVALID')
   }
 
-  const projection = projectDeepSeekStableIntentV1(snapshot.semanticIntent)
+  const toolsEnabled = snapshot.semanticIntent.tools.mode === 'enabled'
+  if (toolsEnabled) {
+    if (snapshot.toolAuthority.kind !== 'registry' ||
+        !isToolRegistryRepositoryFactForContextV2(toolRegistry, input.context) ||
+        toolRegistry.registry.revision !== snapshot.toolAuthority.toolRegistryRevision.value ||
+        toolRegistry.registry.definitionsDigest !== snapshot.toolAuthority.toolDefinitionsDigest.value ||
+        stableSerializeProviderRequestV2(toolRegistry.selectedDefinitions.map((tool) => tool.toolId)) !==
+          stableSerializeProviderRequestV2(snapshot.semanticIntent.tools.allowedToolIds.map((tool) => tool.value))) {
+      throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
+    }
+  } else if (snapshot.toolAuthority.kind !== 'none' || toolRegistry !== null) {
+    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
+  }
+  const projection = projectDeepSeekStableIntentV1(
+    projectGenerationIntentLayerV2(snapshot.semanticIntent),
+    toolsEnabled,
+  )
   if (projection.issues.length > 0) {
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_SEMANTIC_REJECTED')
   }
   const capabilityFields = new Map<string, typeof capability.fields[number]>(
     capability.fields.map((field) => [field.path, field]),
   )
-  if (projection.dispositions.some((disposition) => capabilityFields.get(disposition.semanticPath)?.state !== 'supported')) {
+  if (projection.dispositions.some((disposition) => {
+    const state = capabilityFields.get(disposition.semanticPath)?.state
+    return state !== 'supported' && state !== 'requires_confirmation'
+  })) {
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_CAPABILITY_MISMATCH')
   }
   const nativeFields = new Map(projection.nativeSemanticFields.map((field) => [field.wireKey, field.value]))
   if (nativeFields.size !== projection.nativeSemanticFields.length) {
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_LEDGER_MISMATCH')
   }
+  const intentTools = snapshot.semanticIntent.tools
   const compilation = compileDeepSeekStableChatRequestV1({
     model: binding.modelId.value,
     priorArtifact: input.history.priorArtifact,
@@ -132,6 +159,27 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
       ...(nativeFields.has('temperature') ? { temperature: nativeFields.get('temperature') } : {}),
       ...(nativeFields.has('top_p') ? { topP: nativeFields.get('top_p') } : {}),
     },
+    ...(toolRegistry === null ? {} : {
+      tools: toolRegistry.selectedDefinitions.map((tool) => ({
+        type: 'function' as const,
+        function: {
+          name: tool.function.name,
+          ...(tool.function.description === undefined ? {} : { description: tool.function.description }),
+          ...(tool.function.parameters === undefined ? {} : { parameters: tool.function.parameters }),
+        },
+      })),
+      ...(intentTools.mode === 'enabled' && intentTools.toolChoice.mode !== 'omitted' ? {
+          toolChoice: intentTools.toolChoice.mode === 'named'
+            ? {
+                type: 'function' as const,
+                function: {
+                  name: toolRegistry.selectedDefinitions.find((tool) =>
+                    tool.toolId === intentTools.toolChoice.toolId.value)!.function.name,
+                },
+              }
+            : intentTools.toolChoice.mode,
+        } : {}),
+    }),
   })
   if (projection.nativeSemanticFields.some((field) =>
     !equalValue(requestWireValue(compilation.nativeRequest, field.wireKey), field.value))) {
