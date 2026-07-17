@@ -48,7 +48,7 @@ describe('DeepSeek stable semantic intent projection V1', () => {
   })
 
   it.each([
-    ['low', 'high'], ['medium', 'high'], ['high', 'high'], ['xhigh', 'max'],
+    ['low', 'high'], ['medium', 'high'], ['high', 'high'], ['xhigh', 'max'], ['max', 'max'],
   ] as const)('records the official thinking effort mapping %s -> %s', (effort, wireEffort) => {
     const projection = projectDeepSeekStableIntentV1(resolved({
       reasoning: { mode: 'enabled', effort },

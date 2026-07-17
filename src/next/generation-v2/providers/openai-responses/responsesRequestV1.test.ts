@@ -13,10 +13,13 @@ describe('OpenAI Responses V1 exact-body compiler', () => {
       generation: { temperature: 0.4, topP: 0.8, maxOutputTokens: 2048, verbosity: 'low' },
       tools: [
         { type: 'function', name: 'weather', description: 'Weather', parameters: { type: 'object', properties: {} }, strict: true },
-        { type: 'web_search', searchContextSize: 'medium' },
-        { type: 'image_generation', size: '1024x1024', quality: 'low', outputFormat: 'png', background: 'opaque' },
+        { type: 'web_search', searchContextSize: 'medium', allowedDomains: ['example.com'] },
+        { type: 'image_generation', action: 'auto', size: '1024x1024', quality: 'low', outputFormat: 'png', background: 'opaque', partialImages: 2 },
       ],
       toolChoice: 'auto',
+      maxToolCalls: 8,
+      parallelToolCalls: false,
+      serviceTier: 'default',
     })
     expect(result.nativeRequest).toEqual({
       model: 'gpt-5.4', input: [user('draw and research')], stream: true, store: false,
@@ -25,10 +28,13 @@ describe('OpenAI Responses V1 exact-body compiler', () => {
       temperature: 0.4, top_p: 0.8, max_output_tokens: 2048, text: { verbosity: 'low' },
       tools: [
         { type: 'function', name: 'weather', description: 'Weather', parameters: { properties: {}, type: 'object' }, strict: true },
-        { type: 'web_search', search_context_size: 'medium' },
-        { type: 'image_generation', size: '1024x1024', quality: 'low', output_format: 'png', background: 'opaque' },
+        { type: 'web_search', search_context_size: 'medium', filters: { allowed_domains: ['example.com'] } },
+        { type: 'image_generation', action: 'auto', size: '1024x1024', quality: 'low', output_format: 'png', background: 'opaque', partial_images: 2 },
       ],
       tool_choice: 'auto',
+      max_tool_calls: 8,
+      parallel_tool_calls: false,
+      service_tier: 'default',
     })
     const exact = JSON.parse(result.preparedBody.copyUtf8Text())
     expect(exact).toEqual(result.nativeRequest)
@@ -54,6 +60,14 @@ describe('OpenAI Responses V1 exact-body compiler', () => {
       { id: 'fc_1', type: 'function_call', call_id: 'call_1', name: 'weather', arguments: '{}', status: 'completed' },
       { type: 'function_call_output', call_id: 'call_1', output: 'sunny' },
     ])
+  })
+
+  it('encodes the maximum reasoning effort without aliasing it', () => {
+    const result = compileOpenAIResponsesRequestV1({
+      model: 'gpt-5.6-sol', priorArtifact: null, clientItems: [user('x')],
+      reasoning: { effort: 'max', summary: 'auto' },
+    })
+    expect(result.nativeRequest.reasoning).toEqual({ effort: 'max', summary: 'auto' })
   })
 
   it('rejects unknown fields, unsupported reasoning fields, unsafe tool schemas and invalid explicit choices', () => {

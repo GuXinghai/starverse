@@ -12,6 +12,13 @@ describe('GenerationIntentLayerV2 codec', () => {
     expect(Object.isFrozen(sparse.reasoning)).toBe(true)
   })
 
+  it('preserves the current maximum reasoning effort as a semantic value', () => {
+    expect(decodeGenerationIntentLayerV2({
+      schemaVersion: 2,
+      reasoning: { mode: 'enabled', effort: 'max' },
+    }).reasoning).toEqual({ mode: 'enabled', effort: 'max' })
+  })
+
   it('decodes closed semantic leaves into branded immutable references', () => {
     const intent = decodeGenerationIntentLayerV2({
       schemaVersion: 2,

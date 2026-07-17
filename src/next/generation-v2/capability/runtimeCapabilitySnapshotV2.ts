@@ -429,7 +429,7 @@ const ENUM_VALUES_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPath
   'image.quality': ['auto', 'low', 'medium', 'high'],
   'image.resolution': ['512', '1K', '2K', '4K'],
   'providerExtension.kind': ['none'],
-  'reasoning.effort': ['minimal', 'low', 'medium', 'high', 'xhigh'],
+  'reasoning.effort': ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
   'reasoning.mode': ['disabled', 'enabled'],
   'reasoning.summary': ['auto', 'concise', 'detailed'],
   'tools.mode': ['disabled', 'enabled'],

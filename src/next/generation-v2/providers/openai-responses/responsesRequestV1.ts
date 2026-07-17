@@ -11,7 +11,7 @@ import type { OpenAIResponsesReplayItemV1 } from './nativeItemsV1'
 
 export const OPENAI_RESPONSES_REQUEST_MAX_BYTES_V1 = 28 * 1_024 * 1_024
 
-type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 type ReasoningSummary = 'auto' | 'concise' | 'detailed'
 type FunctionTool = Readonly<{
   type: 'function'
@@ -23,13 +23,16 @@ type FunctionTool = Readonly<{
 type WebSearchTool = Readonly<{
   type: 'web_search'
   search_context_size?: 'low' | 'medium' | 'high'
+  filters?: Readonly<{ allowed_domains: readonly string[] }>
 }>
 type ImageGenerationTool = Readonly<{
   type: 'image_generation'
+  action?: 'auto' | 'generate' | 'edit'
   size?: 'auto' | '1024x1024' | '1024x1536' | '1536x1024'
   quality?: 'auto' | 'low' | 'medium' | 'high'
   output_format?: 'png' | 'jpeg' | 'webp'
   background?: 'auto' | 'transparent' | 'opaque'
+  partial_images?: number
 }>
 export type OpenAIResponsesToolV1 = FunctionTool | WebSearchTool | ImageGenerationTool
 
@@ -47,6 +50,9 @@ export type OpenAIResponsesRequestV1 = Readonly<{
   text?: Readonly<{ verbosity: 'low' | 'medium' | 'high' }>
   tools?: readonly OpenAIResponsesToolV1[]
   tool_choice?: 'none' | 'auto' | 'required'
+  max_tool_calls?: number
+  parallel_tool_calls?: boolean
+  service_tier?: 'auto' | 'default' | 'flex' | 'priority'
 }>
 
 export type OpenAIResponsesCompilationV1 = Readonly<{
@@ -138,7 +144,7 @@ function deepFreeze(value: unknown): unknown {
 function decodeReasoning(value: unknown): OpenAIResponsesRequestV1['reasoning'] {
   if (value === undefined) return undefined
   const input = closedObject(value, ['effort', 'summary'], [])
-  const efforts = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh'])
+  const efforts = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
   const summaries = new Set(['auto', 'concise', 'detailed'])
   if (input.effort !== undefined && !efforts.has(input.effort as string)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   if (input.summary !== undefined && !summaries.has(input.summary as string)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
@@ -182,7 +188,8 @@ function decodeGeneration(value: unknown): Readonly<{
 
 function decodeTool(value: unknown, names: Set<string>): OpenAIResponsesToolV1 {
   const discriminator = closedObject(value, [
-    'type', 'name', 'description', 'parameters', 'strict', 'searchContextSize', 'size', 'quality', 'outputFormat', 'background',
+    'type', 'name', 'description', 'parameters', 'strict', 'searchContextSize', 'allowedDomains',
+    'action', 'size', 'quality', 'outputFormat', 'background', 'partialImages',
   ], ['type'])
   if (discriminator.type === 'function') {
     const input = closedObject(value, ['type', 'name', 'description', 'parameters', 'strict'], ['type', 'name', 'parameters', 'strict'])
@@ -197,29 +204,45 @@ function decodeTool(value: unknown, names: Set<string>): OpenAIResponsesToolV1 {
     })
   }
   if (discriminator.type === 'web_search') {
-    const input = closedObject(value, ['type', 'searchContextSize'], ['type'])
+    const input = closedObject(value, ['type', 'searchContextSize', 'allowedDomains'], ['type'])
     if (input.searchContextSize !== undefined && input.searchContextSize !== 'low' && input.searchContextSize !== 'medium' && input.searchContextSize !== 'high') {
       return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
     }
-    return Object.freeze({ type: 'web_search', ...(input.searchContextSize === undefined ? {} : { search_context_size: input.searchContextSize }) })
+    const allowedDomains = input.allowedDomains === undefined ? undefined : denseArray(input.allowedDomains, 100, false)
+    if (allowedDomains?.some((domain) => typeof domain !== 'string' || domain.length === 0 || domain.trim() !== domain ||
+        domain.includes('/') || /\s/u.test(domain)) || new Set(allowedDomains).size !== allowedDomains?.length) {
+      return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+    }
+    return Object.freeze({
+      type: 'web_search',
+      ...(input.searchContextSize === undefined ? {} : { search_context_size: input.searchContextSize }),
+      ...(allowedDomains === undefined ? {} : { filters: Object.freeze({ allowed_domains: Object.freeze([...allowedDomains] as string[]) }) }),
+    })
   }
   if (discriminator.type === 'image_generation') {
-    const input = closedObject(value, ['type', 'size', 'quality', 'outputFormat', 'background'], ['type'])
+    const input = closedObject(value, ['type', 'action', 'size', 'quality', 'outputFormat', 'background', 'partialImages'], ['type'])
+    const actions = new Set(['auto', 'generate', 'edit'])
     const sizes = new Set(['auto', '1024x1024', '1024x1536', '1536x1024'])
     const qualities = new Set(['auto', 'low', 'medium', 'high'])
     const formats = new Set(['png', 'jpeg', 'webp'])
     const backgrounds = new Set(['auto', 'transparent', 'opaque'])
-    if ((input.size !== undefined && !sizes.has(input.size as string)) ||
+    if ((input.action !== undefined && !actions.has(input.action as string)) ||
+        (input.size !== undefined && !sizes.has(input.size as string)) ||
         (input.quality !== undefined && !qualities.has(input.quality as string)) ||
         (input.outputFormat !== undefined && !formats.has(input.outputFormat as string)) ||
-        (input.background !== undefined && !backgrounds.has(input.background as string))) {
+        (input.background !== undefined && !backgrounds.has(input.background as string)) ||
+        (input.partialImages !== undefined && (!Number.isSafeInteger(input.partialImages) ||
+          (input.partialImages as number) < 0 || (input.partialImages as number) > 3))) {
       return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
     }
     return Object.freeze({
-      type: 'image_generation', ...(input.size === undefined ? {} : { size: input.size as ImageGenerationTool['size'] }),
+      type: 'image_generation',
+      ...(input.action === undefined ? {} : { action: input.action as ImageGenerationTool['action'] }),
+      ...(input.size === undefined ? {} : { size: input.size as ImageGenerationTool['size'] }),
       ...(input.quality === undefined ? {} : { quality: input.quality as ImageGenerationTool['quality'] }),
       ...(input.outputFormat === undefined ? {} : { output_format: input.outputFormat as ImageGenerationTool['output_format'] }),
       ...(input.background === undefined ? {} : { background: input.background as ImageGenerationTool['background'] }),
+      ...(input.partialImages === undefined ? {} : { partial_images: input.partialImages as number }),
     })
   }
   return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
@@ -235,6 +258,7 @@ function decodeTools(value: unknown): readonly OpenAIResponsesToolV1[] | undefin
 export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponsesCompilationV1 {
   const input = closedObject(value, [
     'model', 'priorArtifact', 'clientItems', 'instructions', 'reasoning', 'generation', 'tools', 'toolChoice',
+    'maxToolCalls', 'parallelToolCalls', 'serviceTier',
   ], ['model', 'priorArtifact', 'clientItems'])
   if (typeof input.model !== 'string' || !MODEL_PATTERN.test(input.model) ||
       (input.instructions !== undefined && (typeof input.instructions !== 'string' || input.instructions.length === 0))) {
@@ -247,6 +271,16 @@ export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponses
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   }
   if (input.toolChoice !== undefined && tools === undefined) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+  if (input.maxToolCalls !== undefined && (!Number.isSafeInteger(input.maxToolCalls) || (input.maxToolCalls as number) < 1)) {
+    return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+  }
+  if (input.parallelToolCalls !== undefined && typeof input.parallelToolCalls !== 'boolean') {
+    return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+  }
+  if (input.serviceTier !== undefined && input.serviceTier !== 'auto' && input.serviceTier !== 'default' &&
+      input.serviceTier !== 'flex' && input.serviceTier !== 'priority') {
+    return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+  }
   const replay = buildOpenAIResponsesReplayInputV1({
     priorArtifact: input.priorArtifact as OpenAIResponsesContinuationArtifactV1 | null,
     clientItems: input.clientItems,
@@ -266,6 +300,9 @@ export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponses
     ...(generation.verbosity === undefined ? {} : { text: Object.freeze({ verbosity: generation.verbosity }) }),
     ...(tools === undefined ? {} : { tools }),
     ...(input.toolChoice === undefined ? {} : { tool_choice: input.toolChoice as 'none' | 'auto' | 'required' }),
+    ...(input.maxToolCalls === undefined ? {} : { max_tool_calls: input.maxToolCalls as number }),
+    ...(input.parallelToolCalls === undefined ? {} : { parallel_tool_calls: input.parallelToolCalls }),
+    ...(input.serviceTier === undefined ? {} : { service_tier: input.serviceTier as 'auto' | 'default' | 'flex' | 'priority' }),
   })
   let preparedBody: ImmutablePreparedBodyV2
   try {
