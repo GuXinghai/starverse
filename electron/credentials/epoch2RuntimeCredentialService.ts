@@ -42,6 +42,7 @@ export class Epoch2RuntimeCredentialError extends Error {
     | 'EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION'
     | 'EPOCH2_RUNTIME_CREDENTIAL_SCOPE_MISMATCH'
     | 'EPOCH2_RUNTIME_CREDENTIAL_REENTRANT'
+    | 'EPOCH2_RUNTIME_CREDENTIAL_ALREADY_INITIALIZED'
     | 'EPOCH2_RUNTIME_CREDENTIAL_DRIFT'
     | 'EPOCH2_RUNTIME_CREDENTIAL_PERSIST_FAILED') {
     super(code)
@@ -63,6 +64,24 @@ export type Epoch2RuntimeCredentialLease = Readonly<{
   credentialScopeId: CredentialScopeIdV2
 }>
 
+export type Epoch2CredentialScopeBindingAuthority = Readonly<{
+  trust: 'epoch2_credential_scope_binding_authority'
+  usage: 'provider_binding_snapshot_only'
+  providerKey: ProviderCredentialKey
+  revision: number
+  credentialScopeId: CredentialScopeIdV2
+  assertCurrent: () => void
+}>
+
+const credentialScopeBindingAuthorities = new WeakSet<object>()
+const activeCredentialServiceLeases = new WeakSet<object>()
+
+export function isEpoch2CredentialScopeBindingAuthority(
+  value: unknown,
+): value is Epoch2CredentialScopeBindingAuthority {
+  return Boolean(value && typeof value === 'object' && credentialScopeBindingAuthorities.has(value))
+}
+
 export type Epoch2RuntimeCredentialService = Readonly<{
   close: () => Promise<void>
   getStatus: (providerKey: ProviderCredentialKey) => Promise<Epoch2RuntimeCredentialStatus>
@@ -80,6 +99,12 @@ export type Epoch2RuntimeCredentialService = Readonly<{
     expectedRevision: number
     expectedCredentialScopeId: CredentialScopeIdV2
     consume: (lease: Epoch2RuntimeCredentialLease) => Promise<T> | T
+  }>) => Promise<T>
+  withCredentialScopeBindingAuthority: <T>(input: Readonly<{
+    providerKey: ProviderCredentialKey
+    expectedRevision: number
+    expectedCredentialScopeId: CredentialScopeIdV2
+    consume: (authority: Epoch2CredentialScopeBindingAuthority) => Promise<T> | T
   }>) => Promise<T>
 }>
 
@@ -186,6 +211,13 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
   epochDatabase: FreshEpochDatabaseInitializerInput
   nowMs?: () => number
 }>): Promise<Epoch2RuntimeCredentialService> {
+  const leaseIdentity = input.epochDatabase.lease as object
+  if (activeCredentialServiceLeases.has(leaseIdentity)) {
+    throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_ALREADY_INITIALIZED')
+  }
+  activeCredentialServiceLeases.add(leaseIdentity)
+  let serviceReturned = false
+  try {
   await requireSafeStorage()
   const nowMs = input.nowMs ?? Date.now
   const slots = new Map<ProviderCredentialKey, RuntimeSlot>()
@@ -199,7 +231,7 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
     if (closed) {
       throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
     }
-    if (activeProvider.getStore() === providerKey) {
+    if (activeProvider.getStore() !== undefined) {
       throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_REENTRANT')
     }
     const previous = tails.get(providerKey) ?? Promise.resolve()
@@ -253,11 +285,15 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
     providerKey: ProviderCredentialKey,
     credential: string,
   ): Promise<CredentialScopeIdV2> {
-    return deriveCredentialScopeIdWithVerifiedEpoch2Key({
-      initializer: input.epochDatabase,
-      providerId: providerKey,
-      credential,
-    })
+    try {
+      return await deriveCredentialScopeIdWithVerifiedEpoch2Key({
+        initializer: input.epochDatabase,
+        providerId: providerKey,
+        credential,
+      })
+    } catch {
+      throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE')
+    }
   }
 
   async function decryptAndMaintainRecord(
@@ -336,13 +372,20 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
     })
   }
 
-  return Object.freeze({
+  const service: Epoch2RuntimeCredentialService = Object.freeze({
     close: async () => {
+      if (activeProvider.getStore() !== undefined) {
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_REENTRANT')
+      }
       if (closed) return
       closed = true
-      await Promise.all([...tails.values()])
-      slots.clear()
-      revisions.clear()
+      try {
+        await Promise.all([...tails.values()])
+        slots.clear()
+        revisions.clear()
+      } finally {
+        activeCredentialServiceLeases.delete(leaseIdentity)
+      }
     },
     getStatus: (providerKey) => exclusive(providerKey, async () => {
       assertPersistedSlot(providerKey)
@@ -429,5 +472,54 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
         credentialScopeId: maintained.slot.credentialScopeId,
       }))
     }),
+    withCredentialScopeBindingAuthority: (request) => exclusive(request.providerKey, async () => {
+      if (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision < 1 ||
+          !isCredentialScopeIdV2(request.expectedCredentialScopeId) || typeof request.consume !== 'function') {
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_INVALID')
+      }
+      const slot = assertPersistedSlot(request.providerKey)
+      if (!slot) throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_MISSING')
+      const maintained = await decryptAndMaintainRecord(request.providerKey, slot)
+      const derivedScope = await deriveScope(request.providerKey, maintained.credential)
+      const currentRevision = revisions.get(request.providerKey)
+      if (currentRevision !== request.expectedRevision || maintained.slot.revision !== currentRevision) {
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION')
+      }
+      if (derivedScope !== maintained.slot.credentialScopeId ||
+          request.expectedCredentialScopeId !== maintained.slot.credentialScopeId) {
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SCOPE_MISMATCH')
+      }
+      assertPersistedSlot(request.providerKey)
+      const authority = Object.freeze({
+        trust: 'epoch2_credential_scope_binding_authority' as const,
+        usage: 'provider_binding_snapshot_only' as const,
+        providerKey: request.providerKey,
+        revision: currentRevision,
+        credentialScopeId: maintained.slot.credentialScopeId,
+        assertCurrent: () => {
+          if (!credentialScopeBindingAuthorities.has(authority)) {
+            throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
+          }
+          const latest = assertPersistedSlot(request.providerKey)
+          if (latest !== maintained.slot || revisions.get(request.providerKey) !== currentRevision ||
+              latest?.credentialScopeId !== maintained.slot.credentialScopeId) {
+            throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
+          }
+        },
+      })
+      credentialScopeBindingAuthorities.add(authority)
+      try {
+        const result = await request.consume(authority)
+        authority.assertCurrent()
+        return result
+      } finally {
+        credentialScopeBindingAuthorities.delete(authority)
+      }
+    }),
   })
+  serviceReturned = true
+  return service
+  } finally {
+    if (!serviceReturned) activeCredentialServiceLeases.delete(leaseIdentity)
+  }
 }

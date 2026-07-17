@@ -38,6 +38,8 @@ import { initializeOrVerifyFreshEpoch2Database } from '../data-epoch/freshEpochD
 import {
   createEpoch2RuntimeCredentialService,
   Epoch2RuntimeCredentialError,
+  isEpoch2CredentialScopeBindingAuthority,
+  type Epoch2CredentialScopeBindingAuthority,
 } from './epoch2RuntimeCredentialService'
 import type { ProviderCredentialKey } from './providerCredentialContract'
 
@@ -206,6 +208,143 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
       release()
       await expect(active).resolves.toBe('done')
       await expect(update).resolves.toMatchObject({ revision: 2 })
+    } finally { value.lease.release() }
+  })
+
+  windowsIt('issues a short-lived non-plaintext scope authority while holding the provider mutation lease', async () => {
+    const value = await fixture('starverse-runtime-credential-scope-authority', {
+      deepseek: storedRecord('deepseek', 'sk-private'),
+    })
+    try {
+      const service = await createEpoch2RuntimeCredentialService({
+        store: value.store as never,
+        epochDatabase: value.epochDatabase,
+      })
+      const status = await service.getStatus('deepseek')
+      let escaped: Epoch2CredentialScopeBindingAuthority | undefined
+      let release!: () => void
+      const gate = new Promise<void>((resolve) => { release = resolve })
+      let entered!: () => void
+      const activeEntered = new Promise<void>((resolve) => { entered = resolve })
+      const active = service.withCredentialScopeBindingAuthority({
+        providerKey: 'deepseek',
+        expectedRevision: status.revision,
+        expectedCredentialScopeId: status.credentialScopeId!,
+        consume: async (authority) => {
+          escaped = authority
+          expect(isEpoch2CredentialScopeBindingAuthority(authority)).toBe(true)
+          expect(authority).toMatchObject({
+            providerKey: 'deepseek',
+            revision: 1,
+            credentialScopeId: status.credentialScopeId,
+          })
+          expect(JSON.stringify(authority)).not.toContain('sk-private')
+          entered()
+          await gate
+          return authority.credentialScopeId
+        },
+      })
+      await activeEntered
+      let updateFinished = false
+      const update = service.updateCredential({
+        providerKey: 'deepseek', credential: 'sk-new', expectedRevision: 1,
+      }).then((result) => { updateFinished = true; return result })
+      await Promise.resolve()
+      expect(updateFinished).toBe(false)
+      release()
+      await expect(active).resolves.toBe(status.credentialScopeId)
+      expect(isEpoch2CredentialScopeBindingAuthority(escaped)).toBe(false)
+      expect(isEpoch2CredentialScopeBindingAuthority({ ...escaped })).toBe(false)
+      expect(() => escaped?.assertCurrent()).toThrow('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
+      await expect(update).resolves.toMatchObject({ revision: 2 })
+    } finally { value.lease.release() }
+  })
+
+  windowsIt('rejects a second service for the held epoch lease and permits recreation only after close', async () => {
+    const value = await fixture('starverse-runtime-credential-single-service', {
+      deepseek: storedRecord('deepseek', 'sk-private'),
+    })
+    const first = await createEpoch2RuntimeCredentialService({
+      store: value.store as never,
+      epochDatabase: value.epochDatabase,
+    })
+    try {
+      await expect(createEpoch2RuntimeCredentialService({
+        store: value.store as never,
+        epochDatabase: value.epochDatabase,
+      })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_ALREADY_INITIALIZED')
+      await first.close()
+      const second = await createEpoch2RuntimeCredentialService({
+        store: value.store as never,
+        epochDatabase: value.epochDatabase,
+      })
+      await second.close()
+    } finally {
+      await first.close()
+      value.lease.release()
+    }
+  })
+
+  windowsIt('fences external drift and forbids all service re-entry while a scope authority is active', async () => {
+    const value = await fixture('starverse-runtime-credential-scope-authority-fence', {
+      deepseek: storedRecord('deepseek', 'sk-private'),
+      anthropic: storedRecord('anthropic', 'sk-anthropic'),
+    })
+    try {
+      const service = await createEpoch2RuntimeCredentialService({
+        store: value.store as never,
+        epochDatabase: value.epochDatabase,
+      })
+      const status = await service.getStatus('deepseek')
+      await expect(service.withCredentialScopeBindingAuthority({
+        providerKey: 'deepseek', expectedRevision: status.revision,
+        expectedCredentialScopeId: status.credentialScopeId!,
+        consume: async (authority) => {
+          authority.assertCurrent()
+          await expect(service.getStatus('anthropic'))
+            .rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_REENTRANT')
+          await expect(service.close()).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_REENTRANT')
+          value.store.set('providerCredentials.v1.deepseek', storedRecord('deepseek', 'sk-external', 99))
+          expect(() => authority.assertCurrent()).toThrow('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
+        },
+      })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
+    } finally { value.lease.release() }
+  })
+
+  windowsIt('rejects stale or mismatched scope-authority requests before issuing authority', async () => {
+    const value = await fixture('starverse-runtime-credential-scope-authority-stale', {
+      deepseek: storedRecord('deepseek', 'sk-private'),
+    })
+    try {
+      const service = await createEpoch2RuntimeCredentialService({
+        store: value.store as never,
+        epochDatabase: value.epochDatabase,
+      })
+      const status = await service.getStatus('deepseek')
+      await expect(service.withCredentialScopeBindingAuthority({
+        providerKey: 'deepseek', expectedRevision: 2,
+        expectedCredentialScopeId: status.credentialScopeId!, consume: () => undefined,
+      })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION')
+      await expect(service.withCredentialScopeBindingAuthority({
+        providerKey: 'deepseek', expectedRevision: 1,
+        expectedCredentialScopeId: 'credential-scope-v2:'.concat('f'.repeat(64)) as never,
+        consume: () => undefined,
+      })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_SCOPE_MISMATCH')
+      let failedAuthority: Epoch2CredentialScopeBindingAuthority | undefined
+      await expect(service.withCredentialScopeBindingAuthority({
+        providerKey: 'deepseek', expectedRevision: 1,
+        expectedCredentialScopeId: status.credentialScopeId!,
+        consume: async (authority) => {
+          failedAuthority = authority
+          throw new Error('consumer_failed')
+        },
+      })).rejects.toThrow('consumer_failed')
+      expect(isEpoch2CredentialScopeBindingAuthority(failedAuthority)).toBe(false)
+      safeStorageMock.available = false
+      await expect(service.withCredentialScopeBindingAuthority({
+        providerKey: 'deepseek', expectedRevision: 1,
+        expectedCredentialScopeId: status.credentialScopeId!, consume: () => undefined,
+      })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE')
     } finally { value.lease.release() }
   })
 
