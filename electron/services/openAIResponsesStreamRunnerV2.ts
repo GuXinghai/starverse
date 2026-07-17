@@ -25,7 +25,7 @@ import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } f
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
 
-export type OpenAIResponsesInitialStreamRunResultV2 = Readonly<{
+export type OpenAIResponsesStreamRunResultV2 = Readonly<{
   operationId: string
   answerRootId: string
   state: 'completed' | 'failed' | 'cancelled'
@@ -33,7 +33,7 @@ export type OpenAIResponsesInitialStreamRunResultV2 = Readonly<{
   errorMessage: string | null
 }>
 
-export class OpenAIResponsesInitialStreamRunnerV2Error extends Error {
+export class OpenAIResponsesStreamRunnerV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID'
     | 'GENERATION_V2_OPENAI_RUNNER_ALREADY_STARTED'
@@ -45,7 +45,7 @@ export class OpenAIResponsesInitialStreamRunnerV2Error extends Error {
     | 'GENERATION_V2_OPENAI_RUNNER_PROVIDER_INCOMPLETE'
     | 'GENERATION_V2_OPENAI_RUNNER_TIMEOUT') {
     super(code)
-    this.name = 'OpenAIResponsesInitialStreamRunnerV2Error'
+    this.name = 'OpenAIResponsesStreamRunnerV2Error'
   }
 }
 
@@ -57,7 +57,7 @@ function abortScope(external: AbortSignal | undefined, timeoutMs: number): Reado
   dispose: () => void
 }> {
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60_000) {
-    throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
+    throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
   }
   const controller = new AbortController()
   let timeout = false
@@ -90,20 +90,20 @@ async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
 
 function errorCode(error: unknown, timedOut: boolean): string {
   if (timedOut) return 'GENERATION_V2_OPENAI_RUNNER_TIMEOUT'
-  if (error instanceof OpenAIResponsesInitialStreamRunnerV2Error || error instanceof OpenAIResponsesStreamV1Error) {
+  if (error instanceof OpenAIResponsesStreamRunnerV2Error || error instanceof OpenAIResponsesStreamV1Error) {
     return error.code
   }
   return 'GENERATION_V2_OPENAI_RUNNER_TRANSPORT_FAILED'
 }
 
 function errorMessage(error: unknown): string {
-  if (error instanceof OpenAIResponsesInitialStreamRunnerV2Error || error instanceof OpenAIResponsesStreamV1Error) {
+  if (error instanceof OpenAIResponsesStreamRunnerV2Error || error instanceof OpenAIResponsesStreamV1Error) {
     return error.code
   }
   return 'OpenAI Responses generation failed.'
 }
 
-export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
+export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
   rawGenerationRequestStore?: RawGenerationRequestStore
@@ -115,7 +115,7 @@ export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
   const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
   const timeoutMs = input.timeoutMs ?? DEFAULT_TIMEOUT_MS
   if (!Number.isSafeInteger(timeoutMs) || timeoutMs < 1 || timeoutMs > 30 * 60_000 || typeof fetchImpl !== 'function') {
-    throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
+    throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
   }
   const executionRepo = new GenerationExecutionV2Repo(input.db, nowMs)
   const requestRepo = new GenerationRequestV2Repo(input.db, nowMs)
@@ -126,18 +126,18 @@ export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
   function begin(command: GenerationTextCommandResultV2): void {
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.preparedRequest.operationId)
-      if (!execution) throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
+      if (!execution) throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
       const request = requestRepo.replayPrepared(context, execution, command.preparedRequest)
       const attempt = executionRepo.openAttempt(context, {
         operationId: request.operationId, requestSequence: request.requestSequence, attempt: 1,
       }, nowMs())
       if (attempt.kind !== 'created') {
-        throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_ALREADY_STARTED')
+        throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_ALREADY_STARTED')
       }
       requestRepo.markStreaming(context, request, nowMs())
       if (execution.operation.state === 'committed') executionRepo.markOperationStreaming(context, execution, nowMs())
       else if (execution.operation.state !== 'streaming') {
-        throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
+        throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
       }
     })
   }
@@ -158,11 +158,11 @@ export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
     terminalErrorCode: string | null,
     terminalErrorMessage: string | null,
     phase: 'pre_stream' | 'mid_stream',
-  ): OpenAIResponsesInitialStreamRunResultV2 {
+  ): OpenAIResponsesStreamRunResultV2 {
     const at = nowMs()
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.preparedRequest.operationId)
-      if (!execution) throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
+      if (!execution) throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
       const request = requestRepo.replayPrepared(context, execution, command.preparedRequest)
       const history = state === 'completed'
         ? historyRepo.loadRequestHistory(context, command.preparedRequest.operationId)
@@ -181,7 +181,7 @@ export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
       const terminalRequest = requestRepo.terminalize(context, request, state, at)
       if (state === 'completed') {
         if (!terminal || !history || !isOpenAIResponsesTerminalResultV1(terminal) || terminal.terminalKind !== 'completed') {
-          throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
+          throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
         }
         graphRepo.terminalizeAssistantMessage(
           context, command.preparedRequest.answerRootId, 'completed', terminal.visibleText, at,
@@ -220,7 +220,7 @@ export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
     if (response.status !== 200 || !response.body ||
         response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'text/event-stream') {
       try { await response.body?.cancel() } catch { /* best effort */ }
-      throw new OpenAIResponsesInitialStreamRunnerV2Error(
+      throw new OpenAIResponsesStreamRunnerV2Error(
         response.status === 200 ? 'GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID' : 'GENERATION_V2_OPENAI_RUNNER_HTTP_FAILED',
       )
     }
@@ -230,7 +230,7 @@ export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
     const initial = input.db.prepare('SELECT body_text AS body FROM message_body_v2 WHERE message_id=?')
       .get(command.preparedRequest.answerRootId) as { body: unknown } | undefined
     if (!initial || typeof initial.body !== 'string') {
-      throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
+      throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
     }
     let visible = initial.body
     const accept = (events: readonly ReturnType<OpenAIResponsesTypedSseDecoderV1['push']>[number][]): void => {
@@ -265,12 +265,12 @@ export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
 
   return Object.freeze({
     run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal):
-      Promise<OpenAIResponsesInitialStreamRunResultV2> => {
+      Promise<OpenAIResponsesStreamRunResultV2> => {
       if (!isGenerationTextCommandResultV2(command) || !isPreparedProviderRequestV2(command.preparedRequest) ||
           command.preparedRequest.providerId !== 'openai_responses' || command.preparedRequest.requestSequence !== 1 ||
           command.preparedRequest.answerRootId !== command.execution.operation.resultAnswerRootId.value ||
           command.request.preparedBodySha256 !== command.preparedRequest.bodySha256) {
-        throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
+        throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
       }
       begin(command)
       const scope = abortScope(signal, timeoutMs)
@@ -279,7 +279,7 @@ export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
         if (scope.signal.aborted) throw scope.signal.reason
         const status = await input.credentialService.getStatus('openai_responses')
         if (!status.configured || status.credentialScopeId !== command.preparedRequest.credentialScopeId) {
-          throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_CREDENTIAL_INVALID')
+          throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_CREDENTIAL_INVALID')
         }
         const terminal = await input.credentialService.withCredential({
           providerKey: 'openai_responses', expectedRevision: status.revision,
@@ -287,7 +287,7 @@ export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
           consume: async (lease) => {
             if (!isEpoch2RuntimeCredentialLease(lease) || lease.providerKey !== 'openai_responses' ||
                 lease.credentialScopeId !== command.preparedRequest.credentialScopeId) {
-              throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_CREDENTIAL_INVALID')
+              throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_CREDENTIAL_INVALID')
             }
             lease.assertCurrent()
             try {
