@@ -33,23 +33,23 @@ import {
 import { commitVerifiedDeepSeekPlainTextInitialSnapshotV2 } from './deepSeekPlainTextSnapshotCommitV2'
 import { compileDeepSeekInitialPreparedRequestV2 } from './deepSeekInitialPreparedRequestCompilerV2'
 import {
-  issueDeepSeekPlainTextCommandResultV2,
-  isDeepSeekPlainTextCommandResultV2,
-  type DeepSeekPlainTextCommandResultV2,
-} from './deepSeekPlainTextCommandResultV2'
+  issueGenerationTextCommandResultV2,
+  isGenerationTextCommandResultV2,
+  type GenerationTextCommandResultV2,
+} from './generationTextCommandResultV2'
 
-export type DeepSeekPlainTextInitialSendResultV2 = DeepSeekPlainTextCommandResultV2
+export type DeepSeekPlainTextInitialSendResultV2 = GenerationTextCommandResultV2
 
 function issueInitialSendResultV2(
   value: Omit<DeepSeekPlainTextInitialSendResultV2, never>,
 ): DeepSeekPlainTextInitialSendResultV2 {
-  return issueDeepSeekPlainTextCommandResultV2(value)
+  return issueGenerationTextCommandResultV2(value)
 }
 
 export function isDeepSeekPlainTextInitialSendResultV2(
   value: unknown,
 ): value is DeepSeekPlainTextInitialSendResultV2 {
-  return isDeepSeekPlainTextCommandResultV2(value) && value.execution.operation.actionKind === 'initial_send'
+  return isGenerationTextCommandResultV2(value) && value.execution.operation.actionKind === 'initial_send'
 }
 
 export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<{

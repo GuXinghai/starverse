@@ -1,0 +1,145 @@
+import { projectGenerationIntentLayerV2 } from '../../domain/generationIntentProjectionV2'
+import { decodeResolvedGenerationIntentV2, type ResolvedGenerationIntentV2 } from '../../domain/resolvedGenerationIntentV2'
+import type { OpenAIResponsesToolV1 } from './responsesRequestV1'
+
+export type OpenAIResponsesIntentIssueV1 = Readonly<{
+  semanticPath: string
+  code: 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD' | 'OPENAI_CAPABILITY_UNAVAILABLE' | 'OPENAI_FIELD_VALUE_UNSUPPORTED'
+  wireKey?: string
+}>
+export type OpenAIResponsesIntentDispositionV1 = Readonly<{
+  semanticPath: string
+  outcome: 'encoded' | 'accepted_no_wire' | 'rejected'
+  wireKey?: string
+  code?: OpenAIResponsesIntentIssueV1['code']
+  evidence: string
+}>
+export type OpenAIResponsesIntentProjectionV1 = Readonly<{
+  classification: 'openai_responses_intent_projection_non_executable'
+  executionAuthority: 'none'
+  intent: ResolvedGenerationIntentV2
+  request: Readonly<{
+    reasoning?: Readonly<{ effort?: string; summary?: string }>
+    generation: Readonly<{ maxOutputTokens?: number; verbosity?: string }>
+    tools?: readonly OpenAIResponsesToolV1[]
+    maxToolCalls?: number
+    parallelToolCalls?: boolean
+    serviceTier?: string
+  }>
+  dispositions: readonly OpenAIResponsesIntentDispositionV1[]
+  issues: readonly OpenAIResponsesIntentIssueV1[]
+}>
+
+const CONTRACT = 'openai-responses-api-contract-20260715'
+const MODEL = 'openai-responses-gpt-5.6-capabilities-20260717'
+
+export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesIntentProjectionV1 {
+  const intent = decodeResolvedGenerationIntentV2(raw).value
+  const dispositions: OpenAIResponsesIntentDispositionV1[] = []
+  const issues: OpenAIResponsesIntentIssueV1[] = []
+  const accept = (semanticPath: string, evidence = CONTRACT) => dispositions.push(Object.freeze({
+    semanticPath, outcome: 'accepted_no_wire' as const, evidence,
+  }))
+  const encode = (semanticPath: string, wireKey: string, evidence = CONTRACT) => dispositions.push(Object.freeze({
+    semanticPath, outcome: 'encoded' as const, wireKey, evidence,
+  }))
+  const reject = (semanticPath: string, code: OpenAIResponsesIntentIssueV1['code'], wireKey?: string) => {
+    const issue = Object.freeze({ semanticPath, code, ...(wireKey ? { wireKey } : {}) })
+    issues.push(issue)
+    dispositions.push(Object.freeze({ semanticPath, outcome: 'rejected' as const, ...(wireKey ? { wireKey } : {}), code, evidence: CONTRACT }))
+  }
+
+  const generation: { maxOutputTokens?: number; verbosity?: string } = {}
+  for (const [key, value] of Object.entries(intent.generation)) {
+    if (value === undefined) continue
+    if (key === 'maxOutputTokens') { generation.maxOutputTokens = value as number; encode('generation.maxOutputTokens', 'max_output_tokens', MODEL) }
+    else if (key === 'temperature' || key === 'topP') reject(`generation.${key}`, 'OPENAI_CAPABILITY_UNAVAILABLE')
+    else reject(`generation.${key}`, 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+  }
+  let reasoning: { effort?: string; summary?: string } | undefined
+  if (intent.reasoning.mode === 'disabled') accept('reasoning.mode', MODEL)
+  else {
+    accept('reasoning.mode', MODEL)
+    reasoning = {}
+    if (intent.reasoning.effort !== undefined) { reasoning.effort = intent.reasoning.effort; encode('reasoning.effort', 'reasoning.effort', MODEL) }
+    if (intent.reasoning.summary !== undefined) { reasoning.summary = intent.reasoning.summary; encode('reasoning.summary', 'reasoning.summary') }
+  }
+
+  const tools: OpenAIResponsesToolV1[] = []
+  if (intent.web.mode === 'disabled') accept('web.mode', MODEL)
+  else {
+    if (intent.web.types.length !== 1 || intent.web.types[0] !== 'web') reject('web.types', 'OPENAI_FIELD_VALUE_UNSUPPORTED')
+    else { accept('web.types', MODEL); encode('web.mode', 'tools[].type', MODEL); tools.push(Object.freeze({ type: 'web_search' })) }
+  }
+  if (intent.image.mode === 'disabled') accept('image.mode', MODEL)
+  else {
+    const image: Record<string, unknown> = { type: 'image_generation', action: 'generate' }
+    encode('image.mode', 'tools[].type', MODEL)
+    for (const [key, value] of Object.entries(intent.image)) {
+      if (key === 'mode' || value === undefined) continue
+      const wire = key === 'format' ? 'outputFormat' : key
+      if (key === 'size') {
+        const size = value as { width: number; height: number }
+        image.size = `${size.width}x${size.height}`
+        encode('image.size', 'tools[].size', MODEL)
+      } else if (key === 'quality' || key === 'format' || key === 'background') {
+        image[wire] = value
+        encode(`image.${key}`, `tools[].${key === 'format' ? 'output_format' : key}`, MODEL)
+      } else reject(`image.${key}`, 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+    }
+    tools.push(Object.freeze(image) as OpenAIResponsesToolV1)
+  }
+  if (intent.tools.mode === 'disabled') accept('tools.mode')
+  else reject('tools.mode', 'OPENAI_CAPABILITY_UNAVAILABLE')
+  for (const attachment of intent.attachments) {
+    accept('attachments[].assetId'); accept('attachments[].assetRevisionId'); accept('attachments[].assetSha256')
+    if (attachment.include) reject('attachments[].include', 'OPENAI_CAPABILITY_UNAVAILABLE')
+    else accept('attachments[].include')
+    reject('attachments[].sendAs', 'OPENAI_CAPABILITY_UNAVAILABLE')
+    reject('attachments[].conversion', 'OPENAI_CAPABILITY_UNAVAILABLE')
+  }
+
+  let maxToolCalls: number | undefined
+  let parallelToolCalls: boolean | undefined
+  let serviceTier: string | undefined
+  if (intent.providerExtension.kind === 'none') accept('providerExtension.kind')
+  else {
+    accept('providerExtension.kind')
+    if (intent.providerExtension.verbosity !== undefined) {
+      generation.verbosity = intent.providerExtension.verbosity
+      encode('providerExtension.verbosity', 'text.verbosity', MODEL)
+    }
+    if (intent.providerExtension.maxToolCalls !== undefined) {
+      maxToolCalls = intent.providerExtension.maxToolCalls
+      encode('providerExtension.maxToolCalls', 'max_tool_calls')
+    }
+    if (intent.providerExtension.parallelToolCalls !== undefined) {
+      parallelToolCalls = intent.providerExtension.parallelToolCalls
+      encode('providerExtension.parallelToolCalls', 'parallel_tool_calls')
+    }
+    if (intent.providerExtension.serviceTier !== undefined) {
+      serviceTier = intent.providerExtension.serviceTier
+      encode('providerExtension.serviceTier', 'service_tier')
+    }
+  }
+  dispositions.sort((a, b) => a.semanticPath < b.semanticPath ? -1 : a.semanticPath > b.semanticPath ? 1 : 0)
+  issues.sort((a, b) => a.semanticPath < b.semanticPath ? -1 : a.semanticPath > b.semanticPath ? 1 : 0)
+  if (new Set(dispositions.map((value) => value.semanticPath)).size !== dispositions.length) {
+    throw new Error('GENERATION_V2_OPENAI_DUPLICATE_SEMANTIC_PATH')
+  }
+  return Object.freeze({
+    classification: 'openai_responses_intent_projection_non_executable', executionAuthority: 'none', intent,
+    request: Object.freeze({
+      ...(reasoning === undefined ? {} : { reasoning: Object.freeze(reasoning) }),
+      generation: Object.freeze(generation), ...(tools.length === 0 ? {} : { tools: Object.freeze(tools) }),
+      ...(maxToolCalls === undefined ? {} : { maxToolCalls }),
+      ...(parallelToolCalls === undefined ? {} : { parallelToolCalls }),
+      ...(serviceTier === undefined ? {} : { serviceTier }),
+    }),
+    dispositions: Object.freeze(dispositions), issues: Object.freeze(issues),
+  })
+}
+
+export function projectOpenAIResponsesIntentForPersistenceV1(value: ResolvedGenerationIntentV2) {
+  return projectGenerationIntentLayerV2(value)
+}

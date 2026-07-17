@@ -66,7 +66,7 @@ const IMAGE_KEYS = Object.freeze([
 const REASONING_MODES = ['disabled', 'enabled'] as const satisfies readonly ReasoningIntentV2['mode'][]
 const WEB_MODES = ['disabled', 'provider_search'] as const satisfies readonly WebSearchIntentV2['mode'][]
 const TOOL_MODES = ['disabled', 'enabled'] as const satisfies readonly ToolPolicyIntentV2['mode'][]
-const PROVIDER_EXTENSION_KINDS = ['none'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
+const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
 
 const samplingKeysAreExhaustive: Exclude<keyof SamplingIntentV2, typeof SAMPLING_KEYS[number]> extends never
   ? true : never = true
@@ -238,7 +238,14 @@ export function projectDeepSeekStableIntentV1(
       acceptNoWire(`${base}.conversion`)
     }
   }
-  acceptNoWire('providerExtension.kind')
+  if (intent.providerExtension.kind === 'none') acceptNoWire('providerExtension.kind')
+  else {
+    reject('providerExtension.kind', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+    if (intent.providerExtension.maxToolCalls !== undefined) reject('providerExtension.maxToolCalls', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+    if (intent.providerExtension.parallelToolCalls !== undefined) reject('providerExtension.parallelToolCalls', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+    if (intent.providerExtension.serviceTier !== undefined) reject('providerExtension.serviceTier', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+    if (intent.providerExtension.verbosity !== undefined) reject('providerExtension.verbosity', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+  }
 
   nativeSemanticFields.sort((left, right) => compareCodePoints(left.wireKey, right.wireKey) ||
     compareCodePoints(left.semanticPath, right.semanticPath))

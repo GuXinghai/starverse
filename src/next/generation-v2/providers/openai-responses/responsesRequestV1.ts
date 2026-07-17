@@ -5,8 +5,8 @@ import {
 } from '../../compiler/stableSerialize'
 import {
   buildOpenAIResponsesReplayInputV1,
-  type OpenAIResponsesContinuationArtifactV1,
-} from './continuationArtifactV1'
+  type OpenAIResponsesContinuationArtifactV2,
+} from './continuationArtifactV2'
 import type { OpenAIResponsesReplayItemV1 } from './nativeItemsV1'
 
 export const OPENAI_RESPONSES_REQUEST_MAX_BYTES_V1 = 28 * 1_024 * 1_024
@@ -282,7 +282,7 @@ export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponses
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   }
   const replay = buildOpenAIResponsesReplayInputV1({
-    priorArtifact: input.priorArtifact as OpenAIResponsesContinuationArtifactV1 | null,
+    priorArtifact: input.priorArtifact as OpenAIResponsesContinuationArtifactV2 | null,
     clientItems: input.clientItems,
   })
   if (replay.length === 0) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')

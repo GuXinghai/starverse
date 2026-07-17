@@ -3,7 +3,7 @@ import type { GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/g
 import type { GenerationRequestRepositoryFactV2 } from '../../infra/db/repo/generationRequestV2Repo'
 import type { PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 
-export type DeepSeekPlainTextCommandResultV2 = Readonly<{
+export type GenerationTextCommandResultV2 = Readonly<{
   kind: 'created' | 'idempotent_replay'
   execution: GenerationExecutionOperationBundleV2
   projection: GenerationReplayProjectionV2
@@ -13,16 +13,16 @@ export type DeepSeekPlainTextCommandResultV2 = Readonly<{
 
 const results = new WeakSet<object>()
 
-export function issueDeepSeekPlainTextCommandResultV2(
-  value: DeepSeekPlainTextCommandResultV2,
-): DeepSeekPlainTextCommandResultV2 {
+export function issueGenerationTextCommandResultV2(
+  value: GenerationTextCommandResultV2,
+): GenerationTextCommandResultV2 {
   const result = Object.freeze(value)
   results.add(result)
   return result
 }
 
-export function isDeepSeekPlainTextCommandResultV2(
+export function isGenerationTextCommandResultV2(
   value: unknown,
-): value is DeepSeekPlainTextCommandResultV2 {
+): value is GenerationTextCommandResultV2 {
   return Boolean(value && typeof value === 'object' && results.has(value))
 }

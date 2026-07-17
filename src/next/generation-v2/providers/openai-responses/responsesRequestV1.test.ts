@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { completeOpenAIResponsesRequestV1 } from './continuationArtifactV1'
+import { completeOpenAIResponsesRequestV2 } from './continuationArtifactV2'
 import { compileOpenAIResponsesRequestV1 } from './responsesRequestV1'
 
 const user = (text: string) => ({ role: 'user', content: [{ type: 'input_text', text }] })
@@ -43,8 +43,8 @@ describe('OpenAI Responses V1 exact-body compiler', () => {
   })
 
   it('replays prior native reasoning, tool call and output byte-for-byte in input order', () => {
-    const prior = completeOpenAIResponsesRequestV1({
-      priorArtifact: null, requestSequence: 1, clientItems: [user('weather?')],
+    const prior = completeOpenAIResponsesRequestV2({
+      priorArtifact: null, lineageDepth: 1, clientItems: [user('weather?')],
       returnedItems: [
         { id: 'rs_1', type: 'reasoning', status: 'completed', summary: [], encrypted_content: 'encrypted' },
         { id: 'fc_1', type: 'function_call', call_id: 'call_1', name: 'weather', arguments: '{}', status: 'completed' },

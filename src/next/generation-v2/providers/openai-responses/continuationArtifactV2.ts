@@ -9,21 +9,21 @@ import {
   type OpenAIResponsesReplayItemV1,
 } from './nativeItemsV1'
 
-export const OPENAI_RESPONSES_ARTIFACT_KIND_V1 = 'openai_responses_ordered_native_items_v1' as const
-export const OPENAI_RESPONSES_ARTIFACT_CODEC_VERSION_V1 = 1 as const
-export const OPENAI_RESPONSES_MAX_ARTIFACT_BYTES_V1 = 28 * 1_024 * 1_024
+export const OPENAI_RESPONSES_ARTIFACT_KIND_V2 = 'openai_responses_ordered_native_items_v2' as const
+export const OPENAI_RESPONSES_ARTIFACT_CODEC_VERSION_V2 = 2 as const
+export const OPENAI_RESPONSES_MAX_ARTIFACT_BYTES_V2 = 20 * 1_024 * 1_024
 
-export type OpenAIResponsesContinuationArtifactV1 = Readonly<{
-  schemaVersion: 1
-  artifactKind: typeof OPENAI_RESPONSES_ARTIFACT_KIND_V1
-  artifactCodecVersion: typeof OPENAI_RESPONSES_ARTIFACT_CODEC_VERSION_V1
-  requestSequence: number
+export type OpenAIResponsesContinuationArtifactV2 = Readonly<{
+  schemaVersion: 2
+  artifactKind: typeof OPENAI_RESPONSES_ARTIFACT_KIND_V2
+  artifactCodecVersion: typeof OPENAI_RESPONSES_ARTIFACT_CODEC_VERSION_V2
+  lineageDepth: number
   parentArtifactHash: string | null
   orderedItems: readonly OpenAIResponsesReplayItemV1[]
   artifactHash: string
 }>
 
-export class OpenAIResponsesContinuationArtifactV1Error extends Error {
+export class OpenAIResponsesContinuationArtifactV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_OPENAI_CONTINUATION_INVALID_SHAPE'
     | 'GENERATION_V2_OPENAI_CONTINUATION_INVALID_VALUE'
@@ -32,14 +32,14 @@ export class OpenAIResponsesContinuationArtifactV1Error extends Error {
     | 'GENERATION_V2_OPENAI_CONTINUATION_SEQUENCE_INVALID'
     | 'GENERATION_V2_OPENAI_CONTINUATION_UNBRANDED') {
     super(code)
-    this.name = 'OpenAIResponsesContinuationArtifactV1Error'
+    this.name = 'OpenAIResponsesContinuationArtifactV2Error'
   }
 }
 
 const artifacts = new WeakSet<object>()
 
-function fail(code: OpenAIResponsesContinuationArtifactV1Error['code']): never {
-  throw new OpenAIResponsesContinuationArtifactV1Error(code)
+function fail(code: OpenAIResponsesContinuationArtifactV2Error['code']): never {
+  throw new OpenAIResponsesContinuationArtifactV2Error(code)
 }
 
 function closedArtifact(value: unknown): Readonly<Record<string, unknown>> {
@@ -48,7 +48,7 @@ function closedArtifact(value: unknown): Readonly<Record<string, unknown>> {
   }
   const descriptors = Object.getOwnPropertyDescriptors(value)
   const expected = [
-    'artifactCodecVersion', 'artifactHash', 'artifactKind', 'orderedItems', 'parentArtifactHash', 'requestSequence', 'schemaVersion',
+    'artifactCodecVersion', 'artifactHash', 'artifactKind', 'lineageDepth', 'orderedItems', 'parentArtifactHash', 'schemaVersion',
   ]
   if (Reflect.ownKeys(value).some((key) => typeof key !== 'string') ||
       Object.values(descriptors).some((descriptor) => !descriptor.enumerable || !('value' in descriptor) || descriptor.value === undefined) ||
@@ -71,15 +71,15 @@ function parentHash(value: unknown): string | null {
 }
 
 function semanticProjection(input: Readonly<{
-  requestSequence: number
+  lineageDepth: number
   parentArtifactHash: string | null
   orderedItems: readonly OpenAIResponsesReplayItemV1[]
 }>) {
   return Object.freeze({
-    schemaVersion: 1 as const,
-    artifactKind: OPENAI_RESPONSES_ARTIFACT_KIND_V1,
-    artifactCodecVersion: OPENAI_RESPONSES_ARTIFACT_CODEC_VERSION_V1,
-    requestSequence: input.requestSequence,
+    schemaVersion: 2 as const,
+    artifactKind: OPENAI_RESPONSES_ARTIFACT_KIND_V2,
+    artifactCodecVersion: OPENAI_RESPONSES_ARTIFACT_CODEC_VERSION_V2,
+    lineageDepth: input.lineageDepth,
     parentArtifactHash: input.parentArtifactHash,
     orderedItems: input.orderedItems,
   })
@@ -111,32 +111,32 @@ function validateSequence(items: readonly OpenAIResponsesReplayItemV1[]): void {
 }
 
 function createArtifact(input: Readonly<{
-  requestSequence: unknown
+  lineageDepth: unknown
   parentArtifactHash: unknown
   orderedItems: unknown
-}>): OpenAIResponsesContinuationArtifactV1 {
-  const requestSequence = sequence(input.requestSequence)
+}>): OpenAIResponsesContinuationArtifactV2 {
+  const lineageDepth = sequence(input.lineageDepth)
   const decodedParentHash = parentHash(input.parentArtifactHash)
   const orderedItems = decodeOpenAIResponsesReplayItemsV1(input.orderedItems)
   validateSequence(orderedItems)
-  const projection = semanticProjection({ requestSequence, parentArtifactHash: decodedParentHash, orderedItems })
+  const projection = semanticProjection({ lineageDepth, parentArtifactHash: decodedParentHash, orderedItems })
   const artifact = Object.freeze({ ...projection, artifactHash: hash(projection) })
-  if (new TextEncoder().encode(stableSerializeProviderRequestV2(artifact)).byteLength > OPENAI_RESPONSES_MAX_ARTIFACT_BYTES_V1) {
+  if (new TextEncoder().encode(stableSerializeProviderRequestV2(artifact)).byteLength > OPENAI_RESPONSES_MAX_ARTIFACT_BYTES_V2) {
     return fail('GENERATION_V2_OPENAI_CONTINUATION_LIMIT_EXCEEDED')
   }
   artifacts.add(artifact)
   return artifact
 }
 
-export function decodeOpenAIResponsesContinuationArtifactV1(value: unknown): OpenAIResponsesContinuationArtifactV1 {
+export function decodeOpenAIResponsesContinuationArtifactV2(value: unknown): OpenAIResponsesContinuationArtifactV2 {
   const input = closedArtifact(value)
-  if (input.schemaVersion !== 1 || input.artifactKind !== OPENAI_RESPONSES_ARTIFACT_KIND_V1 ||
-      input.artifactCodecVersion !== OPENAI_RESPONSES_ARTIFACT_CODEC_VERSION_V1 ||
+  if (input.schemaVersion !== 2 || input.artifactKind !== OPENAI_RESPONSES_ARTIFACT_KIND_V2 ||
+      input.artifactCodecVersion !== OPENAI_RESPONSES_ARTIFACT_CODEC_VERSION_V2 ||
       typeof input.artifactHash !== 'string' || !/^[0-9a-f]{64}$/u.test(input.artifactHash)) {
     return fail('GENERATION_V2_OPENAI_CONTINUATION_INVALID_VALUE')
   }
   const decoded = createArtifact({
-    requestSequence: input.requestSequence,
+    lineageDepth: input.lineageDepth,
     parentArtifactHash: input.parentArtifactHash,
     orderedItems: input.orderedItems,
   })
@@ -144,21 +144,21 @@ export function decodeOpenAIResponsesContinuationArtifactV1(value: unknown): Ope
   return decoded
 }
 
-export function isOpenAIResponsesContinuationArtifactV1(value: unknown): value is OpenAIResponsesContinuationArtifactV1 {
+export function isOpenAIResponsesContinuationArtifactV2(value: unknown): value is OpenAIResponsesContinuationArtifactV2 {
   if (!value || typeof value !== 'object' || !artifacts.has(value)) return false
-  const artifact = value as OpenAIResponsesContinuationArtifactV1
+  const artifact = value as OpenAIResponsesContinuationArtifactV2
   return artifact.artifactHash === hash(semanticProjection(artifact))
 }
 
-function requireArtifact(value: OpenAIResponsesContinuationArtifactV1 | null): OpenAIResponsesContinuationArtifactV1 | null {
-  if (value !== null && !isOpenAIResponsesContinuationArtifactV1(value)) {
+function requireArtifact(value: OpenAIResponsesContinuationArtifactV2 | null): OpenAIResponsesContinuationArtifactV2 | null {
+  if (value !== null && !isOpenAIResponsesContinuationArtifactV2(value)) {
     return fail('GENERATION_V2_OPENAI_CONTINUATION_UNBRANDED')
   }
   return value
 }
 
 export function buildOpenAIResponsesReplayInputV1(input: Readonly<{
-  priorArtifact: OpenAIResponsesContinuationArtifactV1 | null
+  priorArtifact: OpenAIResponsesContinuationArtifactV2 | null
   clientItems: unknown
 }>): readonly OpenAIResponsesReplayItemV1[] {
   const prior = requireArtifact(input.priorArtifact)
@@ -172,21 +172,21 @@ export function buildOpenAIResponsesReplayInputV1(input: Readonly<{
   return replay
 }
 
-export function completeOpenAIResponsesRequestV1(input: Readonly<{
-  priorArtifact: OpenAIResponsesContinuationArtifactV1 | null
-  requestSequence: unknown
+export function completeOpenAIResponsesRequestV2(input: Readonly<{
+  priorArtifact: OpenAIResponsesContinuationArtifactV2 | null
+  lineageDepth: unknown
   clientItems: unknown
   returnedItems: unknown
-}>): OpenAIResponsesContinuationArtifactV1 {
+}>): OpenAIResponsesContinuationArtifactV2 {
   const prior = requireArtifact(input.priorArtifact)
-  const requestSequence = sequence(input.requestSequence)
-  if (requestSequence !== (prior?.requestSequence ?? 0) + 1) {
+  const lineageDepth = sequence(input.lineageDepth)
+  if (lineageDepth !== (prior?.lineageDepth ?? 0) + 1) {
     return fail('GENERATION_V2_OPENAI_CONTINUATION_SEQUENCE_INVALID')
   }
   const replay = buildOpenAIResponsesReplayInputV1({ priorArtifact: prior, clientItems: input.clientItems })
   const returned = decodeOpenAIResponsesReturnedItemsV1(input.returnedItems)
   return createArtifact({
-    requestSequence,
+    lineageDepth,
     parentArtifactHash: prior?.artifactHash ?? null,
     orderedItems: [...replay, ...returned],
   })

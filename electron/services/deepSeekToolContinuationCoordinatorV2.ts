@@ -11,7 +11,7 @@ import {
   type DeepSeekToolContinuationCommandV2,
 } from '../../src/next/generation-v2/providers/deepseek/toolContinuationCommandV2'
 import { compileDeepSeekPreparedRequestV2 } from './deepSeekInitialPreparedRequestCompilerV2'
-import { issueDeepSeekPlainTextCommandResultV2, type DeepSeekPlainTextCommandResultV2 } from './deepSeekPlainTextCommandResultV2'
+import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { loadDeepSeekSnapshotToolRegistryAuthorityV2 } from './deepSeekToolRegistryAuthorityV2'
 
 export class DeepSeekToolContinuationCoordinatorV2Error extends Error {
@@ -35,7 +35,7 @@ export function createDeepSeekToolContinuationCoordinatorV2(input: Readonly<{
   const graphRepo = new ConversationGraphV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
 
-  function replayPersisted(command: DeepSeekToolContinuationCommandV2): DeepSeekPlainTextCommandResultV2 | null {
+  function replayPersisted(command: DeepSeekToolContinuationCommandV2): GenerationTextCommandResultV2 | null {
     const observed = executionRepo.findOperation(command.operationId.value)
     if (!observed) return null
     const requestSequence = command.priorRequestSequence + 1
@@ -79,7 +79,7 @@ export function createDeepSeekToolContinuationCoordinatorV2(input: Readonly<{
           'GENERATION_V2_DEEPSEEK_TOOL_CONTINUATION_STATE_INVALID',
         )
       }
-      return issueDeepSeekPlainTextCommandResultV2({
+      return issueGenerationTextCommandResultV2({
         kind: 'idempotent_replay', execution,
         projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
         preparedRequest, request,
@@ -88,7 +88,7 @@ export function createDeepSeekToolContinuationCoordinatorV2(input: Readonly<{
   }
 
   return Object.freeze({
-    submit: async (raw: unknown): Promise<DeepSeekPlainTextCommandResultV2> => {
+    submit: async (raw: unknown): Promise<GenerationTextCommandResultV2> => {
       const command = decodeDeepSeekToolContinuationCommandV2(raw)
       const persistedReplay = replayPersisted(command)
       if (persistedReplay) return persistedReplay
@@ -143,7 +143,7 @@ export function createDeepSeekToolContinuationCoordinatorV2(input: Readonly<{
           )
         }
         historyRepo.persistToolContinuationOutputs(context, history, request, at, !existing)
-        return issueDeepSeekPlainTextCommandResultV2({
+        return issueGenerationTextCommandResultV2({
           kind: existing ? 'idempotent_replay' : 'created',
           execution,
           projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
