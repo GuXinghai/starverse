@@ -24,7 +24,7 @@ import {
 const MAX_CREDENTIAL_LENGTH = 16_384
 const MAX_CIPHERTEXT_BYTES = 1024 * 1024
 
-type CredentialConfigStore = Pick<Store, 'delete' | 'get' | 'set'>
+export type CredentialConfigStore = Pick<Store, 'delete' | 'get' | 'set'>
 
 type RuntimeSlot = Readonly<{
   record: Epoch2ProviderCredentialRecord
@@ -64,6 +64,7 @@ export type Epoch2RuntimeCredentialLease = Readonly<{
 }>
 
 export type Epoch2RuntimeCredentialService = Readonly<{
+  close: () => Promise<void>
   getStatus: (providerKey: ProviderCredentialKey) => Promise<Epoch2RuntimeCredentialStatus>
   updateCredential: (input: Readonly<{
     providerKey: ProviderCredentialKey
@@ -191,9 +192,13 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
   const revisions = new Map<ProviderCredentialKey, number>()
   const tails = new Map<ProviderCredentialKey, Promise<void>>()
   const activeProvider = new AsyncLocalStorage<ProviderCredentialKey>()
+  let closed = false
 
   async function exclusive<T>(providerKey: ProviderCredentialKey, work: () => Promise<T>): Promise<T> {
     assertProviderKey(providerKey)
+    if (closed) {
+      throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
+    }
     if (activeProvider.getStore() === providerKey) {
       throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_REENTRANT')
     }
@@ -332,6 +337,13 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
   }
 
   return Object.freeze({
+    close: async () => {
+      if (closed) return
+      closed = true
+      await Promise.all([...tails.values()])
+      slots.clear()
+      revisions.clear()
+    },
     getStatus: (providerKey) => exclusive(providerKey, async () => {
       assertPersistedSlot(providerKey)
       return status(providerKey)
