@@ -51,6 +51,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/providers/deepseek/chatIntentProjectionV1.ts',
       'src/next/generation-v2/providers/deepseek/chatRequestV1.ts',
       'src/next/generation-v2/providers/deepseek/chatStreamV1.ts',
+      'src/next/generation-v2/providers/deepseek/stableModelsEvidenceV2.ts',
       'src/next/generation-v2/runner/generationRequestTerminalV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
       'src/next/generation-v2/contracts/anthropicDeveloperApiContractV2.ts',
@@ -92,6 +93,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts'),
       path.resolve('infra/db/repo/generationExecutionV2Repo.ts'),
       path.resolve('infra/db/repo/conversationGraphV2Repo.ts'),
+      path.resolve('electron/services/deepSeekStableModelEvidenceV2Service.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -331,6 +333,31 @@ describe('Generation Compiler V2 core boundary', () => {
     expect(source).not.toMatch(/RuntimeCapabilityAuthority|PreparedProviderRequest|compileGenerationV2/iu)
   })
 
+  it('keeps DeepSeek stable model evidence scoped, non-executable and outside legacy catalog/runtime paths', () => {
+    const adapter = path.resolve('electron/services/deepSeekStableModelEvidenceV2Service.ts')
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === adapter) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+          .not.toMatch(/deepSeekStableModelEvidenceV2Repo|DeepSeekStableModelEvidenceRepositoryFactV2/iu)
+      }
+    }
+    const codec = read('src/next/generation-v2/providers/deepseek/stableModelsEvidenceV2.ts')
+    const repository = read('electron/services/deepSeekStableModelEvidenceV2Service.ts')
+    expect(codec).toContain("trust: 'decoded_unverified'")
+    expect(repository).toContain("trust: 'verified_deepseek_stable_model_evidence'")
+    expect(repository).toContain("executionAuthority: 'none'")
+    expect(repository).toContain('isEpoch2RuntimeCredentialLease')
+    expect(repository).toContain('credentialLease.assertCurrent()')
+    expect(repository).toContain("response.status !== 200")
+    expect(repository).toContain("redirect: 'error'")
+    expect(`${codec}\n${repository}`).not.toMatch(
+      /deepseek_official_openai_compat|deepseek-official|capabilitySeed|modelCatalog|manual_user_model_id|\/v1|\/beta|generic.*fallback|net\.request|ipcMain/iu,
+    )
+    expect(repository).toContain('session.defaultSession.fetch')
+    expect(repository).not.toMatch(/RuntimeCapabilityAuthority|PreparedProviderRequest|compileDeepSeekStableChatRequest/iu)
+  })
+
   it('limits verified contract references to non-executable snapshot provenance', () => {
     const module = path.resolve(
       'src/next/generation-v2/contracts/providerContractReferenceAuthorityV2.ts',
@@ -439,7 +466,9 @@ describe('Generation Compiler V2 core boundary', () => {
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/api\.deepseek\.com|deepseek_stable_chat_v1/iu)
     }
+    const deepSeekModelEvidenceService = path.resolve('electron/services/deepSeekStableModelEvidenceV2Service.ts')
     for (const file of productionSources(path.resolve('electron'))) {
+      if (file === deepSeekModelEvidenceService) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/deepSeekStableApiContractV2|generation-v2\/providers\/deepseek/iu)
     }

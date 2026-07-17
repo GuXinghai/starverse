@@ -91,6 +91,7 @@ function createBrokenSchemaRoot(): string {
     'generationConfigSchema.sql',
     'attachmentAssetSchema.sql',
     'openRouterImagesSchema.sql',
+    'deepSeekStableModelEvidenceSchema.sql',
   ]) fs.copyFileSync(path.join(repositoryRoot, 'infra', 'db', 'v2', file), path.join(target, file))
   fs.writeFileSync(path.join(target, 'generationExecutionSchema.sql'), [
     '-- Generation Compiler V2 failing fresh initializer fixture.',

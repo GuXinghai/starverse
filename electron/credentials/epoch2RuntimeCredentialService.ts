@@ -58,10 +58,13 @@ export type Epoch2RuntimeCredentialStatus = Readonly<{
 }>
 
 export type Epoch2RuntimeCredentialLease = Readonly<{
+  trust: 'epoch2_runtime_credential_lease'
+  usage: 'provider_transport_only'
   providerKey: ProviderCredentialKey
   credential: string
   revision: number
   credentialScopeId: CredentialScopeIdV2
+  assertCurrent: () => void
 }>
 
 export type Epoch2CredentialScopeBindingAuthority = Readonly<{
@@ -74,7 +77,14 @@ export type Epoch2CredentialScopeBindingAuthority = Readonly<{
 }>
 
 const credentialScopeBindingAuthorities = new WeakSet<object>()
+const runtimeCredentialLeases = new WeakSet<object>()
 const activeCredentialServiceLeases = new WeakSet<object>()
+
+export function isEpoch2RuntimeCredentialLease(
+  value: unknown,
+): value is Epoch2RuntimeCredentialLease {
+  return Boolean(value && typeof value === 'object' && runtimeCredentialLeases.has(value))
+}
 
 export function isEpoch2CredentialScopeBindingAuthority(
   value: unknown,
@@ -449,8 +459,9 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
       return status(request.providerKey)
     }),
     withCredential: (request) => exclusive(request.providerKey, async () => {
-      if (!isCredentialScopeIdV2(request.expectedCredentialScopeId)) {
-        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SCOPE_MISMATCH')
+      if (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision < 1 ||
+          !isCredentialScopeIdV2(request.expectedCredentialScopeId) || typeof request.consume !== 'function') {
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_INVALID')
       }
       const slot = assertPersistedSlot(request.providerKey)
       if (!slot) throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_MISSING')
@@ -465,12 +476,32 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SCOPE_MISMATCH')
       }
       assertPersistedSlot(request.providerKey)
-      return request.consume(Object.freeze({
+      const lease = Object.freeze({
+        trust: 'epoch2_runtime_credential_lease' as const,
+        usage: 'provider_transport_only' as const,
         providerKey: request.providerKey,
         credential: maintained.credential,
         revision: currentRevision,
         credentialScopeId: maintained.slot.credentialScopeId,
-      }))
+        assertCurrent: () => {
+          if (!runtimeCredentialLeases.has(lease)) {
+            throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
+          }
+          const latest = assertPersistedSlot(request.providerKey)
+          if (latest !== maintained.slot || revisions.get(request.providerKey) !== currentRevision ||
+              latest?.credentialScopeId !== maintained.slot.credentialScopeId) {
+            throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
+          }
+        },
+      })
+      runtimeCredentialLeases.add(lease)
+      try {
+        const result = await request.consume(lease)
+        lease.assertCurrent()
+        return result
+      } finally {
+        runtimeCredentialLeases.delete(lease)
+      }
     }),
     withCredentialScopeBindingAuthority: (request) => exclusive(request.providerKey, async () => {
       if (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision < 1 ||
