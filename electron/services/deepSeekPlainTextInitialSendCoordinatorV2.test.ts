@@ -32,6 +32,7 @@ import { createDeepSeekInitialStreamRunnerV2 } from './deepSeekInitialStreamRunn
 import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
 import { createDeepSeekPlainTextRetryCoordinatorV2 } from './deepSeekPlainTextRetryCoordinatorV2'
 import { createDeepSeekPlainTextRegenerateCoordinatorV2 } from './deepSeekPlainTextRegenerateCoordinatorV2'
+import { createDeepSeekPlainTextEditResendCoordinatorV2 } from './deepSeekPlainTextEditResendCoordinatorV2'
 import {
   completeDeepSeekNativeRequestV2,
   serializeDeepSeekNativeHistoryArtifactV2,
@@ -235,7 +236,7 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       expect(db.prepare('SELECT count(*) AS count FROM generation_operation_v2').get()).toEqual({ count: 1 })
       expect(db.prepare('SELECT count(*) AS count FROM generation_request_v2').get()).toEqual({ count: 1 })
       expect(() => db.prepare("UPDATE message_body_v2 SET body_text='tampered' WHERE message_id='question:1'").run())
-        .toThrow('GENERATION_V2_INITIAL_SEND_COMMAND_INPUT_IMMUTABLE')
+        .toThrow('GENERATION_V2_OPERATION_QUESTION_BODY_IMMUTABLE')
     } finally { db.close() }
   })
 
@@ -755,6 +756,167 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         .toEqual({ chosen_answer_root_id: 'answer:regenerated' })
       expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head_message_id: 'answer:regenerated' })
+    } finally { db.close() }
+  })
+
+  it('edit-resends from current config with fork/replace question semantics and no terminal rollback', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(response())
+        .mockResolvedValueOnce(streamResponse('first'))
+        .mockResolvedValueOnce(response('deepseek-chat'))
+        .mockResolvedValueOnce(streamResponse('edited answer'))
+        .mockResolvedValueOnce(response('deepseek-chat'))
+        .mockResolvedValueOnce(response('deepseek-chat'))
+        .mockResolvedValueOnce(new Response('denied', { status: 503, headers: { 'content-type': 'text/plain' } }))
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 110,
+      }).run(initial)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: { temperature: 0.4 },
+      })
+      const forkCommand = {
+        operationId: 'operation:edit-fork', mode: 'fork', branchId: 'branch:1',
+        sourceQuestionId: 'question:1', sourceAnswerRootId: 'answer:2',
+        expectedHeadMessageId: 'answer:2', userBody: 'edited question',
+        modelId: 'deepseek-chat', commandAttachments: [],
+      }
+      const forkService = createDeepSeekPlainTextEditResendCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createQuestionId: () => 'question:edit-fork', createAnswerId: () => 'answer:edit-fork',
+      })
+      const fork = await forkService.submit({
+        command: forkCommand, expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(fork.execution.operation).toMatchObject({
+        actionKind: 'edit_resend', questionId: { value: 'question:edit-fork' },
+        resultAnswerRootId: { value: 'answer:edit-fork' }, targetAnswerRootId: null,
+      })
+      expect(JSON.parse(fork.preparedRequest.body.copyUtf8Text())).toEqual({
+        messages: [{ role: 'user', content: 'edited question' }], model: 'deepseek-chat', stream: true,
+        stream_options: { include_usage: true }, temperature: 0.4, thinking: { type: 'disabled' },
+      })
+      expect(fork.projection.visibleQuestionCandidates.map((candidate) => candidate.value))
+        .toEqual(['question:1', 'question:edit-fork'])
+      expect(fork.projection.branchProjection).toMatchObject({
+        questionId: { value: 'question:edit-fork' },
+        chosenAnswerRootId: { value: 'answer:edit-fork' }, headMessageId: { value: 'answer:edit-fork' },
+      })
+      const replay = await forkService.submit({
+        command: forkCommand, expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
+      })
+      expect(replay.kind).toBe('idempotent_replay')
+      expect(replay.execution.operation.resultAnswerRootId.value).toBe('answer:edit-fork')
+      await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 130,
+      }).run(fork)
+      const countsBeforeStale = db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages,
+        (SELECT count(*) FROM branch_question_hide_v2) AS hiddenQuestions`).get()
+      await expect(createDeepSeekPlainTextEditResendCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 140,
+        createQuestionId: () => 'question:must-not-exist', createAnswerId: () => 'answer:must-not-exist',
+      }).submit({
+        command: { ...forkCommand, operationId: 'operation:edit-stale' },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })).rejects.toThrow('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages,
+        (SELECT count(*) FROM branch_question_hide_v2) AS hiddenQuestions`).get())
+        .toEqual(countsBeforeStale)
+      const replace = await createDeepSeekPlainTextEditResendCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 150,
+        createQuestionId: () => 'question:edit-replace', createAnswerId: () => 'answer:edit-replace',
+      }).submit({
+        command: {
+          ...forkCommand, operationId: 'operation:edit-replace', mode: 'replace',
+          sourceQuestionId: 'question:edit-fork', sourceAnswerRootId: 'answer:edit-fork',
+          expectedHeadMessageId: 'answer:edit-fork', userBody: 'edited again',
+        },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(replace.projection.visibleQuestionCandidates.map((candidate) => candidate.value))
+        .toEqual(['question:1', 'question:edit-replace'])
+      expect(db.prepare(`SELECT question_id AS questionId FROM branch_question_hide_v2
+        WHERE branch_id='branch:1'`).all()).toEqual([{ questionId: 'question:edit-fork' }])
+      const failed = await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 160,
+      }).run(replace)
+      expect(failed.state).toBe('failed')
+      expect(db.prepare("SELECT chosen_answer_root_id FROM branch_choice_v2 WHERE branch_id='branch:1' AND question_id='question:edit-replace'").get())
+        .toEqual({ chosen_answer_root_id: 'answer:edit-replace' })
+      expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head_message_id: 'answer:edit-replace' })
+      db.prepare("UPDATE branch_v2 SET head_message_id='answer:edit-fork' WHERE branch_id='branch:1'").run()
+      const countsBeforeHiddenAction = db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()
+      await expect(createDeepSeekPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 170,
+        createAnswerId: () => 'answer:hidden-action-must-not-exist',
+      }).submit({
+        actionKind: 'retry_as_new', operationId: 'operation:hidden-question', branchId: 'branch:1',
+        questionId: 'question:edit-fork', targetAnswerRootId: 'answer:edit-fork',
+        expectedHeadMessageId: 'answer:edit-fork',
+      })).rejects.toThrow('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()).toEqual(countsBeforeHiddenAction)
+    } finally { db.close() }
+  })
+
+  it('edit-resend reconstructs the exact native prefix before the edited question', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(response())
+        .mockResolvedValueOnce(streamResponse('first answer'))
+        .mockResolvedValueOnce(response())
+        .mockResolvedValueOnce(streamResponse('second answer'))
+        .mockResolvedValueOnce(response())
+      const first = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 110,
+      }).run(first)
+      const second = await createDeepSeekPlainTextInitialSendCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createGraphId: (kind) => kind === 'question' ? 'question:2' : 'answer:3',
+      }).submit({
+        command: command({
+          operationId: 'operation:2', expectedHeadMessageId: 'answer:2', userBody: 'second question',
+        }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 130,
+      }).run(second)
+      const edited = await createDeepSeekPlainTextEditResendCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 140,
+        createQuestionId: () => 'question:2-edited', createAnswerId: () => 'answer:2-edited',
+      }).submit({
+        command: {
+          operationId: 'operation:2-edited', mode: 'fork', branchId: 'branch:1',
+          sourceQuestionId: 'question:2', sourceAnswerRootId: 'answer:3',
+          expectedHeadMessageId: 'answer:3', userBody: 'edited second question',
+          modelId: 'deepseek-v4-pro', commandAttachments: [],
+        },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(edited.preparedRequest.body.copyUtf8Text()).messages).toEqual([
+        { role: 'user', content: 'hello' },
+        { role: 'assistant', content: 'first answer' },
+        { role: 'user', content: 'edited second question' },
+      ])
+      expect(db.prepare("SELECT parent_message_id FROM message_v2 WHERE message_id='question:2-edited'").get())
+        .toEqual({ parent_message_id: 'answer:2' })
     } finally { db.close() }
   })
 })
