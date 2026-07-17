@@ -66,10 +66,10 @@ describe('Generation V2 reviewed provider contract registry', () => {
 
   it('does not trust structural clones and exposes no duplicate contract revision', () => {
     const [definition] = listReviewedProviderContractDefinitionsV2()
-    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(6)
+    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(7)
     expect(isReviewedProviderContractDefinitionV2({ ...definition })).toBe(false)
     expect(new Set(listReviewedProviderContractDefinitionsV2().map((item) =>
-      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(6)
+      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(7)
   })
 
   it('registers OpenRouter Chat core without promoting extensions or runtime binding authority', () => {
@@ -213,5 +213,31 @@ describe('Generation V2 reviewed provider contract registry', () => {
     })
     expect(JSON.stringify(definitions[0])).not.toContain('/v1')
     expect(JSON.stringify(definitions[0])).not.toContain('/beta')
+  })
+
+  it('registers OpenAI Responses with stateless complete native-item replay', () => {
+    const definition = listReviewedProviderContractDefinitionsV2()
+      .find((item) => item.protocolContractId.value === 'openai-responses-v1')!
+    expect(definition).toMatchObject({
+      executionAuthority: 'none',
+      implementationStatus: 'definition_only',
+      operations: ['text', 'tool_continue'],
+      modelBindingPolicy: 'runtime_capability_resolver',
+      endpointBindingPolicy: 'first_party_profile_authority_required',
+      continuationPolicy: {
+        mode: 'client_managed_native_items',
+        store: false,
+        requiredInclude: ['reasoning.encrypted_content'],
+        forbiddenRequestFields: ['previous_response_id', 'conversation'],
+        replayPolicy: 'complete_ordered_output_items',
+        assistantMessagePhasePolicy: 'preserve_when_present',
+      },
+      apiSurface: {
+        surfaceId: 'openai-responses-v1',
+        relativePathTemplate: '/v1/responses',
+        streamRequestPolicy: { responseProtocol: 'typed_sse', doneSentinel: 'forbidden' },
+      },
+      evidence: { openApiSha256: null, verifiedAt: '2026-07-15' },
+    })
   })
 })

@@ -31,7 +31,14 @@ export type OpenAIResponsesApiSurfaceDefinitionV2 = Readonly<
     }>
     approvedReasoningRequestFields: readonly ['effort', 'summary']
     contextManagementStatus: 'not_approved'
-    continuationStatus: 'owner_decision_required'
+    continuationPolicy: Readonly<{
+      mode: 'client_managed_native_items'
+      store: false
+      requiredInclude: readonly ['reasoning.encrypted_content']
+      forbiddenRequestFields: readonly ['previous_response_id', 'conversation']
+      replayPolicy: 'complete_ordered_output_items'
+      assistantMessagePhasePolicy: 'preserve_when_present'
+    }>
   }
   | {
     surfaceId: 'openai-models-v1'
@@ -100,7 +107,14 @@ const responsesSurface = Object.freeze({
   }),
   approvedReasoningRequestFields: Object.freeze(['effort', 'summary'] as const),
   contextManagementStatus: 'not_approved',
-  continuationStatus: 'owner_decision_required',
+  continuationPolicy: Object.freeze({
+    mode: 'client_managed_native_items',
+    store: false,
+    requiredInclude: Object.freeze(['reasoning.encrypted_content'] as const),
+    forbiddenRequestFields: Object.freeze(['previous_response_id', 'conversation'] as const),
+    replayPolicy: 'complete_ordered_output_items',
+    assistantMessagePhasePolicy: 'preserve_when_present',
+  }),
 } as const)
 
 const modelsSurface = Object.freeze({
