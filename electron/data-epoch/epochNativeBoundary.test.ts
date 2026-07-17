@@ -61,7 +61,7 @@ describe('epoch native authority boundary', () => {
         }
       }
     }
-    expect(consumers).toEqual([])
+    expect(consumers).toEqual([path.join('electron', 'data-epoch', 'epoch2CommittedBootstrap.ts')])
   })
 
   it('keeps session reset narrow and credential records free of legacy compatibility', () => {
@@ -133,6 +133,16 @@ describe('epoch native authority boundary', () => {
         }
       }
     }
-    expect(databaseCoordinatorConsumers).toEqual([])
+    expect(databaseCoordinatorConsumers).toEqual([
+      path.join('electron', 'data-epoch', 'epoch2CommittedBootstrap.ts'),
+    ])
+
+    const bootstrapFile = path.join(repositoryRoot, 'electron', 'data-epoch', 'epoch2CommittedBootstrap.ts')
+    const bootstrapSource = fs.readFileSync(bootstrapFile, 'utf8')
+    expect(bootstrapSource).not.toMatch(/workerManager|electron\/main|ipc|BrowserWindow|chat\.db/u)
+    const bootstrapConsumers = productionTypeScriptFiles(path.join(repositoryRoot, 'electron'))
+      .filter((file) => file !== bootstrapFile)
+      .filter((file) => fs.readFileSync(file, 'utf8').includes('epoch2CommittedBootstrap'))
+    expect(bootstrapConsumers).toEqual([])
   })
 })
