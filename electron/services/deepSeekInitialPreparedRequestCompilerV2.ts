@@ -71,7 +71,8 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
-  if (!['initial_send', 'regenerate_question', 'retry_as_new', 'retry_replace'].includes(operation.actionKind) ||
+  if (!['initial_send', 'edit_resend', 'regenerate_question', 'retry_as_new', 'retry_replace']
+        .includes(operation.actionKind) ||
       !['committed', 'streaming', 'completed', 'failed', 'cancelled'].includes(operation.state) ||
       operation.operationId.value !== input.history.operationId.value ||
       operation.branchId.value !== input.history.branchId.value ||

@@ -181,6 +181,18 @@ CREATE TABLE IF NOT EXISTS branch_answer_hide_v2 (
     REFERENCES message_v2(message_id, conversation_id) ON DELETE CASCADE
 );
 
+CREATE TABLE IF NOT EXISTS branch_question_hide_v2 (
+  branch_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  question_id TEXT NOT NULL,
+  hidden_at_ms INTEGER NOT NULL CHECK (hidden_at_ms >= 0),
+  PRIMARY KEY (branch_id, question_id),
+  FOREIGN KEY (branch_id, conversation_id)
+    REFERENCES branch_v2(branch_id, conversation_id) ON DELETE CASCADE,
+  FOREIGN KEY (question_id, conversation_id)
+    REFERENCES message_v2(message_id, conversation_id) ON DELETE CASCADE
+);
+
 CREATE TRIGGER IF NOT EXISTS trg_branch_choice_v2_validate_insert
 AFTER INSERT ON branch_choice_v2
 BEGIN
@@ -248,4 +260,29 @@ CREATE TRIGGER IF NOT EXISTS trg_branch_answer_hide_v2_structure_immutable
 BEFORE UPDATE ON branch_answer_hide_v2
 BEGIN
   SELECT RAISE(ABORT, 'GENERATION_V2_GRAPH_HIDE_STRUCTURE_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_branch_question_hide_v2_validate_insert
+AFTER INSERT ON branch_question_hide_v2
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM message_v2 AS question
+    WHERE question.message_id = NEW.question_id
+      AND question.conversation_id = NEW.conversation_id
+      AND question.role = 'user'
+      AND question.status = 'completed'
+  ) THEN RAISE(ABORT, 'GENERATION_V2_GRAPH_QUESTION_HIDE_INVALID') END;
+  SELECT CASE WHEN EXISTS (
+    SELECT 1 FROM branch_v2 AS branch
+    JOIN message_v2 AS head ON head.message_id = branch.head_message_id
+      AND head.conversation_id = branch.conversation_id
+    WHERE branch.branch_id = NEW.branch_id
+      AND head.question_id = NEW.question_id
+  ) THEN RAISE(ABORT, 'GENERATION_V2_GRAPH_QUESTION_HIDE_CURRENT') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_branch_question_hide_v2_structure_immutable
+BEFORE UPDATE ON branch_question_hide_v2
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_GRAPH_QUESTION_HIDE_STRUCTURE_IMMUTABLE');
 END;

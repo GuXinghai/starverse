@@ -269,6 +269,24 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     } finally { db.close() }
   })
 
+  it('allows question hiding only after the branch leaves that question and keeps the record immutable', () => {
+    const db = createDb()
+    try {
+      seedGraph(db)
+      expect(() => db.prepare('INSERT INTO branch_question_hide_v2 VALUES (?, ?, ?, ?)')
+        .run('branch:1', 'conversation:1', 'question:1', 12))
+        .toThrow('GENERATION_V2_GRAPH_QUESTION_HIDE_CURRENT')
+      db.prepare('UPDATE branch_v2 SET head_message_id=NULL, updated_at_ms=12 WHERE branch_id=?').run('branch:1')
+      expect(() => db.prepare('INSERT INTO branch_question_hide_v2 VALUES (?, ?, ?, ?)')
+        .run('branch:1', 'conversation:1', 'answer:1', 12))
+        .toThrow('GENERATION_V2_GRAPH_QUESTION_HIDE_INVALID')
+      db.prepare('INSERT INTO branch_question_hide_v2 VALUES (?, ?, ?, ?)')
+        .run('branch:1', 'conversation:1', 'question:1', 12)
+      expect(() => db.prepare("UPDATE branch_question_hide_v2 SET question_id='answer:1'").run())
+        .toThrow('GENERATION_V2_GRAPH_QUESTION_HIDE_STRUCTURE_IMMUTABLE')
+    } finally { db.close() }
+  })
+
   it('allows one-way streaming terminalization and makes graph structure immutable', () => {
     const db = createDb()
     try {
@@ -288,7 +306,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     try {
       seedGraph(db)
       db.prepare('DELETE FROM project_v2 WHERE project_id = ?').run('project:1')
-      for (const table of ['conversation_v2', 'message_v2', 'message_body_v2', 'branch_v2', 'branch_choice_v2', 'branch_answer_hide_v2']) {
+      for (const table of ['conversation_v2', 'message_v2', 'message_body_v2', 'branch_v2', 'branch_choice_v2', 'branch_answer_hide_v2', 'branch_question_hide_v2']) {
         expect(db.prepare(`SELECT count(*) AS count FROM ${table}`).get()).toEqual({ count: 0 })
       }
       expect(db.prepare("SELECT owner_kind, owner_id FROM generation_config_v2 ORDER BY owner_kind").all())
