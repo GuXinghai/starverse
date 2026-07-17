@@ -19,6 +19,10 @@ import {
   type Win32EpochDatabaseFileAuthority,
   type Win32EpochRootLease,
 } from './win32EpochRootLease'
+import {
+  deriveCredentialScopeIdV2Primitive,
+  type CredentialScopeIdV2,
+} from '../../infra/security/credentialScopeV2Primitive'
 
 const SCOPE_KEY_BYTES = 32
 const SCOPE_KEY_BASE64 = /^[A-Za-z0-9+/]{43}=$/u
@@ -106,10 +110,14 @@ function assertEncryptedEnvelope(encrypted: unknown): Buffer {
   return encrypted
 }
 
-async function verifyScopeKeyEnvelope(ciphertext: Buffer): Promise<Buffer | undefined> {
+async function decryptScopeKeyEnvelope(ciphertext: Buffer): Promise<Readonly<{
+  key: Buffer
+  rewrappedEnvelope?: Buffer
+}>> {
   let plaintext = ''
   let key: Buffer | undefined
   let rewrapped: Buffer | undefined
+  let returned = false
   try {
     let decrypted: Electron.DecryptStringAsyncReturnValue
     try {
@@ -136,11 +144,25 @@ async function verifyScopeKeyEnvelope(ciphertext: Buffer): Promise<Buffer | unde
         throw translateFailure(error, 'EPOCH2_SCOPE_KEY_REENCRYPT_FAILED')
       }
     }
-    return rewrapped
+    const result = Object.freeze({ key, rewrappedEnvelope: rewrapped })
+    returned = true
+    return result
   } finally {
     plaintext = ''
-    key?.fill(0)
+    if (!returned) {
+      key?.fill(0)
+      rewrapped?.fill(0)
+    }
     ciphertext.fill(0)
+  }
+}
+
+async function verifyScopeKeyEnvelope(ciphertext: Buffer): Promise<Buffer | undefined> {
+  const decrypted = await decryptScopeKeyEnvelope(ciphertext)
+  try {
+    return decrypted.rewrappedEnvelope
+  } finally {
+    decrypted.key.fill(0)
   }
 }
 
@@ -363,7 +385,7 @@ function rewrapScopeKeyEnvelope(input: Readonly<{
   input.authority.verifyPathIdentity()
 }
 
-type FreshEpochDatabaseInitializerInput = Readonly<{
+export type FreshEpochDatabaseInitializerInput = Readonly<{
   layout: Epoch2WorkspaceLayout
   lease: Win32EpochRootLease
   rootAuthority: Epoch2RootAuthority
@@ -476,6 +498,93 @@ export async function initializeOrVerifyFreshEpoch2Database(
   input: FreshEpochDatabaseInitializerInput,
 ): Promise<FreshEpochDatabaseInitializationResult> {
   return initializeOrVerifyFreshEpoch2DatabaseCore(input)
+}
+
+async function withVerifiedEpoch2ScopeKey<T>(input: Readonly<{
+  initializer: FreshEpochDatabaseInitializerInput
+  consume: (scopeKey: Uint8Array) => Promise<T> | T
+}>): Promise<T> {
+  assertEpoch2RootAuthority(input.initializer.rootAuthority, input.initializer)
+  await requireAsyncSafeStorage()
+  const authority = acquireWin32EpochDatabaseFileAuthority({
+    ...input.initializer,
+    mode: 'verify_existing',
+  })
+  const schemaRoot = schemaAssetRoot()
+  let persisted: PersistedScopeEnvelope | undefined
+  let decrypted: Awaited<ReturnType<typeof decryptScopeKeyEnvelope>> | undefined
+  try {
+    let verified = await postCommitVerify({
+      layout: input.initializer.layout,
+      schemaRoot,
+      authority,
+    })
+    if (verified.rewrappedEnvelope) {
+      rewrapScopeKeyEnvelope({
+        layout: input.initializer.layout,
+        schemaRoot,
+        authority,
+        expectedRevision: verified.envelopeRevision,
+        envelope: verified.rewrappedEnvelope,
+      })
+      verified = await postCommitVerify({
+        layout: input.initializer.layout,
+        schemaRoot,
+        authority,
+      })
+      if (verified.rewrappedEnvelope) {
+        verified.rewrappedEnvelope.fill(0)
+        throw new FreshEpochDatabaseInitializerError('EPOCH2_SCOPE_KEY_REENCRYPT_FAILED')
+      }
+    }
+    const db = openDatabase({ layout: input.initializer.layout, readonly: true })
+    try {
+      db.pragma('foreign_keys = ON')
+      db.exec('BEGIN')
+      try {
+        const bundle = verifyInstalledGenerationV2SchemaInActiveTransaction(db, schemaRoot)
+        persisted = readAndValidateIdentity({
+          db,
+          bundle,
+          layout: input.initializer.layout,
+        })
+        db.exec('COMMIT')
+      } catch (error) {
+        if (db.inTransaction) db.exec('ROLLBACK')
+        throw error
+      }
+    } finally {
+      db.close()
+    }
+    decrypted = await decryptScopeKeyEnvelope(persisted.ciphertext)
+    persisted = undefined
+    if (decrypted.rewrappedEnvelope) {
+      decrypted.rewrappedEnvelope.fill(0)
+      throw new FreshEpochDatabaseInitializerError('EPOCH2_SCOPE_KEY_REENCRYPT_FAILED')
+    }
+    authority.verifyPathIdentity()
+    return await input.consume(decrypted.key)
+  } finally {
+    persisted?.ciphertext.fill(0)
+    decrypted?.key.fill(0)
+    decrypted?.rewrappedEnvelope?.fill(0)
+    authority.release()
+  }
+}
+
+export async function deriveCredentialScopeIdWithVerifiedEpoch2Key(input: Readonly<{
+  initializer: FreshEpochDatabaseInitializerInput
+  providerId: string
+  credential: string
+}>): Promise<CredentialScopeIdV2> {
+  return withVerifiedEpoch2ScopeKey({
+    initializer: input.initializer,
+    consume: (scopeKey) => deriveCredentialScopeIdV2Primitive({
+      epochScopeKey: scopeKey,
+      providerId: input.providerId,
+      credential: input.credential,
+    }),
+  })
 }
 
 export async function runFreshEpoch2DatabaseCrashSmoke(input: Readonly<{
