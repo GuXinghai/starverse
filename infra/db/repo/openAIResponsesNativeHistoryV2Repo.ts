@@ -27,8 +27,8 @@ export class OpenAIResponsesNativeHistoryV2RepoError extends Error {
   }
 }
 
-export type OpenAIResponsesInitialSendHistoryFactV2 = Readonly<{
-  trust: 'openai_responses_initial_send_history_repository_fact_v2'
+export type OpenAIResponsesRequestHistoryFactV2 = Readonly<{
+  trust: 'openai_responses_request_history_repository_fact_v2'
   operationId: Identity<'operation_id'>
   branchId: GraphIdentity<'branch_id'>
   conversationId: GraphIdentity<'conversation_id'>
@@ -66,10 +66,10 @@ function invalid(lineage = false): never {
     : 'GENERATION_V2_OPENAI_HISTORY_STATE_INVALID')
 }
 
-export function isOpenAIResponsesInitialSendHistoryFactForContextV2(
+export function isOpenAIResponsesRequestHistoryFactForContextV2(
   value: unknown,
   context: GenerationV2AuthorityTransactionContextV2,
-): value is OpenAIResponsesInitialSendHistoryFactV2 {
+): value is OpenAIResponsesRequestHistoryFactV2 {
   return Boolean(value && typeof value === 'object' && facts.has(value) && contexts.get(value) === context)
 }
 
@@ -178,10 +178,10 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     return final.artifact
   }
 
-  loadInitialSendHistory(
+  loadRequestHistory(
     context: GenerationV2AuthorityTransactionContextV2,
     operationIdValue: string,
-  ): OpenAIResponsesInitialSendHistoryFactV2 {
+  ): OpenAIResponsesRequestHistoryFactV2 {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     const operationId = GenerationV2Identity.create('operation_id', operationIdValue)
     const row = this.#db.prepare(`SELECT operation.branch_id AS branchId,
@@ -221,7 +221,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       content: Object.freeze([Object.freeze({ type: 'input_text' as const, text: row.questionBody })]),
     })])
     const fact = Object.freeze({
-      trust: 'openai_responses_initial_send_history_repository_fact_v2' as const,
+      trust: 'openai_responses_request_history_repository_fact_v2' as const,
       operationId,
       branchId: ConversationGraphV2Identity.create('branch_id', row.branchId),
       conversationId: ConversationGraphV2Identity.create('conversation_id', row.conversationId),

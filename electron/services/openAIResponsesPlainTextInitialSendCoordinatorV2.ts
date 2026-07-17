@@ -58,7 +58,7 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
       if (!execution || execution.operation.commandFingerprint !== command.requestFingerprint) {
         throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       }
-      const history = historyRepo.loadInitialSendHistory(context, command.operationId.value)
+      const history = historyRepo.loadRequestHistory(context, command.operationId.value)
       const preparedRequest = compileOpenAIResponsesInitialPreparedRequestV2({ context, execution, history })
       const request = requestRepo.replayPrepared(context, execution, preparedRequest)
       return issueGenerationTextCommandResultV2({
@@ -91,7 +91,7 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
                   raced.snapshot.providerBinding.providerId.value !== 'openai_responses') {
                 throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
               }
-              const history = historyRepo.loadInitialSendHistory(context, command.operationId.value)
+              const history = historyRepo.loadRequestHistory(context, command.operationId.value)
               const preparedRequest = compileOpenAIResponsesInitialPreparedRequestV2({ context, execution: raced, history })
               return issueGenerationTextCommandResultV2({
                 kind: 'idempotent_replay', execution: raced,
@@ -114,7 +114,7 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
                     context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability,
                   })
                   graphRepo.commitInitialTurnProjection(context, pending)
-                  const history = historyRepo.loadInitialSendHistory(context, command.operationId.value)
+                  const history = historyRepo.loadRequestHistory(context, command.operationId.value)
                   const preparedRequest = compileOpenAIResponsesInitialPreparedRequestV2({
                     context, execution: persisted.bundle, history,
                   })

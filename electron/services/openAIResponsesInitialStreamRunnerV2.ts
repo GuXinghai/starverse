@@ -165,7 +165,7 @@ export function createOpenAIResponsesInitialStreamRunnerV2(input: Readonly<{
       if (!execution) throw new OpenAIResponsesInitialStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
       const request = requestRepo.replayPrepared(context, execution, command.preparedRequest)
       const history = state === 'completed'
-        ? historyRepo.loadInitialSendHistory(context, command.preparedRequest.operationId)
+        ? historyRepo.loadRequestHistory(context, command.preparedRequest.operationId)
         : null
       const attemptTransition = executionRepo.terminalizeAttempt(context, {
         key: { operationId: request.operationId, requestSequence: request.requestSequence, attempt: 1 },

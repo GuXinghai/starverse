@@ -120,6 +120,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/openAIResponsesInitialPreparedRequestCompilerV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts'),
       path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts'),
+      path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts'),
       path.resolve('electron/debug/rawGenerationRequestStore.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
@@ -211,6 +212,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts'),
       path.resolve('electron/services/openAIResponsesInitialPreparedRequestCompilerV2.ts'),
       path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts'),
+      path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -298,6 +300,7 @@ describe('Generation Compiler V2 core boundary', () => {
     const openAICoordinator = path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts')
     const openAICompiler = path.resolve('electron/services/openAIResponsesInitialPreparedRequestCompilerV2.ts')
     const openAIRunner = path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts')
+    const openAIRetryCoordinator = path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts')
     const retryCoordinator = path.resolve('electron/services/deepSeekPlainTextRetryCoordinatorV2.ts')
     const regenerateCoordinator = path.resolve('electron/services/deepSeekPlainTextRegenerateCoordinatorV2.ts')
     const editResendCoordinator = path.resolve('electron/services/deepSeekPlainTextEditResendCoordinatorV2.ts')
@@ -313,7 +316,7 @@ describe('Generation Compiler V2 core boundary', () => {
             file === commandResult || file === retryCoordinator || file === regenerateCoordinator ||
             file === editResendCoordinator || file === toolContinuationCoordinator ||
             file === openAISnapshotCommit || file === openAICoordinator || file === openAICompiler ||
-            file === openAIRunner ||
+            file === openAIRunner || file === openAIRetryCoordinator ||
             file === toolRegistryAuthority) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/generationExecutionV2Repo|GenerationExecutionV2Repo/iu)
@@ -343,6 +346,7 @@ describe('Generation Compiler V2 core boundary', () => {
     const openAISnapshotCommit = path.resolve('electron/services/openAIResponsesPlainTextSnapshotCommitV2.ts')
     const openAICoordinator = path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts')
     const openAIRunner = path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts')
+    const openAIRetryCoordinator = path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts')
     const retryCoordinator = path.resolve('electron/services/deepSeekPlainTextRetryCoordinatorV2.ts')
     const regenerateCoordinator = path.resolve('electron/services/deepSeekPlainTextRegenerateCoordinatorV2.ts')
     const editResendCoordinator = path.resolve('electron/services/deepSeekPlainTextEditResendCoordinatorV2.ts')
@@ -354,6 +358,7 @@ describe('Generation Compiler V2 core boundary', () => {
             file === retryCoordinator || file === regenerateCoordinator || file === editResendCoordinator ||
             file === openAIHistoryRepository || file === openAIArtifactRepository ||
             file === openAISnapshotCommit || file === openAICoordinator || file === openAIRunner ||
+            file === openAIRetryCoordinator ||
             file === toolContinuationCoordinator) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/conversationGraphV2Repo|ConversationGraphV2Repo/iu)
