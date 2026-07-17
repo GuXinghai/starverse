@@ -3,18 +3,15 @@ import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
 import {
   ConversationGraphV2Repo,
-  type InitialSendReplayProjectionV2,
 } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import {
   GenerationExecutionV2Repo,
   GenerationExecutionV2RepoError,
-  type GenerationExecutionOperationBundleV2,
 } from '../../infra/db/repo/generationExecutionV2Repo'
 import {
   GenerationRequestV2Repo,
-  type GenerationRequestRepositoryFactV2,
 } from '../../infra/db/repo/generationRequestV2Repo'
 import { DeepSeekNativeHistoryV2Repo } from '../../infra/db/repo/deepSeekNativeHistoryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
@@ -30,30 +27,24 @@ import { createDeepSeekStableModelEvidenceV2Service } from './deepSeekStableMode
 import { withVerifiedDeepSeekStableGenerationAuthoritiesV2 } from './deepSeekStableGenerationAuthorityV2Service'
 import { commitVerifiedDeepSeekPlainTextInitialSnapshotV2 } from './deepSeekPlainTextSnapshotCommitV2'
 import { compileDeepSeekInitialPreparedRequestV2 } from './deepSeekInitialPreparedRequestCompilerV2'
-import type { PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+import {
+  issueDeepSeekPlainTextCommandResultV2,
+  isDeepSeekPlainTextCommandResultV2,
+  type DeepSeekPlainTextCommandResultV2,
+} from './deepSeekPlainTextCommandResultV2'
 
-export type DeepSeekPlainTextInitialSendResultV2 = Readonly<{
-  kind: 'created' | 'idempotent_replay'
-  execution: GenerationExecutionOperationBundleV2
-  projection: InitialSendReplayProjectionV2
-  preparedRequest: PreparedProviderRequestV2
-  request: GenerationRequestRepositoryFactV2
-}>
-
-const initialSendResults = new WeakSet<object>()
+export type DeepSeekPlainTextInitialSendResultV2 = DeepSeekPlainTextCommandResultV2
 
 function issueInitialSendResultV2(
   value: Omit<DeepSeekPlainTextInitialSendResultV2, never>,
 ): DeepSeekPlainTextInitialSendResultV2 {
-  const result = Object.freeze(value)
-  initialSendResults.add(result)
-  return result
+  return issueDeepSeekPlainTextCommandResultV2(value)
 }
 
 export function isDeepSeekPlainTextInitialSendResultV2(
   value: unknown,
 ): value is DeepSeekPlainTextInitialSendResultV2 {
-  return Boolean(value && typeof value === 'object' && initialSendResults.has(value))
+  return isDeepSeekPlainTextCommandResultV2(value) && value.execution.operation.actionKind === 'initial_send'
 }
 
 export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<{

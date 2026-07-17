@@ -30,6 +30,7 @@ vi.mock('../credentials/epoch2RuntimeCredentialService', () => ({
 import { createDeepSeekPlainTextInitialSendCoordinatorV2 } from './deepSeekPlainTextInitialSendCoordinatorV2'
 import { createDeepSeekInitialStreamRunnerV2 } from './deepSeekInitialStreamRunnerV2'
 import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
+import { createDeepSeekPlainTextRetryCoordinatorV2 } from './deepSeekPlainTextRetryCoordinatorV2'
 import {
   completeDeepSeekNativeRequestV2,
   serializeDeepSeekNativeHistoryArtifactV2,
@@ -578,6 +579,98 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         .toEqual({ chosen_answer_root_id: 'answer:2' })
       expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head_message_id: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('retries the chosen answer from its exact snapshot and implements as-new/replace branch semantics', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(response())
+        .mockResolvedValueOnce(streamResponse('first'))
+        .mockResolvedValueOnce(streamResponse('sibling'))
+        .mockResolvedValueOnce(new Response('denied', { status: 401, headers: { 'content-type': 'text/plain' } }))
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 110,
+      }).run(initial)
+      const originalSnapshot = JSON.parse(initial.execution.snapshot.canonicalJson)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: { temperature: 0.9 },
+      })
+      const asNewCoordinator = createDeepSeekPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createAnswerId: () => 'answer:retry-new',
+      })
+      const asNew = await asNewCoordinator.submit({
+        actionKind: 'retry_as_new', operationId: 'operation:retry-new', branchId: 'branch:1',
+        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+      })
+      expect(asNew.kind).toBe('created')
+      const replay = await asNewCoordinator.submit({
+        actionKind: 'retry_as_new', operationId: 'operation:retry-new', branchId: 'branch:1',
+        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+      })
+      expect(replay.kind).toBe('idempotent_replay')
+      expect(replay.execution.operation.resultAnswerRootId.value).toBe('answer:retry-new')
+      expect(asNew.projection.branchProjection).toMatchObject({
+        chosenAnswerRootId: { value: 'answer:retry-new' }, headMessageId: { value: 'answer:retry-new' },
+      })
+      expect(asNew.projection.visibleCandidates.map((candidate) => candidate.value))
+        .toEqual(['answer:2', 'answer:retry-new'])
+      expect(JSON.parse(asNew.preparedRequest.body.copyUtf8Text())).toEqual({
+        messages: [{ role: 'user', content: 'hello' }], model: 'deepseek-v4-pro', stream: true,
+        stream_options: { include_usage: true }, thinking: { type: 'disabled' },
+      })
+      const copiedSnapshot = JSON.parse(asNew.execution.snapshot.canonicalJson)
+      for (const snapshot of [originalSnapshot, copiedSnapshot]) {
+        delete snapshot.answerRootId
+        delete snapshot.operationId
+        delete snapshot.snapshotHash
+      }
+      expect(copiedSnapshot).toEqual(originalSnapshot)
+
+      const countsBeforeStale = db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()
+      await expect(createDeepSeekPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 121,
+        createAnswerId: () => 'answer:must-not-exist',
+      }).submit({
+        actionKind: 'retry_as_new', operationId: 'operation:stale', branchId: 'branch:1',
+        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+      })).rejects.toThrow('STALE_CHOSEN_ANSWER')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()).toEqual(countsBeforeStale)
+
+      await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 130,
+      }).run(asNew)
+      const replace = await createDeepSeekPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 140,
+        createAnswerId: () => 'answer:replacement',
+      }).submit({
+        actionKind: 'retry_replace', operationId: 'operation:replace', branchId: 'branch:1',
+        questionId: 'question:1', targetAnswerRootId: 'answer:retry-new',
+        expectedHeadMessageId: 'answer:retry-new',
+      })
+      expect(replace.projection.visibleCandidates.map((candidate) => candidate.value))
+        .toEqual(['answer:2', 'answer:replacement'])
+      expect(db.prepare(`SELECT answer_root_id AS answerRootId FROM branch_answer_hide_v2
+        WHERE branch_id='branch:1' AND question_id='question:1'`).all())
+        .toEqual([{ answerRootId: 'answer:retry-new' }])
+      const failed = await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 150,
+      }).run(replace)
+      expect(failed.state).toBe('failed')
+      expect(db.prepare("SELECT chosen_answer_root_id FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen_answer_root_id: 'answer:replacement' })
+      expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head_message_id: 'answer:replacement' })
     } finally { db.close() }
   })
 })

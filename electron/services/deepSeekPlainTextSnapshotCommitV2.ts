@@ -6,10 +6,13 @@ import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/dom
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import {
   isPendingInitialTurnForContextV2,
+  isPendingAnswerActionForContextV2,
+  type PendingAnswerActionV2,
   type PendingInitialTurnV2,
 } from '../../infra/db/repo/conversationGraphV2Repo'
 import {
   GenerationExecutionV2Repo,
+  isGenerationExecutionOperationBundleForContextV2,
   type GenerationExecutionOperationBundleV2,
 } from '../../infra/db/repo/generationExecutionV2Repo'
 import {
@@ -35,6 +38,10 @@ import {
   isDeepSeekPlainTextInitialSendCommandV2,
   type DeepSeekPlainTextInitialSendCommandV2,
 } from '../../src/next/generation-v2/providers/deepseek/plainTextInitialSendCommandV2'
+import {
+  isDeepSeekPlainTextRetryCommandV2,
+  type DeepSeekPlainTextRetryCommandV2,
+} from '../../src/next/generation-v2/providers/deepseek/plainTextRetryCommandV2'
 
 export class DeepSeekPlainTextSnapshotCommitV2Error extends Error {
   constructor(readonly code:
@@ -223,4 +230,69 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
     executionPersistence: execution.kind,
     bundle: execution.bundle,
   })
+}
+
+export function commitDeepSeekPlainTextRetrySnapshotV2(input: Readonly<{
+  context: GenerationV2AuthorityTransactionContextV2
+  executionRepo: GenerationExecutionV2Repo
+  pending: PendingAnswerActionV2
+  command: DeepSeekPlainTextRetryCommandV2
+  target: GenerationExecutionOperationBundleV2
+}>): Readonly<{
+  executionPersistence: 'created' | 'idempotent_replay'
+  bundle: GenerationExecutionOperationBundleV2
+}> {
+  if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
+      !isPendingAnswerActionForContextV2(input.pending, input.context) ||
+      !isDeepSeekPlainTextRetryCommandV2(input.command) ||
+      !isGenerationExecutionOperationBundleForContextV2(input.target, input.context) ||
+      input.pending.actionKind !== input.command.actionKind ||
+      input.pending.operationId.value !== input.command.operationId.value ||
+      input.pending.branchId.value !== input.command.branchId.value ||
+      input.pending.questionId.value !== input.command.questionId.value ||
+      input.pending.targetAnswerRootId?.value !== input.command.targetAnswerRootId.value ||
+      input.target.operation.resultAnswerRootId.value !== input.command.targetAnswerRootId.value ||
+      input.target.operation.questionId.value !== input.command.questionId.value ||
+      input.target.snapshot.providerBinding.providerId.value !== 'deepseek' ||
+      input.target.snapshot.providerBinding.operation !== 'text') {
+    throw new DeepSeekPlainTextSnapshotCommitV2Error(
+      'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_INPUT_INVALID',
+    )
+  }
+  const targetPayload = JSON.parse(input.target.snapshot.canonicalJson) as Record<string, unknown>
+  delete targetPayload.snapshotHash
+  const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
+    ...targetPayload,
+    answerRootId: input.pending.answerRootId.value,
+    operationId: input.command.operationId.value,
+  })
+  const snapshot = decodeAssistantAnswerGenerationSnapshotV2(record)
+  const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
+    operationId: input.command.operationId.value,
+    actionKind: input.command.actionKind,
+    branchId: input.pending.branchId.value,
+    conversationId: input.pending.conversationId.value,
+    questionId: input.pending.questionId.value,
+    targetAnswerRootId: input.pending.targetAnswerRootId!.value,
+    resultAnswerRootId: input.pending.answerRootId.value,
+    snapshot: snapshot.canonicalJson,
+    commandFingerprint: input.command.requestFingerprint,
+    createdAtMs: input.pending.createdAtMs,
+  })
+  const copiedPayload = JSON.parse(execution.bundle.snapshot.canonicalJson) as Record<string, unknown>
+  delete copiedPayload.answerRootId
+  delete copiedPayload.operationId
+  delete copiedPayload.snapshotHash
+  const expectedPayload = JSON.parse(input.target.snapshot.canonicalJson) as Record<string, unknown>
+  delete expectedPayload.answerRootId
+  delete expectedPayload.operationId
+  delete expectedPayload.snapshotHash
+  if (execution.bundle.operation.actionKind !== input.command.actionKind ||
+      execution.bundle.operation.targetAnswerRootId?.value !== input.command.targetAnswerRootId.value ||
+      stableSerializeProviderRequestV2(copiedPayload) !== stableSerializeProviderRequestV2(expectedPayload)) {
+    throw new DeepSeekPlainTextSnapshotCommitV2Error(
+      'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_RESULT_INVALID',
+    )
+  }
+  return Object.freeze({ executionPersistence: execution.kind, bundle: execution.bundle })
 }
