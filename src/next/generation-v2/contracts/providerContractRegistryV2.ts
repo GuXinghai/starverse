@@ -24,6 +24,8 @@ import {
   readOpenRouterChatApiContractV2,
   readOpenRouterChatRegistrySurfaceV2,
 } from './openRouterChatApiContractV2'
+import type { OpenAIResponsesApiSurfaceDefinitionV2 } from './openAIResponsesApiContractV2'
+import { readOpenAIResponsesApiContractV2 } from './openAIResponsesApiContractV2'
 
 export type ProviderContractOperationV2 = 'text' | 'image_generate' | 'image_edit' | 'tool_continue'
 
@@ -37,6 +39,7 @@ export type ProviderContractApiSurfaceV2 = Readonly<
   | GeminiDeveloperApiRegistrySurfaceV2
   | DeepSeekStableChatRegistrySurfaceV2
   | OpenRouterChatRegistrySurfaceV2
+  | Extract<OpenAIResponsesApiSurfaceDefinitionV2, { surfaceId: 'openai-responses-v1' }>
 >
 
 type ModelBindingPolicyV2 = 'descriptor_model_id' | 'runtime_capability_resolver'
@@ -47,6 +50,7 @@ type ContinuationPolicyV2 =
   | GeminiDeveloperApiSurfaceDefinitionV2['continuationFamily']
   | DeepSeekStableChatRegistrySurfaceV2['continuationFamily']
   | OpenRouterChatRegistrySurfaceV2['continuationFamily']
+  | Extract<OpenAIResponsesApiSurfaceDefinitionV2, { surfaceId: 'openai-responses-v1' }>['continuationPolicy']
 
 export type ReviewedProviderContractDefinitionV2 = Readonly<{
   classification: 'reviewed_definition'
@@ -260,6 +264,35 @@ const DEEPSEEK_STABLE_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
   }),
 })
 
+const openAIResponsesApiContract = readOpenAIResponsesApiContractV2()
+const openAIResponsesSurface = openAIResponsesApiContract.surfaces.find(
+  (surface): surface is Extract<OpenAIResponsesApiSurfaceDefinitionV2, { surfaceId: 'openai-responses-v1' }> =>
+    surface.surfaceId === 'openai-responses-v1',
+)
+if (!openAIResponsesSurface) {
+  throw new ProviderContractRegistryV2Error('GENERATION_V2_CONTRACT_REGISTRY_INVALID')
+}
+const OPENAI_RESPONSES_PROJECTION: DefinitionProjection = Object.freeze({
+  protocolContractId: 'openai-responses-v1',
+  providerId: openAIResponsesApiContract.providerId,
+  operations: Object.freeze(['text', 'tool_continue'] as const),
+  apiSurface: openAIResponsesSurface,
+  modelBindingPolicy: 'runtime_capability_resolver',
+  endpointBindingPolicy: 'first_party_profile_authority_required',
+  continuationPolicy: openAIResponsesSurface.continuationPolicy,
+  implementationStatus: 'definition_only',
+  evidence: Object.freeze({
+    verifiedAt: openAIResponsesApiContract.evidence.verifiedAt,
+    openApiSha256: null,
+    provenanceUrls: openAIResponsesApiContract.evidence.provenanceUrls,
+    localArtifacts: Object.freeze([Object.freeze({
+      id: 'openai-responses-api-contract-20260715',
+      path: 'docs/architecture/generation-compiler-v2/evidence/openai-responses-api-contract-20260715.json',
+      sha256: '2002b74420786ae4b2005bc9ccd32336885e92976b18849d75c5ec2d48563714',
+    })]),
+  }),
+})
+
 function digest(value: unknown): string {
   return createHash('sha256').update(stableSerializeProviderRequestV2(value), 'utf8').digest('hex')
 }
@@ -271,6 +304,7 @@ const definitionProjections = Object.freeze([
   GEMINI_INTERACTIONS_PROJECTION,
   ANTHROPIC_MESSAGES_PROJECTION,
   DEEPSEEK_STABLE_CHAT_PROJECTION,
+  OPENAI_RESPONSES_PROJECTION,
 ])
 const registryRevisionValue = `provider-contract-registry-v1:${digest(definitionProjections)}`
 const registryRevision = GenerationV2Identity.create('registry_revision', registryRevisionValue)
@@ -313,6 +347,9 @@ function requireReviewedDefinition(
 }
 const deepSeekStableChatDefinition = requireReviewedDefinition(definitions.find(
   (definition) => definition.protocolContractId.value === 'deepseek-stable-chat-v1',
+))
+const openAIResponsesDefinition = requireReviewedDefinition(definitions.find(
+  (definition) => definition.protocolContractId.value === 'openai-responses-v1',
 ))
 const definitionsByKey = new Map(definitions.map((definition) => [
   `${definition.protocolContractId.value}\0${definition.contractRevision.value}`,
@@ -362,4 +399,8 @@ export function readProviderContractRegistryRevisionV2(): GenerationV2Identity<'
 
 export function readReviewedDeepSeekStableChatDefinitionV2(): ReviewedProviderContractDefinitionV2 {
   return deepSeekStableChatDefinition
+}
+
+export function readReviewedOpenAIResponsesDefinitionV2(): ReviewedProviderContractDefinitionV2 {
+  return openAIResponsesDefinition
 }

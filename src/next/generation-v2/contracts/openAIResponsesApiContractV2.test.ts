@@ -32,7 +32,7 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
     expect(isOpenAIResponsesApiContractV2({ ...contract })).toBe(false)
   })
 
-  it('freezes only the reviewed Responses facts without choosing continuation', () => {
+  it('freezes the Owner-selected client-managed native-item continuation contract', () => {
     const responses = readOpenAIResponsesApiContractV2().surfaces[0]
     if (responses.surfaceId !== 'openai-responses-v1') throw new Error('unexpected Responses surface order')
     expect(responses).toEqual({
@@ -52,11 +52,21 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
       },
       approvedReasoningRequestFields: ['effort', 'summary'],
       contextManagementStatus: 'not_approved',
-      continuationStatus: 'owner_decision_required',
+      continuationPolicy: {
+        mode: 'client_managed_native_items',
+        store: false,
+        requiredInclude: ['reasoning.encrypted_content'],
+        forbiddenRequestFields: ['previous_response_id', 'conversation'],
+        replayPolicy: 'complete_ordered_output_items',
+        assistantMessagePhasePolicy: 'preserve_when_present',
+      },
     })
-    expect(JSON.stringify(responses)).not.toMatch(/previous_response_id|conversation|reasoning_context|reasoning_mode/u)
+    expect(JSON.stringify(responses)).not.toMatch(/reasoning_context|reasoning_mode/u)
     expect(Object.isFrozen(responses.streamRequestPolicy)).toBe(true)
     expect(Object.isFrozen(responses.approvedReasoningRequestFields)).toBe(true)
+    expect(Object.isFrozen(responses.continuationPolicy)).toBe(true)
+    expect(Object.isFrozen(responses.continuationPolicy.requiredInclude)).toBe(true)
+    expect(Object.isFrozen(responses.continuationPolicy.forbiddenRequestFields)).toBe(true)
   })
 
   it('resolves exact Responses, Models and Files endpoints', () => {
@@ -131,7 +141,7 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
     ))
   })
 
-  it('does not enter the registry or any legacy execution path', () => {
+  it('enters only the reviewed V2 registry and no legacy execution path', () => {
     const contractSource = readFileSync(path.resolve(
       'src/next/generation-v2/contracts/openAIResponsesApiContractV2.ts',
     ), 'utf8')
@@ -145,8 +155,8 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
     ].map((file) => readFileSync(path.resolve(file), 'utf8')).join('\n')
 
     expect(contractSource).not.toMatch(/\bfetch\s*\(|net\.request|ipcMain/u)
-    expect(contractSource).not.toMatch(/previous_response_id|conversationFamily/u)
-    expect(registrySource).not.toContain('openAIResponsesApiContractV2')
+    expect(contractSource).not.toMatch(/conversationFamily/u)
+    expect(registrySource).toContain('openAIResponsesApiContractV2')
     expect(legacySources).not.toContain('openAIResponsesApiContractV2')
   })
 })
