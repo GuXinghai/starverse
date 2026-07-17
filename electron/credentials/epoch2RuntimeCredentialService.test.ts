@@ -39,7 +39,9 @@ import {
   createEpoch2RuntimeCredentialService,
   Epoch2RuntimeCredentialError,
   isEpoch2CredentialScopeBindingAuthority,
+  isEpoch2RuntimeCredentialLease,
   type Epoch2CredentialScopeBindingAuthority,
+  type Epoch2RuntimeCredentialLease,
 } from './epoch2RuntimeCredentialService'
 import type { ProviderCredentialKey } from './providerCredentialContract'
 
@@ -187,12 +189,17 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
       const gate = new Promise<void>((resolve) => { release = resolve })
       let markEntered!: () => void
       const entered = new Promise<void>((resolve) => { markEntered = resolve })
+      let capturedLease: Epoch2RuntimeCredentialLease | undefined
       const active = service.withCredential({
         providerKey: 'anthropic',
         expectedRevision: initial.revision,
         expectedCredentialScopeId: initial.credentialScopeId!,
         consume: async (lease) => {
           expect(lease.credential).toBe('sk-old')
+          expect(isEpoch2RuntimeCredentialLease(lease)).toBe(true)
+          expect(lease.usage).toBe('provider_transport_only')
+          lease.assertCurrent()
+          capturedLease = lease
           markEntered()
           await gate
           return 'done'
@@ -207,6 +214,8 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
       expect(updateFinished).toBe(false)
       release()
       await expect(active).resolves.toBe('done')
+      expect(isEpoch2RuntimeCredentialLease(capturedLease)).toBe(false)
+      expect(() => capturedLease?.assertCurrent()).toThrow('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
       await expect(update).resolves.toMatchObject({ revision: 2 })
     } finally { value.lease.release() }
   })
