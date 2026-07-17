@@ -3,7 +3,7 @@ import {
   compileDeepSeekStableChatRequestV1,
   DEEPSEEK_STABLE_REQUEST_MAX_BYTES_V1,
 } from './chatRequestV1'
-import { completeDeepSeekNativeRequestV1 } from './nativeMessagesV1'
+import { completeDeepSeekNativeRequestV2 } from './nativeMessagesV1'
 
 const user = (content: string) => ({ kind: 'client', message: { role: 'user', content } }) as const
 const functionTool = {
@@ -86,8 +86,8 @@ describe('DeepSeek stable Chat request V1', () => {
   })
 
   it('replays complete provider-native assistant reasoning and tool messages byte-for-byte', () => {
-    const prior = completeDeepSeekNativeRequestV1({
-      priorArtifact: null, requestSequence: 1, clientEntries: [user('weather')],
+    const prior = completeDeepSeekNativeRequestV2({
+      priorArtifact: null, clientEntries: [user('weather')],
       assistantMessage: {
         role: 'assistant', content: 'Checking', reasoning_content: 'Need weather tool',
         tool_calls: [{ id: 'call_1', type: 'function', function: { name: 'weather', arguments: '{"city":"杭州"}' } }],

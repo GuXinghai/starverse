@@ -1,0 +1,84 @@
+{
+  "capturedAt": "2026-07-17",
+  "provider": "deepseek",
+  "classification": "owner_frozen_generation_compiler_v2_policy",
+  "contractEvidenceArtifact": {
+    "id": "deepseek-stable-api-contract-20260715",
+    "sha256": "0022edabf76e51ce88fc6d45310ad889b8a84fd037c72c287944449ba8a42cc7"
+  },
+  "familyPolicy": {
+    "acceptedNoWire": {
+      "attachmentIdentityPaths": [
+        "attachments[].assetId",
+        "attachments[].assetRevisionId",
+        "attachments[].assetSha256"
+      ],
+      "disabledModes": {
+        "image.mode": "disabled",
+        "web.mode": "disabled"
+      },
+      "providerExtensionKind": "none"
+    },
+    "pendingAuthorityPaths": [
+      "attachments[].conversion",
+      "attachments[].include",
+      "attachments[].sendAs",
+      "generation.maxOutputTokens",
+      "generation.stop",
+      "tools.allowedToolIds"
+    ],
+    "rejectedExplicitPaths": [
+      "generation.candidateCount",
+      "generation.frequencyPenalty",
+      "generation.presencePenalty",
+      "generation.repetitionPenalty",
+      "generation.seed",
+      "generation.topK",
+      "image.aspectRatio",
+      "image.background",
+      "image.format",
+      "image.outputCompression",
+      "image.quality",
+      "image.resolution",
+      "image.size",
+      "image.stream",
+      "reasoning.summary",
+      "web.types"
+    ],
+    "toolPolicy": {
+      "toolKind": "function_only",
+      "betaStrictField": "forbidden",
+      "registryAuthority": "required_exact_revision",
+      "allowedToolSet": "nonempty_exact",
+      "sideEffectConfirmation": "required_each_retry",
+      "priorConfirmationReusable": false,
+      "toolChoice": {
+        "appliesWhenToolsMode": "enabled",
+        "reasoningEnabled": {
+          "allowedModes": ["omitted"],
+          "explicitRejectionCode": "DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED"
+        },
+        "reasoningDisabled": {
+          "allowedModes": ["omitted", "auto", "none", "required", "named"],
+          "autoRequiresVerifiedNonemptyToolSet": true,
+          "requiredRequiresVerifiedNonemptyToolSet": true,
+          "namedRequiresExactRegistryMembership": true
+        }
+      }
+    },
+    "continuation": {
+      "kind": "client_managed_native_replay",
+      "artifactKind": "deepseek_stable_ordered_native_messages_v2",
+      "artifactCodecVersion": 2,
+      "lineage": "parent_artifact_hash_and_depth",
+      "supportsBranchReplay": true,
+      "supportsRestartReplay": true
+    }
+  },
+  "notes": [
+    "This artifact freezes Starverse policy and authority preconditions; it does not claim provider documentation provenance.",
+    "Model availability from GET /models never proves model capability or model-specific limits.",
+    "Native-history lineage is independent from operation-local request sequence.",
+    "Unavailable paths remain fail-closed until their own revisioned authority exists."
+  ]
+}

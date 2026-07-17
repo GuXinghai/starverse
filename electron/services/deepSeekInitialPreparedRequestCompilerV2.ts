@@ -1,0 +1,163 @@
+import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import {
+  isGenerationExecutionOperationBundleForContextV2,
+  type GenerationExecutionOperationBundleV2,
+} from '../../infra/db/repo/generationExecutionV2Repo'
+import {
+  isDeepSeekInitialSendHistoryRepositoryFactForContextV2,
+  type DeepSeekInitialSendHistoryRepositoryFactV2,
+} from '../../infra/db/repo/deepSeekNativeHistoryV2Repo'
+import {
+  isReviewedProviderContractDefinitionV2,
+  readReviewedDeepSeekStableChatDefinitionV2,
+} from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
+import {
+  isVerifiedProviderContractReferenceV2,
+  verifyProviderContractReferenceV2,
+} from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
+import {
+  DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
+} from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
+import {
+  compileDeepSeekStableChatRequestV1,
+  type DeepSeekStableChatRequestV1,
+} from '../../src/next/generation-v2/providers/deepseek/chatRequestV1'
+import { projectDeepSeekStableIntentV1 } from '../../src/next/generation-v2/providers/deepseek/chatIntentProjectionV1'
+import {
+  isVerifiedDeepSeekStableEndpointProfileV2,
+  readVerifiedDeepSeekStableEndpointProfileV2,
+} from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
+import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import {
+  issuePreparedProviderRequestV2,
+  type PreparedProviderRequestV2,
+} from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+
+export class DeepSeekInitialPreparedRequestCompilerV2Error extends Error {
+  constructor(readonly code:
+    | 'GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID'
+    | 'GENERATION_V2_DEEPSEEK_COMPILER_BINDING_INVALID'
+    | 'GENERATION_V2_DEEPSEEK_COMPILER_CAPABILITY_MISMATCH'
+    | 'GENERATION_V2_DEEPSEEK_COMPILER_SEMANTIC_REJECTED'
+    | 'GENERATION_V2_DEEPSEEK_COMPILER_LEDGER_MISMATCH') {
+    super(code)
+    this.name = 'DeepSeekInitialPreparedRequestCompilerV2Error'
+  }
+}
+
+function equalValue(left: unknown, right: unknown): boolean {
+  return stableSerializeProviderRequestV2({ value: left }) === stableSerializeProviderRequestV2({ value: right })
+}
+
+function requestWireValue(request: DeepSeekStableChatRequestV1, wireKey: string): unknown {
+  if (wireKey === 'thinking.type') return request.thinking.type
+  if (wireKey === 'reasoning_effort') return request.reasoning_effort
+  if (wireKey === 'max_tokens') return request.max_tokens
+  if (wireKey === 'stop') return request.stop
+  if (wireKey === 'temperature') return request.temperature
+  if (wireKey === 'top_p') return request.top_p
+  return undefined
+}
+
+export function compileDeepSeekInitialPreparedRequestV2(input: Readonly<{
+  context: GenerationV2AuthorityTransactionContextV2
+  execution: GenerationExecutionOperationBundleV2
+  history: DeepSeekInitialSendHistoryRepositoryFactV2
+}>): PreparedProviderRequestV2 {
+  if (!isGenerationExecutionOperationBundleForContextV2(input.execution, input.context) ||
+      !isDeepSeekInitialSendHistoryRepositoryFactForContextV2(input.history, input.context)) {
+    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
+  }
+  const { operation, snapshot, capability } = input.execution
+  if (operation.actionKind !== 'initial_send' ||
+      !['committed', 'streaming', 'completed', 'failed', 'cancelled'].includes(operation.state) ||
+      operation.operationId.value !== input.history.operationId.value ||
+      operation.branchId.value !== input.history.branchId.value ||
+      operation.conversationId.value !== input.history.conversationId.value ||
+      operation.questionId.value !== input.history.questionId.value ||
+      operation.resultAnswerRootId.value !== input.history.answerRootId.value ||
+      snapshot.operationId.value !== operation.operationId.value ||
+      snapshot.answerRootId.value !== operation.resultAnswerRootId.value) {
+    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
+  }
+
+  const binding = snapshot.providerBinding
+  const profile = readVerifiedDeepSeekStableEndpointProfileV2()
+  const definition = readReviewedDeepSeekStableChatDefinitionV2()
+  const contractReference = verifyProviderContractReferenceV2(projectDecodedProviderBindingRecordV2(binding))
+  if (!isVerifiedDeepSeekStableEndpointProfileV2(profile) ||
+      !isReviewedProviderContractDefinitionV2(definition) ||
+      !isVerifiedProviderContractReferenceV2(contractReference) ||
+      contractReference.reviewedDefinition !== definition || binding.providerId.value !== 'deepseek' ||
+      binding.operation !== 'text' || binding.endpointProfileId.value !== profile.endpointProfileId.value ||
+      binding.protocolContractId.value !== 'deepseek-stable-chat-v1' ||
+      binding.endpointBinding.kind !== 'provider_managed_set' ||
+      binding.endpointBinding.endpointSetRevision.value !== profile.endpointSetRevision.value ||
+      binding.endpointBinding.descriptors.length !== 1 ||
+      binding.endpointBinding.descriptors[0].endpointId.value !== profile.descriptor.endpointId.value ||
+      binding.endpointBinding.descriptors[0].descriptorRevision.value !== profile.descriptor.descriptorRevision.value ||
+      capability.continuation.kind !== 'client_managed_native_replay' ||
+      capability.continuation.artifactKind !== DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2) {
+    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_BINDING_INVALID')
+  }
+
+  const projection = projectDeepSeekStableIntentV1(snapshot.semanticIntent)
+  if (projection.issues.length > 0) {
+    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_SEMANTIC_REJECTED')
+  }
+  const capabilityFields = new Map<string, typeof capability.fields[number]>(
+    capability.fields.map((field) => [field.path, field]),
+  )
+  if (projection.dispositions.some((disposition) => capabilityFields.get(disposition.semanticPath)?.state !== 'supported')) {
+    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_CAPABILITY_MISMATCH')
+  }
+  const nativeFields = new Map(projection.nativeSemanticFields.map((field) => [field.wireKey, field.value]))
+  if (nativeFields.size !== projection.nativeSemanticFields.length) {
+    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_LEDGER_MISMATCH')
+  }
+  const compilation = compileDeepSeekStableChatRequestV1({
+    model: binding.modelId.value,
+    priorArtifact: input.history.priorArtifact,
+    clientEntries: input.history.clientEntries,
+    thinking: {
+      type: nativeFields.get('thinking.type'),
+      ...(nativeFields.has('reasoning_effort') ? { reasoningEffort: nativeFields.get('reasoning_effort') } : {}),
+    },
+    generation: {
+      ...(nativeFields.has('max_tokens') ? { maxTokens: nativeFields.get('max_tokens') } : {}),
+      ...(nativeFields.has('stop') ? { stop: nativeFields.get('stop') } : {}),
+      ...(nativeFields.has('temperature') ? { temperature: nativeFields.get('temperature') } : {}),
+      ...(nativeFields.has('top_p') ? { topP: nativeFields.get('top_p') } : {}),
+    },
+  })
+  if (projection.nativeSemanticFields.some((field) =>
+    !equalValue(requestWireValue(compilation.nativeRequest, field.wireKey), field.value))) {
+    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_LEDGER_MISMATCH')
+  }
+  const ledger = createSemanticConsumptionLedgerV2(projection.dispositions.map((disposition) => ({
+    kind: 'consumed' as const,
+    path: disposition.semanticPath,
+    disposition: disposition.outcome,
+    nativeField: disposition.wireKey ?? null,
+    evidence: disposition.evidence,
+  })))
+  const endpoint = new URL(profile.descriptor.chatPath, profile.descriptor.apiOrigin).toString()
+  return issuePreparedProviderRequestV2({
+    operationId: operation.operationId.value,
+    answerRootId: operation.resultAnswerRootId.value,
+    requestSequence: 1,
+    providerId: binding.providerId.value,
+    endpointProfileId: binding.endpointProfileId.value,
+    credentialScopeId: binding.credentialScopeId.value,
+    contractId: binding.protocolContractId.value,
+    modelId: binding.modelId.value,
+    effectiveEndpointId: profile.descriptor.endpointId.value,
+    endpoint,
+    body: compilation.preparedBody,
+    ledger,
+    capabilityRevision: capability.revision.value,
+    snapshotHash: snapshot.snapshotHash.value,
+  })
+}

@@ -12,6 +12,11 @@ import {
   GenerationExecutionV2RepoError,
   type GenerationExecutionOperationBundleV2,
 } from '../../infra/db/repo/generationExecutionV2Repo'
+import {
+  GenerationRequestV2Repo,
+  type GenerationRequestRepositoryFactV2,
+} from '../../infra/db/repo/generationRequestV2Repo'
+import { DeepSeekNativeHistoryV2Repo } from '../../infra/db/repo/deepSeekNativeHistoryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
@@ -24,11 +29,15 @@ import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2
 import { createDeepSeekStableModelEvidenceV2Service } from './deepSeekStableModelEvidenceV2Service'
 import { withVerifiedDeepSeekStableGenerationAuthoritiesV2 } from './deepSeekStableGenerationAuthorityV2Service'
 import { commitVerifiedDeepSeekPlainTextInitialSnapshotV2 } from './deepSeekPlainTextSnapshotCommitV2'
+import { compileDeepSeekInitialPreparedRequestV2 } from './deepSeekInitialPreparedRequestCompilerV2'
+import type { PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 
 export type DeepSeekPlainTextInitialSendResultV2 = Readonly<{
   kind: 'created' | 'idempotent_replay'
   execution: GenerationExecutionOperationBundleV2
   projection: InitialSendReplayProjectionV2
+  preparedRequest: PreparedProviderRequestV2
+  request: GenerationRequestRepositoryFactV2
 }>
 
 export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<{
@@ -40,6 +49,8 @@ export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<
   const nowMs = input.nowMs ?? Date.now
   const createGraphId = input.createGraphId ?? ((kind: 'question' | 'answer') => `${kind}:${randomUUID()}`)
   const executionRepo = new GenerationExecutionV2Repo(input.db, nowMs)
+  const requestRepo = new GenerationRequestV2Repo(input.db, nowMs)
+  const historyRepo = new DeepSeekNativeHistoryV2Repo(input.db)
   const graphRepo = new ConversationGraphV2Repo(input.db)
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
@@ -50,16 +61,28 @@ export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<
   const endpointProfile = readVerifiedDeepSeekStableEndpointProfileV2()
 
   function replay(command: DeepSeekPlainTextInitialSendCommandV2): DeepSeekPlainTextInitialSendResultV2 | null {
-    const existing = executionRepo.findOperation(command.operationId.value)
-    if (!existing) return null
-    if (existing.operation.actionKind !== 'initial_send' ||
-        existing.operation.commandFingerprint !== command.requestFingerprint) {
+    const observed = executionRepo.findOperation(command.operationId.value)
+    if (!observed) return null
+    if (observed.operation.actionKind !== 'initial_send' ||
+        observed.operation.commandFingerprint !== command.requestFingerprint) {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
     }
-    return Object.freeze({
-      kind: 'idempotent_replay' as const,
-      execution: existing,
-      projection: graphRepo.getInitialSendReplayProjection(command.operationId.value),
+    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+      const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
+      if (!execution || execution.operation.actionKind !== 'initial_send' ||
+          execution.operation.commandFingerprint !== command.requestFingerprint) {
+        throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
+      }
+      const history = historyRepo.loadInitialSendHistory(context, command.operationId.value)
+      const preparedRequest = compileDeepSeekInitialPreparedRequestV2({ context, execution, history })
+      const request = requestRepo.replayPrepared(context, execution, preparedRequest)
+      return Object.freeze({
+        kind: 'idempotent_replay' as const,
+        execution,
+        projection: graphRepo.getInitialSendReplayProjectionInTransaction(context, command.operationId.value),
+        preparedRequest,
+        request,
+      })
     })
   }
 
@@ -89,12 +112,19 @@ export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<
                     raced.operation.commandFingerprint !== command.requestFingerprint) {
                   throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
                 }
+                const history = historyRepo.loadInitialSendHistory(context, command.operationId.value)
+                const preparedRequest = compileDeepSeekInitialPreparedRequestV2({
+                  context, execution: raced, history,
+                })
+                const persistedRequest = requestRepo.replayPrepared(context, raced, preparedRequest)
                 return Object.freeze({
                   kind: 'idempotent_replay' as const,
                   execution: raced,
                   projection: graphRepo.getInitialSendReplayProjectionInTransaction(
                     context, command.operationId.value,
                   ),
+                  preparedRequest,
+                  request: persistedRequest,
                 })
               }
               const createdAtMs = nowMs()
@@ -123,12 +153,21 @@ export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<
                       capability: authorities.capability,
                     })
                     graphRepo.commitInitialTurnProjection(context, pending)
+                    const history = historyRepo.loadInitialSendHistory(context, command.operationId.value)
+                    const preparedRequest = compileDeepSeekInitialPreparedRequestV2({
+                      context, execution: persisted.bundle, history,
+                    })
+                    const persistedRequest = requestRepo.createPrepared(
+                      context, persisted.bundle, preparedRequest,
+                    )
                     return Object.freeze({
                       kind: 'created' as const,
                       execution: persisted.bundle,
                       projection: graphRepo.getInitialSendReplayProjectionInTransaction(
                         context, command.operationId.value,
                       ),
+                      preparedRequest,
+                      request: persistedRequest,
                     })
                   },
                 }),

@@ -194,7 +194,7 @@ describe('DeepSeek stable generation authority V2 service', () => {
           kind: 'client_managed_native_replay',
           supportsBranchReplay: true,
           supportsRestartReplay: true,
-          evidenceIds: ['starverse.deepseek.stable.policy.2026-07-17.supports'],
+          evidenceIds: ['starverse.deepseek.stable.policy.v2.2026-07-17.supports'],
         })
         const evidence = new Map(capability.snapshot.evidence.map((entry) => [entry.evidenceId, entry]))
         for (const field of capability.snapshot.fields) {

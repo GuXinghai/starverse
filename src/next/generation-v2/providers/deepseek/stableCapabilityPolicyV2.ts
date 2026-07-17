@@ -15,6 +15,10 @@ import {
   readReviewedDeepSeekStableChatDefinitionV2,
 } from '../../contracts/providerContractRegistryV2'
 import { GenerationV2Digest, GenerationV2Identity } from '../../domain/identityV2'
+import { DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2 } from './nativeMessagesV1'
+
+export const DEEPSEEK_STABLE_OWNER_CAPABILITY_POLICY_EVIDENCE_ID_V2 =
+  'starverse.deepseek.stable.policy.v2.2026-07-17' as const
 
 export type DeepSeekStableCapabilityRuleKindV2 =
   | 'supported_static'
@@ -76,7 +80,7 @@ export type VerifiedDeepSeekStableCapabilityPolicyV2 = Readonly<{
   }>
   continuation: Readonly<{
     kind: 'client_managed_native_replay'
-    artifactKind: 'deepseek_stable_ordered_native_messages_v1'
+    artifactKind: typeof DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2
     supportsBranchReplay: true
     supportsRestartReplay: true
   }>
@@ -95,7 +99,7 @@ export class DeepSeekStableCapabilityPolicyV2Error extends Error {
 
 const OFFICIAL_CHAT = 'deepseek.stable.chat.2026-07-15'
 const OFFICIAL_THINKING = 'deepseek.stable.thinking.2026-07-15'
-const STARVERSE_POLICY = 'starverse.deepseek.stable.policy.2026-07-17'
+const STARVERSE_POLICY = DEEPSEEK_STABLE_OWNER_CAPABILITY_POLICY_EVIDENCE_ID_V2
 const policyAuthorities = new WeakSet<object>()
 
 function digest(value: unknown): GenerationV2Digest<'evidence_digest'> {
@@ -130,7 +134,7 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
     (artifact) => artifact.id === 'deepseek-stable-api-contract-20260715',
   )
   const ownerPolicyArtifact = reviewedDefinition.evidence.localArtifacts.find(
-    (artifact) => artifact.id === 'deepseek-stable-owner-capability-policy-20260717',
+    (artifact) => artifact.id === 'deepseek-stable-owner-capability-policy-v2-20260717',
   )
   if (!contractArtifact || !ownerPolicyArtifact) {
     throw new DeepSeekStableCapabilityPolicyV2Error('GENERATION_V2_DEEPSEEK_CAPABILITY_EVIDENCE_INVALID')
@@ -273,7 +277,7 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
   })
   const continuation = Object.freeze({
     kind: 'client_managed_native_replay' as const,
-    artifactKind: 'deepseek_stable_ordered_native_messages_v1' as const,
+    artifactKind: DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
     supportsBranchReplay: true as const,
     supportsRestartReplay: true as const,
   })

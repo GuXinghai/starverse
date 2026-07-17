@@ -134,19 +134,19 @@ describe('DeepSeek stable family capability policy V2', () => {
         .toBe('0022edabf76e51ce88fc6d45310ad889b8a84fd037c72c287944449ba8a42cc7')
     }
     expect(evidence[2]).toMatchObject({
-      evidenceId: 'starverse.deepseek.stable.policy.2026-07-17',
+      evidenceId: 'starverse.deepseek.stable.policy.v2.2026-07-17',
       localArtifact: {
-        id: 'deepseek-stable-owner-capability-policy-20260717',
-        path: 'docs/architecture/generation-compiler-v2/evidence/deepseek-stable-owner-capability-policy-20260717.json',
+        id: 'deepseek-stable-owner-capability-policy-v2-20260717',
+        path: 'docs/architecture/generation-compiler-v2/evidence/deepseek-stable-owner-capability-policy-v2-20260717.json',
       },
-      contentDigest: { value: '7ce7739b2235ea7b7bca06214eef2b752d254ff6a0f2035333c32c8b089bc91e' },
+      contentDigest: { value: 'b8750879b09cca9dfd7d78dfeb4f122142289da169e4c770af090db1e05c8ce0' },
     })
   })
 
   it('requires ordered native replay across branches and restarts', () => {
     expect(readVerifiedDeepSeekStableCapabilityPolicyV2().continuation).toEqual({
       kind: 'client_managed_native_replay',
-      artifactKind: 'deepseek_stable_ordered_native_messages_v1',
+      artifactKind: 'deepseek_stable_ordered_native_messages_v2',
       supportsBranchReplay: true,
       supportsRestartReplay: true,
     })
