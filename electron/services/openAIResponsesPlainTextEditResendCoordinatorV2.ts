@@ -18,7 +18,7 @@ import {
 import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createOpenAIResponsesModelEvidenceV2Service } from './openAIResponsesModelEvidenceV2Service'
 import { withVerifiedOpenAIResponsesGenerationAuthoritiesV2 } from './openAIResponsesGenerationAuthorityV2Service'
-import { compileOpenAIResponsesInitialPreparedRequestV2 } from './openAIResponsesInitialPreparedRequestCompilerV2'
+import { compileOpenAIResponsesPreparedRequestV2 } from './openAIResponsesPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2 } from './openAIResponsesPlainTextSnapshotCommitV2'
 
@@ -60,7 +60,7 @@ export function createOpenAIResponsesPlainTextEditResendCoordinatorV2(input: Rea
         throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       }
       const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-      const preparedRequest = compileOpenAIResponsesInitialPreparedRequestV2({ context, execution, history })
+      const preparedRequest = compileOpenAIResponsesPreparedRequestV2({ context, execution, history })
       return issueGenerationTextCommandResultV2({
         kind: 'idempotent_replay', execution,
         projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
@@ -93,7 +93,7 @@ export function createOpenAIResponsesPlainTextEditResendCoordinatorV2(input: Rea
                 throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
               }
               const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-              const preparedRequest = compileOpenAIResponsesInitialPreparedRequestV2({ context, execution: raced, history })
+              const preparedRequest = compileOpenAIResponsesPreparedRequestV2({ context, execution: raced, history })
               return issueGenerationTextCommandResultV2({
                 kind: 'idempotent_replay', execution: raced,
                 projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
@@ -118,7 +118,7 @@ export function createOpenAIResponsesPlainTextEditResendCoordinatorV2(input: Rea
                   })
                   graphRepo.commitEditedTurnProjection(context, pending)
                   const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-                  const preparedRequest = compileOpenAIResponsesInitialPreparedRequestV2({
+                  const preparedRequest = compileOpenAIResponsesPreparedRequestV2({
                     context, execution: persisted.bundle, history,
                   })
                   return issueGenerationTextCommandResultV2({

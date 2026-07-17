@@ -12,25 +12,25 @@ import { isVerifiedOpenAIResponsesEndpointProfileV2, readVerifiedOpenAIResponses
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 import { issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 
-export class OpenAIResponsesInitialPreparedRequestCompilerV2Error extends Error {
+export class OpenAIResponsesPreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID'
     | 'GENERATION_V2_OPENAI_COMPILER_BINDING_INVALID'
     | 'GENERATION_V2_OPENAI_COMPILER_CAPABILITY_MISMATCH'
     | 'GENERATION_V2_OPENAI_COMPILER_SEMANTIC_REJECTED') {
     super(code)
-    this.name = 'OpenAIResponsesInitialPreparedRequestCompilerV2Error'
+    this.name = 'OpenAIResponsesPreparedRequestCompilerV2Error'
   }
 }
 
-export function compileOpenAIResponsesInitialPreparedRequestV2(input: Readonly<{
+export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
   execution: GenerationExecutionOperationBundleV2
   history: OpenAIResponsesRequestHistoryFactV2
 }>): PreparedProviderRequestV2 {
   if (!isGenerationExecutionOperationBundleForContextV2(input.execution, input.context) ||
       !isOpenAIResponsesRequestHistoryFactForContextV2(input.history, input.context)) {
-    throw new OpenAIResponsesInitialPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
+    throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
   if (!['initial_send', 'retry_as_new', 'retry_replace', 'regenerate_question', 'edit_resend'].includes(operation.actionKind) ||
@@ -38,7 +38,7 @@ export function compileOpenAIResponsesInitialPreparedRequestV2(input: Readonly<{
       operation.resultAnswerRootId.value !== input.history.answerRootId.value ||
       snapshot.operationId.value !== operation.operationId.value || snapshot.answerRootId.value !== operation.resultAnswerRootId.value ||
       input.history.requestSequence !== 1) {
-    throw new OpenAIResponsesInitialPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
+    throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
   }
   const profile = readVerifiedOpenAIResponsesEndpointProfileV2()
   const definition = readReviewedOpenAIResponsesDefinitionV2()
@@ -53,17 +53,17 @@ export function compileOpenAIResponsesInitialPreparedRequestV2(input: Readonly<{
       binding.endpointBinding.descriptors[0].descriptorRevision.value !== profile.descriptor.descriptorRevision.value ||
       capability.continuation.kind !== 'client_managed_native_replay' ||
       capability.continuation.artifactKind !== OPENAI_RESPONSES_ARTIFACT_KIND_V2 || snapshot.toolAuthority.kind !== 'none') {
-    throw new OpenAIResponsesInitialPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_BINDING_INVALID')
+    throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_BINDING_INVALID')
   }
   const projection = projectOpenAIResponsesIntentV1(projectGenerationIntentLayerV2(snapshot.semanticIntent))
   if (projection.issues.length > 0) {
-    throw new OpenAIResponsesInitialPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_SEMANTIC_REJECTED')
+    throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_SEMANTIC_REJECTED')
   }
   const fields = new Map(capability.fields.map((field) => [field.path, field]))
   if (projection.dispositions.some((value) => {
     const state = fields.get(value.semanticPath as never)?.state
     return state !== 'supported' && state !== 'requires_confirmation'
-  })) throw new OpenAIResponsesInitialPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_CAPABILITY_MISMATCH')
+  })) throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_CAPABILITY_MISMATCH')
   const compiled = compileOpenAIResponsesRequestV1({
     model: binding.modelId.value, priorArtifact: input.history.priorArtifact,
     clientItems: input.history.clientItems,

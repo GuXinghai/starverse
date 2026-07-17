@@ -13,7 +13,7 @@ vi.mock('../credentials/epoch2RuntimeCredentialService', () => ({
 }))
 
 import { createOpenAIResponsesPlainTextInitialSendCoordinatorV2 } from './openAIResponsesPlainTextInitialSendCoordinatorV2'
-import { createOpenAIResponsesInitialStreamRunnerV2 } from './openAIResponsesInitialStreamRunnerV2'
+import { createOpenAIResponsesStreamRunnerV2 } from './openAIResponsesStreamRunnerV2'
 import { createOpenAIResponsesPlainTextRetryCoordinatorV2 } from './openAIResponsesPlainTextRetryCoordinatorV2'
 import { createOpenAIResponsesPlainTextRegenerateCoordinatorV2 } from './openAIResponsesPlainTextRegenerateCoordinatorV2'
 import { createOpenAIResponsesPlainTextEditResendCoordinatorV2 } from './openAIResponsesPlainTextEditResendCoordinatorV2'
@@ -223,7 +223,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
       const rawStore = { tryPersistPreparedV2: vi.fn(() => { throw new Error('debug database unavailable') }) }
-      const terminal = await createOpenAIResponsesInitialStreamRunnerV2({
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), rawGenerationRequestStore: rawStore as never,
         fetchImpl: mocks.fetch, nowMs: () => 110,
       }).run(created)
@@ -256,7 +256,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       const created = await coordinator(db).submit({
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
-      const terminal = await createOpenAIResponsesInitialStreamRunnerV2({
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
       }).run(created)
       expect(terminal.state).toBe('failed')
@@ -279,7 +279,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       const first = await coordinator(db).submit({
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
-      await createOpenAIResponsesInitialStreamRunnerV2({
+      await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
       }).run(first)
       const secondService = createOpenAIResponsesPlainTextInitialSendCoordinatorV2({
@@ -313,7 +313,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       const created = await coordinator(db).submit({
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
-      const terminal = await createOpenAIResponsesInitialStreamRunnerV2({
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
       }).run(created)
       expect(terminal).toMatchObject({
@@ -335,7 +335,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       })
       const controller = new AbortController()
       controller.abort()
-      const terminal = await createOpenAIResponsesInitialStreamRunnerV2({
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
       }).run(created, controller.signal)
       expect(terminal).toMatchObject({ state: 'cancelled', errorCode: 'user_cancelled' })
@@ -355,7 +355,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       const initial = await coordinator(db).submit({
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
-      await createOpenAIResponsesInitialStreamRunnerV2({
+      await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
       }).run(initial)
       const originalSnapshot = JSON.parse(initial.execution.snapshot.canonicalJson)
@@ -401,7 +401,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         (SELECT count(*) FROM message_v2) AS messages`).get()).toEqual(beforeStale)
 
       mocks.fetch.mockResolvedValueOnce(completedStream('retried'))
-      await createOpenAIResponsesInitialStreamRunnerV2({
+      await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
       }).run(asNew)
       const replace = await createOpenAIResponsesPlainTextRetryCoordinatorV2({
@@ -420,7 +420,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       mocks.fetch.mockResolvedValueOnce(new Response('denied', {
         status: 503, headers: { 'content-type': 'text/plain' },
       }))
-      const failed = await createOpenAIResponsesInitialStreamRunnerV2({
+      const failed = await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 150,
       }).run(replace)
       expect(failed.state).toBe('failed')
@@ -439,7 +439,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       const initial = await coordinator(db).submit({
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
-      await createOpenAIResponsesInitialStreamRunnerV2({
+      await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
       }).run(initial)
       const config = new GenerationConfigV2Repo(db)
@@ -483,7 +483,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       mocks.fetch.mockResolvedValueOnce(new Response('denied', {
         status: 503, headers: { 'content-type': 'text/plain' },
       }))
-      await expect(createOpenAIResponsesInitialStreamRunnerV2({
+      await expect(createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
       }).run(regenerated)).resolves.toMatchObject({ state: 'failed' })
       expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
@@ -502,7 +502,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       const initial = await coordinator(db).submit({
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
-      await createOpenAIResponsesInitialStreamRunnerV2({
+      await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
       }).run(initial)
       const config = new GenerationConfigV2Repo(db)
@@ -536,7 +536,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       await expect(forkService.submit({
         command: forkCommand, expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
       })).resolves.toMatchObject({ kind: 'idempotent_replay' })
-      await createOpenAIResponsesInitialStreamRunnerV2({
+      await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
       }).run(fork)
 
@@ -558,7 +558,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       mocks.fetch.mockResolvedValueOnce(new Response('denied', {
         status: 503, headers: { 'content-type': 'text/plain' },
       }))
-      await expect(createOpenAIResponsesInitialStreamRunnerV2({
+      await expect(createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 150,
       }).run(replace)).resolves.toMatchObject({ state: 'failed' })
       expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1' AND question_id='question:edit-replace'").get())

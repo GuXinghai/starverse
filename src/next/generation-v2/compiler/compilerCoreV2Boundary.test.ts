@@ -117,9 +117,9 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/openAIResponsesModelEvidenceV2Service.ts'),
       path.resolve('electron/services/openAIResponsesGenerationAuthorityV2Service.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextSnapshotCommitV2.ts'),
-      path.resolve('electron/services/openAIResponsesInitialPreparedRequestCompilerV2.ts'),
+      path.resolve('electron/services/openAIResponsesPreparedRequestCompilerV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts'),
-      path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts'),
+      path.resolve('electron/services/openAIResponsesStreamRunnerV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextEditResendCoordinatorV2.ts'),
@@ -216,8 +216,8 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/openAIResponsesGenerationAuthorityV2Service.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextSnapshotCommitV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts'),
-      path.resolve('electron/services/openAIResponsesInitialPreparedRequestCompilerV2.ts'),
-      path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts'),
+      path.resolve('electron/services/openAIResponsesPreparedRequestCompilerV2.ts'),
+      path.resolve('electron/services/openAIResponsesStreamRunnerV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextEditResendCoordinatorV2.ts'),
@@ -313,8 +313,8 @@ describe('Generation Compiler V2 core boundary', () => {
     const openAIArtifactRepository = path.resolve('infra/db/repo/openAIResponsesArtifactsV2Repo.ts')
     const openAISnapshotCommit = path.resolve('electron/services/openAIResponsesPlainTextSnapshotCommitV2.ts')
     const openAICoordinator = path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts')
-    const openAICompiler = path.resolve('electron/services/openAIResponsesInitialPreparedRequestCompilerV2.ts')
-    const openAIRunner = path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts')
+    const openAICompiler = path.resolve('electron/services/openAIResponsesPreparedRequestCompilerV2.ts')
+    const openAIRunner = path.resolve('electron/services/openAIResponsesStreamRunnerV2.ts')
     const openAIRetryCoordinator = path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts')
     const openAIRegenerateCoordinator = path.resolve('electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts')
     const openAIEditResendCoordinator = path.resolve('electron/services/openAIResponsesPlainTextEditResendCoordinatorV2.ts')
@@ -363,7 +363,7 @@ describe('Generation Compiler V2 core boundary', () => {
     const openAIArtifactRepository = path.resolve('infra/db/repo/openAIResponsesArtifactsV2Repo.ts')
     const openAISnapshotCommit = path.resolve('electron/services/openAIResponsesPlainTextSnapshotCommitV2.ts')
     const openAICoordinator = path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts')
-    const openAIRunner = path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts')
+    const openAIRunner = path.resolve('electron/services/openAIResponsesStreamRunnerV2.ts')
     const openAIRetryCoordinator = path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts')
     const openAIRegenerateCoordinator = path.resolve('electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts')
     const openAIEditResendCoordinator = path.resolve('electron/services/openAIResponsesPlainTextEditResendCoordinatorV2.ts')
@@ -722,7 +722,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'electron/services/openAIResponsesGenerationAuthorityV2Service.ts',
     )
     const openAICompiler = path.resolve(
-      'electron/services/openAIResponsesInitialPreparedRequestCompilerV2.ts',
+      'electron/services/openAIResponsesPreparedRequestCompilerV2.ts',
     )
     expect(source).toContain("classification: 'verified_provider_contract_reference_non_executable'")
     expect(source).toContain("usage: 'snapshot_contract_provenance_only'")
