@@ -8,10 +8,15 @@ export type Epoch2ProviderCredentialRecord = Readonly<{
   updatedAtMs: number
 }>
 
+export type Epoch2ProviderCredentialDecryptResult = Readonly<{
+  credential: string
+  rewrappedCiphertext?: Buffer
+}>
+
 export type Epoch2ProviderCredentialDecryptValidator = (
   providerKey: ProviderCredentialKey,
   ciphertext: Buffer,
-) => string
+) => Promise<Epoch2ProviderCredentialDecryptResult>
 
 export type Epoch2ProviderCredentialCiphertextConsumer<T> = (
   ciphertext: Buffer,
@@ -45,27 +50,43 @@ function decodeCanonicalCiphertext(
   return ciphertext
 }
 
-export function decodeAndValidateEpoch2ProviderCredentialRecord(input: Readonly<{
+export async function decodeAndValidateEpoch2ProviderCredentialRecord(input: Readonly<{
   value: unknown
   providerKey: ProviderCredentialKey
   validateDecrypt: Epoch2ProviderCredentialDecryptValidator
-}>): Epoch2ProviderCredentialRecord {
+}>): Promise<Epoch2ProviderCredentialRecord> {
   const decoded = decodeEpoch2ProviderCredentialRecordStructure({
     value: input.value,
     providerKey: input.providerKey,
   })
-  const ciphertext = decodeCanonicalCiphertext(decoded.ciphertextBase64, input.providerKey)
   try {
-    const decrypted = input.validateDecrypt(input.providerKey, ciphertext)
-    if (typeof decrypted !== 'string' || decrypted.trim().length === 0) {
-      return invalid(input.providerKey)
-    }
+    return await withEpoch2ProviderCredentialCiphertext({
+      record: decoded,
+      consume: async (ciphertext) => {
+        const decrypted = await input.validateDecrypt(input.providerKey, ciphertext)
+        if (!decrypted || typeof decrypted !== 'object' ||
+            typeof decrypted.credential !== 'string' || decrypted.credential.trim().length === 0) {
+          return invalid(input.providerKey)
+        }
+        if (decrypted.rewrappedCiphertext === undefined) return decoded
+        const rewrapped = decrypted.rewrappedCiphertext
+        try {
+          if (!Buffer.isBuffer(rewrapped) || rewrapped.byteLength === 0 ||
+              rewrapped.byteLength > 1024 * 1024) {
+            return invalid(input.providerKey)
+          }
+          return Object.freeze({
+            ...decoded,
+            ciphertextBase64: rewrapped.toString('base64'),
+          })
+        } finally {
+          if (Buffer.isBuffer(rewrapped)) rewrapped.fill(0)
+        }
+      },
+    })
   } catch {
     return invalid(input.providerKey)
-  } finally {
-    ciphertext.fill(0)
   }
-  return decoded
 }
 
 export function decodeEpoch2ProviderCredentialRecordStructure(input: Readonly<{

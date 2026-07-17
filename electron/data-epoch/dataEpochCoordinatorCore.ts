@@ -106,7 +106,7 @@ export async function runEpoch2ResetThroughConfigReplacement(input: Readonly<{
   let deletedTargetCount = 0
   let deletedConfigBackupCount = 0
   try {
-    replacementAuthority = prepareEpoch2ConfigReplacement({
+    replacementAuthority = await prepareEpoch2ConfigReplacement({
       layout: input.layout,
       lease: input.lease,
       validateDecrypt: input.validateDecrypt,

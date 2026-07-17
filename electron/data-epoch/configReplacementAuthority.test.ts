@@ -66,7 +66,7 @@ afterEach(() => {
 })
 
 describe('epoch-2 config replacement authority', () => {
-  windowsIt('rejects an in-memory journal when no journal is persisted under the lease', () => {
+  windowsIt('rejects an in-memory journal when no journal is persisted under the lease', async () => {
     const { layout, lease } = fixture('starverse-config-unpersisted-journal', 'none')
     const fabricated = advanceEpoch2ResetJournal(
       createEpoch2ResetJournal({ operationId, layout }),
@@ -74,11 +74,11 @@ describe('epoch-2 config replacement authority', () => {
     )
     expect(fabricated.phase).toBe('legacy_files_deleted')
     try {
-      expect(() => prepareEpoch2ConfigReplacement({
+      await expect(prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
-      })).toThrow('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
+        validateDecrypt: async () => ({ credential: 'unused' }),
+      })).rejects.toThrow('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
       expect(() => deleteEpoch2LegacyConfigBackups({ layout, lease }))
         .toThrow('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
     } finally {
@@ -86,13 +86,13 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('prevalidates in prepared but cannot commit before legacy files are deleted', () => {
+  windowsIt('prevalidates in prepared but cannot commit before legacy files are deleted', async () => {
     const { layout, lease } = fixture('starverse-config-phase', 'prepared')
     try {
-      const authority = prepareEpoch2ConfigReplacement({
+      const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       expect(authority.sha256).toMatch(/^[a-f0-9]{64}$/u)
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority }))
@@ -102,7 +102,7 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('projects only approved preferences and encrypted credentials before atomic replacement', () => {
+  windowsIt('projects only approved preferences and encrypted credentials before atomic replacement', async () => {
     const { layout, lease } = fixture('starverse-config-replace')
     const original = {
       language: 'zh-CN',
@@ -120,10 +120,10 @@ describe('epoch-2 config replacement authority', () => {
     }
     fs.writeFileSync(path.join(layout.productRoot, 'config.json'), JSON.stringify(original))
     try {
-      const authority = prepareEpoch2ConfigReplacement({
+      const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: (_providerKey, ciphertext) => ciphertext.toString('utf8'),
+        validateDecrypt: async (_providerKey, ciphertext) => ({ credential: ciphertext.toString('utf8') }),
       })
       expect(authority.sha256).toMatch(/^[a-f0-9]{64}$/u)
       expect(authority.byteLength).toBeGreaterThan(2)
@@ -153,15 +153,15 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('rejects a changed config snapshot without overwriting the newer bytes', () => {
+  windowsIt('rejects a changed config snapshot without overwriting the newer bytes', async () => {
     const { layout, lease } = fixture('starverse-config-cas')
     const configPath = path.join(layout.productRoot, 'config.json')
     fs.writeFileSync(configPath, JSON.stringify({ language: 'zh-CN' }))
     try {
-      const authority = prepareEpoch2ConfigReplacement({
+      const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       fs.writeFileSync(configPath, JSON.stringify({ language: 'en-US', changed: true }))
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority }))
@@ -175,16 +175,16 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('revokes a prepared replacement when the persisted journal advances before commit', () => {
+  windowsIt('revokes a prepared replacement when the persisted journal advances before commit', async () => {
     const { layout, lease } = fixture('starverse-config-phase-race')
     const configPath = path.join(layout.productRoot, 'config.json')
     const original = '{"language":"zh-CN","legacy":true}\n'
     fs.writeFileSync(configPath, original)
     try {
-      const authority = prepareEpoch2ConfigReplacement({
+      const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       const current = readEpoch2ResetJournal({ layout, lease })
       expect(current?.phase).toBe('legacy_files_deleted')
@@ -204,20 +204,20 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('invalidates an older authority when a later snapshot is prepared on the same lease', () => {
+  windowsIt('invalidates an older authority when a later snapshot is prepared on the same lease', async () => {
     const { layout, lease } = fixture('starverse-config-snapshot-order')
     const configPath = path.join(layout.productRoot, 'config.json')
     fs.writeFileSync(configPath, JSON.stringify({ language: 'zh-CN' }))
     try {
-      const first = prepareEpoch2ConfigReplacement({
+      const first = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
       })
-      const second = prepareEpoch2ConfigReplacement({
+      const second = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority: first }))
         .toThrow('EPOCH2_WIN32_CONFIG_CHANGED')
@@ -228,13 +228,13 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('creates a canonical empty config when legacy config is absent', () => {
+  windowsIt('creates a canonical empty config when legacy config is absent', async () => {
     const { layout, lease } = fixture('starverse-config-absent')
     try {
-      const authority = prepareEpoch2ConfigReplacement({
+      const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       commitEpoch2ConfigReplacement({ layout, lease, authority })
       expect(fs.readFileSync(path.join(layout.productRoot, 'config.json'), 'utf8')).toBe('{}\n')
@@ -243,14 +243,14 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('never replaces a config created after an absent snapshot', () => {
+  windowsIt('never replaces a config created after an absent snapshot', async () => {
     const { layout, lease } = fixture('starverse-config-absent-race')
     const configPath = path.join(layout.productRoot, 'config.json')
     try {
-      const authority = prepareEpoch2ConfigReplacement({
+      const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       fs.writeFileSync(configPath, '{"created":"after-snapshot"}\n')
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority }))
@@ -261,7 +261,7 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('recovers when the old config was moved but the replacement was not published', () => {
+  windowsIt('recovers when the old config was moved but the replacement was not published', async () => {
     const first = fixture('starverse-config-recover-unpublished')
     const configPath = path.join(first.layout.productRoot, 'config.json')
     const rollbackPath = path.join(first.layout.transitionRoot, rollbackName)
@@ -272,10 +272,10 @@ describe('epoch-2 config replacement authority', () => {
     try {
       expect(cleanupEpoch2TransitionTemps({ layout: first.layout, lease })).toBe(0)
       expect(fs.existsSync(rollbackPath)).toBe(true)
-      const authority = prepareEpoch2ConfigReplacement({
+      const authority = await prepareEpoch2ConfigReplacement({
         layout: first.layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       commitEpoch2ConfigReplacement({ layout: first.layout, lease, authority })
       expect(JSON.parse(fs.readFileSync(configPath, 'utf8'))).toEqual({ language: 'zh-CN' })
@@ -285,7 +285,7 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('finalizes a published replacement after a crash and rejects a conflicting current file', () => {
+  windowsIt('finalizes a published replacement after a crash and rejects a conflicting current file', async () => {
     const first = fixture('starverse-config-recover-published')
     const configPath = path.join(first.layout.productRoot, 'config.json')
     const rollbackPath = path.join(first.layout.transitionRoot, rollbackName)
@@ -297,10 +297,10 @@ describe('epoch-2 config replacement authority', () => {
     fs.writeFileSync(configPath, projectedConfig)
     let lease = acquireWin32EpochRootLease(first.layout)
     try {
-      const authority = prepareEpoch2ConfigReplacement({
+      const authority = await prepareEpoch2ConfigReplacement({
         layout: first.layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       commitEpoch2ConfigReplacement({ layout: first.layout, lease, authority })
       expect(fs.existsSync(rollbackPath)).toBe(false)
@@ -313,10 +313,10 @@ describe('epoch-2 config replacement authority', () => {
     fs.writeFileSync(configPath, '{"language":"en-US","competitor":true}\n')
     lease = acquireWin32EpochRootLease(first.layout)
     try {
-      const authority = prepareEpoch2ConfigReplacement({
+      const authority = await prepareEpoch2ConfigReplacement({
         layout: first.layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       expect(() => commitEpoch2ConfigReplacement({ layout: first.layout, lease, authority }))
         .toThrow('EPOCH2_WIN32_CONFIG_CHANGED')
@@ -328,42 +328,42 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('blocks malformed JSON, invalid credential records and config reparse points', () => {
+  windowsIt('blocks malformed JSON, invalid credential records and config reparse points', async () => {
     const { layout, lease } = fixture('starverse-config-invalid')
     const configPath = path.join(layout.productRoot, 'config.json')
     try {
       fs.writeFileSync(configPath, '{invalid')
-      expect(() => prepareEpoch2ConfigReplacement({
+      await expect(prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
-      })).toThrow('EPOCH2_CONFIG_INVALID')
+        validateDecrypt: async () => ({ credential: 'unused' }),
+      })).rejects.toThrow('EPOCH2_CONFIG_INVALID')
       fs.writeFileSync(configPath, JSON.stringify({
         providerCredentials: { v1: {
           openrouter: { ...secureRecord('openrouter'), backend: 'plaintext_fallback' },
         } },
       }))
-      expect(() => prepareEpoch2ConfigReplacement({
+      await expect(prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
-      })).toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
+        validateDecrypt: async () => ({ credential: 'unused' }),
+      })).rejects.toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
       fs.unlinkSync(configPath)
       const outside = path.join(layout.appDataRoot, 'outside-config.json')
       fs.writeFileSync(outside, '{"outside":true}')
       fs.symlinkSync(outside, configPath, 'file')
-      expect(() => prepareEpoch2ConfigReplacement({
+      await expect(prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
-      })).toThrow('EPOCH2_WIN32_CONFIG_REPARSE_POINT')
+        validateDecrypt: async () => ({ credential: 'unused' }),
+      })).rejects.toThrow('EPOCH2_WIN32_CONFIG_REPARSE_POINT')
       expect(fs.readFileSync(outside, 'utf8')).toBe('{"outside":true}')
     } finally {
       lease.release()
     }
   })
 
-  windowsIt('deletes only strict config backups and rejects near-match names before mutation', () => {
+  windowsIt('deletes only strict config backups and rejects near-match names before mutation', async () => {
     const { layout, lease } = fixture('starverse-config-backups')
     const standard = path.join(layout.productRoot, 'config.backup.2026-07-17T12-34-56-789Z.json')
     const corrupted = path.join(layout.productRoot, 'config.json.corrupted.parse-error.1784256000000.bak')
@@ -401,7 +401,7 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('rejects strict-name backup directories and reparse points without touching outside data', () => {
+  windowsIt('rejects strict-name backup directories and reparse points without touching outside data', async () => {
     const { layout, lease } = fixture('starverse-config-backup-reparse')
     const strictDirectory = path.join(
       layout.productRoot,
