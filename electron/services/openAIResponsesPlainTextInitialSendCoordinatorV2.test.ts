@@ -15,6 +15,7 @@ vi.mock('../credentials/epoch2RuntimeCredentialService', () => ({
 import { createOpenAIResponsesPlainTextInitialSendCoordinatorV2 } from './openAIResponsesPlainTextInitialSendCoordinatorV2'
 import { createOpenAIResponsesInitialStreamRunnerV2 } from './openAIResponsesInitialStreamRunnerV2'
 import { createOpenAIResponsesPlainTextRetryCoordinatorV2 } from './openAIResponsesPlainTextRetryCoordinatorV2'
+import { createOpenAIResponsesPlainTextRegenerateCoordinatorV2 } from './openAIResponsesPlainTextRegenerateCoordinatorV2'
 
 const scope = 'credential-scope-v2:'.concat('d'.repeat(64)) as never
 
@@ -426,6 +427,68 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         .toEqual({ chosen: 'answer:replacement' })
       expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head: 'answer:replacement' })
+    } finally { db.close() }
+  })
+
+  it('regenerates from current config and never restores the prior chosen answer after failure', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('original'))
+        .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(modelResponse())
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesInitialStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(initial)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: { maxOutputTokens: 32 },
+        providerExtension: { kind: 'openai_responses', verbosity: 'low' },
+      })
+      const service = createOpenAIResponsesPlainTextRegenerateCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createAnswerId: () => 'answer:regenerated',
+      })
+      const regenerateCommand = {
+        operationId: 'operation:regenerate', branchId: 'branch:1', questionId: 'question:1',
+        expectedHeadMessageId: 'answer:2', modelId: 'gpt-5.6-sol', commandAttachments: [],
+      }
+      const regenerated = await service.submit({
+        command: regenerateCommand, expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(regenerated.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        max_output_tokens: 32, text: { verbosity: 'low' },
+      })
+      expect(regenerated.projection.visibleCandidates.map((candidate) => candidate.value))
+        .toEqual(['answer:2', 'answer:regenerated'])
+      expect(regenerated.projection.branchProjection).toMatchObject({
+        chosenAnswerRootId: { value: 'answer:regenerated' }, headMessageId: { value: 'answer:regenerated' },
+      })
+      await expect(service.submit({
+        command: regenerateCommand, expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
+      })).resolves.toMatchObject({ kind: 'idempotent_replay' })
+      const beforeStale = db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()
+      await expect(service.submit({
+        command: { ...regenerateCommand, operationId: 'operation:regenerate-stale' },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })).rejects.toThrow('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()).toEqual(beforeStale)
+      mocks.fetch.mockResolvedValueOnce(new Response('denied', {
+        status: 503, headers: { 'content-type': 'text/plain' },
+      }))
+      await expect(createOpenAIResponsesInitialStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
+      }).run(regenerated)).resolves.toMatchObject({ state: 'failed' })
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:regenerated' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:regenerated' })
     } finally { db.close() }
   })
 })

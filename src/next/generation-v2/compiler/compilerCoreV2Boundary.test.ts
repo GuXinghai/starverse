@@ -121,6 +121,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts'),
       path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts'),
+      path.resolve('electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts'),
       path.resolve('electron/debug/rawGenerationRequestStore.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
@@ -144,6 +145,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/deepSeekPlainTextRegenerateCoordinatorV2.ts'),
       path.resolve('electron/services/deepSeekPlainTextEditResendCoordinatorV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts'),
+      path.resolve('electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -164,6 +166,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/deepSeekPlainTextRegenerateCoordinatorV2.ts'),
       path.resolve('electron/services/deepSeekPlainTextEditResendCoordinatorV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts'),
+      path.resolve('electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -213,6 +216,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/openAIResponsesInitialPreparedRequestCompilerV2.ts'),
       path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts'),
       path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts'),
+      path.resolve('electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -258,13 +262,16 @@ describe('Generation Compiler V2 core boundary', () => {
     const openAICoordinator = path.resolve(
       'electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts',
     )
+    const openAIRegenerateCoordinator = path.resolve(
+      'electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts',
+    )
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
         if (file === adapter || file === deepSeekGenerationAuthority || file === deepSeekSnapshotCommit ||
             file === initialSendCoordinator || file === regenerateCoordinator ||
             file === editResendCoordinator || file === toolRegistryAuthority ||
             file === openAIGenerationAuthority || file === openAISnapshotCommit ||
-            file === openAICoordinator) continue
+            file === openAICoordinator || file === openAIRegenerateCoordinator) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/generationCommandFactsAuthorityV2|GenerationCommandFactsAuthorityV2/iu)
       }
@@ -301,6 +308,7 @@ describe('Generation Compiler V2 core boundary', () => {
     const openAICompiler = path.resolve('electron/services/openAIResponsesInitialPreparedRequestCompilerV2.ts')
     const openAIRunner = path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts')
     const openAIRetryCoordinator = path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts')
+    const openAIRegenerateCoordinator = path.resolve('electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts')
     const retryCoordinator = path.resolve('electron/services/deepSeekPlainTextRetryCoordinatorV2.ts')
     const regenerateCoordinator = path.resolve('electron/services/deepSeekPlainTextRegenerateCoordinatorV2.ts')
     const editResendCoordinator = path.resolve('electron/services/deepSeekPlainTextEditResendCoordinatorV2.ts')
@@ -316,7 +324,7 @@ describe('Generation Compiler V2 core boundary', () => {
             file === commandResult || file === retryCoordinator || file === regenerateCoordinator ||
             file === editResendCoordinator || file === toolContinuationCoordinator ||
             file === openAISnapshotCommit || file === openAICoordinator || file === openAICompiler ||
-            file === openAIRunner || file === openAIRetryCoordinator ||
+            file === openAIRunner || file === openAIRetryCoordinator || file === openAIRegenerateCoordinator ||
             file === toolRegistryAuthority) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/generationExecutionV2Repo|GenerationExecutionV2Repo/iu)
@@ -347,6 +355,7 @@ describe('Generation Compiler V2 core boundary', () => {
     const openAICoordinator = path.resolve('electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts')
     const openAIRunner = path.resolve('electron/services/openAIResponsesInitialStreamRunnerV2.ts')
     const openAIRetryCoordinator = path.resolve('electron/services/openAIResponsesPlainTextRetryCoordinatorV2.ts')
+    const openAIRegenerateCoordinator = path.resolve('electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts')
     const retryCoordinator = path.resolve('electron/services/deepSeekPlainTextRetryCoordinatorV2.ts')
     const regenerateCoordinator = path.resolve('electron/services/deepSeekPlainTextRegenerateCoordinatorV2.ts')
     const editResendCoordinator = path.resolve('electron/services/deepSeekPlainTextEditResendCoordinatorV2.ts')
@@ -358,7 +367,7 @@ describe('Generation Compiler V2 core boundary', () => {
             file === retryCoordinator || file === regenerateCoordinator || file === editResendCoordinator ||
             file === openAIHistoryRepository || file === openAIArtifactRepository ||
             file === openAISnapshotCommit || file === openAICoordinator || file === openAIRunner ||
-            file === openAIRetryCoordinator ||
+            file === openAIRetryCoordinator || file === openAIRegenerateCoordinator ||
             file === toolContinuationCoordinator) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/conversationGraphV2Repo|ConversationGraphV2Repo/iu)
@@ -428,6 +437,9 @@ describe('Generation Compiler V2 core boundary', () => {
     const openAICoordinator = path.resolve(
       'electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts',
     )
+    const openAIRegenerateCoordinator = path.resolve(
+      'electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts',
+    )
     const source = read('src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts')
     expect(source).toContain("trust: 'decoded_unverified'")
     expect(source).toContain("executionAuthority: 'none'")
@@ -439,7 +451,7 @@ describe('Generation Compiler V2 core boundary', () => {
         if (file === codecModule || file === repositoryAdapter || file === executionRepository ||
             file === deepSeekGenerationAuthority || file === deepSeekSnapshotCommit ||
             file === initialSendCoordinator || file === openAIGenerationAuthority ||
-            file === openAISnapshotCommit || file === openAICoordinator) continue
+            file === openAISnapshotCommit || file === openAICoordinator || file === openAIRegenerateCoordinator) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file)).not.toMatch(
           /(?:Decoded|Persisted)RuntimeCapabilitySnapshotV2|canonicalizeUnverifiedRuntimeCapabilitySnapshotV2|decodeRuntimeCapabilitySnapshot(?:Json)?V2/u,
         )
@@ -467,11 +479,15 @@ describe('Generation Compiler V2 core boundary', () => {
     const openAICoordinator = path.resolve(
       'electron/services/openAIResponsesPlainTextInitialSendCoordinatorV2.ts',
     )
+    const openAIRegenerateCoordinator = path.resolve(
+      'electron/services/openAIResponsesPlainTextRegenerateCoordinatorV2.ts',
+    )
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
         if (file === adapter || file === deepSeekSnapshotCommit || file === initialSendCoordinator ||
             file === regenerateCoordinator || file === editResendCoordinator ||
-            file === openAISnapshotCommit || file === openAICoordinator) continue
+            file === openAISnapshotCommit || file === openAICoordinator ||
+            file === openAIRegenerateCoordinator) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/runtimeCapabilityV2Repo|RuntimeCapabilityV2Repo/iu)
       }
