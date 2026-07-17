@@ -98,6 +98,8 @@ function completeOperation(
     WHERE operation_id=?`).run(at + 5, at + 5, operationId)
   db.prepare(`UPDATE generation_operation_v2 SET state='completed', updated_at_ms=?, terminal_at_ms=?
     WHERE operation_id=?`).run(at + 6, at + 6, operationId)
+  db.prepare("UPDATE message_v2 SET status='completed', updated_at_ms=? WHERE message_id=?")
+    .run(at + 6, answerRootId)
   db.prepare(`INSERT INTO generation_native_artifact_v2
     VALUES (?, 1, ?, ?, ?, ?, ?, ?)`)
     .run(answerRootId, operationId, artifact.artifactKind, artifact.artifactCodecVersion,
@@ -142,9 +144,7 @@ function seedThreeTurns(db: BetterSqlite3.Database, corruptSecondLineage = false
         generatedWithThinking: 'disabled',
       })
   completeOperation(db, 'operation:1', 'answer:1', first, 100)
-  db.prepare("UPDATE message_v2 SET status='completed', updated_at_ms=107 WHERE message_id='answer:1'").run()
   completeOperation(db, 'operation:2', 'answer:2', second, 200)
-  db.prepare("UPDATE message_v2 SET status='completed', updated_at_ms=207 WHERE message_id='answer:2'").run()
   return { first, second }
 }
 

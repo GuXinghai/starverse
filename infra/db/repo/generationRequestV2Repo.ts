@@ -14,6 +14,8 @@ import {
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
 
+type GenerationRequestStateInternalV2 = 'prepared' | 'streaming' | 'completed' | 'failed' | 'cancelled'
+
 export type GenerationRequestRepositoryFactV2 = Readonly<{
   trust: 'generation_request_repository_fact_v2'
   operationId: string
@@ -41,7 +43,8 @@ export class GenerationRequestV2RepoError extends Error {
     | 'GENERATION_V2_REQUEST_STATE_INVALID'
     | 'GENERATION_V2_REQUEST_NOT_FOUND'
     | 'GENERATION_V2_REQUEST_IDEMPOTENCY_CONFLICT'
-    | 'GENERATION_V2_REQUEST_SEQUENCE_INVALID') {
+    | 'GENERATION_V2_REQUEST_SEQUENCE_INVALID'
+    | 'GENERATION_V2_REQUEST_TERMINAL_CONFLICT') {
     super(code)
     this.name = 'GenerationRequestV2RepoError'
   }
@@ -203,6 +206,50 @@ export class GenerationRequestV2Repo {
     return existing
   }
 
+  markStreaming(
+    context: GenerationV2AuthorityTransactionContextV2,
+    fact: GenerationRequestRepositoryFactV2,
+    atMs: number = this.#nowMs(),
+  ): GenerationRequestRepositoryFactV2 {
+    this.#assertFact(context, fact)
+    const at = safeTime(atMs)
+    const row = this.#mutableState(fact)
+    if (row.state !== 'prepared' || at < row.updatedAtMs) {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_STATE_INVALID')
+    }
+    const result = this.#db.prepare(`UPDATE generation_request_v2 SET state='streaming', updated_at_ms=?
+      WHERE operation_id=? AND request_sequence=? AND state='prepared' AND updated_at_ms=?`).run(
+      at, fact.operationId, fact.requestSequence, row.updatedAtMs,
+    )
+    if (result.changes !== 1) throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_STATE_INVALID')
+    return this.#read(context, fact.operationId, fact.requestSequence)
+  }
+
+  terminalize(
+    context: GenerationV2AuthorityTransactionContextV2,
+    fact: GenerationRequestRepositoryFactV2,
+    state: 'completed' | 'failed' | 'cancelled',
+    atMs: number = this.#nowMs(),
+  ): GenerationRequestRepositoryFactV2 {
+    this.#assertFact(context, fact)
+    const at = safeTime(atMs)
+    const row = this.#mutableState(fact)
+    if (row.state === state) return this.#read(context, fact.operationId, fact.requestSequence)
+    if (row.state === 'completed' || row.state === 'failed' || row.state === 'cancelled') {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_TERMINAL_CONFLICT')
+    }
+    if ((row.state !== 'prepared' && row.state !== 'streaming') || at < row.updatedAtMs) {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_STATE_INVALID')
+    }
+    const result = this.#db.prepare(`UPDATE generation_request_v2
+      SET state=?, updated_at_ms=?, terminal_at_ms=?
+      WHERE operation_id=? AND request_sequence=? AND state=? AND updated_at_ms=?`).run(
+      state, at, at, fact.operationId, fact.requestSequence, row.state, row.updatedAtMs,
+    )
+    if (result.changes !== 1) throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_STATE_INVALID')
+    return this.#read(context, fact.operationId, fact.requestSequence)
+  }
+
   #assertAuthorities(
     context: GenerationV2AuthorityTransactionContextV2,
     execution: GenerationExecutionOperationBundleV2,
@@ -235,6 +282,30 @@ export class GenerationRequestV2Repo {
             descriptor.endpointId.value === prepared.effectiveEndpointId))) {
       throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_INPUT_INVALID')
     }
+  }
+
+  #assertFact(
+    context: GenerationV2AuthorityTransactionContextV2,
+    fact: GenerationRequestRepositoryFactV2,
+  ): void {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    if (!isGenerationRequestRepositoryFactForContextV2(fact, context)) {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_AUTHORITY_INVALID')
+    }
+  }
+
+  #mutableState(fact: GenerationRequestRepositoryFactV2): Readonly<{
+    state: GenerationRequestStateInternalV2
+    updatedAtMs: number
+  }> {
+    const row = this.#db.prepare(`SELECT state, updated_at_ms AS updatedAtMs
+      FROM generation_request_v2 WHERE operation_id=? AND request_sequence=?`).get(
+      fact.operationId, fact.requestSequence,
+    ) as { state: unknown; updatedAtMs: unknown } | undefined
+    if (!row || !['prepared', 'streaming', 'completed', 'failed', 'cancelled'].includes(row.state as string)) {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_STATE_INVALID')
+    }
+    return Object.freeze({ state: row.state as GenerationRequestStateInternalV2, updatedAtMs: safeTime(row.updatedAtMs) })
   }
 
   #find(

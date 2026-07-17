@@ -85,6 +85,7 @@ export class GenerationExecutionV2RepoError extends Error {
     | 'GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT'
     | 'GENERATION_V2_EXECUTION_ACTIVE_CONFLICT'
     | 'GENERATION_V2_EXECUTION_ATTEMPT_TERMINAL_CONFLICT'
+    | 'GENERATION_V2_EXECUTION_TERMINAL_CONFLICT'
     | 'GENERATION_V2_EXECUTION_TRANSACTION_CONTEXT_REQUIRED') {
     super(code)
     this.name = 'GenerationExecutionV2RepoError'
@@ -355,6 +356,80 @@ export class GenerationExecutionV2Repo {
   ): GenerationExecutionOperationBundleV2 | null {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     return this.#findOperation(operationId, context)
+  }
+
+  markOperationStreaming(
+    context: GenerationV2AuthorityTransactionContextV2,
+    bundle: GenerationExecutionOperationBundleV2,
+    atMs: number = this.#nowMs(),
+  ): GenerationExecutionOperationBundleV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    if (!isGenerationExecutionOperationBundleForContextV2(bundle, context) ||
+        bundle.operation.state !== 'committed') {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
+    }
+    const at = safeTime(atMs)
+    if (at < bundle.operation.updatedAtMs) {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
+    }
+    const result = this.#db.prepare(`UPDATE generation_operation_v2
+      SET state='streaming', updated_at_ms=?
+      WHERE operation_id=? AND state='committed' AND updated_at_ms=?`).run(
+      at, bundle.operation.operationId.value, bundle.operation.updatedAtMs,
+    )
+    if (result.changes !== 1) {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
+    }
+    return this.#readOperation(bundle.operation.operationId.value, context)
+  }
+
+  terminalizeOperation(
+    context: GenerationV2AuthorityTransactionContextV2,
+    bundle: GenerationExecutionOperationBundleV2,
+    terminal: Readonly<{
+      state: 'completed' | 'failed' | 'cancelled'
+      errorCode: string | null
+      errorMessage: string | null
+    }>,
+    atMs: number = this.#nowMs(),
+  ): GenerationExecutionOperationBundleV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    if (!isGenerationExecutionOperationBundleForContextV2(bundle, context) ||
+        ((terminal.state === 'completed') !== (terminal.errorCode === null && terminal.errorMessage === null)) ||
+        (terminal.state !== 'completed' &&
+          (typeof terminal.errorCode !== 'string' || terminal.errorCode.length === 0 ||
+           terminal.errorCode.length > 256 || terminal.errorCode.trim() !== terminal.errorCode ||
+           typeof terminal.errorMessage !== 'string' || terminal.errorMessage.length === 0 ||
+           terminal.errorMessage.length > 8_192 || /\u0000/u.test(terminal.errorMessage)))) {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
+    }
+    if (bundle.operation.state === terminal.state) {
+      if (bundle.operation.errorCode !== terminal.errorCode || bundle.operation.errorMessage !== terminal.errorMessage) {
+        throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_TERMINAL_CONFLICT')
+      }
+      return bundle
+    }
+    if (bundle.operation.state === 'completed' || bundle.operation.state === 'failed' ||
+        bundle.operation.state === 'cancelled') {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_TERMINAL_CONFLICT')
+    }
+    if (terminal.state === 'completed' && bundle.operation.state !== 'streaming') {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
+    }
+    const at = safeTime(atMs)
+    if (at < bundle.operation.updatedAtMs) {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
+    }
+    const result = this.#db.prepare(`UPDATE generation_operation_v2
+      SET state=?, error_code=?, error_message=?, updated_at_ms=?, terminal_at_ms=?
+      WHERE operation_id=? AND state=? AND updated_at_ms=?`).run(
+      terminal.state, terminal.errorCode, terminal.errorMessage, at, at,
+      bundle.operation.operationId.value, bundle.operation.state, bundle.operation.updatedAtMs,
+    )
+    if (result.changes !== 1) {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
+    }
+    return this.#readOperation(bundle.operation.operationId.value, context)
   }
 
   #findOperation(
