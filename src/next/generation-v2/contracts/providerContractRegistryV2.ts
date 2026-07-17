@@ -245,11 +245,18 @@ const DEEPSEEK_STABLE_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
     verifiedAt: deepSeekStableApiContract.evidence.verifiedAt,
     openApiSha256: null,
     provenanceUrls: deepSeekStableApiContract.evidence.provenanceUrls,
-    localArtifacts: Object.freeze([Object.freeze({
-      id: 'deepseek-stable-api-contract-20260715',
-      path: 'docs/architecture/generation-compiler-v2/evidence/deepseek-stable-api-contract-20260715.json',
-      sha256: '0022edabf76e51ce88fc6d45310ad889b8a84fd037c72c287944449ba8a42cc7',
-    })]),
+    localArtifacts: Object.freeze([
+      Object.freeze({
+        id: 'deepseek-stable-api-contract-20260715',
+        path: 'docs/architecture/generation-compiler-v2/evidence/deepseek-stable-api-contract-20260715.json',
+        sha256: '0022edabf76e51ce88fc6d45310ad889b8a84fd037c72c287944449ba8a42cc7',
+      }),
+      Object.freeze({
+        id: 'deepseek-stable-owner-capability-policy-20260717',
+        path: 'docs/architecture/generation-compiler-v2/evidence/deepseek-stable-owner-capability-policy-20260717.json',
+        sha256: '7ce7739b2235ea7b7bca06214eef2b752d254ff6a0f2035333c32c8b089bc91e',
+      }),
+    ]),
   }),
 })
 
@@ -296,6 +303,17 @@ function createDefinition(projection: DefinitionProjection): ReviewedProviderCon
 }
 
 const definitions = Object.freeze(definitionProjections.map(createDefinition))
+function requireReviewedDefinition(
+  definition: ReviewedProviderContractDefinitionV2 | undefined,
+): ReviewedProviderContractDefinitionV2 {
+  if (!definition) {
+    throw new ProviderContractRegistryV2Error('GENERATION_V2_CONTRACT_REGISTRY_INVALID')
+  }
+  return definition
+}
+const deepSeekStableChatDefinition = requireReviewedDefinition(definitions.find(
+  (definition) => definition.protocolContractId.value === 'deepseek-stable-chat-v1',
+))
 const definitionsByKey = new Map(definitions.map((definition) => [
   `${definition.protocolContractId.value}\0${definition.contractRevision.value}`,
   definition,
@@ -340,4 +358,8 @@ export function isReviewedProviderContractDefinitionV2(value: unknown): value is
 
 export function readProviderContractRegistryRevisionV2(): GenerationV2Identity<'registry_revision'> {
   return registryRevision
+}
+
+export function readReviewedDeepSeekStableChatDefinitionV2(): ReviewedProviderContractDefinitionV2 {
+  return deepSeekStableChatDefinition
 }
