@@ -226,7 +226,9 @@ export class GenerationRequestV2Repo {
         ON artifact.operation_id=request.operation_id
         AND artifact.request_sequence=request.request_sequence
         AND artifact.answer_root_id=request.answer_root_id
-        AND artifact.artifact_kind='deepseek_stable_ordered_native_messages_v2'
+        AND artifact.completion_scope='request_terminal'
+        AND ((request.provider_id='deepseek' AND artifact.artifact_kind='deepseek_stable_ordered_native_messages_v2')
+          OR (request.provider_id='openai_responses' AND artifact.artifact_kind='openai_responses_ordered_native_items_v2'))
       WHERE request.operation_id=? AND request.request_sequence=?
       GROUP BY request.state`).get(prepared.operationId, prepared.requestSequence - 1) as
       { state: unknown; artifactCount: unknown } | undefined

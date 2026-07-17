@@ -92,6 +92,34 @@ export function recoverGenerationOrphansV2(
         ) as Readonly<Record<string, unknown>> | undefined
         if (awaiting?.requestState === 'completed' && awaiting.answerStatus === 'streaming' &&
             awaiting.finishReason === 'tool_calls' && awaiting.historyCount === 1) continue
+        const openAIResponsesAwaiting = db.prepare(`SELECT request.request_sequence AS requestSequence,
+          request.state AS requestState, answer.status AS answerStatus,
+          json_extract(terminal.artifact_json, '$.terminalKind') AS terminalKind,
+          count(DISTINCT history.artifact_hash) AS historyCount,
+          sum(CASE WHEN json_extract(call.value, '$.type')='function_call' THEN 1 ELSE 0 END) AS functionCallCount,
+          sum(CASE WHEN json_extract(call.value, '$.type')='function_call_output' THEN 1 ELSE 0 END) AS functionOutputCount
+          FROM generation_request_v2 AS request
+          JOIN generation_operation_v2 AS operation ON operation.operation_id=request.operation_id
+          JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
+          JOIN generation_native_artifact_v2 AS terminal ON terminal.operation_id=request.operation_id
+            AND terminal.request_sequence=request.request_sequence AND terminal.answer_root_id=request.answer_root_id
+            AND terminal.artifact_kind='openai_responses_terminal_v1' AND terminal.completion_scope='request_terminal'
+          JOIN generation_native_artifact_v2 AS history ON history.operation_id=request.operation_id
+            AND history.request_sequence=request.request_sequence AND history.answer_root_id=request.answer_root_id
+            AND history.artifact_kind='openai_responses_ordered_native_items_v2' AND history.completion_scope='request_terminal'
+          LEFT JOIN json_each(history.artifact_json, '$.orderedItems') AS call ON 1=1
+          WHERE request.operation_id=? AND request.request_sequence=(
+            SELECT MAX(request_sequence) FROM generation_request_v2 WHERE operation_id=?
+          ) GROUP BY request.request_sequence, request.state, answer.status, terminalKind`).get(
+          operationId, operationId,
+        ) as Readonly<Record<string, unknown>> | undefined
+        if (openAIResponsesAwaiting?.requestState === 'completed' &&
+            openAIResponsesAwaiting.answerStatus === 'streaming' &&
+            openAIResponsesAwaiting.terminalKind === 'completed' &&
+            openAIResponsesAwaiting.historyCount === 1 &&
+            Number.isSafeInteger(openAIResponsesAwaiting.functionCallCount) &&
+            (openAIResponsesAwaiting.functionCallCount as number) > 0 &&
+            openAIResponsesAwaiting.functionOutputCount === 0) continue
         invalid()
       }
       if (rows.length !== 1) invalid()

@@ -28,7 +28,7 @@ const DEFAULT_TIMEOUT_MS = 5 * 60_000
 export type OpenAIResponsesStreamRunResultV2 = Readonly<{
   operationId: string
   answerRootId: string
-  state: 'completed' | 'failed' | 'cancelled'
+  state: 'awaiting_tool' | 'completed' | 'failed' | 'cancelled'
   errorCode: string | null
   errorMessage: string | null
 }>
@@ -103,6 +103,10 @@ function errorMessage(error: unknown): string {
   return 'OpenAI Responses generation failed.'
 }
 
+function hasUnresolvedFunctionCall(terminal: OpenAIResponsesTerminalResultV1): boolean {
+  return terminal.output.some((item) => 'type' in item && item.type === 'function_call')
+}
+
 export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
@@ -160,12 +164,15 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
     phase: 'pre_stream' | 'mid_stream',
   ): OpenAIResponsesStreamRunResultV2 {
     const at = nowMs()
+    let resultState: OpenAIResponsesStreamRunResultV2['state'] = state
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.preparedRequest.operationId)
       if (!execution) throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
       const request = requestRepo.replayPrepared(context, execution, command.preparedRequest)
       const history = state === 'completed'
-        ? historyRepo.loadRequestHistory(context, command.preparedRequest.operationId)
+        ? historyRepo.loadPersistedRequestHistory(
+            context, command.preparedRequest.operationId, command.preparedRequest.requestSequence,
+          )
         : null
       const attemptTransition = executionRepo.terminalizeAttempt(context, {
         key: { operationId: request.operationId, requestSequence: request.requestSequence, attempt: 1 },
@@ -183,20 +190,28 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
         if (!terminal || !history || !isOpenAIResponsesTerminalResultV1(terminal) || terminal.terminalKind !== 'completed') {
           throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
         }
-        graphRepo.terminalizeAssistantMessage(
-          context, command.preparedRequest.answerRootId, 'completed', terminal.visibleText, at,
-        )
-        const terminalExecution = executionRepo.terminalizeOperation(context, execution, {
-          state: 'completed', errorCode: null, errorMessage: null,
-        }, at)
         const continuation = completeOpenAIResponsesRequestV2({
           priorArtifact: history.priorArtifact, lineageDepth: history.lineageDepth,
           clientItems: history.clientItems, returnedItems: terminal.output,
         })
-        artifactRepo.insertOperationTerminal(context, terminalExecution, terminalRequest, continuation, at)
-        artifactRepo.insertOperationTerminal(
-          context, terminalExecution, terminalRequest, createOpenAIResponsesTerminalArtifactV1(terminal), at,
-        )
+        if (hasUnresolvedFunctionCall(terminal)) {
+          resultState = 'awaiting_tool'
+          artifactRepo.insertRequestTerminal(context, execution, terminalRequest, continuation, at)
+          artifactRepo.insertRequestTerminal(
+            context, execution, terminalRequest, createOpenAIResponsesTerminalArtifactV1(terminal), at,
+          )
+        } else {
+          graphRepo.terminalizeAssistantMessage(
+            context, command.preparedRequest.answerRootId, 'completed', terminal.visibleText, at,
+          )
+          const terminalExecution = executionRepo.terminalizeOperation(context, execution, {
+            state: 'completed', errorCode: null, errorMessage: null,
+          }, at)
+          artifactRepo.insertOperationTerminal(context, terminalExecution, terminalRequest, continuation, at)
+          artifactRepo.insertOperationTerminal(
+            context, terminalExecution, terminalRequest, createOpenAIResponsesTerminalArtifactV1(terminal), at,
+          )
+        }
       } else {
         graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, null, at)
         executionRepo.terminalizeOperation(context, execution, {
@@ -207,7 +222,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
     return Object.freeze({
       operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId,
-      state, errorCode: terminalErrorCode, errorMessage: terminalErrorMessage,
+      state: resultState, errorCode: terminalErrorCode, errorMessage: terminalErrorMessage,
     })
   }
 
@@ -267,7 +282,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
     run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal):
       Promise<OpenAIResponsesStreamRunResultV2> => {
       if (!isGenerationTextCommandResultV2(command) || !isPreparedProviderRequestV2(command.preparedRequest) ||
-          command.preparedRequest.providerId !== 'openai_responses' || command.preparedRequest.requestSequence !== 1 ||
+          command.preparedRequest.providerId !== 'openai_responses' || command.preparedRequest.requestSequence < 1 ||
           command.preparedRequest.answerRootId !== command.execution.operation.resultAnswerRootId.value ||
           command.request.preparedBodySha256 !== command.preparedRequest.bodySha256) {
         throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
