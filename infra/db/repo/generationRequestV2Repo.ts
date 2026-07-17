@@ -206,6 +206,32 @@ export class GenerationRequestV2Repo {
     return existing
   }
 
+  loadExistingForOperation(
+    context: GenerationV2AuthorityTransactionContextV2,
+    execution: GenerationExecutionOperationBundleV2,
+    requestSequence: number,
+  ): GenerationRequestRepositoryFactV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    if (!isGenerationExecutionOperationBundleForContextV2(execution, context) ||
+        !Number.isSafeInteger(requestSequence) || requestSequence < 1) {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_AUTHORITY_INVALID')
+    }
+    const existing = this.#find(context, execution.operation.operationId.value, requestSequence)
+    if (!existing) throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_NOT_FOUND')
+    const binding = execution.snapshot.providerBinding
+    if (existing.answerRootId !== execution.operation.resultAnswerRootId.value ||
+        existing.snapshotHash !== execution.snapshot.snapshotHash.value ||
+        existing.providerId !== binding.providerId.value ||
+        existing.endpointProfileId !== binding.endpointProfileId.value ||
+        existing.credentialScopeId !== binding.credentialScopeId.value ||
+        existing.contractId !== binding.protocolContractId.value ||
+        existing.modelId !== binding.modelId.value ||
+        existing.capabilityRevision !== execution.capability.revision.value) {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_STATE_INVALID')
+    }
+    return existing
+  }
+
   markStreaming(
     context: GenerationV2AuthorityTransactionContextV2,
     fact: GenerationRequestRepositoryFactV2,

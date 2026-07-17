@@ -95,6 +95,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/generationExecutionV2Repo.ts'),
       path.resolve('infra/db/repo/generationRequestV2Repo.ts'),
       path.resolve('infra/db/repo/deepSeekNativeHistoryV2Repo.ts'),
+      path.resolve('infra/db/repo/deepSeekTerminalArtifactV2Repo.ts'),
       path.resolve('infra/db/repo/runtimeCapabilityV2Repo.ts'),
       path.resolve('infra/db/repo/conversationGraphV2Repo.ts'),
       path.resolve('electron/services/deepSeekStableModelEvidenceV2Service.ts'),
@@ -103,6 +104,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/deepSeekPlainTextInitialSendCoordinatorV2.ts'),
       path.resolve('electron/services/deepSeekInitialPreparedRequestCompilerV2.ts'),
       path.resolve('electron/services/deepSeekInitialStreamRunnerV2.ts'),
+      path.resolve('electron/services/generationOrphanRecoveryV2.ts'),
       path.resolve('electron/debug/rawGenerationRequestStore.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
@@ -166,6 +168,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/generationExecutionV2Repo.ts'),
       path.resolve('infra/db/repo/generationRequestV2Repo.ts'),
       path.resolve('infra/db/repo/deepSeekNativeHistoryV2Repo.ts'),
+      path.resolve('infra/db/repo/deepSeekTerminalArtifactV2Repo.ts'),
       path.resolve('infra/db/repo/runtimeCapabilityV2Repo.ts'),
       path.resolve('infra/db/repo/conversationGraphV2Repo.ts'),
       path.resolve('electron/services/deepSeekStableGenerationAuthorityV2Service.ts'),
@@ -173,6 +176,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/deepSeekPlainTextInitialSendCoordinatorV2.ts'),
       path.resolve('electron/services/deepSeekInitialPreparedRequestCompilerV2.ts'),
       path.resolve('electron/services/deepSeekInitialStreamRunnerV2.ts'),
+      path.resolve('electron/services/generationOrphanRecoveryV2.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -218,6 +222,7 @@ describe('Generation Compiler V2 core boundary', () => {
     const adapter = path.resolve('infra/db/repo/generationExecutionV2Repo.ts')
     const requestRepository = path.resolve('infra/db/repo/generationRequestV2Repo.ts')
     const deepSeekHistoryRepository = path.resolve('infra/db/repo/deepSeekNativeHistoryV2Repo.ts')
+    const deepSeekTerminalRepository = path.resolve('infra/db/repo/deepSeekTerminalArtifactV2Repo.ts')
     const deepSeekSnapshotCommit = path.resolve(
       'electron/services/deepSeekPlainTextSnapshotCommitV2.ts',
     )
@@ -230,11 +235,13 @@ describe('Generation Compiler V2 core boundary', () => {
     const initialStreamRunner = path.resolve(
       'electron/services/deepSeekInitialStreamRunnerV2.ts',
     )
+    const orphanRecovery = path.resolve('electron/services/generationOrphanRecoveryV2.ts')
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
         if (file === adapter || file === requestRepository || file === deepSeekHistoryRepository ||
+            file === deepSeekTerminalRepository ||
             file === deepSeekSnapshotCommit || file === initialSendCoordinator ||
-            file === initialPreparedCompiler || file === initialStreamRunner) continue
+            file === initialPreparedCompiler || file === initialStreamRunner || file === orphanRecovery) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/generationExecutionV2Repo|GenerationExecutionV2Repo/iu)
       }
@@ -256,10 +263,11 @@ describe('Generation Compiler V2 core boundary', () => {
     const initialStreamRunner = path.resolve(
       'electron/services/deepSeekInitialStreamRunnerV2.ts',
     )
+    const orphanRecovery = path.resolve('electron/services/generationOrphanRecoveryV2.ts')
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
         if (file === adapter || file === deepSeekSnapshotCommit || file === initialSendCoordinator ||
-            file === initialStreamRunner) continue
+            file === initialStreamRunner || file === orphanRecovery) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/conversationGraphV2Repo|ConversationGraphV2Repo/iu)
       }

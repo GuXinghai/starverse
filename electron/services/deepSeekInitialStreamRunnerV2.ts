@@ -2,6 +2,7 @@ import { session } from 'electron'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { DeepSeekNativeHistoryV2Repo } from '../../infra/db/repo/deepSeekNativeHistoryV2Repo'
+import { DeepSeekTerminalArtifactV2Repo } from '../../infra/db/repo/deepSeekTerminalArtifactV2Repo'
 import {
   GenerationExecutionV2Repo,
   GenerationExecutionV2RepoError,
@@ -21,6 +22,7 @@ import {
   type DeepSeekStableStreamResultV1,
 } from '../../src/next/generation-v2/providers/deepseek/chatStreamV1'
 import { completeDeepSeekNativeRequestV2 } from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
+import { createDeepSeekStableTerminalArtifactV1 } from '../../src/next/generation-v2/providers/deepseek/terminalArtifactV1'
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import {
   isDeepSeekPlainTextInitialSendResultV2,
@@ -121,6 +123,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
   const requestRepo = new GenerationRequestV2Repo(input.db, nowMs)
   const graphRepo = new ConversationGraphV2Repo(input.db)
   const historyRepo = new DeepSeekNativeHistoryV2Repo(input.db)
+  const terminalArtifactRepo = new DeepSeekTerminalArtifactV2Repo(input.db)
 
   function begin(result: DeepSeekPlainTextInitialSendResultV2): void {
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
@@ -196,6 +199,10 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
           generatedWithThinking: streamResult.generatedWithThinking,
         })
         historyRepo.insertCompletedHistoryArtifact(context, terminalExecution, terminalRequest, artifact, at)
+        terminalArtifactRepo.insertCompleted(
+          context, terminalExecution, terminalRequest,
+          createDeepSeekStableTerminalArtifactV1(streamResult), at,
+        )
       }
     })
     return Object.freeze({
