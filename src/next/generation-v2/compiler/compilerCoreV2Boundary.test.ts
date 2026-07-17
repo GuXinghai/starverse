@@ -52,6 +52,7 @@ describe('Generation Compiler V2 core boundary', () => {
       'src/next/generation-v2/providers/deepseek/chatRequestV1.ts',
       'src/next/generation-v2/providers/deepseek/chatStreamV1.ts',
       'src/next/generation-v2/providers/deepseek/stableModelsEvidenceV2.ts',
+      'src/next/generation-v2/providers/deepseek/stableCapabilityPolicyV2.ts',
       'src/next/generation-v2/runner/generationRequestTerminalV2.ts',
       'src/next/generation-v2/credential/credentialScopeV2.ts',
       'src/next/generation-v2/contracts/anthropicDeveloperApiContractV2.ts',
@@ -319,7 +320,10 @@ describe('Generation Compiler V2 core boundary', () => {
     expect(registry).toMatch(/executionAuthority: 'none'/u)
     expect(registry).not.toMatch(/ResolvedProviderContract|issueResolved|fetch\(|runtimeSelection|StreamBridge/iu)
     for (const file of productionSources(path.resolve('src/next/generation-v2'))) {
-      if (file === registryModule || file === referenceAuthorityModule) continue
+      const deepSeekCapabilityPolicy = path.resolve(
+        'src/next/generation-v2/providers/deepseek/stableCapabilityPolicyV2.ts',
+      )
+      if (file === registryModule || file === referenceAuthorityModule || file === deepSeekCapabilityPolicy) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/providerContractRegistryV2|ReviewedProviderContractDefinitionV2/iu)
     }
@@ -356,6 +360,19 @@ describe('Generation Compiler V2 core boundary', () => {
     )
     expect(repository).toContain('session.defaultSession.fetch')
     expect(repository).not.toMatch(/RuntimeCapabilityAuthority|PreparedProviderRequest|compileDeepSeekStableChatRequest/iu)
+  })
+
+  it('keeps the DeepSeek stable capability policy family-scoped and non-executable', () => {
+    const source = read('src/next/generation-v2/providers/deepseek/stableCapabilityPolicyV2.ts')
+    expect(source).toContain("executionAuthority: 'none'")
+    expect(source).toContain("usage: 'runtime_capability_resolution_input_only'")
+    expect(source).toContain("'unavailable_pending_authority'")
+    expect(source).not.toMatch(
+      /modelId|modelCatalog|capabilitySeed|manual_user_model_id|deepseek_official_openai_compat|\/v1|\/beta/iu,
+    )
+    expect(source).not.toMatch(
+      /RuntimeCapabilityAuthority|DecodedRuntimeCapabilitySnapshotV2|PreparedProviderRequest|compileDeepSeekStableChatRequest|fetch\(|net\.request|ipcMain/iu,
+    )
   })
 
   it('limits verified contract references to non-executable snapshot provenance', () => {
