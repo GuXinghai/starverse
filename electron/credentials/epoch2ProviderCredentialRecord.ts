@@ -13,6 +13,10 @@ export type Epoch2ProviderCredentialDecryptValidator = (
   ciphertext: Buffer,
 ) => string
 
+export type Epoch2ProviderCredentialCiphertextConsumer<T> = (
+  ciphertext: Buffer,
+) => Promise<T>
+
 const RECORD_KEYS = Object.freeze([
   'backend',
   'ciphertextBase64',
@@ -46,17 +50,11 @@ export function decodeAndValidateEpoch2ProviderCredentialRecord(input: Readonly<
   providerKey: ProviderCredentialKey
   validateDecrypt: Epoch2ProviderCredentialDecryptValidator
 }>): Epoch2ProviderCredentialRecord {
-  if (!input.value || typeof input.value !== 'object' || Array.isArray(input.value)) {
-    return invalid(input.providerKey)
-  }
-  const record = input.value as Record<string, unknown>
-  if (Object.keys(record).sort().join('\0') !== RECORD_KEYS.join('\0') ||
-      record.version !== 1 || record.providerKey !== input.providerKey ||
-      record.backend !== 'electron_safe_storage' ||
-      !Number.isSafeInteger(record.updatedAtMs) || (record.updatedAtMs as number) < 0) {
-    return invalid(input.providerKey)
-  }
-  const ciphertext = decodeCanonicalCiphertext(record.ciphertextBase64, input.providerKey)
+  const decoded = decodeEpoch2ProviderCredentialRecordStructure({
+    value: input.value,
+    providerKey: input.providerKey,
+  })
+  const ciphertext = decodeCanonicalCiphertext(decoded.ciphertextBase64, input.providerKey)
   try {
     const decrypted = input.validateDecrypt(input.providerKey, ciphertext)
     if (typeof decrypted !== 'string' || decrypted.trim().length === 0) {
@@ -67,6 +65,23 @@ export function decodeAndValidateEpoch2ProviderCredentialRecord(input: Readonly<
   } finally {
     ciphertext.fill(0)
   }
+  return decoded
+}
+
+export function decodeEpoch2ProviderCredentialRecordStructure(input: Readonly<{
+  value: unknown
+  providerKey: ProviderCredentialKey
+}>): Epoch2ProviderCredentialRecord {
+  if (!input.value || typeof input.value !== 'object' || Array.isArray(input.value)) {
+    return invalid(input.providerKey)
+  }
+  const record = input.value as Record<string, unknown>
+  if (Object.keys(record).sort().join('\0') !== RECORD_KEYS.join('\0') ||
+      record.version !== 1 || record.providerKey !== input.providerKey ||
+      record.backend !== 'electron_safe_storage' ||
+      !Number.isSafeInteger(record.updatedAtMs) || (record.updatedAtMs as number) < 0) {
+    return invalid(input.providerKey)
+  }
   return Object.freeze({
     version: 1,
     providerKey: input.providerKey,
@@ -74,4 +89,19 @@ export function decodeAndValidateEpoch2ProviderCredentialRecord(input: Readonly<
     ciphertextBase64: record.ciphertextBase64 as string,
     updatedAtMs: record.updatedAtMs as number,
   })
+}
+
+export async function withEpoch2ProviderCredentialCiphertext<T>(input: Readonly<{
+  record: Epoch2ProviderCredentialRecord
+  consume: Epoch2ProviderCredentialCiphertextConsumer<T>
+}>): Promise<T> {
+  const ciphertext = decodeCanonicalCiphertext(
+    input.record.ciphertextBase64,
+    input.record.providerKey,
+  )
+  try {
+    return await input.consume(ciphertext)
+  } finally {
+    ciphertext.fill(0)
+  }
 }
