@@ -13,15 +13,15 @@ function record(providerKey: (typeof PROVIDER_CREDENTIAL_KEYS)[number]) {
 }
 
 describe('epoch-2 provider credential record', () => {
-  it('strictly validates every approved encrypted provider record and zeroes validator bytes', () => {
+  it('strictly validates every approved encrypted provider record and zeroes validator bytes', async () => {
     for (const providerKey of PROVIDER_CREDENTIAL_KEYS) {
       let observed: Buffer | undefined
-      const decoded = decodeAndValidateEpoch2ProviderCredentialRecord({
+      const decoded = await decodeAndValidateEpoch2ProviderCredentialRecord({
         value: record(providerKey),
         providerKey,
-        validateDecrypt: (_key, ciphertext) => {
+        validateDecrypt: async (_key, ciphertext) => {
           observed = ciphertext
-          return ciphertext.toString('utf8')
+          return { credential: ciphertext.toString('utf8') }
         },
       })
       expect(decoded).toEqual(record(providerKey))
@@ -31,7 +31,7 @@ describe('epoch-2 provider credential record', () => {
     }
   })
 
-  it('rejects extra, plaintext, wrong-provider, malformed-base64 and timestamp shapes', () => {
+  it('rejects extra, plaintext, wrong-provider, malformed-base64 and timestamp shapes', async () => {
     const valid = record('openrouter')
     for (const value of [
       { ...valid, extra: true },
@@ -43,27 +43,38 @@ describe('epoch-2 provider credential record', () => {
       { ...valid, updatedAtMs: -1 },
       { ...valid, updatedAtMs: 1.5 },
     ]) {
-      expect(() => decodeAndValidateEpoch2ProviderCredentialRecord({
+      await expect(decodeAndValidateEpoch2ProviderCredentialRecord({
         value,
         providerKey: 'openrouter',
-        validateDecrypt: () => 'secret',
-      })).toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
+        validateDecrypt: async () => ({ credential: 'secret' }),
+      })).rejects.toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
     }
   })
 
-  it('rejects empty or failed decrypts and zeroes bytes on both paths', () => {
+  it('projects and zeroes replacement ciphertext before config persistence', async () => {
+    const rewrapped = Buffer.from('rotated-ciphertext')
+    const decoded = await decodeAndValidateEpoch2ProviderCredentialRecord({
+      value: record('openrouter'),
+      providerKey: 'openrouter',
+      validateDecrypt: async () => ({ credential: 'secret', rewrappedCiphertext: rewrapped }),
+    })
+    expect(decoded.ciphertextBase64).toBe(Buffer.from('rotated-ciphertext').toString('base64'))
+    expect([...rewrapped]).toEqual(new Array(rewrapped.byteLength).fill(0))
+  })
+
+  it('rejects empty or failed decrypts and zeroes bytes on both paths', async () => {
     for (const outcome of ['empty', 'throw'] as const) {
       let captured: Buffer | undefined
-      const validateDecrypt = (_key: string, ciphertext: Buffer): string => {
+      const validateDecrypt = async (_key: string, ciphertext: Buffer) => {
         captured = ciphertext
         if (outcome === 'throw') throw new Error('decrypt failed')
-        return '   '
+        return { credential: '   ' }
       }
-      expect(() => decodeAndValidateEpoch2ProviderCredentialRecord({
+      await expect(decodeAndValidateEpoch2ProviderCredentialRecord({
         value: record('deepseek'),
         providerKey: 'deepseek',
         validateDecrypt,
-      })).toThrow('EPOCH2_CREDENTIAL_INVALID:deepseek')
+      })).rejects.toThrow('EPOCH2_CREDENTIAL_INVALID:deepseek')
       expect(captured).toBeDefined()
       expect([...captured!]).toEqual(new Array(captured!.byteLength).fill(0))
     }

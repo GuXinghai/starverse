@@ -192,7 +192,7 @@ describe('epoch-2 root marker authority and coordinator phase', () => {
       await expect(runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: () => 'unused',
+        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData: async () => {},
       })).rejects.toThrow('EPOCH2_CONFIG_COORDINATOR_PHASE_INVALID')
       expect(fs.readFileSync(path.join(layout.productRoot, 'chat.db'), 'utf8'))

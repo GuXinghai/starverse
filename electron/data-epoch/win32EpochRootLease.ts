@@ -670,11 +670,11 @@ function decodeLegacyConfig(bytes: Uint8Array | null): unknown {
   }
 }
 
-export function prepareEpoch2ConfigReplacement(input: Readonly<{
+export async function prepareEpoch2ConfigReplacement(input: Readonly<{
   layout: Epoch2WorkspaceLayout
   lease: Win32EpochRootLease
   validateDecrypt: Epoch2CredentialDecryptValidator
-}>): Epoch2ConfigReplacementAuthority {
+}>): Promise<Epoch2ConfigReplacementAuthority> {
   assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
   const journal = readPersistedConfigJournal(input, CONFIG_PREPARE_PHASES)
   const snapshot = readWin32EpochLegacyConfig(input.lease, journal.operationId)
@@ -684,7 +684,7 @@ export function prepareEpoch2ConfigReplacement(input: Readonly<{
   } finally {
     snapshot.bytes?.fill(0)
   }
-  const projected = projectEpoch2Config({
+  const projected = await projectEpoch2Config({
     rawConfig,
     validateDecrypt: input.validateDecrypt,
   })

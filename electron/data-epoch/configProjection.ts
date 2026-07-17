@@ -31,13 +31,13 @@ function record(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-function projectCredential(input: Readonly<{
+async function projectCredential(input: Readonly<{
   providerKey: ProviderCredentialKey
   value: unknown
   validateDecrypt: Epoch2CredentialDecryptValidator
-}>): Epoch2ProviderCredentialRecord {
+}>): Promise<Epoch2ProviderCredentialRecord> {
   try {
-    return decodeAndValidateEpoch2ProviderCredentialRecord({
+    return await decodeAndValidateEpoch2ProviderCredentialRecord({
       value: input.value,
       providerKey: input.providerKey,
       validateDecrypt: input.validateDecrypt,
@@ -72,10 +72,10 @@ function copyPreferences(raw: Record<string, unknown>): Record<string, unknown> 
   return projected
 }
 
-export function projectEpoch2Config(input: Readonly<{
+export async function projectEpoch2Config(input: Readonly<{
   rawConfig: unknown
   validateDecrypt: Epoch2CredentialDecryptValidator
-}>): Readonly<Record<string, unknown>> {
+}>): Promise<Readonly<Record<string, unknown>>> {
   const raw = record(input.rawConfig)
   if (!raw) throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID')
   const projected = copyPreferences(raw)
@@ -88,7 +88,7 @@ export function projectEpoch2Config(input: Readonly<{
   const preserved: Partial<Record<ProviderCredentialKey, Epoch2ProviderCredentialRecord>> = {}
   for (const providerKey of EPOCH2_PRESERVED_PROVIDER_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(credentialV1 ?? {}, providerKey)) continue
-    preserved[providerKey] = projectCredential({
+    preserved[providerKey] = await projectCredential({
       providerKey,
       value: credentialV1?.[providerKey],
       validateDecrypt: input.validateDecrypt,

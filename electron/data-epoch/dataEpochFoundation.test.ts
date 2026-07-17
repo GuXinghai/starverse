@@ -156,7 +156,7 @@ describe('Generation Compiler V2 epoch foundation', () => {
     }
   })
 
-  it('projects only approved preferences and the five decryptable safe-storage leaves', () => {
+  it('projects only approved preferences and the five decryptable safe-storage leaves', async () => {
     const providerCredentials = {
       openrouter: secureRecord('openrouter'),
       openai_responses: secureRecord('openai_responses'),
@@ -165,7 +165,7 @@ describe('Generation Compiler V2 epoch foundation', () => {
       deepseek: secureRecord('deepseek'),
       custom: secureRecord('custom'),
     }
-    const projected = projectEpoch2Config({
+    const projected = await projectEpoch2Config({
       rawConfig: {
         language: 'zh-CN', languageManual: 'en-US', theme: 'dark', fontSize: 15,
         windowBounds: { x: 1, y: 2, width: 1200, height: 800, injected: 'drop' },
@@ -174,7 +174,7 @@ describe('Generation Compiler V2 epoch foundation', () => {
         compatibleCredentials: { v1: { custom: secureRecord('custom') } },
         providerCredentials: { v1: providerCredentials },
       },
-      validateDecrypt: (_providerKey, ciphertext) => ciphertext.toString('utf8'),
+      validateDecrypt: async (_providerKey, ciphertext) => ({ credential: ciphertext.toString('utf8') }),
     })
     expect(projected).toEqual({
       language: 'zh-CN', languageManual: 'en-US', theme: 'dark', fontSize: 15,
@@ -192,31 +192,31 @@ describe('Generation Compiler V2 epoch foundation', () => {
     expect(JSON.stringify(projected)).not.toContain('compatibleCredentials')
   })
 
-  it('fails closed on malformed, plaintext, mismatched or undecryptable approved credentials', () => {
+  it('fails closed on malformed, plaintext, mismatched or undecryptable approved credentials', async () => {
     const invalidRecords = [
       { ...secureRecord('openrouter'), backend: 'plaintext_fallback', plaintext: 'secret' },
       { ...secureRecord('openrouter'), providerKey: 'anthropic' },
       { ...secureRecord('openrouter'), ciphertextBase64: 'not base64' },
     ]
     for (const invalid of invalidRecords) {
-      expect(() => projectEpoch2Config({
+      await expect(projectEpoch2Config({
         rawConfig: { providerCredentials: { v1: { openrouter: invalid } } },
-        validateDecrypt: () => 'key',
-      })).toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
+        validateDecrypt: async () => ({ credential: 'key' }),
+      })).rejects.toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
     }
-    expect(() => projectEpoch2Config({
+    await expect(projectEpoch2Config({
       rawConfig: { providerCredentials: { v1: { openrouter: secureRecord('openrouter') } } },
-      validateDecrypt: () => '',
-    })).toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
-    expect(() => projectEpoch2Config({
+      validateDecrypt: async () => ({ credential: '' }),
+    })).rejects.toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
+    await expect(projectEpoch2Config({
       rawConfig: { providerCredentials: { v1: { openrouter: {
         ...secureRecord('openrouter'), plaintext: 'must-not-coexist',
       } } } },
-      validateDecrypt: () => 'key',
-    })).toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
-    expect(() => projectEpoch2Config({
+      validateDecrypt: async () => ({ credential: 'key' }),
+    })).rejects.toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
+    await expect(projectEpoch2Config({
       rawConfig: { providerCredentials: { v1: 'corrupt' } },
-      validateDecrypt: () => 'key',
-    })).toThrow('EPOCH2_CONFIG_INVALID:providerCredentials')
+      validateDecrypt: async () => ({ credential: 'key' }),
+    })).rejects.toThrow('EPOCH2_CONFIG_INVALID:providerCredentials')
   })
 })
