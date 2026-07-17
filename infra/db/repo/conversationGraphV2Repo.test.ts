@@ -149,6 +149,7 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
           targetAnswerRootId: null,
           resultAnswerRootId: 'answer:1',
           snapshot: snapshotJson('operation:1', 'answer:1'),
+          commandFingerprint: HASH_A,
           createdAtMs: 3,
         })
         return graph.commitInitialTurnProjection(context, pending)
@@ -213,6 +214,7 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
           targetAnswerRootId: null,
           resultAnswerRootId: 'answer:1',
           snapshot: snapshotJson('operation:1', 'answer:different'),
+          commandFingerprint: HASH_A,
           createdAtMs: 3,
         })
       })).toThrow('GENERATION_V2_EXECUTION_INPUT_INVALID')
@@ -240,6 +242,7 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
           targetAnswerRootId: null,
           resultAnswerRootId: 'answer:1',
           snapshot: snapshotJson('operation:1', 'answer:1'),
+          commandFingerprint: HASH_A,
           createdAtMs: 3,
         })
         graph.commitInitialTurnProjection(context, pending)

@@ -106,6 +106,17 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_generation_operation_v2_active_question
   ON generation_operation_v2(branch_id, question_id)
   WHERE state IN ('committed', 'streaming');
 
+CREATE TRIGGER IF NOT EXISTS trg_generation_operation_v2_initial_question_body_immutable
+BEFORE UPDATE OF body_text ON message_body_v2
+WHEN EXISTS (
+  SELECT 1 FROM generation_operation_v2 AS operation
+  WHERE operation.action_kind = 'initial_send'
+    AND operation.question_id = OLD.message_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_INITIAL_SEND_COMMAND_INPUT_IMMUTABLE');
+END;
+
 CREATE TABLE IF NOT EXISTS runtime_capability_snapshot_v2 (
   capability_snapshot_hash TEXT PRIMARY KEY CHECK (
     length(capability_snapshot_hash) = 64
