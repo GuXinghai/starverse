@@ -323,6 +323,14 @@ describe('Generation Compiler V2 core boundary', () => {
     }
   })
 
+  it('keeps the DeepSeek stable endpoint profile non-executable and free of legacy aliases or fallback', () => {
+    const source = read('src/next/generation-v2/providers/deepseek/stableEndpointProfileV2.ts')
+    expect(source).toContain("executionAuthority: 'none'")
+    expect(source).toContain("usage: 'provider_binding_snapshot_only'")
+    expect(source).not.toMatch(/deepseek_official_openai_compat|\/v1|\/beta|fallback.*enabled|fetch\(|net\.request|ipcMain/iu)
+    expect(source).not.toMatch(/RuntimeCapabilityAuthority|PreparedProviderRequest|compileGenerationV2/iu)
+  })
+
   it('limits verified contract references to non-executable snapshot provenance', () => {
     const module = path.resolve(
       'src/next/generation-v2/contracts/providerContractReferenceAuthorityV2.ts',
