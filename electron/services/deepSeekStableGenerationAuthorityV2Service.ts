@@ -36,9 +36,14 @@ import {
   readVerifiedDeepSeekStableEndpointProfileV2,
 } from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
 import {
+  isGenerationCommandFactsAuthorityForContextV2,
   isGenerationCommandFactsAuthorityV2,
   type GenerationCommandFactsAuthorityV2,
 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
+import {
+  registerGenerationV2AuthorityTransactionParticipantForContextV2,
+  type GenerationV2AuthorityTransactionContextV2,
+} from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import {
   isVerifiedDeepSeekStableModelEvidenceV2,
   type VerifiedDeepSeekStableModelEvidenceV2,
@@ -275,8 +280,7 @@ function composeBindingAuthority(input: Readonly<{
     modelEvidenceRevision: input.modelEvidence.modelsResponseRevision,
     assertCurrent: () => {
       if (!bindingAuthorities.has(authority) ||
-          !isVerifiedDeepSeekStableModelEvidenceV2(input.modelEvidence) ||
-          !isGenerationCommandFactsAuthorityV2(input.commandFacts)) {
+          !isVerifiedDeepSeekStableModelEvidenceV2(input.modelEvidence)) {
         throw new DeepSeekStableGenerationAuthorityV2Error(
           'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',
         )
@@ -425,8 +429,7 @@ function composeCapabilityAuthority(input: Readonly<{
     modelEvidenceRevision: input.modelEvidence.modelsResponseRevision,
     assertCurrent: () => {
       if (!capabilityAuthorities.has(authority) ||
-          !isVerifiedDeepSeekStableProviderBindingAuthorityV2(input.bindingAuthority) ||
-          !isGenerationCommandFactsAuthorityV2(input.commandFacts)) {
+          !isVerifiedDeepSeekStableProviderBindingAuthorityV2(input.bindingAuthority)) {
         throw new DeepSeekStableGenerationAuthorityV2Error(
           'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',
         )
@@ -456,6 +459,7 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
 }
 
 export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Readonly<{
+  context: GenerationV2AuthorityTransactionContextV2
   modelEvidence: VerifiedDeepSeekStableModelEvidenceV2
   commandFacts: GenerationCommandFactsAuthorityV2
   operation: 'text' | 'tool_continue'
@@ -466,6 +470,11 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
 }>): T {
   const policy = readVerifiedDeepSeekStableCapabilityPolicyV2()
   requireCompleteBrandedInputs(input.modelEvidence, input.commandFacts, policy)
+  if (!isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context)) {
+    throw new DeepSeekStableGenerationAuthorityV2Error(
+      'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',
+    )
+  }
   if (input.operation !== 'text') {
     throw new DeepSeekStableGenerationAuthorityV2Error(
       'GENERATION_V2_DEEPSEEK_OPERATION_AUTHORITY_REQUIRED',
@@ -484,6 +493,8 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
   validateIntentSubset(input.commandFacts, fields)
   let binding: VerifiedDeepSeekStableProviderBindingAuthorityV2 | undefined
   let capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2 | undefined
+  let lifecycleRegistered = false
+  let useCompleted = false
   try {
     binding = composeBindingAuthority({
       modelEvidence: input.modelEvidence,
@@ -498,6 +509,24 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
       fields,
       resolvedAt,
     })
+    const revoke = () => {
+      if (capability) capabilityAuthorities.delete(capability)
+      if (binding) bindingAuthorities.delete(binding)
+    }
+    registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
+      preCommit: () => {
+        if (!useCompleted) {
+          throw new DeepSeekStableGenerationAuthorityV2Error(
+            'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',
+          )
+        }
+        capability?.assertCurrent()
+        binding?.assertCurrent()
+      },
+      committed: revoke,
+      rolledBack: revoke,
+    })
+    lifecycleRegistered = true
     const result = input.use(Object.freeze({ binding, capability }))
     if (isPromiseLike(result)) {
       throw new DeepSeekStableGenerationAuthorityV2Error(
@@ -505,9 +534,12 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
       )
     }
     capability.assertCurrent()
+    useCompleted = true
     return result
   } finally {
-    if (capability) capabilityAuthorities.delete(capability)
-    if (binding) bindingAuthorities.delete(binding)
+    if (!lifecycleRegistered || !useCompleted) {
+      if (capability) capabilityAuthorities.delete(capability)
+      if (binding) bindingAuthorities.delete(binding)
+    }
   }
 }

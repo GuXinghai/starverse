@@ -90,6 +90,7 @@ async function issue<T>(input: Readonly<{
   attachmentRepo: AttachmentAssetV2Repo
   attachments?: unknown
   operation?: 'text' | 'tool_continue'
+  catchUseFailure?: boolean
   use: (authorities: Readonly<{
     binding: VerifiedDeepSeekStableProviderBindingAuthorityV2
     capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2
@@ -115,12 +116,17 @@ async function issue<T>(input: Readonly<{
         'conversation:1',
         input.attachments ?? [],
         undefined,
-        (commandFacts) => withVerifiedDeepSeekStableGenerationAuthoritiesV2({
-          modelEvidence,
-          commandFacts,
-          operation: input.operation ?? 'text',
-          use: input.use as never,
-        }),
+        (commandFacts) => {
+          const invoke = () => withVerifiedDeepSeekStableGenerationAuthoritiesV2({
+            context,
+            modelEvidence,
+            commandFacts,
+            operation: input.operation ?? 'text',
+            use: input.use as never,
+          })
+          if (!input.catchUseFailure) return invoke()
+          try { return invoke() } catch { return undefined as T }
+        },
       ),
     ),
   }) as Promise<T>
@@ -134,6 +140,19 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 describe('DeepSeek stable generation authority V2 service', () => {
+  it('taints the transaction when the authority consumer failure is caught locally', async () => {
+    const db = database()
+    try {
+      await expect(issue({
+        db,
+        configRepo: new GenerationConfigV2Repo(db),
+        attachmentRepo: new AttachmentAssetV2Repo(db),
+        catchUseFailure: true,
+        use: () => { throw new Error('caught authority failure') },
+      })).rejects.toThrow('GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID')
+    } finally { db.close() }
+  })
+
   it('composes one exact text binding and capability graph only inside both authority callbacks', async () => {
     const db = database()
     try {
@@ -322,6 +341,7 @@ describe('DeepSeek stable generation authority V2 service', () => {
 
   it('rejects copied or caller-authored model and command facts before composing records', () => {
     expect(() => withVerifiedDeepSeekStableGenerationAuthoritiesV2({
+      context: {} as never,
       modelEvidence: {} as never,
       commandFacts: {} as never,
       operation: 'text',

@@ -96,6 +96,13 @@ export function isPendingInitialTurnV2(value: unknown): value is PendingInitialT
   return Boolean(value && typeof value === 'object' && pendingTurns.has(value))
 }
 
+export function isPendingInitialTurnForContextV2(
+  value: unknown,
+  context: GenerationV2AuthorityTransactionContextV2,
+): value is PendingInitialTurnV2 {
+  return isPendingInitialTurnV2(value) && pendingTurnContexts.get(value) === context
+}
+
 export class ConversationGraphV2Repo {
   readonly #db: BetterSqlite3.Database
 

@@ -107,6 +107,9 @@ describe('GenerationCommandFactsAuthorityV2', () => {
       const first = createAttachment(attachmentRepo, 'asset:b', 'revision:b', [2], true, 'provider_file')
       const second = createAttachment(attachmentRepo, 'asset:a', 'revision:a', [1], false, 'inline_text')
       issue(db, configRepo, attachmentRepo, [first.input, second.input], (authority) => {
+        expect(authority.conversationId).toMatchObject({
+          kind: 'conversation_id', value: 'conversation:1',
+        })
         expect(authority.semanticIntent.generation).toEqual({ temperature: 0.4 })
         expect(authority.semanticIntent.reasoning).toEqual({ mode: 'enabled', effort: 'high' })
         expect(authority.semanticIntent.attachments.map((item) => item.assetId.value))
