@@ -188,6 +188,10 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
     rule('providerExtension.kind', 'supported_static', STARVERSE_POLICY, {
       domain: Object.freeze({ kind: 'enum', values: Object.freeze(['none']) }),
     }),
+    unsupported('providerExtension.maxToolCalls'),
+    unsupported('providerExtension.parallelToolCalls'),
+    unsupported('providerExtension.serviceTier'),
+    unsupported('providerExtension.verbosity'),
     rule('reasoning.effort', 'supported_with_effort_mapping', OFFICIAL_THINKING, {
       wireKey: 'reasoning_effort',
       domain: Object.freeze({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']) }),

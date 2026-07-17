@@ -6,10 +6,12 @@ import {
 } from './responsesStreamV1'
 
 export const OPENAI_RESPONSES_TERMINAL_ARTIFACT_KIND_V1 = 'openai_responses_terminal_v1' as const
+export const OPENAI_RESPONSES_TERMINAL_ARTIFACT_MAX_BYTES_V1 = 20 * 1_024 * 1_024
 
 export type OpenAIResponsesTerminalArtifactV1 = Readonly<{
   schemaVersion: 1
-  kind: typeof OPENAI_RESPONSES_TERMINAL_ARTIFACT_KIND_V1
+  artifactKind: typeof OPENAI_RESPONSES_TERMINAL_ARTIFACT_KIND_V1
+  artifactCodecVersion: 1
   terminalKind: 'completed' | 'failed' | 'incomplete'
   responseId: string
   model: string
@@ -85,7 +87,8 @@ function decodeError(value: unknown): OpenAIResponsesTerminalResultV1['error'] {
 function projection(result: OpenAIResponsesTerminalResultV1) {
   return Object.freeze({
     schemaVersion: 1 as const,
-    kind: OPENAI_RESPONSES_TERMINAL_ARTIFACT_KIND_V1,
+    artifactKind: OPENAI_RESPONSES_TERMINAL_ARTIFACT_KIND_V1,
+    artifactCodecVersion: 1 as const,
     terminalKind: result.terminalKind,
     responseId: result.responseId,
     model: result.model,
@@ -105,6 +108,7 @@ function issue(result: OpenAIResponsesTerminalResultV1): OpenAIResponsesTerminal
   const canonicalWithoutHash = stableSerializeProviderRequestV2(value)
   const artifactHash = sha256PreparedBytesV2(new TextEncoder().encode(canonicalWithoutHash))
   const canonicalJson = stableSerializeProviderRequestV2({ ...value, artifactHash })
+  if (new TextEncoder().encode(canonicalJson).byteLength > OPENAI_RESPONSES_TERMINAL_ARTIFACT_MAX_BYTES_V1) invalid()
   const artifact = Object.freeze({ ...value, artifactHash, canonicalJson })
   artifacts.add(artifact)
   return artifact
@@ -122,14 +126,16 @@ export function isOpenAIResponsesTerminalArtifactV1(value: unknown): value is Op
 }
 
 export function decodeOpenAIResponsesTerminalArtifactV1(canonicalJson: string): OpenAIResponsesTerminalArtifactV1 {
-  if (typeof canonicalJson !== 'string' || canonicalJson.length === 0 || Buffer.byteLength(canonicalJson, 'utf8') > 64 * 1024 * 1024) {
+  if (typeof canonicalJson !== 'string' || canonicalJson.length === 0 ||
+      Buffer.byteLength(canonicalJson, 'utf8') > OPENAI_RESPONSES_TERMINAL_ARTIFACT_MAX_BYTES_V1) {
     return invalid()
   }
   let raw: Record<string, unknown>
   try { raw = JSON.parse(canonicalJson) as Record<string, unknown> } catch { return invalid() }
   raw = exactObject(raw, [
-    'artifactHash', 'completedAt', 'createdAt', 'error', 'incompleteReason', 'kind', 'model', 'output',
-    'reasoningSummaryText', 'responseId', 'schemaVersion', 'terminalKind', 'usage', 'visibleText',
+    'artifactCodecVersion', 'artifactHash', 'artifactKind', 'completedAt', 'createdAt', 'error',
+    'incompleteReason', 'model', 'output', 'reasoningSummaryText', 'responseId', 'schemaVersion',
+    'terminalKind', 'usage', 'visibleText',
   ]) as Record<string, unknown>
   let output
   try { output = decodeOpenAIResponsesReturnedItemsV1(raw.output) } catch { return invalid() }
@@ -142,7 +148,8 @@ export function decodeOpenAIResponsesTerminalArtifactV1(canonicalJson: string): 
   const visibleText = boundedString(raw.visibleText, true)
   const reasoningSummaryText = boundedString(raw.reasoningSummaryText, true)
   const artifactHash = boundedString(raw.artifactHash)
-  if (raw.schemaVersion !== 1 || raw.kind !== OPENAI_RESPONSES_TERMINAL_ARTIFACT_KIND_V1 ||
+  if (raw.schemaVersion !== 1 || raw.artifactKind !== OPENAI_RESPONSES_TERMINAL_ARTIFACT_KIND_V1 ||
+      raw.artifactCodecVersion !== 1 ||
       (terminalKind !== 'completed' && terminalKind !== 'failed' && terminalKind !== 'incomplete') ||
       !/^[a-f0-9]{64}$/u.test(artifactHash) ||
       (terminalKind === 'failed') !== Boolean(error) ||

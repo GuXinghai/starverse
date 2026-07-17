@@ -28,9 +28,9 @@ import {
 } from './deepSeekToolRegistryAuthorityV2'
 import { compileDeepSeekPreparedRequestV2 } from './deepSeekInitialPreparedRequestCompilerV2'
 import {
-  issueDeepSeekPlainTextCommandResultV2,
-  type DeepSeekPlainTextCommandResultV2,
-} from './deepSeekPlainTextCommandResultV2'
+  issueGenerationTextCommandResultV2,
+  type GenerationTextCommandResultV2,
+} from './generationTextCommandResultV2'
 import { commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2 } from './deepSeekPlainTextSnapshotCommitV2'
 
 export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
@@ -54,7 +54,7 @@ export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
   })
   const endpointProfile = readVerifiedDeepSeekStableEndpointProfileV2()
 
-  function replay(command: DeepSeekPlainTextRegenerateCommandV2): DeepSeekPlainTextCommandResultV2 | null {
+  function replay(command: DeepSeekPlainTextRegenerateCommandV2): GenerationTextCommandResultV2 | null {
     const observed = executionRepo.findOperation(command.operationId.value)
     if (!observed) return null
     if (observed.operation.actionKind !== 'regenerate_question' ||
@@ -73,7 +73,7 @@ export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
         toolRegistry: loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution),
       })
       const request = requestRepo.replayPrepared(context, execution, preparedRequest)
-      return issueDeepSeekPlainTextCommandResultV2({
+      return issueGenerationTextCommandResultV2({
         kind: 'idempotent_replay', execution,
         projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
         preparedRequest, request,
@@ -87,7 +87,7 @@ export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
       expectedCredentialRevision: number
       expectedCredentialScopeId: CredentialScopeIdV2
       signal?: AbortSignal
-    }>): Promise<DeepSeekPlainTextCommandResultV2> => {
+    }>): Promise<GenerationTextCommandResultV2> => {
       const command = decodeDeepSeekPlainTextRegenerateCommandV2(request.command)
       const existing = replay(command)
       if (existing) return existing
@@ -113,7 +113,7 @@ export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
                   toolRegistry: loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced),
                 })
                 const persistedRequest = requestRepo.replayPrepared(context, raced, preparedRequest)
-                return issueDeepSeekPlainTextCommandResultV2({
+                return issueGenerationTextCommandResultV2({
                   kind: 'idempotent_replay', execution: raced,
                   projection: graphRepo.getGenerationReplayProjectionInTransaction(
                     context, command.operationId.value,
@@ -152,7 +152,7 @@ export function createDeepSeekPlainTextRegenerateCoordinatorV2(input: Readonly<{
                     const persistedRequest = requestRepo.createPrepared(
                       context, persisted.bundle, preparedRequest,
                     )
-                    return issueDeepSeekPlainTextCommandResultV2({
+                    return issueGenerationTextCommandResultV2({
                       kind: 'created', execution: persisted.bundle,
                       projection: graphRepo.getGenerationReplayProjectionInTransaction(
                         context, command.operationId.value,

@@ -25,9 +25,9 @@ import { completeDeepSeekNativeRequestV2 } from '../../src/next/generation-v2/pr
 import { createDeepSeekStableTerminalArtifactV1 } from '../../src/next/generation-v2/providers/deepseek/terminalArtifactV1'
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import {
-  isDeepSeekPlainTextCommandResultV2,
-  type DeepSeekPlainTextCommandResultV2,
-} from './deepSeekPlainTextCommandResultV2'
+  isGenerationTextCommandResultV2,
+  type GenerationTextCommandResultV2,
+} from './generationTextCommandResultV2'
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
 const MAX_WIRE_BYTES = 64 * 1024 * 1024
@@ -125,7 +125,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
   const historyRepo = new DeepSeekNativeHistoryV2Repo(input.db)
   const terminalArtifactRepo = new DeepSeekTerminalArtifactV2Repo(input.db)
 
-  function begin(result: DeepSeekPlainTextCommandResultV2): void {
+  function begin(result: GenerationTextCommandResultV2): void {
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, result.preparedRequest.operationId)
       if (!execution) throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')
@@ -148,7 +148,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
   }
 
   function persistVisibleContent(
-    result: DeepSeekPlainTextCommandResultV2,
+    result: GenerationTextCommandResultV2,
     expected: string,
     next: string,
   ): void {
@@ -160,7 +160,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
   }
 
   function finalize(
-    command: DeepSeekPlainTextCommandResultV2,
+    command: GenerationTextCommandResultV2,
     state: 'completed' | 'failed' | 'cancelled',
     streamResult: DeepSeekStableStreamResultV1 | null,
     errorCode: string | null,
@@ -244,7 +244,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
   }
 
   async function receive(
-    command: DeepSeekPlainTextCommandResultV2,
+    command: GenerationTextCommandResultV2,
     response: Response,
     signal: AbortSignal,
     onStreamStarted: () => void,
@@ -302,9 +302,9 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
   }
 
   return Object.freeze({
-    run: async (command: DeepSeekPlainTextCommandResultV2, signal?: AbortSignal):
+    run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal):
       Promise<DeepSeekInitialStreamRunResultV2> => {
-      if (!isDeepSeekPlainTextCommandResultV2(command) ||
+      if (!isGenerationTextCommandResultV2(command) ||
           !isPreparedProviderRequestV2(command.preparedRequest) ||
           command.preparedRequest.providerId !== 'deepseek' || command.preparedRequest.requestSequence < 1 ||
           command.preparedRequest.answerRootId !== command.execution.operation.resultAnswerRootId.value ||

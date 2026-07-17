@@ -65,7 +65,15 @@ export type AttachmentIntentV2 = Readonly<{
   conversion: 'none' | 'pdf' | 'plain_text' | 'images'
 }>
 
-export type ProviderSemanticExtensionV2 = Readonly<{ kind: 'none' }>
+export type ProviderSemanticExtensionV2 =
+  | Readonly<{ kind: 'none' }>
+  | Readonly<{
+      kind: 'openai_responses'
+      verbosity?: 'low' | 'medium' | 'high'
+      maxToolCalls?: number
+      parallelToolCalls?: boolean
+      serviceTier?: 'auto' | 'default' | 'flex' | 'priority'
+    }>
 
 const attachmentIntentsV2 = new WeakSet<object>()
 
@@ -365,10 +373,25 @@ function decodeAttachment(value: unknown): AttachmentIntentV2 {
 }
 
 function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
-  const input = closedObject(value, ['kind'])
+  const input = closedObject(value, ['kind', 'verbosity', 'maxToolCalls', 'parallelToolCalls', 'serviceTier'])
   if (input.kind === 'none') {
     if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
     return Object.freeze({ kind: 'none' })
+  }
+  if (input.kind === 'openai_responses') {
+    const verbosity = optionalEnum(input, 'verbosity', ['low', 'medium', 'high'])
+    const serviceTier = optionalEnum(input, 'serviceTier', ['auto', 'default', 'flex', 'priority'])
+    if (input.maxToolCalls !== undefined && (!Number.isSafeInteger(input.maxToolCalls) || (input.maxToolCalls as number) < 1) ||
+        input.parallelToolCalls !== undefined && typeof input.parallelToolCalls !== 'boolean') {
+      throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    }
+    return compact({
+      kind: 'openai_responses' as const,
+      verbosity,
+      maxToolCalls: input.maxToolCalls as number | undefined,
+      parallelToolCalls: input.parallelToolCalls as boolean | undefined,
+      serviceTier,
+    }) as ProviderSemanticExtensionV2
   }
   throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
 }

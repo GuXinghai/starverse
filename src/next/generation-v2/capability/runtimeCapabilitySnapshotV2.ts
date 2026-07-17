@@ -33,7 +33,8 @@ type RuntimeCapabilityRequiredSemanticPathV2 =
   | `image.${Extract<keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>, string>}`
   | `tools.${Extract<keyof Extract<ToolPolicyIntentV2, { mode: 'enabled' }>, string>}`
   | `attachments[].${Extract<keyof AttachmentIntentV2, string>}`
-  | `providerExtension.${Extract<keyof ProviderSemanticExtensionV2, string>}`
+  | 'providerExtension.kind'
+  | `providerExtension.${Exclude<Extract<keyof Extract<ProviderSemanticExtensionV2, { kind: 'openai_responses' }>, string>, 'kind'>}`
 
 export const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 = Object.freeze([
   'attachments[].assetId',
@@ -62,6 +63,10 @@ export const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 = Object.freeze([
   'image.size',
   'image.stream',
   'providerExtension.kind',
+  'providerExtension.maxToolCalls',
+  'providerExtension.parallelToolCalls',
+  'providerExtension.serviceTier',
+  'providerExtension.verbosity',
   'reasoning.effort',
   'reasoning.mode',
   'reasoning.summary',
@@ -428,7 +433,9 @@ const ENUM_VALUES_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPath
   'image.mode': ['disabled', 'generate'],
   'image.quality': ['auto', 'low', 'medium', 'high'],
   'image.resolution': ['512', '1K', '2K', '4K'],
-  'providerExtension.kind': ['none'],
+  'providerExtension.kind': ['none', 'openai_responses'],
+  'providerExtension.serviceTier': ['auto', 'default', 'flex', 'priority'],
+  'providerExtension.verbosity': ['low', 'medium', 'high'],
   'reasoning.effort': ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
   'reasoning.mode': ['disabled', 'enabled'],
   'reasoning.summary': ['auto', 'concise', 'detailed'],
@@ -439,7 +446,7 @@ const ENUM_VALUES_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPath
 }
 const INTEGER_RANGE_PATHS = new Set<RuntimeCapabilitySemanticPathV2>([
   'generation.candidateCount', 'generation.maxOutputTokens', 'generation.seed', 'generation.topK',
-  'image.outputCompression',
+  'image.outputCompression', 'providerExtension.maxToolCalls',
 ])
 const NUMBER_RANGE_PATHS = new Set<RuntimeCapabilitySemanticPathV2>([
   ...INTEGER_RANGE_PATHS,
@@ -473,7 +480,7 @@ function assertDomainMatchesPath(path: RuntimeCapabilitySemanticPathV2, domain: 
   }
   const expectedKind: RuntimeCapabilityDomainV2['kind'] =
     IDENTITY_PATHS.has(path) ? 'identity'
-      : path === 'attachments[].include' || path === 'image.stream' ? 'boolean'
+      : path === 'attachments[].include' || path === 'image.stream' || path === 'providerExtension.parallelToolCalls' ? 'boolean'
         : path === 'generation.stop' ? 'string_list'
           : path === 'tools.allowedToolIds' ? 'identity_list'
             : path === 'web.types' ? 'enum_list'

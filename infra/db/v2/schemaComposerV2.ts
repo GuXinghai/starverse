@@ -12,7 +12,7 @@ const MANIFEST_TABLE_SQL = `
     schema_digest TEXT NOT NULL CHECK (
       length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
     ),
-    fragment_count INTEGER NOT NULL CHECK (fragment_count = 7),
+    fragment_count INTEGER NOT NULL CHECK (fragment_count = 8),
     object_projection_digest TEXT NOT NULL CHECK (
       length(object_projection_digest) = 64
       AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
@@ -26,6 +26,7 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'attachment_asset_v1', fileName: 'attachmentAssetSchema.sql' }),
   Object.freeze({ id: 'openrouter_images_v1', fileName: 'openRouterImagesSchema.sql' }),
   Object.freeze({ id: 'deepseek_stable_model_evidence_v1', fileName: 'deepSeekStableModelEvidenceSchema.sql' }),
+  Object.freeze({ id: 'openai_responses_model_evidence_v1', fileName: 'openAIResponsesModelEvidenceSchema.sql' }),
   Object.freeze({ id: 'generation_execution_v1', fileName: 'generationExecutionSchema.sql' }),
 ] as const)
 
@@ -274,7 +275,7 @@ export function installGenerationV2SchemaInActiveTransaction(
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
   }
 
-  if (fragments.length !== 7) {
+  if (fragments.length !== 8) {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_FRAGMENT_INVALID')
   }
   db.exec(MANIFEST_TABLE_SQL)

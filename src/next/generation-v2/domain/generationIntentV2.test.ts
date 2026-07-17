@@ -19,6 +19,25 @@ describe('GenerationIntentLayerV2 codec', () => {
     }).reasoning).toEqual({ mode: 'enabled', effort: 'max' })
   })
 
+  it('preserves typed OpenAI Responses advanced semantics without a wire patch', () => {
+    expect(decodeGenerationIntentLayerV2({
+      schemaVersion: 2,
+      providerExtension: {
+        kind: 'openai_responses', verbosity: 'high', maxToolCalls: 8,
+        parallelToolCalls: false, serviceTier: 'priority',
+      },
+    }).providerExtension).toEqual({
+      kind: 'openai_responses', verbosity: 'high', maxToolCalls: 8,
+      parallelToolCalls: false, serviceTier: 'priority',
+    })
+    for (const providerExtension of [
+      { kind: 'openai_responses', maxToolCalls: 0 },
+      { kind: 'openai_responses', parallelToolCalls: 'false' },
+      { kind: 'openai_responses', serviceTier: 'fastest' },
+      { kind: 'none', verbosity: 'low' },
+    ]) expect(() => decodeGenerationIntentLayerV2({ schemaVersion: 2, providerExtension })).toThrow()
+  })
+
   it('decodes closed semantic leaves into branded immutable references', () => {
     const intent = decodeGenerationIntentLayerV2({
       schemaVersion: 2,
