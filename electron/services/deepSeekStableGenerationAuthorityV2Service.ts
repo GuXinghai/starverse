@@ -42,6 +42,10 @@ import {
   type GenerationCommandFactsAuthorityV2,
 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import {
+  isToolRegistryRepositoryFactForContextV2,
+  type ToolRegistryRepositoryFactV2,
+} from '../../infra/db/repo/toolRegistryV2Repo'
+import {
   registerGenerationV2AuthorityTransactionParticipantForContextV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
@@ -83,6 +87,7 @@ export class DeepSeekStableGenerationAuthorityV2Error extends Error {
     | 'GENERATION_V2_DEEPSEEK_FIELD_VALUE_UNSUPPORTED'
     | 'GENERATION_V2_DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD'
     | 'DEEPSEEK_THINKING_EXPLICIT_SAMPLING_UNSUPPORTED'
+    | 'DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED'
     | 'DEEPSEEK_REASONING_EFFORT_UNSUPPORTED') {
     super(code)
     this.name = 'DeepSeekStableGenerationAuthorityV2Error'
@@ -135,12 +140,33 @@ function requireCompleteBrandedInputs(
 function validateIntentSubset(
   commandFacts: GenerationCommandFactsAuthorityV2,
   fields: readonly PersistedRuntimeCapabilityFieldV2[],
+  toolRegistry: ToolRegistryRepositoryFactV2 | null,
 ): void {
   const intent = commandFacts.semanticIntent
-  if (intent.tools.mode !== 'disabled') {
+  if ((intent.tools.mode === 'enabled') !== (toolRegistry !== null)) {
     throw new DeepSeekStableGenerationAuthorityV2Error(
       'GENERATION_V2_DEEPSEEK_TOOL_REGISTRY_AUTHORITY_REQUIRED',
     )
+  }
+  if (intent.tools.mode === 'enabled') {
+    const selectedIds = toolRegistry!.selectedDefinitions.map((tool) => tool.toolId)
+    const allowedIds = intent.tools.allowedToolIds.map((toolId) => toolId.value)
+    if (stableSerializeProviderRequestV2(selectedIds) !== stableSerializeProviderRequestV2(allowedIds)) {
+      throw new DeepSeekStableGenerationAuthorityV2Error(
+        'GENERATION_V2_DEEPSEEK_TOOL_REGISTRY_AUTHORITY_REQUIRED',
+      )
+    }
+    if (intent.reasoning.mode === 'enabled' && intent.tools.toolChoice.mode !== 'omitted') {
+      throw new DeepSeekStableGenerationAuthorityV2Error(
+        'DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED',
+      )
+    }
+    if (intent.tools.toolChoice.mode === 'named' &&
+        !allowedIds.includes(intent.tools.toolChoice.toolId.value)) {
+      throw new DeepSeekStableGenerationAuthorityV2Error(
+        'GENERATION_V2_DEEPSEEK_FIELD_VALUE_UNSUPPORTED',
+      )
+    }
   }
   if (intent.attachments.length !== 0 || commandFacts.attachmentSet.attachments.length !== 0 ||
       commandFacts.attachmentSet.providerFileRequirements.length !== 0 ||
@@ -167,6 +193,11 @@ function validateIntentSubset(
     ['web.mode', intent.web.mode],
     ['image.mode', intent.image.mode],
     ['tools.mode', intent.tools.mode],
+    ...(intent.tools.mode === 'enabled' ? [
+      ['tools.allowedToolIds', intent.tools.allowedToolIds] as const,
+      ['tools.toolChoice', intent.tools.toolChoice.mode] as const,
+      ['tools.sideEffectConfirmation', intent.tools.sideEffectConfirmation] as const,
+    ] : []),
     ['providerExtension.kind', intent.providerExtension.kind],
   ])
   const fieldsByPath = new Map(fields.map((field) => [field.path, field]))
@@ -181,6 +212,10 @@ function validateIntentSubset(
     if (domain.kind === 'identity') {
       return Boolean(value && typeof value === 'object' &&
         typeof (value as { value?: unknown }).value === 'string')
+    }
+    if (domain.kind === 'identity_list') {
+      return Array.isArray(value) && value.length > 0 && value.length <= domain.maxItems && value.every((item) =>
+        item && typeof item === 'object' && typeof (item as { value?: unknown }).value === 'string')
     }
     if (domain.kind === 'string_list') {
       return Array.isArray(value) && value.length <= domain.maxItems && value.every((item) =>
@@ -327,16 +362,34 @@ function buildRuntimeEvidence(
 
 function buildField(
   rule: DeepSeekStableCapabilityRuleV2,
+  toolsEnabled: boolean,
+  toolEvidenceId: string,
 ): PersistedRuntimeCapabilityFieldV2 {
   if (rule.path === 'tools.allowedToolIds' || rule.path === 'tools.sideEffectConfirmation' ||
       rule.path === 'tools.toolChoice') {
-    return Object.freeze({ path: rule.path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
+    if (!toolsEnabled) {
+      return Object.freeze({ path: rule.path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
+    }
+    if (rule.path === 'tools.allowedToolIds') return Object.freeze({
+      path: rule.path, state: 'supported', domain: Object.freeze({ kind: 'identity_list' as const, maxItems: 128 }),
+      constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId(toolEvidenceId, 'supports')]),
+    })
+    if (rule.path === 'tools.sideEffectConfirmation') return Object.freeze({
+      path: rule.path, state: 'requires_confirmation',
+      domain: Object.freeze({ kind: 'enum' as const, values: Object.freeze(['required_each_retry']) }),
+      constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId(rule.evidenceId!, 'requires_confirmation')]),
+    })
+    return Object.freeze({
+      path: rule.path, state: 'supported',
+      domain: Object.freeze({ kind: 'enum' as const, values: Object.freeze(['omitted', 'auto', 'none', 'required', 'named']) }),
+      constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId(rule.evidenceId!, 'supports')]),
+    })
   }
   if (rule.path === 'tools.mode') {
     return Object.freeze({
       path: rule.path,
       state: 'supported',
-      domain: Object.freeze({ kind: 'enum', values: Object.freeze(['disabled']) }),
+      domain: Object.freeze({ kind: 'enum', values: Object.freeze(toolsEnabled ? ['disabled', 'enabled'] : ['disabled']) }),
       constraints: Object.freeze([]),
       evidenceIds: Object.freeze([evidenceId(rule.evidenceId!, 'supports')]),
     })
@@ -390,6 +443,7 @@ function composeCapabilityAuthority(input: Readonly<{
   policy: VerifiedDeepSeekStableCapabilityPolicyV2
   fields: readonly PersistedRuntimeCapabilityFieldV2[]
   resolvedAt: string
+  toolRegistry: ToolRegistryRepositoryFactV2 | null
 }>): VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2 {
   input.bindingAuthority.assertCurrent()
   const evidence = buildRuntimeEvidence(input.policy, input.modelEvidence)
@@ -403,7 +457,14 @@ function composeCapabilityAuthority(input: Readonly<{
     binding: projectDecodedProviderBindingRecordV2(input.bindingAuthority.binding),
     evidence,
     fields: input.fields,
-    tools: [],
+    tools: input.toolRegistry?.selectedDefinitions.map((tool) => ({
+      toolId: tool.toolId,
+      kind: tool.kind,
+      state: tool.sideEffectPolicy === 'none' ? 'supported' : 'requires_confirmation',
+      sideEffectPolicy: tool.sideEffectPolicy,
+      evidenceIds: [evidenceId(DEEPSEEK_STABLE_OWNER_CAPABILITY_POLICY_EVIDENCE_ID_V2,
+        tool.sideEffectPolicy === 'none' ? 'supports' : 'requires_confirmation')],
+    })) ?? [],
     continuation: {
       ...input.policy.continuation,
       evidenceIds: [continuationSupports],
@@ -464,6 +525,7 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
   modelEvidence: VerifiedDeepSeekStableModelEvidenceV2
   commandFacts: GenerationCommandFactsAuthorityV2
   operation: 'text' | 'tool_continue'
+  toolRegistry?: ToolRegistryRepositoryFactV2 | null
   use: (authorities: Readonly<{
     binding: VerifiedDeepSeekStableProviderBindingAuthorityV2
     capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2
@@ -474,6 +536,14 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
   if (!isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context)) {
     throw new DeepSeekStableGenerationAuthorityV2Error(
       'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',
+    )
+  }
+  const toolRegistry = input.toolRegistry ?? null
+  if ((input.commandFacts.semanticIntent.tools.mode === 'enabled' &&
+        !isToolRegistryRepositoryFactForContextV2(toolRegistry, input.context)) ||
+      (input.commandFacts.semanticIntent.tools.mode === 'disabled' && toolRegistry !== null)) {
+    throw new DeepSeekStableGenerationAuthorityV2Error(
+      'GENERATION_V2_DEEPSEEK_TOOL_REGISTRY_AUTHORITY_REQUIRED',
     )
   }
   if (input.operation !== 'text') {
@@ -490,8 +560,14 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
     )
   }
   const resolvedAt = new Date(resolvedAtMs).toISOString()
-  const fields = Object.freeze(policy.rules.map(buildField))
-  validateIntentSubset(input.commandFacts, fields)
+  const toolEvidenceId = policy.rules.find((rule) => rule.path === 'tools.mode')?.evidenceId
+  if (!toolEvidenceId) {
+    throw new DeepSeekStableGenerationAuthorityV2Error(
+      'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',
+    )
+  }
+  const fields = Object.freeze(policy.rules.map((rule) => buildField(rule, toolRegistry !== null, toolEvidenceId)))
+  validateIntentSubset(input.commandFacts, fields, toolRegistry)
   let binding: VerifiedDeepSeekStableProviderBindingAuthorityV2 | undefined
   let capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2 | undefined
   let lifecycleRegistered = false
@@ -509,6 +585,7 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
       policy,
       fields,
       resolvedAt,
+      toolRegistry,
     })
     const revoke = () => {
       if (capability) capabilityAuthorities.delete(capability)

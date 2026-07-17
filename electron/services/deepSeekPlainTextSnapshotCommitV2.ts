@@ -26,6 +26,10 @@ import {
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import {
+  isToolRegistryRepositoryFactForContextV2,
+  type ToolRegistryRepositoryFactV2,
+} from '../../infra/db/repo/toolRegistryV2Repo'
+import {
   RuntimeCapabilityV2Repo,
   isRuntimeCapabilityRepositoryFactV2,
 } from '../../infra/db/repo/runtimeCapabilityV2Repo'
@@ -71,7 +75,7 @@ export type DeepSeekPlainTextSnapshotCommitResultV2 = Readonly<{
 
 function assertPlainTextFacts(commandFacts: GenerationCommandFactsAuthorityV2): void {
   const intent = commandFacts.semanticIntent
-  if (intent.tools.mode !== 'disabled' || intent.attachments.length !== 0 ||
+  if (intent.attachments.length !== 0 ||
       commandFacts.attachmentSet.attachments.length !== 0 ||
       commandFacts.attachmentSet.providerFileRequirements.length !== 0 ||
       commandFacts.attachmentSet.requiresProviderFileAuthority ||
@@ -81,6 +85,29 @@ function assertPlainTextFacts(commandFacts: GenerationCommandFactsAuthorityV2): 
       'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_AUTHORITY_INVALID',
     )
   }
+}
+
+function snapshotToolAuthority(
+  context: GenerationV2AuthorityTransactionContextV2,
+  commandFacts: GenerationCommandFactsAuthorityV2,
+  toolRegistry: ToolRegistryRepositoryFactV2 | null | undefined,
+): Readonly<Record<string, unknown>> {
+  if (commandFacts.semanticIntent.tools.mode === 'disabled') {
+    if (toolRegistry !== undefined && toolRegistry !== null) {
+      throw new DeepSeekPlainTextSnapshotCommitV2Error('GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
+    }
+    return Object.freeze({ kind: 'none' })
+  }
+  if (!isToolRegistryRepositoryFactForContextV2(toolRegistry, context) ||
+      stableSerializeProviderRequestV2(toolRegistry.selectedDefinitions.map((tool) => tool.toolId)) !==
+        stableSerializeProviderRequestV2(commandFacts.semanticIntent.tools.allowedToolIds.map((tool) => tool.value))) {
+    throw new DeepSeekPlainTextSnapshotCommitV2Error('GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
+  }
+  return Object.freeze({
+    kind: 'registry',
+    toolRegistryRevision: toolRegistry.registry.revision,
+    toolDefinitionsDigest: toolRegistry.registry.definitionsDigest,
+  })
 }
 
 function assertCommittedProjection(
@@ -134,6 +161,7 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
   commandFacts: GenerationCommandFactsAuthorityV2
   binding: VerifiedDeepSeekStableProviderBindingAuthorityV2
   capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2
+  toolRegistry?: ToolRegistryRepositoryFactV2 | null
 }>): DeepSeekPlainTextSnapshotCommitResultV2 {
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
@@ -159,6 +187,7 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
     )
   }
   assertPlainTextFacts(input.commandFacts)
+  const toolAuthority = snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry)
   input.binding.assertCurrent()
   input.capability.assertCurrent()
   let commitCompleted = false
@@ -206,7 +235,7 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
       snapshotHash: input.capability.snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: [],
-    toolAuthority: { kind: 'none' },
+    toolAuthority,
   })
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(record)
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
@@ -317,6 +346,7 @@ export function commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2(input: Reado
   commandFacts: GenerationCommandFactsAuthorityV2
   binding: VerifiedDeepSeekStableProviderBindingAuthorityV2
   capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2
+  toolRegistry?: ToolRegistryRepositoryFactV2 | null
 }>): DeepSeekPlainTextSnapshotCommitResultV2 {
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
@@ -341,6 +371,7 @@ export function commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2(input: Reado
     )
   }
   assertPlainTextFacts(input.commandFacts)
+  const toolAuthority = snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry)
   input.binding.assertCurrent()
   input.capability.assertCurrent()
   let commitCompleted = false
@@ -378,7 +409,7 @@ export function commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2(input: Reado
       snapshotHash: input.capability.snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: [],
-    toolAuthority: { kind: 'none' },
+    toolAuthority,
   })
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(record)
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
@@ -418,6 +449,7 @@ export function commitVerifiedDeepSeekPlainTextEditResendSnapshotV2(input: Reado
   commandFacts: GenerationCommandFactsAuthorityV2
   binding: VerifiedDeepSeekStableProviderBindingAuthorityV2
   capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2
+  toolRegistry?: ToolRegistryRepositoryFactV2 | null
 }>): DeepSeekPlainTextSnapshotCommitResultV2 {
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
@@ -444,6 +476,7 @@ export function commitVerifiedDeepSeekPlainTextEditResendSnapshotV2(input: Reado
     )
   }
   assertPlainTextFacts(input.commandFacts)
+  const toolAuthority = snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry)
   input.binding.assertCurrent()
   input.capability.assertCurrent()
   let commitCompleted = false
@@ -481,7 +514,7 @@ export function commitVerifiedDeepSeekPlainTextEditResendSnapshotV2(input: Reado
       snapshotHash: input.capability.snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: [],
-    toolAuthority: { kind: 'none' },
+    toolAuthority,
   })
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(record)
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {

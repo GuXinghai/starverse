@@ -8,6 +8,7 @@ import {
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
 import { DeepSeekNativeHistoryV2Repo } from '../../infra/db/repo/deepSeekNativeHistoryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import {
   decodeDeepSeekPlainTextRetryCommandV2,
@@ -19,6 +20,7 @@ import {
   type DeepSeekPlainTextCommandResultV2,
 } from './deepSeekPlainTextCommandResultV2'
 import { commitDeepSeekPlainTextRetrySnapshotV2 } from './deepSeekPlainTextSnapshotCommitV2'
+import { loadDeepSeekSnapshotToolRegistryAuthorityV2 } from './deepSeekToolRegistryAuthorityV2'
 
 export class DeepSeekPlainTextRetryCoordinatorV2Error extends Error {
   constructor(readonly code:
@@ -41,6 +43,7 @@ export function createDeepSeekPlainTextRetryCoordinatorV2(input: Readonly<{
   const requestRepo = new GenerationRequestV2Repo(input.db, nowMs)
   const historyRepo = new DeepSeekNativeHistoryV2Repo(input.db)
   const graphRepo = new ConversationGraphV2Repo(input.db)
+  const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
 
   function replay(command: DeepSeekPlainTextRetryCommandV2): DeepSeekPlainTextCommandResultV2 | null {
     const observed = executionRepo.findOperation(command.operationId.value)
@@ -58,7 +61,10 @@ export function createDeepSeekPlainTextRetryCoordinatorV2(input: Readonly<{
         throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       }
       const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-      const preparedRequest = compileDeepSeekPreparedRequestV2({ context, execution, history })
+      const preparedRequest = compileDeepSeekPreparedRequestV2({
+        context, execution, history,
+        toolRegistry: loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution),
+      })
       const request = requestRepo.replayPrepared(context, execution, preparedRequest)
       return issueDeepSeekPlainTextCommandResultV2({
         kind: 'idempotent_replay', execution,
@@ -87,7 +93,10 @@ export function createDeepSeekPlainTextRetryCoordinatorV2(input: Readonly<{
               throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
             }
             const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-            const preparedRequest = compileDeepSeekPreparedRequestV2({ context, execution: raced, history })
+            const preparedRequest = compileDeepSeekPreparedRequestV2({
+              context, execution: raced, history,
+              toolRegistry: loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced),
+            })
             const request = requestRepo.replayPrepared(context, raced, preparedRequest)
             return issueDeepSeekPlainTextCommandResultV2({
               kind: 'idempotent_replay', execution: raced,
@@ -126,7 +135,10 @@ export function createDeepSeekPlainTextRetryCoordinatorV2(input: Readonly<{
           })
           graphRepo.commitAnswerActionProjection(context, pending)
           const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-          const preparedRequest = compileDeepSeekPreparedRequestV2({ context, execution: persisted.bundle, history })
+          const preparedRequest = compileDeepSeekPreparedRequestV2({
+            context, execution: persisted.bundle, history,
+            toolRegistry: loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, persisted.bundle),
+          })
           const request = requestRepo.createPrepared(context, persisted.bundle, preparedRequest)
           return issueDeepSeekPlainTextCommandResultV2({
             kind: 'created', execution: persisted.bundle,

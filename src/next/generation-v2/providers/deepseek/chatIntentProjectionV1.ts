@@ -20,6 +20,7 @@ export type DeepSeekStableIntentProjectionIssueV1 = Readonly<{
     | 'DEEPSEEK_REASONING_EFFORT_UNSUPPORTED'
     | 'DEEPSEEK_FIELD_VALUE_UNSUPPORTED'
     | 'DEEPSEEK_TOOL_DEFINITION_AUTHORITY_REQUIRED'
+    | 'DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED'
     | 'DEEPSEEK_ATTACHMENT_ENCODING_AUTHORITY_REQUIRED'
   wireKey?: string
 }>
@@ -100,7 +101,10 @@ function compareCodePoints(left: string, right: string): number {
   return a.length - b.length
 }
 
-export function projectDeepSeekStableIntentV1(rawIntent: unknown): DeepSeekStableIntentProjectionV1 {
+export function projectDeepSeekStableIntentV1(
+  rawIntent: unknown,
+  hasToolDefinitionAuthority = false,
+): DeepSeekStableIntentProjectionV1 {
   const intent = decodeResolvedGenerationIntentV2(rawIntent).value
   const nativeSemanticFields: DeepSeekStableNativeSemanticFieldV1[] = []
   const dispositions: DeepSeekStableIntentDispositionV1[] = []
@@ -117,6 +121,9 @@ export function projectDeepSeekStableIntentV1(rawIntent: unknown): DeepSeekStabl
   }
   const acceptNoWire = (semanticPath: string, evidence = STARVERSE_AUTHORITY_EVIDENCE) => {
     dispositions.push(Object.freeze({ semanticPath, outcome: 'accepted_no_wire', evidence }))
+  }
+  const encodeByAuthority = (semanticPath: string, wireKey: string, evidence = OFFICIAL_CHAT_EVIDENCE) => {
+    dispositions.push(Object.freeze({ semanticPath, outcome: 'encoded', wireKey, evidence }))
   }
   const reject = (
     semanticPath: string,
@@ -198,10 +205,21 @@ export function projectDeepSeekStableIntentV1(rawIntent: unknown): DeepSeekStabl
   }
 
   if (intent.tools.mode === 'disabled') acceptNoWire('tools.mode')
-  else {
+  else if (!hasToolDefinitionAuthority) {
     reject('tools.mode', 'DEEPSEEK_TOOL_DEFINITION_AUTHORITY_REQUIRED', 'tools')
     reject('tools.allowedToolIds', 'DEEPSEEK_TOOL_DEFINITION_AUTHORITY_REQUIRED', 'tools')
     reject('tools.toolChoice', 'DEEPSEEK_TOOL_DEFINITION_AUTHORITY_REQUIRED', 'tool_choice')
+    acceptNoWire('tools.sideEffectConfirmation')
+  } else {
+    acceptNoWire('tools.mode')
+    encodeByAuthority('tools.allowedToolIds', 'tools')
+    if (intent.tools.toolChoice.mode === 'omitted') acceptNoWire('tools.toolChoice', OFFICIAL_THINKING_EVIDENCE)
+    else if (intent.reasoning.mode === 'enabled') {
+      reject('tools.toolChoice', 'DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED', 'tool_choice',
+        OFFICIAL_THINKING_EVIDENCE)
+    } else {
+      encodeByAuthority('tools.toolChoice', 'tool_choice', OFFICIAL_THINKING_EVIDENCE)
+    }
     acceptNoWire('tools.sideEffectConfirmation')
   }
 
