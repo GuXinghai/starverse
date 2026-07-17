@@ -45,7 +45,10 @@ vi.mock('electron', () => ({
   safeStorage: safeStorageMock,
 }))
 
-import { initializeOrVerifyFreshEpoch2Database } from './freshEpochDatabaseInitializer'
+import {
+  initializeOrVerifyFreshEpoch2Database,
+  verifyExistingFreshEpoch2Database,
+} from './freshEpochDatabaseInitializer'
 
 const windowsIt = process.platform === 'win32' ? it : it.skip
 const roots: string[] = []
@@ -112,6 +115,15 @@ afterEach(() => {
 })
 
 describe('fresh epoch-2 database initializer', () => {
+  windowsIt('verify-existing rejects a missing database without creating a file', async () => {
+    const value = fixture('starverse-fresh-db-verify-missing')
+    try {
+      expect(fs.existsSync(value.layout.databasePath)).toBe(false)
+      await expect(verifyExistingFreshEpoch2Database(value)).rejects.toThrow()
+      expect(fs.existsSync(value.layout.databasePath)).toBe(false)
+    } finally { value.lease.release() }
+  })
+
   windowsIt('atomically initializes one complete identity and verifies the same database on reopen', async () => {
     const value = fixture('starverse-fresh-db-success')
     try {

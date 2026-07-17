@@ -391,6 +391,55 @@ export type FreshEpochDatabaseInitializerInput = Readonly<{
   rootAuthority: Epoch2RootAuthority
 }>
 
+async function verifyAndDescribeFreshEpoch2Database(input: Readonly<{
+  initializer: FreshEpochDatabaseInitializerInput
+  authority: Win32EpochDatabaseFileAuthority
+  initialDatabaseFileId: string
+  schemaRoot: string
+  created: boolean
+}>): Promise<FreshEpochDatabaseInitializationResult> {
+  let verified = await postCommitVerify({
+    layout: input.initializer.layout,
+    schemaRoot: input.schemaRoot,
+    authority: input.authority,
+  })
+  if (verified.rewrappedEnvelope) {
+    rewrapScopeKeyEnvelope({
+      layout: input.initializer.layout,
+      schemaRoot: input.schemaRoot,
+      authority: input.authority,
+      expectedRevision: verified.envelopeRevision,
+      envelope: verified.rewrappedEnvelope,
+    })
+    verified = await postCommitVerify({
+      layout: input.initializer.layout,
+      schemaRoot: input.schemaRoot,
+      authority: input.authority,
+    })
+    if (verified.rewrappedEnvelope) {
+      verified.rewrappedEnvelope.fill(0)
+      throw new FreshEpochDatabaseInitializerError('EPOCH2_SCOPE_KEY_REENCRYPT_FAILED')
+    }
+  }
+  const bundle = verified.bundle
+  const finalIdentity = input.authority.verifyPathIdentity()
+  const manifest = createEpoch2RootManifest({ layout: input.initializer.layout })
+  if (finalIdentity.databaseFileId !== input.initialDatabaseFileId ||
+      !bundle.objectProjectionDigest) {
+    throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_POSTCOMMIT_INVALID')
+  }
+  return Object.freeze({
+    classification: 'epoch_2_database_initialized',
+    executionAuthority: 'none',
+    created: input.created,
+    databaseFileId: finalIdentity.databaseFileId,
+    schemaVersion: bundle.schemaVersion,
+    schemaDigest: bundle.schemaDigest,
+    objectProjectionDigest: bundle.objectProjectionDigest,
+    rootId: manifest.rootId,
+  })
+}
+
 async function initializeOrVerifyFreshEpoch2DatabaseCore(
   input: FreshEpochDatabaseInitializerInput,
   crashSmoke?: Readonly<{ stage: FreshEpochDatabaseCrashSmokeStage; markerPath: string }>,
@@ -452,41 +501,12 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
     if (db.open) db.close()
     envelope?.fill(0)
     envelope = undefined
-    let verified = await postCommitVerify({
-      layout: input.layout,
-      schemaRoot,
+    return await verifyAndDescribeFreshEpoch2Database({
+      initializer: input,
       authority,
-    })
-    if (verified.rewrappedEnvelope) {
-      rewrapScopeKeyEnvelope({
-        layout: input.layout,
-        schemaRoot,
-        authority,
-        expectedRevision: verified.envelopeRevision,
-        envelope: verified.rewrappedEnvelope,
-      })
-      verified = await postCommitVerify({ layout: input.layout, schemaRoot, authority })
-      if (verified.rewrappedEnvelope) {
-        verified.rewrappedEnvelope.fill(0)
-        throw new FreshEpochDatabaseInitializerError('EPOCH2_SCOPE_KEY_REENCRYPT_FAILED')
-      }
-    }
-    const bundle = verified.bundle
-    const finalIdentity = authority.verifyPathIdentity()
-    const manifest = createEpoch2RootManifest({ layout: input.layout })
-    if (finalIdentity.databaseFileId !== initialIdentity.databaseFileId ||
-        !bundle.objectProjectionDigest) {
-      throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_POSTCOMMIT_INVALID')
-    }
-    return Object.freeze({
-      classification: 'epoch_2_database_initialized',
-      executionAuthority: 'none',
+      initialDatabaseFileId: initialIdentity.databaseFileId,
+      schemaRoot,
       created,
-      databaseFileId: finalIdentity.databaseFileId,
-      schemaVersion: bundle.schemaVersion,
-      schemaDigest: bundle.schemaDigest,
-      objectProjectionDigest: bundle.objectProjectionDigest,
-      rootId: manifest.rootId,
     })
   } finally {
     envelope?.fill(0)
@@ -498,6 +518,26 @@ export async function initializeOrVerifyFreshEpoch2Database(
   input: FreshEpochDatabaseInitializerInput,
 ): Promise<FreshEpochDatabaseInitializationResult> {
   return initializeOrVerifyFreshEpoch2DatabaseCore(input)
+}
+
+export async function verifyExistingFreshEpoch2Database(
+  input: FreshEpochDatabaseInitializerInput,
+): Promise<FreshEpochDatabaseInitializationResult> {
+  assertEpoch2RootAuthority(input.rootAuthority, input)
+  await requireAsyncSafeStorage()
+  const authority = acquireWin32EpochDatabaseFileAuthority({ ...input, mode: 'verify_existing' })
+  const initialIdentity = authority.identity()
+  try {
+    return await verifyAndDescribeFreshEpoch2Database({
+      initializer: input,
+      authority,
+      initialDatabaseFileId: initialIdentity.databaseFileId,
+      schemaRoot: schemaAssetRoot(),
+      created: false,
+    })
+  } finally {
+    authority.release()
+  }
 }
 
 async function withVerifiedEpoch2ScopeKey<T>(input: Readonly<{
