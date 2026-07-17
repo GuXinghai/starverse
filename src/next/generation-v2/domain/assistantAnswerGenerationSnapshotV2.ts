@@ -22,6 +22,7 @@ import {
 } from './identityV2'
 import {
   decodeProviderBindingRecordV2,
+  projectDecodedProviderBindingRecordV2,
   type DecodedProviderBindingRecordV2,
 } from './providerBindingV2'
 import {
@@ -36,6 +37,7 @@ export type CapabilityBindingV2 = Readonly<{
   capabilityRevision: GenerationV2Identity<'capability_revision'>
   evidenceDigest: GenerationV2Digest<'evidence_digest'>
   semanticFieldsDigest: GenerationV2Digest<'capability_fields_digest'>
+  snapshotHash: GenerationV2Digest<'snapshot_hash'>
 }>
 
 export type ProviderFileDescriptorReferenceV2 = Readonly<{
@@ -164,42 +166,6 @@ function deepFreeze<T>(value: T): T {
   return value
 }
 
-function projectProviderBinding(binding: DecodedProviderBindingRecordV2): unknown {
-  const endpointBinding = binding.endpointBinding.kind === 'pinned'
-    ? {
-        kind: 'pinned',
-        selector: {
-          kind: binding.endpointBinding.selector.kind,
-          providerTag: readGenerationV2Identity(binding.endpointBinding.selector.providerTag, 'provider_tag'),
-          providerSlug: readGenerationV2Identity(binding.endpointBinding.selector.providerSlug, 'provider_slug'),
-          descriptorRevision: readGenerationV2Identity(binding.endpointBinding.selector.descriptorRevision, 'descriptor_revision'),
-          descriptorDigest: readGenerationV2Digest(binding.endpointBinding.selector.descriptorDigest, 'descriptor_digest'),
-          selectedBy: binding.endpointBinding.selector.selectedBy,
-          selectedAt: binding.endpointBinding.selector.selectedAt,
-        },
-      }
-    : {
-        kind: 'provider_managed_set',
-        endpointSetRevision: readGenerationV2Identity(binding.endpointBinding.endpointSetRevision, 'endpoint_set_revision'),
-        descriptors: binding.endpointBinding.descriptors.map((descriptor) => ({
-          endpointId: readGenerationV2Identity(descriptor.endpointId, 'endpoint_id'),
-          descriptorRevision: readGenerationV2Identity(descriptor.descriptorRevision, 'descriptor_revision'),
-        })),
-      }
-  return {
-    credentialScopeId: readGenerationV2Identity(binding.credentialScopeId, 'credential_scope_id'),
-    providerId: readGenerationV2Identity(binding.providerId, 'provider_id'),
-    endpointProfileId: readGenerationV2Identity(binding.endpointProfileId, 'endpoint_profile_id'),
-    endpointBinding,
-    protocolContractId: readGenerationV2Identity(binding.protocolContractId, 'protocol_contract_id'),
-    contractRevision: readGenerationV2Identity(binding.contractRevision, 'contract_revision'),
-    contractDefinitionDigest: readGenerationV2Digest(binding.contractDefinitionDigest, 'contract_digest'),
-    registryRevision: readGenerationV2Identity(binding.registryRevision, 'registry_revision'),
-    modelId: readGenerationV2Identity(binding.modelId, 'model_id'),
-    operation: binding.operation,
-  }
-}
-
 function decodeConfigRevisions(value: unknown): readonly GenerationConfigRevisionEntryV2[] {
   const order: readonly GenerationConfigRevisionScopeV2[] = ['global', 'project', 'conversation']
   const values = closedDenseArray(value).map((item) => {
@@ -230,11 +196,14 @@ function decodeConfigRevisions(value: unknown): readonly GenerationConfigRevisio
 }
 
 function decodeCapabilityBinding(value: unknown): CapabilityBindingV2 {
-  const input = closedObject(value, ['capabilityRevision', 'evidenceDigest', 'semanticFieldsDigest'])
+  const input = closedObject(value, [
+    'capabilityRevision', 'evidenceDigest', 'semanticFieldsDigest', 'snapshotHash',
+  ])
   return Object.freeze({
     capabilityRevision: GenerationV2Identity.create('capability_revision', requiredString(input, 'capabilityRevision')),
     evidenceDigest: GenerationV2Digest.create('evidence_digest', requiredString(input, 'evidenceDigest')),
     semanticFieldsDigest: GenerationV2Digest.create('capability_fields_digest', requiredString(input, 'semanticFieldsDigest')),
+    snapshotHash: GenerationV2Digest.create('snapshot_hash', requiredString(input, 'snapshotHash')),
   })
 }
 
@@ -318,11 +287,12 @@ function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; proj
       ownerId: item.ownerId,
       revision: readGenerationV2Identity(item.revision, 'config_revision'),
     })),
-    providerBinding: projectProviderBinding(providerBinding),
+    providerBinding: projectDecodedProviderBindingRecordV2(providerBinding),
     capabilityBinding: {
       capabilityRevision: readGenerationV2Identity(capabilityBinding.capabilityRevision, 'capability_revision'),
       evidenceDigest: readGenerationV2Digest(capabilityBinding.evidenceDigest, 'evidence_digest'),
       semanticFieldsDigest: readGenerationV2Digest(capabilityBinding.semanticFieldsDigest, 'capability_fields_digest'),
+      snapshotHash: readGenerationV2Digest(capabilityBinding.snapshotHash, 'snapshot_hash'),
     },
     attachmentProviderFileBindings: attachmentProviderFileBindings.map((item) => ({
       assetRevisionId: readGenerationV2Identity(item.assetRevisionId, 'asset_revision_id'),

@@ -3,6 +3,8 @@ import {
   decodeAssistantAnswerGenerationSnapshotJsonV2,
   type DecodedAssistantAnswerGenerationSnapshotV2,
 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { decodeRuntimeCapabilitySnapshotJsonV2 } from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../../src/next/generation-v2/domain/providerBindingV2'
 import {
   ConversationGraphV2Identity,
   type ConversationGraphV2Identity as GraphIdentity,
@@ -106,6 +108,11 @@ type OperationJoinedRow = {
   schema_version: unknown
   canonical_json: unknown
   snapshot_hash: unknown
+  capability_revision: unknown
+  capability_snapshot_hash: unknown
+  capability_evidence_digest: unknown
+  capability_semantic_fields_digest: unknown
+  capability_canonical_json: unknown
   snapshot_created_at_ms: unknown
 }
 
@@ -193,7 +200,12 @@ function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperati
         (row.error_message !== null && typeof row.error_message !== 'string') ||
         row.snapshot_operation_id !== row.operation_id || row.snapshot_answer_root_id !== row.result_answer_root_id ||
         row.schema_version !== 2 || typeof row.canonical_json !== 'string' ||
-        typeof row.snapshot_hash !== 'string' || row.snapshot_created_at_ms !== row.created_at_ms) {
+        typeof row.snapshot_hash !== 'string' || typeof row.capability_revision !== 'string' ||
+        typeof row.capability_snapshot_hash !== 'string' ||
+        typeof row.capability_evidence_digest !== 'string' ||
+        typeof row.capability_semantic_fields_digest !== 'string' ||
+        typeof row.capability_canonical_json !== 'string' ||
+        row.snapshot_created_at_ms !== row.created_at_ms) {
       throw new Error('invalid row')
     }
     const createdAtMs = stateTime(row.created_at_ms)
@@ -203,8 +215,19 @@ function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperati
       throw new Error('invalid clock')
     }
     const snapshot = decodeAssistantAnswerGenerationSnapshotJsonV2(row.canonical_json)
+    const capability = decodeRuntimeCapabilitySnapshotJsonV2(row.capability_canonical_json)
     if (snapshot.operationId.value !== row.operation_id || snapshot.answerRootId.value !== row.result_answer_root_id ||
-        snapshot.snapshotHash.value !== row.snapshot_hash) {
+        snapshot.snapshotHash.value !== row.snapshot_hash ||
+        snapshot.capabilityBinding.capabilityRevision.value !== row.capability_revision ||
+        snapshot.capabilityBinding.snapshotHash.value !== row.capability_snapshot_hash ||
+        snapshot.capabilityBinding.evidenceDigest.value !== row.capability_evidence_digest ||
+        snapshot.capabilityBinding.semanticFieldsDigest.value !== row.capability_semantic_fields_digest ||
+        capability.snapshotHash.value !== row.capability_snapshot_hash ||
+        capability.revision.value !== row.capability_revision ||
+        capability.evidenceDigest.value !== row.capability_evidence_digest ||
+        capability.semanticFieldsDigest.value !== row.capability_semantic_fields_digest ||
+        stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(snapshot.providerBinding)) !==
+          stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(capability.binding))) {
       throw new Error('snapshot mismatch')
     }
     const expectedFingerprint = canonicalHash(commandProjection({
@@ -364,11 +387,20 @@ export class GenerationExecutionV2Repo {
       snapshot.operation_id AS snapshot_operation_id,
       snapshot.answer_root_id AS snapshot_answer_root_id,
       snapshot.schema_version, snapshot.canonical_json, snapshot.snapshot_hash,
+      snapshot.capability_revision, snapshot.capability_snapshot_hash,
+      snapshot.capability_evidence_digest,
+      snapshot.capability_semantic_fields_digest,
+      capability.canonical_json AS capability_canonical_json,
       snapshot.created_at_ms AS snapshot_created_at_ms
       FROM generation_operation_v2 AS operation
       JOIN assistant_generation_snapshot_v2 AS snapshot
         ON snapshot.operation_id = operation.operation_id
        AND snapshot.answer_root_id = operation.result_answer_root_id
+      JOIN runtime_capability_snapshot_v2 AS capability
+        ON capability.capability_snapshot_hash = snapshot.capability_snapshot_hash
+       AND capability.capability_revision = snapshot.capability_revision
+       AND capability.evidence_digest = snapshot.capability_evidence_digest
+       AND capability.semantic_fields_digest = snapshot.capability_semantic_fields_digest
       WHERE operation.operation_id = ?`).get(id.value) as OperationJoinedRow | undefined
     if (!row) throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_NOT_FOUND')
     const bundle = decodeOperationRow(row)
@@ -436,6 +468,7 @@ export class GenerationExecutionV2Repo {
         snapshot.answerRootId.value !== resultAnswerRootId.value) {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
     }
+    this.#assertSnapshotCapability(snapshot)
     const createdAtMs = safeTime(input.createdAtMs)
     const fingerprint = canonicalHash(commandProjection({
       actionKind,
@@ -473,10 +506,18 @@ export class GenerationExecutionV2Repo {
         createdAtMs, createdAtMs,
       )
       this.#db.prepare(`INSERT INTO assistant_generation_snapshot_v2 (
-        answer_root_id, operation_id, schema_version, canonical_json, snapshot_hash, created_at_ms
-      ) VALUES (?, ?, 2, ?, ?, ?)`).run(
+        answer_root_id, operation_id, schema_version, canonical_json, snapshot_hash,
+        capability_revision, capability_snapshot_hash,
+        capability_evidence_digest, capability_semantic_fields_digest,
+        created_at_ms
+      ) VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?, ?)`).run(
         resultAnswerRootId.value, operationId.value, snapshot.canonicalJson,
-        snapshot.snapshotHash.value, createdAtMs,
+        snapshot.snapshotHash.value,
+        snapshot.capabilityBinding.capabilityRevision.value,
+        snapshot.capabilityBinding.snapshotHash.value,
+        snapshot.capabilityBinding.evidenceDigest.value,
+        snapshot.capabilityBinding.semanticFieldsDigest.value,
+        createdAtMs,
       )
     } catch (error) {
       const code = (error as { code?: unknown })?.code
@@ -498,6 +539,33 @@ export class GenerationExecutionV2Repo {
       rolledBack: () => undefined,
     })
     return Object.freeze({ kind: 'created', bundle })
+  }
+
+  #assertSnapshotCapability(snapshot: DecodedAssistantAnswerGenerationSnapshotV2): void {
+    const row = this.#db.prepare(`SELECT canonical_json FROM runtime_capability_snapshot_v2
+      WHERE capability_snapshot_hash=? AND capability_revision=?
+        AND evidence_digest=? AND semantic_fields_digest=?`).get(
+      snapshot.capabilityBinding.snapshotHash.value,
+      snapshot.capabilityBinding.capabilityRevision.value,
+      snapshot.capabilityBinding.evidenceDigest.value,
+      snapshot.capabilityBinding.semanticFieldsDigest.value,
+    ) as { canonical_json: unknown } | undefined
+    if (!row || typeof row.canonical_json !== 'string') {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
+    }
+    try {
+      const capability = decodeRuntimeCapabilitySnapshotJsonV2(row.canonical_json)
+      if (capability.snapshotHash.value !== snapshot.capabilityBinding.snapshotHash.value ||
+          capability.revision.value !== snapshot.capabilityBinding.capabilityRevision.value ||
+          capability.evidenceDigest.value !== snapshot.capabilityBinding.evidenceDigest.value ||
+          capability.semanticFieldsDigest.value !== snapshot.capabilityBinding.semanticFieldsDigest.value ||
+          stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(capability.binding)) !==
+            stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(snapshot.providerBinding))) {
+        throw new Error('capability mismatch')
+      }
+    } catch {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
+    }
   }
 
   getAttempt(keyValue: unknown): GenerationExecutionAttemptRepositoryFactV2 {

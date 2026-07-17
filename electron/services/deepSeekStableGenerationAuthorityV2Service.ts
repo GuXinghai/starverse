@@ -16,6 +16,7 @@ import {
 } from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import {
   decodeProviderBindingRecordV2,
+  projectDecodedProviderBindingRecordV2,
   type DecodedProviderBindingRecordV2,
 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
@@ -217,39 +218,6 @@ function validateIntentSubset(
   }
 }
 
-function bindingRecord(binding: DecodedProviderBindingRecordV2): Readonly<Record<string, unknown>> {
-  if (binding.endpointBinding.kind !== 'provider_managed_set') {
-    throw new DeepSeekStableGenerationAuthorityV2Error(
-      'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',
-    )
-  }
-  return Object.freeze({
-    credentialScopeId: readGenerationV2Identity(binding.credentialScopeId, 'credential_scope_id'),
-    providerId: readGenerationV2Identity(binding.providerId, 'provider_id'),
-    endpointProfileId: readGenerationV2Identity(binding.endpointProfileId, 'endpoint_profile_id'),
-    endpointBinding: Object.freeze({
-      kind: 'provider_managed_set',
-      endpointSetRevision: readGenerationV2Identity(
-        binding.endpointBinding.endpointSetRevision, 'endpoint_set_revision',
-      ),
-      descriptors: Object.freeze(binding.endpointBinding.descriptors.map((descriptor) => Object.freeze({
-        endpointId: readGenerationV2Identity(descriptor.endpointId, 'endpoint_id'),
-        descriptorRevision: readGenerationV2Identity(
-          descriptor.descriptorRevision, 'descriptor_revision',
-        ),
-      }))),
-    }),
-    protocolContractId: readGenerationV2Identity(binding.protocolContractId, 'protocol_contract_id'),
-    contractRevision: readGenerationV2Identity(binding.contractRevision, 'contract_revision'),
-    contractDefinitionDigest: readGenerationV2Digest(
-      binding.contractDefinitionDigest, 'contract_digest',
-    ),
-    registryRevision: readGenerationV2Identity(binding.registryRevision, 'registry_revision'),
-    modelId: readGenerationV2Identity(binding.modelId, 'model_id'),
-    operation: binding.operation,
-  })
-}
-
 function composeBindingAuthority(input: Readonly<{
   modelEvidence: VerifiedDeepSeekStableModelEvidenceV2
   commandFacts: GenerationCommandFactsAuthorityV2
@@ -427,7 +395,7 @@ function composeCapabilityAuthority(input: Readonly<{
   const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
     schemaVersion: 2,
     resolvedAt: input.resolvedAt,
-    binding: bindingRecord(input.bindingAuthority.binding),
+    binding: projectDecodedProviderBindingRecordV2(input.bindingAuthority.binding),
     evidence,
     fields: input.fields,
     tools: [],
@@ -437,8 +405,8 @@ function composeCapabilityAuthority(input: Readonly<{
     },
   })
   const snapshot = decodeRuntimeCapabilitySnapshotV2(record)
-  if (stableSerializeProviderRequestV2(bindingRecord(snapshot.binding)) !==
-        stableSerializeProviderRequestV2(bindingRecord(input.bindingAuthority.binding)) ||
+  if (stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(snapshot.binding)) !==
+        stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(input.bindingAuthority.binding)) ||
       snapshot.revision.value !== record.revision ||
       snapshot.evidenceDigest.value !== record.evidenceDigest ||
       snapshot.semanticFieldsDigest.value !== record.semanticFieldsDigest) {
@@ -468,6 +436,18 @@ function composeCapabilityAuthority(input: Readonly<{
   })
   capabilityAuthorities.add(authority)
   return authority
+}
+
+export function readVerifiedDeepSeekStableProviderBindingRecordV2(
+  authority: VerifiedDeepSeekStableProviderBindingAuthorityV2,
+): Readonly<Record<string, unknown>> {
+  if (!isVerifiedDeepSeekStableProviderBindingAuthorityV2(authority)) {
+    throw new DeepSeekStableGenerationAuthorityV2Error(
+      'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',
+    )
+  }
+  authority.assertCurrent()
+  return projectDecodedProviderBindingRecordV2(authority.binding)
 }
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {

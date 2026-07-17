@@ -106,6 +106,45 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_generation_operation_v2_active_question
   ON generation_operation_v2(branch_id, question_id)
   WHERE state IN ('committed', 'streaming');
 
+CREATE TABLE IF NOT EXISTS runtime_capability_snapshot_v2 (
+  capability_snapshot_hash TEXT PRIMARY KEY CHECK (
+    length(capability_snapshot_hash) = 64
+    AND capability_snapshot_hash NOT GLOB '*[^0-9a-f]*'
+  ),
+  capability_revision TEXT NOT NULL CHECK (length(capability_revision) BETWEEN 1 AND 512),
+  schema_version INTEGER NOT NULL CHECK (schema_version = 2),
+  canonical_json TEXT NOT NULL CHECK (
+    length(CAST(canonical_json AS BLOB)) BETWEEN 2 AND 1048576
+    AND json_valid(canonical_json)
+    AND json_type(canonical_json) = 'object'
+  ),
+  evidence_digest TEXT NOT NULL CHECK (
+    length(evidence_digest) = 64 AND evidence_digest NOT GLOB '*[^0-9a-f]*'
+  ),
+  semantic_fields_digest TEXT NOT NULL CHECK (
+    length(semantic_fields_digest) = 64 AND semantic_fields_digest NOT GLOB '*[^0-9a-f]*'
+  ),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  UNIQUE (
+    capability_snapshot_hash, capability_revision, evidence_digest, semantic_fields_digest
+  )
+);
+
+CREATE INDEX IF NOT EXISTS ix_runtime_capability_snapshot_v2_revision
+  ON runtime_capability_snapshot_v2(capability_revision);
+
+CREATE TRIGGER IF NOT EXISTS trg_runtime_capability_snapshot_v2_immutable
+BEFORE UPDATE ON runtime_capability_snapshot_v2
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_CAPABILITY_SNAPSHOT_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_runtime_capability_snapshot_v2_delete_forbidden
+BEFORE DELETE ON runtime_capability_snapshot_v2
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_CAPABILITY_SNAPSHOT_IMMUTABLE');
+END;
+
 CREATE TABLE IF NOT EXISTS assistant_generation_snapshot_v2 (
   answer_root_id TEXT PRIMARY KEY,
   operation_id TEXT NOT NULL UNIQUE,
@@ -118,13 +157,32 @@ CREATE TABLE IF NOT EXISTS assistant_generation_snapshot_v2 (
   snapshot_hash TEXT NOT NULL CHECK (
     length(snapshot_hash) = 64 AND snapshot_hash NOT GLOB '*[^0-9a-f]*'
   ),
+  capability_revision TEXT NOT NULL,
+  capability_snapshot_hash TEXT NOT NULL CHECK (
+    length(capability_snapshot_hash) = 64
+    AND capability_snapshot_hash NOT GLOB '*[^0-9a-f]*'
+  ),
+  capability_evidence_digest TEXT NOT NULL CHECK (
+    length(capability_evidence_digest) = 64
+    AND capability_evidence_digest NOT GLOB '*[^0-9a-f]*'
+  ),
+  capability_semantic_fields_digest TEXT NOT NULL CHECK (
+    length(capability_semantic_fields_digest) = 64
+    AND capability_semantic_fields_digest NOT GLOB '*[^0-9a-f]*'
+  ),
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   UNIQUE (operation_id, answer_root_id),
   UNIQUE (operation_id, answer_root_id, snapshot_hash),
   FOREIGN KEY (answer_root_id) REFERENCES message_v2(message_id) ON DELETE CASCADE,
   FOREIGN KEY (operation_id, answer_root_id)
     REFERENCES generation_operation_v2(operation_id, result_answer_root_id)
-    DEFERRABLE INITIALLY DEFERRED
+    DEFERRABLE INITIALLY DEFERRED,
+  FOREIGN KEY (
+    capability_snapshot_hash, capability_revision,
+    capability_evidence_digest, capability_semantic_fields_digest
+  ) REFERENCES runtime_capability_snapshot_v2(
+    capability_snapshot_hash, capability_revision, evidence_digest, semantic_fields_digest
+  ) ON DELETE RESTRICT
 );
 
 CREATE TRIGGER IF NOT EXISTS trg_assistant_generation_snapshot_v2_validate_answer
@@ -136,6 +194,17 @@ BEGIN
       AND answer.role = 'assistant'
       AND answer.answer_root_id = answer.message_id
   ) THEN RAISE(ABORT, 'GENERATION_V2_SNAPSHOT_ANSWER_INVALID') END;
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM runtime_capability_snapshot_v2 AS capability
+    WHERE capability.capability_snapshot_hash = NEW.capability_snapshot_hash
+      AND capability.capability_revision = NEW.capability_revision
+      AND capability.evidence_digest = NEW.capability_evidence_digest
+      AND capability.semantic_fields_digest = NEW.capability_semantic_fields_digest
+      AND json_extract(capability.canonical_json, '$.binding') IS NOT NULL
+      AND json_extract(NEW.canonical_json, '$.providerBinding') IS NOT NULL
+      AND json(json_extract(capability.canonical_json, '$.binding')) =
+        json(json_extract(NEW.canonical_json, '$.providerBinding'))
+  ) THEN RAISE(ABORT, 'GENERATION_V2_SNAPSHOT_CAPABILITY_BINDING_MISMATCH') END;
 END;
 
 CREATE TRIGGER IF NOT EXISTS trg_assistant_generation_snapshot_v2_immutable

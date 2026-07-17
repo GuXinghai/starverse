@@ -10,6 +10,7 @@ const contractDigest = 'a'.repeat(64)
 const registryDigest = 'b'.repeat(64)
 const evidenceDigest = 'c'.repeat(64)
 const capabilityFieldsDigest = 'd'.repeat(64)
+const capabilitySnapshotHash = '9'.repeat(64)
 const assetSha = 'e'.repeat(64)
 const descriptorDigest = 'f'.repeat(64)
 const providerFileHash = '1'.repeat(64)
@@ -74,6 +75,7 @@ function payload() {
       capabilityRevision: 'capability:7',
       evidenceDigest,
       semanticFieldsDigest: capabilityFieldsDigest,
+      snapshotHash: capabilitySnapshotHash,
     },
     attachmentProviderFileBindings: [{
       assetRevisionId: 'asset-revision:1',
