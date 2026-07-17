@@ -16,10 +16,10 @@ export type OpenAIResponsesAssistantMessageItemV1 = Readonly<{
   id: string
   type: 'message'
   role: 'assistant'
-  status: TerminalStatus
+  status?: TerminalStatus
   phase?: 'commentary' | 'final_answer'
   content: readonly Readonly<
-    | { type: 'output_text'; text: string; annotations: readonly OpenAIResponsesAnnotationV1[]; logprobs: readonly OpenAIResponsesLogprobV1[] }
+    | { type: 'output_text'; text: string; annotations: readonly OpenAIResponsesAnnotationV1[]; logprobs?: readonly OpenAIResponsesLogprobV1[] }
     | { type: 'refusal'; refusal: string }
   >[]
 }>
@@ -254,15 +254,17 @@ function outputParts(value: unknown, budget: Budget): OpenAIResponsesAssistantMe
       return Object.freeze({ type: 'refusal' as const, refusal: stringValue(input.refusal, budget) })
     }
     if (discriminator.type !== 'output_text') return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_UNKNOWN_TYPE')
-    const input = closedObject(raw, ['type', 'text', 'annotations', 'logprobs'])
+    const input = closedObject(raw, ['type', 'text', 'annotations', 'logprobs'], ['type', 'text', 'annotations'])
     const annotations = denseArray(input.annotations, 4_096, true)
-    const logprobs = denseArray(input.logprobs, 65_536, true)
-    node(budget, annotations.length + logprobs.length)
+    const logprobs = input.logprobs === undefined ? undefined : denseArray(input.logprobs, 65_536, true)
+    node(budget, annotations.length + (logprobs?.length ?? 0))
     return Object.freeze({
       type: 'output_text' as const,
       text: stringValue(input.text, budget),
       annotations: Object.freeze(annotations.map((entry) => decodeAnnotation(entry, budget))),
-      logprobs: Object.freeze(logprobs.map((entry) => decodeLogprob(entry, budget))),
+      ...(logprobs === undefined ? {} : {
+        logprobs: Object.freeze(logprobs.map((entry) => decodeLogprob(entry, budget))),
+      }),
     })
   }))
 }
@@ -306,12 +308,12 @@ function decodeItem(value: unknown, budget: Budget): OpenAIResponsesReplayItemV1
     return Object.freeze({ role: 'user', content: textParts(input.content, 'input_text', budget, false) })
   }
   if (discriminator.type === 'message') {
-    const input = closedObject(value, ['id', 'type', 'role', 'status', 'phase', 'content'], ['id', 'type', 'role', 'status', 'content'])
+    const input = closedObject(value, ['id', 'type', 'role', 'status', 'phase', 'content'], ['id', 'type', 'role', 'content'])
     if (input.role !== 'assistant' || (input.phase !== undefined && input.phase !== 'commentary' && input.phase !== 'final_answer')) {
       return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
     }
     return Object.freeze({
-      id: stringValue(input.id, budget, true), type: 'message', role: 'assistant', status: status(input.status)!,
+      id: stringValue(input.id, budget, true), type: 'message', role: 'assistant', ...optionalStatus(input.status),
       ...(input.phase === undefined ? {} : { phase: input.phase }), content: outputParts(input.content, budget),
     })
   }

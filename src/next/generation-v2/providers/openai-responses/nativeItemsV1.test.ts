@@ -29,6 +29,16 @@ const returnedItems = [
 ] as const
 
 describe('OpenAI Responses V1 native replay items', () => {
+  it('accepts the official terminal message shape where status and logprobs are omitted', () => {
+    expect(decodeOpenAIResponsesReturnedItemsV1([{
+      id: 'msg_123', type: 'message', role: 'assistant',
+      content: [{ type: 'output_text', text: 'Hello', annotations: [] }],
+    }])).toEqual([{
+      id: 'msg_123', type: 'message', role: 'assistant',
+      content: [{ type: 'output_text', text: 'Hello', annotations: [] }],
+    }])
+  })
+
   it('preserves ordered native reasoning, phase, citations, tools, web and image items', () => {
     const decoded = decodeOpenAIResponsesReturnedItemsV1(returnedItems)
     expect(decoded).toEqual(returnedItems)
