@@ -31,6 +31,7 @@ import { createDeepSeekPlainTextInitialSendCoordinatorV2 } from './deepSeekPlain
 import { createDeepSeekInitialStreamRunnerV2 } from './deepSeekInitialStreamRunnerV2'
 import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
 import { createDeepSeekPlainTextRetryCoordinatorV2 } from './deepSeekPlainTextRetryCoordinatorV2'
+import { createDeepSeekPlainTextRegenerateCoordinatorV2 } from './deepSeekPlainTextRegenerateCoordinatorV2'
 import {
   completeDeepSeekNativeRequestV2,
   serializeDeepSeekNativeHistoryArtifactV2,
@@ -38,9 +39,9 @@ import {
 
 const scope = 'credential-scope-v2:'.concat('a'.repeat(64)) as never
 
-function response(): Response {
+function response(modelId = 'deepseek-v4-pro'): Response {
   const value = new Response(JSON.stringify({
-    object: 'list', data: [{ id: 'deepseek-v4-pro', object: 'model', owned_by: 'deepseek' }],
+    object: 'list', data: [{ id: modelId, object: 'model', owned_by: 'deepseek' }],
   }), { status: 200, headers: { 'content-type': 'application/json' } })
   return Object.freeze({
     status: 200, url: 'https://api.deepseek.com/models', headers: value.headers, body: value.body,
@@ -671,6 +672,89 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         .toEqual({ chosen_answer_root_id: 'answer:replacement' })
       expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head_message_id: 'answer:replacement' })
+    } finally { db.close() }
+  })
+
+  it('regenerates the question from current model/config and never restores the old chosen answer', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(response())
+        .mockResolvedValueOnce(streamResponse('first'))
+        .mockResolvedValueOnce(response('deepseek-chat'))
+        .mockResolvedValueOnce(response('deepseek-chat'))
+        .mockResolvedValueOnce(new Response('denied', { status: 503, headers: { 'content-type': 'text/plain' } }))
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 110,
+      }).run(initial)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: { temperature: 0.9, topP: 0.7 },
+      })
+      const regenerateService = createDeepSeekPlainTextRegenerateCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createAnswerId: () => 'answer:regenerated',
+      })
+      const regenerateCommand = {
+        operationId: 'operation:regenerate', branchId: 'branch:1', questionId: 'question:1',
+        expectedHeadMessageId: 'answer:2', modelId: 'deepseek-chat', commandAttachments: [],
+      }
+      const regenerated = await regenerateService.submit({
+        command: regenerateCommand,
+        expectedCredentialRevision: 1,
+        expectedCredentialScopeId: scope,
+      })
+      expect(regenerated.execution.operation).toMatchObject({
+        actionKind: 'regenerate_question', targetAnswerRootId: null,
+        resultAnswerRootId: { value: 'answer:regenerated' },
+      })
+      expect(JSON.parse(regenerated.preparedRequest.body.copyUtf8Text())).toEqual({
+        messages: [{ role: 'user', content: 'hello' }], model: 'deepseek-chat', stream: true,
+        stream_options: { include_usage: true }, temperature: 0.9,
+        thinking: { type: 'disabled' }, top_p: 0.7,
+      })
+      expect(regenerated.projection.visibleCandidates.map((candidate) => candidate.value))
+        .toEqual(['answer:2', 'answer:regenerated'])
+      expect(regenerated.projection.branchProjection).toMatchObject({
+        chosenAnswerRootId: { value: 'answer:regenerated' },
+        headMessageId: { value: 'answer:regenerated' },
+      })
+      expect(regenerated.execution.snapshot.providerBinding.modelId.value).toBe('deepseek-chat')
+      expect(regenerated.execution.snapshot.semanticIntent.generation).toMatchObject({ temperature: 0.9, topP: 0.7 })
+      const replay = await regenerateService.submit({
+        command: regenerateCommand,
+        expectedCredentialRevision: 999,
+        expectedCredentialScopeId: scope,
+      })
+      expect(replay.kind).toBe('idempotent_replay')
+      expect(replay.execution.operation.resultAnswerRootId.value).toBe('answer:regenerated')
+      expect(replay.preparedRequest.bodySha256).toBe(regenerated.preparedRequest.bodySha256)
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages,
+        (SELECT count(*) FROM generation_request_v2) AS requests`).get())
+        .toEqual({ operations: 2, messages: 3, requests: 2 })
+      await expect(regenerateService.submit({
+        command: { ...regenerateCommand, operationId: 'operation:regenerate-stale' },
+        expectedCredentialRevision: 1,
+        expectedCredentialScopeId: scope,
+      })).rejects.toThrow('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages,
+        (SELECT count(*) FROM generation_request_v2) AS requests`).get())
+        .toEqual({ operations: 2, messages: 3, requests: 2 })
+      const failed = await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 130,
+      }).run(regenerated)
+      expect(failed.state).toBe('failed')
+      expect(db.prepare("SELECT chosen_answer_root_id FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen_answer_root_id: 'answer:regenerated' })
+      expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head_message_id: 'answer:regenerated' })
     } finally { db.close() }
   })
 })
