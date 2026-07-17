@@ -39,7 +39,7 @@ export class DeepSeekTerminalArtifactV2Repo {
     }
   }
 
-  insertCompleted(
+  insertRequestTerminal(
     context: GenerationV2AuthorityTransactionContextV2,
     execution: GenerationExecutionOperationBundleV2,
     request: GenerationRequestRepositoryFactV2,
@@ -49,7 +49,8 @@ export class DeepSeekTerminalArtifactV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     if (!isGenerationExecutionOperationBundleForContextV2(execution, context) ||
         !isGenerationRequestRepositoryFactForContextV2(request, context) ||
-        !isDeepSeekStableTerminalArtifactV1(artifact) || execution.operation.state !== 'completed' ||
+        !isDeepSeekStableTerminalArtifactV1(artifact) ||
+        (execution.operation.state !== 'completed' && execution.operation.state !== 'streaming') ||
         request.operationId !== execution.operation.operationId.value ||
         request.answerRootId !== execution.operation.resultAnswerRootId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) {
@@ -76,8 +77,8 @@ export class DeepSeekTerminalArtifactV2Repo {
     }
     this.#db.prepare(`INSERT INTO generation_native_artifact_v2 (
       answer_root_id, request_sequence, operation_id, artifact_kind, codec_version,
-      artifact_json, artifact_hash, created_at_ms
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      artifact_json, artifact_hash, created_at_ms, completion_scope
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'request_terminal')`).run(
       request.answerRootId, request.requestSequence, request.operationId, artifact.artifactKind,
       artifact.artifactCodecVersion, artifactJson, artifact.artifactHash, createdAtMs,
     )

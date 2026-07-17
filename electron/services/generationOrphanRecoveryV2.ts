@@ -67,6 +67,33 @@ export function recoverGenerationOrphansV2(
         JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
         WHERE operation.operation_id=?
         ORDER BY request.request_sequence`).all(operationId) as ActiveRow[]
+      if (rows.length === 0 && operation.operation.state === 'streaming') {
+        const awaiting = db.prepare(`SELECT request.request_sequence AS requestSequence,
+          request.state AS requestState, answer.status AS answerStatus,
+          json_extract(terminal.artifact_json, '$.finishReason') AS finishReason,
+          count(history.artifact_kind) AS historyCount
+          FROM generation_request_v2 AS request
+          JOIN generation_operation_v2 AS operation ON operation.operation_id=request.operation_id
+          JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
+          JOIN generation_native_artifact_v2 AS terminal
+            ON terminal.operation_id=request.operation_id
+            AND terminal.request_sequence=request.request_sequence
+            AND terminal.answer_root_id=request.answer_root_id
+            AND terminal.artifact_kind='deepseek_stable_terminal_result_v1'
+          LEFT JOIN generation_native_artifact_v2 AS history
+            ON history.operation_id=request.operation_id
+            AND history.request_sequence=request.request_sequence
+            AND history.answer_root_id=request.answer_root_id
+            AND history.artifact_kind='deepseek_stable_ordered_native_messages_v2'
+          WHERE request.operation_id=?
+            AND request.request_sequence=(SELECT MAX(request_sequence) FROM generation_request_v2 WHERE operation_id=?)
+          GROUP BY request.request_sequence, request.state, answer.status, finishReason`).get(
+          operationId, operationId,
+        ) as Readonly<Record<string, unknown>> | undefined
+        if (awaiting?.requestState === 'completed' && awaiting.answerStatus === 'streaming' &&
+            awaiting.finishReason === 'tool_calls' && awaiting.historyCount === 1) continue
+        invalid()
+      }
       if (rows.length !== 1) invalid()
       const row = rows[0]
       if (row.operationId !== operationId || row.operationState !== operation.operation.state ||
@@ -76,9 +103,11 @@ export function recoverGenerationOrphansV2(
       const openAttemptCount = row.openAttemptCount as number
       const coherentPrepared = operation.operation.state === 'committed' && requestState === 'prepared' &&
         openAttemptCount === 0
+      const coherentContinuationPrepared = operation.operation.state === 'streaming' &&
+        requestState === 'prepared' && openAttemptCount === 0
       const coherentStreaming = operation.operation.state === 'streaming' && requestState === 'streaming' &&
         openAttemptCount === 1
-      if (!coherentPrepared && !coherentStreaming) invalid()
+      if (!coherentPrepared && !coherentContinuationPrepared && !coherentStreaming) invalid()
       const request = requestRepo.loadExistingForOperation(context, operation, row.requestSequence as number)
       if (coherentStreaming) {
         const attempt = db.prepare(`SELECT attempt FROM generation_attempt_v2

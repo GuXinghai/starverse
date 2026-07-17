@@ -101,7 +101,7 @@ function completeOperation(
   db.prepare("UPDATE message_v2 SET status='completed', updated_at_ms=? WHERE message_id=?")
     .run(at + 6, answerRootId)
   db.prepare(`INSERT INTO generation_native_artifact_v2
-    VALUES (?, 1, ?, ?, ?, ?, ?, ?)`)
+    VALUES (?, 1, ?, ?, ?, ?, ?, ?, 'request_terminal')`)
     .run(answerRootId, operationId, artifact.artifactKind, artifact.artifactCodecVersion,
       serializeDeepSeekNativeHistoryArtifactV2(artifact), artifact.artifactHash, at + 6)
 }

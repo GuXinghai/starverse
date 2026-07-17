@@ -35,7 +35,7 @@ const MAX_WIRE_BYTES = 64 * 1024 * 1024
 export type DeepSeekInitialStreamRunResultV2 = Readonly<{
   operationId: string
   answerRootId: string
-  state: 'completed' | 'failed' | 'cancelled'
+  state: 'awaiting_tool' | 'completed' | 'failed' | 'cancelled'
   errorCode: string | null
   errorMessage: string | null
 }>
@@ -139,7 +139,11 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_ALREADY_STARTED')
       }
       requestRepo.markStreaming(context, request, nowMs())
-      executionRepo.markOperationStreaming(context, execution, nowMs())
+      if (execution.operation.state === 'committed') {
+        executionRepo.markOperationStreaming(context, execution, nowMs())
+      } else if (execution.operation.state !== 'streaming') {
+        throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')
+      }
     })
   }
 
@@ -164,12 +168,17 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
     phase: 'pre_stream' | 'mid_stream',
   ): DeepSeekInitialStreamRunResultV2 {
     const at = nowMs()
+    let resultState: DeepSeekInitialStreamRunResultV2['state'] = state
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.preparedRequest.operationId)
       if (!execution) throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')
       const request = requestRepo.replayPrepared(context, execution, command.preparedRequest)
       const attemptTransition = executionRepo.terminalizeAttempt(context, {
-        key: { operationId: command.preparedRequest.operationId, requestSequence: 1, attempt: 1 },
+        key: {
+          operationId: command.preparedRequest.operationId,
+          requestSequence: command.preparedRequest.requestSequence,
+          attempt: 1,
+        },
         outcome: state === 'completed'
           ? { kind: 'provider_completed', phase: 'mid_stream' }
           : state === 'cancelled'
@@ -180,35 +189,55 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_ATTEMPT_TERMINAL_CONFLICT')
       }
       const terminalRequest = requestRepo.terminalize(context, request, state, at)
-      const finalBody = state === 'completed' ? streamResult?.assistantMessage.content ?? '' : null
-      graphRepo.terminalizeAssistantMessage(
-        context, command.preparedRequest.answerRootId, state, finalBody, at,
-      )
-      const terminalExecution = executionRepo.terminalizeOperation(context, execution, {
-        state, errorCode, errorMessage,
-      }, at)
       if (state === 'completed') {
         if (!streamResult || !isDeepSeekStableStreamResultV1(streamResult)) {
           throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_RESPONSE_INVALID')
         }
-        const history = historyRepo.loadInitialSendHistory(context, command.preparedRequest.operationId)
+        const history = historyRepo.loadPersistedRequestHistory(
+          context,
+          command.preparedRequest.operationId,
+          command.preparedRequest.requestSequence,
+        )
         const artifact = completeDeepSeekNativeRequestV2({
           priorArtifact: history.priorArtifact,
           clientEntries: history.clientEntries,
           assistantMessage: streamResult.assistantMessage,
           generatedWithThinking: streamResult.generatedWithThinking,
         })
-        historyRepo.insertCompletedHistoryArtifact(context, terminalExecution, terminalRequest, artifact, at)
-        terminalArtifactRepo.insertCompleted(
-          context, terminalExecution, terminalRequest,
-          createDeepSeekStableTerminalArtifactV1(streamResult), at,
+        if (streamResult.finishReason === 'tool_calls') {
+          resultState = 'awaiting_tool'
+          historyRepo.insertRequestTerminalHistoryArtifact(context, execution, terminalRequest, artifact, at)
+          terminalArtifactRepo.insertRequestTerminal(
+            context, execution, terminalRequest, createDeepSeekStableTerminalArtifactV1(streamResult), at,
+          )
+        } else {
+          const body = input.db.prepare('SELECT body_text AS body FROM message_body_v2 WHERE message_id=?')
+            .get(command.preparedRequest.answerRootId) as { body: unknown } | undefined
+          if (!body || typeof body.body !== 'string') {
+            throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_RESPONSE_INVALID')
+          }
+          graphRepo.terminalizeAssistantMessage(
+            context, command.preparedRequest.answerRootId, 'completed', body.body, at,
+          )
+          const terminalExecution = executionRepo.terminalizeOperation(context, execution, {
+            state: 'completed', errorCode: null, errorMessage: null,
+          }, at)
+          historyRepo.insertRequestTerminalHistoryArtifact(context, terminalExecution, terminalRequest, artifact, at)
+          terminalArtifactRepo.insertRequestTerminal(
+            context, terminalExecution, terminalRequest, createDeepSeekStableTerminalArtifactV1(streamResult), at,
+          )
+        }
+      } else {
+        graphRepo.terminalizeAssistantMessage(
+          context, command.preparedRequest.answerRootId, state, null, at,
         )
+        executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, at)
       }
     })
     return Object.freeze({
       operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId,
-      state,
+      state: resultState,
       errorCode,
       errorMessage,
     })
@@ -234,7 +263,12 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
     const assembler = new DeepSeekStableChatStreamAssemblerV1(thinkingMode)
     const reader = response.body.getReader()
     let wireBytes = 0
-    let visibleContent = ''
+    const initial = input.db.prepare('SELECT body_text AS body FROM message_body_v2 WHERE message_id=?')
+      .get(command.preparedRequest.answerRootId) as { body: unknown } | undefined
+    if (!initial || typeof initial.body !== 'string') {
+      throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')
+    }
+    let visibleContent = initial.body
     const accept = (deltas: readonly DeepSeekStableStreamDeltaV1[]): void => {
       const content = deltas.map((delta) => delta.contentDelta ?? '').join('')
       if (content.length > 0) {
@@ -272,7 +306,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
       Promise<DeepSeekInitialStreamRunResultV2> => {
       if (!isDeepSeekPlainTextCommandResultV2(command) ||
           !isPreparedProviderRequestV2(command.preparedRequest) ||
-          command.preparedRequest.providerId !== 'deepseek' || command.preparedRequest.requestSequence !== 1 ||
+          command.preparedRequest.providerId !== 'deepseek' || command.preparedRequest.requestSequence < 1 ||
           command.preparedRequest.answerRootId !== command.execution.operation.resultAnswerRootId.value ||
           command.request.preparedBodySha256 !== command.preparedRequest.bodySha256) {
         throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')

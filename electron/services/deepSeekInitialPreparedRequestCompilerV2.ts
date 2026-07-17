@@ -26,6 +26,7 @@ import {
 } from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
 import {
   compileDeepSeekStableChatRequestV1,
+  type DeepSeekToolChoiceV1,
   type DeepSeekStableChatRequestV1,
 } from '../../src/next/generation-v2/providers/deepseek/chatRequestV1'
 import { projectDeepSeekStableIntentV1 } from '../../src/next/generation-v2/providers/deepseek/chatIntentProjectionV1'
@@ -145,6 +146,20 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_LEDGER_MISMATCH')
   }
   const intentTools = snapshot.semanticIntent.tools
+  let compiledToolChoice: DeepSeekToolChoiceV1 | undefined
+  if (intentTools.mode === 'enabled' && intentTools.toolChoice.mode !== 'omitted') {
+    if (intentTools.toolChoice.mode === 'named') {
+      const namedToolId = intentTools.toolChoice.toolId.value
+      const selected = toolRegistry?.selectedDefinitions.find((tool) => tool.toolId === namedToolId)
+      if (!selected) {
+        throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
+      }
+      compiledToolChoice = Object.freeze({
+        type: 'function' as const,
+        function: Object.freeze({ name: selected.function.name }),
+      })
+    } else compiledToolChoice = intentTools.toolChoice.mode
+  }
   const compilation = compileDeepSeekStableChatRequestV1({
     model: binding.modelId.value,
     priorArtifact: input.history.priorArtifact,
@@ -168,17 +183,7 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
           ...(tool.function.parameters === undefined ? {} : { parameters: tool.function.parameters }),
         },
       })),
-      ...(intentTools.mode === 'enabled' && intentTools.toolChoice.mode !== 'omitted' ? {
-          toolChoice: intentTools.toolChoice.mode === 'named'
-            ? {
-                type: 'function' as const,
-                function: {
-                  name: toolRegistry.selectedDefinitions.find((tool) =>
-                    tool.toolId === intentTools.toolChoice.toolId.value)!.function.name,
-                },
-              }
-            : intentTools.toolChoice.mode,
-        } : {}),
+      ...(compiledToolChoice === undefined ? {} : { toolChoice: compiledToolChoice }),
     }),
   })
   if (projection.nativeSemanticFields.some((field) =>
@@ -196,7 +201,7 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
   return issuePreparedProviderRequestV2({
     operationId: operation.operationId.value,
     answerRootId: operation.resultAnswerRootId.value,
-    requestSequence: 1,
+    requestSequence: input.history.requestSequence,
     providerId: binding.providerId.value,
     endpointProfileId: binding.endpointProfileId.value,
     credentialScopeId: binding.credentialScopeId.value,
