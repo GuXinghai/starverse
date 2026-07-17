@@ -50,11 +50,34 @@ export class OpenAIResponsesArtifactsV2Repo {
     artifact: Artifact,
     createdAtMs: number,
   ): void {
+    this.#insert(context, execution, request, artifact, createdAtMs, 'operation_terminal')
+  }
+
+  insertRequestTerminal(
+    context: GenerationV2AuthorityTransactionContextV2,
+    execution: GenerationExecutionOperationBundleV2,
+    request: GenerationRequestRepositoryFactV2,
+    artifact: Artifact,
+    createdAtMs: number,
+  ): void {
+    this.#insert(context, execution, request, artifact, createdAtMs, 'request_terminal')
+  }
+
+  #insert(
+    context: GenerationV2AuthorityTransactionContextV2,
+    execution: GenerationExecutionOperationBundleV2,
+    request: GenerationRequestRepositoryFactV2,
+    artifact: Artifact,
+    createdAtMs: number,
+    completionScope: 'operation_terminal' | 'request_terminal',
+  ): void {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     if (!isGenerationExecutionOperationBundleForContextV2(execution, context) ||
         !isGenerationRequestRepositoryFactForContextV2(request, context) ||
         (!isOpenAIResponsesContinuationArtifactV2(artifact) && !isOpenAIResponsesTerminalArtifactV1(artifact)) ||
-        execution.operation.state !== 'completed' ||
+        (completionScope === 'operation_terminal'
+          ? execution.operation.state !== 'completed'
+          : (execution.operation.state !== 'completed' && execution.operation.state !== 'streaming')) ||
         request.operationId !== execution.operation.operationId.value ||
         request.answerRootId !== execution.operation.resultAnswerRootId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) {
@@ -74,7 +97,7 @@ export class OpenAIResponsesArtifactsV2Repo {
       if (existing.operationId !== request.operationId ||
           existing.codecVersion !== artifact.artifactCodecVersion ||
           existing.artifactJson !== artifactJson || existing.artifactHash !== artifact.artifactHash ||
-          existing.completionScope !== 'operation_terminal') {
+          existing.completionScope !== completionScope) {
         throw new OpenAIResponsesArtifactsV2RepoError('GENERATION_V2_OPENAI_ARTIFACT_CONFLICT')
       }
       return
@@ -82,9 +105,9 @@ export class OpenAIResponsesArtifactsV2Repo {
     this.#db.prepare(`INSERT INTO generation_native_artifact_v2 (
       answer_root_id, request_sequence, operation_id, artifact_kind, codec_version,
       artifact_json, artifact_hash, created_at_ms, completion_scope
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'operation_terminal')`).run(
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
       request.answerRootId, request.requestSequence, request.operationId, artifact.artifactKind,
-      artifact.artifactCodecVersion, artifactJson, artifact.artifactHash, createdAtMs,
+      artifact.artifactCodecVersion, artifactJson, artifact.artifactHash, createdAtMs, completionScope,
     )
   }
 }

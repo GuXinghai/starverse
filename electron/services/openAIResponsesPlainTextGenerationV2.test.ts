@@ -18,6 +18,7 @@ import { createOpenAIResponsesStreamRunnerV2 } from './openAIResponsesStreamRunn
 import { createOpenAIResponsesPlainTextRetryCoordinatorV2 } from './openAIResponsesPlainTextRetryCoordinatorV2'
 import { createOpenAIResponsesPlainTextRegenerateCoordinatorV2 } from './openAIResponsesPlainTextRegenerateCoordinatorV2'
 import { createOpenAIResponsesPlainTextEditResendCoordinatorV2 } from './openAIResponsesPlainTextEditResendCoordinatorV2'
+import { createOpenAIResponsesToolContinuationCoordinatorV2 } from './openAIResponsesToolContinuationCoordinatorV2'
 
 const scope = 'credential-scope-v2:'.concat('d'.repeat(64)) as never
 
@@ -68,6 +69,25 @@ function completedStream(text = 'hello from OpenAI'): Response {
     sse('response.output_item.done', 2, { output_index: 0, item: output[0] }),
     sse('response.completed', 3, { response: {
       id: 'resp_1', object: 'response', created_at: 1, completed_at: 2,
+      status: 'completed', model: 'gpt-5.6-sol', output,
+      usage: {
+        input_tokens: 3, output_tokens: 4, total_tokens: 7,
+        input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 },
+      }, error: null, incomplete_details: null,
+    } }),
+  ].join('')
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+function functionCallStream(): Response {
+  const output = [{
+    id: 'fc_1', type: 'function_call', call_id: 'call_weather', name: 'weather', arguments: '{"city":"Paris"}',
+    status: 'completed',
+  }]
+  const body = [
+    sse('response.output_item.done', 1, { output_index: 0, item: output[0] }),
+    sse('response.completed', 2, { response: {
+      id: 'resp_tool_1', object: 'response', created_at: 1, completed_at: 2,
       status: 'completed', model: 'gpt-5.6-sol', output,
       usage: {
         input_tokens: 3, output_tokens: 4, total_tokens: 7,
@@ -295,6 +315,68 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         .toEqual({ chosen: 'answer:2' })
       expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('keeps the answer current and persists request-terminal artifacts while awaiting a function output', async () => {
+    const db = database()
+    try {
+      new ToolRegistryV2Repo(db, () => 50).installAndSelect({
+        schemaVersion: 2,
+        definitions: [{
+          toolId: 'tool:weather', kind: 'function', sideEffectPolicy: 'none',
+          function: { name: 'weather', parameters: { type: 'object' } },
+        }],
+      }, null)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2,
+        tools: { mode: 'enabled', allowedToolIds: ['tool:weather'], toolChoice: { mode: 'omitted' }, sideEffectConfirmation: 'required_each_retry' },
+      })
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(functionCallStream())
+      const created = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(created)
+      expect(terminal).toMatchObject({ state: 'awaiting_tool', answerRootId: 'answer:2' })
+      expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'streaming' })
+      expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ status: 'streaming' })
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:2' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:2' })
+      expect(db.prepare(`SELECT artifact_kind AS kind, completion_scope AS scope FROM generation_native_artifact_v2
+        ORDER BY artifact_kind`).all()).toEqual([
+        { kind: 'openai_responses_ordered_native_items_v2', scope: 'request_terminal' },
+        { kind: 'openai_responses_terminal_v1', scope: 'request_terminal' },
+      ])
+      const continuation = await createOpenAIResponsesToolContinuationCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+      }).submit({
+        operationId: 'operation:1', branchId: 'branch:1', answerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+        priorRequestSequence: 1,
+        toolOutputs: [{ toolCallId: 'call_weather', content: '{"temperature":20}', userConfirmedExternalSideEffect: false }],
+      })
+      expect(continuation).toMatchObject({ kind: 'created', preparedRequest: { requestSequence: 2 } })
+      expect(JSON.parse(continuation.preparedRequest.body.copyUtf8Text()).input).toEqual([
+        { role: 'user', content: [{ type: 'input_text', text: 'hello' }] },
+        { id: 'fc_1', type: 'function_call', call_id: 'call_weather', name: 'weather', arguments: '{"city":"Paris"}', status: 'completed' },
+        { type: 'function_call_output', call_id: 'call_weather', output: '{"temperature":20}' },
+      ])
+      mocks.fetch.mockResolvedValueOnce(completedStream('after tool'))
+      const completed = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
+      }).run(continuation)
+      expect(completed).toMatchObject({ state: 'completed', answerRootId: 'answer:2' })
+      expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'completed' })
+      expect(db.prepare("SELECT body_text AS body FROM message_body_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ body: 'after tool' })
     } finally { db.close() }
   })
 

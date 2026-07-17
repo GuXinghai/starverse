@@ -40,7 +40,7 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
       operation.operationId.value !== input.history.operationId.value ||
       operation.resultAnswerRootId.value !== input.history.answerRootId.value ||
       snapshot.operationId.value !== operation.operationId.value || snapshot.answerRootId.value !== operation.resultAnswerRootId.value ||
-      input.history.requestSequence !== 1) {
+      !Number.isSafeInteger(input.history.requestSequence) || input.history.requestSequence < 1) {
     throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
   }
   const profile = readVerifiedOpenAIResponsesEndpointProfileV2()
@@ -114,7 +114,7 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
   })))
   return issuePreparedProviderRequestV2({
     operationId: operation.operationId.value, answerRootId: operation.resultAnswerRootId.value,
-    requestSequence: 1, providerId: binding.providerId.value,
+    requestSequence: input.history.requestSequence, providerId: binding.providerId.value,
     endpointProfileId: binding.endpointProfileId.value, credentialScopeId: binding.credentialScopeId.value,
     contractId: binding.protocolContractId.value, modelId: binding.modelId.value,
     effectiveEndpointId: profile.descriptor.endpointId.value,
