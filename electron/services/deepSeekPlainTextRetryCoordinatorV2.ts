@@ -117,6 +117,7 @@ export function createDeepSeekPlainTextRetryCoordinatorV2(input: Readonly<{
             branchId: command.branchId.value,
             questionId: command.questionId.value,
             targetAnswerRootId: command.targetAnswerRootId.value,
+            expectedHeadMessageId: command.expectedHeadMessageId.value,
             answerRootId: createAnswerId(),
             createdAtMs,
           })

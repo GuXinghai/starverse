@@ -48,6 +48,7 @@ export type PendingAnswerActionV2 = Readonly<{
   branchId: GraphIdentity<'branch_id'>
   questionId: GraphIdentity<'question_id'>
   targetAnswerRootId: GraphIdentity<'answer_root_id'> | null
+  expectedHeadMessageId: GraphIdentity<'message_id'>
   answerRootId: GraphIdentity<'answer_root_id'>
   answerOrdinal: number
   createdAtMs: number
@@ -351,7 +352,7 @@ export class ConversationGraphV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     const input = closedObject(value, [
       'operationId', 'actionKind', 'branchId', 'questionId', 'targetAnswerRootId',
-      'answerRootId', 'createdAtMs',
+      'expectedHeadMessageId', 'answerRootId', 'createdAtMs',
     ])
     const operationId = GenerationV2Identity.create('operation_id', requiredString(input.operationId))
     if (input.actionKind !== 'regenerate_question' && input.actionKind !== 'retry_as_new' &&
@@ -363,6 +364,9 @@ export class ConversationGraphV2Repo {
     const questionId = ConversationGraphV2Identity.create('question_id', requiredString(input.questionId))
     const targetAnswerRootId = input.targetAnswerRootId === null ? null :
       ConversationGraphV2Identity.create('answer_root_id', requiredString(input.targetAnswerRootId))
+    const expectedHeadMessageId = ConversationGraphV2Identity.create(
+      'message_id', requiredString(input.expectedHeadMessageId),
+    )
     const answerRootId = ConversationGraphV2Identity.create('answer_root_id', requiredString(input.answerRootId))
     const createdAtMs = safeTime(input.createdAtMs)
     if ((actionKind === 'regenerate_question') !== (targetAnswerRootId === null)) {
@@ -390,6 +394,9 @@ export class ConversationGraphV2Repo {
     }
     if (targetAnswerRootId && row.chosenAnswerRootId !== targetAnswerRootId.value) {
       throw new ConversationGraphV2RepoError('STALE_CHOSEN_ANSWER')
+    }
+    if (row.headMessageId !== expectedHeadMessageId.value) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
     }
     if (row.deletedAtMs !== null || row.hiddenAnswerRootId !== null ||
         typeof row.chosenAnswerRootId !== 'string' || row.headMessageId !== row.chosenAnswerRootId ||
@@ -423,6 +430,7 @@ export class ConversationGraphV2Repo {
       branchId,
       questionId,
       targetAnswerRootId,
+      expectedHeadMessageId,
       answerRootId,
       answerOrdinal,
       createdAtMs,
