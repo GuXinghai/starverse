@@ -44,7 +44,7 @@ describe('DeepSeek stable family capability policy V2', () => {
       'attachments[].assetRevisionId',
       'attachments[].assetSha256',
     ] as const) {
-      expect(rules.get(path)).toMatchObject({ kind: 'accepted_no_wire' })
+      expect(rules.get(path)).toMatchObject({ kind: 'accepted_no_wire', domain: { kind: 'identity' } })
     }
     expect(JSON.stringify(readVerifiedDeepSeekStableCapabilityPolicyV2())).not.toMatch(
       /modelId|modelCatalog|capabilitySeed|manual_user_model_id/iu,

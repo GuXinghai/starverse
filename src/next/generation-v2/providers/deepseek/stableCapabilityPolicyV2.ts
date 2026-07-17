@@ -62,6 +62,7 @@ export type VerifiedDeepSeekStableCapabilityPolicyV2 = Readonly<{
   verifiedAt: DeepSeekStableApiContractV2['evidence']['verifiedAt']
   evidence: readonly Readonly<{
     evidenceId: string
+    verifiedAt: string
     sourceRefs: readonly string[]
     localArtifact: Readonly<{ id: string; path: string }>
     contentDigest: GenerationV2Digest<'evidence_digest'>
@@ -142,12 +143,14 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
     })
   const unavailable = (path: RuntimeCapabilitySemanticPathV2) =>
     rule(path, 'unavailable_pending_authority', undefined)
-  const acceptedNoWire = (path: RuntimeCapabilitySemanticPathV2) =>
-    rule(path, 'accepted_no_wire', STARVERSE_POLICY)
+  const acceptedNoWire = (
+    path: RuntimeCapabilitySemanticPathV2,
+    domain?: RuntimeCapabilityDomainV2,
+  ) => rule(path, 'accepted_no_wire', STARVERSE_POLICY, domain === undefined ? {} : { domain })
   const rules: DeepSeekStableCapabilityRuleV2[] = [
-    acceptedNoWire('attachments[].assetId'),
-    acceptedNoWire('attachments[].assetRevisionId'),
-    acceptedNoWire('attachments[].assetSha256'),
+    acceptedNoWire('attachments[].assetId', Object.freeze({ kind: 'identity' })),
+    acceptedNoWire('attachments[].assetRevisionId', Object.freeze({ kind: 'identity' })),
+    acceptedNoWire('attachments[].assetSha256', Object.freeze({ kind: 'identity' })),
     unavailable('attachments[].conversion'),
     unavailable('attachments[].include'),
     unavailable('attachments[].sendAs'),
@@ -236,6 +239,7 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
   const evidence = Object.freeze([
     Object.freeze({
       evidenceId: OFFICIAL_CHAT,
+      verifiedAt: contract.evidence.verifiedAt,
       sourceRefs: Object.freeze([
         contract.evidence.provenanceUrls[0], contract.evidence.provenanceUrls[3],
       ]),
@@ -244,6 +248,7 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
     }),
     Object.freeze({
       evidenceId: OFFICIAL_THINKING,
+      verifiedAt: contract.evidence.verifiedAt,
       sourceRefs: Object.freeze([
         contract.evidence.provenanceUrls[2], contract.evidence.provenanceUrls[3],
       ]),
@@ -252,6 +257,7 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
     }),
     Object.freeze({
       evidenceId: STARVERSE_POLICY,
+      verifiedAt: '2026-07-17',
       sourceRefs: Object.freeze([
         'docs/architecture/generation-compiler-v2/tp7-provider-contracts.md',
       ]),
@@ -277,6 +283,7 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
     verifiedAt: contract.evidence.verifiedAt,
     evidence: evidence.map((entry) => ({
       evidenceId: entry.evidenceId,
+      verifiedAt: entry.verifiedAt,
       sourceRefs: entry.sourceRefs,
       localArtifact: entry.localArtifact,
       contentDigest: entry.contentDigest.value,
