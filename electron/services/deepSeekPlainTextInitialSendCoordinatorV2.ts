@@ -40,6 +40,22 @@ export type DeepSeekPlainTextInitialSendResultV2 = Readonly<{
   request: GenerationRequestRepositoryFactV2
 }>
 
+const initialSendResults = new WeakSet<object>()
+
+function issueInitialSendResultV2(
+  value: Omit<DeepSeekPlainTextInitialSendResultV2, never>,
+): DeepSeekPlainTextInitialSendResultV2 {
+  const result = Object.freeze(value)
+  initialSendResults.add(result)
+  return result
+}
+
+export function isDeepSeekPlainTextInitialSendResultV2(
+  value: unknown,
+): value is DeepSeekPlainTextInitialSendResultV2 {
+  return Boolean(value && typeof value === 'object' && initialSendResults.has(value))
+}
+
 export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
@@ -76,7 +92,7 @@ export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<
       const history = historyRepo.loadInitialSendHistory(context, command.operationId.value)
       const preparedRequest = compileDeepSeekInitialPreparedRequestV2({ context, execution, history })
       const request = requestRepo.replayPrepared(context, execution, preparedRequest)
-      return Object.freeze({
+      return issueInitialSendResultV2({
         kind: 'idempotent_replay' as const,
         execution,
         projection: graphRepo.getInitialSendReplayProjectionInTransaction(context, command.operationId.value),
@@ -117,7 +133,7 @@ export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<
                   context, execution: raced, history,
                 })
                 const persistedRequest = requestRepo.replayPrepared(context, raced, preparedRequest)
-                return Object.freeze({
+                return issueInitialSendResultV2({
                   kind: 'idempotent_replay' as const,
                   execution: raced,
                   projection: graphRepo.getInitialSendReplayProjectionInTransaction(
@@ -160,7 +176,7 @@ export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<
                     const persistedRequest = requestRepo.createPrepared(
                       context, persisted.bundle, preparedRequest,
                     )
-                    return Object.freeze({
+                    return issueInitialSendResultV2({
                       kind: 'created' as const,
                       execution: persisted.bundle,
                       projection: graphRepo.getInitialSendReplayProjectionInTransaction(

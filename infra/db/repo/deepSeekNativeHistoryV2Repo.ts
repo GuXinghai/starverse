@@ -3,6 +3,8 @@ import {
   DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
   DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V2,
   decodeDeepSeekNativeHistoryArtifactV2,
+  isDeepSeekNativeHistoryArtifactV2,
+  serializeDeepSeekNativeHistoryArtifactV2,
   type DeepSeekNativeHistoryArtifactV2,
   type DeepSeekNativeHistoryEntryV1,
 } from '../../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
@@ -17,6 +19,14 @@ import {
   registerGenerationV2AuthorityTransactionParticipantV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
+import {
+  isGenerationExecutionOperationBundleForContextV2,
+  type GenerationExecutionOperationBundleV2,
+} from './generationExecutionV2Repo'
+import {
+  isGenerationRequestRepositoryFactForContextV2,
+  type GenerationRequestRepositoryFactV2,
+} from './generationRequestV2Repo'
 
 const MAX_LINEAGE_DEPTH = 4_096
 
@@ -199,6 +209,46 @@ export class DeepSeekNativeHistoryV2Repo {
       },
     })
     return fact
+  }
+
+  insertCompletedHistoryArtifact(
+    context: GenerationV2AuthorityTransactionContextV2,
+    execution: GenerationExecutionOperationBundleV2,
+    request: GenerationRequestRepositoryFactV2,
+    artifact: DeepSeekNativeHistoryArtifactV2,
+    createdAtMs: number,
+  ): void {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    if (!isGenerationExecutionOperationBundleForContextV2(execution, context) ||
+        !isGenerationRequestRepositoryFactForContextV2(request, context) ||
+        !isDeepSeekNativeHistoryArtifactV2(artifact) || execution.operation.state !== 'completed' ||
+        request.operationId !== execution.operation.operationId.value ||
+        request.answerRootId !== execution.operation.resultAnswerRootId.value ||
+        !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) {
+      throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_STATE_INVALID')
+    }
+    const canonicalJson = serializeDeepSeekNativeHistoryArtifactV2(artifact)
+    const existing = this.#db.prepare(`SELECT operation_id AS operationId, artifact_json AS artifactJson,
+      artifact_hash AS artifactHash, codec_version AS codecVersion
+      FROM generation_native_artifact_v2
+      WHERE answer_root_id=? AND request_sequence=? AND artifact_kind=?`).get(
+      request.answerRootId, request.requestSequence, artifact.artifactKind,
+    ) as { operationId: unknown; artifactJson: unknown; artifactHash: unknown; codecVersion: unknown } | undefined
+    if (existing) {
+      if (existing.operationId !== request.operationId || existing.artifactJson !== canonicalJson ||
+          existing.artifactHash !== artifact.artifactHash ||
+          existing.codecVersion !== artifact.artifactCodecVersion) {
+        throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_LINEAGE_INVALID')
+      }
+      return
+    }
+    this.#db.prepare(`INSERT INTO generation_native_artifact_v2 (
+      answer_root_id, request_sequence, operation_id, artifact_kind, codec_version,
+      artifact_json, artifact_hash, created_at_ms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      request.answerRootId, request.requestSequence, request.operationId, artifact.artifactKind,
+      artifact.artifactCodecVersion, canonicalJson, artifact.artifactHash, createdAtMs,
+    )
   }
 
   #loadAndVerifyLineage(answerRootId: string): DeepSeekNativeHistoryArtifactV2 {

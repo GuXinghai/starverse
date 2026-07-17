@@ -391,18 +391,28 @@ describe('Generation V2 provider-neutral execution schema', () => {
       insertRequest(db, operationId, graph.resultId)
       db.prepare(`INSERT INTO generation_attempt_v2
         VALUES (?, 1, 1, 'open', NULL, NULL, 102, NULL)`).run(operationId)
+      db.prepare("UPDATE generation_request_v2 SET state='streaming', updated_at_ms=103 WHERE operation_id=?")
+        .run(operationId)
+      db.prepare("UPDATE generation_operation_v2 SET state='streaming', updated_at_ms=104 WHERE operation_id=?")
+        .run(operationId)
       db.prepare(`UPDATE generation_attempt_v2 SET state='terminal', outcome_json=?,
-        terminal_fingerprint=?, terminal_at_ms=103
+        terminal_fingerprint=?, terminal_at_ms=105
         WHERE operation_id=? AND request_sequence=1 AND attempt=1`)
         .run('{"kind":"failed"}', HASH_A, operationId)
       db.prepare(`UPDATE generation_attempt_v2 SET state='terminal', outcome_json=?,
-        terminal_fingerprint=?, terminal_at_ms=103
+        terminal_fingerprint=?, terminal_at_ms=105
         WHERE operation_id=? AND request_sequence=1 AND attempt=1`)
         .run('{"kind":"failed"}', HASH_A, operationId)
       expect(() => db.prepare(`UPDATE generation_attempt_v2 SET outcome_json=?
         WHERE operation_id=? AND request_sequence=1 AND attempt=1`)
         .run('{"kind":"cancelled"}', operationId))
         .toThrow('GENERATION_V2_ATTEMPT_TERMINAL_CONFLICT')
+      db.prepare("UPDATE generation_request_v2 SET state='completed', updated_at_ms=106, terminal_at_ms=106 WHERE operation_id=?")
+        .run(operationId)
+      db.prepare("UPDATE generation_operation_v2 SET state='completed', updated_at_ms=107, terminal_at_ms=107 WHERE operation_id=?")
+        .run(operationId)
+      db.prepare("UPDATE message_v2 SET status='completed', updated_at_ms=107 WHERE message_id=?")
+        .run(graph.resultId)
 
       expect(() => db.prepare(`INSERT INTO generation_native_artifact_v2
         VALUES (?, 1, ?, ?, 2, ?, ?, 104)`)
@@ -428,10 +438,20 @@ describe('Generation V2 provider-neutral execution schema', () => {
       insertRequest(db, operationId, graph.resultId)
       db.prepare(`INSERT INTO generation_attempt_v2
         VALUES (?, 1, 1, 'open', NULL, NULL, 102, NULL)`).run(operationId)
+      db.prepare("UPDATE generation_request_v2 SET state='streaming', updated_at_ms=103 WHERE operation_id=?")
+        .run(operationId)
+      db.prepare("UPDATE generation_operation_v2 SET state='streaming', updated_at_ms=104 WHERE operation_id=?")
+        .run(operationId)
       db.prepare(`UPDATE generation_attempt_v2 SET state='terminal', outcome_json=?,
-        terminal_fingerprint=?, terminal_at_ms=103
+        terminal_fingerprint=?, terminal_at_ms=105
         WHERE operation_id=? AND request_sequence=1 AND attempt=1`)
         .run('{"kind":"failed"}', HASH_A, operationId)
+      db.prepare("UPDATE generation_request_v2 SET state='completed', updated_at_ms=106, terminal_at_ms=106 WHERE operation_id=?")
+        .run(operationId)
+      db.prepare("UPDATE generation_operation_v2 SET state='completed', updated_at_ms=107, terminal_at_ms=107 WHERE operation_id=?")
+        .run(operationId)
+      db.prepare("UPDATE message_v2 SET status='completed', updated_at_ms=107 WHERE message_id=?")
+        .run(graph.resultId)
       db.prepare(`INSERT INTO generation_native_artifact_v2
         VALUES (?, 1, ?, ?, 2, ?, ?, 104)`)
         .run(graph.resultId, operationId, ARTIFACT_KIND, ARTIFACT_JSON, HASH_B)

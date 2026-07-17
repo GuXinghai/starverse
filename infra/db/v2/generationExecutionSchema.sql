@@ -543,6 +543,16 @@ BEGIN
     OR json_type(NEW.artifact_json, '$.artifactHash') <> 'text'
     OR json_extract(NEW.artifact_json, '$.artifactHash') <> NEW.artifact_hash
     THEN RAISE(ABORT, 'GENERATION_V2_NATIVE_ARTIFACT_ENVELOPE_MISMATCH') END;
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM generation_request_v2 AS request
+    JOIN generation_operation_v2 AS operation ON operation.operation_id=request.operation_id
+    JOIN message_v2 AS answer ON answer.message_id=request.answer_root_id
+    WHERE request.operation_id=NEW.operation_id
+      AND request.request_sequence=NEW.request_sequence
+      AND request.answer_root_id=NEW.answer_root_id
+      AND request.state='completed' AND operation.state='completed'
+      AND answer.status='completed'
+  ) THEN RAISE(ABORT, 'GENERATION_V2_NATIVE_ARTIFACT_TERMINAL_STATE_REQUIRED') END;
 END;
 
 CREATE TRIGGER IF NOT EXISTS trg_generation_native_artifact_v2_immutable

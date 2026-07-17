@@ -24,6 +24,7 @@ vi.mock('../credentials/epoch2RuntimeCredentialService', () => ({
 }))
 
 import { createDeepSeekPlainTextInitialSendCoordinatorV2 } from './deepSeekPlainTextInitialSendCoordinatorV2'
+import { createDeepSeekInitialStreamRunnerV2 } from './deepSeekInitialStreamRunnerV2'
 import {
   completeDeepSeekNativeRequestV2,
   serializeDeepSeekNativeHistoryArtifactV2,
@@ -42,6 +43,9 @@ function response(): Response {
 
 function credentialService(fail = false) {
   return {
+    getStatus: async () => ({
+      providerKey: 'deepseek', configured: true, revision: 1, credentialScopeId: scope,
+    }),
     withCredential: async ({ consume }: { consume: (lease: never) => Promise<unknown> }) => {
       if (fail) throw new Error('credential unavailable')
       const state = { active: true }
@@ -58,6 +62,19 @@ function credentialService(fail = false) {
       }
     },
   } as never
+}
+
+function streamResponse(content = 'hello'): Response {
+  const usage = { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 }
+  const base = { id: 'response:1', object: 'chat.completion.chunk', created: 1,
+    model: 'deepseek-v4-pro', system_fingerprint: 'fp:1' }
+  const body = [
+    `data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: { role: 'assistant', content }, finish_reason: 'stop', logprobs: null }] })}`,
+    `data: ${JSON.stringify({ ...base, choices: [], usage })}`,
+    'data: [DONE]',
+    '',
+  ].join('\n\n')
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } })
 }
 
 function database(filename = ':memory:'): BetterSqlite3.Database {
@@ -336,6 +353,158 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         command: command(override), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })).rejects.toThrow('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    } finally { db.close() }
+  })
+
+  it('sends the exact prepared bytes once and persists completed native history without moving chosen/head', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(response()).mockResolvedValueOnce(streamResponse('answer'))
+      const committed = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const capture = vi.fn()
+      const terminal = await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 110,
+        rawGenerationRequestStore: { tryPersistPreparedV2: capture } as never,
+      }).run(committed)
+      expect(terminal).toEqual({
+        operationId: 'operation:1', answerRootId: 'answer:2', state: 'completed',
+        errorCode: null, errorMessage: null,
+      })
+      const transport = mocks.fetch.mock.calls[1]
+      expect(transport[0]).toBe('https://api.deepseek.com/chat/completions')
+      expect(Buffer.from((transport[1] as RequestInit).body as Buffer).toString('utf8'))
+        .toBe(committed.preparedRequest.body.copyUtf8Text())
+      expect((transport[1] as RequestInit).headers).toMatchObject({
+        authorization: 'Bearer sk-test', accept: 'text/event-stream', 'content-type': 'application/json',
+      })
+      expect(capture).toHaveBeenCalledWith(expect.objectContaining({ operationId: 'operation:1' }),
+        committed.preparedRequest.body)
+      expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'completed' })
+      expect(db.prepare("SELECT state FROM generation_request_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'completed' })
+      expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ status: 'completed' })
+      expect(db.prepare("SELECT body_text FROM message_body_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ body_text: 'answer' })
+      expect(db.prepare("SELECT count(*) AS count FROM generation_native_artifact_v2 WHERE answer_root_id='answer:2'").get())
+        .toEqual({ count: 1 })
+      expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head_message_id: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('keeps Raw Debug capture non-fatal and sends the same prepared bytes', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(response()).mockResolvedValueOnce(streamResponse('answer'))
+      const committed = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const capture = vi.fn(() => { throw new Error('debug database unavailable') })
+      const terminal = await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 110,
+        rawGenerationRequestStore: { tryPersistPreparedV2: capture } as never,
+      }).run(committed)
+      expect(terminal.state).toBe('completed')
+      expect(capture).toHaveBeenCalledWith(expect.objectContaining({ operationId: 'operation:1' }),
+        committed.preparedRequest.body)
+      expect(Buffer.from((mocks.fetch.mock.calls[1][1] as RequestInit).body as Buffer).toString('utf8'))
+        .toBe(committed.preparedRequest.body.copyUtf8Text())
+    } finally { db.close() }
+  })
+
+  it.each([
+    ['credential failure', true, null],
+    ['HTTP failure', false, new Response('denied', { status: 401, headers: { 'content-type': 'text/plain' } })],
+  ])('terminalizes a pre-stream %s without retry or branch rollback', async (_name, failCredential, providerResponse) => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(response())
+      if (providerResponse) mocks.fetch.mockResolvedValueOnce(providerResponse)
+      const committed = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const terminal = await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(failCredential), nowMs: () => 110,
+      }).run(committed)
+      expect(terminal.state).toBe('failed')
+      expect(mocks.fetch).toHaveBeenCalledTimes(failCredential ? 1 : 2)
+      expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'failed' })
+      expect(db.prepare("SELECT state FROM generation_request_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'failed' })
+      expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ status: 'failed' })
+      expect(db.prepare("SELECT chosen_answer_root_id FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen_answer_root_id: 'answer:2' })
+      expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head_message_id: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('keeps partial content and the committed branch when the provider stream fails', async () => {
+    const db = database()
+    try {
+      const partial = streamResponse('partial')
+      const reader = partial.body!.getReader()
+      const first = await reader.read()
+      await reader.cancel()
+      let delivered = false
+      const broken = new Response(new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (!delivered) {
+            delivered = true
+            controller.enqueue(first.value!)
+          } else controller.error(new Error('connection lost'))
+        },
+      }), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+      mocks.fetch.mockResolvedValueOnce(response()).mockResolvedValueOnce(broken)
+      const committed = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const terminal = await createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 110,
+      }).run(committed)
+      expect(terminal.state).toBe('failed')
+      expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ status: 'failed' })
+      expect(db.prepare("SELECT body_text FROM message_body_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ body_text: 'partial' })
+      expect(db.prepare("SELECT chosen_answer_root_id FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen_answer_root_id: 'answer:2' })
+      expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head_message_id: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('rejects a duplicate runner without a second send and lets the first attempt end cancelled', async () => {
+    const db = database()
+    try {
+      let transportStarted!: () => void
+      const started = new Promise<void>((resolve) => { transportStarted = resolve })
+      const never = new Promise<Response>(() => undefined)
+      mocks.fetch.mockResolvedValueOnce(response()).mockImplementationOnce(() => {
+        transportStarted()
+        return never
+      })
+      const committed = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const controller = new AbortController()
+      const runner = createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), nowMs: () => 110,
+      })
+      const active = runner.run(committed, controller.signal)
+      await started
+      await expect(runner.run(committed)).rejects.toThrow('GENERATION_V2_DEEPSEEK_RUNNER_ALREADY_STARTED')
+      controller.abort()
+      await expect(active).resolves.toMatchObject({ state: 'cancelled', errorCode: 'user_cancelled' })
+      expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'cancelled' })
     } finally { db.close() }
   })
 })

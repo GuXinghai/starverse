@@ -3,6 +3,10 @@ import { mkdirSync } from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import type BetterSqlite3 from 'better-sqlite3'
+import {
+  isImmutablePreparedBodyV2,
+  type ImmutablePreparedBodyV2,
+} from '../../src/next/generation-v2/compiler/stableSerialize'
 
 const nodeRequire = createRequire(import.meta.url)
 let BetterSqlite3Constructor: typeof BetterSqlite3 | null = null
@@ -70,6 +74,14 @@ export class RawGenerationRequestStore {
       this.lastCaptureError = { code: 'RAW_DEBUG_CAPTURE_FAILED', atMs: Date.now() }
       console.warn('[raw-generation] request capture failed (non-fatal)', error instanceof Error ? error.message : String(error))
     }
+  }
+
+  tryPersistPreparedV2(context: RawGenerationRequestContext, body: ImmutablePreparedBodyV2): void {
+    if (!isImmutablePreparedBodyV2(body)) {
+      this.lastCaptureError = { code: 'RAW_DEBUG_CAPTURE_FAILED', atMs: Date.now() }
+      return
+    }
+    this.tryPersist(context, body.copyUtf8Text())
   }
 
   listByAnswerRootId(answerRootId: string): RawGenerationRequestRecord[] {

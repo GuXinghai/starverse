@@ -89,6 +89,11 @@ type MutableState = {
 const FINISH_REASONS = new Set<DeepSeekStableFinishReasonV1>([
   'stop', 'length', 'content_filter', 'tool_calls', 'insufficient_system_resource',
 ])
+const streamResults = new WeakSet<object>()
+
+export function isDeepSeekStableStreamResultV1(value: unknown): value is DeepSeekStableStreamResultV1 {
+  return Boolean(value && typeof value === 'object' && streamResults.has(value))
+}
 
 function closedObject(value: unknown, allowed: readonly string[], required: readonly string[]): ClosedObject {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
@@ -312,7 +317,7 @@ export class DeepSeekStableChatStreamAssemblerV1 {
         throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_TOOL_CALL_INCOMPLETE')
       }
     }
-    return Object.freeze({
+    const result = Object.freeze({
       ...(content ? { contentDelta: content } : {}),
       ...(reasoning ? { reasoningDelta: reasoning } : {}),
       ...(toolDeltas ? { toolCallDeltas: Object.freeze(toolDeltas.map((item) => Object.freeze({
@@ -323,6 +328,7 @@ export class DeepSeekStableChatStreamAssemblerV1 {
       }))) } : {}),
       ...(finishReason ? { finishReason } : {}),
     })
+    return result
   }
 
   acceptDone(): DeepSeekStableStreamResultV1 {
@@ -352,7 +358,7 @@ export class DeepSeekStableChatStreamAssemblerV1 {
       throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_THINKING_REASONING_CONTENT_REQUIRED')
     }
     this.#state.done = true
-    return Object.freeze({
+    const result = Object.freeze({
       assistantMessage: Object.freeze({
         role: 'assistant',
         content: this.#state.content.length === 0 ? null : this.#state.content,
@@ -369,6 +375,8 @@ export class DeepSeekStableChatStreamAssemblerV1 {
         systemFingerprint: this.#state.systemFingerprint,
       }),
     })
+    streamResults.add(result)
+    return result
   }
 }
 

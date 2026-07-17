@@ -326,6 +326,68 @@ export class ConversationGraphV2Repo {
     return this.#readProjection(branchIdValue, questionIdValue)
   }
 
+  compareAndSetStreamingAssistantBody(
+    context: GenerationV2AuthorityTransactionContextV2,
+    answerRootIdValue: string,
+    expectedBody: string,
+    nextBody: string,
+    updatedAtMs: number,
+  ): void {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    const answerRootId = ConversationGraphV2Identity.create('answer_root_id', answerRootIdValue)
+    const expected = boundedText(expectedBody, MAX_BODY_BYTES)
+    const next = boundedText(nextBody, MAX_BODY_BYTES)
+    const at = safeTime(updatedAtMs)
+    const result = this.#db.prepare(`UPDATE message_body_v2 SET body_text=?
+      WHERE message_id=? AND body_text=? AND EXISTS (
+        SELECT 1 FROM message_v2 AS answer
+        WHERE answer.message_id=message_body_v2.message_id
+          AND answer.role='assistant' AND answer.answer_root_id=answer.message_id
+          AND answer.status='streaming' AND answer.updated_at_ms<=?
+      )`).run(next, answerRootId.value, expected, at)
+    if (result.changes !== 1) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+    }
+    const status = this.#db.prepare(`UPDATE message_v2 SET updated_at_ms=?
+      WHERE message_id=? AND role='assistant' AND answer_root_id=message_id
+        AND status='streaming' AND updated_at_ms<=?`).run(at, answerRootId.value, at)
+    if (status.changes !== 1) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+    }
+  }
+
+  terminalizeAssistantMessage(
+    context: GenerationV2AuthorityTransactionContextV2,
+    answerRootIdValue: string,
+    status: 'completed' | 'failed' | 'cancelled',
+    finalBody: string | null,
+    updatedAtMs: number,
+  ): void {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    const answerRootId = ConversationGraphV2Identity.create('answer_root_id', answerRootIdValue)
+    const at = safeTime(updatedAtMs)
+    if (status === 'completed') {
+      const body = boundedText(finalBody, MAX_BODY_BYTES)
+      const bodyResult = this.#db.prepare(`UPDATE message_body_v2 SET body_text=?
+        WHERE message_id=? AND EXISTS (
+          SELECT 1 FROM message_v2 AS answer WHERE answer.message_id=message_body_v2.message_id
+            AND answer.role='assistant' AND answer.answer_root_id=answer.message_id
+            AND answer.status='streaming'
+        )`).run(body, answerRootId.value)
+      if (bodyResult.changes !== 1) {
+        throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+      }
+    } else if (finalBody !== null) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID')
+    }
+    const result = this.#db.prepare(`UPDATE message_v2 SET status=?, updated_at_ms=?
+      WHERE message_id=? AND role='assistant' AND answer_root_id=message_id
+        AND status='streaming' AND updated_at_ms<=?`).run(status, at, answerRootId.value, at)
+    if (result.changes !== 1) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+    }
+  }
+
   getInitialSendReplayProjection(operationIdValue: string): InitialSendReplayProjectionV2 {
     if (this.#db.inTransaction) {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
