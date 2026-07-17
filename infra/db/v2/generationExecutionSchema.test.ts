@@ -108,10 +108,18 @@ function insertRequest(
     endpoint_profile_id, credential_scope_id, contract_id, model_id,
     effective_endpoint_id, capability_revision, compiler_ledger_json,
     compiler_ledger_hash, prepared_body_sha256, prepared_body_byte_length,
-    state, created_at_ms, updated_at_ms
+    continuation_command_fingerprint, state, created_at_ms, updated_at_ms
   ) VALUES (?, ?, ?, ?, 'openai', 'profile:1', 'scope:1', 'openai-responses',
-    'gpt-test', 'endpoint:1', 'revision:1', '[]', ?, ?, 2, 'prepared', 101, 101)`)
-    .run(operationId, requestSequence, answerRootId, HASH_A, HASH_B, HASH_A)
+    'gpt-test', 'endpoint:1', 'revision:1', '[]', ?, ?, 2, ?, 'prepared', 101, 101)`)
+    .run(
+      operationId,
+      requestSequence,
+      answerRootId,
+      HASH_A,
+      HASH_B,
+      HASH_A,
+      requestSequence === 1 ? null : HASH_B,
+    )
 }
 
 describe('Generation V2 provider-neutral execution schema', () => {
@@ -246,12 +254,12 @@ describe('Generation V2 provider-neutral execution schema', () => {
         endpoint_profile_id, credential_scope_id, contract_id, model_id,
         effective_endpoint_id, capability_revision, compiler_ledger_json,
         compiler_ledger_hash, prepared_body_sha256, prepared_body_byte_length,
-        state, created_at_ms, updated_at_ms
+        continuation_command_fingerprint, state, created_at_ms, updated_at_ms
       ) SELECT operation_id, 2, answer_root_id, ?, provider_id, endpoint_profile_id,
         credential_scope_id, contract_id, model_id, effective_endpoint_id,
         capability_revision, compiler_ledger_json, compiler_ledger_hash,
-        prepared_body_sha256, prepared_body_byte_length, state, created_at_ms, updated_at_ms
-        FROM generation_request_v2 WHERE request_sequence=1`).run(HASH_B))
+        prepared_body_sha256, prepared_body_byte_length, ?, state, created_at_ms, updated_at_ms
+        FROM generation_request_v2 WHERE request_sequence=1`).run(HASH_B, HASH_A))
         .toThrow(/FOREIGN KEY constraint failed/u)
     } finally { db.close() }
   })
@@ -304,13 +312,13 @@ describe('Generation V2 provider-neutral execution schema', () => {
         endpoint_profile_id, credential_scope_id, contract_id, model_id,
         effective_endpoint_id, capability_revision, compiler_ledger_json,
         compiler_ledger_hash, prepared_body_sha256, prepared_body_byte_length,
-        state, created_at_ms, updated_at_ms, terminal_at_ms
+        continuation_command_fingerprint, state, created_at_ms, updated_at_ms, terminal_at_ms
       ) SELECT operation_id, 2, answer_root_id, snapshot_hash, provider_id,
         endpoint_profile_id, credential_scope_id, contract_id, model_id,
         effective_endpoint_id, capability_revision, compiler_ledger_json,
         compiler_ledger_hash, prepared_body_sha256, prepared_body_byte_length,
-        'completed', created_at_ms, updated_at_ms, updated_at_ms
-        FROM generation_request_v2 WHERE request_sequence=1`).run()).toThrow(
+        ?, 'completed', created_at_ms, updated_at_ms, updated_at_ms
+        FROM generation_request_v2 WHERE request_sequence=1`).run(HASH_A)).toThrow(
         'GENERATION_V2_REQUEST_INITIAL_STATE_INVALID',
       )
       insertRequest(db, operationId, graph.resultId, 2)
@@ -415,12 +423,12 @@ describe('Generation V2 provider-neutral execution schema', () => {
         .run(graph.resultId)
 
       expect(() => db.prepare(`INSERT INTO generation_native_artifact_v2
-        VALUES (?, 1, ?, ?, 2, ?, ?, 104)`)
+        VALUES (?, 1, ?, ?, 2, ?, ?, 104, 'request_terminal')`)
         .run(graph.resultId, operationId, ARTIFACT_KIND,
           ARTIFACT_JSON.replace(ARTIFACT_KIND, 'wrong-kind'), HASH_B))
         .toThrow('GENERATION_V2_NATIVE_ARTIFACT_ENVELOPE_MISMATCH')
       db.prepare(`INSERT INTO generation_native_artifact_v2
-        VALUES (?, 1, ?, ?, 2, ?, ?, 104)`)
+        VALUES (?, 1, ?, ?, 2, ?, ?, 104, 'request_terminal')`)
         .run(graph.resultId, operationId, ARTIFACT_KIND, ARTIFACT_JSON, HASH_B)
       expect(() => db.prepare(`UPDATE generation_native_artifact_v2 SET codec_version=3
         WHERE answer_root_id=?`).run(graph.resultId))
@@ -453,7 +461,7 @@ describe('Generation V2 provider-neutral execution schema', () => {
       db.prepare("UPDATE message_v2 SET status='completed', updated_at_ms=107 WHERE message_id=?")
         .run(graph.resultId)
       db.prepare(`INSERT INTO generation_native_artifact_v2
-        VALUES (?, 1, ?, ?, 2, ?, ?, 104)`)
+        VALUES (?, 1, ?, ?, 2, ?, ?, 104, 'request_terminal')`)
         .run(graph.resultId, operationId, ARTIFACT_KIND, ARTIFACT_JSON, HASH_B)
 
       expect(() => db.prepare('DELETE FROM generation_native_artifact_v2').run())

@@ -34,6 +34,7 @@ import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
 import { createDeepSeekPlainTextRetryCoordinatorV2 } from './deepSeekPlainTextRetryCoordinatorV2'
 import { createDeepSeekPlainTextRegenerateCoordinatorV2 } from './deepSeekPlainTextRegenerateCoordinatorV2'
 import { createDeepSeekPlainTextEditResendCoordinatorV2 } from './deepSeekPlainTextEditResendCoordinatorV2'
+import { createDeepSeekToolContinuationCoordinatorV2 } from './deepSeekToolContinuationCoordinatorV2'
 import {
   completeDeepSeekNativeRequestV2,
   serializeDeepSeekNativeHistoryArtifactV2,
@@ -80,6 +81,25 @@ function streamResponse(content = 'hello'): Response {
   const body = [
     `data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: { role: 'assistant', content }, finish_reason: 'stop', logprobs: null }] })}`,
     `data: ${JSON.stringify({ ...base, choices: [], usage })}`,
+    'data: [DONE]',
+    '',
+  ].join('\n\n')
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream; charset=utf-8' } })
+}
+
+function toolCallStreamResponse(): Response {
+  const base = { id: 'response:tool', object: 'chat.completion.chunk', created: 1,
+    model: 'deepseek-v4-pro', system_fingerprint: 'fp:1' }
+  const body = [
+    `data: ${JSON.stringify({ ...base, choices: [{ index: 0, delta: {
+      role: 'assistant', content: null,
+      tool_calls: [{ index: 0, id: 'call:weather', type: 'function', function: {
+        name: 'weather', arguments: '{"city":"Shanghai"}',
+      } }],
+    }, finish_reason: 'tool_calls', logprobs: null }] })}`,
+    `data: ${JSON.stringify({ ...base, choices: [], usage: {
+      prompt_tokens: 2, completion_tokens: 1, total_tokens: 3,
+    } })}`,
     'data: [DONE]',
     '',
   ].join('\n\n')
@@ -133,7 +153,7 @@ function completeFirstRequest(db: BetterSqlite3.Database, answerRootId: string):
   db.prepare("UPDATE generation_operation_v2 SET state='completed', updated_at_ms=106, terminal_at_ms=106 WHERE operation_id='operation:1'").run()
   db.prepare("UPDATE message_v2 SET status='completed', updated_at_ms=106 WHERE message_id=?").run(answerRootId)
   db.prepare(`INSERT INTO generation_native_artifact_v2
-    VALUES (?, 1, 'operation:1', ?, ?, ?, ?, 106)`).run(
+    VALUES (?, 1, 'operation:1', ?, ?, ?, ?, 106, 'request_terminal')`).run(
     answerRootId, artifact.artifactKind, artifact.artifactCodecVersion,
     serializeDeepSeekNativeHistoryArtifactV2(artifact), artifact.artifactHash,
   )
@@ -264,6 +284,114 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         expect.objectContaining({ path: 'tools.allowedToolIds', disposition: 'encoded', nativeField: 'tools' }),
         expect.objectContaining({ path: 'tools.toolChoice', disposition: 'accepted_no_wire' }),
       ]))
+    } finally { db.close() }
+  })
+
+  it('keeps the answer current across an exact native tool continuation and terminal response', async () => {
+    const db = database()
+    try {
+      new ToolRegistryV2Repo(db, () => 50).installAndSelect({
+        schemaVersion: 2,
+        definitions: [{
+          toolId: 'tool:weather', kind: 'function',
+          sideEffectPolicy: 'confirmation_required_each_execution',
+          function: { name: 'weather', parameters: { type: 'object' } },
+        }],
+      }, null)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2,
+        tools: {
+          mode: 'enabled', allowedToolIds: ['tool:weather'], toolChoice: { mode: 'omitted' },
+          sideEffectConfirmation: 'required_each_retry',
+        },
+      })
+      mocks.fetch.mockResolvedValueOnce(response())
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      mocks.fetch.mockResolvedValueOnce(toolCallStreamResponse())
+      let toolClock = 400
+      const runner = createDeepSeekInitialStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => toolClock++,
+      })
+      await expect(runner.run(initial)).resolves.toMatchObject({ state: 'awaiting_tool' })
+      expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'streaming' })
+      expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ status: 'streaming' })
+      expect(recoverGenerationOrphansV2(db, toolClock++)).toEqual({ recovered: 0, operationIds: [] })
+
+      const continuationCoordinator = createDeepSeekToolContinuationCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => toolClock++,
+      })
+      const continuationCommand = {
+        operationId: 'operation:1', branchId: 'branch:1', answerRootId: 'answer:2',
+        expectedHeadMessageId: 'answer:2', priorRequestSequence: 1,
+        toolOutputs: [{
+          toolCallId: 'call:weather', content: '{"temperature":25}',
+          userConfirmedExternalSideEffect: true,
+        }],
+      }
+      await expect(continuationCoordinator.submit({
+        ...continuationCommand,
+        toolOutputs: continuationCommand.toolOutputs.map((output) => ({
+          ...output, userConfirmedExternalSideEffect: false,
+        })),
+      })).rejects.toThrow('GENERATION_V2_DEEPSEEK_HISTORY_STATE_INVALID')
+      expect(db.prepare("SELECT count(*) AS count FROM generation_request_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ count: 1 })
+      const continuation = await continuationCoordinator.submit(continuationCommand)
+      expect(continuation.preparedRequest.requestSequence).toBe(2)
+      expect(JSON.parse(continuation.preparedRequest.body.copyUtf8Text()).messages).toEqual([
+        { role: 'user', content: 'hello' },
+        {
+          role: 'assistant', content: null,
+          tool_calls: [{
+            id: 'call:weather', type: 'function',
+            function: { name: 'weather', arguments: '{"city":"Shanghai"}' },
+          }],
+        },
+        { role: 'tool', content: '{"temperature":25}', tool_call_id: 'call:weather' },
+      ])
+      const restartedContinuationCoordinator = createDeepSeekToolContinuationCoordinatorV2({
+        db,
+        credentialService: {
+          getStatus: async () => { throw new Error('credential must not be read on active replay') },
+        } as never,
+        nowMs: () => toolClock++,
+      })
+      await expect(restartedContinuationCoordinator.submit(continuationCommand))
+        .resolves.toMatchObject({ kind: 'idempotent_replay' })
+      expect(db.prepare('SELECT count(*) AS count FROM generation_tool_output_v2').get()).toEqual({ count: 1 })
+      expect(db.prepare(`SELECT side_effect_policy AS policy, confirmation_state AS confirmation
+        FROM generation_tool_output_v2`).get()).toEqual({
+        policy: 'confirmation_required_each_execution', confirmation: 'user_confirmed',
+      })
+
+      mocks.fetch.mockResolvedValueOnce(streamResponse('final answer'))
+      await expect(runner.run(continuation)).resolves.toMatchObject({ state: 'completed' })
+      expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'completed' })
+      expect(db.prepare("SELECT body_text AS body FROM message_body_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ body: 'final answer' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:2' })
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:2' })
+      expect(db.prepare("SELECT count(*) AS count FROM generation_request_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ count: 2 })
+      const terminalReplay = createDeepSeekToolContinuationCoordinatorV2({
+        db,
+        credentialService: {
+          getStatus: async () => { throw new Error('credential must not be read on terminal replay') },
+        } as never,
+        nowMs: () => toolClock++,
+      })
+      await expect(terminalReplay.submit(continuationCommand)).resolves.toMatchObject({
+        kind: 'idempotent_replay', preparedRequest: { requestSequence: 2 },
+      })
     } finally { db.close() }
   })
 

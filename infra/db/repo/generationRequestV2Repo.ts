@@ -33,6 +33,7 @@ export type GenerationRequestRepositoryFactV2 = Readonly<{
   compilerLedgerHash: string
   preparedBodySha256: string
   preparedBodyByteLength: number
+  continuationCommandFingerprint: string | null
   createdAtMs: number
 }>
 
@@ -73,7 +74,11 @@ function decodeRow(row: RequestRow): GenerationRequestRepositoryFactV2 {
       !['prepared', 'streaming', 'completed', 'failed', 'cancelled'].includes(row.state as string) ||
       !/^[0-9a-f]{64}$/u.test(row.snapshot_hash as string) ||
       !/^[0-9a-f]{64}$/u.test(row.compiler_ledger_hash as string) ||
-      !/^[0-9a-f]{64}$/u.test(row.prepared_body_sha256 as string)) {
+      !/^[0-9a-f]{64}$/u.test(row.prepared_body_sha256 as string) ||
+      (row.continuation_command_fingerprint !== null &&
+        (typeof row.continuation_command_fingerprint !== 'string' ||
+          !/^[0-9a-f]{64}$/u.test(row.continuation_command_fingerprint))) ||
+      (((row.request_sequence as number) === 1) !== (row.continuation_command_fingerprint === null))) {
     throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_STATE_INVALID')
   }
   let ledger
@@ -107,6 +112,7 @@ function decodeRow(row: RequestRow): GenerationRequestRepositoryFactV2 {
     compilerLedgerHash: row.compiler_ledger_hash as string,
     preparedBodySha256: row.prepared_body_sha256 as string,
     preparedBodyByteLength: row.prepared_body_byte_length as number,
+    continuationCommandFingerprint: row.continuation_command_fingerprint as string | null,
     createdAtMs,
   })
   facts.add(fact)
@@ -188,6 +194,65 @@ export class GenerationRequestV2Repo {
       prepared.modelId, prepared.effectiveEndpointId, prepared.capabilityRevision,
       prepared.ledger.canonicalJson, prepared.ledger.sha256, prepared.bodySha256,
       prepared.bodyByteLength, createdAtMs, createdAtMs,
+    )
+    return this.#read(context, prepared.operationId, prepared.requestSequence)
+  }
+
+  createContinuationPrepared(
+    context: GenerationV2AuthorityTransactionContextV2,
+    execution: GenerationExecutionOperationBundleV2,
+    prepared: PreparedProviderRequestV2,
+    commandFingerprint: string,
+  ): GenerationRequestRepositoryFactV2 {
+    this.#assertAuthorities(context, execution, prepared)
+    if (execution.operation.state !== 'streaming' || prepared.requestSequence < 2 ||
+        !/^[0-9a-f]{64}$/u.test(commandFingerprint)) {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_STATE_INVALID')
+    }
+    const existing = this.#find(context, prepared.operationId, prepared.requestSequence)
+    if (existing) {
+      if (!exactPrepared(existing, prepared)) {
+        throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_IDEMPOTENCY_CONFLICT')
+      }
+      if (existing.continuationCommandFingerprint !== commandFingerprint) {
+        throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_IDEMPOTENCY_CONFLICT')
+      }
+      return existing
+    }
+    const predecessor = this.#db.prepare(`SELECT request.state AS state,
+      count(artifact.artifact_kind) AS artifactCount
+      FROM generation_request_v2 AS request
+      LEFT JOIN generation_native_artifact_v2 AS artifact
+        ON artifact.operation_id=request.operation_id
+        AND artifact.request_sequence=request.request_sequence
+        AND artifact.answer_root_id=request.answer_root_id
+        AND artifact.artifact_kind='deepseek_stable_ordered_native_messages_v2'
+      WHERE request.operation_id=? AND request.request_sequence=?
+      GROUP BY request.state`).get(prepared.operationId, prepared.requestSequence - 1) as
+      { state: unknown; artifactCount: unknown } | undefined
+    if (!predecessor || predecessor.state !== 'completed' || predecessor.artifactCount !== 1) {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_SEQUENCE_INVALID')
+    }
+    const next = this.#db.prepare(`SELECT COALESCE(MAX(request_sequence), 0) + 1 AS value
+      FROM generation_request_v2 WHERE operation_id=?`).get(prepared.operationId) as { value: unknown }
+    if (next.value !== prepared.requestSequence) {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_SEQUENCE_INVALID')
+    }
+    const createdAtMs = this.#nowMs()
+    if (!Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) {
+      throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_INPUT_INVALID')
+    }
+    this.#db.prepare(`INSERT INTO generation_request_v2 (
+      operation_id, request_sequence, answer_root_id, snapshot_hash, provider_id,
+      endpoint_profile_id, credential_scope_id, contract_id, model_id, effective_endpoint_id,
+      capability_revision, compiler_ledger_json, compiler_ledger_hash, prepared_body_sha256,
+      prepared_body_byte_length, continuation_command_fingerprint, state, created_at_ms, updated_at_ms
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'prepared', ?, ?)`).run(
+      prepared.operationId, prepared.requestSequence, prepared.answerRootId, prepared.snapshotHash,
+      prepared.providerId, prepared.endpointProfileId, prepared.credentialScopeId, prepared.contractId,
+      prepared.modelId, prepared.effectiveEndpointId, prepared.capabilityRevision,
+      prepared.ledger.canonicalJson, prepared.ledger.sha256, prepared.bodySha256,
+      prepared.bodyByteLength, commandFingerprint, createdAtMs, createdAtMs,
     )
     return this.#read(context, prepared.operationId, prepared.requestSequence)
   }

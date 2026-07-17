@@ -336,6 +336,12 @@ CREATE TABLE IF NOT EXISTS generation_request_v2 (
   prepared_body_byte_length INTEGER NOT NULL CHECK (
     prepared_body_byte_length BETWEEN 2 AND 20971520
   ),
+  continuation_command_fingerprint TEXT CHECK (
+    continuation_command_fingerprint IS NULL OR (
+      length(continuation_command_fingerprint) = 64
+      AND continuation_command_fingerprint NOT GLOB '*[^0-9a-f]*'
+    )
+  ),
   state TEXT NOT NULL CHECK (state IN ('prepared', 'streaming', 'completed', 'failed', 'cancelled')),
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
@@ -348,6 +354,10 @@ CREATE TABLE IF NOT EXISTS generation_request_v2 (
   CHECK (
     (state IN ('prepared', 'streaming') AND terminal_at_ms IS NULL)
     OR (state IN ('completed', 'failed', 'cancelled') AND terminal_at_ms IS NOT NULL)
+  ),
+  CHECK (
+    (request_sequence = 1 AND continuation_command_fingerprint IS NULL)
+    OR (request_sequence > 1 AND continuation_command_fingerprint IS NOT NULL)
   )
 );
 
@@ -367,7 +377,7 @@ CREATE TRIGGER IF NOT EXISTS trg_generation_request_v2_structure_immutable
 BEFORE UPDATE OF operation_id, request_sequence, answer_root_id, snapshot_hash, provider_id,
   endpoint_profile_id, credential_scope_id, contract_id, model_id, effective_endpoint_id,
   capability_revision, compiler_ledger_json, compiler_ledger_hash, prepared_body_sha256,
-  prepared_body_byte_length, created_at_ms
+  prepared_body_byte_length, continuation_command_fingerprint, created_at_ms
 ON generation_request_v2
 BEGIN
   SELECT RAISE(ABORT, 'GENERATION_V2_REQUEST_STRUCTURE_IMMUTABLE');
@@ -437,6 +447,51 @@ WHEN OLD.state = 'prepared' AND NEW.state = 'streaming' AND NOT EXISTS (
 )
 BEGIN
   SELECT RAISE(ABORT, 'GENERATION_V2_REQUEST_STREAMING_ATTEMPT_REQUIRED');
+END;
+
+CREATE TABLE IF NOT EXISTS generation_tool_output_v2 (
+  operation_id TEXT NOT NULL,
+  request_sequence INTEGER NOT NULL CHECK (request_sequence BETWEEN 2 AND 9007199254740991),
+  answer_root_id TEXT NOT NULL,
+  output_index INTEGER NOT NULL CHECK (output_index BETWEEN 0 AND 127),
+  tool_call_id TEXT NOT NULL CHECK (length(tool_call_id) BETWEEN 1 AND 512),
+  tool_id TEXT NOT NULL CHECK (length(tool_id) BETWEEN 1 AND 512),
+  content TEXT NOT NULL CHECK (length(CAST(content AS BLOB)) <= 4194304),
+  side_effect_policy TEXT NOT NULL CHECK (
+    side_effect_policy IN ('none', 'confirmation_required_each_execution')
+  ),
+  confirmation_state TEXT NOT NULL CHECK (
+    confirmation_state IN ('not_required', 'user_confirmed')
+  ),
+  confirmed_at_ms INTEGER CHECK (confirmed_at_ms IS NULL OR confirmed_at_ms >= 0),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  PRIMARY KEY (operation_id, request_sequence, output_index),
+  UNIQUE (operation_id, request_sequence, tool_call_id),
+  FOREIGN KEY (operation_id, request_sequence, answer_root_id)
+    REFERENCES generation_request_v2(operation_id, request_sequence, answer_root_id)
+    ON DELETE CASCADE,
+  CHECK (
+    (side_effect_policy = 'none' AND confirmation_state = 'not_required' AND confirmed_at_ms IS NULL)
+    OR (side_effect_policy = 'confirmation_required_each_execution'
+      AND confirmation_state = 'user_confirmed' AND confirmed_at_ms IS NOT NULL)
+  )
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_generation_tool_output_v2_immutable
+BEFORE UPDATE ON generation_tool_output_v2
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_TOOL_OUTPUT_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_generation_tool_output_v2_reject_direct_delete
+BEFORE DELETE ON generation_tool_output_v2
+WHEN EXISTS (
+  SELECT 1 FROM generation_request_v2 AS request
+  WHERE request.operation_id=OLD.operation_id
+    AND request.request_sequence=OLD.request_sequence
+)
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_TOOL_OUTPUT_DELETE_FORBIDDEN');
 END;
 
 CREATE TABLE IF NOT EXISTS generation_attempt_v2 (
@@ -527,6 +582,9 @@ CREATE TABLE IF NOT EXISTS generation_native_artifact_v2 (
     length(artifact_hash) = 64 AND artifact_hash NOT GLOB '*[^0-9a-f]*'
   ),
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  completion_scope TEXT NOT NULL CHECK (
+    completion_scope IN ('request_terminal', 'operation_terminal')
+  ),
   PRIMARY KEY (answer_root_id, request_sequence, artifact_kind),
   FOREIGN KEY (operation_id, request_sequence, answer_root_id)
     REFERENCES generation_request_v2(operation_id, request_sequence, answer_root_id)
@@ -550,8 +608,12 @@ BEGIN
     WHERE request.operation_id=NEW.operation_id
       AND request.request_sequence=NEW.request_sequence
       AND request.answer_root_id=NEW.answer_root_id
-      AND request.state='completed' AND operation.state='completed'
-      AND answer.status='completed'
+      AND request.state='completed'
+      AND ((NEW.completion_scope='request_terminal' AND (
+          (operation.state='completed' AND answer.status='completed')
+          OR (operation.state='streaming' AND answer.status='streaming')
+        )) OR (NEW.completion_scope='operation_terminal'
+          AND operation.state='completed' AND answer.status='completed'))
   ) THEN RAISE(ABORT, 'GENERATION_V2_NATIVE_ARTIFACT_TERMINAL_STATE_REQUIRED') END;
 END;
 
