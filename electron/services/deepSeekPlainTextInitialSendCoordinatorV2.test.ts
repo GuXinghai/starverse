@@ -6,7 +6,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
-import { isGenerationRequestRepositoryFactV2 } from '../../infra/db/repo/generationRequestV2Repo'
+import {
+  GenerationRequestV2Repo,
+  isGenerationRequestRepositoryFactV2,
+} from '../../infra/db/repo/generationRequestV2Repo'
+import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 
 const mocks = vi.hoisted(() => ({
@@ -25,6 +29,7 @@ vi.mock('../credentials/epoch2RuntimeCredentialService', () => ({
 
 import { createDeepSeekPlainTextInitialSendCoordinatorV2 } from './deepSeekPlainTextInitialSendCoordinatorV2'
 import { createDeepSeekInitialStreamRunnerV2 } from './deepSeekInitialStreamRunnerV2'
+import { recoverGenerationOrphansV2 } from './generationOrphanRecoveryV2'
 import {
   completeDeepSeekNativeRequestV2,
   serializeDeepSeekNativeHistoryArtifactV2,
@@ -390,7 +395,16 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       expect(db.prepare("SELECT body_text FROM message_body_v2 WHERE message_id='answer:2'").get())
         .toEqual({ body_text: 'answer' })
       expect(db.prepare("SELECT count(*) AS count FROM generation_native_artifact_v2 WHERE answer_root_id='answer:2'").get())
-        .toEqual({ count: 1 })
+        .toEqual({ count: 2 })
+      const terminalArtifact = db.prepare(`SELECT artifact_json AS artifactJson
+        FROM generation_native_artifact_v2
+        WHERE answer_root_id='answer:2' AND artifact_kind='deepseek_stable_terminal_result_v1'`).get() as
+        { artifactJson: string }
+      expect(JSON.parse(terminalArtifact.artifactJson)).toMatchObject({
+        assistantMessage: { role: 'assistant', content: 'answer' },
+        finishReason: 'stop', usage: { prompt_tokens: 2, completion_tokens: 1, total_tokens: 3 },
+        responseMetadata: { id: 'response:1', model: 'deepseek-v4-pro', systemFingerprint: 'fp:1' },
+      })
       expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head_message_id: 'answer:2' })
     } finally { db.close() }
@@ -505,6 +519,65 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       expect(mocks.fetch).toHaveBeenCalledTimes(2)
       expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
         .toEqual({ state: 'cancelled' })
+    } finally { db.close() }
+  })
+
+  it('recovers a committed prepared request as interrupted without network or branch rollback', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(response())
+      await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(recoverGenerationOrphansV2(db, 120)).toEqual({
+        recovered: 1, operationIds: ['operation:1'],
+      })
+      expect(recoverGenerationOrphansV2(db, 121)).toEqual({ recovered: 0, operationIds: [] })
+      expect(mocks.fetch).toHaveBeenCalledTimes(1)
+      expect(db.prepare("SELECT state, error_code AS errorCode FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'failed', errorCode: 'stream_interrupted' })
+      expect(db.prepare("SELECT state FROM generation_request_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'failed' })
+      expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ status: 'failed' })
+      expect(db.prepare("SELECT chosen_answer_root_id FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen_answer_root_id: 'answer:2' })
+      expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head_message_id: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('recovers an open streaming attempt atomically and preserves partial content', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(response())
+      await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const executionRepo = new GenerationExecutionV2Repo(db, () => 110)
+      const requestRepo = new GenerationRequestV2Repo(db, () => 110)
+      const graphRepo = new ConversationGraphV2Repo(db)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        const execution = executionRepo.findOperationInTransaction(context, 'operation:1')!
+        const request = requestRepo.loadExistingForOperation(context, execution, 1)
+        executionRepo.openAttempt(context, {
+          operationId: 'operation:1', requestSequence: 1, attempt: 1,
+        }, 110)
+        requestRepo.markStreaming(context, request, 110)
+        executionRepo.markOperationStreaming(context, execution, 110)
+        graphRepo.compareAndSetStreamingAssistantBody(context, 'answer:2', '', 'partial', 110)
+      })
+      expect(recoverGenerationOrphansV2(db, 120)).toMatchObject({ recovered: 1 })
+      expect(db.prepare("SELECT state FROM generation_attempt_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'terminal' })
+      expect(db.prepare("SELECT outcome_json AS outcomeJson FROM generation_attempt_v2 WHERE operation_id='operation:1'").get())
+        .toMatchObject({ outcomeJson: expect.stringContaining('process_interrupted') })
+      expect(db.prepare("SELECT body_text FROM message_body_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ body_text: 'partial' })
+      expect(db.prepare("SELECT chosen_answer_root_id FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen_answer_root_id: 'answer:2' })
+      expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head_message_id: 'answer:2' })
     } finally { db.close() }
   })
 })
