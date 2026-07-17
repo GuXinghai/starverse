@@ -148,6 +148,7 @@ function commandInput(graph: ReturnType<typeof seedGraph>, operationId = 'operat
     targetAnswerRootId: graph.targetId,
     resultAnswerRootId: graph.resultId,
     snapshot: snapshotJson(operationId, graph.resultId),
+    commandFingerprint: HASH_A,
     createdAtMs: 100,
   }
 }
@@ -253,7 +254,7 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
     } finally { db.close() }
   })
 
-  it('fails closed on a relationally valid but noncanonical operation fingerprint', () => {
+  it('round-trips a structurally valid provider-owned command fingerprint opaquely', () => {
     const db = createDb()
     try {
       const graph = seedGraph(db)
@@ -274,8 +275,39 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
           capability.evidenceDigest.value, capability.semanticFieldsDigest.value,
         )
       })()
-      expect(() => new GenerationExecutionV2Repo(db).getOperation(operationId))
-        .toThrow('GENERATION_V2_EXECUTION_STATE_INVALID')
+      expect(new GenerationExecutionV2Repo(db).getOperation(operationId).operation.commandFingerprint)
+        .toBe('0'.repeat(64))
+    } finally { db.close() }
+  })
+
+  it('does not impose DeepSeek semantics on another provider initial-send operation', () => {
+    const db = createDb()
+    try {
+      const graph = seedGraph(db)
+      const operationId = 'operation:openai'
+      const binding = {
+        ...providerBinding(), providerId: 'openai', endpointProfileId: 'openai-responses-v1',
+        protocolContractId: 'openai-responses-v1',
+        contractRevision: `openai-responses-v1:${HASH_A}`, modelId: 'gpt-5',
+      }
+      const otherCapability = runtimeCapability(binding)
+      db.prepare(`INSERT INTO runtime_capability_snapshot_v2 VALUES (?, ?, 2, ?, ?, ?, 2)`).run(
+        otherCapability.snapshotHash.value, otherCapability.revision.value,
+        otherCapability.canonicalJson, otherCapability.evidenceDigest.value,
+        otherCapability.semanticFieldsDigest.value,
+      )
+      const snapshot = snapshotJson(operationId, graph.resultId, otherCapability, binding)
+      const result = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        new GenerationExecutionV2Repo(db).insertOperationAndSnapshot(context, {
+          operationId, actionKind: 'initial_send', branchId: graph.branchId,
+          conversationId: 'conversation:1', questionId: graph.questionId,
+          targetAnswerRootId: null, resultAnswerRootId: graph.resultId,
+          snapshot, commandFingerprint: '1'.repeat(64), createdAtMs: 100,
+        }))
+      expect(result.bundle.operation).toMatchObject({
+        actionKind: 'initial_send', commandFingerprint: '1'.repeat(64),
+      })
+      expect(result.bundle.snapshot.providerBinding.providerId.value).toBe('openai')
     } finally { db.close() }
   })
 

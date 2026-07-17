@@ -14,7 +14,6 @@ import {
   type GenerationV2Identity as Identity,
 } from '../../../src/next/generation-v2/domain/identityV2'
 import {
-  sha256PreparedBytesV2,
   stableSerializeProviderRequestBoundedV2,
   stableSerializeProviderRequestV2,
 } from '../../../src/next/generation-v2/compiler/stableSerialize'
@@ -164,30 +163,6 @@ function requiredString(value: unknown): string {
   return value
 }
 
-function canonicalHash(value: unknown): string {
-  return sha256PreparedBytesV2(new TextEncoder().encode(stableSerializeProviderRequestV2(value)))
-}
-
-function commandProjection(input: Readonly<{
-  actionKind: GenerationCommandActionV2
-  branchId: string
-  conversationId: string
-  questionId: string
-  targetAnswerRootId: string | null
-  resultAnswerRootId: string
-  snapshotHash: string
-}>) {
-  return Object.freeze({
-    actionKind: input.actionKind,
-    branchId: input.branchId,
-    conversationId: input.conversationId,
-    questionId: input.questionId,
-    targetAnswerRootId: input.targetAnswerRootId,
-    resultAnswerRootId: input.resultAnswerRootId,
-    snapshotHash: input.snapshotHash,
-  })
-}
-
 function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperationBundleV2 {
   try {
     if (typeof row.operation_id !== 'string' || !ACTION_KINDS.includes(row.action_kind as GenerationCommandActionV2) ||
@@ -230,16 +205,6 @@ function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperati
           stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(capability.binding))) {
       throw new Error('snapshot mismatch')
     }
-    const expectedFingerprint = canonicalHash(commandProjection({
-      actionKind: row.action_kind as GenerationCommandActionV2,
-      branchId: row.branch_id,
-      conversationId: row.conversation_id,
-      questionId: row.question_id,
-      targetAnswerRootId: row.target_answer_root_id as string | null,
-      resultAnswerRootId: row.result_answer_root_id,
-      snapshotHash: row.snapshot_hash,
-    }))
-    if (expectedFingerprint !== row.command_fingerprint) throw new Error('fingerprint mismatch')
     const state = row.state as GenerationExecutionOperationStateV2
     if ((state === 'completed' && (row.error_code !== null || row.error_message !== null || terminalAtMs === null)) ||
         ((state === 'committed' || state === 'streaming') &&
@@ -361,6 +326,36 @@ export class GenerationExecutionV2Repo {
     return this.#readOperation(operationId)
   }
 
+  findOperation(operationId: string): GenerationExecutionOperationBundleV2 | null {
+    if (this.#db.inTransaction) {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_TRANSACTION_CONTEXT_REQUIRED')
+    }
+    return this.#findOperation(operationId)
+  }
+
+  findOperationInTransaction(
+    context: GenerationV2AuthorityTransactionContextV2,
+    operationId: string,
+  ): GenerationExecutionOperationBundleV2 | null {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    return this.#findOperation(operationId, context)
+  }
+
+  #findOperation(
+    operationId: string,
+    context?: GenerationV2AuthorityTransactionContextV2,
+  ): GenerationExecutionOperationBundleV2 | null {
+    let existing: GenerationExecutionOperationBundleV2
+    try {
+      existing = this.#readOperation(operationId, context)
+    } catch (error) {
+      if (error instanceof GenerationExecutionV2RepoError &&
+          error.code === 'GENERATION_V2_EXECUTION_NOT_FOUND') return null
+      throw error
+    }
+    return existing
+  }
+
   #readOperation(
     operationId: string,
     context?: GenerationV2AuthorityTransactionContextV2,
@@ -437,7 +432,7 @@ export class GenerationExecutionV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     const input = closedObject(value, [
       'operationId', 'actionKind', 'branchId', 'conversationId', 'questionId',
-      'targetAnswerRootId', 'resultAnswerRootId', 'snapshot', 'createdAtMs',
+      'targetAnswerRootId', 'resultAnswerRootId', 'snapshot', 'commandFingerprint', 'createdAtMs',
     ])
     let operationId: Identity<'operation_id'>
     let branchId: GraphIdentity<'branch_id'>
@@ -470,15 +465,10 @@ export class GenerationExecutionV2Repo {
     }
     this.#assertSnapshotCapability(snapshot)
     const createdAtMs = safeTime(input.createdAtMs)
-    const fingerprint = canonicalHash(commandProjection({
-      actionKind,
-      branchId: branchId.value,
-      conversationId: conversationId.value,
-      questionId: questionId.value,
-      targetAnswerRootId: targetAnswerRootId?.value ?? null,
-      resultAnswerRootId: resultAnswerRootId.value,
-      snapshotHash: snapshot.snapshotHash.value,
-    }))
+    const fingerprint = requiredString(input.commandFingerprint)
+    if (!/^[0-9a-f]{64}$/u.test(fingerprint)) {
+      throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
+    }
     try {
       const existing = this.#readOperation(operationId.value, context)
       const exact = existing.operation.actionKind === actionKind &&

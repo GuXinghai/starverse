@@ -9,6 +9,7 @@ import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecuti
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import { GenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
+import { decodeDeepSeekPlainTextInitialSendCommandV2 } from '../../src/next/generation-v2/providers/deepseek/plainTextInitialSendCommandV2'
 import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
 
 const mocks = vi.hoisted(() => ({
@@ -97,6 +98,7 @@ async function execute(input: Readonly<{
   forgedBinding?: boolean
   factsConversationId?: string
   catchFacadeAfterWrite?: boolean
+  commandModelId?: string
 }>) {
   mocks.fetch.mockResolvedValueOnce(response())
   const graph = new ConversationGraphV2Repo(input.db)
@@ -117,6 +119,10 @@ async function execute(input: Readonly<{
     consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(
       input.db,
       (context) => {
+        const command = decodeDeepSeekPlainTextInitialSendCommandV2({
+          operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,
+          userBody: 'hello', modelId: input.commandModelId ?? modelId.value, commandAttachments: [],
+        })
         const pending = graph.beginInitialTurn(context, {
           operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,
           questionId: 'question:1', answerRootId: 'answer:1', userBody: 'hello', createdAtMs: 3,
@@ -141,6 +147,7 @@ async function execute(input: Readonly<{
                 executionRepo: execution,
                 capabilityRepo: capability,
                 pending,
+                command,
                 commandFacts,
                 binding: input.forgedBinding ? {} as never : authorities.binding,
                 capability: authorities.capability,
@@ -257,6 +264,20 @@ describe('DeepSeek plain-text initial snapshot commit V2', () => {
       expect(db.prepare('SELECT count(*) AS count FROM generation_operation_v2').get())
         .toEqual({ count: 0 })
       expect(db.prepare('SELECT count(*) AS count FROM message_v2').get()).toEqual({ count: 0 })
+    } finally { db.close() }
+  })
+
+  it('rejects a branded command whose model differs from the verified binding', async () => {
+    const db = database()
+    try {
+      await expect(execute({ db, commandModelId: 'deepseek-other' }))
+        .rejects.toThrow('GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_INPUT_INVALID')
+      for (const table of [
+        'runtime_capability_snapshot_v2', 'assistant_generation_snapshot_v2',
+        'generation_operation_v2', 'message_v2', 'branch_choice_v2',
+      ]) {
+        expect(db.prepare(`SELECT count(*) AS count FROM ${table}`).get()).toEqual({ count: 0 })
+      }
     } finally { db.close() }
   })
 

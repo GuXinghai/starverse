@@ -32,6 +32,8 @@ export type PendingInitialTurnV2 = Readonly<{
   branchId: GraphIdentity<'branch_id'>
   questionId: GraphIdentity<'question_id'>
   answerRootId: GraphIdentity<'answer_root_id'>
+  expectedHeadMessageId: GraphIdentity<'message_id'> | null
+  userBody: string
   questionOrdinal: number
   answerOrdinal: number
   createdAtMs: number
@@ -44,6 +46,12 @@ export type BranchProjectionV2 = Readonly<{
   headMessageId: GraphIdentity<'message_id'> | null
   chosenAnswerRootId: GraphIdentity<'answer_root_id'> | null
   deletedAtMs: number | null
+}>
+
+export type InitialSendReplayProjectionV2 = Readonly<{
+  resultAnswerRootId: GraphIdentity<'answer_root_id'>
+  branchProjection: BranchProjectionV2
+  visibleCandidates: readonly GraphIdentity<'answer_root_id'>[]
 }>
 
 const pendingTurns = new WeakSet<object>()
@@ -221,6 +229,8 @@ export class ConversationGraphV2Repo {
       branchId,
       questionId,
       answerRootId,
+      expectedHeadMessageId: expectedHead,
+      userBody,
       questionOrdinal,
       answerOrdinal,
       createdAtMs,
@@ -314,6 +324,54 @@ export class ConversationGraphV2Repo {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
     }
     return this.#readProjection(branchIdValue, questionIdValue)
+  }
+
+  getInitialSendReplayProjection(operationIdValue: string): InitialSendReplayProjectionV2 {
+    if (this.#db.inTransaction) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+    }
+    return this.#readInitialSendReplayProjection(operationIdValue)
+  }
+
+  getInitialSendReplayProjectionInTransaction(
+    context: GenerationV2AuthorityTransactionContextV2,
+    operationIdValue: string,
+  ): InitialSendReplayProjectionV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    return this.#readInitialSendReplayProjection(operationIdValue)
+  }
+
+  #readInitialSendReplayProjection(operationIdValue: string): InitialSendReplayProjectionV2 {
+    const operationId = GenerationV2Identity.create('operation_id', operationIdValue)
+    const row = this.#db.prepare(`SELECT branch_id AS branchId, question_id AS questionId,
+      result_answer_root_id AS resultAnswerRootId FROM generation_operation_v2
+      WHERE operation_id=? AND action_kind='initial_send'`).get(operationId.value) as
+      { branchId: unknown; questionId: unknown; resultAnswerRootId: unknown } | undefined
+    if (!row || typeof row.branchId !== 'string' || typeof row.questionId !== 'string' ||
+        typeof row.resultAnswerRootId !== 'string') {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')
+    }
+    const projection = this.#readProjection(row.branchId, row.questionId)
+    const candidates = this.#db.prepare(`SELECT answer.answer_root_id AS answerRootId
+      FROM message_v2 AS answer
+      LEFT JOIN branch_answer_hide_v2 AS hidden
+        ON hidden.branch_id=? AND hidden.question_id=answer.question_id
+       AND hidden.answer_root_id=answer.answer_root_id
+      WHERE answer.conversation_id=? AND answer.question_id=? AND answer.role='assistant'
+        AND answer.answer_root_id IS NOT NULL AND hidden.answer_root_id IS NULL
+      ORDER BY answer.ordinal ASC, answer.answer_root_id ASC`).all(
+      projection.branchId.value, projection.conversationId.value, projection.questionId.value,
+    ) as { answerRootId: unknown }[]
+    if (candidates.some((candidate) => typeof candidate.answerRootId !== 'string')) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+    }
+    const visibleCandidates = Object.freeze(candidates.map((candidate) =>
+      ConversationGraphV2Identity.create('answer_root_id', candidate.answerRootId as string)))
+    return Object.freeze({
+      resultAnswerRootId: ConversationGraphV2Identity.create('answer_root_id', row.resultAnswerRootId),
+      branchProjection: projection,
+      visibleCandidates,
+    })
   }
 
   #readProjection(branchIdValue: string, questionIdValue: string): BranchProjectionV2 {

@@ -31,6 +31,10 @@ import {
   type VerifiedDeepSeekStableProviderBindingAuthorityV2,
   type VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2,
 } from './deepSeekStableGenerationAuthorityV2Service'
+import {
+  isDeepSeekPlainTextInitialSendCommandV2,
+  type DeepSeekPlainTextInitialSendCommandV2,
+} from '../../src/next/generation-v2/providers/deepseek/plainTextInitialSendCommandV2'
 
 export class DeepSeekPlainTextSnapshotCommitV2Error extends Error {
   constructor(readonly code:
@@ -109,6 +113,7 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
   executionRepo: GenerationExecutionV2Repo
   capabilityRepo: RuntimeCapabilityV2Repo
   pending: PendingInitialTurnV2
+  command: DeepSeekPlainTextInitialSendCommandV2
   commandFacts: GenerationCommandFactsAuthorityV2
   binding: VerifiedDeepSeekStableProviderBindingAuthorityV2
   capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2
@@ -116,10 +121,19 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
       !isPendingInitialTurnForContextV2(input.pending, input.context) ||
-      !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
-      input.commandFacts.conversationId.value !== input.pending.conversationId.value ||
+      !isDeepSeekPlainTextInitialSendCommandV2(input.command) ||
       !isVerifiedDeepSeekStableProviderBindingAuthorityV2(input.binding) ||
       !isVerifiedDeepSeekStableRuntimeCapabilityAuthorityV2(input.capability) ||
+      input.command.operationId.value !== input.pending.operationId.value ||
+      input.command.branchId.value !== input.pending.branchId.value ||
+      input.command.expectedHeadMessageId?.value !== input.pending.expectedHeadMessageId?.value ||
+      input.command.userBody !== input.pending.userBody ||
+      input.command.providerId.value !== input.binding.binding.providerId.value ||
+      input.command.endpointProfileId.value !== input.binding.binding.endpointProfileId.value ||
+      input.command.modelId.value !== input.binding.binding.modelId.value ||
+      input.binding.binding.operation !== 'text' ||
+      !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
+      input.commandFacts.conversationId.value !== input.pending.conversationId.value ||
       input.capability.bindingAuthority !== input.binding ||
       input.binding.binding.providerId.value !== 'deepseek' ||
       input.binding.binding.operation !== 'text') {
@@ -187,6 +201,7 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
     targetAnswerRootId: null,
     resultAnswerRootId: input.pending.answerRootId.value,
     snapshot: snapshot.canonicalJson,
+    commandFingerprint: input.command.requestFingerprint,
     createdAtMs: input.pending.createdAtMs,
   })
   assertCommittedProjection(
