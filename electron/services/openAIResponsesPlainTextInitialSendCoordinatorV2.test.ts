@@ -16,6 +16,7 @@ import { createOpenAIResponsesPlainTextInitialSendCoordinatorV2 } from './openAI
 import { createOpenAIResponsesInitialStreamRunnerV2 } from './openAIResponsesInitialStreamRunnerV2'
 import { createOpenAIResponsesPlainTextRetryCoordinatorV2 } from './openAIResponsesPlainTextRetryCoordinatorV2'
 import { createOpenAIResponsesPlainTextRegenerateCoordinatorV2 } from './openAIResponsesPlainTextRegenerateCoordinatorV2'
+import { createOpenAIResponsesPlainTextEditResendCoordinatorV2 } from './openAIResponsesPlainTextEditResendCoordinatorV2'
 
 const scope = 'credential-scope-v2:'.concat('d'.repeat(64)) as never
 
@@ -489,6 +490,81 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         .toEqual({ chosen: 'answer:regenerated' })
       expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head: 'answer:regenerated' })
+    } finally { db.close() }
+  })
+
+  it('edit-resends with fork/replace question semantics and no terminal branch rollback', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('original'))
+        .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('edited answer'))
+        .mockResolvedValueOnce(modelResponse())
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesInitialStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(initial)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: { maxOutputTokens: 64 },
+      })
+      const forkService = createOpenAIResponsesPlainTextEditResendCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createQuestionId: () => 'question:edit-fork', createAnswerId: () => 'answer:edit-fork',
+      })
+      const forkCommand = {
+        operationId: 'operation:edit-fork', mode: 'fork', branchId: 'branch:1',
+        sourceQuestionId: 'question:1', sourceAnswerRootId: 'answer:2',
+        expectedHeadMessageId: 'answer:2', userBody: 'edited question',
+        modelId: 'gpt-5.6-sol', commandAttachments: [],
+      }
+      const fork = await forkService.submit({
+        command: forkCommand, expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(fork.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [{ type: 'input_text', text: 'edited question' }] }],
+        max_output_tokens: 64,
+      })
+      expect(fork.projection.visibleQuestionCandidates.map((candidate) => candidate.value))
+        .toEqual(['question:1', 'question:edit-fork'])
+      expect(fork.projection.branchProjection).toMatchObject({
+        questionId: { value: 'question:edit-fork' },
+        chosenAnswerRootId: { value: 'answer:edit-fork' }, headMessageId: { value: 'answer:edit-fork' },
+      })
+      await expect(forkService.submit({
+        command: forkCommand, expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
+      })).resolves.toMatchObject({ kind: 'idempotent_replay' })
+      await createOpenAIResponsesInitialStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
+      }).run(fork)
+
+      const replace = await createOpenAIResponsesPlainTextEditResendCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 140,
+        createQuestionId: () => 'question:edit-replace', createAnswerId: () => 'answer:edit-replace',
+      }).submit({
+        command: {
+          ...forkCommand, operationId: 'operation:edit-replace', mode: 'replace',
+          sourceQuestionId: 'question:edit-fork', sourceAnswerRootId: 'answer:edit-fork',
+          expectedHeadMessageId: 'answer:edit-fork', userBody: 'edited again',
+        },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(replace.projection.visibleQuestionCandidates.map((candidate) => candidate.value))
+        .toEqual(['question:1', 'question:edit-replace'])
+      expect(db.prepare(`SELECT question_id AS questionId FROM branch_question_hide_v2
+        WHERE branch_id='branch:1'`).all()).toEqual([{ questionId: 'question:edit-fork' }])
+      mocks.fetch.mockResolvedValueOnce(new Response('denied', {
+        status: 503, headers: { 'content-type': 'text/plain' },
+      }))
+      await expect(createOpenAIResponsesInitialStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 150,
+      }).run(replace)).resolves.toMatchObject({ state: 'failed' })
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1' AND question_id='question:edit-replace'").get())
+        .toEqual({ chosen: 'answer:edit-replace' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:edit-replace' })
     } finally { db.close() }
   })
 })
