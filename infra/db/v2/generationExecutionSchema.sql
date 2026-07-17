@@ -26,17 +26,26 @@ CREATE TABLE IF NOT EXISTS epoch_scope_key_envelope_v2 (
   singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
   backend TEXT NOT NULL CHECK (backend = 'electron_safe_storage'),
   key_version INTEGER NOT NULL CHECK (key_version = 1),
+  envelope_revision INTEGER NOT NULL CHECK (envelope_revision >= 1),
   ciphertext BLOB NOT NULL CHECK (
     typeof(ciphertext) = 'blob' AND length(ciphertext) BETWEEN 1 AND 1048576
   ),
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
   FOREIGN KEY (singleton_id) REFERENCES app_meta_v2(singleton_id) ON DELETE CASCADE
 );
 
-CREATE TRIGGER IF NOT EXISTS trg_epoch_scope_key_envelope_v2_immutable
+CREATE TRIGGER IF NOT EXISTS trg_epoch_scope_key_envelope_v2_rewrap_guard
 BEFORE UPDATE ON epoch_scope_key_envelope_v2
+WHEN NEW.singleton_id != OLD.singleton_id
+  OR NEW.backend != OLD.backend
+  OR NEW.key_version != OLD.key_version
+  OR NEW.envelope_revision != OLD.envelope_revision + 1
+  OR NEW.ciphertext = OLD.ciphertext
+  OR NEW.created_at_ms != OLD.created_at_ms
+  OR NEW.updated_at_ms < OLD.updated_at_ms
 BEGIN
-  SELECT RAISE(ABORT, 'GENERATION_V2_SCOPE_KEY_IMMUTABLE');
+  SELECT RAISE(ABORT, 'GENERATION_V2_SCOPE_KEY_REWRAP_INVALID');
 END;
 
 CREATE TRIGGER IF NOT EXISTS trg_epoch_scope_key_envelope_v2_delete_forbidden

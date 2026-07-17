@@ -17,7 +17,8 @@
       "dist",
       "dist-electron",
       "dist-native",
-      "infra/db/schema.sql"
+      "infra/db/schema.sql",
+      "infra/db/v2/*.sql"
     ],
     "asarUnpack": [
       "dist-native/win32-x64/*.node"
@@ -84,6 +85,8 @@
     "test:electron-smoke": "npm run rebuild:electron && npm run build:worker && npx vite build --mode development --config vite.config.ts && node scripts/smoke/electron-shell-smoke.mjs",
     "test:packaged-identity-smoke": "node scripts/smoke/packaged-identity-smoke.mjs",
     "test:epoch-native:electron": "npm run build:native:epoch:electron && electron scripts/smoke/epoch-native-electron-smoke.cjs",
+    "test:epoch-database:electron": "npm run rebuild:electron && node scripts/smoke/fresh-epoch-database-electron-smoke.mjs",
+    "test:epoch-database-crash:electron": "npm run rebuild:electron && node scripts/smoke/fresh-epoch-database-crash-smoke.mjs",
     "test:electron-compatible-e2e": "cross-env SV_ELECTRON_COMPATIBLE_E2E=1 npm run test:electron-smoke",
     "diagnose:openai-responses-o-reasoning": "electron scripts/diagnostics/probe-openai-responses-o-reasoning-effort.cjs",
     "smoke:generation-params-real-click": "node scripts/smoke/generation-params-real-click-smoke.mjs --use-main-user-data",
@@ -126,7 +129,7 @@
     "@types/markdown-it": "^14.1.2",
     "@types/uuid": "^10.0.0",
     "@vueuse/core": "^14.0.0",
-    "better-sqlite3": "^12.4.1",
+    "better-sqlite3": "^12.11.1",
     "dompurify": "^3.3.0",
     "electron-store": "^11.0.2",
     "exceljs": "^4.4.0",
@@ -164,8 +167,8 @@
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "electron": "^38.6.0",
-    "electron-builder": "^24.13.3",
+    "electron": "^42.7.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^4.0.1",
     "esbuild": "^0.23.0",
     "eslint": "^8.57.1",

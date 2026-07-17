@@ -2,7 +2,7 @@ import fs from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
-import { getConfig } from 'app-builder-lib/out/util/config'
+import { getConfig } from 'app-builder-lib/out/util/config/config'
 import packageMetadata from '../package.json'
 import {
   resolveStarverseProductIdentity,

@@ -38,13 +38,30 @@ try {
     },
     timeout: 90_000,
   })
-  const runtime = await electronApp.evaluate(({ app }) => ({
-    isPackaged: app.isPackaged,
-    productName: app.getName(),
-    userData: app.getPath('userData'),
-  }))
+  const runtime = await electronApp.evaluate(async ({ app }) => {
+    const fs = process.getBuiltinModule('fs')
+    const path = process.getBuiltinModule('path')
+    const schemaFiles = [
+      'coreConversationSchema.sql',
+      'generationConfigSchema.sql',
+      'attachmentAssetSchema.sql',
+      'openRouterImagesSchema.sql',
+      'generationExecutionSchema.sql',
+    ]
+    const schemaBytes = await Promise.all(schemaFiles.map(async (fileName) => {
+      const bytes = fs.readFileSync(path.join(app.getAppPath(), 'infra', 'db', 'v2', fileName))
+      return bytes.byteLength
+    }))
+    return {
+      isPackaged: app.isPackaged,
+      productName: app.getName(),
+      userData: app.getPath('userData'),
+      schemaAssetsReadable: schemaBytes.every((length) => length > 0),
+    }
+  })
   if (runtime.isPackaged !== true) throw new Error('PACKAGED_IDENTITY_SMOKE_NOT_PACKAGED')
   if (runtime.productName !== packageMetadata.productName) throw new Error('PACKAGED_IDENTITY_SMOKE_PRODUCT_NAME_MISMATCH')
+  if (!runtime.schemaAssetsReadable) throw new Error('PACKAGED_IDENTITY_SMOKE_SCHEMA_ASSETS_MISSING')
   if (path.resolve(runtime.userData) !== path.resolve(userDataOverride)) {
     throw new Error('PACKAGED_IDENTITY_SMOKE_USER_DATA_OVERRIDE_MISMATCH')
   }
@@ -54,6 +71,7 @@ try {
     productName: runtime.productName,
     appId: packageMetadata.build.appId,
     userDataOverrideHonored: true,
+    schemaAssetsReadable: true,
   }
 } catch (error) {
   primaryFailure = error
