@@ -32,9 +32,9 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
   }
 
   if (process.env.SV_DEBUG_RENDERER_CONSOLE === '1') {
-    win.webContents.on('console-message', (_event, level, message, line, sourceId) => {
-      const src = typeof sourceId === 'string' && sourceId.length > 0 ? sourceId : 'renderer'
-      console.log(`[renderer][console:${level}] ${message} (${src}:${line})`)
+    win.webContents.on('console-message', (details) => {
+      const src = details.sourceId.length > 0 ? details.sourceId : 'renderer'
+      console.log(`[renderer][console:${details.level}] ${details.message} (${src}:${details.lineNumber})`)
     })
   }
 

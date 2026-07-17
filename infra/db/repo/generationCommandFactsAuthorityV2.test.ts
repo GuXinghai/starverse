@@ -1,7 +1,7 @@
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
-import { applyGenerationV2Schema } from '../v2/schemaComposerV2'
+import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from '../v2/testSchemaV2'
 import {
   AttachmentAssetV2Repo,
   consumeVerifiedAttachmentSendBytesLeaseV2,

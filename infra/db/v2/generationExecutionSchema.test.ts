@@ -1,7 +1,7 @@
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
-import { applyGenerationV2Schema } from './schemaComposerV2'
+import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from './testSchemaV2'
 
 const root = path.resolve(process.cwd())
 const HASH_A = 'a'.repeat(64)
@@ -102,16 +102,24 @@ describe('Generation V2 provider-neutral execution schema', () => {
     try {
       db.prepare('INSERT INTO app_meta_v2 VALUES (1, 2, ?, ?, ?, 1)')
         .run('io.github.guxinghai.starverse', HASH_A, HASH_B)
-      db.prepare('INSERT INTO epoch_scope_key_envelope_v2 VALUES (1, ?, 1, ?, 2)')
-        .run('electron_safe_storage', Buffer.from('ciphertext'))
-      expect(() => db.prepare('INSERT OR REPLACE INTO epoch_scope_key_envelope_v2 VALUES (1, ?, 1, ?, 2)')
-        .run('electron_safe_storage', 'PLAINTEXT')).toThrow(/CHECK constraint failed/u)
+      db.prepare(`INSERT INTO epoch_scope_key_envelope_v2
+        VALUES (1, ?, 1, 1, ?, 2, 2)`).run('electron_safe_storage', Buffer.from('ciphertext'))
+      expect(() => db.prepare(`INSERT OR REPLACE INTO epoch_scope_key_envelope_v2
+        VALUES (1, ?, 1, 1, ?, 2, 2)`).run('electron_safe_storage', 'PLAINTEXT'))
+        .toThrow(/CHECK constraint failed/u)
       expect(() => db.prepare('UPDATE app_meta_v2 SET data_epoch=3').run())
         .toThrow('GENERATION_V2_APP_META_IMMUTABLE')
       expect(() => db.prepare('DELETE FROM app_meta_v2').run())
         .toThrow('GENERATION_V2_APP_META_IMMUTABLE')
       expect(() => db.prepare('UPDATE epoch_scope_key_envelope_v2 SET key_version=2').run())
-        .toThrow('GENERATION_V2_SCOPE_KEY_IMMUTABLE')
+        .toThrow('GENERATION_V2_SCOPE_KEY_REWRAP_INVALID')
+      db.prepare(`UPDATE epoch_scope_key_envelope_v2
+        SET ciphertext=?, envelope_revision=2, updated_at_ms=3`).run(Buffer.from('rewrapped'))
+      expect(db.prepare(`SELECT envelope_revision, updated_at_ms
+        FROM epoch_scope_key_envelope_v2`).get()).toEqual({ envelope_revision: 2, updated_at_ms: 3 })
+      expect(() => db.prepare(`UPDATE epoch_scope_key_envelope_v2
+        SET ciphertext=?, envelope_revision=4, updated_at_ms=4`).run(Buffer.from('invalid-rewrap')))
+        .toThrow('GENERATION_V2_SCOPE_KEY_REWRAP_INVALID')
       expect(() => db.prepare('DELETE FROM epoch_scope_key_envelope_v2').run())
         .toThrow('GENERATION_V2_SCOPE_KEY_IMMUTABLE')
       expect(db.prepare('SELECT typeof(ciphertext) AS type FROM epoch_scope_key_envelope_v2').get())

@@ -5,6 +5,20 @@ import type BetterSqlite3 from 'better-sqlite3'
 
 const MAX_FRAGMENT_BYTES = 4 * 1024 * 1024
 const MANIFEST_ID = 'generation_compiler_v2'
+const MANIFEST_TABLE_SQL = `
+  CREATE TABLE generation_v2_schema_manifest (
+    manifest_id TEXT PRIMARY KEY CHECK (manifest_id = '${MANIFEST_ID}'),
+    schema_version INTEGER NOT NULL CHECK (schema_version = 1),
+    schema_digest TEXT NOT NULL CHECK (
+      length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
+    ),
+    fragment_count INTEGER NOT NULL CHECK (fragment_count = 5),
+    object_projection_digest TEXT NOT NULL CHECK (
+      length(object_projection_digest) = 64
+      AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
+    )
+  )
+`
 const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'core_conversation_v1', fileName: 'coreConversationSchema.sql' }),
   Object.freeze({ id: 'generation_config_v1', fileName: 'generationConfigSchema.sql' }),
@@ -45,6 +59,10 @@ type SchemaObject = Readonly<{
   type: 'index' | 'table' | 'trigger' | 'view'
   name: string
 }>
+
+function normalizedSql(sql: string): string {
+  return sql.replace(/;\s*$/u, '').replace(/\s+/gu, ' ').trim()
+}
 
 function assertRoot(rootPath: string): string {
   if (typeof rootPath !== 'string' || !path.isAbsolute(rootPath) || rootPath.includes('\0')) {
@@ -95,7 +113,7 @@ function digestFragments(fragments: readonly LoadedFragment[]): string {
 function extractExpectedObjects(fragments: readonly LoadedFragment[]): readonly SchemaObject[] {
   const objects: SchemaObject[] = []
   const seen = new Set<string>()
-  const expression = /CREATE\s+(TABLE|INDEX|TRIGGER|VIEW)\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)/giu
+  const expression = /CREATE\s+(?:UNIQUE\s+)?(TABLE|INDEX|TRIGGER|VIEW)\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)/giu
   for (const fragment of fragments) {
     for (const match of fragment.sql.matchAll(expression)) {
       const type = match[1].toLowerCase() as SchemaObject['type']
@@ -121,19 +139,26 @@ function extractExpectedObjects(fragments: readonly LoadedFragment[]): readonly 
 function readInstalledProjection(
   db: BetterSqlite3.Database,
   expected: readonly SchemaObject[],
+  manifestExpected: boolean,
 ): Readonly<{ rows: readonly unknown[]; digest: string }> {
-  const placeholders = expected.map(() => '?').join(',')
-  const rows = db.prepare(`
+  const allRows = db.prepare(`
     SELECT type, name, tbl_name, sql
     FROM sqlite_master
-    WHERE name IN (${placeholders})
+    WHERE name NOT LIKE 'sqlite_%'
     ORDER BY type, name
-  `).all(...expected.map((object) => object.name)) as Array<{
+  `).all() as Array<{
     type: string
     name: string
     tbl_name: string
     sql: string | null
   }>
+  const expectedKeys = new Set(expected.map((object) => `${object.type}\0${object.name}`))
+  if (manifestExpected) expectedKeys.add('table\0generation_v2_schema_manifest')
+  if (allRows.length !== expectedKeys.size || allRows.some((row) =>
+    !expectedKeys.has(`${row.type}\0${row.name}`) || typeof row.sql !== 'string')) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  const rows = allRows.filter((row) => row.name !== 'generation_v2_schema_manifest')
   if (rows.length !== expected.length || expected.some((object) =>
     !rows.some((row) => row.type === object.type && row.name === object.name && typeof row.sql === 'string'))) {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
@@ -167,88 +192,94 @@ export function inspectGenerationV2SchemaBundle(rootPath: string): GenerationV2S
   return bundle(fragments, digestFragments(fragments), null)
 }
 
-export function applyGenerationV2Schema(
+function verifyLoadedGenerationV2Schema(
+  db: BetterSqlite3.Database,
+  fragments: readonly LoadedFragment[],
+  schemaDigest: string,
+  expectedObjects: readonly SchemaObject[],
+): GenerationV2SchemaBundle {
+  const manifestObject = db.prepare(
+    "SELECT type, sql FROM sqlite_master WHERE name = 'generation_v2_schema_manifest'",
+  ).get() as { type: string; sql: string | null } | undefined
+  if (manifestObject?.type !== 'table' || typeof manifestObject.sql !== 'string' ||
+      normalizedSql(manifestObject.sql) !== normalizedSql(MANIFEST_TABLE_SQL)) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  const manifest = db.prepare(`SELECT schema_version, schema_digest, fragment_count, object_projection_digest
+      FROM generation_v2_schema_manifest WHERE manifest_id = ?`).get(MANIFEST_ID) as {
+      schema_version: number
+      schema_digest: string
+      fragment_count: number
+      object_projection_digest: string
+    } | undefined
+  if (!manifest || manifest.schema_version !== 1 || manifest.schema_digest !== schemaDigest ||
+      manifest.fragment_count !== fragments.length) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  const projection = readInstalledProjection(db, expectedObjects, true)
+  if (projection.digest !== manifest.object_projection_digest ||
+      (db.pragma('foreign_key_check') as unknown[]).length !== 0 ||
+      db.pragma('integrity_check', { simple: true }) !== 'ok') {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  return bundle(fragments, schemaDigest, projection.digest)
+}
+
+export function verifyInstalledGenerationV2SchemaInActiveTransaction(
   db: BetterSqlite3.Database,
   rootPath: string,
 ): GenerationV2SchemaBundle {
-  if (db.inTransaction) throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_DATABASE_BUSY')
+  if (!db.inTransaction) throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_DATABASE_BUSY')
+  const fragments = loadFragments(rootPath)
+  return verifyLoadedGenerationV2Schema(
+    db,
+    fragments,
+    digestFragments(fragments),
+    extractExpectedObjects(fragments),
+  )
+}
+
+export function installGenerationV2SchemaInActiveTransaction(
+  db: BetterSqlite3.Database,
+  rootPath: string,
+): GenerationV2SchemaBundle {
+  if (!db.inTransaction) throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_DATABASE_BUSY')
   const fragments = loadFragments(rootPath)
   const schemaDigest = digestFragments(fragments)
   const expectedObjects = extractExpectedObjects(fragments)
 
-  db.pragma('foreign_keys = ON')
   if (db.pragma('foreign_keys', { simple: true }) !== 1) {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
   }
 
-  db.exec('BEGIN IMMEDIATE')
-  try {
-    const manifestObject = db.prepare(
-      "SELECT type FROM sqlite_master WHERE name = 'generation_v2_schema_manifest'",
-    ).get() as { type: string } | undefined
-    const manifest = manifestObject?.type === 'table'
-      ? db.prepare(`SELECT schema_version, schema_digest, fragment_count, object_projection_digest
-          FROM generation_v2_schema_manifest WHERE manifest_id = ?`).get(MANIFEST_ID) as {
-          schema_version: number
-          schema_digest: string
-          fragment_count: number
-          object_projection_digest: string
-        } | undefined
-      : undefined
-
-    if (manifest) {
-      if (manifest.schema_version !== 1 || manifest.schema_digest !== schemaDigest ||
-          manifest.fragment_count !== fragments.length) {
-        throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
-      }
-      const projection = readInstalledProjection(db, expectedObjects)
-      if (projection.digest !== manifest.object_projection_digest) {
-        throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
-      }
-      if ((db.pragma('foreign_key_check') as unknown[]).length !== 0 ||
-          db.pragma('integrity_check', { simple: true }) !== 'ok') {
-        throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
-      }
-      db.exec('COMMIT')
-      return bundle(fragments, schemaDigest, projection.digest)
-    }
-
-    if (manifestObject || expectedObjects.some((object) => db.prepare(
-      'SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?',
-    ).get(object.type, object.name))) {
-      throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
-    }
-
-    for (const fragment of fragments) db.exec(fragment.sql)
-    const projection = readInstalledProjection(db, expectedObjects)
-    if ((db.pragma('foreign_key_check') as unknown[]).length !== 0 ||
-        db.pragma('integrity_check', { simple: true }) !== 'ok') {
-      throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
-    }
-
-    db.exec(`
-      CREATE TABLE generation_v2_schema_manifest (
-        manifest_id TEXT PRIMARY KEY CHECK (manifest_id = '${MANIFEST_ID}'),
-        schema_version INTEGER NOT NULL CHECK (schema_version = 1),
-        schema_digest TEXT NOT NULL CHECK (
-          length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
-        ),
-        fragment_count INTEGER NOT NULL CHECK (fragment_count = ${fragments.length}),
-        object_projection_digest TEXT NOT NULL CHECK (
-          length(object_projection_digest) = 64
-          AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
-        )
-      );
-    `)
-    db.prepare(`INSERT INTO generation_v2_schema_manifest (
-      manifest_id, schema_version, schema_digest, fragment_count, object_projection_digest
-    ) VALUES (?, 1, ?, ?, ?)`).run(
-      MANIFEST_ID, schemaDigest, fragments.length, projection.digest,
-    )
-    db.exec('COMMIT')
-    return bundle(fragments, schemaDigest, projection.digest)
-  } catch (error) {
-    if (db.inTransaction) db.exec('ROLLBACK')
-    throw error
+  const manifestObject = db.prepare(
+    "SELECT type FROM sqlite_master WHERE name = 'generation_v2_schema_manifest'",
+  ).get() as { type: string } | undefined
+  if (manifestObject?.type === 'table') {
+    return verifyLoadedGenerationV2Schema(db, fragments, schemaDigest, expectedObjects)
   }
+
+  if (manifestObject || expectedObjects.some((object) => db.prepare(
+    'SELECT 1 FROM sqlite_master WHERE type = ? AND name = ?',
+  ).get(object.type, object.name))) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+
+  for (const fragment of fragments) db.exec(fragment.sql)
+  const projection = readInstalledProjection(db, expectedObjects, false)
+  if ((db.pragma('foreign_key_check') as unknown[]).length !== 0 ||
+      db.pragma('integrity_check', { simple: true }) !== 'ok') {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+
+  if (fragments.length !== 5) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_FRAGMENT_INVALID')
+  }
+  db.exec(MANIFEST_TABLE_SQL)
+  db.prepare(`INSERT INTO generation_v2_schema_manifest (
+    manifest_id, schema_version, schema_digest, fragment_count, object_projection_digest
+  ) VALUES (?, 1, ?, ?, ?)`).run(
+    MANIFEST_ID, schemaDigest, fragments.length, projection.digest,
+  )
+  return verifyLoadedGenerationV2Schema(db, fragments, schemaDigest, expectedObjects)
 }

@@ -6,7 +6,7 @@ import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { applyGenerationV2Schema } from '../v2/schemaComposerV2'
+import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from '../v2/testSchemaV2'
 import {
   GenerationExecutionV2Repo,
   isGenerationExecutionAttemptRepositoryFactV2,

@@ -7,7 +7,11 @@ import {
   CONVERSATION_GRAPH_V2_MESSAGE_STATUSES,
   CONVERSATION_GRAPH_V2_ROLES,
 } from '../../../src/next/generation-v2/domain/conversationGraphV2'
-import { applyGenerationV2Schema, inspectGenerationV2SchemaBundle } from './schemaComposerV2'
+import {
+  inspectGenerationV2SchemaBundle,
+  installGenerationV2SchemaInActiveTransaction,
+} from './schemaComposerV2'
+import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from './testSchemaV2'
 
 const root = path.resolve(process.cwd())
 
@@ -39,6 +43,22 @@ function seedGraph(db: BetterSqlite3.Database) {
 }
 
 describe('Generation V2 schema composer and core conversation graph', () => {
+  it('requires and preserves the bootstrap coordinator transaction boundary', () => {
+    const db = new BetterSqlite3(':memory:')
+    try {
+      db.pragma('foreign_keys = ON')
+      expect(() => installGenerationV2SchemaInActiveTransaction(db, root))
+        .toThrow('GENERATION_V2_SCHEMA_DATABASE_BUSY')
+      db.exec('BEGIN IMMEDIATE')
+      installGenerationV2SchemaInActiveTransaction(db, root)
+      expect(db.inTransaction).toBe(true)
+      expect(db.prepare("SELECT count(*) AS count FROM app_meta_v2").get()).toEqual({ count: 0 })
+      db.exec('ROLLBACK')
+      expect(db.prepare("SELECT count(*) AS count FROM sqlite_master WHERE name NOT LIKE 'sqlite_%'").get())
+        .toEqual({ count: 0 })
+    } finally { db.close() }
+  })
+
   it('assembles the fixed fragments deterministically and applies idempotently', () => {
     const first = inspectGenerationV2SchemaBundle(root)
     const second = inspectGenerationV2SchemaBundle(root)
@@ -101,6 +121,43 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       expect(db.prepare("SELECT name FROM sqlite_master WHERE name='generation_v2_schema_manifest'").get())
         .toBeUndefined()
       expect(db.prepare("PRAGMA table_info('project_v2')").all()).toHaveLength(1)
+    } finally { db.close() }
+  })
+
+  it.each([
+    ['table', 'CREATE TABLE unexpected_generation_v2_object (id TEXT)'],
+    ['trigger', `CREATE TRIGGER unexpected_generation_v2_trigger AFTER INSERT ON app_meta_v2
+      BEGIN SELECT 1; END`],
+  ])('rejects an extra %s outside the closed schema object set', (_kind, sql) => {
+    const db = createDb()
+    try {
+      db.exec(sql)
+      expect(() => applyGenerationV2Schema(db, root))
+        .toThrow('GENERATION_V2_SCHEMA_STATE_INVALID')
+    } finally { db.close() }
+  })
+
+  it('rejects a weakened manifest table even when its persisted row is otherwise valid', () => {
+    const db = createDb()
+    try {
+      const manifest = db.prepare('SELECT * FROM generation_v2_schema_manifest').get() as Record<string, unknown>
+      db.exec('DROP TABLE generation_v2_schema_manifest')
+      db.exec(`CREATE TABLE generation_v2_schema_manifest (
+        manifest_id TEXT PRIMARY KEY,
+        schema_version INTEGER NOT NULL,
+        schema_digest TEXT NOT NULL,
+        fragment_count INTEGER NOT NULL,
+        object_projection_digest TEXT NOT NULL
+      )`)
+      db.prepare(`INSERT INTO generation_v2_schema_manifest VALUES (?, ?, ?, ?, ?)`).run(
+        manifest.manifest_id,
+        manifest.schema_version,
+        manifest.schema_digest,
+        manifest.fragment_count,
+        manifest.object_projection_digest,
+      )
+      expect(() => applyGenerationV2Schema(db, root))
+        .toThrow('GENERATION_V2_SCHEMA_STATE_INVALID')
     } finally { db.close() }
   })
 
