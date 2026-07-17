@@ -4,8 +4,8 @@ import {
   type GenerationExecutionOperationBundleV2,
 } from '../../infra/db/repo/generationExecutionV2Repo'
 import {
-  isDeepSeekInitialSendHistoryRepositoryFactForContextV2,
-  type DeepSeekInitialSendHistoryRepositoryFactV2,
+  isDeepSeekRequestHistoryRepositoryFactForContextV2,
+  type DeepSeekRequestHistoryRepositoryFactV2,
 } from '../../infra/db/repo/deepSeekNativeHistoryV2Repo'
 import {
   isReviewedProviderContractDefinitionV2,
@@ -61,17 +61,17 @@ function requestWireValue(request: DeepSeekStableChatRequestV1, wireKey: string)
   return undefined
 }
 
-export function compileDeepSeekInitialPreparedRequestV2(input: Readonly<{
+export function compileDeepSeekPreparedRequestV2(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
   execution: GenerationExecutionOperationBundleV2
-  history: DeepSeekInitialSendHistoryRepositoryFactV2
+  history: DeepSeekRequestHistoryRepositoryFactV2
 }>): PreparedProviderRequestV2 {
   if (!isGenerationExecutionOperationBundleForContextV2(input.execution, input.context) ||
-      !isDeepSeekInitialSendHistoryRepositoryFactForContextV2(input.history, input.context)) {
+      !isDeepSeekRequestHistoryRepositoryFactForContextV2(input.history, input.context)) {
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
-  if (operation.actionKind !== 'initial_send' ||
+  if (!['initial_send', 'regenerate_question', 'retry_as_new', 'retry_replace'].includes(operation.actionKind) ||
       !['committed', 'streaming', 'completed', 'failed', 'cancelled'].includes(operation.state) ||
       operation.operationId.value !== input.history.operationId.value ||
       operation.branchId.value !== input.history.branchId.value ||
@@ -160,4 +160,13 @@ export function compileDeepSeekInitialPreparedRequestV2(input: Readonly<{
     capabilityRevision: capability.revision.value,
     snapshotHash: snapshot.snapshotHash.value,
   })
+}
+
+export function compileDeepSeekInitialPreparedRequestV2(
+  input: Parameters<typeof compileDeepSeekPreparedRequestV2>[0],
+): PreparedProviderRequestV2 {
+  if (input.execution.operation.actionKind !== 'initial_send') {
+    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
+  }
+  return compileDeepSeekPreparedRequestV2(input)
 }

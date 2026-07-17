@@ -41,7 +41,7 @@ export class DeepSeekNativeHistoryV2RepoError extends Error {
   }
 }
 
-export type DeepSeekInitialSendHistoryRepositoryFactV2 = Readonly<{
+export type DeepSeekRequestHistoryRepositoryFactV2 = Readonly<{
   trust: 'deepseek_initial_send_history_repository_fact_v2'
   operationId: Identity<'operation_id'>
   branchId: GraphIdentity<'branch_id'>
@@ -52,6 +52,7 @@ export type DeepSeekInitialSendHistoryRepositoryFactV2 = Readonly<{
   priorArtifact: DeepSeekNativeHistoryArtifactV2 | null
   clientEntries: readonly DeepSeekNativeHistoryEntryV1[]
 }>
+export type DeepSeekInitialSendHistoryRepositoryFactV2 = DeepSeekRequestHistoryRepositoryFactV2
 
 type ArtifactRow = Readonly<{
   answer_root_id: unknown
@@ -112,12 +113,15 @@ function exactPrefix(
       stableSerializeProviderRequestV2(child.orderedEntries.slice(0, parent.orderedEntries.length))
 }
 
-export function isDeepSeekInitialSendHistoryRepositoryFactForContextV2(
+export function isDeepSeekRequestHistoryRepositoryFactForContextV2(
   value: unknown,
   context: GenerationV2AuthorityTransactionContextV2,
-): value is DeepSeekInitialSendHistoryRepositoryFactV2 {
+): value is DeepSeekRequestHistoryRepositoryFactV2 {
   return Boolean(value && typeof value === 'object' && facts.has(value) && factContexts.get(value) === context)
 }
+
+export const isDeepSeekInitialSendHistoryRepositoryFactForContextV2 =
+  isDeepSeekRequestHistoryRepositoryFactForContextV2
 
 export class DeepSeekNativeHistoryV2Repo {
   readonly #db: BetterSqlite3.Database
@@ -128,10 +132,10 @@ export class DeepSeekNativeHistoryV2Repo {
     if (db.pragma('foreign_keys', { simple: true }) !== 1) invalidState()
   }
 
-  loadInitialSendHistory(
+  loadRequestHistory(
     context: GenerationV2AuthorityTransactionContextV2,
     operationIdValue: string,
-  ): DeepSeekInitialSendHistoryRepositoryFactV2 {
+  ): DeepSeekRequestHistoryRepositoryFactV2 {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     const operationId = GenerationV2Identity.create('operation_id', operationIdValue)
     const row = this.#db.prepare(`SELECT operation.branch_id AS branchId,
@@ -150,7 +154,7 @@ export class DeepSeekNativeHistoryV2Repo {
         AND branch.conversation_id=operation.conversation_id
       LEFT JOIN message_v2 AS parent ON parent.message_id=question.parent_message_id
         AND parent.conversation_id=operation.conversation_id
-      WHERE operation.operation_id=? AND operation.action_kind='initial_send'`).get(operationId.value) as
+      WHERE operation.operation_id=?`).get(operationId.value) as
       Readonly<Record<string, unknown>> | undefined
     if (!row) throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_NOT_FOUND')
     if (typeof row.branchId !== 'string' || typeof row.conversationId !== 'string' ||
@@ -208,6 +212,19 @@ export class DeepSeekNativeHistoryV2Repo {
         factContexts.delete(fact)
       },
     })
+    return fact
+  }
+
+  loadInitialSendHistory(
+    context: GenerationV2AuthorityTransactionContextV2,
+    operationIdValue: string,
+  ): DeepSeekInitialSendHistoryRepositoryFactV2 {
+    const fact = this.loadRequestHistory(context, operationIdValue)
+    const row = this.#db.prepare('SELECT action_kind AS actionKind FROM generation_operation_v2 WHERE operation_id=?')
+      .get(operationIdValue) as { actionKind: unknown } | undefined
+    if (!row || row.actionKind !== 'initial_send') {
+      throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_STATE_INVALID')
+    }
     return fact
   }
 

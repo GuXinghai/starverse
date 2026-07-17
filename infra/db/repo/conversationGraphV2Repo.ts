@@ -17,6 +17,7 @@ export class ConversationGraphV2RepoError extends Error {
     | 'GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID'
     | 'GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND'
     | 'GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD'
+    | 'STALE_CHOSEN_ANSWER'
     | 'GENERATION_V2_GRAPH_REPOSITORY_CONFLICT'
     | 'GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID') {
     super(code)
@@ -39,6 +40,19 @@ export type PendingInitialTurnV2 = Readonly<{
   createdAtMs: number
 }>
 
+export type PendingAnswerActionV2 = Readonly<{
+  trust: 'pending_answer_action_v2'
+  operationId: Identity<'operation_id'>
+  actionKind: 'regenerate_question' | 'retry_as_new' | 'retry_replace'
+  conversationId: GraphIdentity<'conversation_id'>
+  branchId: GraphIdentity<'branch_id'>
+  questionId: GraphIdentity<'question_id'>
+  targetAnswerRootId: GraphIdentity<'answer_root_id'> | null
+  answerRootId: GraphIdentity<'answer_root_id'>
+  answerOrdinal: number
+  createdAtMs: number
+}>
+
 export type BranchProjectionV2 = Readonly<{
   branchId: GraphIdentity<'branch_id'>
   conversationId: GraphIdentity<'conversation_id'>
@@ -53,9 +67,12 @@ export type InitialSendReplayProjectionV2 = Readonly<{
   branchProjection: BranchProjectionV2
   visibleCandidates: readonly GraphIdentity<'answer_root_id'>[]
 }>
+export type GenerationReplayProjectionV2 = InitialSendReplayProjectionV2
 
 const pendingTurns = new WeakSet<object>()
 const pendingTurnContexts = new WeakMap<object, GenerationV2AuthorityTransactionContextV2>()
+const pendingAnswerActions = new WeakSet<object>()
+const pendingAnswerActionContexts = new WeakMap<object, GenerationV2AuthorityTransactionContextV2>()
 
 function closedObject(value: unknown, expected: readonly string[]): Readonly<Record<string, unknown>> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
@@ -109,6 +126,14 @@ export function isPendingInitialTurnForContextV2(
   context: GenerationV2AuthorityTransactionContextV2,
 ): value is PendingInitialTurnV2 {
   return isPendingInitialTurnV2(value) && pendingTurnContexts.get(value) === context
+}
+
+export function isPendingAnswerActionForContextV2(
+  value: unknown,
+  context: GenerationV2AuthorityTransactionContextV2,
+): value is PendingAnswerActionV2 {
+  return Boolean(value && typeof value === 'object' && pendingAnswerActions.has(value) &&
+    pendingAnswerActionContexts.get(value) === context)
 }
 
 export class ConversationGraphV2Repo {
@@ -319,6 +344,172 @@ export class ConversationGraphV2Repo {
     return this.#readProjection(pending.branchId.value, pending.questionId.value)
   }
 
+  beginAnswerAction(
+    context: GenerationV2AuthorityTransactionContextV2,
+    value: unknown,
+  ): PendingAnswerActionV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    const input = closedObject(value, [
+      'operationId', 'actionKind', 'branchId', 'questionId', 'targetAnswerRootId',
+      'answerRootId', 'createdAtMs',
+    ])
+    const operationId = GenerationV2Identity.create('operation_id', requiredString(input.operationId))
+    if (input.actionKind !== 'regenerate_question' && input.actionKind !== 'retry_as_new' &&
+        input.actionKind !== 'retry_replace') {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID')
+    }
+    const actionKind = input.actionKind
+    const branchId = ConversationGraphV2Identity.create('branch_id', requiredString(input.branchId))
+    const questionId = ConversationGraphV2Identity.create('question_id', requiredString(input.questionId))
+    const targetAnswerRootId = input.targetAnswerRootId === null ? null :
+      ConversationGraphV2Identity.create('answer_root_id', requiredString(input.targetAnswerRootId))
+    const answerRootId = ConversationGraphV2Identity.create('answer_root_id', requiredString(input.answerRootId))
+    const createdAtMs = safeTime(input.createdAtMs)
+    if ((actionKind === 'regenerate_question') !== (targetAnswerRootId === null)) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID')
+    }
+    const row = this.#db.prepare(`SELECT branch.conversation_id AS conversationId,
+      branch.head_message_id AS headMessageId, branch.deleted_at_ms AS deletedAtMs,
+      branch.updated_at_ms AS branchUpdatedAtMs, conversation.updated_at_ms AS conversationUpdatedAtMs,
+      choice.chosen_answer_root_id AS chosenAnswerRootId, answer.status AS answerStatus,
+      hidden.answer_root_id AS hiddenAnswerRootId
+      FROM branch_v2 AS branch
+      JOIN conversation_v2 AS conversation ON conversation.conversation_id=branch.conversation_id
+      JOIN message_v2 AS question ON question.message_id=? AND question.conversation_id=branch.conversation_id
+        AND question.role='user' AND question.status='completed'
+      JOIN branch_choice_v2 AS choice ON choice.branch_id=branch.branch_id
+        AND choice.question_id=question.message_id AND choice.conversation_id=branch.conversation_id
+      JOIN message_v2 AS answer ON answer.message_id=choice.chosen_answer_root_id
+        AND answer.conversation_id=branch.conversation_id AND answer.question_id=question.message_id
+        AND answer.role='assistant' AND answer.answer_root_id=answer.message_id
+      LEFT JOIN branch_answer_hide_v2 AS hidden ON hidden.branch_id=branch.branch_id
+        AND hidden.question_id=question.message_id AND hidden.answer_root_id=answer.answer_root_id
+      WHERE branch.branch_id=?`).get(questionId.value, branchId.value) as Readonly<Record<string, unknown>> | undefined
+    if (!row || typeof row.conversationId !== 'string') {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')
+    }
+    if (targetAnswerRootId && row.chosenAnswerRootId !== targetAnswerRootId.value) {
+      throw new ConversationGraphV2RepoError('STALE_CHOSEN_ANSWER')
+    }
+    if (row.deletedAtMs !== null || row.hiddenAnswerRootId !== null ||
+        typeof row.chosenAnswerRootId !== 'string' || row.headMessageId !== row.chosenAnswerRootId ||
+        !['completed', 'failed', 'cancelled'].includes(row.answerStatus as string)) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
+    }
+    if (!Number.isSafeInteger(row.branchUpdatedAtMs) || !Number.isSafeInteger(row.conversationUpdatedAtMs) ||
+        createdAtMs < (row.branchUpdatedAtMs as number) || createdAtMs < (row.conversationUpdatedAtMs as number)) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID')
+    }
+    const ordinalRow = this.#db.prepare('SELECT MAX(ordinal) AS maxOrdinal FROM message_v2 WHERE conversation_id=?')
+      .get(row.conversationId) as { maxOrdinal: unknown }
+    if (!Number.isSafeInteger(ordinalRow.maxOrdinal) || (ordinalRow.maxOrdinal as number) >= Number.MAX_SAFE_INTEGER) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+    }
+    const answerOrdinal = (ordinalRow.maxOrdinal as number) + 1
+    try {
+      this.#db.prepare(`INSERT INTO message_v2 (
+        message_id, conversation_id, role, status, parent_message_id, question_id,
+        answer_root_id, ordinal, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, 'assistant', 'streaming', ?, ?, ?, ?, ?, ?)`).run(
+        answerRootId.value, row.conversationId, questionId.value, questionId.value,
+        answerRootId.value, answerOrdinal, createdAtMs, createdAtMs,
+      )
+    } catch (error) { mapConstraint(error) }
+    const pending = Object.freeze({
+      trust: 'pending_answer_action_v2' as const,
+      operationId,
+      actionKind,
+      conversationId: ConversationGraphV2Identity.create('conversation_id', row.conversationId),
+      branchId,
+      questionId,
+      targetAnswerRootId,
+      answerRootId,
+      answerOrdinal,
+      createdAtMs,
+    })
+    pendingAnswerActions.add(pending)
+    pendingAnswerActionContexts.set(pending, context)
+    registerGenerationV2AuthorityTransactionParticipantV2(context, this.#db, {
+      preCommit: () => {
+        const exact = this.#db.prepare(`SELECT operation.action_kind AS actionKind,
+          operation.target_answer_root_id AS targetAnswerRootId,
+          operation.result_answer_root_id AS resultAnswerRootId,
+          snapshot.answer_root_id AS snapshotAnswerRootId,
+          choice.chosen_answer_root_id AS chosenAnswerRootId,
+          branch.head_message_id AS headMessageId,
+          hidden.answer_root_id AS hiddenAnswerRootId
+          FROM generation_operation_v2 AS operation
+          JOIN assistant_generation_snapshot_v2 AS snapshot ON snapshot.operation_id=operation.operation_id
+            AND snapshot.answer_root_id=operation.result_answer_root_id
+          JOIN branch_v2 AS branch ON branch.branch_id=operation.branch_id
+          JOIN branch_choice_v2 AS choice ON choice.branch_id=operation.branch_id
+            AND choice.question_id=operation.question_id
+          LEFT JOIN branch_answer_hide_v2 AS hidden ON hidden.branch_id=operation.branch_id
+            AND hidden.question_id=operation.question_id
+            AND hidden.answer_root_id=operation.target_answer_root_id
+          WHERE operation.operation_id=?`).get(operationId.value) as Readonly<Record<string, unknown>> | undefined
+        const hiddenExpected = actionKind === 'retry_replace' ? targetAnswerRootId?.value : null
+        if (!exact || exact.actionKind !== actionKind ||
+            (exact.targetAnswerRootId !== targetAnswerRootId?.value &&
+              !(exact.targetAnswerRootId === null && targetAnswerRootId === null)) ||
+            exact.resultAnswerRootId !== answerRootId.value || exact.snapshotAnswerRootId !== answerRootId.value ||
+            exact.chosenAnswerRootId !== answerRootId.value || exact.headMessageId !== answerRootId.value ||
+            exact.hiddenAnswerRootId !== hiddenExpected) {
+          throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+        }
+      },
+      committed: () => {
+        pendingAnswerActions.delete(pending)
+        pendingAnswerActionContexts.delete(pending)
+      },
+      rolledBack: () => {
+        pendingAnswerActions.delete(pending)
+        pendingAnswerActionContexts.delete(pending)
+      },
+    })
+    return pending
+  }
+
+  commitAnswerActionProjection(
+    context: GenerationV2AuthorityTransactionContextV2,
+    pending: PendingAnswerActionV2,
+  ): BranchProjectionV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    if (!isPendingAnswerActionForContextV2(pending, context)) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID')
+    }
+    try {
+      const choice = this.#db.prepare(`UPDATE branch_choice_v2 SET chosen_answer_root_id=?, updated_at_ms=?
+        WHERE branch_id=? AND conversation_id=? AND question_id=?`).run(
+        pending.answerRootId.value, pending.createdAtMs, pending.branchId.value,
+        pending.conversationId.value, pending.questionId.value,
+      )
+      const branch = this.#db.prepare(`UPDATE branch_v2 SET head_message_id=?, updated_at_ms=?
+        WHERE branch_id=? AND conversation_id=? AND deleted_at_ms IS NULL`).run(
+        pending.answerRootId.value, pending.createdAtMs, pending.branchId.value, pending.conversationId.value,
+      )
+      const conversation = this.#db.prepare(`UPDATE conversation_v2 SET updated_at_ms=?
+        WHERE conversation_id=? AND updated_at_ms<=?`).run(
+        pending.createdAtMs, pending.conversationId.value, pending.createdAtMs,
+      )
+      if (choice.changes !== 1 || branch.changes !== 1 || conversation.changes !== 1) {
+        throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+      }
+      if (pending.actionKind === 'retry_replace') {
+        this.#db.prepare(`INSERT INTO branch_answer_hide_v2 (
+          branch_id, conversation_id, question_id, answer_root_id, hidden_at_ms
+        ) VALUES (?, ?, ?, ?, ?)`).run(
+          pending.branchId.value, pending.conversationId.value, pending.questionId.value,
+          pending.targetAnswerRootId!.value, pending.createdAtMs,
+        )
+      }
+    } catch (error) {
+      if (error instanceof ConversationGraphV2RepoError) throw error
+      mapConstraint(error)
+    }
+    return this.#readProjection(pending.branchId.value, pending.questionId.value)
+  }
+
   getBranchProjection(branchIdValue: string, questionIdValue: string): BranchProjectionV2 {
     if (this.#db.inTransaction) {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
@@ -392,7 +583,7 @@ export class ConversationGraphV2Repo {
     if (this.#db.inTransaction) {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
     }
-    return this.#readInitialSendReplayProjection(operationIdValue)
+    return this.#readGenerationReplayProjection(operationIdValue, 'initial_send')
   }
 
   getInitialSendReplayProjectionInTransaction(
@@ -400,15 +591,33 @@ export class ConversationGraphV2Repo {
     operationIdValue: string,
   ): InitialSendReplayProjectionV2 {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
-    return this.#readInitialSendReplayProjection(operationIdValue)
+    return this.#readGenerationReplayProjection(operationIdValue, 'initial_send')
   }
 
-  #readInitialSendReplayProjection(operationIdValue: string): InitialSendReplayProjectionV2 {
+  getGenerationReplayProjectionInTransaction(
+    context: GenerationV2AuthorityTransactionContextV2,
+    operationIdValue: string,
+  ): GenerationReplayProjectionV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    return this.#readGenerationReplayProjection(operationIdValue)
+  }
+
+  #readGenerationReplayProjection(
+    operationIdValue: string,
+    requiredAction?: 'initial_send',
+  ): GenerationReplayProjectionV2 {
     const operationId = GenerationV2Identity.create('operation_id', operationIdValue)
     const row = this.#db.prepare(`SELECT branch_id AS branchId, question_id AS questionId,
       result_answer_root_id AS resultAnswerRootId FROM generation_operation_v2
-      WHERE operation_id=? AND action_kind='initial_send'`).get(operationId.value) as
-      { branchId: unknown; questionId: unknown; resultAnswerRootId: unknown } | undefined
+      WHERE operation_id=?`).get(operationId.value) as
+      { branchId: unknown; questionId: unknown; resultAnswerRootId: unknown; actionKind?: unknown } | undefined
+    if (requiredAction) {
+      const action = this.#db.prepare('SELECT action_kind AS actionKind FROM generation_operation_v2 WHERE operation_id=?')
+        .get(operationId.value) as { actionKind: unknown } | undefined
+      if (!action || action.actionKind !== requiredAction) {
+        throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')
+      }
+    }
     if (!row || typeof row.branchId !== 'string' || typeof row.questionId !== 'string' ||
         typeof row.resultAnswerRootId !== 'string') {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')

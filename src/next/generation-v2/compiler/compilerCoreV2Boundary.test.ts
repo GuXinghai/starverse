@@ -105,6 +105,8 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/deepSeekInitialPreparedRequestCompilerV2.ts'),
       path.resolve('electron/services/deepSeekInitialStreamRunnerV2.ts'),
       path.resolve('electron/services/generationOrphanRecoveryV2.ts'),
+      path.resolve('electron/services/deepSeekPlainTextCommandResultV2.ts'),
+      path.resolve('electron/services/deepSeekPlainTextRetryCoordinatorV2.ts'),
       path.resolve('electron/debug/rawGenerationRequestStore.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
@@ -177,6 +179,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/deepSeekInitialPreparedRequestCompilerV2.ts'),
       path.resolve('electron/services/deepSeekInitialStreamRunnerV2.ts'),
       path.resolve('electron/services/generationOrphanRecoveryV2.ts'),
+      path.resolve('electron/services/deepSeekPlainTextRetryCoordinatorV2.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -236,12 +239,15 @@ describe('Generation Compiler V2 core boundary', () => {
       'electron/services/deepSeekInitialStreamRunnerV2.ts',
     )
     const orphanRecovery = path.resolve('electron/services/generationOrphanRecoveryV2.ts')
+    const commandResult = path.resolve('electron/services/deepSeekPlainTextCommandResultV2.ts')
+    const retryCoordinator = path.resolve('electron/services/deepSeekPlainTextRetryCoordinatorV2.ts')
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
         if (file === adapter || file === requestRepository || file === deepSeekHistoryRepository ||
             file === deepSeekTerminalRepository ||
             file === deepSeekSnapshotCommit || file === initialSendCoordinator ||
-            file === initialPreparedCompiler || file === initialStreamRunner || file === orphanRecovery) continue
+            file === initialPreparedCompiler || file === initialStreamRunner || file === orphanRecovery ||
+            file === commandResult || file === retryCoordinator) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/generationExecutionV2Repo|GenerationExecutionV2Repo/iu)
       }
@@ -264,10 +270,13 @@ describe('Generation Compiler V2 core boundary', () => {
       'electron/services/deepSeekInitialStreamRunnerV2.ts',
     )
     const orphanRecovery = path.resolve('electron/services/generationOrphanRecoveryV2.ts')
+    const commandResult = path.resolve('electron/services/deepSeekPlainTextCommandResultV2.ts')
+    const retryCoordinator = path.resolve('electron/services/deepSeekPlainTextRetryCoordinatorV2.ts')
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
         if (file === adapter || file === deepSeekSnapshotCommit || file === initialSendCoordinator ||
-            file === initialStreamRunner || file === orphanRecovery) continue
+            file === initialStreamRunner || file === orphanRecovery || file === commandResult ||
+            file === retryCoordinator) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/conversationGraphV2Repo|ConversationGraphV2Repo/iu)
       }
@@ -665,6 +674,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('electron/services/deepSeekPlainTextInitialSendCoordinatorV2.ts'),
       path.resolve('electron/services/deepSeekInitialPreparedRequestCompilerV2.ts'),
       path.resolve('electron/services/deepSeekInitialStreamRunnerV2.ts'),
+      path.resolve('electron/services/deepSeekPlainTextRetryCoordinatorV2.ts'),
     ])
     for (const file of productionSources(path.resolve('electron'))) {
       if (deepSeekElectronServices.has(file)) continue
