@@ -95,6 +95,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/generationExecutionV2Repo.ts'),
       path.resolve('infra/db/repo/conversationGraphV2Repo.ts'),
       path.resolve('electron/services/deepSeekStableModelEvidenceV2Service.ts'),
+      path.resolve('electron/services/deepSeekStableGenerationAuthorityV2Service.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
@@ -172,9 +173,12 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('keeps command facts authority transactional, non-executable and outside production consumers', () => {
     const adapter = path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts')
+    const deepSeekGenerationAuthority = path.resolve(
+      'electron/services/deepSeekStableGenerationAuthorityV2Service.ts',
+    )
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === adapter) continue
+        if (file === adapter || file === deepSeekGenerationAuthority) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
           .not.toMatch(/generationCommandFactsAuthorityV2|GenerationCommandFactsAuthorityV2/iu)
       }
@@ -253,6 +257,9 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('keeps runtime capability snapshots complete, structural and non-executable', () => {
     const codecModule = path.resolve('src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts')
+    const deepSeekGenerationAuthority = path.resolve(
+      'electron/services/deepSeekStableGenerationAuthorityV2Service.ts',
+    )
     const source = read('src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts')
     expect(source).toContain("trust: 'decoded_unverified'")
     expect(source).toContain("executionAuthority: 'none'")
@@ -261,7 +268,7 @@ describe('Generation Compiler V2 core boundary', () => {
     expect(source).not.toMatch(/apiKey|authorization|credentialRevision|requestPatch|requestParams|extraBody|wirePath|previous_response_id/iu)
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === codecModule) continue
+        if (file === codecModule || file === deepSeekGenerationAuthority) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file)).not.toMatch(
           /(?:Decoded|Persisted)RuntimeCapabilitySnapshotV2|canonicalizeUnverifiedRuntimeCapabilitySnapshotV2|decodeRuntimeCapabilitySnapshot(?:Json)?V2/u,
         )
@@ -375,11 +382,32 @@ describe('Generation Compiler V2 core boundary', () => {
     )
   })
 
+  it('keeps DeepSeek binding and capability composition main-process-only, branded and dormant', () => {
+    const adapter = path.resolve('electron/services/deepSeekStableGenerationAuthorityV2Service.ts')
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === adapter) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+          .not.toMatch(/deepSeekStableGenerationAuthorityV2Service|VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2/iu)
+      }
+    }
+    const source = read('electron/services/deepSeekStableGenerationAuthorityV2Service.ts')
+    expect(source).toContain("trust: 'verified_deepseek_stable_provider_binding'")
+    expect(source).toContain("trust: 'verified_deepseek_stable_runtime_capability'")
+    expect(source).toContain('isVerifiedDeepSeekStableModelEvidenceV2')
+    expect(source).toContain('isGenerationCommandFactsAuthorityV2')
+    expect(source).not.toMatch(/ipcMain|BrowserWindow|chat\.db|capabilitySeed|modelCatalog|deepseek_official_openai_compat|\/v1|\/beta/iu)
+    expect(source).not.toMatch(/fetch\(|net\.request|compileDeepSeekStableChatRequestV1|PreparedProviderRequest/iu)
+  })
+
   it('limits verified contract references to non-executable snapshot provenance', () => {
     const module = path.resolve(
       'src/next/generation-v2/contracts/providerContractReferenceAuthorityV2.ts',
     )
     const source = read('src/next/generation-v2/contracts/providerContractReferenceAuthorityV2.ts')
+    const deepSeekGenerationAuthority = path.resolve(
+      'electron/services/deepSeekStableGenerationAuthorityV2Service.ts',
+    )
     expect(source).toContain("classification: 'verified_provider_contract_reference_non_executable'")
     expect(source).toContain("usage: 'snapshot_contract_provenance_only'")
     expect(source).toContain("executionAuthority: 'none'")
@@ -387,7 +415,7 @@ describe('Generation Compiler V2 core boundary', () => {
     expect(source).not.toMatch(/ResolvedProviderBindingAuthority|RuntimeCapabilityAuthority|PreparedRequest|ipcMain|fetch\(|net\.request|infra\/db|electron\//iu)
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === module) continue
+        if (file === module || file === deepSeekGenerationAuthority) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file)).not.toMatch(
           /VerifiedProviderContractReferenceV2|verifyProviderContractReferenceV2/u,
         )
@@ -483,9 +511,12 @@ describe('Generation Compiler V2 core boundary', () => {
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/api\.deepseek\.com|deepseek_stable_chat_v1/iu)
     }
-    const deepSeekModelEvidenceService = path.resolve('electron/services/deepSeekStableModelEvidenceV2Service.ts')
+    const deepSeekElectronServices = new Set([
+      path.resolve('electron/services/deepSeekStableModelEvidenceV2Service.ts'),
+      path.resolve('electron/services/deepSeekStableGenerationAuthorityV2Service.ts'),
+    ])
     for (const file of productionSources(path.resolve('electron'))) {
-      if (file === deepSeekModelEvidenceService) continue
+      if (deepSeekElectronServices.has(file)) continue
       expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
         .not.toMatch(/deepSeekStableApiContractV2|generation-v2\/providers\/deepseek/iu)
     }
