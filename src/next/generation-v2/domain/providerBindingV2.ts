@@ -1,4 +1,9 @@
-import { GenerationV2Digest, GenerationV2Identity } from './identityV2'
+import {
+  GenerationV2Digest,
+  GenerationV2Identity,
+  readGenerationV2Digest,
+  readGenerationV2Identity,
+} from './identityV2'
 
 export type GenerationOperationV2 = 'text' | 'image_generate' | 'image_edit' | 'tool_continue'
 
@@ -49,6 +54,14 @@ export class ProviderBindingV2Error extends Error {
 }
 
 type ClosedInput = { readonly [key: string]: unknown }
+
+function deepFreeze<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
+    Object.freeze(value)
+  }
+  return value
+}
 
 function closedObject(value: unknown, allowed: readonly string[]): ClosedInput {
   if (!value || typeof value !== 'object' || Array.isArray(value) ||
@@ -181,7 +194,7 @@ export function decodeProviderBindingRecordV2(value: unknown): DecodedProviderBi
        protocolContractId !== 'openrouter-images-v1' || input.operation !== 'image_generate')) {
     throw new ProviderBindingV2Error('GENERATION_V2_BINDING_INVALID_VALUE')
   }
-  return Object.freeze({
+  return deepFreeze({
     trust: 'decoded_unverified',
     credentialScopeId: GenerationV2Identity.create('credential_scope_id', requiredString(input, 'credentialScopeId')),
     providerId: GenerationV2Identity.create('provider_id', providerId),
@@ -193,5 +206,51 @@ export function decodeProviderBindingRecordV2(value: unknown): DecodedProviderBi
     registryRevision: GenerationV2Identity.create('registry_revision', registryRevision),
     modelId: GenerationV2Identity.create('model_id', requiredString(input, 'modelId')),
     operation: input.operation as GenerationOperationV2,
+  })
+}
+
+export function projectDecodedProviderBindingRecordV2(
+  binding: DecodedProviderBindingRecordV2,
+): Readonly<Record<string, unknown>> {
+  const endpointBinding = binding.endpointBinding.kind === 'pinned'
+    ? {
+        kind: 'pinned',
+        selector: {
+          kind: binding.endpointBinding.selector.kind,
+          providerTag: readGenerationV2Identity(binding.endpointBinding.selector.providerTag, 'provider_tag'),
+          providerSlug: readGenerationV2Identity(binding.endpointBinding.selector.providerSlug, 'provider_slug'),
+          descriptorRevision: readGenerationV2Identity(
+            binding.endpointBinding.selector.descriptorRevision, 'descriptor_revision',
+          ),
+          descriptorDigest: readGenerationV2Digest(
+            binding.endpointBinding.selector.descriptorDigest, 'descriptor_digest',
+          ),
+          selectedBy: binding.endpointBinding.selector.selectedBy,
+          selectedAt: binding.endpointBinding.selector.selectedAt,
+        },
+      }
+    : {
+        kind: 'provider_managed_set',
+        endpointSetRevision: readGenerationV2Identity(
+          binding.endpointBinding.endpointSetRevision, 'endpoint_set_revision',
+        ),
+        descriptors: binding.endpointBinding.descriptors.map((descriptor) => ({
+          endpointId: readGenerationV2Identity(descriptor.endpointId, 'endpoint_id'),
+          descriptorRevision: readGenerationV2Identity(
+            descriptor.descriptorRevision, 'descriptor_revision',
+          ),
+        })),
+      }
+  return deepFreeze({
+    credentialScopeId: readGenerationV2Identity(binding.credentialScopeId, 'credential_scope_id'),
+    providerId: readGenerationV2Identity(binding.providerId, 'provider_id'),
+    endpointProfileId: readGenerationV2Identity(binding.endpointProfileId, 'endpoint_profile_id'),
+    endpointBinding,
+    protocolContractId: readGenerationV2Identity(binding.protocolContractId, 'protocol_contract_id'),
+    contractRevision: readGenerationV2Identity(binding.contractRevision, 'contract_revision'),
+    contractDefinitionDigest: readGenerationV2Digest(binding.contractDefinitionDigest, 'contract_digest'),
+    registryRevision: readGenerationV2Identity(binding.registryRevision, 'registry_revision'),
+    modelId: readGenerationV2Identity(binding.modelId, 'model_id'),
+    operation: binding.operation,
   })
 }

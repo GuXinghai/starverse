@@ -10,6 +10,7 @@ import {
 } from '../domain/identityV2'
 import {
   decodeProviderBindingRecordV2,
+  projectDecodedProviderBindingRecordV2,
   type DecodedProviderBindingRecordV2,
 } from '../domain/providerBindingV2'
 import type {
@@ -285,14 +286,6 @@ function compareCodePoints(left: string, right: string): number {
   return leftPoints.length - rightPoints.length
 }
 
-function deepFreeze<T>(value: T): T {
-  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
-    for (const child of Object.values(value as Record<string, unknown>)) deepFreeze(child)
-    Object.freeze(value)
-  }
-  return value
-}
-
 function requiredString(input: ClosedInput, key: string): string {
   const value = input[key]
   if (typeof value !== 'string') throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
@@ -528,42 +521,6 @@ function serializeBounded(value: unknown): string {
 
 function hash(value: unknown): string {
   return sha256PreparedBytesV2(new TextEncoder().encode(serializeBounded(value)))
-}
-
-function projectProviderBinding(binding: DecodedProviderBindingRecordV2): unknown {
-  const endpointBinding = binding.endpointBinding.kind === 'pinned'
-    ? {
-        kind: 'pinned',
-        selector: {
-          kind: binding.endpointBinding.selector.kind,
-          providerTag: readGenerationV2Identity(binding.endpointBinding.selector.providerTag, 'provider_tag'),
-          providerSlug: readGenerationV2Identity(binding.endpointBinding.selector.providerSlug, 'provider_slug'),
-          descriptorRevision: readGenerationV2Identity(binding.endpointBinding.selector.descriptorRevision, 'descriptor_revision'),
-          descriptorDigest: readGenerationV2Digest(binding.endpointBinding.selector.descriptorDigest, 'descriptor_digest'),
-          selectedBy: binding.endpointBinding.selector.selectedBy,
-          selectedAt: binding.endpointBinding.selector.selectedAt,
-        },
-      }
-    : {
-        kind: 'provider_managed_set',
-        endpointSetRevision: readGenerationV2Identity(binding.endpointBinding.endpointSetRevision, 'endpoint_set_revision'),
-        descriptors: binding.endpointBinding.descriptors.map((descriptor) => ({
-          endpointId: readGenerationV2Identity(descriptor.endpointId, 'endpoint_id'),
-          descriptorRevision: readGenerationV2Identity(descriptor.descriptorRevision, 'descriptor_revision'),
-        })),
-      }
-  return deepFreeze({
-    credentialScopeId: readGenerationV2Identity(binding.credentialScopeId, 'credential_scope_id'),
-    providerId: readGenerationV2Identity(binding.providerId, 'provider_id'),
-    endpointProfileId: readGenerationV2Identity(binding.endpointProfileId, 'endpoint_profile_id'),
-    endpointBinding,
-    protocolContractId: readGenerationV2Identity(binding.protocolContractId, 'protocol_contract_id'),
-    contractRevision: readGenerationV2Identity(binding.contractRevision, 'contract_revision'),
-    contractDefinitionDigest: readGenerationV2Digest(binding.contractDefinitionDigest, 'contract_digest'),
-    registryRevision: readGenerationV2Identity(binding.registryRevision, 'registry_revision'),
-    modelId: readGenerationV2Identity(binding.modelId, 'model_id'),
-    operation: binding.operation,
-  })
 }
 
 function decodeEvidence(value: unknown, includesEntryDigest: boolean): DraftEvidence & { entryDigest?: string } {
@@ -842,7 +799,7 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
   const draft: DraftSnapshot = Object.freeze({
     schemaVersion: 2,
     resolvedAt,
-    binding: projectProviderBinding(binding),
+    binding: projectDecodedProviderBindingRecordV2(binding),
     evidence: Object.freeze(canonicalEvidence),
     fields: Object.freeze(fields),
     tools: Object.freeze(tools),

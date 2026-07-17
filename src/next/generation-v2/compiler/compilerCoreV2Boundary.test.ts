@@ -93,6 +93,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/generationV2AuthorityTransactionInternal.ts'),
       path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts'),
       path.resolve('infra/db/repo/generationExecutionV2Repo.ts'),
+      path.resolve('infra/db/repo/runtimeCapabilityV2Repo.ts'),
       path.resolve('infra/db/repo/conversationGraphV2Repo.ts'),
       path.resolve('electron/services/deepSeekStableModelEvidenceV2Service.ts'),
       path.resolve('electron/services/deepSeekStableGenerationAuthorityV2Service.ts'),
@@ -154,6 +155,7 @@ describe('Generation Compiler V2 core boundary', () => {
       path.resolve('infra/db/repo/attachmentAssetV2Repo.ts'),
       path.resolve('infra/db/repo/generationCommandFactsAuthorityV2.ts'),
       path.resolve('infra/db/repo/generationExecutionV2Repo.ts'),
+      path.resolve('infra/db/repo/runtimeCapabilityV2Repo.ts'),
       path.resolve('infra/db/repo/conversationGraphV2Repo.ts'),
     ])
     for (const root of ['electron', 'infra', 'src']) {
@@ -257,6 +259,8 @@ describe('Generation Compiler V2 core boundary', () => {
 
   it('keeps runtime capability snapshots complete, structural and non-executable', () => {
     const codecModule = path.resolve('src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts')
+    const repositoryAdapter = path.resolve('infra/db/repo/runtimeCapabilityV2Repo.ts')
+    const executionRepository = path.resolve('infra/db/repo/generationExecutionV2Repo.ts')
     const deepSeekGenerationAuthority = path.resolve(
       'electron/services/deepSeekStableGenerationAuthorityV2Service.ts',
     )
@@ -268,12 +272,28 @@ describe('Generation Compiler V2 core boundary', () => {
     expect(source).not.toMatch(/apiKey|authorization|credentialRevision|requestPatch|requestParams|extraBody|wirePath|previous_response_id/iu)
     for (const root of ['electron', 'infra', 'src']) {
       for (const file of productionSources(path.resolve(root))) {
-        if (file === codecModule || file === deepSeekGenerationAuthority) continue
+        if (file === codecModule || file === repositoryAdapter || file === executionRepository ||
+            file === deepSeekGenerationAuthority) continue
         expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file)).not.toMatch(
           /(?:Decoded|Persisted)RuntimeCapabilitySnapshotV2|canonicalizeUnverifiedRuntimeCapabilitySnapshotV2|decodeRuntimeCapabilitySnapshot(?:Json)?V2/u,
         )
       }
     }
+  })
+
+  it('keeps canonical runtime capability persistence dormant and out of legacy data paths', () => {
+    const adapter = path.resolve('infra/db/repo/runtimeCapabilityV2Repo.ts')
+    for (const root of ['electron', 'infra', 'src']) {
+      for (const file of productionSources(path.resolve(root))) {
+        if (file === adapter) continue
+        expect(readFileSync(file, 'utf8'), path.relative(process.cwd(), file))
+          .not.toMatch(/runtimeCapabilityV2Repo|RuntimeCapabilityV2Repo/iu)
+      }
+    }
+    const source = read('infra/db/repo/runtimeCapabilityV2Repo.ts')
+    expect(source).toContain("usage: 'assistant_snapshot_capability_fk_only'")
+    expect(source).toContain("executionAuthority: 'none'")
+    expect(source).not.toMatch(/ipcMain|dbMethodsRegistry|branchContextHandlers|chat\.db|fetch\(|net\.request|raw.*body/iu)
   })
 
   it('keeps the snapshot codec structural, unverified and outside persistence or execution authority', () => {

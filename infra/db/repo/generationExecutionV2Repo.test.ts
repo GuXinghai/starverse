@@ -3,6 +3,11 @@ import { readFileSync } from 'node:fs'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import {
+  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
+  decodeRuntimeCapabilitySnapshotV2,
+} from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
@@ -17,12 +22,57 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from './genera
 const root = path.resolve(process.cwd())
 const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
-const HASH_C = 'c'.repeat(64)
-const HASH_D = 'd'.repeat(64)
+
+function providerBinding() {
+  return {
+    credentialScopeId: 'credential-scope:1',
+    providerId: 'deepseek',
+    endpointProfileId: 'profile:deepseek',
+    endpointBinding: {
+      kind: 'provider_managed_set',
+      endpointSetRevision: 'endpoint-set:1',
+      descriptors: [{ endpointId: 'endpoint:deepseek', descriptorRevision: 'descriptor:1' }],
+    },
+    protocolContractId: 'deepseek-chat-v1',
+    contractRevision: `deepseek-chat-v1:${HASH_A}`,
+    contractDefinitionDigest: HASH_A,
+    registryRevision: `provider-contract-registry-v1:${HASH_B}`,
+    modelId: 'deepseek-chat',
+    operation: 'text',
+  }
+}
+
+function runtimeCapability(binding = providerBinding(), resolvedAt = '2026-07-17T12:00:00.000Z') {
+  return decodeRuntimeCapabilitySnapshotV2(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
+    schemaVersion: 2,
+    resolvedAt,
+    binding,
+    evidence: [{
+      evidenceId: 'test.deepseek.supports',
+      kind: 'official_documentation',
+      effect: 'supports',
+      sourceRef: 'https://api-docs.deepseek.com/api/create-chat-completion',
+      verifiedAt: '2026-07-17T00:00:00.000Z',
+      contentDigest: HASH_A,
+    }],
+    fields: RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((field) => ({
+      path: field, state: 'unavailable', constraints: [], evidenceIds: [],
+    })),
+    tools: [],
+    continuation: { kind: 'none', evidenceIds: ['test.deepseek.supports'] },
+  }))
+}
+
+const capability = runtimeCapability()
 
 function createDb() {
   const db = new BetterSqlite3(':memory:')
   applyGenerationV2Schema(db, root)
+  db.prepare(`INSERT INTO runtime_capability_snapshot_v2
+    VALUES (?, ?, 2, ?, ?, ?, 1)`).run(
+    capability.snapshotHash.value, capability.revision.value, capability.canonicalJson,
+    capability.evidenceDigest.value, capability.semanticFieldsDigest.value,
+  )
   db.prepare('INSERT INTO project_v2 VALUES (?, ?, ?, ?)').run('project:1', 'Project', 1, 1)
   db.prepare('INSERT INTO conversation_v2 VALUES (?, ?, ?, ?, ?)')
     .run('conversation:1', 'project:1', 'Conversation', 2, 2)
@@ -50,7 +100,12 @@ function seedGraph(db: BetterSqlite3.Database, suffix = '1', ordinal = 10) {
   return { questionId, targetId, resultId, branchId }
 }
 
-function snapshotJson(operationId: string, answerRootId: string) {
+function snapshotJson(
+  operationId: string,
+  answerRootId: string,
+  capabilityFact = capability,
+  binding = providerBinding(),
+) {
   const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
     schemaVersion: 2,
     answerRootId,
@@ -70,26 +125,12 @@ function snapshotJson(operationId: string, answerRootId: string) {
       { ownerKind: 'project', ownerId: 'project:1', revision: 'config:project:1' },
       { ownerKind: 'conversation', ownerId: 'conversation:1', revision: 'config:conversation:1' },
     ],
-    providerBinding: {
-      credentialScopeId: 'credential-scope:1',
-      providerId: 'deepseek',
-      endpointProfileId: 'profile:deepseek',
-      endpointBinding: {
-        kind: 'provider_managed_set',
-        endpointSetRevision: 'endpoint-set:1',
-        descriptors: [{ endpointId: 'endpoint:deepseek', descriptorRevision: 'descriptor:1' }],
-      },
-      protocolContractId: 'deepseek-chat-v1',
-      contractRevision: `deepseek-chat-v1:${HASH_A}`,
-      contractDefinitionDigest: HASH_A,
-      registryRevision: `provider-contract-registry-v1:${HASH_B}`,
-      modelId: 'deepseek-chat',
-      operation: 'text',
-    },
+    providerBinding: binding,
     capabilityBinding: {
-      capabilityRevision: 'capability:1',
-      evidenceDigest: HASH_C,
-      semanticFieldsDigest: HASH_D,
+      capabilityRevision: capabilityFact.revision.value,
+      evidenceDigest: capabilityFact.evidenceDigest.value,
+      semanticFieldsDigest: capabilityFact.semanticFieldsDigest.value,
+      snapshotHash: capabilityFact.snapshotHash.value,
     },
     attachmentProviderFileBindings: [],
     toolAuthority: { kind: 'none' },
@@ -121,9 +162,9 @@ function insertRequest(db: BetterSqlite3.Database, operationId: string, answerRo
     compiler_ledger_hash, prepared_body_sha256, prepared_body_byte_length,
     state, created_at_ms, updated_at_ms
   ) VALUES (?, 1, ?, ?, 'deepseek', 'profile:deepseek', 'credential-scope:1',
-    'deepseek-chat-v1', 'deepseek-chat', 'endpoint:deepseek', 'capability:1',
+    'deepseek-chat-v1', 'deepseek-chat', 'endpoint:deepseek', ?,
     '[]', ?, ?, 2, 'prepared', 101, 101)`).run(
-    operationId, answerRootId, snapshot.snapshot_hash, HASH_A, HASH_B,
+    operationId, answerRootId, snapshot.snapshot_hash, capability.revision.value, HASH_A, HASH_B,
   )
 }
 
@@ -185,6 +226,33 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
     } finally { db.close() }
   })
 
+  it('rejects an answer snapshot whose provider binding differs from its exact capability record', () => {
+    const db = createDb()
+    try {
+      const graph = seedGraph(db)
+      const repo = new GenerationExecutionV2Repo(db)
+      const mismatched = runtimeCapability({ ...providerBinding(), modelId: 'deepseek-other' })
+      db.prepare(`INSERT INTO runtime_capability_snapshot_v2
+        VALUES (?, ?, 2, ?, ?, ?, 2)`).run(
+        mismatched.snapshotHash.value,
+        mismatched.revision.value,
+        mismatched.canonicalJson,
+        mismatched.evidenceDigest.value,
+        mismatched.semanticFieldsDigest.value,
+      )
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        expect(() => repo.insertOperationAndSnapshot(context, {
+          ...commandInput(graph),
+          snapshot: snapshotJson('operation:1', graph.resultId, mismatched, providerBinding()),
+        })).toThrow('GENERATION_V2_EXECUTION_STATE_INVALID')
+      })
+      expect(db.prepare('SELECT count(*) AS count FROM generation_operation_v2').get())
+        .toEqual({ count: 0 })
+      expect(db.prepare('SELECT count(*) AS count FROM assistant_generation_snapshot_v2').get())
+        .toEqual({ count: 0 })
+    } finally { db.close() }
+  })
+
   it('fails closed on a relationally valid but noncanonical operation fingerprint', () => {
     const db = createDb()
     try {
@@ -200,8 +268,10 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
         ) VALUES (?, 'retry_as_new', ?, ?, 'conversation:1', ?, ?, ?, 'committed', 100, 100)`)
           .run(operationId, '0'.repeat(64), graph.branchId, graph.questionId, graph.targetId, graph.resultId)
         db.prepare(`INSERT INTO assistant_generation_snapshot_v2
-          VALUES (?, ?, 2, ?, ?, 100)`).run(
+          VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?, 100)`).run(
           graph.resultId, operationId, snapshot, decoded.snapshotHash.value,
+          capability.revision.value, capability.snapshotHash.value,
+          capability.evidenceDigest.value, capability.semanticFieldsDigest.value,
         )
       })()
       expect(() => new GenerationExecutionV2Repo(db).getOperation(operationId))

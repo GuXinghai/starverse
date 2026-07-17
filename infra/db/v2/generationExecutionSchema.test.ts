@@ -10,6 +10,10 @@ const HASH_B = 'b'.repeat(64)
 function createDb() {
   const db = new BetterSqlite3(':memory:')
   applyGenerationV2Schema(db, root)
+  db.prepare(`INSERT INTO runtime_capability_snapshot_v2
+    VALUES (?, 'capability:1', 2, ?, ?, ?, 1)`).run(
+    HASH_A, '{"binding":{"providerId":"test"}}', HASH_A, HASH_B,
+  )
   return db
 }
 
@@ -73,8 +77,12 @@ function insertOperationAndSnapshot(
       .run(operationId, action, options.fingerprint ?? HASH_A, graph.branchId,
         graph.questionId, target, graph.resultId)
     db.prepare(`INSERT INTO assistant_generation_snapshot_v2
-      VALUES (?, ?, 2, ?, ?, 100)`)
-      .run(graph.resultId, operationId, '{"version":2}', HASH_A)
+      VALUES (?, ?, 2, ?, ?, 'capability:1', ?, ?, ?, 100)`)
+      .run(
+        graph.resultId, operationId,
+        '{"providerBinding":{"providerId":"test"},"version":2}',
+        HASH_A, HASH_A, HASH_A, HASH_B,
+      )
   })()
   return operationId
 }
