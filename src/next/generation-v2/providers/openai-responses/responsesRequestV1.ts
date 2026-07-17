@@ -35,6 +35,7 @@ type ImageGenerationTool = Readonly<{
   partial_images?: number
 }>
 export type OpenAIResponsesToolV1 = FunctionTool | WebSearchTool | ImageGenerationTool
+type OpenAIResponsesToolChoiceV1 = 'none' | 'auto' | 'required' | Readonly<{ type: 'function'; name: string }>
 
 export type OpenAIResponsesRequestV1 = Readonly<{
   model: string
@@ -49,7 +50,7 @@ export type OpenAIResponsesRequestV1 = Readonly<{
   max_output_tokens?: number
   text?: Readonly<{ verbosity: 'low' | 'medium' | 'high' }>
   tools?: readonly OpenAIResponsesToolV1[]
-  tool_choice?: 'none' | 'auto' | 'required'
+  tool_choice?: OpenAIResponsesToolChoiceV1
   max_tool_calls?: number
   parallel_tool_calls?: boolean
   service_tier?: 'auto' | 'default' | 'flex' | 'priority'
@@ -267,8 +268,16 @@ export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponses
   const reasoning = decodeReasoning(input.reasoning)
   const generation = decodeGeneration(input.generation)
   const tools = decodeTools(input.tools)
-  if (input.toolChoice !== undefined && input.toolChoice !== 'none' && input.toolChoice !== 'auto' && input.toolChoice !== 'required') {
-    return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+  let toolChoice: OpenAIResponsesToolChoiceV1 | undefined
+  if (input.toolChoice === 'none' || input.toolChoice === 'auto' || input.toolChoice === 'required') {
+    toolChoice = input.toolChoice
+  } else if (input.toolChoice !== undefined) {
+    const choice = closedObject(input.toolChoice, ['type', 'name'], ['type', 'name'])
+    if (choice.type !== 'function' || typeof choice.name !== 'string' || !TOOL_NAME_PATTERN.test(choice.name) ||
+        !tools?.some((tool) => tool.type === 'function' && tool.name === choice.name)) {
+      return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+    }
+    toolChoice = Object.freeze({ type: 'function', name: choice.name })
   }
   if (input.toolChoice !== undefined && tools === undefined) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   if (input.maxToolCalls !== undefined && (!Number.isSafeInteger(input.maxToolCalls) || (input.maxToolCalls as number) < 1)) {
@@ -299,7 +308,7 @@ export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponses
     ...(generation.maxOutputTokens === undefined ? {} : { max_output_tokens: generation.maxOutputTokens }),
     ...(generation.verbosity === undefined ? {} : { text: Object.freeze({ verbosity: generation.verbosity }) }),
     ...(tools === undefined ? {} : { tools }),
-    ...(input.toolChoice === undefined ? {} : { tool_choice: input.toolChoice as 'none' | 'auto' | 'required' }),
+    ...(toolChoice === undefined ? {} : { tool_choice: toolChoice }),
     ...(input.maxToolCalls === undefined ? {} : { max_tool_calls: input.maxToolCalls as number }),
     ...(input.parallelToolCalls === undefined ? {} : { parallel_tool_calls: input.parallelToolCalls }),
     ...(input.serviceTier === undefined ? {} : { service_tier: input.serviceTier as 'auto' | 'default' | 'flex' | 'priority' }),

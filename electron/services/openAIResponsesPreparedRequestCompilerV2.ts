@@ -1,6 +1,7 @@
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { isOpenAIResponsesRequestHistoryFactForContextV2, type OpenAIResponsesRequestHistoryFactV2 } from '../../infra/db/repo/openAIResponsesNativeHistoryV2Repo'
+import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
 import { isReviewedProviderContractDefinitionV2, readReviewedOpenAIResponsesDefinitionV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
 import { isVerifiedProviderContractReferenceV2, verifyProviderContractReferenceV2 } from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
@@ -11,6 +12,7 @@ import { projectOpenAIResponsesIntentV1 } from '../../src/next/generation-v2/pro
 import { isVerifiedOpenAIResponsesEndpointProfileV2, readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 import { issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 
 export class OpenAIResponsesPreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:
@@ -27,6 +29,7 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
   execution: GenerationExecutionOperationBundleV2
   history: OpenAIResponsesRequestHistoryFactV2
+  toolRegistry: ToolRegistryRepositoryFactV2 | null
 }>): PreparedProviderRequestV2 {
   if (!isGenerationExecutionOperationBundleForContextV2(input.execution, input.context) ||
       !isOpenAIResponsesRequestHistoryFactForContextV2(input.history, input.context)) {
@@ -52,8 +55,21 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
       binding.endpointBinding.endpointSetRevision.value !== profile.endpointSetRevision.value ||
       binding.endpointBinding.descriptors[0].descriptorRevision.value !== profile.descriptor.descriptorRevision.value ||
       capability.continuation.kind !== 'client_managed_native_replay' ||
-      capability.continuation.artifactKind !== OPENAI_RESPONSES_ARTIFACT_KIND_V2 || snapshot.toolAuthority.kind !== 'none') {
+      capability.continuation.artifactKind !== OPENAI_RESPONSES_ARTIFACT_KIND_V2) {
     throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_BINDING_INVALID')
+  }
+  const tools = snapshot.semanticIntent.tools
+  if (tools.mode === 'enabled') {
+    if (snapshot.toolAuthority.kind !== 'registry' ||
+        !isToolRegistryRepositoryFactForContextV2(input.toolRegistry, input.context) ||
+        input.toolRegistry.registry.revision !== snapshot.toolAuthority.toolRegistryRevision.value ||
+        input.toolRegistry.registry.definitionsDigest !== snapshot.toolAuthority.toolDefinitionsDigest.value ||
+        stableSerializeProviderRequestV2(input.toolRegistry.selectedDefinitions.map((tool) => tool.toolId)) !==
+          stableSerializeProviderRequestV2(tools.allowedToolIds.map((tool) => tool.value))) {
+      throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
+    }
+  } else if (snapshot.toolAuthority.kind !== 'none' || input.toolRegistry !== null) {
+    throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
   }
   const projection = projectOpenAIResponsesIntentV1(projectGenerationIntentLayerV2(snapshot.semanticIntent))
   if (projection.issues.length > 0) {
@@ -64,12 +80,30 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     const state = fields.get(value.semanticPath as never)?.state
     return state !== 'supported' && state !== 'requires_confirmation'
   })) throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_CAPABILITY_MISMATCH')
+  let toolChoice: 'auto' | 'none' | 'required' | Readonly<{ type: 'function'; name: string }> | undefined
+  if (tools.mode === 'enabled' && tools.toolChoice.mode !== 'omitted') {
+    const semanticToolChoice = tools.toolChoice
+    if (semanticToolChoice.mode === 'named') {
+      const selected = input.toolRegistry?.selectedDefinitions.find((tool) =>
+        tool.toolId === semanticToolChoice.toolId.value)
+      if (!selected) throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
+      toolChoice = Object.freeze({ type: 'function', name: selected.function.name })
+    } else toolChoice = semanticToolChoice.mode
+  }
+  const functionTools = input.toolRegistry?.selectedDefinitions.map((tool) => Object.freeze({
+    type: 'function' as const, name: tool.function.name,
+    ...(tool.function.description === undefined ? {} : { description: tool.function.description }),
+    parameters: tool.function.parameters ?? Object.freeze({}), strict: false,
+  })) ?? []
   const compiled = compileOpenAIResponsesRequestV1({
     model: binding.modelId.value, priorArtifact: input.history.priorArtifact,
     clientItems: input.history.clientItems,
     ...(projection.request.reasoning === undefined ? {} : { reasoning: projection.request.reasoning }),
     generation: projection.request.generation,
-    ...(projection.request.tools === undefined ? {} : { tools: projection.request.tools }),
+    ...((projection.request.tools === undefined && functionTools.length === 0) ? {} : {
+      tools: [...functionTools, ...(projection.request.tools ?? [])],
+    }),
+    ...(toolChoice === undefined ? {} : { toolChoice }),
     ...(projection.request.maxToolCalls === undefined ? {} : { maxToolCalls: projection.request.maxToolCalls }),
     ...(projection.request.parallelToolCalls === undefined ? {} : { parallelToolCalls: projection.request.parallelToolCalls }),
     ...(projection.request.serviceTier === undefined ? {} : { serviceTier: projection.request.serviceTier }),

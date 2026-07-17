@@ -12,7 +12,7 @@ import {
 } from '../../src/next/generation-v2/providers/deepseek/toolContinuationCommandV2'
 import { compileDeepSeekPreparedRequestV2 } from './deepSeekInitialPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
-import { loadDeepSeekSnapshotToolRegistryAuthorityV2 } from './deepSeekToolRegistryAuthorityV2'
+import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
 
 export class DeepSeekToolContinuationCoordinatorV2Error extends Error {
   constructor(readonly code:
@@ -54,7 +54,7 @@ export function createDeepSeekToolContinuationCoordinatorV2(input: Readonly<{
           'GENERATION_V2_DEEPSEEK_TOOL_CONTINUATION_STATE_INVALID',
         )
       }
-      const toolRegistry = loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
+      const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
       if (!toolRegistry) {
         throw new DeepSeekToolContinuationCoordinatorV2Error(
           'GENERATION_V2_DEEPSEEK_TOOL_CONTINUATION_STATE_INVALID',
@@ -110,7 +110,7 @@ export function createDeepSeekToolContinuationCoordinatorV2(input: Readonly<{
             'GENERATION_V2_DEEPSEEK_TOOL_CONTINUATION_STATE_INVALID',
           )
         }
-        const toolRegistry = loadDeepSeekSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
+        const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
         if (!toolRegistry) {
           throw new DeepSeekToolContinuationCoordinatorV2Error(
             'GENERATION_V2_DEEPSEEK_TOOL_CONTINUATION_STATE_INVALID',

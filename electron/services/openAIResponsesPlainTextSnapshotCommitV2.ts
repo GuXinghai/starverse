@@ -27,6 +27,10 @@ import {
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo, isRuntimeCapabilityRepositoryFactV2 } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import {
+  isToolRegistryRepositoryFactForContextV2,
+  type ToolRegistryRepositoryFactV2,
+} from '../../infra/db/repo/toolRegistryV2Repo'
+import {
   isOpenAIResponsesPlainTextInitialSendCommandV2,
   type OpenAIResponsesPlainTextInitialSendCommandV2,
 } from '../../src/next/generation-v2/providers/openai-responses/plainTextInitialSendCommandV2'
@@ -70,6 +74,27 @@ function fail(code: OpenAIResponsesPlainTextSnapshotCommitV2Error['code']): neve
   throw new OpenAIResponsesPlainTextSnapshotCommitV2Error(code)
 }
 
+function snapshotToolAuthority(
+  context: GenerationV2AuthorityTransactionContextV2,
+  commandFacts: GenerationCommandFactsAuthorityV2,
+  toolRegistry: ToolRegistryRepositoryFactV2 | null,
+): Readonly<Record<string, unknown>> {
+  const tools = commandFacts.semanticIntent.tools
+  if (tools.mode === 'disabled') {
+    if (toolRegistry !== null) return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
+    return Object.freeze({ kind: 'none' })
+  }
+  if (!isToolRegistryRepositoryFactForContextV2(toolRegistry, context) ||
+      stableSerializeProviderRequestV2(toolRegistry.selectedDefinitions.map((tool) => tool.toolId)) !==
+        stableSerializeProviderRequestV2(tools.allowedToolIds.map((tool) => tool.value))) {
+    return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
+  }
+  return Object.freeze({
+    kind: 'registry', toolRegistryRevision: toolRegistry.registry.revision,
+    toolDefinitionsDigest: toolRegistry.registry.definitionsDigest,
+  })
+}
+
 export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
   executionRepo: GenerationExecutionV2Repo
@@ -79,6 +104,7 @@ export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: R
   commandFacts: GenerationCommandFactsAuthorityV2
   binding: VerifiedOpenAIResponsesProviderBindingAuthorityV2
   capability: VerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2
+  toolRegistry: ToolRegistryRepositoryFactV2 | null
 }>): OpenAIResponsesPlainTextSnapshotCommitResultV2 {
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
@@ -102,7 +128,7 @@ export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: R
   const intent = input.commandFacts.semanticIntent
   if (intent.attachments.length !== 0 || input.commandFacts.attachmentSet.attachments.length !== 0 ||
       input.commandFacts.attachmentSet.providerFileRequirements.length !== 0 ||
-      input.commandFacts.attachmentSet.requiresProviderFileAuthority || intent.tools.mode !== 'disabled') {
+      input.commandFacts.attachmentSet.requiresProviderFileAuthority) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
   }
   input.binding.assertCurrent()
@@ -135,7 +161,8 @@ export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: R
       semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
       snapshotHash: input.capability.snapshot.snapshotHash.value,
     },
-    attachmentProviderFileBindings: [], toolAuthority: { kind: 'none' },
+    attachmentProviderFileBindings: [],
+    toolAuthority: snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry),
   })
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(record)
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
@@ -232,6 +259,7 @@ export function commitVerifiedOpenAIResponsesPlainTextRegenerateSnapshotV2(input
   commandFacts: GenerationCommandFactsAuthorityV2
   binding: VerifiedOpenAIResponsesProviderBindingAuthorityV2
   capability: VerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2
+  toolRegistry: ToolRegistryRepositoryFactV2 | null
 }>): OpenAIResponsesPlainTextSnapshotCommitResultV2 {
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
@@ -256,7 +284,7 @@ export function commitVerifiedOpenAIResponsesPlainTextRegenerateSnapshotV2(input
   const intent = input.commandFacts.semanticIntent
   if (intent.attachments.length !== 0 || input.commandFacts.attachmentSet.attachments.length !== 0 ||
       input.commandFacts.attachmentSet.providerFileRequirements.length !== 0 ||
-      input.commandFacts.attachmentSet.requiresProviderFileAuthority || intent.tools.mode !== 'disabled') {
+      input.commandFacts.attachmentSet.requiresProviderFileAuthority) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
   }
   input.binding.assertCurrent()
@@ -294,7 +322,7 @@ export function commitVerifiedOpenAIResponsesPlainTextRegenerateSnapshotV2(input
       snapshotHash: input.capability.snapshot.snapshotHash.value,
     },
     attachmentProviderFileBindings: [],
-    toolAuthority: { kind: 'none' },
+    toolAuthority: snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry),
   })
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(record)
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
@@ -331,6 +359,7 @@ export function commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2(input
   commandFacts: GenerationCommandFactsAuthorityV2
   binding: VerifiedOpenAIResponsesProviderBindingAuthorityV2
   capability: VerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2
+  toolRegistry: ToolRegistryRepositoryFactV2 | null
 }>): OpenAIResponsesPlainTextSnapshotCommitResultV2 {
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
@@ -356,7 +385,7 @@ export function commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2(input
   const intent = input.commandFacts.semanticIntent
   if (intent.attachments.length !== 0 || input.commandFacts.attachmentSet.attachments.length !== 0 ||
       input.commandFacts.attachmentSet.providerFileRequirements.length !== 0 ||
-      input.commandFacts.attachmentSet.requiresProviderFileAuthority || intent.tools.mode !== 'disabled') {
+      input.commandFacts.attachmentSet.requiresProviderFileAuthority) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
   }
   input.binding.assertCurrent()
@@ -391,7 +420,8 @@ export function commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2(input
       semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
       snapshotHash: input.capability.snapshot.snapshotHash.value,
     },
-    attachmentProviderFileBindings: [], toolAuthority: { kind: 'none' },
+    attachmentProviderFileBindings: [],
+    toolAuthority: snapshotToolAuthority(input.context, input.commandFacts, input.toolRegistry),
   })
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(record)
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
