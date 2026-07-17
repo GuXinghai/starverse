@@ -6,6 +6,16 @@ import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from './tes
 const root = path.resolve(process.cwd())
 const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
+const ARTIFACT_KIND = 'deepseek_stable_ordered_native_messages_v2'
+const ARTIFACT_JSON = JSON.stringify({
+  schemaVersion: 2,
+  artifactKind: ARTIFACT_KIND,
+  artifactCodecVersion: 2,
+  lineageDepth: 1,
+  parentArtifactHash: null,
+  orderedEntries: [],
+  artifactHash: HASH_B,
+})
 
 function createDb() {
   const db = new BetterSqlite3(':memory:')
@@ -394,10 +404,15 @@ describe('Generation V2 provider-neutral execution schema', () => {
         .run('{"kind":"cancelled"}', operationId))
         .toThrow('GENERATION_V2_ATTEMPT_TERMINAL_CONFLICT')
 
+      expect(() => db.prepare(`INSERT INTO generation_native_artifact_v2
+        VALUES (?, 1, ?, ?, 2, ?, ?, 104)`)
+        .run(graph.resultId, operationId, ARTIFACT_KIND,
+          ARTIFACT_JSON.replace(ARTIFACT_KIND, 'wrong-kind'), HASH_B))
+        .toThrow('GENERATION_V2_NATIVE_ARTIFACT_ENVELOPE_MISMATCH')
       db.prepare(`INSERT INTO generation_native_artifact_v2
-        VALUES (?, 1, ?, 'deepseek-native-history', 1, ?, ?, 104)`)
-        .run(graph.resultId, operationId, '{"messages":[]}', HASH_B)
-      expect(() => db.prepare(`UPDATE generation_native_artifact_v2 SET codec_version=2
+        VALUES (?, 1, ?, ?, 2, ?, ?, 104)`)
+        .run(graph.resultId, operationId, ARTIFACT_KIND, ARTIFACT_JSON, HASH_B)
+      expect(() => db.prepare(`UPDATE generation_native_artifact_v2 SET codec_version=3
         WHERE answer_root_id=?`).run(graph.resultId))
         .toThrow('GENERATION_V2_NATIVE_ARTIFACT_IMMUTABLE')
       expect(db.pragma('foreign_key_check')).toEqual([])
@@ -418,8 +433,8 @@ describe('Generation V2 provider-neutral execution schema', () => {
         WHERE operation_id=? AND request_sequence=1 AND attempt=1`)
         .run('{"kind":"failed"}', HASH_A, operationId)
       db.prepare(`INSERT INTO generation_native_artifact_v2
-        VALUES (?, 1, ?, 'deepseek-native-history', 1, ?, ?, 104)`)
-        .run(graph.resultId, operationId, '{"messages":[]}', HASH_B)
+        VALUES (?, 1, ?, ?, 2, ?, ?, 104)`)
+        .run(graph.resultId, operationId, ARTIFACT_KIND, ARTIFACT_JSON, HASH_B)
 
       expect(() => db.prepare('DELETE FROM generation_native_artifact_v2').run())
         .toThrow('GENERATION_V2_NATIVE_ARTIFACT_DELETE_FORBIDDEN')

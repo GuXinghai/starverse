@@ -252,9 +252,9 @@ const DEEPSEEK_STABLE_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
         sha256: '0022edabf76e51ce88fc6d45310ad889b8a84fd037c72c287944449ba8a42cc7',
       }),
       Object.freeze({
-        id: 'deepseek-stable-owner-capability-policy-20260717',
-        path: 'docs/architecture/generation-compiler-v2/evidence/deepseek-stable-owner-capability-policy-20260717.json',
-        sha256: '7ce7739b2235ea7b7bca06214eef2b752d254ff6a0f2035333c32c8b089bc91e',
+        id: 'deepseek-stable-owner-capability-policy-v2-20260717',
+        path: 'docs/architecture/generation-compiler-v2/evidence/deepseek-stable-owner-capability-policy-v2-20260717.json',
+        sha256: 'b8750879b09cca9dfd7d78dfeb4f122142289da169e4c770af090db1e05c8ce0',
       }),
     ]),
   }),

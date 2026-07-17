@@ -533,6 +533,18 @@ CREATE TABLE IF NOT EXISTS generation_native_artifact_v2 (
     ON DELETE CASCADE
 );
 
+CREATE TRIGGER IF NOT EXISTS trg_generation_native_artifact_v2_validate_envelope
+AFTER INSERT ON generation_native_artifact_v2
+BEGIN
+  SELECT CASE WHEN json_type(NEW.artifact_json, '$.artifactKind') <> 'text'
+    OR json_extract(NEW.artifact_json, '$.artifactKind') <> NEW.artifact_kind
+    OR json_type(NEW.artifact_json, '$.artifactCodecVersion') <> 'integer'
+    OR json_extract(NEW.artifact_json, '$.artifactCodecVersion') <> NEW.codec_version
+    OR json_type(NEW.artifact_json, '$.artifactHash') <> 'text'
+    OR json_extract(NEW.artifact_json, '$.artifactHash') <> NEW.artifact_hash
+    THEN RAISE(ABORT, 'GENERATION_V2_NATIVE_ARTIFACT_ENVELOPE_MISMATCH') END;
+END;
+
 CREATE TRIGGER IF NOT EXISTS trg_generation_native_artifact_v2_immutable
 BEFORE UPDATE ON generation_native_artifact_v2
 BEGIN

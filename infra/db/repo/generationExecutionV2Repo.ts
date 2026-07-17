@@ -3,7 +3,10 @@ import {
   decodeAssistantAnswerGenerationSnapshotJsonV2,
   type DecodedAssistantAnswerGenerationSnapshotV2,
 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { decodeRuntimeCapabilitySnapshotJsonV2 } from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import {
+  decodeRuntimeCapabilitySnapshotJsonV2,
+  type DecodedRuntimeCapabilitySnapshotV2,
+} from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { projectDecodedProviderBindingRecordV2 } from '../../../src/next/generation-v2/domain/providerBindingV2'
 import {
   ConversationGraphV2Identity,
@@ -64,6 +67,7 @@ export type GenerationExecutionOperationRepositoryFactV2 = Readonly<{
 export type GenerationExecutionOperationBundleV2 = Readonly<{
   operation: GenerationExecutionOperationRepositoryFactV2
   snapshot: DecodedAssistantAnswerGenerationSnapshotV2
+  capability: DecodedRuntimeCapabilitySnapshotV2
 }>
 
 export type GenerationExecutionAttemptRepositoryFactV2 = Readonly<{
@@ -127,6 +131,8 @@ type AttemptRow = {
 }
 
 const operationFacts = new WeakSet<object>()
+const operationBundles = new WeakSet<object>()
+const operationBundleContexts = new WeakMap<object, GenerationV2AuthorityTransactionContextV2>()
 const attemptFacts = new WeakSet<object>()
 
 function closedObject(value: unknown, expected: readonly string[]): Readonly<Record<string, unknown>> {
@@ -231,7 +237,9 @@ function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperati
       terminalAtMs,
     })
     operationFacts.add(operation)
-    return Object.freeze({ operation, snapshot })
+    const bundle = Object.freeze({ operation, snapshot, capability })
+    operationBundles.add(bundle)
+    return bundle
   } catch (error) {
     if (error instanceof GenerationExecutionV2RepoError) throw error
     throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
@@ -298,6 +306,14 @@ export function isGenerationExecutionOperationRepositoryFactV2(
   value: unknown,
 ): value is GenerationExecutionOperationRepositoryFactV2 {
   return Boolean(value && typeof value === 'object' && operationFacts.has(value))
+}
+
+export function isGenerationExecutionOperationBundleForContextV2(
+  value: unknown,
+  context: GenerationV2AuthorityTransactionContextV2,
+): value is GenerationExecutionOperationBundleV2 {
+  return Boolean(value && typeof value === 'object' && operationBundles.has(value) &&
+    operationBundleContexts.get(value) === context)
 }
 
 export function isGenerationExecutionAttemptRepositoryFactV2(
@@ -399,11 +415,19 @@ export class GenerationExecutionV2Repo {
       WHERE operation.operation_id = ?`).get(id.value) as OperationJoinedRow | undefined
     if (!row) throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_NOT_FOUND')
     const bundle = decodeOperationRow(row)
+    if (context) operationBundleContexts.set(bundle, context)
     if (context && trackRollback) {
       registerGenerationV2AuthorityTransactionParticipantV2(context, this.#db, {
         preCommit: () => undefined,
-        committed: () => undefined,
-        rolledBack: () => { operationFacts.delete(bundle.operation) },
+        committed: () => {
+          operationBundles.delete(bundle)
+          operationBundleContexts.delete(bundle)
+        },
+        rolledBack: () => {
+          operationFacts.delete(bundle.operation)
+          operationBundles.delete(bundle)
+          operationBundleContexts.delete(bundle)
+        },
       })
     }
     return bundle

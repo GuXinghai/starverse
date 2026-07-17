@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
+import { isGenerationRequestRepositoryFactV2 } from '../../infra/db/repo/generationRequestV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 
 const mocks = vi.hoisted(() => ({
@@ -23,6 +24,10 @@ vi.mock('../credentials/epoch2RuntimeCredentialService', () => ({
 }))
 
 import { createDeepSeekPlainTextInitialSendCoordinatorV2 } from './deepSeekPlainTextInitialSendCoordinatorV2'
+import {
+  completeDeepSeekNativeRequestV2,
+  serializeDeepSeekNativeHistoryArtifactV2,
+} from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
 
 const scope = 'credential-scope-v2:'.concat('a'.repeat(64)) as never
 
@@ -84,6 +89,30 @@ function coordinator(db: BetterSqlite3.Database, failCredential = false) {
   })
 }
 
+function completeFirstRequest(db: BetterSqlite3.Database, answerRootId: string): void {
+  const artifact = completeDeepSeekNativeRequestV2({
+    priorArtifact: null,
+    clientEntries: [{ kind: 'client', message: { role: 'user', content: 'hello' } }],
+    assistantMessage: { role: 'assistant', content: 'first' },
+    generatedWithThinking: 'disabled',
+  })
+  db.prepare(`INSERT INTO generation_attempt_v2
+    VALUES ('operation:1', 1, 1, 'open', NULL, NULL, 101, NULL)`).run()
+  db.prepare("UPDATE generation_request_v2 SET state='streaming', updated_at_ms=102 WHERE operation_id='operation:1'").run()
+  db.prepare("UPDATE generation_operation_v2 SET state='streaming', updated_at_ms=103 WHERE operation_id='operation:1'").run()
+  db.prepare(`UPDATE generation_attempt_v2 SET state='terminal', outcome_json=?,
+    terminal_fingerprint=?, terminal_at_ms=104 WHERE operation_id='operation:1'`)
+    .run('{"kind":"provider_completed"}', 'a'.repeat(64))
+  db.prepare("UPDATE generation_request_v2 SET state='completed', updated_at_ms=105, terminal_at_ms=105 WHERE operation_id='operation:1'").run()
+  db.prepare("UPDATE generation_operation_v2 SET state='completed', updated_at_ms=106, terminal_at_ms=106 WHERE operation_id='operation:1'").run()
+  db.prepare("UPDATE message_v2 SET status='completed', updated_at_ms=106 WHERE message_id=?").run(answerRootId)
+  db.prepare(`INSERT INTO generation_native_artifact_v2
+    VALUES (?, 1, 'operation:1', ?, ?, ?, ?, 106)`).run(
+    answerRootId, artifact.artifactKind, artifact.artifactCodecVersion,
+    serializeDeepSeekNativeHistoryArtifactV2(artifact), artifact.artifactHash,
+  )
+}
+
 beforeEach(() => {
   mocks.fetch.mockReset()
   vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-17T12:00:00.000Z'))
@@ -91,6 +120,57 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 describe('DeepSeek plain-text initial-send coordinator V2', () => {
+  it('compiles exact first-request bytes and exhaustive ledger only from transaction repository facts', async () => {
+    const db = database()
+    try {
+      const config = new GenerationConfigV2Repo(db)
+      const currentConfig = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope(
+        'conversation', 'conversation:1', currentConfig.configRevision.value, {
+        schemaVersion: 2,
+        generation: { temperature: 0.7, topP: 0.8 },
+      })
+      mocks.fetch.mockResolvedValueOnce(response())
+      const result = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const prepared = result.preparedRequest
+      expect(prepared).toMatchObject({
+        operationId: 'operation:1', requestSequence: 1, plannedAttempt: 1,
+        providerId: 'deepseek', endpointProfileId: 'deepseek-stable-api-v1',
+        contractId: 'deepseek-stable-chat-v1', modelId: 'deepseek-v4-pro',
+        endpoint: 'https://api.deepseek.com/chat/completions', method: 'POST',
+      })
+      expect(JSON.parse(prepared.body.copyUtf8Text())).toEqual({
+        messages: [{ role: 'user', content: 'hello' }],
+        model: 'deepseek-v4-pro',
+        stream: true,
+        stream_options: { include_usage: true },
+        temperature: 0.7,
+        thinking: { type: 'disabled' },
+        top_p: 0.8,
+      })
+      expect(prepared.bodySha256).toBe(prepared.body.sha256)
+      expect(isGenerationRequestRepositoryFactV2(result.request)).toBe(true)
+      expect(result.request).toMatchObject({
+        operationId: 'operation:1', answerRootId: 'answer:2', requestSequence: 1,
+        preparedBodySha256: prepared.bodySha256,
+        preparedBodyByteLength: prepared.bodyByteLength,
+        compilerLedgerHash: prepared.ledger.sha256,
+      })
+      expect(db.prepare('SELECT count(*) AS count FROM generation_request_v2').get()).toEqual({ count: 1 })
+      expect(prepared.ledger.entries).toEqual([
+        expect.objectContaining({ path: 'generation.temperature', disposition: 'encoded', nativeField: 'temperature' }),
+        expect.objectContaining({ path: 'generation.topP', disposition: 'encoded', nativeField: 'top_p' }),
+        expect.objectContaining({ path: 'image.mode', disposition: 'accepted_no_wire', nativeField: null }),
+        expect.objectContaining({ path: 'providerExtension.kind', disposition: 'accepted_no_wire', nativeField: null }),
+        expect.objectContaining({ path: 'reasoning.mode', disposition: 'encoded', nativeField: 'thinking.type' }),
+        expect.objectContaining({ path: 'tools.mode', disposition: 'accepted_no_wire', nativeField: null }),
+        expect.objectContaining({ path: 'web.mode', disposition: 'accepted_no_wire', nativeField: null }),
+      ])
+    } finally { db.close() }
+  })
+
   it('commits once and immediately returns chosen/head/candidate projection', async () => {
     const db = database()
     try {
@@ -123,9 +203,13 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       expect(replay.kind).toBe('idempotent_replay')
       expect(replay.execution.operation.resultAnswerRootId.value)
         .toBe(first.execution.operation.resultAnswerRootId.value)
+      expect(replay.preparedRequest.bodySha256).toBe(first.preparedRequest.bodySha256)
+      expect(replay.preparedRequest.body.copyUtf8Text()).toBe(first.preparedRequest.body.copyUtf8Text())
+      expect(replay.request.preparedBodySha256).toBe(first.request.preparedBodySha256)
       expect(mocks.fetch).toHaveBeenCalledTimes(1)
       expect(db.prepare('SELECT count(*) AS count FROM message_v2').get()).toEqual({ count: 2 })
       expect(db.prepare('SELECT count(*) AS count FROM generation_operation_v2').get()).toEqual({ count: 1 })
+      expect(db.prepare('SELECT count(*) AS count FROM generation_request_v2').get()).toEqual({ count: 1 })
       expect(() => db.prepare("UPDATE message_body_v2 SET body_text='tampered' WHERE message_id='question:1'").run())
         .toThrow('GENERATION_V2_INITIAL_SEND_COMMAND_INPUT_IMMUTABLE')
     } finally { db.close() }
@@ -153,6 +237,8 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       expect(replay.kind).toBe('idempotent_replay')
       expect(replay.execution.operation.resultAnswerRootId.value)
         .toBe(first.execution.operation.resultAnswerRootId.value)
+      expect(replay.preparedRequest.bodySha256).toBe(first.preparedRequest.bodySha256)
+      expect(replay.request.compilerLedgerHash).toBe(first.request.compilerLedgerHash)
       expect(mocks.fetch).toHaveBeenCalledTimes(1)
     } finally {
       if (db.open) db.close()
@@ -180,7 +266,27 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       expect(raced.execution.operation.resultAnswerRootId.value)
         .toBe(winner.execution.operation.resultAnswerRootId.value)
       expect(db.prepare('SELECT count(*) AS count FROM generation_operation_v2').get()).toEqual({ count: 1 })
+      expect(db.prepare('SELECT count(*) AS count FROM generation_request_v2').get()).toEqual({ count: 1 })
       expect(db.prepare('SELECT count(*) AS count FROM message_v2').get()).toEqual({ count: 2 })
+    } finally { db.close() }
+  })
+
+  it('rolls back graph, operation, snapshot and choice when request persistence fails', async () => {
+    const db = database()
+    try {
+      db.exec(`CREATE TEMP TRIGGER fail_prepared_request
+        BEFORE INSERT ON generation_request_v2
+        BEGIN SELECT RAISE(ABORT, 'forced request persistence failure'); END`)
+      mocks.fetch.mockResolvedValueOnce(response())
+      await expect(coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })).rejects.toThrow('forced request persistence failure')
+      expect(db.prepare('SELECT count(*) AS count FROM message_v2').get()).toEqual({ count: 0 })
+      expect(db.prepare('SELECT count(*) AS count FROM generation_operation_v2').get()).toEqual({ count: 0 })
+      expect(db.prepare('SELECT count(*) AS count FROM assistant_generation_snapshot_v2').get()).toEqual({ count: 0 })
+      expect(db.prepare('SELECT count(*) AS count FROM generation_request_v2').get()).toEqual({ count: 0 })
+      expect(db.prepare("SELECT head_message_id FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head_message_id: null })
     } finally { db.close() }
   })
 
@@ -193,6 +299,7 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
       const firstAnswer = first.execution.operation.resultAnswerRootId.value
+      completeFirstRequest(db, firstAnswer)
       const later = await service.submit({
         command: command({
           operationId: 'operation:2', expectedHeadMessageId: firstAnswer, userBody: 'later',

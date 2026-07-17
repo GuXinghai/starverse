@@ -26,6 +26,7 @@ import {
   type GenerationV2Digest,
 } from '../../src/next/generation-v2/domain/identityV2'
 import {
+  DEEPSEEK_STABLE_OWNER_CAPABILITY_POLICY_EVIDENCE_ID_V2,
   isVerifiedDeepSeekStableCapabilityPolicyV2,
   readVerifiedDeepSeekStableCapabilityPolicyV2,
   type DeepSeekStableCapabilityRuleV2,
@@ -393,7 +394,7 @@ function composeCapabilityAuthority(input: Readonly<{
   input.bindingAuthority.assertCurrent()
   const evidence = buildRuntimeEvidence(input.policy, input.modelEvidence)
   const continuationSupports = evidenceId(
-    'starverse.deepseek.stable.policy.2026-07-17',
+    DEEPSEEK_STABLE_OWNER_CAPABILITY_POLICY_EVIDENCE_ID_V2,
     'supports',
   )
   const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({

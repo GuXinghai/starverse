@@ -4,8 +4,8 @@ import {
   stableSerializeProviderRequestBoundedV2,
 } from '../../compiler/stableSerialize'
 import {
-  buildDeepSeekNativeRequestHistoryV1,
-  type DeepSeekNativeHistoryArtifactV1,
+  buildDeepSeekNativeRequestHistoryV2,
+  type DeepSeekNativeHistoryArtifactV2,
   type DeepSeekNativeMessageV1,
 } from './nativeMessagesV1'
 
@@ -261,8 +261,8 @@ export function compileDeepSeekStableChatRequestV1(inputValue: unknown): DeepSee
   if (generation.frequencyPenalty !== undefined || generation.presencePenalty !== undefined) {
     throw new DeepSeekStableChatRequestV1Error('DEEPSEEK_EXPLICIT_DEPRECATED_PENALTY_UNSUPPORTED')
   }
-  const messages = buildDeepSeekNativeRequestHistoryV1({
-    priorArtifact: input.priorArtifact as DeepSeekNativeHistoryArtifactV1 | null,
+  const messages = buildDeepSeekNativeRequestHistoryV2({
+    priorArtifact: input.priorArtifact as DeepSeekNativeHistoryArtifactV2 | null,
     clientEntries: input.clientEntries,
   })
   if (messages.length === 0) throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')

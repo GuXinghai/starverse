@@ -1,8 +1,8 @@
 import { createHash } from 'node:crypto'
 import { stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
 
-export const DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V1 = 'deepseek_native_chat_history' as const
-export const DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V1 = 1 as const
+export const DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2 = 'deepseek_stable_ordered_native_messages_v2' as const
+export const DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V2 = 2 as const
 export const DEEPSEEK_NATIVE_HISTORY_MAX_ENTRIES_V1 = 4_096
 export const DEEPSEEK_NATIVE_HISTORY_MAX_TOOL_CALLS_V1 = 128
 export const DEEPSEEK_NATIVE_HISTORY_MAX_STRING_BYTES_V1 = 4 * 1_024 * 1_024
@@ -50,11 +50,12 @@ export type DeepSeekNativeHistoryEntryV1 = Readonly<
   | { kind: 'assistant'; generatedWithThinking: 'enabled' | 'disabled'; message: DeepSeekNativeAssistantMessageV1 }
 >
 
-export type DeepSeekNativeHistoryArtifactV1 = Readonly<{
-  schemaVersion: 1
-  artifactKind: typeof DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V1
-  artifactCodecVersion: typeof DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V1
-  requestSequence: number
+export type DeepSeekNativeHistoryArtifactV2 = Readonly<{
+  schemaVersion: 2
+  artifactKind: typeof DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2
+  artifactCodecVersion: typeof DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V2
+  lineageDepth: number
+  parentArtifactHash: string | null
   orderedEntries: readonly DeepSeekNativeHistoryEntryV1[]
   artifactHash: string
 }>
@@ -243,19 +244,31 @@ function validateSequence(entries: readonly DeepSeekNativeHistoryEntryV1[], requ
   }
 }
 
-function safeSequence(value: unknown): number {
+function safeLineageDepth(value: unknown): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0) {
     throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_INVALID_VALUE')
   }
   return value as number
 }
 
-function projection(requestSequence: number, orderedEntries: readonly DeepSeekNativeHistoryEntryV1[]) {
+function parentArtifactHash(value: unknown): string | null {
+  if (value !== null && (typeof value !== 'string' || !/^[0-9a-f]{64}$/u.test(value))) {
+    throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_INVALID_VALUE')
+  }
+  return value
+}
+
+function projection(
+  lineageDepth: number,
+  parentHash: string | null,
+  orderedEntries: readonly DeepSeekNativeHistoryEntryV1[],
+) {
   return Object.freeze({
-    schemaVersion: 1 as const,
-    artifactKind: DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V1,
-    artifactCodecVersion: DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V1,
-    requestSequence,
+    schemaVersion: 2 as const,
+    artifactKind: DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
+    artifactCodecVersion: DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V2,
+    lineageDepth,
+    parentArtifactHash: parentHash,
     orderedEntries,
   })
 }
@@ -264,11 +277,21 @@ function hashProjection(value: ReturnType<typeof projection>): string {
   return createHash('sha256').update(stableSerializeProviderRequestV2(value), 'utf8').digest('hex')
 }
 
-function createArtifact(requestSequence: unknown, rawEntries: unknown): DeepSeekNativeHistoryArtifactV1 {
-  const sequence = safeSequence(requestSequence)
+function createArtifact(
+  lineageDepth: unknown,
+  rawParentArtifactHash: unknown,
+  rawEntries: unknown,
+): DeepSeekNativeHistoryArtifactV2 {
+  const depth = safeLineageDepth(lineageDepth)
+  const parentHash = parentArtifactHash(rawParentArtifactHash)
   const entries = decodeEntries(rawEntries)
+  if ((depth === 0 && (parentHash !== null || entries.length !== 0)) ||
+      (depth === 1 && parentHash !== null) ||
+      (depth > 1 && parentHash === null)) {
+    throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_SEQUENCE_INVALID')
+  }
   validateSequence(entries, false)
-  const semantic = projection(sequence, entries)
+  const semantic = projection(depth, parentHash, entries)
   const artifact = Object.freeze({ ...semantic, artifactHash: hashProjection(semantic) })
   if (new TextEncoder().encode(stableSerializeProviderRequestV2(artifact)).byteLength > DEEPSEEK_NATIVE_HISTORY_MAX_SERIALIZED_BYTES_V1) {
     throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_LIMIT_EXCEEDED')
@@ -277,46 +300,49 @@ function createArtifact(requestSequence: unknown, rawEntries: unknown): DeepSeek
   return artifact
 }
 
-export function createDeepSeekNativeHistoryArtifactV1(input: Readonly<{
-  requestSequence: unknown
+export function createDeepSeekNativeHistoryArtifactV2(input: Readonly<{
+  lineageDepth: unknown
+  parentArtifactHash: unknown
   orderedEntries: unknown
-}>): DeepSeekNativeHistoryArtifactV1 {
-  return createArtifact(input.requestSequence, input.orderedEntries)
+}>): DeepSeekNativeHistoryArtifactV2 {
+  return createArtifact(input.lineageDepth, input.parentArtifactHash, input.orderedEntries)
 }
 
-export function decodeDeepSeekNativeHistoryArtifactV1(value: unknown): DeepSeekNativeHistoryArtifactV1 {
+export function decodeDeepSeekNativeHistoryArtifactV2(value: unknown): DeepSeekNativeHistoryArtifactV2 {
   const input = closedObject(
     value,
-    ['schemaVersion', 'artifactKind', 'artifactCodecVersion', 'requestSequence', 'orderedEntries', 'artifactHash'],
-    ['schemaVersion', 'artifactKind', 'artifactCodecVersion', 'requestSequence', 'orderedEntries', 'artifactHash'],
+    ['schemaVersion', 'artifactKind', 'artifactCodecVersion', 'lineageDepth', 'parentArtifactHash', 'orderedEntries', 'artifactHash'],
+    ['schemaVersion', 'artifactKind', 'artifactCodecVersion', 'lineageDepth', 'parentArtifactHash', 'orderedEntries', 'artifactHash'],
   )
-  if (input.schemaVersion !== 1 || input.artifactKind !== DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V1 ||
-      input.artifactCodecVersion !== DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V1 ||
+  if (input.schemaVersion !== 2 || input.artifactKind !== DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2 ||
+      input.artifactCodecVersion !== DEEPSEEK_NATIVE_HISTORY_CODEC_VERSION_V2 ||
       typeof input.artifactHash !== 'string' || !/^[0-9a-f]{64}$/u.test(input.artifactHash)) {
     throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_INVALID_VALUE')
   }
-  const artifact = createArtifact(input.requestSequence, input.orderedEntries)
+  const artifact = createArtifact(input.lineageDepth, input.parentArtifactHash, input.orderedEntries)
   if (artifact.artifactHash !== input.artifactHash) {
     throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_HASH_MISMATCH')
   }
   return artifact
 }
 
-export function isDeepSeekNativeHistoryArtifactV1(value: unknown): value is DeepSeekNativeHistoryArtifactV1 {
+export function isDeepSeekNativeHistoryArtifactV2(value: unknown): value is DeepSeekNativeHistoryArtifactV2 {
   if (!value || typeof value !== 'object' || !artifacts.has(value)) return false
-  const artifact = value as DeepSeekNativeHistoryArtifactV1
-  return artifact.artifactHash === hashProjection(projection(artifact.requestSequence, artifact.orderedEntries))
+  const artifact = value as DeepSeekNativeHistoryArtifactV2
+  return artifact.artifactHash === hashProjection(
+    projection(artifact.lineageDepth, artifact.parentArtifactHash, artifact.orderedEntries),
+  )
 }
 
-function requireArtifact(value: DeepSeekNativeHistoryArtifactV1 | null): DeepSeekNativeHistoryArtifactV1 | null {
-  if (value !== null && !isDeepSeekNativeHistoryArtifactV1(value)) {
+function requireArtifact(value: DeepSeekNativeHistoryArtifactV2 | null): DeepSeekNativeHistoryArtifactV2 | null {
+  if (value !== null && !isDeepSeekNativeHistoryArtifactV2(value)) {
     throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_UNBRANDED')
   }
   return value
 }
 
-export function buildDeepSeekNativeRequestHistoryV1(input: Readonly<{
-  priorArtifact: DeepSeekNativeHistoryArtifactV1 | null
+export function buildDeepSeekNativeRequestHistoryV2(input: Readonly<{
+  priorArtifact: DeepSeekNativeHistoryArtifactV2 | null
   clientEntries: unknown
 }>): readonly DeepSeekNativeMessageV1[] {
   const prior = requireArtifact(input.priorArtifact)
@@ -332,18 +358,13 @@ export function buildDeepSeekNativeRequestHistoryV1(input: Readonly<{
   return Object.freeze(entries.map((entry) => entry.message))
 }
 
-export function completeDeepSeekNativeRequestV1(input: Readonly<{
-  priorArtifact: DeepSeekNativeHistoryArtifactV1 | null
-  requestSequence: unknown
+export function completeDeepSeekNativeRequestV2(input: Readonly<{
+  priorArtifact: DeepSeekNativeHistoryArtifactV2 | null
   clientEntries: unknown
   assistantMessage: unknown
   generatedWithThinking: 'enabled' | 'disabled'
-}>): DeepSeekNativeHistoryArtifactV1 {
+}>): DeepSeekNativeHistoryArtifactV2 {
   const prior = requireArtifact(input.priorArtifact)
-  const requestSequence = safeSequence(input.requestSequence)
-  if (requestSequence !== (prior?.requestSequence ?? 0) + 1) {
-    throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_SEQUENCE_INVALID')
-  }
   const clientEntries = decodeEntries(input.clientEntries)
   if (clientEntries.some((entry) => entry.kind !== 'client')) {
     throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_INVALID_VALUE')
@@ -351,11 +372,15 @@ export function completeDeepSeekNativeRequestV1(input: Readonly<{
   const assistant = decodeEntry({
     kind: 'assistant', generatedWithThinking: input.generatedWithThinking, message: input.assistantMessage,
   })
-  return createArtifact(requestSequence, [...(prior?.orderedEntries ?? []), ...clientEntries, assistant])
+  return createArtifact(
+    (prior?.lineageDepth ?? 0) + 1,
+    prior?.artifactHash ?? null,
+    [...(prior?.orderedEntries ?? []), ...clientEntries, assistant],
+  )
 }
 
-export function serializeDeepSeekNativeHistoryArtifactV1(artifact: DeepSeekNativeHistoryArtifactV1): string {
-  if (!isDeepSeekNativeHistoryArtifactV1(artifact)) {
+export function serializeDeepSeekNativeHistoryArtifactV2(artifact: DeepSeekNativeHistoryArtifactV2): string {
+  if (!isDeepSeekNativeHistoryArtifactV2(artifact)) {
     throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_UNBRANDED')
   }
   return stableSerializeProviderRequestV2(artifact)
