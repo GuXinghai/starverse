@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   buildOpenAIResponsesReplayInputV1,
+  completeOpenAIResponsesProjectedRequestV2,
   completeOpenAIResponsesRequestV2,
   decodeOpenAIResponsesContinuationArtifactV2,
   isOpenAIResponsesContinuationArtifactV2,
@@ -80,5 +81,26 @@ describe('OpenAI Responses V1 client-managed continuation artifact', () => {
     expect(() => decodeOpenAIResponsesContinuationArtifactV2({
       ...JSON.parse(JSON.stringify(artifact)), lineageDepth: 2,
     })).toThrow('GENERATION_V2_OPENAI_CONTINUATION_HASH_MISMATCH')
+  })
+
+  it('persists a projected request without a hidden parent while retaining its native tool bundle', () => {
+    const projected = completeOpenAIResponsesProjectedRequestV2({
+      projectedPrefixItems: [
+        user('included first'),
+        reasoning('rs_1'),
+        { id: 'fc_1', type: 'function_call', call_id: 'call_1', name: 'weather', arguments: '{}', status: 'completed' },
+        { type: 'function_call_output', call_id: 'call_1', output: 'sunny' },
+        { id: 'msg_1', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'first', annotations: [] }] },
+      ],
+      clientItems: [user('included third')],
+      returnedItems: [
+        { id: 'msg_3', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'third', annotations: [] }] },
+      ],
+    })
+    expect(projected.parentArtifactHash).toBeNull()
+    expect(projected.lineageDepth).toBe(1)
+    expect(projected.orderedItems.map((item) => 'role' in item ? item.role : item.type)).toEqual([
+      'user', 'reasoning', 'function_call', 'function_call_output', 'assistant', 'user', 'assistant',
+    ])
   })
 })

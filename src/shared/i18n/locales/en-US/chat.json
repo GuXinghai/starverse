@@ -39,6 +39,7 @@
       },
       "editingQuestion": "Editing question",
       "linkOnly": "Link only",
+      "urlReference": "URL reference",
       "linkWithLocalCopy": "Link + local copy",
       "imageAlt": "image-{index}",
       "imagePreviewAlt": "preview",
@@ -110,6 +111,18 @@
         "none": "none",
         "unknown": "unknown",
         "source": "source {source}"
+      },
+      "imageEndpoint": {
+        "title": "OpenRouter image endpoint",
+        "description": "The endpoint is selected by you and pinned without fallback.",
+        "loading": "Loading...",
+        "refresh": "Load endpoints",
+        "loadHint": "Load endpoint descriptors to view or change the current binding.",
+        "bound": "Bound",
+        "select": "Select",
+        "unsupported": "Unsupported",
+        "refreshAfter": "Refresh after",
+        "hardExpireAfter": "Hard expiry"
       },
       "runtime": {
         "noProviderSelected": "No runtime provider selected",
@@ -190,12 +203,31 @@
         "anthropic": {
           "title": "Anthropic Messages Chat",
           "experimentalLabel": "Experimental · Anthropic Messages text-only · not OpenRouter",
-          "warning": "Native Anthropic Messages API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, and signatures are disabled.",
+          "warning": "Native Anthropic Messages API streaming with model-governed thinking, native tool history, and signature-preserving continuation. Unsupported explicit controls are rejected before sending.",
           "status": "Experimental Anthropic Messages chat is {status}.",
           "selectedModel": "Selected Claude model: {model}",
           "credentialBridge": "Anthropic chat uses a main-process credential bridge and does not expose API keys to this console.",
           "sourceTitle": "Anthropic official model source",
           "sourceName": "Anthropic",
+          "thinkingDisplay": {
+            "title": "Thinking display",
+            "description": "This value is stored in the generation snapshot and applies only to new generation commands.",
+            "disabledDescription": "Enable reasoning to configure how Anthropic returns visible thinking content.",
+            "options": {
+              "provider_default": {
+                "label": "Provider default",
+                "description": "Omit thinking.display and follow the selected model's default."
+              },
+              "summarized": {
+                "label": "Show summary",
+                "description": "Return a displayable thinking summary."
+              },
+              "omitted": {
+                "label": "Hide thinking",
+                "description": "Do not transmit visible thinking; reasoning still runs and is billed."
+              }
+            }
+          },
           "disable": "Disable Anthropic Messages chat",
           "clear": "Clear Anthropic Messages chat settings"
         },

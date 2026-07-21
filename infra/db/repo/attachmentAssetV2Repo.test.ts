@@ -36,6 +36,7 @@ function attachment(
   const intent = decodeGenerationIntentLayerV2({
     schemaVersion: 2,
     attachments: [{
+      kind: 'managed_file',
       assetId, assetRevisionId, assetSha256, include,
       sendAs: 'inline_text', conversion,
     }],
@@ -158,7 +159,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
     }
   })
 
-  it('keeps B1 provenance source-only until a converter registry can issue authority', () => {
+  it('records immutable derived provenance but rejects an unissued conversion as request authority', () => {
     const db = createDb()
     try {
       const repo = new AttachmentAssetV2Repo(db, () => 10)
@@ -168,7 +169,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       expect(() => db.prepare(`INSERT INTO asset_revision_v2 VALUES (
         'revision:derived-sql', 'asset:1', ?, 'revision:source', 'derived', 'pdf',
         'converter:pdf', 'converter:pdf:1', 12
-      )`).run(sourceBlob.blobId.value)).toThrow(/CHECK constraint failed/u)
+      )`).run(sourceBlob.blobId.value)).not.toThrow()
       expect(() => withSnapshotReference(db, repo,
         attachment('asset:1', 'revision:source', sourceBlob.sha256.value, 'pdf'),
         () => undefined,

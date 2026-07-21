@@ -23,7 +23,7 @@ Default vault path:
 Custom vault paths are supported:
 
 ```powershell
-node tools/provider-key-vault/index.mjs --vault D:\secure-backup\provider-keys.vault verify
+node tools/provider-key-vault/index.mjs --vault <vault-path> verify
 ```
 
 ## Supported Providers

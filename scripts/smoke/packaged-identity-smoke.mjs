@@ -17,16 +17,8 @@ const executablePath = path.join(
 )
 const userDataOverride = await fs.mkdtemp(path.join(os.tmpdir(), 'starverse-packaged-identity-'))
 
-let electronApp
-let passedEvidence
-let primaryFailure
-try {
-  try {
-    await fs.access(executablePath)
-  } catch {
-    throw new Error('PACKAGED_IDENTITY_SMOKE_EXECUTABLE_MISSING')
-  }
-  electronApp = await electron.launch({
+function launchPackaged() {
+  return electron.launch({
     executablePath,
     args: [`--user-data-dir=${userDataOverride}`],
     cwd: repositoryRoot,
@@ -38,6 +30,31 @@ try {
     },
     timeout: 90_000,
   })
+}
+
+async function waitForRenderer(app) {
+  const deadline = Date.now() + 60_000
+  while (Date.now() < deadline) {
+    for (const page of app.windows()) {
+      try {
+        if (await page.evaluate(() => Boolean(window.generationV2?.workspace && document.querySelector('#app')))) return page
+      } catch { /* renderer still loading */ }
+    }
+    await new Promise((resolve) => setTimeout(resolve, 250))
+  }
+  throw new Error('PACKAGED_IDENTITY_SMOKE_RENDERER_UNAVAILABLE')
+}
+
+let electronApp
+let passedEvidence
+let primaryFailure
+try {
+  try {
+    await fs.access(executablePath)
+  } catch {
+    throw new Error('PACKAGED_IDENTITY_SMOKE_EXECUTABLE_MISSING')
+  }
+  electronApp = await launchPackaged()
   const runtime = await electronApp.evaluate(async ({ app }) => {
     const fs = process.getBuiltinModule('fs')
     const path = process.getBuiltinModule('path')
@@ -65,6 +82,42 @@ try {
   if (path.resolve(runtime.userData) !== path.resolve(userDataOverride)) {
     throw new Error('PACKAGED_IDENTITY_SMOKE_USER_DATA_OVERRIDE_MISMATCH')
   }
+  const firstPage = await waitForRenderer(electronApp)
+  const firstTemplate = await firstPage.evaluate(async () => {
+    const unwrap = (result) => {
+      if (!result || result.ok !== true) throw new Error(result?.code ?? 'PACKAGED_IDENTITY_SMOKE_IPC_FAILED')
+      return result.value
+    }
+    unwrap(await window.generationV2.workspace.ensureDefault())
+    const before = unwrap(await window.generationV2.workspace.getSystemTemplate())
+    const settings = unwrap(await window.generationV2.workspace.setNewChatLifecycle({
+      startupNavigation: 'projects_only',
+      startupTemplateReset: { modelConfig: false, draftAttachments: false },
+      postSendTemplateReset: 'preserve_model_config',
+    }))
+    return {
+      conversationId: before.conversation.id,
+      templateRevision: before.conversation.templateRevision,
+      settings,
+    }
+  })
+  await electronApp.close()
+  electronApp = await launchPackaged()
+  const secondPage = await waitForRenderer(electronApp)
+  const secondTemplate = await secondPage.evaluate(async () => {
+    const result = await window.generationV2.workspace.getSystemTemplate()
+    if (!result || result.ok !== true) throw new Error(result?.code ?? 'PACKAGED_IDENTITY_SMOKE_IPC_FAILED')
+    return {
+      conversationId: result.value.conversation.id,
+      templateRevision: result.value.conversation.templateRevision,
+      settings: result.value.settings,
+    }
+  })
+  if (secondTemplate.conversationId !== firstTemplate.conversationId ||
+      secondTemplate.templateRevision !== firstTemplate.templateRevision ||
+      JSON.stringify(secondTemplate.settings) !== JSON.stringify(firstTemplate.settings)) {
+    throw new Error('PACKAGED_IDENTITY_SMOKE_SECOND_START_STATE_MISMATCH')
+  }
   passedEvidence = {
     type: 'starverse-packaged-identity-smoke',
     result: 'passed',
@@ -72,6 +125,8 @@ try {
     appId: packageMetadata.build.appId,
     userDataOverrideHonored: true,
     schemaAssetsReadable: true,
+    secondStartSucceeded: true,
+    systemTemplatePersisted: true,
   }
 } catch (error) {
   primaryFailure = error

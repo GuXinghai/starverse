@@ -123,6 +123,23 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
       .toThrow('GENERATION_V2_CAPABILITY_NON_CANONICAL_JSON')
   })
 
+  it('preserves an exact discrete image-size set without widening it into a range', () => {
+    const value = draft()
+    const size = value.fields.find((field) => field.path === 'image.size')!
+    size.state = 'supported'
+    size.domain = {
+      kind: 'dimensions_enum',
+      values: [{ width: 1536, height: 1024 }, { width: 1024, height: 1024 }],
+    }
+    size.evidenceIds = ['contract.openai.responses.v1']
+    const decoded = decodeRuntimeCapabilitySnapshotV2(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value))
+    const field = decoded.fields.find((item) => item.path === 'image.size')!
+    expect(field.domain).toEqual({
+      kind: 'dimensions_enum',
+      values: [{ width: 1024, height: 1024 }, { width: 1536, height: 1024 }],
+    })
+  })
+
   it('makes provider binding, evidence, fields and resolution time part of immutable identity', () => {
     const baseline = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(draft())
     expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
@@ -212,6 +229,16 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
         ? { ...field, constraints: ['reasoning.enabled == true'] }
         : field),
     })).toThrow('GENERATION_V2_CAPABILITY_INVALID_SHAPE')
+  })
+
+  it('requires a positive integer capability domain for a manual thinking budget', () => {
+    const invalid = draft()
+    Object.assign(invalid.fields.find((field) => field.path === 'providerExtension.manualThinkingBudgetTokens')!, {
+      state: 'supported', domain: { kind: 'range', min: 0, max: 4096, integer: true },
+      evidenceIds: ['contract.openai.responses.v1'],
+    })
+    expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(invalid))
+      .toThrow('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   })
 
   it('rejects conflicting effects, future evidence and impossible semantic domains', () => {

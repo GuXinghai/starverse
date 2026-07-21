@@ -171,12 +171,17 @@ const compatibleRequestProfileDefaultsSchema = z.record(z.unknown()).superRefine
   if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error })
   if (Object.keys(value).length > 64) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Too many request profile defaults.' })
 })
+const compatibleDefaultExtraBodySchema = z.record(z.unknown()).superRefine((value, ctx) => {
+  const error = validateBoundedJsonValue(value, false, true)
+  if (error) ctx.addIssue({ code: z.ZodIssueCode.custom, message: error })
+})
 
 export const compatibleRequestProfileConfigSchema = z.object({
   schemaVersion: z.literal(COMPATIBLE_JSON_SCHEMA_VERSION),
   standardFieldOwnership: z.literal('builder'),
   unsupportedFieldPolicy: z.literal('error_before_fetch'),
   defaults: compatibleRequestProfileDefaultsSchema.default({}),
+  defaultExtraBody: compatibleDefaultExtraBodySchema.optional(),
   extraBody: z.object({
     enabled: z.boolean(),
     maxDepth: z.number().int().min(1).max(16),
@@ -237,7 +242,8 @@ const reasoningValueRuleSchema = z.object({
 
 const compatibleReasoningReplaySchema = z.union([
   z.object({ format: z.literal('disabled'), scope: z.literal('never') }).strict(),
-  z.object({ format: z.literal('assistant_field'), field: z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]{0,127}$/), scope: z.enum(['tool_call_chain_only', 'all_assistant_messages']) }).strict(),
+  z.object({ format: z.literal('assistant_field'), field: z.string().regex(/^[A-Za-z_][A-Za-z0-9_-]{0,127}$/)
+    .refine((value) => !['role', 'content', 'tool_calls'].includes(value), 'Replay field cannot replace assistant wire fields.'), scope: z.enum(['tool_call_chain_only', 'all_assistant_messages']) }).strict(),
   z.object({ format: z.literal('assistant_content_tags'), openTag: z.string().min(3).max(64), closeTag: z.string().min(4).max(64), scope: z.enum(['tool_call_chain_only', 'all_assistant_messages']) }).strict(),
 ]).superRefine((value, ctx) => {
   if (value.format === 'assistant_content_tags' && (value.openTag === value.closeTag || /[\r\n]/.test(value.openTag + value.closeTag))) ctx.addIssue({ code: z.ZodIssueCode.custom, message: 'Invalid replay tags.' })

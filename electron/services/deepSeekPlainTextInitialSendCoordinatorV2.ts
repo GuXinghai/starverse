@@ -55,6 +55,7 @@ export function isDeepSeekPlainTextInitialSendResultV2(
 export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
+  fetchImpl?: typeof fetch
   nowMs?: () => number
   createGraphId?: (kind: 'question' | 'answer') => string
 }>) {
@@ -69,7 +70,7 @@ export function createDeepSeekPlainTextInitialSendCoordinatorV2(input: Readonly<
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
   const modelEvidenceService = createDeepSeekStableModelEvidenceV2Service({
-    db: input.db, credentialService: input.credentialService, nowMs,
+    db: input.db, credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs,
   })
   const endpointProfile = readVerifiedDeepSeekStableEndpointProfileV2()
 

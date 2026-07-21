@@ -38,6 +38,23 @@ describe('GenerationIntentLayerV2 codec', () => {
     ]) expect(() => decodeGenerationIntentLayerV2({ schemaVersion: 2, providerExtension })).toThrow()
   })
 
+  it('preserves Anthropic thinking semantics as provider-specific snapshot data', () => {
+    for (const thinkingDisplay of ['provider_default', 'summarized', 'omitted'] as const) {
+      expect(decodeGenerationIntentLayerV2({
+        schemaVersion: 2,
+        providerExtension: { kind: 'anthropic_messages', thinkingDisplay, thinkingMode: 'manual', manualThinkingBudgetTokens: 1024 },
+      }).providerExtension).toEqual({ kind: 'anthropic_messages', thinkingDisplay, thinkingMode: 'manual', manualThinkingBudgetTokens: 1024 })
+    }
+    for (const providerExtension of [
+      { kind: 'anthropic_messages' },
+      { kind: 'anthropic_messages', thinkingDisplay: 'hidden', thinkingMode: 'manual', manualThinkingBudgetTokens: 1024 },
+      { kind: 'anthropic_messages', thinkingDisplay: 'summarized', thinkingMode: 'adaptive', manualThinkingBudgetTokens: 1024 },
+      { kind: 'anthropic_messages', thinkingDisplay: 'summarized', thinkingMode: 'manual' },
+      { kind: 'anthropic_messages', thinkingDisplay: 'summarized', thinkingMode: 'manual', manualThinkingBudgetTokens: 0 },
+      { kind: 'anthropic_messages', thinkingDisplay: 'summarized', thinkingMode: 'manual', manualThinkingBudgetTokens: 1024, verbosity: 'high' },
+    ]) expect(() => decodeGenerationIntentLayerV2({ schemaVersion: 2, providerExtension })).toThrow()
+  })
+
   it('decodes closed semantic leaves into branded immutable references', () => {
     const intent = decodeGenerationIntentLayerV2({
       schemaVersion: 2,
@@ -47,13 +64,15 @@ describe('GenerationIntentLayerV2 codec', () => {
       image: { mode: 'generate', aspectRatio: '1:1', resolution: '2K', quality: 'high', format: 'png', outputCompression: 80, stream: true },
       tools: { mode: 'enabled', allowedToolIds: ['search', 'calculator'], toolChoice: { mode: 'omitted' }, sideEffectConfirmation: 'required_each_retry' },
       attachments: [{
+        kind: 'managed_file',
         assetId: 'asset-1', assetRevisionId: 'rev-1', assetSha256: hash, include: true,
         sendAs: 'provider_file', conversion: 'none',
       }],
       providerExtension: { kind: 'none' },
     })
     expect(intent.tools?.mode).toBe('enabled')
-    expect(intent.attachments?.[0].assetId.value).toBe('asset-1')
+    expect(intent.attachments?.[0].kind).toBe('managed_file')
+    if (intent.attachments?.[0]?.kind === 'managed_file') expect(intent.attachments[0].assetId.value).toBe('asset-1')
     expect(intent.providerExtension?.kind).toBe('none')
     expect(intent.web).toEqual({ mode: 'provider_search', types: ['web', 'image'] })
     expect(intent.image?.mode === 'generate' && readImageAspectRatioV2(intent.image.aspectRatio!)).toBe('1:1')

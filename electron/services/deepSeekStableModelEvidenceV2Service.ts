@@ -206,6 +206,7 @@ function exactProfile(value: unknown): asserts value is VerifiedDeepSeekStableEn
 export function createDeepSeekStableModelEvidenceV2Service(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
+  fetchImpl?: typeof fetch
   nowMs?: () => number
 }>): Readonly<{
   refresh(input: Readonly<{
@@ -223,6 +224,7 @@ export function createDeepSeekStableModelEvidenceV2Service(input: Readonly<{
     consume: (evidence: VerifiedDeepSeekStableModelEvidenceV2) => Promise<T> | T
   }>): Promise<T>
 }> {
+  const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
   const db = input.db
   const nowMs = input.nowMs ?? Date.now
   db.pragma('foreign_keys = ON')
@@ -396,7 +398,7 @@ export function createDeepSeekStableModelEvidenceV2Service(input: Readonly<{
     let response: Response | undefined
     try {
       try {
-        response = await abortable(session.defaultSession.fetch(url, {
+        response = await abortable(fetchImpl(url, {
           method: 'GET',
           headers: Object.freeze({
             Accept: 'application/json',

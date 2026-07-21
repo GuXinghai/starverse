@@ -1,3 +1,5 @@
+export const ANTHROPIC_STANDARD_API_VERSION_V2 = '2023-06-01' as const
+
 export type AnthropicDeveloperApiSurfaceIdV2 =
   | 'anthropic-messages-2023-06-01'
   | 'anthropic-models-2023-06-01'
@@ -86,6 +88,21 @@ export type AnthropicDeveloperApiContractV2 = Readonly<{
   }>
 }>
 
+/**
+ * The non-secret transport headers for the Messages surface belong to the
+ * reviewed Anthropic contract.  The generic prepared-request envelope only
+ * carries this plan; it must not duplicate a provider wire literal.
+ */
+export type AnthropicMessagesNonSecretHeaderPlanV2 = Readonly<{
+  contentType: 'application/json'
+  accept: 'text/event-stream'
+  credential: Readonly<{
+    kind: 'anthropic_x_api_key'
+    headerName: 'x-api-key'
+    apiVersion: Readonly<{ headerName: 'anthropic-version'; value: '2023-06-01' }>
+  }>
+}>
+
 export class AnthropicDeveloperApiContractV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_ANTHROPIC_CONTRACT_INVALID'
@@ -143,7 +160,7 @@ const contract = Object.freeze({
   contractFamilyId: 'anthropic-developer-api-2023-06-01',
   apiOrigin: 'https://api.anthropic.com',
   auth: Object.freeze({ kind: 'header', name: 'x-api-key' }),
-  apiVersionHeader: Object.freeze({ name: 'anthropic-version', value: '2023-06-01' }),
+  apiVersionHeader: Object.freeze({ name: 'anthropic-version', value: ANTHROPIC_STANDARD_API_VERSION_V2 }),
   surfaces: Object.freeze([messagesSurface, modelsSurface, filesSurface]),
   evidence: Object.freeze({
     verifiedAt: '2026-07-15',
@@ -206,6 +223,21 @@ export function isAnthropicDeveloperApiContractV2(value: unknown): value is Anth
 
 export function readAnthropicMessagesRegistrySurfaceV2(): AnthropicMessagesRegistrySurfaceV2 {
   return messagesRegistrySurface
+}
+
+export function createAnthropicMessagesNonSecretHeaderPlanV2(): AnthropicMessagesNonSecretHeaderPlanV2 {
+  return Object.freeze({
+    contentType: 'application/json' as const,
+    accept: 'text/event-stream' as const,
+    credential: Object.freeze({
+      kind: 'anthropic_x_api_key' as const,
+      headerName: contract.auth.name,
+      apiVersion: Object.freeze({
+        headerName: contract.apiVersionHeader.name,
+        value: contract.apiVersionHeader.value,
+      }),
+    }),
+  })
 }
 
 export function resolveAnthropicDeveloperApiEndpointV2(

@@ -40,7 +40,7 @@ function record(descriptor: CanonicalOpenRouterImageDescriptorV2,
   return {
     credentialScopeId: scope.value,
     providerId: 'openrouter',
-    endpointProfileId: 'openrouter-first-party',
+    endpointProfileId: 'openrouter-first-party-v1',
     endpointBinding: {
       kind: 'pinned',
       selector: {

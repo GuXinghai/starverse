@@ -1,51 +1,13 @@
-import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
-import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { createLocalEndpointDirectFetch } from '../net/localEndpointTransport'
-import {
-  sanitizeProviderRuntimeImageContentBlocks,
-  type OpenAICompatibleChatContentPart,
-} from '../../src/next/multimodal/providerRuntimeContentBlocks'
 
-export const LM_STUDIO_LOCAL_PROVIDER_IPC_CHANNELS = [
-  'lm-studio:probe',
-  'lm-studio:load-model',
-  'lm-studio:unload-model',
-  'lm-studio-chat:stream-text',
-  'lm-studio-chat:abort',
+export const LM_STUDIO_RUNTIME_MANAGEMENT_V2_IPC_CHANNELS = [
+  'generation-v2:local-runtime:lmstudio:probe',
+  'generation-v2:local-runtime:lmstudio:load-model',
+  'generation-v2:local-runtime:lmstudio:unload-model',
 ] as const
 
 export const LM_STUDIO_DEFAULT_ENDPOINT_URL = 'http://127.0.0.1:1234'
-
-export type LMStudioChatMode = 'openai_compatible' | 'native_rest'
-export type LMStudioOpenAICompatiblePreferredEndpoint = 'chat_completions' | 'responses'
-
-export type LMStudioNativeRestControls = Readonly<{
-  diagnosticsEnabled: boolean
-  manualLoadUnloadEnabled: boolean
-  autoLoadBeforeSendEnabled: boolean
-  autoUnloadAfterSendEnabled: boolean
-  autoUnloadAfterIdleEnabled?: boolean
-}>
-
-export type LMStudioLocalProviderConfig = Readonly<{
-  providerKey: 'lm_studio'
-  endpointUrl: string
-  nativeRestControls: LMStudioNativeRestControls
-  chatMode: LMStudioChatMode
-  openAICompatible: Readonly<{
-    basePath: '/v1'
-    preferredEndpoint: LMStudioOpenAICompatiblePreferredEndpoint
-  }>
-  nativeRest: Readonly<{
-    basePath: '/api/v1'
-  }>
-}>
-
-export type LMStudioTextChatMessage = Readonly<{
-  role: 'user' | 'assistant'
-  content: string | ReadonlyArray<OpenAICompatibleChatContentPart>
-}>
 
 export type LMStudioModelSummary = Readonly<{
   key: string
@@ -133,46 +95,9 @@ export type LMStudioControlResult =
     safeUrl?: string
   }>
 
-export type LMStudioTextChatPayload = Readonly<{
-  requestId?: unknown
-  assistantMessageId?: unknown
-  config?: unknown
-  model?: unknown
-  messages?: unknown
-  timeoutMs?: unknown
-}>
-
-export type LMStudioTextChatStartResult =
-  | Readonly<{ ok: true }>
-  | Readonly<{
-    ok: false
-    code: 'invalid_payload' | 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected'
-    error: string
-    safeUrl?: string
-  }>
-
-export type LMStudioTextChatWireErrorKind = 'http_error' | 'transport_error' | 'aborted'
-
-export type LMStudioTextChatWireEvent =
-  | Readonly<{ type: 'responseMeta'; status: number; requestId?: string; provider?: 'lm_studio'; headers?: Record<string, string> }>
-  | Readonly<{ type: 'chunk'; data: string }>
-  | Readonly<{
-    type: 'error'
-    error: Readonly<{
-      kind: LMStudioTextChatWireErrorKind
-      message: string
-      code?: string | number
-      status?: number
-      statusText?: string
-      headers?: Record<string, string>
-    }>
-  }>
-  | Readonly<{ type: 'end' }>
-
-type RegisterLMStudioLocalProviderIpcInput = Readonly<{
+type RegisterLMStudioRuntimeManagementV2IpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   fetchImpl?: typeof fetch
-  rawGenerationRequestStore?: RawGenerationRequestStore
 }>
 
 type ValidatedEndpointUrl =
@@ -183,22 +108,6 @@ type ValidatedEndpointUrl =
     message: string
     safeUrl?: string
   }>
-
-type ValidatedTextChatSuccess = Readonly<{
-  ok: true
-  requestId: string
-  assistantMessageId: string
-  config: LMStudioLocalProviderConfig
-  endpoint: URL
-  safeBaseUrl: string
-  model: string
-  messages: LMStudioTextChatMessage[]
-  timeoutMs: number
-}>
-
-type ValidatedTextChatPayload =
-  | ValidatedTextChatSuccess
-  | Exclude<LMStudioTextChatStartResult, Readonly<{ ok: true }>>
 
 type JsonFetchResult =
   | Readonly<{ ok: true; payload: unknown }>
@@ -212,46 +121,9 @@ type ModelLoadedState =
 const DEFAULT_TIMEOUT_MS = 30000
 const MIN_TIMEOUT_MS = 1000
 const MAX_TIMEOUT_MS = 120000
-const MAX_MESSAGES = 80
-const MAX_MESSAGE_CHARS = 20000
-const activeControllers = new Map<string, AbortController>()
-
-export const DEFAULT_LM_STUDIO_LOCAL_PROVIDER_CONFIG: LMStudioLocalProviderConfig = {
-  providerKey: 'lm_studio',
-  endpointUrl: LM_STUDIO_DEFAULT_ENDPOINT_URL,
-  nativeRestControls: {
-    diagnosticsEnabled: true,
-    manualLoadUnloadEnabled: true,
-    autoLoadBeforeSendEnabled: false,
-    autoUnloadAfterSendEnabled: false,
-    autoUnloadAfterIdleEnabled: false,
-  },
-  chatMode: 'openai_compatible',
-  openAICompatible: {
-    basePath: '/v1',
-    preferredEndpoint: 'chat_completions',
-  },
-  nativeRest: {
-    basePath: '/api/v1',
-  },
-}
-
 function normalizeTimeoutMs(raw: unknown): number {
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return DEFAULT_TIMEOUT_MS
   return Math.min(MAX_TIMEOUT_MS, Math.max(MIN_TIMEOUT_MS, Math.trunc(raw)))
-}
-
-function staticStartFailure(
-  code: Exclude<LMStudioTextChatStartResult, Readonly<{ ok: true }>>['code'],
-  error: string,
-  safeUrl?: string,
-): Exclude<LMStudioTextChatStartResult, Readonly<{ ok: true }>> {
-  return {
-    ok: false,
-    code,
-    error,
-    ...(safeUrl ? { safeUrl } : {}),
-  }
 }
 
 function safeEndpointFailure(
@@ -344,7 +216,7 @@ export function validateLMStudioEndpointUrl(raw: unknown): ValidatedEndpointUrl 
   return { ok: true, url, safeBaseUrl: safeUrl }
 }
 
-function lmStudioUrl(base: URL, pathname: '/api/v1/models' | '/api/v1/models/load' | '/api/v1/models/unload' | '/api/v1/chat' | '/v1/models' | '/v1/chat/completions' | '/v1/responses'): string {
+function lmStudioUrl(base: URL, pathname: '/api/v1/models' | '/api/v1/models/load' | '/api/v1/models/unload' | '/v1/models'): string {
   const url = new URL(base.toString())
   url.username = ''
   url.password = ''
@@ -352,123 +224,6 @@ function lmStudioUrl(base: URL, pathname: '/api/v1/models' | '/api/v1/models/loa
   url.hash = ''
   url.pathname = pathname
   return url.toString()
-}
-
-function normalizeConfig(raw: unknown): LMStudioLocalProviderConfig {
-  const record = raw && typeof raw === 'object' && !Array.isArray(raw)
-    ? raw as Record<string, any>
-    : {}
-  const controls = record.nativeRestControls && typeof record.nativeRestControls === 'object'
-    ? record.nativeRestControls as Record<string, unknown>
-    : {}
-  const openAICompatible = record.openAICompatible && typeof record.openAICompatible === 'object'
-    ? record.openAICompatible as Record<string, unknown>
-    : {}
-
-  return {
-    providerKey: 'lm_studio',
-    endpointUrl: String(record.endpointUrl ?? LM_STUDIO_DEFAULT_ENDPOINT_URL).trim() || LM_STUDIO_DEFAULT_ENDPOINT_URL,
-    nativeRestControls: {
-      diagnosticsEnabled: controls.diagnosticsEnabled !== false,
-      manualLoadUnloadEnabled: controls.manualLoadUnloadEnabled !== false,
-      autoLoadBeforeSendEnabled: controls.autoLoadBeforeSendEnabled === true,
-      autoUnloadAfterSendEnabled: controls.autoUnloadAfterSendEnabled === true,
-      autoUnloadAfterIdleEnabled: controls.autoUnloadAfterIdleEnabled === true,
-    },
-    chatMode: record.chatMode === 'native_rest' ? 'native_rest' : 'openai_compatible',
-    openAICompatible: {
-      basePath: '/v1',
-      preferredEndpoint: openAICompatible.preferredEndpoint === 'responses' ? 'responses' : 'chat_completions',
-    },
-    nativeRest: {
-      basePath: '/api/v1',
-    },
-  }
-}
-
-function normalizeMessages(raw: unknown): LMStudioTextChatMessage[] | null {
-  if (!Array.isArray(raw) || raw.length === 0) return null
-  const out: LMStudioTextChatMessage[] = []
-  for (const item of raw.slice(-MAX_MESSAGES)) {
-    if (!item || typeof item !== 'object') return null
-    const role = (item as Record<string, unknown>).role
-    if (role !== 'user' && role !== 'assistant') return null
-    const content = normalizeOpenAICompatibleMessageContent((item as Record<string, unknown>).content, 'lm_studio')
-    if (!content) continue
-    out.push({ role, content })
-  }
-  if (out.length === 0 || out[out.length - 1]?.role !== 'user') return null
-  return out
-}
-
-function normalizeOpenAICompatibleMessageContent(
-  raw: unknown,
-  provider: 'lm_studio',
-): string | OpenAICompatibleChatContentPart[] | null {
-  if (typeof raw === 'string') {
-    const content = raw.trim()
-    return content ? content.slice(0, MAX_MESSAGE_CHARS) : null
-  }
-  if (!Array.isArray(raw)) return null
-  const sanitized = sanitizeProviderRuntimeImageContentBlocks(provider, raw)
-  if (!sanitized.ok || sanitized.blocks.length === 0) return null
-  const out: OpenAICompatibleChatContentPart[] = []
-  for (const block of sanitized.blocks) {
-    if (block.type === 'text' && typeof block.text === 'string') {
-      out.push({ type: 'text', text: block.text.slice(0, MAX_MESSAGE_CHARS) })
-      continue
-    }
-    const imageUrl = (block as Record<string, any>).image_url
-    if (block.type === 'image_url' && imageUrl && typeof imageUrl.url === 'string') {
-      out.push({ type: 'image_url', image_url: { url: imageUrl.url } })
-    }
-  }
-  return out.length > 0 ? out : null
-}
-
-export function validateLMStudioTextChatPayload(payload: unknown): ValidatedTextChatPayload {
-  if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
-    return staticStartFailure('invalid_payload', 'LM Studio text chat payload is invalid.')
-  }
-  const record = payload as LMStudioTextChatPayload
-  const requestId = String(record.requestId ?? '').trim()
-  const assistantMessageId = String(record.assistantMessageId ?? '').trim()
-  const model = String(record.model ?? '').trim()
-  if (!requestId || !assistantMessageId || !model) {
-    return staticStartFailure('invalid_payload', 'LM Studio text chat payload is invalid.')
-  }
-
-  const config = normalizeConfig(record.config)
-  const endpoint = validateLMStudioEndpointUrl(config.endpointUrl)
-  if (!endpoint.ok) {
-    return staticStartFailure(endpoint.code, endpoint.message, endpoint.safeUrl)
-  }
-
-  const messages = normalizeMessages(record.messages)
-  if (!messages) {
-    return staticStartFailure('invalid_payload', 'LM Studio text chat requires text-only user and assistant messages.')
-  }
-
-  return {
-    ok: true,
-    requestId,
-    assistantMessageId,
-    config,
-    endpoint: endpoint.url,
-    safeBaseUrl: endpoint.safeBaseUrl,
-    model,
-    messages,
-    timeoutMs: normalizeTimeoutMs(record.timeoutMs),
-  }
-}
-
-function pickSafeHeaders(headers: Headers): Record<string, string> {
-  const out: Record<string, string> = {}
-  const contentType = headers.get('content-type')
-  const requestId = headers.get('x-request-id')
-  if (contentType) out['content-type'] = contentType
-  if (requestId) out['x-request-id'] = requestId
-  return out
 }
 
 async function fetchJson(fetchImpl: typeof fetch, url: string, timeoutMs: number): Promise<JsonFetchResult> {
@@ -811,467 +566,29 @@ export async function unloadLMStudioModel(
   })
 }
 
-function sendWireEvent(sender: WebContents, requestId: string, event: LMStudioTextChatWireEvent) {
-  sender.send(`lm-studio-chat:chunk:${requestId}`, event)
-}
-
-function sendWireEnd(sender: WebContents, requestId: string) {
-  sender.send(`lm-studio-chat:chunk:${requestId}`, { type: 'end' } satisfies LMStudioTextChatWireEvent)
-  sender.send(`lm-studio-chat:end:${requestId}`)
-}
-
-function makeAbortError(reason: 'timeout' | 'user_abort'): LMStudioTextChatWireEvent {
-  if (reason === 'user_abort') {
-    return {
-      type: 'error',
-      error: {
-        kind: 'aborted',
-        code: 'aborted',
-        message: 'LM Studio text chat was aborted.',
-      },
-    }
-  }
-  return {
-    type: 'error',
-    error: {
-      kind: 'transport_error',
-      code: 'timeout',
-      message: 'LM Studio text chat timed out.',
-    },
-  }
-}
-
-function makeSafeTransportError(code: string, message = 'LM Studio text chat failed safely.'): LMStudioTextChatWireEvent {
-  return {
-    type: 'error',
-    error: {
-      kind: 'transport_error',
-      code,
-      message,
-    },
-  }
-}
-
-function openAIChatBody(request: ValidatedTextChatSuccess): Record<string, unknown> {
-  return {
-    model: request.model,
-    messages: request.messages,
-    stream: true,
-  }
-}
-
-function responsesBody(request: ValidatedTextChatSuccess): Record<string, unknown> {
-  return {
-    model: request.model,
-    input: request.messages.map((message) => ({
-      role: message.role,
-      content: message.content,
-      type: 'message',
-    })),
-    stream: true,
-  }
-}
-
-function nativeRestChatBody(request: ValidatedTextChatSuccess): Record<string, unknown> {
-  const previous = request.messages.slice(0, -1)
-  const current = request.messages[request.messages.length - 1]
-  const contextText = previous
-    .map((message) => `${message.role}: ${messageContentText(message)}`)
-    .join('\n')
-    .trim()
-  return {
-    model: request.model,
-    input: contextText ? `${contextText}\nuser: ${messageContentText(current)}` : messageContentText(current),
-    stream: true,
-    store: false,
-  }
-}
-
-function messageContentText(message: LMStudioTextChatMessage | undefined): string {
-  const content = message?.content
-  if (typeof content === 'string') return content
-  if (!Array.isArray(content)) return ''
-  return content
-    .filter((part) => part.type === 'text')
-    .map((part) => part.text)
-    .join('')
-}
-
-function messageHasImage(message: LMStudioTextChatMessage): boolean {
-  return Array.isArray(message.content) && message.content.some((part) => part.type === 'image_url')
-}
-
-function messagesHaveImage(messages: ReadonlyArray<LMStudioTextChatMessage>): boolean {
-  return messages.some(messageHasImage)
-}
-
-function syntheticOpenAITextDelta(text: string): string {
-  return `data: ${JSON.stringify({ choices: [{ index: 0, delta: { content: text }, finish_reason: null }] })}\n\n`
-}
-
-function syntheticOpenAIDone(): string {
-  return 'data: [DONE]\n\n'
-}
-
-function parseSseFrame(frame: string): Readonly<{ event: string; data: string }> | null {
-  let event = ''
-  const data: string[] = []
-  for (const rawLine of frame.split('\n')) {
-    const line = rawLine.trimEnd()
-    if (!line || line.startsWith(':')) continue
-    if (line.startsWith('event:')) {
-      event = line.slice('event:'.length).trim()
-      continue
-    }
-    if (line.startsWith('data:')) {
-      data.push(line.slice('data:'.length).trimStart())
-    }
-  }
-  if (data.length === 0) return null
-  return { event, data: data.join('\n') }
-}
-
-function nativeRestFrameToWire(frame: Readonly<{ event: string; data: string }>): LMStudioTextChatWireEvent | null {
-  let parsed: Record<string, any> | null = null
-  try {
-    parsed = JSON.parse(frame.data) as Record<string, any>
-  } catch {
-    return null
-  }
-  const eventType = frame.event || String(parsed?.type ?? '')
-  if (eventType === 'message.delta') {
-    const content = String(parsed?.content ?? '')
-    return content ? { type: 'chunk', data: syntheticOpenAITextDelta(content) } : null
-  }
-  if (eventType === 'error') {
-    const code = stringOrUndefined(parsed?.error?.code) ?? stringOrUndefined(parsed?.error?.type) ?? 'provider_error'
-    return makeSafeTransportError(code, 'LM Studio native REST stream returned an error.')
-  }
-  if (eventType === 'chat.end') {
-    return { type: 'chunk', data: syntheticOpenAIDone() }
-  }
-  return null
-}
-
-async function forwardOpenAICompatibleStream(input: Readonly<{
-  request: ValidatedTextChatSuccess
-  sender: WebContents
-  fetchImpl: typeof fetch
-  controller: AbortController
-  rawGenerationRequestStore?: RawGenerationRequestStore
-}>): Promise<boolean> {
-  const preferred = input.request.config.openAICompatible.preferredEndpoint
-  const serializedBody = JSON.stringify(preferred === 'responses' ? responsesBody(input.request) : openAIChatBody(input.request))
-  input.rawGenerationRequestStore?.tryPersist({ operationId: input.request.requestId, answerRootId: input.request.assistantMessageId,
-    requestSequence: 1, providerId: 'lm_studio', modelId: input.request.model }, serializedBody)
-  const response = await input.fetchImpl(
-    lmStudioUrl(input.request.endpoint, preferred === 'responses' ? '/v1/responses' : '/v1/chat/completions'),
-    {
-      method: 'POST',
-      headers: {
-        Accept: 'text/event-stream',
-        'Content-Type': 'application/json',
-      },
-      body: serializedBody,
-      redirect: 'error',
-      signal: input.controller.signal,
-    },
-  )
-
-  sendWireEvent(input.sender, input.request.requestId, {
-    type: 'responseMeta',
-    status: response.status,
-    requestId: input.request.requestId,
-    provider: 'lm_studio',
-    headers: pickSafeHeaders(response.headers),
-  })
-
-  if (!response.ok) {
-    sendWireEvent(input.sender, input.request.requestId, {
-      type: 'error',
-      error: {
-        kind: 'http_error',
-        status: response.status,
-        statusText: response.statusText,
-        message: 'LM Studio OpenAI-compatible chat returned an HTTP error.',
-      },
-    })
-    return false
-  }
-
-  if (!response.body) {
-    sendWireEvent(input.sender, input.request.requestId, makeSafeTransportError('missing_body', 'LM Studio response did not include a stream body.'))
-    return false
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  while (true) {
-    const { done, value } = await reader.read()
-    if (done) break
-    const text = decoder.decode(value, { stream: true })
-    if (text) sendWireEvent(input.sender, input.request.requestId, { type: 'chunk', data: text })
-  }
-  const tail = decoder.decode()
-  if (tail) sendWireEvent(input.sender, input.request.requestId, { type: 'chunk', data: tail })
-  return true
-}
-
-async function forwardNativeRestStream(input: Readonly<{
-  request: ValidatedTextChatSuccess
-  sender: WebContents
-  fetchImpl: typeof fetch
-  controller: AbortController
-  rawGenerationRequestStore?: RawGenerationRequestStore
-}>): Promise<boolean> {
-  const serializedBody = JSON.stringify(nativeRestChatBody(input.request))
-  input.rawGenerationRequestStore?.tryPersist({ operationId: input.request.requestId, answerRootId: input.request.assistantMessageId,
-    requestSequence: 1, providerId: 'lm_studio', modelId: input.request.model }, serializedBody)
-  const response = await input.fetchImpl(lmStudioUrl(input.request.endpoint, '/api/v1/chat'), {
-    method: 'POST',
-    headers: {
-      Accept: 'text/event-stream',
-      'Content-Type': 'application/json',
-    },
-    body: serializedBody,
-    redirect: 'error',
-    signal: input.controller.signal,
-  })
-
-  sendWireEvent(input.sender, input.request.requestId, {
-    type: 'responseMeta',
-    status: response.status,
-    requestId: input.request.requestId,
-    provider: 'lm_studio',
-    headers: pickSafeHeaders(response.headers),
-  })
-
-  if (!response.ok) {
-    sendWireEvent(input.sender, input.request.requestId, {
-      type: 'error',
-      error: {
-        kind: 'http_error',
-        status: response.status,
-        statusText: response.statusText,
-        message: 'LM Studio native REST chat returned an HTTP error.',
-      },
-    })
-    return false
-  }
-
-  if (!response.body) {
-    sendWireEvent(input.sender, input.request.requestId, makeSafeTransportError('missing_body', 'LM Studio response did not include a stream body.'))
-    return false
-  }
-
-  const reader = response.body.getReader()
-  const decoder = new TextDecoder()
-  let buffer = ''
-  let sawTerminal = false
-  const drainFrames = () => {
-    buffer = buffer.replace(/\r\n/g, '\n')
-    while (true) {
-      const idx = buffer.indexOf('\n\n')
-      if (idx < 0) break
-      const rawFrame = buffer.slice(0, idx)
-      buffer = buffer.slice(idx + 2)
-      const frame = parseSseFrame(rawFrame)
-      if (!frame) continue
-      const wire = nativeRestFrameToWire(frame)
-      if (!wire) continue
-      sendWireEvent(input.sender, input.request.requestId, wire)
-      if (wire.type === 'chunk' && wire.data.includes('[DONE]')) sawTerminal = true
-      if (wire.type === 'error') sawTerminal = true
-    }
-  }
-
-  while (!sawTerminal) {
-    const { done, value } = await reader.read()
-    if (done) break
-    buffer += decoder.decode(value, { stream: true })
-    drainFrames()
-  }
-  buffer += decoder.decode()
-  drainFrames()
-  if (!sawTerminal) sendWireEvent(input.sender, input.request.requestId, { type: 'chunk', data: syntheticOpenAIDone() })
-  return sawTerminal
-}
-
-async function maybeAutoLoadBeforeSend(input: Readonly<{
-  request: ValidatedTextChatSuccess
-  fetchImpl: typeof fetch
-  requireVision: boolean
-}>): Promise<
-  | Readonly<{ ok: true; autoLoadedInstanceId?: string }>
-  | Readonly<{ ok: false; event: LMStudioTextChatWireEvent }>
-> {
-  const controls = input.request.config.nativeRestControls
-  const state = await resolveModelLoadedState(input.fetchImpl, input.request.endpoint, input.request.model, input.request.timeoutMs)
-  if (!state.ok) {
-    if (input.requireVision) {
-      return { ok: false, event: makeSafeTransportError(state.code, 'LM Studio vision capability could not be confirmed for the selected model.') }
-    }
-    if (controls.autoLoadBeforeSendEnabled) {
-      return { ok: false, event: makeSafeTransportError(state.code, 'LM Studio native REST control plane is unavailable.') }
-    }
-    return { ok: true }
-  }
-  if (input.requireVision) {
-    if (!state.known || state.model.capabilities?.vision !== true) {
-      return { ok: false, event: makeSafeTransportError('unsupported_image_input', 'LM Studio selected model is not confirmed as vision-capable.') }
-    }
-  }
-  if (!state.known) {
-    if (controls.autoLoadBeforeSendEnabled) {
-      const loaded = await loadLMStudioModelInternal({
-        fetchImpl: input.fetchImpl,
-        endpoint: input.request.endpoint,
-        model: input.request.model,
-        timeoutMs: input.request.timeoutMs,
-      })
-      if (!loaded.ok) return { ok: false, event: makeSafeTransportError(loaded.code, loaded.message) }
-      return { ok: true, autoLoadedInstanceId: loaded.instanceId }
-    }
-    return { ok: false, event: makeSafeTransportError('model_not_loaded', 'LM Studio selected model is not loaded. Enable auto-load or load it manually.') }
-  }
-  if (state.loaded) return { ok: true }
-  if (!controls.autoLoadBeforeSendEnabled) {
-    return { ok: false, event: makeSafeTransportError('model_not_loaded', 'LM Studio selected model is not loaded. Enable auto-load or load it manually.') }
-  }
-  const loaded = await loadLMStudioModelInternal({
-    fetchImpl: input.fetchImpl,
-    endpoint: input.request.endpoint,
-    model: input.request.model,
-    timeoutMs: input.request.timeoutMs,
-  })
-  if (!loaded.ok) return { ok: false, event: makeSafeTransportError(loaded.code, loaded.message) }
-  return { ok: true, autoLoadedInstanceId: loaded.instanceId }
-}
-
-async function forwardLMStudioTextChat(input: Readonly<{
-  request: ValidatedTextChatSuccess
-  sender: WebContents
-  fetchImpl: typeof fetch
-  rawGenerationRequestStore?: RawGenerationRequestStore
-}>): Promise<void> {
-  const controller = new AbortController()
-  activeControllers.set(input.request.requestId, controller)
-  const timer = setTimeout(() => controller.abort('timeout'), input.request.timeoutMs)
-  let completedNormally = false
-  let autoLoadedInstanceId: string | undefined
-
-  try {
-    const hasImage = messagesHaveImage(input.request.messages)
-    if (
-      hasImage &&
-      (input.request.config.chatMode !== 'openai_compatible' ||
-        input.request.config.openAICompatible.preferredEndpoint !== 'chat_completions')
-    ) {
-      sendWireEvent(input.sender, input.request.requestId, {
-        type: 'responseMeta',
-        status: 0,
-        requestId: input.request.requestId,
-        provider: 'lm_studio',
-        headers: {},
-      })
-      sendWireEvent(input.sender, input.request.requestId, makeSafeTransportError(
-        'unsupported_image_input',
-        'LM Studio image input is only enabled for OpenAI-compatible chat completions in this runtime slice.',
-      ))
-      return
-    }
-
-    const loadResult = await maybeAutoLoadBeforeSend({ request: input.request, fetchImpl: input.fetchImpl, requireVision: hasImage })
-    if (!loadResult.ok) {
-      sendWireEvent(input.sender, input.request.requestId, {
-        type: 'responseMeta',
-        status: 0,
-        requestId: input.request.requestId,
-        provider: 'lm_studio',
-        headers: {},
-      })
-      sendWireEvent(input.sender, input.request.requestId, loadResult.event)
-      return
-    }
-    autoLoadedInstanceId = loadResult.autoLoadedInstanceId
-
-    completedNormally = input.request.config.chatMode === 'native_rest'
-      ? await forwardNativeRestStream({ ...input, controller })
-      : await forwardOpenAICompatibleStream({ ...input, controller })
-  } catch (error) {
-    if ((error as any)?.name === 'AbortError') {
-      sendWireEvent(input.sender, input.request.requestId, makeAbortError(controller.signal.reason === 'user_abort' ? 'user_abort' : 'timeout'))
-      return
-    }
-    sendWireEvent(input.sender, input.request.requestId, makeSafeTransportError('network_error', 'LM Studio text chat could not reach the service.'))
-  } finally {
-    clearTimeout(timer)
-    activeControllers.delete(input.request.requestId)
-    if (
-      completedNormally &&
-      autoLoadedInstanceId &&
-      input.request.config.nativeRestControls.autoUnloadAfterSendEnabled &&
-      !controller.signal.aborted
-    ) {
-      await unloadLMStudioModelInternal({
-        fetchImpl: input.fetchImpl,
-        endpoint: input.request.endpoint,
-        instanceId: autoLoadedInstanceId,
-        timeoutMs: input.request.timeoutMs,
-      }).catch(() => undefined)
-    }
-    sendWireEnd(input.sender, input.request.requestId)
-  }
-}
-
-export function abortLMStudioTextChat(requestId: unknown): Readonly<{ ok: true }> {
-  const id = String(requestId ?? '').trim()
-  const controller = id ? activeControllers.get(id) : undefined
-  if (controller && !controller.signal.aborted) controller.abort('user_abort')
-  return { ok: true }
-}
-
-export function registerLMStudioLocalProviderIpc(
-  input: RegisterLMStudioLocalProviderIpcInput,
+export function registerLMStudioRuntimeManagementV2Ipc(
+  input: RegisterLMStudioRuntimeManagementV2IpcInput,
 ): string[] {
-  input.registerInvoke('lm-studio:probe', (_event: unknown, payload: unknown) => {
+  input.registerInvoke('generation-v2:local-runtime:lmstudio:probe', (_event: unknown, payload: unknown) => {
     const safePayload = payload && typeof payload === 'object' && !Array.isArray(payload)
       ? payload as Record<string, unknown>
       : {}
     return probeLMStudioLocalProvider(safePayload, { fetchImpl: input.fetchImpl })
   })
 
-  input.registerInvoke('lm-studio:load-model', (_event: unknown, payload: unknown) => {
+  input.registerInvoke('generation-v2:local-runtime:lmstudio:load-model', (_event: unknown, payload: unknown) => {
     const safePayload = payload && typeof payload === 'object' && !Array.isArray(payload)
       ? payload as Record<string, unknown>
       : {}
     return loadLMStudioModel(safePayload, { fetchImpl: input.fetchImpl })
   })
 
-  input.registerInvoke('lm-studio:unload-model', (_event: unknown, payload: unknown) => {
+  input.registerInvoke('generation-v2:local-runtime:lmstudio:unload-model', (_event: unknown, payload: unknown) => {
     const safePayload = payload && typeof payload === 'object' && !Array.isArray(payload)
       ? payload as Record<string, unknown>
       : {}
     return unloadLMStudioModel(safePayload, { fetchImpl: input.fetchImpl })
   })
 
-  input.registerInvoke('lm-studio-chat:stream-text', (event: unknown, payload: unknown) => {
-    const validated = validateLMStudioTextChatPayload(payload)
-    if (!validated.ok) return validated
-
-    const sender = (event as { sender?: WebContents } | null)?.sender
-    const fetchImpl = input.fetchImpl ?? createLocalEndpointDirectFetch()
-    if (!sender || typeof sender.send !== 'function' || typeof fetchImpl !== 'function') {
-      return staticStartFailure('invalid_payload', 'LM Studio text chat bridge is unavailable.')
-    }
-
-    void forwardLMStudioTextChat({ request: validated, sender, fetchImpl, rawGenerationRequestStore: input.rawGenerationRequestStore })
-    return { ok: true }
-  })
-
-  input.registerInvoke('lm-studio-chat:abort', (_event: unknown, requestId: unknown) => {
-    return abortLMStudioTextChat(requestId)
-  })
-
-  return [...LM_STUDIO_LOCAL_PROVIDER_IPC_CHANNELS]
+  return [...LM_STUDIO_RUNTIME_MANAGEMENT_V2_IPC_CHANNELS]
 }

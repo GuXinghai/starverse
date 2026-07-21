@@ -40,17 +40,44 @@ export type ProviderContractApiSurfaceV2 = Readonly<
   | DeepSeekStableChatRegistrySurfaceV2
   | OpenRouterChatRegistrySurfaceV2
   | Extract<OpenAIResponsesApiSurfaceDefinitionV2, { surfaceId: 'openai-responses-v1' }>
+  | {
+    kind: 'generic_local_openai_chat_completions'
+    requestPath: '/v1/chat/completions'
+  }
+  | {
+    kind: 'ollama_native_chat'
+    requestPath: '/api/chat'
+  }
+  | {
+    kind: 'lmstudio_openresponses'
+    requestPath: '/v1/responses'
+  }
+  | {
+    kind: 'openai_chat_compatible'
+    requestPath: '/v1/chat/completions'
+    modelsPath: '/v1/models'
+    responseProtocols: readonly ['sse', 'json']
+  }
 >
 
-type ModelBindingPolicyV2 = 'descriptor_model_id' | 'runtime_capability_resolver'
-type EndpointBindingPolicyV2 = 'exact_descriptor_pin' | 'first_party_profile_authority_required'
+type ModelBindingPolicyV2 = 'descriptor_model_id' | 'runtime_capability_resolver' | 'explicit_local_profile'
+type EndpointBindingPolicyV2 = 'exact_descriptor_pin' | 'first_party_profile_authority_required' | 'explicit_local_profile'
 type ContinuationPolicyV2 =
   | 'none'
   | 'ordered_native_content_blocks_with_signatures'
-  | GeminiDeveloperApiSurfaceDefinitionV2['continuationFamily']
+  | Extract<GeminiDeveloperApiSurfaceDefinitionV2, { continuationFamily: string }>['continuationFamily']
   | DeepSeekStableChatRegistrySurfaceV2['continuationFamily']
   | OpenRouterChatRegistrySurfaceV2['continuationFamily']
   | Extract<OpenAIResponsesApiSurfaceDefinitionV2, { surfaceId: 'openai-responses-v1' }>['continuationPolicy']
+  | 'complete_ordered_messages'
+type ContextProjectionPolicyV2 = 'complete_turn_client_managed_replay' | 'unsupported'
+
+function readGeminiContinuationFamily(
+  surface: GeminiDeveloperApiRegistrySurfaceV2,
+): Extract<GeminiDeveloperApiRegistrySurfaceV2, { continuationFamily: string }>['continuationFamily'] {
+  if (!('continuationFamily' in surface)) throw new Error('GENERATION_V2_GEMINI_CONTINUATION_SURFACE_INVALID')
+  return surface.continuationFamily
+}
 
 export type ReviewedProviderContractDefinitionV2 = Readonly<{
   classification: 'reviewed_definition'
@@ -66,6 +93,7 @@ export type ReviewedProviderContractDefinitionV2 = Readonly<{
   modelBindingPolicy: ModelBindingPolicyV2
   endpointBindingPolicy: EndpointBindingPolicyV2
   continuationPolicy: ContinuationPolicyV2
+  contextProjectionPolicy: ContextProjectionPolicyV2
   implementationStatus: 'definition_only'
   evidence: Readonly<{
     verifiedAt: string
@@ -97,6 +125,7 @@ type DefinitionProjection = Readonly<{
   modelBindingPolicy: ModelBindingPolicyV2
   endpointBindingPolicy: EndpointBindingPolicyV2
   continuationPolicy: ContinuationPolicyV2
+  contextProjectionPolicy: ContextProjectionPolicyV2
   implementationStatus: 'definition_only'
   evidence: Readonly<{
     verifiedAt: string
@@ -122,19 +151,27 @@ const OPENROUTER_IMAGES_PROJECTION: DefinitionProjection = Object.freeze({
   modelBindingPolicy: 'descriptor_model_id',
   endpointBindingPolicy: 'exact_descriptor_pin',
   continuationPolicy: 'none',
+  contextProjectionPolicy: 'unsupported',
   implementationStatus: 'definition_only',
   evidence: Object.freeze({
-    verifiedAt: '2026-07-14',
-    openApiSha256: 'abaf90acc89dc3a2b4cd8824afcbf87734c8d0a5f4429ea85dca0d9eb02e353b',
+    verifiedAt: '2026-07-18',
+    openApiSha256: '043b816d0cd67a9474ee69169803efb3654485978c180bf94f58ff7a89e5a880',
     provenanceUrls: Object.freeze([
       'https://openrouter.ai/docs/guides/overview/multimodal/image-generation',
       'https://openrouter.ai/docs/guides/routing/provider-selection',
     ]),
-    localArtifacts: Object.freeze([Object.freeze({
-      id: 'openrouter-images-provider-only-smoke-20260714',
-      path: 'docs/architecture/generation-compiler-v2/evidence/openrouter-images-provider-only-smoke-20260714.json',
-      sha256: '31002268f86ba7e08fe5af0622ce346e129f40c1900bd62b173a58b97ec4709f',
-    })]),
+    localArtifacts: Object.freeze([
+      Object.freeze({
+        id: 'openrouter-images-provider-only-smoke-20260714',
+        path: 'docs/architecture/generation-compiler-v2/evidence/openrouter-images-provider-only-smoke-20260714.json',
+        sha256: '31002268f86ba7e08fe5af0622ce346e129f40c1900bd62b173a58b97ec4709f',
+      }),
+      Object.freeze({
+        id: 'openrouter-images-streaming-contract-20260718',
+        path: 'docs/architecture/generation-compiler-v2/evidence/openrouter-images-streaming-contract-20260718.json',
+        sha256: '97c2eb3e990bc30a295c4fabfa806c1c2dec4dd3968555d793e7b7e268725df4',
+      }),
+    ]),
   }),
 })
 
@@ -148,6 +185,7 @@ const OPENROUTER_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
   modelBindingPolicy: 'runtime_capability_resolver',
   endpointBindingPolicy: 'first_party_profile_authority_required',
   continuationPolicy: openRouterChatSurface.continuationFamily,
+  contextProjectionPolicy: 'complete_turn_client_managed_replay',
   implementationStatus: 'definition_only',
   evidence: Object.freeze({
     verifiedAt: openRouterChatApiContract.evidence.verifiedAt,
@@ -163,9 +201,9 @@ const OPENROUTER_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
 
 const geminiDeveloperApiContract = readGeminiDeveloperApiContractV2()
 const geminiEvidenceArtifact = Object.freeze({
-  id: 'gemini-developer-api-contract-20260715',
-  path: 'docs/architecture/generation-compiler-v2/evidence/gemini-developer-api-contract-20260715.json',
-  sha256: '8fc121063a6591c2e624b779f4793c16dcd0b69c625b152a652f8d034c7cecac',
+  id: 'gemini-developer-api-contract-20260718',
+  path: 'docs/architecture/generation-compiler-v2/evidence/gemini-developer-api-contract-20260718.json',
+  sha256: '446bcbd2c00cfaa40190d4ea99bd02b0e6ec211ec525498eb9ed47b3901e765c',
 })
 const geminiGenerateContentEvidence = Object.freeze({
   verifiedAt: geminiDeveloperApiContract.evidence.verifiedAt,
@@ -194,7 +232,8 @@ const GEMINI_GENERATE_CONTENT_PROJECTION: DefinitionProjection = Object.freeze({
   apiSurface: readGeminiDeveloperApiRegistrySurfaceV2('gemini-generate-content-v1beta'),
   modelBindingPolicy: 'runtime_capability_resolver',
   endpointBindingPolicy: 'first_party_profile_authority_required',
-  continuationPolicy: readGeminiDeveloperApiRegistrySurfaceV2('gemini-generate-content-v1beta').continuationFamily,
+  continuationPolicy: readGeminiContinuationFamily(readGeminiDeveloperApiRegistrySurfaceV2('gemini-generate-content-v1beta')),
+  contextProjectionPolicy: 'complete_turn_client_managed_replay',
   implementationStatus: 'definition_only',
   evidence: geminiGenerateContentEvidence,
 })
@@ -206,7 +245,8 @@ const GEMINI_INTERACTIONS_PROJECTION: DefinitionProjection = Object.freeze({
   apiSurface: readGeminiDeveloperApiRegistrySurfaceV2('gemini-interactions-v1beta'),
   modelBindingPolicy: 'runtime_capability_resolver',
   endpointBindingPolicy: 'first_party_profile_authority_required',
-  continuationPolicy: readGeminiDeveloperApiRegistrySurfaceV2('gemini-interactions-v1beta').continuationFamily,
+  continuationPolicy: readGeminiContinuationFamily(readGeminiDeveloperApiRegistrySurfaceV2('gemini-interactions-v1beta')),
+  contextProjectionPolicy: 'unsupported',
   implementationStatus: 'definition_only',
   evidence: geminiInteractionsEvidence,
 })
@@ -221,6 +261,7 @@ const ANTHROPIC_MESSAGES_PROJECTION: DefinitionProjection = Object.freeze({
   modelBindingPolicy: 'runtime_capability_resolver',
   endpointBindingPolicy: 'first_party_profile_authority_required',
   continuationPolicy: anthropicMessagesSurface.continuationFamily,
+  contextProjectionPolicy: 'complete_turn_client_managed_replay',
   implementationStatus: 'definition_only',
   evidence: Object.freeze({
     verifiedAt: anthropicDeveloperApiContract.evidence.verifiedAt,
@@ -244,6 +285,7 @@ const DEEPSEEK_STABLE_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
   modelBindingPolicy: 'runtime_capability_resolver',
   endpointBindingPolicy: 'first_party_profile_authority_required',
   continuationPolicy: deepSeekStableChatSurface.continuationFamily,
+  contextProjectionPolicy: 'complete_turn_client_managed_replay',
   implementationStatus: 'definition_only',
   evidence: Object.freeze({
     verifiedAt: deepSeekStableApiContract.evidence.verifiedAt,
@@ -280,6 +322,7 @@ const OPENAI_RESPONSES_PROJECTION: DefinitionProjection = Object.freeze({
   modelBindingPolicy: 'runtime_capability_resolver',
   endpointBindingPolicy: 'first_party_profile_authority_required',
   continuationPolicy: openAIResponsesSurface.continuationPolicy,
+  contextProjectionPolicy: 'complete_turn_client_managed_replay',
   implementationStatus: 'definition_only',
   evidence: Object.freeze({
     verifiedAt: openAIResponsesApiContract.evidence.verifiedAt,
@@ -300,6 +343,76 @@ const OPENAI_RESPONSES_PROJECTION: DefinitionProjection = Object.freeze({
   }),
 })
 
+const GENERIC_LOCAL_OPENAI_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
+  protocolContractId: 'generic-local-openai-chat-completions',
+  providerId: 'generic_local',
+  operations: Object.freeze(['text'] as const),
+  apiSurface: Object.freeze({ kind: 'generic_local_openai_chat_completions' as const, requestPath: '/v1/chat/completions' as const }),
+  modelBindingPolicy: 'explicit_local_profile',
+  endpointBindingPolicy: 'explicit_local_profile',
+  continuationPolicy: 'complete_ordered_messages',
+  contextProjectionPolicy: 'complete_turn_client_managed_replay',
+  implementationStatus: 'definition_only',
+  evidence: Object.freeze({ verifiedAt: '2026-07-19', openApiSha256: null,
+    provenanceUrls: Object.freeze([]), localArtifacts: Object.freeze([]) }),
+})
+
+const OLLAMA_CHAT_PROJECTION: DefinitionProjection = Object.freeze({
+  protocolContractId: 'ollama-chat-v1',
+  providerId: 'ollama',
+  operations: Object.freeze(['text'] as const),
+  apiSurface: Object.freeze({ kind: 'ollama_native_chat' as const, requestPath: '/api/chat' as const }),
+  modelBindingPolicy: 'explicit_local_profile',
+  endpointBindingPolicy: 'explicit_local_profile',
+  continuationPolicy: 'complete_ordered_messages',
+  contextProjectionPolicy: 'complete_turn_client_managed_replay',
+  implementationStatus: 'definition_only',
+  evidence: Object.freeze({ verifiedAt: '2026-07-19', openApiSha256: null,
+    provenanceUrls: Object.freeze([]), localArtifacts: Object.freeze([]) }),
+})
+
+const LMSTUDIO_OPENRESPONSES_PROJECTION: DefinitionProjection = Object.freeze({
+  protocolContractId: 'lmstudio-openresponses',
+  providerId: 'lmstudio',
+  operations: Object.freeze(['text', 'tool_continue'] as const),
+  apiSurface: Object.freeze({ kind: 'lmstudio_openresponses' as const, requestPath: '/v1/responses' as const }),
+  modelBindingPolicy: 'explicit_local_profile',
+  endpointBindingPolicy: 'explicit_local_profile',
+  continuationPolicy: 'complete_ordered_messages',
+  contextProjectionPolicy: 'complete_turn_client_managed_replay',
+  implementationStatus: 'definition_only',
+  evidence: Object.freeze({ verifiedAt: '2026-07-19', openApiSha256: null,
+    provenanceUrls: Object.freeze([]), localArtifacts: Object.freeze([]) }),
+})
+
+/**
+ * A user-owned endpoint family, deliberately distinct from every first-party
+ * provider. Its sole protocol contract is Chat Completions: selection never
+ * probes another endpoint or changes a protocol after a failed request.
+ */
+const OPENAI_CHAT_COMPATIBLE_PROJECTION: DefinitionProjection = Object.freeze({
+  protocolContractId: 'openai_chat_compatible',
+  providerId: 'openai_compatible',
+  operations: Object.freeze(['text'] as const),
+  apiSurface: Object.freeze({
+    kind: 'openai_chat_compatible' as const,
+    requestPath: '/v1/chat/completions' as const,
+    modelsPath: '/v1/models' as const,
+    responseProtocols: Object.freeze(['sse', 'json'] as const),
+  }),
+  modelBindingPolicy: 'explicit_local_profile',
+  endpointBindingPolicy: 'explicit_local_profile',
+  continuationPolicy: 'complete_ordered_messages',
+  contextProjectionPolicy: 'complete_turn_client_managed_replay',
+  implementationStatus: 'definition_only',
+  evidence: Object.freeze({
+    verifiedAt: '2026-07-20',
+    openApiSha256: null,
+    provenanceUrls: Object.freeze([]),
+    localArtifacts: Object.freeze([]),
+  }),
+})
+
 function digest(value: unknown): string {
   return createHash('sha256').update(stableSerializeProviderRequestV2(value), 'utf8').digest('hex')
 }
@@ -312,6 +425,10 @@ const definitionProjections = Object.freeze([
   ANTHROPIC_MESSAGES_PROJECTION,
   DEEPSEEK_STABLE_CHAT_PROJECTION,
   OPENAI_RESPONSES_PROJECTION,
+  GENERIC_LOCAL_OPENAI_CHAT_PROJECTION,
+  OLLAMA_CHAT_PROJECTION,
+  LMSTUDIO_OPENRESPONSES_PROJECTION,
+  OPENAI_CHAT_COMPATIBLE_PROJECTION,
 ])
 const registryRevisionValue = `provider-contract-registry-v1:${digest(definitionProjections)}`
 const registryRevision = GenerationV2Identity.create('registry_revision', registryRevisionValue)
@@ -336,6 +453,7 @@ function createDefinition(projection: DefinitionProjection): ReviewedProviderCon
     modelBindingPolicy: projection.modelBindingPolicy,
     endpointBindingPolicy: projection.endpointBindingPolicy,
     continuationPolicy: projection.continuationPolicy,
+    contextProjectionPolicy: projection.contextProjectionPolicy,
     implementationStatus: projection.implementationStatus,
     evidence: projection.evidence,
   })
@@ -355,8 +473,29 @@ function requireReviewedDefinition(
 const deepSeekStableChatDefinition = requireReviewedDefinition(definitions.find(
   (definition) => definition.protocolContractId.value === 'deepseek-stable-chat-v1',
 ))
+const anthropicMessagesDefinition = requireReviewedDefinition(definitions.find(
+  (definition) => definition.protocolContractId.value === 'anthropic-messages-2023-06-01',
+))
 const openAIResponsesDefinition = requireReviewedDefinition(definitions.find(
   (definition) => definition.protocolContractId.value === 'openai-responses-v1',
+))
+const geminiGenerateContentDefinition = requireReviewedDefinition(definitions.find(
+  (definition) => definition.protocolContractId.value === 'gemini-generate-content-v1beta',
+))
+const geminiInteractionsDefinition = requireReviewedDefinition(definitions.find(
+  (definition) => definition.protocolContractId.value === 'gemini-interactions-v1beta',
+))
+const genericLocalOpenAIChatDefinition = requireReviewedDefinition(definitions.find(
+  (definition) => definition.protocolContractId.value === 'generic-local-openai-chat-completions',
+))
+const ollamaChatDefinition = requireReviewedDefinition(definitions.find(
+  (definition) => definition.protocolContractId.value === 'ollama-chat-v1',
+))
+const lmStudioOpenResponsesDefinition = requireReviewedDefinition(definitions.find(
+  (definition) => definition.protocolContractId.value === 'lmstudio-openresponses',
+))
+const openAIChatCompatibleDefinition = requireReviewedDefinition(definitions.find(
+  (definition) => definition.protocolContractId.value === 'openai_chat_compatible',
 ))
 const definitionsByKey = new Map(definitions.map((definition) => [
   `${definition.protocolContractId.value}\0${definition.contractRevision.value}`,
@@ -408,6 +547,34 @@ export function readReviewedDeepSeekStableChatDefinitionV2(): ReviewedProviderCo
   return deepSeekStableChatDefinition
 }
 
+export function readReviewedAnthropicMessagesDefinitionV2(): ReviewedProviderContractDefinitionV2 {
+  return anthropicMessagesDefinition
+}
+
 export function readReviewedOpenAIResponsesDefinitionV2(): ReviewedProviderContractDefinitionV2 {
   return openAIResponsesDefinition
+}
+
+export function readReviewedGeminiGenerateContentDefinitionV2(): ReviewedProviderContractDefinitionV2 {
+  return geminiGenerateContentDefinition
+}
+
+export function readReviewedGeminiInteractionsDefinitionV2(): ReviewedProviderContractDefinitionV2 {
+  return geminiInteractionsDefinition
+}
+
+export function readReviewedGenericLocalOpenAIChatDefinitionV2(): ReviewedProviderContractDefinitionV2 {
+  return genericLocalOpenAIChatDefinition
+}
+
+export function readReviewedOllamaChatDefinitionV2(): ReviewedProviderContractDefinitionV2 {
+  return ollamaChatDefinition
+}
+
+export function readReviewedLmStudioOpenResponsesDefinitionV2(): ReviewedProviderContractDefinitionV2 {
+  return lmStudioOpenResponsesDefinition
+}
+
+export function readReviewedOpenAIChatCompatibleDefinitionV2(): ReviewedProviderContractDefinitionV2 {
+  return openAIChatCompatibleDefinition
 }

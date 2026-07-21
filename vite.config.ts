@@ -41,13 +41,24 @@ export default defineConfig({
     electron({
       main: {
         // Shortcut of `build.lib.entry`.
-        entry: 'electron/main.ts',
+        // Generation Compiler V2 owns the only packaged main-process entry.
+        // The epoch bootstrap completes destructive workspace replacement
+        // before loading the V2 IPC/runtime composition root.
+        entry: 'electron/epoch2MainEntry.ts',
         vite: {
           resolve: {
             alias: {
               '@': path.resolve(__dirname, './src')
             }
-          }
+          },
+          build: {
+            rollupOptions: {
+              // Native CommonJS modules must keep Node's runtime resolution so
+              // their ABI-specific `.node` binding is loaded from node_modules
+              // (or the packaged ASAR-unpacked dependency), never from a Vite bundle.
+              external: ['better-sqlite3'],
+            },
+          },
         },
         onstart({ startup }) {
           const netLogPath = process.env.SV_NETLOG_PATH

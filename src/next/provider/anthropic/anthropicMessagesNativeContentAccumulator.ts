@@ -139,7 +139,7 @@ export function createAnthropicMessagesNativeContentAccumulator(input: Readonly<
         if (typeof state.block.type !== 'string') state.block.type = 'thinking'
         break
       case 'signature_delta':
-        if (typeof delta.signature === 'string') state.block.signature = delta.signature
+        appendStringField(state.block, 'signature', delta.signature)
         if (typeof state.block.type !== 'string') state.block.type = 'thinking'
         break
       case 'input_json_delta':
@@ -178,7 +178,11 @@ export function createAnthropicMessagesNativeContentAccumulator(input: Readonly<
       if (typeof delta.stop_reason === 'string' && delta.stop_reason.trim()) stopReason = delta.stop_reason.trim()
       if (delta.stop_sequence === null || typeof delta.stop_sequence === 'string') stopSequence = delta.stop_sequence
     }
-    if (record.usage !== undefined) usage = clonePlainJsonValue(record.usage, '$.message_delta.usage')
+    if (record.usage !== undefined) {
+      const previous = asRecord(usage)
+      const next = asRecord(clonePlainJsonValue(record.usage, '$.message_delta.usage'))
+      usage = previous && next ? { ...previous, ...next } : next ?? usage
+    }
   }
 
   function ensureBlock(index: number): BlockState {

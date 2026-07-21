@@ -5,6 +5,7 @@ import {
 } from '../../compiler/stableSerialize'
 import {
   buildDeepSeekNativeRequestHistoryV2,
+  buildDeepSeekProjectedNativeRequestHistoryV2,
   type DeepSeekNativeHistoryArtifactV2,
   type DeepSeekNativeMessageV1,
 } from './nativeMessagesV1'
@@ -241,8 +242,8 @@ function decodeToolChoice(value: unknown, toolNames: ReadonlySet<string>): DeepS
 export function compileDeepSeekStableChatRequestV1(inputValue: unknown): DeepSeekStableChatCompilationV1 {
   const input = closedObject(
     inputValue,
-    ['model', 'priorArtifact', 'clientEntries', 'thinking', 'generation', 'tools', 'toolChoice'],
-    ['model', 'priorArtifact', 'clientEntries', 'thinking'],
+    ['model', 'priorArtifact', 'clientEntries', 'replayEntries', 'thinking', 'generation', 'tools', 'toolChoice'],
+    ['model', 'thinking'],
   )
   if (typeof input.model !== 'string' || !MODEL_ID_PATTERN.test(input.model)) {
     throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')
@@ -261,10 +262,22 @@ export function compileDeepSeekStableChatRequestV1(inputValue: unknown): DeepSee
   if (generation.frequencyPenalty !== undefined || generation.presencePenalty !== undefined) {
     throw new DeepSeekStableChatRequestV1Error('DEEPSEEK_EXPLICIT_DEPRECATED_PENALTY_UNSUPPORTED')
   }
-  const messages = buildDeepSeekNativeRequestHistoryV2({
-    priorArtifact: input.priorArtifact as DeepSeekNativeHistoryArtifactV2 | null,
-    clientEntries: input.clientEntries,
-  })
+  const messages = input.replayEntries === undefined
+    ? (() => {
+      if (input.priorArtifact === undefined || input.clientEntries === undefined) {
+        throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_SHAPE')
+      }
+      return buildDeepSeekNativeRequestHistoryV2({
+        priorArtifact: input.priorArtifact as DeepSeekNativeHistoryArtifactV2 | null,
+        clientEntries: input.clientEntries,
+      })
+    })()
+    : (() => {
+      if (input.priorArtifact !== undefined || input.clientEntries !== undefined) {
+        throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_SHAPE')
+      }
+      return buildDeepSeekProjectedNativeRequestHistoryV2({ replayEntries: input.replayEntries })
+    })()
   if (messages.length === 0) throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')
   const nativeRequest: DeepSeekStableChatRequestV1 = Object.freeze({
     model: input.model,

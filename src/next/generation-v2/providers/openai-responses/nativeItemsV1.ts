@@ -7,9 +7,13 @@ type TerminalStatus = 'completed' | 'incomplete'
 type Budget = { bytes: number; nodes: number }
 type ClosedObject = Readonly<Record<string, unknown>>
 
+export type OpenAIResponsesUserInputContentPartV1 =
+  | Readonly<{ type: 'input_text'; text: string }>
+  | Readonly<{ type: 'input_file'; file_id: string }>
+
 export type OpenAIResponsesUserInputItemV1 = Readonly<{
   role: 'user'
-  content: readonly Readonly<{ type: 'input_text'; text: string }>[]
+  content: readonly OpenAIResponsesUserInputContentPartV1[]
 }>
 
 export type OpenAIResponsesAssistantMessageItemV1 = Readonly<{
@@ -194,6 +198,26 @@ function textParts<T extends 'input_text' | 'summary_text' | 'reasoning_text'>(
   }))
 }
 
+function userInputParts(
+  value: unknown,
+  budget: Budget,
+): readonly OpenAIResponsesUserInputContentPartV1[] {
+  const parts = denseArray(value, OPENAI_RESPONSES_MAX_REPLAY_ITEMS_V1, false)
+  node(budget, parts.length)
+  return Object.freeze(parts.map((raw) => {
+    const discriminator = closedObject(raw, ['type', 'text', 'file_id'], ['type'])
+    if (discriminator.type === 'input_text') {
+      const input = closedObject(raw, ['type', 'text'], ['type', 'text'])
+      return Object.freeze({ type: 'input_text' as const, text: stringValue(input.text, budget) })
+    }
+    if (discriminator.type === 'input_file') {
+      const input = closedObject(raw, ['type', 'file_id'], ['type', 'file_id'])
+      return Object.freeze({ type: 'input_file' as const, file_id: stringValue(input.file_id, budget, true) })
+    }
+    return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
+  }))
+}
+
 function byteArray(value: unknown): readonly number[] {
   const bytes = denseArray(value, 65_536, true)
   return Object.freeze(bytes.map((entry) => {
@@ -305,7 +329,7 @@ function decodeItem(value: unknown, budget: Budget): OpenAIResponsesReplayItemV1
   ], [])
   if (discriminator.role === 'user' && discriminator.type === undefined) {
     const input = closedObject(value, ['role', 'content'])
-    return Object.freeze({ role: 'user', content: textParts(input.content, 'input_text', budget, false) })
+    return Object.freeze({ role: 'user', content: userInputParts(input.content, budget) })
   }
   if (discriminator.type === 'message') {
     const input = closedObject(value, ['id', 'type', 'role', 'status', 'phase', 'content'], ['id', 'type', 'role', 'content'])

@@ -36,6 +36,7 @@ import { commitVerifiedDeepSeekPlainTextEditResendSnapshotV2 } from './deepSeekP
 export function createDeepSeekPlainTextEditResendCoordinatorV2(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
+  fetchImpl?: typeof fetch
   nowMs?: () => number
   createQuestionId?: () => string
   createAnswerId?: () => string
@@ -52,7 +53,7 @@ export function createDeepSeekPlainTextEditResendCoordinatorV2(input: Readonly<{
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
   const modelEvidenceService = createDeepSeekStableModelEvidenceV2Service({
-    db: input.db, credentialService: input.credentialService, nowMs,
+    db: input.db, credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs,
   })
   const endpointProfile = readVerifiedDeepSeekStableEndpointProfileV2()
 

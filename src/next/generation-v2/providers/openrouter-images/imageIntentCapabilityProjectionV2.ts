@@ -68,7 +68,7 @@ const IMAGE_KEYS = [
 const REASONING_MODES = ['disabled', 'enabled'] as const satisfies readonly ReasoningIntentV2['mode'][]
 const WEB_MODES = ['disabled', 'provider_search'] as const satisfies readonly WebSearchIntentV2['mode'][]
 const TOOL_MODES = ['disabled', 'enabled'] as const satisfies readonly ToolPolicyIntentV2['mode'][]
-const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
+const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses', 'anthropic_messages'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
 type DeclaredTopLevelKey = typeof OPENROUTER_IMAGE_SEMANTIC_INTENT_KEYS_V2[number] |
   typeof OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2[number]
 const samplingKeysAreExhaustive: Exclude<keyof SamplingIntentV2, typeof SAMPLING_KEYS[number]> extends never ? true : never = true
@@ -152,10 +152,16 @@ export function projectOpenRouterImageIntentCapabilityV2(
     if (intent.providerExtension.kind === 'none') acceptNoWire('providerExtension.kind')
     else {
       reject('providerExtension.kind', 'UNSUPPORTED_EXPLICIT_FIELD')
-      if (intent.providerExtension.maxToolCalls !== undefined) reject('providerExtension.maxToolCalls', 'UNSUPPORTED_EXPLICIT_FIELD')
-      if (intent.providerExtension.parallelToolCalls !== undefined) reject('providerExtension.parallelToolCalls', 'UNSUPPORTED_EXPLICIT_FIELD')
-      if (intent.providerExtension.serviceTier !== undefined) reject('providerExtension.serviceTier', 'UNSUPPORTED_EXPLICIT_FIELD')
-      if (intent.providerExtension.verbosity !== undefined) reject('providerExtension.verbosity', 'UNSUPPORTED_EXPLICIT_FIELD')
+      if (intent.providerExtension.kind === 'openai_responses') {
+        if (intent.providerExtension.maxToolCalls !== undefined) reject('providerExtension.maxToolCalls', 'UNSUPPORTED_EXPLICIT_FIELD')
+        if (intent.providerExtension.parallelToolCalls !== undefined) reject('providerExtension.parallelToolCalls', 'UNSUPPORTED_EXPLICIT_FIELD')
+        if (intent.providerExtension.serviceTier !== undefined) reject('providerExtension.serviceTier', 'UNSUPPORTED_EXPLICIT_FIELD')
+        if (intent.providerExtension.verbosity !== undefined) reject('providerExtension.verbosity', 'UNSUPPORTED_EXPLICIT_FIELD')
+      } else {
+        if (intent.providerExtension.manualThinkingBudgetTokens !== undefined) reject('providerExtension.manualThinkingBudgetTokens', 'UNSUPPORTED_EXPLICIT_FIELD')
+        reject('providerExtension.thinkingDisplay', 'UNSUPPORTED_EXPLICIT_FIELD')
+        reject('providerExtension.thinkingMode', 'UNSUPPORTED_EXPLICIT_FIELD')
+      }
     }
   }
 
@@ -193,8 +199,17 @@ export function projectOpenRouterImageIntentCapabilityV2(
 
   const included = intent.attachments?.filter((attachment) => attachment.include) ?? []
   for (const attachment of intent.attachments ?? []) {
-    const attachmentPath = `attachments.${attachment.assetId.value}@${attachment.assetRevisionId.value}`
+    const attachmentPath = attachment.kind === 'managed_file'
+      ? `attachments.${attachment.assetId.value}@${attachment.assetRevisionId.value}`
+      : `attachments.${attachment.referenceId.value}@${attachment.referenceRevision.value}`
     if (!attachment.include) acceptNoWire(attachmentPath)
+    else if (attachment.kind === 'url_reference') {
+      if (attachment.mediaKind !== 'image' || attachment.sendAs !== 'url_reference' || attachment.conversion !== 'none') {
+        reject(attachmentPath, 'URL_REFERENCE_ENCODING_UNSUPPORTED', 'input_references')
+      } else {
+        acceptNoWire(attachmentPath)
+      }
+    }
     else if (attachment.sendAs !== 'image_reference' || attachment.conversion !== 'none') {
       reject(attachmentPath, 'UNSUPPORTED_EXPLICIT_FIELD', 'input_references')
     } else {
@@ -202,7 +217,9 @@ export function projectOpenRouterImageIntentCapabilityV2(
     }
   }
   const imageReferences = included.filter((attachment) =>
-    attachment.sendAs === 'image_reference' && attachment.conversion === 'none')
+    attachment.kind === 'url_reference'
+      ? attachment.mediaKind === 'image' && attachment.sendAs === 'url_reference' && attachment.conversion === 'none'
+      : attachment.sendAs === 'image_reference' && attachment.conversion === 'none')
   if (imageReferences.length > 0) encode('attachments', 'input_references', imageReferences.length)
 
   fields.sort((left, right) => compareCodePoints(left.wireKey, right.wireKey))

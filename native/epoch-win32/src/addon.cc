@@ -7,6 +7,7 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
 #include <cwctype>
@@ -48,6 +49,13 @@ struct DatabaseFileAuthority {
 void ReleaseDatabaseFileAuthority(DatabaseFileAuthority* authority);
 
 void ReleaseDatabaseFileAuthorities(Lease* lease);
+
+bool ReadDatabaseFileFacts(
+    HANDLE handle, NativeFileIdentity* identity, unsigned long long* size);
+
+HANDLE OpenVerifiedEpochMarker(
+    NtCreateFileFn nt_create_file, HANDLE epoch, const std::string& expected_manifest,
+    NativeFileIdentity* identity);
 
 struct Lease {
   HANDLE mutex = nullptr;
@@ -423,7 +431,9 @@ std::string BytesToHex(const unsigned char* bytes, size_t length) {
   return stream.str();
 }
 
-bool Sha256Hex(const std::string& input, std::string* output) {
+bool Sha256HexBytes(
+    const unsigned char* input, size_t input_size, std::string* output) {
+  if (input == nullptr && input_size != 0) return false;
   BCRYPT_ALG_HANDLE algorithm = nullptr;
   BCRYPT_HASH_HANDLE hash = nullptr;
   DWORD object_length = 0;
@@ -446,19 +456,28 @@ bool Sha256Hex(const std::string& input, std::string* output) {
   }
   hash_object.resize(object_length);
   digest.resize(hash_length);
-  if (BCryptCreateHash(
-          algorithm, &hash, hash_object.data(), object_length,
-          nullptr, 0, 0) == 0 &&
-      BCryptHashData(
-          hash, reinterpret_cast<PUCHAR>(const_cast<char*>(input.data())),
-          static_cast<ULONG>(input.size()), 0) == 0 &&
-      BCryptFinishHash(hash, digest.data(), hash_length, 0) == 0) {
+  bool hashed = BCryptCreateHash(
+      algorithm, &hash, hash_object.data(), object_length, nullptr, 0, 0) == 0;
+  size_t offset = 0;
+  while (hashed && offset < input_size) {
+    const ULONG chunk = static_cast<ULONG>(std::min<size_t>(
+        input_size - offset, static_cast<size_t>(ULONG_MAX)));
+    hashed = BCryptHashData(
+        hash, const_cast<PUCHAR>(input + offset), chunk, 0) == 0;
+    offset += chunk;
+  }
+  if (hashed && BCryptFinishHash(hash, digest.data(), hash_length, 0) == 0) {
     *output = BytesToHex(digest.data(), digest.size());
     success = true;
   }
   if (hash != nullptr) BCryptDestroyHash(hash);
   BCryptCloseAlgorithmProvider(algorithm, 0);
   return success;
+}
+
+bool Sha256Hex(const std::string& input, std::string* output) {
+  return Sha256HexBytes(
+      reinterpret_cast<const unsigned char*>(input.data()), input.size(), output);
 }
 
 bool CanonicalPathUtf8(const std::wstring& input, std::string* output) {
@@ -904,6 +923,322 @@ bool RenameHandleRelative(
     return false;
   }
   return true;
+}
+
+constexpr size_t kEpochAttachmentStorageRefLength = 74;
+
+bool IsLowerHex(const std::wstring& value) {
+  return std::all_of(value.begin(), value.end(), [](wchar_t ch) {
+    return (ch >= L'0' && ch <= L'9') || (ch >= L'a' && ch <= L'f');
+  });
+}
+
+bool ParseEpochAttachmentStorageRef(
+    const std::wstring& value, std::wstring* bucket, std::wstring* sha256) {
+  // This is deliberately a closed, canonical storage reference.  It is never
+  // interpreted as a path supplied by JS.
+  if (value.size() != kEpochAttachmentStorageRefLength ||
+      value.rfind(L"sha256/", 0) != 0 || value[9] != L'/' ||
+      value.substr(7, 2) != value.substr(10, 2)) {
+    return false;
+  }
+  const std::wstring digest = value.substr(10, 64);
+  if (!IsLowerHex(value.substr(7, 2)) || !IsLowerHex(digest)) return false;
+  *bucket = value.substr(7, 2);
+  *sha256 = digest;
+  return true;
+}
+
+bool GetEpochAttachmentRequest(
+    napi_env env, napi_value storage_ref_value, napi_value sha256_value,
+    std::wstring* bucket, std::wstring* sha256) {
+  std::wstring storage_ref;
+  std::wstring expected_sha256;
+  if (!GetWideStringValue(env, storage_ref_value, &storage_ref) ||
+      !GetWideStringValue(env, sha256_value, &expected_sha256) ||
+      expected_sha256.size() != 64 || !IsLowerHex(expected_sha256) ||
+      !ParseEpochAttachmentStorageRef(storage_ref, bucket, sha256) ||
+      *sha256 != expected_sha256) {
+    return false;
+  }
+  return true;
+}
+
+bool OpenEpochAttachmentBucket(
+    Lease* lease, NtCreateFileFn nt_create_file, HANDLE* epoch,
+    HANDLE* bucket) {
+  *epoch = INVALID_HANDLE_VALUE;
+  *bucket = INVALID_HANDLE_VALUE;
+  if (!lease->epoch_root_transition_started ||
+      lease->protected_epoch == INVALID_HANDLE_VALUE ||
+      lease->epoch_marker == INVALID_HANDLE_VALUE) {
+    return false;
+  }
+  NativeFileIdentity marker_identity;
+  HANDLE verified_marker = OpenVerifiedEpochMarker(
+      nt_create_file, lease->protected_epoch, lease->expected_manifest,
+      &marker_identity);
+  if (verified_marker == INVALID_HANDLE_VALUE) return false;
+  CloseHandleIfValid(verified_marker);
+  if (!DuplicateHandle(
+          GetCurrentProcess(), lease->protected_epoch, GetCurrentProcess(), epoch,
+          0, FALSE, DUPLICATE_SAME_ACCESS)) {
+    return false;
+  }
+  HANDLE assets = OpenRelative(
+      nt_create_file, *epoch, L"assets", true, FILE_OPEN_IF,
+      kMutableDirectoryAccess, FILE_SHARE_READ | FILE_SHARE_WRITE);
+  if (assets == INVALID_HANDLE_VALUE || IsReparsePoint(assets)) {
+    CloseHandleIfValid(assets);
+    CloseHandleIfValid(*epoch);
+    return false;
+  }
+  bool assets_directory = false;
+  if (!IsDirectoryHandle(assets, &assets_directory) || !assets_directory) {
+    CloseHandleIfValid(assets);
+    CloseHandleIfValid(*epoch);
+    return false;
+  }
+  HANDLE sha256_root = OpenRelative(
+      nt_create_file, assets, L"sha256", true, FILE_OPEN_IF,
+      kMutableDirectoryAccess, FILE_SHARE_READ | FILE_SHARE_WRITE);
+  CloseHandleIfValid(assets);
+  if (sha256_root == INVALID_HANDLE_VALUE || IsReparsePoint(sha256_root)) {
+    CloseHandleIfValid(sha256_root);
+    CloseHandleIfValid(*epoch);
+    return false;
+  }
+  bool sha256_directory = false;
+  if (!IsDirectoryHandle(sha256_root, &sha256_directory) || !sha256_directory) {
+    CloseHandleIfValid(sha256_root);
+    CloseHandleIfValid(*epoch);
+    return false;
+  }
+  *bucket = sha256_root;
+  return true;
+}
+
+bool OpenEpochAttachmentDigestDirectory(
+    NtCreateFileFn nt_create_file, HANDLE sha256_root, const std::wstring& bucket_name,
+    HANDLE* bucket) {
+  *bucket = OpenRelative(
+      nt_create_file, sha256_root, bucket_name, true, FILE_OPEN_IF,
+      kMutableDirectoryAccess, FILE_SHARE_READ | FILE_SHARE_WRITE);
+  if (*bucket == INVALID_HANDLE_VALUE || IsReparsePoint(*bucket)) {
+    CloseHandleIfValid(*bucket);
+    return false;
+  }
+  bool directory = false;
+  if (!IsDirectoryHandle(*bucket, &directory) || !directory) {
+    CloseHandleIfValid(*bucket);
+    return false;
+  }
+  return true;
+}
+
+bool ReadVerifiedEpochAttachmentBlob(
+    HANDLE file, const std::wstring& expected_sha256, size_t expected_size,
+    std::vector<unsigned char>* output) {
+  NativeFileIdentity identity;
+  unsigned long long initial_size = 0;
+  if (!ReadDatabaseFileFacts(file, &identity, &initial_size) ||
+      initial_size != expected_size) {
+    return false;
+  }
+  output->assign(expected_size, 0);
+  size_t offset = 0;
+  while (offset < output->size()) {
+    DWORD read = 0;
+    const DWORD requested = static_cast<DWORD>(
+        std::min<size_t>(output->size() - offset, 0x7ffff000u));
+    if (!ReadFile(file, output->data() + offset, requested, &read, nullptr) || read == 0) {
+      return false;
+    }
+    offset += read;
+  }
+  std::string actual_sha256;
+  NativeFileIdentity final_identity;
+  unsigned long long final_size = 0;
+  return Sha256HexBytes(output->data(), output->size(), &actual_sha256) &&
+      actual_sha256 == std::string(expected_sha256.begin(), expected_sha256.end()) &&
+      ReadDatabaseFileFacts(file, &final_identity, &final_size) &&
+      final_size == expected_size && SameNativeFileIdentity(identity, final_identity);
+}
+
+napi_value LeasePutEpochAttachmentBlob(napi_env env, napi_callback_info info) {
+  napi_value args[3];
+  Lease* lease = GetLeaseCall(env, info, 3, args);
+  if (lease == nullptr) return nullptr;
+  std::wstring bucket_name;
+  std::wstring expected_sha256;
+  bool is_buffer = false;
+  void* byte_data = nullptr;
+  size_t byte_length = 0;
+  if (!GetEpochAttachmentRequest(
+          env, args[0], args[1], &bucket_name, &expected_sha256) ||
+      napi_is_buffer(env, args[2], &is_buffer) != napi_ok || !is_buffer ||
+      napi_get_buffer_info(env, args[2], &byte_data, &byte_length) != napi_ok) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  std::string actual_sha256;
+  if (!Sha256HexBytes(static_cast<const unsigned char*>(byte_data), byte_length, &actual_sha256) ||
+      actual_sha256 != std::string(expected_sha256.begin(), expected_sha256.end())) {
+    return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_HASH_MISMATCH");
+  }
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  if (nt_create_file == nullptr) return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  HANDLE epoch = INVALID_HANDLE_VALUE;
+  HANDLE sha256_root = INVALID_HANDLE_VALUE;
+  HANDLE bucket = INVALID_HANDLE_VALUE;
+  if (!OpenEpochAttachmentBucket(lease, nt_create_file, &epoch, &sha256_root) ||
+      !OpenEpochAttachmentDigestDirectory(nt_create_file, sha256_root, bucket_name, &bucket)) {
+    CloseHandleIfValid(bucket);
+    CloseHandleIfValid(sha256_root);
+    CloseHandleIfValid(epoch);
+    return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_ROOT_INVALID");
+  }
+  HANDLE existing = OpenRelative(
+      nt_create_file, bucket, expected_sha256, false, FILE_OPEN,
+      GENERIC_READ | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_SHARE_READ);
+  if (existing != INVALID_HANDLE_VALUE) {
+    std::vector<unsigned char> existing_bytes;
+    const bool valid = !IsReparsePoint(existing) &&
+        ReadVerifiedEpochAttachmentBlob(existing, expected_sha256, byte_length, &existing_bytes);
+    std::fill(existing_bytes.begin(), existing_bytes.end(), 0);
+    CloseHandleIfValid(existing);
+    CloseHandleIfValid(bucket);
+    CloseHandleIfValid(sha256_root);
+    CloseHandleIfValid(epoch);
+    if (!valid) return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_INVALID");
+    napi_value result;
+    napi_get_boolean(env, false, &result);
+    return result;
+  }
+  const DWORD existing_error = GetLastError();
+  if (existing_error != ERROR_FILE_NOT_FOUND && existing_error != ERROR_PATH_NOT_FOUND) {
+    CloseHandleIfValid(bucket);
+    CloseHandleIfValid(sha256_root);
+    CloseHandleIfValid(epoch);
+    return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_OPEN_FAILED");
+  }
+  HANDLE temporary = INVALID_HANDLE_VALUE;
+  for (size_t attempt = 0; attempt < 16 && temporary == INVALID_HANDLE_VALUE; ++attempt) {
+    std::wstring temporary_name = RandomTemporaryName();
+    if (temporary_name.empty()) break;
+    temporary = OpenRelative(
+        nt_create_file, bucket, temporary_name, false, FILE_CREATE,
+        GENERIC_READ | GENERIC_WRITE | DELETE | FILE_READ_ATTRIBUTES | SYNCHRONIZE, 0);
+    if (temporary == INVALID_HANDLE_VALUE && GetLastError() != ERROR_FILE_EXISTS &&
+        GetLastError() != ERROR_ALREADY_EXISTS) break;
+  }
+  if (temporary == INVALID_HANDLE_VALUE || IsReparsePoint(temporary)) {
+    DiscardTemporaryFile(temporary);
+    CloseHandleIfValid(bucket);
+    CloseHandleIfValid(sha256_root);
+    CloseHandleIfValid(epoch);
+    return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_WRITE_FAILED");
+  }
+  size_t offset = 0;
+  const auto* source = static_cast<const unsigned char*>(byte_data);
+  while (offset < byte_length) {
+    DWORD written = 0;
+    const DWORD requested = static_cast<DWORD>(
+        std::min<size_t>(byte_length - offset, 0x7ffff000u));
+    if (!WriteFile(temporary, source + offset, requested, &written, nullptr) || written == 0) {
+      DiscardTemporaryFile(temporary);
+      CloseHandleIfValid(bucket);
+      CloseHandleIfValid(sha256_root);
+      CloseHandleIfValid(epoch);
+      return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_WRITE_FAILED");
+    }
+    offset += written;
+  }
+  NativeFileIdentity identity;
+  unsigned long long size = 0;
+  std::string written_sha256;
+  const bool valid_temporary = FlushFileBuffers(temporary) &&
+      ReadDatabaseFileFacts(temporary, &identity, &size) && size == byte_length &&
+      Sha256HexBytes(source, byte_length, &written_sha256) &&
+      written_sha256 == std::string(expected_sha256.begin(), expected_sha256.end());
+  DWORD rename_error = ERROR_SUCCESS;
+  const bool renamed = valid_temporary && RenameHandleRelative(
+      temporary, bucket, expected_sha256, false, &rename_error);
+  if (!renamed) {
+    DiscardTemporaryFile(temporary);
+    CloseHandleIfValid(bucket);
+    CloseHandleIfValid(sha256_root);
+    CloseHandleIfValid(epoch);
+    if (rename_error == ERROR_ALREADY_EXISTS || rename_error == ERROR_FILE_EXISTS) {
+      return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_CONFLICT");
+    }
+    return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_WRITE_FAILED");
+  }
+  CloseHandleIfValid(temporary);
+  CloseHandleIfValid(bucket);
+  CloseHandleIfValid(sha256_root);
+  CloseHandleIfValid(epoch);
+  napi_value result;
+  napi_get_boolean(env, true, &result);
+  return result;
+}
+
+napi_value LeaseReadEpochAttachmentBlob(napi_env env, napi_callback_info info) {
+  napi_value args[3];
+  Lease* lease = GetLeaseCall(env, info, 3, args);
+  if (lease == nullptr) return nullptr;
+  std::wstring bucket_name;
+  std::wstring expected_sha256;
+  double expected_size_double = 0;
+  if (!GetEpochAttachmentRequest(
+          env, args[0], args[1], &bucket_name, &expected_sha256) ||
+      napi_get_value_double(env, args[2], &expected_size_double) != napi_ok ||
+      !std::isfinite(expected_size_double) || expected_size_double < 0 ||
+      std::floor(expected_size_double) != expected_size_double ||
+      expected_size_double > static_cast<double>(SIZE_MAX)) {
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_INPUT_INVALID");
+  }
+  const size_t expected_size = static_cast<size_t>(expected_size_double);
+  NtCreateFileFn nt_create_file = ResolveNtCreateFile();
+  if (nt_create_file == nullptr) return ThrowCode(env, "EPOCH2_WIN32_NT_API_UNAVAILABLE");
+  HANDLE epoch = INVALID_HANDLE_VALUE;
+  HANDLE sha256_root = INVALID_HANDLE_VALUE;
+  HANDLE bucket = INVALID_HANDLE_VALUE;
+  if (!OpenEpochAttachmentBucket(lease, nt_create_file, &epoch, &sha256_root) ||
+      !OpenEpochAttachmentDigestDirectory(nt_create_file, sha256_root, bucket_name, &bucket)) {
+    CloseHandleIfValid(bucket);
+    CloseHandleIfValid(sha256_root);
+    CloseHandleIfValid(epoch);
+    return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_ROOT_INVALID");
+  }
+  HANDLE file = OpenRelative(
+      nt_create_file, bucket, expected_sha256, false, FILE_OPEN,
+      GENERIC_READ | FILE_READ_ATTRIBUTES | SYNCHRONIZE, FILE_SHARE_READ);
+  if (file == INVALID_HANDLE_VALUE || IsReparsePoint(file)) {
+    CloseHandleIfValid(file);
+    CloseHandleIfValid(bucket);
+    CloseHandleIfValid(sha256_root);
+    CloseHandleIfValid(epoch);
+    return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_MISSING");
+  }
+  std::vector<unsigned char> bytes;
+  const bool valid = ReadVerifiedEpochAttachmentBlob(
+      file, expected_sha256, expected_size, &bytes);
+  CloseHandleIfValid(file);
+  CloseHandleIfValid(bucket);
+  CloseHandleIfValid(sha256_root);
+  CloseHandleIfValid(epoch);
+  if (!valid) {
+    std::fill(bytes.begin(), bytes.end(), 0);
+    return ThrowCode(env, "EPOCH2_WIN32_ATTACHMENT_BLOB_INVALID");
+  }
+  napi_value result;
+  if (napi_create_buffer_copy(
+          env, bytes.size(), bytes.empty() ? nullptr : bytes.data(), nullptr, &result) != napi_ok) {
+    std::fill(bytes.begin(), bytes.end(), 0);
+    return ThrowCode(env, "EPOCH2_WIN32_NATIVE_CONTRACT_INVALID");
+  }
+  std::fill(bytes.begin(), bytes.end(), 0);
+  return result;
 }
 
 napi_value LeaseReadLegacyConfig(napi_env env, napi_callback_info info) {
@@ -2485,6 +2820,8 @@ napi_value AcquireEpochRootLease(napi_env env, napi_callback_info info) {
       {"ensureEpochRootMarker", nullptr, LeaseEnsureEpochRootMarker, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"verifyEpochRootMarker", nullptr, LeaseVerifyEpochRootMarker, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"acquireEpochDatabaseFile", nullptr, LeaseAcquireEpochDatabaseFile, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"putEpochAttachmentBlob", nullptr, LeasePutEpochAttachmentBlob, nullptr, nullptr, nullptr, napi_default, nullptr},
+      {"readEpochAttachmentBlob", nullptr, LeaseReadEpochAttachmentBlob, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"inspectOwnedTarget", nullptr, LeaseInspectProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"deleteOwnedTarget", nullptr, LeaseDeleteProductTree, nullptr, nullptr, nullptr, napi_default, nullptr},
       {"cleanupTransitionTemps", nullptr, LeaseCleanupTransitionTemps, nullptr, nullptr, nullptr, napi_default, nullptr},

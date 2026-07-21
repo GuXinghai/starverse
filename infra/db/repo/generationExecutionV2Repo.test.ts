@@ -11,6 +11,10 @@ import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import {
+  readReviewedDeepSeekStableChatDefinitionV2,
+  readReviewedOpenAIResponsesDefinitionV2,
+} from '../../../src/next/generation-v2/contracts/providerContractRegistryV2'
 import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from '../v2/testSchemaV2'
 import {
   GenerationExecutionV2Repo,
@@ -24,6 +28,7 @@ const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
 
 function providerBinding() {
+  const contract = readReviewedDeepSeekStableChatDefinitionV2()
   return {
     credentialScopeId: 'credential-scope:1',
     providerId: 'deepseek',
@@ -33,10 +38,10 @@ function providerBinding() {
       endpointSetRevision: 'endpoint-set:1',
       descriptors: [{ endpointId: 'endpoint:deepseek', descriptorRevision: 'descriptor:1' }],
     },
-    protocolContractId: 'deepseek-chat-v1',
-    contractRevision: `deepseek-chat-v1:${HASH_A}`,
-    contractDefinitionDigest: HASH_A,
-    registryRevision: `provider-contract-registry-v1:${HASH_B}`,
+    protocolContractId: contract.protocolContractId.value,
+    contractRevision: contract.contractRevision.value,
+    contractDefinitionDigest: contract.definitionDigest.value,
+    registryRevision: contract.registryRevision.value,
     modelId: 'deepseek-chat',
     operation: 'text',
   }
@@ -163,7 +168,7 @@ function insertRequest(db: BetterSqlite3.Database, operationId: string, answerRo
     compiler_ledger_hash, prepared_body_sha256, prepared_body_byte_length,
     state, created_at_ms, updated_at_ms
   ) VALUES (?, 1, ?, ?, 'deepseek', 'profile:deepseek', 'credential-scope:1',
-    'deepseek-chat-v1', 'deepseek-chat', 'endpoint:deepseek', ?,
+    'deepseek-stable-chat-v1', 'deepseek-chat', 'endpoint:deepseek', ?,
     '[]', ?, ?, 2, 'prepared', 101, 101)`).run(
     operationId, answerRootId, snapshot.snapshot_hash, capability.revision.value, HASH_A, HASH_B,
   )
@@ -186,6 +191,16 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
       expect(replay.kind).toBe('idempotent_replay')
       expect(replay.bundle.operation.resultAnswerRootId.value).toBe(graph.resultId)
       expect(repo.getSnapshotByAnswerRootId(graph.resultId).canonicalJson).toBe(input.snapshot)
+      const persistedProjection = db.prepare(`SELECT branch_id AS branchId,projection_digest AS projectionDigest,canonical_json AS canonicalJson
+        FROM generation_context_projection_v2 WHERE operation_id='operation:1'`).get()
+      expect(persistedProjection).toMatchObject({
+        branchId: graph.branchId, projectionDigest: expect.stringMatching(/^[0-9a-f]{64}$/),
+        canonicalJson: expect.stringContaining(graph.questionId),
+      })
+      expect(JSON.parse((persistedProjection as { canonicalJson: string }).canonicalJson)).toMatchObject({
+        providerContractId: 'deepseek-stable-chat-v1',
+        codecId: readReviewedDeepSeekStableChatDefinitionV2().contractRevision.value,
+      })
       expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
         repo.insertOperationAndSnapshot(context, { ...input, actionKind: 'retry_replace' })))
         .toThrow('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
@@ -285,10 +300,14 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
     try {
       const graph = seedGraph(db)
       const operationId = 'operation:openai'
+      const contract = readReviewedOpenAIResponsesDefinitionV2()
       const binding = {
         ...providerBinding(), providerId: 'openai', endpointProfileId: 'openai-responses-v1',
-        protocolContractId: 'openai-responses-v1',
-        contractRevision: `openai-responses-v1:${HASH_A}`, modelId: 'gpt-5',
+        protocolContractId: contract.protocolContractId.value,
+        contractRevision: contract.contractRevision.value,
+        contractDefinitionDigest: contract.definitionDigest.value,
+        registryRevision: contract.registryRevision.value,
+        modelId: 'gpt-5',
       }
       const otherCapability = runtimeCapability(binding)
       db.prepare(`INSERT INTO runtime_capability_snapshot_v2 VALUES (?, ?, 2, ?, ?, ?, 2)`).run(

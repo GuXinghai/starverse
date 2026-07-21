@@ -14,10 +14,11 @@ const stages = ['after_schema', 'after_identity', 'after_envelope']
 fs.rmSync(appRoot, { recursive: true, force: true })
 fs.mkdirSync(path.join(appRoot, 'infra', 'db', 'v2'), { recursive: true })
 fs.writeFileSync(path.join(appRoot, 'package.json'), JSON.stringify({ name: 'starverse-epoch-crash-smoke', main: 'main.mjs' }))
-for (const fileName of ['coreConversationSchema.sql', 'generationConfigSchema.sql',
-  'attachmentAssetSchema.sql', 'openRouterImagesSchema.sql', 'generationExecutionSchema.sql']) {
-  fs.copyFileSync(path.join(repositoryRoot, 'infra', 'db', 'v2', fileName),
-    path.join(appRoot, 'infra', 'db', 'v2', fileName))
+const schemaSourceRoot = path.join(repositoryRoot, 'infra', 'db', 'v2')
+for (const entry of fs.readdirSync(schemaSourceRoot, { withFileTypes: true })) {
+  if (entry.isFile() && entry.name.endsWith('.sql')) {
+    fs.copyFileSync(path.join(schemaSourceRoot, entry.name), path.join(appRoot, 'infra', 'db', 'v2', entry.name))
+  }
 }
 await build({
   entryPoints: [path.join(repositoryRoot, 'scripts', 'smoke', 'fresh-epoch-database-crash-entry.ts')],

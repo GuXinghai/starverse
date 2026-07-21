@@ -51,6 +51,12 @@ export type GeminiImageGenerationPolicy =
       defaultThinkingLevel: GeminiThinkingLevel
     }>)
   | (GeminiImageGenerationPolicyCommon & Readonly<{
+      kind: 'interactions_image_v1beta'
+      modelFamily: 'gemini-3.1-flash-image'
+      supportsThoughtSummaries: false
+      thinkingLevels: readonly []
+    }>)
+  | (GeminiImageGenerationPolicyCommon & Readonly<{
       kind: 'nano_banana_2'
       modelFamily: 'gemini-3.1-flash-image'
       supportsThoughtSummaries: true
@@ -143,6 +149,8 @@ function commonPolicy(input: Readonly<{
   supportsStopSequences?: boolean
   supportsGoogleSearch?: boolean
   supportsImageSearch?: boolean
+  supportedOutputModes?: readonly GeminiImageGenerationOutputMode[]
+  defaultOutputMode?: GeminiImageGenerationOutputMode
 }>): GeminiImageGenerationPolicyCommon {
   return {
     supportedImageSizes: input.supportedImageSizes,
@@ -150,8 +158,8 @@ function commonPolicy(input: Readonly<{
     imageSizeMode: input.imageSizeMode,
     supportedAspectRatios: input.supportedAspectRatios ?? GEMINI_IMAGE_GENERATION_ASPECT_RATIOS,
     defaultAspectRatio: input.defaultAspectRatio ?? '1:1',
-    supportedOutputModes: GEMINI_IMAGE_GENERATION_OUTPUT_MODES,
-    defaultOutputMode: 'image_and_text',
+    supportedOutputModes: input.supportedOutputModes ?? GEMINI_IMAGE_GENERATION_OUTPUT_MODES,
+    defaultOutputMode: input.defaultOutputMode ?? 'image_and_text',
     maxOutputTokens: input.maxOutputTokens ?? 32768,
     supportsStopSequences: input.supportsStopSequences ?? true,
     supportsGoogleSearch: input.supportsGoogleSearch ?? false,
@@ -163,6 +171,25 @@ function commonPolicy(input: Readonly<{
 
 export function resolveGeminiImageGenerationPolicy(model: unknown): GeminiImageGenerationPolicy {
   const modelId = normalizeGeminiImageGenerationModelId(model)
+  if (modelId === 'gemini-3.1-flash-image') {
+    return {
+      ...commonPolicy({
+        supportedImageSizes: SINGLE_1K_IMAGE_SIZE,
+        defaultImageSize: '1K',
+        imageSizeMode: 'locked',
+        supportedAspectRatios: ['1:1'],
+        defaultAspectRatio: '1:1',
+        supportedOutputModes: ['image_only'],
+        defaultOutputMode: 'image_only',
+        maxOutputTokens: 0,
+        supportsStopSequences: false,
+      }),
+      kind: 'interactions_image_v1beta',
+      modelFamily: 'gemini-3.1-flash-image',
+      supportsThoughtSummaries: false,
+      thinkingLevels: [],
+    }
+  }
   if (modelIdMatchesStableOrPreview(modelId, 'gemini-2.5-flash-image')) {
     return {
       ...commonPolicy({

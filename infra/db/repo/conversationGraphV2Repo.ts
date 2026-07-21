@@ -9,6 +9,7 @@ import {
   registerGenerationV2AuthorityTransactionParticipantV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
+import { SystemChatTemplateV2Repo } from './systemChatTemplateV2Repo'
 
 const MAX_BODY_BYTES = 20 * 1024 * 1024
 
@@ -335,6 +336,13 @@ export class ConversationGraphV2Repo {
         pendingTurns.delete(pending)
         pendingTurnContexts.delete(pending)
       },
+    })
+    new SystemChatTemplateV2Repo(this.#db, () => createdAtMs).promoteIfTemplate(context, {
+      operationId: operationId.value,
+      conversationId: conversationId.value,
+      branchId: branchId.value,
+      userBody,
+      createdAtMs,
     })
     return pending
   }
@@ -725,6 +733,64 @@ export class ConversationGraphV2Repo {
       mapConstraint(error)
     }
     return this.#readProjection(pending.branchId.value, pending.questionId.value)
+  }
+
+  selectCurrentVisibleAnswer(
+    context: GenerationV2AuthorityTransactionContextV2,
+    value: unknown,
+  ): BranchProjectionV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    const input = closedObject(value, [
+      'branchId', 'questionId', 'expectedChosenAnswerRootId', 'targetAnswerRootId', 'updatedAtMs',
+    ])
+    const branchId = ConversationGraphV2Identity.create('branch_id', requiredString(input.branchId))
+    const questionId = ConversationGraphV2Identity.create('question_id', requiredString(input.questionId))
+    const expectedChosen = ConversationGraphV2Identity.create(
+      'answer_root_id', requiredString(input.expectedChosenAnswerRootId),
+    )
+    const target = ConversationGraphV2Identity.create('answer_root_id', requiredString(input.targetAnswerRootId))
+    const updatedAtMs = safeTime(input.updatedAtMs)
+    const row = this.#db.prepare(`SELECT branch.conversation_id AS conversationId,
+      branch.head_message_id AS headMessageId, branch.updated_at_ms AS branchUpdatedAtMs,
+      branch.deleted_at_ms AS deletedAtMs, conversation.updated_at_ms AS conversationUpdatedAtMs,
+      choice.chosen_answer_root_id AS chosenAnswerRootId, target.status AS targetStatus,
+      hidden.answer_root_id AS hiddenAnswerRootId, question_hidden.question_id AS hiddenQuestionId
+      FROM branch_v2 AS branch
+      JOIN conversation_v2 AS conversation ON conversation.conversation_id=branch.conversation_id
+      JOIN branch_choice_v2 AS choice ON choice.branch_id=branch.branch_id AND choice.question_id=?
+      JOIN message_v2 AS target ON target.message_id=? AND target.conversation_id=branch.conversation_id
+        AND target.question_id=choice.question_id AND target.role='assistant' AND target.answer_root_id=target.message_id
+      LEFT JOIN branch_answer_hide_v2 AS hidden ON hidden.branch_id=branch.branch_id
+        AND hidden.question_id=choice.question_id AND hidden.answer_root_id=target.answer_root_id
+      LEFT JOIN branch_question_hide_v2 AS question_hidden ON question_hidden.branch_id=branch.branch_id
+        AND question_hidden.question_id=choice.question_id
+      WHERE branch.branch_id=?`).get(questionId.value, target.value, branchId.value) as Readonly<Record<string, unknown>> | undefined
+    if (!row || typeof row.conversationId !== 'string') {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')
+    }
+    if (row.chosenAnswerRootId !== expectedChosen.value || row.headMessageId !== expectedChosen.value) {
+      throw new ConversationGraphV2RepoError('STALE_CHOSEN_ANSWER')
+    }
+    if (row.deletedAtMs !== null || row.hiddenAnswerRootId !== null || row.hiddenQuestionId !== null ||
+        !['completed', 'failed', 'cancelled'].includes(row.targetStatus as string) ||
+        !Number.isSafeInteger(row.branchUpdatedAtMs) || !Number.isSafeInteger(row.conversationUpdatedAtMs) ||
+        updatedAtMs < (row.branchUpdatedAtMs as number) || updatedAtMs < (row.conversationUpdatedAtMs as number)) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
+    }
+    const choice = this.#db.prepare(`UPDATE branch_choice_v2 SET chosen_answer_root_id=?, updated_at_ms=?
+      WHERE branch_id=? AND question_id=? AND chosen_answer_root_id=?`).run(
+      target.value, updatedAtMs, branchId.value, questionId.value, expectedChosen.value,
+    )
+    const branch = this.#db.prepare(`UPDATE branch_v2 SET head_message_id=?, updated_at_ms=?
+      WHERE branch_id=? AND conversation_id=? AND head_message_id=? AND deleted_at_ms IS NULL`).run(
+      target.value, updatedAtMs, branchId.value, row.conversationId, expectedChosen.value,
+    )
+    const conversation = this.#db.prepare(`UPDATE conversation_v2 SET updated_at_ms=?
+      WHERE conversation_id=? AND updated_at_ms<=?`).run(updatedAtMs, row.conversationId, updatedAtMs)
+    if (choice.changes !== 1 || branch.changes !== 1 || conversation.changes !== 1) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+    }
+    return this.#readProjection(branchId.value, questionId.value)
   }
 
   getBranchProjection(branchIdValue: string, questionIdValue: string): BranchProjectionV2 {

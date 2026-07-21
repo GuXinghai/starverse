@@ -66,7 +66,7 @@ const IMAGE_KEYS = Object.freeze([
 const REASONING_MODES = ['disabled', 'enabled'] as const satisfies readonly ReasoningIntentV2['mode'][]
 const WEB_MODES = ['disabled', 'provider_search'] as const satisfies readonly WebSearchIntentV2['mode'][]
 const TOOL_MODES = ['disabled', 'enabled'] as const satisfies readonly ToolPolicyIntentV2['mode'][]
-const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
+const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses', 'anthropic_messages'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
 
 const samplingKeysAreExhaustive: Exclude<keyof SamplingIntentV2, typeof SAMPLING_KEYS[number]> extends never
   ? true : never = true
@@ -187,6 +187,9 @@ export function projectDeepSeekStableIntentV1(
     if (intent.reasoning.summary !== undefined) {
       reject('reasoning.summary', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD', undefined, OFFICIAL_THINKING_EVIDENCE)
     }
+    if (intent.reasoning.exclude !== undefined) {
+      reject('reasoning.exclude', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD', undefined, OFFICIAL_THINKING_EVIDENCE)
+    }
   }
 
   if (intent.web.mode === 'disabled') acceptNoWire('web.mode')
@@ -241,10 +244,16 @@ export function projectDeepSeekStableIntentV1(
   if (intent.providerExtension.kind === 'none') acceptNoWire('providerExtension.kind')
   else {
     reject('providerExtension.kind', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
-    if (intent.providerExtension.maxToolCalls !== undefined) reject('providerExtension.maxToolCalls', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
-    if (intent.providerExtension.parallelToolCalls !== undefined) reject('providerExtension.parallelToolCalls', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
-    if (intent.providerExtension.serviceTier !== undefined) reject('providerExtension.serviceTier', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
-    if (intent.providerExtension.verbosity !== undefined) reject('providerExtension.verbosity', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+    if (intent.providerExtension.kind === 'openai_responses') {
+      if (intent.providerExtension.maxToolCalls !== undefined) reject('providerExtension.maxToolCalls', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+      if (intent.providerExtension.parallelToolCalls !== undefined) reject('providerExtension.parallelToolCalls', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+      if (intent.providerExtension.serviceTier !== undefined) reject('providerExtension.serviceTier', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+      if (intent.providerExtension.verbosity !== undefined) reject('providerExtension.verbosity', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+    } else {
+      if (intent.providerExtension.manualThinkingBudgetTokens !== undefined) reject('providerExtension.manualThinkingBudgetTokens', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+      reject('providerExtension.thinkingDisplay', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+      reject('providerExtension.thinkingMode', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+    }
   }
 
   nativeSemanticFields.sort((left, right) => compareCodePoints(left.wireKey, right.wireKey) ||

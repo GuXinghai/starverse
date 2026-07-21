@@ -5,16 +5,15 @@ import {
   checkFieldSize,
   safeClearConfig,
 } from '../config/configSchema'
-import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
 import {
   isProviderCredentialSecureStoreKey,
   PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
-} from '../credentials/providerCredentialService'
+} from '../credentials/providerCredentialContract'
 import {
-  COMPATIBLE_CREDENTIAL_SECURE_STORE_NAMESPACE,
-  COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
-  isCompatibleCredentialSecureStoreKey,
-} from '../credentials/compatibleCredentialService'
+  isOpenAICompatibleCredentialV2StoreKey,
+  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_NAMESPACE,
+  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
+} from '../credentials/openAICompatibleCredentialV2Service'
 import type { RegisterInvoke } from './types'
 
 export const STORE_IPC_CHANNELS = [
@@ -33,7 +32,8 @@ export const RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS = new Set([
   'deepSeekApiKey',
   'geminiApiKey',
   'apiKey',
-  OPENROUTER_CATALOG_LOCAL_SECRET_KEY,
+  // Proxy settings must only change through the apply-before-persist authority.
+  'networkProxySettingsV2',
 ])
 
 type RegisterStoreIpcInput = Readonly<{
@@ -59,17 +59,17 @@ function isRendererBlockedCredentialStoreKey(key: string): boolean {
   const protectedPaths = [
     ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
     PROVIDER_CREDENTIAL_SECURE_STORE_NAMESPACE,
-    COMPATIBLE_CREDENTIAL_SECURE_STORE_NAMESPACE,
+    OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_NAMESPACE,
   ]
   return protectedPaths.some((protectedPath) => pathsOverlap(key, protectedPath)) ||
     isProviderCredentialSecureStoreKey(key) ||
-    isCompatibleCredentialSecureStoreKey(key)
+    isOpenAICompatibleCredentialV2StoreKey(key)
 }
 
 function buildRendererSafeClearKeepKeys(keepKeys: unknown): string[] {
   const safeKeepKeys = Array.isArray(keepKeys) ? keepKeys.map((item) => String(item)) : []
   const providerCredentialRoot = PROVIDER_CREDENTIAL_SECURE_STORE_NAMESPACE.split('.')[0]!
-  for (const key of [...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, providerCredentialRoot, COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT]) {
+  for (const key of [...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, providerCredentialRoot, OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT]) {
     if (!safeKeepKeys.includes(key)) {
       safeKeepKeys.push(key)
     }

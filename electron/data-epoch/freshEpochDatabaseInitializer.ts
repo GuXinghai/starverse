@@ -31,7 +31,10 @@ export type FreshEpochDatabaseCrashSmokeStage = 'after_schema' | 'after_identity
 
 export class FreshEpochDatabaseInitializerError extends Error {
   constructor(readonly code:
-    | 'EPOCH2_DATABASE_PATH_INVALID'
+    | 'EPOCH2_SCHEMA_ASSET_ROOT_INVALID'
+    | 'EPOCH2_DATABASE_PATH_NOT_ABSOLUTE'
+    | 'EPOCH2_DATABASE_OPEN_FAILED'
+    | 'EPOCH2_DATABASE_OPEN_CANTOPEN'
     | 'EPOCH2_DATABASE_PRAGMA_INVALID'
     | 'EPOCH2_DATABASE_STATE_INVALID'
     | 'EPOCH2_DATABASE_TRANSACTION_FAILED'
@@ -42,6 +45,12 @@ export class FreshEpochDatabaseInitializerError extends Error {
     | 'EPOCH2_SCOPE_KEY_REENCRYPT_FAILED') {
     super(code)
     this.name = 'FreshEpochDatabaseInitializerError'
+  }
+}
+
+function emitDatabaseInitializationMilestone(value: string): void {
+  if (process.env.SV_EPOCH2_NORMAL_PROFILE_INIT === '1') {
+    process.stderr.write(`[epoch2-database] ${value}\n`)
   }
 }
 
@@ -167,9 +176,12 @@ async function verifyScopeKeyEnvelope(ciphertext: Buffer): Promise<Buffer | unde
 }
 
 function schemaAssetRoot(): string {
-  const root = app.getAppPath()
+  // Packaged SQL fragments live under app.asar. Development builds are often
+  // launched by their compiled entry file, where app.getAppPath() resolves to
+  // dist-electron rather than the repository root.
+  const root = app.isPackaged ? app.getAppPath() : process.cwd()
   if (typeof root !== 'string' || !path.isAbsolute(root) || root.includes('\0')) {
-    throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_PATH_INVALID')
+    throw new FreshEpochDatabaseInitializerError('EPOCH2_SCHEMA_ASSET_ROOT_INVALID')
   }
   return path.resolve(root)
 }
@@ -287,14 +299,21 @@ function openDatabase(
   input: Readonly<{ layout: Epoch2WorkspaceLayout; readonly: boolean }>,
 ): BetterSqlite3.Database {
   if (!path.isAbsolute(input.layout.databasePath)) {
-    throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_PATH_INVALID')
+    throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_PATH_NOT_ABSOLUTE')
   }
   try {
     return new BetterSqlite3(input.layout.databasePath, input.readonly
       ? { readonly: true, fileMustExist: true }
       : undefined)
-  } catch {
-    throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_PATH_INVALID')
+  } catch (error) {
+    const sqliteCode = error && typeof error === 'object' && 'code' in error
+      ? (error as { code?: unknown }).code
+      : undefined
+    throw new FreshEpochDatabaseInitializerError(
+      sqliteCode === 'SQLITE_CANTOPEN'
+        ? 'EPOCH2_DATABASE_OPEN_CANTOPEN'
+        : 'EPOCH2_DATABASE_OPEN_FAILED',
+    )
   }
 }
 
@@ -456,15 +475,21 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
     const db = openDatabase({ layout: input.layout, readonly: false })
     try {
       configureConnection(db)
+      emitDatabaseInitializationMilestone('connection_configured')
       const initiallyEmpty = !hasInstalledObjects(db)
-      if (initiallyEmpty) envelope = await createScopeKeyEnvelope()
+      if (initiallyEmpty) {
+        envelope = await createScopeKeyEnvelope()
+        emitDatabaseInitializationMilestone('scope_envelope_created')
+      }
       db.exec('BEGIN IMMEDIATE')
+      emitDatabaseInitializationMilestone('transaction_started')
       try {
         const emptyInsideTransaction = !hasInstalledObjects(db)
         if (emptyInsideTransaction !== initiallyEmpty) {
           throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_STATE_INVALID')
         }
         const bundle = installGenerationV2SchemaInActiveTransaction(db, schemaRoot)
+        emitDatabaseInitializationMilestone('schema_installed')
         if (initiallyEmpty && crashSmoke?.stage === 'after_schema') {
           crashForSmoke(crashSmoke.stage, crashSmoke.markerPath)
         }
@@ -477,10 +502,12 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
             layout: input.layout,
             nowMs,
           })
+          emitDatabaseInitializationMilestone('identity_inserted')
           if (crashSmoke?.stage === 'after_identity') {
             crashForSmoke(crashSmoke.stage, crashSmoke.markerPath)
           }
           insertFreshScopeEnvelope({ db, envelope, nowMs })
+          emitDatabaseInitializationMilestone('scope_envelope_inserted')
           if (crashSmoke?.stage === 'after_envelope') {
             crashForSmoke(crashSmoke.stage, crashSmoke.markerPath)
           }
@@ -490,6 +517,7 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
           persisted.ciphertext.fill(0)
         }
         db.exec('COMMIT')
+        emitDatabaseInitializationMilestone('transaction_committed')
       } catch (error) {
         if (db.inTransaction) db.exec('ROLLBACK')
         throw error

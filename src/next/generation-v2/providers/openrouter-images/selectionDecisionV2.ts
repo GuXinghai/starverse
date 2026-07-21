@@ -8,6 +8,7 @@ import {
   type OpenRouterImageCapabilityIssueV2,
   type OpenRouterImageIntentCapabilityProjectionV2,
 } from './imageIntentCapabilityProjectionV2'
+import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../openrouter/verifiedFirstPartyEndpointProfileV2'
 
 export type OpenRouterImageSelectionBindingFactV2 = Readonly<{
   trust: 'repository_decoded_unverified'
@@ -118,6 +119,7 @@ function bindingIdentityMatches(
     record.credentialScopeId.value === cache.credentialScopeId.value &&
     record.modelId.value === cache.modelId.value &&
     record.providerId.value === 'openrouter' &&
+    record.endpointProfileId.value === OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 &&
     record.operation === 'image_generate' &&
     record.protocolContractId.value === 'openrouter-images-v1' &&
     endpointBinding.kind === 'pinned'

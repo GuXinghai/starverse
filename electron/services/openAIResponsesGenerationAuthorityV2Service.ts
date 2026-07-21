@@ -22,6 +22,7 @@ import {
   type DecodedProviderBindingRecordV2,
 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { requiresProviderFileBindingV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
 import {
   readGenerationV2Digest,
   readGenerationV2Identity,
@@ -204,12 +205,21 @@ function field(
     path, state: 'unavailable' as const, constraints: Object.freeze([]), evidenceIds: Object.freeze([]),
   })
   switch (path) {
+    case 'attachments[].kind':
+    case 'attachments[].referenceId':
+    case 'attachments[].referenceRevision':
+    case 'attachments[].originalUrl':
+    case 'attachments[].urlDigest':
+    case 'attachments[].mediaKind':
+    case 'attachments[].declaredMediaType':
+    case 'attachments[].capturedAtMs':
+    case 'attachments[].provenance': return unsupported()
     case 'attachments[].assetId':
     case 'attachments[].assetRevisionId':
     case 'attachments[].assetSha256': return supported({ kind: 'identity' })
-    case 'attachments[].conversion':
-    case 'attachments[].include':
-    case 'attachments[].sendAs': return unavailable()
+    case 'attachments[].conversion': return supported({ kind: 'enum', values: Object.freeze(['none']) })
+    case 'attachments[].include': return supported({ kind: 'boolean' })
+    case 'attachments[].sendAs': return supported({ kind: 'enum', values: Object.freeze(['provider_file']) })
     case 'generation.maxOutputTokens': return supported({ kind: 'range', min: 1, max: maxOutputTokens, integer: true }, true)
     case 'generation.temperature':
     case 'generation.topP': return unavailable()
@@ -244,6 +254,8 @@ function field(
       ? ['disabled', 'enabled'] : ['disabled']) })
     case 'web.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'provider_search']) }, true)
     case 'web.types': return supported({ kind: 'enum_list', values: Object.freeze(['web']), maxItems: 1 }, true)
+    case 'web.searchContextSize': return supported({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high']) })
+    case 'web.allowedDomains': return supported({ kind: 'string_list', maxItems: 100, maxItemLength: 253 })
     default: return unsupported()
   }
 }
@@ -257,6 +269,8 @@ function domainContains(field: PersistedRuntimeCapabilityFieldV2, value: unknown
   if (domain.kind === 'boolean') return typeof value === 'boolean'
   if (domain.kind === 'enum_list') return Array.isArray(value) && value.length <= domain.maxItems &&
     value.every((entry) => domain.values.includes(entry as never))
+  if (domain.kind === 'string_list') return Array.isArray(value) && value.length <= domain.maxItems &&
+    value.every((entry) => typeof entry === 'string' && entry.length > 0 && entry.length <= domain.maxItemLength)
   if (domain.kind === 'dimensions') return Boolean(value && typeof value === 'object' &&
     Number.isSafeInteger((value as { width?: unknown }).width) && Number.isSafeInteger((value as { height?: unknown }).height) &&
     (value as { width: number }).width >= domain.minWidth && (value as { width: number }).width <= domain.maxWidth &&
@@ -270,8 +284,10 @@ function validateIntent(
   toolRegistry: ToolRegistryRepositoryFactV2 | null,
 ): void {
   const intent = commandFacts.semanticIntent
-  if (intent.attachments.length !== 0 || commandFacts.attachmentSet.attachments.length !== 0 ||
-      commandFacts.attachmentSet.providerFileRequirements.length !== 0 || commandFacts.attachmentSet.requiresProviderFileAuthority) {
+  if (intent.attachments.some((attachment) => !requiresProviderFileBindingV2(attachment)) ||
+      commandFacts.attachmentSet.attachments.length !== intent.attachments.length ||
+      commandFacts.attachmentSet.requiresProviderFileAuthority !==
+        intent.attachments.some(requiresProviderFileBindingV2)) {
     return fail('GENERATION_V2_OPENAI_ATTACHMENT_CAPABILITY_UNAVAILABLE')
   }
   if (intent.tools.mode === 'disabled' ? toolRegistry !== null : toolRegistry === null) {
@@ -282,8 +298,14 @@ function validateIntent(
     ['reasoning.mode', intent.reasoning.mode],
     ...(intent.reasoning.mode === 'enabled' && intent.reasoning.effort !== undefined ? [['reasoning.effort', intent.reasoning.effort] as const] : []),
     ...(intent.reasoning.mode === 'enabled' && intent.reasoning.summary !== undefined ? [['reasoning.summary', intent.reasoning.summary] as const] : []),
+    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.exclude !== undefined ? [['reasoning.exclude', intent.reasoning.exclude] as const] : []),
     ['web.mode', intent.web.mode],
-    ...(intent.web.mode === 'provider_search' ? [['web.types', intent.web.types] as const] : []),
+    ...(intent.web.mode === 'provider_search' ? [
+      ['web.types', intent.web.types] as const,
+      ...Object.entries(intent.web)
+        .filter(([key, value]) => key !== 'mode' && key !== 'types' && value !== undefined)
+        .map(([key, value]) => [`web.${key}`, value] as const),
+    ] : []),
     ['image.mode', intent.image.mode],
     ...(intent.image.mode === 'generate' ? Object.entries(intent.image)
       .filter(([key, value]) => key !== 'mode' && value !== undefined)

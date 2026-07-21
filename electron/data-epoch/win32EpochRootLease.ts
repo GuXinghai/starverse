@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import fs from 'node:fs'
 import { createRequire } from 'node:module'
 import path from 'node:path'
 import {
@@ -81,6 +82,8 @@ type NativeLease = Readonly<{
   ensureEpochRootMarker(): unknown
   verifyEpochRootMarker(): unknown
   acquireEpochDatabaseFile(mode: string): unknown
+  putEpochAttachmentBlob(storageRef: string, sha256: string, bytes: Buffer): unknown
+  readEpochAttachmentBlob(storageRef: string, sha256: string, sizeBytes: number): unknown
   inspectOwnedTarget(targetId: string): unknown
   deleteOwnedTarget(targetId: string): unknown
   cleanupTransitionTemps(): unknown
@@ -158,7 +161,14 @@ export class Win32EpochRootLeaseError extends Error {
     | 'EPOCH2_WIN32_DATABASE_FILE_MISSING'
     | 'EPOCH2_WIN32_DATABASE_FILE_INVALID'
     | 'EPOCH2_WIN32_DATABASE_FILE_CHANGED'
-    | 'EPOCH2_WIN32_DATABASE_FILE_RELEASED') {
+    | 'EPOCH2_WIN32_DATABASE_FILE_RELEASED'
+    | 'EPOCH2_WIN32_ATTACHMENT_BLOB_HASH_MISMATCH'
+    | 'EPOCH2_WIN32_ATTACHMENT_BLOB_ROOT_INVALID'
+    | 'EPOCH2_WIN32_ATTACHMENT_BLOB_INVALID'
+    | 'EPOCH2_WIN32_ATTACHMENT_BLOB_OPEN_FAILED'
+    | 'EPOCH2_WIN32_ATTACHMENT_BLOB_WRITE_FAILED'
+    | 'EPOCH2_WIN32_ATTACHMENT_BLOB_CONFLICT'
+    | 'EPOCH2_WIN32_ATTACHMENT_BLOB_MISSING') {
     super(code)
     this.name = 'Win32EpochRootLeaseError'
   }
@@ -220,11 +230,24 @@ const NATIVE_ERROR_CODES = new Set<Win32EpochRootLeaseError['code']>([
   'EPOCH2_WIN32_DATABASE_FILE_INVALID',
   'EPOCH2_WIN32_DATABASE_FILE_CHANGED',
   'EPOCH2_WIN32_DATABASE_FILE_RELEASED',
+  'EPOCH2_WIN32_ATTACHMENT_BLOB_HASH_MISMATCH',
+  'EPOCH2_WIN32_ATTACHMENT_BLOB_ROOT_INVALID',
+  'EPOCH2_WIN32_ATTACHMENT_BLOB_INVALID',
+  'EPOCH2_WIN32_ATTACHMENT_BLOB_OPEN_FAILED',
+  'EPOCH2_WIN32_ATTACHMENT_BLOB_WRITE_FAILED',
+  'EPOCH2_WIN32_ATTACHMENT_BLOB_CONFLICT',
+  'EPOCH2_WIN32_ATTACHMENT_BLOB_MISSING',
 ])
 
 function nativeBinaryPath(): string {
   const resourcesPath = process.resourcesPath
-  if (process.defaultApp !== true && typeof resourcesPath === 'string' && resourcesPath !== '') {
+  // `process.defaultApp` is not a stable dev/packaged discriminator for explicit
+  // Electron executable launches (including Playwright). A packaged app has its
+  // application ASAR under resources; development and E2E launches do not.
+  const packagedAsarPath = typeof resourcesPath === 'string' && resourcesPath !== ''
+    ? path.join(resourcesPath, 'app.asar')
+    : null
+  if (packagedAsarPath !== null && fs.existsSync(packagedAsarPath)) {
     return path.join(
       resourcesPath,
       'app.asar.unpacked',
@@ -378,6 +401,8 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
         typeof candidate.ensureEpochRootMarker !== 'function' ||
         typeof candidate.verifyEpochRootMarker !== 'function' ||
         typeof candidate.acquireEpochDatabaseFile !== 'function' ||
+        typeof candidate.putEpochAttachmentBlob !== 'function' ||
+        typeof candidate.readEpochAttachmentBlob !== 'function' ||
         typeof candidate.inspectOwnedTarget !== 'function' ||
         typeof candidate.deleteOwnedTarget !== 'function' ||
         typeof candidate.cleanupTransitionTemps !== 'function' ||
@@ -1009,4 +1034,98 @@ export function assertWin32EpochDatabaseFileAuthority(
     throw new Win32EpochRootLeaseError('EPOCH2_WIN32_DATABASE_FILE_RELEASED')
   }
   assertEpoch2RootAuthority(input.rootAuthority, input)
+}
+
+function assertEpochAttachmentBlobReference(input: Readonly<{
+  storageRef: unknown
+  sha256: unknown
+  sizeBytes: unknown
+}>): asserts input is Readonly<{
+  storageRef: string
+  sha256: string
+  sizeBytes: number
+}> {
+  if (typeof input.storageRef !== 'string' || typeof input.sha256 !== 'string' ||
+      typeof input.sizeBytes !== 'number' || !Number.isSafeInteger(input.sizeBytes) ||
+      input.sizeBytes < 0 || !/^[0-9a-f]{64}$/u.test(input.sha256) ||
+      input.storageRef !== `sha256/${input.sha256.slice(0, 2)}/${input.sha256}`) {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
+  }
+}
+
+function ownedAttachmentBuffer(bytes: Uint8Array): Buffer {
+  // Vitest/Electron can provide Buffer values from a different realm, so rely
+  // on Node's intrinsic Buffer brand before the local Uint8Array fallback.
+  if ((!Buffer.isBuffer(bytes) && !(bytes instanceof Uint8Array)) ||
+      !Number.isSafeInteger(bytes.byteLength) || bytes.byteLength < 0) {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_INPUT_INVALID')
+  }
+  return Buffer.from(bytes)
+}
+
+/**
+ * Stores one immutable blob beneath epoch-2/assets using only native
+ * handle-relative operations. The storage ref is a closed digest namespace,
+ * never an arbitrary filesystem path.
+ */
+export function putWin32EpochAttachmentBlob(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  rootAuthority: Epoch2RootAuthority
+  storageRef: string
+  sha256: string
+  bytes: Uint8Array
+}>): 'written' | 'exists' {
+  assertEpoch2RootAuthority(input.rootAuthority, input)
+  const owned = ownedAttachmentBuffer(input.bytes)
+  try {
+    assertEpochAttachmentBlobReference({
+      storageRef: input.storageRef,
+      sha256: input.sha256,
+      sizeBytes: owned.byteLength,
+    })
+    const result = nativeLeaseForOwnedOperation(input.lease).putEpochAttachmentBlob(
+      input.storageRef, input.sha256, owned,
+    )
+    if (typeof result !== 'boolean') {
+      throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+    }
+    return result ? 'written' : 'exists'
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  } finally {
+    owned.fill(0)
+  }
+}
+
+/**
+ * Reads an immutable blob only after native verification of the root marker,
+ * canonical digest path, no-reparse/single-link file facts, byte count and
+ * SHA-256. The caller owns the returned copy and must dispose it promptly.
+ */
+export function readWin32EpochAttachmentBlob(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  rootAuthority: Epoch2RootAuthority
+  storageRef: string
+  sha256: string
+  sizeBytes: number
+}>): Uint8Array {
+  assertEpoch2RootAuthority(input.rootAuthority, input)
+  assertEpochAttachmentBlobReference(input)
+  try {
+    const value = nativeLeaseForOwnedOperation(input.lease).readEpochAttachmentBlob(
+      input.storageRef, input.sha256, input.sizeBytes,
+    )
+    if (!Buffer.isBuffer(value) || value.byteLength !== input.sizeBytes) {
+      throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+    }
+    const copy = Uint8Array.from(value)
+    value.fill(0)
+    return copy
+  } catch (error) {
+    if (error instanceof Win32EpochRootLeaseError) throw error
+    return translateNativeError(error)
+  }
 }

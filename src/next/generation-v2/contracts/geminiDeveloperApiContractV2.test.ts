@@ -35,6 +35,12 @@ describe('Generation V2 Gemini Developer API provider-family contract', () => {
           field: 'stream',
           requiredValue: true,
           responseProtocol: 'sse',
+          doneSentinel: '[DONE]',
+        },
+        statePolicy: {
+          store: false,
+          previousInteractionId: 'forbidden',
+          continuation: 'client_managed_full_native_steps',
         },
         continuationFamily: 'interaction_id_and_native_steps',
       }),
@@ -48,12 +54,12 @@ describe('Generation V2 Gemini Developer API provider-family contract', () => {
   it('matches the committed official-evidence audit projection', () => {
     const contract = readGeminiDeveloperApiContractV2()
     const artifactPath = path.resolve(
-      'docs/architecture/generation-compiler-v2/evidence/gemini-developer-api-contract-20260715.json',
+      'docs/architecture/generation-compiler-v2/evidence/gemini-developer-api-contract-20260718.json',
     )
     const bytes = readFileSync(artifactPath)
     const audit = JSON.parse(bytes.toString('utf8'))
     expect(createHash('sha256').update(bytes).digest('hex'))
-      .toBe('8fc121063a6591c2e624b779f4793c16dcd0b69c625b152a652f8d034c7cecac')
+      .toBe('446bcbd2c00cfaa40190d4ea99bd02b0e6ec211ec525498eb9ed47b3901e765c')
     expect(audit.capturedAt).toBe(contract.evidence.verifiedAt)
     expect(audit.provider).toBe(contract.providerId)
     expect(audit.ownerPolicy).toMatchObject({

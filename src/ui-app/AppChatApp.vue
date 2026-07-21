@@ -161,6 +161,12 @@ const {
   modelPrefsScopeForUi,
   activeSessionGenerationParamsResolved,
   activeSessionWebSearchResolved,
+  openRouterImageEndpointSelection,
+  openRouterImageEndpointSelectionLoading,
+  openRouterImageEndpointSelectionError,
+  refreshOpenRouterImageEndpointSelection,
+  chooseOpenRouterImageEndpoint,
+  updateOpenRouterImageEndpointFreshness,
   onUpdateModel,
   onUpdateReasoningEnabled,
   onUpdateReasoningEffortLevel,
@@ -187,6 +193,7 @@ const {
   onUpdateOllamaChatMode,
   onUpdateOllamaNativeRestPreferredEndpoint,
   onUpdateOllamaOpenAICompatiblePreferredEndpoint,
+  onUpdateOllamaProfileCapability,
   onUpdateOllamaNativeControl,
   onClearOllamaChat,
   onUpdateLocalEndpointChatEnabled,
@@ -200,6 +207,7 @@ const {
   onClearGoogleAIStudioChat,
   onRefreshGoogleAIStudioModels,
   onUpdateAnthropicChatEnabled,
+  onUpdateAnthropicThinkingDisplay,
   onClearAnthropicChat,
   onRefreshAnthropicModels,
   onUpdateDeepSeekChatEnabled,
@@ -229,7 +237,6 @@ const {
   closeAttachmentUrlDialog,
   submitAttachmentUrl,
   onSend,
-  compatibleRunning,
   onAbort,
   settingsOpen,
   openSettings,
@@ -256,7 +263,7 @@ const {
   confirmDeleteQuestion,
   onOpenReasoningDisplayForMessage,
 } = useAppChatAppLogic()
-const effectiveIsRunning = computed(() => isRunning.value || compatibleRunning.value)
+const effectiveIsRunning = computed(() => isRunning.value)
 const templateResetOpen = ref(false)
 const resetTemplateModelConfig = ref(true)
 const resetTemplateDraftAttachments = ref(true)
@@ -869,6 +876,9 @@ function formatRawRequestBody(body: string): string {
             :isSendPlanLoading="composerSendPlanLoading"
             :historyIncompatibleSummary="historyIncompatibleAttachmentSummary"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
+            :openRouterImageEndpointSelection="openRouterImageEndpointSelection"
+            :openRouterImageEndpointSelectionLoading="openRouterImageEndpointSelectionLoading"
+            :openRouterImageEndpointSelectionError="openRouterImageEndpointSelectionError"
             @updateModel="onUpdateModel"
             @refreshProviderModelsRequested="onRefreshProviderModelPickerSources"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
@@ -944,6 +954,9 @@ function formatRawRequestBody(body: string): string {
             @updateImageGenerationResolution="onUpdateImageGenerationResolution"
             @updateImageGenerationAspectRatio="onUpdateImageGenerationAspectRatio"
             @updateImageGeneration="onUpdateImageGeneration"
+            @refreshOpenRouterImageEndpoints="refreshOpenRouterImageEndpointSelection"
+            @selectOpenRouterImageEndpoint="chooseOpenRouterImageEndpoint"
+            @updateOpenRouterImageEndpointFreshness="updateOpenRouterImageEndpointFreshness"
             @updateOpenRouterChatEnabled="onUpdateOpenRouterChatEnabled"
             @updateLMStudioChatEnabled="onUpdateLMStudioChatEnabled"
             @updateLMStudioEndpointUrl="onUpdateLMStudioEndpointUrl"
@@ -956,6 +969,7 @@ function formatRawRequestBody(body: string): string {
             @updateOllamaChatMode="onUpdateOllamaChatMode"
             @updateOllamaNativeRestPreferredEndpoint="onUpdateOllamaNativeRestPreferredEndpoint"
             @updateOllamaOpenAICompatiblePreferredEndpoint="onUpdateOllamaOpenAICompatiblePreferredEndpoint"
+            @updateOllamaProfileCapability="onUpdateOllamaProfileCapability"
             @updateOllamaNativeControl="onUpdateOllamaNativeControl"
             @clearOllamaChat="onClearOllamaChat"
             @updateLocalEndpointChatEnabled="onUpdateLocalEndpointChatEnabled"
@@ -968,6 +982,7 @@ function formatRawRequestBody(body: string): string {
             @clearGoogleAIStudioChat="onClearGoogleAIStudioChat"
             @refreshGoogleAIStudioModels="onRefreshGoogleAIStudioModels"
             @updateAnthropicChatEnabled="onUpdateAnthropicChatEnabled"
+            @updateAnthropicThinkingDisplay="onUpdateAnthropicThinkingDisplay"
             @clearAnthropicChat="onClearAnthropicChat"
             @refreshAnthropicModels="onRefreshAnthropicModels"
             @updateDeepSeekChatEnabled="onUpdateDeepSeekChatEnabled"

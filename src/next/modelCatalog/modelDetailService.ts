@@ -1,8 +1,5 @@
 import { buildModelKeyForLog, logModelCatalogEvent } from './modelCatalogObservability'
-
-type ElectronCatalogApi = Readonly<{
-  modelCatalogQueryScopedCurrent?: (options?: unknown) => Promise<any>
-}>
+import { CatalogQueryService } from './catalogQueryService'
 
 type PricingFieldKey =
   | 'prompt'
@@ -86,11 +83,6 @@ export type ModelCatalogModelDetailResult = Readonly<{
   item: ModelCatalogModelDetail | null
   error: string | null
 }>
-
-function getElectronCatalogApi(): ElectronCatalogApi | null {
-  const api = (globalThis as any).electronAPI as ElectronCatalogApi | undefined
-  return api && typeof api.modelCatalogQueryScopedCurrent === 'function' ? api : null
-}
 
 function parseJsonValue(raw: string | null | undefined): unknown | null {
   if (typeof raw !== 'string' || raw.trim().length === 0) return null
@@ -257,15 +249,14 @@ export async function getModelCatalogModelDetail(
   const providerKey = String(input.providerKey ?? '').trim()
   const modelId = String(input.modelId ?? '').trim()
   const modelKey = buildModelKeyForLog(providerKey, modelId)
-  const catalogApi = getElectronCatalogApi()
-  if (!catalogApi?.modelCatalogQueryScopedCurrent || !providerKey || !modelId) {
+  if (!providerKey || !modelId) {
     logModelCatalogEvent('detail', 'fetch_fail', {
       stage: 'input_validation',
       providerKey,
       modelId,
       modelKey,
       durationMs: Date.now() - startedAtMs,
-      reason: 'missing_scoped_query_ipc_providerKey_or_modelId',
+      reason: 'missing_providerKey_or_modelId',
     })
     return {
       providerKey,
@@ -275,12 +266,8 @@ export async function getModelCatalogModelDetail(
     }
   }
   try {
-    const raw = await catalogApi.modelCatalogQueryScopedCurrent({
-      providerKey,
-      modelIds: [modelId],
-      limit: 1,
-    })
-    const firstRow = Array.isArray(raw?.items) ? raw.items[0] : null
+    const result = await CatalogQueryService.query({ sourceProviderKey: providerKey, searchText: modelId, page: { limit: 100 } })
+    const firstRow = result.items.find((item) => item.modelId === modelId) ?? null
     const item = normalizeDetailRow(firstRow)
     if (!item) {
       logModelCatalogEvent('detail', 'scoped_miss', {
@@ -311,7 +298,7 @@ export async function getModelCatalogModelDetail(
     }
   } catch (error: any) {
     logModelCatalogEvent('detail', 'fetch_fail', {
-      stage: 'db_invoke',
+      stage: 'availability_query',
       providerKey,
       modelId,
       modelKey,

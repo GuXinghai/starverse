@@ -21,6 +21,19 @@ type ElectronSessionLike = Readonly<{
   fetch: ElectronSessionFetch
 }>
 
+function realSmokeTransportDiagnostic(error: unknown): string {
+  const record = error && typeof error === 'object' ? error as { name?: unknown; message?: unknown; cause?: unknown } : null
+  const cause = record?.cause && typeof record.cause === 'object'
+    ? record.cause as { code?: unknown; message?: unknown }
+    : null
+  const text = [record?.message, cause?.message, cause?.code].map((value) => String(value ?? '')).join(' ')
+  const networkCode = /\b(?:net::)?ERR_[A-Z0-9_]+\b/u.exec(text)?.[0]
+  if (networkCode) return networkCode.replace(/^net::/u, '')
+  return typeof record?.name === 'string' && /^[A-Za-z][A-Za-z0-9]{0,63}$/u.test(record.name)
+    ? record.name
+    : 'UNKNOWN_TRANSPORT_ERROR'
+}
+
 function configured(value: unknown): 'configured' | 'missing' {
   return typeof value === 'string' && value.trim().length > 0 ? 'configured' : 'missing'
 }
@@ -45,10 +58,19 @@ export function classifyProviderResolvedProxy(value: unknown): ProviderHttpResol
 
 export function createElectronSessionProviderFetch(input?: Readonly<{
   session?: ElectronSessionLike
+  beforeRequest?: (url: string | Request) => void
 }>): ProviderFetch {
-  return (url, init) => {
-    const electronSession = input?.session ?? session.defaultSession
+  return async (url, init) => {
     const sessionInput = url instanceof URL ? url.toString() : url
-    return electronSession.fetch(sessionInput as string | Request, init)
+    input?.beforeRequest?.(sessionInput as string | Request)
+    const electronSession = input?.session ?? session.defaultSession
+    try {
+      return await electronSession.fetch(sessionInput as string | Request, init)
+    } catch (error) {
+      if (process.env.SV_GENERATION_V2_REAL_SMOKE === '1') {
+        process.stderr.write(`[provider-fetch] ${realSmokeTransportDiagnostic(error)}\n`)
+      }
+      throw error
+    }
   }
 }

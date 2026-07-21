@@ -358,6 +358,17 @@ export function buildDeepSeekNativeRequestHistoryV2(input: Readonly<{
   return Object.freeze(entries.map((entry) => entry.message))
 }
 
+export function buildDeepSeekProjectedNativeRequestHistoryV2(input: Readonly<{
+  replayEntries: unknown
+}>): readonly DeepSeekNativeMessageV1[] {
+  const entries = decodeEntries(input.replayEntries)
+  if (entries.length > DEEPSEEK_NATIVE_HISTORY_MAX_ENTRIES_V1) {
+    throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_LIMIT_EXCEEDED')
+  }
+  validateSequence(entries, true)
+  return Object.freeze(entries.map((entry) => entry.message))
+}
+
 export function completeDeepSeekNativeRequestV2(input: Readonly<{
   priorArtifact: DeepSeekNativeHistoryArtifactV2 | null
   clientEntries: unknown
@@ -377,6 +388,23 @@ export function completeDeepSeekNativeRequestV2(input: Readonly<{
     prior?.artifactHash ?? null,
     [...(prior?.orderedEntries ?? []), ...clientEntries, assistant],
   )
+}
+
+export function completeDeepSeekProjectedNativeRequestV2(input: Readonly<{
+  projectedPrefixEntries: unknown
+  clientEntries: unknown
+  assistantMessage: unknown
+  generatedWithThinking: 'enabled' | 'disabled'
+}>): DeepSeekNativeHistoryArtifactV2 {
+  const prefix = decodeEntries(input.projectedPrefixEntries)
+  const clientEntries = decodeEntries(input.clientEntries)
+  if (clientEntries.some((entry) => entry.kind !== 'client')) {
+    throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_INVALID_VALUE')
+  }
+  const assistant = decodeEntry({
+    kind: 'assistant', generatedWithThinking: input.generatedWithThinking, message: input.assistantMessage,
+  })
+  return createArtifact(1, null, [...prefix, ...clientEntries, assistant])
 }
 
 export function serializeDeepSeekNativeHistoryArtifactV2(artifact: DeepSeekNativeHistoryArtifactV2): string {

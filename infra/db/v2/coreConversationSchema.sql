@@ -151,6 +151,46 @@ BEGIN
   ) THEN RAISE(ABORT, 'GENERATION_V2_GRAPH_BRANCH_HEAD_INVALID') END;
 END;
 
+-- The retained New Chat workspace is a real graph/draft scope, but is hidden
+-- from ordinary conversation lists until its first generation command commits.
+CREATE TABLE IF NOT EXISTS system_chat_template_v2 (
+  system_key TEXT PRIMARY KEY CHECK (system_key = 'new_template'),
+  conversation_id TEXT NOT NULL UNIQUE REFERENCES conversation_v2(conversation_id) ON DELETE CASCADE,
+  branch_id TEXT NOT NULL UNIQUE REFERENCES branch_v2(branch_id) ON DELETE CASCADE,
+  template_revision INTEGER NOT NULL CHECK (template_revision BETWEEN 0 AND 9007199254740991),
+  meta_json TEXT CHECK (meta_json IS NULL OR length(CAST(meta_json AS BLOB)) <= 1048576),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms)
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_system_chat_template_v2_validate_insert
+AFTER INSERT ON system_chat_template_v2
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM branch_v2 AS branch
+    WHERE branch.branch_id = NEW.branch_id
+      AND branch.conversation_id = NEW.conversation_id
+      AND branch.head_message_id IS NULL
+      AND branch.deleted_at_ms IS NULL
+  ) THEN RAISE(ABORT, 'GENERATION_V2_SYSTEM_TEMPLATE_GRAPH_INVALID') END;
+END;
+
+CREATE TABLE IF NOT EXISTS new_chat_lifecycle_v2 (
+  singleton_id INTEGER PRIMARY KEY CHECK (singleton_id = 1),
+  startup_navigation TEXT NOT NULL CHECK (startup_navigation IN ('open_new', 'restore_last_formal', 'projects_only')),
+  startup_reset_model_config INTEGER NOT NULL CHECK (startup_reset_model_config IN (0, 1)),
+  startup_reset_draft_attachments INTEGER NOT NULL CHECK (startup_reset_draft_attachments IN (0, 1)),
+  post_send_template_reset TEXT NOT NULL CHECK (post_send_template_reset IN ('reset_all', 'preserve_model_config')),
+  last_formal_conversation_id TEXT REFERENCES conversation_v2(conversation_id) ON DELETE SET NULL,
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0)
+);
+
+INSERT INTO new_chat_lifecycle_v2 (
+  singleton_id, startup_navigation, startup_reset_model_config,
+  startup_reset_draft_attachments, post_send_template_reset,
+  last_formal_conversation_id, updated_at_ms
+) VALUES (1, 'open_new', 1, 1, 'reset_all', NULL, 0);
+
 CREATE TABLE IF NOT EXISTS branch_choice_v2 (
   branch_id TEXT NOT NULL,
   conversation_id TEXT NOT NULL,
@@ -192,6 +232,24 @@ CREATE TABLE IF NOT EXISTS branch_question_hide_v2 (
   FOREIGN KEY (question_id, conversation_id)
     REFERENCES message_v2(message_id, conversation_id) ON DELETE CASCADE
 );
+
+-- Request-time model visibility. This is deliberately independent from graph
+-- visibility: it never hides, rewrites, forks, or otherwise changes a message.
+CREATE TABLE IF NOT EXISTS branch_context_filter_v2 (
+  branch_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  target_type TEXT NOT NULL CHECK (target_type IN ('question', 'answer')),
+  target_id TEXT NOT NULL,
+  mode TEXT NOT NULL CHECK (mode IN ('include', 'exclude')),
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  PRIMARY KEY (branch_id, target_type, target_id),
+  FOREIGN KEY (branch_id, conversation_id)
+    REFERENCES branch_v2(branch_id, conversation_id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_branch_context_filter_v2_branch
+  ON branch_context_filter_v2(branch_id, target_type, target_id);
+
 
 CREATE TRIGGER IF NOT EXISTS trg_branch_choice_v2_validate_insert
 AFTER INSERT ON branch_choice_v2
@@ -285,4 +343,47 @@ CREATE TRIGGER IF NOT EXISTS trg_branch_question_hide_v2_structure_immutable
 BEFORE UPDATE ON branch_question_hide_v2
 BEGIN
   SELECT RAISE(ABORT, 'GENERATION_V2_GRAPH_QUESTION_HIDE_STRUCTURE_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_branch_context_filter_v2_validate_insert
+AFTER INSERT ON branch_context_filter_v2
+BEGIN
+  SELECT CASE WHEN NEW.target_type = 'question' AND NOT EXISTS (
+    WITH RECURSIVE lineage(message_id, parent_message_id) AS (
+      SELECT head.message_id, head.parent_message_id FROM branch_v2 AS branch
+      JOIN message_v2 AS head ON head.message_id = branch.head_message_id
+        AND head.conversation_id = branch.conversation_id
+      WHERE branch.branch_id = NEW.branch_id
+      UNION ALL
+      SELECT parent.message_id, parent.parent_message_id FROM message_v2 AS parent
+      JOIN lineage AS child ON child.parent_message_id = parent.message_id
+      WHERE parent.conversation_id = NEW.conversation_id
+    )
+    SELECT 1 FROM lineage JOIN message_v2 AS question ON question.message_id = lineage.message_id
+    WHERE question.message_id = NEW.target_id AND question.conversation_id = NEW.conversation_id
+      AND question.role = 'user' AND question.status = 'completed'
+  ) THEN RAISE(ABORT, 'GENERATION_V2_CONTEXT_FILTER_QUESTION_INVALID') END;
+  SELECT CASE WHEN NEW.target_type = 'answer' AND NOT EXISTS (
+    WITH RECURSIVE lineage(message_id, parent_message_id) AS (
+      SELECT head.message_id, head.parent_message_id FROM branch_v2 AS branch
+      JOIN message_v2 AS head ON head.message_id = branch.head_message_id
+        AND head.conversation_id = branch.conversation_id
+      WHERE branch.branch_id = NEW.branch_id
+      UNION ALL
+      SELECT parent.message_id, parent.parent_message_id FROM message_v2 AS parent
+      JOIN lineage AS child ON child.parent_message_id = parent.message_id
+      WHERE parent.conversation_id = NEW.conversation_id
+    )
+    SELECT 1 FROM lineage JOIN message_v2 AS question ON question.message_id = lineage.message_id
+    JOIN branch_choice_v2 AS choice ON choice.branch_id = NEW.branch_id AND choice.question_id = question.message_id
+    JOIN message_v2 AS answer ON answer.message_id = choice.chosen_answer_root_id
+    WHERE choice.conversation_id = NEW.conversation_id AND choice.chosen_answer_root_id = NEW.target_id
+      AND answer.role = 'assistant' AND answer.status IN ('completed', 'failed', 'cancelled')
+  ) THEN RAISE(ABORT, 'GENERATION_V2_CONTEXT_FILTER_ANSWER_INVALID') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_branch_context_filter_v2_structure_immutable
+BEFORE UPDATE OF branch_id, conversation_id, target_type, target_id ON branch_context_filter_v2
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_CONTEXT_FILTER_STRUCTURE_IMMUTABLE');
 END;

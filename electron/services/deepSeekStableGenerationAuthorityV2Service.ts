@@ -190,6 +190,9 @@ function validateIntentSubset(
     ...(intent.reasoning.mode === 'enabled' && intent.reasoning.summary !== undefined
       ? [['reasoning.summary', intent.reasoning.summary] as const]
       : []),
+    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.exclude !== undefined
+      ? [['reasoning.exclude', intent.reasoning.exclude] as const]
+      : []),
     ['web.mode', intent.web.mode],
     ['image.mode', intent.image.mode],
     ['tools.mode', intent.tools.mode],

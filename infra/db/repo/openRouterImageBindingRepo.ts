@@ -15,6 +15,11 @@ import {
   OpenRouterImageDescriptorCacheRecordV2Error,
 } from '../../../src/next/generation-v2/providers/openrouter-images/descriptorCacheRecordV2'
 import { CanonicalOpenRouterImageDescriptorV2Error } from '../../../src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
+import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+import {
+  assertGenerationV2AuthorityTransactionContextV2,
+  type GenerationV2AuthorityTransactionContextV2,
+} from './generationV2AuthorityTransactionInternal'
 
 const OPERATION = 'image_generate'
 
@@ -107,6 +112,7 @@ function decodeInputRecord(value: unknown): DecodedProviderBindingRecordV2 {
     throw error
   }
   if (record.providerId.value !== 'openrouter' || record.operation !== OPERATION ||
+      record.endpointProfileId.value !== OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 ||
       record.protocolContractId.value !== 'openrouter-images-v1' ||
       record.endpointBinding.kind !== 'pinned' || record.endpointBinding.selector.kind !== 'openrouter_images_v1' ||
       record.endpointBinding.selector.descriptorRevision.value !==
@@ -253,6 +259,20 @@ export class OpenRouterImageBindingRepo {
     expectedBindingGeneration: number | null
     expectedDescriptorRowGeneration: number
   }>): OpenRouterImageBindingRepositoryFactV2 {
+    return this.runImmediate(this.db.transaction(() => this.compareAndSetBindingInCurrentTransaction(input)))
+  }
+
+  /**
+   * Performs the CAS in the caller-owned transaction. This is deliberately
+   * separate from the public standalone entrypoint: generation commands must
+   * not create a nested savepoint while assembling their graph, snapshot,
+   * request and endpoint binding as one authority transaction.
+   */
+  private compareAndSetBindingInCurrentTransaction(input: Readonly<{
+    record: unknown
+    expectedBindingGeneration: number | null
+    expectedDescriptorRowGeneration: number
+  }>): OpenRouterImageBindingRepositoryFactV2 {
     const record = decodeInputRecord(input.record)
     const key = { credentialScopeId: record.credentialScopeId, modelId: record.modelId }
     assertKey(key)
@@ -263,7 +283,6 @@ export class OpenRouterImageBindingRepo {
     if (!Number.isSafeInteger(input.expectedDescriptorRowGeneration) || input.expectedDescriptorRowGeneration <= 0) {
       throw new OpenRouterImageBindingRepoV2Error('GENERATION_V2_OPENROUTER_BINDING_DESCRIPTOR_STALE')
     }
-    const transaction = this.db.transaction(() => {
       const descriptor = this.currentDescriptor(key.credentialScopeId.value, key.modelId.value)
       if (!descriptor || descriptor.rowGeneration !== input.expectedDescriptorRowGeneration) {
         throw new OpenRouterImageBindingRepoV2Error('GENERATION_V2_OPENROUTER_BINDING_DESCRIPTOR_STALE')
@@ -341,8 +360,21 @@ export class OpenRouterImageBindingRepo {
         throw new OpenRouterImageBindingRepoV2Error('GENERATION_V2_OPENROUTER_BINDING_STATE_INVALID')
       }
       return persisted
-    })
-    return this.runImmediate(transaction)
+  }
+
+  /**
+   * Command-only CAS under the sole V2 authority transaction owner.
+   */
+  compareAndSetBindingInAuthorityTransaction(
+    context: GenerationV2AuthorityTransactionContextV2,
+    input: Readonly<{
+      record: unknown
+      expectedBindingGeneration: number | null
+      expectedDescriptorRowGeneration: number
+    }>,
+  ): OpenRouterImageBindingRepositoryFactV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.db)
+    return this.compareAndSetBindingInCurrentTransaction(input)
   }
 
   deleteBinding(input: Readonly<{

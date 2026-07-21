@@ -7,7 +7,7 @@ import {
   buildOpenAIResponsesReplayInputV1,
   type OpenAIResponsesContinuationArtifactV2,
 } from './continuationArtifactV2'
-import type { OpenAIResponsesReplayItemV1 } from './nativeItemsV1'
+import { decodeOpenAIResponsesReplayItemsV1, type OpenAIResponsesReplayItemV1 } from './nativeItemsV1'
 
 export const OPENAI_RESPONSES_REQUEST_MAX_BYTES_V1 = 28 * 1_024 * 1_024
 
@@ -258,9 +258,9 @@ function decodeTools(value: unknown): readonly OpenAIResponsesToolV1[] | undefin
 
 export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponsesCompilationV1 {
   const input = closedObject(value, [
-    'model', 'priorArtifact', 'clientItems', 'instructions', 'reasoning', 'generation', 'tools', 'toolChoice',
+    'model', 'priorArtifact', 'clientItems', 'replayItems', 'instructions', 'reasoning', 'generation', 'tools', 'toolChoice',
     'maxToolCalls', 'parallelToolCalls', 'serviceTier',
-  ], ['model', 'priorArtifact', 'clientItems'])
+  ], ['model'])
   if (typeof input.model !== 'string' || !MODEL_PATTERN.test(input.model) ||
       (input.instructions !== undefined && (typeof input.instructions !== 'string' || input.instructions.length === 0))) {
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
@@ -290,10 +290,18 @@ export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponses
       input.serviceTier !== 'flex' && input.serviceTier !== 'priority') {
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   }
-  const replay = buildOpenAIResponsesReplayInputV1({
-    priorArtifact: input.priorArtifact as OpenAIResponsesContinuationArtifactV2 | null,
-    clientItems: input.clientItems,
-  })
+  const replay = input.replayItems === undefined
+    ? (() => {
+      if (input.priorArtifact === undefined || input.clientItems === undefined) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_SHAPE')
+      return buildOpenAIResponsesReplayInputV1({
+        priorArtifact: input.priorArtifact as OpenAIResponsesContinuationArtifactV2 | null,
+        clientItems: input.clientItems,
+      })
+    })()
+    : (() => {
+      if (input.priorArtifact !== undefined || input.clientItems !== undefined) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_SHAPE')
+      return decodeOpenAIResponsesReplayItemsV1(input.replayItems)
+    })()
   if (replay.length === 0) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   const nativeRequest: OpenAIResponsesRequestV1 = Object.freeze({
     model: input.model,

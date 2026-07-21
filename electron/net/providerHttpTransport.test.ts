@@ -69,6 +69,17 @@ describe('providerHttpTransport', () => {
     })
   })
 
+  it('fails governed requests before Electron fetch when the product proxy authority is blocked', async () => {
+    const beforeRequest = vi.fn(() => { throw new Error('proxy_environment_unavailable') })
+    const fetchImpl = createElectronSessionProviderFetch({ beforeRequest })
+
+    await expect(fetchImpl('https://api.openai.com/v1/models'))
+      .rejects.toThrow('proxy_environment_unavailable')
+    expect(beforeRequest).toHaveBeenCalledTimes(1)
+    expect(electronMock.defaultSessionAccessCount.value).toBe(0)
+    expect(electronMock.sessionFetch).not.toHaveBeenCalled()
+  })
+
   it('reports only proxy env configured/missing status without values', () => {
     expect(getProviderHttpProxyEnvDiagnostics({
       HTTP_PROXY: 'http://proxy.internal:8080',

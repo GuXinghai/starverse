@@ -15,11 +15,16 @@ export type GenerationV2IdentityKind =
   | 'descriptor_revision'
   | 'asset_id'
   | 'asset_revision_id'
+  | 'url_reference_id'
+  | 'url_reference_revision'
   | 'blob_id'
   | 'tool_id'
   | 'tool_registry_revision'
   | 'provider_file_descriptor_id'
   | 'provider_file_descriptor_revision'
+  | 'compatible_provider_instance_id'
+  | 'compatible_endpoint_revision_id'
+  | 'compatible_config_id'
   | 'operation_id'
 
 export type GenerationV2DigestKind =
@@ -27,25 +32,33 @@ export type GenerationV2DigestKind =
   | 'descriptor_digest'
   | 'snapshot_hash'
   | 'asset_sha256'
+  | 'url_digest'
   | 'body_sha256'
   | 'contract_digest'
   | 'capability_fields_digest'
   | 'tool_definitions_digest'
   | 'provider_file_descriptor_hash'
+  | 'endpoint_profile_digest'
+  | 'compatible_config_digest'
+  | 'compatible_extra_body_digest'
+  | 'compatible_endpoint_digest'
 
 const IDENTITY_KINDS = new Set<GenerationV2IdentityKind>([
   'provider_id', 'model_id', 'endpoint_profile_id', 'provider_slug', 'provider_tag',
   'endpoint_set_revision', 'endpoint_id',
   'protocol_contract_id', 'contract_revision', 'registry_revision',
   'credential_scope_id', 'config_revision', 'capability_revision', 'descriptor_revision',
-  'asset_id', 'asset_revision_id', 'blob_id',
+  'asset_id', 'asset_revision_id', 'url_reference_id', 'url_reference_revision', 'blob_id',
   'tool_id', 'operation_id',
   'tool_registry_revision', 'provider_file_descriptor_id', 'provider_file_descriptor_revision',
+  'compatible_provider_instance_id', 'compatible_endpoint_revision_id', 'compatible_config_id',
 ])
 
 const DIGEST_KINDS = new Set<GenerationV2DigestKind>([
-  'evidence_digest', 'descriptor_digest', 'snapshot_hash', 'asset_sha256', 'body_sha256', 'contract_digest',
+  'evidence_digest', 'descriptor_digest', 'snapshot_hash', 'asset_sha256', 'url_digest', 'body_sha256', 'contract_digest',
   'capability_fields_digest', 'tool_definitions_digest', 'provider_file_descriptor_hash',
+  'endpoint_profile_digest',
+  'compatible_config_digest', 'compatible_extra_body_digest', 'compatible_endpoint_digest',
 ])
 
 export class GenerationV2IdentityError extends Error {

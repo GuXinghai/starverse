@@ -1,30 +1,12 @@
-import {
-  decodeBooleanAck,
-  decodeDfcAttachmentDefaultsResponse,
-} from '@/next/ipc/contracts/dbBridgeContracts'
 import { normalizeDfcAttachmentDefaults, type DfcAttachmentDefaults } from '@/shared/files/dfcAttachmentDefaults'
+import { getGenerationV2UiPreference, setGenerationV2UiPreference } from '@/next/generation-v2/renderer/uiPreferenceStoreV2'
 
-type DbBridge = Readonly<{
-  invoke: (method: string, params?: unknown) => Promise<any>
-}>
-
-function getDbBridge(): DbBridge | null {
-  const bridge = (globalThis as any).dbBridge as DbBridge | undefined
-  return bridge && typeof bridge.invoke === 'function' ? bridge : null
-}
+const KEY = 'dfcAttachmentDefaults'
 
 export async function getDfcAttachmentDefaults(): Promise<DfcAttachmentDefaults> {
-  const bridge = getDbBridge()
-  if (!bridge) return normalizeDfcAttachmentDefaults(null)
-  const result = await bridge.invoke('settings.getDfcAttachmentDefaults')
-  return decodeDfcAttachmentDefaultsResponse(result)
+  return normalizeDfcAttachmentDefaults(await getGenerationV2UiPreference(KEY))
 }
 
 export async function setDfcAttachmentDefaults(value: unknown): Promise<boolean> {
-  const bridge = getDbBridge()
-  if (!bridge) return false
-  const result = await bridge.invoke('settings.setDfcAttachmentDefaults', {
-    value: normalizeDfcAttachmentDefaults(value),
-  })
-  return decodeBooleanAck('settings.setDfcAttachmentDefaults', result)
+  return setGenerationV2UiPreference(KEY, normalizeDfcAttachmentDefaults(value))
 }

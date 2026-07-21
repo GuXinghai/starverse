@@ -4,9 +4,7 @@ const RECENTS_CACHE_TTL_MS = 15 * 1000
 const MAX_CACHE_ENTRIES = 64
 const DEFAULT_RECENTS_LIMIT = 20
 
-type DbBridge = Readonly<{
-  invoke: (method: string, params?: unknown) => Promise<any>
-}>
+type ModelPreferencesBridge = NonNullable<Window['generationV2']>['modelPreferences']
 
 export type ModelPrefsScopeType = 'global' | 'project' | 'conversation'
 
@@ -93,9 +91,8 @@ const favoritesInFlight = new Map<string, Promise<ModelPrefsFavorite[]>>()
 const recentsInFlight = new Map<string, Promise<ModelPrefsRecent[]>>()
 const listeners = new Set<(event: ModelPrefsServiceEvent) => void>()
 
-function getDbBridge(): DbBridge | null {
-  const bridge = (globalThis as any).dbBridge as DbBridge | undefined
-  return bridge && typeof bridge.invoke === 'function' ? bridge : null
+function getModelPreferencesBridge(): ModelPreferencesBridge | null {
+  return window.generationV2?.modelPreferences ?? null
 }
 
 function parseModelKey(modelKey: string): Readonly<{ providerKey: string; modelId: string }> | null {
@@ -323,12 +320,12 @@ export class ModelPrefsService {
       if (inflight) return inflight
     }
 
-    const bridge = getDbBridge()
+    const bridge = getModelPreferencesBridge()
     if (!bridge) return []
 
     const promise = (async () => {
       try {
-        const raw = await bridge.invoke('modelPrefs.listFavorites', {
+        const raw = await bridge.listFavorites({
           scopeType: scope.scopeType,
           scopeId: scope.scopeId,
         })
@@ -367,13 +364,13 @@ export class ModelPrefsService {
         error: typeof error?.message === 'string' ? error.message : 'Invalid model preference input.',
       }
     }
-    const bridge = getDbBridge()
+    const bridge = getModelPreferencesBridge()
     if (!bridge) {
       return {
         ok: false,
         favorited: false,
         item: null,
-        error: 'Missing dbBridge.',
+        error: 'Missing Generation V2 model preferences bridge.',
       }
     }
 
@@ -382,7 +379,7 @@ export class ModelPrefsService {
 
     try {
       if (existing) {
-        const removeRaw = await bridge.invoke('modelPrefs.removeFavorite', {
+        const removeRaw = await bridge.removeFavorite({
           scopeType: scope.scopeType,
           scopeId: scope.scopeId,
           providerKey: modelRef.providerKey,
@@ -416,7 +413,7 @@ export class ModelPrefsService {
         }
       }
 
-      const addRaw = await bridge.invoke('modelPrefs.addFavorite', {
+      const addRaw = await bridge.addFavorite({
         scopeType: scope.scopeType,
         scopeId: scope.scopeId,
         providerKey: modelRef.providerKey,
@@ -479,11 +476,11 @@ export class ModelPrefsService {
     if (normalizedKeys.length === 0) {
       return this.listFavorites(scope)
     }
-    const bridge = getDbBridge()
+    const bridge = getModelPreferencesBridge()
     if (!bridge) return []
 
     try {
-      const raw = await bridge.invoke('modelPrefs.reorderFavorites', {
+      const raw = await bridge.reorderFavorites({
         scopeType: scope.scopeType,
         scopeId: scope.scopeId,
         orderedModelKeys: normalizedKeys,
@@ -519,12 +516,12 @@ export class ModelPrefsService {
         error: typeof error?.message === 'string' ? error.message : 'Invalid model preference input.',
       }
     }
-    const bridge = getDbBridge()
+    const bridge = getModelPreferencesBridge()
     if (!bridge) {
-      return { ok: false, removed: 0, error: 'Missing dbBridge.' }
+      return { ok: false, removed: 0, error: 'Missing Generation V2 model preferences bridge.' }
     }
     try {
-      const raw = await bridge.invoke('modelPrefs.removeFavorite', {
+      const raw = await bridge.removeFavorite({
         scopeType: scope.scopeType,
         scopeId: scope.scopeId,
         providerKey: modelRef.providerKey,
@@ -587,12 +584,12 @@ export class ModelPrefsService {
       if (inflight) return inflight
     }
 
-    const bridge = getDbBridge()
+    const bridge = getModelPreferencesBridge()
     if (!bridge) return []
 
     const promise = (async () => {
       try {
-        const raw = await bridge.invoke('modelPrefs.listRecents', {
+        const raw = await bridge.listRecents({
           scopeType: scope.scopeType,
           scopeId: scope.scopeId,
           limit,
@@ -627,11 +624,11 @@ export class ModelPrefsService {
     } catch {
       return null
     }
-    const bridge = getDbBridge()
+    const bridge = getModelPreferencesBridge()
     if (!bridge) return null
 
     try {
-      const raw = await bridge.invoke('modelPrefs.recordRecent', {
+      const raw = await bridge.recordRecent({
         scopeType: scope.scopeType,
         scopeId: scope.scopeId,
         providerKey: modelRef.providerKey,

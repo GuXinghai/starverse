@@ -21,13 +21,17 @@ import {
   type DeepSeekStableStreamDeltaV1,
   type DeepSeekStableStreamResultV1,
 } from '../../src/next/generation-v2/providers/deepseek/chatStreamV1'
-import { completeDeepSeekNativeRequestV2 } from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
+import { completeDeepSeekProjectedNativeRequestV2, completeDeepSeekNativeRequestV2 } from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
 import { createDeepSeekStableTerminalArtifactV1 } from '../../src/next/generation-v2/providers/deepseek/terminalArtifactV1'
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import {
   isGenerationTextCommandResultV2,
   type GenerationTextCommandResultV2,
 } from './generationTextCommandResultV2'
+import {
+  publishGenerationStreamProjectionV2,
+  type GenerationStreamProjectionSinkV2,
+} from './generationStreamProjectionV2'
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
 const MAX_WIRE_BYTES = 64 * 1024 * 1024
@@ -111,6 +115,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
   fetchImpl?: Fetch
   nowMs?: () => number
   timeoutMs?: number
+  streamProjectionSink?: GenerationStreamProjectionSinkV2
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
@@ -157,6 +162,10 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         context, result.preparedRequest.answerRootId, expected, next, nowMs(),
       )
     })
+    publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+      type: 'assistant_body', operationId: result.preparedRequest.operationId,
+      answerRootId: result.preparedRequest.answerRootId, content: next,
+    })
   }
 
   function finalize(
@@ -198,12 +207,19 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
           command.preparedRequest.operationId,
           command.preparedRequest.requestSequence,
         )
-        const artifact = completeDeepSeekNativeRequestV2({
-          priorArtifact: history.priorArtifact,
-          clientEntries: history.clientEntries,
-          assistantMessage: streamResult.assistantMessage,
-          generatedWithThinking: streamResult.generatedWithThinking,
-        })
+        const artifact = history.projectedPrefixEntries === null
+          ? completeDeepSeekNativeRequestV2({
+            priorArtifact: history.priorArtifact,
+            clientEntries: history.clientEntries,
+            assistantMessage: streamResult.assistantMessage,
+            generatedWithThinking: streamResult.generatedWithThinking,
+          })
+          : completeDeepSeekProjectedNativeRequestV2({
+            projectedPrefixEntries: history.projectedPrefixEntries,
+            clientEntries: history.clientEntries,
+            assistantMessage: streamResult.assistantMessage,
+            generatedWithThinking: streamResult.generatedWithThinking,
+          })
         if (streamResult.finishReason === 'tool_calls') {
           resultState = 'awaiting_tool'
           historyRepo.insertRequestTerminalHistoryArtifact(context, execution, terminalRequest, artifact, at)
@@ -234,13 +250,18 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, at)
       }
     })
-    return Object.freeze({
+    const terminal = Object.freeze({
       operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId,
       state: resultState,
       errorCode,
       errorMessage,
     })
+    publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+      type: 'terminal', operationId: terminal.operationId, answerRootId: terminal.answerRootId,
+      state: terminal.state, errorCode: terminal.errorCode, errorMessage: terminal.errorMessage,
+    })
+    return terminal
   }
 
   async function receive(
@@ -271,10 +292,18 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
     let visibleContent = initial.body
     const accept = (deltas: readonly DeepSeekStableStreamDeltaV1[]): void => {
       const content = deltas.map((delta) => delta.contentDelta ?? '').join('')
+      const reasoning = deltas.map((delta) => delta.reasoningDelta ?? '').join('')
       if (content.length > 0) {
         const previous = visibleContent
         visibleContent += content
         persistVisibleContent(command, previous, visibleContent)
+      }
+      if (reasoning.length > 0) {
+        publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+          type: 'reasoning_detail', operationId: command.preparedRequest.operationId,
+          answerRootId: command.preparedRequest.answerRootId,
+          detail: Object.freeze({ provider: 'deepseek', type: 'thought', text: reasoning }),
+        })
       }
     }
     const eventsToDeltas = (events: ReturnType<DeepSeekStableSseDecoderV1['push']>) => {
@@ -304,9 +333,11 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
   return Object.freeze({
     run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal):
       Promise<DeepSeekInitialStreamRunResultV2> => {
+      const credentialPlan = command.preparedRequest?.headersPlan.credential
       if (!isGenerationTextCommandResultV2(command) ||
           !isPreparedProviderRequestV2(command.preparedRequest) ||
           command.preparedRequest.providerId !== 'deepseek' || command.preparedRequest.requestSequence < 1 ||
+          credentialPlan?.kind !== 'bearer_authorization' ||
           command.preparedRequest.answerRootId !== command.execution.operation.resultAnswerRootId.value ||
           command.request.preparedBodySha256 !== command.preparedRequest.bodySha256) {
         throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')
@@ -348,7 +379,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
               headers: {
                 'content-type': command.preparedRequest.headersPlan.contentType,
                 accept: command.preparedRequest.headersPlan.accept,
-                authorization: `Bearer ${lease.credential}`,
+                [credentialPlan.headerName]: `${credentialPlan.scheme} ${lease.credential}`,
               },
               body: Buffer.from(command.preparedRequest.body.copyBytes()),
               redirect: 'error',

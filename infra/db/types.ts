@@ -2687,38 +2687,3 @@ export type {
   CompatibleToolCall,
   CompatibleToolResult,
 } from '../../src/shared/provider/openai-chat-compatible'
-export type {
-  CreateCompatibleCredentialDescriptorInput,
-  CreateCompatibleEndpointRevisionInput,
-  CreateCompatibleProviderInput,
-  DeleteCompatibleCredentialDescriptorInput,
-  TombstoneCompatibleProviderInput,
-  UpdateCompatibleProviderInput,
-} from './repo/compatibleProviderRepo'
-export type {
-  CreateCompatibleInlinePolicyInput,
-  CreateCompatibleReasoningMappingInput,
-  CreateCompatibleRequestFieldMappingInput,
-  CreateCompatibleRequestProfileInput,
-  CreateCompatibleResponseProfileInput,
-} from './repo/compatibleProfileRepo'
-export type {
-  ApplyCompatibleRemoteSyncSuccessInput,
-  RecordCompatibleCatalogSyncFailureInput,
-  UpsertCompatibleCatalogSyncStateInput,
-  UpsertCompatibleManualModelInput,
-} from './repo/compatibleCatalogRepo'
-export type {
-  CreateCompatibleRouteChoiceInput,
-  CreateCompatibleRouteProvenanceInput,
-} from './repo/compatibleRouteRepo'
-export type {
-  CreateCompatibleToolResultInput,
-  SaveCompatibleToolCallInput,
-} from './repo/compatibleToolRepo'
-export type {
-  CreateCompatibleRawExtensionRecordInput,
-  UpsertCompatibleDiscoveredFieldInput,
-} from './repo/compatibleDiagnosticsRepo'
-export type { SaveCompatibleReasoningChoiceInput, CompatiblePersistedReasoningChoice } from './repo/compatibleReasoningRepo'
-export type { CompatiblePersistedChoiceProjection } from './repo/compatibleTurnProjectionRepo'

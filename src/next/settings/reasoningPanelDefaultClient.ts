@@ -1,58 +1,22 @@
-import {
-  decodeBooleanAck,
-  decodeChatReasoningPanelAutoCollapseAfterReasoningResponse,
-  decodeChatReasoningPanelDefaultExpandedResponse,
-} from '@/next/ipc/contracts/dbBridgeContracts'
+import { getGenerationV2UiPreference, setGenerationV2UiPreference } from '@/next/generation-v2/renderer/uiPreferenceStoreV2'
 
-type DbBridge = Readonly<{
-  invoke: (method: string, params?: unknown) => Promise<any>
-}>
-
-function getDbBridge(): DbBridge | null {
-  const bridge = (globalThis as any).dbBridge as DbBridge | undefined
-  return bridge && typeof bridge.invoke === 'function' ? bridge : null
-}
+const EXPANDED_KEY = 'chatReasoningPanelDefaultExpanded'
+const AUTO_COLLAPSE_KEY = 'chatReasoningPanelAutoCollapseAfterReasoning'
 
 export async function getChatReasoningPanelDefaultExpanded(): Promise<boolean> {
-  const bridge = getDbBridge()
-  if (!bridge) return true
-  try {
-    const result = await bridge.invoke('settings.getChatReasoningPanelDefaultExpanded')
-    return decodeChatReasoningPanelDefaultExpandedResponse(result)
-  } catch {
-    return true
-  }
+  const value = await getGenerationV2UiPreference(EXPANDED_KEY)
+  return typeof value === 'boolean' ? value : true
 }
 
 export async function setChatReasoningPanelDefaultExpanded(value: boolean): Promise<boolean> {
-  const bridge = getDbBridge()
-  if (!bridge) return false
-  try {
-    const result = await bridge.invoke('settings.setChatReasoningPanelDefaultExpanded', { value })
-    return decodeBooleanAck('settings.setChatReasoningPanelDefaultExpanded', result)
-  } catch {
-    return false
-  }
+  return setGenerationV2UiPreference(EXPANDED_KEY, value)
 }
 
 export async function getChatReasoningPanelAutoCollapseAfterReasoning(): Promise<boolean> {
-  const bridge = getDbBridge()
-  if (!bridge) return false
-  try {
-    const result = await bridge.invoke('settings.getChatReasoningPanelAutoCollapseAfterReasoning')
-    return decodeChatReasoningPanelAutoCollapseAfterReasoningResponse(result)
-  } catch {
-    return false
-  }
+  const value = await getGenerationV2UiPreference(AUTO_COLLAPSE_KEY)
+  return value === true
 }
 
 export async function setChatReasoningPanelAutoCollapseAfterReasoning(value: boolean): Promise<boolean> {
-  const bridge = getDbBridge()
-  if (!bridge) return false
-  try {
-    const result = await bridge.invoke('settings.setChatReasoningPanelAutoCollapseAfterReasoning', { value })
-    return decodeBooleanAck('settings.setChatReasoningPanelAutoCollapseAfterReasoning', result)
-  } catch {
-    return false
-  }
+  return setGenerationV2UiPreference(AUTO_COLLAPSE_KEY, value)
 }

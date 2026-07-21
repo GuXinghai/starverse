@@ -1,5 +1,6 @@
 import {
   sha256PreparedBytesV2,
+  stableSerializeProviderRequestV2,
   stableSerializeProviderRequestBoundedV2,
 } from '../compiler/stableSerialize'
 import type {
@@ -11,6 +12,7 @@ import {
   type ConversationGraphV2Identity as GraphIdentity,
 } from './conversationGraphV2'
 import {
+  requiresProviderFileBindingV2,
   type AttachmentIntentV2,
 } from './generationIntentV2'
 import { projectGenerationIntentLayerV2 } from './generationIntentProjectionV2'
@@ -29,6 +31,7 @@ import {
   decodeResolvedGenerationIntentV2,
   type ResolvedGenerationIntentV2,
 } from './resolvedGenerationIntentV2'
+import { compatibleBoundedJsonValueSchema } from '../../../shared/provider/openai-chat-compatible/schemas'
 
 export const ASSISTANT_ANSWER_GENERATION_SNAPSHOT_V2_SCHEMA_VERSION = 2 as const
 export const ASSISTANT_ANSWER_GENERATION_SNAPSHOT_V2_MAX_UTF8_BYTES = 1024 * 1024
@@ -59,6 +62,24 @@ export type ToolAuthorityBindingV2 =
       toolDefinitionsDigest: GenerationV2Digest<'tool_definitions_digest'>
     }>
 
+export type ProviderConfigurationProvenanceV2 =
+  | Readonly<{ kind: 'none' }>
+  | Readonly<{
+      kind: 'openai_chat_compatible'
+      providerInstanceId: GenerationV2Identity<'compatible_provider_instance_id'>
+      endpointRevisionId: GenerationV2Identity<'compatible_endpoint_revision_id'>
+      endpointDigest: GenerationV2Digest<'compatible_endpoint_digest'>
+      credentialRevision: number
+      requestProfile: Readonly<{ id: GenerationV2Identity<'compatible_config_id'>; version: number; digest: GenerationV2Digest<'compatible_config_digest'> }>
+      requestMappings: readonly Readonly<{ id: GenerationV2Identity<'compatible_config_id'>; version: number; digest: GenerationV2Digest<'compatible_config_digest'> }>[]
+      reasoningMapping: Readonly<{ id: GenerationV2Identity<'compatible_config_id'>; version: number; digest: GenerationV2Digest<'compatible_config_digest'> }>
+      inlinePolicy: Readonly<{ id: GenerationV2Identity<'compatible_config_id'>; version: number; digest: GenerationV2Digest<'compatible_config_digest'> }>
+      responseProfile: Readonly<{ id: GenerationV2Identity<'compatible_config_id'>; version: number; digest: GenerationV2Digest<'compatible_config_digest'> }>
+      /** Closed, non-secret compatible-only top-level extension used for exact retry replay. */
+      extraBody: unknown | null
+      extraBodyDigest: GenerationV2Digest<'compatible_extra_body_digest'>
+    }>
+
 export type PersistedAssistantAnswerGenerationSnapshotV2Record = Readonly<{
   schemaVersion: 2
   answerRootId: string
@@ -69,6 +90,7 @@ export type PersistedAssistantAnswerGenerationSnapshotV2Record = Readonly<{
   capabilityBinding: unknown
   attachmentProviderFileBindings: readonly unknown[]
   toolAuthority: unknown
+  providerConfiguration: unknown
   snapshotHash: string
 }>
 
@@ -83,6 +105,7 @@ export type DecodedAssistantAnswerGenerationSnapshotV2 = Readonly<{
   capabilityBinding: CapabilityBindingV2
   attachmentProviderFileBindings: readonly AttachmentProviderFileBindingV2[]
   toolAuthority: ToolAuthorityBindingV2
+  providerConfiguration: ProviderConfigurationProvenanceV2
   snapshotHash: GenerationV2Digest<'snapshot_hash'>
   canonicalJson: string
 }>
@@ -224,7 +247,7 @@ function decodeAttachmentBindings(
     })
   })
   const expected = attachments
-    .filter((item) => item.include && item.sendAs === 'provider_file')
+    .filter(requiresProviderFileBindingV2)
     .map((item) => readGenerationV2Identity(item.assetRevisionId, 'asset_revision_id'))
     .sort(compareCodePoints)
   const actual = bindings.map((item) => readGenerationV2Identity(item.assetRevisionId, 'asset_revision_id'))
@@ -257,12 +280,104 @@ function decodeToolAuthority(value: unknown, intent: ResolvedGenerationIntentV2)
   })
 }
 
+type CompatibleConfigRef = Readonly<{
+  id: GenerationV2Identity<'compatible_config_id'>
+  version: number
+  digest: GenerationV2Digest<'compatible_config_digest'>
+}>
+
+function decodeCompatibleConfigRef(value: unknown): CompatibleConfigRef {
+  const input = closedObject(value, ['id', 'version', 'digest'])
+  if (!Number.isSafeInteger(input.version) || (input.version as number) < 1) {
+    throw new AssistantAnswerGenerationSnapshotV2Error('GENERATION_V2_SNAPSHOT_INVALID_VALUE')
+  }
+  return Object.freeze({
+    id: GenerationV2Identity.create('compatible_config_id', requiredString(input, 'id')),
+    version: input.version as number,
+    digest: GenerationV2Digest.create('compatible_config_digest', requiredString(input, 'digest')),
+  })
+}
+
+function projectCompatibleConfigRef(value: CompatibleConfigRef): Readonly<{ id: string; version: number; digest: string }> {
+  return Object.freeze({
+    id: readGenerationV2Identity(value.id, 'compatible_config_id'),
+    version: value.version,
+    digest: readGenerationV2Digest(value.digest, 'compatible_config_digest'),
+  })
+}
+
+function decodeProviderConfiguration(
+  value: unknown,
+  binding: DecodedProviderBindingRecordV2,
+): ProviderConfigurationProvenanceV2 {
+  const input = closedObject(value, ['kind', 'providerInstanceId', 'endpointRevisionId', 'endpointDigest', 'credentialRevision',
+    'requestProfile', 'requestMappings', 'reasoningMapping', 'inlinePolicy', 'responseProfile', 'extraBody', 'extraBodyDigest'])
+  if (input.kind === 'none') {
+    if (Object.keys(input).length !== 1 || binding.protocolContractId.value === 'openai_chat_compatible') {
+      throw new AssistantAnswerGenerationSnapshotV2Error('GENERATION_V2_SNAPSHOT_INVALID_VALUE')
+    }
+    return Object.freeze({ kind: 'none' })
+  }
+  if (input.kind !== 'openai_chat_compatible' || binding.protocolContractId.value !== 'openai_chat_compatible' ||
+      !Number.isSafeInteger(input.credentialRevision) || (input.credentialRevision as number) < 1) {
+    throw new AssistantAnswerGenerationSnapshotV2Error('GENERATION_V2_SNAPSHOT_INVALID_VALUE')
+  }
+  const requestMappings = closedDenseArray(input.requestMappings).map(decodeCompatibleConfigRef)
+  const mappingKeys = requestMappings.map((item) => `${item.id.value}\u0000${item.version}`)
+  if (new Set(mappingKeys).size !== mappingKeys.length || mappingKeys.some((item, index) => index > 0 && mappingKeys[index - 1]! >= item)) {
+    throw new AssistantAnswerGenerationSnapshotV2Error('GENERATION_V2_SNAPSHOT_DUPLICATE_VALUE')
+  }
+  let extraBody: unknown | null
+  try {
+    extraBody = input.extraBody === null ? null : compatibleBoundedJsonValueSchema.parse(input.extraBody)
+    if (extraBody !== null && (typeof extraBody !== 'object' || Array.isArray(extraBody))) throw new Error('not_object')
+  } catch {
+    throw new AssistantAnswerGenerationSnapshotV2Error('GENERATION_V2_SNAPSHOT_INVALID_VALUE')
+  }
+  const extraBodyDigest = GenerationV2Digest.create('compatible_extra_body_digest', requiredString(input, 'extraBodyDigest'))
+  if (sha256PreparedBytesV2(new TextEncoder().encode(stableSerializeProviderRequestV2(extraBody ?? {}))) !== extraBodyDigest.value) {
+    throw new AssistantAnswerGenerationSnapshotV2Error('GENERATION_V2_SNAPSHOT_INVALID_VALUE')
+  }
+  return Object.freeze({
+    kind: 'openai_chat_compatible',
+    providerInstanceId: GenerationV2Identity.create('compatible_provider_instance_id', requiredString(input, 'providerInstanceId')),
+    endpointRevisionId: GenerationV2Identity.create('compatible_endpoint_revision_id', requiredString(input, 'endpointRevisionId')),
+    endpointDigest: GenerationV2Digest.create('compatible_endpoint_digest', requiredString(input, 'endpointDigest')),
+    credentialRevision: input.credentialRevision as number,
+    requestProfile: decodeCompatibleConfigRef(input.requestProfile),
+    requestMappings: Object.freeze(requestMappings),
+    reasoningMapping: decodeCompatibleConfigRef(input.reasoningMapping),
+    inlinePolicy: decodeCompatibleConfigRef(input.inlinePolicy),
+    responseProfile: decodeCompatibleConfigRef(input.responseProfile),
+    extraBody,
+    extraBodyDigest,
+  })
+}
+
+function projectProviderConfiguration(value: ProviderConfigurationProvenanceV2): unknown {
+  if (value.kind === 'none') return Object.freeze({ kind: 'none' })
+  return Object.freeze({
+    kind: value.kind,
+    providerInstanceId: readGenerationV2Identity(value.providerInstanceId, 'compatible_provider_instance_id'),
+    endpointRevisionId: readGenerationV2Identity(value.endpointRevisionId, 'compatible_endpoint_revision_id'),
+    endpointDigest: readGenerationV2Digest(value.endpointDigest, 'compatible_endpoint_digest'),
+    credentialRevision: value.credentialRevision,
+    requestProfile: projectCompatibleConfigRef(value.requestProfile),
+    requestMappings: value.requestMappings.map(projectCompatibleConfigRef),
+    reasoningMapping: projectCompatibleConfigRef(value.reasoningMapping),
+    inlinePolicy: projectCompatibleConfigRef(value.inlinePolicy),
+    responseProfile: projectCompatibleConfigRef(value.responseProfile),
+    extraBody: value.extraBody,
+    extraBodyDigest: readGenerationV2Digest(value.extraBodyDigest, 'compatible_extra_body_digest'),
+  })
+}
+
 type DecodedPayload = Omit<DecodedAssistantAnswerGenerationSnapshotV2, 'trust' | 'snapshotHash' | 'canonicalJson'>
 
 function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; projection: SnapshotPayload }> {
   const input = closedObject(value, [
     'schemaVersion', 'answerRootId', 'operationId', 'semanticIntent', 'resolvedConfigRevisions',
-    'providerBinding', 'capabilityBinding', 'attachmentProviderFileBindings', 'toolAuthority',
+    'providerBinding', 'capabilityBinding', 'attachmentProviderFileBindings', 'toolAuthority', 'providerConfiguration',
   ])
   if (input.schemaVersion !== 2) {
     throw new AssistantAnswerGenerationSnapshotV2Error('GENERATION_V2_SNAPSHOT_INVALID_VALUE')
@@ -277,6 +392,7 @@ function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; proj
     input.attachmentProviderFileBindings, semanticIntent.attachments,
   )
   const toolAuthority = decodeToolAuthority(input.toolAuthority, semanticIntent)
+  const providerConfiguration = decodeProviderConfiguration(input.providerConfiguration ?? { kind: 'none' }, providerBinding)
   const projection: SnapshotPayload = {
     schemaVersion: 2,
     answerRootId: answerRootId.value,
@@ -311,6 +427,7 @@ function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; proj
       toolRegistryRevision: readGenerationV2Identity(toolAuthority.toolRegistryRevision, 'tool_registry_revision'),
       toolDefinitionsDigest: readGenerationV2Digest(toolAuthority.toolDefinitionsDigest, 'tool_definitions_digest'),
     },
+    providerConfiguration: projectProviderConfiguration(providerConfiguration),
   }
   return Object.freeze({
     decoded: Object.freeze({
@@ -323,6 +440,7 @@ function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; proj
       capabilityBinding,
       attachmentProviderFileBindings,
       toolAuthority,
+      providerConfiguration,
     }),
     projection,
   })
@@ -359,7 +477,7 @@ export function decodeAssistantAnswerGenerationSnapshotV2(
 ): DecodedAssistantAnswerGenerationSnapshotV2 {
   const input = closedObject(value, [
     'schemaVersion', 'answerRootId', 'operationId', 'semanticIntent', 'resolvedConfigRevisions',
-    'providerBinding', 'capabilityBinding', 'attachmentProviderFileBindings', 'toolAuthority', 'snapshotHash',
+    'providerBinding', 'capabilityBinding', 'attachmentProviderFileBindings', 'toolAuthority', 'providerConfiguration', 'snapshotHash',
   ])
   const snapshotHash = requiredString(input, 'snapshotHash')
   const payload = Object.fromEntries(Object.entries(input).filter(([key]) => key !== 'snapshotHash'))

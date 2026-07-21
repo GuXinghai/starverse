@@ -224,6 +224,16 @@ export function completeLmStudioOpenResponsesRequestV1(input: Readonly<{
   return createArtifact({ requestSequence, orderedItems: [...replay, ...returned] })
 }
 
+export function completeLmStudioOpenResponsesProjectedRequestV1(input: Readonly<{
+  replayItems: unknown
+  returnedItems: unknown
+}>): LmStudioOpenResponsesContinuationArtifactV1 {
+  const replay = decodeLmStudioOpenResponsesReplayItemsV1(input.replayItems)
+  validateSequence(replay)
+  const returned = decodeLmStudioOpenResponsesReturnedItemsV1(input.returnedItems)
+  return createArtifact({ requestSequence: 1, orderedItems: [...replay, ...returned] })
+}
+
 export function projectLmStudioOpenResponsesClientItemsV1(
   items: readonly LmStudioOpenResponsesClientItemV1[],
 ): readonly LmStudioOpenResponsesClientItemV1[] {

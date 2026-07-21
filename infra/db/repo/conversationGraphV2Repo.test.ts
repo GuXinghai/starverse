@@ -10,15 +10,18 @@ import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { readReviewedDeepSeekStableChatDefinitionV2 } from '../../../src/next/generation-v2/contracts/providerContractRegistryV2'
 import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
 import { ConversationGraphV2Repo, isPendingInitialTurnV2 } from './conversationGraphV2Repo'
+import { ComposerDraftV2Repo } from './composerDraftV2Repo'
 import { GenerationExecutionV2Repo } from './generationExecutionV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from './generationV2AuthorityTransactionInternal'
+import { SystemChatTemplateV2Repo } from './systemChatTemplateV2Repo'
 
 const HASH_A = 'a'.repeat(64)
-const HASH_B = 'b'.repeat(64)
 
 function providerBinding() {
+  const contract = readReviewedDeepSeekStableChatDefinitionV2()
   return {
     credentialScopeId: 'credential-scope:1',
     providerId: 'deepseek',
@@ -28,10 +31,10 @@ function providerBinding() {
       endpointSetRevision: 'endpoint-set:1',
       descriptors: [{ endpointId: 'endpoint:deepseek', descriptorRevision: 'descriptor:1' }],
     },
-    protocolContractId: 'deepseek-chat-v1',
-    contractRevision: `deepseek-chat-v1:${HASH_A}`,
-    contractDefinitionDigest: HASH_A,
-    registryRevision: `provider-contract-registry-v1:${HASH_B}`,
+    protocolContractId: contract.protocolContractId.value,
+    contractRevision: contract.contractRevision.value,
+    contractDefinitionDigest: contract.definitionDigest.value,
+    registryRevision: contract.registryRevision.value,
     modelId: 'deepseek-chat',
     operation: 'text',
   }
@@ -130,6 +133,73 @@ function beginInput(overrides: Record<string, unknown> = {}) {
 }
 
 describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
+  it('promotes the hidden New Chat template and creates its successor in the initial-command transaction', () => {
+    const db = createDb()
+    try {
+      const graph = new ConversationGraphV2Repo(db)
+      const execution = new GenerationExecutionV2Repo(db)
+      const templateRepo = new SystemChatTemplateV2Repo(db, () => 2)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        graph.createProject(context, { projectId: 'project:1', name: 'Project', createdAtMs: 1 })
+        templateRepo.ensure(context, {
+          projectId: 'project:1', conversationId: 'conversation:1', branchId: 'branch:1', createdAtMs: 2,
+        })
+      })
+      new ComposerDraftV2Repo(db, () => 3).updateText({
+        conversationId: 'conversation:1', expectedRevision: 0, draftText: 'hello',
+        draftMode: 'compose', editingSourceQuestionId: null,
+      })
+
+      const projection = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        const pending = graph.beginInitialTurn(context, beginInput())
+        execution.insertOperationAndSnapshot(context, {
+          operationId: 'operation:1', actionKind: 'initial_send', branchId: 'branch:1',
+          conversationId: 'conversation:1', questionId: 'question:1', targetAnswerRootId: null,
+          resultAnswerRootId: 'answer:1', snapshot: snapshotJson('operation:1', 'answer:1'),
+          commandFingerprint: HASH_A, createdAtMs: 3,
+        })
+        return graph.commitInitialTurnProjection(context, pending)
+      })
+
+      const next = templateRepo.get()
+      expect(next.conversation.id).not.toBe('conversation:1')
+      expect(next.conversation.branchId).not.toBe('branch:1')
+      expect(next.draft).toMatchObject({ draftText: '', draftMode: 'compose', attachments: [] })
+      expect(templateRepo.getLastFormalConversationId()).toBe('conversation:1')
+      expect(projection).toMatchObject({ branchId: { value: 'branch:1' }, headMessageId: { value: 'answer:1' } })
+      expect(db.prepare(`SELECT COUNT(*) AS count FROM system_chat_template_v2
+        WHERE conversation_id='conversation:1'`).get()).toEqual({ count: 0 })
+    } finally { db.close() }
+  })
+
+  it('rolls template promotion and successor creation back when initial-command precommit fails', () => {
+    const db = createDb()
+    try {
+      const graph = new ConversationGraphV2Repo(db)
+      const templateRepo = new SystemChatTemplateV2Repo(db, () => 2)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        graph.createProject(context, { projectId: 'project:1', name: 'Project', createdAtMs: 1 })
+        templateRepo.ensure(context, {
+          projectId: 'project:1', conversationId: 'conversation:1', branchId: 'branch:1', createdAtMs: 2,
+        })
+      })
+      new ComposerDraftV2Repo(db, () => 3).updateText({
+        conversationId: 'conversation:1', expectedRevision: 0, draftText: 'hello',
+        draftMode: 'compose', editingSourceQuestionId: null,
+      })
+
+      expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        const pending = graph.beginInitialTurn(context, beginInput())
+        graph.commitInitialTurnProjection(context, pending)
+      })).toThrow('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
+
+      expect(templateRepo.get().conversation).toMatchObject({ id: 'conversation:1', branchId: 'branch:1' })
+      expect(templateRepo.getLastFormalConversationId()).toBeNull()
+      expect(db.prepare('SELECT COUNT(*) AS count FROM conversation_v2').get()).toEqual({ count: 1 })
+      expect(db.prepare('SELECT COUNT(*) AS count FROM message_v2').get()).toEqual({ count: 0 })
+    } finally { db.close() }
+  })
+
   it('commits initial question, streaming answer, operation, snapshot, chosen and head together', () => {
     const db = createDb()
     try {

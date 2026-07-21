@@ -30,11 +30,12 @@ describe('Generation V2 reviewed provider contract registry', () => {
       modelBindingPolicy: 'descriptor_model_id',
       endpointBindingPolicy: 'exact_descriptor_pin',
       continuationPolicy: 'none',
+      contextProjectionPolicy: 'unsupported',
       operations: ['image_generate'],
       apiSurface: { kind: 'openrouter_images', apiVersion: 'v1', requestPath: '/api/v1/images' },
       evidence: {
-        verifiedAt: '2026-07-14',
-        openApiSha256: 'abaf90acc89dc3a2b4cd8824afcbf87734c8d0a5f4429ea85dca0d9eb02e353b',
+        verifiedAt: '2026-07-18',
+        openApiSha256: '043b816d0cd67a9474ee69169803efb3654485978c180bf94f58ff7a89e5a880',
       },
     })
     expect(definition.providerId.value).toBe('openrouter')
@@ -66,10 +67,10 @@ describe('Generation V2 reviewed provider contract registry', () => {
 
   it('does not trust structural clones and exposes no duplicate contract revision', () => {
     const [definition] = listReviewedProviderContractDefinitionsV2()
-    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(7)
+    expect(listReviewedProviderContractDefinitionsV2()).toHaveLength(11)
     expect(isReviewedProviderContractDefinitionV2({ ...definition })).toBe(false)
     expect(new Set(listReviewedProviderContractDefinitionsV2().map((item) =>
-      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(7)
+      `${item.protocolContractId.value}\0${item.contractRevision.value}`)).size).toBe(11)
   })
 
   it('registers OpenRouter Chat core without promoting extensions or runtime binding authority', () => {
@@ -82,6 +83,7 @@ describe('Generation V2 reviewed provider contract registry', () => {
       modelBindingPolicy: 'runtime_capability_resolver',
       endpointBindingPolicy: 'first_party_profile_authority_required',
       continuationPolicy: 'ordered_native_chat_messages_with_reasoning_details_and_tools',
+      contextProjectionPolicy: 'complete_turn_client_managed_replay',
       apiSurface: {
         kind: 'openrouter_chat',
         providerFamilyContractId: 'openrouter-chat-api-v1',
@@ -136,6 +138,12 @@ describe('Generation V2 reviewed provider contract registry', () => {
           field: 'stream',
           requiredValue: true,
           responseProtocol: 'sse',
+          doneSentinel: '[DONE]',
+        },
+        statePolicy: {
+          store: false,
+          previousInteractionId: 'forbidden',
+          continuation: 'client_managed_full_native_steps',
         },
         continuationFamily: 'interaction_id_and_native_steps',
       },
@@ -148,7 +156,7 @@ describe('Generation V2 reviewed provider contract registry', () => {
     expect(definitions.every((definition) => definition.implementationStatus === 'definition_only')).toBe(true)
     expect(definitions[0].evidence.openApiSha256).toBeNull()
     expect(definitions[1].evidence.openApiSha256)
-      .toBe('5d62de8f9fe06bc7a4e595bef257c8909502922f1691eee179051b7a2ed84690')
+      .toBe('8db3dc884fb96ae2fdeb8872e1666fae5bcde2e46fd03dd6878ad1481e403151')
     expect(new Set(definitions.map((definition) => definition.contractRevision.value)).size).toBe(2)
   })
 
@@ -171,6 +179,7 @@ describe('Generation V2 reviewed provider contract registry', () => {
       modelBindingPolicy: 'runtime_capability_resolver',
       endpointBindingPolicy: 'first_party_profile_authority_required',
       continuationPolicy: 'ordered_native_content_blocks_with_signatures',
+      contextProjectionPolicy: 'complete_turn_client_managed_replay',
       apiSurface: {
         kind: 'anthropic_messages',
         apiOrigin: 'https://api.anthropic.com',
@@ -200,6 +209,7 @@ describe('Generation V2 reviewed provider contract registry', () => {
       modelBindingPolicy: 'runtime_capability_resolver',
       endpointBindingPolicy: 'first_party_profile_authority_required',
       continuationPolicy: 'ordered_native_chat_messages_with_reasoning_and_tools',
+      contextProjectionPolicy: 'complete_turn_client_managed_replay',
       apiSurface: {
         kind: 'deepseek_stable_chat',
         apiOrigin: 'https://api.deepseek.com',
@@ -232,6 +242,7 @@ describe('Generation V2 reviewed provider contract registry', () => {
         replayPolicy: 'complete_ordered_output_items',
         assistantMessagePhasePolicy: 'preserve_when_present',
       },
+      contextProjectionPolicy: 'complete_turn_client_managed_replay',
       apiSurface: {
         surfaceId: 'openai-responses-v1',
         relativePathTemplate: '/v1/responses',
@@ -239,5 +250,25 @@ describe('Generation V2 reviewed provider contract registry', () => {
       },
       evidence: { openApiSha256: null, verifiedAt: '2026-07-15' },
     })
+  })
+
+  it('registers OpenAI-compatible as an isolated fixed Chat Completions contract', () => {
+    const definition = listReviewedProviderContractDefinitionsV2()
+      .find((item) => item.protocolContractId.value === 'openai_chat_compatible')!
+    expect(definition).toMatchObject({
+      providerId: { value: 'openai_compatible' },
+      operations: ['text'],
+      modelBindingPolicy: 'explicit_local_profile',
+      endpointBindingPolicy: 'explicit_local_profile',
+      continuationPolicy: 'complete_ordered_messages',
+      contextProjectionPolicy: 'complete_turn_client_managed_replay',
+      apiSurface: {
+        kind: 'openai_chat_compatible',
+        requestPath: '/v1/chat/completions',
+        modelsPath: '/v1/models',
+        responseProtocols: ['sse', 'json'],
+      },
+    })
+    expect(JSON.stringify(definition)).not.toMatch(/responses|ollama|lmstudio|anthropic|gemini|deepseek|openrouter/iu)
   })
 })

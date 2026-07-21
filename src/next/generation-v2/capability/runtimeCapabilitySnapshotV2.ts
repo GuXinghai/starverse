@@ -26,31 +26,54 @@ import type {
 export const RUNTIME_CAPABILITY_SNAPSHOT_V2_SCHEMA_VERSION = 2 as const
 export const RUNTIME_CAPABILITY_SNAPSHOT_V2_MAX_UTF8_BYTES = 1024 * 1024
 
+type ProviderExtensionSemanticFieldV2 = ProviderSemanticExtensionV2 extends infer Extension
+  ? Extension extends Readonly<{ kind: string }>
+    ? Exclude<Extract<keyof Extension, string>, 'kind'>
+    : never
+  : never
+
+type AttachmentSemanticFieldV2 = AttachmentIntentV2 extends infer Attachment
+  ? Attachment extends Readonly<Record<string, unknown>>
+    ? Extract<keyof Attachment, string>
+    : never
+  : never
+
 type RuntimeCapabilityRequiredSemanticPathV2 =
   | `generation.${Extract<keyof SamplingIntentV2, string>}`
   | `reasoning.${Extract<keyof Extract<ReasoningIntentV2, { mode: 'enabled' }>, string>}`
   | `web.${Extract<keyof Extract<WebSearchIntentV2, { mode: 'provider_search' }>, string>}`
   | `image.${Extract<keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>, string>}`
   | `tools.${Extract<keyof Extract<ToolPolicyIntentV2, { mode: 'enabled' }>, string>}`
-  | `attachments[].${Extract<keyof AttachmentIntentV2, string>}`
+  | `attachments[].${AttachmentSemanticFieldV2}`
   | 'providerExtension.kind'
-  | `providerExtension.${Exclude<Extract<keyof Extract<ProviderSemanticExtensionV2, { kind: 'openai_responses' }>, string>, 'kind'>}`
+  | `providerExtension.${ProviderExtensionSemanticFieldV2}`
 
 export const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 = Object.freeze([
   'attachments[].assetId',
   'attachments[].assetRevisionId',
   'attachments[].assetSha256',
+  'attachments[].capturedAtMs',
   'attachments[].conversion',
+  'attachments[].declaredMediaType',
   'attachments[].include',
+  'attachments[].kind',
+  'attachments[].mediaKind',
+  'attachments[].originalUrl',
+  'attachments[].provenance',
+  'attachments[].referenceId',
+  'attachments[].referenceRevision',
   'attachments[].sendAs',
+  'attachments[].urlDigest',
   'generation.candidateCount',
   'generation.frequencyPenalty',
   'generation.maxOutputTokens',
+  'generation.minP',
   'generation.presencePenalty',
   'generation.repetitionPenalty',
   'generation.seed',
   'generation.stop',
   'generation.temperature',
+  'generation.topA',
   'generation.topK',
   'generation.topP',
   'image.aspectRatio',
@@ -62,20 +85,35 @@ export const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 = Object.freeze([
   'image.resolution',
   'image.size',
   'image.stream',
+  'providerExtension.includeThoughts',
   'providerExtension.kind',
+  'providerExtension.manualThinkingBudgetTokens',
   'providerExtension.maxToolCalls',
   'providerExtension.parallelToolCalls',
   'providerExtension.serviceTier',
+  'providerExtension.thinkingBudget',
+  'providerExtension.thinkingDisplay',
+  'providerExtension.thinkingLevel',
+  'providerExtension.thinkingMode',
   'providerExtension.verbosity',
   'reasoning.effort',
+  'reasoning.exclude',
   'reasoning.mode',
   'reasoning.summary',
   'tools.allowedToolIds',
   'tools.mode',
   'tools.sideEffectConfirmation',
   'tools.toolChoice',
+  'web.allowedDomains',
+  'web.engine',
+  'web.excludedDomains',
+  'web.maxCharacters',
+  'web.maxResults',
+  'web.maxTotalResults',
   'web.mode',
+  'web.searchContextSize',
   'web.types',
+  'web.userLocation',
 ] as const satisfies readonly RuntimeCapabilityRequiredSemanticPathV2[])
 
 export const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2_COMPLETE:
@@ -100,12 +138,18 @@ export type RuntimeCapabilityDomainV2 =
   | Readonly<{ kind: 'range'; min: number; max: number; integer: boolean }>
   | Readonly<{ kind: 'string_list'; maxItems: number; maxItemLength: number }>
   | Readonly<{ kind: 'identity_list'; maxItems: number }>
+  | Readonly<{ kind: 'approximate_location'; maxFieldLength: number }>
   | Readonly<{
       kind: 'dimensions'
       minWidth: number
       maxWidth: number
       minHeight: number
       maxHeight: number
+    }>
+  | Readonly<{
+      /** Exact supported pairs; unlike a range this never advertises a Cartesian product. */
+      kind: 'dimensions_enum'
+      values: readonly Readonly<{ width: number; height: number }>[]
     }>
 
 export type RuntimeCapabilityConstraintV2 = Readonly<{
@@ -358,7 +402,7 @@ function decodeScalarSet(value: unknown): readonly RuntimeCapabilityScalarV2[] {
 function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
   const discriminator = closedObject(value, [
     'kind', 'values', 'min', 'max', 'integer', 'maxItems', 'maxItemLength',
-    'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
+    'maxFieldLength', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
   ])
   if (discriminator.kind === 'boolean' || discriminator.kind === 'identity') {
     if (Object.keys(discriminator).length !== 1) {
@@ -406,6 +450,13 @@ function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
     }
     return Object.freeze({ kind: 'identity_list', maxItems: input.maxItems as number })
   }
+  if (discriminator.kind === 'approximate_location') {
+    const input = closedObject(value, ['kind', 'maxFieldLength'])
+    if (!Number.isSafeInteger(input.maxFieldLength) || (input.maxFieldLength as number) < 1) {
+      throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+    }
+    return Object.freeze({ kind: 'approximate_location', maxFieldLength: input.maxFieldLength as number })
+  }
   if (discriminator.kind === 'dimensions') {
     const input = closedObject(value, ['kind', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight'])
     const values = [input.minWidth, input.maxWidth, input.minHeight, input.maxHeight]
@@ -422,19 +473,43 @@ function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
       maxHeight: input.maxHeight as number,
     })
   }
+  if (discriminator.kind === 'dimensions_enum') {
+    const input = closedObject(value, ['kind', 'values'])
+    const values = closedDenseArray(input.values).map((item) => {
+      const pair = closedObject(item, ['width', 'height'])
+      if (!Number.isSafeInteger(pair.width) || !Number.isSafeInteger(pair.height) ||
+          (pair.width as number) < 1 || (pair.height as number) < 1) {
+        throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+      }
+      return Object.freeze({ width: pair.width as number, height: pair.height as number })
+    })
+    if (values.length < 1 || values.length > MAX_ENUM_VALUES ||
+        new Set(values.map((pair) => `${pair.width}x${pair.height}`)).size !== values.length) {
+      throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_DUPLICATE_VALUE')
+    }
+    values.sort((left, right) => compareCodePoints(`${left.width}x${left.height}`, `${right.width}x${right.height}`))
+    return Object.freeze({ kind: 'dimensions_enum', values: Object.freeze(values) })
+  }
   throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
 }
 
 const ENUM_VALUES_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPathV2, readonly RuntimeCapabilityScalarV2[]>>> = {
   'attachments[].conversion': ['none', 'pdf', 'plain_text', 'images'],
-  'attachments[].sendAs': ['provider_file', 'inline_text', 'image_reference', 'converted_document'],
+  'attachments[].kind': ['managed_file', 'url_reference'],
+  'attachments[].mediaKind': ['image', 'document', 'audio', 'video', 'other'],
+  'attachments[].provenance': ['user_supplied'],
+  'attachments[].sendAs': ['provider_file', 'inline_text', 'image_reference', 'converted_document', 'url_reference'],
   'image.background': ['auto', 'transparent', 'opaque'],
   'image.format': ['png', 'jpeg', 'webp', 'svg'],
   'image.mode': ['disabled', 'generate'],
   'image.quality': ['auto', 'low', 'medium', 'high'],
   'image.resolution': ['512', '1K', '2K', '4K'],
-  'providerExtension.kind': ['none', 'openai_responses'],
+  'providerExtension.kind': ['none', 'anthropic_messages', 'gemini_generate_content', 'openai_responses'],
+  'providerExtension.includeThoughts': ['provider_default', 'enabled', 'disabled'],
+  'providerExtension.thinkingLevel': ['minimal', 'low', 'medium', 'high'],
+  'providerExtension.thinkingMode': ['model_recommended', 'manual', 'adaptive', 'provider_default', 'level', 'budget'],
   'providerExtension.serviceTier': ['auto', 'default', 'flex', 'priority'],
+  'providerExtension.thinkingDisplay': ['provider_default', 'summarized', 'omitted'],
   'providerExtension.verbosity': ['low', 'medium', 'high'],
   'reasoning.effort': ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
   'reasoning.mode': ['disabled', 'enabled'],
@@ -443,15 +518,20 @@ const ENUM_VALUES_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPath
   'tools.sideEffectConfirmation': ['required_each_retry'],
   'tools.toolChoice': ['omitted', 'auto', 'none', 'required', 'named'],
   'web.mode': ['disabled', 'provider_search'],
+  'web.engine': ['auto', 'native', 'exa', 'firecrawl', 'parallel', 'perplexity'],
+  'web.searchContextSize': ['low', 'medium', 'high'],
 }
 const INTEGER_RANGE_PATHS = new Set<RuntimeCapabilitySemanticPathV2>([
   'generation.candidateCount', 'generation.maxOutputTokens', 'generation.seed', 'generation.topK',
-  'image.outputCompression', 'providerExtension.maxToolCalls',
+  'image.outputCompression', 'providerExtension.maxToolCalls', 'providerExtension.manualThinkingBudgetTokens',
+  'providerExtension.thinkingBudget',
+  'web.maxResults', 'web.maxTotalResults', 'web.maxCharacters',
 ])
 const NUMBER_RANGE_PATHS = new Set<RuntimeCapabilitySemanticPathV2>([
   ...INTEGER_RANGE_PATHS,
   'generation.frequencyPenalty', 'generation.presencePenalty', 'generation.repetitionPenalty',
   'generation.temperature', 'generation.topP',
+  'generation.minP', 'generation.topA',
 ])
 const IDENTITY_PATHS = new Set<RuntimeCapabilitySemanticPathV2>([
   'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
@@ -470,26 +550,38 @@ function assertDomainMatchesPath(path: RuntimeCapabilitySemanticPathV2, domain: 
       throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
     }
     const invalidRange =
-      (path === 'generation.maxOutputTokens' || path === 'generation.candidateCount' || path === 'generation.topK') && domain.min < 1 ||
+      (path === 'generation.maxOutputTokens' || path === 'generation.candidateCount') && domain.min < 1 ||
+      (path === 'generation.topK' || path === 'generation.seed') && domain.min < 0 ||
+      path === 'providerExtension.manualThinkingBudgetTokens' && domain.min < 1 ||
+      path === 'providerExtension.thinkingBudget' && domain.min < -1 ||
       path === 'generation.temperature' && domain.min < 0 ||
       path === 'generation.topP' && (domain.min < 0 || domain.max > 1) ||
+      (path === 'generation.minP' || path === 'generation.topA') && (domain.min < 0 || domain.max > 1) ||
       path === 'generation.repetitionPenalty' && domain.min <= 0 ||
       path === 'image.outputCompression' && (domain.min < 0 || domain.max > 100)
+      || path === 'web.maxResults' && (domain.min < 1 || domain.max > 25)
+      || path === 'web.maxTotalResults' && domain.min < 1
+      || path === 'web.maxCharacters' && (domain.min < 1 || domain.max > 100_000)
     if (invalidRange) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
     return
   }
   const expectedKind: RuntimeCapabilityDomainV2['kind'] =
     IDENTITY_PATHS.has(path) ? 'identity'
-      : path === 'attachments[].include' || path === 'image.stream' || path === 'providerExtension.parallelToolCalls' ? 'boolean'
+      : path === 'attachments[].include' || path === 'image.stream' || path === 'providerExtension.parallelToolCalls' || path === 'reasoning.exclude' ? 'boolean'
         : path === 'generation.stop' ? 'string_list'
+          : path === 'web.allowedDomains' || path === 'web.excludedDomains' ? 'string_list'
+            : path === 'web.userLocation' ? 'approximate_location'
           : path === 'tools.allowedToolIds' ? 'identity_list'
             : path === 'web.types' ? 'enum_list'
               : path === 'image.size' ? 'dimensions'
                 : path === 'image.aspectRatio' ? 'enum'
                   : (() => { throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE') })()
-  if (domain.kind !== expectedKind ||
+  if ((path === 'image.size'
+    ? domain.kind !== 'dimensions' && domain.kind !== 'dimensions_enum'
+    : domain.kind !== expectedKind) ||
       path === 'web.types' && domain.kind === 'enum_list' &&
         domain.values.some((value) => value !== 'web' && value !== 'image') ||
+      path === 'web.userLocation' && domain.kind === 'approximate_location' && domain.maxFieldLength > 4_096 ||
       path === 'image.aspectRatio' && domain.kind === 'enum' &&
         domain.values.some((value) => typeof value !== 'string' ||
           (value !== 'auto' && !/^[1-9]\d{0,4}:[1-9]\d{0,4}$/u.test(value)))) {

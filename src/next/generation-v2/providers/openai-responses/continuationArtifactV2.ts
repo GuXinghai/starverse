@@ -192,6 +192,18 @@ export function completeOpenAIResponsesRequestV2(input: Readonly<{
   })
 }
 
+export function completeOpenAIResponsesProjectedRequestV2(input: Readonly<{
+  projectedPrefixItems: unknown
+  clientItems: unknown
+  returnedItems: unknown
+}>): OpenAIResponsesContinuationArtifactV2 {
+  const prefix = decodeOpenAIResponsesReplayItemsV1(input.projectedPrefixItems)
+  const clientItems = decodeOpenAIResponsesClientItemsV1(input.clientItems)
+  const returnedItems = decodeOpenAIResponsesReturnedItemsV1(input.returnedItems)
+  return createArtifact({ lineageDepth: 1, parentArtifactHash: null,
+    orderedItems: [...prefix, ...clientItems, ...returnedItems] })
+}
+
 export function projectOpenAIResponsesClientItemsV1(
   items: readonly OpenAIResponsesClientItemV1[],
 ): readonly OpenAIResponsesClientItemV1[] {

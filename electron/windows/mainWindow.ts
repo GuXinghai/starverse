@@ -75,10 +75,7 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
     win.loadURL(input.viteDevServerUrl!)
     win.webContents.openDevTools()
   } else {
-    const smokeQuery = process.env.SV_ELECTRON_SMOKE_DFC === '1'
-      ? { query: { 'sv-electron-smoke-dfc': '1' } }
-      : undefined
-    win.loadFile(path.join(input.rendererDist, 'index.html'), smokeQuery)
+    win.loadFile(path.join(input.rendererDist, 'index.html'))
   }
 
   return win
