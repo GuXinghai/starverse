@@ -35,6 +35,7 @@ import { createDeepSeekPlainTextRetryCoordinatorV2 } from './deepSeekPlainTextRe
 import { createDeepSeekPlainTextRegenerateCoordinatorV2 } from './deepSeekPlainTextRegenerateCoordinatorV2'
 import { createDeepSeekPlainTextEditResendCoordinatorV2 } from './deepSeekPlainTextEditResendCoordinatorV2'
 import { createDeepSeekToolContinuationCoordinatorV2 } from './deepSeekToolContinuationCoordinatorV2'
+import { createDeepSeekGenerationV2Runtime } from './deepSeekGenerationV2Runtime'
 import {
   completeDeepSeekNativeRequestV2,
   serializeDeepSeekNativeHistoryArtifactV2,
@@ -233,6 +234,31 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       })
       expect(result.projection.visibleCandidates.map((value) => value.value)).toEqual(['answer:2'])
       expect(mocks.fetch).toHaveBeenCalledTimes(1)
+    } finally { db.close() }
+  })
+
+  it('starts a created V2 command exactly once and returns the committed projection before terminal streaming', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(response()).mockResolvedValueOnce(streamResponse('runtime answer'))
+      const projections: unknown[] = []
+      const runtime = createDeepSeekGenerationV2Runtime({
+        db,
+        credentialService: credentialService(),
+        nowMs: () => 100,
+        streamProjectionSink: { publish: (projection) => projections.push(projection) },
+      })
+      const created = await runtime.submitInitial(command())
+      expect(created).toMatchObject({ kind: 'created', projection: {
+        branchProjection: { headMessageId: { value: expect.any(String) } },
+      } })
+      await vi.waitFor(() => expect(projections).toContainEqual(expect.objectContaining({
+        type: 'terminal', state: 'completed', answerRootId: created.preparedRequest.answerRootId,
+      })))
+      const replay = await runtime.submitInitial(command())
+      expect(replay).toMatchObject({ kind: 'idempotent_replay' })
+      expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      expect(runtime.abort(created.preparedRequest.operationId)).toBe(false)
     } finally { db.close() }
   })
 
@@ -552,9 +578,11 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
       const capture = vi.fn()
+      const projections: unknown[] = []
       const terminal = await createDeepSeekInitialStreamRunnerV2({
         db, credentialService: credentialService(), nowMs: () => 110,
         rawGenerationRequestStore: { tryPersistPreparedV2: capture } as never,
+        streamProjectionSink: { publish: (projection) => projections.push(projection) },
       }).run(committed)
       expect(terminal).toEqual({
         operationId: 'operation:1', answerRootId: 'answer:2', state: 'completed',
@@ -569,6 +597,10 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       })
       expect(capture).toHaveBeenCalledWith(expect.objectContaining({ operationId: 'operation:1' }),
         committed.preparedRequest.body)
+      expect(projections).toEqual([
+        { type: 'assistant_body', operationId: 'operation:1', answerRootId: 'answer:2', content: 'answer' },
+        { type: 'terminal', operationId: 'operation:1', answerRootId: 'answer:2', state: 'completed', errorCode: null, errorMessage: null },
+      ])
       expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
         .toEqual({ state: 'completed' })
       expect(db.prepare("SELECT state FROM generation_request_v2 WHERE operation_id='operation:1'").get())

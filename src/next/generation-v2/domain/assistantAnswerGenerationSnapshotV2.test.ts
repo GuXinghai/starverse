@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest'
+import { createHash } from 'node:crypto'
 import {
   ASSISTANT_ANSWER_GENERATION_SNAPSHOT_V2_MAX_UTF8_BYTES,
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
@@ -15,6 +16,10 @@ const assetSha = 'e'.repeat(64)
 const descriptorDigest = 'f'.repeat(64)
 const providerFileHash = '1'.repeat(64)
 const toolDefinitionsDigest = '2'.repeat(64)
+const compatibleEndpointDigest = '3'.repeat(64)
+const compatibleConfigDigest = '4'.repeat(64)
+const compatibleExtraBody = Object.freeze({ vendor_option: true })
+const compatibleExtraBodyDigest = createHash('sha256').update('{"vendor_option":true}', 'utf8').digest('hex')
 
 function payload() {
   return {
@@ -34,6 +39,7 @@ function payload() {
         sideEffectConfirmation: 'required_each_retry',
       },
       attachments: [{
+        kind: 'managed_file',
         assetId: 'asset:1',
         assetRevisionId: 'asset-revision:1',
         assetSha256: assetSha,
@@ -122,6 +128,64 @@ describe('AssistantAnswerGenerationSnapshotV2 persisted value codec', () => {
     expect(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
       ...payload(), operationId: 'operation:2',
     }).snapshotHash).not.toBe(first.snapshotHash)
+  })
+
+  it('preserves Anthropic display selection in the immutable answer snapshot', () => {
+    const candidate = payload()
+    const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
+      ...candidate,
+      semanticIntent: {
+        ...candidate.semanticIntent,
+        providerExtension: { kind: 'anthropic_messages', thinkingDisplay: 'omitted', thinkingMode: 'manual', manualThinkingBudgetTokens: 1024 },
+      },
+    })
+    const decoded = decodeAssistantAnswerGenerationSnapshotV2(record)
+    expect(decoded.semanticIntent.providerExtension).toEqual({
+      kind: 'anthropic_messages', thinkingDisplay: 'omitted', thinkingMode: 'manual', manualThinkingBudgetTokens: 1024,
+    })
+    expect(JSON.parse(decoded.canonicalJson).semanticIntent.providerExtension).toEqual({
+      kind: 'anthropic_messages', thinkingDisplay: 'omitted', thinkingMode: 'manual', manualThinkingBudgetTokens: 1024,
+    })
+  })
+
+  it('requires and hashes complete immutable OpenAI-compatible configuration provenance', () => {
+    const candidate = payload()
+    candidate.providerBinding = {
+      ...candidate.providerBinding,
+      credentialScopeId: 'credential-scope:compatible:1',
+      providerId: 'openai_compatible',
+      endpointProfileId: 'compatible-provider:1',
+      endpointBinding: { kind: 'provider_managed_set', endpointSetRevision: 'compatible-endpoint:1', descriptors: [{ endpointId: 'compatible-provider:1', descriptorRevision: 'compatible-endpoint:1' }] },
+      protocolContractId: 'openai_chat_compatible',
+      contractRevision: `openai_chat_compatible:${contractDigest}`,
+      modelId: 'compatible-model',
+      operation: 'text',
+    }
+    const ref = (id: string) => ({ id, version: 1, digest: compatibleConfigDigest })
+    ;(candidate as Record<string, unknown>).providerConfiguration = {
+      kind: 'openai_chat_compatible', providerInstanceId: 'compatible-provider:1', endpointRevisionId: 'compatible-endpoint:1',
+      endpointDigest: compatibleEndpointDigest, credentialRevision: 7,
+      requestProfile: ref('request-profile:1'), requestMappings: [ref('mapping:a'), ref('mapping:b')],
+      reasoningMapping: ref('reasoning:1'), inlinePolicy: ref('inline:1'), responseProfile: ref('response:1'),
+      extraBody: compatibleExtraBody,
+      extraBodyDigest: compatibleExtraBodyDigest,
+    }
+    const record = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2(candidate)
+    const decoded = decodeAssistantAnswerGenerationSnapshotV2(record)
+    expect(decoded.providerConfiguration).toMatchObject({
+      kind: 'openai_chat_compatible', credentialRevision: 7,
+      providerInstanceId: { value: 'compatible-provider:1' },
+      requestMappings: [{ id: { value: 'mapping:a' } }, { id: { value: 'mapping:b' } }],
+      extraBody: compatibleExtraBody,
+    })
+    const missing = { ...candidate }
+    delete (missing as Record<string, unknown>).providerConfiguration
+    expect(() => canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2(missing))
+      .toThrow('GENERATION_V2_SNAPSHOT_INVALID_VALUE')
+    const mismatchedExtraBody = structuredClone(candidate) as Record<string, unknown>
+    ;(mismatchedExtraBody.providerConfiguration as Record<string, unknown>).extraBody = { vendor_option: false }
+    expect(() => canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2(mismatchedExtraBody))
+      .toThrow('GENERATION_V2_SNAPSHOT_INVALID_VALUE')
   })
 
   it('rejects tampering and unsupported or sensitive fields', () => {

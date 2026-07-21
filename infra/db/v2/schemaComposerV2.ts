@@ -12,7 +12,7 @@ const MANIFEST_TABLE_SQL = `
     schema_digest TEXT NOT NULL CHECK (
       length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
     ),
-    fragment_count INTEGER NOT NULL CHECK (fragment_count = 8),
+    fragment_count INTEGER NOT NULL CHECK (fragment_count = 18),
     object_projection_digest TEXT NOT NULL CHECK (
       length(object_projection_digest) = 64
       AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
@@ -27,7 +27,17 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'openrouter_images_v1', fileName: 'openRouterImagesSchema.sql' }),
   Object.freeze({ id: 'deepseek_stable_model_evidence_v1', fileName: 'deepSeekStableModelEvidenceSchema.sql' }),
   Object.freeze({ id: 'openai_responses_model_evidence_v1', fileName: 'openAIResponsesModelEvidenceSchema.sql' }),
+  Object.freeze({ id: 'anthropic_model_evidence_v1', fileName: 'anthropicModelEvidenceSchema.sql' }),
+  Object.freeze({ id: 'gemini_model_evidence_v1', fileName: 'geminiModelEvidenceSchema.sql' }),
+  Object.freeze({ id: 'local_endpoint_profile_v1', fileName: 'localEndpointProfileSchema.sql' }),
+  Object.freeze({ id: 'reasoning_projection_v1', fileName: 'reasoningProjectionSchema.sql' }),
+  Object.freeze({ id: 'composer_draft_v1', fileName: 'composerDraftSchema.sql' }),
   Object.freeze({ id: 'generation_execution_v1', fileName: 'generationExecutionSchema.sql' }),
+  Object.freeze({ id: 'generation_v2_search_v1', fileName: 'searchSchema.sql' }),
+  Object.freeze({ id: 'engine_plugin_registry_v1', fileName: 'enginePluginRegistrySchema.sql' }),
+  Object.freeze({ id: 'openai_chat_compatible_v1', fileName: 'openAIChatCompatibleSchema.sql' }),
+  Object.freeze({ id: 'model_preferences_v1', fileName: 'modelPreferencesSchema.sql' }),
+  Object.freeze({ id: 'dfc_attachment_v1', fileName: 'dfcAttachmentSchema.sql' }),
 ] as const)
 
 export class GenerationV2SchemaComposerError extends Error {
@@ -62,6 +72,19 @@ type SchemaObject = Readonly<{
   type: 'index' | 'table' | 'trigger' | 'view'
   name: string
 }>
+
+// FTS5 owns these five SQLite-internal tables for the one reviewed epoch-2
+// virtual table. They are not user schema objects, but they must be present
+// exactly so the closed-schema verifier neither rejects a valid FTS index nor
+// hides a caller-created lookalike table.
+const FTS5_SEARCH_SHADOW_TABLES = Object.freeze([
+  'generation_v2_search_fts_config',
+  'generation_v2_search_fts_content',
+  'generation_v2_search_fts_data',
+  'generation_v2_search_fts_docsize',
+  'generation_v2_search_fts_idx',
+] as const)
+const fts5SearchShadowNames = new Set<string>(FTS5_SEARCH_SHADOW_TABLES)
 
 function normalizedSql(sql: string): string {
   return sql.replace(/;\s*$/u, '').replace(/\s+/gu, ' ').trim()
@@ -116,7 +139,7 @@ function digestFragments(fragments: readonly LoadedFragment[]): string {
 function extractExpectedObjects(fragments: readonly LoadedFragment[]): readonly SchemaObject[] {
   const objects: SchemaObject[] = []
   const seen = new Set<string>()
-  const expression = /CREATE\s+(?:UNIQUE\s+)?(TABLE|INDEX|TRIGGER|VIEW)\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)/giu
+  const expression = /CREATE\s+(?:UNIQUE\s+)?(?:VIRTUAL\s+)?(TABLE|INDEX|TRIGGER|VIEW)\s+IF\s+NOT\s+EXISTS\s+([A-Za-z_][A-Za-z0-9_]*)/giu
   for (const fragment of fragments) {
     for (const match of fragment.sql.matchAll(expression)) {
       const type = match[1].toLowerCase() as SchemaObject['type']
@@ -155,13 +178,20 @@ function readInstalledProjection(
     tbl_name: string
     sql: string | null
   }>
+  const shadowRows = allRows.filter((row) => fts5SearchShadowNames.has(row.name))
+  if (shadowRows.length !== FTS5_SEARCH_SHADOW_TABLES.length ||
+      shadowRows.some((row) => row.type !== 'table' || typeof row.sql !== 'string') ||
+      FTS5_SEARCH_SHADOW_TABLES.some((name) => !shadowRows.some((row) => row.name === name))) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  const nonShadowRows = allRows.filter((row) => !fts5SearchShadowNames.has(row.name))
   const expectedKeys = new Set(expected.map((object) => `${object.type}\0${object.name}`))
   if (manifestExpected) expectedKeys.add('table\0generation_v2_schema_manifest')
-  if (allRows.length !== expectedKeys.size || allRows.some((row) =>
+  if (nonShadowRows.length !== expectedKeys.size || nonShadowRows.some((row) =>
     !expectedKeys.has(`${row.type}\0${row.name}`) || typeof row.sql !== 'string')) {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
   }
-  const rows = allRows.filter((row) => row.name !== 'generation_v2_schema_manifest')
+  const rows = nonShadowRows.filter((row) => row.name !== 'generation_v2_schema_manifest')
   if (rows.length !== expected.length || expected.some((object) =>
     !rows.some((row) => row.type === object.type && row.name === object.name && typeof row.sql === 'string'))) {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
@@ -275,7 +305,10 @@ export function installGenerationV2SchemaInActiveTransaction(
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
   }
 
-  if (fragments.length !== 8) {
+  // Keep the runtime guard coupled to the manifest's fixed fragment contract.
+  // A stale literal here would make every new epoch database unbootable even
+  // when the reviewed fragment list and manifest agree.
+  if (fragments.length !== FRAGMENTS.length) {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_FRAGMENT_INVALID')
   }
   db.exec(MANIFEST_TABLE_SQL)

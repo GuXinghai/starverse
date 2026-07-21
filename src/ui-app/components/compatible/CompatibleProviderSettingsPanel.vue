@@ -10,7 +10,7 @@ const catalog = createCompatibleCatalogClient();
 const providers = ref<CompatibleProviderRegistryDetails[]>([]);
 const selectedId = ref("");
 const displayName = ref("");
-const baseUrl = ref("https://api.example.com/v1");
+const baseUrl = ref("https://api.example.com");
 const securityPolicy = ref<"compatibility_first" | "strict_ssrf">(
   "compatibility_first",
 );
@@ -41,7 +41,9 @@ const error = ref("");
 const notice = ref("");
 const diagnostics = ref<CompatibleConnectionTestResult | null>(null);
 const requestProfileJson = ref("");
+const extraBodyJson = ref("{}");
 const requestMappingsJson = ref("[]");
+const requestReasoningPreset = ref<"disabled" | "openai_reasoning_effort" | "chat_template_enable_thinking" | "custom">("custom");
 const reasoningMappingJson = ref("");
 const reasoningMode = ref<"custom_preferred_with_builtin_fallback" | "custom_only">("custom_preferred_with_builtin_fallback");
 const inlinePolicyJson = ref("");
@@ -151,6 +153,7 @@ function choose(details: CompatibleProviderRegistryDetails) {
   requestProfileJson.value = active?.requestBundle?.profile?.config
     ? JSON.stringify(active.requestBundle.profile.config, null, 2)
     : "";
+  extraBodyJson.value = JSON.stringify(active?.requestBundle?.profile?.config?.defaultExtraBody ?? {}, null, 2);
   requestMappingsJson.value = JSON.stringify(
     (active?.requestBundle?.mappings ?? []).map((mapping: any) => {
       const {
@@ -181,7 +184,7 @@ function choose(details: CompatibleProviderRegistryDetails) {
 function beginCreate() {
   selectedId.value = "";
   displayName.value = "";
-  baseUrl.value = "https://api.example.com/v1";
+  baseUrl.value = "https://api.example.com";
   securityPolicy.value = "compatibility_first";
   authMode.value = "bearer";
   organization.value = "";
@@ -242,19 +245,12 @@ async function save() {
       details = await registry.updateEndpoint({
         providerInstanceId: details.provider.providerInstanceId,
         endpoint,
-        clearAuthentication: authMode.value === "none",
+        credential: authMode.value === "none"
+          ? { mode: "none" as const }
+          : (secret.value || customSecretHeaders.value)
+            ? credential()
+            : null,
       });
-      if (
-        authMode.value !== "none" &&
-        (secret.value || customSecretHeaders.value)
-      )
-        details = await registry.rotateCredential({
-          providerInstanceId: details.provider.providerInstanceId,
-          credential: credential() as Exclude<
-            ReturnType<typeof credential>,
-            { mode: "none" }
-          >,
-        });
     }
     clearSecrets();
     selectedId.value = details.provider.providerInstanceId;
@@ -297,20 +293,14 @@ async function removeCredential(credentialVersionRef: string) {
 }
 
 async function testConnection() {
-  if (
-    !selected.value ||
-    typeof window.compatibleProviderTransport?.testConnection !== "function"
-  )
-    return;
+  if (!selected.value) return;
   busy.value = true;
   diagnostics.value = null;
   try {
-    diagnostics.value = await window.compatibleProviderTransport.testConnection(
-      {
-        providerInstanceId: selected.value.provider.providerInstanceId,
-        requestId: crypto.randomUUID(),
-      },
-    );
+    diagnostics.value = await registry.testConnection(
+      selected.value.provider.providerInstanceId,
+      crypto.randomUUID(),
+    ) as CompatibleConnectionTestResult;
   } finally {
     busy.value = false;
   }
@@ -322,9 +312,11 @@ async function saveProfiles(acceptedDiscoveryPaths: readonly string[] = []) {
   error.value = "";
   notice.value = "";
   try {
+    const requestProfile = JSON.parse(requestProfileJson.value);
+    const defaultExtraBody = JSON.parse(extraBodyJson.value);
     const details = await registry.reviseConfiguration({
       providerInstanceId: selected.value.provider.providerInstanceId,
-      requestProfile: JSON.parse(requestProfileJson.value),
+      requestProfile: { ...requestProfile, defaultExtraBody },
       requestMappings: JSON.parse(requestMappingsJson.value),
       reasoningMapping: { ...JSON.parse(reasoningMappingJson.value), mode: reasoningMode.value },
       inlinePolicy: JSON.parse(inlinePolicyJson.value),
@@ -343,6 +335,17 @@ async function saveProfiles(acceptedDiscoveryPaths: readonly string[] = []) {
   } finally {
     busy.value = false;
   }
+}
+
+function applyRequestReasoningPreset() {
+  if (requestReasoningPreset.value === "custom") return;
+  const mappings = requestReasoningPreset.value === "disabled" ? []
+    : requestReasoningPreset.value === "openai_reasoning_effort"
+      ? [{ sourceField: "reasoning_effort", targetPath: ["reasoning_effort"], valueKind: "string",
+          valueMapping: { low: "low", medium: "medium", high: "high" }, omission: "omit_when_unset" }]
+      : [{ sourceField: "reasoning_enabled", targetPath: ["chat_template_kwargs", "enable_thinking"], valueKind: "boolean",
+          valueMapping: { true: true, false: false }, omission: "omit_when_unset" }];
+  requestMappingsJson.value = JSON.stringify(mappings, null, 2);
 }
 
 function orderedReasoningRules(): any[] {
@@ -840,7 +843,23 @@ onMounted(load);
                 rows="8"
                 class="mt-1 w-full rounded border p-2 font-mono text-[10px]"
               /></label
-            ><div class="rounded border bg-gray-50 p-2 text-xs" data-testid="compatible-reasoning-mode-controls">
+            ><label class="text-xs">extraBody<textarea
+                v-model="extraBodyJson"
+                data-testid="compatible-extra-body"
+                rows="6"
+                class="mt-1 w-full rounded border p-2 font-mono text-[10px]"
+              /></label
+            ><div class="rounded border bg-gray-50 p-2 text-xs" data-testid="compatible-request-reasoning-preset">
+              <label>request reasoning preset
+                <select v-model="requestReasoningPreset" class="ml-2 rounded border px-2 py-1" @change="applyRequestReasoningPreset">
+                  <option value="disabled">disabled</option>
+                  <option value="openai_reasoning_effort">openai_reasoning_effort</option>
+                  <option value="chat_template_enable_thinking">chat_template_enable_thinking</option>
+                  <option value="custom">custom</option>
+                </select>
+              </label>
+              <div class="mt-1 text-[10px] text-gray-600">Presets are explicit and never selected from the endpoint URL, model name, response, or failure.</div>
+            </div><div class="rounded border bg-gray-50 p-2 text-xs" data-testid="compatible-reasoning-mode-controls">
               <label>reasoning mode
                 <select v-model="reasoningMode" data-testid="compatible-reasoning-mode" class="ml-2 rounded border px-2 py-1">
                   <option value="custom_preferred_with_builtin_fallback">custom preferred, then built-in</option>

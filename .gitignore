@@ -105,6 +105,8 @@ temptest.ps1
 .artifacts/netlog/*.json
 .artifacts/white-screen/
 .artifacts/plugin-packages/
+.artifacts/epoch2-normal-profile-initialization/
+.artifacts/generation-v2-real-smoke/
 
 # Package manager
 .yarn/

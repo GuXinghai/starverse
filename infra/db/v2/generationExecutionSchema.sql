@@ -106,6 +106,24 @@ CREATE UNIQUE INDEX IF NOT EXISTS ux_generation_operation_v2_active_question
   ON generation_operation_v2(branch_id, question_id)
   WHERE state IN ('committed', 'streaming');
 
+-- Immutable record of the model-visible branch projection at command commit.
+-- It is separate from the graph: the graph remains the complete chat history.
+CREATE TABLE IF NOT EXISTS generation_context_projection_v2 (
+  operation_id TEXT PRIMARY KEY,
+  branch_id TEXT NOT NULL,
+  conversation_id TEXT NOT NULL,
+  canonical_json TEXT NOT NULL CHECK (
+    length(CAST(canonical_json AS BLOB)) BETWEEN 2 AND 4194304
+    AND json_valid(canonical_json) AND json_type(canonical_json) = 'object'
+  ),
+  projection_digest TEXT NOT NULL CHECK (
+    length(projection_digest) = 64 AND projection_digest NOT GLOB '*[^0-9a-f]*'
+  ),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  FOREIGN KEY (operation_id) REFERENCES generation_operation_v2(operation_id) ON DELETE CASCADE,
+  FOREIGN KEY (branch_id, conversation_id) REFERENCES branch_v2(branch_id, conversation_id) ON DELETE CASCADE
+);
+
 CREATE TRIGGER IF NOT EXISTS trg_generation_operation_v2_question_body_immutable
 BEFORE UPDATE OF body_text ON message_body_v2
 WHEN EXISTS (
@@ -457,6 +475,7 @@ CREATE TABLE IF NOT EXISTS generation_tool_output_v2 (
   tool_call_id TEXT NOT NULL CHECK (length(tool_call_id) BETWEEN 1 AND 512),
   tool_id TEXT NOT NULL CHECK (length(tool_id) BETWEEN 1 AND 512),
   content TEXT NOT NULL CHECK (length(CAST(content AS BLOB)) <= 4194304),
+  is_error INTEGER NOT NULL DEFAULT 0 CHECK (is_error IN (0, 1)),
   side_effect_policy TEXT NOT NULL CHECK (
     side_effect_policy IN ('none', 'confirmation_required_each_execution')
   ),
@@ -492,6 +511,84 @@ WHEN EXISTS (
 )
 BEGIN
   SELECT RAISE(ABORT, 'GENERATION_V2_TOOL_OUTPUT_DELETE_FORBIDDEN');
+END;
+
+-- Final, byte-backed image outputs. The image bytes live in the epoch-owned
+-- blob store and are addressed through immutable asset/revision facts; this
+-- relation is the answer-visible provenance boundary, not a cache key.
+CREATE TABLE IF NOT EXISTS generation_image_output_v2 (
+  operation_id TEXT NOT NULL,
+  request_sequence INTEGER NOT NULL CHECK (request_sequence BETWEEN 1 AND 9007199254740991),
+  answer_root_id TEXT NOT NULL,
+  output_index INTEGER NOT NULL CHECK (output_index BETWEEN 0 AND 9),
+  partial_image_index INTEGER NOT NULL CHECK (partial_image_index BETWEEN 0 AND 9),
+  asset_id TEXT NOT NULL,
+  asset_revision_id TEXT NOT NULL,
+  asset_sha256 TEXT NOT NULL CHECK (
+    length(asset_sha256) = 64 AND asset_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  mime TEXT NOT NULL CHECK (
+    length(mime) BETWEEN 6 AND 255 AND mime = lower(mime) AND mime GLOB 'image/*'
+  ),
+  provider_created_at_ms INTEGER CHECK (provider_created_at_ms IS NULL OR provider_created_at_ms >= 0),
+  provider_usage_json TEXT NOT NULL CHECK (
+    length(CAST(provider_usage_json AS BLOB)) BETWEEN 2 AND 1048576
+    AND json_valid(provider_usage_json) AND json_type(provider_usage_json) = 'object'
+  ),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  PRIMARY KEY (operation_id, request_sequence, output_index),
+  UNIQUE (operation_id, request_sequence, partial_image_index),
+  UNIQUE (asset_revision_id),
+  FOREIGN KEY (operation_id, request_sequence, answer_root_id)
+    REFERENCES generation_request_v2(operation_id, request_sequence, answer_root_id)
+    ON DELETE CASCADE,
+  FOREIGN KEY (asset_revision_id, asset_id)
+    REFERENCES asset_revision_v2(asset_revision_id, asset_id) ON DELETE RESTRICT
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_generation_image_output_v2_validate_insert
+AFTER INSERT ON generation_image_output_v2
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1
+    FROM generation_request_v2 AS request
+    JOIN generation_operation_v2 AS operation ON operation.operation_id = request.operation_id
+    JOIN assistant_generation_snapshot_v2 AS snapshot
+      ON snapshot.operation_id = operation.operation_id
+      AND snapshot.answer_root_id = operation.result_answer_root_id
+    JOIN message_v2 AS answer ON answer.message_id = request.answer_root_id
+    JOIN asset_revision_v2 AS revision
+      ON revision.asset_revision_id = NEW.asset_revision_id AND revision.asset_id = NEW.asset_id
+    JOIN file_asset_v2 AS asset ON asset.asset_id = revision.asset_id
+    JOIN file_blob_v2 AS blob ON blob.blob_id = revision.blob_id
+    WHERE request.operation_id = NEW.operation_id
+      AND request.request_sequence = NEW.request_sequence
+      AND request.answer_root_id = NEW.answer_root_id
+      AND request.state = 'completed'
+      AND operation.state IN ('streaming', 'completed')
+      AND answer.status IN ('streaming', 'completed')
+      AND json_extract(snapshot.canonical_json, '$.providerBinding.operation') = 'image_generate'
+      AND asset.asset_kind = 'image' AND asset.source_kind = 'generated'
+      AND asset.retired_at_ms IS NULL
+      AND blob.sha256 = NEW.asset_sha256 AND blob.mime = NEW.mime
+  ) THEN RAISE(ABORT, 'GENERATION_V2_IMAGE_OUTPUT_INVALID') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_generation_image_output_v2_immutable
+BEFORE UPDATE ON generation_image_output_v2
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_IMAGE_OUTPUT_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_generation_image_output_v2_reject_direct_delete
+BEFORE DELETE ON generation_image_output_v2
+WHEN EXISTS (
+  SELECT 1 FROM generation_request_v2 AS request
+  WHERE request.operation_id = OLD.operation_id
+    AND request.request_sequence = OLD.request_sequence
+)
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_IMAGE_OUTPUT_DELETE_FORBIDDEN');
 END;
 
 CREATE TABLE IF NOT EXISTS generation_attempt_v2 (

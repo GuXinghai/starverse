@@ -61,7 +61,7 @@ No feature flag may restore the old request path. Application rollback must not 
 
 The deletion gate uses symbol/path/key/table searches and must report zero runtime hits:
 
-- generic `wireKey`, `wirePath`, request mapping, unknown patch, `extraBody`, fallback mode;
+- generic `wireKey`, `wirePath`, request mapping, automatic unknown patch, automatic `extraBody`, fallback mode; the separately versioned `openai_chat_compatible` extension contract is retained and must be covered by exact-body/ownership tests;
 - old generation param mapper/resolver/profile wire metadata and warning/no-effect tests;
 - split reasoning/web/sampling/image/Gemini config owners and legacy settings/meta keys;
 - answer→chosen→question/provider-only/OpenRouter legacy resolvers;
@@ -118,7 +118,7 @@ Baseline IDs remain stable; AC-18 and AC-19 are corrected by current official ev
 | AC-02 | Exactly one compiler entry. |
 | AC-03 | Every generation action enters it. |
 | AC-04 | Core has no `wireKey/wirePath`. |
-| AC-05 | Request contracts have no provider unknown patch. |
+| AC-05 | Native request contracts have no provider unknown patch. `openai_chat_compatible` alone permits explicit, versioned, bounded extensions with ownership, snapshot, ledger and exact-body evidence. |
 | AC-06 | UI imports no native request type. |
 | AC-07 | Codecs read no DB/localStorage/Vue state. |
 | AC-08 | Transport neither constructs nor modifies body. |
@@ -126,8 +126,8 @@ Baseline IDs remain stable; AC-18 and AC-19 are corrected by current official ev
 | AC-10 | Unsupported/unverified config fails before fetch. |
 | AC-11 | UI/compiler use the same capability revision. |
 | AC-12 | Catalog does not directly choose wire fields. |
-| AC-13 | Anthropic never emits `thinking.type:true`. |
-| AC-14 | Anthropic modes are exact-model constrained. |
+| AC-13 | Anthropic never emits `thinking.type:true`; `thinking.display` is provider-specific three-state intent with product default `summarized`: `provider_default` omits native `display`, and `summarized`/`omitted` encode exactly only with enabled thinking. Disabled thinking sends no display while its persisted setting remains an explicit accepted-no-wire disposition. |
+| AC-14 | Anthropic modes are exact-model constrained; `omitted` preserves complete returned native thinking blocks, signatures and order for continuation and never means thinking is disabled or unbilled. |
 | AC-15 | Anthropic image output cannot enable. |
 | AC-16 | OpenAI emits native `web_search`. |
 | AC-17 | OpenAI image tool supports verified current native fields. |

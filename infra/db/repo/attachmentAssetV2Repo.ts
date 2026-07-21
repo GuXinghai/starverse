@@ -4,6 +4,7 @@ import {
 } from '../../../src/next/generation-v2/compiler/stableSerialize'
 import {
   isAttachmentIntentV2,
+  requiresProviderFileBindingV2,
   type AttachmentIntentV2,
 } from '../../../src/next/generation-v2/domain/generationIntentV2'
 import {
@@ -24,8 +25,8 @@ import {
 } from './generationV2AuthorityTransactionInternal'
 
 export type AttachmentAssetKindV2 = 'file' | 'image'
-export type AttachmentAssetSourceKindV2 = 'user_import' | 'generated' | 'derived'
-export type AttachmentConversionKindV2 = 'none'
+export type AttachmentAssetSourceKindV2 = 'user_import' | 'url_import' | 'generated' | 'derived'
+export type AttachmentConversionKindV2 = 'none' | 'pdf' | 'plain_text' | 'images'
 
 export type AttachmentBlobRepositoryFactV2 = Readonly<{
   trust: 'attachment_blob_repository_fact'
@@ -47,11 +48,11 @@ export type AttachmentAssetRevisionRepositoryFactV2 = Readonly<{
   assetCreatedAtMs: number
   retiredAtMs: number | null
   blob: AttachmentBlobRepositoryFactV2
-  parentAssetRevisionId: null
-  revisionKind: 'source'
-  conversionKind: 'none'
-  conversionContractId: null
-  conversionRevision: null
+  parentAssetRevisionId: GenerationV2Identity<'asset_revision_id'> | null
+  revisionKind: 'source' | 'derived'
+  conversionKind: AttachmentConversionKindV2
+  conversionContractId: string | null
+  conversionRevision: string | null
   revisionCreatedAtMs: number
 }>
 
@@ -72,6 +73,12 @@ export type ResolvedAttachmentSetAuthorityV2 = Readonly<{
   trust: 'resolved_attachment_set_authority'
   usage: 'resolved_intent_attachment_set_verified'
   attachments: readonly ResolvedAttachmentAssetAuthorityV2[]
+  /**
+   * Immutable, database-verified user URL references. These deliberately do
+   * not grant access to remote bytes: their only authority is the exact
+   * reference string captured in the generation snapshot.
+   */
+  urlReferenceIntents: readonly Extract<AttachmentIntentV2, {kind:'url_reference'}>[]
   providerFileRequirements: readonly AttachmentProviderFileRequirementV2[]
   requiresProviderFileAuthority: boolean
 }>
@@ -95,6 +102,8 @@ export class AttachmentAssetV2RepoError extends Error {
     | 'GENERATION_V2_ASSET_NOT_FOUND'
     | 'GENERATION_V2_ASSET_RETIRED'
     | 'GENERATION_V2_ASSET_INTENT_MISMATCH'
+    | 'GENERATION_V2_URL_REFERENCE_NOT_FOUND'
+    | 'GENERATION_V2_URL_REFERENCE_INTENT_MISMATCH'
     | 'GENERATION_V2_ASSET_DUPLICATE_REFERENCE'
     | 'GENERATION_V2_ASSET_SEND_BYTES_NOT_INCLUDED'
     | 'GENERATION_V2_ASSET_BYTES_MISMATCH'
@@ -133,6 +142,17 @@ type AttachmentReferenceV2 = Readonly<{
   assetRevisionId: string
   assetSha256: string
   conversion: AttachmentIntentV2['conversion']
+}>
+
+type UrlReferenceRowV2 = Readonly<{
+  reference_id: unknown
+  reference_revision: unknown
+  original_url: unknown
+  url_digest: unknown
+  media_kind: unknown
+  declared_media_type: unknown
+  captured_at_ms: unknown
+  provenance: unknown
 }>
 
 const blobFacts = new WeakSet<object>()
@@ -283,14 +303,21 @@ function decodeBlobColumns(row: JoinedRevisionRow, scope: object): AttachmentBlo
 function decodeRevisionRow(row: JoinedRevisionRow, scope: object): AttachmentAssetRevisionRepositoryFactV2 {
   if (typeof row.asset_id !== 'string' || typeof row.asset_revision_id !== 'string' ||
       (row.asset_kind !== 'file' && row.asset_kind !== 'image') ||
-      (row.source_kind !== 'user_import' && row.source_kind !== 'generated' && row.source_kind !== 'derived') ||
+      (row.source_kind !== 'user_import' && row.source_kind !== 'url_import' && row.source_kind !== 'generated' && row.source_kind !== 'derived') ||
       !Number.isSafeInteger(row.asset_created_at_ms) || (row.asset_created_at_ms as number) < 0 ||
       (row.retired_at_ms !== null && (!Number.isSafeInteger(row.retired_at_ms) ||
         (row.retired_at_ms as number) < (row.asset_created_at_ms as number))) ||
-      row.revision_kind !== 'source' || row.conversion_kind !== 'none' ||
-      row.parent_asset_revision_id !== null || row.conversion_contract_id !== null ||
-      row.conversion_revision !== null ||
+      (row.revision_kind !== 'source' && row.revision_kind !== 'derived') ||
+      !['none', 'pdf', 'plain_text', 'images'].includes(String(row.conversion_kind)) ||
       !Number.isSafeInteger(row.revision_created_at_ms) || (row.revision_created_at_ms as number) < 0) {
+    throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
+  }
+  const isSource = row.revision_kind === 'source'
+  if (isSource
+    ? row.parent_asset_revision_id !== null || row.conversion_kind !== 'none' ||
+      row.conversion_contract_id !== null || row.conversion_revision !== null
+    : typeof row.parent_asset_revision_id !== 'string' || row.conversion_kind === 'none' ||
+      typeof row.conversion_contract_id !== 'string' || typeof row.conversion_revision !== 'string') {
     throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
   }
   let filename: string
@@ -309,11 +336,12 @@ function decodeRevisionRow(row: JoinedRevisionRow, scope: object): AttachmentAss
     assetCreatedAtMs: row.asset_created_at_ms as number,
     retiredAtMs: row.retired_at_ms as number | null,
     blob: decodeBlobColumns(row, scope),
-    parentAssetRevisionId: null,
-    revisionKind: 'source' as const,
-    conversionKind: 'none' as const,
-    conversionContractId: null,
-    conversionRevision: null,
+    parentAssetRevisionId: row.parent_asset_revision_id === null ? null
+      : GenerationV2Identity.create('asset_revision_id', row.parent_asset_revision_id as string),
+    revisionKind: row.revision_kind as 'source' | 'derived',
+    conversionKind: row.conversion_kind as AttachmentConversionKindV2,
+    conversionContractId: row.conversion_contract_id as string | null,
+    conversionRevision: row.conversion_revision as string | null,
     revisionCreatedAtMs: row.revision_created_at_ms as number,
   })
   revisionFacts.add(fact)
@@ -425,6 +453,20 @@ export class AttachmentAssetV2Repo {
   }
 
   recordBlobFromBytes(bytes: Uint8Array, mimeValue: unknown): AttachmentBlobRepositoryFactV2 {
+    return this.runImmediate(this.#db.transaction(() => this.recordBlobFromBytesInCurrentTransaction(bytes, mimeValue)))
+  }
+
+  /** Records an already-persisted epoch blob under the caller-owned terminal transaction. */
+  recordBlobFromBytesInAuthorityTransaction(
+    context: GenerationV2AuthorityTransactionContextV2,
+    bytes: Uint8Array,
+    mimeValue: unknown,
+  ): AttachmentBlobRepositoryFactV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    return this.recordBlobFromBytesInCurrentTransaction(bytes, mimeValue)
+  }
+
+  private recordBlobFromBytesInCurrentTransaction(bytes: Uint8Array, mimeValue: unknown): AttachmentBlobRepositoryFactV2 {
     const mime = safeMime(mimeValue)
     const owned = copyOwnedUint8Array(bytes)
     const sizeBytes = owned.byteLength
@@ -437,21 +479,18 @@ export class AttachmentAssetV2Repo {
     const blobId = `blob-v2:${sha256}`
     const storageRef = `sha256/${sha256.slice(0, 2)}/${sha256}`
     const now = safeTime(this.#nowMs())
-    const transaction = this.#db.transaction(() => {
-      const existing = this.findBlob(blobId)
-      if (existing) {
-        if (existing.sha256.value !== sha256 || existing.sizeBytes !== sizeBytes || existing.mime !== mime ||
-            existing.storageRef !== storageRef) {
-          throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_CONFLICT')
-        }
-        return existing
+    const existing = this.findBlob(blobId)
+    if (existing) {
+      if (existing.sha256.value !== sha256 || existing.sizeBytes !== sizeBytes || existing.mime !== mime ||
+          existing.storageRef !== storageRef) {
+        throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_CONFLICT')
       }
-      this.#db.prepare(`INSERT INTO file_blob_v2 (
-        blob_id, sha256, size_bytes, mime, storage_ref, created_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?)`).run(blobId, sha256, sizeBytes, mime, storageRef, now)
-      return this.readBlob(blobId)
-    })
-    return this.runImmediate(transaction)
+      return existing
+    }
+    this.#db.prepare(`INSERT INTO file_blob_v2 (
+      blob_id, sha256, size_bytes, mime, storage_ref, created_at_ms
+    ) VALUES (?, ?, ?, ?, ?, ?)`).run(blobId, sha256, sizeBytes, mime, storageRef, now)
+    return this.readBlob(blobId)
   }
 
   createAsset(value: Readonly<{
@@ -497,6 +536,251 @@ export class AttachmentAssetV2Repo {
     )
   }
 
+  createImportedAssetRevisionInAuthorityTransaction(
+    context: GenerationV2AuthorityTransactionContextV2,
+    value: Readonly<{
+      assetId: string
+      assetRevisionId: string
+      assetKind: AttachmentAssetKindV2
+      filename: string
+      blob: AttachmentBlobRepositoryFactV2
+      sourceKind?: 'user_import' | 'url_import'
+    }>,
+  ): AttachmentAssetRevisionRepositoryFactV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    const input = closedObject(value, ['assetId', 'assetRevisionId', 'assetKind', 'filename', 'blob', 'sourceKind'])
+    const assetId = GenerationV2Identity.create('asset_id', safeString(input.assetId, 512)).value
+    const assetRevisionId = GenerationV2Identity.create(
+      'asset_revision_id', safeString(input.assetRevisionId, 512),
+    ).value
+    const filename = safeString(input.filename, 4096)
+    if (input.assetKind !== 'file' && input.assetKind !== 'image') {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+    }
+    const sourceKind = input.sourceKind === undefined ? 'user_import' : input.sourceKind
+    if (sourceKind !== 'user_import' && sourceKind !== 'url_import') throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+    const blob = input.blob as AttachmentBlobRepositoryFactV2
+    if (!isAttachmentBlobRepositoryFactV2(blob) || repositoryScopes.get(blob) !== this.scope) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+    }
+    const currentBlob = this.readBlob(blob.blobId.value)
+    if (currentBlob.sha256.value !== blob.sha256.value || currentBlob.sizeBytes !== blob.sizeBytes ||
+        currentBlob.mime !== blob.mime || currentBlob.storageRef !== blob.storageRef) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
+    }
+    const now = safeTime(this.#nowMs())
+    const existingAsset = this.#db.prepare(`SELECT asset_kind, filename, source_kind, retired_at_ms
+      FROM file_asset_v2 WHERE asset_id=?`).get(assetId) as Record<string, unknown> | undefined
+    if (existingAsset) {
+      if (existingAsset.asset_kind !== input.assetKind || existingAsset.filename !== filename ||
+          existingAsset.source_kind !== sourceKind || existingAsset.retired_at_ms !== null) {
+        throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_CONFLICT')
+      }
+    } else {
+      this.#db.prepare(`INSERT INTO file_asset_v2 (
+        asset_id, asset_kind, filename, source_kind, created_at_ms, retired_at_ms
+      ) VALUES (?, ?, ?, ?, ?, NULL)`).run(assetId, input.assetKind, filename, sourceKind, now)
+    }
+    try {
+      const existing = this.getRevision(assetId, assetRevisionId)
+      if (existing.blob.blobId.value !== blob.blobId.value || existing.revisionKind !== 'source') {
+        throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_CONFLICT')
+      }
+      return existing
+    } catch (error) {
+      if (!(error instanceof AttachmentAssetV2RepoError) || error.code !== 'GENERATION_V2_ASSET_NOT_FOUND') throw error
+    }
+    this.#db.prepare(`INSERT INTO asset_revision_v2 (
+      asset_revision_id, asset_id, blob_id, parent_asset_revision_id, revision_kind,
+      conversion_kind, conversion_contract_id, conversion_revision, created_at_ms
+    ) VALUES (?, ?, ?, NULL, 'source', 'none', NULL, NULL, ?)`).run(
+      assetRevisionId, assetId, blob.blobId.value, now,
+    )
+    return this.getRevision(assetId, assetRevisionId)
+  }
+
+  /**
+   * Records one immutable conversion output as its own derived asset. The
+   * parent may belong to a different asset because a single source document
+   * can produce several independently addressable output files or images.
+   */
+  createDerivedAssetRevision(value: Readonly<{
+    assetId: string
+    assetRevisionId: string
+    assetKind: AttachmentAssetKindV2
+    filename: string
+    parentAssetRevisionId: string
+    conversionKind: Exclude<AttachmentConversionKindV2, 'none'>
+    conversionContractId: string
+    conversionRevision: string
+    blob: AttachmentBlobRepositoryFactV2
+  }>): AttachmentAssetRevisionRepositoryFactV2 {
+    return this.runImmediate(this.#db.transaction(() => this.createDerivedAssetRevisionInCurrentTransaction(value)))
+  }
+
+  createDerivedAssetRevisionInAuthorityTransaction(
+    context: GenerationV2AuthorityTransactionContextV2,
+    value: Readonly<{
+      assetId: string
+      assetRevisionId: string
+      assetKind: AttachmentAssetKindV2
+      filename: string
+      parentAssetRevisionId: string
+      conversionKind: Exclude<AttachmentConversionKindV2, 'none'>
+      conversionContractId: string
+      conversionRevision: string
+      blob: AttachmentBlobRepositoryFactV2
+    }>,
+  ): AttachmentAssetRevisionRepositoryFactV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    return this.createDerivedAssetRevisionInCurrentTransaction(value)
+  }
+
+  private createDerivedAssetRevisionInCurrentTransaction(value: Readonly<{
+    assetId: string
+    assetRevisionId: string
+    assetKind: AttachmentAssetKindV2
+    filename: string
+    parentAssetRevisionId: string
+    conversionKind: Exclude<AttachmentConversionKindV2, 'none'>
+    conversionContractId: string
+    conversionRevision: string
+    blob: AttachmentBlobRepositoryFactV2
+  }>): AttachmentAssetRevisionRepositoryFactV2 {
+    const input = closedObject(value, [
+      'assetId', 'assetRevisionId', 'assetKind', 'filename', 'parentAssetRevisionId',
+      'conversionKind', 'conversionContractId', 'conversionRevision', 'blob',
+    ])
+    const assetId = GenerationV2Identity.create('asset_id', safeString(input.assetId, 512)).value
+    const assetRevisionId = GenerationV2Identity.create(
+      'asset_revision_id', safeString(input.assetRevisionId, 512),
+    ).value
+    const parentAssetRevisionId = GenerationV2Identity.create(
+      'asset_revision_id', safeString(input.parentAssetRevisionId, 512),
+    ).value
+    const filename = safeString(input.filename, 4096)
+    const conversionContractId = safeString(input.conversionContractId, 512)
+    const conversionRevision = safeString(input.conversionRevision, 512)
+    if ((input.assetKind !== 'file' && input.assetKind !== 'image') ||
+        (input.conversionKind !== 'pdf' && input.conversionKind !== 'plain_text' && input.conversionKind !== 'images')) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+    }
+    const blob = input.blob as AttachmentBlobRepositoryFactV2
+    if (!isAttachmentBlobRepositoryFactV2(blob) || repositoryScopes.get(blob) !== this.scope) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+    }
+    const now = safeTime(this.#nowMs())
+      const parent = this.#db.prepare(`SELECT asset_revision_id FROM asset_revision_v2
+        WHERE asset_revision_id=?`).get(parentAssetRevisionId) as { asset_revision_id: unknown } | undefined
+      if (parent?.asset_revision_id !== parentAssetRevisionId) {
+        throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_NOT_FOUND')
+      }
+      const currentBlob = this.readBlob(blob.blobId.value)
+      if (currentBlob.sha256.value !== blob.sha256.value || currentBlob.sizeBytes !== blob.sizeBytes ||
+          currentBlob.mime !== blob.mime || currentBlob.storageRef !== blob.storageRef) {
+        throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
+      }
+      const existingAsset = this.#db.prepare(`SELECT asset_kind, filename, source_kind, retired_at_ms
+        FROM file_asset_v2 WHERE asset_id=?`).get(assetId) as Record<string, unknown> | undefined
+      if (existingAsset) {
+        if (existingAsset.asset_kind !== input.assetKind || existingAsset.filename !== filename ||
+            existingAsset.source_kind !== 'derived' || existingAsset.retired_at_ms !== null) {
+          throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_CONFLICT')
+        }
+      } else {
+        this.#db.prepare(`INSERT INTO file_asset_v2 (
+          asset_id, asset_kind, filename, source_kind, created_at_ms, retired_at_ms
+        ) VALUES (?, ?, ?, 'derived', ?, NULL)`).run(assetId, input.assetKind, filename, now)
+      }
+      try {
+        const existing = this.getRevision(assetId, assetRevisionId)
+        if (existing.blob.blobId.value !== blob.blobId.value ||
+            existing.parentAssetRevisionId?.value !== parentAssetRevisionId ||
+            existing.conversionKind !== input.conversionKind ||
+            existing.conversionContractId !== conversionContractId ||
+            existing.conversionRevision !== conversionRevision) {
+          throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_CONFLICT')
+        }
+        return existing
+      } catch (error) {
+        if (!(error instanceof AttachmentAssetV2RepoError) || error.code !== 'GENERATION_V2_ASSET_NOT_FOUND') throw error
+      }
+      this.#db.prepare(`INSERT INTO asset_revision_v2 (
+        asset_revision_id, asset_id, blob_id, parent_asset_revision_id, revision_kind,
+        conversion_kind, conversion_contract_id, conversion_revision, created_at_ms
+      ) VALUES (?, ?, ?, ?, 'derived', ?, ?, ?, ?)`).run(
+        assetRevisionId, assetId, blob.blobId.value, parentAssetRevisionId,
+        input.conversionKind, conversionContractId, conversionRevision, now,
+      )
+      return this.getRevision(assetId, assetRevisionId)
+  }
+
+  /**
+   * Creates the immutable asset/revision pair for a provider-generated image
+   * inside the caller's generation terminal transaction. The bytes must have
+   * reached the epoch-owned blob store before its matching blob fact is
+   * recorded; the caller then atomically associates this revision with the
+   * completed request through `generation_image_output_v2`.
+   */
+  createGeneratedImageAssetInAuthorityTransaction(
+    context: GenerationV2AuthorityTransactionContextV2,
+    value: Readonly<{
+      assetId: string
+      assetRevisionId: string
+      filename: string
+      blob: AttachmentBlobRepositoryFactV2
+    }>,
+  ): AttachmentAssetRevisionRepositoryFactV2 {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    const input = closedObject(value, ['assetId', 'assetRevisionId', 'filename', 'blob'])
+    const assetId = GenerationV2Identity.create('asset_id', safeString(input.assetId, 512)).value
+    const assetRevisionId = GenerationV2Identity.create(
+      'asset_revision_id', safeString(input.assetRevisionId, 512),
+    ).value
+    const filename = safeString(input.filename, 4096)
+    const blob = input.blob as AttachmentBlobRepositoryFactV2
+    if (!isAttachmentBlobRepositoryFactV2(blob) || repositoryScopes.get(blob) !== this.scope) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
+    }
+    const currentBlob = this.readBlob(blob.blobId.value)
+    if (currentBlob.sha256.value !== blob.sha256.value || currentBlob.sizeBytes !== blob.sizeBytes ||
+        currentBlob.mime !== blob.mime || currentBlob.storageRef !== blob.storageRef) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
+    }
+    const now = safeTime(this.#nowMs())
+    const existingAsset = this.#db.prepare(`SELECT asset_kind, filename, source_kind, retired_at_ms
+      FROM file_asset_v2 WHERE asset_id=?`).get(assetId) as Record<string, unknown> | undefined
+    if (existingAsset) {
+      if (existingAsset.asset_kind !== 'image' || existingAsset.filename !== filename ||
+          existingAsset.source_kind !== 'generated' || existingAsset.retired_at_ms !== null) {
+        throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_CONFLICT')
+      }
+    } else {
+      this.#db.prepare(`INSERT INTO file_asset_v2 (
+        asset_id, asset_kind, filename, source_kind, created_at_ms, retired_at_ms
+      ) VALUES (?, 'image', ?, 'generated', ?, NULL)`).run(assetId, filename, now)
+    }
+    try {
+      const existing = this.getRevision(assetId, assetRevisionId)
+      if (existing.assetKind !== 'image' || existing.sourceKind !== 'generated' ||
+          existing.blob.blobId.value !== blob.blobId.value) {
+        throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_CONFLICT')
+      }
+      return existing
+    } catch (error) {
+      if (!(error instanceof AttachmentAssetV2RepoError) || error.code !== 'GENERATION_V2_ASSET_NOT_FOUND') {
+        throw error
+      }
+    }
+    this.#db.prepare(`INSERT INTO asset_revision_v2 (
+      asset_revision_id, asset_id, blob_id, parent_asset_revision_id, revision_kind,
+      conversion_kind, conversion_contract_id, conversion_revision, created_at_ms
+    ) VALUES (?, ?, ?, NULL, 'source', 'none', NULL, NULL, ?)`).run(
+      assetRevisionId, assetId, blob.blobId.value, now,
+    )
+    return this.getRevision(assetId, assetRevisionId)
+  }
+
   getRevision(assetIdValue: string, assetRevisionIdValue: string): AttachmentAssetRevisionRepositoryFactV2 {
     const assetId = GenerationV2Identity.create('asset_id', assetIdValue).value
     const assetRevisionId = GenerationV2Identity.create('asset_revision_id', assetRevisionIdValue).value
@@ -525,7 +809,9 @@ export class AttachmentAssetV2Repo {
       throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
     }
     const intents = resolvedIntent.value.attachments
-    const references = intents.map((intent) => Object.freeze({
+    const managedIntents = intents.filter((intent): intent is Extract<AttachmentIntentV2, {kind:'managed_file'}> => intent.kind === 'managed_file')
+    const urlReferenceIntents = intents.filter((intent): intent is Extract<AttachmentIntentV2, {kind:'url_reference'}> => intent.kind === 'url_reference')
+    const references = managedIntents.map((intent) => Object.freeze({
       assetId: readGenerationV2Identity(intent.assetId, 'asset_id'),
       assetRevisionId: readGenerationV2Identity(intent.assetRevisionId, 'asset_revision_id'),
       assetSha256: readGenerationV2Digest(intent.assetSha256, 'asset_sha256'),
@@ -536,12 +822,15 @@ export class AttachmentAssetV2Repo {
       throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_DUPLICATE_REFERENCE')
     }
     const facts = references.map((reference) => this.resolveReferenceFact(reference))
+    const verifiedUrlReferenceIntents = urlReferenceIntents.map((intent) =>
+      this.resolveUrlReferenceIntent(intent),
+    )
     const pendingByAttachment: VerifiedAttachmentSendBytesLeaseV2[][] = facts.map(() => [])
     const attachments = facts.map((fact, index) => {
       const authority = Object.freeze({
         trust: 'resolved_attachment_asset_authority' as const,
         usage: 'snapshot_reference_verified' as const,
-        intent: intents[index],
+        intent: managedIntents[index],
         revision: fact,
       })
       attachmentAuthorities.add(authority)
@@ -551,7 +840,7 @@ export class AttachmentAssetV2Repo {
       return authority
     })
     const providerFileRequirements = attachments
-      .filter((attachment) => attachment.intent.include && attachment.intent.sendAs === 'provider_file')
+      .filter((attachment) => requiresProviderFileBindingV2(attachment.intent))
       .map((attachment) => Object.freeze({
         assetId: attachment.revision.assetId,
         assetRevisionId: attachment.revision.assetRevisionId,
@@ -561,6 +850,7 @@ export class AttachmentAssetV2Repo {
       trust: 'resolved_attachment_set_authority' as const,
       usage: 'resolved_intent_attachment_set_verified' as const,
       attachments: Object.freeze(attachments),
+      urlReferenceIntents: Object.freeze(verifiedUrlReferenceIntents),
       providerFileRequirements: Object.freeze(providerFileRequirements),
       requiresProviderFileAuthority: providerFileRequirements.length > 0,
     })
@@ -614,13 +904,38 @@ export class AttachmentAssetV2Repo {
     }
   }
 
+  private resolveUrlReferenceIntent(
+    intent: Extract<AttachmentIntentV2, {kind:'url_reference'}>,
+  ): Extract<AttachmentIntentV2, {kind:'url_reference'}> {
+    const row = this.#db.prepare(`SELECT reference_id, reference_revision, original_url,
+      url_digest, media_kind, declared_media_type, captured_at_ms, provenance
+      FROM url_attachment_reference_v2
+      WHERE reference_id = ? AND reference_revision = ?`).get(
+      intent.referenceId.value,
+      intent.referenceRevision.value,
+    ) as UrlReferenceRowV2 | undefined
+    if (!row) throw new AttachmentAssetV2RepoError('GENERATION_V2_URL_REFERENCE_NOT_FOUND')
+    if (row.reference_id !== intent.referenceId.value ||
+        row.reference_revision !== intent.referenceRevision.value ||
+        row.original_url !== intent.originalUrl ||
+        row.url_digest !== intent.urlDigest.value ||
+        row.media_kind !== intent.mediaKind ||
+        row.declared_media_type !== (intent.declaredMediaType ?? null) ||
+        row.captured_at_ms !== intent.capturedAtMs ||
+        row.provenance !== intent.provenance ||
+        sha256PreparedBytesV2(new TextEncoder().encode(intent.originalUrl)) !== intent.urlDigest.value) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_URL_REFERENCE_INTENT_MISMATCH')
+    }
+    return intent
+  }
+
   withSynchronousSnapshotReferenceAuthority<T>(
     context: GenerationV2AuthorityTransactionContextV2,
-    intent: AttachmentIntentV2,
+    intent: Extract<AttachmentIntentV2, {kind:'managed_file'}>,
     use: (authority: ResolvedAttachmentAssetAuthorityV2) => T extends PromiseLike<unknown> ? never : T,
   ): T {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
-    if (!isAttachmentIntentV2(intent) || typeof use !== 'function') {
+    if (!isAttachmentIntentV2(intent) || intent.kind !== 'managed_file' || typeof use !== 'function') {
       throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INPUT_INVALID')
     }
     const reference = Object.freeze({

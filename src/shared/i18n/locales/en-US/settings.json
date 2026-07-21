@@ -100,7 +100,8 @@
       "catalogCacheClearCurrentSuccess": "Current API Key model cache cleared.",
       "catalogCacheClearAllSuccess": "All OpenRouter model caches cleared.",
       "catalogCacheClearFailed": "Clear failed",
-      "catalogCacheNoApiKey": "API Key is not set."
+      "catalogCacheNoApiKey": "API Key is not set.",
+      "catalogCacheNotUsedV2": "Generation V2 does not retain a model catalog cache, so there is nothing to clear."
     },
     "experimentalChat": {
       "experimentalBadge": "Experimental",

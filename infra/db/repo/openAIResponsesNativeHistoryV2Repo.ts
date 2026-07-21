@@ -30,6 +30,13 @@ import {
   type GenerationRequestRepositoryFactV2,
 } from './generationRequestV2Repo'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from './toolRegistryV2Repo'
+import {
+  decodeAssistantAnswerGenerationSnapshotV2,
+  type DecodedAssistantAnswerGenerationSnapshotV2,
+} from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { requiresProviderFileBindingV2 } from '../../../src/next/generation-v2/domain/generationIntentV2'
+import { OpenAIResponsesFileDescriptorV2Repo } from './openAIResponsesFileDescriptorV2Repo'
+import { GenerationContextProjectionV2Repo, type GenerationContextProjectionSnapshotV2 } from './generationContextProjectionV2Repo'
 
 const MAX_LINEAGE_DEPTH = 4_096
 
@@ -37,7 +44,8 @@ export class OpenAIResponsesNativeHistoryV2RepoError extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_OPENAI_HISTORY_NOT_FOUND'
     | 'GENERATION_V2_OPENAI_HISTORY_STATE_INVALID'
-    | 'GENERATION_V2_OPENAI_HISTORY_LINEAGE_INVALID') {
+    | 'GENERATION_V2_OPENAI_HISTORY_LINEAGE_INVALID'
+    | 'CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE') {
     super(code)
     this.name = 'OpenAIResponsesNativeHistoryV2RepoError'
   }
@@ -55,6 +63,8 @@ export type OpenAIResponsesRequestHistoryFactV2 = Readonly<{
   clientItems: readonly OpenAIResponsesClientItemV1[]
   requestSequence: number
   lineageDepth: number
+  contextProjection: GenerationContextProjectionSnapshotV2
+  projectedPrefixItems: readonly OpenAIResponsesReplayItemV1[] | null
   toolOutputRecords: readonly OpenAIResponsesToolOutputRecordV2[]
 }>
 
@@ -91,6 +101,10 @@ function invalid(lineage = false): never {
   throw new OpenAIResponsesNativeHistoryV2RepoError(lineage
     ? 'GENERATION_V2_OPENAI_HISTORY_LINEAGE_INVALID'
     : 'GENERATION_V2_OPENAI_HISTORY_STATE_INVALID')
+}
+
+function incompleteContextTurn(): never {
+  throw new OpenAIResponsesNativeHistoryV2RepoError('CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE')
 }
 
 export function isOpenAIResponsesRequestHistoryFactForContextV2(
@@ -148,6 +162,32 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     this.#db = db
     db.pragma('foreign_keys = ON')
     if (db.pragma('foreign_keys', { simple: true }) !== 1) invalid()
+  }
+
+  #resolveSnapshotInputFiles(
+    context: GenerationV2AuthorityTransactionContextV2,
+    snapshot: DecodedAssistantAnswerGenerationSnapshotV2,
+  ): readonly Extract<OpenAIResponsesClientItemV1, { role: 'user' }>['content'][number][] {
+    if (snapshot.providerBinding.providerId.value !== 'openai_responses') invalid()
+    const bindings = new Map(snapshot.attachmentProviderFileBindings.map((binding) => [
+      binding.assetRevisionId.value, binding.providerFileDescriptor,
+    ]))
+    const descriptors = new OpenAIResponsesFileDescriptorV2Repo(this.#db)
+    return Object.freeze(snapshot.semanticIntent.attachments
+      .filter(requiresProviderFileBindingV2)
+      .map((attachment) => {
+        const binding = bindings.get(attachment.assetRevisionId.value)
+        if (!binding) return invalid()
+        const descriptor = descriptors.loadForSnapshot(context, {
+          descriptorId: binding.descriptorId.value,
+          descriptorRevision: binding.descriptorRevision.value,
+          descriptorHash: binding.descriptorHash.value,
+          credentialScopeId: snapshot.providerBinding.credentialScopeId.value,
+          assetRevisionId: attachment.assetRevisionId.value,
+          assetSha256: attachment.assetSha256.value,
+        })
+        return Object.freeze({ type: 'input_file' as const, file_id: descriptor.fileId })
+      }))
   }
 
   #artifactByHash(hash: string): ReturnType<typeof decodeRow> {
@@ -213,6 +253,55 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     return final.artifact
   }
 
+  #turnBundle(
+    context: GenerationV2AuthorityTransactionContextV2,
+    answerRootId: string,
+    seen: Set<string>,
+  ): readonly OpenAIResponsesReplayItemV1[] {
+    if (seen.has(answerRootId) || seen.size >= MAX_LINEAGE_DEPTH) return incompleteContextTurn()
+    seen.add(answerRootId)
+    try {
+      const row = this.#db.prepare(`SELECT operation_id AS operationId,state FROM generation_operation_v2
+        WHERE result_answer_root_id=?`).get(answerRootId) as { operationId?: unknown; state?: unknown } | undefined
+      if (typeof row?.operationId !== 'string' || row.state !== 'completed') return incompleteContextTurn()
+      const artifact = this.#loadFinalArtifact(answerRootId)
+      const projection = new GenerationContextProjectionV2Repo(this.#db).load(context, row.operationId)
+      const prefix: OpenAIResponsesReplayItemV1[] = []
+      for (const turn of projection.turns) {
+        if (turn.answerRootId === null) break
+        if (turn.mode === 'included') prefix.push(...this.#turnBundle(context, turn.answerRootId, seen))
+      }
+      if (prefix.length > artifact.orderedItems.length ||
+          stableSerializeProviderRequestV2(prefix) !== stableSerializeProviderRequestV2(artifact.orderedItems.slice(0, prefix.length))) {
+        return incompleteContextTurn()
+      }
+      const bundle = Object.freeze(artifact.orderedItems.slice(prefix.length))
+      if (bundle.length === 0 || !('role' in bundle[0]) || bundle[0].role !== 'user' ||
+          bundle.slice(1).some((item) => 'role' in item && item.role === 'user') ||
+          bundle.filter(isFunctionCall).some((call) => !bundle.some((item) => isFunctionCallOutput(item) && item.call_id === call.call_id))) {
+        return incompleteContextTurn()
+      }
+      return bundle
+    } catch (error) {
+      if (error instanceof OpenAIResponsesNativeHistoryV2RepoError && error.code === 'CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE') throw error
+      return incompleteContextTurn()
+    } finally {
+      seen.delete(answerRootId)
+    }
+  }
+
+  #projectedPrefix(
+    context: GenerationV2AuthorityTransactionContextV2,
+    projection: GenerationContextProjectionSnapshotV2,
+  ): readonly OpenAIResponsesReplayItemV1[] {
+    const prefix: OpenAIResponsesReplayItemV1[] = []
+    for (const turn of projection.turns) {
+      if (turn.answerRootId === null) break
+      if (turn.mode === 'included') prefix.push(...this.#turnBundle(context, turn.answerRootId, new Set()))
+    }
+    return Object.freeze(prefix)
+  }
+
   loadRequestHistory(
     context: GenerationV2AuthorityTransactionContextV2,
     operationIdValue: string,
@@ -224,13 +313,15 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       operation.result_answer_root_id AS answerRootId, operation.state AS operationState,
       question.parent_message_id AS parentMessageId, questionBody.body_text AS questionBody,
       parent.role AS parentRole, parent.answer_root_id AS priorAnswerRootId,
-      answer.status AS answerStatus
+      answer.status AS answerStatus, snapshot.canonical_json AS snapshotJson
       FROM generation_operation_v2 AS operation
       JOIN message_v2 AS question ON question.message_id=operation.question_id
         AND question.conversation_id=operation.conversation_id AND question.role='user'
       JOIN message_body_v2 AS questionBody ON questionBody.message_id=question.message_id
       JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
         AND answer.question_id=question.message_id AND answer.answer_root_id=answer.message_id
+      JOIN assistant_generation_snapshot_v2 AS snapshot ON snapshot.operation_id=operation.operation_id
+        AND snapshot.answer_root_id=operation.result_answer_root_id
       JOIN branch_v2 AS branch ON branch.branch_id=operation.branch_id
         AND branch.conversation_id=operation.conversation_id
       LEFT JOIN message_v2 AS parent ON parent.message_id=question.parent_message_id
@@ -239,7 +330,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     if (!row) throw new OpenAIResponsesNativeHistoryV2RepoError('GENERATION_V2_OPENAI_HISTORY_NOT_FOUND')
     if (typeof row.branchId !== 'string' || typeof row.conversationId !== 'string' ||
         typeof row.questionId !== 'string' || typeof row.answerRootId !== 'string' ||
-        typeof row.questionBody !== 'string' ||
+        typeof row.questionBody !== 'string' || typeof row.snapshotJson !== 'string' ||
         !['committed', 'streaming', 'completed', 'failed', 'cancelled'].includes(row.operationState as string) ||
         !['streaming', 'completed', 'failed', 'cancelled'].includes(row.answerStatus as string) ||
         ((row.operationState === 'committed' || row.operationState === 'streaming') && row.answerStatus !== 'streaming') ||
@@ -250,10 +341,19 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     } else if (row.parentRole === 'assistant' && typeof row.priorAnswerRootId === 'string' &&
         row.parentMessageId === row.priorAnswerRootId) priorAnswerRootId = row.priorAnswerRootId
     else invalid()
-    const priorArtifact = priorAnswerRootId === null ? null : this.#loadFinalArtifact(priorAnswerRootId)
+    const contextProjection = new GenerationContextProjectionV2Repo(this.#db).load(context, operationId.value)
+    const projectionActive = contextProjection.turns.some((turn) => turn.mode === 'excluded')
+    const projectedPrefixItems = projectionActive ? this.#projectedPrefix(context, contextProjection) : null
+    const priorArtifact = projectionActive ? null : priorAnswerRootId === null ? null : this.#loadFinalArtifact(priorAnswerRootId)
+    let snapshot: DecodedAssistantAnswerGenerationSnapshotV2
+    try { snapshot = decodeAssistantAnswerGenerationSnapshotV2(JSON.parse(row.snapshotJson)) } catch { return invalid() }
+    if (snapshot.operationId.value !== operationId.value || snapshot.answerRootId.value !== row.answerRootId) invalid()
     const clientItems = Object.freeze([Object.freeze({
       role: 'user' as const,
-      content: Object.freeze([Object.freeze({ type: 'input_text' as const, text: row.questionBody })]),
+      content: Object.freeze([
+        Object.freeze({ type: 'input_text' as const, text: row.questionBody }),
+        ...this.#resolveSnapshotInputFiles(context, snapshot),
+      ]),
     })])
     const fact = Object.freeze({
       trust: 'openai_responses_request_history_repository_fact_v2' as const,
@@ -265,6 +365,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       priorAnswerRootId: priorAnswerRootId === null ? null : ConversationGraphV2Identity.create('answer_root_id', priorAnswerRootId),
       priorArtifact, clientItems, requestSequence: 1,
       lineageDepth: (priorArtifact?.lineageDepth ?? 0) + 1,
+      contextProjection, projectedPrefixItems,
       toolOutputRecords: Object.freeze([]),
     })
     facts.add(fact); contexts.set(fact, context)
@@ -342,6 +443,20 @@ export class OpenAIResponsesNativeHistoryV2Repo {
         confirmedAtMs: definition.sideEffectPolicy === 'none' ? null : createdAtMs,
       })
     })
+    // A filtered conversation is always client-managed.  The tool follow-up
+    // must therefore retain the same whole-turn projection as request #1;
+    // it may not silently fall back to the provider's prior-response chain.
+    const contextProjection = new GenerationContextProjectionV2Repo(this.#db).load(
+      context,
+      execution.operation.operationId.value,
+    )
+    // Request #1 already persisted the exact client-managed projection as one
+    // artifact. For a tool continuation, replay that complete native bundle
+    // before appending function_call_output. Rebuilding only the prior-turn
+    // prefix would drop the active question and its function_call.
+    const projectedPrefixItems = contextProjection.turns.some((turn) => turn.mode === 'excluded')
+      ? prior.orderedItems
+      : null
     return this.#createFact(context, {
       operationId: execution.operation.operationId, branchId: execution.operation.branchId,
       conversationId: execution.operation.conversationId, questionId: execution.operation.questionId,
@@ -352,6 +467,8 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       }))),
       requestSequence: command.priorRequestSequence + 1,
       lineageDepth: prior.lineageDepth + 1,
+      contextProjection,
+      projectedPrefixItems,
       toolOutputRecords: Object.freeze(records),
     })
   }
@@ -411,6 +528,12 @@ export class OpenAIResponsesNativeHistoryV2Repo {
         confirmationState: record.confirmationState, confirmedAtMs: record.confirmedAtMs as number | null,
       })
     })
+    const contextProjection = new GenerationContextProjectionV2Repo(this.#db).load(context, operationIdValue)
+    // Continue from the persisted exact bundle, not a newly projected prefix:
+    // the latter excludes the active function-call turn by construction.
+    const projectedPrefixItems = contextProjection.turns.some((turn) => turn.mode === 'excluded')
+      ? prior.orderedItems
+      : null
     return this.#createFact(context, {
       operationId: GenerationV2Identity.create('operation_id', operationIdValue),
       branchId: ConversationGraphV2Identity.create('branch_id', operation.branchId),
@@ -421,7 +544,10 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       priorArtifact: prior,
       clientItems: Object.freeze(records.map((record) => Object.freeze({
         type: 'function_call_output' as const, call_id: record.toolCallId, output: record.content,
-      }))), requestSequence, lineageDepth: prior.lineageDepth + 1, toolOutputRecords: Object.freeze(records),
+      }))), requestSequence, lineageDepth: prior.lineageDepth + 1,
+      contextProjection,
+      projectedPrefixItems,
+      toolOutputRecords: Object.freeze(records),
     })
   }
 

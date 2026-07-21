@@ -4,13 +4,13 @@
 
 ## Baseline
 
-- Repository: `D:\Starverse`
+- Repository: `[repository-root]`
 - Baseline commit: `067171a4c4d55f147340677c7e7f046e95311bd0`
 - Branch at start: `codex/rewrite-readme`
 - Local `main` at start: `6fb6ad59a9cbe7710a0ec6a65c70ae860afbb66b` (`2026-07-05T07:01:51+08:00`, `fix(reasoning): preserve image reasoning display blocks`)
 - Branch divergence from `main`: 54 commits behind, 2 commits ahead; merge base `de955f96c3fc842db3783f36a1bf0e0e2a823a46`
 - Worktree at start: clean (`git status --short` count = 0)
-- Baseline proposal: `C:\Users\m1389\OneDrive\Desktop\新建 文本文档.txt`
+- Baseline proposal: `[owner-local-baseline]`
 - Baseline proposal length: 1,932 lines
 - Goal started: 2026-07-13 (Asia/Shanghai)
 - Official-contract verification date: 2026-07-13 unless a task package states otherwise
@@ -52,7 +52,7 @@
 
 ## Files inspected
 
-- `C:\Users\m1389\OneDrive\Desktop\新建 文本文档.txt` — baseline proposal; all 1,932 lines read in bounded sections.
+- `[owner-local-baseline]` — baseline proposal; all 1,932 lines read in bounded sections.
 - `AGENTS.md` — repository delegation, test, ABI, and Git hygiene rules.
 - Architecture-document file inventory under `docs/` — candidate evidence list captured; relevant files will be routed per task package.
 - `main:src/ui-app/app/appChatApp.logic.ts`, branch command/snapshot counterpart, branch/message repositories, runtime coordinator, provider architecture contracts, and related tests — TP1 request/data/config/continuation map.

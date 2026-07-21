@@ -81,10 +81,12 @@ describe('OpenRouter Images V2 intent capability projection', () => {
       },
       attachments: [
         {
+          kind: 'managed_file',
           assetId: 'asset-1', assetRevisionId: 'revision-1', assetSha256: 'a'.repeat(64),
           include: true, sendAs: 'image_reference', conversion: 'none',
         },
         {
+          kind: 'managed_file',
           assetId: 'asset-2', assetRevisionId: 'revision-2', assetSha256: 'b'.repeat(64),
           include: false, sendAs: 'provider_file', conversion: 'none',
         },

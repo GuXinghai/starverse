@@ -8,7 +8,7 @@
 
 ## 实际操作
 
-- 读取任务参考文档：`C:\Users\m1389\.codex\attachments\a0baa76a-c147-4827-94be-940af1c6e2e2\pasted-text-1.txt`。
+- 读取任务参考文档：`[owner-supplied-attachment]`。
 - 检查工作区 dirty 状态。
 - 搜索并梳理 `samplingParams`、`sampling_params.defaults`、`SamplingParamsSettingsEditor`、provider request builder、App send path、Settings DB bridge、model catalog supported parameters 的当前实现。
 - 仅新增本文档；未改运行时代码。

@@ -6,7 +6,7 @@
 
 ## 实际操作
 
-本轮已执行真实桌面 smoke 前置启动、凭据检查、Google AI Studio 真点击短文本请求，以及 2026-07-06 追加的 OpenRouter / OpenAI Responses / Anthropic / DeepSeek 真实 provider 参数 smoke。早期 Playwright smoke 使用的用户数据目录与手动 `npm run dev` 看到的主用户目录不一致；随后已修正脚本启动方式，改为从 package root 启动 Electron，并确认当前主用户 profile 为 `C:\Users\m1389\AppData\Roaming\Starverse`。后续又修正 smoke 脚本对 credential bridge 返回值的解析：bridge 返回 `{ ok, status }`，实际 credential 状态在 `status` 字段内。
+本轮已执行真实桌面 smoke 前置启动、凭据检查、Google AI Studio 真点击短文本请求，以及 2026-07-06 追加的 OpenRouter / OpenAI Responses / Anthropic / DeepSeek 真实 provider 参数 smoke。早期 Playwright smoke 使用的用户数据目录与手动 `npm run dev` 看到的主用户目录不一致；随后已修正脚本启动方式，改为从 package root 启动 Electron，并确认当前主用户 profile 为 `[redacted-user-data]`。后续又修正 smoke 脚本对 credential bridge 返回值的解析：bridge 返回 `{ ok, status }`，实际 credential 状态在 `status` 字段内。
 
 已执行：
 
@@ -22,12 +22,12 @@
 
 - 桌面应用启动成功。
 - Composer 加载成功。
-- 修正后脚本确认 `app.getPath('userData')` 为 `C:\Users\m1389\AppData\Roaming\Starverse`。
+- 修正后脚本确认 `app.getPath('userData')` 为 `[redacted-user-data]`。
 - 修正 credential bridge 解析后，OpenRouter / OpenAI Responses / Google AI Studio / Anthropic / DeepSeek 均返回 `apiKeyConfigured: true`，来源为 `secure_store`，`storageBackend` 为 `electron_safe_storage`。
 - Google AI Studio 真点击 smoke 选择 `gemini-2.5-flash-lite`，应用 `temperature=0.2`、`maxOutputTokens=64`，发送后回到 `Status · idle`。
 - 追加真实 smoke 已覆盖 OpenRouter / OpenAI Responses / Anthropic / DeepSeek 的可发送代表组合；具体 requestParams 和 wire 参数见下方真实 smoke 结果记录。
-- Google smoke 摘要文件：`C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783344041242.json`。
-- Credential-only 摘要文件：`C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783342041764.json`。
+- Google smoke 摘要文件：`[redacted-local-artifact]`。
+- Credential-only 摘要文件：`[redacted-local-artifact]`。
 - 该 smoke summary 中 `hasErrorLikeText: true` 来自当前主用户历史会话里已有的旧 OpenAI Responses 错误文本，不是本次 Google AI Studio 请求产生的新错误。
 
 ## 涉及文件
@@ -76,39 +76,39 @@ npm run smoke:generation-params-real-click -- --provider google_ai_studio --mode
 
 ## 真实 smoke 结果记录
 
-本组 smoke 使用主用户 profile：`C:\Users\m1389\AppData\Roaming\Starverse`。`npm run smoke:generation-params-real-click` 已内置 `--use-main-user-data`，因此 Provider Key、secure store 和 catalog cache 与手动 `npm run dev` 的主用户状态一致。
+本组 smoke 使用主用户 profile：`[redacted-user-data]`。`npm run smoke:generation-params-real-click` 已内置 `--use-main-user-data`，因此 Provider Key、secure store 和 catalog cache 与手动 `npm run dev` 的主用户状态一致。
 
 已确认的可发送组合：
 
 | Provider | Model | 参数状态 | requestParams | wire 参数 | 结果 | summary |
 | --- | --- | --- | --- | --- | --- | --- |
-| OpenRouter | `deepseek/deepseek-v4-flash` | all-open | `{ temperature: 0.2, topP: 0.9, topK: 10, minP: 0.05, topA: 0.1, frequencyPenalty: 0, presencePenalty: 0, repetitionPenalty: 1, seed: 123, maxOutputTokens: 64, reasoningEffort: "high", verbosity: "low" }` | `{ temperature: 0.2, top_p: 0.9, top_k: 10, min_p: 0.05, top_a: 0.1, frequency_penalty: 0, presence_penalty: 0, repetition_penalty: 1, seed: 123, max_tokens: 64, reasoning: { effort: "high" }, verbosity: "low" }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783348804416.json` |
-| OpenRouter | `deepseek/deepseek-v4-flash` | all-off | `{}` | `{}` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783347575895.json` |
-| OpenRouter | `deepseek/deepseek-v4-flash` | random | `{ maxOutputTokens: 64, reasoningEffort: "high" }` | `{ max_tokens: 64, reasoning: { effort: "high" } }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783347639896.json` |
-| Google AI Studio | `gemini-2.5-flash-lite` | all-open | `{ temperature: 0.2, frequencyPenalty: 0, presencePenalty: 0, maxOutputTokens: 64 }` | `{ generationConfig: { temperature: 0.2, frequencyPenalty: 0, presencePenalty: 0, maxOutputTokens: 64 } }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783349303797.json` |
-| Google AI Studio | `gemini-2.5-flash-lite` | random | `{ temperature: 0.2, maxOutputTokens: 64 }` | `{ generationConfig: { temperature: 0.2, maxOutputTokens: 64 } }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783345156041.json` |
-| Google AI Studio | `gemini-2.5-flash-lite` | all-off | `{}` | `{}` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783345795876.json` |
-| OpenAI Responses | `gpt-5.4-nano` | all-off | `{}` | `{}` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783346391779.json` |
-| OpenAI Responses | `gpt-5.4-nano` | random | `{ temperature: 0.2, maxOutputTokens: 64 }` | `{ temperature: 0.2, max_output_tokens: 64 }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783346475212.json` |
-| OpenAI Responses | `gpt-5.4-nano` | reasoning subset | `{ maxOutputTokens: 64, reasoningEffort: "low" }` | `{ max_output_tokens: 64, reasoning: { effort: "low" } }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783346786655.json` |
-| OpenAI Responses | `gpt-5.4-nano` | verbosity subset | `{ maxOutputTokens: 64, verbosity: "low" }` | `{ max_output_tokens: 64, text: { verbosity: "low" } }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783346847957.json` |
-| OpenAI Responses | `gpt-5.4-nano` | sendable all-open subset | `{ maxOutputTokens: 64, reasoningEffort: "low", verbosity: "low" }` | `{ max_output_tokens: 64, reasoning: { effort: "low" }, text: { verbosity: "low" } }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783346970832.json` |
-| OpenAI Responses | `gpt-5.4-nano` | all-open attempt / unavailable combination | `{ temperature: 0.2, maxOutputTokens: 64, reasoningEffort: "low" }` | `{ temperature: 0.2, max_output_tokens: 64, reasoning: { effort: "low" } }` | HTTP 400 provider rejected；仅记录，不阻断 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783346907855.json` |
-| Anthropic Messages | `claude-haiku-4-5-20251001` | all-off | `{}` | `{}` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783346531229.json` |
-| Anthropic Messages | `claude-haiku-4-5-20251001` | random | `{ maxOutputTokens: 64 }` | `{ max_tokens: 64 }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783345658506.json` |
-| Anthropic Messages | `claude-haiku-4-5-20251001` | all-open attempt / unavailable combination | `{ maxOutputTokens: 64, reasoningEffort: "low" }` | `{ max_tokens: 64, output_config: { effort: "low" } }` | `invalid_request_error` provider rejected；仅记录，不阻断 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783347027150.json` |
-| DeepSeek | `deepseek-v4-flash` | all-off | `{}` | `{}` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783346573449.json` |
-| DeepSeek | `deepseek-v4-flash` | random | `{ maxOutputTokens: 64 }` | `{ max_tokens: 64 }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783345724052.json` |
-| DeepSeek | `deepseek-v4-flash` | reasoning subset | `{ maxOutputTokens: 64, reasoningEffort: "high" }` | `{ max_tokens: 64, reasoning_effort: "high" }` | 通过 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783347163301.json` |
-| DeepSeek | `deepseek-v4-flash` | all-open attempt / unavailable combination | `{ maxOutputTokens: 64, reasoningEffort: "high", thinkingEnabled: true }` | `{ max_tokens: 64, reasoning_effort: "high", thinking: { type: true } }` | HTTP 400 provider rejected；仅记录，不阻断 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783347084040.json` |
+| OpenRouter | `deepseek/deepseek-v4-flash` | all-open | `{ temperature: 0.2, topP: 0.9, topK: 10, minP: 0.05, topA: 0.1, frequencyPenalty: 0, presencePenalty: 0, repetitionPenalty: 1, seed: 123, maxOutputTokens: 64, reasoningEffort: "high", verbosity: "low" }` | `{ temperature: 0.2, top_p: 0.9, top_k: 10, min_p: 0.05, top_a: 0.1, frequency_penalty: 0, presence_penalty: 0, repetition_penalty: 1, seed: 123, max_tokens: 64, reasoning: { effort: "high" }, verbosity: "low" }` | 通过 | `[redacted-local-artifact]` |
+| OpenRouter | `deepseek/deepseek-v4-flash` | all-off | `{}` | `{}` | 通过 | `[redacted-local-artifact]` |
+| OpenRouter | `deepseek/deepseek-v4-flash` | random | `{ maxOutputTokens: 64, reasoningEffort: "high" }` | `{ max_tokens: 64, reasoning: { effort: "high" } }` | 通过 | `[redacted-local-artifact]` |
+| Google AI Studio | `gemini-2.5-flash-lite` | all-open | `{ temperature: 0.2, frequencyPenalty: 0, presencePenalty: 0, maxOutputTokens: 64 }` | `{ generationConfig: { temperature: 0.2, frequencyPenalty: 0, presencePenalty: 0, maxOutputTokens: 64 } }` | 通过 | `[redacted-local-artifact]` |
+| Google AI Studio | `gemini-2.5-flash-lite` | random | `{ temperature: 0.2, maxOutputTokens: 64 }` | `{ generationConfig: { temperature: 0.2, maxOutputTokens: 64 } }` | 通过 | `[redacted-local-artifact]` |
+| Google AI Studio | `gemini-2.5-flash-lite` | all-off | `{}` | `{}` | 通过 | `[redacted-local-artifact]` |
+| OpenAI Responses | `gpt-5.4-nano` | all-off | `{}` | `{}` | 通过 | `[redacted-local-artifact]` |
+| OpenAI Responses | `gpt-5.4-nano` | random | `{ temperature: 0.2, maxOutputTokens: 64 }` | `{ temperature: 0.2, max_output_tokens: 64 }` | 通过 | `[redacted-local-artifact]` |
+| OpenAI Responses | `gpt-5.4-nano` | reasoning subset | `{ maxOutputTokens: 64, reasoningEffort: "low" }` | `{ max_output_tokens: 64, reasoning: { effort: "low" } }` | 通过 | `[redacted-local-artifact]` |
+| OpenAI Responses | `gpt-5.4-nano` | verbosity subset | `{ maxOutputTokens: 64, verbosity: "low" }` | `{ max_output_tokens: 64, text: { verbosity: "low" } }` | 通过 | `[redacted-local-artifact]` |
+| OpenAI Responses | `gpt-5.4-nano` | sendable all-open subset | `{ maxOutputTokens: 64, reasoningEffort: "low", verbosity: "low" }` | `{ max_output_tokens: 64, reasoning: { effort: "low" }, text: { verbosity: "low" } }` | 通过 | `[redacted-local-artifact]` |
+| OpenAI Responses | `gpt-5.4-nano` | all-open attempt / unavailable combination | `{ temperature: 0.2, maxOutputTokens: 64, reasoningEffort: "low" }` | `{ temperature: 0.2, max_output_tokens: 64, reasoning: { effort: "low" } }` | HTTP 400 provider rejected；仅记录，不阻断 | `[redacted-local-artifact]` |
+| Anthropic Messages | `claude-haiku-4-5-20251001` | all-off | `{}` | `{}` | 通过 | `[redacted-local-artifact]` |
+| Anthropic Messages | `claude-haiku-4-5-20251001` | random | `{ maxOutputTokens: 64 }` | `{ max_tokens: 64 }` | 通过 | `[redacted-local-artifact]` |
+| Anthropic Messages | `claude-haiku-4-5-20251001` | all-open attempt / unavailable combination | `{ maxOutputTokens: 64, reasoningEffort: "low" }` | `{ max_tokens: 64, output_config: { effort: "low" } }` | `invalid_request_error` provider rejected；仅记录，不阻断 | `[redacted-local-artifact]` |
+| DeepSeek | `deepseek-v4-flash` | all-off | `{}` | `{}` | 通过 | `[redacted-local-artifact]` |
+| DeepSeek | `deepseek-v4-flash` | random | `{ maxOutputTokens: 64 }` | `{ max_tokens: 64 }` | 通过 | `[redacted-local-artifact]` |
+| DeepSeek | `deepseek-v4-flash` | reasoning subset | `{ maxOutputTokens: 64, reasoningEffort: "high" }` | `{ max_tokens: 64, reasoning_effort: "high" }` | 通过 | `[redacted-local-artifact]` |
+| DeepSeek | `deepseek-v4-flash` | all-open attempt / unavailable combination | `{ maxOutputTokens: 64, reasoningEffort: "high", thinkingEnabled: true }` | `{ max_tokens: 64, reasoning_effort: "high", thinking: { type: true } }` | HTTP 400 provider rejected；仅记录，不阻断 | `[redacted-local-artifact]` |
 
 已观测但暂不阻断的不可用参数或组合：
 
 | Provider | Model | 参数/组合 | wire 参数 | Provider 结果 | 当前处理 | summary |
 | --- | --- | --- | --- | --- | --- | --- |
-| OpenAI Responses | `gpt-5.4-nano` | `temperature=0.2` + `reasoningEffort=low` | `{ temperature: 0.2, max_output_tokens: 64, reasoning: { effort: "low" } }` | HTTP 400 provider rejected | 仅记录；暂不在 resolver/profile 阻断 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783346907855.json` |
-| Anthropic Messages | `claude-haiku-4-5-20251001` | `reasoningEffort=low` | `{ max_tokens: 64, output_config: { effort: "low" } }` | `invalid_request_error` provider rejected | 仅记录；暂不在 resolver/profile 阻断 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783347027150.json` |
-| DeepSeek | `deepseek-v4-flash` | `thinkingEnabled=true` | `{ max_tokens: 64, reasoning_effort: "high", thinking: { type: true } }` | HTTP 400 provider rejected | 仅记录；暂不在 resolver/profile 阻断 | `C:\Users\m1389\AppData\Local\Temp\starverse-generation-params-real-click-smoke\generation-params-real-click-1783347084040.json` |
+| OpenAI Responses | `gpt-5.4-nano` | `temperature=0.2` + `reasoningEffort=low` | `{ temperature: 0.2, max_output_tokens: 64, reasoning: { effort: "low" } }` | HTTP 400 provider rejected | 仅记录；暂不在 resolver/profile 阻断 | `[redacted-local-artifact]` |
+| Anthropic Messages | `claude-haiku-4-5-20251001` | `reasoningEffort=low` | `{ max_tokens: 64, output_config: { effort: "low" } }` | `invalid_request_error` provider rejected | 仅记录；暂不在 resolver/profile 阻断 | `[redacted-local-artifact]` |
+| DeepSeek | `deepseek-v4-flash` | `thinkingEnabled=true` | `{ max_tokens: 64, reasoning_effort: "high", thinking: { type: true } }` | HTTP 400 provider rejected | 仅记录；暂不在 resolver/profile 阻断 | `[redacted-local-artifact]` |
 
 待接入但暂不阻断的不可用参数证据来源：
 
@@ -126,7 +126,7 @@ OpenAI Responses 早期 all-off smoke 曾出现 `invalid_wire_event`，根因是
 ## 关键发现
 
 - 真实 Electron 桌面应用可启动，composer 可加载。
-- 真实 smoke 的关键前提是 Playwright 必须从 package root 启动 Electron，确保 `app.getPath('userData')` 指向 `C:\Users\m1389\AppData\Roaming\Starverse`。
+- 真实 smoke 的关键前提是 Playwright 必须从 package root 启动 Electron，确保 `app.getPath('userData')` 指向 `[redacted-user-data]`。
 - 主用户 profile credential 可通过 ProviderCredentialService 读取；此前的 `apiKeyConfigured: false` 是 smoke 脚本错误解析 `{ ok, status }` wrapper 导致。
 - Google AI Studio 真点击 smoke 已验证：UI 可设置 generation params，发送链路可完成请求并回到 idle。
 - OpenRouter / OpenAI Responses / Anthropic / DeepSeek 已完成可发送代表组合的真实 provider smoke；已观测的 provider 拒绝参数组合仅记录，暂不在 resolver/profile 阻断。

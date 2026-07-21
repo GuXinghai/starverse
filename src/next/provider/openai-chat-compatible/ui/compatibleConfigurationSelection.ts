@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { compatibleModelIdSchema, credentialVersionRefSchema, endpointRevisionIdSchema, inlinePolicyIdSchema, providerInstanceIdSchema, reasoningMappingIdSchema, requestProfileIdSchema, responseProfileIdSchema } from '@/shared/provider/openai-chat-compatible/identity'
+import { compatibleBoundedJsonValueSchema } from '@/shared/provider/openai-chat-compatible/schemas'
 
 export const compatibleConfigurationSelectionSchema = z.object({
   kind: z.literal('openai_chat_compatible_configuration'),
@@ -16,6 +17,7 @@ export const compatibleConfigurationSelectionSchema = z.object({
   reasoningMappingVersion: z.number().int().positive(),
   inlinePolicyId: inlinePolicyIdSchema,
   inlinePolicyVersion: z.number().int().positive(),
+  extraBody: compatibleBoundedJsonValueSchema.nullable().default(null),
 }).strict()
 
 export type CompatibleConfigurationSelection = z.infer<typeof compatibleConfigurationSelectionSchema>

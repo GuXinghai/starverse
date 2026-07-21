@@ -3,13 +3,12 @@ import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { safeClearConfig } from '../config/configSchema'
-import { OPENROUTER_CATALOG_LOCAL_SECRET_KEY } from '../modelCatalog/catalogScope'
-import { providerCredentialSecureStoreKeys } from '../credentials/providerCredentialService'
+import { providerCredentialSecureStoreKeys } from '../credentials/providerCredentialContract'
 import {
-  COMPATIBLE_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
-  COMPATIBLE_CREDENTIAL_SECURE_STORE_NAMESPACE,
-  COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
-} from '../credentials/compatibleCredentialService'
+  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX,
+  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_NAMESPACE,
+  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
+} from '../credentials/openAICompatibleCredentialV2Service'
 import { registerStoreIpc, RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS } from './storeIpc'
 
 vi.mock('../config/configSchema', async (importOriginal) => {
@@ -131,21 +130,6 @@ describe('registerStoreIpc', () => {
     expect(refreshMainLocale).not.toHaveBeenCalled()
   })
 
-  it('blocks renderer access to catalog local secret through generic store IPC', async () => {
-    const { handlers, store } = registerHandlers()
-
-    const getResult = await handlers.get('store-get')?.({}, OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
-    const setResult = await handlers.get('store-set')?.({}, OPENROUTER_CATALOG_LOCAL_SECRET_KEY, 'secret')
-    const deleteResult = await handlers.get('store-delete')?.({}, OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
-
-    expect(getResult).toBeUndefined()
-    expect(setResult).toBe(false)
-    expect(deleteResult).toBe(false)
-    expect(store.get).not.toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
-    expect(store.set).not.toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY, 'secret')
-    expect(store.delete).not.toHaveBeenCalledWith(OPENROUTER_CATALOG_LOCAL_SECRET_KEY)
-  })
-
   it('blocks renderer generic store access to legacy credential-bearing keys after C4 filtering', async () => {
     const blockedKeys = [
       'openRouterApiKey',
@@ -155,9 +139,8 @@ describe('registerStoreIpc', () => {
       'deepSeekApiKey',
       'geminiApiKey',
       'apiKey',
-      OPENROUTER_CATALOG_LOCAL_SECRET_KEY,
       ...providerCredentialSecureStoreKeys(),
-      `${COMPATIBLE_CREDENTIAL_SECURE_STORE_KEY_PREFIX}ocp_credential_12345678`,
+      `${OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX}ocp_credential_12345678`,
     ] as const
     const { handlers, store } = registerHandlers({
       initialStore: Object.fromEntries(blockedKeys.map((key) => [key, `legacy-${key}`])),
@@ -180,10 +163,10 @@ describe('registerStoreIpc', () => {
   it('blocks credential namespace ancestors and descendants under electron-store dot notation', async () => {
     const { handlers, store } = registerHandlers()
     const blockedPaths = [
-      COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
-      COMPATIBLE_CREDENTIAL_SECURE_STORE_NAMESPACE,
-      `${COMPATIBLE_CREDENTIAL_SECURE_STORE_KEY_PREFIX}ocp_credential_12345678`,
-      `${COMPATIBLE_CREDENTIAL_SECURE_STORE_KEY_PREFIX}ocp_credential_12345678.ciphertextBase64`,
+      OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
+      OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_NAMESPACE,
+      `${OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX}ocp_credential_12345678`,
+      `${OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX}ocp_credential_12345678.ciphertextBase64`,
       'providerCredentials',
       'providerCredentials.v1',
       'providerCredentials.v1.future-provider',

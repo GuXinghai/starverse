@@ -40,7 +40,7 @@ No /models discovery performed: yes
 
 ## Notes
 
-- configPath=C:\Users\m1389\AppData\Roaming\Starverse\config.json
+- configPath=[redacted-user-data]/config.json
 - proxyPolicy=applied:system
 - current-config replay sends only model/input/stream=false plus resolved reasoning.effort; non-reasoning generation parameters are intentionally omitted by this diagnostic scope
 - model source: --models argument; no /models discovery performed

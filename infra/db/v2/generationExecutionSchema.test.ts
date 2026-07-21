@@ -22,7 +22,7 @@ function createDb() {
   applyGenerationV2Schema(db, root)
   db.prepare(`INSERT INTO runtime_capability_snapshot_v2
     VALUES (?, 'capability:1', 2, ?, ?, ?, 1)`).run(
-    HASH_A, '{"binding":{"providerId":"test"}}', HASH_A, HASH_B,
+    HASH_A, '{"binding":{"operation":"image_generate","providerId":"test"}}', HASH_A, HASH_B,
   )
   return db
 }
@@ -73,7 +73,12 @@ function seedGraph(db: BetterSqlite3.Database) {
 function insertOperationAndSnapshot(
   db: BetterSqlite3.Database,
   graph: ReturnType<typeof seedQuestion>,
-  options: { operationId?: string; fingerprint?: string; action?: string; target?: string | null } = {},
+  options: {
+    operationId?: string
+    fingerprint?: string
+    action?: string
+    target?: string | null
+  } = {},
 ) {
   const operationId = options.operationId ?? `operation:${graph.questionId}`
   const action = options.action ?? 'retry_as_new'
@@ -90,7 +95,7 @@ function insertOperationAndSnapshot(
       VALUES (?, ?, 2, ?, ?, 'capability:1', ?, ?, ?, 100)`)
       .run(
         graph.resultId, operationId,
-        '{"providerBinding":{"providerId":"test"},"version":2}',
+        '{"providerBinding":{"operation":"image_generate","providerId":"test"},"version":2}',
         HASH_A, HASH_A, HASH_A, HASH_B,
       )
   })()
@@ -298,6 +303,51 @@ describe('Generation V2 provider-neutral execution schema', () => {
       const operationColumns = (db.prepare("PRAGMA table_info('generation_operation_v2')").all() as { name: string }[])
         .map(({ name }) => name)
       expect(operationColumns.some((name) => /previous|restore|rollback/u.test(name))).toBe(false)
+    } finally { db.close() }
+  })
+
+  it('records only a final generated image revision on a completed image request', () => {
+    const db = createDb()
+    try {
+      const graph = seedGraph(db)
+      const operationId = insertOperationAndSnapshot(db, graph)
+      insertRequest(db, operationId, graph.resultId)
+      db.prepare(`INSERT INTO file_blob_v2 VALUES (?, ?, 3, 'image/png', ?, 90)`).run(
+        `blob-v2:${HASH_A}`, HASH_A, `sha256/${HASH_A.slice(0, 2)}/${HASH_A}`,
+      )
+      db.prepare(`INSERT INTO file_asset_v2 VALUES ('asset:image:1', 'image', 'generated.png', 'generated', 91, NULL)`)
+        .run()
+      db.prepare(`INSERT INTO asset_revision_v2 VALUES (
+        'asset-revision:image:1', 'asset:image:1', ?, NULL, 'source', 'none', NULL, NULL, 92
+      )`).run(`blob-v2:${HASH_A}`)
+      db.prepare(`INSERT INTO generation_attempt_v2 VALUES (?, 1, 1, 'open', NULL, NULL, 101, NULL)`)
+        .run(operationId)
+      db.prepare(`UPDATE generation_request_v2 SET state='streaming', updated_at_ms=102
+        WHERE operation_id=?`).run(operationId)
+      db.prepare(`UPDATE generation_operation_v2 SET state='streaming', updated_at_ms=103
+        WHERE operation_id=?`).run(operationId)
+      db.prepare(`UPDATE generation_attempt_v2 SET state='terminal', outcome_json=?, terminal_fingerprint=?, terminal_at_ms=104
+        WHERE operation_id=? AND request_sequence=1 AND attempt=1`).run('{"kind":"provider_completed"}', HASH_A, operationId)
+      db.prepare(`UPDATE generation_request_v2 SET state='completed', updated_at_ms=105, terminal_at_ms=105
+        WHERE operation_id=?`).run(operationId)
+      db.prepare(`INSERT INTO generation_image_output_v2 (
+        operation_id, request_sequence, answer_root_id, output_index, partial_image_index,
+        asset_id, asset_revision_id, asset_sha256, mime, provider_created_at_ms,
+        provider_usage_json, created_at_ms
+      ) VALUES (?, 1, ?, 0, 0, 'asset:image:1', 'asset-revision:image:1', ?, 'image/png', 106, '{}', 107)`)
+        .run(operationId, graph.resultId, HASH_A)
+      expect(db.prepare(`SELECT asset_revision_id, provider_usage_json FROM generation_image_output_v2`).get())
+        .toEqual({ asset_revision_id: 'asset-revision:image:1', provider_usage_json: '{}' })
+      expect(() => db.prepare(`INSERT INTO generation_image_output_v2 (
+        operation_id, request_sequence, answer_root_id, output_index, partial_image_index,
+        asset_id, asset_revision_id, asset_sha256, mime, provider_created_at_ms,
+        provider_usage_json, created_at_ms
+      ) VALUES (?, 1, ?, 1, 1, 'asset:image:1', 'asset-revision:image:1', ?, 'image/png', NULL, '{}', 108)`)
+        .run(operationId, graph.resultId, HASH_A)).toThrow(/UNIQUE constraint failed/u)
+      expect(() => db.prepare(`UPDATE generation_image_output_v2 SET mime='image/jpeg'`).run())
+        .toThrow('GENERATION_V2_IMAGE_OUTPUT_IMMUTABLE')
+      expect(() => db.prepare(`DELETE FROM generation_image_output_v2`).run())
+        .toThrow('GENERATION_V2_IMAGE_OUTPUT_DELETE_FORBIDDEN')
     } finally { db.close() }
   })
 

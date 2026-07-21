@@ -19,6 +19,7 @@ import {
   registerGenerationV2AuthorityTransactionParticipantV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
+import { GenerationContextProjectionV2Repo, type GenerationContextProjectionSnapshotV2 } from './generationContextProjectionV2Repo'
 import {
   isGenerationExecutionOperationBundleForContextV2,
   type GenerationExecutionOperationBundleV2,
@@ -43,7 +44,8 @@ export class DeepSeekNativeHistoryV2RepoError extends Error {
     | 'GENERATION_V2_DEEPSEEK_HISTORY_INPUT_INVALID'
     | 'GENERATION_V2_DEEPSEEK_HISTORY_NOT_FOUND'
     | 'GENERATION_V2_DEEPSEEK_HISTORY_STATE_INVALID'
-    | 'GENERATION_V2_DEEPSEEK_HISTORY_LINEAGE_INVALID') {
+    | 'GENERATION_V2_DEEPSEEK_HISTORY_LINEAGE_INVALID'
+    | 'CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE') {
     super(code)
     this.name = 'DeepSeekNativeHistoryV2RepoError'
   }
@@ -59,6 +61,8 @@ export type DeepSeekRequestHistoryRepositoryFactV2 = Readonly<{
   priorAnswerRootId: GraphIdentity<'answer_root_id'> | null
   priorArtifact: DeepSeekNativeHistoryArtifactV2 | null
   clientEntries: readonly DeepSeekNativeHistoryEntryV1[]
+  contextProjection: GenerationContextProjectionSnapshotV2
+  projectedPrefixEntries: readonly DeepSeekNativeHistoryEntryV1[] | null
   requestSequence: number
   toolOutputRecords: readonly Readonly<{
     outputIndex: number
@@ -91,6 +95,10 @@ const factContexts = new WeakMap<object, GenerationV2AuthorityTransactionContext
 
 function invalidState(): never {
   throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_STATE_INVALID')
+}
+
+function incompleteContextTurn(): never {
+  throw new DeepSeekNativeHistoryV2RepoError('CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE')
 }
 
 function decodeArtifactRow(row: ArtifactRow, allowActive = false): Readonly<{
@@ -151,6 +159,74 @@ export class DeepSeekNativeHistoryV2Repo {
     if (db.pragma('foreign_keys', { simple: true }) !== 1) invalidState()
   }
 
+  #systemEntries(conversationId: string, questionId: string): readonly DeepSeekNativeHistoryEntryV1[] {
+    const rows = this.#db.prepare(`WITH RECURSIVE lineage(message_id,parent_message_id) AS (
+      SELECT message_id,parent_message_id FROM message_v2 WHERE message_id=? AND conversation_id=?
+      UNION ALL
+      SELECT parent.message_id,parent.parent_message_id FROM message_v2 AS parent
+      JOIN lineage AS child ON child.parent_message_id=parent.message_id
+      WHERE parent.conversation_id=?
+    ) SELECT message.role,body.body_text AS body FROM lineage
+      JOIN message_v2 AS message ON message.message_id=lineage.message_id
+      JOIN message_body_v2 AS body ON body.message_id=message.message_id
+      WHERE message.role='system'`).all(questionId, conversationId, conversationId) as readonly Readonly<Record<string, unknown>>[]
+    if (rows.length > 1 || (rows.length === 1 && typeof rows[0].body !== 'string')) return incompleteContextTurn()
+    return rows.length === 0 ? Object.freeze([]) : Object.freeze([Object.freeze({
+      kind: 'client' as const, message: Object.freeze({ role: 'system' as const, content: rows[0].body as string }),
+    })])
+  }
+
+  #turnBundle(
+    context: GenerationV2AuthorityTransactionContextV2,
+    answerRootId: string,
+    seen: Set<string>,
+  ): readonly DeepSeekNativeHistoryEntryV1[] {
+    if (seen.has(answerRootId) || seen.size >= MAX_LINEAGE_DEPTH) return incompleteContextTurn()
+    seen.add(answerRootId)
+    try {
+      const operation = this.#db.prepare(`SELECT operation_id AS operationId,question_id AS questionId,
+        conversation_id AS conversationId,state FROM generation_operation_v2 WHERE result_answer_root_id=?`).get(answerRootId) as
+        Readonly<Record<string, unknown>> | undefined
+      if (!operation || typeof operation.operationId !== 'string' || typeof operation.questionId !== 'string' ||
+          typeof operation.conversationId !== 'string' || operation.state !== 'completed') return incompleteContextTurn()
+      const artifact = this.#loadAndVerifyLineage(context, answerRootId)
+      const projection = new GenerationContextProjectionV2Repo(this.#db).load(context, operation.operationId)
+      const prefix: DeepSeekNativeHistoryEntryV1[] = [...this.#systemEntries(operation.conversationId, operation.questionId)]
+      for (const turn of projection.turns) {
+        if (turn.answerRootId === null) break
+        if (turn.mode === 'included') prefix.push(...this.#turnBundle(context, turn.answerRootId, seen))
+      }
+      if (prefix.length > artifact.orderedEntries.length ||
+          stableSerializeProviderRequestV2(prefix) !== stableSerializeProviderRequestV2(artifact.orderedEntries.slice(0, prefix.length))) {
+        return incompleteContextTurn()
+      }
+      const bundle = Object.freeze(artifact.orderedEntries.slice(prefix.length))
+      if (bundle.length < 2 || bundle[0].kind !== 'client' || bundle[0].message.role !== 'user' ||
+          bundle.slice(1).some((entry) => entry.kind === 'client' && (entry.message.role === 'user' || entry.message.role === 'system')) ||
+          bundle.at(-1)?.kind !== 'assistant') return incompleteContextTurn()
+      return bundle
+    } catch (error) {
+      if (error instanceof DeepSeekNativeHistoryV2RepoError && error.code === 'CONTEXT_TURN_NATIVE_BUNDLE_INCOMPLETE') throw error
+      return incompleteContextTurn()
+    } finally {
+      seen.delete(answerRootId)
+    }
+  }
+
+  #projectedPrefix(
+    context: GenerationV2AuthorityTransactionContextV2,
+    projection: GenerationContextProjectionSnapshotV2,
+    conversationId: string,
+    questionId: string,
+  ): readonly DeepSeekNativeHistoryEntryV1[] {
+    const prefix: DeepSeekNativeHistoryEntryV1[] = [...this.#systemEntries(conversationId, questionId)]
+    for (const turn of projection.turns) {
+      if (turn.answerRootId === null) break
+      if (turn.mode === 'included') prefix.push(...this.#turnBundle(context, turn.answerRootId, new Set()))
+    }
+    return Object.freeze(prefix)
+  }
+
   loadRequestHistory(
     context: GenerationV2AuthorityTransactionContextV2,
     operationIdValue: string,
@@ -205,7 +281,12 @@ export class DeepSeekNativeHistoryV2Repo {
       message: Object.freeze({ role: 'user' as const, content: row.questionBody }),
     }))
 
-    const priorArtifact = priorAnswerRootId === null ? null : this.#loadAndVerifyLineage(priorAnswerRootId)
+    const contextProjection = new GenerationContextProjectionV2Repo(this.#db).load(context, operationId.value)
+    const projectionActive = contextProjection.turns.some((turn) => turn.mode === 'excluded')
+    const projectedPrefixEntries = projectionActive
+      ? this.#projectedPrefix(context, contextProjection, row.conversationId, row.questionId)
+      : null
+    const priorArtifact = projectionActive ? null : priorAnswerRootId === null ? null : this.#loadAndVerifyLineage(context, priorAnswerRootId)
     const fact = Object.freeze({
       trust: 'deepseek_initial_send_history_repository_fact_v2' as const,
       operationId,
@@ -217,6 +298,8 @@ export class DeepSeekNativeHistoryV2Repo {
         ConversationGraphV2Identity.create('answer_root_id', priorAnswerRootId),
       priorArtifact,
       clientEntries: Object.freeze(clientEntries),
+      contextProjection,
+      projectedPrefixEntries,
       requestSequence: 1,
       toolOutputRecords: Object.freeze([]),
     })
@@ -339,6 +422,8 @@ export class DeepSeekNativeHistoryV2Repo {
       priorAnswerRootId: execution.operation.resultAnswerRootId,
       priorArtifact: decoded.artifact,
       clientEntries,
+      contextProjection: new GenerationContextProjectionV2Repo(this.#db).load(context, command.operationId.value),
+      projectedPrefixEntries: null,
       requestSequence: command.priorRequestSequence + 1,
       toolOutputRecords: Object.freeze(records),
     })
@@ -427,6 +512,8 @@ export class DeepSeekNativeHistoryV2Repo {
         kind: 'client' as const,
         message: Object.freeze({ role: 'tool' as const, content: record.content, tool_call_id: record.toolCallId }),
       }))),
+      contextProjection: new GenerationContextProjectionV2Repo(this.#db).load(context, operationIdValue),
+      projectedPrefixEntries: null,
       requestSequence,
       toolOutputRecords: Object.freeze(records),
     })
@@ -544,9 +631,12 @@ export class DeepSeekNativeHistoryV2Repo {
   ): void {
     if (requestSequence === 1) {
       const base = this.loadRequestHistory(context, operationId)
-      const prefix = [...(base.priorArtifact?.orderedEntries ?? []), ...base.clientEntries]
-      if (artifact.lineageDepth !== (base.priorArtifact?.lineageDepth ?? 0) + 1 ||
-          artifact.parentArtifactHash !== (base.priorArtifact?.artifactHash ?? null) ||
+      const projected = base.projectedPrefixEntries !== null
+      const prefix = projected
+        ? [...base.projectedPrefixEntries!, ...base.clientEntries]
+        : [...(base.priorArtifact?.orderedEntries ?? []), ...base.clientEntries]
+      if (artifact.lineageDepth !== (projected ? 1 : (base.priorArtifact?.lineageDepth ?? 0) + 1) ||
+          artifact.parentArtifactHash !== (projected ? null : (base.priorArtifact?.artifactHash ?? null)) ||
           artifact.orderedEntries.length !== prefix.length + 1 ||
           stableSerializeProviderRequestV2(prefix) !==
             stableSerializeProviderRequestV2(artifact.orderedEntries.slice(0, prefix.length)) ||
@@ -578,7 +668,10 @@ export class DeepSeekNativeHistoryV2Repo {
     }
   }
 
-  #loadAndVerifyLineage(answerRootId: string): DeepSeekNativeHistoryArtifactV2 {
+  #loadAndVerifyLineage(
+    context: GenerationV2AuthorityTransactionContextV2,
+    answerRootId: string,
+  ): DeepSeekNativeHistoryArtifactV2 {
     const visited = new Set<string>()
     const verify = (currentAnswerRootId: string, expectedRequestSequence?: number): DeepSeekNativeHistoryArtifactV2 => {
       if (visited.size >= MAX_LINEAGE_DEPTH) {
@@ -625,6 +718,13 @@ export class DeepSeekNativeHistoryV2Repo {
       if (decoded.requestSequence > 1) {
         predecessor = verify(decoded.answerRootId, decoded.requestSequence - 1)
       } else {
+        const projection = new GenerationContextProjectionV2Repo(this.#db).load(context, decoded.operationId)
+        if (projection.turns.some((turn) => turn.mode === 'excluded')) {
+          if (decoded.artifact.lineageDepth !== 1 || decoded.artifact.parentArtifactHash !== null) {
+            throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_LINEAGE_INVALID')
+          }
+          return decoded.artifact
+        }
         const parent = this.#db.prepare(`SELECT parent.role AS parentRole,
           parent.answer_root_id AS priorAnswerRootId
           FROM message_v2 AS question

@@ -64,13 +64,29 @@ export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesInt
     reasoning = {}
     if (intent.reasoning.effort !== undefined) { reasoning.effort = intent.reasoning.effort; encode('reasoning.effort', 'reasoning.effort', MODEL) }
     if (intent.reasoning.summary !== undefined) { reasoning.summary = intent.reasoning.summary; encode('reasoning.summary', 'reasoning.summary') }
+    if (intent.reasoning.exclude !== undefined) reject('reasoning.exclude', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
   }
 
   const tools: OpenAIResponsesToolV1[] = []
   if (intent.web.mode === 'disabled') accept('web.mode', MODEL)
   else {
     if (intent.web.types.length !== 1 || intent.web.types[0] !== 'web') reject('web.types', 'OPENAI_FIELD_VALUE_UNSUPPORTED')
-    else { accept('web.types', MODEL); encode('web.mode', 'tools[].type', MODEL); tools.push(Object.freeze({ type: 'web_search' })) }
+    else {
+      accept('web.types', MODEL)
+      encode('web.mode', 'tools[].type', MODEL)
+      const webTool: { type: 'web_search'; searchContextSize?: 'low' | 'medium' | 'high'; allowedDomains?: readonly string[] } = { type: 'web_search' }
+      for (const [key, value] of Object.entries(intent.web)) {
+        if (key === 'mode' || key === 'types' || value === undefined) continue
+        if (key === 'searchContextSize') {
+          webTool.searchContextSize = value as 'low' | 'medium' | 'high'
+          encode('web.searchContextSize', 'tools[].search_context_size', MODEL)
+        } else if (key === 'allowedDomains') {
+          webTool.allowedDomains = value as readonly string[]
+          encode('web.allowedDomains', 'tools[].filters.allowed_domains', MODEL)
+        } else reject(`web.${key}`, 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+      }
+      tools.push(Object.freeze(webTool))
+    }
   }
   if (intent.image.mode === 'disabled') accept('image.mode', MODEL)
   else {
@@ -102,19 +118,28 @@ export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesInt
       ...(intent.tools.toolChoice.mode === 'named' ? { toolId: intent.tools.toolChoice.toolId.value } : {}),
     })
   }
-  for (const attachment of intent.attachments) {
-    accept('attachments[].assetId'); accept('attachments[].assetRevisionId'); accept('attachments[].assetSha256')
-    if (attachment.include) reject('attachments[].include', 'OPENAI_CAPABILITY_UNAVAILABLE')
-    else accept('attachments[].include')
-    reject('attachments[].sendAs', 'OPENAI_CAPABILITY_UNAVAILABLE')
-    reject('attachments[].conversion', 'OPENAI_CAPABILITY_UNAVAILABLE')
+  if (intent.attachments.length > 0) {
+    // The immutable descriptor binding is resolved by the history repository;
+    // the wire request receives only the resulting input_file identifier.
+    accept('attachments[].assetId', MODEL)
+    accept('attachments[].assetRevisionId', MODEL)
+    accept('attachments[].assetSha256', MODEL)
+    if (intent.attachments.some((attachment) => attachment.include)) {
+      encode('attachments[].include', 'input[].content[].input_file', MODEL)
+      encode('attachments[].sendAs', 'input[].content[].input_file', MODEL)
+      encode('attachments[].conversion', 'input[].content[].input_file', MODEL)
+    } else {
+      accept('attachments[].include', MODEL)
+      accept('attachments[].sendAs', MODEL)
+      accept('attachments[].conversion', MODEL)
+    }
   }
 
   let maxToolCalls: number | undefined
   let parallelToolCalls: boolean | undefined
   let serviceTier: string | undefined
   if (intent.providerExtension.kind === 'none') accept('providerExtension.kind')
-  else {
+  else if (intent.providerExtension.kind === 'openai_responses') {
     accept('providerExtension.kind')
     if (intent.providerExtension.verbosity !== undefined) {
       generation.verbosity = intent.providerExtension.verbosity
@@ -132,6 +157,13 @@ export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesInt
       serviceTier = intent.providerExtension.serviceTier
       encode('providerExtension.serviceTier', 'service_tier')
     }
+  } else {
+    reject('providerExtension.kind', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+    if (intent.providerExtension.manualThinkingBudgetTokens !== undefined) {
+      reject('providerExtension.manualThinkingBudgetTokens', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+    }
+    reject('providerExtension.thinkingDisplay', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+    reject('providerExtension.thinkingMode', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
   }
   dispositions.sort((a, b) => a.semanticPath < b.semanticPath ? -1 : a.semanticPath > b.semanticPath ? 1 : 0)
   issues.sort((a, b) => a.semanticPath < b.semanticPath ? -1 : a.semanticPath > b.semanticPath ? 1 : 0)

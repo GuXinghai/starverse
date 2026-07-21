@@ -12,7 +12,7 @@ This report contains only redacted credential status and safe provider status. I
 
 - Tested at: 2026-06-26T22:13:55.4376295+08:00
 - Commit: 18cdebc0e6f048919603201eb2151a7d24450e12
-- Environment: Windows development workspace at `D:\Starverse`
+- Environment: Windows development workspace at `[repository-root]`
 - UI route: Electron + Playwright against a temporary `--user-data-dir`.
 - Temporary profile cleanup: completed.
 - Providers intentionally skipped: OpenAI Responses, Anthropic, OpenRouter.

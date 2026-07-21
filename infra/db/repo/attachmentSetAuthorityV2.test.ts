@@ -36,27 +36,42 @@ function createAttachment(
     revisionId: string
     bytes: readonly number[]
     include: boolean
-    sendAs: 'provider_file' | 'inline_text'
+    sendAs: 'provider_file' | 'converted_document' | 'inline_text'
+    conversion?: 'none' | 'pdf'
   }>,
 ): Readonly<{ intent: AttachmentIntentV2; bytes: Uint8Array }> {
   const bytes = new Uint8Array(value.bytes)
   const blob = repo.recordBlobFromBytes(bytes, 'application/octet-stream')
+  const isDerivedPdf = value.conversion === 'pdf'
+  const sourceAssetId = isDerivedPdf ? `${value.assetId}:source` : value.assetId
   repo.createAsset({
-    assetId: value.assetId,
+    assetId: sourceAssetId,
     assetKind: 'file',
-    filename: `${value.assetId}.bin`,
+    filename: `${sourceAssetId}.bin`,
     sourceKind: 'user_import',
   })
-  repo.appendSourceRevision({ assetId: value.assetId, assetRevisionId: value.revisionId, blob })
+  const sourceRevisionId = value.conversion === 'pdf' ? `${value.revisionId}:source` : value.revisionId
+  repo.appendSourceRevision({ assetId: sourceAssetId, assetRevisionId: sourceRevisionId, blob })
+  const effectiveBlob = value.conversion === 'pdf'
+    ? repo.recordBlobFromBytes(new Uint8Array([...bytes, 0]), 'application/pdf')
+    : blob
+  if (value.conversion === 'pdf') {
+    repo.createDerivedAssetRevision({
+      assetId: value.assetId, assetRevisionId: value.revisionId, assetKind: 'file',
+      filename: `${value.assetId}.pdf`, parentAssetRevisionId: sourceRevisionId,
+      conversionKind: 'pdf', conversionContractId: 'test-pdf', conversionRevision: '1', blob: effectiveBlob,
+    })
+  }
   const layer = decodeGenerationIntentLayerV2({
     schemaVersion: 2,
     attachments: [{
+      kind: 'managed_file',
       assetId: value.assetId,
       assetRevisionId: value.revisionId,
-      assetSha256: blob.sha256.value,
+      assetSha256: effectiveBlob.sha256.value,
       include: value.include,
       sendAs: value.sendAs,
-      conversion: 'none',
+      conversion: value.conversion ?? 'none',
     }],
   })
   return Object.freeze({ intent: layer.attachments![0], bytes })
@@ -72,19 +87,78 @@ function resolvedIntent(
     web: { mode: 'disabled' },
     image: { mode: 'disabled' },
     tools: { mode: 'disabled' },
-    attachments: attachments.map((attachment) => ({
-      assetId: attachment.assetId.value,
-      assetRevisionId: attachment.assetRevisionId.value,
-      assetSha256: attachment.assetSha256.value,
-      include: attachment.include,
-      sendAs: attachment.sendAs,
-      conversion: attachment.conversion,
-    })),
+    attachments: attachments.map((attachment) => attachment.kind === 'managed_file'
+      ? {
+          kind: attachment.kind,
+          assetId: attachment.assetId.value,
+          assetRevisionId: attachment.assetRevisionId.value,
+          assetSha256: attachment.assetSha256.value,
+          include: attachment.include,
+          sendAs: attachment.sendAs,
+          conversion: attachment.conversion,
+        }
+      : {
+          kind: attachment.kind,
+          referenceId: attachment.referenceId.value,
+          referenceRevision: attachment.referenceRevision.value,
+          originalUrl: attachment.originalUrl,
+          urlDigest: attachment.urlDigest.value,
+          mediaKind: attachment.mediaKind,
+          ...(attachment.declaredMediaType === undefined ? {} : { declaredMediaType: attachment.declaredMediaType }),
+          capturedAtMs: attachment.capturedAtMs,
+          provenance: attachment.provenance,
+          include: attachment.include,
+          sendAs: attachment.sendAs,
+          conversion: attachment.conversion,
+        }),
     providerExtension: { kind: 'none' },
   })
 }
 
 describe('ResolvedAttachmentSetAuthorityV2', () => {
+  it('requires every URL reference in the command snapshot to equal its immutable database record', () => {
+    const db = createDb()
+    try {
+      const repo = new AttachmentAssetV2Repo(db)
+      const originalUrl = 'https://example.test/asset.png'
+      const digest = '0d43c3d906ca6f47ce052ed1865b91a8771dc1463a71ae8523e70053dcdd495c'
+      db.prepare(`INSERT INTO url_attachment_reference_v2
+        (reference_id, reference_revision, original_url, url_digest, media_kind, declared_media_type,
+         captured_at_ms, provenance, created_at_ms)
+        VALUES (?, ?, ?, ?, 'image', 'image/png', 10, 'user_supplied', 10)`)
+        .run('reference:1', 'reference-revision:1', originalUrl,
+          digest)
+      const urlIntent = decodeGenerationIntentLayerV2({
+        schemaVersion: 2,
+        attachments: [{
+          kind: 'url_reference', referenceId: 'reference:1', referenceRevision: 'reference-revision:1',
+          originalUrl, urlDigest: digest,
+          mediaKind: 'image', declaredMediaType: 'image/png', capturedAtMs: 10, provenance: 'user_supplied',
+          include: true, sendAs: 'url_reference', conversion: 'none',
+        }],
+      }).attachments![0]
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        repo.withSynchronousResolvedIntentAttachmentSetAuthority(context, resolvedIntent([urlIntent]), (authority) => {
+          expect(authority.attachments).toEqual([])
+          expect(authority.urlReferenceIntents).toHaveLength(1)
+          expect(authority.urlReferenceIntents[0].originalUrl).toBe(originalUrl)
+        }),
+      )
+      const forged = decodeGenerationIntentLayerV2({
+        schemaVersion: 2,
+        attachments: [{
+          kind: 'url_reference', referenceId: 'reference:1', referenceRevision: 'reference-revision:1',
+          originalUrl: 'https://example.test/other.png', urlDigest: digest, mediaKind: 'image',
+          declaredMediaType: 'image/png', capturedAtMs: 10, provenance: 'user_supplied', include: true,
+          sendAs: 'url_reference', conversion: 'none',
+        }],
+      }).attachments![0]
+      expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        repo.withSynchronousResolvedIntentAttachmentSetAuthority(context, resolvedIntent([forged]), () => undefined),
+      )).toThrow('GENERATION_V2_URL_REFERENCE_INTENT_MISMATCH')
+    } finally { db.close() }
+  })
+
   it('proves an empty complete set and therefore an empty provider-file requirement set', () => {
     const db = createDb()
     try {
@@ -110,7 +184,7 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
     } finally { db.close() }
   })
 
-  it('resolves the whole ordered set and derives only included provider-file requirements', async () => {
+  it('resolves the whole ordered set and derives every included provider-file handle requirement', async () => {
     const db = createDb()
     try {
       const repo = new AttachmentAssetV2Repo(db)
@@ -123,17 +197,21 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
       const third = createAttachment(repo, {
         assetId: 'asset:c', revisionId: 'revision:c', bytes: [3], include: false, sendAs: 'provider_file',
       })
+      const convertedPdf = createAttachment(repo, {
+        assetId: 'asset:d', revisionId: 'revision:d', bytes: [4], include: true,
+        sendAs: 'converted_document', conversion: 'pdf',
+      })
       let escaped: ResolvedAttachmentSetAuthorityV2 | undefined
       let escapedItem: unknown
       const lease = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
         repo.withSynchronousResolvedIntentAttachmentSetAuthority(
-          context, resolvedIntent([first.intent, second.intent, third.intent]), (authority) => {
+          context, resolvedIntent([first.intent, second.intent, third.intent, convertedPdf.intent]), (authority) => {
             escaped = authority
             escapedItem = authority.attachments[0]
             expect(authority.attachments.map((item) => item.intent.assetId.value))
-              .toEqual(['asset:b', 'asset:a', 'asset:c'])
+              .toEqual(['asset:b', 'asset:a', 'asset:c', 'asset:d'])
             expect(authority.providerFileRequirements.map((item) => item.assetRevisionId.value))
-              .toEqual(['revision:b'])
+              .toEqual(['revision:b', 'revision:d'])
             expect(authority.requiresProviderFileAuthority).toBe(true)
             expect(authority.providerFileRequirements[0]).not.toHaveProperty('descriptorId')
             return repo.verifyAttachmentSendBytes(authority.attachments[0], first.bytes)
@@ -158,6 +236,7 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
       const duplicateRevision = decodeGenerationIntentLayerV2({
         schemaVersion: 2,
         attachments: [{
+          kind: 'managed_file',
           assetId: 'asset:other', assetRevisionId: 'revision:1', assetSha256: 'a'.repeat(64),
           include: true, sendAs: 'inline_text', conversion: 'none',
         }],
@@ -200,6 +279,7 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
       const missing = decodeGenerationIntentLayerV2({
         schemaVersion: 2,
         attachments: [{
+          kind: 'managed_file',
           assetId: 'asset:missing', assetRevisionId: 'revision:missing', assetSha256: 'a'.repeat(64),
           include: true, sendAs: 'inline_text', conversion: 'none',
         }],
@@ -207,6 +287,7 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
       const mismatch = decodeGenerationIntentLayerV2({
         schemaVersion: 2,
         attachments: [{
+          kind: 'managed_file',
           assetId: 'asset:valid', assetRevisionId: 'revision:valid', assetSha256: 'b'.repeat(64),
           include: true, sendAs: 'inline_text', conversion: 'none',
         }],

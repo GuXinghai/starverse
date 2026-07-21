@@ -3,6 +3,7 @@ import {
   decodeAssistantAnswerGenerationSnapshotJsonV2,
   type DecodedAssistantAnswerGenerationSnapshotV2,
 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import { lookupReviewedProviderContractDefinitionV2 } from '../../../src/next/generation-v2/contracts/providerContractRegistryV2'
 import {
   decodeRuntimeCapabilitySnapshotJsonV2,
   type DecodedRuntimeCapabilitySnapshotV2,
@@ -34,6 +35,7 @@ import {
   registerGenerationV2AuthorityTransactionParticipantV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
+import { GenerationContextProjectionV2Repo } from './generationContextProjectionV2Repo'
 
 const MAX_JSON_BYTES = 1024 * 1024
 const ACTION_KINDS = Object.freeze([
@@ -86,6 +88,7 @@ export class GenerationExecutionV2RepoError extends Error {
     | 'GENERATION_V2_EXECUTION_ACTIVE_CONFLICT'
     | 'GENERATION_V2_EXECUTION_ATTEMPT_TERMINAL_CONFLICT'
     | 'GENERATION_V2_EXECUTION_TERMINAL_CONFLICT'
+    | 'CONTEXT_PROJECTION_UNSUPPORTED_BY_PROVIDER'
     | 'GENERATION_V2_EXECUTION_TRANSACTION_CONTEXT_REQUIRED') {
     super(code)
     this.name = 'GenerationExecutionV2RepoError'
@@ -608,6 +611,18 @@ export class GenerationExecutionV2Repo {
         snapshot.capabilityBinding.semanticFieldsDigest.value,
         createdAtMs,
       )
+      const contextProjection = new GenerationContextProjectionV2Repo(this.#db).captureForOperation(context, {
+        operationId: operationId.value, branchId: branchId.value, conversationId: conversationId.value,
+        questionId: questionId.value, createdAtMs,
+      })
+      const contract = lookupReviewedProviderContractDefinitionV2({
+        protocolContractId: snapshot.providerBinding.protocolContractId.value,
+        contractRevision: snapshot.providerBinding.contractRevision.value,
+      })
+      if (contextProjection.turns.some((turn) => turn.mode === 'excluded') &&
+          contract.contextProjectionPolicy !== 'complete_turn_client_managed_replay') {
+        throw new GenerationExecutionV2RepoError('CONTEXT_PROJECTION_UNSUPPORTED_BY_PROVIDER')
+      }
     } catch (error) {
       const code = (error as { code?: unknown })?.code
       if (code === 'SQLITE_CONSTRAINT_UNIQUE' || code === 'SQLITE_CONSTRAINT_PRIMARYKEY') {

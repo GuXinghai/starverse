@@ -31,6 +31,7 @@ import { normalizeSearchSettingsLayer } from '@/next/openrouter/searchSettingsPe
 import { resolveSearchSettings, type SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
 import { normalizeGenerationParamsLayer } from '@/next/generation-params/generationParamPersistence'
 import type { GenerationParamsLayer } from '@/next/generation-params/generationParamTypes'
+import { CatalogQueryService } from '@/next/modelCatalog/catalogQueryService'
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import PluginManagementPanel from './PluginManagementPanel.vue'
@@ -107,11 +108,11 @@ type ProviderCredentialBackendKind = 'electron_safe_storage' | 'plaintext_fallba
 type OpenRouterEndpointMetadataBase = Readonly<{
   kind: 'openrouter_endpoint'
   providerId: 'openrouter'
-  profileId: 'openrouter_v1_chat'
+  profileId: 'openrouter-first-party-v1'
   source: ProviderCredentialStatusSource
   defaultBaseUrl: string
-  credentialRef: Readonly<{ kind: 'credential_ref'; id: 'openrouter-chat-legacy-store' }>
-  catalogCredentialRef: Readonly<{ kind: 'credential_ref'; id: 'openrouter-catalog-legacy-store' }>
+  credentialRef: Readonly<{ kind: 'credential_ref'; id: 'openrouter-first-party-v1' }>
+  catalogCredentialRef: Readonly<{ kind: 'credential_ref'; id: 'openrouter-first-party-v1' }>
   rendererVisible: true
 }>
 
@@ -162,7 +163,7 @@ type OpenAIResponsesCredentialStatus = Readonly<{
   source: ProviderCredentialStatusSource
   backend?: ProviderCredentialBackendKind
   providerId: 'openai'
-  profileId: 'openai_responses_v1'
+  profileId: 'openai-responses-v1'
   apiKeyConfigured: boolean
   maskedApiKey?: string
   migratedFromLegacy?: boolean
@@ -188,7 +189,7 @@ type GoogleAIStudioCredentialStatus = Readonly<{
   source: ProviderCredentialStatusSource
   backend?: ProviderCredentialBackendKind
   providerId: 'google-ai-studio'
-  profileId: 'gemini_api_v1'
+  profileId: 'gemini-developer-api-v1beta'
   apiKeyConfigured: boolean
   maskedApiKey?: string
   migratedFromLegacy?: boolean
@@ -214,7 +215,7 @@ type AnthropicCredentialStatus = Readonly<{
   source: ProviderCredentialStatusSource
   backend?: ProviderCredentialBackendKind
   providerId: 'anthropic'
-  profileId: 'anthropic_messages_v1'
+  profileId: 'anthropic-messages-2023-06-01'
   apiKeyConfigured: boolean
   maskedApiKey?: string
   migratedFromLegacy?: boolean
@@ -240,7 +241,7 @@ type DeepSeekCredentialStatus = Readonly<{
   source: ProviderCredentialStatusSource
   backend?: ProviderCredentialBackendKind
   providerId: 'deepseek'
-  profileId: 'deepseek_official_openai_compat'
+  profileId: 'deepseek-stable-chat-v1'
   apiKeyConfigured: boolean
   maskedApiKey?: string
   migratedFromLegacy?: boolean
@@ -347,7 +348,7 @@ function getElectronStore(): ElectronStoreLike | null {
 }
 
 function getOpenRouterCredentialBridge(): OpenRouterCredentialBridge | null {
-  const bridge = (globalThis as any).openRouterCredential as OpenRouterCredentialBridge | undefined
+  const bridge = (globalThis as any).generationV2?.credentials?.openRouter as OpenRouterCredentialBridge | undefined
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
@@ -359,7 +360,7 @@ function getOpenRouterCredentialBridge(): OpenRouterCredentialBridge | null {
 }
 
 function getOpenAIResponsesCredentialBridge(): OpenAIResponsesCredentialBridge | null {
-  const bridge = (globalThis as any).openAIResponsesCredential as OpenAIResponsesCredentialBridge | undefined
+  const bridge = (globalThis as any).generationV2?.credentials?.openAIResponses as OpenAIResponsesCredentialBridge | undefined
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
@@ -371,7 +372,7 @@ function getOpenAIResponsesCredentialBridge(): OpenAIResponsesCredentialBridge |
 }
 
 function getGoogleAIStudioCredentialBridge(): GoogleAIStudioCredentialBridge | null {
-  const bridge = (globalThis as any).googleAIStudioCredential as GoogleAIStudioCredentialBridge | undefined
+  const bridge = (globalThis as any).generationV2?.credentials?.googleAIStudio as GoogleAIStudioCredentialBridge | undefined
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
@@ -383,7 +384,7 @@ function getGoogleAIStudioCredentialBridge(): GoogleAIStudioCredentialBridge | n
 }
 
 function getAnthropicCredentialBridge(): AnthropicCredentialBridge | null {
-  const bridge = (globalThis as any).anthropicCredential as AnthropicCredentialBridge | undefined
+  const bridge = (globalThis as any).generationV2?.credentials?.anthropic as AnthropicCredentialBridge | undefined
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
@@ -395,7 +396,7 @@ function getAnthropicCredentialBridge(): AnthropicCredentialBridge | null {
 }
 
 function getDeepSeekCredentialBridge(): DeepSeekCredentialBridge | null {
-  const bridge = (globalThis as any).deepSeekCredential as DeepSeekCredentialBridge | undefined
+  const bridge = (globalThis as any).generationV2?.credentials?.deepSeek as DeepSeekCredentialBridge | undefined
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
@@ -407,7 +408,7 @@ function getDeepSeekCredentialBridge(): DeepSeekCredentialBridge | null {
 }
 
 function getLocalEndpointDiagnosticsBridge(): LocalEndpointDiagnosticsBridge | null {
-  const bridge = (globalThis as any).localEndpointDiagnostics as LocalEndpointDiagnosticsBridge | undefined
+  const bridge = (globalThis as any).generationV2?.localRuntime?.generic as LocalEndpointDiagnosticsBridge | undefined
   if (!bridge || typeof bridge.probe !== 'function' || typeof bridge.streamProbe !== 'function') return null
   return bridge
 }
@@ -1245,37 +1246,22 @@ async function verifyAndSync() {
     }
     applyOpenRouterCredentialStatus(credentialResult.status)
 
-    const electronAPI = (globalThis as any).electronAPI
-    if (!electronAPI?.modelCatalogSyncNow) {
-      error.value = t('settings.runtime.modelCatalogSyncNowUnavailable')
-      return
-    }
-
-    const result = await electronAPI.modelCatalogSyncNow({
-      providerKey: 'openrouter',
-      force: true,
-      reason: 'settings_validate_button',
+    const result = await CatalogQueryService.query({
+      sourceProviderKey: 'openrouter',
+      page: { limit: 1 },
     })
 
-    if (result?.ok) {
+    if (result.status === 'synced') {
       const modelCount = result.modelCount ?? 0
       verifySyncResult.value = `${t('settings.openrouter.verifySyncSuccess')} (${modelCount})`
     } else {
-      const reasonCode = result?.errorCode ?? 'unknown_error'
-      const reasonKey = `errors.modelCatalog.syncFail${reasonCode.charAt(0).toUpperCase()}${reasonCode.slice(1).replace(/_([a-z])/g, (_: string, c: string) => c.toUpperCase())}`
-      const reasonText = t(reasonKey)
-      verifySyncResult.value = `${t('settings.openrouter.verifySyncFailed')}：${reasonText}`
+      verifySyncResult.value = `${t('settings.openrouter.verifySyncFailed')}：${result.notice ?? 'model_list_unavailable'}`
     }
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
     verifySyncLoading.value = false
   }
-}
-
-function confirmCatalogClear(message: string): boolean {
-  if (typeof window === 'undefined' || typeof window.confirm !== 'function') return false
-  return window.confirm(message)
 }
 
 async function clearCurrentCatalogCache() {
@@ -1286,22 +1272,11 @@ async function clearCurrentCatalogCache() {
     error.value = t('settings.openrouter.catalogCacheNoApiKey')
     return
   }
-  if (!confirmCatalogClear(t('settings.openrouter.catalogCacheClearCurrentConfirm'))) return
-
-  const electronAPI = (globalThis as any).electronAPI
-  if (!electronAPI?.modelCatalogClearCurrentScopedCache) {
-    error.value = t('settings.runtime.modelCatalogClearCurrentUnavailable')
-    return
-  }
-
   catalogClearLoading.value = 'current'
   try {
-    const result = await electronAPI.modelCatalogClearCurrentScopedCache()
-    if (result?.ok) {
-      savedMessage.value = t('settings.openrouter.catalogCacheClearCurrentSuccess')
-    } else {
-      error.value = `${t('settings.openrouter.catalogCacheClearFailed')}：${String(result?.errorCode ?? 'unknown_error')}`
-    }
+    // V2 fetches the provider-owned availability contract directly and keeps
+    // no legacy scoped catalog cache in the epoch workspace.
+    savedMessage.value = t('settings.openrouter.catalogCacheNotUsedV2')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -1313,22 +1288,9 @@ async function clearAllOpenRouterCatalogCaches() {
   error.value = null
   savedMessage.value = null
   verifySyncResult.value = null
-  if (!confirmCatalogClear(t('settings.openrouter.catalogCacheClearAllConfirm'))) return
-
-  const electronAPI = (globalThis as any).electronAPI
-  if (!electronAPI?.modelCatalogClearAllOpenRouterScopedCaches) {
-    error.value = t('settings.runtime.modelCatalogClearAllUnavailable')
-    return
-  }
-
   catalogClearLoading.value = 'all'
   try {
-    const result = await electronAPI.modelCatalogClearAllOpenRouterScopedCaches()
-    if (result?.ok) {
-      savedMessage.value = t('settings.openrouter.catalogCacheClearAllSuccess')
-    } else {
-      error.value = `${t('settings.openrouter.catalogCacheClearFailed')}：${String(result?.errorCode ?? 'unknown_error')}`
-    }
+    savedMessage.value = t('settings.openrouter.catalogCacheNotUsedV2')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {

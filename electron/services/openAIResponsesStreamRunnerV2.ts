@@ -11,7 +11,7 @@ import {
   isEpoch2RuntimeCredentialLease,
   type Epoch2RuntimeCredentialService,
 } from '../credentials/epoch2RuntimeCredentialService'
-import { completeOpenAIResponsesRequestV2 } from '../../src/next/generation-v2/providers/openai-responses/continuationArtifactV2'
+import { completeOpenAIResponsesProjectedRequestV2, completeOpenAIResponsesRequestV2 } from '../../src/next/generation-v2/providers/openai-responses/continuationArtifactV2'
 import {
   OpenAIResponsesStreamAssemblerV1,
   OpenAIResponsesStreamV1Error,
@@ -22,6 +22,10 @@ import {
 import { createOpenAIResponsesTerminalArtifactV1 } from '../../src/next/generation-v2/providers/openai-responses/terminalArtifactV1'
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
+import {
+  publishGenerationStreamProjectionV2,
+  type GenerationStreamProjectionSinkV2,
+} from './generationStreamProjectionV2'
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
 
@@ -114,6 +118,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
   fetchImpl?: Fetch
   nowMs?: () => number
   timeoutMs?: number
+  streamProjectionSink?: GenerationStreamProjectionSinkV2
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
@@ -153,6 +158,10 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
         context, command.preparedRequest.answerRootId, expected, next, nowMs(),
       )
     })
+    publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+      type: 'assistant_body', operationId: command.preparedRequest.operationId,
+      answerRootId: command.preparedRequest.answerRootId, content: next,
+    })
   }
 
   function finalize(
@@ -190,10 +199,15 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
         if (!terminal || !history || !isOpenAIResponsesTerminalResultV1(terminal) || terminal.terminalKind !== 'completed') {
           throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID')
         }
-        const continuation = completeOpenAIResponsesRequestV2({
-          priorArtifact: history.priorArtifact, lineageDepth: history.lineageDepth,
-          clientItems: history.clientItems, returnedItems: terminal.output,
-        })
+        const continuation = history.projectedPrefixItems === null
+          ? completeOpenAIResponsesRequestV2({
+            priorArtifact: history.priorArtifact, lineageDepth: history.lineageDepth,
+            clientItems: history.clientItems, returnedItems: terminal.output,
+          })
+          : completeOpenAIResponsesProjectedRequestV2({
+            projectedPrefixItems: history.projectedPrefixItems,
+            clientItems: history.clientItems, returnedItems: terminal.output,
+          })
         if (hasUnresolvedFunctionCall(terminal)) {
           resultState = 'awaiting_tool'
           artifactRepo.insertRequestTerminal(context, execution, terminalRequest, continuation, at)
@@ -219,11 +233,16 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
         }, at)
       }
     })
-    return Object.freeze({
+    const terminalProjection = Object.freeze({
       operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId,
       state: resultState, errorCode: terminalErrorCode, errorMessage: terminalErrorMessage,
     })
+    publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+      type: 'terminal', operationId: terminalProjection.operationId, answerRootId: terminalProjection.answerRootId,
+      state: terminalProjection.state, errorCode: terminalProjection.errorCode, errorMessage: terminalProjection.errorMessage,
+    })
+    return terminalProjection
   }
 
   async function receive(
@@ -249,7 +268,17 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
     }
     let visible = initial.body
     const accept = (events: readonly ReturnType<OpenAIResponsesTypedSseDecoderV1['push']>[number][]): void => {
+      const reasoningBefore = assembler.readReasoningSummaryText()
       for (const event of events) assembler.push(event)
+      const reasoningAfter = assembler.readReasoningSummaryText()
+      if (reasoningAfter.length > reasoningBefore.length) {
+        publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+          type: 'reasoning_detail', operationId: command.preparedRequest.operationId,
+          answerRootId: command.preparedRequest.answerRootId,
+          detail: Object.freeze({ provider: 'openai_responses', type: 'summary_text',
+            text: reasoningAfter.slice(reasoningBefore.length) }),
+        })
+      }
       const next = assembler.readVisibleText()
       if (next !== visible) {
         const previous = visible
@@ -281,8 +310,10 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
   return Object.freeze({
     run: async (command: GenerationTextCommandResultV2, signal?: AbortSignal):
       Promise<OpenAIResponsesStreamRunResultV2> => {
+      const credentialPlan = command.preparedRequest?.headersPlan.credential
       if (!isGenerationTextCommandResultV2(command) || !isPreparedProviderRequestV2(command.preparedRequest) ||
           command.preparedRequest.providerId !== 'openai_responses' || command.preparedRequest.requestSequence < 1 ||
+          credentialPlan?.kind !== 'bearer_authorization' ||
           command.preparedRequest.answerRootId !== command.execution.operation.resultAnswerRootId.value ||
           command.request.preparedBodySha256 !== command.preparedRequest.bodySha256) {
         throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
@@ -323,7 +354,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
               headers: {
                 'content-type': command.preparedRequest.headersPlan.contentType,
                 accept: command.preparedRequest.headersPlan.accept,
-                authorization: `Bearer ${lease.credential}`,
+                [credentialPlan.headerName]: `${credentialPlan.scheme} ${lease.credential}`,
               },
               body: Buffer.from(command.preparedRequest.body.copyBytes()),
               redirect: 'error', signal: scope.signal,

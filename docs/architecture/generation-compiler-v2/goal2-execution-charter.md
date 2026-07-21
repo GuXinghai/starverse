@@ -168,6 +168,12 @@ old horizontal execution pattern. The default order is:
 
 Throughput improvements must never weaken:
 
+- existing user-visible feature coverage, control reachability, information
+  density, placement or interaction hierarchy. Refactoring V2 into IPC or UI
+  does not authorize simplifying, removing, consolidating or materially
+  rearranging an existing surface merely to reduce implementation work. Any
+  exception requires a documented product or technical necessity, an explicit
+  replacement path, and focused parity evidence before the old surface changes;
 - provider-native typed semantics and official evidence;
 - encode-or-reject treatment of every explicit parameter;
 - snapshot isolation from current UI/session state;

@@ -1,6 +1,4 @@
-import { decodeBooleanAck } from '@/next/ipc/contracts/dbBridgeContracts'
 import {
-  DEFAULT_NETWORK_PROXY_SETTINGS,
   normalizeNetworkProxySettings,
   type NetworkProxySettings,
 } from '@/shared/plugin-distribution/networkProxyShared'
@@ -17,75 +15,48 @@ export type LibreOfficeProxyProbeResult = Readonly<{
   terminalDiagnostic: string
 }>
 
-type DbBridge = Readonly<{
-  invoke: (method: string, params?: unknown) => Promise<any>
-}>
+type ProxyBridge = NonNullable<Window['networkProxy']>
 
-type ElectronApi = Readonly<{
-  probeLibreOfficeSystemProxyDownloadNetwork?: () => Promise<any>
-}>
-
-function getDbBridge(): DbBridge | null {
-  const bridge = (globalThis as any).dbBridge as DbBridge | undefined
-  return bridge && typeof bridge.invoke === 'function' ? bridge : null
-}
-
-function getElectronApi(): ElectronApi | null {
-  const api = (globalThis as any).electronAPI as ElectronApi | undefined
-  return api && typeof api.probeLibreOfficeSystemProxyDownloadNetwork === 'function' ? api : null
+function requireProxyBridge(): Required<Pick<ProxyBridge, 'getSettings' | 'updateSettings'>> & ProxyBridge {
+  const bridge = globalThis.networkProxy
+  if (!bridge || typeof bridge.getSettings !== 'function' || typeof bridge.updateSettings !== 'function') {
+    throw new Error('Missing epoch-2 network proxy bridge')
+  }
+  return bridge as Required<Pick<ProxyBridge, 'getSettings' | 'updateSettings'>> & ProxyBridge
 }
 
 export async function getNetworkProxySettings(): Promise<NetworkProxySettings> {
-  const bridge = getDbBridge()
-  if (!bridge) return DEFAULT_NETWORK_PROXY_SETTINGS
-  const raw = await bridge.invoke('settings.getNetworkProxySettings')
-  return normalizeNetworkProxySettings(raw?.value)
+  const result = await requireProxyBridge().getSettings()
+  if (!result.ok) throw new Error(result.code)
+  return normalizeNetworkProxySettings(result.settings)
 }
 
 export async function setNetworkProxySettings(value: NetworkProxySettings): Promise<boolean> {
-  const bridge = getDbBridge()
-  if (!bridge) return false
-  const raw = await bridge.invoke('settings.setNetworkProxySettings', {
-    value: normalizeNetworkProxySettings(value),
-  })
-  return decodeBooleanAck('settings.setNetworkProxySettings', raw)
+  const result = await requireProxyBridge().updateSettings(normalizeNetworkProxySettings(value))
+  if (!result.ok) throw new Error(result.code)
+  return true
 }
 
 export async function probeLibreOfficeOfficialDownloadNetwork(): Promise<LibreOfficeProxyProbeResult> {
-  const bridge = getDbBridge()
-  if (!bridge) {
-    return {
-      ok: false,
-      proxyMode: DEFAULT_NETWORK_PROXY_SETTINGS.proxyMode,
-      metadataReachable: false,
-      assetFound: false,
-      headPassed: false,
-      contentLength: 'unavailable',
-      redirectHostAllowed: false,
-      rangePassed: false,
-      terminalDiagnostic: 'proxy_probe_unavailable',
-    }
+  const bridge = globalThis.generationV2?.plugins
+  if (!bridge || typeof bridge.probeLibreOfficeDownload !== 'function') {
+    return failedProbe('environment', 'proxy_probe_unavailable')
   }
-  const settings = await getNetworkProxySettings()
-  if (settings.proxyMode === 'system') {
-    const electronApi = getElectronApi()
-    if (!electronApi?.probeLibreOfficeSystemProxyDownloadNetwork) {
-      return {
-        ok: false,
-        proxyMode: 'system',
-        metadataReachable: false,
-        assetFound: false,
-        headPassed: false,
-        contentLength: 'unavailable',
-        redirectHostAllowed: false,
-        rangePassed: false,
-        terminalDiagnostic: 'electron_net_transport_blocked',
-      }
-    }
-    return normalizeProbeResult(await electronApi.probeLibreOfficeSystemProxyDownloadNetwork())
+  try {
+    return normalizeProbeResult(await bridge.probeLibreOfficeDownload())
+  } catch (error) {
+    const settings = await getNetworkProxySettings().catch(() => normalizeNetworkProxySettings(undefined))
+    return failedProbe(settings.proxyMode, error instanceof Error ? error.message : 'proxy_probe_failed')
   }
-  const raw = await bridge.invoke('enginePluginLifecycle.probeLibreOfficeOfficialDownloadNetwork')
-  return normalizeProbeResult(raw)
+}
+
+function failedProbe(
+  proxyMode: NetworkProxySettings['proxyMode'],
+  terminalDiagnostic: string,
+): LibreOfficeProxyProbeResult {
+  return Object.freeze({ ok: false, proxyMode, metadataReachable: false, assetFound: false,
+    headPassed: false, contentLength: 'unavailable', redirectHostAllowed: false, rangePassed: false,
+    terminalDiagnostic: String(terminalDiagnostic || 'proxy_probe_failed').slice(0, 120) })
 }
 
 function normalizeProbeResult(raw: any): LibreOfficeProxyProbeResult {
@@ -93,7 +64,7 @@ function normalizeProbeResult(raw: any): LibreOfficeProxyProbeResult {
   const contentLength = raw?.contentLength === 'match' || raw?.contentLength === 'mismatch'
     ? raw.contentLength
     : 'unavailable'
-  return {
+  return Object.freeze({
     ok: raw?.ok === true,
     proxyMode: settings.proxyMode,
     metadataReachable: raw?.metadataReachable === true,
@@ -103,5 +74,5 @@ function normalizeProbeResult(raw: any): LibreOfficeProxyProbeResult {
     redirectHostAllowed: raw?.redirectHostAllowed === true,
     rangePassed: raw?.rangePassed === true,
     terminalDiagnostic: String(raw?.terminalDiagnostic ?? 'proxy_probe_failed').trim().slice(0, 120),
-  }
+  })
 }

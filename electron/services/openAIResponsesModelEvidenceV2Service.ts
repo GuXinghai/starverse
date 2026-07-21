@@ -202,6 +202,7 @@ async function readCompleteBody(response: Response, signal: AbortSignal): Promis
 export function createOpenAIResponsesModelEvidenceV2Service(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
+  fetchImpl?: typeof fetch
   nowMs?: () => number
 }>): Readonly<{
   refresh(request: Readonly<{
@@ -221,6 +222,7 @@ export function createOpenAIResponsesModelEvidenceV2Service(input: Readonly<{
 }> {
   const db = input.db
   const nowMs = input.nowMs ?? Date.now
+  const fetchImpl = input.fetchImpl ?? session.defaultSession.fetch.bind(session.defaultSession)
   db.pragma('foreign_keys = ON')
   if (db.pragma('foreign_keys', { simple: true }) !== 1) {
     throw new OpenAIResponsesModelEvidenceV2ServiceError('GENERATION_V2_OPENAI_MODEL_EVIDENCE_STATE_INVALID')
@@ -345,7 +347,7 @@ export function createOpenAIResponsesModelEvidenceV2Service(input: Readonly<{
     let http: Response | undefined
     try {
       try {
-        http = await abortable(session.defaultSession.fetch(url, {
+        http = await abortable(fetchImpl(url, {
           method: 'GET', headers: Object.freeze({ Accept: 'application/json', Authorization: `Bearer ${lease.credential}` }),
           redirect: 'error', credentials: 'omit', cache: 'no-store', signal: lifecycle.signal,
         }), lifecycle.signal)

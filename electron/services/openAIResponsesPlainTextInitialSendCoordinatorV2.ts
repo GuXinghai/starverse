@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
+import { OpenAIResponsesFileDescriptorV2Repo } from '../../infra/db/repo/openAIResponsesFileDescriptorV2Repo'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
@@ -13,6 +14,7 @@ import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import { decodeOpenAIResponsesPlainTextInitialSendCommandV2, type OpenAIResponsesPlainTextInitialSendCommandV2 } from '../../src/next/generation-v2/providers/openai-responses/plainTextInitialSendCommandV2'
+import { projectOpenAIResponsesCommandAttachmentsV2 } from '../../src/next/generation-v2/providers/openai-responses/commandAttachmentsV2'
 import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createOpenAIResponsesModelEvidenceV2Service } from './openAIResponsesModelEvidenceV2Service'
 import { withVerifiedOpenAIResponsesGenerationAuthoritiesV2 } from './openAIResponsesGenerationAuthorityV2Service'
@@ -23,6 +25,8 @@ import {
   resolveGenerationToolRegistryAuthorityV2,
 } from './generationToolRegistryAuthorityV2'
 import { issueGenerationTextCommandResultV2, isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
+import { preflightOpenAIResponsesAttachmentDescriptorsV2 } from './openAIResponsesAttachmentPreflightV2'
+import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 
 export type OpenAIResponsesPlainTextInitialSendResultV2 = GenerationTextCommandResultV2
 
@@ -34,6 +38,8 @@ export function isOpenAIResponsesPlainTextInitialSendResultV2(value: unknown): v
 export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
+  fetchImpl?: typeof fetch
+  attachmentBlobStore?: Epoch2AttachmentBlobStoreV2
   nowMs?: () => number
   createGraphId?: (kind: 'question' | 'answer') => string
 }>) {
@@ -47,8 +53,9 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
+  const descriptorRepo = new OpenAIResponsesFileDescriptorV2Repo(input.db, nowMs)
   const modelEvidenceService = createOpenAIResponsesModelEvidenceV2Service({
-    db: input.db, credentialService: input.credentialService, nowMs,
+    db: input.db, credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs,
   })
   const endpointProfile = readVerifiedOpenAIResponsesEndpointProfileV2()
 
@@ -87,6 +94,13 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
       const existing = replay(command)
       if (existing) return existing
       try {
+        const attachmentDescriptors = await preflightOpenAIResponsesAttachmentDescriptorsV2({
+          db: input.db, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore, descriptorRepo,
+          credentialService: input.credentialService, fetchImpl: input.fetchImpl,
+          commandAttachments: command.commandAttachments,
+          expectedCredentialRevision: request.expectedCredentialRevision,
+          expectedCredentialScopeId: request.expectedCredentialScopeId, signal: request.signal,
+        })
         return await modelEvidenceService.withRefreshedExactModelEvidence({
           expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId,
@@ -116,7 +130,8 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
               userBody: command.userBody, createdAtMs: nowMs(),
             })
             return withSynchronousGenerationCommandFactsAuthorityV2(
-              context, configRepo, attachmentRepo, pending.conversationId.value, [], undefined,
+              context, configRepo, attachmentRepo, pending.conversationId.value,
+              projectOpenAIResponsesCommandAttachmentsV2(command.commandAttachments), undefined,
               (commandFacts) => {
                 const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
                 return withVerifiedOpenAIResponsesGenerationAuthoritiesV2({
@@ -124,7 +139,7 @@ export function createOpenAIResponsesPlainTextInitialSendCoordinatorV2(input: Re
                 use: ({ binding, capability }) => {
                   const persisted = commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2({
                     context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability,
-                    toolRegistry,
+                    toolRegistry, attachmentDescriptors,
                   })
                   graphRepo.commitInitialTurnProjection(context, pending)
                   const history = historyRepo.loadRequestHistory(context, command.operationId.value)

@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { t, tf } from '@/shared/i18n'
 import {
   CatalogQueryService,
@@ -192,7 +192,6 @@ const AUTO_SYNC_COOLDOWN_MS = 10_000
 const MANUAL_REFRESH_COOLDOWN_MS = 3_000
 const FULL_LOAD_PAGE_LIMIT = 100
 const FULL_LOAD_MAX_PAGES_PER_PROVIDER = 100
-let unsubscribeModelCatalogSynced: (() => void) | null = null
 
 const architectureModalityOptions = [
   'text->text',
@@ -1527,18 +1526,6 @@ async function runSyncProvider(
   reason: 'model_picker_opened' | 'manual_refresh' = force ? 'manual_refresh' : 'model_picker_opened',
 ) {
   await loadCatalogSyncSettings(providerKey)
-  const electronAPI = (globalThis as any).electronAPI
-  if (!electronAPI?.modelCatalogSyncNow) {
-    setProviderSyncSnapshot(providerKey, {
-      ...getProviderSyncSnapshot(providerKey),
-      status: 'failed',
-      errorCode: 'unknown_error',
-      errorMessage: 'renderer_bridge',
-      isStale: true,
-    })
-    return
-  }
-
   setProviderSyncSnapshot(providerKey, {
     ...getProviderSyncSnapshot(providerKey),
     status: 'syncing',
@@ -1547,27 +1534,11 @@ async function runSyncProvider(
   })
 
   try {
-    const result = await electronAPI.modelCatalogSyncNow({
-      providerKey,
-      force,
-      reason,
+    const result = await CatalogQueryService.query({
+      sourceProviderKey: providerKey,
+      page: { limit: 1 },
     })
-
-    if (!result) {
-      setProviderSyncSnapshot(providerKey, {
-        ...getProviderSyncSnapshot(providerKey),
-        status: 'failed',
-        errorCode: 'unknown_error',
-        errorMessage: 'null_result',
-        isStale: true,
-      })
-      return
-    }
-
-    const attempted = result.syncAttempted === true
-    const succeeded = result.ok === true
-
-    if (succeeded) {
+    if (result.status === 'synced') {
       const revision = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
       const snapshot = createProviderSyncSnapshot({
         syncState: 'ok',
@@ -1579,28 +1550,9 @@ async function runSyncProvider(
         isStale: false,
       })
       setProviderSyncSnapshot(providerKey, snapshot)
-      await handleSyncedCatalogRevision(providerKey, revision, attempted, {
+      await handleSyncedCatalogRevision(providerKey, revision, true, {
         applyImmediately: reason === 'manual_refresh',
       })
-    } else if (!attempted) {
-      // Defensive: IPC returned ok=false with syncAttempted=false.
-      // Under current contract this should not fire (cache-fresh returns ok=true).
-      // Preserve existing synced state from fetchSyncStatus.
-      const snapshot = createProviderSyncSnapshot({
-        syncState: 'ok',
-        modelCount: result.modelCount,
-        visibleModelCount: result.visibleModelCount,
-        hiddenModelCount: result.hiddenModelCount,
-        lastSyncAtMs: result.lastSyncAtMs,
-        catalogRevision: result.catalogRevision,
-        isStale: false,
-      })
-      setProviderSyncSnapshot(providerKey, snapshot)
-      setCatalogRevision(
-        latestCatalogRevisions,
-        providerKey,
-        normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs),
-      )
     } else {
       const snapshot = createProviderSyncSnapshot({
         syncState: 'error',
@@ -1636,18 +1588,9 @@ async function fetchVisibleProviderSyncStatuses() {
 }
 
 async function fetchProviderSyncStatus(providerKey: ProviderCatalogKnownProviderKey) {
-  const electronAPI = (globalThis as any).electronAPI
-  if (!electronAPI?.modelCatalogGetSyncStatus) return
-
-  try {
-    const status = await electronAPI.modelCatalogGetSyncStatus({ providerKey })
-    if (!status) return
-
-    const snapshot = createProviderSyncSnapshot(status)
-    setProviderSyncSnapshot(providerKey, snapshot)
-  } catch {
-    // keep current state
-  }
+  // Generation V2 availability is fetched directly from the fixed provider
+  // contract. It has no legacy catalog-cache status endpoint to poll.
+  void providerKey
 }
 
 function canRunManualRefresh(providerKey: ProviderCatalogKnownProviderKey): boolean {
@@ -1670,14 +1613,6 @@ function onProviderRowRefresh(providerId: RuntimeProviderKey) {
 
 function onApplyCatalogUpdate() {
   void applyLatestCatalogList()
-}
-
-async function onExternalCatalogSynced() {
-  if (!props.open) return
-  const providerKey = selectedSyncProviderKey.value
-  await loadCatalogSyncSettings(providerKey)
-  await fetchSyncStatus()
-  await handleSyncedCatalogRevision(providerKey, getProviderSyncSnapshot(providerKey).catalogRevision, true)
 }
 
 function restoreFocusAfterClose() {
@@ -1934,23 +1869,10 @@ watch(
   },
 )
 
-onMounted(() => {
-  const electronAPI = (globalThis as any).electronAPI
-  if (electronAPI && typeof electronAPI.onModelCatalogSynced === 'function') {
-    unsubscribeModelCatalogSynced = electronAPI.onModelCatalogSynced(() => {
-      void onExternalCatalogSynced()
-    })
-  }
-})
-
 onBeforeUnmount(() => {
   clearDebounceTimer()
   modelDetailSeq += 1
   endpointSeq += 1
-  if (unsubscribeModelCatalogSynced) {
-    unsubscribeModelCatalogSynced()
-    unsubscribeModelCatalogSynced = null
-  }
 })
 </script>
 

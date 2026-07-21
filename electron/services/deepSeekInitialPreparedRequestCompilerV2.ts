@@ -37,6 +37,7 @@ import {
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 import {
+  createBearerAuthorizationHeaderPlanV2,
   issuePreparedProviderRequestV2,
   type PreparedProviderRequestV2,
 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
@@ -162,8 +163,9 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
   }
   const compilation = compileDeepSeekStableChatRequestV1({
     model: binding.modelId.value,
-    priorArtifact: input.history.priorArtifact,
-    clientEntries: input.history.clientEntries,
+    ...(input.history.projectedPrefixEntries === null
+      ? { priorArtifact: input.history.priorArtifact, clientEntries: input.history.clientEntries }
+      : { replayEntries: [...input.history.projectedPrefixEntries, ...input.history.clientEntries] }),
     thinking: {
       type: nativeFields.get('thinking.type'),
       ...(nativeFields.has('reasoning_effort') ? { reasoningEffort: nativeFields.get('reasoning_effort') } : {}),
@@ -209,6 +211,7 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
     modelId: binding.modelId.value,
     effectiveEndpointId: profile.descriptor.endpointId.value,
     endpoint,
+    headersPlan: createBearerAuthorizationHeaderPlanV2(),
     body: compilation.preparedBody,
     ledger,
     capabilityRevision: capability.revision.value,

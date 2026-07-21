@@ -49,6 +49,7 @@ import type { ChatSessionConfig, ChatSessionConfigAspectRatio, ChatSessionConfig
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
+import type { OpenRouterImageEndpointSelectionClientStateV2 } from '@/next/generation-v2/renderer/openRouterImageEndpointClientV2'
 import { t, tf } from '@/shared/i18n'
 import {
   OPENROUTER_PROVIDER_ID,
@@ -105,6 +106,8 @@ const props = defineProps<{
     chatMode: 'native_rest' | 'openai_compatible'
     nativeRestPreferredEndpoint: 'chat' | 'generate'
     openAICompatiblePreferredEndpoint: 'chat_completions' | 'responses'
+    thinkingControl: 'boolean' | 'effort' | null
+    toolsSupported: boolean | null
     nativeControls: Readonly<{
       diagnosticsEnabled: boolean
       manualLoadUnloadEnabled: boolean
@@ -161,6 +164,7 @@ const props = defineProps<{
   anthropicChat?: Readonly<{
     enabled: boolean
     model: string
+    thinkingDisplay: 'provider_default' | 'summarized' | 'omitted'
     experimentalLabel: string
   }> | null
   anthropicModelAvailability?: Readonly<{
@@ -189,6 +193,9 @@ const props = defineProps<{
   modelCatalog: readonly ModelCatalogItem[]
   webSearchResolved: ResolvedSearchSettings | null
   generationParamsResolved: ResolvedGenerationParams | null
+  openRouterImageEndpointSelection?: OpenRouterImageEndpointSelectionClientStateV2 | null
+  openRouterImageEndpointSelectionLoading?: boolean
+  openRouterImageEndpointSelectionError?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -203,6 +210,11 @@ const emit = defineEmits<{
   (e: 'updateImageGenerationResolution', value: ChatSessionConfigImageResolution): void
   (e: 'updateImageGenerationAspectRatio', value: ChatSessionConfigAspectRatio): void
   (e: 'updateImageGeneration', value: ImageGenerationUserConfig): void
+  (e: 'refreshOpenRouterImageEndpoints'): void
+  (e: 'selectOpenRouterImageEndpoint', providerTag: string): void
+  (e: 'updateOpenRouterImageEndpointFreshness', value: Readonly<{
+    refreshAfterMs: number; hardExpireAfterMs: number; expectedRevision: number
+  }>): void
   (e: 'updateOpenRouterChatEnabled', enabled: boolean): void
   (e: 'updateLMStudioChatEnabled', enabled: boolean): void
   (e: 'updateLMStudioEndpointUrl', value: string): void
@@ -219,6 +231,7 @@ const emit = defineEmits<{
   (e: 'updateOllamaChatMode', mode: 'native_rest' | 'openai_compatible'): void
   (e: 'updateOllamaNativeRestPreferredEndpoint', endpoint: 'chat' | 'generate'): void
   (e: 'updateOllamaOpenAICompatiblePreferredEndpoint', endpoint: 'chat_completions' | 'responses'): void
+  (e: 'updateOllamaProfileCapability', key: 'thinkingControl' | 'toolsSupported', value: 'boolean' | 'effort' | boolean): void
   (
     e: 'updateOllamaNativeControl',
     key: 'diagnosticsEnabled' | 'manualLoadUnloadEnabled' | 'autoLoadBeforeSendEnabled' | 'autoUnloadAfterSendEnabled' | 'autoUnloadAfterIdleEnabled',
@@ -235,6 +248,7 @@ const emit = defineEmits<{
   (e: 'clearGoogleAIStudioChat'): void
   (e: 'refreshGoogleAIStudioModels'): void
   (e: 'updateAnthropicChatEnabled', enabled: boolean): void
+  (e: 'updateAnthropicThinkingDisplay', value: 'provider_default' | 'summarized' | 'omitted'): void
   (e: 'clearAnthropicChat'): void
   (e: 'refreshAnthropicModels'): void
   (e: 'updateDeepSeekChatEnabled', enabled: boolean): void
@@ -264,6 +278,30 @@ const openRouterModelValue = computed(() => (
 ))
 const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === 'google_ai_studio')
 const isOpenAIResponsesSelected = computed(() => selectedProviderId.value === OPENAI_RESPONSES_PROVIDER_KEY)
+const showOpenRouterImageEndpointControls = computed(() =>
+  selectedProviderId.value === OPENROUTER_PROVIDER_ID && props.sessionConfig.imageGeneration.enabled)
+const openRouterImageEndpointState = computed(() =>
+  props.openRouterImageEndpointSelection?.modelId === selectedModelId.value
+    ? props.openRouterImageEndpointSelection : null)
+const openRouterImageRefreshPresets = Object.freeze([900000, 3600000, 21600000, 86400000, 604800000])
+const openRouterImageHardExpiryPresets = Object.freeze([3600000, 21600000, 86400000, 604800000, 2592000000])
+function formatFreshnessDuration(value: number): string {
+  const hour = 60 * 60 * 1000
+  const day = 24 * hour
+  return value % day === 0 ? `${value / day}d` : value % hour === 0 ? `${value / hour}h` : `${value / 60000}m`
+}
+function updateOpenRouterImageFreshness(key: 'refreshAfterMs' | 'hardExpireAfterMs', event: Event): void {
+  const state = openRouterImageEndpointState.value
+  const value = Number((event.target as HTMLSelectElement).value)
+  if (!state || !Number.isSafeInteger(value)) return
+  const pair = { ...state.settings, [key]: value }
+  if (pair.refreshAfterMs >= pair.hardExpireAfterMs) return
+  emit('updateOpenRouterImageEndpointFreshness', {
+    refreshAfterMs: pair.refreshAfterMs,
+    hardExpireAfterMs: pair.hardExpireAfterMs,
+    expectedRevision: state.settings.revision,
+  })
+}
 const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModelId.value))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModelId.value))
 const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModelId.value }))
@@ -290,7 +328,8 @@ const googleThinkingConfig = computed(() => {
   }
 })
 const googleThinkingEnabled = computed(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana' &&
+    googleImageGenerationPolicy.value.kind !== 'interactions_image_v1beta'
   if (googleThinkingCapability.value.kind === 'budget') {
     return props.sessionConfig.generationParams.detail?.thinkingBudget?.mode === 'custom'
   }
@@ -448,7 +487,7 @@ const lmStudioSelectedInstanceId = computed(() => {
   return Array.isArray(model?.loadedInstances) && model.loadedInstances[0] ? String(model.loadedInstances[0]) : lmStudioChat.value.model.trim()
 })
 const lmStudioBridgeAvailable = computed(() => {
-  const bridge = (globalThis as any).lmStudioProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.lmStudio
   return !!bridge && typeof bridge.probe === 'function' && typeof bridge.loadModel === 'function' && typeof bridge.unloadModel === 'function'
 })
 function formatLMStudioAvailability(available: boolean): string {
@@ -498,7 +537,7 @@ const ollamaRunningModels = computed(() => {
   return result?.ok && result.diagnostics?.runningModels?.ok ? result.diagnostics.runningModels.models as any[] : []
 })
 const ollamaBridgeAvailable = computed(() => {
-  const bridge = (globalThis as any).ollamaProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.ollama
   return !!bridge && typeof bridge.probe === 'function' && typeof bridge.loadModel === 'function' && typeof bridge.unloadModel === 'function'
 })
 function formatOllamaAvailability(available: boolean): string {
@@ -748,7 +787,7 @@ function formatLMStudioModels(models: any[]): string {
 }
 
 async function probeLMStudio(options: Readonly<{ clearAction?: boolean }> = {}) {
-  const bridge = (globalThis as any).lmStudioProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.lmStudio
   if (!lmStudioBridgeAvailable.value) {
     lmStudioActionResult.value = t('settings.lmStudio.bridgeUnavailable')
     return
@@ -771,7 +810,7 @@ async function probeLMStudio(options: Readonly<{ clearAction?: boolean }> = {}) 
 }
 
 async function loadLMStudioSelectedModel() {
-  const bridge = (globalThis as any).lmStudioProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.lmStudio
   const model = selectedModelFor('lm_studio').trim()
   if (!lmStudioBridgeAvailable.value || !model) return
   lmStudioActionLoading.value = true
@@ -795,7 +834,7 @@ async function loadLMStudioSelectedModel() {
 }
 
 async function unloadLMStudioSelectedModel() {
-  const bridge = (globalThis as any).lmStudioProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.lmStudio
   const instanceId = lmStudioSelectedInstanceId.value.trim()
   if (!lmStudioBridgeAvailable.value || !instanceId) return
   lmStudioActionLoading.value = true
@@ -823,7 +862,7 @@ function formatOllamaModels(models: any[]): string {
 }
 
 async function probeOllama(options: Readonly<{ clearAction?: boolean }> = {}) {
-  const bridge = (globalThis as any).ollamaProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.ollama
   if (!ollamaBridgeAvailable.value) {
     ollamaActionResult.value = t('settings.ollama.bridgeUnavailable')
     return
@@ -846,7 +885,7 @@ async function probeOllama(options: Readonly<{ clearAction?: boolean }> = {}) {
 }
 
 async function loadOllamaSelectedModel() {
-  const bridge = (globalThis as any).ollamaProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.ollama
   const model = selectedModelFor('ollama_local').trim()
   if (!ollamaBridgeAvailable.value || !model) return
   ollamaActionLoading.value = true
@@ -870,7 +909,7 @@ async function loadOllamaSelectedModel() {
 }
 
 async function unloadOllamaSelectedModel() {
-  const bridge = (globalThis as any).ollamaProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.ollama
   const model = selectedModelFor('ollama_local').trim()
   if (!ollamaBridgeAvailable.value || !model) return
   ollamaActionLoading.value = true
@@ -1273,6 +1312,31 @@ function chipClass(active: boolean): string {
           <div>{{ tf('chat.console.provider.anthropic.status', { status: anthropicChatStatusLabel }) }}</div>
           <div>{{ tf('chat.console.provider.anthropic.selectedModel', { model: selectedModelFor('anthropic_messages') || t('chat.console.status.none') }) }}</div>
           <div>{{ t('chat.console.provider.anthropic.credentialBridge') }}</div>
+        </div>
+        <div class="space-y-2 rounded border border-rose-100 bg-white px-2 py-2 text-[11px] text-rose-900" data-testid="anthropic-thinking-display-controls">
+          <div>
+            <div class="font-semibold">{{ t('chat.console.provider.anthropic.thinkingDisplay.title') }}</div>
+            <div class="text-rose-700">
+              {{ props.sessionConfig.reasoning.enabled
+                ? t('chat.console.provider.anthropic.thinkingDisplay.description')
+                : t('chat.console.provider.anthropic.thinkingDisplay.disabledDescription') }}
+            </div>
+          </div>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <button
+              v-for="option in (['provider_default', 'summarized', 'omitted'] as const)"
+              :key="option"
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-left text-[11px] disabled:cursor-not-allowed disabled:opacity-50"
+              :class="chipClass(anthropicChat.thinkingDisplay === option)"
+              :disabled="disabled || !anthropicChat.enabled || !props.sessionConfig.reasoning.enabled"
+              :data-testid="`anthropic-thinking-display-${option}`"
+              @click="emit('updateAnthropicThinkingDisplay', option)"
+            >
+              <span class="block font-semibold">{{ t(`chat.console.provider.anthropic.thinkingDisplay.options.${option}.label`) }}</span>
+              <span class="mt-0.5 block opacity-80">{{ t(`chat.console.provider.anthropic.thinkingDisplay.options.${option}.description`) }}</span>
+            </button>
+          </div>
         </div>
         <div class="space-y-2 rounded border border-rose-100 bg-white px-2 py-2 text-[11px] text-rose-900" data-testid="anthropic-models-diagnostics">
           <div class="flex flex-wrap items-center justify-between gap-2">
@@ -1920,6 +1984,36 @@ function chipClass(active: boolean): string {
               /v1/responses
             </button>
           </div>
+          <div class="border-t border-green-100 pt-2">
+            <div class="mb-1 font-semibold">V2 model contract · thinking wire</div>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
+                :class="chipClass(ollamaChat.thinkingControl === 'boolean')"
+                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+                data-testid="ollama-profile-thinking-boolean"
+                @click="emit('updateOllamaProfileCapability', 'thinkingControl', 'boolean')">think: boolean</button>
+              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
+                :class="chipClass(ollamaChat.thinkingControl === 'effort')"
+                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+                data-testid="ollama-profile-thinking-effort"
+                @click="emit('updateOllamaProfileCapability', 'thinkingControl', 'effort')">think: low / medium / high</button>
+            </div>
+          </div>
+          <div>
+            <div class="mb-1 font-semibold">V2 model contract · native tools</div>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
+                :class="chipClass(ollamaChat.toolsSupported === true)"
+                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+                data-testid="ollama-profile-tools-supported"
+                @click="emit('updateOllamaProfileCapability', 'toolsSupported', true)">tools supported</button>
+              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
+                :class="chipClass(ollamaChat.toolsSupported === false)"
+                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+                data-testid="ollama-profile-tools-unsupported"
+                @click="emit('updateOllamaProfileCapability', 'toolsSupported', false)">tools unsupported</button>
+            </div>
+          </div>
         </div>
         <div class="grid grid-cols-1 gap-2 rounded border border-green-100 bg-white px-2 py-2 text-[11px] text-green-900 md:grid-cols-2">
           <label class="flex items-center gap-2">
@@ -2254,7 +2348,7 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.reasoning.geminiImageProviderManaged') }}
           </div>
         </div>
-        <div v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.kind !== 'legacy_nano_banana'" class="space-y-2" data-testid="session-google-thinking-provider-managed-controls">
+        <div v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.kind !== 'legacy_nano_banana' && googleImageGenerationPolicy.kind !== 'interactions_image_v1beta'" class="space-y-2" data-testid="session-google-thinking-provider-managed-controls">
           <label v-if="googleImageGenerationPolicy.supportsThoughtSummaries" class="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
@@ -2406,6 +2500,89 @@ function chipClass(active: boolean): string {
           :lock-image-size-control="lockImageGenerationSizeControl"
           @update:model-value="emit('updateImageGeneration', { ...$event, enabled: effectiveImageGenerationEnabled })"
         />
+        <div
+          v-if="showOpenRouterImageEndpointControls"
+          class="space-y-3 rounded-md border border-gray-200 bg-white p-3"
+          data-testid="openrouter-image-endpoint-controls"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="text-sm font-medium text-gray-800">{{ t('chat.console.imageEndpoint.title') }}</div>
+              <div class="text-xs text-gray-500">{{ t('chat.console.imageEndpoint.description') }}</div>
+            </div>
+            <button
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="disabled || props.openRouterImageEndpointSelectionLoading"
+              data-testid="openrouter-image-endpoint-refresh"
+              @click="emit('refreshOpenRouterImageEndpoints')"
+            >
+              {{ props.openRouterImageEndpointSelectionLoading ? t('chat.console.imageEndpoint.loading') : t('chat.console.imageEndpoint.refresh') }}
+            </button>
+          </div>
+          <div v-if="props.openRouterImageEndpointSelectionError" class="rounded bg-red-50 px-2 py-1.5 text-xs text-red-700">
+            {{ props.openRouterImageEndpointSelectionError }}
+          </div>
+          <div v-if="!openRouterImageEndpointState" class="text-xs text-gray-500">
+            {{ t('chat.console.imageEndpoint.loadHint') }}
+          </div>
+          <template v-else>
+            <div class="space-y-2">
+              <button
+                v-for="candidate in openRouterImageEndpointState.candidates"
+                :key="candidate.providerTag"
+                type="button"
+                class="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm"
+                :class="candidate.bound ? 'border-blue-500 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'"
+                :disabled="disabled || props.openRouterImageEndpointSelectionLoading || !candidate.eligible"
+                :data-testid="`openrouter-image-endpoint-${candidate.providerTag}`"
+                @click="emit('selectOpenRouterImageEndpoint', candidate.providerTag)"
+              >
+                <span class="min-w-0">
+                  <span class="block truncate font-medium">{{ candidate.providerName }}</span>
+                  <code class="block truncate text-[11px] opacity-75">{{ candidate.providerTag }}</code>
+                </span>
+                <span class="shrink-0 text-xs">
+                  {{ candidate.bound ? t('chat.console.imageEndpoint.bound') : candidate.eligible ? t('chat.console.imageEndpoint.select') : t('chat.console.imageEndpoint.unsupported') }}
+                </span>
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
+              <label class="space-y-1 text-xs text-gray-600">
+                <span>{{ t('chat.console.imageEndpoint.refreshAfter') }}</span>
+                <select
+                  class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800"
+                  :value="openRouterImageEndpointState.settings.refreshAfterMs"
+                  :disabled="disabled || props.openRouterImageEndpointSelectionLoading"
+                  @change="updateOpenRouterImageFreshness('refreshAfterMs', $event)"
+                >
+                  <option
+                    v-for="value in openRouterImageRefreshPresets"
+                    :key="value"
+                    :value="value"
+                    :disabled="value >= openRouterImageEndpointState.settings.hardExpireAfterMs"
+                  >{{ formatFreshnessDuration(value) }}</option>
+                </select>
+              </label>
+              <label class="space-y-1 text-xs text-gray-600">
+                <span>{{ t('chat.console.imageEndpoint.hardExpireAfter') }}</span>
+                <select
+                  class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800"
+                  :value="openRouterImageEndpointState.settings.hardExpireAfterMs"
+                  :disabled="disabled || props.openRouterImageEndpointSelectionLoading"
+                  @change="updateOpenRouterImageFreshness('hardExpireAfterMs', $event)"
+                >
+                  <option
+                    v-for="value in openRouterImageHardExpiryPresets"
+                    :key="value"
+                    :value="value"
+                    :disabled="value <= openRouterImageEndpointState.settings.refreshAfterMs"
+                  >{{ formatFreshnessDuration(value) }}</option>
+                </select>
+              </label>
+            </div>
+          </template>
+        </div>
       </section>
 
       <section class="rounded-lg border border-gray-200 bg-gray-50/70 p-3">

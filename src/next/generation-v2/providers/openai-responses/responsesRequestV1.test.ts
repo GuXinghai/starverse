@@ -62,6 +62,40 @@ describe('OpenAI Responses V1 exact-body compiler', () => {
     ])
   })
 
+  it('accepts an explicit selected-turn replay without manufacturing a continuation artifact', () => {
+    const replayItems = [
+      user('first'),
+      { id: 'rs_1', type: 'reasoning', status: 'completed', summary: [], encrypted_content: 'encrypted' },
+      { id: 'msg_1', type: 'message', role: 'assistant', status: 'completed', content: [{ type: 'output_text', text: 'one', annotations: [] }] },
+      user('third'),
+    ]
+    const result = compileOpenAIResponsesRequestV1({ model: 'gpt-5.4', replayItems })
+    expect(result.nativeRequest.input).toEqual(replayItems)
+    expect(result.nativeRequest).not.toHaveProperty('previous_response_id')
+    expect(() => compileOpenAIResponsesRequestV1({
+      model: 'gpt-5.4', replayItems, priorArtifact: null, clientItems: [user('ignored')],
+    })).toThrow('GENERATION_V2_OPENAI_REQUEST_INVALID_SHAPE')
+  })
+
+  it('encodes a persisted OpenAI Files identifier as input_file without a data URL fallback', () => {
+    const result = compileOpenAIResponsesRequestV1({
+      model: 'gpt-5.6-sol', priorArtifact: null,
+      clientItems: [{
+        role: 'user', content: [
+          { type: 'input_text', text: 'summarize the attachment' },
+          { type: 'input_file', file_id: 'file_abc123' },
+        ],
+      }],
+    })
+    expect(result.nativeRequest.input).toEqual([{
+      role: 'user', content: [
+        { type: 'input_text', text: 'summarize the attachment' },
+        { type: 'input_file', file_id: 'file_abc123' },
+      ],
+    }])
+    expect(result.preparedBody.copyUtf8Text()).not.toContain('data:')
+  })
+
   it('encodes the maximum reasoning effort without aliasing it', () => {
     const result = compileOpenAIResponsesRequestV1({
       model: 'gpt-5.6-sol', priorArtifact: null, clientItems: [user('x')],

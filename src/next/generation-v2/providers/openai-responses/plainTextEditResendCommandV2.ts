@@ -4,6 +4,8 @@ import {
   type ConversationGraphV2Identity as GraphIdentity,
 } from '../../domain/conversationGraphV2'
 import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../domain/identityV2'
+import type { AttachmentIntentV2 } from '../../domain/generationIntentV2'
+import { decodeOpenAIResponsesCommandAttachmentsV2, projectOpenAIResponsesCommandAttachmentsV2 } from './commandAttachmentsV2'
 
 const MAX_COMMAND_JSON_BYTES = 21 * 1024 * 1024
 const MAX_BODY_BYTES = 20 * 1024 * 1024
@@ -28,7 +30,7 @@ export type OpenAIResponsesPlainTextEditResendCommandV2 = Readonly<{
   providerId: Identity<'provider_id'>
   endpointProfileId: Identity<'endpoint_profile_id'>
   modelId: Identity<'model_id'>
-  commandAttachments: readonly []
+  commandAttachments: readonly AttachmentIntentV2[]
   canonicalJson: string
   requestFingerprint: string
 }>
@@ -67,27 +69,28 @@ export function decodeOpenAIResponsesPlainTextEditResendCommandV2(
     const userBody = read('userBody')
     if (userBody.trim().length === 0 || new TextEncoder().encode(userBody).byteLength > MAX_BODY_BYTES) invalid()
     const attachments = descriptors.commandAttachments.value
-    if (!Array.isArray(attachments) || attachments.length !== 0 || Reflect.ownKeys(attachments).length !== 1) invalid()
+    if (!Array.isArray(attachments)) invalid()
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
     const branchId = ConversationGraphV2Identity.create('branch_id', read('branchId'))
     const sourceQuestionId = ConversationGraphV2Identity.create('question_id', read('sourceQuestionId'))
     const sourceAnswerRootId = ConversationGraphV2Identity.create('answer_root_id', read('sourceAnswerRootId'))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', read('expectedHeadMessageId'))
     const modelId = GenerationV2Identity.create('model_id', read('modelId'))
+    const commandAttachments = decodeOpenAIResponsesCommandAttachmentsV2(attachments)
     const projection = Object.freeze({
       schemaVersion: 1 as const, kind: 'openai_responses_plain_text_edit_resend' as const,
       operationId: operationId.value, mode, branchId: branchId.value,
       sourceQuestionId: sourceQuestionId.value, sourceAnswerRootId: sourceAnswerRootId.value,
       expectedHeadMessageId: expectedHeadMessageId.value, userBody,
       providerId: 'openai_responses', endpointProfileId: 'openai-api-v1', modelId: modelId.value,
-      commandAttachments: Object.freeze([]),
+      commandAttachments: projectOpenAIResponsesCommandAttachmentsV2(commandAttachments),
     })
     const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_JSON_BYTES)
     const command = Object.freeze({
       ...projection, operationId, branchId, sourceQuestionId, sourceAnswerRootId, expectedHeadMessageId,
       providerId: GenerationV2Identity.create('provider_id', 'openai_responses'),
       endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', 'openai-api-v1'),
-      modelId, commandAttachments: Object.freeze([]) as readonly [], canonicalJson,
+      modelId, commandAttachments, canonicalJson,
       requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)),
     })
     commands.add(command)

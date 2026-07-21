@@ -39,6 +39,7 @@
       },
       "editingQuestion": "正在编辑问题",
       "linkOnly": "仅链接",
+      "urlReference": "URL 引用",
       "linkWithLocalCopy": "链接 + 本地副本",
       "imageAlt": "图片-{index}",
       "imagePreviewAlt": "预览",
@@ -110,6 +111,18 @@
         "none": "无",
         "unknown": "未知",
         "source": "来源 {source}"
+      },
+      "imageEndpoint": {
+        "title": "OpenRouter 图像端点",
+        "description": "端点由您选择，并以禁止回退的方式固定。",
+        "loading": "正在加载...",
+        "refresh": "加载端点",
+        "loadHint": "加载端点描述后可查看或更改当前绑定。",
+        "bound": "已绑定",
+        "select": "选择",
+        "unsupported": "不支持当前参数",
+        "refreshAfter": "刷新阈值",
+        "hardExpireAfter": "硬过期阈值"
       },
       "runtime": {
         "noProviderSelected": "尚未选择运行时提供方",
@@ -190,12 +203,31 @@
         "anthropic": {
           "title": "Anthropic Messages 聊天",
           "experimentalLabel": "实验性 · Anthropic Messages 纯文本 · 非 OpenRouter",
-          "warning": "原生 Anthropic Messages API 纯文本流式输出。附件、联网、工具、图像生成、reasoning/thinking 和签名均已禁用。",
+          "warning": "原生 Anthropic Messages API 流式输出，支持模型约束的 thinking、原生工具历史及保留签名的续接；不受支持的显式控件会在发送前拒绝。",
           "status": "实验性 Anthropic Messages 聊天当前为{status}。",
           "selectedModel": "已选 Claude 模型：{model}",
           "credentialBridge": "Anthropic 聊天使用主进程凭据桥，不会在此控制台暴露 API Key。",
           "sourceTitle": "Anthropic 官方模型来源",
           "sourceName": "Anthropic",
+          "thinkingDisplay": {
+            "title": "思考内容显示",
+            "description": "该值进入生成快照，仅影响之后的新生成命令。",
+            "disabledDescription": "启用推理后可配置 Anthropic 如何返回可见思考内容。",
+            "options": {
+              "provider_default": {
+                "label": "供应商默认",
+                "description": "省略 thinking.display，遵循所选模型的默认行为。"
+              },
+              "summarized": {
+                "label": "显示思考摘要",
+                "description": "返回可展示的推理摘要。"
+              },
+              "omitted": {
+                "label": "隐藏思考内容",
+                "description": "不传输可见思考；推理仍会执行并计费。"
+              }
+            }
+          },
           "disable": "停用 Anthropic Messages 聊天",
           "clear": "清除 Anthropic Messages 聊天设置"
         },

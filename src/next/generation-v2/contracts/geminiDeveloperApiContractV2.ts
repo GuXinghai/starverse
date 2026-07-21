@@ -1,6 +1,7 @@
 export type GeminiDeveloperApiSurfaceIdV2 =
   | 'gemini-generate-content-v1beta'
   | 'gemini-interactions-v1beta'
+  | 'gemini-models-v1beta'
 
 export type GeminiDeveloperApiSurfaceDefinitionV2 = Readonly<
   | {
@@ -23,8 +24,22 @@ export type GeminiDeveloperApiSurfaceDefinitionV2 = Readonly<
       field: 'stream'
       requiredValue: true
       responseProtocol: 'sse'
+      doneSentinel: '[DONE]'
+    }>
+    statePolicy: Readonly<{
+      store: false
+      previousInteractionId: 'forbidden'
+      continuation: 'client_managed_full_native_steps'
     }>
     continuationFamily: 'interaction_id_and_native_steps'
+  }
+  | {
+    surfaceId: 'gemini-models-v1beta'
+    codecKind: 'gemini_models_v1beta'
+    method: 'GET'
+    relativePathTemplate: '/models'
+    fixedQuery: Readonly<Record<never, never>>
+    purpose: 'credential_scoped_model_visibility_only'
   }
 >
 
@@ -49,6 +64,11 @@ export type GeminiDeveloperApiRegistrySurfaceV2 = Readonly<
   }> & GeminiDeveloperApiRegistrySurfaceCommonV2 & {
     kind: 'gemini_interactions'
   })
+  | (Extract<GeminiDeveloperApiSurfaceDefinitionV2, {
+    surfaceId: 'gemini-models-v1beta'
+  }> & GeminiDeveloperApiRegistrySurfaceCommonV2 & {
+    kind: 'gemini_models'
+  })
 >
 
 export type GeminiDeveloperApiContractV2 = Readonly<{
@@ -65,8 +85,8 @@ export type GeminiDeveloperApiContractV2 = Readonly<{
   }>
   surfaces: readonly GeminiDeveloperApiSurfaceDefinitionV2[]
   evidence: Readonly<{
-    verifiedAt: '2026-07-15'
-    interactionsOpenApiSha256: '5d62de8f9fe06bc7a4e595bef257c8909502922f1691eee179051b7a2ed84690'
+    verifiedAt: '2026-07-18'
+    interactionsOpenApiSha256: '8db3dc884fb96ae2fdeb8872e1666fae5bcde2e46fd03dd6878ad1481e403151'
     provenanceUrls: readonly string[]
   }>
 }>
@@ -102,8 +122,23 @@ const interactionsSurface = Object.freeze({
     field: 'stream',
     requiredValue: true,
     responseProtocol: 'sse',
+    doneSentinel: '[DONE]',
+  }),
+  statePolicy: Object.freeze({
+    store: false,
+    previousInteractionId: 'forbidden',
+    continuation: 'client_managed_full_native_steps',
   }),
   continuationFamily: 'interaction_id_and_native_steps',
+} as const)
+
+const modelsSurface = Object.freeze({
+  surfaceId: 'gemini-models-v1beta',
+  codecKind: 'gemini_models_v1beta',
+  method: 'GET',
+  relativePathTemplate: '/models',
+  fixedQuery: Object.freeze({}),
+  purpose: 'credential_scoped_model_visibility_only',
 } as const)
 
 const contract = Object.freeze({
@@ -115,10 +150,10 @@ const contract = Object.freeze({
   apiOrigin: 'https://generativelanguage.googleapis.com',
   apiVersion: 'v1beta',
   auth: Object.freeze({ kind: 'header', name: 'x-goog-api-key' }),
-  surfaces: Object.freeze([generateContentSurface, interactionsSurface]),
+  surfaces: Object.freeze([generateContentSurface, interactionsSurface, modelsSurface]),
   evidence: Object.freeze({
-    verifiedAt: '2026-07-15',
-    interactionsOpenApiSha256: '5d62de8f9fe06bc7a4e595bef257c8909502922f1691eee179051b7a2ed84690',
+    verifiedAt: '2026-07-18',
+    interactionsOpenApiSha256: '8db3dc884fb96ae2fdeb8872e1666fae5bcde2e46fd03dd6878ad1481e403151',
     provenanceUrls: Object.freeze([
       'https://ai.google.dev/api/generate-content',
       'https://ai.google.dev/api/interactions-api',
@@ -145,6 +180,8 @@ function createRegistrySurface(
       return Object.freeze({ ...common, ...surface, kind: 'gemini_generate_content' })
     case 'gemini-interactions-v1beta':
       return Object.freeze({ ...common, ...surface, kind: 'gemini_interactions' })
+    case 'gemini-models-v1beta':
+      return Object.freeze({ ...common, ...surface, kind: 'gemini_models' })
   }
 }
 

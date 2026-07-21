@@ -50,13 +50,23 @@ describe('OpenAI Responses V1 native replay items', () => {
     expect(Object.isFrozen((decoded[1] as any).content[0].annotations)).toBe(true)
   })
 
-  it('accepts only text user input and string function outputs on the initial executable surface', () => {
+  it('preserves text and persisted file-ID user input with string function outputs', () => {
     const client = decodeOpenAIResponsesClientItemsV1([
-      { role: 'user', content: [{ type: 'input_text', text: 'hello' }] },
+      {
+        role: 'user', content: [
+          { type: 'input_text', text: 'hello' },
+          { type: 'input_file', file_id: 'file_abc123' },
+        ],
+      },
       { type: 'function_call_output', call_id: 'call_1', output: 'sunny', status: 'completed' },
     ])
     expect(client).toEqual([
-      { role: 'user', content: [{ type: 'input_text', text: 'hello' }] },
+      {
+        role: 'user', content: [
+          { type: 'input_text', text: 'hello' },
+          { type: 'input_file', file_id: 'file_abc123' },
+        ],
+      },
       { type: 'function_call_output', call_id: 'call_1', output: 'sunny', status: 'completed' },
     ])
     expect(() => decodeOpenAIResponsesClientItemsV1(returnedItems)).toThrow(
@@ -80,6 +90,9 @@ describe('OpenAI Responses V1 native replay items', () => {
     }])).toThrow('GENERATION_V2_OPENAI_NATIVE_ITEM_UNKNOWN_TYPE')
     expect(() => decodeOpenAIResponsesClientItemsV1([{
       type: 'function_call_output', call_id: 'call_1', output: [{ type: 'input_text', text: 'not-yet-supported' }],
+    }])).toThrow('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
+    expect(() => decodeOpenAIResponsesClientItemsV1([{
+      role: 'user', content: [{ type: 'input_file', file_id: ' file_abc123' }],
     }])).toThrow('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
   })
 

@@ -25,7 +25,13 @@ export function projectGenerationIntentLayerV2(intent: GenerationIntentLayerV2):
   if (intent.web !== undefined) {
     projection.web = intent.web.mode === 'disabled'
       ? { mode: 'disabled' }
-      : { mode: 'provider_search', types: [...intent.web.types] }
+      : compact({
+          ...intent.web,
+          types: [...intent.web.types],
+          userLocation: intent.web.userLocation ? { ...intent.web.userLocation } : undefined,
+          allowedDomains: intent.web.allowedDomains ? [...intent.web.allowedDomains] : undefined,
+          excludedDomains: intent.web.excludedDomains ? [...intent.web.excludedDomains] : undefined,
+        })
   }
   if (intent.image !== undefined) {
     projection.image = intent.image.mode === 'disabled' ? { mode: 'disabled' } : compact({
@@ -49,9 +55,21 @@ export function projectGenerationIntentLayerV2(intent: GenerationIntentLayerV2):
   }
   if (intent.attachments !== undefined) {
     projection.attachments = intent.attachments.map((attachment) => ({
-      assetId: readGenerationV2Identity(attachment.assetId, 'asset_id'),
-      assetRevisionId: readGenerationV2Identity(attachment.assetRevisionId, 'asset_revision_id'),
-      assetSha256: readGenerationV2Digest(attachment.assetSha256, 'asset_sha256'),
+      kind: attachment.kind,
+      ...(attachment.kind === 'managed_file' ? {
+        assetId: readGenerationV2Identity(attachment.assetId, 'asset_id'),
+        assetRevisionId: readGenerationV2Identity(attachment.assetRevisionId, 'asset_revision_id'),
+        assetSha256: readGenerationV2Digest(attachment.assetSha256, 'asset_sha256'),
+      } : {
+        referenceId: readGenerationV2Identity(attachment.referenceId, 'url_reference_id'),
+        referenceRevision: readGenerationV2Identity(attachment.referenceRevision, 'url_reference_revision'),
+        originalUrl: attachment.originalUrl,
+        urlDigest: readGenerationV2Digest(attachment.urlDigest, 'url_digest'),
+        mediaKind: attachment.mediaKind,
+        ...(attachment.declaredMediaType === undefined ? {} : { declaredMediaType: attachment.declaredMediaType }),
+        capturedAtMs: attachment.capturedAtMs,
+        provenance: attachment.provenance,
+      }),
       include: attachment.include,
       sendAs: attachment.sendAs,
       conversion: attachment.conversion,

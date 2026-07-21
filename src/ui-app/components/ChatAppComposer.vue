@@ -389,7 +389,8 @@ const googleThinkingConfig = computed(() => {
   }
 })
 const googleThinkingEnabled = computed(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana' &&
+    googleImageGenerationPolicy.value.kind !== 'interactions_image_v1beta'
   if (googleThinkingCapability.value.kind === 'budget') {
     return resolvedSessionConfig.value.generationParams.detail?.thinkingBudget?.mode === 'custom'
   }
@@ -870,6 +871,7 @@ async function loadCompatibleConfigurationSources() {
     compatibleConfigurationSources.value = await Promise.all(providers.filter((details) => details.provider.status === 'active').map(async (details) => {
       const endpoint = details.endpointRevisions[0]
       const responseProfile = details.activeConfiguration?.responseProfile as any
+      const requestProfile = (details.activeConfiguration as any)?.requestBundle?.profile?.config
       if (!endpoint || !responseProfile?.reasoningMappingId || !responseProfile?.inlinePolicyId) return { providerInstanceId: details.provider.providerInstanceId, providerName: details.provider.displayName, models: [] }
       const result = await catalog.query({ providerInstanceId: details.provider.providerInstanceId, includeStale: true, limit: 200 })
       return {
@@ -894,6 +896,7 @@ async function loadCompatibleConfigurationSources() {
             reasoningMappingVersion: responseProfile.reasoningMappingVersion,
             inlinePolicyId: responseProfile.inlinePolicyId,
             inlinePolicyVersion: responseProfile.inlinePolicyVersion,
+            extraBody: requestProfile?.defaultExtraBody ?? null,
           }),
         })),
       }
@@ -1233,7 +1236,7 @@ onBeforeUnmount(() => {
             :label="t('composer.capabilities.reasoning')"
             :active-label="googleThinkingActiveLabel"
             kind="reasoning"
-            :disabled="disabled || (isGoogleImageGenerationModel && googleImageGenerationPolicy.kind === 'legacy_nano_banana') || (!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported')"
+            :disabled="disabled || (isGoogleImageGenerationModel && (googleImageGenerationPolicy.kind === 'legacy_nano_banana' || googleImageGenerationPolicy.kind === 'interactions_image_v1beta')) || (!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported')"
             data-test-id="google-thinking-chip"
             @toggle="onGoogleThinkingToggle"
           >

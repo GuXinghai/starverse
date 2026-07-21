@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue'
-import { rebuildSearchIndex, runSearchQuery } from '@/next/search/searchClient'
+import { rebuildGenerationV2SearchIndex, runGenerationV2SearchQuery } from '@/next/generation-v2/renderer/generationV2SearchClient'
 import type { SearchHit, SearchQueryParams, SearchScope } from '@/next/search/searchTypes'
 import type { SearchConvoOption, SearchProjectOption } from './SearchModal.types'
 
@@ -78,7 +78,7 @@ async function runSearch() {
   }
 
   try {
-    results.value = await runSearchQuery(params)
+    results.value = await runGenerationV2SearchQuery(params)
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : 'Search failed'
     results.value = []
@@ -92,7 +92,7 @@ async function onRebuildIndex() {
   loading.value = true
   error.value = null
   try {
-    await rebuildSearchIndex()
+    await rebuildGenerationV2SearchIndex()
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : 'Rebuild failed'
   } finally {

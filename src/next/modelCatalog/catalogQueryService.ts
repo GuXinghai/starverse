@@ -4,8 +4,12 @@ import {
 } from './openRouterCategoryCache'
 import { logModelCatalogEvent } from './modelCatalogObservability'
 
-type ElectronCatalogApi = Readonly<{
-  modelCatalogQueryScopedCurrent?: (options?: unknown) => Promise<any>
+type GenerationV2ModelsApi = Readonly<{
+  listOpenRouter?: (options?: unknown) => Promise<unknown>
+  listOpenAIResponses?: (options?: unknown) => Promise<unknown>
+  listAnthropic?: (options?: unknown) => Promise<unknown>
+  listGoogleAIStudio?: (options?: unknown) => Promise<unknown>
+  listDeepSeek?: (options?: unknown) => Promise<unknown>
 }>
 
 export type CatalogQuerySortBy = 'name' | 'created_at' | 'context_length' | 'max_output_tokens'
@@ -157,9 +161,10 @@ export type CatalogQueryResult = Readonly<{
   lastSyncAtMs?: number
 }>
 
-function getElectronCatalogApi(): ElectronCatalogApi | null {
-  const api = (globalThis as any).electronAPI as ElectronCatalogApi | undefined
-  return api && typeof api.modelCatalogQueryScopedCurrent === 'function' ? api : null
+function getGenerationV2ModelsApi(): GenerationV2ModelsApi | null {
+  const root = (globalThis as { generationV2?: { models?: unknown } }).generationV2
+  if (!root?.models || typeof root.models !== 'object') return null
+  return root.models as GenerationV2ModelsApi
 }
 
 function normalizeStringArray(input: unknown): string[] | undefined {
@@ -382,6 +387,139 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
   }
 }
 
+const V2_MODEL_LIST_METHOD_BY_SOURCE = Object.freeze({
+  openrouter: 'listOpenRouter',
+  openai_responses: 'listOpenAIResponses',
+  anthropic_messages: 'listAnthropic',
+  google_ai_studio: 'listGoogleAIStudio',
+  deepseek: 'listDeepSeek',
+} as const)
+
+function readRecord(input: unknown): Record<string, unknown> | null {
+  return input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : null
+}
+
+function readFiniteNumber(input: unknown): number | null {
+  return typeof input === 'number' && Number.isFinite(input) ? input : null
+}
+
+function readCapabilitySeed(input: unknown): Record<string, unknown> | null {
+  const record = readRecord(input)
+  return record && readRecord(record.capabilitySeed) ? readRecord(record.capabilitySeed) : null
+}
+
+function v2AvailabilityItemToCatalogItem(sourceProviderKey: string, input: unknown, observedAtMs: number | null): CatalogQueryItem | null {
+  const row = readRecord(input)
+  if (!row) return null
+  const modelId = String(row.modelId ?? row.nativeModelId ?? '').trim()
+  if (!modelId) return null
+  const capabilitySeed = readCapabilitySeed(row)
+  const inputModalities = normalizeDirectStringArray(row.inputModalities)
+  const outputModalities = normalizeDirectStringArray(row.outputModalities)
+  const reasoning = capabilitySeed?.reasoning === 'supported' || capabilitySeed?.thinking === 'supported'
+  const tools = capabilitySeed?.functionCalling === true || capabilitySeed?.toolUse === true
+  const structuredOutputs = capabilitySeed?.structuredOutput === true
+  const vision = inputModalities.includes('image') || capabilitySeed?.imageInput === true
+  return {
+    providerKey: sourceProviderKey,
+    modelId,
+    modelKey: `${sourceProviderKey}::${modelId}`,
+    canonicalSlug: sourceProviderKey === 'openrouter' ? modelId : null,
+    displayName: String(row.name ?? row.displayName ?? modelId).trim() || modelId,
+    description: typeof row.description === 'string' ? row.description : null,
+    vendor: typeof row.vendor === 'string' ? row.vendor : null,
+    status: typeof row.status === 'string' ? row.status : 'visible',
+    contextLength: readFiniteNumber(capabilitySeed?.contextLength),
+    maxOutputTokens: readFiniteNumber(capabilitySeed?.maxOutputTokens),
+    createdAtSec: null,
+    inputModalities,
+    outputModalities,
+    supportedParameters: normalizeDirectStringArray(row.supportedParameters),
+    pricing: { prompt: null, completion: null, request: null, image: null },
+    capabilities: { reasoning, tools, structuredOutputs, vision, longContext: false },
+    firstSeenAtMs: null,
+    lastSeenAtMs: observedAtMs,
+    syncedAtMs: observedAtMs,
+  }
+}
+
+function matchesStringSet(available: readonly string[], requested: readonly string[] | undefined): boolean {
+  return !requested?.length || requested.every((value) => available.includes(value))
+}
+
+function matchesRange(value: number | null, range: CatalogQueryNumberRange | undefined): boolean {
+  if (!range) return true
+  return value !== null && (range.min === undefined || value >= range.min) && (range.max === undefined || value <= range.max)
+}
+
+function compareCatalogItems(a: CatalogQueryItem, b: CatalogQueryItem, sortBy: CatalogQuerySortBy, sortOrder: CatalogQuerySortOrder): number {
+  const direction = sortOrder === 'asc' ? 1 : -1
+  const value = (item: CatalogQueryItem): string | number => {
+    if (sortBy === 'context_length') return item.contextLength ?? -1
+    if (sortBy === 'max_output_tokens') return item.maxOutputTokens ?? -1
+    if (sortBy === 'created_at') return item.createdAtSec ?? -1
+    return item.displayName.toLocaleLowerCase()
+  }
+  const left = value(a)
+  const right = value(b)
+  if (left < right) return -1 * direction
+  if (left > right) return 1 * direction
+  return a.modelKey.localeCompare(b.modelKey) * direction
+}
+
+function cursorFor(item: CatalogQueryItem, sortBy: CatalogQuerySortBy, sortOrder: CatalogQuerySortOrder): CatalogQueryCursor {
+  return { sortBy, sortOrder, name: item.displayName, createdAtSec: item.createdAtSec ?? undefined,
+    contextLength: item.contextLength ?? undefined, maxOutputTokens: item.maxOutputTokens ?? undefined, modelKey: item.modelKey }
+}
+
+async function queryGenerationV2Catalog(input: Readonly<{
+  sourceProviderKey: string
+  api: GenerationV2ModelsApi
+  searchText: string | undefined
+  includeDescriptionInSearch: boolean
+  vendors: string[] | undefined
+  capabilities: CatalogQueryCapabilitiesFilter | undefined
+  contextLength: CatalogQueryNumberRange | undefined
+  maxOutputTokens: CatalogQueryNumberRange | undefined
+  modalities: string[] | undefined
+  inputModalities: string[] | undefined
+  outputModalities: string[] | undefined
+  supportedParameters: string[] | undefined
+  sortBy: CatalogQuerySortBy
+  sortOrder: CatalogQuerySortOrder
+  limit: number
+  cursor: CatalogQueryCursor | null
+}>): Promise<CatalogQueryResult> {
+  const methodName = V2_MODEL_LIST_METHOD_BY_SOURCE[input.sourceProviderKey as keyof typeof V2_MODEL_LIST_METHOD_BY_SOURCE]
+  const list = methodName ? input.api[methodName] : undefined
+  if (!list) return { items: [], nextCursor: null, notice: 'This provider catalog is not available in Generation V2.', status: 'failed' }
+  const response = readRecord(await list({ timeoutMs: 30_000 }))
+  if (!response || response.ok !== true) return { items: [], nextCursor: null, notice: 'Model list is unavailable.', status: 'failed' }
+  const observedAtMs = readFiniteNumber(response.observedAtMs)
+  const candidates = Array.isArray(response.items) ? response.items : Array.isArray(response.models) ? response.models : []
+  const searchNeedle = input.searchText?.trim().toLocaleLowerCase()
+  const all = candidates.map((row) => v2AvailabilityItemToCatalogItem(input.sourceProviderKey, row, observedAtMs))
+    .filter((row): row is CatalogQueryItem => row !== null)
+    .filter((item) => {
+      const haystack = `${item.displayName} ${item.modelId} ${input.includeDescriptionInSearch ? item.description ?? '' : ''}`.toLocaleLowerCase()
+      if (searchNeedle && !haystack.includes(searchNeedle)) return false
+      if (input.vendors?.length && (!item.vendor || !input.vendors.includes(item.vendor))) return false
+      if (!matchesRange(item.contextLength, input.contextLength) || !matchesRange(item.maxOutputTokens, input.maxOutputTokens)) return false
+      if (!matchesStringSet(item.inputModalities ?? [], input.inputModalities) || !matchesStringSet(item.outputModalities ?? [], input.outputModalities)) return false
+      if (!matchesStringSet([...(item.inputModalities ?? []), ...(item.outputModalities ?? [])], input.modalities)) return false
+      if (!matchesStringSet(item.supportedParameters ?? [], input.supportedParameters)) return false
+      return !input.capabilities || Object.entries(input.capabilities).every(([key, expected]) => item.capabilities[key as keyof CatalogQueryCapabilitiesFilter] === expected)
+    })
+    .sort((a, b) => compareCatalogItems(a, b, input.sortBy, input.sortOrder))
+  const start = input.cursor ? Math.max(0, all.findIndex((item) => item.modelKey === input.cursor?.modelKey) + 1) : 0
+  const items = all.slice(start, start + input.limit)
+  const lastItem = items.length > 0 ? items[items.length - 1] : null
+  const hasNextPage = start + items.length < all.length
+  const revision = typeof response.responseDigest === 'string' ? response.responseDigest : observedAtMs === null ? null : `${input.sourceProviderKey}:${observedAtMs}`
+  return { items, nextCursor: hasNextPage && lastItem ? cursorFor(lastItem, input.sortBy, input.sortOrder) : null, status: 'synced', catalogRevision: revision,
+    modelCount: all.length, visibleModelCount: all.length, hiddenModelCount: 0, ...(observedAtMs === null ? {} : { lastSyncAtMs: observedAtMs }) }
+}
+
 export class CatalogQueryService {
   static async query(input: CatalogQueryInput): Promise<CatalogQueryResult> {
     const startedAtMs = Date.now()
@@ -418,15 +556,15 @@ export class CatalogQueryService {
       return { items: [], nextCursor: null, notice }
     }
 
-    const catalogApi = getElectronCatalogApi()
-    if (!catalogApi?.modelCatalogQueryScopedCurrent) {
+    const catalogApi = getGenerationV2ModelsApi()
+    if (!catalogApi) {
       logModelCatalogEvent('query', 'query_degraded', {
         ...querySummary,
         stage: 'precondition',
-        reason: 'missing_scoped_query_ipc',
+        reason: 'missing_generation_v2_model_availability_ipc',
         durationMs: Date.now() - startedAtMs,
       })
-      return { items: [], nextCursor: null, notice: null }
+      return { items: [], nextCursor: null, notice: 'Model availability bridge is unavailable.', status: 'failed' }
     }
 
     try {
@@ -445,6 +583,7 @@ export class CatalogQueryService {
         ...(normalizeStringArray(input.filter?.architectureModalities)?.length ? ['architectureModalities'] : []),
         ...(normalizeStringArray(input.filter?.tokenizers)?.length ? ['tokenizers'] : []),
         ...(normalizeStringArray(input.filter?.instructTypes)?.length ? ['instructTypes'] : []),
+        ...(effectiveCategory ? ['category'] : []),
       ]
       if (unsupportedFilters.length > 0) {
         const notice = 'Some filters are unavailable for the current catalog.'
@@ -462,11 +601,11 @@ export class CatalogQueryService {
         }
       }
 
-      const payload = {
-        providerKey: sourceProviderKey,
+      const result = await queryGenerationV2Catalog({
+        sourceProviderKey,
+        api: catalogApi,
         searchText: typeof input.searchText === 'string' ? input.searchText : undefined,
         includeDescriptionInSearch: input.includeDescriptionInSearch === true,
-        category: effectiveCategory,
         vendors: mergeUniqueStrings(input.filter?.vendors, input.filter?.providers),
         capabilities: normalizeBooleanCapabilityFilters(input.filter?.capabilities),
         contextLength: normalizeNumberRange(input.filter?.contextLength),
@@ -479,58 +618,15 @@ export class CatalogQueryService {
         sortOrder,
         limit,
         cursor: normalizeCursor(input.page?.cursor),
-      }
-
-      const raw = await catalogApi.modelCatalogQueryScopedCurrent(payload)
-      const rawItems = Array.isArray(raw?.items) ? raw.items : []
-      const items = rawItems
-        .map((row: unknown) => normalizeItem(row))
-        .filter((row: CatalogQueryItem | null): row is CatalogQueryItem => row !== null)
-      const nextCursor = normalizeCursor(raw?.nextCursor)
-      const status = String(raw?.status ?? '')
-      const normalizedStatus =
-        status === 'not_synced' || status === 'syncing' || status === 'synced' || status === 'failed'
-          ? status
-          : undefined
-      const catalogRevision = typeof raw?.catalogRevision === 'string' && raw.catalogRevision.trim()
-        ? raw.catalogRevision.trim()
-        : null
-      const modelCount = typeof raw?.modelCount === 'number' && Number.isFinite(raw.modelCount)
-        ? raw.modelCount
-        : undefined
-      const visibleModelCount = typeof raw?.visibleModelCount === 'number' && Number.isFinite(raw.visibleModelCount)
-        ? raw.visibleModelCount
-        : undefined
-      const hiddenModelCount = typeof raw?.hiddenModelCount === 'number' && Number.isFinite(raw.hiddenModelCount)
-        ? raw.hiddenModelCount
-        : undefined
-      const lastSyncAtMs = typeof raw?.lastSyncAtMs === 'number' && Number.isFinite(raw.lastSyncAtMs)
-        ? raw.lastSyncAtMs
-        : undefined
-      const finalNotice =
-        status === 'not_synced'
-          ? 'Model list is not synced.'
-          : status === 'failed'
-            ? 'Model list is unavailable.'
-            : null
+      })
       logModelCatalogEvent('query', 'query_success', {
         ...querySummary,
-        resultCount: items.length,
-        hasNextCursor: nextCursor !== null,
-        hasNotice: !!finalNotice,
+        resultCount: result.items.length,
+        hasNextCursor: result.nextCursor !== null,
+        hasNotice: !!result.notice,
         durationMs: Date.now() - startedAtMs,
       })
-      return {
-        items,
-        nextCursor,
-        notice: finalNotice,
-        status: normalizedStatus,
-        catalogRevision,
-        ...(modelCount !== undefined ? { modelCount } : {}),
-        ...(visibleModelCount !== undefined ? { visibleModelCount } : {}),
-        ...(hiddenModelCount !== undefined ? { hiddenModelCount } : {}),
-        ...(lastSyncAtMs !== undefined ? { lastSyncAtMs } : {}),
-      }
+      return result
     } catch (error: any) {
       logModelCatalogEvent('query', 'query_fail', {
         ...querySummary,

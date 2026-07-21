@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RawGenerationRequestStore } from './rawGenerationRequestStore'
+import { ImmutablePreparedBodyV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 
 const roots: string[] = []
 afterEach(() => { while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true }) })
@@ -28,6 +29,23 @@ describe('RawGenerationRequestStore', () => {
     expect(rows[0]?.serializedBody).toBe(serializedBody)
     expect(rows[0]?.bodyBytes).toBe(Buffer.byteLength(serializedBody, 'utf8'))
     expect(rows[0]?.bodySha256).toMatch(/^[a-f0-9]{64}$/u)
+    store.close()
+  })
+
+  it('persists the exact immutable prepared bytes and hash without reserialization', () => {
+    const store = fixture()
+    const prepared = ImmutablePreparedBodyV2.fromNativeRequest({
+      model: 'model-a',
+      messages: [{ role: 'user', content: 'exact body' }],
+      stream: true,
+    })
+    store.tryPersistPreparedV2(context, prepared)
+
+    const row = store.listByAnswerRootId('answer-1')[0]!
+    expect(row.serializedBody).toBe(prepared.copyUtf8Text())
+    expect(Buffer.from(row.serializedBody, 'utf8')).toEqual(Buffer.from(prepared.copyBytes()))
+    expect(row.bodyBytes).toBe(prepared.byteLength)
+    expect(row.bodySha256).toBe(prepared.sha256)
     store.close()
   })
 

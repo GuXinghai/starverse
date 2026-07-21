@@ -228,7 +228,9 @@ export class GenerationRequestV2Repo {
         AND artifact.answer_root_id=request.answer_root_id
         AND artifact.completion_scope='request_terminal'
         AND ((request.provider_id='deepseek' AND artifact.artifact_kind='deepseek_stable_ordered_native_messages_v2')
-          OR (request.provider_id='openai_responses' AND artifact.artifact_kind='openai_responses_ordered_native_items_v2'))
+          OR (request.provider_id='openai_responses' AND artifact.artifact_kind='openai_responses_ordered_native_items_v2')
+          OR (request.provider_id='anthropic' AND artifact.artifact_kind='anthropic_messages_native_history_v1')
+          OR (request.provider_id='openrouter' AND artifact.artifact_kind='openrouter_chat_ordered_native_messages_v1'))
       WHERE request.operation_id=? AND request.request_sequence=?
       GROUP BY request.state`).get(prepared.operationId, prepared.requestSequence - 1) as
       { state: unknown; artifactCount: unknown } | undefined

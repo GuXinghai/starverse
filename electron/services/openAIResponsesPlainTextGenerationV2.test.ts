@@ -1,8 +1,10 @@
 import BetterSqlite3 from 'better-sqlite3'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
+import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
+import { BranchContextFilterV2Repo } from '../../infra/db/repo/branchContextFilterV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 
@@ -19,6 +21,7 @@ import { createOpenAIResponsesPlainTextRetryCoordinatorV2 } from './openAIRespon
 import { createOpenAIResponsesPlainTextRegenerateCoordinatorV2 } from './openAIResponsesPlainTextRegenerateCoordinatorV2'
 import { createOpenAIResponsesPlainTextEditResendCoordinatorV2 } from './openAIResponsesPlainTextEditResendCoordinatorV2'
 import { createOpenAIResponsesToolContinuationCoordinatorV2 } from './openAIResponsesToolContinuationCoordinatorV2'
+import { createOpenAIResponsesGenerationV2Runtime } from './openAIResponsesGenerationV2Runtime'
 
 const scope = 'credential-scope-v2:'.concat('d'.repeat(64)) as never
 
@@ -57,14 +60,14 @@ function sse(type: string, sequenceNumber: number, value: Record<string, unknown
   return `event: ${type}\ndata: ${JSON.stringify({ type, sequence_number: sequenceNumber, ...value })}\n\n`
 }
 
-function completedStream(text = 'hello from OpenAI'): Response {
+function completedStream(text = 'hello from OpenAI', messageId = 'msg_1'): Response {
   const output = [{
-    id: 'msg_1', type: 'message', role: 'assistant',
+    id: messageId, type: 'message', role: 'assistant',
     content: [{ type: 'output_text', text, annotations: [] }],
   }]
   const body = [
     sse('response.output_text.delta', 1, {
-      item_id: 'msg_1', output_index: 0, content_index: 0, delta: text,
+      item_id: messageId, output_index: 0, content_index: 0, delta: text,
     }),
     sse('response.output_item.done', 2, { output_index: 0, item: output[0] }),
     sse('response.completed', 3, { response: {
@@ -137,11 +140,47 @@ function command(overrides: Record<string, unknown> = {}) {
   }
 }
 
-function coordinator(db: BetterSqlite3.Database) {
+function coordinator(db: BetterSqlite3.Database, attachmentBlobStore?: unknown) {
   let next = 0
   return createOpenAIResponsesPlainTextInitialSendCoordinatorV2({
     db, credentialService: credentialService(), nowMs: () => 100,
     createGraphId: (kind) => `${kind}:${++next}`,
+    attachmentBlobStore: attachmentBlobStore as never,
+  })
+}
+
+function attachmentForCommand(db: BetterSqlite3.Database, options: Readonly<{convertedPdf?: boolean}> = {}) {
+  const sourceBytes = new TextEncoder().encode('Starverse attachment bytes')
+  const bytes = options.convertedPdf ? new TextEncoder().encode('%PDF-1.7\nStarverse derived PDF') : sourceBytes
+  const repo = new AttachmentAssetV2Repo(db, () => 90)
+  const sourceBlob = repo.recordBlobFromBytes(sourceBytes, 'text/plain')
+  const blob = options.convertedPdf ? repo.recordBlobFromBytes(bytes, 'application/pdf') : sourceBlob
+  const sourceAssetId = options.convertedPdf ? 'asset:1:source' : 'asset:1'
+  const sourceRevisionId = options.convertedPdf ? 'asset-revision:1:source' : 'asset-revision:1'
+  repo.createAsset({ assetId: sourceAssetId, assetKind: 'file', filename: 'notes.txt', sourceKind: 'user_import' })
+  const sourceRevision = repo.appendSourceRevision({ assetId: sourceAssetId, assetRevisionId: sourceRevisionId, blob: sourceBlob })
+  const revision = options.convertedPdf
+    ? repo.createDerivedAssetRevision({
+      assetId: 'asset:1', assetRevisionId: 'asset-revision:1', assetKind: 'file', filename: 'notes.pdf',
+      parentAssetRevisionId: sourceRevision.assetRevisionId.value, conversionKind: 'pdf',
+      conversionContractId: 'test-dfc-pdf', conversionRevision: '1', blob,
+    })
+    : sourceRevision
+  return Object.freeze({
+    commandAttachment: Object.freeze({
+      kind: 'managed_file',
+      assetId: 'asset:1', assetRevisionId: 'asset-revision:1',
+      assetSha256: revision.blob.sha256.value, include: true,
+      sendAs: options.convertedPdf ? 'converted_document' : 'provider_file',
+      conversion: options.convertedPdf ? 'pdf' : 'none',
+    }),
+    blobStore: Object.freeze({
+      verifySnapshotAttachmentSendBytes: ({ attachmentRepo, context, intent }: Record<string, never>) =>
+        (attachmentRepo as AttachmentAssetV2Repo).withSynchronousSnapshotReferenceAuthority(
+          context as never, intent as never, (authority) =>
+            (attachmentRepo as AttachmentAssetV2Repo).verifyAttachmentSendBytes(authority, bytes),
+        ),
+    }),
   })
 }
 
@@ -152,6 +191,25 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks())
 
 describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
+  it('starts exactly one persisted request from the V2 runtime and never resends an idempotent replay', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('runtime answer'))
+      const runtime = createOpenAIResponsesGenerationV2Runtime({
+        db, credentialService: credentialService(), nowMs: () => 100,
+      })
+      const first = await runtime.submitInitial(command())
+      expect(first.kind).toBe('created')
+      await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(2))
+      const replay = await runtime.submitInitial(command())
+      expect(replay.kind).toBe('idempotent_replay')
+      expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      await vi.waitFor(() => expect(db.prepare(
+        "SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'",
+      ).get()).toEqual({ state: 'completed' }))
+    } finally { db.close() }
+  })
+
   it('atomically commits the current answer projection and exact persisted request bytes', async () => {
     const db = database()
     try {
@@ -189,6 +247,216 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         (SELECT count(*) FROM assistant_generation_snapshot_v2) AS snapshots,
         (SELECT count(*) FROM generation_request_v2) AS requests`).get())
         .toEqual({ operations: 1, snapshots: 1, requests: 1 })
+    } finally { db.close() }
+  })
+
+  it('compiles an active middle-turn exclusion as explicit selected native replay', async () => {
+    const db = database()
+    try {
+      const send = coordinator(db)
+      const runner = createOpenAIResponsesStreamRunnerV2({ db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110 })
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('first answer', 'msg_1'))
+        .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('second answer', 'msg_2'))
+        .mockResolvedValueOnce(modelResponse())
+      const first = await send.submit({ command: command({ userBody: 'first' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      await runner.run(first)
+      const second = await send.submit({ command: command({ operationId: 'operation:2', expectedHeadMessageId: first.execution.operation.resultAnswerRootId.value, userBody: 'second' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      await runner.run(second)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => new BranchContextFilterV2Repo(db).set(context, {
+        branchId: 'branch:1', targetType: 'answer', targetId: second.execution.operation.resultAnswerRootId.value,
+        mode: 'exclude', updatedAtMs: 120,
+      }))
+      const third = await send.submit({ command: command({ operationId: 'operation:3', expectedHeadMessageId: second.execution.operation.resultAnswerRootId.value, userBody: 'third' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      const body = JSON.parse(third.preparedRequest.body.copyUtf8Text())
+      expect(body.input).toEqual([
+        { role: 'user', content: [{ type: 'input_text', text: 'first' }] },
+        { id: 'msg_1', type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'first answer', annotations: [] }] },
+        { role: 'user', content: [{ type: 'input_text', text: 'third' }] },
+      ])
+      expect(JSON.stringify(body.input)).not.toContain('second')
+      expect(db.prepare(`SELECT canonical_json AS canonicalJson FROM generation_context_projection_v2
+        WHERE operation_id='operation:3'`).get()).toMatchObject({ canonicalJson: expect.stringContaining('"mode":"excluded"') })
+    } finally { db.close() }
+  })
+
+  it('keeps a filtered whole-turn projection for an OpenAI tool continuation', async () => {
+    const db = database()
+    try {
+      new ToolRegistryV2Repo(db, () => 50).installAndSelect({
+        schemaVersion: 2,
+        definitions: [{
+          toolId: 'tool:weather', kind: 'function', sideEffectPolicy: 'none',
+          function: { name: 'weather', parameters: { type: 'object' } },
+        }],
+      }, null)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2,
+        tools: { mode: 'enabled', allowedToolIds: ['tool:weather'], toolChoice: { mode: 'omitted' }, sideEffectConfirmation: 'required_each_retry' },
+      })
+      const send = coordinator(db)
+      const runner = createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      })
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('first answer', 'msg_1'))
+        .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('second answer', 'msg_2'))
+        .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(functionCallStream())
+      const first = await send.submit({ command: command({ userBody: 'first' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      await runner.run(first)
+      const second = await send.submit({ command: command({ operationId: 'operation:2', expectedHeadMessageId: first.execution.operation.resultAnswerRootId.value, userBody: 'second' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      await runner.run(second)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => new BranchContextFilterV2Repo(db).set(context, {
+        branchId: 'branch:1', targetType: 'answer', targetId: second.execution.operation.resultAnswerRootId.value,
+        mode: 'exclude', updatedAtMs: 120,
+      }))
+      const third = await send.submit({ command: command({
+        operationId: 'operation:3', expectedHeadMessageId: second.execution.operation.resultAnswerRootId.value, userBody: 'third',
+      }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      await runner.run(third)
+      const continuation = await createOpenAIResponsesToolContinuationCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 130,
+      }).submit({
+        operationId: 'operation:3', branchId: 'branch:1', answerRootId: third.execution.operation.resultAnswerRootId.value,
+        expectedHeadMessageId: third.execution.operation.resultAnswerRootId.value, priorRequestSequence: 1,
+        toolOutputs: [{ toolCallId: 'call_weather', content: '{"temperature":20}', userConfirmedExternalSideEffect: false }],
+      })
+      const input = JSON.parse(continuation.preparedRequest.body.copyUtf8Text()).input
+      expect(input).toEqual([
+        { role: 'user', content: [{ type: 'input_text', text: 'first' }] },
+        { id: 'msg_1', type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'first answer', annotations: [] }] },
+        { role: 'user', content: [{ type: 'input_text', text: 'third' }] },
+        { id: 'fc_1', type: 'function_call', call_id: 'call_weather', name: 'weather', arguments: '{"city":"Paris"}', status: 'completed' },
+        { type: 'function_call_output', call_id: 'call_weather', output: '{"temperature":20}' },
+      ])
+      expect(JSON.stringify(input)).not.toContain('second')
+    } finally { db.close() }
+  })
+
+  it('persists an immutable OpenAI file descriptor and sends its exact input_file id', async () => {
+    const db = database()
+    try {
+      const attachment = attachmentForCommand(db)
+      expect(attachment.commandAttachment).toMatchObject({
+        assetId: 'asset:1', assetRevisionId: 'asset-revision:1',
+        assetSha256: expect.stringMatching(/^[0-9a-f]{64}$/u), include: true,
+      })
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'file_input_1', purpose: 'user_data' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })).mockResolvedValueOnce(modelResponse())
+      const result = await coordinator(db, attachment.blobStore).submit({
+        command: command({ commandAttachments: [attachment.commandAttachment] }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(mocks.fetch.mock.calls[0]?.[0]).toBe('https://api.openai.com/v1/files')
+      expect(JSON.parse(result.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'hello' }, { type: 'input_file', file_id: 'file_input_1' },
+        ] }],
+      })
+      expect(result.execution.snapshot.attachmentProviderFileBindings).toHaveLength(1)
+      expect(db.prepare('SELECT file_id AS fileId FROM openai_responses_file_descriptor_v2').all())
+        .toEqual([{ fileId: 'file_input_1' }])
+    } finally { db.close() }
+  })
+
+  it('replays a converted PDF through the exact snapshot-bound OpenAI file descriptor', async () => {
+    const db = database()
+    try {
+      const attachment = attachmentForCommand(db, { convertedPdf: true })
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'file_pdf_1', purpose: 'user_data' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })).mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('attached PDF'))
+      const created = await coordinator(db, attachment.blobStore).submit({
+        command: command({ commandAttachments: [attachment.commandAttachment] }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(created)
+      const retried = await createOpenAIResponsesPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120, createAnswerId: () => 'answer:retry-pdf',
+      }).submit({
+        actionKind: 'retry_as_new', operationId: 'operation:retry-pdf', branchId: 'branch:1',
+        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+      })
+      expect(mocks.fetch).toHaveBeenCalledTimes(3)
+      expect(JSON.parse(retried.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'hello' }, { type: 'input_file', file_id: 'file_pdf_1' },
+        ] }],
+      })
+    } finally { db.close() }
+  })
+
+  it('retries an attachment answer from its copied snapshot without rereading attachment bytes', async () => {
+    const db = database()
+    try {
+      const attachment = attachmentForCommand(db)
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'file_retry_1', purpose: 'user_data' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })).mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('attached original'))
+      const created = await coordinator(db, attachment.blobStore).submit({
+        command: command({ commandAttachments: [attachment.commandAttachment] }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(created)
+      const retried = await createOpenAIResponsesPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120, createAnswerId: () => 'answer:retry-attachment',
+      }).submit({
+        actionKind: 'retry_as_new', operationId: 'operation:retry-attachment', branchId: 'branch:1',
+        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+      })
+      expect(mocks.fetch).toHaveBeenCalledTimes(3)
+      expect(JSON.parse(retried.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'hello' }, { type: 'input_file', file_id: 'file_retry_1' },
+        ] }],
+      })
+    } finally { db.close() }
+  })
+
+  it('rejects a failed Files upload before creating any graph or generation record', async () => {
+    const db = database()
+    try {
+      const attachment = attachmentForCommand(db)
+      mocks.fetch.mockResolvedValueOnce(new Response('provider denied', {
+        status: 403, headers: { 'content-type': 'text/plain' },
+      }))
+      await expect(coordinator(db, attachment.blobStore).submit({
+        command: command({ commandAttachments: [attachment.commandAttachment] }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })).rejects.toThrow('GENERATION_V2_OPENAI_FILE_UPLOAD_REJECTED')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages,
+        (SELECT count(*) FROM generation_request_v2) AS requests,
+        (SELECT count(*) FROM branch_choice_v2) AS choices`).get())
+        .toEqual({ operations: 0, messages: 0, requests: 0, choices: 0 })
+    } finally { db.close() }
+  })
+
+  it('bounds a Files response without a content length before any graph mutation', async () => {
+    const db = database()
+    try {
+      const attachment = attachmentForCommand(db)
+      mocks.fetch.mockResolvedValueOnce(new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array((256 * 1024) + 1))
+          controller.close()
+        },
+      }), { status: 200, headers: { 'content-type': 'application/json' } }))
+      await expect(coordinator(db, attachment.blobStore).submit({
+        command: command({ commandAttachments: [attachment.commandAttachment] }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })).rejects.toThrow('GENERATION_V2_OPENAI_FILE_UPLOAD_RESPONSE_INVALID')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages,
+        (SELECT count(*) FROM generation_request_v2) AS requests`).get())
+        .toEqual({ operations: 0, messages: 0, requests: 0 })
     } finally { db.close() }
   })
 
@@ -284,7 +552,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
     } finally { db.close() }
   })
 
-  it('streams exact prepared bytes, persists native terminal history and keeps the new answer current', async () => {
+  it('streams exact prepared bytes, publishes the persisted V2 projection and keeps the new answer current', async () => {
     const db = database()
     try {
       mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream())
@@ -292,12 +560,18 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
       const rawStore = { tryPersistPreparedV2: vi.fn(() => { throw new Error('debug database unavailable') }) }
+      const projections: unknown[] = []
       const terminal = await createOpenAIResponsesStreamRunnerV2({
         db, credentialService: credentialService(), rawGenerationRequestStore: rawStore as never,
         fetchImpl: mocks.fetch, nowMs: () => 110,
+        streamProjectionSink: { publish: (projection) => projections.push(projection) },
       }).run(created)
       expect(terminal).toMatchObject({ state: 'completed', answerRootId: 'answer:2' })
       expect(rawStore.tryPersistPreparedV2).toHaveBeenCalledTimes(1)
+      expect(projections).toEqual([
+        { type: 'assistant_body', operationId: 'operation:1', answerRootId: 'answer:2', content: 'hello from OpenAI' },
+        { type: 'terminal', operationId: 'operation:1', answerRootId: 'answer:2', state: 'completed', errorCode: null, errorMessage: null },
+      ])
       const transport = mocks.fetch.mock.calls[1]
       expect(transport?.[0]).toBe('https://api.openai.com/v1/responses')
       expect(Buffer.from((transport?.[1] as RequestInit).body as Uint8Array).toString('utf8'))
@@ -624,6 +898,38 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
     } finally { db.close() }
   })
 
+  it('regenerates with a newly bound OpenAI input_file from the current command', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('original'))
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(initial)
+      const attachment = attachmentForCommand(db)
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'file_regenerate_1', purpose: 'user_data' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })).mockResolvedValueOnce(modelResponse())
+      const regenerated = await createOpenAIResponsesPlainTextRegenerateCoordinatorV2({
+        db, credentialService: credentialService(), attachmentBlobStore: attachment.blobStore as never,
+        nowMs: () => 120, createAnswerId: () => 'answer:regenerated-attachment',
+      }).submit({
+        command: {
+          operationId: 'operation:regenerate-attachment', branchId: 'branch:1', questionId: 'question:1',
+          expectedHeadMessageId: 'answer:2', modelId: 'gpt-5.6-sol', commandAttachments: [attachment.commandAttachment],
+        },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(regenerated.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'hello' }, { type: 'input_file', file_id: 'file_regenerate_1' },
+        ] }],
+      })
+    } finally { db.close() }
+  })
+
   it('edit-resends with fork/replace question semantics and no terminal branch rollback', async () => {
     const db = database()
     try {
@@ -696,6 +1002,40 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         .toEqual({ chosen: 'answer:edit-replace' })
       expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head: 'answer:edit-replace' })
+    } finally { db.close() }
+  })
+
+  it('edit-resends with a newly bound OpenAI input_file from the current command', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('original'))
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(initial)
+      const attachment = attachmentForCommand(db)
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'file_edit_1', purpose: 'user_data' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })).mockResolvedValueOnce(modelResponse())
+      const edited = await createOpenAIResponsesPlainTextEditResendCoordinatorV2({
+        db, credentialService: credentialService(), attachmentBlobStore: attachment.blobStore as never,
+        nowMs: () => 120, createQuestionId: () => 'question:edited-attachment',
+        createAnswerId: () => 'answer:edited-attachment',
+      }).submit({
+        command: {
+          operationId: 'operation:edit-attachment', mode: 'fork', branchId: 'branch:1',
+          sourceQuestionId: 'question:1', sourceAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+          userBody: 'edited with a file', modelId: 'gpt-5.6-sol', commandAttachments: [attachment.commandAttachment],
+        },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(edited.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'edited with a file' }, { type: 'input_file', file_id: 'file_edit_1' },
+        ] }],
+      })
     } finally { db.close() }
   })
 })

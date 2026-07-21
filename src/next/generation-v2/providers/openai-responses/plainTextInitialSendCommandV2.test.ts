@@ -22,10 +22,21 @@ describe('OpenAI Responses initial-send command V2', () => {
       .toBe(command.requestFingerprint)
   })
 
-  it('rejects unknown fields, attachments and mutation', () => {
+  it('canonically preserves a supported provider-file attachment and rejects malformed input', () => {
     expect(() => decodeOpenAIResponsesPlainTextInitialSendCommandV2({ ...input(), extra: true })).toThrow()
     expect(() => decodeOpenAIResponsesPlainTextInitialSendCommandV2({ ...input(), commandAttachments: [{}] })).toThrow()
-    const command = decodeOpenAIResponsesPlainTextInitialSendCommandV2(input())
+    const command = decodeOpenAIResponsesPlainTextInitialSendCommandV2({
+      ...input(), commandAttachments: [{
+        assetId: 'asset:1', assetRevisionId: 'asset-revision:1', assetSha256: 'a'.repeat(64),
+        include: true, sendAs: 'provider_file', conversion: 'none',
+      }],
+    })
+    expect(command.commandAttachments).toMatchObject([{
+      assetId: { value: 'asset:1' }, assetRevisionId: { value: 'asset-revision:1' },
+      assetSha256: { value: 'a'.repeat(64) }, include: true, sendAs: 'provider_file', conversion: 'none',
+    }])
+    expect(decodeOpenAIResponsesPlainTextInitialSendCommandJsonV2(command.canonicalJson).requestFingerprint)
+      .toBe(command.requestFingerprint)
     expect(() => decodeOpenAIResponsesPlainTextInitialSendCommandJsonV2(`${command.canonicalJson} `)).toThrow()
   })
 })

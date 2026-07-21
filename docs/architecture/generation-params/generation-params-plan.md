@@ -8,7 +8,7 @@
 
 ## 实际操作
 
-- 读取任务参考文档：`C:\Users\m1389\.codex\attachments\a0baa76a-c147-4827-94be-940af1c6e2e2\pasted-text-1.txt`。
+- 读取任务参考文档：`[owner-supplied-attachment]`。
 - 复核调查文档：`docs/architecture/generation-params/generation-params-investigation.md`。
 - 复核当前 dirty 边界：`src/next/provider/openai-responses/openaiResponsesAdapter.ts` 仍为既有 OpenAI Responses raw error diagnostic log，不纳入本计划切片。
 - 通过当前代码确认旧路径和配置入口：

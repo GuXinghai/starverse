@@ -84,7 +84,7 @@ function binding(
     record: decodeProviderBindingRecordV2({
       credentialScopeId: SCOPE,
       providerId: 'openrouter',
-      endpointProfileId: 'openrouter-images',
+      endpointProfileId: 'openrouter-first-party-v1',
       endpointBinding: {
         kind: 'pinned',
         selector: {

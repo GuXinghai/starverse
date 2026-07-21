@@ -6,6 +6,7 @@ import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Re
 import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { GenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
+import { RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
 
 const mocks = vi.hoisted(() => ({
@@ -184,7 +185,7 @@ describe('DeepSeek stable generation authority V2 service', () => {
           executionAuthority: 'none',
           snapshot: { trust: 'decoded_unverified', executionAuthority: 'none' },
         })
-        expect(capability.snapshot.fields).toHaveLength(35)
+        expect(capability.snapshot.fields).toHaveLength(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.length)
         expect(capability.snapshot.tools).toEqual([])
         expect(capability.snapshot.evidence).toContainEqual(expect.objectContaining({
           kind: 'live_probe', effect: 'supports',
@@ -271,6 +272,7 @@ describe('DeepSeek stable generation authority V2 service', () => {
       await expect(issue({
         db, configRepo, attachmentRepo,
         attachments: [{
+          kind: 'managed_file',
           assetId: 'asset:1', assetRevisionId: 'revision:1', assetSha256: blob.sha256.value,
           include: false, sendAs: 'inline_text', conversion: 'none',
         }],

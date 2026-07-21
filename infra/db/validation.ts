@@ -110,43 +110,6 @@ import type {
 
 export const jsonSchema = z.record(z.any())
 
-// Compatible provider schemas are strict and secret-aware; do not use jsonSchema for them.
-export {
-  CreateCompatibleProviderInputSchema,
-  UpdateCompatibleProviderInputSchema,
-  TombstoneCompatibleProviderInputSchema,
-  CreateCompatibleCredentialDescriptorInputSchema,
-  DeleteCompatibleCredentialDescriptorInputSchema,
-  CreateCompatibleEndpointRevisionInputSchema,
-} from './repo/compatibleProviderRepo'
-export {
-  CreateCompatibleRequestProfileInputSchema,
-  CreateCompatibleRequestFieldMappingInputSchema,
-  CreateCompatibleReasoningMappingInputSchema,
-  CreateCompatibleInlinePolicyInputSchema,
-  CreateCompatibleResponseProfileInputSchema,
-} from './repo/compatibleProfileRepo'
-export {
-  ApplyCompatibleRemoteSyncSuccessInputSchema,
-  RecordCompatibleCatalogSyncFailureInputSchema,
-  UpsertCompatibleManualModelInputSchema,
-  UpsertCompatibleCatalogSyncStateInputSchema,
-} from './repo/compatibleCatalogRepo'
-export {
-  CreateCompatibleRouteProvenanceInputSchema,
-  CreateCompatibleRouteChoiceInputSchema,
-} from './repo/compatibleRouteRepo'
-export {
-  SaveCompatibleToolCallInputSchema,
-  CreateCompatibleToolResultInputSchema,
-  CompatibleToolCallKeySchema,
-} from './repo/compatibleToolRepo'
-export {
-  UpsertCompatibleDiscoveredFieldInputSchema,
-  CreateCompatibleRawExtensionRecordInputSchema,
-} from './repo/compatibleDiagnosticsRepo'
-export { SaveCompatibleReasoningChoiceInputSchema } from './repo/compatibleReasoningRepo'
-
 // ========== Project Schemas ==========
 
 export const CreateProjectSchema: ZodType<CreateProjectInput> = z.object({

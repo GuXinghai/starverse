@@ -36,11 +36,15 @@ POST /v1/messages
 Decisions:
 
 - Use a provider-native discriminated union, but legal branches/ranges come from an evidence-versioned exact model rule, not regex.
+- `thinking.display` is a user-configurable Anthropic semantic value: `provider_default`, `summarized`, or `omitted`; the product default is `summarized`. `provider_default` omits `thinking.display`, while the other values are encoded exactly. The control is disabled with thinking disabled and every disabled-thinking request omits `display`; the preserved setting has an explicit accepted-no-wire ledger disposition. The same immutable extension records `thinkingMode` (`model_recommended|manual|adaptive`) and a manual budget only for `manual`; recommendation resolves only when that exact reviewed rule explicitly names an enabled mode, otherwise it rejects. It never silently degrades to disabled or a different mode. A manual model without an explicit positive budget is rejected before snapshot persistence and request construction.
 - Manual `budget_tokens < max_tokens` is only a manual-mode constraint; it does not imply support.
 - Preserve complete native content block order/signatures/redacted data as continuation artifacts.
+- `omitted` suppresses display text only. It does not disable or de-bill thinking; complete returned thinking blocks, signatures and original order remain the sole continuation source for every action.
 - Image generation/edit is unavailable; image input is a separate capability.
 
-Blocking input: build and review the current model × thinking mode × effort × sampling × web-tool-version matrix before enabling Anthropic V2. Delete the boolean mapper first.
+Blocking input: the reviewed exact model thinking/effort/sampling matrix is now present; complete the remaining current web-tool/file matrix and native Messages request/SSE/continuation codec before enabling Anthropic V2. Delete the boolean mapper first.
+
+2026-07-18 evidence update: the reviewed exact-ID thinking matrix now exists in `src/next/generation-v2/providers/anthropic/modelThinkingRulesV1.ts`. It covers the first-party current IDs `claude-fable-5`, `claude-mythos-5`, `claude-mythos-preview`, `claude-opus-4-8`, `claude-opus-4-7`, `claude-opus-4-6`, `claude-sonnet-5`, `claude-sonnet-4-6`, `claude-opus-4-5`, `claude-sonnet-4-5`, and both documented Haiku 4.5 forms. It has no family matching: a Models API result without an exact entry remains capability-unavailable. The remaining matrix input is the exact web/file/tool branch for every enabled rule, followed by the native request/SSE/continuation codec; this update does not authorize legacy mapper reuse.
 
 ## Gemini / Google AI Studio
 
@@ -158,7 +162,7 @@ No endpoint, credential, DB ledger, transport, IPC or legacy path is activated.
 Code evidence:
 
 - Main Generic body is minimal (`main:src/next/provider/generic/genericRequestBuilder.ts:15-68`) but adapter has config/resolver and raw compatibility entries and ignores reasoning/tools (`genericAdapter.ts:66-110,236`).
-- HEAD compatible registry/revision pinning and exact serialized-body transport are useful (`domain.ts:185-209`, `routeSchemas.ts:16-105`, `compatibleChatRuntimeService.ts:219-260`), but `extraBody`, arbitrary target paths, unknown promotion, and built-in fallback are forbidden (`buildCompatibleChatRequest.ts:124-163`, `semanticDecoder.ts:12-98`, `extensionCapture.ts:19-47`, `schemas.ts:246-249`).
+- Legacy compatible registry/revision pinning and exact serialized-body transport are source evidence (`domain.ts:185-209`, `routeSchemas.ts:16-105`, `compatibleChatRuntimeService.ts:219-260`), but V2 must own the replacement compiler and persistence.
 - Current LM Studio IPC still exposes OpenAI Chat/Responses plus native REST. Its Responses body reduces history to role/content messages and omits forced `store:false` (`electron/ipc/lmStudioLocalProviderIpc.ts:855-887`); native REST flattens prior messages into a string.
 - Current LM Studio renderer always applies the Chat Completions mapper to its JSON stream (`src/next/live/lmStudioTextChat.ts:224-244`). That mapper reads only `choices[].delta/message` (`src/next/streaming/core/localOpenAIChatCompletionsStreamMapper.ts:12-69`), so it cannot consume Responses text/reasoning/function item events. The Gate 0 provider pass does not make this production path compliant; V2 must replace it.
 
@@ -218,7 +222,7 @@ Decisions:
 
 Add one package per binding under `src/next/generation-v2/providers/`, each containing extension, capability rules, request, codec, serializer, decoder, continuation artifact, and fixtures.
 
-Delete generic mapper/unknown patch/extraBody/raw compatibility/fallback; provider model regex; Anthropic/DeepSeek boolean mapping; Gemini object assign/dual search/auto-fallback; synthetic native stream as stored truth.
+Delete generic mapper, automatic unknown patch/promotion and fallback; provider model regex; Anthropic/DeepSeek boolean mapping; Gemini object assign/dual search/auto-fallback; synthetic native stream as stored truth. `openai_chat_compatible` is the sole exception to the blanket unknown-patch rule: its user-explicit, versioned, bounded and ownership-validated `extraBody` and static reasoning mapping are retained as a dedicated V2 contract rather than a generic mapper.
 
 Tests:
 
@@ -246,4 +250,4 @@ Acceptance:
 3. **Blocker:** remove Anthropic/DeepSeek boolean mapper before enabling V2.
 4. **Fixed:** LM Studio 0.4.19+ Responses-first qualification selects exactly one endpoint binding. The tested endpoint is `lmstudio-openresponses`; Chat Completions is only the separately qualified failure alternative, and native `/api/v1/chat` is forbidden for ordinary conversations. Ollama profiles still require explicit protocol selection.
 5. **Owner:** define OpenRouter beta server-tool exposure policy; Gemini API version is not part of this choice.
-6. **Owner:** decide whether Anthropic `thinking.display` is user-facing; continuation preservation is mandatory either way.
+6. **Fixed:** Anthropic `thinking.display` is the three-state user-facing semantic value above; the exact model capability matrix and native Messages codec remain separate blockers.

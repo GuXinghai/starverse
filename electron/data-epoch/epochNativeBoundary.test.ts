@@ -143,6 +143,10 @@ describe('epoch native authority boundary', () => {
     const bootstrapConsumers = productionTypeScriptFiles(path.join(repositoryRoot, 'electron'))
       .filter((file) => file !== bootstrapFile)
       .filter((file) => fs.readFileSync(file, 'utf8').includes('epoch2CommittedBootstrap'))
-    expect(bootstrapConsumers).toEqual([])
+      .map((file) => path.relative(repositoryRoot, file))
+    expect(bootstrapConsumers).toEqual([
+      path.join('electron', 'bootstrap', 'epoch2ApplicationRuntime.ts'),
+      path.join('electron', 'ipc', 'generationV2IpcRegistration.ts'),
+    ])
   })
 })

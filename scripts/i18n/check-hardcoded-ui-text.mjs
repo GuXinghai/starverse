@@ -23,7 +23,7 @@ const SCAN_DIRS = [
   'src/ui-kit',
   'electron/ipc',
   'electron/windows',
-  'electron/main.ts',
+  'electron/mainV2.ts',
 ]
 
 const SCAN_EXTENSIONS = ['.ts', '.vue']

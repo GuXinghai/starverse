@@ -1,4 +1,4 @@
-import fs, { readFileSync } from 'node:fs'
+import fs, { existsSync, readFileSync } from 'node:fs'
 import os from 'node:os'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
@@ -66,7 +66,14 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     expect(first.fragmentIds).toEqual([
       'core_conversation_v1', 'generation_config_v1', 'tool_registry_v1', 'attachment_asset_v1', 'openrouter_images_v1',
       'deepseek_stable_model_evidence_v1', 'openai_responses_model_evidence_v1',
+      'anthropic_model_evidence_v1',
+      'gemini_model_evidence_v1', 'local_endpoint_profile_v1', 'reasoning_projection_v1', 'composer_draft_v1',
       'generation_execution_v1',
+      'generation_v2_search_v1',
+      'engine_plugin_registry_v1',
+      'openai_chat_compatible_v1',
+      'model_preferences_v1',
+      'dfc_attachment_v1',
     ])
     expect(first.schemaDigest).toMatch(/^[0-9a-f]{64}$/u)
     expect(Object.isFrozen(first)).toBe(true)
@@ -77,7 +84,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       expect(applyGenerationV2Schema(db, root)).toEqual(applied)
       expect(db.prepare('SELECT * FROM generation_v2_schema_manifest').get()).toEqual({
         manifest_id: 'generation_compiler_v2', schema_version: 1,
-        schema_digest: first.schemaDigest, fragment_count: 8,
+        schema_digest: first.schemaDigest, fragment_count: 18,
         object_projection_digest: applied.objectProjectionDigest,
       })
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='openrouter_image_endpoint_bindings'").get())
@@ -99,6 +106,16 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     fs.copyFileSync(path.resolve('infra/db/v2/attachmentAssetSchema.sql'), path.join(v2, 'attachmentAssetSchema.sql'))
     fs.copyFileSync(path.resolve('infra/db/v2/openRouterImagesSchema.sql'), path.join(v2, 'openRouterImagesSchema.sql'))
     fs.copyFileSync(path.resolve('infra/db/v2/deepSeekStableModelEvidenceSchema.sql'), path.join(v2, 'deepSeekStableModelEvidenceSchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/openAIResponsesModelEvidenceSchema.sql'), path.join(v2, 'openAIResponsesModelEvidenceSchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/anthropicModelEvidenceSchema.sql'), path.join(v2, 'anthropicModelEvidenceSchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/toolRegistrySchema.sql'), path.join(v2, 'toolRegistrySchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/geminiModelEvidenceSchema.sql'), path.join(v2, 'geminiModelEvidenceSchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/localEndpointProfileSchema.sql'), path.join(v2, 'localEndpointProfileSchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/reasoningProjectionSchema.sql'), path.join(v2, 'reasoningProjectionSchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/composerDraftSchema.sql'), path.join(v2, 'composerDraftSchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/searchSchema.sql'), path.join(v2, 'searchSchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/enginePluginRegistrySchema.sql'), path.join(v2, 'enginePluginRegistrySchema.sql'))
+    fs.copyFileSync(path.resolve('infra/db/v2/openAIChatCompatibleSchema.sql'), path.join(v2, 'openAIChatCompatibleSchema.sql'))
     fs.writeFileSync(path.join(v2, 'generationExecutionSchema.sql'), [
       '-- Generation Compiler V2 injected failure fixture.',
       'CREATE TABLE IF NOT EXISTS injected_partial_v2 (id TEXT PRIMARY KEY);',
@@ -337,10 +354,13 @@ describe('Generation V2 schema composer and core conversation graph', () => {
 
   it('remains outside legacy startup, worker and chat.db schema ownership', () => {
     const composerName = 'schemaComposerV2'
+    expect(existsSync(path.resolve('electron/main.ts'))).toBe(false)
+    expect(existsSync(path.resolve('infra/db/worker/runtime.ts'))).toBe(false)
+    expect(existsSync(path.resolve('infra/db/schema.sql'))).toBe(false)
     const sources = [
-      'electron/main.ts',
-      'infra/db/worker/runtime.ts',
-      'infra/db/schema.sql',
+      'electron/epoch2MainEntry.ts',
+      'electron/mainV2.ts',
+      'infra/db/v2/schemaComposerV2.ts',
     ].map((file) => readFileSync(path.resolve(file), 'utf8')).join('\n')
     expect(sources).not.toContain(composerName)
     const composerSource = readFileSync(path.resolve('infra/db/v2/schemaComposerV2.ts'), 'utf8')

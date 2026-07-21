@@ -21,19 +21,19 @@ import {
 
 // eslint-disable-next-line max-lines-per-function
 describe('enginePluginLifecycleClient', () => {
-  const originalDbBridge = (globalThis as any).dbBridge
+  const originalGenerationV2 = (globalThis as any).generationV2
   const originalElectronApi = (globalThis as any).electronAPI
 
   afterEach(() => {
-    ;(globalThis as any).dbBridge = originalDbBridge
+    ;(globalThis as any).generationV2 = originalGenerationV2
     ;(globalThis as any).electronAPI = originalElectronApi
     vi.restoreAllMocks()
   })
 
-  it('invokes lifecycle methods through dbBridge and decodes responses', async () => {
+  it('invokes lifecycle methods through the fixed epoch-2 plugin bridge and decodes responses', async () => {
     // eslint-disable-next-line max-lines-per-function
     const invoke = vi.fn(async (method: string) => {
-      if (method === 'enginePluginLifecycle.listInstalledPlugins') {
+      if (method === 'generation-v2:plugins:list-installed') {
         return [
           {
             engineId: 'magika',
@@ -68,7 +68,7 @@ describe('enginePluginLifecycleClient', () => {
           },
         ]
       }
-      if (method === 'enginePluginLifecycle.listOfficialPlugins') {
+      if (method === 'generation-v2:plugins:list-official') {
         return {
           ok: true,
           value: [
@@ -99,7 +99,7 @@ describe('enginePluginLifecycleClient', () => {
           ],
         }
       }
-      if (method === 'enginePluginLifecycle.installOfficialPlugin') {
+      if (method === 'generation-v2:plugins:install-official') {
         return {
           ok: true,
           value: {
@@ -124,7 +124,7 @@ describe('enginePluginLifecycleClient', () => {
           },
         }
       }
-      if (method === 'enginePluginLifecycle.getInstallOperationStatus') {
+      if (method === 'generation-v2:plugins:install-status') {
         return {
           ok: true,
           value: {
@@ -176,7 +176,20 @@ describe('enginePluginLifecycleClient', () => {
         },
       }
     })
-    ;(globalThis as any).dbBridge = { invoke }
+    ;(globalThis as any).generationV2 = { plugins: {
+      listOfficial: (payload: unknown) => invoke('generation-v2:plugins:list-official', payload),
+      listInstalled: () => invoke('generation-v2:plugins:list-installed'),
+      registerLocalOfficial: (payload: unknown) => invoke('generation-v2:plugins:register-local-official', payload),
+      installOfficial: (payload: unknown) => invoke('generation-v2:plugins:install-official', payload),
+      installStatus: (payload: unknown) => invoke('generation-v2:plugins:install-status', payload),
+      cancelInstall: (payload: unknown) => invoke('generation-v2:plugins:cancel-install', payload),
+      enable: (payload: unknown) => invoke('generation-v2:plugins:enable', payload),
+      disable: (payload: unknown) => invoke('generation-v2:plugins:disable', payload),
+      uninstall: (payload: unknown) => invoke('generation-v2:plugins:uninstall', payload),
+      health: (payload: unknown) => invoke('generation-v2:plugins:health', payload),
+      registerLocalPackage: (payload: unknown) => invoke('generation-v2:plugins:register-local-package', payload),
+      diagnostics: () => invoke('generation-v2:plugins:diagnostics'),
+    } }
 
     const official = await listOfficialPlugins({ catalogPath: '/ignored/catalog.json' })
     const installed = await listInstalledPlugins()
@@ -212,7 +225,6 @@ describe('enginePluginLifecycleClient', () => {
   })
 
   it('routes LibreOffice package import and quarantine through narrow electronAPI methods', async () => {
-    const dbInvoke = vi.fn()
     const importLibreOffice = vi.fn(async () => ({
       ok: true,
       value: {
@@ -254,7 +266,6 @@ describe('enginePluginLifecycleClient', () => {
       message: 'LibreOffice managed runtime root is not configured',
       errorChain: null,
     }))
-    ;(globalThis as any).dbBridge = { invoke: dbInvoke }
     ;(globalThis as any).electronAPI = {
       importLibreOfficeSvpkg: importLibreOffice,
       quarantineLibreOfficeRuntime: quarantineRuntime,
@@ -267,8 +278,6 @@ describe('enginePluginLifecycleClient', () => {
     expect(quarantined.ok).toBe(false)
     expect(importLibreOffice).toHaveBeenCalledWith()
     expect(quarantineRuntime).toHaveBeenCalledWith()
-    expect(dbInvoke).not.toHaveBeenCalledWith('enginePluginLifecycle.importLibreOfficeSvpkgFromPath', expect.anything())
-    expect(dbInvoke).not.toHaveBeenCalledWith('enginePluginLifecycle.quarantineLibreOfficeRuntime', expect.anything())
   })
 })
 
@@ -586,8 +595,8 @@ describe('enginePluginLifecycleClient DTO safety', () => {
 
 describe('installRef safety', () => {
   it('normal installRef passes validation', async () => {
-    ;(globalThis as any).dbBridge = {
-      invoke: vi.fn(async () => ({
+    ;(globalThis as any).generationV2 = { plugins: {
+      registerLocalOfficial: vi.fn(async () => ({
         ok: true,
         value: {
           engineId: 'magika',
@@ -608,7 +617,7 @@ describe('installRef safety', () => {
           lastHealthCheckAt: 3,
         },
       })),
-    }
+    } }
     const result = await registerLocalOfficialPlugin({
       pluginId: 'magika',
       pluginVersion: '0.1.0',

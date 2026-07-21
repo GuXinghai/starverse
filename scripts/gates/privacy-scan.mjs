@@ -45,7 +45,7 @@ const ALLOWLIST = [
   {
     id: 'sanitizer-redaction-implementations',
     reason: 'redaction implementations must name sensitive fields and path patterns',
-    path: /^(electron\/ipc\/logSanitizer|src\/next\/file-type\/(externalEngineRegistry|externalProcessRunner|magikaAdapter|magikaClassifyRunner|magikaRuntimeLoader)|src\/next\/plugin-distribution\/sanitization)\.ts$/u,
+    path: /^(electron\/ipc\/logSanitizer|src\/next\/file-type\/(externalEngineRegistry|externalProcessRunner|magikaAdapter|magikaClassifyRunner|magikaRuntimeLoader)|src\/(next|shared)\/plugin-distribution\/sanitization)\.ts$/u,
     matchTypes: ['contentToken', 'fullHash'],
     line: /(replace|CONTENT_TOKEN|FULL_HASH|redact|sanitize)/iu,
   },

@@ -11,7 +11,7 @@ import { compileOpenAIResponsesRequestV1 } from '../../src/next/generation-v2/pr
 import { projectOpenAIResponsesIntentV1 } from '../../src/next/generation-v2/providers/openai-responses/responsesIntentProjectionV1'
 import { isVerifiedOpenAIResponsesEndpointProfileV2, readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+import { createBearerAuthorizationHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 
 export class OpenAIResponsesPreparedRequestCompilerV2Error extends Error {
@@ -96,8 +96,10 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     parameters: tool.function.parameters ?? Object.freeze({}), strict: false,
   })) ?? []
   const compiled = compileOpenAIResponsesRequestV1({
-    model: binding.modelId.value, priorArtifact: input.history.priorArtifact,
-    clientItems: input.history.clientItems,
+    model: binding.modelId.value,
+    ...(input.history.projectedPrefixItems === null
+      ? { priorArtifact: input.history.priorArtifact, clientItems: input.history.clientItems }
+      : { replayItems: [...input.history.projectedPrefixItems, ...input.history.clientItems] }),
     ...(projection.request.reasoning === undefined ? {} : { reasoning: projection.request.reasoning }),
     generation: projection.request.generation,
     ...((projection.request.tools === undefined && functionTools.length === 0) ? {} : {
@@ -119,6 +121,7 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     contractId: binding.protocolContractId.value, modelId: binding.modelId.value,
     effectiveEndpointId: profile.descriptor.endpointId.value,
     endpoint: new URL(profile.descriptor.responsesPath, profile.descriptor.apiOrigin).toString(),
+    headersPlan: createBearerAuthorizationHeaderPlanV2(),
     body: compiled.preparedBody, ledger, capabilityRevision: capability.revision.value,
     snapshotHash: snapshot.snapshotHash.value,
   })

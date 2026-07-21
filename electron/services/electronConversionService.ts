@@ -24,17 +24,20 @@ export type MainProcessElectronConversionServiceInput = Readonly<{
   htmlToPdfAdapter?: ElectronHtmlPdfConversionAdapter
   officialPackageRequest?: typeof net.request
   providerFetch?: typeof fetch
+  beforeGovernedRequest?: () => void
 }>
 
 export class MainProcessElectronConversionService implements ElectronConversionBridge {
   private readonly htmlToPdfAdapter: ElectronHtmlPdfConversionAdapter
   private readonly officialPackageRequest?: typeof net.request
   private readonly providerFetch?: typeof fetch
+  private readonly beforeGovernedRequest?: () => void
 
   constructor(input: MainProcessElectronConversionServiceInput = {}) {
     this.htmlToPdfAdapter = input.htmlToPdfAdapter ?? createElectronHtmlPdfConversionAdapter()
     this.officialPackageRequest = input.officialPackageRequest
     this.providerFetch = input.providerFetch
+    this.beforeGovernedRequest = input.beforeGovernedRequest
   }
 
   async convert(rawRequest: ElectronConversionRequest): Promise<ElectronConversionResponse> {
@@ -55,6 +58,9 @@ export class MainProcessElectronConversionService implements ElectronConversionB
   }
 
   async fetchPackageToFile(request: PackageDownloadFileTransportRequest): Promise<PackageDownloadFileTransportResult> {
+    try { this.beforeGovernedRequest?.() } catch (error) {
+      return { ok: false, code: 'download_failed', detail: error instanceof Error ? error.message : 'proxy_environment_unavailable' }
+    }
     return await fetchPackageToFileWithElectronNet(request, { request: this.officialPackageRequest })
   }
 
@@ -80,6 +86,7 @@ export class MainProcessElectronConversionService implements ElectronConversionB
     const timeoutMs = normalizeProviderFetchTimeoutMs(request.timeoutMs)
     const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
     try {
+      this.beforeGovernedRequest?.()
       const response = await this.providerFetch(parsedUrl.toString(), {
         method: String(request.method ?? 'GET'),
         headers: request.headers ?? {},

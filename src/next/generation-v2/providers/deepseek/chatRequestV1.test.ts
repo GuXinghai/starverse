@@ -104,6 +104,29 @@ describe('DeepSeek stable Chat request V1', () => {
     expect(result.preparedBody.copyUtf8Text()).toContain('"reasoning_content":"Need weather tool"')
   })
 
+  it('compiles an explicit selected complete-turn replay without a parent artifact', () => {
+    const result = compileDeepSeekStableChatRequestV1({
+      model: 'deepseek-v4-pro',
+      replayEntries: [
+        { kind: 'client', message: { role: 'user', content: 'selected first' } },
+        { kind: 'assistant', generatedWithThinking: 'enabled', message: {
+          role: 'assistant', content: 'first answer', reasoning_content: 'first reasoning',
+        } },
+        { kind: 'client', message: { role: 'user', content: 'current third' } },
+      ],
+      thinking: { type: 'enabled' },
+    })
+    expect(result.nativeRequest.messages).toEqual([
+      { role: 'user', content: 'selected first' },
+      { role: 'assistant', content: 'first answer', reasoning_content: 'first reasoning' },
+      { role: 'user', content: 'current third' },
+    ])
+    expect(() => compileDeepSeekStableChatRequestV1({
+      model: 'deepseek-v4-pro', priorArtifact: null, clientEntries: [user('x')], replayEntries: [user('x')],
+      thinking: { type: 'disabled' },
+    })).toThrow('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_SHAPE')
+  })
+
   it('fails before prepared bytes for missing native reasoning, booleans, unknown fields and invalid named tools', () => {
     expect(() => compileDeepSeekStableChatRequestV1({
       model: 'deepseek-v4-pro', priorArtifact: null, clientEntries: [user('x')], thinking: { type: true },

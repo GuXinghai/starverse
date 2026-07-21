@@ -5,6 +5,8 @@ export type SamplingIntentV2 = Readonly<{
   temperature?: number
   topP?: number
   topK?: number
+  minP?: number
+  topA?: number
   seed?: number
   stop?: readonly string[]
   candidateCount?: number
@@ -19,6 +21,7 @@ export type ReasoningIntentV2 =
       mode: 'enabled'
       effort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
       summary?: 'auto' | 'concise' | 'detailed'
+      exclude?: boolean
     }>
 
 export type WebSearchIntentV2 =
@@ -26,6 +29,19 @@ export type WebSearchIntentV2 =
   | Readonly<{
       mode: 'provider_search'
       types: readonly ('web' | 'image')[]
+      engine?: 'auto' | 'native' | 'exa' | 'firecrawl' | 'parallel' | 'perplexity'
+      maxResults?: number
+      maxTotalResults?: number
+      searchContextSize?: 'low' | 'medium' | 'high'
+      maxCharacters?: number
+      userLocation?: Readonly<{
+        city?: string
+        region?: string
+        country?: string
+        timezone?: string
+      }>
+      allowedDomains?: readonly string[]
+      excludedDomains?: readonly string[]
     }>
 
 export type ImageGenerationIntentV2 =
@@ -56,7 +72,8 @@ export type ToolPolicyIntentV2 =
       sideEffectConfirmation: 'required_each_retry'
     }>
 
-export type AttachmentIntentV2 = Readonly<{
+export type ManagedFileAttachmentIntentV2 = Readonly<{
+  kind: 'managed_file'
   assetId: GenerationV2Identity<'asset_id'>
   assetRevisionId: GenerationV2Identity<'asset_revision_id'>
   assetSha256: GenerationV2Digest<'asset_sha256'>
@@ -64,6 +81,44 @@ export type AttachmentIntentV2 = Readonly<{
   sendAs: 'provider_file' | 'inline_text' | 'image_reference' | 'converted_document'
   conversion: 'none' | 'pdf' | 'plain_text' | 'images'
 }>
+
+/**
+ * A user-supplied remote reference.  This is deliberately not a managed asset:
+ * preserving the URL does not claim that its remote bytes are stable or even
+ * still reachable when a retry occurs.
+ */
+export type UrlReferenceAttachmentIntentV2 = Readonly<{
+  kind: 'url_reference'
+  referenceId: GenerationV2Identity<'url_reference_id'>
+  referenceRevision: GenerationV2Identity<'url_reference_revision'>
+  originalUrl: string
+  urlDigest: GenerationV2Digest<'url_digest'>
+  mediaKind: 'image' | 'document' | 'audio' | 'video' | 'other'
+  declaredMediaType?: string
+  capturedAtMs: number
+  provenance: 'user_supplied'
+  include: boolean
+  sendAs: 'url_reference'
+  conversion: 'none'
+}>
+
+export type AttachmentIntentV2 = ManagedFileAttachmentIntentV2 | UrlReferenceAttachmentIntentV2
+
+/**
+ * A provider-file binding is an immutable server-side handle to a managed
+ * revision.  It is needed both for a file selected as-is and for the PDF
+ * revision produced by document conversion.  This is intentionally a domain
+ * fact, not a provider capability claim: a codec must still reject a binding
+ * shape its own formal contract cannot encode.
+ */
+export function requiresProviderFileBindingV2(
+  attachment: AttachmentIntentV2,
+): attachment is ManagedFileAttachmentIntentV2 {
+  return attachment.kind === 'managed_file' && attachment.include && (
+    attachment.sendAs === 'provider_file' && attachment.conversion === 'none' ||
+    attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf'
+  )
+}
 
 export type ProviderSemanticExtensionV2 =
   | Readonly<{ kind: 'none' }>
@@ -73,6 +128,35 @@ export type ProviderSemanticExtensionV2 =
       maxToolCalls?: number
       parallelToolCalls?: boolean
       serviceTier?: 'auto' | 'default' | 'flex' | 'priority'
+    }>
+  | Readonly<{
+      kind: 'anthropic_messages'
+      thinkingDisplay: 'provider_default' | 'summarized' | 'omitted'
+      thinkingMode: 'model_recommended' | 'adaptive'
+      manualThinkingBudgetTokens?: never
+    }>
+  | Readonly<{
+      kind: 'anthropic_messages'
+      thinkingDisplay: 'provider_default' | 'summarized' | 'omitted'
+      thinkingMode: 'manual'
+      manualThinkingBudgetTokens: number
+    }>
+  | Readonly<{
+      kind: 'gemini_generate_content'
+      thinkingMode: 'provider_default'
+      includeThoughts: 'provider_default' | 'enabled' | 'disabled'
+    }>
+  | Readonly<{
+      kind: 'gemini_generate_content'
+      thinkingMode: 'level'
+      thinkingLevel: 'minimal' | 'low' | 'medium' | 'high'
+      includeThoughts: 'provider_default' | 'enabled' | 'disabled'
+    }>
+  | Readonly<{
+      kind: 'gemini_generate_content'
+      thinkingMode: 'budget'
+      thinkingBudget: number
+      includeThoughts: 'provider_default' | 'enabled' | 'disabled'
     }>
 
 const attachmentIntentsV2 = new WeakSet<object>()
@@ -212,7 +296,7 @@ function compact<T extends object>(value: T): T {
 }
 
 function decodeSampling(value: unknown): SamplingIntentV2 {
-  const keys = ['maxOutputTokens', 'temperature', 'topP', 'topK', 'seed', 'stop', 'candidateCount', 'frequencyPenalty', 'presencePenalty', 'repetitionPenalty'] as const
+  const keys = ['maxOutputTokens', 'temperature', 'topP', 'topK', 'minP', 'topA', 'seed', 'stop', 'candidateCount', 'frequencyPenalty', 'presencePenalty', 'repetitionPenalty'] as const
   const input = closedObject(value, keys)
   const stop = input.stop === undefined ? undefined : (() => {
     const values = closedDenseArray(input.stop)
@@ -226,13 +310,24 @@ function decodeSampling(value: unknown): SamplingIntentV2 {
   if (temperature !== undefined && temperature < 0) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   const topP = optionalFiniteNumber(input, 'topP')
   if (topP !== undefined && (topP < 0 || topP > 1)) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  const minP = optionalFiniteNumber(input, 'minP')
+  const topA = optionalFiniteNumber(input, 'topA')
+  if (minP !== undefined && (minP < 0 || minP > 1) || topA !== undefined && (topA < 0 || topA > 1)) {
+    throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  }
   const repetitionPenalty = optionalFiniteNumber(input, 'repetitionPenalty')
   if (repetitionPenalty !== undefined && repetitionPenalty <= 0) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   return compact({
     maxOutputTokens: optionalPositiveInteger(input, 'maxOutputTokens'),
     temperature,
     topP,
-    topK: optionalPositiveInteger(input, 'topK'),
+    topK: (() => {
+      const topK = optionalFiniteNumber(input, 'topK')
+      if (topK !== undefined && (!Number.isSafeInteger(topK) || topK < 0)) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+      return topK
+    })(),
+    minP,
+    topA,
     seed: (() => {
       const seed = optionalFiniteNumber(input, 'seed')
       if (seed !== undefined && !Number.isSafeInteger(seed)) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
@@ -247,21 +342,26 @@ function decodeSampling(value: unknown): SamplingIntentV2 {
 }
 
 function decodeReasoning(value: unknown): ReasoningIntentV2 {
-  const input = closedObject(value, ['mode', 'effort', 'summary'])
+  const input = closedObject(value, ['mode', 'effort', 'summary', 'exclude'])
   if (input.mode === 'disabled') {
     if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
     return Object.freeze({ mode: 'disabled' })
   }
   if (input.mode !== 'enabled') throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  if (input.exclude !== undefined && typeof input.exclude !== 'boolean') throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   return compact({
     mode: 'enabled' as const,
     effort: optionalEnum(input, 'effort', ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
     summary: optionalEnum(input, 'summary', ['auto', 'concise', 'detailed']),
+    exclude: input.exclude as boolean | undefined,
   })
 }
 
 function decodeWeb(value: unknown): WebSearchIntentV2 {
-  const input = closedObject(value, ['mode', 'types'])
+  const input = closedObject(value, [
+    'mode', 'types', 'engine', 'maxResults', 'maxTotalResults', 'searchContextSize',
+    'maxCharacters', 'userLocation', 'allowedDomains', 'excludedDomains',
+  ])
   if (input.mode === 'disabled') {
     if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
     return Object.freeze({ mode: 'disabled' })
@@ -274,7 +374,49 @@ function decodeWeb(value: unknown): WebSearchIntentV2 {
   const types = [...inputTypes] as ('web' | 'image')[]
   if (new Set(types).size !== types.length) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_DUPLICATE_VALUE')
   types.sort((left, right) => ['web', 'image'].indexOf(left) - ['web', 'image'].indexOf(right))
-  return Object.freeze({ mode: 'provider_search', types: Object.freeze(types) })
+  const decodeDomains = (key: 'allowedDomains' | 'excludedDomains'): readonly string[] | undefined => {
+    if (input[key] === undefined) return undefined
+    const values = closedDenseArray(input[key])
+    if (values.length === 0 || values.length > 100 || values.some((item) =>
+      typeof item !== 'string' || item.length === 0 || item.length > 253 || item.trim() !== item || /[\s/]/u.test(item))) {
+      throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    }
+    if (new Set(values).size !== values.length) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_DUPLICATE_VALUE')
+    return Object.freeze([...values] as string[])
+  }
+  const userLocation = input.userLocation === undefined ? undefined : (() => {
+    const location = closedObject(input.userLocation, ['city', 'region', 'country', 'timezone'])
+    if (Object.keys(location).length === 0 || Object.values(location).some((item) =>
+      typeof item !== 'string' || item.length === 0 || item.length > 256 || item.trim() !== item)) {
+      throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    }
+    return Object.freeze({
+      ...(location.city === undefined ? {} : { city: location.city as string }),
+      ...(location.region === undefined ? {} : { region: location.region as string }),
+      ...(location.country === undefined ? {} : { country: location.country as string }),
+      ...(location.timezone === undefined ? {} : { timezone: location.timezone as string }),
+    })
+  })()
+  const maxResults = optionalPositiveInteger(input, 'maxResults')
+  const maxTotalResults = optionalPositiveInteger(input, 'maxTotalResults')
+  const maxCharacters = optionalPositiveInteger(input, 'maxCharacters')
+  if (maxResults !== undefined && maxResults > 25 ||
+      maxTotalResults !== undefined && maxTotalResults > 1_000_000 ||
+      maxCharacters !== undefined && maxCharacters > 100_000) {
+    throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  }
+  return compact({
+    mode: 'provider_search' as const,
+    types: Object.freeze(types),
+    engine: optionalEnum(input, 'engine', ['auto', 'native', 'exa', 'firecrawl', 'parallel', 'perplexity']),
+    maxResults,
+    maxTotalResults,
+    searchContextSize: optionalEnum(input, 'searchContextSize', ['low', 'medium', 'high']),
+    maxCharacters,
+    userLocation,
+    allowedDomains: decodeDomains('allowedDomains'),
+    excludedDomains: decodeDomains('excludedDomains'),
+  })
 }
 
 function decodeImage(value: unknown): ImageGenerationIntentV2 {
@@ -353,27 +495,72 @@ function decodeTools(value: unknown): ToolPolicyIntentV2 {
 }
 
 function decodeAttachment(value: unknown): AttachmentIntentV2 {
-  const input = closedObject(value, ['assetId', 'assetRevisionId', 'assetSha256', 'include', 'sendAs', 'conversion'])
-  if (typeof input.assetId !== 'string' || typeof input.assetRevisionId !== 'string' || typeof input.assetSha256 !== 'string' || typeof input.include !== 'boolean') {
+  const discriminator = closedObject(value, [
+    'kind', 'assetId', 'assetRevisionId', 'assetSha256', 'referenceId', 'referenceRevision', 'originalUrl', 'urlDigest',
+    'mediaKind', 'declaredMediaType', 'capturedAtMs', 'provenance', 'include', 'sendAs', 'conversion',
+  ])
+  if (discriminator.kind === 'managed_file') {
+    const input = closedObject(value, ['kind', 'assetId', 'assetRevisionId', 'assetSha256', 'include', 'sendAs', 'conversion'])
+    if (typeof input.assetId !== 'string' || typeof input.assetRevisionId !== 'string' || typeof input.assetSha256 !== 'string' || typeof input.include !== 'boolean') {
+      throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    }
+    const sendAs = optionalEnum(input, 'sendAs', ['provider_file', 'inline_text', 'image_reference', 'converted_document'])
+    const conversion = optionalEnum(input, 'conversion', ['none', 'pdf', 'plain_text', 'images'])
+    if (!sendAs || !conversion) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    const attachment = Object.freeze({
+      kind: 'managed_file' as const,
+      assetId: GenerationV2Identity.create('asset_id', input.assetId),
+      assetRevisionId: GenerationV2Identity.create('asset_revision_id', input.assetRevisionId),
+      assetSha256: GenerationV2Digest.create('asset_sha256', input.assetSha256),
+      include: input.include,
+      sendAs,
+      conversion,
+    })
+    attachmentIntentsV2.add(attachment)
+    return attachment
+  }
+  if (discriminator.kind !== 'url_reference') {
     throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   }
-  const sendAs = optionalEnum(input, 'sendAs', ['provider_file', 'inline_text', 'image_reference', 'converted_document'])
-  const conversion = optionalEnum(input, 'conversion', ['none', 'pdf', 'plain_text', 'images'])
-  if (!sendAs || !conversion) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  const input = closedObject(value, ['kind', 'referenceId', 'referenceRevision', 'originalUrl', 'urlDigest', 'mediaKind',
+    'declaredMediaType', 'capturedAtMs', 'provenance', 'include', 'sendAs', 'conversion'])
+  if (typeof input.referenceId !== 'string' || typeof input.referenceRevision !== 'string' || typeof input.originalUrl !== 'string' ||
+      typeof input.urlDigest !== 'string' || typeof input.include !== 'boolean' || input.provenance !== 'user_supplied' ||
+      input.sendAs !== 'url_reference' || input.conversion !== 'none' ||
+      !['image', 'document', 'audio', 'video', 'other'].includes(String(input.mediaKind)) ||
+      !Number.isSafeInteger(input.capturedAtMs) || (input.capturedAtMs as number) < 0 || input.originalUrl.length < 1 || input.originalUrl.length > 16384 ||
+      (input.declaredMediaType !== undefined && (typeof input.declaredMediaType !== 'string' || !/^[a-z0-9!#$&^_.+*/-]+\/[a-z0-9!#$&^_.+*/-]+$/u.test(input.declaredMediaType)))) {
+    throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  }
+  let parsed: URL
+  try { parsed = new URL(input.originalUrl) } catch { throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE') }
+  if ((parsed.protocol !== 'https:' && parsed.protocol !== 'http:') || parsed.username || parsed.password) {
+    throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  }
   const attachment = Object.freeze({
-    assetId: GenerationV2Identity.create('asset_id', input.assetId),
-    assetRevisionId: GenerationV2Identity.create('asset_revision_id', input.assetRevisionId),
-    assetSha256: GenerationV2Digest.create('asset_sha256', input.assetSha256),
+    kind: 'url_reference' as const,
+    referenceId: GenerationV2Identity.create('url_reference_id', input.referenceId),
+    referenceRevision: GenerationV2Identity.create('url_reference_revision', input.referenceRevision),
+    originalUrl: input.originalUrl,
+    urlDigest: GenerationV2Digest.create('url_digest', input.urlDigest),
+    mediaKind: input.mediaKind as UrlReferenceAttachmentIntentV2['mediaKind'],
+    ...(input.declaredMediaType === undefined ? {} : { declaredMediaType: input.declaredMediaType }),
+    capturedAtMs: input.capturedAtMs as number,
+    provenance: 'user_supplied' as const,
     include: input.include,
-    sendAs,
-    conversion,
+    sendAs: 'url_reference' as const,
+    conversion: 'none' as const,
   })
   attachmentIntentsV2.add(attachment)
   return attachment
 }
 
 function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
-  const input = closedObject(value, ['kind', 'verbosity', 'maxToolCalls', 'parallelToolCalls', 'serviceTier'])
+  const input = closedObject(value, [
+    'kind', 'verbosity', 'maxToolCalls', 'parallelToolCalls', 'serviceTier',
+    'thinkingDisplay', 'thinkingMode', 'manualThinkingBudgetTokens',
+    'thinkingLevel', 'thinkingBudget', 'includeThoughts',
+  ])
   if (input.kind === 'none') {
     if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
     return Object.freeze({ kind: 'none' })
@@ -393,6 +580,62 @@ function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
       serviceTier,
     }) as ProviderSemanticExtensionV2
   }
+  if (input.kind === 'anthropic_messages') {
+    const thinkingMode = optionalEnum(input, 'thinkingMode', ['model_recommended', 'manual', 'adaptive'])
+    const manualThinkingBudgetTokens = optionalPositiveInteger(input, 'manualThinkingBudgetTokens')
+    const hasExpectedKeys = thinkingMode === 'manual'
+      ? Object.keys(input).length === 4 && manualThinkingBudgetTokens !== undefined
+      : Object.keys(input).length === 3 && manualThinkingBudgetTokens === undefined
+    if (!hasExpectedKeys || !thinkingMode || input.thinkingDisplay === undefined) {
+      throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    }
+    const thinkingDisplay = optionalEnum(input, 'thinkingDisplay', ['provider_default', 'summarized', 'omitted'])
+      ?? (() => { throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE') })()
+    return thinkingMode === 'manual'
+      ? Object.freeze({
+          kind: 'anthropic_messages' as const,
+          thinkingDisplay,
+          thinkingMode,
+          manualThinkingBudgetTokens: manualThinkingBudgetTokens!,
+        })
+      : Object.freeze({
+          kind: 'anthropic_messages' as const,
+          thinkingDisplay,
+          thinkingMode,
+        })
+  }
+  if (input.kind === 'gemini_generate_content') {
+    const thinkingMode = optionalEnum(input, 'thinkingMode', ['provider_default', 'level', 'budget'])
+    const includeThoughts = optionalEnum(input, 'includeThoughts', ['provider_default', 'enabled', 'disabled'])
+    const thinkingLevel = optionalEnum(input, 'thinkingLevel', ['minimal', 'low', 'medium', 'high'])
+    const thinkingBudget = input.thinkingBudget === undefined
+      ? undefined
+      : (() => {
+          if (!Number.isSafeInteger(input.thinkingBudget) || (input.thinkingBudget as number) < -1) {
+            throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+          }
+          return input.thinkingBudget as number
+        })()
+    if (!thinkingMode || !includeThoughts) {
+      throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    }
+    if (thinkingMode === 'provider_default') {
+      if (thinkingLevel !== undefined || thinkingBudget !== undefined || Object.keys(input).length !== 3) {
+        throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+      }
+      return Object.freeze({ kind: 'gemini_generate_content', thinkingMode, includeThoughts })
+    }
+    if (thinkingMode === 'level') {
+      if (!thinkingLevel || thinkingBudget !== undefined || Object.keys(input).length !== 4) {
+        throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+      }
+      return Object.freeze({ kind: 'gemini_generate_content', thinkingMode, thinkingLevel, includeThoughts })
+    }
+    if (thinkingBudget === undefined || thinkingLevel !== undefined || Object.keys(input).length !== 4) {
+      throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    }
+    return Object.freeze({ kind: 'gemini_generate_content', thinkingMode, thinkingBudget, includeThoughts })
+  }
   throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
 }
 
@@ -401,7 +644,9 @@ export function decodeGenerationIntentLayerV2(value: unknown): GenerationIntentL
   if (input.schemaVersion !== 2) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   const attachments = input.attachments === undefined ? undefined : (() => {
     const values = closedDenseArray(input.attachments).map(decodeAttachment)
-    const identities = values.map((item) => `${item.assetId.value}\u0000${item.assetRevisionId.value}`)
+    const identities = values.map((item) => item.kind === 'managed_file'
+      ? `managed_file\u0000${item.assetId.value}\u0000${item.assetRevisionId.value}`
+      : `url_reference\u0000${item.referenceId.value}\u0000${item.referenceRevision.value}`)
     if (new Set(identities).size !== identities.length) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_DUPLICATE_VALUE')
     return Object.freeze(values) as readonly AttachmentIntentV2[]
   })()
