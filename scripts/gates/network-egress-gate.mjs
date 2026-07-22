@@ -82,13 +82,6 @@ const ALLOWLIST = [
     line: /input\?\.fetchImpl\s*\?\?\s*globalThis\.fetch/u,
   },
   {
-    id: 'electron-bridge-file-ingestion-fallback',
-    reason: 'file ingestion accepts injected Electron bridge fetch and keeps ambient fetch only as a non-Electron fallback',
-    path: /^infra\/files\/fileIngestionService\.ts$/u,
-    rules: ['global-this-fetch'],
-    line: /this\.deps\.fetch\s*\?\?\s*globalThis\.fetch/u,
-  },
-  {
     id: 'url-probe-injectable-fallback',
     reason: 'urlProbe is an injectable utility; app callers are expected to provide the Electron transport',
     path: /^infra\/files\/urlProbe\.ts$/u,
