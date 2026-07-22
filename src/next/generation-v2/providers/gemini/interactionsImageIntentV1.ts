@@ -1,4 +1,6 @@
-import { decodeGenerationIntentLayerV2, readImageAspectRatioV2, type GenerationIntentLayerV2 } from '../../domain/generationIntentV2'
+import { readImageAspectRatioV2 } from '../../domain/generationIntentV2'
+import { decodeResolvedGenerationIntentV2, type ResolvedGenerationIntentV2 } from '../../domain/resolvedGenerationIntentV2'
+import { readGeminiInteractionsImageModelPolicyV1 } from './interactionsImageCapabilityPolicyV1'
 
 export type GeminiInteractionsImageIntentDispositionV1 = Readonly<{
   path: string
@@ -6,7 +8,7 @@ export type GeminiInteractionsImageIntentDispositionV1 = Readonly<{
   nativeField: string | null
 }>
 export type GeminiInteractionsImageIntentProjectionV1 = Readonly<{
-  intent: GenerationIntentLayerV2
+  intent: ResolvedGenerationIntentV2
   dispositions: readonly GeminiInteractionsImageIntentDispositionV1[]
   issues: readonly string[]
 }>
@@ -15,23 +17,57 @@ function add(dispositions: GeminiInteractionsImageIntentDispositionV1[], path: s
   dispositions.push(Object.freeze({ path, disposition, nativeField }))
 }
 
-/** Exact semantic surface for the initial verified Interactions image slice. */
-export function projectGeminiInteractionsImageIntentV1(value: unknown): GeminiInteractionsImageIntentProjectionV1 {
-  const intent = decodeGenerationIntentLayerV2(value)
+/** Exact semantic surface for the snapshot-bound Gemini Interactions image model. */
+export function projectGeminiInteractionsImageIntentV1(value: unknown, modelId: string): GeminiInteractionsImageIntentProjectionV1 {
+  const intent = decodeResolvedGenerationIntentV2(value).value
+  const policy = readGeminiInteractionsImageModelPolicyV1(modelId)
   const dispositions: GeminiInteractionsImageIntentDispositionV1[] = []
   const issues: string[] = []
   const reject = (path: string) => { if (!issues.includes(path)) issues.push(path) }
   const generation = intent.generation
   if (generation.candidateCount !== 1) reject('generation.candidateCount')
   else add(dispositions, 'generation.candidateCount', 'accepted_no_wire', null)
-  for (const key of ['maxOutputTokens', 'temperature', 'topP', 'topK', 'minP', 'topA', 'seed', 'stop',
-    'frequencyPenalty', 'presencePenalty', 'repetitionPenalty'] as const) {
+  if (generation.temperature !== undefined) add(dispositions, 'generation.temperature', 'encoded', 'generation_config.temperature')
+  if (generation.topP !== undefined) add(dispositions, 'generation.topP', 'encoded', 'generation_config.top_p')
+  if (generation.maxOutputTokens !== undefined) {
+    if (generation.maxOutputTokens > policy.maxOutputTokens) reject('generation.maxOutputTokens')
+    else add(dispositions, 'generation.maxOutputTokens', 'encoded', 'generation_config.max_output_tokens')
+  }
+  if (generation.stop !== undefined) {
+    if (!policy.supportsStopSequences) reject('generation.stop')
+    else add(dispositions, 'generation.stop', 'encoded', 'generation_config.stop_sequences')
+  }
+  for (const key of ['topK', 'minP', 'topA', 'seed', 'frequencyPenalty', 'presencePenalty', 'repetitionPenalty'] as const) {
     if (generation[key] !== undefined) reject(`generation.${key}`)
   }
-  if (intent.reasoning.mode !== 'disabled') reject('reasoning.mode')
-  else add(dispositions, 'reasoning.mode', 'accepted_no_wire', null)
-  if (intent.web.mode !== 'disabled') reject('web.mode')
-  else add(dispositions, 'web.mode', 'accepted_no_wire', null)
+  if (intent.reasoning.mode === 'disabled') add(dispositions, 'reasoning.mode', 'accepted_no_wire', null)
+  else if (!policy.supportsThoughtSummaries || intent.reasoning.exclude !== undefined ||
+      (intent.reasoning.effort === undefined && intent.reasoning.summary === undefined)) reject('reasoning.mode')
+  else {
+    add(dispositions, 'reasoning.mode', 'encoded', 'generation_config')
+    if (intent.reasoning.effort !== undefined) {
+      if (!(policy.thinkingLevels as readonly string[]).includes(intent.reasoning.effort)) reject('reasoning.effort')
+      else add(dispositions, 'reasoning.effort', 'encoded', 'generation_config.thinking_level')
+    }
+    if (intent.reasoning.summary !== undefined) {
+      if (intent.reasoning.summary !== 'auto') reject('reasoning.summary')
+      else add(dispositions, 'reasoning.summary', 'encoded', 'generation_config.thinking_summaries')
+    }
+  }
+  if (intent.web.mode === 'disabled') add(dispositions, 'web.mode', 'accepted_no_wire', null)
+  else {
+    const unsupportedOption = intent.web.engine !== undefined || intent.web.maxResults !== undefined ||
+      intent.web.maxTotalResults !== undefined || intent.web.searchContextSize !== undefined ||
+      intent.web.maxCharacters !== undefined || intent.web.userLocation !== undefined ||
+      intent.web.allowedDomains !== undefined || intent.web.excludedDomains !== undefined
+    const unsupportedType = intent.web.types.some((type) =>
+      type === 'web' ? !policy.supportsGoogleSearch : !policy.supportsImageSearch)
+    if (unsupportedOption || unsupportedType || intent.web.types.length === 0) reject('web.mode')
+    else {
+      add(dispositions, 'web.mode', 'encoded', 'tools')
+      add(dispositions, 'web.types', 'encoded', 'tools')
+    }
+  }
   if (intent.tools.mode !== 'disabled') reject('tools.mode')
   else add(dispositions, 'tools.mode', 'accepted_no_wire', null)
   if (intent.providerExtension.kind !== 'none') reject('providerExtension.kind')
@@ -40,12 +76,15 @@ export function projectGeminiInteractionsImageIntentV1(value: unknown): GeminiIn
   if (image.mode !== 'generate') reject('image.mode')
   else {
     add(dispositions, 'image.mode', 'encoded', 'response_format.type')
+    if (image.outputMode !== undefined) add(dispositions, 'image.outputMode', 'encoded', 'response_format')
     if (image.aspectRatio !== undefined) {
-      if (readImageAspectRatioV2(image.aspectRatio) !== '1:1') reject('image.aspectRatio')
-      else add(dispositions, 'image.aspectRatio', 'encoded', 'response_format.aspect_ratio')
+      const aspectRatio = readImageAspectRatioV2(image.aspectRatio)
+      if (!(policy.supportedAspectRatios as readonly string[]).includes(aspectRatio)) reject('image.aspectRatio')
+      else add(dispositions, 'image.aspectRatio', aspectRatio === 'auto' ? 'accepted_no_wire' : 'encoded',
+        aspectRatio === 'auto' ? null : 'response_format.aspect_ratio')
     }
     if (image.resolution !== undefined) {
-      if (image.resolution !== '1K') reject('image.resolution')
+      if (policy.imageSizeMode === 'hidden' || !policy.supportedImageSizes.includes(image.resolution)) reject('image.resolution')
       else add(dispositions, 'image.resolution', 'encoded', 'response_format.image_size')
     }
     if (image.format !== undefined) {
@@ -54,7 +93,7 @@ export function projectGeminiInteractionsImageIntentV1(value: unknown): GeminiIn
     }
     if (image.stream !== undefined) {
       if (image.stream !== true) reject('image.stream')
-      else add(dispositions, 'image.stream', 'encoded', 'stream')
+      else add(dispositions, 'image.stream', 'accepted_no_wire', null)
     }
     for (const key of ['size', 'quality', 'background', 'outputCompression'] as const) {
       if (image[key] !== undefined) reject(`image.${key}`)

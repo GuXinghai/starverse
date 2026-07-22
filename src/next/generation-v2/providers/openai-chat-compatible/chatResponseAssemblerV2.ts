@@ -35,6 +35,7 @@ export class OpenAIChatCompatibleResponseAssemblerV2 {
       // A stream delta with no content is represented as null by the closed
       // wire mapper. It is not an assistant terminal content value.
       if (event.content === null) return ''
+      if (typeof event.content !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_STREAM_INVALID')
       this.#contentSeen = true; this.#content += event.content; return event.content
     }
     if (event.kind === 'tool_fragment') {

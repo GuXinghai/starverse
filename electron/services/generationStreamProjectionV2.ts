@@ -19,6 +19,7 @@ export type GenerationStreamProjectionV2 =
     operationId: string
     answerRootId: string
     detail: Readonly<Record<string, unknown>>
+    persisted?: true
   }>
   | Readonly<{
     type: 'terminal'
@@ -56,7 +57,9 @@ export function createPersistentGenerationStreamProjectionSinkV2(
 ): GenerationStreamProjectionSinkV2 {
   const reasoning = new AnswerReasoningProjectionV2Repo(db)
   return Object.freeze({ publish: (projection: GenerationStreamProjectionV2) => {
-    if (projection.type === 'reasoning_detail') reasoning.append(projection.answerRootId, projection.detail)
+    if (projection.type === 'reasoning_detail' && projection.persisted !== true) {
+      reasoning.append(projection.answerRootId, projection.detail)
+    }
     downstream.publish(projection)
   } })
 }

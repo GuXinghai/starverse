@@ -157,13 +157,19 @@ export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesInt
       serviceTier = intent.providerExtension.serviceTier
       encode('providerExtension.serviceTier', 'service_tier')
     }
-  } else {
+  } else if (intent.providerExtension.kind === 'anthropic_messages') {
     reject('providerExtension.kind', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
     if (intent.providerExtension.manualThinkingBudgetTokens !== undefined) {
       reject('providerExtension.manualThinkingBudgetTokens', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
     }
     reject('providerExtension.thinkingDisplay', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
     reject('providerExtension.thinkingMode', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+  } else if (intent.providerExtension.kind === 'gemini_generate_content') {
+    reject('providerExtension.kind', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+    reject('providerExtension.thinkingMode', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+    if ('thinkingLevel' in intent.providerExtension && intent.providerExtension.thinkingLevel !== undefined) reject('providerExtension.thinkingLevel', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+    if ('thinkingBudget' in intent.providerExtension && intent.providerExtension.thinkingBudget !== undefined) reject('providerExtension.thinkingBudget', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
+    reject('providerExtension.includeThoughts', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
   }
   dispositions.sort((a, b) => a.semanticPath < b.semanticPath ? -1 : a.semanticPath > b.semanticPath ? 1 : 0)
   issues.sort((a, b) => a.semanticPath < b.semanticPath ? -1 : a.semanticPath > b.semanticPath ? 1 : 0)

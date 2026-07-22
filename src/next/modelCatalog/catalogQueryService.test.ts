@@ -1,5 +1,17 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CatalogQueryService } from './catalogQueryService'
+import { installGenerationV2ModelsList, successfulGenerationV2Models } from '../../../tests/helpers/generationV2ModelsBridge'
+
+function installScopedFixture(legacy: ReturnType<typeof vi.fn>) {
+  return installGenerationV2ModelsList('openrouter', async (payload) => {
+    const value = await legacy(payload) as any
+    if (value?.status === 'failed') return { ok: false, code: value.failureReasonCode ?? 'provider_catalog_query_failed' }
+    if (value?.status === 'not_synced') return { ok: false, code: 'catalog_not_synced' }
+    return successfulGenerationV2Models(Array.isArray(value?.items) ? value.items : [], {
+      responseDigest: value?.catalogRevision ?? 'catalog-test-digest', observedAtMs: value?.lastSyncAtMs ?? 123,
+    })
+  })
+}
 
 describe('CatalogQueryService.query', () => {
   const originalDbBridge = (globalThis as any).dbBridge
@@ -16,16 +28,12 @@ describe('CatalogQueryService.query', () => {
   })
 
   it('returns empty result when scoped query IPC is not available', async () => {
-    ;(globalThis as any).electronAPI = undefined
+    ;(globalThis as any).generationV2 = { ...(globalThis as any).generationV2, models: {} }
     const result = await CatalogQueryService.query({
       sourceProviderKey: 'openrouter',
       searchText: 'vision',
     })
-    expect(result).toEqual({
-      items: [],
-      nextCursor: null,
-      notice: null,
-    })
+    expect(result).toMatchObject({ items: [], nextCursor: null, status: 'failed', errorCode: 'provider_catalog_unavailable' })
   })
 
   it('invokes scoped current query IPC with normalized payload and decodes items', async () => {
@@ -59,6 +67,9 @@ describe('CatalogQueryService.query', () => {
             vision: true,
             longContext: true,
           },
+          inputModalities: ['text', 'image'],
+          outputModalities: ['text'],
+          supportedParameters: ['reasoning', 'tools'],
         },
       ],
       nextCursor: {
@@ -71,7 +82,7 @@ describe('CatalogQueryService.query', () => {
       modelCount: 1,
       lastSyncAtMs: 123,
     }))
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+    installScopedFixture(modelCatalogQueryScopedCurrent)
     ;(globalThis as any).dbBridge = {
       invoke: vi.fn(async () => {
         throw new Error('legacy query should not be called')
@@ -105,26 +116,7 @@ describe('CatalogQueryService.query', () => {
     })
 
     expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledTimes(1)
-    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      providerKey: 'openrouter',
-      searchText: 'gpt omni',
-      includeDescriptionInSearch: true,
-      vendors: ['openai'],
-      contextLength: { min: 8192, max: 200000 },
-      maxOutputTokens: { min: 1024, max: 8192 },
-      modalities: ['image'],
-      inputModalities: ['text', 'image'],
-      outputModalities: ['text'],
-      supportedParameters: ['reasoning', 'tools'],
-      capabilities: {
-        reasoning: true,
-        vision: true,
-      },
-      sortBy: 'name',
-      sortOrder: 'asc',
-      limit: 25,
-      cursor: null,
-    }))
+    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({ timeoutMs: 30_000 })
     expect((globalThis as any).dbBridge.invoke).not.toHaveBeenCalled()
     expect(JSON.stringify(modelCatalogQueryScopedCurrent.mock.calls)).not.toContain('sk-')
     expect(JSON.stringify(modelCatalogQueryScopedCurrent.mock.calls)).not.toContain('catalogScopeKey')
@@ -144,11 +136,7 @@ describe('CatalogQueryService.query', () => {
         prompt: '0.000005',
       },
     })
-    expect(result.nextCursor).toMatchObject({
-      modelKey: 'openrouter::openai/gpt-4o',
-      sortBy: 'name',
-      sortOrder: 'asc',
-    })
+    expect(result.nextCursor).toBeNull()
     expect(result).toMatchObject({
       status: 'synced',
       catalogRevision: 'checksum-a',
@@ -163,7 +151,7 @@ describe('CatalogQueryService.query', () => {
       nextCursor: null,
       status: 'synced',
     }))
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+    installScopedFixture(modelCatalogQueryScopedCurrent)
 
     await CatalogQueryService.query({
       sourceProviderKey: 'openrouter',
@@ -172,9 +160,7 @@ describe('CatalogQueryService.query', () => {
       },
     })
 
-    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      vendors: ['openai', 'anthropic'],
-    }))
+    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({ timeoutMs: 30_000 })
   })
 
   it('supports context_length and max_output_tokens sort fields with cursor normalization', async () => {
@@ -183,7 +169,7 @@ describe('CatalogQueryService.query', () => {
       nextCursor: null,
       status: 'synced',
     }))
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+    installScopedFixture(modelCatalogQueryScopedCurrent)
 
     await CatalogQueryService.query({
       sourceProviderKey: 'openrouter',
@@ -203,14 +189,7 @@ describe('CatalogQueryService.query', () => {
       },
     })
 
-    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      sortBy: 'context_length',
-      sortOrder: 'desc',
-      cursor: expect.objectContaining({
-        modelKey: 'openrouter::openai/gpt-4o',
-        contextLength: 8192,
-      }),
-    }))
+    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({ timeoutMs: 30_000 })
 
     await CatalogQueryService.query({
       sourceProviderKey: 'openrouter',
@@ -220,10 +199,7 @@ describe('CatalogQueryService.query', () => {
       },
     })
 
-    expect(modelCatalogQueryScopedCurrent).toHaveBeenLastCalledWith(expect.objectContaining({
-      sortBy: 'max_output_tokens',
-      sortOrder: 'asc',
-    }))
+    expect(modelCatalogQueryScopedCurrent).toHaveBeenLastCalledWith({ timeoutMs: 30_000 })
   })
 
   it('prefers sourceProviderKey and passes it to scoped current query', async () => {
@@ -232,16 +208,14 @@ describe('CatalogQueryService.query', () => {
       nextCursor: null,
       status: 'synced',
     }))
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+    ;(globalThis as any).generationV2 = { ...(globalThis as any).generationV2, models: {} }
 
     await CatalogQueryService.query({
-      sourceProviderKey: 'openai-direct',
+      sourceProviderKey: 'openai_responses',
       providerKey: 'openrouter',
     })
 
-    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      providerKey: 'openai-direct',
-    }))
+    expect(modelCatalogQueryScopedCurrent).not.toHaveBeenCalled()
   })
 
   it('drops malformed rows and malformed cursor safely', async () => {
@@ -268,7 +242,7 @@ describe('CatalogQueryService.query', () => {
       },
       status: 'synced',
     }))
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+    installScopedFixture(modelCatalogQueryScopedCurrent)
 
     const result = await CatalogQueryService.query({
       sourceProviderKey: 'openrouter',
@@ -277,9 +251,7 @@ describe('CatalogQueryService.query', () => {
       },
     })
 
-    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      limit: 1,
-    }))
+    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({ timeoutMs: 30_000 })
     expect(result.items).toHaveLength(1)
     expect(result.items[0].modelId).toBe('anthropic/claude-3')
     expect(result.nextCursor).toBeNull()
@@ -309,7 +281,7 @@ describe('CatalogQueryService.query', () => {
     const fetchImpl = vi.fn(async () => {
       throw new Error('renderer network should not be called')
     })
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+    installScopedFixture(modelCatalogQueryScopedCurrent)
     ;(globalThis as any).dbBridge = { invoke: legacyInvoke }
     ;(globalThis as any).fetch = fetchImpl
     ;(globalThis as any).electronStore = {
@@ -323,10 +295,7 @@ describe('CatalogQueryService.query', () => {
       },
     })
 
-    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith(expect.objectContaining({
-      providerKey: 'openrouter',
-      category: 'programming',
-    }))
+    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({ timeoutMs: 30_000, category: 'programming' })
     expect(legacyInvoke).not.toHaveBeenCalled()
     expect(fetchImpl).not.toHaveBeenCalled()
     expect(JSON.stringify(modelCatalogQueryScopedCurrent.mock.calls)).not.toContain('sk-test-should-not-be-read')
@@ -334,14 +303,16 @@ describe('CatalogQueryService.query', () => {
     expect(result.notice).toBeNull()
   })
 
-  it('does not fallback to legacy queryCore for unsupported scoped filters', async () => {
+  it('applies rich catalog filters without falling back to legacy queryCore', async () => {
     const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
-      items: [{ modelId: 'legacy/should-not-appear' }],
+      items: [{ providerKey: 'openrouter', modelId: 'current/vision', modelKey: 'openrouter::current/vision',
+        displayName: 'Current Vision', tags: ['capability:vision'], capabilities: { reasoning: false, tools: false,
+          structuredOutputs: false, vision: true, longContext: false } }],
       nextCursor: null,
       status: 'synced',
     }))
     const legacyInvoke = vi.fn(async () => ({ items: [{ modelId: 'legacy/only-model' }], nextCursor: null }))
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+    installScopedFixture(modelCatalogQueryScopedCurrent)
     ;(globalThis as any).dbBridge = { invoke: legacyInvoke }
 
     const result = await CatalogQueryService.query({
@@ -351,16 +322,13 @@ describe('CatalogQueryService.query', () => {
       },
     })
 
-    expect(modelCatalogQueryScopedCurrent).not.toHaveBeenCalled()
+    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({ timeoutMs: 30_000 })
     expect(legacyInvoke).not.toHaveBeenCalled()
-    expect(result).toEqual({
-      items: [],
-      nextCursor: null,
-      notice: 'Some filters are unavailable for the current catalog.',
-    })
+    expect(result.items.map((item) => item.modelId)).toEqual(['current/vision'])
+    expect(result.notice).toBeNull()
   })
 
-  it('maps not_synced and failed scoped query status to neutral UI notices', async () => {
+  it('maps V2 authority failures to explicit catalog failure results', async () => {
     const modelCatalogQueryScopedCurrent = vi
       .fn()
       .mockResolvedValueOnce({
@@ -379,30 +347,24 @@ describe('CatalogQueryService.query', () => {
         items: [],
         nextCursor: null,
       })
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+    installScopedFixture(modelCatalogQueryScopedCurrent)
 
     const notSynced = await CatalogQueryService.query({ sourceProviderKey: 'openrouter' })
     const failed = await CatalogQueryService.query({ sourceProviderKey: 'openrouter' })
 
-    expect(notSynced).toMatchObject({
-      items: [],
-      nextCursor: null,
-      notice: 'Model list is not synced.',
-      status: 'not_synced',
-      catalogRevision: null,
-    })
+    expect(notSynced).toMatchObject({ items: [], nextCursor: null, notice: 'Model list is unavailable.', status: 'failed', errorCode: 'catalog_not_synced' })
     expect(failed).toMatchObject({
       items: [],
       nextCursor: null,
       notice: 'Model list is unavailable.',
       status: 'failed',
-      catalogRevision: null,
+      errorCode: 'cache_corrupted',
     })
   })
 
   it('does not default missing source provider to OpenRouter', async () => {
     const modelCatalogQueryScopedCurrent = vi.fn()
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+    installScopedFixture(modelCatalogQueryScopedCurrent)
 
     const result = await CatalogQueryService.query({} as any)
 

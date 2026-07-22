@@ -2,7 +2,7 @@ import { stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSe
 import type { OpenRouterNativeMessageV1 } from './nativeMessagesV1'
 
 export type OpenRouterChatSseEventV1 =
-  | Readonly<{ type: 'json'; value: unknown }>
+  | Readonly<{ type: 'json'; value: unknown; rawData: string }>
   | Readonly<{ type: 'comment'; text: string }>
   | Readonly<{ type: 'done' }>
 
@@ -27,8 +27,20 @@ export class OpenRouterChatStreamV1Error extends Error {
     | 'GENERATION_V2_OPENROUTER_CHAT_SSE_PREMATURE_EOF'
     | 'GENERATION_V2_OPENROUTER_CHAT_STREAM_INVALID'
     | 'GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID'
-    | 'GENERATION_V2_OPENROUTER_CHAT_STREAM_LIMIT_EXCEEDED') {
+    | 'GENERATION_V2_OPENROUTER_CHAT_STREAM_LIMIT_EXCEEDED',
+    readonly detailCode: string = code) {
     super(code); this.name = 'OpenRouterChatStreamV1Error'
+  }
+}
+
+export class OpenRouterChatProviderStreamErrorV1 extends Error {
+  readonly code = 'GENERATION_V2_PROVIDER_REPORTED_ERROR' as const
+
+  constructor(
+    readonly rawPayload: string,
+  ) {
+    super('GENERATION_V2_PROVIDER_REPORTED_ERROR')
+    this.name = 'OpenRouterChatProviderStreamErrorV1'
   }
 }
 
@@ -36,7 +48,20 @@ const MAX_PENDING_BYTES = 8 * 1024 * 1024
 const MAX_WIRE_BYTES = 64 * 1024 * 1024
 const MAX_NATIVE_BYTES = 20 * 1024 * 1024
 
-function fail(code: OpenRouterChatStreamV1Error['code']): never { throw new OpenRouterChatStreamV1Error(code) }
+function fail(code: OpenRouterChatStreamV1Error['code'], detailCode: string = code): never {
+  throw new OpenRouterChatStreamV1Error(code, detailCode)
+}
+function providerFail(value: unknown, rawPayload: string | undefined): never {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_INVALID')
+  }
+  const error = value as Record<string, unknown>
+  if ((typeof error.code !== 'string' && !Number.isSafeInteger(error.code)) ||
+      typeof error.message !== 'string' || !rawPayload) {
+    return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_INVALID')
+  }
+  throw new OpenRouterChatProviderStreamErrorV1(rawPayload)
+}
 function cloneObject(value: unknown): Readonly<Record<string, unknown>> {
   try {
     const encoded = stableSerializeProviderRequestBoundedV2(value, MAX_NATIVE_BYTES)
@@ -97,7 +122,7 @@ export class OpenRouterChatSseDecoderV1 {
       else {
         let value: unknown
         try { value = JSON.parse(raw) } catch { return fail('GENERATION_V2_OPENROUTER_CHAT_SSE_INVALID') }
-        result.push(Object.freeze({ type: 'json', value }))
+        result.push(Object.freeze({ type: 'json', value, rawData: raw }))
       }
     }
     return Object.freeze(result)
@@ -120,10 +145,12 @@ export class OpenRouterChatStreamAssemblerV1 {
   #done = false
   #nativeBytes = 0
 
-  push(value: unknown): OpenRouterChatStreamDeltaV1 {
-    if (this.#done || !value || typeof value !== 'object' || Array.isArray(value)) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID')
+  push(value: unknown, rawData?: string): OpenRouterChatStreamDeltaV1 {
+    if (this.#done || !value || typeof value !== 'object' || Array.isArray(value)) {
+      return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID', this.#done ? 'event_after_done' : 'event_not_object')
+    }
     const chunk = value as Record<string, unknown>
-    if (chunk.error !== undefined) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_INVALID')
+    if (chunk.error !== undefined) return providerFail(chunk.error, rawData)
     this.#mergeIdentity('id', chunk.id)
     this.#mergeIdentity('model', chunk.model, true)
     if (chunk.provider !== undefined) {
@@ -136,9 +163,24 @@ export class OpenRouterChatStreamAssemblerV1 {
     if (!Array.isArray(choices) || choices.length > 1) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_INVALID')
     const deltaResult: { contentDelta?: string; reasoningDelta?: string; reasoningDetails?: readonly Record<string, unknown>[] } = {}
     if (choices.length === 0) {
-      if (chunk.usage === undefined || this.#usage !== null || this.#finishReason === undefined) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID')
-      this.#usage = cloneObject(chunk.usage)
-      this.#consume(this.#usage)
+      let recognized = false
+      if (chunk.usage !== undefined) {
+        if (this.#usage !== null) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID', 'usage_duplicate')
+        this.#usage = cloneObject(chunk.usage)
+        this.#consume(this.#usage)
+        recognized = true
+      }
+      // OpenRouter documents empty-choice diagnostic/meta chunks before the
+      // first completion choice. They do not participate in assistant history.
+      if (chunk.debug !== undefined) {
+        this.#consume(cloneObject(chunk.debug))
+        recognized = true
+      }
+      if (chunk.openrouter_metadata !== undefined) {
+        this.#consume(cloneObject(chunk.openrouter_metadata))
+        recognized = true
+      }
+      if (!recognized) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID', 'empty_choices_unrecognized')
       return Object.freeze(deltaResult)
     }
     const choice = choices[0]
@@ -147,8 +189,8 @@ export class OpenRouterChatStreamAssemblerV1 {
     }
     const row = choice as Record<string, unknown>
     if (row.finish_reason !== null && row.finish_reason !== undefined) {
-      if (typeof row.finish_reason !== 'string' || row.finish_reason.length === 0 || this.#finishReason !== undefined) {
-        return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID')
+      if (typeof row.finish_reason !== 'string' || row.finish_reason.length === 0) {
+        return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_INVALID', 'finish_reason_invalid')
       }
       this.#finishReason = row.finish_reason
     }
@@ -179,17 +221,20 @@ export class OpenRouterChatStreamAssemblerV1 {
   }
 
   done(): void {
-    if (this.#done || !this.#id || !this.#model || !this.#finishReason) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID')
+    if (this.#done || !this.#id || !this.#model || !this.#finishReason) {
+      return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID', this.#done ? 'done_duplicate' : 'done_before_terminal_choice')
+    }
     this.#done = true
   }
 
   finish(): OpenRouterChatStreamResultV1 {
-    if (!this.#done || !this.#id || !this.#model || !this.#finishReason) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID')
+    if (!this.#done || !this.#id || !this.#model || !this.#finishReason) {
+      return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID', 'finish_before_done')
+    }
     const toolCalls = [...this.#toolCalls.entries()].sort(([left], [right]) => left - right).map(([index, tool]) => {
       if (index < 0 || !tool.id || !tool.name) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID')
       return Object.freeze({ id: tool.id, type: 'function', function: Object.freeze({ name: tool.name, arguments: tool.arguments }) })
     })
-    if ((this.#finishReason === 'tool_calls') !== (toolCalls.length > 0)) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID')
     const assistantMessage = Object.freeze({
       role: 'assistant', content: this.#content.length === 0 ? null : this.#content,
       ...(this.#reasoning.length === 0 ? {} : { reasoning: this.#reasoning }),
@@ -206,7 +251,9 @@ export class OpenRouterChatStreamAssemblerV1 {
     if (value === undefined && optional) return
     if (typeof value !== 'string' || value.length === 0) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_INVALID')
     const current = kind === 'id' ? this.#id : this.#model
-    if (current !== undefined && current !== value) return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID')
+    if (current !== undefined && current !== value) {
+      return fail('GENERATION_V2_OPENROUTER_CHAT_STREAM_SEQUENCE_INVALID', `${kind}_changed`)
+    }
     if (kind === 'id') this.#id = value; else this.#model = value
   }
 

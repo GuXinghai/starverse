@@ -393,6 +393,13 @@ export function isAnthropicNativeHistoryArtifactV1(value: unknown): value is Ant
   )
 }
 
+export function hasPendingAnthropicToolUseBlocksV1(
+  artifact: AnthropicNativeHistoryArtifactV1,
+): boolean {
+  return isAnthropicNativeHistoryArtifactV1(artifact) && artifact.stopReason === 'tool_use' &&
+    artifact.assistantMessage.content.some((block) => block.type === 'tool_use')
+}
+
 export function serializeAnthropicNativeHistoryArtifactV1(artifact: AnthropicNativeHistoryArtifactV1): string {
   if (!isAnthropicNativeHistoryArtifactV1(artifact)) {
     return fail('GENERATION_V2_ANTHROPIC_NATIVE_UNBRANDED')

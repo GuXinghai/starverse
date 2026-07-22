@@ -75,9 +75,9 @@ function requiredContract(protocolContractId: string, operation: 'text' | 'image
 function createProfile(): VerifiedOpenRouterFirstPartyEndpointProfileV2 {
   const chat = requiredContract('openrouter-chat-completions-v1', 'text')
   const images = requiredContract('openrouter-images-v1', 'image_generate')
-  if (chat.apiSurface.kind !== 'openrouter_chat' || chat.apiSurface.apiOrigin !== 'https://openrouter.ai' ||
+  if (!('kind' in chat.apiSurface) || chat.apiSurface.kind !== 'openrouter_chat' || chat.apiSurface.apiOrigin !== 'https://openrouter.ai' ||
       chat.apiSurface.relativePathTemplate !== '/api/v1/chat/completions' ||
-      images.apiSurface.kind !== 'openrouter_images' || images.apiSurface.requestPath !== '/api/v1/images') {
+      !('kind' in images.apiSurface) || images.apiSurface.kind !== 'openrouter_images' || images.apiSurface.requestPath !== '/api/v1/images') {
     throw new OpenRouterFirstPartyEndpointProfileV2Error(
       'GENERATION_V2_OPENROUTER_FIRST_PARTY_PROFILE_CONTRACT_INVALID',
     )

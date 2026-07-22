@@ -125,6 +125,9 @@ export async function getModelEndpointDetails(
 
   try {
     const result = await CatalogQueryService.query({ sourceProviderKey: providerKey, searchText: modelId, page: { limit: 100 } })
+    if (result.status === 'failed') {
+      return { providerKey, modelId, fetchedAtMs: null, source: 'scoped_catalog', items: [], error: 'Endpoint details unavailable.' }
+    }
     const row = result.items.find((item) => item.modelId === modelId) as Record<string, unknown> | undefined
     if (!row) {
       logModelCatalogEvent('endpoints', 'scoped_miss', {
@@ -166,10 +169,7 @@ export async function getModelEndpointDetails(
       modelId,
       modelKey,
       durationMs: Date.now() - startedAtMs,
-      reason:
-        typeof error?.message === 'string' && error.message.trim().length > 0
-          ? error.message.trim()
-          : 'unknown_error',
+      reason: 'MODEL_CATALOG_ENDPOINT_QUERY_FAILED',
     })
     return {
       providerKey,

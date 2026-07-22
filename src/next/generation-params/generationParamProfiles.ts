@@ -4,6 +4,7 @@ import type {
   GenerationProviderId,
   ProviderGenerationParamProfile,
 } from './generationParamTypes'
+import type { ReasoningEffort } from '../state/types'
 import { anthropicGenerationProfile } from './providerProfiles/anthropicGenerationProfile'
 import { deepseekGenerationProfile } from './providerProfiles/deepseekGenerationProfile'
 import { geminiGenerationProfile } from './providerProfiles/geminiGenerationProfile'
@@ -51,6 +52,37 @@ export function getEffectiveGenerationParamCapabilities(
     Object.assign(params, override.params ?? {})
   }
   return params
+}
+
+const SELECTABLE_REASONING_EFFORTS: readonly ReasoningEffort[] = [
+  'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max',
+]
+
+export function getSelectableReasoningEfforts(
+  profile: ProviderGenerationParamProfile | null,
+  modelId?: string | null,
+): readonly ReasoningEffort[] {
+  if (!profile || profile.providerId === 'unset') return Object.freeze([])
+  const capability = getEffectiveGenerationParamCapabilities(profile, modelId).reasoningEffort
+  if (!capability) return SELECTABLE_REASONING_EFFORTS
+  if (!capability.supported || capability.ui?.editable === false || capability.valueType !== 'enum') {
+    return Object.freeze([])
+  }
+  const domain = new Set(capability.enumValues ?? [])
+  return Object.freeze(SELECTABLE_REASONING_EFFORTS.filter((effort) => domain.has(effort)))
+}
+
+export function isReasoningEffortExplicitlyUnsupported(
+  profile: ProviderGenerationParamProfile | null,
+  modelId: string | null | undefined,
+  effort: ReasoningEffort,
+): boolean {
+  if (!profile || profile.providerId === 'unset') return false
+  const capability = getEffectiveGenerationParamCapabilities(profile, modelId).reasoningEffort
+  if (!capability) return false
+  if (!capability.supported) return true
+  if (capability.valueType !== 'enum') return false
+  return !(capability.enumValues ?? []).includes(effort)
 }
 
 export function getGenerationParamProfileById(profileId: string): ProviderGenerationParamProfile | null {

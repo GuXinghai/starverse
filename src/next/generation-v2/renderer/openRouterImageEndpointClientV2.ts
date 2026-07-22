@@ -27,10 +27,16 @@ export type OpenRouterImageEndpointSelectionClientStateV2 = Readonly<{
 
 type Result<T> = Readonly<{ ok: true; value: T }> | Readonly<{ ok: false; code: string }>
 
+type EndpointBridge = Readonly<{
+  getEndpointSelection: (payload: unknown) => Promise<unknown>
+  selectEndpoint: (payload: unknown) => Promise<unknown>
+  updateEndpointSettings: (payload: unknown) => Promise<unknown>
+}>
+
 function bridge() {
   const value = window.generationV2?.openRouter.images
   if (!value) throw new Error('GENERATION_V2_OPENROUTER_IMAGE_ENDPOINT_BRIDGE_UNAVAILABLE')
-  return value
+  return value as EndpointBridge
 }
 
 function unwrap<T>(value: unknown): T {

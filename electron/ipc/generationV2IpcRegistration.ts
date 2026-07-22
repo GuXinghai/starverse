@@ -57,7 +57,7 @@ export function registerGenerationV2Ipc(input: Readonly<{
     ...registerGenerationV2CredentialSettingsIpc({ registerInvoke: input.registerInvoke,
       credentialService: input.epoch2.credentialService }),
     ...registerGenerationV2ModelAvailabilityIpc({ registerInvoke: input.registerInvoke,
-      credentialService: input.epoch2.credentialService, fetchImpl: input.cloudFetch }),
+      credentialService: input.epoch2.credentialService, db: input.epoch2.database, fetchImpl: input.cloudFetch }),
     ...registerLocalEndpointDiagnosticsV2Ipc({ registerInvoke: input.registerInvoke,
       fetchImpl: input.localDirectFetch }),
     ...registerLMStudioRuntimeManagementV2Ipc({ registerInvoke: input.registerInvoke,

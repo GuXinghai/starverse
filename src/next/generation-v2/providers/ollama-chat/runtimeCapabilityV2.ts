@@ -3,7 +3,7 @@ import { canonicalizeUnverifiedRuntimeCapabilitySnapshotV2, decodeRuntimeCapabil
   type PersistedRuntimeCapabilityFieldV2, type RuntimeCapabilitySemanticPathV2 } from '../../capability/runtimeCapabilitySnapshotV2'
 import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../domain/providerBindingV2'
 import type { LocalEndpointProfileV2 } from '../../../../../infra/db/repo/localEndpointProfileV2Repo'
-import { OLLAMA_CHAT_CONTRACT_DIGEST_V2, readOllamaThinkingControlV2 } from './verifiedContractV2'
+import { readOllamaThinkingControlV2 } from './verifiedContractV2'
 
 const UNAVAILABLE = new Set<RuntimeCapabilitySemanticPathV2>(['web.mode','image.mode','tools.mode','providerExtension.kind'])
 const GENERATION = new Map<RuntimeCapabilitySemanticPathV2, Readonly<Record<string, unknown>>>([
@@ -16,7 +16,7 @@ export function composeOllamaChatCapabilityV2(input: Readonly<{ binding: Decoded
   if (input.binding.providerId.value !== 'ollama' || input.binding.protocolContractId.value !== 'ollama-chat-v1' || input.binding.endpointProfileId.value !== input.profile.endpointProfileId) throw new Error('GENERATION_V2_OLLAMA_CAPABILITY_INVALID')
   const thinkingControl = readOllamaThinkingControlV2(input.profile); const evidenceId = `ollama.chat.profile.${input.profile.profileDigest}`
   const fields: PersistedRuntimeCapabilityFieldV2[] = RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => {
-    const generation = GENERATION.get(path); if (generation) return Object.freeze({ path, state:'supported',domain:Object.freeze(generation),constraints:Object.freeze([]),evidenceIds:Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
+    const generation = GENERATION.get(path); if (generation) return Object.freeze({ path, state:'supported',domain:Object.freeze(generation),constraints:Object.freeze([]),evidenceIds:Object.freeze([evidenceId]) }) as unknown as PersistedRuntimeCapabilityFieldV2
     if (path === 'reasoning.mode') return Object.freeze({ path,state:'supported',domain:Object.freeze({kind:'enum',values:Object.freeze(['disabled','enabled'])}),constraints:Object.freeze([]),evidenceIds:Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
     if (path === 'reasoning.effort' && thinkingControl === 'effort') return Object.freeze({ path,state:'supported',domain:Object.freeze({kind:'enum',values:Object.freeze(['low','medium','high'])}),constraints:Object.freeze([{kind:'requires_value',path:'reasoning.mode',values:Object.freeze(['enabled'])}]),evidenceIds:Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
     if (UNAVAILABLE.has(path)) return Object.freeze({ path,state:'supported',domain:Object.freeze({kind:'enum',values:Object.freeze([path === 'providerExtension.kind' ? 'none':'disabled'])}),constraints:Object.freeze([]),evidenceIds:Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2

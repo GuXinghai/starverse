@@ -115,11 +115,6 @@ type JsonFetchResult =
   | Readonly<{ ok: true; payload: unknown }>
   | Readonly<{ ok: false; code: 'timeout' | 'network_error' | 'http_error' | 'invalid_response'; status?: number }>
 
-type ModelRunningState =
-  | Readonly<{ ok: true; known: true; running: boolean }>
-  | Readonly<{ ok: true; known: false }>
-  | Readonly<{ ok: false; code: 'timeout' | 'network_error' | 'http_error' | 'invalid_response'; message: string }>
-
 const DEFAULT_TIMEOUT_MS = 30000
 const MIN_TIMEOUT_MS = 1000
 const MAX_TIMEOUT_MS = 120000
@@ -493,27 +488,6 @@ export async function probeOllamaLocalProvider(
         : 'Ollama endpoint is unavailable or did not expose recognized APIs.',
     },
   }
-}
-
-async function resolveModelRunningState(
-  fetchImpl: typeof fetch,
-  endpoint: URL,
-  modelId: string,
-  timeoutMs: number,
-): Promise<ModelRunningState> {
-  const list = await fetchRunningModels(fetchImpl, endpoint, timeoutMs)
-  if (!list.ok) {
-    const code = list.code === 'unavailable' ? 'network_error' : list.code
-    return { ok: false, code, message: list.message }
-  }
-  const running = list.modelIds.includes(modelId)
-  if (running) return { ok: true, known: true, running: true }
-
-  const localModels = await fetchLocalModels(fetchImpl, endpoint, timeoutMs)
-  if (!localModels.ok) return { ok: true, known: false }
-  return localModels.modelIds.includes(modelId)
-    ? { ok: true, known: true, running: false }
-    : { ok: true, known: false }
 }
 
 async function chatControlInternal(input: Readonly<{

@@ -2,6 +2,7 @@ import { BrowserWindow, app, dialog, shell } from 'electron'
 import path from 'node:path'
 import { CHAT_WORKSPACE_MIN_WINDOW_WIDTH_PX } from '../../src/shared/ui/chatWorkspaceLayout'
 import { t } from '../i18n/mainI18n'
+import { urlOriginForLog } from '../ipc/logSanitizer'
 
 export type CreateMainWindowInput = Readonly<{
   isDev: boolean
@@ -22,7 +23,7 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
     },
   })
 
-  console.warn(`[main] VITE_DEV_SERVER_URL: ${input.viteDevServerUrl ?? '<missing>'}`)
+  console.warn('[main] MAIN_WINDOW_DEV_SERVER_CONFIGURATION', { configured: Boolean(input.viteDevServerUrl) })
   if (input.isDev && !input.viteDevServerUrl) {
     const message = t('dialogs.startup.viteDevServerMissing')
     console.error(`[main] ${message}`)
@@ -33,8 +34,11 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
 
   if (process.env.SV_DEBUG_RENDERER_CONSOLE === '1') {
     win.webContents.on('console-message', (details) => {
-      const src = details.sourceId.length > 0 ? details.sourceId : 'renderer'
-      console.log(`[renderer][console:${details.level}] ${details.message} (${src}:${details.lineNumber})`)
+      console.log('[renderer] RENDERER_CONSOLE_EVENT', {
+        level: details.level,
+        hasSource: details.sourceId.length > 0,
+        lineNumber: Number.isSafeInteger(details.lineNumber) ? details.lineNumber : null,
+      })
     })
   }
 
@@ -67,7 +71,7 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
   })
 
   win.webContents.on('did-finish-load', () => {
-    console.warn(`[main] webContents.getURL(): ${win.webContents.getURL()}`)
+    console.warn('[main] MAIN_WINDOW_DID_FINISH_LOAD', { target: urlOriginForLog(win.webContents.getURL()) })
     input.onMainProcessMessage?.(win)
   })
 

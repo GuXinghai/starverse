@@ -48,6 +48,7 @@ export type ImageGenerationIntentV2 =
   | Readonly<{ mode: 'disabled' }>
   | Readonly<{
       mode: 'generate'
+      outputMode?: 'image_only' | 'image_and_text'
       aspectRatio?: ImageAspectRatioV2
       resolution?: '512' | '1K' | '2K' | '4K'
       size?: Readonly<{ width: number; height: number }>
@@ -279,6 +280,14 @@ function optionalPositiveInteger(object: ClosedInput, key: string): number | und
   return value
 }
 
+function optionalNonNegativeInteger(object: ClosedInput, key: string): number | undefined {
+  const value = optionalFiniteNumber(object, key)
+  if (value !== undefined && (!Number.isSafeInteger(value) || value < 0)) {
+    throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  }
+  return value
+}
+
 function optionalEnum<T extends string>(object: ClosedInput, key: string, values: readonly T[]): T | undefined {
   const value = object[key]
   if (value === undefined) return undefined
@@ -318,7 +327,7 @@ function decodeSampling(value: unknown): SamplingIntentV2 {
   const repetitionPenalty = optionalFiniteNumber(input, 'repetitionPenalty')
   if (repetitionPenalty !== undefined && repetitionPenalty <= 0) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   return compact({
-    maxOutputTokens: optionalPositiveInteger(input, 'maxOutputTokens'),
+    maxOutputTokens: optionalNonNegativeInteger(input, 'maxOutputTokens'),
     temperature,
     topP,
     topK: (() => {
@@ -420,7 +429,7 @@ function decodeWeb(value: unknown): WebSearchIntentV2 {
 }
 
 function decodeImage(value: unknown): ImageGenerationIntentV2 {
-  const input = closedObject(value, ['mode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream'])
+  const input = closedObject(value, ['mode', 'outputMode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream'])
   if (input.mode === 'disabled') {
     if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
     return Object.freeze({ mode: 'disabled' })
@@ -440,6 +449,7 @@ function decodeImage(value: unknown): ImageGenerationIntentV2 {
   if (input.stream !== undefined && typeof input.stream !== 'boolean') throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   return compact({
     mode: 'generate' as const,
+    outputMode: optionalEnum(input, 'outputMode', ['image_only', 'image_and_text']),
     aspectRatio: input.aspectRatio === undefined
       ? undefined
       : ImageAspectRatioV2.create(input.aspectRatio as string),

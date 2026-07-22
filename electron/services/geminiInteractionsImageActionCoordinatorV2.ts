@@ -16,7 +16,6 @@ import {
   decodeGeminiInteractionsImageRetryCommandV2,
   type GeminiInteractionsImageEditResendCommandV2,
   type GeminiInteractionsImageRegenerateCommandV2,
-  type GeminiInteractionsImageRetryCommandV2,
 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCommandsV2'
 import { withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2 } from './geminiInteractionsImageGenerationAuthorityV2Service'
 import { compileGeminiInteractionsImagePreparedRequestV2 } from './geminiInteractionsImagePreparedRequestCompilerV2'
@@ -126,6 +125,7 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
           pending.conversationId.value, attachments, undefined, (commandFacts) =>
             withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2({ context,
               credentialScopeId: credential.credentialScopeId!, credentialRevision: credential.revision, commandFacts,
+              modelId: command.modelId.value,
               use: ({ binding, capability }) => {
                 const persisted = commitGeminiInteractionsImageCurrentSnapshotV2({ context, executionRepo, capabilityRepo,
                   pending, command, commandFacts, binding, capability })

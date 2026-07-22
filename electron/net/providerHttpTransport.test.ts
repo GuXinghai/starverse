@@ -21,6 +21,8 @@ vi.mock('electron', () => ({
 }))
 
 import {
+  ProviderHttpTransportError,
+  classifyProviderHttpTransportDiagnostic,
   classifyProviderResolvedProxy,
   createElectronSessionProviderFetch,
   getProviderHttpProxyEnvDiagnostics,
@@ -78,6 +80,17 @@ describe('providerHttpTransport', () => {
     expect(beforeRequest).toHaveBeenCalledTimes(1)
     expect(electronMock.defaultSessionAccessCount.value).toBe(0)
     expect(electronMock.sessionFetch).not.toHaveBeenCalled()
+  })
+
+  it('retains only a safe diagnostic code for Electron transport failures', async () => {
+    electronMock.sessionFetch.mockRejectedValueOnce(new Error('net::ERR_CONNECTION_RESET https://secret.invalid/?token=secret'))
+    const fetchImpl = createElectronSessionProviderFetch()
+
+    const failure = await fetchImpl('https://api.openai.com/v1/models').catch((error) => error)
+    expect(failure).toBeInstanceOf(ProviderHttpTransportError)
+    expect(failure).toMatchObject({ diagnosticCode: 'ERR_CONNECTION_RESET', message: 'ERR_CONNECTION_RESET' })
+    expect(JSON.stringify(failure)).not.toContain('secret.invalid')
+    expect(classifyProviderHttpTransportDiagnostic(new Error('arbitrary raw message'))).toBe('Error')
   })
 
   it('reports only proxy env configured/missing status without values', () => {

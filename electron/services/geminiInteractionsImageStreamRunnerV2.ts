@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto'
 import { session } from 'electron'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
+import { AnswerReasoningProjectionV2Repo } from '../../infra/db/repo/answerReasoningProjectionV2Repo'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GeminiInteractionsImageTerminalArtifactV2Repo } from '../../infra/db/repo/geminiInteractionsImageTerminalArtifactV2Repo'
 import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
@@ -15,6 +16,7 @@ import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compil
 import { GeminiInteractionsImageResultAssemblerV1, GeminiInteractionsImageSseDecoderV1,
   type GeminiInteractionsImageResultV1 } from '../../src/next/generation-v2/providers/gemini/interactionsStreamV1'
 import { createGeminiInteractionsImageTerminalArtifactV1 } from '../../src/next/generation-v2/providers/gemini/interactionsTerminalArtifactV1'
+import { isGeminiInteractionsImageModelIdV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import type { GeminiInteractionsImageCommandResultV2 } from './geminiInteractionsImageInitialSendCoordinatorV2'
 
@@ -41,7 +43,7 @@ function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
   return Object.freeze({ signal: controller.signal, timedOut: () => timedOut,
     dispose: () => { clearTimeout(timer); external?.removeEventListener('abort', onAbort) } })
 }
-async function readResult(response: Response): Promise<GeminiInteractionsImageResultV1> {
+async function readResult(response: Response, expectedModel: string): Promise<GeminiInteractionsImageResultV1> {
   if (!response.ok || !response.body) {
     try { await response.body?.cancel() } catch { /* best effort */ }
     throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED')
@@ -51,7 +53,7 @@ async function readResult(response: Response): Promise<GeminiInteractionsImageRe
     throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_RESPONSE_INVALID')
   }
   const decoder = new GeminiInteractionsImageSseDecoderV1()
-  const assembler = new GeminiInteractionsImageResultAssemblerV1()
+  const assembler = new GeminiInteractionsImageResultAssemblerV1(expectedModel)
   const reader = response.body.getReader()
   try {
     while (true) {
@@ -72,6 +74,15 @@ function extensionForMime(mime: string): string {
   if (mime === 'image/webp') return 'webp'
   if (mime === 'image/gif') return 'gif'
   return 'img'
+}
+
+function reasoningProjectionDetail(detail: GeminiInteractionsImageResultV1['reasoningDetails'][number]): Readonly<Record<string, unknown>> {
+  return detail.type === 'thought_summary'
+    ? Object.freeze({ type: 'thought_summary', summary: detail.text,
+        ...(detail.thoughtSignature === undefined ? {} : { thought_signature: detail.thoughtSignature }) })
+    : Object.freeze({ type: 'thought_image', image: {
+        url: `data:${detail.mimeType};base64,${detail.data}`, mimeType: detail.mimeType,
+      }, ...(detail.thoughtSignature === undefined ? {} : { thought_signature: detail.thoughtSignature }) })
 }
 
 export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
@@ -96,6 +107,7 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
   const assetRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const outputRepo = new GenerationImageOutputV2Repo(input.db, nowMs)
   const artifactRepo = new GeminiInteractionsImageTerminalArtifactV2Repo(input.db)
+  const reasoningRepo = new AnswerReasoningProjectionV2Repo(input.db, nowMs)
 
   function begin(command: Required<Pick<GeminiInteractionsImageCommandResultV2, 'preparedRequest' | 'execution' | 'request'>>): void {
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
@@ -138,7 +150,11 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
           revision, providerCreatedAtMs: null, providerUsage: result.usage })
         artifactRepo.insertRequestTerminal(context, execution, terminalRequest,
           createGeminiInteractionsImageTerminalArtifactV1(result), nowMs())
-        graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, 'completed', '', nowMs())
+        for (const detail of result.reasoningDetails) {
+          reasoningRepo.appendInAuthorityTransaction(context, command.preparedRequest.answerRootId,
+            reasoningProjectionDetail(detail))
+        }
+        graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, 'completed', result.text, nowMs())
         executionRepo.terminalizeOperation(context, execution, { state: 'completed', errorCode: null, errorMessage: null }, nowMs())
         image = Object.freeze({ assetId, assetRevisionId, mime: result.mime })
       } else {
@@ -147,6 +163,17 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
       }
     })
     const committedImage = image as Readonly<{ assetId: string; assetRevisionId: string; mime: string }> | null
+    if (state === 'completed' && result?.text) publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+      type: 'assistant_body', operationId: command.preparedRequest.operationId,
+      answerRootId: command.preparedRequest.answerRootId, content: result.text,
+    })
+    if (state === 'completed' && result) for (const detail of result.reasoningDetails) {
+      publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+        type: 'reasoning_detail', operationId: command.preparedRequest.operationId,
+        answerRootId: command.preparedRequest.answerRootId,
+        detail: reasoningProjectionDetail(detail), persisted: true,
+      })
+    }
     if (committedImage) publishGenerationStreamProjectionV2(input.streamProjectionSink, { type: 'image_output',
       operationId: command.preparedRequest.operationId, answerRootId: command.preparedRequest.answerRootId,
       outputIndex: 0, ...committedImage })
@@ -158,7 +185,7 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
   return Object.freeze({ run: async (command: GeminiInteractionsImageCommandResultV2, signal?: AbortSignal) => {
     if (command.kind !== 'created' || !command.preparedRequest || !isPreparedProviderRequestV2(command.preparedRequest) ||
         command.preparedRequest.providerId !== 'google_ai_studio' || command.preparedRequest.contractId !== 'gemini-interactions-v1beta' ||
-        command.preparedRequest.modelId !== 'gemini-3.1-flash-image' ||
+        !isGeminiInteractionsImageModelIdV1(command.preparedRequest.modelId) ||
         command.preparedRequest.headersPlan.credential.kind !== 'google_x_goog_api_key') {
       throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_AUTHORITY_INVALID')
     }
@@ -185,7 +212,7 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
           const response = await fetchImpl(created.preparedRequest.endpoint, { method: 'POST', redirect: 'error',
             signal: scope.signal, headers: { 'content-type': 'application/json', accept: created.preparedRequest.headersPlan.accept,
               'x-goog-api-key': lease.credential }, body: Buffer.from(created.preparedRequest.body.copyBytes()) })
-          return readResult(response)
+          return readResult(response, created.preparedRequest.modelId)
         } })
       terminal(created, 'completed', result, null, null)
     } catch (error) {

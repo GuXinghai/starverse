@@ -69,7 +69,7 @@ export function decodeOpenRouterImageInitialSendCommandV2(value: unknown): OpenR
       GenerationV2Identity.create('provider_tag', string(input.requestedProviderTag))
     const commandAttachments = decodeGenerationCommandAttachmentsV2(input.commandAttachments)
     const projection = Object.freeze({
-      schemaVersion: 1, kind: 'openrouter_image_initial_send', operationId: operationId.value,
+      schemaVersion: 1 as const, kind: 'openrouter_image_initial_send' as const, operationId: operationId.value,
       branchId: branchId.value, expectedHeadMessageId: expectedHeadMessageId?.value ?? null,
       prompt, modelId: modelId.value, requestedProviderTag: requestedProviderTag?.value ?? null,
       commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments),

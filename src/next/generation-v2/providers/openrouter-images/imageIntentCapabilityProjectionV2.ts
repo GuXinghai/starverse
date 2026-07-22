@@ -18,7 +18,7 @@ import type {
 export type OpenRouterImageCapabilityIssueV2 = Readonly<{
   semanticPath: string
   code: 'UNSUPPORTED_EXPLICIT_FIELD' | 'MISSING_REQUIRED_IMAGE_INTENT' | 'DESCRIPTOR_FIELD_MISSING' |
-    'DESCRIPTOR_VALUE_UNSUPPORTED' | 'SIZE_COMBINATION_UNRESOLVED' | 'IMAGE_FIELD_CONFLICT'
+    'DESCRIPTOR_VALUE_UNSUPPORTED' | 'SIZE_COMBINATION_UNRESOLVED' | 'IMAGE_FIELD_CONFLICT' | 'URL_REFERENCE_ENCODING_UNSUPPORTED'
   wireKey?: string
 }>
 
@@ -59,16 +59,16 @@ export const OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2 = Object.freeze([
   'schemaVersion',
 ] as const satisfies readonly (keyof GenerationIntentLayerV2)[])
 const SAMPLING_KEYS = [
-  'maxOutputTokens', 'temperature', 'topP', 'topK', 'seed', 'stop', 'candidateCount',
+  'maxOutputTokens', 'temperature', 'topP', 'topK', 'minP', 'topA', 'seed', 'stop', 'candidateCount',
   'frequencyPenalty', 'presencePenalty', 'repetitionPenalty',
 ] as const satisfies readonly (keyof SamplingIntentV2)[]
 const IMAGE_KEYS = [
-  'mode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream',
+  'mode', 'outputMode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream',
 ] as const satisfies readonly (keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>)[]
 const REASONING_MODES = ['disabled', 'enabled'] as const satisfies readonly ReasoningIntentV2['mode'][]
 const WEB_MODES = ['disabled', 'provider_search'] as const satisfies readonly WebSearchIntentV2['mode'][]
 const TOOL_MODES = ['disabled', 'enabled'] as const satisfies readonly ToolPolicyIntentV2['mode'][]
-const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses', 'anthropic_messages'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
+const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses', 'anthropic_messages', 'gemini_generate_content'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
 type DeclaredTopLevelKey = typeof OPENROUTER_IMAGE_SEMANTIC_INTENT_KEYS_V2[number] |
   typeof OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2[number]
 const samplingKeysAreExhaustive: Exclude<keyof SamplingIntentV2, typeof SAMPLING_KEYS[number]> extends never ? true : never = true
@@ -157,10 +157,15 @@ export function projectOpenRouterImageIntentCapabilityV2(
         if (intent.providerExtension.parallelToolCalls !== undefined) reject('providerExtension.parallelToolCalls', 'UNSUPPORTED_EXPLICIT_FIELD')
         if (intent.providerExtension.serviceTier !== undefined) reject('providerExtension.serviceTier', 'UNSUPPORTED_EXPLICIT_FIELD')
         if (intent.providerExtension.verbosity !== undefined) reject('providerExtension.verbosity', 'UNSUPPORTED_EXPLICIT_FIELD')
-      } else {
+      } else if (intent.providerExtension.kind === 'anthropic_messages') {
         if (intent.providerExtension.manualThinkingBudgetTokens !== undefined) reject('providerExtension.manualThinkingBudgetTokens', 'UNSUPPORTED_EXPLICIT_FIELD')
         reject('providerExtension.thinkingDisplay', 'UNSUPPORTED_EXPLICIT_FIELD')
         reject('providerExtension.thinkingMode', 'UNSUPPORTED_EXPLICIT_FIELD')
+      } else {
+        reject('providerExtension.thinkingMode', 'UNSUPPORTED_EXPLICIT_FIELD')
+        if ('thinkingLevel' in intent.providerExtension && intent.providerExtension.thinkingLevel !== undefined) reject('providerExtension.thinkingLevel', 'UNSUPPORTED_EXPLICIT_FIELD')
+        if ('thinkingBudget' in intent.providerExtension && intent.providerExtension.thinkingBudget !== undefined) reject('providerExtension.thinkingBudget', 'UNSUPPORTED_EXPLICIT_FIELD')
+        reject('providerExtension.includeThoughts', 'UNSUPPORTED_EXPLICIT_FIELD')
       }
     }
   }

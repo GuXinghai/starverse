@@ -1,5 +1,6 @@
 import {
   OPENAI_RESPONSES_REASONING_RULES,
+  OPENAI_RESPONSES_NON_REASONING_MODEL_ID_PATTERNS,
   type OpenAIResponsesReasoningSpec,
 } from '@/next/provider/openai-responses/openaiResponsesReasoningPolicy'
 import type { GenerationParamCapability, ModelGenerationParamOverride, ProviderGenerationParamProfile } from '../generationParamTypes'
@@ -53,6 +54,24 @@ function reasoningOverride(rule: (typeof OPENAI_RESPONSES_REASONING_RULES)[numbe
   }
 }
 
+const unknownModelReasoningEffortCapability: GenerationParamCapability = {
+  supported: true,
+  wirePath: ['reasoning', 'effort'],
+  valueType: 'enum',
+  enumValues: ['auto', 'max'],
+  status: 'stable',
+  ui: { visibleByDefault: true, editable: true, providerAutoHintDocumented: false },
+}
+
+const nonReasoningOverrides: readonly ModelGenerationParamOverride[] =
+  OPENAI_RESPONSES_NON_REASONING_MODEL_ID_PATTERNS.map((modelIdPattern) => ({
+    match: { modelIdPattern },
+    params: {
+      reasoningEffort: unsupportedReasoningParam('enum'),
+      reasoningSummary: unsupportedReasoningParam('enum'),
+    },
+  }))
+
 export const openaiResponsesGenerationProfile: ProviderGenerationParamProfile = {
   providerId: 'openai_responses',
   profileId: 'openai_responses_generation_v1',
@@ -84,8 +103,8 @@ export const openaiResponsesGenerationProfile: ProviderGenerationParamProfile = 
       status: 'stable',
       ui: { visibleByDefault: true, editable: true },
     },
-    reasoningEffort: unsupportedReasoningParam('enum'),
-    reasoningSummary: unsupportedReasoningParam('enum'),
+    reasoningEffort: unknownModelReasoningEffortCapability,
+    reasoningSummary: reasoningSummaryCapability,
     verbosity: {
       supported: true,
       wirePath: ['text', 'verbosity'],
@@ -95,6 +114,6 @@ export const openaiResponsesGenerationProfile: ProviderGenerationParamProfile = 
       ui: { visibleByDefault: true, editable: true },
     },
   },
-  modelOverrides: OPENAI_RESPONSES_REASONING_RULES.map(reasoningOverride),
+  modelOverrides: [...OPENAI_RESPONSES_REASONING_RULES.map(reasoningOverride), ...nonReasoningOverrides],
 }
 

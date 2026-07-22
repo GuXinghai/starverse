@@ -27,11 +27,13 @@ describe('OpenAI Responses initial-send command V2', () => {
     expect(() => decodeOpenAIResponsesPlainTextInitialSendCommandV2({ ...input(), commandAttachments: [{}] })).toThrow()
     const command = decodeOpenAIResponsesPlainTextInitialSendCommandV2({
       ...input(), commandAttachments: [{
+        kind: 'managed_file',
         assetId: 'asset:1', assetRevisionId: 'asset-revision:1', assetSha256: 'a'.repeat(64),
         include: true, sendAs: 'provider_file', conversion: 'none',
       }],
     })
     expect(command.commandAttachments).toMatchObject([{
+      kind: 'managed_file',
       assetId: { value: 'asset:1' }, assetRevisionId: { value: 'asset-revision:1' },
       assetSha256: { value: 'a'.repeat(64) }, include: true, sendAs: 'provider_file', conversion: 'none',
     }])

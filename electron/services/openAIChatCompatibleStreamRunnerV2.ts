@@ -21,6 +21,7 @@ import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSin
 // eslint-disable-next-line no-restricted-imports
 import { OpenAIChatCompatibleResponseAssemblerV2, type OpenAIChatCompatibleStreamResultV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/chatResponseAssemblerV2'
 import { createOpenAICompatibleHeadersV2 } from './openAICompatibleNetworkV2'
+import { isCredentialScopeIdV2, type CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 
 type CredentialService = ReturnType<typeof createOpenAICompatibleCredentialV2Service>
 
@@ -86,8 +87,10 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
         outcome: state === 'completed' ? { kind: 'provider_completed', phase } : state === 'cancelled' ? { kind: 'user_cancelled', phase }
           : { kind: 'provider_failed', phase, failure: { code: errorCode!, message: errorMessage! } } }, nowMs())
       const terminalRequest = requestRepo.terminalize(context, request, state, nowMs())
-      graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state,
-        state === 'completed' ? result!.assistantMessage.content : null, nowMs())
+      const terminalContent = state === 'completed' && result
+        ? typeof result.assistantMessage.content === 'string' ? result.assistantMessage.content : null
+        : null
+      graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, terminalContent, nowMs())
       const terminalExecution = executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, nowMs())
       if (state === 'completed' && result) {
         const fact = historyRepo.loadRequestHistory(context, command.preparedRequest.operationId)
@@ -138,9 +141,10 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
     const provenance = command.execution.snapshot.providerConfiguration
     if (provenance.kind !== 'openai_chat_compatible') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_PROVENANCE_INVALID')
     const endpoint = providers.getEndpointRevision(provenance.providerInstanceId.value, provenance.endpointRevisionId.value)
+    if (!isCredentialScopeIdV2(command.preparedRequest.credentialScopeId)) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_SCOPE_INVALID')
     const headers = await createOpenAICompatibleHeadersV2({ credentialService: input.credentialService,
       providerInstanceId: provenance.providerInstanceId.value, endpoint, expectedRevision: provenance.credentialRevision,
-      expectedCredentialScopeId: command.preparedRequest.credentialScopeId, accept: 'text/event-stream' })
+      expectedCredentialScopeId: command.preparedRequest.credentialScopeId as CredentialScopeIdV2, accept: 'text/event-stream' })
     headers.set('content-type', 'application/json')
     return headers
   }
@@ -170,7 +174,7 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
       const result = assembler.finish()
       if (result.model !== command.preparedRequest.modelId) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_MODEL_MISMATCH')
       if (result.assistantMessage.tool_calls?.length) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_TOOL_CONTINUATION_UNAVAILABLE')
-      const reasoningState = reasoning.reasoningStates()[0]?.state
+      const reasoningState = reasoning?.reasoningStates()[0]?.state
       const replay = reasoningState?.value ? { reasoning: reasoningState.value, hasCompleteToolChain: false } : null
       return terminal(command, 'completed', result, null, null, 'mid_stream', replay, reasoning?.discoveryObservations() ?? [])
     } catch (error) {

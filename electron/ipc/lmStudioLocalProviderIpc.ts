@@ -113,11 +113,6 @@ type JsonFetchResult =
   | Readonly<{ ok: true; payload: unknown }>
   | Readonly<{ ok: false; code: 'timeout' | 'network_error' | 'http_error' | 'invalid_response'; status?: number }>
 
-type ModelLoadedState =
-  | Readonly<{ ok: true; known: true; model: LMStudioModelSummary; loaded: boolean; instanceId?: string }>
-  | Readonly<{ ok: true; known: false }>
-  | Readonly<{ ok: false; code: 'timeout' | 'network_error' | 'http_error' | 'invalid_response'; message: string }>
-
 const DEFAULT_TIMEOUT_MS = 30000
 const MIN_TIMEOUT_MS = 1000
 const MAX_TIMEOUT_MS = 120000
@@ -450,28 +445,6 @@ export async function probeLMStudioLocalProvider(
         ? 'LM Studio endpoint probe completed.'
         : 'LM Studio endpoint is unavailable or did not expose recognized model APIs.',
     },
-  }
-}
-
-async function resolveModelLoadedState(
-  fetchImpl: typeof fetch,
-  endpoint: URL,
-  modelId: string,
-  timeoutMs: number,
-): Promise<ModelLoadedState> {
-  const list = await fetchNativeModels(fetchImpl, endpoint, timeoutMs)
-  if (!list.ok) {
-    const code = list.code === 'unavailable' ? 'network_error' : list.code
-    return { ok: false, code, message: list.message }
-  }
-  const match = list.models.find((model) => model.key === modelId || model.loadedInstances.includes(modelId))
-  if (!match) return { ok: true, known: false }
-  return {
-    ok: true,
-    known: true,
-    model: match,
-    loaded: match.loaded,
-    ...(match.loadedInstances[0] ? { instanceId: match.loadedInstances[0] } : {}),
   }
 }
 

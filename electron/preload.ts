@@ -18,6 +18,7 @@ contextBridge.exposeInMainWorld('electronStore', {
 contextBridge.exposeInMainWorld('rawGenerationDebug', {
   getStatus: () => ipcRenderer.invoke('raw-generation:get-status'),
   listByAnswerRootId: (answerRootId: string) => ipcRenderer.invoke('raw-generation:list-by-answer', { answerRootId }),
+  listProviderErrorsByAnswerRootId: (answerRootId: string) => ipcRenderer.invoke('raw-generation:list-provider-errors-by-answer', { answerRootId }),
 })
 
 contextBridge.exposeInMainWorld('networkProxy', {
@@ -165,6 +166,12 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     getLastFormalConversation: () => ipcRenderer.invoke('generation-v2:workspace:get-last-formal-conversation'),
     setLastFormalConversation: (conversationId: string | null) =>
       ipcRenderer.invoke('generation-v2:workspace:set-last-formal-conversation', { conversationId }),
+    getConversationRoutePreference: (conversationId: string) =>
+      ipcRenderer.invoke('generation-v2:workspace:get-conversation-route-preference', { conversationId }),
+    updateConversationRoutePreference: (payload: unknown) =>
+      ipcRenderer.invoke('generation-v2:workspace:update-conversation-route-preference', payload),
+    clearConversationRoutePreference: (conversationId: string, expectedRevision: number) =>
+      ipcRenderer.invoke('generation-v2:workspace:clear-conversation-route-preference', { conversationId, expectedRevision }),
   }),
   composer: Object.freeze({
     get: (conversationId: string) => ipcRenderer.invoke('generation-v2:composer:get', { conversationId }),
@@ -217,6 +224,10 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     listAnthropic: (payload?: unknown) => ipcRenderer.invoke('anthropic-models:list-availability', payload),
     listGoogleAIStudio: (payload?: unknown) => ipcRenderer.invoke('google-ai-studio-models:list-availability', payload),
     listDeepSeek: (payload?: unknown) => ipcRenderer.invoke('deepseek-models:list-availability', payload),
+    sync: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:sync', payload),
+    status: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:status', payload),
+    clearCurrent: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:clear-current', payload),
+    clearAll: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:clear-all', payload),
   }),
   modelPreferences: Object.freeze({
     listFavorites: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:list-favorites', payload),

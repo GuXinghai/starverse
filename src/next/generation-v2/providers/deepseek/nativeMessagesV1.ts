@@ -334,6 +334,15 @@ export function isDeepSeekNativeHistoryArtifactV2(value: unknown): value is Deep
   )
 }
 
+export function hasPendingDeepSeekAssistantToolCallsV2(
+  artifact: DeepSeekNativeHistoryArtifactV2,
+): boolean {
+  if (!isDeepSeekNativeHistoryArtifactV2(artifact)) return false
+  const entry = artifact.orderedEntries.at(-1)
+  return Boolean(entry?.kind === 'assistant' && entry.message.role === 'assistant' &&
+    Array.isArray(entry.message.tool_calls) && entry.message.tool_calls.length > 0)
+}
+
 function requireArtifact(value: DeepSeekNativeHistoryArtifactV2 | null): DeepSeekNativeHistoryArtifactV2 | null {
   if (value !== null && !isDeepSeekNativeHistoryArtifactV2(value)) {
     throw new DeepSeekNativeMessagesV1Error('GENERATION_V2_DEEPSEEK_NATIVE_UNBRANDED')

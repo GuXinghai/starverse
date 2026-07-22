@@ -7,6 +7,8 @@ import { readGeminiDeveloperApiContractV2, resolveGeminiDeveloperApiEndpointV2 }
 import { compileGeminiInteractionsRequestV1 } from '../../src/next/generation-v2/providers/gemini/interactionsRequestV1'
 import { projectGeminiInteractionsImageIntentV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageIntentV1'
 import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
+import { readImageAspectRatioV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
+import { isGeminiInteractionsImageModelIdV1, readGeminiInteractionsImageModelPolicyV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
 
 export class GeminiInteractionsImagePreparedRequestCompilerV2Error extends Error {
   constructor(readonly code: 'GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_AUTHORITY_INVALID' |
@@ -30,7 +32,7 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
   const descriptor = profile.descriptors.interactions
   if (binding.providerId.value !== 'google_ai_studio' || binding.endpointProfileId.value !== profile.endpointProfileId.value ||
       binding.protocolContractId.value !== 'gemini-interactions-v1beta' || binding.operation !== 'image_generate' ||
-      binding.modelId.value !== 'gemini-3.1-flash-image' || binding.endpointBinding.kind !== 'provider_managed_set' ||
+      !isGeminiInteractionsImageModelIdV1(binding.modelId.value) || binding.endpointBinding.kind !== 'provider_managed_set' ||
       binding.endpointBinding.endpointSetRevision.value !== profile.endpointSetRevision.value ||
       binding.endpointBinding.descriptors.length !== 1 ||
       binding.endpointBinding.descriptors[0].endpointId.value !== descriptor.endpointId.value ||
@@ -38,15 +40,36 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
       capability.continuation.kind !== 'none') {
     throw new GeminiInteractionsImagePreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_BINDING_INVALID')
   }
-  const projection = projectGeminiInteractionsImageIntentV1(projectGenerationIntentLayerV2(snapshot.semanticIntent))
+  const projection = projectGeminiInteractionsImageIntentV1(projectGenerationIntentLayerV2(snapshot.semanticIntent), binding.modelId.value)
   if (projection.issues.length !== 0 || snapshot.semanticIntent.attachments.some((attachment) => attachment.include)) {
     throw new GeminiInteractionsImagePreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_SEMANTIC_REJECTED')
   }
+  const intent = snapshot.semanticIntent
+  if (intent.image.mode !== 'generate') {
+    throw new GeminiInteractionsImagePreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_SEMANTIC_REJECTED')
+  }
+  const policy = readGeminiInteractionsImageModelPolicyV1(binding.modelId.value)
+  const generation = intent.generation
   const compilation = compileGeminiInteractionsRequestV1({
     model: binding.modelId.value,
     prompt: input.prompt,
-    outputMode: 'image_only',
-    image: { mimeType: 'image/jpeg', aspectRatio: '1:1', imageSize: '1K' },
+    outputMode: intent.image.outputMode ?? 'image_only',
+    image: {
+      ...(intent.image.format === 'jpeg' ? { mimeType: 'image/jpeg' } : {}),
+      aspectRatio: intent.image.aspectRatio === undefined ? policy.defaultAspectRatio : readImageAspectRatioV2(intent.image.aspectRatio),
+      ...(policy.imageSizeMode === 'hidden' ? {} : { imageSize: intent.image.resolution ?? policy.defaultImageSize }),
+    },
+    generation: {
+      ...(generation.temperature === undefined ? {} : { temperature: generation.temperature }),
+      ...(generation.topP === undefined ? {} : { topP: generation.topP }),
+      ...(generation.maxOutputTokens === undefined ? {} : { maxOutputTokens: generation.maxOutputTokens }),
+      ...(generation.stop === undefined ? {} : { stop: generation.stop }),
+    },
+    reasoning: intent.reasoning.mode === 'disabled' ? {} : {
+      ...(intent.reasoning.effort === undefined ? {} : { thinkingLevel: intent.reasoning.effort }),
+      ...(intent.reasoning.summary === 'auto' ? { thinkingSummaries: 'auto' } : {}),
+    },
+    webTypes: intent.web.mode === 'provider_search' ? intent.web.types : [],
   })
   const endpoint = resolveGeminiDeveloperApiEndpointV2(readGeminiDeveloperApiContractV2(), {
     surfaceId: 'gemini-interactions-v1beta',

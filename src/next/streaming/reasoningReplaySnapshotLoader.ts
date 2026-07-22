@@ -24,7 +24,7 @@ export async function loadReasoningReplaySnapshotRecord(
       segmentsCount: typeof meta?.reasoningSegmentsCount === 'number' ? meta.reasoningSegmentsCount : undefined,
     }
   } catch (err) {
-    console.warn('[reasoning-verify] failed to load db replay snapshot:', err)
+    console.warn('[reasoning-verify] REPLAY_SNAPSHOT_LOAD_FAILED')
     return EMPTY_REPLAY_SNAPSHOT
   }
 }

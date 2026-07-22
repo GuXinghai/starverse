@@ -46,12 +46,13 @@ describe('openAIResponsesReasoningPolicy', () => {
     ])
   })
 
-  it('does not enable explicit reasoning effort for unsupported or unknown models', () => {
+  it('disables explicit effort only for known non-reasoning models and keeps max selectable for unknown models', () => {
     expect(hasExplicitOpenAIResponsesReasoningEffort('gpt-4.1-mini')).toBe(false)
     expect(hasExplicitOpenAIResponsesReasoningEffort('gpt-image-2')).toBe(false)
-    expect(hasExplicitOpenAIResponsesReasoningEffort('future-model')).toBe(false)
-    expect(getOpenAIResponsesReasoningEffortOptions('future-model')).toEqual(['auto'])
+    expect(hasExplicitOpenAIResponsesReasoningEffort('future-model')).toBe(true)
+    expect(getOpenAIResponsesReasoningEffortOptions('future-model')).toEqual(['auto', 'max'])
     expect(supportsOpenAIResponsesReasoningEffort('future-model', 'high')).toBe(false)
+    expect(supportsOpenAIResponsesReasoningEffort('future-model', 'max')).toBe(true)
     expect(supportsOpenAIResponsesReasoningEffort('future-model', 'auto')).toBe(true)
   })
 

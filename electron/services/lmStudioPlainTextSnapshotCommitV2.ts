@@ -35,10 +35,11 @@ function baseline(
     throw new Error('GENERATION_V2_LMSTUDIO_BASELINE_EXPLICIT_FIELD_UNSUPPORTED')
   }
   if (intent.tools.mode === 'enabled') {
+    const tools = intent.tools
     if (!isToolRegistryRepositoryFactForContextV2(toolRegistry, context) ||
-        toolRegistry.selectedDefinitions.length !== intent.tools.allowedToolIds.length ||
-        toolRegistry.selectedDefinitions.some((definition, index) => definition.toolId !== intent.tools.allowedToolIds[index].value) ||
-        !['omitted', 'none', 'required'].includes(intent.tools.toolChoice.mode)) {
+        toolRegistry.selectedDefinitions.length !== tools.allowedToolIds.length ||
+        toolRegistry.selectedDefinitions.some((definition, index) => definition.toolId !== tools.allowedToolIds[index].value) ||
+        !['omitted', 'none', 'required'].includes(tools.toolChoice.mode)) {
       throw new Error('GENERATION_V2_LMSTUDIO_BASELINE_EXPLICIT_FIELD_UNSUPPORTED')
     }
   } else if (toolRegistry !== null) throw new Error('GENERATION_V2_LMSTUDIO_BASELINE_EXPLICIT_FIELD_UNSUPPORTED')

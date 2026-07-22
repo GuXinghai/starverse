@@ -48,7 +48,7 @@ export type OpenAIProviderModelAvailability = ProviderModelAvailabilityEnvelope<
     textChat?: boolean
     responsesApi?: boolean
     reasoning?: 'supported' | 'unsupported' | 'unknown'
-    reasoningEffort?: ReadonlyArray<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'>
+    reasoningEffort?: ReadonlyArray<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>
     imageInput?: boolean | 'unknown'
     fileInput?: boolean | 'unknown'
     functionCalling?: boolean | 'unknown'

@@ -5,6 +5,7 @@ export type OpenAIResponsesReasoningEffort =
   | 'medium'
   | 'high'
   | 'xhigh'
+  | 'max'
 
 export type OpenAIResponsesReasoningEffortSetting = 'auto' | OpenAIResponsesReasoningEffort
 export type OpenAIResponsesReasoningSummarySetting = 'off' | 'auto' | 'concise' | 'detailed'
@@ -94,18 +95,20 @@ export const OPENAI_RESPONSES_REASONING_RULES: readonly ReasoningRule[] = [
   }),
 ]
 
-const OPENAI_RESPONSES_NON_REASONING_MODEL_PATTERNS: readonly RegExp[] = [
-  /^gpt-4\.1(?:-|$)/,
-  /^gpt-image(?:-|$)/,
-  /^dall-e(?:-|$)/,
-  /^text-embedding(?:-|$)/,
-  /^text-moderation(?:-|$)/,
-  /^omni-moderation(?:-|$)/,
-  /^tts(?:-|$)/,
-  /^whisper(?:-|$)/,
-  /^babbage(?:-|$)/,
-  /^davinci(?:-|$)/,
+export const OPENAI_RESPONSES_NON_REASONING_MODEL_ID_PATTERNS: readonly string[] = [
+  '^gpt-4\\.1(?:-|$)',
+  '^gpt-image(?:-|$)',
+  '^dall-e(?:-|$)',
+  '^text-embedding(?:-|$)',
+  '^text-moderation(?:-|$)',
+  '^omni-moderation(?:-|$)',
+  '^tts(?:-|$)',
+  '^whisper(?:-|$)',
+  '^babbage(?:-|$)',
+  '^davinci(?:-|$)',
 ]
+const OPENAI_RESPONSES_NON_REASONING_MODEL_PATTERNS = OPENAI_RESPONSES_NON_REASONING_MODEL_ID_PATTERNS
+  .map((pattern) => new RegExp(pattern))
 
 export function normalizeOpenAIResponsesReasoningModelId(modelId: string | null | undefined): string {
   return String(modelId ?? '')
@@ -125,7 +128,8 @@ export function supportsOpenAIResponsesReasoningEffort(
 ): boolean {
   if (effort === 'auto') return true
   const spec = getOpenAIResponsesReasoningSpec(modelId)
-  return spec ? spec.efforts.includes(effort) : false
+  if (spec) return spec.efforts.includes(effort)
+  return effort === 'max' && !isKnownOpenAIResponsesNonReasoningModel(modelId)
 }
 
 export function isKnownOpenAIResponsesNonReasoningModel(modelId: string | null | undefined): boolean {
@@ -146,9 +150,10 @@ export function getOpenAIResponsesReasoningEffortOptions(
   modelId: string | null | undefined,
 ): readonly OpenAIResponsesReasoningEffortSetting[] {
   const spec = getOpenAIResponsesReasoningSpec(modelId)
-  return spec ? ['auto', ...spec.efforts] : ['auto']
+  if (spec) return ['auto', ...spec.efforts]
+  return isKnownOpenAIResponsesNonReasoningModel(modelId) ? ['auto'] : ['auto', 'max']
 }
 
 export function hasExplicitOpenAIResponsesReasoningEffort(modelId: string | null | undefined): boolean {
-  return getOpenAIResponsesReasoningSpec(modelId) !== null
+  return getOpenAIResponsesReasoningSpec(modelId) !== null || !isKnownOpenAIResponsesNonReasoningModel(modelId)
 }

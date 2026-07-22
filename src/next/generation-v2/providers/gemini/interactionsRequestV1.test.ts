@@ -46,12 +46,50 @@ describe('Gemini Interactions request V1', () => {
     })).toThrow(new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_INVALID'))
   })
 
-  it('rejects text-and-image and any model alias instead of silently changing the verified contract', () => {
-    expect(() => compileGeminiInteractionsRequestV1({ ...base, outputMode: 'image_and_text',
-      image: { mimeType: 'image/jpeg', aspectRatio: '1:1', imageSize: '1K' } })).toThrow(
-      new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_UNSUPPORTED'))
+  it('encodes the reviewed text-and-image, sampling, thinking and search matrix exactly', () => {
+    const compiled = compileGeminiInteractionsRequestV1({ ...base, outputMode: 'image_and_text',
+      image: { aspectRatio: '16:9', imageSize: '2K' },
+      generation: { temperature: 0.7, topP: 0.9, maxOutputTokens: 128, stop: ['stop'] },
+      reasoning: { thinkingLevel: 'high', thinkingSummaries: 'auto' }, webTypes: ['web', 'image'] })
+    expect(JSON.parse(compiled.preparedBody.copyUtf8Text())).toEqual({
+      generation_config: { max_output_tokens: 128, stop_sequences: ['stop'], temperature: 0.7,
+        thinking_level: 'high', thinking_summaries: 'auto', top_p: 0.9 },
+      input: 'draw a red apple', model: 'gemini-3.1-flash-image',
+      response_format: [{ type: 'text' }, { aspect_ratio: '16:9', image_size: '2K', type: 'image' }],
+      store: false, stream: true, tools: [{ type: 'google_search', search_types: ['web_search', 'image_search'] }],
+    })
+  })
+
+  it('rejects a model alias at the typed codec boundary', () => {
     expect(() => compileGeminiInteractionsRequestV1({ ...base, model: 'models/gemini-3.1-flash-image',
       image: { mimeType: 'image/jpeg', aspectRatio: '1:1', imageSize: '1K' } })).toThrow(
-      new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_INVALID'))
+      new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_UNSUPPORTED'))
+  })
+
+  it('omits image_size for the legacy image model without losing its other controls', () => {
+    expect(JSON.parse(compileGeminiInteractionsRequestV1({ ...base, model: 'gemini-2.5-flash-image',
+      outputMode: 'image_and_text', image: { aspectRatio: '21:9' },
+      generation: { temperature: 1, topP: 0.8, maxOutputTokens: 0, stop: ['stop'] }, webTypes: [] })
+      .preparedBody.copyUtf8Text())).toMatchObject({
+      model: 'gemini-2.5-flash-image', response_format: [{ type: 'text' }, { type: 'image', aspect_ratio: '21:9' }],
+    })
+  })
+
+  it('enforces Lite and Pro model-specific resolution and search limits', () => {
+    expect(() => compileGeminiInteractionsRequestV1({ ...base, model: 'gemini-3.1-flash-lite-image',
+      image: { aspectRatio: '1:1', imageSize: '2K' }, webTypes: [] })).toThrow(
+      new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_UNSUPPORTED'))
+    expect(() => compileGeminiInteractionsRequestV1({ ...base, model: 'gemini-3-pro-image',
+      image: { aspectRatio: '1:1', imageSize: '4K' }, webTypes: ['image'] })).toThrow(
+      new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_UNSUPPORTED'))
+    expect(JSON.parse(compileGeminiInteractionsRequestV1({ ...base, model: 'gemini-3-pro-image',
+      image: { aspectRatio: '1:1', imageSize: '4K' }, webTypes: ['web'] }).preparedBody.copyUtf8Text()))
+      .toMatchObject({ model: 'gemini-3-pro-image', tools: [{ type: 'google_search', search_types: ['web_search'] }] })
+  })
+
+  it('encodes image-only search without silently adding web search', () => {
+    expect(JSON.parse(compileGeminiInteractionsRequestV1({ ...base,
+      image: { aspectRatio: '1:1', imageSize: '1K' }, webTypes: ['image'] }).preparedBody.copyUtf8Text()))
+      .toMatchObject({ tools: [{ type: 'google_search', search_types: ['image_search'] }] })
   })
 })

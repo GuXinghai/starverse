@@ -3,7 +3,7 @@ import {
   decodeAssistantAnswerGenerationSnapshotV2,
 } from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
-import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
+import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { sha256PreparedBytesV2, stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import {
   isPendingAnswerActionForContextV2, isPendingEditedTurnForContextV2, isPendingInitialTurnForContextV2,

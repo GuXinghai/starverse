@@ -6,7 +6,14 @@ export type GenerationV2Projection = Readonly<{type:'assistant_body';operationId
   Readonly<{type:'reasoning_detail';operationId:string;answerRootId:string;detail:Readonly<Record<string,unknown>>}>|
   Readonly<{type:'image_output';operationId:string;answerRootId:string;assetId:string;assetRevisionId:string;mime:string}>|
   Readonly<{type:'terminal';operationId:string;answerRootId:string;state:'completed'|'failed'|'cancelled';errorCode:string|null;errorMessage:string|null}>
-type Bridge = NonNullable<Window['generationV2']> extends infer V ? V extends {openAIResponses:infer B}?B:never:never
+type Bridge = Readonly<{
+  initial: (command: unknown) => Promise<unknown>
+  retry: (command: unknown) => Promise<unknown>
+  regenerate: (command: unknown) => Promise<unknown>
+  editResend: (command: unknown) => Promise<unknown>
+  abort: (operationId: string) => Promise<unknown>
+  onProjection: (listener: (value: unknown) => void) => () => void
+}>
 export type GenerationV2Route =
   | Readonly<{kind:'openrouter_chat'}>|Readonly<{kind:'openrouter_images'}>|Readonly<{kind:'openai_responses'}>
   | Readonly<{kind:'anthropic'}>|Readonly<{kind:'deepseek'}>|Readonly<{kind:'gemini_generate_content'}>|Readonly<{kind:'gemini_interactions_image'}>
@@ -19,4 +26,4 @@ export async function submitGenerationV2Retry(route:GenerationV2Route,command:un
 export async function submitGenerationV2Regenerate(route:GenerationV2Route,command:unknown){return accepted(await select(route).regenerate(command))}
 export async function submitGenerationV2EditResend(route:GenerationV2Route,command:unknown){return accepted(await select(route).editResend(command))}
 export async function abortGenerationV2(route:GenerationV2Route,operationId:string){return select(route).abort(operationId)}
-export function subscribeGenerationV2Projections(listener:(projection:GenerationV2Projection)=>void):()=>void{const v=root();const bridges=[v.openRouter.chat,v.openRouter.images,v.openAIResponses,v.anthropic,v.deepSeek,v.gemini.generateContent,v.gemini.interactionsImage,v.openAICompatible.commands,v.lmStudio.openResponses,v.genericLocal.openAIChatCompletions,v.ollama.chat];const stops=bridges.map((bridge)=>bridge.onProjection((value)=>listener(value as GenerationV2Projection)));return()=>{for(const stop of stops)stop()}}
+export function subscribeGenerationV2Projections(listener:(projection:GenerationV2Projection)=>void):()=>void{const v=root();const bridges:readonly Bridge[]=[v.openRouter.chat,v.openRouter.images,v.openAIResponses,v.anthropic,v.deepSeek,v.gemini.generateContent,v.gemini.interactionsImage,v.openAICompatible.commands,v.lmStudio.openResponses,v.genericLocal.openAIChatCompletions,v.ollama.chat] as readonly Bridge[];const stops=bridges.map((bridge)=>bridge.onProjection((value:unknown)=>listener(value as GenerationV2Projection)));return()=>{for(const stop of stops)stop()}}

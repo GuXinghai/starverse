@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import { stableSerializeProviderRequestBoundedV2, stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
-import type { GeminiInteractionsImageResultV1 } from './interactionsStreamV1'
+import type { GeminiInteractionsImageResultV1, GeminiInteractionsReasoningDetailV1 } from './interactionsStreamV1'
+import { isGeminiInteractionsImageModelIdV1 } from './interactionsImageCapabilityPolicyV1'
 
 export const GEMINI_INTERACTIONS_IMAGE_TERMINAL_ARTIFACT_KIND_V1 = 'gemini_interactions_image_terminal_v1' as const
 export const GEMINI_INTERACTIONS_IMAGE_TERMINAL_ARTIFACT_CODEC_VERSION_V1 = 1 as const
@@ -9,9 +10,11 @@ export type GeminiInteractionsImageTerminalArtifactV1 = Readonly<{
   artifactKind: typeof GEMINI_INTERACTIONS_IMAGE_TERMINAL_ARTIFACT_KIND_V1
   artifactCodecVersion: typeof GEMINI_INTERACTIONS_IMAGE_TERMINAL_ARTIFACT_CODEC_VERSION_V1
   interactionId: string
-  model: 'gemini-3.1-flash-image'
+  model: string
   usage: Readonly<Record<string, unknown>>
   image: Readonly<{ mime: string; byteLength: number; sha256: string }>
+  text: Readonly<{ byteLength: number; sha256: string }>
+  reasoningDetails: readonly GeminiInteractionsReasoningDetailV1[]
   orderedEvents: readonly Readonly<{ eventType: string; canonicalEventSha256: string; canonicalEventByteLength: number }>[]
   artifactHash: string
 }>
@@ -25,9 +28,9 @@ function invalid(): never { throw new GeminiInteractionsImageTerminalArtifactV1E
 export function createGeminiInteractionsImageTerminalArtifactV1(
   result: GeminiInteractionsImageResultV1,
 ): GeminiInteractionsImageTerminalArtifactV1 {
-  if (!result || result.model !== 'gemini-3.1-flash-image' || typeof result.interactionId !== 'string' ||
-      result.interactionId.length < 1 || result.bytes.byteLength < 1 || typeof result.mime !== 'string' ||
-      !Array.isArray(result.events) || result.events.length < 3) invalid()
+  if (!result || !isGeminiInteractionsImageModelIdV1(result.model) || typeof result.interactionId !== 'string' ||
+      result.interactionId.length < 1 || result.bytes.byteLength < 1 || typeof result.mime !== 'string' || typeof result.text !== 'string' ||
+      !Array.isArray(result.reasoningDetails) || !Array.isArray(result.events) || result.events.length < 3) invalid()
   let usage: Readonly<Record<string, unknown>>
   try {
     const parsed = JSON.parse(stableSerializeProviderRequestBoundedV2(result.usage, 1024 * 1024))
@@ -47,6 +50,9 @@ export function createGeminiInteractionsImageTerminalArtifactV1(
     usage,
     image: Object.freeze({ mime: result.mime, byteLength: result.bytes.byteLength,
       sha256: createHash('sha256').update(result.bytes).digest('hex') }),
+    text: Object.freeze({ byteLength: Buffer.byteLength(result.text, 'utf8'),
+      sha256: createHash('sha256').update(result.text, 'utf8').digest('hex') }),
+    reasoningDetails: Object.freeze(result.reasoningDetails.map((detail) => Object.freeze({ ...detail }))),
     orderedEvents,
   })
   const artifact = Object.freeze({ ...projection,

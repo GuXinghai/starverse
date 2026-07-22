@@ -121,9 +121,11 @@ describe('DeepSeek stable semantic intent projection V1', () => {
         sideEffectConfirmation: 'required_each_retry',
       },
       attachments: [{
+        kind: 'managed_file',
         assetId: 'asset:1', assetRevisionId: 'revision:1', assetSha256: 'a'.repeat(64),
         include: true, sendAs: 'inline_text', conversion: 'none',
       }, {
+        kind: 'managed_file',
         assetId: 'asset:2', assetRevisionId: 'revision:2', assetSha256: 'b'.repeat(64),
         include: false, sendAs: 'inline_text', conversion: 'none',
       }],
@@ -155,9 +157,11 @@ describe('DeepSeek stable semantic intent projection V1', () => {
   it('uses array-index attachment paths without identity delimiter collisions', () => {
     const projection = projectDeepSeekStableIntentV1(resolved({
       attachments: [{
+        kind: 'managed_file',
         assetId: 'a', assetRevisionId: 'b@c', assetSha256: 'a'.repeat(64),
         include: false, sendAs: 'inline_text', conversion: 'none',
       }, {
+        kind: 'managed_file',
         assetId: 'a@b', assetRevisionId: 'c', assetSha256: 'b'.repeat(64),
         include: false, sendAs: 'inline_text', conversion: 'none',
       }],

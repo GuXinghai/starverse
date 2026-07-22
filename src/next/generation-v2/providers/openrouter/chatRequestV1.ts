@@ -188,7 +188,8 @@ export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatComp
     throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
   }
   const messages = Object.freeze(input.messages.map(jsonClone))
-  const generation = input.generation === undefined
+  const generation: Readonly<{ maxTokens?: unknown; temperature?: unknown; topP?: unknown; topK?: unknown; minP?: unknown;
+    topA?: unknown; seed?: unknown; stop?: unknown; frequencyPenalty?: unknown; presencePenalty?: unknown }> = input.generation === undefined
     ? Object.freeze({})
     : asClosedObject(input.generation, ['maxTokens', 'temperature', 'topP', 'topK', 'minP', 'topA', 'seed', 'stop', 'frequencyPenalty', 'presencePenalty'], [])
   const tools = input.tools === undefined

@@ -1,6 +1,7 @@
 import type { SemanticConsumptionLedgerEntryV2 } from '../../compiler/semanticConsumptionLedgerV2'
 import type { ResolvedGenerationIntentV2 } from '../../domain/resolvedGenerationIntentV2'
-import type { CompatibleRequestFieldSettings, CompatibleReasoningControlState } from '../../../../shared/provider/openai-chat-compatible/request/buildCompatibleChatRequest'
+import type { CompatibleRequestFieldSettings } from '../../../../shared/provider/openai-chat-compatible/request/buildCompatibleChatRequest'
+import type { CompatibleJsonValue, CompatibleReasoningControlState } from '../../../../shared/provider/openai-chat-compatible/request/messageTypes'
 
 export class OpenAIChatCompatibleIntentProjectionV2Error extends Error {
   constructor(readonly code: 'GENERATION_V2_OPENAI_COMPATIBLE_EXPLICIT_FIELD_UNSUPPORTED') {
@@ -36,7 +37,7 @@ export function projectOpenAIChatCompatibleIntentV2(
 ): OpenAIChatCompatibleIntentProjectionV2 {
   const fields: CompatibleRequestFieldSettings = {}
   const ledger: SemanticConsumptionLedgerEntryV2[] = []
-  const set = <K extends keyof CompatibleRequestFieldSettings>(key: K, path: string, nativeField: string, value: NonNullable<CompatibleRequestFieldSettings[K]> extends { value: infer V } ? V : never) => {
+  const set = <K extends keyof CompatibleRequestFieldSettings>(key: K, path: string, nativeField: string, value: CompatibleJsonValue) => {
     fields[key] = { state: 'explicit', value } as CompatibleRequestFieldSettings[K]
     ledger.push(encoded(path, nativeField))
   }
@@ -44,7 +45,7 @@ export function projectOpenAIChatCompatibleIntentV2(
   if (generation.maxOutputTokens !== undefined) set('max_tokens', 'generation.maxOutputTokens', 'max_tokens', generation.maxOutputTokens)
   if (generation.temperature !== undefined) set('temperature', 'generation.temperature', 'temperature', generation.temperature)
   if (generation.topP !== undefined) set('top_p', 'generation.topP', 'top_p', generation.topP)
-  if (generation.stop !== undefined) set('stop', 'generation.stop', 'stop', generation.stop)
+  if (generation.stop !== undefined) set('stop', 'generation.stop', 'stop', [...generation.stop])
   if (generation.seed !== undefined) set('seed', 'generation.seed', 'seed', generation.seed)
   if (generation.frequencyPenalty !== undefined) set('frequency_penalty', 'generation.frequencyPenalty', 'frequency_penalty', generation.frequencyPenalty)
   if (generation.presencePenalty !== undefined) set('presence_penalty', 'generation.presencePenalty', 'presence_penalty', generation.presencePenalty)

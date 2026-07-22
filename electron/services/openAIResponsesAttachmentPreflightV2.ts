@@ -5,10 +5,7 @@ import {
   type OpenAIResponsesFileDescriptorV2,
 } from '../../infra/db/repo/openAIResponsesFileDescriptorV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
-import {
-  requiresProviderFileBindingV2,
-  type AttachmentIntentV2,
-} from '../../src/next/generation-v2/domain/generationIntentV2'
+import type { AttachmentIntentV2, ManagedFileAttachmentIntentV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
@@ -21,16 +18,17 @@ export class OpenAIResponsesAttachmentPreflightV2Error extends Error {
   }
 }
 
-type IncludedOpenAIFileIntentV2 = Extract<AttachmentIntentV2, Readonly<{
-  kind: 'managed_file'
+type IncludedOpenAIFileIntentV2 = ManagedFileAttachmentIntentV2 & Readonly<{
   sendAs: 'provider_file' | 'converted_document'
   conversion: 'none' | 'pdf'
-}>>
+}>
 
 export function isIncludedOpenAIResponsesFileIntentV2(
   attachment: AttachmentIntentV2,
 ): attachment is IncludedOpenAIFileIntentV2 {
-  return requiresProviderFileBindingV2(attachment)
+  return attachment.kind === 'managed_file' && attachment.include &&
+    ((attachment.sendAs === 'provider_file' && attachment.conversion === 'none') ||
+      (attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf'))
 }
 
 /**

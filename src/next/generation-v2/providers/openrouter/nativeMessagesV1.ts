@@ -121,6 +121,25 @@ export function isOpenRouterNativeHistoryArtifactV1(value: unknown): value is Op
   return Boolean(value && typeof value === 'object' && branded.has(value))
 }
 
+export function hasCompleteOpenRouterAssistantToolCallsV1(
+  artifact: OpenRouterNativeHistoryArtifactV1,
+): boolean {
+  if (!isOpenRouterNativeHistoryArtifactV1(artifact)) return false
+  const assistant = artifact.orderedMessages.at(-1)
+  if (!assistant || assistant.role !== 'assistant' || !Array.isArray(assistant.tool_calls) ||
+      assistant.tool_calls.length === 0) return false
+  return assistant.tool_calls.every((value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return false
+    const call = value as Record<string, unknown>
+    const fn = call.function
+    return typeof call.id === 'string' && call.id.length > 0 && call.type === 'function' &&
+      Boolean(fn && typeof fn === 'object' && !Array.isArray(fn) &&
+        typeof (fn as Record<string, unknown>).name === 'string' &&
+        ((fn as Record<string, unknown>).name as string).length > 0 &&
+        typeof (fn as Record<string, unknown>).arguments === 'string')
+  })
+}
+
 export function buildOpenRouterNativeRequestHistoryV1(input: Readonly<{
   priorArtifact: OpenRouterNativeHistoryArtifactV1 | null
   clientMessages: unknown

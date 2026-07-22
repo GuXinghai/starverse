@@ -1,3 +1,5 @@
+import type { DfcDraftAttachmentOptionsDto, DfcDraftAttachmentPreviewDto } from '../../../shared/files/documentFormatConversion'
+
 type Result<T> = Readonly<{ok:true;value:T}>|Readonly<{ok:false;code:string}>
 export type GenerationV2ComposerManagedFileAttachment=Readonly<{kind:'managed_file';assetId:string;assetRevisionId:string;assetSha256:string;include:boolean;
   sendAs:'provider_file'|'inline_text'|'image_reference'|'converted_document';conversion:'none'|'pdf'|'plain_text'|'images';
@@ -52,6 +54,6 @@ export function projectGenerationV2ComposerAttachments(draft:GenerationV2Compose
       urlDigest:item.urlDigest,mediaKind:item.mediaKind,...(item.declaredMediaType===null?{}:{declaredMediaType:item.declaredMediaType}),
       capturedAtMs:item.capturedAtMs,provenance:item.provenance,include:item.include,sendAs:item.sendAs,conversion:item.conversion})))
 }
-export async function getGenerationV2ComposerDfcOptions(payload:Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>){return unwrap<unknown>(await bridge().dfcOptions(payload))}
+export async function getGenerationV2ComposerDfcOptions(payload:Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>){return unwrap<DfcDraftAttachmentOptionsDto>(await bridge().dfcOptions(payload))}
 export async function selectGenerationV2ComposerDfcOption(payload:Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>){return unwrap<GenerationV2ComposerDraft>(await bridge().dfcSelect(payload))}
-export async function getGenerationV2ComposerDfcPreview(payload:Readonly<{conversationId:string;assetId:string;maxCharacters:number}>){return unwrap<unknown>(await bridge().dfcPreview(payload))}
+export async function getGenerationV2ComposerDfcPreview(payload:Readonly<{conversationId:string;assetId:string;maxCharacters:number}>){return unwrap<DfcDraftAttachmentPreviewDto>(await bridge().dfcPreview(payload))}

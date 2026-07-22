@@ -35,7 +35,7 @@ export function composeOpenAIChatCompatibleBaselineCapabilityV2(input: Readonly<
   const evidenceId = `openai-chat-compatible.contract.${OPENAI_CHAT_COMPATIBLE_CONTRACT_DIGEST_V2}`
   const fields: PersistedRuntimeCapabilityFieldV2[] = RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => {
     const generation = STANDARD_GENERATION.get(path)
-    if (generation) return Object.freeze({ path, state: 'supported', domain: Object.freeze(generation), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
+    if (generation) return Object.freeze({ path, state: 'supported', domain: Object.freeze(generation), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as unknown as PersistedRuntimeCapabilityFieldV2
     if (NO_WIRE_DISABLED.has(path)) return Object.freeze({ path, state: 'supported', domain: Object.freeze({ kind: 'enum', values: Object.freeze([path === 'providerExtension.kind' ? 'none' : 'disabled']) }), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
     if (path === 'reasoning.mode') return Object.freeze({ path, state: 'supported', domain: Object.freeze({ kind: 'enum',
       values: Object.freeze(mapped.has('reasoning_enabled') ? ['disabled', 'enabled'] : ['disabled']) }), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2

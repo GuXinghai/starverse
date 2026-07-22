@@ -8,6 +8,26 @@ import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { GeminiGenerateContentNativeHistoryV2Repo } from '../../infra/db/repo/geminiGenerateContentNativeHistoryV2Repo'
 import { LmStudioOpenResponsesNativeHistoryV2Repo } from '../../infra/db/repo/lmStudioOpenResponsesNativeHistoryV2Repo'
+import {
+  decodeOpenRouterNativeHistoryArtifactV1,
+  hasCompleteOpenRouterAssistantToolCallsV1,
+} from '../../src/next/generation-v2/providers/openrouter/nativeMessagesV1'
+import { decodeOpenRouterChatTerminalArtifactV1 } from '../../src/next/generation-v2/providers/openrouter/terminalArtifactV1'
+import {
+  decodeDeepSeekNativeHistoryArtifactV2,
+  hasPendingDeepSeekAssistantToolCallsV2,
+} from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
+import { decodeDeepSeekStableTerminalArtifactV1 } from '../../src/next/generation-v2/providers/deepseek/terminalArtifactV1'
+import {
+  decodeAnthropicNativeHistoryArtifactV1,
+  hasPendingAnthropicToolUseBlocksV1,
+} from '../../src/next/generation-v2/providers/anthropic/nativeContentBlocksV1'
+import {
+  decodeOpenAIResponsesContinuationArtifactV2,
+  hasPendingOpenAIResponsesFunctionCallsV2,
+} from '../../src/next/generation-v2/providers/openai-responses/continuationArtifactV2'
+import { decodeOpenAIResponsesTerminalArtifactV1 } from '../../src/next/generation-v2/providers/openai-responses/terminalArtifactV1'
+import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 
 const ERROR_CODE = 'stream_interrupted'
 const ERROR_MESSAGE = 'Assistant generation was interrupted before completion.'
@@ -35,6 +55,64 @@ export class GenerationOrphanRecoveryV2Error extends Error {
 
 function invalid(): never {
   throw new GenerationOrphanRecoveryV2Error('GENERATION_V2_ORPHAN_RECOVERY_STATE_INVALID')
+}
+
+export function hasPersistedOpenRouterAwaitingToolStateV2(row: Readonly<Record<string, unknown>>): boolean {
+  if (row.requestState !== 'completed' || row.answerStatus !== 'streaming' ||
+      typeof row.terminalJson !== 'string' || typeof row.terminalHash !== 'string' ||
+      typeof row.artifactJson !== 'string' || typeof row.artifactHash !== 'string') return false
+  try {
+    const terminal = decodeOpenRouterChatTerminalArtifactV1(JSON.parse(row.terminalJson))
+    const artifact = decodeOpenRouterNativeHistoryArtifactV1(JSON.parse(row.artifactJson))
+    return terminal.artifactHash === row.terminalHash && artifact.artifactHash === row.artifactHash &&
+      hasCompleteOpenRouterAssistantToolCallsV1(artifact)
+  } catch {
+    return false
+  }
+}
+
+export function hasPersistedDeepSeekAwaitingToolStateV2(row: Readonly<Record<string, unknown>>): boolean {
+  if (row.requestState !== 'completed' || row.answerStatus !== 'streaming' ||
+      typeof row.terminalJson !== 'string' || typeof row.terminalHash !== 'string' ||
+      typeof row.artifactJson !== 'string' || typeof row.artifactHash !== 'string') return false
+  try {
+    const terminal = decodeDeepSeekStableTerminalArtifactV1(JSON.parse(row.terminalJson))
+    const artifact = decodeDeepSeekNativeHistoryArtifactV2(JSON.parse(row.artifactJson))
+    const finalEntry = artifact.orderedEntries.at(-1)
+    return terminal.artifactHash === row.terminalHash && artifact.artifactHash === row.artifactHash &&
+      finalEntry?.kind === 'assistant' &&
+      finalEntry.generatedWithThinking === terminal.generatedWithThinking &&
+      stableSerializeProviderRequestV2(finalEntry.message) ===
+        stableSerializeProviderRequestV2(terminal.assistantMessage) &&
+      hasPendingDeepSeekAssistantToolCallsV2(artifact)
+  } catch {
+    return false
+  }
+}
+
+export function hasPersistedAnthropicAwaitingToolStateV2(row: Readonly<Record<string, unknown>>): boolean {
+  if (row.requestState !== 'completed' || row.answerStatus !== 'streaming' ||
+      typeof row.artifactJson !== 'string' || typeof row.artifactHash !== 'string') return false
+  try {
+    const artifact = decodeAnthropicNativeHistoryArtifactV1(JSON.parse(row.artifactJson))
+    return artifact.artifactHash === row.artifactHash && hasPendingAnthropicToolUseBlocksV1(artifact)
+  } catch {
+    return false
+  }
+}
+
+export function hasPersistedOpenAIResponsesAwaitingToolStateV2(row: Readonly<Record<string, unknown>>): boolean {
+  if (row.requestState !== 'completed' || row.answerStatus !== 'streaming' ||
+      typeof row.terminalJson !== 'string' || typeof row.terminalHash !== 'string' ||
+      typeof row.historyJson !== 'string' || typeof row.historyHash !== 'string') return false
+  try {
+    const terminal = decodeOpenAIResponsesTerminalArtifactV1(row.terminalJson)
+    const history = decodeOpenAIResponsesContinuationArtifactV2(JSON.parse(row.historyJson))
+    return terminal.artifactHash === row.terminalHash && terminal.terminalKind === 'completed' &&
+      history.artifactHash === row.historyHash && hasPendingOpenAIResponsesFunctionCallsV2(history)
+  } catch {
+    return false
+  }
 }
 
 export function recoverGenerationOrphansV2(
@@ -74,8 +152,8 @@ export function recoverGenerationOrphansV2(
       if (rows.length === 0 && operation.operation.state === 'streaming') {
         const awaiting = db.prepare(`SELECT request.request_sequence AS requestSequence,
           request.state AS requestState, answer.status AS answerStatus,
-          json_extract(terminal.artifact_json, '$.finishReason') AS finishReason,
-          count(history.artifact_kind) AS historyCount
+          terminal.artifact_json AS terminalJson, terminal.artifact_hash AS terminalHash,
+          history.artifact_json AS artifactJson, history.artifact_hash AS artifactHash
           FROM generation_request_v2 AS request
           JOIN generation_operation_v2 AS operation ON operation.operation_id=request.operation_id
           JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
@@ -84,21 +162,21 @@ export function recoverGenerationOrphansV2(
             AND terminal.request_sequence=request.request_sequence
             AND terminal.answer_root_id=request.answer_root_id
             AND terminal.artifact_kind='deepseek_stable_terminal_result_v1'
-          LEFT JOIN generation_native_artifact_v2 AS history
+          JOIN generation_native_artifact_v2 AS history
             ON history.operation_id=request.operation_id
             AND history.request_sequence=request.request_sequence
             AND history.answer_root_id=request.answer_root_id
             AND history.artifact_kind='deepseek_stable_ordered_native_messages_v2'
           WHERE request.operation_id=?
             AND request.request_sequence=(SELECT MAX(request_sequence) FROM generation_request_v2 WHERE operation_id=?)
-          GROUP BY request.request_sequence, request.state, answer.status, finishReason`).get(
+          `).get(
           operationId, operationId,
         ) as Readonly<Record<string, unknown>> | undefined
-        if (awaiting?.requestState === 'completed' && awaiting.answerStatus === 'streaming' &&
-            awaiting.finishReason === 'tool_calls' && awaiting.historyCount === 1) continue
+        if (awaiting && hasPersistedDeepSeekAwaitingToolStateV2(awaiting)) continue
         const openRouterAwaiting = db.prepare(`SELECT request.state AS requestState,
-          answer.status AS answerStatus, json_extract(terminal.artifact_json, '$.finishReason') AS finishReason,
-          count(DISTINCT history.artifact_hash) AS historyCount
+          answer.status AS answerStatus, terminal.artifact_json AS terminalJson,
+          terminal.artifact_hash AS terminalHash, history.artifact_json AS artifactJson,
+          history.artifact_hash AS artifactHash
           FROM generation_request_v2 AS request
           JOIN message_v2 AS answer ON answer.message_id=request.answer_root_id
           JOIN generation_native_artifact_v2 AS terminal ON terminal.operation_id=request.operation_id
@@ -109,14 +187,12 @@ export function recoverGenerationOrphansV2(
             AND history.artifact_kind='openrouter_chat_ordered_native_messages_v1' AND history.completion_scope='request_terminal'
           WHERE request.operation_id=? AND request.request_sequence=(
             SELECT MAX(request_sequence) FROM generation_request_v2 WHERE operation_id=?
-          ) GROUP BY request.request_sequence, request.state, answer.status, finishReason`).get(
+          )`).get(
           operationId, operationId,
         ) as Readonly<Record<string, unknown>> | undefined
-        if (openRouterAwaiting?.requestState === 'completed' && openRouterAwaiting.answerStatus === 'streaming' &&
-            openRouterAwaiting.finishReason === 'tool_calls' && openRouterAwaiting.historyCount === 1) continue
+        if (openRouterAwaiting && hasPersistedOpenRouterAwaitingToolStateV2(openRouterAwaiting)) continue
         const anthropicAwaiting = db.prepare(`SELECT request.state AS requestState, answer.status AS answerStatus,
-          json_extract(terminal.artifact_json, '$.stopReason') AS stopReason,
-          count(DISTINCT terminal.artifact_hash) AS artifactCount
+          terminal.artifact_json AS artifactJson, terminal.artifact_hash AS artifactHash
           FROM generation_request_v2 AS request
           JOIN message_v2 AS answer ON answer.message_id=request.answer_root_id
           JOIN generation_native_artifact_v2 AS terminal ON terminal.operation_id=request.operation_id
@@ -124,15 +200,12 @@ export function recoverGenerationOrphansV2(
             AND terminal.artifact_kind='anthropic_messages_native_history_v1' AND terminal.completion_scope='request_terminal'
           WHERE request.operation_id=? AND request.request_sequence=(
             SELECT MAX(request_sequence) FROM generation_request_v2 WHERE operation_id=?
-          ) GROUP BY request.request_sequence, request.state, answer.status, stopReason`).get(operationId, operationId) as Readonly<Record<string, unknown>> | undefined
-        if (anthropicAwaiting?.requestState === 'completed' && anthropicAwaiting.answerStatus === 'streaming' &&
-            anthropicAwaiting.stopReason === 'tool_use' && anthropicAwaiting.artifactCount === 1) continue
+          )`).get(operationId, operationId) as Readonly<Record<string, unknown>> | undefined
+        if (anthropicAwaiting && hasPersistedAnthropicAwaitingToolStateV2(anthropicAwaiting)) continue
         const openAIResponsesAwaiting = db.prepare(`SELECT request.request_sequence AS requestSequence,
           request.state AS requestState, answer.status AS answerStatus,
-          json_extract(terminal.artifact_json, '$.terminalKind') AS terminalKind,
-          count(DISTINCT history.artifact_hash) AS historyCount,
-          sum(CASE WHEN json_extract(call.value, '$.type')='function_call' THEN 1 ELSE 0 END) AS functionCallCount,
-          sum(CASE WHEN json_extract(call.value, '$.type')='function_call_output' THEN 1 ELSE 0 END) AS functionOutputCount
+          terminal.artifact_json AS terminalJson, terminal.artifact_hash AS terminalHash,
+          history.artifact_json AS historyJson, history.artifact_hash AS historyHash
           FROM generation_request_v2 AS request
           JOIN generation_operation_v2 AS operation ON operation.operation_id=request.operation_id
           JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
@@ -142,19 +215,13 @@ export function recoverGenerationOrphansV2(
           JOIN generation_native_artifact_v2 AS history ON history.operation_id=request.operation_id
             AND history.request_sequence=request.request_sequence AND history.answer_root_id=request.answer_root_id
             AND history.artifact_kind='openai_responses_ordered_native_items_v2' AND history.completion_scope='request_terminal'
-          LEFT JOIN json_each(history.artifact_json, '$.orderedItems') AS call ON 1=1
           WHERE request.operation_id=? AND request.request_sequence=(
             SELECT MAX(request_sequence) FROM generation_request_v2 WHERE operation_id=?
-          ) GROUP BY request.request_sequence, request.state, answer.status, terminalKind`).get(
+          )`).get(
           operationId, operationId,
         ) as Readonly<Record<string, unknown>> | undefined
-        if (openAIResponsesAwaiting?.requestState === 'completed' &&
-            openAIResponsesAwaiting.answerStatus === 'streaming' &&
-            openAIResponsesAwaiting.terminalKind === 'completed' &&
-            openAIResponsesAwaiting.historyCount === 1 &&
-            Number.isSafeInteger(openAIResponsesAwaiting.functionCallCount) &&
-            (openAIResponsesAwaiting.functionCallCount as number) > 0 &&
-            openAIResponsesAwaiting.functionOutputCount === 0) continue
+        if (openAIResponsesAwaiting &&
+            hasPersistedOpenAIResponsesAwaitingToolStateV2(openAIResponsesAwaiting)) continue
         if (geminiHistoryRepo.readAwaitingToolRecoveryFact(operationId) !== null) continue
         if (lmStudioHistoryRepo.readAwaitingToolRecoveryFact(operationId) !== null) continue
         invalid()

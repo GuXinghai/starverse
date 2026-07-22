@@ -29,7 +29,7 @@ export function issueOpenRouterImageProviderBindingV2(input: Readonly<{
   )
   if (!definition || !isReviewedProviderContractDefinitionV2(definition) ||
       definition.providerId.value !== 'openrouter' || !definition.operations.includes('image_generate') ||
-      definition.apiSurface.kind !== 'openrouter_images' || definition.apiSurface.requestPath !== '/api/v1/images') {
+      !('kind' in definition.apiSurface) || definition.apiSurface.kind !== 'openrouter_images' || definition.apiSurface.requestPath !== '/api/v1/images') {
     throw new OpenRouterImageProviderBindingV2Error('GENERATION_V2_OPENROUTER_IMAGE_BINDING_ISSUE_INVALID')
   }
   try {
