@@ -52,7 +52,7 @@ const ALLOWLIST = [
   {
     id: 'file-fingerprint-domain-fields',
     reason: 'domain schema and detector code store fullHash/fullHashStatus as structured fingerprint fields',
-    path: /^(infra\/db\/types|infra\/files\/fileTypeDetectionService)\.ts$/u,
+    path: /^infra\/db\/types\.ts$/u,
     matchTypes: ['fullHash'],
     line: /\b(fullHash|fullHashStatus|fingerprint|sha256)\b/u,
   },

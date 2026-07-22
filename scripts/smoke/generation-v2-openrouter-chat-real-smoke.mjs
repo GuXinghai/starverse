@@ -144,18 +144,50 @@ async function main() {
         const raw = await window.rawGenerationDebug.listByAnswerRootId(answer.answerRootId)
         const request = Array.isArray(raw) ? raw.find((item) => item.requestSequence === 1) : null
         if (!request || typeof request.bodySha256 !== 'string' || typeof request.bodyBytes !== 'number') throw new Error('GENERATION_V2_REAL_SMOKE_RAW_REQUEST_MISSING')
-        return { terminal: { state: terminal.state, errorCode: terminal.errorCode ?? null },
+        return { conversationId: conversation.conversationId,
+          terminal: { state: terminal.state, errorCode: terminal.errorCode ?? null,
+          errorMessage: typeof terminal.errorMessage === 'string' ? terminal.errorMessage.slice(0, 256) : null },
           answer: { answerRootId: answer.answerRootId, chosen: answer.chosen, status: answer.status, providerId: answer.providerId,
             modelId: answer.modelId, endpointProfileId: answer.endpointProfileId, protocolContractId: answer.protocolContractId },
           request: { bodySha256: request.bodySha256, bodyBytes: request.bodyBytes }, proxyMode: proxy?.settings?.proxyMode ?? null }
-      } finally { await api.workspace.deleteConversation(conversation.conversationId).catch(() => undefined) }
+      } catch (error) {
+        await api.workspace.deleteConversation(conversation.conversationId).catch(() => undefined)
+        throw error
+      }
     }, { modelId, requestedProxyMode })
+    let persistedFinishReason = null
+    try {
+      if (observed.terminal.state === 'completed') {
+        persistedFinishReason = await app.evaluate(({ app }, answerRootId) => {
+          const path = process.getBuiltinModule('node:path')
+          const { createRequire } = process.getBuiltinModule('node:module')
+          const requireFromApp = createRequire(path.join(process.cwd(), 'package.json'))
+          const BetterSqlite3 = requireFromApp('better-sqlite3')
+          const db = new BetterSqlite3(path.join(app.getPath('userData'), 'workspace', 'epoch-2', 'starverse.db'), {
+            readonly: true, fileMustExist: true,
+          })
+          try {
+            const row = db.prepare(`SELECT artifact_json AS artifactJson FROM generation_native_artifact_v2
+              WHERE answer_root_id=? AND request_sequence=1 AND artifact_kind='openrouter_chat_terminal_result_v1'`).get(answerRootId)
+            if (!row || typeof row.artifactJson !== 'string') throw new Error('GENERATION_V2_REAL_SMOKE_TERMINAL_ARTIFACT_MISSING')
+            const artifact = JSON.parse(row.artifactJson)
+            if (typeof artifact.finishReason !== 'string') throw new Error('GENERATION_V2_REAL_SMOKE_FINISH_REASON_NOT_PERSISTED')
+            return artifact.finishReason
+          } finally { db.close() }
+        }, observed.answer.answerRootId)
+      }
+    } finally {
+      await page.evaluate(async (conversationId) => {
+        await window.generationV2?.workspace?.deleteConversation(conversationId).catch(() => undefined)
+      }, observed.conversationId)
+    }
     const result = Object.freeze({ ...base, requestShapeHash: observed.request.bodySha256, requestBytes: observed.request.bodyBytes,
-      proxyMode: observed.proxyMode, terminal: observed.terminal, answer: observed.answer,
-      result: observed.terminal.state === 'completed' ? 'PASS' : 'FAIL_TERMINAL_NOT_COMPLETED' })
+      proxyMode: observed.proxyMode, terminal: observed.terminal, answer: observed.answer, persistedFinishReason,
+      result: observed.terminal.state === 'completed' && typeof persistedFinishReason === 'string'
+        ? 'PASS' : 'FAIL_TERMINAL_NOT_COMPLETED' })
     await writeArtifact(result)
     process.stdout.write(`${JSON.stringify(result)}\n`)
-    if (result.result !== 'PASS') fail(result.result)
+    if (result.result !== 'PASS') process.exitCode = 1
   } catch (error) {
     const result = Object.freeze({ ...base, result: 'FAIL', error: sanitizeError(error),
       transportDiagnostics: Object.freeze([...transportDiagnostics]) })
