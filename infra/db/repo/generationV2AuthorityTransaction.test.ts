@@ -42,11 +42,14 @@ function createAttachment(repo: AttachmentAssetV2Repo) {
   const layer = decodeGenerationIntentLayerV2({
     schemaVersion: 2,
     attachments: [{
+      kind: 'managed_file',
       assetId: 'asset:1', assetRevisionId: 'revision:1', assetSha256: blob.sha256.value,
       include: true, sendAs: 'inline_text', conversion: 'none',
     }],
   })
-  return { bytes, intent: layer.attachments![0] }
+  const intent = layer.attachments![0]
+  if (intent.kind !== 'managed_file') throw new Error('test fixture must be managed_file')
+  return { bytes, intent }
 }
 
 describe('GenerationV2AuthorityTransaction internal Unit of Work primitive', () => {
@@ -71,6 +74,7 @@ describe('GenerationV2AuthorityTransaction internal Unit of Work primitive', () 
       expect(isResolvedGenerationConfigAuthorityV2(config)).toBe(false)
       expect(isResolvedAttachmentAssetAuthorityV2(attachment)).toBe(false)
       expect(isVerifiedAttachmentSendBytesLeaseV2(lease)).toBe(true)
+      if (!isVerifiedAttachmentSendBytesLeaseV2(lease)) throw new Error('test fixture lease invalid')
       await expect(consumeVerifiedAttachmentSendBytesLeaseV2(lease, (value) => [...value]))
         .resolves.toEqual([1, 2, 3])
     } finally { db.close() }

@@ -23,7 +23,7 @@ export type Epoch2SmokeFixtureAuthorityOptions = Readonly<{
 
 export function isEpoch2SmokeFixtureAuthorityEnabled(input: Readonly<{
   isPackaged: boolean
-  env: NodeJS.ProcessEnv
+  env: Readonly<Record<string, string | undefined>>
   argv: readonly string[]
 }>): boolean {
   return !input.isPackaged && input.env.SV_EPOCH2_SMOKE_FIXTURE_AUTHORITY === '1' &&
@@ -32,13 +32,14 @@ export function isEpoch2SmokeFixtureAuthorityEnabled(input: Readonly<{
 }
 
 export function registerEpoch2SmokeFixtureIpc(input: Epoch2SmokeFixtureAuthorityOptions): readonly string[] {
-  if (!input.enabled || !input.fixtureRoot?.trim()) return []
+  const configuredFixtureRoot = input.fixtureRoot
+  if (!input.enabled || !configuredFixtureRoot?.trim()) return []
   input.registerInvoke(EPOCH2_SMOKE_FIXTURE_CHANNEL, async (event, payload) => {
     try {
       const fixtureName = parseFixtureName(payload)
       const senderId = senderIdFromIpcEvent(event)
       if (senderId === null) throw new Error('EPOCH2_SMOKE_FIXTURE_SENDER_INVALID')
-      const root = await realpath(input.fixtureRoot)
+      const root = await realpath(configuredFixtureRoot)
       const filePath = await realpath(path.join(root, FIXTURE_FILENAMES[fixtureName]))
       if (!isDescendantPath(root, filePath)) throw new Error('EPOCH2_SMOKE_FIXTURE_PATH_INVALID')
       if (!(await lstat(filePath)).isFile()) throw new Error('EPOCH2_SMOKE_FIXTURE_PATH_INVALID')

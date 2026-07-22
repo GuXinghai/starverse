@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
@@ -13,10 +14,34 @@ import {
   serializeDeepSeekNativeHistoryArtifactV2,
   type DeepSeekNativeHistoryArtifactV2,
 } from '../../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
+import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 
 const root = path.resolve(process.cwd())
 const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
+
+function providerBinding() {
+  return {
+    credentialScopeId: 'scope:1',
+    providerId: 'deepseek',
+    endpointProfileId: 'deepseek-stable-api-v1',
+    endpointBinding: {
+      kind: 'provider_managed_set',
+      endpointSetRevision: 'deepseek-stable-endpoint-set-v1:test',
+      descriptors: [{
+        endpointId: 'deepseek-stable-api-v1',
+        descriptorRevision: 'deepseek-stable-profile-v1:test',
+      }],
+    },
+    protocolContractId: 'deepseek-stable-chat-v1',
+    contractRevision: `deepseek-stable-chat-v1:${HASH_A}`,
+    contractDefinitionDigest: HASH_A,
+    registryRevision: `provider-contract-registry-v1:${HASH_B}`,
+    modelId: 'deepseek-v4',
+    operation: 'text',
+  } as const
+}
 
 function createDb() {
   const db = new BetterSqlite3(':memory:')
@@ -26,7 +51,7 @@ function createDb() {
     .run('conversation:1', 'project:1', 'Conversation', 2, 2)
   db.prepare(`INSERT INTO runtime_capability_snapshot_v2
     VALUES (?, 'capability:1', 2, ?, ?, ?, 1)`).run(
-    HASH_A, '{"binding":{"providerId":"deepseek"}}', HASH_A, HASH_B,
+    HASH_A, stableSerializeProviderRequestV2({ binding: providerBinding() }), HASH_A, HASH_B,
   )
   return db
 }
@@ -56,6 +81,33 @@ function insertOperationAndSnapshot(
   answerRootId: string,
   createdAtMs: number,
 ) {
+  const snapshot = canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
+    schemaVersion: 2,
+    answerRootId,
+    operationId,
+    semanticIntent: {
+      schemaVersion: 2,
+      generation: {},
+      reasoning: { mode: 'disabled' },
+      web: { mode: 'disabled' },
+      image: { mode: 'disabled' },
+      tools: { mode: 'disabled' },
+      attachments: [],
+      providerExtension: { kind: 'none' },
+    },
+    resolvedConfigRevisions: [
+      { ownerKind: 'global', ownerId: 'global', revision: 'config:global:1' },
+      { ownerKind: 'project', ownerId: 'project:1', revision: 'config:project:1' },
+      { ownerKind: 'conversation', ownerId: 'conversation:1', revision: 'config:conversation:1' },
+    ],
+    providerBinding: providerBinding(),
+    capabilityBinding: {
+      capabilityRevision: 'capability:1', evidenceDigest: HASH_A,
+      semanticFieldsDigest: HASH_B, snapshotHash: HASH_A,
+    },
+    attachmentProviderFileBindings: [],
+    toolAuthority: { kind: 'none' },
+  })
   db.transaction(() => {
     db.prepare(`INSERT INTO generation_operation_v2 (operation_id, action_kind,
       command_fingerprint, branch_id, conversation_id, question_id, target_answer_root_id,
@@ -64,8 +116,8 @@ function insertOperationAndSnapshot(
       .run(operationId, HASH_A, questionId, answerRootId, createdAtMs, createdAtMs)
     db.prepare(`INSERT INTO assistant_generation_snapshot_v2
       VALUES (?, ?, 2, ?, ?, 'capability:1', ?, ?, ?, ?)`)
-      .run(answerRootId, operationId, '{"providerBinding":{"providerId":"deepseek"},"version":2}',
-        HASH_A, HASH_A, HASH_A, HASH_B, createdAtMs)
+      .run(answerRootId, operationId, stableSerializeProviderRequestV2(snapshot),
+        snapshot.snapshotHash, HASH_A, HASH_A, HASH_B, createdAtMs)
   })()
 }
 
@@ -76,6 +128,8 @@ function completeOperation(
   artifact: DeepSeekNativeHistoryArtifactV2,
   at: number,
 ) {
+  const snapshotHash = (db.prepare(`SELECT snapshot_hash AS snapshotHash
+    FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?`).get(answerRootId) as { snapshotHash: string }).snapshotHash
   db.prepare(`INSERT INTO generation_request_v2 (operation_id, request_sequence,
     answer_root_id, snapshot_hash, provider_id, endpoint_profile_id, credential_scope_id,
     contract_id, model_id, effective_endpoint_id, capability_revision,
@@ -84,7 +138,7 @@ function completeOperation(
     VALUES (?, 1, ?, ?, 'deepseek', 'deepseek-stable-api-v1', 'scope:1',
       'deepseek-stable-chat-v1', 'deepseek-v4', 'deepseek-stable-api-v1:chat',
       'capability:1', '[]', ?, ?, 2, 'prepared', ?, ?)`)
-    .run(operationId, answerRootId, HASH_A, HASH_B, HASH_A, at, at)
+    .run(operationId, answerRootId, snapshotHash, HASH_B, HASH_A, at, at)
   db.prepare(`INSERT INTO generation_attempt_v2
     VALUES (?, 1, 1, 'open', NULL, NULL, ?, NULL)`).run(operationId, at + 1)
   db.prepare(`UPDATE generation_request_v2 SET state='streaming', updated_at_ms=?
@@ -104,6 +158,42 @@ function completeOperation(
     VALUES (?, 1, ?, ?, ?, ?, ?, ?, 'request_terminal')`)
     .run(answerRootId, operationId, artifact.artifactKind, artifact.artifactCodecVersion,
       serializeDeepSeekNativeHistoryArtifactV2(artifact), artifact.artifactHash, at + 6)
+}
+
+function insertContextProjection(db: BetterSqlite3.Database) {
+  const rows = [
+    { operationId: 'operation:1', createdAtMs: 31, turns: [
+      { questionId: 'question:1', answerRootId: null, mode: 'included' },
+    ] },
+    { operationId: 'operation:2', createdAtMs: 41, turns: [
+      { questionId: 'question:1', answerRootId: 'answer:1', mode: 'included' },
+      { questionId: 'question:2', answerRootId: null, mode: 'included' },
+    ] },
+    { operationId: 'operation:3', createdAtMs: 51, turns: [
+      { questionId: 'question:1', answerRootId: 'answer:1', mode: 'included' },
+      { questionId: 'question:2', answerRootId: 'answer:2', mode: 'included' },
+      { questionId: 'question:3', answerRootId: null, mode: 'included' },
+    ] },
+  ] as const
+  for (const row of rows) {
+    const includedMessageIds = row.turns.flatMap((turn) => turn.answerRootId === null
+      ? [turn.questionId] : [turn.questionId, turn.answerRootId])
+    const draft = {
+      schemaVersion: 1,
+      branchId: 'branch:1',
+      operationId: row.operationId,
+      providerContractId: 'deepseek-stable-chat-v1',
+      codecId: `deepseek-stable-chat-v1:${HASH_A}`,
+      turns: row.turns,
+      includedMessageIds,
+    } as const
+    const projectionDigest = createHash('sha256').update(stableSerializeProviderRequestV2(draft), 'utf8').digest('hex')
+    const canonicalJson = stableSerializeProviderRequestV2({ ...draft, projectionDigest })
+    db.prepare(`INSERT INTO generation_context_projection_v2
+      (operation_id,branch_id,conversation_id,canonical_json,projection_digest,created_at_ms)
+      VALUES (?,'branch:1','conversation:1',?,?,?)`)
+      .run(row.operationId, canonicalJson, projectionDigest, row.createdAtMs)
+  }
 }
 
 function seedThreeTurns(db: BetterSqlite3.Database, corruptSecondLineage = false) {
@@ -145,6 +235,7 @@ function seedThreeTurns(db: BetterSqlite3.Database, corruptSecondLineage = false
       })
   completeOperation(db, 'operation:1', 'answer:1', first, 100)
   completeOperation(db, 'operation:2', 'answer:2', second, 200)
+  insertContextProjection(db)
   return { first, second }
 }
 

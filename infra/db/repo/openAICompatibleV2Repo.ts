@@ -15,7 +15,8 @@ import {
 } from '../../../src/shared/provider/openai-chat-compatible/schemas'
 import { compatibleModelIdSchema } from '../../../src/shared/provider/openai-chat-compatible/identity'
 import { mergeCompatibleModelRecords } from '../../../src/shared/modelCatalog/providers/openai-chat-compatible/compatibleCatalogMerge'
-import type { CompatibleMergedModel, CompatibleModelMetadata, CompatibleModelRecord } from '../../../src/shared/provider/openai-chat-compatible/domain'
+import type { CompatibleMergedModel, CompatibleModelRecord } from '../../../src/shared/provider/openai-chat-compatible/domain'
+import type { CompatibleModelMetadata } from '../../../src/shared/provider/openai-chat-compatible/schemas'
 import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
 
 type ConfigKind = 'request_profile' | 'request_mapping' | 'reasoning_mapping' | 'inline_policy' | 'response_profile'

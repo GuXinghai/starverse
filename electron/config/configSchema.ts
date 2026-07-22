@@ -299,9 +299,9 @@ export function checkFieldSize(
     // 正常大小
     return { ok: true, size, level: 'ok' }
     
-  } catch (error) {
+  } catch {
     // JSON 序列化失败（循环引用、特殊对象等）
-    console.error(`[Config] ❌ 无法序列化字段 "${key}":`, error)
+    console.error(`[Config] CONFIG_FIELD_SERIALIZATION_FAILED: ${key}`)
     console.error('[Config] 该值可能包含循环引用或不可序列化的对象')
     return { ok: false, size: 0, level: 'error' }
   }
@@ -382,7 +382,7 @@ export function safeClearConfig(
     const backupPath = backupConfig(store)
     
     console.log('[Config] 开始安全清空配置...')
-    console.log(`[Config] 备份文件: ${backupPath}`)
+    console.log('[Config] 配置备份已创建')
     
     // 2. 保存需要保留的字段
     const preserved: Record<string, any> = {}
@@ -412,8 +412,8 @@ export function safeClearConfig(
     
     return backupPath
     
-  } catch (error) {
-    console.error('[Config] 清空配置失败:', error)
+  } catch {
+    console.error('[Config] CONFIG_SAFE_CLEAR_FAILED')
     return null
   }
 }
@@ -478,10 +478,10 @@ export function checkConfigIntegrity(store: any): {
     
     return { ok: true }
     
-  } catch (error) {
+  } catch {
     return {
       ok: false,
-      reason: `Error reading config: ${error}`
+      reason: 'CONFIG_READ_FAILED'
     }
   }
 }

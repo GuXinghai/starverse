@@ -41,7 +41,9 @@ function attachment(
       sendAs: 'inline_text', conversion,
     }],
   })
-  return intent.attachments![0]
+  const candidate = intent.attachments![0]
+  if (candidate.kind !== 'managed_file') throw new Error('test fixture must be managed_file')
+  return candidate
 }
 
 function withSnapshotReference<T>(
@@ -220,7 +222,7 @@ describe('AttachmentAssetV2Repo immutable provenance', () => {
       let accessorCalls = 0
       const accessorIntent = Object.defineProperty({}, 'assetId', {
         enumerable: true,
-        get: () => { accessorCalls += 1; return intent.assetId },
+        get: () => { accessorCalls += 1; return intent.kind === 'managed_file' ? intent.assetId : '' },
       })
       expect(() => withSnapshotReference(db, repo, accessorIntent as never, () => undefined))
         .toThrow('GENERATION_V2_ASSET_INPUT_INVALID')

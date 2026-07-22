@@ -1,16 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { canOpenBetterSqliteForSuite } from '../../testUtils/betterSqliteGate'
-import { ensureEnginePluginRegistrySchema } from '../migrations/ensureEnginePluginRegistrySchema'
+import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
 import { EnginePluginRegistryRepo } from './enginePluginRegistryRepo'
 
 const describeIfBetterSqlite = canOpenBetterSqliteForSuite('enginePluginRegistryRepo') ? describe : describe.skip
 
 function loadSchema(db: BetterSqlite3.Database) {
-  const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
-  db.exec(readFileSync(schemaPath, 'utf8'))
+  applyGenerationV2SchemaForTest(db, path.resolve(process.cwd()))
 }
 
 function createBaseInput(engineId: string) {
@@ -31,7 +29,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('supports insert/read/list and install state filtering', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     const inserted = repo.insert({
@@ -69,7 +67,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('supports upsert updates and enabled switch', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     repo.insert({
@@ -102,7 +100,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('supports failed, health, and uninstall state transitions', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     repo.insert({
@@ -149,7 +147,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('preserves blocking trust or compatibility failures on uninstall tombstones', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     repo.insert({
@@ -186,7 +184,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('rejects absolute paths in installRef', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     expect(() => repo.insert({
@@ -199,7 +197,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('rejects traversal, URL scheme and backslash installRef disguises', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     expect(() => repo.insert({
@@ -224,7 +222,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('rejects non-sha256 manifestHash', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     expect(() => repo.insert({
@@ -237,7 +235,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('rejects empty string installRef', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     expect(() => repo.insert({
@@ -250,7 +248,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('rejects NUL byte in installRef', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     expect(() => repo.insert({
@@ -263,7 +261,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('rejects UNC path as installRef', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     expect(() => repo.insert({
@@ -276,7 +274,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('rejects Unix absolute path as installRef', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     expect(() => repo.insert({
@@ -289,7 +287,7 @@ describeIfBetterSqlite('EnginePluginRegistryRepo', () => {
   it('rejects file:// scheme as installRef', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
+    loadSchema(db)
     const repo = new EnginePluginRegistryRepo(db)
 
     expect(() => repo.insert({

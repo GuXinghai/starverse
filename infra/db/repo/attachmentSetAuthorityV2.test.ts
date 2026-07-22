@@ -208,7 +208,10 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
           context, resolvedIntent([first.intent, second.intent, third.intent, convertedPdf.intent]), (authority) => {
             escaped = authority
             escapedItem = authority.attachments[0]
-            expect(authority.attachments.map((item) => item.intent.assetId.value))
+            expect(authority.attachments.map((item) => {
+              if (item.intent.kind !== 'managed_file') throw new Error('test fixture must be managed_file')
+              return item.intent.assetId.value
+            }))
               .toEqual(['asset:b', 'asset:a', 'asset:c', 'asset:d'])
             expect(authority.providerFileRequirements.map((item) => item.assetRevisionId.value))
               .toEqual(['revision:b', 'revision:d'])

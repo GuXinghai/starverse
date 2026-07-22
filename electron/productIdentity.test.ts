@@ -22,9 +22,9 @@ describe('Starverse packaged product identity', () => {
     expect(STARVERSE_PACKAGED_APP_ID).toBe('io.github.guxinghai.starverse')
     expect(packageMetadata.build.appId).toBe(STARVERSE_PACKAGED_APP_ID)
     expect(fs.existsSync(path.resolve('electron-builder.json5'))).toBe(false)
-    const mainSource = fs.readFileSync(path.resolve('electron/main.ts'), 'utf8')
-    expect(mainSource.indexOf('configureStarverseElectronIdentity({'))
-      .toBeLessThan(mainSource.indexOf("const DB_LOG_DIR = path.join(app.getPath('userData')"))
+    const entrySource = fs.readFileSync(path.resolve('electron/epoch2MainEntry.ts'), 'utf8')
+    expect(entrySource.indexOf('configureStarverseElectronIdentity({'))
+      .toBeLessThan(entrySource.indexOf("await import('./mainV2')"))
   })
 
   it('is the effective electron-builder configuration without a secondary config file', async () => {

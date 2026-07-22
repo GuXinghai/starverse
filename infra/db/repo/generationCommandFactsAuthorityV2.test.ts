@@ -42,6 +42,7 @@ function createAttachment(
   return Object.freeze({
     bytes,
     input: Object.freeze({
+      kind: 'managed_file',
       assetId,
       assetRevisionId: revisionId,
       assetSha256: blob.sha256.value,
@@ -112,7 +113,10 @@ describe('GenerationCommandFactsAuthorityV2', () => {
         })
         expect(authority.semanticIntent.generation).toEqual({ temperature: 0.4 })
         expect(authority.semanticIntent.reasoning).toEqual({ mode: 'enabled', effort: 'high' })
-        expect(authority.semanticIntent.attachments.map((item) => item.assetId.value))
+        expect(authority.semanticIntent.attachments.map((item) => {
+          if (item.kind !== 'managed_file') throw new Error('test fixture must be managed_file')
+          return item.assetId.value
+        }))
           .toEqual(['asset:b', 'asset:a'])
         expect(authority.semanticIntent.attachments.map((item) => [item.include, item.sendAs]))
           .toEqual([[true, 'provider_file'], [false, 'inline_text']])

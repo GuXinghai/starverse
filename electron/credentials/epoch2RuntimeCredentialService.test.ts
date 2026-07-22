@@ -467,13 +467,17 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  it('remains outside current main, IPC and transport activation', () => {
-    const production = [
-      'electron/main.ts',
-      'electron/ipc/registerIpc.ts',
-      'electron/ipc/openRouterStreamBridge.ts',
-    ].map((file) => fs.readFileSync(path.resolve(file), 'utf8')).join('\n')
-    expect(production).not.toContain('epoch2RuntimeCredentialService')
+  it('is activated only through the epoch-2 main authority and never imported by renderer code', () => {
+    const entry = fs.readFileSync(path.resolve('electron/epoch2MainEntry.ts'), 'utf8')
+    const registration = fs.readFileSync(path.resolve('electron/ipc/generationV2IpcRegistration.ts'), 'utf8')
+    const preload = fs.readFileSync(path.resolve('electron/preload.ts'), 'utf8')
+    const renderer = fs.readFileSync(path.resolve('src/ui-app/app/appChatApp.logic.ts'), 'utf8')
+    expect(entry).toContain('bootstrapEpoch2ApplicationRuntime')
+    expect(registration).toContain('credentialService: input.epoch2.credentialService')
+    expect(registration).toContain('registerGenerationV2CredentialSettingsIpc')
+    expect(preload).not.toContain('epoch2RuntimeCredentialService')
+    expect(renderer).not.toContain('epoch2RuntimeCredentialService')
+    expect(renderer).not.toContain('withCredential(')
   })
 
   it('uses closed error envelopes without secret-bearing messages', () => {

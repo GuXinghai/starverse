@@ -1,6 +1,10 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { stableSerializeProviderRequestBoundedV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
 import { ConversationGraphV2Identity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
+import {
+  assertGenerationV2AuthorityTransactionContextV2,
+  type GenerationV2AuthorityTransactionContextV2,
+} from './generationV2AuthorityTransactionInternal'
 
 const MAX_DETAILS = 65_536
 const MAX_DETAIL_BYTES = 1024 * 1024
@@ -40,26 +44,33 @@ function decode(value: unknown): Readonly<Record<string, unknown>> {
 export class AnswerReasoningProjectionV2Repo {
   constructor(private readonly db: BetterSqlite3.Database, private readonly nowMs: () => number = Date.now) {}
 
-  append(answerRootIdValue: string, detail: unknown): number {
+  private insert(answerRootIdValue: string, detail: unknown): number {
     const answerRootId = ConversationGraphV2Identity.create('answer_root_id', answerRootIdValue).value
     const detailJson = canonicalDetail(detail)
-    const transaction = this.db.transaction(() => {
-      const row = this.db.prepare(`SELECT COALESCE(MAX(detail_index), -1) AS maxIndex,
-        COUNT(*) AS count FROM answer_reasoning_detail_v2 WHERE answer_root_id=?`).get(answerRootId) as
-        { maxIndex: unknown; count: unknown }
-      if (!Number.isSafeInteger(row.maxIndex) || !Number.isSafeInteger(row.count) ||
-          (row.count as number) < 0 || (row.count as number) >= MAX_DETAILS) {
-        throw new AnswerReasoningProjectionV2RepoError('GENERATION_V2_REASONING_PROJECTION_LIMIT_EXCEEDED')
-      }
-      const detailIndex = (row.maxIndex as number) + 1
-      const at = this.nowMs()
-      if (!Number.isSafeInteger(at) || at < 0) throw new AnswerReasoningProjectionV2RepoError('GENERATION_V2_REASONING_PROJECTION_INPUT_INVALID')
-      this.db.prepare(`INSERT INTO answer_reasoning_detail_v2
-        (answer_root_id,detail_index,detail_json,created_at_ms) VALUES (?,?,?,?)`)
-        .run(answerRootId, detailIndex, detailJson, at)
-      return detailIndex
-    })
-    return transaction.immediate()
+    const row = this.db.prepare(`SELECT COALESCE(MAX(detail_index), -1) AS maxIndex,
+      COUNT(*) AS count FROM answer_reasoning_detail_v2 WHERE answer_root_id=?`).get(answerRootId) as
+      { maxIndex: unknown; count: unknown }
+    if (!Number.isSafeInteger(row.maxIndex) || !Number.isSafeInteger(row.count) ||
+        (row.count as number) < 0 || (row.count as number) >= MAX_DETAILS) {
+      throw new AnswerReasoningProjectionV2RepoError('GENERATION_V2_REASONING_PROJECTION_LIMIT_EXCEEDED')
+    }
+    const detailIndex = (row.maxIndex as number) + 1
+    const at = this.nowMs()
+    if (!Number.isSafeInteger(at) || at < 0) throw new AnswerReasoningProjectionV2RepoError('GENERATION_V2_REASONING_PROJECTION_INPUT_INVALID')
+    this.db.prepare(`INSERT INTO answer_reasoning_detail_v2
+      (answer_root_id,detail_index,detail_json,created_at_ms) VALUES (?,?,?,?)`)
+      .run(answerRootId, detailIndex, detailJson, at)
+    return detailIndex
+  }
+
+  append(answerRootIdValue: string, detail: unknown): number {
+    return this.db.transaction(() => this.insert(answerRootIdValue, detail)).immediate()
+  }
+
+  appendInAuthorityTransaction(context: GenerationV2AuthorityTransactionContextV2,
+    answerRootIdValue: string, detail: unknown): number {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.db)
+    return this.insert(answerRootIdValue, detail)
   }
 
   list(answerRootIdValue: string): readonly Readonly<Record<string, unknown>>[] {

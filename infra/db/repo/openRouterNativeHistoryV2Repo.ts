@@ -1,7 +1,6 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import {
   OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1,
-  createOpenRouterNativeHistoryArtifactV1,
   decodeOpenRouterNativeHistoryArtifactV1,
   isOpenRouterNativeHistoryArtifactV1,
   type OpenRouterNativeHistoryArtifactV1,

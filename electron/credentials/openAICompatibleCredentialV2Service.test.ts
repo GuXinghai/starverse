@@ -6,10 +6,15 @@ vi.mock('electron', () => ({ safeStorage: {
   decryptStringAsync: vi.fn(async (value: Buffer) => ({ result: value.toString('utf8').replace(/^enc:\d+:/u, ''), shouldReEncrypt: false })),
 } }))
 import { createOpenAICompatibleCredentialV2Service } from './openAICompatibleCredentialV2Service'
+import type { CredentialConfigStore } from './epoch2RuntimeCredentialService'
 
 describe('OpenAI-compatible V2 credential service', () => {
   const values = new Map<string, unknown>()
-  const store = { get: (key: string) => values.get(key), set: (key: string, value: unknown) => values.set(key, value), delete: (key: string) => values.delete(key) }
+  const store = {
+    get: (key: string, defaultValue?: unknown) => values.has(key) ? values.get(key) : defaultValue,
+    set: (key: string, value?: unknown) => { if (value !== undefined) values.set(key, value) },
+    delete: (key: string) => { values.delete(key) },
+  } as unknown as CredentialConfigStore
   beforeEach(() => { values.clear(); safe.available = true; safe.generation = 0 })
   it('writes custom credential only through async safe storage and leases it main-side', async () => {
     const service = createOpenAICompatibleCredentialV2Service({ store, deriveScope: async () => `credential-scope-v2:${'a'.repeat(64)}` as never })

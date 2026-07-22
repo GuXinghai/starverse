@@ -1,6 +1,7 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import {
   buildLmStudioOpenResponsesReplayInputV1,
+  completeLmStudioOpenResponsesRequestV1,
   completeLmStudioOpenResponsesProjectedRequestV1,
   decodeLmStudioOpenResponsesContinuationArtifactV1,
   serializeLmStudioOpenResponsesContinuationArtifactV1,

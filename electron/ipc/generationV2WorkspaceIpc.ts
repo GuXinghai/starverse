@@ -9,6 +9,7 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import { projectGenerationConfigLayerV2 } from '../../src/next/generation-v2/config/generationConfigLayerV2'
 import type { RegisterInvoke } from './types'
 import { SystemChatTemplateV2Repo } from '../../infra/db/repo/systemChatTemplateV2Repo'
+import { ConversationRoutePreferenceV2Repo } from '../../infra/db/repo/conversationRoutePreferenceV2Repo'
 
 export const GENERATION_V2_WORKSPACE_IPC_CHANNELS = Object.freeze([
   'generation-v2:workspace:ensure-default', 'generation-v2:workspace:list-projects',
@@ -24,6 +25,9 @@ export const GENERATION_V2_WORKSPACE_IPC_CHANNELS = Object.freeze([
   'generation-v2:workspace:get-system-template', 'generation-v2:workspace:update-system-template-config',
   'generation-v2:workspace:reset-system-template', 'generation-v2:workspace:set-new-chat-lifecycle',
   'generation-v2:workspace:get-last-formal-conversation', 'generation-v2:workspace:set-last-formal-conversation',
+  'generation-v2:workspace:get-conversation-route-preference',
+  'generation-v2:workspace:update-conversation-route-preference',
+  'generation-v2:workspace:clear-conversation-route-preference',
 ] as const)
 
 type Raw = Readonly<Record<string, unknown>>
@@ -63,6 +67,7 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   const contextFilters = new BranchContextFilterV2Repo(input.db)
   const config = new GenerationConfigV2Repo(input.db, nowMs)
   const systemTemplate = new SystemChatTemplateV2Repo(input.db, nowMs)
+  const routePreference = new ConversationRoutePreferenceV2Repo(input.db, nowMs)
   const safe = (fn: (payload: unknown) => unknown | Promise<unknown>) => async (_event: unknown, payload?: unknown) => {
     try { return Object.freeze({ ok: true, value: await fn(payload) }) } catch (error) {
       return Object.freeze({ ok: false, code: error instanceof Error ? error.message : 'GENERATION_V2_WORKSPACE_COMMAND_FAILED' })
@@ -227,10 +232,12 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[24], safe((payload) => {
     const raw = object(payload, ['templateConversationId', 'expectedTemplateRevision', 'resetModelConfig', 'resetDraftAttachments'])
     if (typeof raw.resetModelConfig !== 'boolean' || typeof raw.resetDraftAttachments !== 'boolean') throw new Error('invalid')
+    const resetModelConfig = raw.resetModelConfig
+    const resetDraftAttachments = raw.resetDraftAttachments
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => systemTemplate.reset(context, {
       templateConversationId: text(raw.templateConversationId),
       expectedTemplateRevision: boundedInteger(raw.expectedTemplateRevision, 0, Number.MAX_SAFE_INTEGER),
-      resetModelConfig: raw.resetModelConfig, resetDraftAttachments: raw.resetDraftAttachments,
+      resetModelConfig, resetDraftAttachments,
     }))
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[25], safe((payload) =>
@@ -244,6 +251,25 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       systemTemplate.setLastFormalConversationId(context, conversationId); return true
     })
+  }))
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[28], safe((payload) => {
+    const raw = object(payload, ['conversationId'])
+    return routePreference.get(text(raw.conversationId))
+  }))
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[29], safe((payload) => {
+    const raw = object(payload, ['conversationId', 'expectedRevision', 'selection'])
+    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => routePreference.upsert(context, {
+      conversationId: text(raw.conversationId),
+      expectedRevision: boundedInteger(raw.expectedRevision, 0, Number.MAX_SAFE_INTEGER - 1),
+      selection: raw.selection,
+    }))
+  }))
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[30], safe((payload) => {
+    const raw = object(payload, ['conversationId', 'expectedRevision'])
+    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => routePreference.clear(context, {
+      conversationId: text(raw.conversationId),
+      expectedRevision: boundedInteger(raw.expectedRevision, 1, Number.MAX_SAFE_INTEGER - 1),
+    }))
   }))
   return GENERATION_V2_WORKSPACE_IPC_CHANNELS
 }
