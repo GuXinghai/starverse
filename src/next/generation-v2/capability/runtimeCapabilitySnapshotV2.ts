@@ -81,6 +81,7 @@ export const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 = Object.freeze([
   'image.format',
   'image.mode',
   'image.outputCompression',
+  'image.outputMode',
   'image.quality',
   'image.resolution',
   'image.size',
@@ -502,6 +503,7 @@ const ENUM_VALUES_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPath
   'image.background': ['auto', 'transparent', 'opaque'],
   'image.format': ['png', 'jpeg', 'webp', 'svg'],
   'image.mode': ['disabled', 'generate'],
+  'image.outputMode': ['image_only', 'image_and_text'],
   'image.quality': ['auto', 'low', 'medium', 'high'],
   'image.resolution': ['512', '1K', '2K', '4K'],
   'providerExtension.kind': ['none', 'anthropic_messages', 'gemini_generate_content', 'openai_responses'],
@@ -550,7 +552,8 @@ function assertDomainMatchesPath(path: RuntimeCapabilitySemanticPathV2, domain: 
       throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
     }
     const invalidRange =
-      (path === 'generation.maxOutputTokens' || path === 'generation.candidateCount') && domain.min < 1 ||
+      path === 'generation.maxOutputTokens' && domain.min < 0 ||
+      path === 'generation.candidateCount' && domain.min < 1 ||
       (path === 'generation.topK' || path === 'generation.seed') && domain.min < 0 ||
       path === 'providerExtension.manualThinkingBudgetTokens' && domain.min < 1 ||
       path === 'providerExtension.thinkingBudget' && domain.min < -1 ||

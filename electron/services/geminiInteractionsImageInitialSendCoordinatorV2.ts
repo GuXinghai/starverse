@@ -82,6 +82,7 @@ export function createGeminiInteractionsImageInitialSendCoordinatorV2(input: Rea
             pending.conversationId.value, projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined,
             (commandFacts) => withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2({ context,
               credentialScopeId: request.expectedCredentialScopeId, credentialRevision: request.expectedCredentialRevision,
+              modelId: command.modelId.value,
               commandFacts, use: ({ binding, capability }) => {
                 const persisted = commitGeminiInteractionsImageInitialSnapshotV2({ context, executionRepo, capabilityRepo,
                   pending, command, commandFacts, binding, capability })

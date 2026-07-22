@@ -1,3 +1,7 @@
+import type { CatalogQueryItem } from '../../modelCatalog/catalogQueryService'
+import type { RuntimeProviderKey } from '../../provider/runtimeSelection'
+import type { CompatibleConfigurationSelection } from '../../provider/openai-chat-compatible/ui/compatibleConfigurationSelection'
+
 type Result<T> = Readonly<{ ok: true; value: T }> | Readonly<{ ok: false; code: string }>
 function bridge() {
   const value = window.generationV2?.workspace
@@ -34,8 +38,8 @@ export type GenerationV2ConfigLayerView = Readonly<{ ownerKind:'global'|'project
   configRevision:string; semanticLayer:Readonly<Record<string,unknown>> }>
 export type GenerationV2QuestionCandidate = Readonly<{ questionId:string; createdAtMs:number; status:'completed' }>
 export type GenerationV2OpenRouterModelCatalogResult = Readonly<
-  {ok:true;responseDigest:string;items:readonly Readonly<{modelId:string;name:string;vendor:string;status:'visible';supportedParameters:readonly string[];
-    inputModalities:readonly string[];outputModalities:readonly string[];lastSeenSnapshotId:string}>[]}
+  {ok:true;responseDigest:string|null;status:'not_synced'|'syncing'|'synced'|'failed';observedAtMs:number|null;
+    items:readonly CatalogQueryItem[];modelCount:number;visibleModelCount:number;hiddenModelCount:number;errorCode:string|null}
   | {ok:false;code:string}>
 
 export async function ensureGenerationV2DefaultWorkspace() { return unwrap<Readonly<{projectId:string;conversationId:string;branchId:string;created:boolean}>>(await bridge().ensureDefault()) }
@@ -81,10 +85,10 @@ export async function listGenerationV2LocalProfiles() {
   if (!value) throw new Error('GENERATION_V2_LOCAL_PROFILE_BRIDGE_UNAVAILABLE')
   return unwrap<readonly GenerationV2LocalEndpointProfile[]>(await value.list())
 }
-export async function listGenerationV2OpenRouterModels(timeoutMs=30_000):Promise<GenerationV2OpenRouterModelCatalogResult> {
+export async function listGenerationV2OpenRouterModels():Promise<GenerationV2OpenRouterModelCatalogResult> {
   const value = window.generationV2?.models
   if (!value) throw new Error('GENERATION_V2_MODEL_BRIDGE_UNAVAILABLE')
-  return await value.listOpenRouter({timeoutMs}) as GenerationV2OpenRouterModelCatalogResult
+  return await value.listOpenRouter() as GenerationV2OpenRouterModelCatalogResult
 }
 export async function createGenerationV2LocalProfile(payload:Readonly<{providerId:'lmstudio'|'ollama'|'generic_local';
   protocolContractId:GenerationV2LocalEndpointProfile['protocolContractId'];baseUrl:string;protocolConfig?:Readonly<Record<string,unknown>>}>) {
@@ -96,4 +100,22 @@ export async function deleteGenerationV2LocalProfile(endpointProfileId:string) {
   const value = window.generationV2?.localProfiles
   if (!value) throw new Error('GENERATION_V2_LOCAL_PROFILE_BRIDGE_UNAVAILABLE')
   return unwrap<Readonly<{deleted:boolean}>>(await value.delete(endpointProfileId))
+}
+export type GenerationV2ConversationRoutePreferenceSelection =
+  | Readonly<{ schemaVersion:1;kind:'provider_model';providerId:RuntimeProviderKey;modelId:string }>
+  | Readonly<{ schemaVersion:1;kind:'openai_chat_compatible';selection:CompatibleConfigurationSelection }>
+export type GenerationV2ConversationRoutePreferenceSnapshot = Readonly<{
+  conversationId:string;revision:number;selection:GenerationV2ConversationRoutePreferenceSelection
+}>
+
+export async function getGenerationV2ConversationRoutePreference(conversationId:string) {
+  return unwrap<GenerationV2ConversationRoutePreferenceSnapshot|null>(await bridge().getConversationRoutePreference(conversationId))
+}
+export async function updateGenerationV2ConversationRoutePreference(payload:Readonly<{
+  conversationId:string;expectedRevision:number;selection:GenerationV2ConversationRoutePreferenceSelection
+}>) {
+  return unwrap<GenerationV2ConversationRoutePreferenceSnapshot>(await bridge().updateConversationRoutePreference(payload))
+}
+export async function clearGenerationV2ConversationRoutePreference(conversationId:string,expectedRevision:number) {
+  return unwrap<null>(await bridge().clearConversationRoutePreference(conversationId,expectedRevision))
 }

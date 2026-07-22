@@ -3,6 +3,8 @@ import { ConversationGraphV2Identity, type ConversationGraphV2Identity as GraphI
 import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../domain/identityV2'
 import { decodeGenerationCommandAttachmentsV2, projectGenerationCommandAttachmentsV2 } from '../../domain/commandAttachmentsV2'
 import type { AttachmentIntentV2 } from '../../domain/generationIntentV2'
+import { normalizeGeminiImageGenerationModelId } from '../../../provider/gemini/geminiImageGenerationPolicy'
+import { isGeminiInteractionsImageModelIdV1 } from './interactionsImageCapabilityPolicyV1'
 
 const MAX = 4 * 1024 * 1024
 const issued = new WeakSet<object>()
@@ -19,7 +21,12 @@ function command<T extends object>(projection: object, typed: T): T & Readonly<{
   const value = Object.freeze({ ...typed, canonicalJson, requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)) })
   issued.add(value); return value
 }
-function model(value: unknown) { const result = GenerationV2Identity.create('model_id', text(value)); if (result.value !== 'gemini-3.1-flash-image') throw new Error(); return result }
+function model(value: unknown) {
+  const raw = text(value)
+  const normalized = normalizeGeminiImageGenerationModelId(raw)
+  if (raw !== normalized || !isGeminiInteractionsImageModelIdV1(normalized)) throw new Error()
+  return GenerationV2Identity.create('model_id', normalized)
+}
 function prompt(value: unknown): string { const result = text(value); if (!result.trim() || new TextEncoder().encode(result).byteLength > 1024 * 1024) throw new Error(); return result }
 
 export type GeminiInteractionsImageInitialCommandV2 = Readonly<{

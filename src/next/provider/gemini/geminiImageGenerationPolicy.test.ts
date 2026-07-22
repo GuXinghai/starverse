@@ -29,17 +29,17 @@ describe('geminiImageGenerationPolicy', () => {
     })
   })
 
-  it('projects the exact stable model to the verified Interactions image slice', () => {
+  it('preserves the complete Nano Banana 2 matrix for the exact stable model', () => {
     expect(resolveGeminiImageGenerationPolicy('gemini-3.1-flash-image')).toMatchObject({
-      kind: 'interactions_image_v1beta',
-      supportedImageSizes: ['1K'],
-      imageSizeMode: 'locked',
-      supportedAspectRatios: ['1:1'],
-      supportedOutputModes: ['image_only'],
-      supportsThoughtSummaries: false,
-      thinkingLevels: [],
-      supportsGoogleSearch: false,
-      supportsImageSearch: false,
+      kind: 'nano_banana_2',
+      supportedImageSizes: ['512', '1K', '2K', '4K'],
+      imageSizeMode: 'selectable',
+      supportedAspectRatios: ['auto', '1:1', '9:16', '16:9', '3:4', '4:3', '3:2', '2:3', '5:4', '4:5', '21:9', '4:1', '1:4', '8:1', '1:8'],
+      supportedOutputModes: ['image_and_text', 'image_only'],
+      supportsThoughtSummaries: true,
+      thinkingLevels: ['minimal', 'high'],
+      supportsGoogleSearch: true,
+      supportsImageSearch: true,
     })
   })
 

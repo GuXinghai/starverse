@@ -9,8 +9,7 @@ import {
 
 const contract = listReviewedProviderContractDefinitionsV2().find((definition) =>
   definition.protocolContractId.value === 'openrouter-images-v1',
-)
-if (!contract) throw new Error('OpenRouter Images reviewed contract missing')
+) ?? (() => { throw new Error('OpenRouter Images reviewed contract missing') })()
 const descriptor = decodeCanonicalOpenRouterImageDescriptorSetV2({
   id: 'google/gemini-3.1-flash-image',
   endpoints: [{

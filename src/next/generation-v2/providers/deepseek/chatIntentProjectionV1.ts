@@ -57,16 +57,16 @@ export const DEEPSEEK_STABLE_SEMANTIC_INTENT_KEYS_V1 = Object.freeze([
   'generation', 'reasoning', 'web', 'image', 'tools', 'attachments', 'providerExtension',
 ] as const satisfies readonly Exclude<keyof ResolvedGenerationIntentV2, 'schemaVersion'>[])
 const SAMPLING_KEYS = Object.freeze([
-  'maxOutputTokens', 'temperature', 'topP', 'topK', 'seed', 'stop', 'candidateCount',
+  'maxOutputTokens', 'temperature', 'topP', 'topK', 'minP', 'topA', 'seed', 'stop', 'candidateCount',
   'frequencyPenalty', 'presencePenalty', 'repetitionPenalty',
 ] as const satisfies readonly (keyof SamplingIntentV2)[])
 const IMAGE_KEYS = Object.freeze([
-  'mode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream',
+  'mode', 'outputMode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream',
 ] as const satisfies readonly (keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>)[])
 const REASONING_MODES = ['disabled', 'enabled'] as const satisfies readonly ReasoningIntentV2['mode'][]
 const WEB_MODES = ['disabled', 'provider_search'] as const satisfies readonly WebSearchIntentV2['mode'][]
 const TOOL_MODES = ['disabled', 'enabled'] as const satisfies readonly ToolPolicyIntentV2['mode'][]
-const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses', 'anthropic_messages'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
+const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses', 'anthropic_messages', 'gemini_generate_content'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
 
 const samplingKeysAreExhaustive: Exclude<keyof SamplingIntentV2, typeof SAMPLING_KEYS[number]> extends never
   ? true : never = true
@@ -249,10 +249,15 @@ export function projectDeepSeekStableIntentV1(
       if (intent.providerExtension.parallelToolCalls !== undefined) reject('providerExtension.parallelToolCalls', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
       if (intent.providerExtension.serviceTier !== undefined) reject('providerExtension.serviceTier', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
       if (intent.providerExtension.verbosity !== undefined) reject('providerExtension.verbosity', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
-    } else {
+    } else if (intent.providerExtension.kind === 'anthropic_messages') {
       if (intent.providerExtension.manualThinkingBudgetTokens !== undefined) reject('providerExtension.manualThinkingBudgetTokens', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
       reject('providerExtension.thinkingDisplay', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
       reject('providerExtension.thinkingMode', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+    } else if (intent.providerExtension.kind === 'gemini_generate_content') {
+      reject('providerExtension.thinkingMode', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+      if ('thinkingLevel' in intent.providerExtension && intent.providerExtension.thinkingLevel !== undefined) reject('providerExtension.thinkingLevel', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+      if ('thinkingBudget' in intent.providerExtension && intent.providerExtension.thinkingBudget !== undefined) reject('providerExtension.thinkingBudget', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
+      reject('providerExtension.includeThoughts', 'DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD')
     }
   }
 

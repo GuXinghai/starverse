@@ -4,25 +4,23 @@ import {
   buildEndpointKey,
   getModelEndpointDetails,
 } from './modelEndpointDetailService'
+import { installGenerationV2ModelsList, successfulGenerationV2Models } from '../../../tests/helpers/generationV2ModelsBridge'
 
 const originalDbBridge = (globalThis as any).dbBridge
-const originalElectronAPI = (globalThis as any).electronAPI
+const originalGenerationV2 = (globalThis as any).generationV2
 const originalFetch = globalThis.fetch
 
 describe('modelEndpointDetailService', () => {
   afterEach(() => {
     __resetModelEndpointDetailCacheForTests()
     ;(globalThis as any).dbBridge = originalDbBridge
-    ;(globalThis as any).electronAPI = originalElectronAPI
+    ;(globalThis as any).generationV2 = originalGenerationV2
     ;(globalThis as any).fetch = originalFetch
     vi.restoreAllMocks()
   })
 
   it('derives endpoint details from current scoped row', async () => {
-    const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
-      providerKey: 'openrouter',
-      status: 'synced',
-      items: [{
+    const modelCatalogQueryScopedCurrent = installGenerationV2ModelsList('openrouter', vi.fn(async () => successfulGenerationV2Models([{
         providerKey: 'openrouter',
         modelId: 'openai/gpt-4',
         modelKey: 'openrouter::openai/gpt-4',
@@ -32,21 +30,14 @@ describe('modelEndpointDetailService', () => {
         maxOutputTokens: 4096,
         supportedParameters: ['temperature', 'tools'],
         syncedAtMs: 1700000000000,
-      }],
-      nextCursor: null,
-    }))
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
+      }])))
 
     const result = await getModelEndpointDetails({
       providerKey: 'openrouter',
       modelId: 'openai/gpt-4',
     })
 
-    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({
-      providerKey: 'openrouter',
-      modelIds: ['openai/gpt-4'],
-      limit: 1,
-    })
+    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({ timeoutMs: 30_000 })
     expect(result.source).toBe('scoped_catalog')
     expect(result.error).toBeNull()
     expect(result.fetchedAtMs).toBe(1700000000000)
@@ -77,15 +68,9 @@ describe('modelEndpointDetailService', () => {
     const fetchMock = vi.fn(async () => {
       throw new Error('renderer endpoint network should not be called')
     })
-    const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
-      providerKey: 'openrouter',
-      status: 'not_synced',
-      items: [],
-      nextCursor: null,
-    }))
+    installGenerationV2ModelsList('openrouter', vi.fn(async () => successfulGenerationV2Models([])))
     ;(globalThis as any).dbBridge = { invoke: legacyInvoke }
     ;(globalThis as any).fetch = fetchMock
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
 
     const result = await getModelEndpointDetails({
       providerKey: 'openrouter',
@@ -105,7 +90,7 @@ describe('modelEndpointDetailService', () => {
   })
 
   it('returns a neutral error when scoped query IPC is unavailable', async () => {
-    ;(globalThis as any).electronAPI = undefined
+    ;(globalThis as any).generationV2 = { ...(globalThis as any).generationV2, models: {} }
 
     const result = await getModelEndpointDetails({
       providerKey: 'openrouter',

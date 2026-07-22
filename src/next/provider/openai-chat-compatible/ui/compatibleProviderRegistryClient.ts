@@ -113,10 +113,10 @@ export function createCompatibleProviderRegistryClient(bridge: V2Bridge | undefi
       }
       return project(unwrap(await requireBridge().reviseConfiguration({ providerInstanceId, configuration: next })))
     },
-    listDiscovery: async (providerInstanceId: string) => unwrap(await requireBridge().listDiscovery(providerInstanceIdSchema.parse(providerInstanceId))),
+    listDiscovery: async (providerInstanceId: string) => unwrap<CompatibleDiscoveredResponseField[]>(await requireBridge().listDiscovery(providerInstanceIdSchema.parse(providerInstanceId))),
     ignoreDiscovery: async (input: RecordValue) => {
       const current = await get(input.providerInstanceId); const response = current.activeConfiguration?.responseProfile as RecordValue
-      return unwrap(await requireBridge().ignoreDiscovery({ providerInstanceId: input.providerInstanceId,
+      return unwrap<CompatibleDiscoveredResponseField[]>(await requireBridge().ignoreDiscovery({ providerInstanceId: input.providerInstanceId,
         responseProfileId: response.responseProfileId, responseProfileVersion: response.version, streamPath: input.streamPath }))
     },
     rotateCredential: async (input: RecordValue) => {

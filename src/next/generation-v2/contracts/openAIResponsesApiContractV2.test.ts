@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import {
@@ -152,11 +152,11 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
       'electron/ipc/openAIResponsesTextChatIpc.ts',
       'src/next/provider/openai-responses/openaiResponsesAdapter.ts',
       'src/next/provider/openai-responses/openaiResponsesRequestBuilder.ts',
-    ].map((file) => readFileSync(path.resolve(file), 'utf8')).join('\n')
+    ]
 
     expect(contractSource).not.toMatch(/\bfetch\s*\(|net\.request|ipcMain/u)
     expect(contractSource).not.toMatch(/conversationFamily/u)
     expect(registrySource).toContain('openAIResponsesApiContractV2')
-    expect(legacySources).not.toContain('openAIResponsesApiContractV2')
+    expect(legacySources.every((file) => !existsSync(path.resolve(file)))).toBe(true)
   })
 })

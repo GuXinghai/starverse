@@ -63,11 +63,11 @@ const CONTRACT = 'anthropic-standard-messages-contract-verified-2026-07-18'
 const MODEL_RULE = 'anthropic-exact-model-thinking-rule-v1-2026-07-18'
 const STARVERSE = 'starverse-generation-v2-authority-boundary-2026-07-18'
 const SAMPLING_KEYS = Object.freeze([
-  'maxOutputTokens', 'temperature', 'topP', 'topK', 'seed', 'stop', 'candidateCount',
+  'maxOutputTokens', 'temperature', 'topP', 'topK', 'minP', 'topA', 'seed', 'stop', 'candidateCount',
   'frequencyPenalty', 'presencePenalty', 'repetitionPenalty',
 ] as const satisfies readonly (keyof SamplingIntentV2)[])
 const IMAGE_KEYS = Object.freeze([
-  'mode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream',
+  'mode', 'outputMode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream',
 ] as const satisfies readonly (keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>)[])
 const samplingKeysAreExhaustive: Exclude<keyof SamplingIntentV2, typeof SAMPLING_KEYS[number]> extends never ? true : never = true
 const imageKeysAreExhaustive: Exclude<keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>, typeof IMAGE_KEYS[number]> extends never ? true : never = true

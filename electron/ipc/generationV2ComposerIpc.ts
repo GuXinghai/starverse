@@ -111,7 +111,7 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
         const frameUrl = frameUrlFromIpcEvent(event)
         if (frameUrl === null) throw new Error('GENERATION_V2_FILE_SELECTION_GRANT_INVALID')
         const consumed = input.fileSelectionGrants.consumeOpaque({ senderId, token, frameUrl })
-        if (!consumed.ok) throw new Error('GENERATION_V2_FILE_SELECTION_GRANT_INVALID')
+        if (!consumed.ok || !('filePath' in consumed)) throw new Error('GENERATION_V2_FILE_SELECTION_GRANT_INVALID')
         return consumed.filePath
       })()
       : text(raw.filePath,32768)

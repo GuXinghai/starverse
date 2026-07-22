@@ -37,12 +37,32 @@ describe('Gemini Interactions image SSE V1', () => {
     expect(JSON.stringify(artifact)).not.toContain('aW1h')
   })
 
-  it('rejects text output and incomplete terminals', () => {
+  it('preserves text and thought summaries alongside the generated image', () => {
+    const result = decode([
+      { event_type: 'interaction.created', interaction: { id: interaction.id, model: interaction.model, status: 'in_progress' } },
+      { event_type: 'step.start', index: 0, step: { type: 'thought' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'thought_summary', text: 'Plan.', thought_signature: 'sig' } },
+      { event_type: 'step.delta', index: 0, delta: { type: 'thought_summary',
+        content: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/png' }, thought_signature: 'sig-image' } },
+      { event_type: 'step.stop', index: 0 },
+      { event_type: 'step.start', index: 1, step: { type: 'model_output' } },
+      { event_type: 'step.delta', index: 1, delta: { type: 'output_text', text: 'Done.' } },
+      { event_type: 'step.delta', index: 1, delta: { type: 'image', data: 'aW1hZ2U=', mime_type: 'image/jpeg' } },
+      { event_type: 'step.stop', index: 1 },
+      { event_type: 'interaction.completed', interaction }, '[DONE]',
+    ])
+    expect(result.text).toBe('Done.')
+    expect(result.reasoningDetails).toEqual([
+      { type: 'thought_summary', text: 'Plan.', thoughtSignature: 'sig' },
+      { type: 'thought_image', data: 'aW1hZ2U=', mimeType: 'image/png', thoughtSignature: 'sig-image' },
+    ])
+    expect(createGeminiInteractionsImageTerminalArtifactV1(result).reasoningDetails).toEqual(result.reasoningDetails)
+  })
+
+  it('rejects incomplete terminals', () => {
     expect(() => decode([
       { event_type: 'interaction.created', interaction: { id: interaction.id, status: 'in_progress' } },
-      { event_type: 'step.start', index: 0, step: { type: 'model_output' } },
-      { event_type: 'step.delta', index: 0, delta: { type: 'text', text: 'unexpected' } },
       '[DONE]',
-    ])).toThrow(new GeminiInteractionsImageStreamV1Error('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_UNSUPPORTED_CONTENT'))
+    ])).toThrow(new GeminiInteractionsImageStreamV1Error('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID'))
   })
 })

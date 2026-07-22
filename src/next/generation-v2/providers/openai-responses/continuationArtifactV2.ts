@@ -150,6 +150,24 @@ export function isOpenAIResponsesContinuationArtifactV2(value: unknown): value i
   return artifact.artifactHash === hash(semanticProjection(artifact))
 }
 
+export function hasPendingOpenAIResponsesFunctionCallsV2(
+  artifact: OpenAIResponsesContinuationArtifactV2,
+): boolean {
+  if (!isOpenAIResponsesContinuationArtifactV2(artifact)) return false
+  const pending = new Map<string, number>()
+  for (const item of artifact.orderedItems) {
+    if (!('type' in item)) continue
+    if (item.type === 'function_call') {
+      pending.set(item.call_id, (pending.get(item.call_id) ?? 0) + 1)
+    } else if (item.type === 'function_call_output') {
+      const count = pending.get(item.call_id) ?? 0
+      if (count > 1) pending.set(item.call_id, count - 1)
+      else if (count === 1) pending.delete(item.call_id)
+    }
+  }
+  return pending.size > 0
+}
+
 function requireArtifact(value: OpenAIResponsesContinuationArtifactV2 | null): OpenAIResponsesContinuationArtifactV2 | null {
   if (value !== null && !isOpenAIResponsesContinuationArtifactV2(value)) {
     return fail('GENERATION_V2_OPENAI_CONTINUATION_UNBRANDED')

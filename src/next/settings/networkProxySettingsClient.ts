@@ -18,7 +18,7 @@ export type LibreOfficeProxyProbeResult = Readonly<{
 type ProxyBridge = NonNullable<Window['networkProxy']>
 
 function requireProxyBridge(): Required<Pick<ProxyBridge, 'getSettings' | 'updateSettings'>> & ProxyBridge {
-  const bridge = globalThis.networkProxy
+  const bridge = (globalThis as typeof globalThis & { networkProxy?: ProxyBridge }).networkProxy
   if (!bridge || typeof bridge.getSettings !== 'function' || typeof bridge.updateSettings !== 'function') {
     throw new Error('Missing epoch-2 network proxy bridge')
   }
@@ -38,7 +38,7 @@ export async function setNetworkProxySettings(value: NetworkProxySettings): Prom
 }
 
 export async function probeLibreOfficeOfficialDownloadNetwork(): Promise<LibreOfficeProxyProbeResult> {
-  const bridge = globalThis.generationV2?.plugins
+  const bridge = (globalThis as typeof globalThis & { generationV2?: Window['generationV2'] }).generationV2?.plugins
   if (!bridge || typeof bridge.probeLibreOfficeDownload !== 'function') {
     return failedProbe('environment', 'proxy_probe_unavailable')
   }

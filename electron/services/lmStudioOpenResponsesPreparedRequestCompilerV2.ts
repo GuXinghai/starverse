@@ -29,6 +29,7 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
       binding.endpointBinding.endpointSetRevision.value !== input.profile.profileRevision ||
       input.profile.protocolContractId !== 'lmstudio-openresponses') throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_BINDING_INVALID')
   const intent = snapshot.semanticIntent
+  const tools = intent.tools
   const unsupportedGeneration = ['topK', 'minP', 'topA', 'seed', 'stop', 'candidateCount', 'repetitionPenalty'] as const
   if (unsupportedGeneration.some((key) => intent.generation[key] !== undefined) ||
       (intent.reasoning.mode === 'enabled' && (intent.reasoning.effort !== 'low' ||
@@ -37,14 +38,14 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
       intent.attachments.length !== 0 || intent.providerExtension.kind !== 'none') {
     throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_EXPLICIT_FIELD_UNSUPPORTED')
   }
-  if (intent.tools.mode === 'enabled') {
+  if (tools.mode === 'enabled') {
     if (snapshot.toolAuthority.kind !== 'registry' ||
         !isToolRegistryRepositoryFactForContextV2(input.toolRegistry, input.context) ||
         input.toolRegistry.registry.revision !== snapshot.toolAuthority.toolRegistryRevision.value ||
         input.toolRegistry.registry.definitionsDigest !== snapshot.toolAuthority.toolDefinitionsDigest.value ||
-        input.toolRegistry.selectedDefinitions.length !== intent.tools.allowedToolIds.length ||
-        input.toolRegistry.selectedDefinitions.some((tool, index) => tool.toolId !== intent.tools.allowedToolIds[index].value) ||
-        !['omitted', 'none', 'required'].includes(intent.tools.toolChoice.mode)) {
+        input.toolRegistry.selectedDefinitions.length !== tools.allowedToolIds.length ||
+        input.toolRegistry.selectedDefinitions.some((tool, index) => tool.toolId !== tools.allowedToolIds[index].value) ||
+        !['omitted', 'none', 'required'].includes(tools.toolChoice.mode)) {
       throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_AUTHORITY_INVALID')
     }
   } else if (snapshot.toolAuthority.kind !== 'none' || input.toolRegistry !== null) {
@@ -56,9 +57,14 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
     parameters: tool.function.parameters ?? Object.freeze({ type: 'object', properties: Object.freeze({}), additionalProperties: false }),
     strict: true as const,
   }))
-  const toolChoice = intent.tools.mode === 'enabled' && intent.tools.toolChoice.mode !== 'omitted'
-    ? intent.tools.toolChoice.mode as 'none' | 'required'
+  const toolChoice = tools.mode === 'enabled' && tools.toolChoice.mode !== 'omitted'
+    ? tools.toolChoice.mode as 'none' | 'required'
     : undefined
+  const rawReasoningEffort = intent.reasoning.mode === 'enabled' ? intent.reasoning.effort : undefined
+  let reasoningEffort: 'minimal' | 'low' | 'medium' | 'high' | undefined
+  if (rawReasoningEffort === undefined) reasoningEffort = undefined
+  else if (rawReasoningEffort === 'minimal' || rawReasoningEffort === 'low' || rawReasoningEffort === 'medium' || rawReasoningEffort === 'high') reasoningEffort = rawReasoningEffort
+  else throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_EXPLICIT_FIELD_UNSUPPORTED')
   const compiled = compileLmStudioOpenResponsesRequestV1({ model: binding.modelId.value,
     replayItems: input.history.projectedReplayItems,
     generation: {
@@ -66,7 +72,7 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
       maxOutputTokens: intent.generation.maxOutputTokens, frequencyPenalty: intent.generation.frequencyPenalty,
       presencePenalty: intent.generation.presencePenalty,
     },
-    ...(intent.reasoning.mode === 'enabled' ? { reasoningEffort: intent.reasoning.effort } : {}),
+    ...(reasoningEffort === undefined ? {} : { reasoningEffort }),
     ...(functionTools === undefined ? {} : { tools: functionTools }),
     ...(toolChoice === undefined ? {} : { toolChoice }),
   })
@@ -77,12 +83,12 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
     kind: 'consumed' as const, path: `generation.${key}`, disposition: 'encoded' as const,
     nativeField, evidence: 'lmstudio-openresponses-compliance-20260714',
   }))
-  const toolLedger = intent.tools.mode === 'disabled' ? [{ kind: 'consumed' as const, path: 'tools.mode',
+  const toolLedger = tools.mode === 'disabled' ? [{ kind: 'consumed' as const, path: 'tools.mode',
     disposition: 'accepted_no_wire' as const, nativeField: null, evidence: 'lmstudio-openresponses-compliance-20260714' }] : [
     { kind: 'consumed' as const, path: 'tools.mode', disposition: 'encoded' as const, nativeField: 'tools', evidence: 'lmstudio-openresponses-compliance-20260714' },
     { kind: 'consumed' as const, path: 'tools.allowedToolIds', disposition: 'encoded' as const, nativeField: 'tools', evidence: 'lmstudio-openresponses-compliance-20260714' },
-    { kind: 'consumed' as const, path: 'tools.toolChoice', disposition: intent.tools.toolChoice.mode === 'omitted' ? 'accepted_no_wire' as const : 'encoded' as const,
-      nativeField: intent.tools.toolChoice.mode === 'omitted' ? null : 'tool_choice', evidence: 'lmstudio-openresponses-compliance-20260714' },
+    { kind: 'consumed' as const, path: 'tools.toolChoice', disposition: tools.toolChoice.mode === 'omitted' ? 'accepted_no_wire' as const : 'encoded' as const,
+      nativeField: tools.toolChoice.mode === 'omitted' ? null : 'tool_choice', evidence: 'lmstudio-openresponses-compliance-20260714' },
     { kind: 'consumed' as const, path: 'tools.sideEffectConfirmation', disposition: 'accepted_no_wire' as const, nativeField: null, evidence: 'starverse-tool-confirmation-v2' },
   ]
   const ledger = createSemanticConsumptionLedgerV2([

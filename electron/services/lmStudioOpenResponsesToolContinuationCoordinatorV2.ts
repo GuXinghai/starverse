@@ -41,12 +41,13 @@ export function createLmStudioOpenResponsesToolContinuationCoordinatorV2(input: 
     if (!persisted) return null
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
-      if (!execution || !['streaming', 'completed', 'failed', 'cancelled'].includes(execution.operation.state) ||
+      if (!execution) throw new LmStudioOpenResponsesToolContinuationCoordinatorV2Error('GENERATION_V2_LMSTUDIO_TOOL_CONTINUATION_STATE_INVALID')
+      if (!['streaming', 'completed', 'failed', 'cancelled'].includes(execution.operation.state) ||
           execution.operation.branchId.value !== command.branchId.value ||
           execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
           command.expectedHeadMessageId.value !== command.answerRootId.value) invalid()
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
-      if (!toolRegistry) invalid()
+      if (!toolRegistry) throw new LmStudioOpenResponsesToolContinuationCoordinatorV2Error('GENERATION_V2_LMSTUDIO_TOOL_CONTINUATION_STATE_INVALID')
       const history = historyRepo.loadPersistedRequestHistory(context, command.operationId.value, requestSequence)
       if (history.toolOutputRecords.length !== command.toolOutputs.length || history.toolOutputRecords.some((record, index) => {
         const output = command.toolOutputs[index]
@@ -68,14 +69,15 @@ export function createLmStudioOpenResponsesToolContinuationCoordinatorV2(input: 
     const replay = replayPersisted(command); if (replay) return replay
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
-      if (!execution || execution.operation.state !== 'streaming' ||
+      if (!execution) throw new LmStudioOpenResponsesToolContinuationCoordinatorV2Error('GENERATION_V2_LMSTUDIO_TOOL_CONTINUATION_STATE_INVALID')
+      if (execution.operation.state !== 'streaming' ||
           execution.operation.branchId.value !== command.branchId.value ||
           execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
           execution.snapshot.providerBinding.providerId.value !== 'lmstudio' ||
           execution.snapshot.providerBinding.protocolContractId.value !== 'lmstudio-openresponses' ||
           execution.snapshot.providerBinding.operation !== 'text') invalid()
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
-      if (!toolRegistry) invalid()
+      if (!toolRegistry) throw new LmStudioOpenResponsesToolContinuationCoordinatorV2Error('GENERATION_V2_LMSTUDIO_TOOL_CONTINUATION_STATE_INVALID')
       const at = nowMs()
       const history = historyRepo.prepareToolContinuationHistory(context, execution, command, toolRegistry, at)
       const profile = profileRepo.get(execution.snapshot.providerBinding.endpointProfileId.value)

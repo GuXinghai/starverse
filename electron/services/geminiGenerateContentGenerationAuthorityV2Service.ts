@@ -165,15 +165,17 @@ function fields(evidence: VerifiedGeminiModelVisibilityEvidenceV2,
 function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: VerifiedGeminiModelVisibilityEvidenceV2,
   toolRegistry: ToolRegistryRepositoryFactV2 | null, toolsReviewed: boolean): void {
   const intent = facts.semanticIntent
+  const tools = intent.tools
   const reasoningWebReviewed = hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(evidence.modelId.value)
-  if ((intent.tools.mode === 'enabled') !== (toolRegistry !== null)) {
+  if ((tools.mode === 'enabled') !== (toolRegistry !== null)) {
     throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_TOOL_REGISTRY_AUTHORITY_REQUIRED')
   }
-  if (intent.tools.mode === 'enabled') {
+  if (tools.mode === 'enabled') {
+    const toolChoice = tools.toolChoice
+    const namedToolId = toolChoice.mode === 'named' ? toolChoice.toolId.value : null
     if (!toolsReviewed || stableSerializeProviderRequestV2(toolRegistry!.selectedDefinitions.map((tool) => tool.toolId)) !==
-        stableSerializeProviderRequestV2(intent.tools.allowedToolIds.map((toolId) => toolId.value)) ||
-        (intent.tools.toolChoice.mode === 'named' &&
-          !intent.tools.allowedToolIds.some((toolId) => toolId.value === intent.tools.toolChoice.toolId.value))) {
+        stableSerializeProviderRequestV2(tools.allowedToolIds.map((toolId) => toolId.value)) ||
+        (namedToolId !== null && !tools.allowedToolIds.some((toolId) => toolId.value === namedToolId))) {
       throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_INTENT_UNSUPPORTED')
     }
   }

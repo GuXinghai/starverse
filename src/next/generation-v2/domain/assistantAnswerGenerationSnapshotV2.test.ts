@@ -150,7 +150,7 @@ describe('AssistantAnswerGenerationSnapshotV2 persisted value codec', () => {
 
   it('requires and hashes complete immutable OpenAI-compatible configuration provenance', () => {
     const candidate = payload()
-    candidate.providerBinding = {
+    ;(candidate as unknown as { providerBinding: Record<string, unknown> }).providerBinding = {
       ...candidate.providerBinding,
       credentialScopeId: 'credential-scope:compatible:1',
       providerId: 'openai_compatible',

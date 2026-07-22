@@ -485,8 +485,7 @@ export class ModelPrefsService {
         scopeId: scope.scopeId,
         orderedModelKeys: normalizedKeys,
       })
-      const rows = Array.isArray(raw?.items) ? raw.items : raw
-      const items = decodeFavoriteList(rows)
+      const items = decodeFavoriteList(raw)
       const nowMs = Date.now()
       lruSet(favoriteCache, favoriteCacheKey(scope), {
         fetchedAtMs: nowMs,

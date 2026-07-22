@@ -46,6 +46,30 @@ export function createOpenRouterChatTerminalArtifactV1(result: OpenRouterChatStr
 export function isOpenRouterChatTerminalArtifactV1(value: unknown): value is OpenRouterChatTerminalArtifactV1 {
   return Boolean(value && typeof value === 'object' && branded.has(value))
 }
+export function decodeOpenRouterChatTerminalArtifactV1(value: unknown): OpenRouterChatTerminalArtifactV1 {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) invalid()
+  const input = value as Record<string, unknown>
+  const keys = ['artifactKind', 'artifactCodecVersion', 'responseId', 'model', 'provider', 'finishReason', 'usage', 'artifactHash']
+  if (Object.keys(input).sort().join('\0') !== [...keys].sort().join('\0') ||
+      input.artifactKind !== OPENROUTER_CHAT_TERMINAL_ARTIFACT_KIND_V1 ||
+      input.artifactCodecVersion !== OPENROUTER_CHAT_TERMINAL_ARTIFACT_CODEC_VERSION_V1 ||
+      typeof input.responseId !== 'string' || input.responseId.length === 0 ||
+      typeof input.model !== 'string' || input.model.length === 0 ||
+      (input.provider !== null && (typeof input.provider !== 'string' || input.provider.length === 0)) ||
+      typeof input.finishReason !== 'string' || input.finishReason.length === 0 ||
+      typeof input.artifactHash !== 'string' || !/^[0-9a-f]{64}$/u.test(input.artifactHash)) invalid()
+  const artifact = issue({
+    artifactKind: OPENROUTER_CHAT_TERMINAL_ARTIFACT_KIND_V1,
+    artifactCodecVersion: OPENROUTER_CHAT_TERMINAL_ARTIFACT_CODEC_VERSION_V1,
+    responseId: input.responseId,
+    model: input.model,
+    provider: input.provider as string | null,
+    finishReason: input.finishReason,
+    usage: cloneUsage(input.usage),
+  })
+  if (artifact.artifactHash !== input.artifactHash) invalid()
+  return artifact
+}
 export function serializeOpenRouterChatTerminalArtifactV1(value: OpenRouterChatTerminalArtifactV1): string {
   if (!isOpenRouterChatTerminalArtifactV1(value)) invalid()
   return stableSerializeProviderRequestV2(value)

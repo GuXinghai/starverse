@@ -113,7 +113,7 @@ export async function startMainV2(): Promise<void> {
 
   recoverGenerationOrphansV2(runtime.epoch2.database)
   registerGenerationV2Ipc({ registerInvoke, epoch2: runtime.epoch2, rawGenerationRequestStore,
-  cloudFetch, localDirectFetch, proxyMode: () => networkProxyController.getState().settings.mode })
+  cloudFetch, localDirectFetch, proxyMode: () => networkProxyController.getState().settings.proxyMode })
   registerNetworkProxyIpc({ registerInvoke, controller: networkProxyController })
   registerGenerationV2ComposerIpc({ registerInvoke, db: runtime.epoch2.database,
   attachmentBlobStore: runtime.epoch2.attachmentBlobStore, fileSelectionGrants, cloudFetch,
@@ -171,8 +171,8 @@ export async function startMainV2(): Promise<void> {
     await packagedTestDocxFixtureAuthority?.dispose()
     await runtime.epoch2.close()
     app.exit(0)
-  })().catch((error) => {
-    console.error('[main-v2] shutdown failed', error instanceof Error ? error.message : String(error))
+  })().catch(() => {
+    console.error('[main-v2] MAIN_V2_SHUTDOWN_FAILED')
     app.exit(1)
   })
   })

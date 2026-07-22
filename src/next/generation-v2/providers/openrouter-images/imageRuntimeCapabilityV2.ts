@@ -13,7 +13,7 @@ import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../openrouter/ver
 import type { CanonicalOpenRouterImageDescriptorV2, CanonicalOpenRouterImageParameterV2 } from './canonicalDescriptorV2'
 import { listReviewedProviderContractDefinitionsV2 } from '../../contracts/providerContractRegistryV2'
 
-const PARAMETER_BY_PATH = Object.freeze({
+const PARAMETER_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPathV2, string>>> = Object.freeze({
   'generation.candidateCount': 'n',
   'generation.seed': 'seed',
   'image.aspectRatio': 'aspect_ratio',

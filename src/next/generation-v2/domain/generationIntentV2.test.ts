@@ -109,8 +109,8 @@ describe('GenerationIntentLayerV2 codec', () => {
     expect(() => decodeGenerationIntentLayerV2({
       schemaVersion: 2,
       attachments: [
-        { assetId: 'a', assetRevisionId: 'r', assetSha256: hash, include: true, sendAs: 'provider_file', conversion: 'none' },
-        { assetId: 'a', assetRevisionId: 'r', assetSha256: hash, include: false, sendAs: 'inline_text', conversion: 'plain_text' },
+        { kind: 'managed_file', assetId: 'a', assetRevisionId: 'r', assetSha256: hash, include: true, sendAs: 'provider_file', conversion: 'none' },
+        { kind: 'managed_file', assetId: 'a', assetRevisionId: 'r', assetSha256: hash, include: false, sendAs: 'inline_text', conversion: 'plain_text' },
       ],
     })).toThrow('GENERATION_V2_INTENT_DUPLICATE_VALUE')
     expect(() => decodeGenerationIntentLayerV2({ schemaVersion: 2, generation: { stop: ['END', 'END'] } }))

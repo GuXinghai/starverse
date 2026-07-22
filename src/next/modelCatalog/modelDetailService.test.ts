@@ -2,19 +2,20 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
   getModelCatalogModelDetail,
 } from './modelDetailService'
+import { installGenerationV2ModelsList, successfulGenerationV2Models } from '../../../tests/helpers/generationV2ModelsBridge'
 
 describe('modelDetailService', () => {
   const originalDbBridge = (globalThis as any).dbBridge
-  const originalElectronAPI = (globalThis as any).electronAPI
+  const originalGenerationV2 = (globalThis as any).generationV2
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
-    ;(globalThis as any).electronAPI = originalElectronAPI
+    ;(globalThis as any).generationV2 = originalGenerationV2
     vi.restoreAllMocks()
   })
 
   it('returns explainable error when scoped query IPC is unavailable', async () => {
-    ;(globalThis as any).electronAPI = undefined
+    ;(globalThis as any).generationV2 = { ...(globalThis as any).generationV2, models: {} }
     const result = await getModelCatalogModelDetail({
       providerKey: 'openrouter',
       modelId: 'openai/gpt-4o',
@@ -31,10 +32,7 @@ describe('modelDetailService', () => {
     const legacyInvoke = vi.fn(async () => {
       throw new Error('legacy model detail should not be called')
     })
-    const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
-      providerKey: 'openrouter',
-      status: 'synced',
-      items: [{
+    const modelCatalogQueryScopedCurrent = installGenerationV2ModelsList('openrouter', vi.fn(async () => successfulGenerationV2Models([{
         providerKey: 'openrouter',
         modelId: 'openai/gpt-4o',
         modelKey: 'openrouter::openai/gpt-4o',
@@ -76,22 +74,15 @@ describe('modelDetailService', () => {
           capabilitiesJson: '{"reasoning":true,"tools":true,"structuredOutputs":true,"vision":true,"longContext":true}',
           pricingJson: '{"prompt":"0.00003","completion":"0.00006","web_search":"0"}',
         },
-      }],
-      nextCursor: null,
-    }))
+      }])))
     ;(globalThis as any).dbBridge = { invoke: legacyInvoke }
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
 
     const result = await getModelCatalogModelDetail({
       providerKey: 'openrouter',
       modelId: 'openai/gpt-4o',
     })
 
-    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({
-      providerKey: 'openrouter',
-      modelIds: ['openai/gpt-4o'],
-      limit: 1,
-    })
+    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({ timeoutMs: 30_000 })
     expect(legacyInvoke).not.toHaveBeenCalled()
     expect(JSON.stringify(modelCatalogQueryScopedCurrent.mock.calls)).not.toContain('sk-')
     expect(JSON.stringify(modelCatalogQueryScopedCurrent.mock.calls)).not.toContain('catalogScopeKey')
@@ -124,14 +115,8 @@ describe('modelDetailService', () => {
       modelKey: 'openrouter::legacy/only',
       displayName: 'Legacy Only',
     }))
-    const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
-      providerKey: 'openrouter',
-      status: 'not_synced',
-      items: [],
-      nextCursor: null,
-    }))
+    installGenerationV2ModelsList('openrouter', vi.fn(async () => successfulGenerationV2Models([])))
     ;(globalThis as any).dbBridge = { invoke: legacyInvoke }
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent }
 
     const result = await getModelCatalogModelDetail({
       providerKey: 'openrouter',

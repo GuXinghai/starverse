@@ -74,8 +74,9 @@ describe('OpenAI-compatible V2 coordinator', () => {
     const runtime = createOpenAIChatCompatibleGenerationV2Runtime({ db, credentialService: credential, nowMs: () => 100,
       fetchImpl: vi.fn().mockResolvedValue(new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })),
       streamProjectionSink: { publish: (event) => sink.push(event) }, createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
-    const initial = await runtime.submitInitial({ operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,
-      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [], extraBody: { vendor_flag: true } })
+    await expect(runtime.submitInitial({ operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [], extraBody: { vendor_flag: true } }))
+      .resolves.toMatchObject({ kind: 'created' })
     await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'completed', answerRootId: 'answer:2' })))
     const coordinator = createOpenAIChatCompatibleGenerationV2Coordinator({ db, credentialService: credential, nowMs: () => 200,
       createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })

@@ -10,6 +10,7 @@ import {
   type NetworkErrorEnvelope,
 } from '../../../shared/network/networkErrorEnvelope'
 import { resolveGeminiThinkingCapability } from './geminiThinkingPolicy'
+import { resolveGeminiImageGenerationPolicy, type GeminiImageGenerationPolicy } from './geminiImageGenerationPolicy'
 
 export const GOOGLE_AI_STUDIO_PROVIDER_KEY = 'google_ai_studio' as const
 export const GOOGLE_AI_STUDIO_ENDPOINT_ID = 'google-ai-studio-official' as const
@@ -31,6 +32,7 @@ export type GeminiProviderSpecificModelAvailability = Readonly<{
   inputTokenLimit?: number
   outputTokenLimit?: number
   nextPageToken?: string
+  imageGenerationPolicy?: GeminiImageGenerationPolicy
 }>
 
 export type GeminiProviderModelAvailability = ProviderModelAvailabilityEnvelope<
@@ -54,6 +56,7 @@ export type GeminiProviderModelAvailability = ProviderModelAvailabilityEnvelope<
     builtInTools?: boolean | 'unknown'
     vision?: boolean | 'unknown'
     structuredOutput?: boolean | 'unknown'
+    imageGeneration?: boolean
   }> & ProviderModelCapabilitySeed
 }>
 
@@ -339,7 +342,7 @@ function curatedWarning(): string {
 }
 
 export function getGeminiCuratedModelAvailabilitySeeds(observedAtMs: number): GeminiProviderModelAvailability[] {
-  return [
+  const textSeeds: GeminiProviderModelAvailability[] = [
     {
       ...availabilityBase({
         nativeModelId: 'gemini-2.5-flash',
@@ -379,6 +382,31 @@ export function getGeminiCuratedModelAvailabilitySeeds(observedAtMs: number): Ge
       providerSpecific: {},
     },
   ]
+  const imageModelIds = [
+    'gemini-2.5-flash-image',
+    'gemini-3.1-flash-lite-image',
+    'gemini-3.1-flash-image',
+    'gemini-3-pro-image',
+  ] as const
+  const imageSeeds = imageModelIds.map((nativeModelId): GeminiProviderModelAvailability => {
+    const policy = resolveGeminiImageGenerationPolicy(nativeModelId)
+    return {
+      ...availabilityBase({ nativeModelId, source: 'starverse_curated_metadata', confidence: 'curated', observedAtMs,
+        warnings: [curatedWarning()] }),
+      displayName: nativeModelId,
+      capabilitySeed: {
+        textChat: true,
+        thinking: policy.supportsThoughtSummaries ? 'supported' : 'unknown',
+        functionCalling: 'unknown',
+        builtInTools: policy.supportsGoogleSearch || policy.supportsImageSearch,
+        vision: true,
+        structuredOutput: 'unknown',
+        imageGeneration: true,
+      },
+      providerSpecific: { imageGenerationPolicy: policy },
+    }
+  })
+  return [...textSeeds, ...imageSeeds]
 }
 
 function mergeAvailability(

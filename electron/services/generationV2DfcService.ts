@@ -13,9 +13,11 @@ import { runExternalProcess } from '../../src/next/file-type/externalProcessRunn
 
 type TargetKind = 'original_file'|'plain_text'|'markdown'|'code'|'table_markdown'|'pdf_attachment'
 type SendStrategy = 'text_in_prompt'|'file_attachment'
+type DfcSendAssetRef = Readonly<{kind:'raw_file'|'derived_asset';assetId:string}>
+type DfcDiagnostic = Readonly<{code:string;message:string;severity:'info'|'warning'|'error'}>
 type DfcOption = Readonly<{optionId:string;rawFileId:string;targetKind:TargetKind;sendStrategy:SendStrategy;
-  status:'ready'|'blocked';isAvailable:boolean;compatibilityStatus:'compatible'|'blocked';sendAssetRefs:readonly Readonly<{kind:'raw_file'|'derived_asset';assetId:string}>[];
-  warnings:readonly string[];diagnostics:readonly Readonly<{code:string;message:string;severity:'info'|'warning'|'error'}[]>}>
+  status:'ready'|'blocked';isAvailable:boolean;compatibilityStatus:'compatible'|'blocked';sendAssetRefs:ReadonlyArray<DfcSendAssetRef>;
+  warnings:readonly string[];diagnostics:ReadonlyArray<DfcDiagnostic>}>
 
 export class GenerationV2DfcServiceError extends Error {
   constructor(readonly code: 'GENERATION_V2_DFC_INPUT_INVALID'|'GENERATION_V2_DFC_ATTACHMENT_NOT_FOUND'|'GENERATION_V2_DFC_OPTION_UNAVAILABLE'|'GENERATION_V2_DFC_TEXT_DECODE_FAILED') {
@@ -49,18 +51,22 @@ export class GenerationV2DfcService {
     private readonly conversion:ElectronConversionBridge|null=null,private readonly tempRoot:string|null=null,private readonly runtimesRoot:string|null=null) {
     this.assets=new AttachmentAssetV2Repo(db,nowMs);this.drafts=new ComposerDraftV2Repo(db,nowMs)
   }
-  async ensureOptions(input:Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>):Promise<Readonly<{attachmentId:string;conversationId:string;rawFileId:string;filename:string;sizeBytes:number;dfcManaged:true;selectedOptionId:string|null;selectedAssetRefs:readonly Readonly<{kind:'raw_file'|'derived_asset';assetId:string}>[];recommendedOptionId:string|null;recommendedReasonCode:string|null;decision:Readonly<Record<string,unknown>>;options:readonly DfcOption[]}>> {
+  async ensureOptions(input:Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>):Promise<Readonly<{attachmentId:string;conversationId:string;rawFileId:string;filename:string;sizeBytes:number;dfcManaged:true;selectedOptionId:string|null;selectedAssetRefs:ReadonlyArray<DfcSendAssetRef>;recommendedOptionId:string|null;recommendedReasonCode:string|null;decision:Readonly<Record<string,unknown>>;options:readonly DfcOption[]}>> {
     const attachment=this.attachment(input.conversationId,input.assetId)
     const selected=attachment.dfcSelection
     const options: DfcOption[]=[this.originalOption(attachment)]
     for(const target of TEXT_TARGETS) options.push(this.textOption(attachment,target,input.providerId,input.operation))
     options.push(await this.pdfOption(attachment,input.providerId,input.operation))
     const selectedOption=selected===null?null:options.find(item=>item.optionId===selected.optionId)??null
-    const selectedAssetRefs=selected===null?[]:[{kind:selected.targetKind==='original_file'?'raw_file':'derived_asset' as const,assetId:selected.effectiveAssetId}]
-    const decision=selectedOption===null
-      ? Object.freeze({status:'needs_user_selection',reasonCode:'selected_option_missing',selectedOptionId:null,targetKind:null,sendStrategy:null,sendAssetRefs:[],needsUserAction:true})
-      : selectedOption.isAvailable ? Object.freeze({status:'ready',reasonCode:null,selectedOptionId:selected.optionId,targetKind:selected.targetKind,sendStrategy:selected.sendStrategy,sendAssetRefs:selectedAssetRefs,needsUserAction:false})
-      : Object.freeze({status:'blocked',reasonCode:'selected_option_unavailable',selectedOptionId:selected.optionId,targetKind:selected.targetKind,sendStrategy:selected.sendStrategy,sendAssetRefs:[],needsUserAction:true})
+    const selectedAssetRefs: DfcSendAssetRef[] = selected===null?[]:[{kind:selected.targetKind==='original_file'?'raw_file':'derived_asset',assetId:selected.effectiveAssetId}]
+    let decision: Readonly<Record<string, unknown>>
+    if (selected === null || selectedOption === null) {
+      decision=Object.freeze({status:'needs_user_selection',reasonCode:'selected_option_missing',selectedOptionId:null,targetKind:null,sendStrategy:null,sendAssetRefs:[],needsUserAction:true})
+    } else if (selectedOption.isAvailable) {
+      decision=Object.freeze({status:'ready',reasonCode:null,selectedOptionId:selected.optionId,targetKind:selected.targetKind,sendStrategy:selected.sendStrategy,sendAssetRefs:selectedAssetRefs,needsUserAction:false})
+    } else {
+      decision=Object.freeze({status:'blocked',reasonCode:'selected_option_unavailable',selectedOptionId:selected.optionId,targetKind:selected.targetKind,sendStrategy:selected.sendStrategy,sendAssetRefs:[],needsUserAction:true})
+    }
     return Object.freeze({attachmentId:attachment.assetId,conversationId:input.conversationId,rawFileId:attachment.assetId,filename:attachment.filename,sizeBytes:attachment.sizeBytes,
       dfcManaged:true,selectedOptionId:selected?.optionId??null,selectedAssetRefs:Object.freeze(selectedAssetRefs),recommendedOptionId:optionId('original_file'),recommendedReasonCode:'original_file_preserves_bytes',decision,options:Object.freeze(options)})
   }
@@ -93,26 +99,26 @@ export class GenerationV2DfcService {
     if(!attachment) throw new GenerationV2DfcServiceError('GENERATION_V2_DFC_ATTACHMENT_NOT_FOUND')
     return attachment
   }
-  private originalOption(attachment:ComposerDraftManagedFileAttachmentV2):DfcOption {return Object.freeze({optionId:optionId('original_file'),rawFileId:attachment.assetId,targetKind:'original_file',sendStrategy:'file_attachment',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'raw_file',assetId:attachment.assetId}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})}
+  private originalOption(attachment:ComposerDraftManagedFileAttachmentV2):DfcOption {return Object.freeze({optionId:optionId('original_file'),rawFileId:attachment.assetId,targetKind:'original_file',sendStrategy:'file_attachment',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'raw_file' as const,assetId:attachment.assetId}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})}
   private textOption(attachment:ComposerDraftManagedFileAttachmentV2,target:Exclude<TargetKind,'original_file'|'pdf_attachment'>,providerId:string,operation:'chat_completions'|'images'|'responses'):DfcOption {
     if(providerId!=='openrouter'||operation!=='chat_completions') return this.blocked(attachment,target,'GENERATION_V2_DFC_PROVIDER_CONTRACT_UNSUPPORTED','The selected provider operation contract does not encode this derived attachment.')
     if(!textual(attachment.mime)) return this.blocked(attachment,target,'GENERATION_V2_DFC_TEXT_SOURCE_UNSUPPORTED','This source cannot be converted to text without a reviewed converter.')
     const output=this.ensureTextOutput(attachment,target)
-    return Object.freeze({optionId:optionId(target),rawFileId:attachment.assetId,targetKind:target,sendStrategy:'text_in_prompt',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'derived_asset',assetId:output.assetId.value}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})
+    return Object.freeze({optionId:optionId(target),rawFileId:attachment.assetId,targetKind:target,sendStrategy:'text_in_prompt',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'derived_asset' as const,assetId:output.assetId.value}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})
   }
   private async pdfOption(attachment:ComposerDraftManagedFileAttachmentV2,providerId:string,operation:'chat_completions'|'images'|'responses'):Promise<DfcOption> {
     if (!((providerId==='openrouter'&&operation==='chat_completions') || (providerId==='openai_responses'&&operation==='responses'))) return this.blocked(attachment,'pdf_attachment','GENERATION_V2_DFC_PROVIDER_CONTRACT_UNSUPPORTED','The selected provider operation contract does not encode this derived attachment.')
     if (attachment.mime === 'text/html' && this.conversion && this.tempRoot) {
       const output=await this.ensureHtmlPdfOutput(attachment)
-      return Object.freeze({optionId:optionId('pdf_attachment'),rawFileId:attachment.assetId,targetKind:'pdf_attachment',sendStrategy:'file_attachment',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'derived_asset',assetId:output.assetId.value}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})
+      return Object.freeze({optionId:optionId('pdf_attachment'),rawFileId:attachment.assetId,targetKind:'pdf_attachment',sendStrategy:'file_attachment',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'derived_asset' as const,assetId:output.assetId.value}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})
     }
     if (attachment.mime === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' && this.runtimesRoot && this.tempRoot) {
       const output=await this.ensureDocxPdfOutput(attachment)
-      if (output) return Object.freeze({optionId:optionId('pdf_attachment'),rawFileId:attachment.assetId,targetKind:'pdf_attachment',sendStrategy:'file_attachment',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'derived_asset',assetId:output.assetId.value}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})
+      if (output) return Object.freeze({optionId:optionId('pdf_attachment'),rawFileId:attachment.assetId,targetKind:'pdf_attachment',sendStrategy:'file_attachment',status:'ready',isAvailable:true,compatibilityStatus:'compatible',sendAssetRefs:Object.freeze([{kind:'derived_asset' as const,assetId:output.assetId.value}]),warnings:Object.freeze([]),diagnostics:Object.freeze([])})
     }
     return this.blocked(attachment,'pdf_attachment','GENERATION_V2_DFC_PDF_CONVERTER_NOT_YET_BOUND','PDF conversion requires the reviewed browser or managed LibreOffice converter contract.')
   }
-  private blocked(attachment:ComposerDraftManagedFileAttachmentV2,target:TargetKind,code:string,message:string):DfcOption {return Object.freeze({optionId:optionId(target),rawFileId:attachment.assetId,targetKind:target,sendStrategy:target==='pdf_attachment'||target==='original_file'?'file_attachment':'text_in_prompt',status:'blocked',isAvailable:false,compatibilityStatus:'blocked',sendAssetRefs:Object.freeze([]),warnings:Object.freeze([]),diagnostics:Object.freeze([{code,message,severity:'warning'}])})}
+  private blocked(attachment:ComposerDraftManagedFileAttachmentV2,target:TargetKind,code:string,message:string):DfcOption {return Object.freeze({optionId:optionId(target),rawFileId:attachment.assetId,targetKind:target,sendStrategy:target==='pdf_attachment'||target==='original_file'?'file_attachment':'text_in_prompt',status:'blocked',isAvailable:false,compatibilityStatus:'blocked',sendAssetRefs:Object.freeze([]),warnings:Object.freeze([]),diagnostics:Object.freeze([{code,message,severity:'warning' as const}])})}
   private ensureTextOutput(attachment:ComposerDraftManagedFileAttachmentV2,target:Exclude<TargetKind,'original_file'|'pdf_attachment'>) {
     const existing=this.derivedFor(attachment.assetRevisionId,target);if(existing)return existing
     const source=this.assets.getRevision(attachment.assetId,attachment.assetRevisionId),bytes=this.blobs.readRevisionBytes(source)
@@ -203,6 +209,7 @@ export class GenerationV2DfcService {
   }
   private previewDto(conversationId:string,attachment:ComposerDraftManagedFileAttachmentV2,selected:ComposerDraftManagedFileAttachmentV2['dfcSelection'],status:'ready'|'needs_user_selection',text:string|null,max:number) {
     const limit=Number.isSafeInteger(max)&&max>0&&max<=65536?max:2048,visible=text===null?null:text.slice(0,limit)
-    return Object.freeze({attachmentId:attachment.assetId,conversationId,rawFileId:attachment.assetId,filename:attachment.filename,sizeBytes:attachment.sizeBytes,dfcManaged:true,selectedOptionId:selected?.optionId??null,selectedAssetRefs:selected===null?Object.freeze([]):Object.freeze([{kind:selected.targetKind==='original_file'?'raw_file':'derived_asset',assetId:selected.effectiveAssetId}]),targetKind:selected?.targetKind??null,sendStrategy:selected?.sendStrategy??null,decision:Object.freeze({status,reasonCode:status==='ready'?null:'selected_option_missing',selectedOptionId:selected?.optionId??null,targetKind:selected?.targetKind??null,sendStrategy:selected?.sendStrategy??null,sendAssetRefs:[],needsUserAction:status!=='ready'}),preview:Object.freeze({kind:text===null?'none':'text',status,text:visible,characterCount:text===null?null:text.length,byteLength:text===null?null:Buffer.byteLength(text,'utf8'),truncated:text!==null&&text.length>limit,maxCharacters:limit,diagnostics:Object.freeze([])})})
+    const selectedAssetRefs: readonly DfcSendAssetRef[] = selected===null ? Object.freeze([]) : Object.freeze([{kind:selected.targetKind==='original_file'?'raw_file' as const:'derived_asset' as const,assetId:selected.effectiveAssetId}])
+    return Object.freeze({attachmentId:attachment.assetId,conversationId,rawFileId:attachment.assetId,filename:attachment.filename,sizeBytes:attachment.sizeBytes,dfcManaged:true,selectedOptionId:selected?.optionId??null,selectedAssetRefs,targetKind:selected?.targetKind??null,sendStrategy:selected?.sendStrategy??null,decision:Object.freeze({status,reasonCode:status==='ready'?null:'selected_option_missing',selectedOptionId:selected?.optionId??null,targetKind:selected?.targetKind??null,sendStrategy:selected?.sendStrategy??null,sendAssetRefs:[],needsUserAction:status!=='ready'}),preview:Object.freeze({kind:text===null?'none' as const:'text' as const,status,text:visible,characterCount:text===null?null:text.length,byteLength:text===null?null:Buffer.byteLength(text,'utf8'),truncated:text!==null&&text.length>limit,maxCharacters:limit,diagnostics:Object.freeze([])})})
   }
 }

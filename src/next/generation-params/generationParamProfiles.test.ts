@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { getDefaultGenerationParamProfile, getEffectiveGenerationParamCapabilities } from './generationParamProfiles'
+import { getDefaultGenerationParamProfile, getEffectiveGenerationParamCapabilities,
+  getSelectableReasoningEfforts, isReasoningEffortExplicitlyUnsupported } from './generationParamProfiles'
 import { anthropicGenerationProfile } from './providerProfiles/anthropicGenerationProfile'
 import { deepseekGenerationProfile } from './providerProfiles/deepseekGenerationProfile'
 import { geminiGenerationProfile } from './providerProfiles/geminiGenerationProfile'
@@ -70,7 +71,35 @@ describe('generationParamProfiles', () => {
     expect(gpt5Pro.reasoningEffort?.enumValues).toEqual(['auto', 'high'])
     expect(gpt41.reasoningEffort?.supported).toBe(false)
     expect(gpt41.reasoningSummary?.supported).toBe(false)
-    expect(unknown.reasoningEffort?.supported).toBe(false)
+    expect(unknown.reasoningEffort).toMatchObject({ supported: true, enumValues: ['auto', 'max'] })
+  })
+
+  it('projects max from explicit capability while preserving unknown versus unsupported', () => {
+    expect(getSelectableReasoningEfforts(deepseekGenerationProfile, 'deepseek-v4-flash')).toEqual(['high', 'max'])
+    expect(getSelectableReasoningEfforts(anthropicGenerationProfile, 'claude-sonnet-5')).toEqual(['low', 'medium', 'high'])
+    expect(isReasoningEffortExplicitlyUnsupported(anthropicGenerationProfile, 'claude-sonnet-5', 'max')).toBe(true)
+    expect(getSelectableReasoningEfforts(openaiResponsesGenerationProfile, 'future-model')).toEqual(['max'])
+    expect(isReasoningEffortExplicitlyUnsupported(openaiResponsesGenerationProfile, 'future-model', 'max')).toBe(false)
+    expect(getSelectableReasoningEfforts(openaiResponsesGenerationProfile, 'gpt-4.1-mini')).toEqual([])
+    expect(isReasoningEffortExplicitlyUnsupported(null, 'unknown-model', 'max')).toBe(false)
+
+    const readOnlyMaxProfile = {
+      ...deepseekGenerationProfile,
+      params: {
+        ...deepseekGenerationProfile.params,
+        reasoningEffort: {
+          ...deepseekGenerationProfile.params.reasoningEffort!,
+          ui: {
+            ...deepseekGenerationProfile.params.reasoningEffort!.ui,
+            visibleByDefault: deepseekGenerationProfile.params.reasoningEffort!.ui?.visibleByDefault ?? true,
+            editable: false,
+          },
+        },
+      },
+      modelOverrides: [],
+    }
+    expect(getSelectableReasoningEfforts(readOnlyMaxProfile, 'future-model')).toEqual([])
+    expect(isReasoningEffortExplicitlyUnsupported(readOnlyMaxProfile, 'future-model', 'max')).toBe(false)
   })
 
   it('marks modern Claude sampling controls rejected', () => {

@@ -247,16 +247,22 @@ export function registerOpenAICompatibleV2Ipc(input: Readonly<{ registerInvoke: 
   input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[19], safe((payload) => {
     const value = raw(payload, ['providerInstanceId', 'responseProfileId', 'responseProfileVersion', 'streamPath'])
     if (typeof value.providerInstanceId !== 'string' || typeof value.responseProfileId !== 'string' || typeof value.responseProfileVersion !== 'number' || typeof value.streamPath !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
-    return repo.setDiscoveryState(value.providerInstanceId, value.responseProfileId, value.responseProfileVersion, value.streamPath, 'ignored')
+    const { providerInstanceId, responseProfileId, responseProfileVersion, streamPath } = value as Readonly<{
+      providerInstanceId: string; responseProfileId: string; responseProfileVersion: number; streamPath: string
+    }>
+    return repo.setDiscoveryState(providerInstanceId, responseProfileId, responseProfileVersion, streamPath, 'ignored')
   }))
   input.registerInvoke(OPENAI_COMPATIBLE_V2_IPC_CHANNELS[20], safe((payload) => {
     const value = raw(payload, ['providerInstanceId', 'configuration', 'responseProfileId', 'responseProfileVersion', 'streamPath'])
     if (typeof value.providerInstanceId !== 'string' || typeof value.responseProfileId !== 'string' || typeof value.responseProfileVersion !== 'number' || typeof value.streamPath !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
+    const { providerInstanceId, responseProfileId, responseProfileVersion, streamPath } = value as Readonly<{
+      providerInstanceId: string; responseProfileId: string; responseProfileVersion: number; streamPath: string
+    }>
     return input.db.transaction(() => {
-      const details = repo.reviseConfiguration({ providerInstanceId: value.providerInstanceId,
+      const details = repo.reviseConfiguration({ providerInstanceId,
         endpointRevisionId: identifier('ocp_endpoint_'), configuration: value.configuration as never })
-      repo.setDiscoveryState(value.providerInstanceId, value.responseProfileId, value.responseProfileVersion, value.streamPath, 'confirmed')
-      return Object.freeze({ details, activeConfiguration: repo.getActiveConfiguration(value.providerInstanceId) })
+      repo.setDiscoveryState(providerInstanceId, responseProfileId, responseProfileVersion, streamPath, 'confirmed')
+      return Object.freeze({ details, activeConfiguration: repo.getActiveConfiguration(providerInstanceId) })
     })()
   }))
   return OPENAI_COMPATIBLE_V2_IPC_CHANNELS

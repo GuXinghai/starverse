@@ -9,7 +9,7 @@ import {
 } from './geminiDeveloperApiContractV2'
 
 describe('Generation V2 Gemini Developer API provider-family contract', () => {
-  it('owns one v1beta-only origin/auth policy and two independent typed surfaces', () => {
+  it('owns one v1beta-only origin/auth policy and three independent typed surfaces', () => {
     const contract = readGeminiDeveloperApiContractV2()
     expect(contract).toMatchObject({
       classification: 'reviewed_provider_family_definition',
@@ -44,8 +44,13 @@ describe('Generation V2 Gemini Developer API provider-family contract', () => {
         },
         continuationFamily: 'interaction_id_and_native_steps',
       }),
+      expect.objectContaining({
+        surfaceId: 'gemini-models-v1beta',
+        codecKind: 'gemini_models_v1beta',
+        method: 'GET',
+      }),
     ])
-    expect(new Set(contract.surfaces.map((surface) => surface.codecKind)).size).toBe(2)
+    expect(new Set(contract.surfaces.map((surface) => surface.codecKind)).size).toBe(3)
     expect(Object.isFrozen(contract)).toBe(true)
     expect(Object.isFrozen(contract.surfaces)).toBe(true)
     expect(isGeminiDeveloperApiContractV2({ ...contract })).toBe(false)
@@ -65,7 +70,8 @@ describe('Generation V2 Gemini Developer API provider-family contract', () => {
     expect(audit.ownerPolicy).toMatchObject({
       apiVersion: contract.apiVersion,
       automaticVersionFallback: false,
-      independentTypedCodecs: contract.surfaces.map((surface) => surface.codecKind),
+      independentTypedCodecs: contract.surfaces.filter((surface) => surface.method === 'POST')
+        .map((surface) => surface.codecKind),
       futureAgentsCodecRequired: true,
     })
     expect(audit.officialEvidence.interactionsOpenApi.sha256)

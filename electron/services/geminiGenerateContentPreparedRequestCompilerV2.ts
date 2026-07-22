@@ -146,13 +146,18 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
     generation[semantic === 'stop' ? 'stopSequences' : semantic] = value
     ledger.push(consumed(`generation.${semantic}`, `generationConfig.${native}`))
   }
-  const toolChoice = intent.tools.mode === 'disabled' || intent.tools.toolChoice.mode === 'omitted'
-    ? Object.freeze({ mode: 'provider_default' as const })
-    : intent.tools.toolChoice.mode === 'named'
-      ? Object.freeze({ mode: 'named' as const, name: toolRegistry!.selectedDefinitions.find(
-        (tool) => tool.toolId === intent.tools.toolChoice.toolId.value,
-      )?.function.name ?? (() => { throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_AUTHORITY_INVALID') })() })
-      : Object.freeze({ mode: intent.tools.toolChoice.mode })
+  const tools = intent.tools
+  let toolChoice
+  if (tools.mode === 'disabled' || tools.toolChoice.mode === 'omitted') {
+    toolChoice = Object.freeze({ mode: 'provider_default' as const })
+  } else if (tools.toolChoice.mode === 'named') {
+    const namedToolId = tools.toolChoice.toolId.value
+    const name = toolRegistry!.selectedDefinitions.find((tool) => tool.toolId === namedToolId)?.function.name
+    if (name === undefined) throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_AUTHORITY_INVALID')
+    toolChoice = Object.freeze({ mode: 'named' as const, name })
+  } else {
+    toolChoice = Object.freeze({ mode: tools.toolChoice.mode })
+  }
   const compilation = compileGeminiGenerateContentRequestV1({
     replayContents: input.history.replayContents,
     ...(input.history.systemInstruction === null ? {} : { systemInstruction: input.history.systemInstruction }),

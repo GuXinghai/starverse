@@ -354,8 +354,8 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
 
   it('keeps provider domains inside the base semantic value domains', () => {
     const invalidCases: Array<[RuntimeCapabilitySemanticPathV2, Record<string, unknown>]> = [
-      ['generation.maxOutputTokens', { kind: 'range', min: 0, max: 10, integer: true }],
-      ['generation.topK', { kind: 'range', min: 0, max: 10, integer: true }],
+      ['generation.maxOutputTokens', { kind: 'range', min: -1, max: 10, integer: true }],
+      ['generation.topK', { kind: 'range', min: -1, max: 10, integer: true }],
       ['generation.candidateCount', { kind: 'range', min: 0, max: 10, integer: true }],
       ['generation.temperature', { kind: 'range', min: -0.1, max: 1, integer: false }],
       ['generation.topP', { kind: 'range', min: 0, max: 1.1, integer: false }],

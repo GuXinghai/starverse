@@ -96,6 +96,7 @@ describe('projectAnthropicMessagesIntentV1', () => {
       image: { mode: 'generate', quality: 'high' },
       tools: { mode: 'enabled', allowedToolIds: ['tool-a'], toolChoice: { mode: 'auto' }, sideEffectConfirmation: 'required_each_retry' },
       attachments: [{
+        kind: 'managed_file',
         assetId: 'asset-a', assetRevisionId: 'revision-a', assetSha256: 'a'.repeat(64), include: true,
         sendAs: 'inline_text', conversion: 'plain_text',
       }],
@@ -120,6 +121,7 @@ describe('projectAnthropicMessagesIntentV1', () => {
 
   it('accepts excluded attachments as descriptor-only no-wire semantics', () => {
     const projection = projectAnthropicMessagesIntentV1(intent({ attachments: [{
+      kind: 'managed_file',
       assetId: 'asset-a', assetRevisionId: 'revision-a', assetSha256: 'a'.repeat(64), include: false,
       sendAs: 'inline_text', conversion: 'plain_text',
     }] }), 'claude-opus-4-6')

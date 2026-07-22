@@ -10,6 +10,10 @@ type GenerationV2ModelsApi = Readonly<{
   listAnthropic?: (options?: unknown) => Promise<unknown>
   listGoogleAIStudio?: (options?: unknown) => Promise<unknown>
   listDeepSeek?: (options?: unknown) => Promise<unknown>
+  sync?: (options: unknown) => Promise<unknown>
+  status?: (options: unknown) => Promise<unknown>
+  clearCurrent?: (options: unknown) => Promise<unknown>
+  clearAll?: (options: unknown) => Promise<unknown>
 }>
 
 export type CatalogQuerySortBy = 'name' | 'created_at' | 'context_length' | 'max_output_tokens'
@@ -136,6 +140,19 @@ export type CatalogQueryItem = Readonly<{
   inputModalities?: string[]
   outputModalities?: string[]
   supportedParameters?: string[]
+  tags?: string[]
+  architectureModality?: string | null
+  tokenizer?: string | null
+  instructType?: string | null
+  expirationDate?: string | null
+  expirationAtSec?: number | null
+  unknownExpiration?: boolean
+  hasPerRequestLimits?: boolean
+  hasDefaultParameters?: boolean
+  perRequestLimitsJson?: string | null
+  defaultParametersJson?: string | null
+  topProviderContextLength?: number | null
+  topProviderIsModerated?: boolean | null
   firstSeenAtMs?: number | null
   lastSeenAtMs?: number | null
   syncedAtMs?: number | null
@@ -159,6 +176,8 @@ export type CatalogQueryResult = Readonly<{
   visibleModelCount?: number
   hiddenModelCount?: number
   lastSyncAtMs?: number
+  errorCode?: string | null
+  errorMessage?: string | null
 }>
 
 function getGenerationV2ModelsApi(): GenerationV2ModelsApi | null {
@@ -320,6 +339,18 @@ function normalizeCursor(input: unknown): CatalogQueryCursor | null {
   }
 }
 
+const V2_MODEL_LIST_METHOD_BY_SOURCE = Object.freeze({
+  openrouter: 'listOpenRouter',
+  openai_responses: 'listOpenAIResponses',
+  anthropic_messages: 'listAnthropic',
+  google_ai_studio: 'listGoogleAIStudio',
+  deepseek: 'listDeepSeek',
+} as const)
+
+function readRecord(input: unknown): Record<string, unknown> | null {
+  return input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : null
+}
+
 function normalizeItem(input: unknown): CatalogQueryItem | null {
   if (!input || typeof input !== 'object') return null
   const row = input as Record<string, unknown>
@@ -328,32 +359,36 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
   const modelKey = String(row.modelKey ?? '').trim()
   const displayName = String(row.displayName ?? '').trim()
   if (!providerKey || !modelId || !modelKey || !displayName) return null
-
-  const numberOrNull = (value: unknown): number | null => {
-    if (typeof value !== 'number') return null
-    return Number.isFinite(value) ? value : null
-  }
-  const pricing = row.pricing && typeof row.pricing === 'object' ? row.pricing as Record<string, unknown> : null
-  const capabilities = row.capabilities && typeof row.capabilities === 'object' ? row.capabilities as Record<string, unknown> : null
-  const raw = row.raw && typeof row.raw === 'object' ? row.raw as Record<string, unknown> : null
-
+  const numberOrNull = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
+  const pricing = readRecord(row.pricing)
+  const capabilities = readRecord(row.capabilities)
+  const raw = readRecord(row.raw)
   return {
-    providerKey,
-    modelId,
-    modelKey,
+    providerKey, modelId, modelKey,
     canonicalSlug: typeof row.canonicalSlug === 'string' ? row.canonicalSlug : null,
-    displayName,
-    description: typeof row.description === 'string' ? row.description : null,
+    displayName, description: typeof row.description === 'string' ? row.description : null,
     vendor: typeof row.vendor === 'string' ? row.vendor : null,
     family: typeof row.family === 'string' ? row.family : null,
     status: typeof row.status === 'string' ? row.status : null,
     visibility: typeof row.visibility === 'string' ? row.visibility : null,
-    contextLength: numberOrNull(row.contextLength),
-    maxOutputTokens: numberOrNull(row.maxOutputTokens),
+    contextLength: numberOrNull(row.contextLength), maxOutputTokens: numberOrNull(row.maxOutputTokens),
     createdAtSec: numberOrNull(row.createdAtSec),
     inputModalities: normalizeDirectStringArray(row.inputModalities),
     outputModalities: normalizeDirectStringArray(row.outputModalities),
     supportedParameters: normalizeDirectStringArray(row.supportedParameters),
+    tags: normalizeDirectStringArray(row.tags),
+    architectureModality: typeof row.architectureModality === 'string' ? row.architectureModality : null,
+    tokenizer: typeof row.tokenizer === 'string' ? row.tokenizer : null,
+    instructType: typeof row.instructType === 'string' ? row.instructType : null,
+    expirationDate: typeof row.expirationDate === 'string' ? row.expirationDate : null,
+    expirationAtSec: numberOrNull(row.expirationAtSec), unknownExpiration: row.unknownExpiration === true || row.unknownExpiration === 1,
+    hasPerRequestLimits: row.hasPerRequestLimits === true || row.hasPerRequestLimits === 1,
+    hasDefaultParameters: row.hasDefaultParameters === true || row.hasDefaultParameters === 1,
+    perRequestLimitsJson: typeof row.perRequestLimitsJson === 'string' ? row.perRequestLimitsJson : null,
+    defaultParametersJson: typeof row.defaultParametersJson === 'string' ? row.defaultParametersJson : null,
+    topProviderContextLength: numberOrNull(row.topProviderContextLength),
+    topProviderIsModerated: typeof row.topProviderIsModerated === 'boolean' ? row.topProviderIsModerated
+      : row.topProviderIsModerated === 1 ? true : row.topProviderIsModerated === 0 ? false : null,
     pricing: {
       prompt: typeof pricing?.prompt === 'string' ? pricing.prompt : typeof row.pricePrompt === 'string' ? row.pricePrompt : null,
       completion: typeof pricing?.completion === 'string' ? pricing.completion : typeof row.priceCompletion === 'string' ? row.priceCompletion : null,
@@ -371,32 +406,14 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
       vision: capabilities?.vision === true || row.capVision === 1,
       longContext: capabilities?.longContext === true || row.capLongContext === 1,
     },
-    firstSeenAtMs: numberOrNull(row.firstSeenAtMs),
-    lastSeenAtMs: numberOrNull(row.lastSeenAtMs),
-    syncedAtMs: numberOrNull(row.syncedAtMs),
-    raw: raw
-      ? {
-          rawJson: typeof raw.rawJson === 'string' ? raw.rawJson : null,
-          inputModalitiesJson: typeof raw.inputModalitiesJson === 'string' ? raw.inputModalitiesJson : null,
-          outputModalitiesJson: typeof raw.outputModalitiesJson === 'string' ? raw.outputModalitiesJson : null,
-          supportedParametersJson: typeof raw.supportedParametersJson === 'string' ? raw.supportedParametersJson : null,
-          capabilitiesJson: typeof raw.capabilitiesJson === 'string' ? raw.capabilitiesJson : null,
-          pricingJson: typeof raw.pricingJson === 'string' ? raw.pricingJson : null,
-        }
-      : undefined,
+    firstSeenAtMs: numberOrNull(row.firstSeenAtMs), lastSeenAtMs: numberOrNull(row.lastSeenAtMs), syncedAtMs: numberOrNull(row.syncedAtMs),
+    raw: raw ? { rawJson: typeof raw.rawJson === 'string' ? raw.rawJson : null,
+      inputModalitiesJson: typeof raw.inputModalitiesJson === 'string' ? raw.inputModalitiesJson : null,
+      outputModalitiesJson: typeof raw.outputModalitiesJson === 'string' ? raw.outputModalitiesJson : null,
+      supportedParametersJson: typeof raw.supportedParametersJson === 'string' ? raw.supportedParametersJson : null,
+      capabilitiesJson: typeof raw.capabilitiesJson === 'string' ? raw.capabilitiesJson : null,
+      pricingJson: typeof raw.pricingJson === 'string' ? raw.pricingJson : null } : undefined,
   }
-}
-
-const V2_MODEL_LIST_METHOD_BY_SOURCE = Object.freeze({
-  openrouter: 'listOpenRouter',
-  openai_responses: 'listOpenAIResponses',
-  anthropic_messages: 'listAnthropic',
-  google_ai_studio: 'listGoogleAIStudio',
-  deepseek: 'listDeepSeek',
-} as const)
-
-function readRecord(input: unknown): Record<string, unknown> | null {
-  return input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : null
 }
 
 function readFiniteNumber(input: unknown): number | null {
@@ -411,6 +428,16 @@ function readCapabilitySeed(input: unknown): Record<string, unknown> | null {
 function v2AvailabilityItemToCatalogItem(sourceProviderKey: string, input: unknown, observedAtMs: number | null): CatalogQueryItem | null {
   const row = readRecord(input)
   if (!row) return null
+  // A provider authority may return the complete reviewed catalog projection;
+  // retain it instead of collapsing it to the smaller availability seed. The
+  // availability fallback below remains valid for providers whose official
+  // model-list contract exposes only identity/capability fields.
+  const complete = normalizeItem({ ...row, providerKey: sourceProviderKey })
+  if (complete) return complete
+  // The first-party OpenRouter authority owns the complete catalog projection.
+  // Accepting an identity-only row here would silently erase the rich model
+  // picker/detail capabilities that this contract promises.
+  if (sourceProviderKey === 'openrouter') return null
   const modelId = String(row.modelId ?? row.nativeModelId ?? '').trim()
   if (!modelId) return null
   const capabilitySeed = readCapabilitySeed(row)
@@ -420,6 +447,7 @@ function v2AvailabilityItemToCatalogItem(sourceProviderKey: string, input: unkno
   const tools = capabilitySeed?.functionCalling === true || capabilitySeed?.toolUse === true
   const structuredOutputs = capabilitySeed?.structuredOutput === true
   const vision = inputModalities.includes('image') || capabilitySeed?.imageInput === true
+  const imageGeneration = capabilitySeed?.imageGeneration === true
   return {
     providerKey: sourceProviderKey,
     modelId,
@@ -433,7 +461,7 @@ function v2AvailabilityItemToCatalogItem(sourceProviderKey: string, input: unkno
     maxOutputTokens: readFiniteNumber(capabilitySeed?.maxOutputTokens),
     createdAtSec: null,
     inputModalities,
-    outputModalities,
+    outputModalities: imageGeneration ? Array.from(new Set([...outputModalities, 'image'])) : outputModalities,
     supportedParameters: normalizeDirectStringArray(row.supportedParameters),
     pricing: { prompt: null, completion: null, request: null, image: null },
     capabilities: { reasoning, tools, structuredOutputs, vision, longContext: false },
@@ -450,6 +478,26 @@ function matchesStringSet(available: readonly string[], requested: readonly stri
 function matchesRange(value: number | null, range: CatalogQueryNumberRange | undefined): boolean {
   if (!range) return true
   return value !== null && (range.min === undefined || value >= range.min) && (range.max === undefined || value <= range.max)
+}
+
+function matchesContextBucket(value: number | null, requested: readonly string[] | undefined): boolean {
+  if (!requested?.length) return true
+  const bucket = value === null || value <= 0 ? 'unknown' : value < 8_192 ? 'small'
+    : value < 32_768 ? 'medium' : value < 128_000 ? 'large' : 'xlarge'
+  return requested.includes(bucket)
+}
+
+function matchesArchitecture(item: CatalogQueryItem, requested: readonly string[] | undefined): boolean {
+  if (!requested?.length) return true
+  return requested.some((raw) => {
+    const [inputPart, outputPart, ...rest] = raw.toLocaleLowerCase().split('->')
+    if (!outputPart || rest.length > 0) return (item.architectureModality ?? '').toLocaleLowerCase() === raw.toLocaleLowerCase()
+    const requiredInput = inputPart.split('+').map((value) => value.trim()).filter(Boolean)
+    const requiredOutput = outputPart.split('+').map((value) => value.trim()).filter(Boolean)
+    const availableInput = (item.inputModalities ?? []).map((value) => value.toLocaleLowerCase())
+    const availableOutput = (item.outputModalities ?? []).map((value) => value.toLocaleLowerCase())
+    return requiredInput.every((value) => availableInput.includes(value)) && requiredOutput.every((value) => availableOutput.includes(value))
+  })
 }
 
 function compareCatalogItems(a: CatalogQueryItem, b: CatalogQueryItem, sortBy: CatalogQuerySortBy, sortOrder: CatalogQuerySortOrder): number {
@@ -485,6 +533,17 @@ async function queryGenerationV2Catalog(input: Readonly<{
   inputModalities: string[] | undefined
   outputModalities: string[] | undefined
   supportedParameters: string[] | undefined
+  tags: string[] | undefined
+  contextBuckets: string[] | undefined
+  priceBuckets: string[] | undefined
+  expiringWithinDays: number | undefined
+  hasPerRequestLimits: boolean | undefined
+  hasDefaultParameters: boolean | undefined
+  topProviderIsModerated: boolean | undefined
+  architectureModalities: string[] | undefined
+  tokenizers: string[] | undefined
+  instructTypes: string[] | undefined
+  category: OpenRouterModelCategory | undefined
   sortBy: CatalogQuerySortBy
   sortOrder: CatalogQuerySortOrder
   limit: number
@@ -492,22 +551,40 @@ async function queryGenerationV2Catalog(input: Readonly<{
 }>): Promise<CatalogQueryResult> {
   const methodName = V2_MODEL_LIST_METHOD_BY_SOURCE[input.sourceProviderKey as keyof typeof V2_MODEL_LIST_METHOD_BY_SOURCE]
   const list = methodName ? input.api[methodName] : undefined
-  if (!list) return { items: [], nextCursor: null, notice: 'This provider catalog is not available in Generation V2.', status: 'failed' }
-  const response = readRecord(await list({ timeoutMs: 30_000 }))
-  if (!response || response.ok !== true) return { items: [], nextCursor: null, notice: 'Model list is unavailable.', status: 'failed' }
+  if (!list) return { items: [], nextCursor: null, notice: 'This provider catalog is not available in Generation V2.', status: 'failed',
+    errorCode: 'provider_catalog_unavailable', errorMessage: null }
+  const response = readRecord(await list({ timeoutMs: 30_000,
+    ...(input.sourceProviderKey === 'openrouter' && input.category ? { category: input.category } : {}) }))
+  if (!response || response.ok !== true) return { items: [], nextCursor: null, notice: 'Model list is unavailable.', status: 'failed',
+    errorCode: typeof response?.code === 'string' ? response.code : 'provider_catalog_query_failed',
+    errorMessage: typeof response?.message === 'string' ? response.message : null }
   const observedAtMs = readFiniteNumber(response.observedAtMs)
   const candidates = Array.isArray(response.items) ? response.items : Array.isArray(response.models) ? response.models : []
-  const searchNeedle = input.searchText?.trim().toLocaleLowerCase()
+  const searchTokens = input.searchText?.trim().toLocaleLowerCase().split(/\s+/u)
+    .filter((token) => token.length > 0).slice(0, 8) ?? []
   const all = candidates.map((row) => v2AvailabilityItemToCatalogItem(input.sourceProviderKey, row, observedAtMs))
     .filter((row): row is CatalogQueryItem => row !== null)
     .filter((item) => {
       const haystack = `${item.displayName} ${item.modelId} ${input.includeDescriptionInSearch ? item.description ?? '' : ''}`.toLocaleLowerCase()
-      if (searchNeedle && !haystack.includes(searchNeedle)) return false
+      if (searchTokens.length > 0 && !searchTokens.every((token) => haystack.includes(token))) return false
       if (input.vendors?.length && (!item.vendor || !input.vendors.includes(item.vendor))) return false
+      if (!matchesStringSet(item.tags ?? [], input.tags)) return false
+      if (!matchesContextBucket(item.contextLength, input.contextBuckets)) return false
+      if (input.priceBuckets?.length && !input.priceBuckets.some((bucket) => (item.tags ?? []).includes(`category:cheap_bucket:${bucket}`))) return false
       if (!matchesRange(item.contextLength, input.contextLength) || !matchesRange(item.maxOutputTokens, input.maxOutputTokens)) return false
       if (!matchesStringSet(item.inputModalities ?? [], input.inputModalities) || !matchesStringSet(item.outputModalities ?? [], input.outputModalities)) return false
       if (!matchesStringSet([...(item.inputModalities ?? []), ...(item.outputModalities ?? [])], input.modalities)) return false
       if (!matchesStringSet(item.supportedParameters ?? [], input.supportedParameters)) return false
+      if (input.expiringWithinDays !== undefined) {
+        const limit = Math.floor(Date.now() / 1_000) + Math.max(0, Math.floor(input.expiringWithinDays)) * 86_400
+        if (item.expirationAtSec === null || item.expirationAtSec === undefined || item.expirationAtSec > limit) return false
+      }
+      if (input.hasPerRequestLimits !== undefined && item.hasPerRequestLimits !== input.hasPerRequestLimits) return false
+      if (input.hasDefaultParameters !== undefined && item.hasDefaultParameters !== input.hasDefaultParameters) return false
+      if (input.topProviderIsModerated !== undefined && item.topProviderIsModerated !== input.topProviderIsModerated) return false
+      if (!matchesArchitecture(item, input.architectureModalities)) return false
+      if (input.tokenizers?.length && (!item.tokenizer || !input.tokenizers.map((value) => value.toLocaleLowerCase()).includes(item.tokenizer.toLocaleLowerCase()))) return false
+      if (input.instructTypes?.length && (!item.instructType || !input.instructTypes.map((value) => value.toLocaleLowerCase()).includes(item.instructType.toLocaleLowerCase()))) return false
       return !input.capabilities || Object.entries(input.capabilities).every(([key, expected]) => item.capabilities[key as keyof CatalogQueryCapabilitiesFilter] === expected)
     })
     .sort((a, b) => compareCatalogItems(a, b, input.sortBy, input.sortOrder))
@@ -516,11 +593,52 @@ async function queryGenerationV2Catalog(input: Readonly<{
   const lastItem = items.length > 0 ? items[items.length - 1] : null
   const hasNextPage = start + items.length < all.length
   const revision = typeof response.responseDigest === 'string' ? response.responseDigest : observedAtMs === null ? null : `${input.sourceProviderKey}:${observedAtMs}`
-  return { items, nextCursor: hasNextPage && lastItem ? cursorFor(lastItem, input.sortBy, input.sortOrder) : null, status: 'synced', catalogRevision: revision,
-    modelCount: all.length, visibleModelCount: all.length, hiddenModelCount: 0, ...(observedAtMs === null ? {} : { lastSyncAtMs: observedAtMs }) }
+  const status = response.status === 'not_synced' || response.status === 'syncing' || response.status === 'failed'
+    ? response.status : 'synced'
+  return { items, nextCursor: hasNextPage && lastItem ? cursorFor(lastItem, input.sortBy, input.sortOrder) : null,
+    notice: status === 'not_synced' ? 'Model catalog has not been synchronized.' : null, status, catalogRevision: revision,
+    modelCount: readFiniteNumber(response.modelCount) ?? all.length,
+    visibleModelCount: readFiniteNumber(response.visibleModelCount) ?? all.length,
+    hiddenModelCount: readFiniteNumber(response.hiddenModelCount) ?? 0,
+    errorCode: typeof response.errorCode === 'string' ? response.errorCode : null,
+    ...(observedAtMs === null ? {} : { lastSyncAtMs: observedAtMs }) }
 }
 
 export class CatalogQueryService {
+  static async sync(input: Readonly<{
+    sourceProviderKey: string
+    category?: OpenRouterModelCategory
+    timeoutMs?: number
+    retentionMs?: number | 'never'
+  }>): Promise<unknown> {
+    const api = getGenerationV2ModelsApi()
+    if (!api?.sync) return Object.freeze({ ok: false, code: 'model_catalog_authority_unavailable' })
+    return api.sync({ providerKey: String(input.sourceProviderKey ?? '').trim(),
+      ...(input.category ? { category: input.category } : {}),
+      ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
+      ...(input.retentionMs === undefined ? {} : { retentionMs: input.retentionMs }) })
+  }
+
+  static async status(input: Readonly<{ sourceProviderKey: string; category?: OpenRouterModelCategory }>): Promise<unknown> {
+    const api = getGenerationV2ModelsApi()
+    if (!api?.status) return Object.freeze({ ok: false, code: 'model_catalog_authority_unavailable' })
+    return api.status({ providerKey: String(input.sourceProviderKey ?? '').trim(),
+      ...(input.category ? { category: input.category } : {}) })
+  }
+
+  static async clearCurrent(input: Readonly<{ sourceProviderKey: string; category?: OpenRouterModelCategory }>): Promise<unknown> {
+    const api = getGenerationV2ModelsApi()
+    if (!api?.clearCurrent) return Object.freeze({ ok: false, code: 'model_catalog_authority_unavailable' })
+    return api.clearCurrent({ providerKey: String(input.sourceProviderKey ?? '').trim(),
+      ...(input.category ? { category: input.category } : {}) })
+  }
+
+  static async clearAll(input: Readonly<{ sourceProviderKey: string }>): Promise<unknown> {
+    const api = getGenerationV2ModelsApi()
+    if (!api?.clearAll) return Object.freeze({ ok: false, code: 'model_catalog_authority_unavailable' })
+    return api.clearAll({ providerKey: String(input.sourceProviderKey ?? '').trim() })
+  }
+
   static async query(input: CatalogQueryInput): Promise<CatalogQueryResult> {
     const startedAtMs = Date.now()
     const sourceProviderKey =
@@ -572,19 +690,7 @@ export class CatalogQueryService {
       const singleCategory = normalizeSingleCategory(input.filter?.category)
       const effectiveCategory = singleCategory ?? legacyCategories?.[0]
 
-      const unsupportedFilters = [
-        ...(normalizeStringArray(input.filter?.tags)?.length ? ['tags'] : []),
-        ...(normalizeStringArray(input.filter?.contextBuckets)?.length ? ['contextBuckets'] : []),
-        ...(typeof input.filter?.expiringWithinDays === 'number' ? ['expiringWithinDays'] : []),
-        ...(normalizeStringArray(input.filter?.priceBuckets)?.length ? ['priceBuckets'] : []),
-        ...(typeof input.filter?.hasPerRequestLimits === 'boolean' ? ['hasPerRequestLimits'] : []),
-        ...(typeof input.filter?.hasDefaultParameters === 'boolean' ? ['hasDefaultParameters'] : []),
-        ...(typeof input.filter?.topProviderIsModerated === 'boolean' ? ['topProviderIsModerated'] : []),
-        ...(normalizeStringArray(input.filter?.architectureModalities)?.length ? ['architectureModalities'] : []),
-        ...(normalizeStringArray(input.filter?.tokenizers)?.length ? ['tokenizers'] : []),
-        ...(normalizeStringArray(input.filter?.instructTypes)?.length ? ['instructTypes'] : []),
-        ...(effectiveCategory ? ['category'] : []),
-      ]
+      const unsupportedFilters = effectiveCategory && sourceProviderKey !== 'openrouter' ? ['category'] : []
       if (unsupportedFilters.length > 0) {
         const notice = 'Some filters are unavailable for the current catalog.'
         logModelCatalogEvent('query', 'query_degraded', {
@@ -614,6 +720,18 @@ export class CatalogQueryService {
         inputModalities: normalizeStringArray(input.filter?.inputModalities),
         outputModalities: normalizeStringArray(input.filter?.outputModalities),
         supportedParameters: normalizeStringArray(input.filter?.supportedParameters),
+        tags: normalizeStringArray(input.filter?.tags),
+        contextBuckets: normalizeStringArray(input.filter?.contextBuckets),
+        priceBuckets: normalizeStringArray(input.filter?.priceBuckets),
+        expiringWithinDays: typeof input.filter?.expiringWithinDays === 'number' && Number.isFinite(input.filter.expiringWithinDays)
+          ? input.filter.expiringWithinDays : undefined,
+        hasPerRequestLimits: typeof input.filter?.hasPerRequestLimits === 'boolean' ? input.filter.hasPerRequestLimits : undefined,
+        hasDefaultParameters: typeof input.filter?.hasDefaultParameters === 'boolean' ? input.filter.hasDefaultParameters : undefined,
+        topProviderIsModerated: typeof input.filter?.topProviderIsModerated === 'boolean' ? input.filter.topProviderIsModerated : undefined,
+        architectureModalities: normalizeStringArray(input.filter?.architectureModalities),
+        tokenizers: normalizeStringArray(input.filter?.tokenizers),
+        instructTypes: normalizeStringArray(input.filter?.instructTypes),
+        category: sourceProviderKey === 'openrouter' ? effectiveCategory : undefined,
         sortBy,
         sortOrder,
         limit,
@@ -632,10 +750,7 @@ export class CatalogQueryService {
         ...querySummary,
         stage: 'query_execution',
         durationMs: Date.now() - startedAtMs,
-        reason:
-          typeof error?.message === 'string' && error.message.trim().length > 0
-            ? error.message.trim()
-            : 'unknown_error',
+        reason: 'MODEL_CATALOG_QUERY_FAILED',
       })
       throw error
     }

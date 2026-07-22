@@ -192,6 +192,7 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
       domain: Object.freeze({ kind: 'enum', values: Object.freeze(['disabled']) }),
     }),
     unsupported('image.outputCompression'),
+    unsupported('image.outputMode'),
     unsupported('image.quality'),
     unsupported('image.resolution'),
     unsupported('image.size'),

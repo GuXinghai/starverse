@@ -6,7 +6,7 @@ export type GenerationV2UiContextMessage = Readonly<{
 }>
 export type GenerationV2UiRenderableTurns = Readonly<{
   messages:GenerationV2UiContextMessage[]
-  turns:ReadonlyArray<Readonly<{questionId:string;chosenAnswerRootId:string|null;questionMode:'include'|'exclude';
+  turns:ReadonlyArray<Readonly<{questionId:string;chosenAnswerRootId:string;questionMode:'include'|'exclude';
     answerMode:'include'|'exclude';effectiveMode:'include'|'exclude';lockedByQuestionExclude:boolean}>>
 }>
 

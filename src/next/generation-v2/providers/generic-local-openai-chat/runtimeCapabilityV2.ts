@@ -17,7 +17,7 @@ export function composeGenericLocalOpenAIChatBaselineCapabilityV2(input: Readonl
   const fields: PersistedRuntimeCapabilityFieldV2[] = RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => {
     if (DISABLED.has(path)) return Object.freeze({ path, state: 'supported', domain: Object.freeze({ kind: 'enum', values: Object.freeze([path === 'providerExtension.kind' ? 'none' : 'disabled']) }), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
     const domain = GENERATION.get(path)
-    return domain ? Object.freeze({ path, state: 'supported', domain: Object.freeze(domain), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
+    return domain ? Object.freeze({ path, state: 'supported', domain: Object.freeze(domain), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as unknown as PersistedRuntimeCapabilityFieldV2
       : Object.freeze({ path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) }) as PersistedRuntimeCapabilityFieldV2
   })
   return decodeRuntimeCapabilitySnapshotV2(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({ schemaVersion: 2,

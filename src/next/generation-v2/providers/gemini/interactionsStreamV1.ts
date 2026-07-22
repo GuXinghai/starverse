@@ -1,4 +1,5 @@
 import { stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
+import { isGeminiInteractionsImageModelIdV1 } from './interactionsImageCapabilityPolicyV1'
 
 const MAX_STREAM_BYTES = 48 * 1024 * 1024
 const MAX_FRAME_BYTES = 24 * 1024 * 1024
@@ -25,12 +26,24 @@ export type GeminiInteractionsImageNativeEventV1 = Readonly<{
   canonicalJson: string
   raw: Readonly<Record<string, unknown>> | null
 }>
+export type GeminiInteractionsReasoningDetailV1 = Readonly<{
+  type: 'thought_summary'
+  text: string
+  thoughtSignature?: string
+}> | Readonly<{
+  type: 'thought_image'
+  data: string
+  mimeType: string
+  thoughtSignature?: string
+}>
 
 export type GeminiInteractionsImageResultV1 = Readonly<{
   bytes: Uint8Array
   mime: string
   interactionId: string
-  model: 'gemini-3.1-flash-image'
+  model: string
+  text: string
+  reasoningDetails: readonly GeminiInteractionsReasoningDetailV1[]
   usage: Readonly<Record<string, unknown>>
   events: readonly GeminiInteractionsImageNativeEventV1[]
 }>
@@ -82,7 +95,8 @@ function readInteraction(value: unknown, terminal: boolean): Readonly<Record<str
   keys(interaction, ['id', 'status'], ['agent', 'created', 'model', 'object', 'service_tier', 'steps', 'updated', 'usage'])
   boundedString(interaction.id, 4096)
   const expectedStatus = terminal ? 'completed' : 'in_progress'
-  if (interaction.status !== expectedStatus || (interaction.model !== undefined && interaction.model !== 'gemini-3.1-flash-image')) {
+  if (interaction.status !== expectedStatus || (interaction.model !== undefined &&
+      (typeof interaction.model !== 'string' || !isGeminiInteractionsImageModelIdV1(interaction.model)))) {
     return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
   }
   if (interaction.steps !== undefined && !Array.isArray(interaction.steps)) {
@@ -106,6 +120,48 @@ function readImage(value: unknown): Readonly<{ data: string | null; mime: string
   }
   return Object.freeze({ data, mime })
 }
+function readText(value: unknown): string {
+  const text = record(value)
+  if (text.type !== 'output_text' && text.type !== 'text_output') {
+    return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_UNSUPPORTED_CONTENT')
+  }
+  keys(text, ['type', 'text'])
+  return typeof text.text === 'string' ? text.text : fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
+}
+function readThoughtSummary(value: unknown): GeminiInteractionsReasoningDetailV1 {
+  const thought = record(value)
+  if (thought.type !== 'thought_summary' && thought.type !== 'thinking_summary' && thought.type !== 'reasoning_summary') {
+    return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_UNSUPPORTED_CONTENT')
+  }
+  keys(thought, ['type'], ['text', 'content', 'thought_signature'])
+  if ((thought.text === undefined) === (thought.content === undefined) ||
+      (thought.thought_signature !== undefined && typeof thought.thought_signature !== 'string')) {
+    return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
+  }
+  const signature = thought.thought_signature === undefined ? {} : { thoughtSignature: thought.thought_signature as string }
+  if (thought.text !== undefined) {
+    if (typeof thought.text !== 'string') return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
+    return Object.freeze({ type: 'thought_summary' as const, text: thought.text, ...signature })
+  }
+  const content = record(thought.content)
+  if (content.type === 'text') {
+    keys(content, ['type', 'text'])
+    if (typeof content.text !== 'string') return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
+    return Object.freeze({ type: 'thought_summary' as const, text: content.text, ...signature })
+  }
+  const image = readImage(content)
+  if (image.data === null || image.mime === null) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
+  return Object.freeze({ type: 'thought_image' as const, data: image.data, mimeType: image.mime, ...signature })
+}
+function readOutput(value: unknown): Readonly<{ kind: 'image'; value: ReturnType<typeof readImage> }> |
+  Readonly<{ kind: 'text'; value: string }> | Readonly<{ kind: 'thought'; value: ReturnType<typeof readThoughtSummary> }> {
+  const output = record(value)
+  return output.type === 'image'
+    ? Object.freeze({ kind: 'image' as const, value: readImage(output) })
+    : output.type === 'output_text' || output.type === 'text_output'
+      ? Object.freeze({ kind: 'text' as const, value: readText(output) })
+      : Object.freeze({ kind: 'thought' as const, value: readThoughtSummary(output) })
+}
 
 function parseJsonEvent(rawText: string): GeminiInteractionsImageNativeEventV1 {
   let parsed: unknown
@@ -128,16 +184,19 @@ function parseJsonEvent(rawText: string): GeminiInteractionsImageNativeEventV1 {
       index(raw.index)
       const step = record(raw.step)
       keys(step, ['type'], ['content', 'error'])
-      if (step.type !== 'model_output' || step.error !== undefined) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_UNSUPPORTED_CONTENT')
+      if ((step.type !== 'model_output' && step.type !== 'thought') || step.error !== undefined) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_UNSUPPORTED_CONTENT')
       if (step.content !== undefined) {
-        if (!Array.isArray(step.content) || step.content.length > 1) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_MULTI_IMAGE_UNSUPPORTED')
-        for (const content of step.content) readImage(content)
+        if (!Array.isArray(step.content) || step.content.length > 2 ||
+            step.content.filter((content) => record(content).type === 'image').length > 1) {
+          return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_MULTI_IMAGE_UNSUPPORTED')
+        }
+        for (const content of step.content) readOutput(content)
       }
       break
     }
     case 'step.delta':
       keys(raw, ['event_type', 'index', 'delta'], ['event_id', 'metadata'])
-      index(raw.index); readImage(raw.delta)
+      index(raw.index); readOutput(raw.delta)
       break
     case 'step.stop':
       keys(raw, ['event_type', 'index'], ['event_id', 'metadata', 'step_usage', 'usage'])
@@ -215,15 +274,24 @@ export class GeminiInteractionsImageSseDecoderV1 {
 }
 
 export class GeminiInteractionsImageResultAssemblerV1 {
+  readonly #expectedModel!: string
   #events: GeminiInteractionsImageNativeEventV1[] = []
   #createdId: string | null = null
   #activeStep: number | null = null
+  #activeStepType: 'model_output' | 'thought' | null = null
   #chunks: string[] = []
+  #textChunks: string[] = []
+  #reasoningDetails: GeminiInteractionsReasoningDetailV1[] = []
   #mime: string | null = null
   #completed: Readonly<Record<string, unknown>> | null = null
   #done = false
   #failed = false
   #finished = false
+
+  constructor(expectedModel = 'gemini-3.1-flash-image') {
+    if (!isGeminiInteractionsImageModelIdV1(expectedModel)) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+    this.#expectedModel = expectedModel
+  }
 
   push(event: GeminiInteractionsImageNativeEventV1): void {
     if (this.#finished || this.#done) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
@@ -240,17 +308,29 @@ export class GeminiInteractionsImageResultAssemblerV1 {
     if (event.eventType === 'step.start') {
       if (this.#activeStep !== null || this.#completed !== null) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
       this.#activeStep = index(raw.index)
-      const content = record(raw.step).content
-      if (Array.isArray(content) && content.length === 1) this.#append(readImage(content[0]))
+      const step = record(raw.step)
+      this.#activeStepType = step.type as 'model_output' | 'thought'
+      const content = step.content
+      if (Array.isArray(content)) for (const item of content) {
+        const output = readOutput(item)
+        if (this.#activeStepType === 'thought' && output.kind !== 'thought') {
+          return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_UNSUPPORTED_CONTENT')
+        }
+        this.#appendOutput(output)
+      }
       return
     }
     if (event.eventType === 'step.delta') {
       if (this.#activeStep === null || index(raw.index) !== this.#activeStep) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
-      this.#append(readImage(raw.delta)); return
+      const output = readOutput(raw.delta)
+      if (this.#activeStepType === 'thought' && output.kind !== 'thought') {
+        return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_UNSUPPORTED_CONTENT')
+      }
+      this.#appendOutput(output); return
     }
     if (event.eventType === 'step.stop') {
       if (this.#activeStep === null || index(raw.index) !== this.#activeStep) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
-      this.#activeStep = null; return
+      this.#activeStep = null; this.#activeStepType = null; return
     }
     if (event.eventType === 'interaction.completed') {
       if (this.#activeStep !== null || this.#completed !== null) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
@@ -266,9 +346,14 @@ export class GeminiInteractionsImageResultAssemblerV1 {
     }
     if (image.data !== null) this.#chunks.push(image.data)
   }
+  #appendOutput(output: ReturnType<typeof readOutput>): void {
+    if (output.kind === 'image') this.#append(output.value)
+    else if (output.kind === 'text') this.#textChunks.push(output.value)
+    else this.#reasoningDetails.push(output.value)
+  }
   finish(): GeminiInteractionsImageResultV1 {
     if (this.#finished || !this.#done || this.#failed || this.#activeStep !== null || !this.#completed ||
-        this.#chunks.length === 0 || this.#mime === null || this.#completed.model !== 'gemini-3.1-flash-image') {
+        this.#chunks.length === 0 || this.#mime === null || this.#completed.model !== this.#expectedModel) {
       return fail(this.#failed ? 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
         : 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
     }
@@ -282,7 +367,8 @@ export class GeminiInteractionsImageResultAssemblerV1 {
       return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
     }
     return Object.freeze({ bytes: new Uint8Array(bytes), mime: this.#mime,
-      interactionId: this.#createdId!, model: 'gemini-3.1-flash-image',
+      interactionId: this.#createdId!, model: this.#expectedModel, text: this.#textChunks.join(''),
+      reasoningDetails: Object.freeze([...this.#reasoningDetails]),
       usage: this.#completed.usage === undefined ? Object.freeze({}) : record(this.#completed.usage),
       events: Object.freeze([...this.#events]) })
   }

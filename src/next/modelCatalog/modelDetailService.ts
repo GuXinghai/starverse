@@ -267,6 +267,9 @@ export async function getModelCatalogModelDetail(
   }
   try {
     const result = await CatalogQueryService.query({ sourceProviderKey: providerKey, searchText: modelId, page: { limit: 100 } })
+    if (result.status === 'failed') {
+      return { providerKey, modelId, item: null, error: 'Model detail unavailable.' }
+    }
     const firstRow = result.items.find((item) => item.modelId === modelId) ?? null
     const item = normalizeDetailRow(firstRow)
     if (!item) {
@@ -303,10 +306,7 @@ export async function getModelCatalogModelDetail(
       modelId,
       modelKey,
       durationMs: Date.now() - startedAtMs,
-      reason:
-        typeof error?.message === 'string' && error.message.trim().length > 0
-          ? error.message.trim()
-          : 'unknown_error',
+      reason: 'MODEL_CATALOG_DETAIL_QUERY_FAILED',
     })
     return {
       providerKey,

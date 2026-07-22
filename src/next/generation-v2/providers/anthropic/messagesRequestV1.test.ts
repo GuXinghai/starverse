@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest'
+import { decodeResolvedGenerationIntentV2 } from '../../domain/resolvedGenerationIntentV2'
 import {
   AnthropicMessagesRequestV1Error,
   compileAnthropicMessagesRequestV1,
 } from './messagesRequestV1'
 
 function intent(overrides: Record<string, unknown> = {}) {
-  return {
+  return decodeResolvedGenerationIntentV2({
     schemaVersion: 2,
     generation: { maxOutputTokens: 2_048, temperature: 0.4, topP: 0.8, topK: 20, stop: ['END'] },
     reasoning: { mode: 'enabled', effort: 'high' },
@@ -14,7 +15,7 @@ function intent(overrides: Record<string, unknown> = {}) {
       kind: 'anthropic_messages', thinkingDisplay: 'summarized', thinkingMode: 'manual', manualThinkingBudgetTokens: 1_024,
     },
     ...overrides,
-  }
+  }).value
 }
 
 const nativeBlocks = [

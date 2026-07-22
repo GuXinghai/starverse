@@ -16,7 +16,7 @@ export type MessageRole = 'user' | 'assistant' | 'tool'
  * OpenRouter reasoning.effort enum (full set).
  * Note: reasoning.exclude is a separate switch; reasoning.enabled is not used in this repo.
  */
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export type RequestedReasoningMode = 'auto' | 'effort'
 
