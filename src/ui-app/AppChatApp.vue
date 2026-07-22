@@ -321,10 +321,17 @@ type RawRequestRecord = Readonly<{
   id: string; requestSequence: number; providerId: string; modelId: string
   serializedBody: string; bodyBytes: number; bodySha256: string; capturedAtMs: number
 }>
+type RawProviderErrorRecord = Readonly<{
+  id: string; requestSequence: number; providerId: string; modelId: string
+  phase: 'http_response' | 'sse_event'; httpStatus: number; contentType: string | null
+  providerRequestId: string | null; payloadBase64: string; payloadText: string | null
+  payloadBytes: number; payloadSha256: string; capturedAtMs: number
+}>
 const rawDataOpen = ref(false)
 const rawDataLoading = ref(false)
 const rawDataAnswerRootId = ref('')
 const rawDataRecords = ref<readonly RawRequestRecord[]>([])
+const rawProviderErrorRecords = ref<readonly RawProviderErrorRecord[]>([])
 const rawDataError = ref<string | null>(null)
 
 async function openRawData(answerRootId: string) {
@@ -339,9 +346,13 @@ async function openRawData(answerRootId: string) {
     if (!status.available || !status.schemaReady) {
       throw new Error(status.errorCode ?? 'RAW_DEBUG_STORE_UNAVAILABLE')
     }
-    rawDataRecords.value = await debugBridge.listByAnswerRootId(answerRootId)
+    ;[rawDataRecords.value, rawProviderErrorRecords.value] = await Promise.all([
+      debugBridge.listByAnswerRootId(answerRootId),
+      debugBridge.listProviderErrorsByAnswerRootId(answerRootId),
+    ])
   } catch (error) {
     rawDataRecords.value = []
+    rawProviderErrorRecords.value = []
     rawDataError.value = error instanceof Error ? error.message : String(error)
   } finally {
     rawDataLoading.value = false
@@ -351,6 +362,10 @@ async function openRawData(answerRootId: string) {
 function closeRawData() { rawDataOpen.value = false }
 function formatRawRequestBody(body: string): string {
   try { return JSON.stringify(JSON.parse(body), null, 2) } catch { return body }
+}
+function formatRawProviderError(record: RawProviderErrorRecord): string {
+  if (record.payloadText === null) return record.payloadBase64
+  try { return JSON.stringify(JSON.parse(record.payloadText), null, 2) } catch { return record.payloadText }
 }
 </script>
 
@@ -876,9 +891,6 @@ function formatRawRequestBody(body: string): string {
             :isSendPlanLoading="composerSendPlanLoading"
             :historyIncompatibleSummary="historyIncompatibleAttachmentSummary"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
-            :openRouterImageEndpointSelection="openRouterImageEndpointSelection"
-            :openRouterImageEndpointSelectionLoading="openRouterImageEndpointSelectionLoading"
-            :openRouterImageEndpointSelectionError="openRouterImageEndpointSelectionError"
             @updateModel="onUpdateModel"
             @refreshProviderModelsRequested="onRefreshProviderModelPickerSources"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
@@ -943,6 +955,9 @@ function formatRawRequestBody(body: string): string {
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
+            :openRouterImageEndpointSelection="openRouterImageEndpointSelection"
+            :openRouterImageEndpointSelectionLoading="openRouterImageEndpointSelectionLoading"
+            :openRouterImageEndpointSelectionError="openRouterImageEndpointSelectionError"
             @updateModel="onUpdateModel"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
@@ -1137,7 +1152,7 @@ function formatRawRequestBody(body: string): string {
       <div class="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-white shadow-xl">
         <div class="flex items-center justify-between border-b px-4 py-3">
           <div>
-            <div class="font-semibold">Raw Request Data</div>
+            <div class="font-semibold">Raw Data</div>
             <div class="text-xs text-gray-500">Answer {{ rawDataAnswerRootId }}</div>
           </div>
           <button type="button" class="rounded border px-3 py-1 text-sm" data-testid="raw-data-close" @click="closeRawData">Close</button>
@@ -1145,13 +1160,20 @@ function formatRawRequestBody(body: string): string {
         <div class="min-h-0 flex-1 overflow-auto p-4">
           <div v-if="rawDataLoading" class="text-sm text-gray-500">Loading...</div>
           <div v-else-if="rawDataError" class="text-sm text-red-700">{{ rawDataError }}</div>
-          <div v-else-if="rawDataRecords.length === 0" class="text-sm text-gray-500">No persisted raw request body for this answer.</div>
+          <div v-else-if="rawDataRecords.length === 0 && rawProviderErrorRecords.length === 0" class="text-sm text-gray-500">No persisted raw data for this answer.</div>
           <div v-else class="space-y-4">
             <section v-for="record in rawDataRecords" :key="record.id" class="rounded border">
               <div class="border-b bg-gray-50 px-3 py-2 text-xs text-gray-600">
                 Request #{{ record.requestSequence }} · {{ record.providerId }} · {{ record.modelId }} · {{ record.bodyBytes }} bytes · SHA-256 {{ record.bodySha256 }}
               </div>
               <pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all p-3 text-xs" :data-testid="`raw-data-request-${record.requestSequence}`">{{ formatRawRequestBody(record.serializedBody) }}</pre>
+            </section>
+            <section v-for="record in rawProviderErrorRecords" :key="record.id" class="rounded border border-red-200">
+              <div class="border-b border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                Provider Error #{{ record.requestSequence }} · {{ record.phase }} · HTTP {{ record.httpStatus }} · {{ record.providerId }} · {{ record.modelId }} · {{ record.payloadBytes }} bytes · SHA-256 {{ record.payloadSha256 }}
+                <span v-if="record.providerRequestId"> · Request {{ record.providerRequestId }}</span>
+              </div>
+              <pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all p-3 text-xs" :data-testid="`raw-data-provider-error-${record.requestSequence}`">{{ formatRawProviderError(record) }}</pre>
             </section>
           </div>
         </div>

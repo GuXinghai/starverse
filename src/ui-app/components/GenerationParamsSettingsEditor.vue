@@ -46,7 +46,7 @@ const emit = defineEmits<{
 }>()
 
 const fallbackEnumValues: Partial<Record<GenerationParamKey, readonly string[]>> = {
-  reasoningEffort: ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh'],
+  reasoningEffort: ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
   reasoningSummary: ['none', 'auto', 'concise', 'detailed'],
   thinkingLevel: ['minimal', 'low', 'medium', 'high'],
   thoughtSummaryMode: ['none', 'auto'],

@@ -30,15 +30,19 @@ import {
   DEFAULT_CATALOG_AUTO_SYNC_POLICY,
   DEFAULT_CATALOG_FRESHNESS_MS,
   DEFAULT_CATALOG_LIST_UPDATE_MODE,
+  DEFAULT_CATALOG_RETENTION_MS,
   OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
   OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY,
   OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY,
+  OPENROUTER_CATALOG_RETENTION_MS_KEY,
   isCatalogStatusStale,
   normalizeCatalogAutoSyncPolicy,
   normalizeCatalogFreshnessMs,
   normalizeCatalogListUpdateMode,
+  normalizeCatalogRetentionMs,
   type CatalogAutoSyncPolicy,
   type CatalogListUpdateMode,
+  type CatalogRetentionMs,
 } from '@/shared/modelCatalog/catalogSyncSettings'
 import {
   isProviderCatalogSourceKey,
@@ -186,6 +190,7 @@ const selectedSyncProviderKey = ref<ProviderCatalogKnownProviderKey>(OPENROUTER_
 const pickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
 const catalogFreshnessMs = ref(DEFAULT_CATALOG_FRESHNESS_MS)
+const catalogRetentionMs = ref<CatalogRetentionMs>(DEFAULT_CATALOG_RETENTION_MS)
 let lastAutoSyncAtMs = 0
 const lastManualRefreshAtMsByProvider = new Map<ProviderCatalogKnownProviderKey, number>()
 const AUTO_SYNC_COOLDOWN_MS = 10_000
@@ -598,26 +603,31 @@ async function loadCatalogSyncSettings(providerKey: ProviderCatalogKnownProvider
     pickerOpenSyncPolicy.value = DEFAULT_CATALOG_AUTO_SYNC_POLICY
     catalogListUpdateMode.value = DEFAULT_CATALOG_LIST_UPDATE_MODE
     catalogFreshnessMs.value = DEFAULT_CATALOG_FRESHNESS_MS
+    catalogRetentionMs.value = DEFAULT_CATALOG_RETENTION_MS
     return
   }
-  const settingKey = (settingName: 'pickerOpenSyncPolicy' | 'listUpdateMode' | 'freshnessMs') =>
+  const settingKey = (settingName: 'pickerOpenSyncPolicy' | 'listUpdateMode' | 'freshnessMs' | 'retentionMs') =>
     providerKey === OPENROUTER_PROVIDER_ID
       ? (
           settingName === 'pickerOpenSyncPolicy'
             ? OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY
             : settingName === 'listUpdateMode'
               ? OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY
-              : OPENROUTER_CATALOG_FRESHNESS_MS_KEY
+              : settingName === 'freshnessMs'
+                ? OPENROUTER_CATALOG_FRESHNESS_MS_KEY
+                : OPENROUTER_CATALOG_RETENTION_MS_KEY
         )
       : providerCatalogSettingKey(providerKey, settingName)
-  const [pickerPolicy, updateMode, freshness] = await Promise.all([
+  const [pickerPolicy, updateMode, freshness, retention] = await Promise.all([
     store.get(settingKey('pickerOpenSyncPolicy')),
     store.get(settingKey('listUpdateMode')),
     store.get(settingKey('freshnessMs')),
+    store.get(settingKey('retentionMs')),
   ])
   pickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(pickerPolicy)
   catalogListUpdateMode.value = normalizeCatalogListUpdateMode(updateMode)
   catalogFreshnessMs.value = normalizeCatalogFreshnessMs(freshness)
+  catalogRetentionMs.value = normalizeCatalogRetentionMs(retention)
 }
 
 function normalizeCatalogRevision(value: unknown, modelCount?: unknown, lastSyncAtMs?: unknown): string | null {
@@ -1341,6 +1351,17 @@ async function fetchPage(options: Readonly<{ preserveUiState?: boolean; restoreU
       const providerKey = providerKeys[index]
       if (!providerKey) return
       const revision = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
+      setProviderSyncSnapshot(providerKey, createProviderSyncSnapshot({
+        syncState: result.status === 'failed' ? 'error' : result.status === 'syncing' ? 'syncing' : 'ok',
+        modelCount: result.modelCount ?? result.items.length,
+        visibleModelCount: result.visibleModelCount,
+        hiddenModelCount: result.hiddenModelCount,
+        lastSyncAtMs: result.lastSyncAtMs ?? Date.now(),
+        lastErrorCode: result.errorCode,
+        lastErrorMessage: result.errorMessage,
+        catalogRevision: revision,
+        isStale: result.status === 'failed',
+      }))
       if (revision) {
         nextAppliedRevisions[providerKey] = revision
         nextLatestRevisions[providerKey] = revision
@@ -1534,15 +1555,19 @@ async function runSyncProvider(
   })
 
   try {
-    const result = await CatalogQueryService.query({
-      sourceProviderKey: providerKey,
-      page: { limit: 1 },
-    })
-    if (result.status === 'synced') {
+    const syncResponse = await CatalogQueryService.sync({ sourceProviderKey: providerKey,
+      ...(providerKey === OPENROUTER_PROVIDER_ID && selectedCategory.value !== 'all' ? { category: selectedCategory.value } : {}),
+      retentionMs: catalogRetentionMs.value }) as Record<string, unknown>
+    const result = syncResponse.ok === true
+      ? await resolveQueryFn()({ sourceProviderKey: providerKey, page: { limit: 1 },
+          ...(providerKey === OPENROUTER_PROVIDER_ID && selectedCategory.value !== 'all'
+            ? { filter: { category: selectedCategory.value } } : {}) })
+      : null
+    if (result?.status === 'synced') {
       const revision = normalizeCatalogRevision(result.catalogRevision, result.modelCount, result.lastSyncAtMs)
       const snapshot = createProviderSyncSnapshot({
         syncState: 'ok',
-        modelCount: result.modelCount,
+        modelCount: result?.modelCount,
         visibleModelCount: result.visibleModelCount,
         hiddenModelCount: result.hiddenModelCount,
         lastSyncAtMs: result.lastSyncAtMs ?? Date.now(),
@@ -1554,18 +1579,14 @@ async function runSyncProvider(
         applyImmediately: reason === 'manual_refresh',
       })
     } else {
-      const snapshot = createProviderSyncSnapshot({
-        syncState: 'error',
-        modelCount: result.modelCount,
-        visibleModelCount: result.visibleModelCount,
-        hiddenModelCount: result.hiddenModelCount,
-        lastSyncAtMs: result.lastSyncAtMs,
-        lastErrorCode: result.errorCode ?? 'unknown_error',
-        lastErrorMessage: result.errorMessage ?? null,
-        catalogRevision: result.catalogRevision,
+      const previous = getProviderSyncSnapshot(providerKey)
+      setProviderSyncSnapshot(providerKey, {
+        ...previous,
+        status: 'failed',
+        errorCode: String(syncResponse.code ?? result?.errorCode ?? 'unknown_error'),
+        errorMessage: result?.errorMessage ?? null,
         isStale: true,
       })
-      setProviderSyncSnapshot(providerKey, snapshot)
     }
   } catch (err) {
     setProviderSyncSnapshot(providerKey, {
@@ -1578,19 +1599,32 @@ async function runSyncProvider(
   }
 }
 
-async function fetchSyncStatus() {
-  await fetchProviderSyncStatus(selectedSyncProviderKey.value)
-}
-
 async function fetchVisibleProviderSyncStatuses() {
   const keys = catalogProviderKeys.value
   await Promise.all(keys.map((providerKey) => fetchProviderSyncStatus(providerKey)))
 }
 
 async function fetchProviderSyncStatus(providerKey: ProviderCatalogKnownProviderKey) {
-  // Generation V2 availability is fetched directly from the fixed provider
-  // contract. It has no legacy catalog-cache status endpoint to poll.
-  void providerKey
+  try {
+    const response = await CatalogQueryService.status({ sourceProviderKey: providerKey,
+      ...(providerKey === OPENROUTER_PROVIDER_ID && selectedCategory.value !== 'all' ? { category: selectedCategory.value } : {}) }) as Record<string, unknown>
+    if (response.ok !== true) {
+      setProviderSyncSnapshot(providerKey, createProviderSyncSnapshot({ syncState: 'error',
+        lastErrorCode: response.code ?? 'unknown_error', isStale: true }))
+      return
+    }
+    setProviderSyncSnapshot(providerKey, createProviderSyncSnapshot({
+      syncState: response.status === 'synced' ? 'ok' : response.status === 'syncing' ? 'syncing'
+        : response.status === 'failed' ? 'error' : 'idle',
+      modelCount: response.modelCount, visibleModelCount: response.visibleModelCount,
+      hiddenModelCount: response.hiddenModelCount, lastSyncAtMs: response.observedAtMs,
+      lastErrorCode: response.errorCode, catalogRevision: response.responseDigest,
+      isStale: response.status !== 'synced',
+    }))
+  } catch (err) {
+    setProviderSyncSnapshot(providerKey, { ...getProviderSyncSnapshot(providerKey), status: 'failed',
+      errorCode: 'unknown_error', errorMessage: err instanceof Error ? err.name : String(err), isStale: true })
+  }
 }
 
 function canRunManualRefresh(providerKey: ProviderCatalogKnownProviderKey): boolean {

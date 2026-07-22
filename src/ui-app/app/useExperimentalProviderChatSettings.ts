@@ -291,6 +291,8 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     chatMode?: unknown
     nativeRestPreferredEndpoint?: unknown
     openAICompatiblePreferredEndpoint?: unknown
+    thinkingControl?: unknown
+    toolsSupported?: unknown
     diagnosticsEnabled?: unknown
     manualLoadUnloadEnabled?: unknown
     autoLoadBeforeSendEnabled?: unknown
@@ -1114,6 +1116,10 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     persistAnthropicChatStorage()
   }
 
+  function applyAnthropicThinkingDisplayFromConversation(value: 'provider_default' | 'summarized' | 'omitted') {
+    anthropicThinkingDisplay.value = value
+  }
+
   function onClearAnthropicChat() {
     if (input.isDraftInteractionLocked.value || input.isRunning.value) return
     anthropicChatEnabled.value = false
@@ -1202,6 +1208,7 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     onClearGoogleAIStudioChat,
     onUpdateAnthropicChatEnabled,
     onUpdateAnthropicThinkingDisplay,
+    applyAnthropicThinkingDisplayFromConversation,
     onClearAnthropicChat,
     onUpdateDeepSeekChatEnabled,
     onClearDeepSeekChat,

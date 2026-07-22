@@ -4,1872 +4,278 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import AppChatApp from './AppChatApp.vue'
 
-const streamOpenRouterChatCallArgs: any[] = []
-const openAIResponsesTextChatCallArgs: any[] = []
-const OPENROUTER_ROUTE_META = Object.freeze({
-  providerId: 'openrouter',
-  modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-})
-const TEST_GENERATION_SNAPSHOT = Object.freeze({
-  schemaVersion: 1,
-  route: { providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL, endpointId: 'openrouter-official', profileId: 'openrouter_v1_chat' },
-  generationParams: { requestPatch: {}, requestParams: {} },
-  reasoning: { mode: 'auto', effort: null, exclude: false },
-  webSearch: { enabled: false },
-  imageGeneration: {},
-  providerOptions: {},
-  tools: { enabled: false, allowedToolIds: [], requireExternalSideEffectConfirmation: true },
-  attachments: { sourceQuestionId: 'u1', items: [] },
-})
-
-const answerGenerationResult = (newAnswerRootId: string, newAssistantSeq: number, actionKind: 'regenerate' | 'retry_replace' | 'retry_as_new' = 'regenerate') => ({
-  ok: true,
-  operationId: `op-${actionKind}`,
-  actionKind,
-  newAnswerRootId,
-  newAssistantSeq,
-  chosenAnswerRootId: newAnswerRootId,
-  headMessageId: newAnswerRootId,
-  snapshot: TEST_GENERATION_SNAPSHOT,
-  state: 'streaming',
-  idempotentReplay: false,
-})
-
-vi.mock('@/next/modelCatalog/modelDetailService', () => ({
-  getModelCatalogModelDetail: vi.fn(async () => ({
-    providerKey: 'openrouter',
-    modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-    item: {
-      providerKey: 'openrouter',
-      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-      modelKey: 'openrouter::' + DEFAULT_OPENROUTER_TEST_MODEL,
-      canonicalSlug: DEFAULT_OPENROUTER_TEST_MODEL,
-      displayName: 'GPT-4o',
-      description: null,
-      vendor: 'openai',
-      family: null,
-      status: 'active',
-      visibility: 'visible',
-      contextLength: 128000,
-      maxOutputTokens: 16384,
-      architectureModality: 'text->text',
-      inputModalities: ['text'],
-      outputModalities: ['text'],
-      tokenizer: null,
-      instructType: null,
-      supportedParameters: [],
-      capabilities: {
-        reasoning: true,
-        tools: true,
-        structuredOutputs: true,
-        vision: false,
-        longContext: true,
-      },
-      pricing: {
-        prompt: null,
-        completion: null,
-        request: null,
-        image: null,
-        webSearch: null,
-        internalReasoning: null,
-        inputCacheRead: null,
-        inputCacheWrite: null,
-      },
-      createdAtSec: 1,
-      expirationDate: null,
-      expirationAtSec: null,
-      unknownExpiration: false,
-      hasPerRequestLimits: false,
-      hasDefaultParameters: false,
-      perRequestLimits: null,
-      defaultParameters: null,
-      topProviderContextLength: null,
-      topProviderIsModerated: false,
-      firstSeenAtMs: 1,
-      lastSeenAtMs: 1,
-      syncedAtMs: 1,
-      raw: {
-        inputModalitiesJson: '["text"]',
-        outputModalitiesJson: '["text"]',
-        supportedParametersJson: '[]',
-        capabilitiesJson: '{"reasoning":true,"tools":true,"structuredOutputs":true,"vision":false,"longContext":true}',
-        pricingJson: null,
-        perRequestLimitsJson: null,
-        defaultParametersJson: null,
-        rawJson: null,
-      },
-    },
-    error: null,
-  })),
-}))
-
-vi.mock('@/next/live/openRouterLiveStream', () => {
-  async function* streamOpenRouterChatAsEvents(options: any) {
-    streamOpenRouterChatCallArgs.push(options)
-    yield { type: 'MetaDelta', meta: { id: 'gen_1', model: DEFAULT_OPENROUTER_TEST_MODEL } }
-    yield { type: 'MessageDeltaText', messageId: String(options?.assistantMessageId ?? ''), choiceIndex: 0, text: 'o' }
-    yield { type: 'MessageDeltaText', messageId: String(options?.assistantMessageId ?? ''), choiceIndex: 0, text: 'k' }
-    yield { type: 'StreamDone' }
-  }
-  return { streamOpenRouterChatAsEvents }
-})
-
-vi.mock('@/next/live/openAIResponsesTextChat', () => {
-  async function* streamOpenAIResponsesTextChatAsDomainEvents(options: any) {
-    openAIResponsesTextChatCallArgs.push(options)
-    const assistantMessageId = String(options?.assistantMessageId ?? '')
-    yield { type: 'MetaDelta', meta: { id: 'openai_responses_gen_1', model: String(options?.model ?? 'gpt-4.1-mini'), provider: 'openai_responses' } }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'openai ' }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'ok' }
-    yield { type: 'StreamDone' }
-  }
-  return { streamOpenAIResponsesTextChatAsDomainEvents }
-})
-
-type PersistedMessage = {
-  id: string
-  convoId: string
-  role: 'user' | 'assistant' | 'tool'
-  seq: number
-  createdAt: number
-  parentId: string | null
-  status: 'streaming' | 'final' | 'error'
-  answerRootId: string | null
-  questionId: string | null
+type AnswerStatus = 'streaming' | 'completed' | 'failed' | 'cancelled'
+type AnswerState = {
+  answerRootId: string
+  status: AnswerStatus
   body: string
-  meta: any
+  createdAtMs: number
+  actionKind: 'initial' | 'regenerate' | 'retry_replace' | 'retry_as_new'
+  modelId: string
 }
 
-const defaultInboxProject = Object.freeze({
-  id: 'project_inbox',
-  name: 'Inbox',
-  createdAt: 1,
-  updatedAt: 1,
-  meta: null,
-  isSystemProject: true,
-})
+describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
+  let originalGenerationV2: any
+  let originalRawGenerationDebug: any
+  let answers: AnswerState[]
+  let chosenAnswerRootId: string
+  let headMessageId: string
+  let readBranch: ReturnType<typeof vi.fn>
+  let regenerate: ReturnType<typeof vi.fn>
+  let retry: ReturnType<typeof vi.fn>
 
-const defaultConvoRow = Object.freeze({
-  id: 'c1',
-  title: 'Chat 1',
-  createdAt: 1,
-  updatedAt: 2,
-  meta: {
-    selectedProviderId: 'openrouter',
-    selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
-  },
-})
+  const ok = <T>(value: T) => ({ ok: true as const, value })
 
-let historyAttachmentRowsByMessageId: Record<string, Array<Record<string, unknown>>> = {}
-type ReplayAssetSourceMeta = {
-  previewOnly?: boolean
-  resolvedUrl?: string
-  originalUrl?: string
-}
-
-type ReplayFileAsset = {
-  deletedAt: number | null
-  ingestStatus?: string
-  sourceMetaJson?: ReplayAssetSourceMeta
-  [key: string]: unknown
-}
-
-let fileAssetsById: Record<string, ReplayFileAsset> = {}
-let replayPrepareStatusByMessageId: Record<string, 'sendable' | 'blocked' | 'needs_confirmation'> = {}
-let replayPrepareBlockingReasonByMessageId: Record<string, string> = {}
-
-function makeEmptyDraft(conversationId = 'c1') {
-  return {
-    conversationId,
-    draftText: '',
-    draftMode: 'compose' as const,
-    editingSourceMessageId: null,
-    attachedAssetIds: [],
-    attachments: [],
-    updatedAt: 1,
+  function answerView(answer: AnswerState) {
+    return {
+      ...answer,
+      updatedAtMs: answer.createdAtMs,
+      chosen: answer.answerRootId === chosenAnswerRootId,
+      operationId: `operation:${answer.answerRootId}`,
+      providerId: 'openrouter',
+      errorCode: answer.status === 'failed' ? 'provider_error' : null,
+      errorMessage: answer.status === 'failed' ? 'provider error' : null,
+      endpointProfileId: 'openrouter-first-party-v1',
+      protocolContractId: 'openrouter-chat-completions-v1',
+      reasoningDetails: [],
+      attachments: [],
+      images: [],
+    }
   }
-}
 
-function mockProjectBootstrapCalls(method: string) {
-  if (method === 'project.getInbox') return defaultInboxProject
-  if (method === 'project.list') return [defaultInboxProject]
-  if (method === 'project.countConversationsBatch') {
-    return { counts: { [defaultInboxProject.id]: 0 } }
+  function branchView() {
+    return {
+      branchId: 'b1', conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1',
+      branchName: 'Main', headMessageId,
+      turns: [{
+        questionId: 'u1', questionBody: 'Q1', questionCreatedAtMs: 1, chosenAnswerRootId,
+        contextFilter: {
+          questionMode: 'include', answerMode: 'include', effectiveMode: 'include',
+          lockedByQuestionExclude: false,
+        },
+        answers: answers.map(answerView),
+      }],
+    }
   }
-  return undefined
-}
 
-function mockStableAppBootstrapCalls(method: string, params?: any) {
-  if (method === 'answerGeneration.getSnapshot') return { ok: true, schemaVersion: 1, snapshot: TEST_GENERATION_SNAPSHOT }
-  if (method === 'answerGeneration.finalize' || method === 'answerGeneration.persistSnapshot') return { ok: true }
-  if (method === 'answerGeneration.claimStream') return { ok: true, claimed: true, state: 'streaming' }
-  const projectBootstrap = mockProjectBootstrapCalls(method)
-  if (projectBootstrap !== undefined) return projectBootstrap
-  if (method === 'settings.getReasoningPrefs') return { value: null }
-  if (method === 'settings.getWebSearchDefaults') return { value: null }
-  if (method === 'settings.getGenerationParamsDefaults') return { value: null }
-  if (method === 'settings.getUserMessageRenderDefault') return { value: null }
-  if (method === 'settings.getImageGenerationDefault') return { value: null }
-  if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
-  if (method === 'settings.setChatReasoningDisplayMode') return { ok: true }
-  if (method === 'convo.list') return [defaultConvoRow]
-  if (method === 'modelCatalog.list') {
-    return [
-      {
-        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        name: 'GPT-4o',
-        vendor: 'openai',
-        lastSeenSnapshotId: 's1',
-        isHidden: 0,
-        supportedParametersJson: '[]',
+  function commandResult(actionKind: 'regenerate' | 'retry_replace' | 'retry_as_new') {
+    return {
+      ok: true as const,
+      kind: 'created' as const,
+      operationId: `operation:${actionKind}`,
+      answerRootId: 'a2',
+      actionKind,
+      branch: {
+        branchId: 'b1', conversationId: 'c1', questionId: 'u1',
+        headMessageId: 'a2', chosenAnswerRootId: 'a2', deletedAtMs: null,
       },
-    ]
-  }
-  if (method === 'modelCatalog.queryCore') {
-    return {
-      items: [
-        {
-          providerKey: 'openrouter',
-          modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-          modelKey: 'openrouter::' + DEFAULT_OPENROUTER_TEST_MODEL,
-          canonicalSlug: DEFAULT_OPENROUTER_TEST_MODEL,
-          displayName: 'GPT-4o',
-          description: 'text only',
-          vendor: 'openai',
-          contextLength: 128000,
-          maxOutputTokens: 16384,
-          createdAtSec: 1,
-          pricePrompt: null,
-          priceCompletion: null,
-          priceRequest: null,
-          priceImage: null,
-          capReasoning: 1,
-          capTools: 1,
-          capStructuredOutputs: 1,
-          capVision: 0,
-          capLongContext: 1,
-        },
-      ],
-      nextCursor: null,
-      notice: null,
+      visibleAnswerRootIds: answers.map((answer) => answer.answerRootId),
+      visibleQuestionIds: ['u1'],
     }
   }
-  if (method === 'reasoningIndex.list') return []
-  if (method === 'modelCatalog.getModelDetail') {
-    return {
-      providerKey: 'openrouter',
-      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-      item: {
-        providerKey: 'openrouter',
-        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        modelKey: 'openrouter::' + DEFAULT_OPENROUTER_TEST_MODEL,
-        canonicalSlug: DEFAULT_OPENROUTER_TEST_MODEL,
-        displayName: 'GPT-4o',
-        description: null,
-        vendor: 'openai',
-        family: null,
-        status: 'active',
-        visibility: 'visible',
-        contextLength: 128000,
-        maxOutputTokens: 16384,
-        architectureModality: 'text->text',
-        inputModalities: ['text'],
-        outputModalities: ['text'],
-        tokenizer: null,
-        instructType: null,
-        supportedParameters: [],
-        capabilities: {
-          reasoning: true,
-          tools: true,
-          structuredOutputs: true,
-          vision: false,
-          longContext: true,
-        },
-        pricing: {
-          prompt: null,
-          completion: null,
-          request: null,
-          image: null,
-          webSearch: null,
-          internalReasoning: null,
-          inputCacheRead: null,
-          inputCacheWrite: null,
-        },
-        createdAtSec: 1,
-        expirationDate: null,
-        expirationAtSec: null,
-        unknownExpiration: false,
-        hasPerRequestLimits: false,
-        hasDefaultParameters: false,
-        perRequestLimits: null,
-        defaultParameters: null,
-        topProviderContextLength: null,
-        topProviderIsModerated: false,
-        firstSeenAtMs: 1,
-        lastSeenAtMs: 1,
-        syncedAtMs: 1,
-        raw: {
-          inputModalitiesJson: '["text"]',
-          outputModalitiesJson: '["text"]',
-          supportedParametersJson: '[]',
-          capabilitiesJson: '{"reasoning":true,"tools":true,"structuredOutputs":true,"vision":false,"longContext":true}',
-          pricingJson: null,
-          perRequestLimitsJson: null,
-          defaultParametersJson: null,
-          rawJson: null,
-        },
-      },
-      error: null,
-    }
-  }
-  if (method === 'conversationDraft.restore') return makeEmptyDraft(String(params?.conversationId ?? 'c1'))
-  if (method === 'conversationDraft.updateText') return makeEmptyDraft(String(params?.conversationId ?? 'c1'))
-  if (method === 'sendPlan.buildCurrent') {
-    return {
-      sendPlan: {
-        status: 'sendable',
-        warnings: [],
-        blockingReasons: [],
-        includedAttachments: [],
-        excludedAttachments: [],
-        attachmentPlans: [],
-        requiresModelChange: false,
-        canProceedAfterDroppingExcluded: false,
-        requiresUserConfirmation: false,
-        plannerVersion: 'phase-5/v1',
-      },
-      draftText: '',
-      assets: [],
-      storageRootDir: 'C:/tmp',
-    }
-  }
-  if (method === 'sendPlan.prepareOpenRouterReplayFromMessage') {
-    const userMessageId = String(params?.userMessageId ?? '')
-    const replayStatus = replayPrepareStatusByMessageId[userMessageId] ?? 'sendable'
-    const text = typeof params?.editedUserText === 'string' && params.editedUserText.trim().length > 0 ? params.editedUserText : 'Q1'
-    const attachmentRows = historyAttachmentRowsByMessageId[userMessageId] ?? []
-    const rawDecisions = Array.isArray(params?.attachmentDecisions) ? params.attachmentDecisions as Array<Record<string, unknown>> : []
-    const excludedByDecision = new Set(
-      rawDecisions
-        .filter((item) => String(item?.decision ?? '').trim() === 'exclude')
-        .map((item) => String(item?.attachmentId ?? '').trim())
-        .filter(Boolean)
-    )
-    const excludedRows = attachmentRows.filter((row: any) => {
-      const includeInNextRequest = row?.includeInNextRequest === true
-      const hasExcludedReason = String(row?.excludedReason ?? '').trim().length > 0
-      return !includeInNextRequest || hasExcludedReason
-    })
-    const unresolvedExcludedRows = excludedRows.filter((row: any) => !excludedByDecision.has(String(row?.id ?? '')))
-    const effectiveStatus: 'sendable' | 'blocked' | 'needs_confirmation' =
-      replayStatus === 'needs_confirmation' && excludedRows.length > 0 && unresolvedExcludedRows.length === 0
-        ? 'sendable'
-        : replayStatus
-    const includedRows = attachmentRows.filter((row: any) => {
-      if (row?.includeInNextRequest !== true) return false
-      if (excludedByDecision.has(String(row?.id ?? ''))) return false
-      return true
-    })
-    const includedAssetIds = includedRows
-      .map((row) => String(row?.assetId ?? '').trim())
-      .filter(Boolean)
-      .filter((id) => {
-        const asset = fileAssetsById[id]
-        if (!asset) return false
-        if (asset?.deletedAt != null || asset?.ingestStatus === 'deleted') return false
-        if (asset?.sourceMetaJson?.previewOnly === true) return false
-        return true
-      })
-    const nonTextBlocks = includedAssetIds
-      .map((id) => {
-        const asset = fileAssetsById[id]
-        const url = String(asset?.sourceMetaJson?.resolvedUrl ?? asset?.sourceMetaJson?.originalUrl ?? '').trim()
-        if (!url) return null
-        return {
-          type: 'image_url',
-          image_url: { url },
-        }
-      })
-      .filter(Boolean)
-    return {
-      status: effectiveStatus,
-      currentUserContentBlocks: [{ type: 'text', text }, ...nonTextBlocks],
-      sentAssetIds: includedAssetIds,
-      includedAttachments: includedAssetIds.map((assetId) => ({ assetId, source: 'history', attachmentId: `att-${assetId}`, messageId: userMessageId })),
-      excludedAttachments: excludedRows.map((row: any) => ({
-        assetId: String(row?.assetId ?? ''),
-        source: 'history',
-        attachmentId: String(row?.id ?? ''),
-        messageId: userMessageId,
-        exclusionReason: String(row?.excludedReason ?? 'history_attachment_excluded') || 'history_attachment_excluded',
-      })),
-      blockingReasons: effectiveStatus === 'sendable' ? [] : [{ code: effectiveStatus === 'needs_confirmation' ? 'history_attachment_excluded' : 'hard_gate_blocked', message: replayPrepareBlockingReasonByMessageId[userMessageId] ?? 'blocked by replay policy' }],
-      diagnostics: { sendPlanStatus: effectiveStatus === 'sendable' ? 'sendable' : effectiveStatus === 'needs_confirmation' ? 'partially_sendable' : 'blocked' },
-      modelCapabilitySnapshot: { modelId: DEFAULT_OPENROUTER_TEST_MODEL, providerKey: 'openrouter' },
-      manifestDraft: { replayMode: 'current', sourceUserMessageId: userMessageId, sentAssetIds: includedAssetIds, attachmentDecisions: rawDecisions },
-    }
-  }
-  if (method === 'messageError.listByMessageIds') return []
-  if (method === 'messageAsset.listByMessageIds') return []
-  if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
-  if (method === 'modelPrefs.listRecents') return []
-  return undefined
-}
 
-describe('ui-app AppChatApp (regenerate + retry replace)', () => {
-  const originalDbBridge = (globalThis as any).dbBridge
-  const originalElectronStore = (globalThis as any).electronStore
-  const originalOpenRouterCredential = (globalThis as any).openRouterCredential
-  const originalOpenAIResponsesCredential = (globalThis as any).openAIResponsesCredential
-  const originalOpenAIResponsesModels = (globalThis as any).openAIResponsesModels
-  const originalSetTimeout = globalThis.setTimeout
+  function commitNewAnswer(actionKind: 'regenerate' | 'retry_replace' | 'retry_as_new') {
+    const next: AnswerState = {
+      answerRootId: 'a2', status: 'streaming', body: '', createdAtMs: 3,
+      actionKind, modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+    }
+    answers = actionKind === 'retry_replace' ? [next] : [...answers, next]
+    chosenAnswerRootId = 'a2'
+    headMessageId = 'a2'
+    return commandResult(actionKind)
+  }
+
   beforeEach(() => {
-    vi.useFakeTimers()
-    streamOpenRouterChatCallArgs.length = 0
-    openAIResponsesTextChatCallArgs.length = 0
-    historyAttachmentRowsByMessageId = {}
-    fileAssetsById = {}
-    replayPrepareStatusByMessageId = {}
-    replayPrepareBlockingReasonByMessageId = {}
-    globalThis.setTimeout = ((fn: (...args: any[]) => void) => originalSetTimeout(fn, 0)) as any
+    originalGenerationV2 = (globalThis as any).generationV2
+    originalRawGenerationDebug = (globalThis as any).rawGenerationDebug
+    answers = [{
+      answerRootId: 'a1', status: 'completed', body: 'A1', createdAtMs: 2,
+      actionKind: 'initial', modelId: 'historical/model',
+    }]
+    chosenAnswerRootId = 'a1'
+    headMessageId = 'a1'
+    for (const key of [
+      'starverse.openAIResponsesTextChat.enabled',
+      'starverse.googleAIStudioTextChat.enabled',
+      'starverse.anthropicMessagesTextChat.enabled',
+      'starverse.deepSeekTextChat.enabled',
+      'starverse.localEndpointTextChat.enabled',
+      'starverse.lmStudioTextChat.enabled',
+      'starverse.ollamaTextChat.enabled',
+    ]) globalThis.localStorage?.removeItem(key)
+    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
 
-    ;(globalThis as any).electronStore = {
-      get: vi.fn(async (key: string) => {
-        if (key === 'openRouterApiKey') return 'sk-test'
-        return undefined
-      }),
-    }
-    ;(globalThis as any).openRouterCredential = { getStatus: vi.fn(async () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })) }
-    ;(globalThis as any).openAIResponsesCredential = { getStatus: vi.fn(async () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })) }
-    ;(globalThis as any).openAIResponsesModels = {
-      listAvailability: vi.fn(async () => ({
-        ok: true,
-        providerKey: 'openai_responses',
-        endpointId: 'openai-responses-official',
-        profileId: 'openai_responses_v1',
-        observedAtMs: 123,
-        models: [{ nativeModelId: 'gpt-4.1-mini', displayName: 'gpt-4.1-mini', warnings: [], capabilitySeed: { textChat: true } }],
-        warnings: [],
-        sourceDocuments: [],
-      })),
+    const baseTemplate = originalGenerationV2.workspace.getSystemTemplate
+    readBranch = vi.fn(async () => ok(branchView()))
+    regenerate = vi.fn(async () => commitNewAnswer('regenerate'))
+    retry = vi.fn(async (command: any) => commitNewAnswer(command.actionKind))
+
+    ;(globalThis as any).generationV2 = {
+      ...originalGenerationV2,
+      openRouter: {
+        ...originalGenerationV2.openRouter,
+        chat: { ...originalGenerationV2.openRouter.chat, regenerate, retry },
+      },
+      workspace: {
+        ...originalGenerationV2.workspace,
+        ensureDefault: vi.fn(async () => ok({
+          projectId: 'project_inbox', conversationId: 'c1', branchId: 'b1', created: false,
+        })),
+        getSystemTemplate: vi.fn(async () => {
+          const result = await baseTemplate()
+          return ok({
+            ...result.value,
+            conversation: {
+              ...result.value.conversation,
+              id: 'c1', projectId: 'project_inbox', branchId: 'b1', title: 'Chat 1',
+              meta: {
+                selectedProviderId: 'openrouter',
+                selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
+              },
+            },
+            draft: { ...result.value.draft, conversationId: 'c1' },
+          })
+        }),
+        listProjects: vi.fn(async () => ok([{
+          projectId: 'project_inbox', name: 'Inbox', createdAtMs: 1, updatedAtMs: 3,
+        }])),
+        listConversations: vi.fn(async () => ok([{
+          conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1', updatedAtMs: 3,
+          meta: {
+            selectedProviderId: 'openrouter',
+            selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
+          },
+          branches: [{ branchId: 'b1', name: 'Main', headMessageId, updatedAtMs: 3 }],
+        }])),
+        readBranch,
+        getConversationRoutePreference: vi.fn(async () => ok({
+          conversationId: 'c1', revision: 1,
+          selection: { schemaVersion: 1, kind: 'provider_model',
+            providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
+        })),
+      },
     }
   })
 
   afterEach(() => {
-    ;(globalThis as any).dbBridge = originalDbBridge
-    ;(globalThis as any).electronStore = originalElectronStore
-    ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
-    ;(globalThis as any).openAIResponsesCredential = originalOpenAIResponsesCredential
-    ;(globalThis as any).openAIResponsesModels = originalOpenAIResponsesModels
-    delete (globalThis as any).rawGenerationDebug
-    globalThis.setTimeout = originalSetTimeout
-    vi.useRealTimers()
+    ;(globalThis as any).generationV2 = originalGenerationV2
+    ;(globalThis as any).rawGenerationDebug = originalRawGenerationDebug
+    globalThis.localStorage?.removeItem('starverse.openRouterTextChat.enabled')
   })
 
-  function makeReplayAttachmentRows(messageId: string) {
-    return [
-      {
-        id: `att-${messageId}-image`,
-        messageId,
-        assetId: 'asset-history-image',
-        aiPayloadKind: 'image',
-        processingStatus: 'native_supported',
-        includeInNextRequest: true,
-        excludedReason: null,
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      },
-      {
-        id: `att-${messageId}-preview-only`,
-        messageId,
-        assetId: 'asset-history-preview-only',
-        aiPayloadKind: 'image',
-        processingStatus: 'native_supported',
-        includeInNextRequest: false,
-        excludedReason: 'preview_only_asset_not_sendable',
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-      },
-    ]
-  }
-
-  function makeReplayAssets() {
-    return {
-      'asset-history-image': {
-        id: 'asset-history-image',
-        sha256: null,
-        filename: 'diagram.png',
-        extension: 'png',
-        mime: 'image/png',
-        sizeBytes: 42,
-        assetKind: 'image',
-        sourceKind: 'url_import',
-        storageBackend: 'remote_url',
-        storageUri: 'https://cdn.example.test/diagram.png',
-        ingestStatus: 'stored',
-        previewStatus: 'ready',
-        sourceMetaJson: {
-          originalUrl: 'https://cdn.example.test/diagram.png',
-          resolvedUrl: 'https://cdn.example.test/diagram.png',
-        },
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        deletedAt: null,
-      },
-      'asset-history-preview-only': {
-        id: 'asset-history-preview-only',
-        sha256: null,
-        filename: 'preview-only.png',
-        extension: 'png',
-        mime: 'image/png',
-        sizeBytes: 21,
-        assetKind: 'image',
-        sourceKind: 'derived',
-        storageBackend: 'local_fs',
-        storageUri: 'assets/derived/as/asset-history-preview-only.png',
-        ingestStatus: 'stored',
-        previewStatus: 'ready',
-        sourceMetaJson: {
-          previewOnly: true,
-        },
-        createdAt: Date.now(),
-        updatedAt: Date.now(),
-        deletedAt: null,
-      },
-    }
-  }
-
-  it('regenerate creates a new answer root, updates < i/n >, and streams into the new assistant', async () => {
+  it('regenerate uses current configuration and immediately selects a preserved sibling', async () => {
     const user = userEvent.setup()
-
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-
-    const store: {
-      headMessageId: string | null
-      chosenAnswerRootId: string
-      candidatesNewToOld: Array<{ answerRootId: string; createdAt: number; status: string }>
-      messagesById: Record<string, PersistedMessage>
-    } = {
-      headMessageId: 'a1',
-      chosenAnswerRootId: 'a1',
-      candidatesNewToOld: [{ answerRootId: 'a1', createdAt: now + 2, status: 'final' }],
-      messagesById: {
-        u1: {
-          id: 'u1',
-          convoId,
-          role: 'user',
-          seq: 1,
-          createdAt: now,
-          parentId: null,
-          status: 'final',
-          answerRootId: null,
-          questionId: null,
-          body: 'Q1',
-          meta: null,
-        },
-        a1: {
-          id: 'a1',
-          convoId,
-          role: 'assistant',
-          seq: 2,
-          createdAt: now + 1,
-          parentId: 'u1',
-          status: 'final',
-          answerRootId: 'a1',
-          questionId: 'u1',
-          body: 'A1',
-          meta: OPENROUTER_ROUTE_META,
-        },
-      },
-    }
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
-      if (projectBootstrap !== undefined) return projectBootstrap
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault') {
-        return { id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
-      }
-      if (method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
-      }
-      if (method === 'context.getRenderableTurns') {
-        const q = store.messagesById.u1
-        const chosen = store.messagesById[store.chosenAnswerRootId]
-        return {
-          messages: [q, chosen],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: store.chosenAnswerRootId, questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'context.buildForBranch') {
-        return { messages: [] }
-      }
-      if (method === 'branch.getCandidates') {
-        return store.candidatesNewToOld
-      }
-      if (method === 'branch.regenerateQuestionWithCurrentConfig') {
-        const createdAt = Date.now()
-        store.messagesById.a2 = {
-          id: 'a2',
-          convoId,
-          role: 'assistant',
-          seq: 3,
-          createdAt,
-          parentId: 'u1',
-          status: 'streaming',
-          answerRootId: 'a2',
-          questionId: 'u1',
-          body: '',
-          meta: null,
-        }
-        store.headMessageId = 'a2'
-        store.chosenAnswerRootId = 'a2'
-        store.candidatesNewToOld = [
-          { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
-          ...store.candidatesNewToOld,
-        ]
-        return answerGenerationResult('a2', 3)
-      }
-      if (method === 'message.appendDelta') {
-        const seq = Number(params?.seq ?? NaN)
-        const appendBody = String(params?.appendBody ?? '')
-        const msg = Object.values(store.messagesById).find((m) => m.seq === seq)
-        if (msg) msg.body = String(msg.body ?? '') + appendBody
-        return { ok: true }
-      }
-      if (method === 'message.setStatus') {
-        const messageId = String(params?.messageId ?? '')
-        const status = String(params?.status ?? '')
-        const msg = store.messagesById[messageId]
-        if (msg) msg.status = status as any
-        return { ok: true }
-      }
-      if (method === 'modelPrefs.recordRecent') {
-        const nowTs = Date.now()
-        return {
-          scopeType: 'global',
-          scopeId: '',
-          providerKey: String(params?.providerKey ?? 'openrouter'),
-          modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
-          lastUsedAtMs: nowTs,
-          useCount: 1,
-          createdAtMs: nowTs,
-          updatedAtMs: nowTs,
-        }
-      }
-      return { ok: true }
-    })
-
-    ;(globalThis as any).dbBridge = { invoke }
-
     render(AppChatApp)
-
-    await screen.findByRole('button', { name: /Chat 1/ })
-    await screen.findByText('Q1')
     await screen.findByText('A1')
-    expect(await screen.findByTestId('retry-new-a-a1')).toBeEnabled()
 
-    const regen = await screen.findByTestId('regen-q-u1')
-    expect(regen).not.toBeDisabled()
-    await user.click(regen)
+    await user.click(screen.getByTestId('regen-q-u1'))
 
-    await screen.findByText('ok')
-    await waitFor(() => expect(screen.getByTestId('cand-pos-u1').textContent).toBe('2/2'))
+    await waitFor(() => expect(regenerate).toHaveBeenCalledTimes(1))
+    expect(regenerate).toHaveBeenCalledWith(expect.objectContaining({
+      branchId: 'b1', questionId: 'u1', expectedHeadMessageId: 'a1',
+      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+    }))
+    await waitFor(() => expect(screen.getByTestId('cand-pos-u1')).toHaveTextContent('2/2'))
+    expect(screen.getByTestId('retry-a-a2')).toBeDisabled()
+    expect(answers.map((answer) => answer.answerRootId)).toEqual(['a1', 'a2'])
+    expect(chosenAnswerRootId).toBe('a2')
+    expect(headMessageId).toBe('a2')
+  })
 
-    await vi.runAllTimersAsync()
+  it('retry as new binds the rendered chosen answer and preserves it as a sibling', async () => {
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await screen.findByText('A1')
 
-    expect(invoke).toHaveBeenCalledWith('branch.regenerateQuestionWithCurrentConfig', expect.objectContaining({ branchId: 'b1', questionId: 'u1' }))
-    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 3 }))
-    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a2', status: 'final' }))
-    expect(invoke).toHaveBeenCalledWith(
-      'modelPrefs.recordRecent',
-      expect.objectContaining({
-        scopeType: 'global',
-        scopeId: '',
-        providerKey: 'openrouter',
-        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        modelKey: 'openrouter::' + DEFAULT_OPENROUTER_TEST_MODEL,
-      }),
-    )
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(invoke.mock.calls.filter((c) => c[0] === 'branch.getCandidates').length).toBeGreaterThanOrEqual(2)
+    await user.click(screen.getByTestId('retry-new-a-a1'))
+
+    await waitFor(() => expect(retry).toHaveBeenCalledWith(expect.objectContaining({
+      actionKind: 'retry_as_new', branchId: 'b1', questionId: 'u1',
+      targetAnswerRootId: 'a1', expectedHeadMessageId: 'a1',
+    })))
+    await waitFor(() => expect(screen.getByTestId('cand-pos-u1')).toHaveTextContent('2/2'))
+    expect(answers.map((answer) => answer.answerRootId)).toEqual(['a1', 'a2'])
+    expect(chosenAnswerRootId).toBe('a2')
+    expect(headMessageId).toBe('a2')
+  })
+
+  it('retry replace binds the rendered chosen answer and removes it from visible candidates', async () => {
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await screen.findByText('A1')
+
+    await user.click(screen.getByTestId('retry-a-a1'))
+
+    await waitFor(() => expect(retry).toHaveBeenCalledWith(expect.objectContaining({
+      actionKind: 'retry_replace', branchId: 'b1', questionId: 'u1',
+      targetAnswerRootId: 'a1', expectedHeadMessageId: 'a1',
+    })))
+    await waitFor(() => expect(screen.getByTestId('retry-a-a2')).toBeDisabled())
+    expect(screen.queryByTestId('cand-pos-u1')).not.toBeInTheDocument()
+    expect(answers.map((answer) => answer.answerRootId)).toEqual(['a2'])
+    expect(chosenAnswerRootId).toBe('a2')
+    expect(headMessageId).toBe('a2')
+  })
+
+  it.each(['failed', 'cancelled'] as const)(
+    'keeps the committed answer chosen after a %s terminal projection',
+    async (terminalState) => {
+      const user = userEvent.setup()
+      render(AppChatApp)
+      await screen.findByText('A1')
+      await user.click(screen.getByTestId('retry-new-a-a1'))
+      await waitFor(() => expect(retry).toHaveBeenCalledTimes(1))
+
+      answers = answers.map((answer) => answer.answerRootId === 'a2'
+        ? { ...answer, status: terminalState, body: 'partial output' }
+        : answer)
+      await (globalThis as any).generationV2.openRouter.chat.onProjection.mock.calls[0]?.[0]?.({
+        type: 'terminal', operationId: 'operation:retry_as_new', answerRootId: 'a2',
+        state: terminalState, errorCode: terminalState === 'failed' ? 'provider_error' : null,
+        errorMessage: terminalState === 'failed' ? 'provider error' : null,
+      })
+
+      await waitFor(() => expect(readBranch.mock.calls.length).toBeGreaterThanOrEqual(3))
+      expect(chosenAnswerRootId).toBe('a2')
+      expect(headMessageId).toBe('a2')
+    },
+  )
+
+  it('does not submit a second action while the chosen answer is streaming', async () => {
+    answers[0] = { ...answers[0], status: 'streaming' }
+    render(AppChatApp)
+    await screen.findByText('Q1')
+
+    expect(screen.getByTestId('regen-q-u1')).toBeDisabled()
+    expect(screen.getByTestId('retry-a-a1')).toBeDisabled()
+    expect(screen.getByTestId('retry-new-a-a1')).toBeDisabled()
+  })
+
+  it('shows the persisted exact request and original provider error for the answer', async () => {
+    const user = userEvent.setup()
     ;(globalThis as any).rawGenerationDebug = {
-      getStatus: vi.fn(async () => ({ available: true, dbPath: 'debug.sqlite', schemaReady: true })),
+      getStatus: vi.fn(async () => ({ available: true, schemaReady: true, errorCode: null })),
       listByAnswerRootId: vi.fn(async () => [{
-        id: 'raw-1', operationId: 'req-1', answerRootId: 'a2', requestSequence: 1,
+        id: 'request-1', operationId: 'operation:a1', answerRootId: 'a1', requestSequence: 1,
         providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        serializedBody: '{"model":"raw-model"}', bodyBytes: 21, bodySha256: 'a'.repeat(64), capturedAtMs: 1,
+        serializedBody: '{"model":"raw-model"}', bodyBytes: 21,
+        bodySha256: 'a'.repeat(64), capturedAtMs: 1,
+      }]),
+      listProviderErrorsByAnswerRootId: vi.fn(async () => [{
+        id: 'error-1', operationId: 'operation:a1', answerRootId: 'a1', requestSequence: 1,
+        providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        phase: 'sse_event', httpStatus: 200, contentType: 'text/event-stream',
+        providerRequestId: 'gen-1', payloadBase64: '',
+        payloadText: '{"error":{"code":429,"message":"raw provider error"}}',
+        payloadBytes: 52, payloadSha256: 'b'.repeat(64), capturedAtMs: 2,
       }]),
     }
-    await user.click(await screen.findByTestId('raw-data-a-a2'))
-    expect(await screen.findByTestId('raw-data-dialog')).toBeInTheDocument()
+    render(AppChatApp)
+    await screen.findByText('A1')
+
+    await user.click(screen.getByTestId('raw-data-a-a1'))
+
     expect(await screen.findByTestId('raw-data-request-1')).toHaveTextContent('"raw-model"')
-  })
-
-  it.each([
-    { label: 'providerless', routeMeta: null },
-    { label: 'provider-only', routeMeta: { providerId: 'openrouter' } },
-  ])('regenerates with the current configuration even when the historical answer is $label', async ({ routeMeta }) => {
-    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime })
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const bootstrap = mockStableAppBootstrapCalls(method, params)
-      if (bootstrap !== undefined) return bootstrap
-      if (method === 'branch.ensureDefault') {
-        return { id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
-      }
-      if (method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
-      }
-      if (method === 'context.getRenderableTurns') {
-        return {
-          messages: [
-            { id: 'u1', convoId, role: 'user', seq: 1, createdAt: now, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: routeMeta },
-          ],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'branch.getCandidates') {
-        return [{ answerRootId: 'a1', createdAt: now + 2, status: 'final' }]
-      }
-      if (method === 'context.buildForBranch') return { messages: [] }
-      if (method === 'branch.regenerateQuestionWithCurrentConfig') return answerGenerationResult('a2', 3)
-      return { ok: true }
-    })
-
-    ;(globalThis as any).dbBridge = { invoke }
-    render(AppChatApp)
-
-    await screen.findByRole('button', { name: /Chat 1/ })
-    await screen.findByText('A1')
-    await user.click(await screen.findByTestId('regen-q-u1'))
-
-    await vi.runAllTimersAsync()
-    expect(invoke).toHaveBeenCalledWith('branch.regenerateQuestionWithCurrentConfig', expect.objectContaining({ questionId: 'u1' }))
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-  })
-
-  it('regenerate ignores stored provider metadata and uses the current OpenRouter configuration', async () => {
-    const user = userEvent.setup()
-
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-
-    const store: {
-      headMessageId: string | null
-      chosenAnswerRootId: string
-      candidatesNewToOld: Array<{ answerRootId: string; createdAt: number; status: string }>
-      messagesById: Record<string, PersistedMessage>
-    } = {
-      headMessageId: 'a1',
-      chosenAnswerRootId: 'a1',
-      candidatesNewToOld: [{ answerRootId: 'a1', createdAt: now + 2, status: 'final' }],
-      messagesById: {
-        u1: {
-          id: 'u1',
-          convoId,
-          role: 'user',
-          seq: 1,
-          createdAt: now,
-          parentId: null,
-          status: 'final',
-          answerRootId: null,
-          questionId: null,
-          body: 'Q1',
-          meta: null,
-        },
-        a1: {
-          id: 'a1',
-          convoId,
-          role: 'assistant',
-          seq: 2,
-          createdAt: now + 1,
-          parentId: 'u1',
-          status: 'final',
-          answerRootId: 'a1',
-          questionId: 'u1',
-          body: 'A1',
-          meta: { providerId: 'openai_responses', modelId: 'gpt-4.1-mini' },
-        },
-      },
-    }
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
-      if (projectBootstrap !== undefined) return projectBootstrap
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault') {
-        return { id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
-      }
-      if (method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
-      }
-      if (method === 'context.getRenderableTurns') {
-        const q = store.messagesById.u1
-        const chosen = store.messagesById[store.chosenAnswerRootId]
-        return {
-          messages: [q, chosen],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: store.chosenAnswerRootId, questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'context.buildForBranch') return { messages: [] }
-      if (method === 'branch.getCandidates') return store.candidatesNewToOld
-      if (method === 'messageAttachment.listByMessageId') return []
-      if (method === 'branch.regenerateQuestionWithCurrentConfig') {
-        const createdAt = Date.now()
-        store.messagesById.a2 = {
-          id: 'a2',
-          convoId,
-          role: 'assistant',
-          seq: 3,
-          createdAt,
-          parentId: 'u1',
-          status: 'streaming',
-          answerRootId: 'a2',
-          questionId: 'u1',
-          body: '',
-          meta: null,
-        }
-        store.headMessageId = 'a2'
-        store.chosenAnswerRootId = 'a2'
-        store.candidatesNewToOld = [
-          { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
-          ...store.candidatesNewToOld,
-        ]
-        return answerGenerationResult('a2', 3)
-      }
-      if (method === 'message.appendDelta') {
-        const seq = Number(params?.seq ?? NaN)
-        const appendBody = String(params?.appendBody ?? '')
-        const msg = Object.values(store.messagesById).find((m) => m.seq === seq)
-        if (msg) msg.body = String(msg.body ?? '') + appendBody
-        return { ok: true }
-      }
-      if (method === 'message.setStatus') {
-        const messageId = String(params?.messageId ?? '')
-        const status = String(params?.status ?? '')
-        const msg = store.messagesById[messageId]
-        if (msg) {
-          msg.status = status as any
-          msg.meta = { ...(msg.meta ?? {}), ...(params?.metaPatch ?? {}) }
-        }
-        return { ok: true }
-      }
-      if (method === 'modelPrefs.recordRecent') {
-        const nowTs = Date.now()
-        return {
-          scopeType: 'global',
-          scopeId: '',
-          providerKey: String(params?.providerKey ?? ''),
-          modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
-          lastUsedAtMs: nowTs,
-          useCount: 1,
-          createdAtMs: nowTs,
-          updatedAtMs: nowTs,
-        }
-      }
-      return { ok: true }
-    })
-
-    ;(globalThis as any).dbBridge = { invoke }
-
-    render(AppChatApp)
-
-    await screen.findByText('Q1')
-    await screen.findByText('A1')
-    await user.click(await screen.findByTestId('regen-q-u1'))
-
-    await screen.findByText('ok')
-    await vi.runAllTimersAsync()
-
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
-    expect(invoke).toHaveBeenCalledWith(
-      'modelPrefs.recordRecent',
-      expect.objectContaining({
-        providerKey: 'openrouter',
-        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        modelKey: 'openrouter::' + DEFAULT_OPENROUTER_TEST_MODEL,
-      }),
-    )
-    expect(invoke).toHaveBeenCalledWith(
-      'message.setStatus',
-      expect.objectContaining({
-        messageId: 'a2',
-        status: 'final',
-        metaPatch: expect.objectContaining({
-          providerId: 'openrouter',
-          modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        }),
-      }),
-    )
-  })
-
-  it('regenerate replays historical attachments into the OpenRouter request', async () => {
-    const user = userEvent.setup()
-
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-    historyAttachmentRowsByMessageId = {
-      u1: makeReplayAttachmentRows('u1'),
-    }
-    fileAssetsById = makeReplayAssets()
-
-    const store: {
-      headMessageId: string | null
-      chosenAnswerRootId: string
-      candidatesNewToOld: Array<{ answerRootId: string; createdAt: number; status: string }>
-      messagesById: Record<string, PersistedMessage>
-    } = {
-      headMessageId: 'a1',
-      chosenAnswerRootId: 'a1',
-      candidatesNewToOld: [{ answerRootId: 'a1', createdAt: now + 2, status: 'final' }],
-      messagesById: {
-        u1: {
-          id: 'u1',
-          convoId,
-          role: 'user',
-          seq: 1,
-          createdAt: now,
-          parentId: null,
-          status: 'final',
-          answerRootId: null,
-          questionId: null,
-          body: 'Q1',
-          meta: null,
-        },
-        a1: {
-          id: 'a1',
-          convoId,
-          role: 'assistant',
-          seq: 2,
-          createdAt: now + 1,
-          parentId: 'u1',
-          status: 'final',
-          answerRootId: 'a1',
-          questionId: 'u1',
-          body: 'A1',
-          meta: OPENROUTER_ROUTE_META,
-        },
-      },
-    }
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
-      if (projectBootstrap !== undefined) return projectBootstrap
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault') {
-        return { id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
-      }
-      if (method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
-      }
-      if (method === 'context.getRenderableTurns') {
-        const q = store.messagesById.u1
-        const chosen = store.messagesById[store.chosenAnswerRootId]
-        return {
-          messages: [q, chosen],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: store.chosenAnswerRootId, questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'context.buildForBranch') return { messages: [] }
-      if (method === 'branch.getCandidates') return store.candidatesNewToOld
-      if (method === 'messageAttachment.listByMessageId') {
-        return historyAttachmentRowsByMessageId[String(params?.messageId ?? '')] ?? []
-      }
-      if (method === 'fileAsset.listByIds') {
-        const ids = Array.isArray(params?.ids) ? params.ids.map((value: unknown) => String(value ?? '').trim()).filter(Boolean) : []
-        return ids.map((id: string) => fileAssetsById[id]).filter(Boolean)
-      }
-      if (method === 'preview.getLatestReady') {
-        return {
-          assetId: String(params?.assetId ?? ''),
-          status: 'ready',
-          derivativeId: 'preview-1',
-          mime: 'image/png',
-          dataUrl: 'data:image/png;base64,AA==',
-          width: 64,
-          height: 64,
-          bytes: 8,
-          reused: false,
-          errorCode: null,
-          errorMessage: null,
-        }
-      }
-      if (method === 'preview.ensure') {
-        return {
-          assetId: String(params?.assetId ?? ''),
-          status: 'ready',
-          derivativeId: 'preview-1',
-          mime: 'image/png',
-          dataUrl: 'data:image/png;base64,BB==',
-          width: 64,
-          height: 64,
-          bytes: 8,
-          reused: true,
-          errorCode: null,
-          errorMessage: null,
-        }
-      }
-      if (method === 'branch.regenerateQuestionWithCurrentConfig') {
-        const createdAt = Date.now()
-        store.messagesById.a2 = {
-          id: 'a2',
-          convoId,
-          role: 'assistant',
-          seq: 3,
-          createdAt,
-          parentId: 'u1',
-          status: 'streaming',
-          answerRootId: 'a2',
-          questionId: 'u1',
-          body: '',
-          meta: null,
-        }
-        store.headMessageId = 'a2'
-        store.chosenAnswerRootId = 'a2'
-        store.candidatesNewToOld = [
-          { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
-          ...store.candidatesNewToOld,
-        ]
-        return answerGenerationResult('a2', 3)
-      }
-      if (method === 'message.appendDelta') {
-        const seq = Number(params?.seq ?? NaN)
-        const appendBody = String(params?.appendBody ?? '')
-        const msg = Object.values(store.messagesById).find((m) => m.seq === seq)
-        if (msg) msg.body = String(msg.body ?? '') + appendBody
-        return { ok: true }
-      }
-      if (method === 'message.setStatus') {
-        const messageId = String(params?.messageId ?? '')
-        const status = String(params?.status ?? '')
-        const msg = store.messagesById[messageId]
-        if (msg) msg.status = status as any
-        return { ok: true }
-      }
-      if (method === 'modelPrefs.recordRecent') {
-        const nowTs = Date.now()
-        return {
-          scopeType: 'global',
-          scopeId: '',
-          providerKey: 'openrouter',
-          modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-          modelKey: `openrouter::${DEFAULT_OPENROUTER_TEST_MODEL}`,
-          lastUsedAtMs: nowTs,
-          useCount: 1,
-          createdAtMs: nowTs,
-          updatedAtMs: nowTs,
-        }
-      }
-      return { ok: true }
-    })
-
-    ;(globalThis as any).dbBridge = { invoke }
-
-    render(AppChatApp)
-    await screen.findByText('Q1')
-    await screen.findByText('A1')
-
-    const regen = await screen.findByTestId('regen-q-u1')
-    await user.click(regen)
-    await screen.findByTestId('attachment-confirm-panel')
-    await user.click(screen.getByTestId('attachment-confirm-history-exclude-all-checkbox'))
-    await user.click(screen.getByTestId('attachment-confirm-confirm'))
-
-    await screen.findByText('ok')
-    await waitFor(() => expect(screen.getByTestId('cand-pos-u1').textContent).toBe('2/2'))
-    await vi.runAllTimersAsync()
-
-    expect(invoke).toHaveBeenCalledWith(
-      'message.setStatus',
-      expect.objectContaining({
-        messageId: 'a2',
-        status: 'final',
-        metaPatch: expect.objectContaining({
-          currentReplayManifestDraft: expect.objectContaining({
-            replayMode: 'current',
-            sourceUserMessageId: 'u1',
-          }),
-        }),
-      }),
-    )
-
-    const lastCall = streamOpenRouterChatCallArgs.at(-1)
-    expect(lastCall).toEqual(expect.objectContaining({
-      userText: 'Q1',
-      currentUserContentBlocks: expect.any(Array),
-      contextMessages: expect.any(Array),
-    }))
-    const currentUserContentBlocks = lastCall.currentUserContentBlocks as any[]
-    expect(currentUserContentBlocks.length).toBeGreaterThan(1)
-    expect(currentUserContentBlocks.some((block: any) => block.type !== 'text')).toBe(true)
-    expect(currentUserContentBlocks[0]).toMatchObject({ type: 'text', text: 'Q1' })
-    expect(currentUserContentBlocks[1]).toEqual(expect.objectContaining({ type: 'image_url' }))
-  })
-
-  it('retry replace hides old candidate (branch-local), selects new candidate, updates < i/n >, and streams', async () => {
-    const user = userEvent.setup()
-
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-
-    const store: {
-      headMessageId: string | null
-      chosenAnswerRootId: string
-      hidden: Set<string>
-      candidatesNewToOld: Array<{ answerRootId: string; createdAt: number; status: string }>
-      messagesById: Record<string, PersistedMessage>
-    } = {
-      headMessageId: 'a1',
-      chosenAnswerRootId: 'a1',
-      hidden: new Set(),
-      candidatesNewToOld: [
-        { answerRootId: 'a1', createdAt: now + 3, status: 'final' },
-        { answerRootId: 'a0', createdAt: now + 2, status: 'final' },
-      ],
-      messagesById: {
-        u1: {
-          id: 'u1',
-          convoId,
-          role: 'user',
-          seq: 1,
-          createdAt: now,
-          parentId: null,
-          status: 'final',
-          answerRootId: null,
-          questionId: null,
-          body: 'Q1',
-          meta: null,
-        },
-        a1: {
-          id: 'a1',
-          convoId,
-          role: 'assistant',
-          seq: 3,
-          createdAt: now + 1,
-          parentId: 'u1',
-          status: 'final',
-          answerRootId: 'a1',
-          questionId: 'u1',
-          body: 'A1',
-          meta: OPENROUTER_ROUTE_META,
-        },
-      },
-    }
-
-    const visibleCandidates = () => store.candidatesNewToOld.filter((c) => !store.hidden.has(c.answerRootId))
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
-      if (projectBootstrap !== undefined) return projectBootstrap
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault') {
-        return { id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
-      }
-      if (method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
-      }
-      if (method === 'context.getRenderableTurns') {
-        const q = store.messagesById.u1
-        const chosen = store.messagesById[store.chosenAnswerRootId]
-        return {
-          messages: [q, chosen],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: store.chosenAnswerRootId, questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'context.buildForBranch') return { messages: [] }
-      if (method === 'branch.getCandidates') return visibleCandidates()
-      if (method === 'branch.retryChosenAnswerReplacing') {
-        store.hidden.add(String(params?.targetAnswerRootId ?? ''))
-        const createdAt = Date.now()
-        store.messagesById.a2 = {
-          id: 'a2',
-          convoId,
-          role: 'assistant',
-          seq: 4,
-          createdAt,
-          parentId: 'u1',
-          status: 'streaming',
-          answerRootId: 'a2',
-          questionId: 'u1',
-          body: '',
-          meta: null,
-        }
-        store.headMessageId = 'a2'
-        store.chosenAnswerRootId = 'a2'
-        store.candidatesNewToOld = [
-          { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
-          ...store.candidatesNewToOld,
-        ]
-        return answerGenerationResult('a2', 4, 'retry_replace')
-      }
-      if (method === 'message.appendDelta') {
-        const seq = Number(params?.seq ?? NaN)
-        const appendBody = String(params?.appendBody ?? '')
-        const msg = Object.values(store.messagesById).find((m) => m.seq === seq)
-        if (msg) msg.body = String(msg.body ?? '') + appendBody
-        return { ok: true }
-      }
-      if (method === 'message.setStatus') {
-        const messageId = String(params?.messageId ?? '')
-        const status = String(params?.status ?? '')
-        const msg = store.messagesById[messageId]
-        if (msg) msg.status = status as any
-        return { ok: true }
-      }
-      if (method === 'modelPrefs.recordRecent') {
-        const nowTs = Date.now()
-        return {
-          scopeType: 'global',
-          scopeId: '',
-          providerKey: String(params?.providerKey ?? 'openrouter'),
-          modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
-          lastUsedAtMs: nowTs,
-          useCount: 1,
-          createdAtMs: nowTs,
-          updatedAtMs: nowTs,
-        }
-      }
-      return { ok: true }
-    })
-
-    ;(globalThis as any).dbBridge = { invoke }
-
-    render(AppChatApp)
-
-    const retry = await screen.findByTestId('retry-a-a1')
-    expect(retry).not.toBeDisabled()
-    await user.click(retry)
-
-    await screen.findByText('ok')
-    await waitFor(() => expect(screen.getByTestId('cand-pos-u1').textContent).toBe('2/2'))
-
-    await vi.runAllTimersAsync()
-
-    expect(invoke).toHaveBeenCalledWith(
-      'branch.retryChosenAnswerReplacing',
-      expect.objectContaining({ branchId: 'b1', questionId: 'u1', targetAnswerRootId: 'a1' })
-    )
-    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 4 }))
-    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a2', status: 'final' }))
-    expect(invoke).toHaveBeenCalledWith(
-      'modelPrefs.recordRecent',
-      expect.objectContaining({
-        scopeType: 'global',
-        scopeId: '',
-        providerKey: 'openrouter',
-        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        modelKey: 'openrouter::' + DEFAULT_OPENROUTER_TEST_MODEL,
-      }),
-    )
-    expect(visibleCandidates().map((c) => c.answerRootId)).not.toContain('a1')
-  })
-
-  it('retry replace replays historical attachments into the OpenRouter request', async () => {
-    const user = userEvent.setup()
-
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-    historyAttachmentRowsByMessageId = {
-      u1: makeReplayAttachmentRows('u1'),
-    }
-    fileAssetsById = makeReplayAssets()
-
-    const store: {
-      headMessageId: string | null
-      chosenAnswerRootId: string
-      hidden: Set<string>
-      candidatesNewToOld: Array<{ answerRootId: string; createdAt: number; status: string }>
-      messagesById: Record<string, PersistedMessage>
-    } = {
-      headMessageId: 'a1',
-      chosenAnswerRootId: 'a1',
-      hidden: new Set(),
-      candidatesNewToOld: [
-        { answerRootId: 'a1', createdAt: now + 3, status: 'final' },
-        { answerRootId: 'a0', createdAt: now + 2, status: 'final' },
-      ],
-      messagesById: {
-        u1: {
-          id: 'u1',
-          convoId,
-          role: 'user',
-          seq: 1,
-          createdAt: now,
-          parentId: null,
-          status: 'final',
-          answerRootId: null,
-          questionId: null,
-          body: 'Q1',
-          meta: null,
-        },
-        a1: {
-          id: 'a1',
-          convoId,
-          role: 'assistant',
-          seq: 3,
-          createdAt: now + 1,
-          parentId: 'u1',
-          status: 'final',
-          answerRootId: 'a1',
-          questionId: 'u1',
-          body: 'A1',
-          meta: OPENROUTER_ROUTE_META,
-        },
-      },
-    }
-
-    const visibleCandidates = () => store.candidatesNewToOld.filter((c) => !store.hidden.has(c.answerRootId))
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
-      if (projectBootstrap !== undefined) return projectBootstrap
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault') {
-        return { id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
-      }
-      if (method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: store.headMessageId, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
-      }
-      if (method === 'context.getRenderableTurns') {
-        const q = store.messagesById.u1
-        const chosen = store.messagesById[store.chosenAnswerRootId]
-        return {
-          messages: [q, chosen],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: store.chosenAnswerRootId, questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'context.buildForBranch') return { messages: [] }
-      if (method === 'branch.getCandidates') return visibleCandidates()
-      if (method === 'messageAttachment.listByMessageId') {
-        return historyAttachmentRowsByMessageId[String(params?.messageId ?? '')] ?? []
-      }
-      if (method === 'fileAsset.listByIds') {
-        const ids = Array.isArray(params?.ids) ? params.ids.map((value: unknown) => String(value ?? '').trim()).filter(Boolean) : []
-        return ids.map((id: string) => fileAssetsById[id]).filter(Boolean)
-      }
-      if (method === 'preview.getLatestReady') {
-        return {
-          assetId: String(params?.assetId ?? ''),
-          status: 'ready',
-          derivativeId: 'preview-1',
-          mime: 'image/png',
-          dataUrl: 'data:image/png;base64,AA==',
-          width: 64,
-          height: 64,
-          bytes: 8,
-          reused: false,
-          errorCode: null,
-          errorMessage: null,
-        }
-      }
-      if (method === 'preview.ensure') {
-        return {
-          assetId: String(params?.assetId ?? ''),
-          status: 'ready',
-          derivativeId: 'preview-1',
-          mime: 'image/png',
-          dataUrl: 'data:image/png;base64,BB==',
-          width: 64,
-          height: 64,
-          bytes: 8,
-          reused: true,
-          errorCode: null,
-          errorMessage: null,
-        }
-      }
-      if (method === 'branch.retryChosenAnswerReplacing') {
-        store.hidden.add(String(params?.targetAnswerRootId ?? ''))
-        const createdAt = Date.now()
-        store.messagesById.a2 = {
-          id: 'a2',
-          convoId,
-          role: 'assistant',
-          seq: 4,
-          createdAt,
-          parentId: 'u1',
-          status: 'streaming',
-          answerRootId: 'a2',
-          questionId: 'u1',
-          body: '',
-          meta: null,
-        }
-        store.headMessageId = 'a2'
-        store.chosenAnswerRootId = 'a2'
-        store.candidatesNewToOld = [
-          { answerRootId: 'a2', createdAt: createdAt + 1, status: 'streaming' },
-          ...store.candidatesNewToOld,
-        ]
-        return answerGenerationResult('a2', 4, 'retry_replace')
-      }
-      if (method === 'message.appendDelta') {
-        const seq = Number(params?.seq ?? NaN)
-        const appendBody = String(params?.appendBody ?? '')
-        const msg = Object.values(store.messagesById).find((m) => m.seq === seq)
-        if (msg) msg.body = String(msg.body ?? '') + appendBody
-        return { ok: true }
-      }
-      if (method === 'message.setStatus') {
-        const messageId = String(params?.messageId ?? '')
-        const status = String(params?.status ?? '')
-        const msg = store.messagesById[messageId]
-        if (msg) msg.status = status as any
-        return { ok: true }
-      }
-      if (method === 'modelPrefs.recordRecent') {
-        const nowTs = Date.now()
-        return {
-          scopeType: 'global',
-          scopeId: '',
-          providerKey: String(params?.providerKey ?? 'openrouter'),
-          modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
-          lastUsedAtMs: nowTs,
-          useCount: 1,
-          createdAtMs: nowTs,
-          updatedAtMs: nowTs,
-        }
-      }
-      return { ok: true }
-    })
-
-    ;(globalThis as any).dbBridge = { invoke }
-
-    render(AppChatApp)
-
-    const retry = await screen.findByTestId('retry-a-a1')
-    await user.click(retry)
-    await screen.findByTestId('attachment-confirm-panel')
-    await user.click(screen.getByTestId('attachment-confirm-history-exclude-all-checkbox'))
-    await user.click(screen.getByTestId('attachment-confirm-confirm'))
-
-    await screen.findByText('ok')
-    await waitFor(() => expect(screen.getByTestId('cand-pos-u1').textContent).toBe('2/2'))
-    await vi.runAllTimersAsync()
-
-    expect(invoke).toHaveBeenCalledWith(
-      'message.setStatus',
-      expect.objectContaining({
-        messageId: 'a2',
-        status: 'final',
-        metaPatch: expect.objectContaining({
-          currentReplayManifestDraft: expect.objectContaining({
-            replayMode: 'current',
-            sourceUserMessageId: 'u1',
-          }),
-        }),
-      }),
-    )
-
-    const lastCall = streamOpenRouterChatCallArgs.at(-1)
-    expect(lastCall).toEqual(expect.objectContaining({
-      userText: 'Q1',
-      currentUserContentBlocks: expect.any(Array),
-      contextMessages: expect.any(Array),
-    }))
-    const currentUserContentBlocks = lastCall.currentUserContentBlocks as any[]
-    expect(currentUserContentBlocks.length).toBeGreaterThan(1)
-    expect(currentUserContentBlocks.some((block: any) => block.type !== 'text')).toBe(true)
-    expect(currentUserContentBlocks[0]).toMatchObject({ type: 'text', text: 'Q1' })
-    expect(currentUserContentBlocks[1]).toEqual(expect.objectContaining({ type: 'image_url' }))
-  })
-
-  it('disables regenerate/retry while the selected answer group is streaming', async () => {
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
-      if (projectBootstrap !== undefined) return projectBootstrap
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault') {
-        return { id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
-      }
-      if (method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
-      }
-      if (method === 'context.getRenderableTurns') {
-        return {
-          messages: [
-            {
-              id: 'u1',
-              convoId,
-              role: 'user',
-              seq: 1,
-              createdAt: now,
-              parentId: null,
-              status: 'final',
-              answerRootId: null,
-              questionId: null,
-              body: 'Q1',
-              meta: null,
-            },
-            {
-              id: 'a1',
-              convoId,
-              role: 'assistant',
-              seq: 2,
-              createdAt: now + 1,
-              parentId: 'u1',
-              status: 'streaming',
-              answerRootId: 'a1',
-              questionId: 'u1',
-              body: '',
-              meta: null,
-            },
-          ],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'context.buildForBranch') return { messages: [] }
-      if (method === 'branch.getCandidates') return [{ answerRootId: 'a1', createdAt: now + 2, status: 'streaming' }]
-      if (method === 'messageAttachment.listByMessageId') {
-        return historyAttachmentRowsByMessageId[String(params?.messageId ?? '')] ?? []
-      }
-      if (method === 'fileAsset.listByIds') {
-        const ids = Array.isArray(params?.ids) ? params.ids.map((value: unknown) => String(value ?? '').trim()).filter(Boolean) : []
-        return ids.map((id: string) => fileAssetsById[id]).filter(Boolean)
-      }
-      if (method === 'modelPrefs.recordRecent') {
-        const nowTs = Date.now()
-        return {
-          scopeType: 'global',
-          scopeId: '',
-          providerKey: 'openrouter',
-          modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-          modelKey: `openrouter::${DEFAULT_OPENROUTER_TEST_MODEL}`,
-          lastUsedAtMs: nowTs,
-          useCount: 1,
-          createdAtMs: nowTs,
-          updatedAtMs: nowTs,
-        }
-      }
-      return { ok: true }
-    })
-
-    ;(globalThis as any).dbBridge = { invoke }
-
-    render(AppChatApp)
-    await screen.findByText('Q1')
-
-    expect(await screen.findByTestId('regen-q-u1')).toBeDisabled()
-    expect(await screen.findByTestId('retry-a-a1')).toBeDisabled()
-  })
-
-  it('opens confirmation UI for regenerate needs_confirmation and continues only after history exclude-all confirm', async () => {
-    const user = userEvent.setup()
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-    replayPrepareStatusByMessageId = { u1: 'needs_confirmation' }
-    replayPrepareBlockingReasonByMessageId = { u1: 'History attachment is excluded from current replay.' }
-    const replayRows = makeReplayAttachmentRows('u1').map((row, index) => (
-      index === 0
-        ? { ...row, includeInNextRequest: false, excludedReason: 'conversion_required_before_send' }
-        : row
-    ))
-    historyAttachmentRowsByMessageId = {
-      u1: replayRows,
-    }
-    fileAssetsById = makeReplayAssets()
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
-      if (projectBootstrap !== undefined) return projectBootstrap
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault' || method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }][0]
-      }
-      if (method === 'context.getRenderableTurns') {
-        return {
-          messages: [
-            { id: 'u1', convoId, role: 'user', seq: 1, createdAt: now, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: OPENROUTER_ROUTE_META },
-          ],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'context.buildForBranch') return { messages: [] }
-      if (method === 'branch.getCandidates') return [{ answerRootId: 'a1', createdAt: now + 2, status: 'final' }]
-      if (method === 'messageAttachment.listByMessageId') {
-        return historyAttachmentRowsByMessageId[String(params?.messageId ?? '')] ?? []
-      }
-      if (method === 'fileAsset.listByIds') {
-        const ids = Array.isArray(params?.ids) ? params.ids.map((value: unknown) => String(value ?? '').trim()).filter(Boolean) : []
-        return ids.map((id: string) => fileAssetsById[id]).filter(Boolean)
-      }
-      if (method === 'preview.getLatestReady' || method === 'preview.ensure') {
-        return {
-          assetId: String(params?.assetId ?? ''),
-          status: 'ready',
-          derivativeId: 'preview-1',
-          mime: 'image/png',
-          dataUrl: 'data:image/png;base64,AA==',
-          width: 64,
-          height: 64,
-          bytes: 8,
-          reused: false,
-          errorCode: null,
-          errorMessage: null,
-        }
-      }
-      if (method === 'branch.regenerateQuestionWithCurrentConfig') {
-        return answerGenerationResult('a2', 3)
-      }
-      if (method === 'message.appendDelta' || method === 'message.setStatus' || method === 'modelPrefs.recordRecent') {
-        return { ok: true }
-      }
-      return { ok: true }
-    })
-    ;(globalThis as any).dbBridge = { invoke }
-
-    render(AppChatApp)
-    await screen.findByText('Q1')
-    await user.click(await screen.findByTestId('regen-q-u1'))
-
-    await screen.findByTestId('attachment-confirm-panel')
-    expect(screen.getByTestId('attachment-confirm-history-section')).toBeTruthy()
-    expect(screen.queryByTestId('attachment-confirm-current-section')).toBeNull()
-    expect(screen.queryByTestId('attachment-confirm-history-exclude-att-u1-preview-only')).toBeNull()
-    expect(screen.getByTestId('attachment-confirm-history-row-att-u1-image')).toBeTruthy()
-    expect(screen.getByTestId('attachment-confirm-history-row-att-u1-preview-only')).toBeTruthy()
-
-    await user.click(screen.getByTestId('attachment-confirm-confirm'))
-    await waitFor(() => {
-      expect(screen.getByTestId('attachment-confirm-validation').textContent).toContain('历史附件全部从本次模型上下文中排除')
-    })
-
-    await user.click(screen.getByTestId('attachment-confirm-history-locate-att-u1-preview-only'))
-    await screen.findByTestId('attachment-confirm-locator-bar')
-    expect(screen.getByTestId('attachment-confirm-locator-index').textContent).toBe('2/2')
-    await user.click(screen.getByTestId('attachment-confirm-locator-prev'))
-    expect(screen.getByTestId('attachment-confirm-locator-index').textContent).toBe('1/2')
-    await user.click(screen.getByTestId('attachment-confirm-locator-prev'))
-    expect(screen.getByTestId('attachment-confirm-locator-index').textContent).toBe('2/2')
-    await user.click(screen.getByTestId('attachment-confirm-locator-next'))
-    expect(screen.getByTestId('attachment-confirm-locator-index').textContent).toBe('1/2')
-    await user.click(screen.getByTestId('attachment-confirm-locator-open-panel'))
-    await screen.findByTestId('attachment-confirm-panel')
-
-    await user.click(screen.getByTestId('attachment-confirm-history-exclude-all-checkbox'))
-    await user.click(screen.getByTestId('attachment-confirm-confirm'))
-
-    await waitFor(() => {
-      expect(invoke.mock.calls.some((call) => call[0] === 'branch.regenerateQuestionWithCurrentConfig')).toBe(true)
-    })
-    expect(streamOpenRouterChatCallArgs.length).toBeGreaterThan(0)
-    const lastCall = streamOpenRouterChatCallArgs.at(-1)
-    const blocks = Array.isArray(lastCall?.currentUserContentBlocks) ? lastCall.currentUserContentBlocks as any[] : []
-    expect(blocks.some((block) => String(block?.image_url?.url ?? '').includes('asset-history-preview-only'))).toBe(false)
-  })
-
-  it('continues retry replace after confirming history exclude-all under needs_confirmation', async () => {
-    const user = userEvent.setup()
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-    replayPrepareStatusByMessageId = { u1: 'needs_confirmation' }
-    replayPrepareBlockingReasonByMessageId = { u1: 'History attachment is excluded from current replay.' }
-    historyAttachmentRowsByMessageId = { u1: makeReplayAttachmentRows('u1') }
-    fileAssetsById = makeReplayAssets()
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
-      if (projectBootstrap !== undefined) return projectBootstrap
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault' || method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }][0]
-      }
-      if (method === 'context.getRenderableTurns') {
-        return {
-          messages: [
-            { id: 'u1', convoId, role: 'user', seq: 1, createdAt: now, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: OPENROUTER_ROUTE_META },
-          ],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'context.buildForBranch') return { messages: [] }
-      if (method === 'branch.getCandidates') return [{ answerRootId: 'a1', createdAt: now + 2, status: 'final' }]
-      if (method === 'messageAttachment.listByMessageId') {
-        return historyAttachmentRowsByMessageId[String(params?.messageId ?? '')] ?? []
-      }
-      if (method === 'fileAsset.listByIds') {
-        const ids = Array.isArray(params?.ids) ? params.ids.map((value: unknown) => String(value ?? '').trim()).filter(Boolean) : []
-        return ids.map((id: string) => fileAssetsById[id]).filter(Boolean)
-      }
-      if (method === 'preview.getLatestReady' || method === 'preview.ensure') {
-        return {
-          assetId: String(params?.assetId ?? ''),
-          status: 'ready',
-          derivativeId: 'preview-1',
-          mime: 'image/png',
-          dataUrl: 'data:image/png;base64,AA==',
-          width: 64,
-          height: 64,
-          bytes: 8,
-          reused: false,
-          errorCode: null,
-          errorMessage: null,
-        }
-      }
-      if (method === 'branch.retryChosenAnswerReplacing') return answerGenerationResult('a2', 3, 'retry_replace')
-      if (method === 'message.appendDelta' || method === 'message.setStatus' || method === 'modelPrefs.recordRecent') return { ok: true }
-      return { ok: true }
-    })
-    ;(globalThis as any).dbBridge = { invoke }
-
-    render(AppChatApp)
-    await screen.findByText('A1')
-    await user.click(await screen.findByTestId('retry-a-a1'))
-    await screen.findByTestId('attachment-confirm-panel')
-
-    await user.click(screen.getByTestId('attachment-confirm-confirm'))
-    await waitFor(() => {
-      expect(screen.getByTestId('attachment-confirm-validation').textContent).toContain('历史附件全部从本次模型上下文中排除')
-    })
-    await user.click(screen.getByTestId('attachment-confirm-history-exclude-all-checkbox'))
-    await user.click(screen.getByTestId('attachment-confirm-confirm'))
-
-    await waitFor(() => {
-      expect(invoke.mock.calls.some((call) => call[0] === 'branch.retryChosenAnswerReplacing')).toBe(true)
-    })
-  })
-
-  it('keeps old answer when retry replace confirmation is canceled under needs_confirmation', async () => {
-    const user = userEvent.setup()
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-    replayPrepareStatusByMessageId = { u1: 'needs_confirmation' }
-    replayPrepareBlockingReasonByMessageId = { u1: 'History attachment is excluded from current replay.' }
-    historyAttachmentRowsByMessageId = {
-      u1: makeReplayAttachmentRows('u1'),
-    }
-    fileAssetsById = makeReplayAssets()
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
-      if (projectBootstrap !== undefined) return projectBootstrap
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault' || method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }][0]
-      }
-      if (method === 'context.getRenderableTurns') {
-        return {
-          messages: [
-            { id: 'u1', convoId, role: 'user', seq: 1, createdAt: now, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: OPENROUTER_ROUTE_META },
-          ],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'context.buildForBranch') return { messages: [] }
-      if (method === 'branch.getCandidates') {
-        return [
-          { answerRootId: 'a1', createdAt: now + 2, status: 'final' },
-          { answerRootId: 'a0', createdAt: now + 1, status: 'final' },
-        ]
-      }
-      if (method === 'messageAttachment.listByMessageId') {
-        return historyAttachmentRowsByMessageId[String(params?.messageId ?? '')] ?? []
-      }
-      if (method === 'fileAsset.listByIds') {
-        const ids = Array.isArray(params?.ids) ? params.ids.map((value: unknown) => String(value ?? '').trim()).filter(Boolean) : []
-        return ids.map((id: string) => fileAssetsById[id]).filter(Boolean)
-      }
-      if (method === 'preview.getLatestReady' || method === 'preview.ensure') {
-        return {
-          assetId: String(params?.assetId ?? ''),
-          status: 'ready',
-          derivativeId: 'preview-1',
-          mime: 'image/png',
-          dataUrl: 'data:image/png;base64,AA==',
-          width: 64,
-          height: 64,
-          bytes: 8,
-          reused: false,
-          errorCode: null,
-          errorMessage: null,
-        }
-      }
-      return { ok: true }
-    })
-    ;(globalThis as any).dbBridge = { invoke }
-
-    render(AppChatApp)
-    await screen.findByText('A1')
-    await user.click(await screen.findByTestId('retry-a-a1'))
-    await screen.findByTestId('attachment-confirm-panel')
-    await user.click(screen.getByTestId('attachment-confirm-cancel'))
-
-    await waitFor(() => {
-      expect(screen.queryByTestId('attachment-confirm-panel')).toBeNull()
-    })
-    expect(invoke.mock.calls.some((call) => call[0] === 'branch.retryChosenAnswerReplacing')).toBe(false)
-    expect(streamOpenRouterChatCallArgs.length).toBe(0)
-    expect(screen.getByText('A1')).toBeTruthy()
-  })
-
-  it('blocks retry replace when replay is blocked and keeps the old answer candidate', async () => {
-    const user = userEvent.setup()
-    const convoId = 'c1'
-    const branchId = 'b1'
-    const now = Date.now()
-    replayPrepareStatusByMessageId = { u1: 'blocked' }
-    replayPrepareBlockingReasonByMessageId = { u1: 'hard gate blocked' }
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      const projectBootstrap = mockStableAppBootstrapCalls(method, params)
-      if (projectBootstrap !== undefined) return projectBootstrap
-      if (method === 'convo.list') return [{ id: convoId, title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault' || method === 'branch.list') {
-        return [{ id: branchId, convoId, headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }][0]
-      }
-      if (method === 'context.getRenderableTurns') {
-        return {
-          messages: [
-            { id: 'u1', convoId, role: 'user', seq: 1, createdAt: now, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId, role: 'assistant', seq: 2, createdAt: now + 1, parentId: 'u1', status: 'final', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: OPENROUTER_ROUTE_META },
-          ],
-          turns: [{ questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false }],
-        }
-      }
-      if (method === 'context.buildForBranch') return { messages: [] }
-      if (method === 'branch.getCandidates') {
-        return [
-          { answerRootId: 'a1', createdAt: now + 2, status: 'final' },
-          { answerRootId: 'a0', createdAt: now + 1, status: 'final' },
-        ]
-      }
-      return { ok: true }
-    })
-    ;(globalThis as any).dbBridge = { invoke }
-
-    render(AppChatApp)
-    await screen.findByText('A1')
-    await user.click(await screen.findByTestId('retry-a-a1'))
-    await waitFor(() => {
-      expect(screen.getByText(/Current replay blocked \(blocked\)/i)).toBeTruthy()
-    })
-    expect(invoke.mock.calls.some((call) => call[0] === 'branch.retryChosenAnswerReplacing')).toBe(false)
-    expect(screen.getByText('A1')).toBeTruthy()
-    expect(streamOpenRouterChatCallArgs.length).toBe(0)
+    expect(await screen.findByTestId('raw-data-provider-error-1')).toHaveTextContent('raw provider error')
   })
 })

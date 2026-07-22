@@ -60,7 +60,7 @@ describe('ChatSessionConsole network error display', () => {
           loading: false,
           result: availabilityFailure('openai_responses', 'http_401_auth', 'errors.network.reason.http401Auth') as any,
         },
-        anthropicChat: { enabled: true, model: 'claude-sonnet-4-5', experimentalLabel: 'Anthropic' },
+        anthropicChat: { enabled: true, model: 'claude-sonnet-4-5', thinkingDisplay: 'summarized', experimentalLabel: 'Anthropic' },
         anthropicModelAvailability: {
           loading: false,
           result: availabilityFailure('anthropic', 'http_403_forbidden', 'errors.network.reason.http403Forbidden') as any,

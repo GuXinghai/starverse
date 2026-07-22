@@ -38,6 +38,7 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
         anthropicChat: {
           enabled: true,
           model: 'claude-sonnet-4-5',
+          thinkingDisplay: 'summarized',
           experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
         },
         reasoningDisplayMode: 'inline',
@@ -77,6 +78,7 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
         anthropicChat: {
           enabled: true,
           model: 'claude-sonnet-4-5',
+          thinkingDisplay: 'summarized',
           experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
         },
         anthropicModelAvailability: {
