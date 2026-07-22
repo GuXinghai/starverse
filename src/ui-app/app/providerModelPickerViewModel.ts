@@ -110,6 +110,7 @@ function modalitiesFromSeed(seedInput: unknown): { input: string[]; output: stri
     if (asBooleanCapability(seed.imageInput ?? seed.vision) === true) input.add('image')
     if (asBooleanCapability(seed.fileInput ?? seed.files) === true) input.add('file')
     if (asBooleanCapability(seed.audioInput) === true) input.add('audio')
+    if (asBooleanCapability(seed.imageGeneration) === true) output.add('image')
   }
   return { input: Array.from(input), output: Array.from(output) }
 }

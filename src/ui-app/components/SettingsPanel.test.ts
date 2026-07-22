@@ -7,10 +7,12 @@ import { resetI18nForTests, t, tf } from '@/shared/i18n'
 const CONFIGURED_API_KEY_PLACEHOLDER = '••••••'
 
 function createElectronStoreMock() {
-  const get = vi.fn(async (_key: string) => {
-    return undefined
+  const values: Record<string, unknown> = {}
+  const get = vi.fn(async (key: string) => values[key])
+  const set = vi.fn(async (key: string, value: unknown) => {
+    values[key] = value
+    return true
   })
-  const set = vi.fn(async () => true)
   const del = vi.fn(async () => true)
   return { get, set, delete: del }
 }
@@ -20,7 +22,10 @@ function createElectronStoreMockWith(values: Record<string, unknown>) {
     if (key in values) return values[key]
     return undefined
   })
-  const set = vi.fn(async () => true)
+  const set = vi.fn(async (key: string, value: unknown) => {
+    values[key] = value
+    return true
+  })
   const del = vi.fn(async () => true)
   return { get, set, delete: del }
 }
@@ -336,6 +341,8 @@ describe('ui-app SettingsPanel', () => {
   const originalAnthropicCredential = (globalThis as any).anthropicCredential
   const originalDeepSeekCredential = (globalThis as any).deepSeekCredential
   const originalLocalEndpointDiagnostics = (globalThis as any).localEndpointDiagnostics
+  const originalGenerationV2 = (globalThis as any).generationV2
+  const originalNetworkProxy = (globalThis as any).networkProxy
 
   beforeEach(() => {
     resetI18nForTests()
@@ -352,12 +359,61 @@ describe('ui-app SettingsPanel', () => {
     ;(globalThis as any).electronStore = createElectronStoreMock()
     ;(globalThis as any).dbBridge = createDbBridgeMock()
     ;(globalThis as any).electronAPI = createElectronAPIMock()
-    ;(globalThis as any).openRouterCredential = createOpenRouterCredentialMock()
-    ;(globalThis as any).openAIResponsesCredential = createOpenAIResponsesCredentialMock()
-    ;(globalThis as any).googleAIStudioCredential = createGoogleAIStudioCredentialMock()
-    ;(globalThis as any).anthropicCredential = createAnthropicCredentialMock()
-    ;(globalThis as any).deepSeekCredential = createDeepSeekCredentialMock()
-    ;(globalThis as any).localEndpointDiagnostics = createLocalEndpointDiagnosticsMock()
+    ;(globalThis as any).networkProxy = {
+      getSettings: vi.fn(async () => ({ ok: true, settings: { proxyMode: 'environment', manualProxyUrl: '', noProxy: '', strictSSL: true } })),
+      updateSettings: vi.fn(async () => ({ ok: true, settings: { proxyMode: 'environment', manualProxyUrl: '', noProxy: '', strictSSL: true } })),
+    }
+    const openRouterCredential = createOpenRouterCredentialMock()
+    const openAIResponsesCredential = createOpenAIResponsesCredentialMock()
+    const googleAIStudioCredential = createGoogleAIStudioCredentialMock()
+    const anthropicCredential = createAnthropicCredentialMock()
+    const deepSeekCredential = createDeepSeekCredentialMock()
+    const localEndpointDiagnostics = createLocalEndpointDiagnosticsMock()
+    const listOpenRouter = vi.fn(async () => ({
+      ok: true,
+      responseDigest: 'settings-openrouter-models-v2',
+      observedAtMs: Date.now(),
+      items: [{
+        providerKey: 'openrouter', modelId: 'openai/gpt-4.1-nano',
+        modelKey: 'openrouter::openai/gpt-4.1-nano', canonicalSlug: 'openai/gpt-4.1-nano',
+        displayName: 'GPT-4.1 nano', description: null, vendor: 'openai',
+        contextLength: 32_768, maxOutputTokens: 32, createdAtSec: 1,
+        pricing: { prompt: '0', completion: '0', request: '0', image: '0' },
+        capabilities: { reasoning: false, tools: true, structuredOutputs: true, vision: false, longContext: false },
+      }],
+    }))
+    ;(globalThis as any).openRouterCredential = openRouterCredential
+    ;(globalThis as any).openAIResponsesCredential = openAIResponsesCredential
+    ;(globalThis as any).googleAIStudioCredential = googleAIStudioCredential
+    ;(globalThis as any).anthropicCredential = anthropicCredential
+    ;(globalThis as any).deepSeekCredential = deepSeekCredential
+    ;(globalThis as any).localEndpointDiagnostics = localEndpointDiagnostics
+    const generationV2 = (globalThis as any).generationV2 ?? {}
+    ;(globalThis as any).generationV2 = {
+      ...generationV2,
+      credentials: {
+        ...(generationV2.credentials ?? {}),
+        get openRouter() { return (globalThis as any).openRouterCredential },
+        get openAIResponses() { return (globalThis as any).openAIResponsesCredential },
+        get googleAIStudio() { return (globalThis as any).googleAIStudioCredential },
+        get anthropic() { return (globalThis as any).anthropicCredential },
+        get deepSeek() { return (globalThis as any).deepSeekCredential },
+      },
+      localRuntime: {
+        ...(generationV2.localRuntime ?? {}),
+        get generic() { return (globalThis as any).localEndpointDiagnostics },
+      },
+      models: {
+        ...(generationV2.models ?? {}),
+        listOpenRouter,
+        sync: vi.fn(async () => ({ ok: true, status: 'synced', modelCount: 1,
+          visibleModelCount: 1, hiddenModelCount: 0, responseDigest: 'settings-openrouter-models-v2', observedAtMs: Date.now() })),
+        status: vi.fn(async () => ({ ok: true, status: 'synced', modelCount: 1,
+          visibleModelCount: 1, hiddenModelCount: 0, responseDigest: 'settings-openrouter-models-v2', observedAtMs: Date.now() })),
+        clearCurrent: vi.fn(async () => ({ ok: true, deletedScopes: 1 })),
+        clearAll: vi.fn(async () => ({ ok: true, deletedScopes: 2 })),
+      },
+    }
   })
 
   afterEach(() => {
@@ -380,6 +436,8 @@ describe('ui-app SettingsPanel', () => {
     ;(globalThis as any).anthropicCredential = originalAnthropicCredential
     ;(globalThis as any).deepSeekCredential = originalDeepSeekCredential
     ;(globalThis as any).localEndpointDiagnostics = originalLocalEndpointDiagnostics
+    ;(globalThis as any).generationV2 = originalGenerationV2
+    ;(globalThis as any).networkProxy = originalNetworkProxy
   })
 
   it('loads values and saves updates', async () => {
@@ -403,7 +461,16 @@ describe('ui-app SettingsPanel', () => {
     await user.click(checkbox)
     expect(checkbox.checked).toBe(true)
 
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    await user.click(screen.getByTestId('settings-save'))
+
+    await waitFor(() => expect((globalThis as any).electronStore.set)
+      .toHaveBeenCalledWith('generationV2UiPreferences', expect.objectContaining({
+        reasoningPrefs: { mode: 'auto', effort: 'auto', exclude: false },
+        chatReasoningPanelDefaultExpanded: true,
+        userMessageRenderDefault: false,
+        webSearchDefaults: null,
+        generationParamsDefaults: null,
+      })))
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
@@ -415,11 +482,6 @@ describe('ui-app SettingsPanel', () => {
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith('settings.setOpenRouterProviderRequireParameters', { value: true })
-    expect(invoke).toHaveBeenCalledWith('settings.setReasoningPrefs', { value: { mode: 'auto', effort: 'auto', exclude: false } })
-    expect(invoke).toHaveBeenCalledWith('settings.setChatReasoningPanelDefaultExpanded', { value: true })
-    expect(invoke).toHaveBeenCalledWith('settings.setUserMessageRenderDefault', { value: false })
-    expect(invoke).toHaveBeenCalledWith('settings.setWebSearchDefaults', { value: null })
-    expect(invoke).toHaveBeenCalledWith('settings.setGenerationParamsDefaults', { value: null })
     const credentialUpdate = (globalThis as any).openRouterCredential.update as ReturnType<typeof vi.fn>
     expect(credentialUpdate).toHaveBeenCalledWith({ apiKey: 'sk-new' })
   })
@@ -445,7 +507,7 @@ describe('ui-app SettingsPanel', () => {
 
     await user.clear(keyInput)
     await user.type(keyInput, 'sk-c4c-replacement-key')
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    await user.click(screen.getByTestId('settings-save'))
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
@@ -478,7 +540,7 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.queryByDisplayValue('sk-openai-old')).toBeNull()
 
     await user.type(openAIKeyInput, 'sk-openai-replacement')
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    await user.click(screen.getByTestId('settings-save'))
 
     expect((globalThis as any).openAIResponsesCredential.update).toHaveBeenCalledWith({
       apiKey: 'sk-openai-replacement',
@@ -509,7 +571,7 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.queryByDisplayValue('AIza-old-google-key')).toBeNull()
 
     await user.type(googleKeyInput, 'AIza-google-replacement')
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    await user.click(screen.getByTestId('settings-save'))
 
     expect((globalThis as any).googleAIStudioCredential.update).toHaveBeenCalledWith({
       apiKey: 'AIza-google-replacement',
@@ -539,7 +601,7 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.queryByDisplayValue('sk-ant-old-key')).toBeNull()
 
     await user.type(anthropicKeyInput, 'sk-ant-replacement')
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    await user.click(screen.getByTestId('settings-save'))
 
     expect((globalThis as any).anthropicCredential.update).toHaveBeenCalledWith({
       apiKey: 'sk-ant-replacement',
@@ -568,7 +630,7 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.queryByDisplayValue('sk-deepseek-old-key')).toBeNull()
 
     await user.type(deepSeekKeyInput, 'sk-deepseek-replacement')
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    await user.click(screen.getByTestId('settings-save'))
 
     expect((globalThis as any).deepSeekCredential.update).toHaveBeenCalledWith({
       apiKey: 'sk-deepseek-replacement',
@@ -740,7 +802,7 @@ describe('ui-app SettingsPanel', () => {
     await fireEvent.update(screen.getByTestId('settings-catalog-list-update-mode'), 'automatic')
     await fireEvent.update(screen.getByTestId('settings-catalog-freshness'), String(15 * 60 * 1000))
     await fireEvent.update(screen.getByTestId('settings-catalog-retention'), 'never')
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    await user.click(screen.getByTestId('settings-save'))
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).toHaveBeenCalledWith('openRouterCatalogStartupSyncPolicy', 'always')
@@ -766,7 +828,7 @@ describe('ui-app SettingsPanel', () => {
     await screen.findByText('设置')
     await waitFor(() => expect((globalThis as any).electronStore.get).toHaveBeenCalled())
 
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    await user.click(screen.getByTestId('settings-save'))
 
     await waitFor(() => {
       const found = events.find((e) => e.type === 'settings:openRouterConnectionUpdated')
@@ -806,7 +868,7 @@ describe('ui-app SettingsPanel', () => {
     window.dispatchEvent = origDispatch
   })
 
-  it('verify and sync button calls modelCatalogSyncNow with force=true', async () => {
+  it('verify and sync button calls the fixed OpenRouter V2 catalog authority', async () => {
     const user = userEvent.setup()
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
@@ -817,12 +879,8 @@ describe('ui-app SettingsPanel', () => {
     await user.click(verifyBtn)
 
     await waitFor(() => {
-      const syncNow = (globalThis as any).electronAPI.modelCatalogSyncNow as ReturnType<typeof vi.fn>
-      expect(syncNow).toHaveBeenCalledWith({
-        providerKey: 'openrouter',
-        force: true,
-        reason: 'settings_validate_button',
-      })
+      const sync = (globalThis as any).generationV2.models.sync as ReturnType<typeof vi.fn>
+      expect(sync).toHaveBeenCalledWith({ providerKey: 'openrouter', timeoutMs: 30_000, retentionMs: 7_776_000_000 })
     })
   })
 
@@ -843,15 +901,8 @@ describe('ui-app SettingsPanel', () => {
 
   it('verify and sync button shows failure result', async () => {
     const user = userEvent.setup()
-    ;(globalThis as any).electronAPI.modelCatalogSyncNow = vi.fn(async () => ({
-      ok: false,
-      syncAttempted: true,
-      syncSucceeded: false,
-      providerKey: 'openrouter',
-      modelCount: 0,
-      lastSyncAtMs: Date.now(),
-      errorCode: 'invalid_api_key',
-      errorMessage: 'API Key 无效',
+    ;(globalThis as any).generationV2.models.sync = vi.fn(async () => ({
+      ok: false, code: 'credential_invalid',
     }))
 
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
@@ -876,9 +927,9 @@ describe('ui-app SettingsPanel', () => {
     await waitFor(() => expect(screen.getByTestId('settings-clear-current-catalog-cache')).not.toBeDisabled())
     await user.click(screen.getByTestId('settings-clear-current-catalog-cache'))
 
-    const clearCurrent = (globalThis as any).electronAPI.modelCatalogClearCurrentScopedCache as ReturnType<typeof vi.fn>
+    const clearCurrent = (globalThis as any).generationV2.models.clearCurrent as ReturnType<typeof vi.fn>
     await waitFor(() => expect(clearCurrent).toHaveBeenCalledTimes(1))
-    expect(clearCurrent).toHaveBeenCalledWith()
+    expect(clearCurrent).toHaveBeenCalledWith({ providerKey: 'openrouter' })
     expect(confirm.mock.calls[0]?.[0]).toContain('不会删除 API Key')
     expect(confirm.mock.calls[0]?.[0]).toContain('不会删除聊天记录')
     expect(confirm.mock.calls[0]?.[0]).toContain('下次打开模型选择器需要重新同步模型目录')
@@ -897,9 +948,9 @@ describe('ui-app SettingsPanel', () => {
     await waitFor(() => expect(screen.getByTestId('settings-clear-all-catalog-caches')).not.toBeDisabled())
     await user.click(screen.getByTestId('settings-clear-all-catalog-caches'))
 
-    const clearAll = (globalThis as any).electronAPI.modelCatalogClearAllOpenRouterScopedCaches as ReturnType<typeof vi.fn>
+    const clearAll = (globalThis as any).generationV2.models.clearAll as ReturnType<typeof vi.fn>
     await waitFor(() => expect(clearAll).toHaveBeenCalledTimes(1))
-    expect(clearAll).toHaveBeenCalledWith()
+    expect(clearAll).toHaveBeenCalledWith({ providerKey: 'openrouter' })
     expect(confirm.mock.calls[0]?.[0]).toContain('不会删除 API Key')
     expect(confirm.mock.calls[0]?.[0]).toContain('不会删除聊天记录')
     expect(confirm.mock.calls[0]?.[0]).toContain('下次打开模型选择器需要重新同步模型目录')
@@ -912,14 +963,7 @@ describe('ui-app SettingsPanel', () => {
   it('shows cleanup failure from catalog cleanup IPC', async () => {
     const user = userEvent.setup()
     const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
-    ;(globalThis as any).electronAPI.modelCatalogClearAllOpenRouterScopedCaches = vi.fn(async () => ({
-      ok: false,
-      providerKey: 'openrouter',
-      deleted: {},
-      deletedScopeCount: 0,
-      errorCode: 'db_unavailable',
-      errorMessage: 'DB unavailable',
-    }))
+    ;(globalThis as any).generationV2.models.clearAll = vi.fn(async () => ({ ok: false, code: 'db_unavailable' }))
 
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
@@ -1120,7 +1164,7 @@ describe('ui-app SettingsPanel', () => {
     expect(toggle.checked).toBe(false)
     await user.click(toggle)
     expect(toggle.checked).toBe(true)
-    await user.click(screen.getByRole('button', { name: '保存' }))
+    await user.click(screen.getByTestId('settings-save'))
     expect(globalThis.localStorage?.getItem('sv_debug_openrouter_echo_upstream_body')).toBe('1')
   })
 })

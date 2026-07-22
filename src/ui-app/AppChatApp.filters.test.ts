@@ -4,57 +4,68 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import AppChatApp from './AppChatApp.vue'
 
 describe('ui-app AppChatApp (filters: include/exclude)', () => {
-  const originalDbBridge = (globalThis as any).dbBridge
-  const originalElectronStore = (globalThis as any).electronStore
+  let originalGenerationV2: any
+  let setContextFilter: ReturnType<typeof vi.fn>
+  let readBranch: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
-    ;(globalThis as any).electronStore = { get: vi.fn(async () => 'sk-test') }
+    originalGenerationV2 = (globalThis as any).generationV2
+    const ok = <T>(value: T) => ({ ok: true as const, value })
+    let questionMode: 'include' | 'exclude' = 'include'
+    const baseTemplate = originalGenerationV2.workspace.getSystemTemplate
 
-    const invoke = vi.fn(async (method: string, _params?: any) => {
-      if (method === 'project.list') return []
-      if (method === 'project.getInbox') return null
-      if (method === 'project.countConversationsBatch') return { counts: {} }
-      if (method === 'settings.getChatReasoningDisplayMode') return { value: 'inline' }
-      if (method === 'convo.list') return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1 }]
-      if (method === 'branch.ensureDefault') return { id: 'b1', convoId: 'c1', headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
-      if (method === 'branch.list') return [{ id: 'b1', convoId: 'c1', headMessageId: 'a1', name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
-
-      if (method === 'context.getRenderableTurns') {
-        return {
-          messages: [
-            { id: 'u1', convoId: 'c1', role: 'user', seq: 1, createdAt: 1, parentId: null, status: 'final', answerRootId: null, questionId: null, body: 'Q1', meta: null },
-            { id: 'a1', convoId: 'c1', role: 'assistant', seq: 2, createdAt: 2, parentId: 'u1', status: 'error', answerRootId: 'a1', questionId: 'u1', body: 'A1', meta: null },
-          ],
-          turns: [
-            { questionId: 'u1', chosenAnswerRootId: 'a1', questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false },
-          ],
-          debug: { branchId: 'b1', excludedQuestionIds: [], includedMessageIds: ['u1', 'a1'], chosenAnswerRootByQuestionId: { u1: 'a1' } },
-        }
-      }
-
-      if (method === 'context.buildForBranch') {
-        return { messages: [], debug: { branchId: 'b1', excludedQuestionIds: [], includedMessageIds: [], chosenAnswerRootByQuestionId: { u1: 'a1' } } }
-      }
-
-      if (method === 'messageAsset.listByMessageIds') {
-        return await new Promise(() => {})
-      }
-      if (method === 'messageError.listByMessageIds') throw new Error('error hydration unavailable')
-      if (method === 'message.listReasoningDisplayBlocksByMessageIds') throw new Error('reasoning hydration unavailable')
-
-      if (method === 'branchFilter.set' || method === 'branchFilter.clear') return { ok: true }
-      return { ok: true }
+    readBranch = vi.fn(async () => ok({
+      branchId: 'b1', conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1',
+      branchName: 'Main', headMessageId: 'a1',
+      turns: [{
+        questionId: 'u1', questionBody: 'Q1', questionCreatedAtMs: 1, chosenAnswerRootId: 'a1',
+        contextFilter: {
+          questionMode, answerMode: 'include', effectiveMode: questionMode,
+          lockedByQuestionExclude: questionMode === 'exclude',
+        },
+        answers: [{
+          answerRootId: 'a1', status: 'failed', body: 'A1', createdAtMs: 2, updatedAtMs: 2,
+          chosen: true, operationId: 'operation:a1', actionKind: 'initial', providerId: 'openrouter',
+          modelId: 'openai/gpt-4.1-nano', errorCode: 'provider_error', errorMessage: 'provider error',
+          endpointProfileId: 'openrouter-first-party-v1', protocolContractId: 'openrouter-chat-completions-v1',
+          reasoningDetails: [], attachments: [], images: [],
+        }],
+      }],
+    }))
+    setContextFilter = vi.fn(async (input: any) => {
+      questionMode = input.mode
+      return ok({})
     })
 
-    ;(globalThis as any).dbBridge = { invoke }
+    ;(globalThis as any).generationV2 = {
+      ...originalGenerationV2,
+      workspace: {
+        ...originalGenerationV2.workspace,
+        ensureDefault: vi.fn(async () => ok({ projectId: 'project_inbox', conversationId: 'c1', branchId: 'b1', created: false })),
+        getSystemTemplate: vi.fn(async () => {
+          const result = await baseTemplate()
+          return ok({ ...result.value,
+            conversation: { ...result.value.conversation, id: 'c1', projectId: 'project_inbox', branchId: 'b1',
+              title: 'Chat 1', meta: { selectedProviderId: 'openrouter', selectedModelKey: 'openai/gpt-4.1-nano' } },
+            draft: { ...result.value.draft, conversationId: 'c1' },
+          })
+        }),
+        listProjects: vi.fn(async () => ok([{ projectId: 'project_inbox', name: 'Inbox', createdAtMs: 1, updatedAtMs: 2 }])),
+        listConversations: vi.fn(async () => ok([{
+          conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1', updatedAtMs: 2,
+          branches: [{ branchId: 'b1', name: 'Main', headMessageId: 'a1', updatedAtMs: 2 }],
+        }])),
+        readBranch,
+        setContextFilter,
+      },
+    }
   })
 
   afterEach(() => {
-    ;(globalThis as any).dbBridge = originalDbBridge
-    ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).generationV2 = originalGenerationV2
   })
 
-  it('clicking question exclude calls branchFilter.set', async () => {
+  it('excludes the complete selected turn through the V2 workspace projection', async () => {
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -63,15 +74,12 @@ describe('ui-app AppChatApp (filters: include/exclude)', () => {
     expect(await screen.findByTestId('raw-data-a-a1')).toBeEnabled()
     expect(await screen.findByTestId('retry-a-a1')).toBeEnabled()
     expect(screen.queryByText('该回答未选入上下文')).not.toBeInTheDocument()
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('messageError.listByMessageIds', { messageIds: ['a1'] }))
 
-    const btn = await screen.findByTestId('toggle-q-u1')
-    await user.click(btn)
+    await user.click(await screen.findByTestId('toggle-q-u1'))
 
-    expect(invoke).toHaveBeenCalledWith('branchFilter.set', expect.objectContaining({ branchId: 'b1', targetType: 'question', targetId: 'u1', mode: 'exclude' }))
-
-    // Refresh called (context.getRenderableTurns invoked again).
-    await waitFor(() => expect(invoke).toHaveBeenCalledWith('context.getRenderableTurns', expect.objectContaining({ branchId: 'b1' })))
+    await waitFor(() => expect(setContextFilter).toHaveBeenCalledWith({
+      branchId: 'b1', targetType: 'question', targetId: 'u1', mode: 'exclude',
+    }))
+    await waitFor(() => expect(readBranch.mock.calls.length).toBeGreaterThanOrEqual(2))
   })
 })

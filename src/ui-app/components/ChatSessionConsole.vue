@@ -328,8 +328,7 @@ const googleThinkingConfig = computed(() => {
   }
 })
 const googleThinkingEnabled = computed(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana' &&
-    googleImageGenerationPolicy.value.kind !== 'interactions_image_v1beta'
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
   if (googleThinkingCapability.value.kind === 'budget') {
     return props.sessionConfig.generationParams.detail?.thinkingBudget?.mode === 'custom'
   }
@@ -500,6 +499,8 @@ const ollamaChat = computed(() => props.ollamaChat ?? {
   chatMode: 'native_rest' as const,
   nativeRestPreferredEndpoint: 'chat' as const,
   openAICompatiblePreferredEndpoint: 'chat_completions' as const,
+  thinkingControl: null,
+  toolsSupported: null,
   nativeControls: {
     diagnosticsEnabled: true,
     manualLoadUnloadEnabled: true,
@@ -628,6 +629,7 @@ const googleAIStudioAvailabilitySummary = computed(() => {
 const anthropicChat = computed(() => props.anthropicChat ?? {
   enabled: false,
   model: '',
+  thinkingDisplay: 'summarized' as const,
   experimentalLabel: t('chat.console.provider.anthropic.experimentalLabel'),
 })
 const anthropicChatStatusLabel = computed(() => anthropicChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
@@ -2348,7 +2350,7 @@ function chipClass(active: boolean): string {
             {{ t('chat.console.reasoning.geminiImageProviderManaged') }}
           </div>
         </div>
-        <div v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.kind !== 'legacy_nano_banana' && googleImageGenerationPolicy.kind !== 'interactions_image_v1beta'" class="space-y-2" data-testid="session-google-thinking-provider-managed-controls">
+        <div v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.kind !== 'legacy_nano_banana'" class="space-y-2" data-testid="session-google-thinking-provider-managed-controls">
           <label v-if="googleImageGenerationPolicy.supportsThoughtSummaries" class="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"

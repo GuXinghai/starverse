@@ -516,7 +516,7 @@ const globalWebSearchInheritanceHint = computed(() => {
   return t('settings.search.hintGlobal')
 })
 const DEFAULT_REASONING_PREFS: ReasoningPrefs = { mode: 'auto', effort: 'auto', exclude: false }
-const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 const catalogAutoSyncPolicyOptions: ReadonlyArray<Readonly<{ value: CatalogAutoSyncPolicy; labelKey: string }>> = [
   { value: 'always', labelKey: 'settings.openrouter.catalogSyncPolicyAlways' },
   { value: 'stale_only', labelKey: 'settings.openrouter.catalogSyncPolicyStaleOnly' },
@@ -1246,16 +1246,14 @@ async function verifyAndSync() {
     }
     applyOpenRouterCredentialStatus(credentialResult.status)
 
-    const result = await CatalogQueryService.query({
-      sourceProviderKey: 'openrouter',
-      page: { limit: 1 },
-    })
+    const result = await CatalogQueryService.sync({ sourceProviderKey: 'openrouter', timeoutMs: 30_000,
+      retentionMs: normalizeCatalogRetentionMs(catalogRetentionMs.value) }) as Record<string, unknown>
 
-    if (result.status === 'synced') {
-      const modelCount = result.modelCount ?? 0
+    if (result.ok === true) {
+      const modelCount = Number(result.modelCount ?? 0)
       verifySyncResult.value = `${t('settings.openrouter.verifySyncSuccess')} (${modelCount})`
     } else {
-      verifySyncResult.value = `${t('settings.openrouter.verifySyncFailed')}：${result.notice ?? 'model_list_unavailable'}`
+      verifySyncResult.value = `${t('settings.openrouter.verifySyncFailed')}：${String(result.code ?? 'model_list_unavailable')}`
     }
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
@@ -1272,11 +1270,12 @@ async function clearCurrentCatalogCache() {
     error.value = t('settings.openrouter.catalogCacheNoApiKey')
     return
   }
+  if (!window.confirm(t('settings.openrouter.catalogCacheClearCurrentConfirm'))) return
   catalogClearLoading.value = 'current'
   try {
-    // V2 fetches the provider-owned availability contract directly and keeps
-    // no legacy scoped catalog cache in the epoch workspace.
-    savedMessage.value = t('settings.openrouter.catalogCacheNotUsedV2')
+    const result = await CatalogQueryService.clearCurrent({ sourceProviderKey: 'openrouter' }) as Record<string, unknown>
+    if (result.ok !== true) throw new Error(`${t('settings.openrouter.catalogCacheClearFailed')}：${String(result.code ?? 'unknown_error')}`)
+    savedMessage.value = t('settings.openrouter.catalogCacheClearCurrentSuccess')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -1288,9 +1287,12 @@ async function clearAllOpenRouterCatalogCaches() {
   error.value = null
   savedMessage.value = null
   verifySyncResult.value = null
+  if (!window.confirm(t('settings.openrouter.catalogCacheClearAllConfirm'))) return
   catalogClearLoading.value = 'all'
   try {
-    savedMessage.value = t('settings.openrouter.catalogCacheNotUsedV2')
+    const result = await CatalogQueryService.clearAll({ sourceProviderKey: 'openrouter' }) as Record<string, unknown>
+    if (result.ok !== true) throw new Error(`${t('settings.openrouter.catalogCacheClearFailed')}：${String(result.code ?? 'unknown_error')}`)
+    savedMessage.value = t('settings.openrouter.catalogCacheClearAllSuccess')
   } catch (err: any) {
     error.value = err?.message ? String(err.message) : String(err)
   } finally {
@@ -1704,6 +1706,7 @@ onMounted(() => {
               type="button"
               class="rounded-md bg-blue-600 px-3 py-2 text-sm font-semibold text-white shadow-sm hover:bg-blue-700 disabled:opacity-50"
               :disabled="!canEdit || loading || saving"
+              data-testid="settings-save"
               @click="save"
             >
               {{ t('common.save') }}
@@ -2245,6 +2248,7 @@ onMounted(() => {
               <option value="medium">medium</option>
               <option value="high">high</option>
               <option value="xhigh">xhigh</option>
+              <option value="max">max</option>
             </select>
             <label class="flex items-center gap-2">
               <input

@@ -49,7 +49,7 @@ watch(() => props.streaming, async (isStreaming) => {
         }
       }
     } catch (err) {
-      console.error('[RichTextContent] Final render failed, keeping streamed output:', err)
+      console.error('[RichTextContent] FINAL_RENDER_FAILED_KEEPING_STREAMED_OUTPUT')
     }
   }
 })

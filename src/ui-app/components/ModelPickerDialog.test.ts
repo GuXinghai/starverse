@@ -1,10 +1,11 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent, ref } from 'vue'
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import { t, tf } from '@/shared/i18n'
+import { installGenerationV2ModelsList, successfulGenerationV2Models } from '../../../tests/helpers/generationV2ModelsBridge'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 
 function createResult(
@@ -16,6 +17,7 @@ function createResult(
     items: [...items],
     nextCursor,
     notice: null,
+    status: 'synced',
     ...meta,
   }
 }
@@ -29,11 +31,41 @@ function setCatalogSettings(values: Record<string, unknown>) {
 describe('ModelPickerDialog', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronStore = (globalThis as any).electronStore
+  const originalGenerationV2 = (globalThis as any).generationV2
+
+  beforeEach(() => {
+    const current = (globalThis as any).generationV2 ?? {}
+    ;(globalThis as any).generationV2 = { ...current, models: { ...(current.models ?? {}),
+      sync: vi.fn(async (payload: any) => {
+        const legacy = (globalThis as any).electronAPI?.modelCatalogSyncNow
+        if (typeof legacy !== 'function') return { ok: true, status: 'synced', modelCount: 0,
+          visibleModelCount: 0, hiddenModelCount: 0, responseDigest: null, observedAtMs: Date.now() }
+        const result = await legacy(payload)
+        return result?.ok === true && result?.syncSucceeded !== false
+          ? { ok: true, status: 'synced', modelCount: result.modelCount ?? 0,
+              visibleModelCount: result.visibleModelCount ?? result.modelCount ?? 0,
+              hiddenModelCount: result.hiddenModelCount ?? 0, responseDigest: result.catalogRevision ?? null,
+              observedAtMs: result.lastSyncAtMs ?? Date.now() }
+          : { ok: false, code: result?.errorCode ?? 'sync_failed' }
+      }),
+      status: vi.fn(async (payload: any) => {
+        const legacy = (globalThis as any).electronAPI?.modelCatalogGetSyncStatus
+        if (typeof legacy !== 'function') return { ok: true, status: 'not_synced', modelCount: 0,
+          visibleModelCount: 0, hiddenModelCount: 0, responseDigest: null, observedAtMs: null, errorCode: null }
+        const result = await legacy(payload)
+        return { ok: result?.ok !== false, status: result?.status ?? (result?.syncState === 'ok' ? 'synced' : 'not_synced'),
+          modelCount: result?.modelCount ?? 0, visibleModelCount: result?.visibleModelCount ?? result?.modelCount ?? 0,
+          hiddenModelCount: result?.hiddenModelCount ?? 0, responseDigest: result?.catalogRevision ?? null,
+          observedAtMs: result?.lastSyncAtMs ?? null, errorCode: result?.lastErrorCode ?? null }
+      }),
+    } }
+  })
 
   afterEach(() => {
     vi.restoreAllMocks()
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).generationV2 = originalGenerationV2
     delete (globalThis as any).electronAPI
   })
 
@@ -331,12 +363,7 @@ describe('ModelPickerDialog', () => {
   })
 
   it('uses scoped current query API as the default model list source', async () => {
-    const scopedQuery = vi.fn(async () => ({
-      providerKey: 'openrouter',
-      status: 'synced',
-      syncState: 'ok',
-      failureReasonCode: null,
-      items: [
+    const scopedQuery = installGenerationV2ModelsList('openrouter', async () => successfulGenerationV2Models([
         {
           providerKey: 'openrouter',
           modelId: 'scoped/current-model',
@@ -357,34 +384,11 @@ describe('ModelPickerDialog', () => {
             longContext: false,
           },
         },
-      ],
-      nextCursor: null,
-    }))
+      ], { responseDigest: 'scoped-current', observedAtMs: Date.now() }))
     const legacyInvoke = vi.fn(async () => {
       throw new Error('legacy modelCatalog query should not be called')
     })
     ;(globalThis as any).dbBridge = { invoke: legacyInvoke }
-    ;(globalThis as any).electronAPI = {
-      modelCatalogQueryScopedCurrent: scopedQuery,
-      modelCatalogSyncNow: vi.fn(async () => ({
-        ok: true,
-        syncAttempted: false,
-        syncSucceeded: true,
-        providerKey: 'openrouter',
-        modelCount: 1,
-        lastSyncAtMs: Date.now(),
-        errorCode: null,
-        errorMessage: null,
-      })),
-      modelCatalogGetSyncStatus: vi.fn(async () => ({
-        providerKey: 'openrouter',
-        syncState: 'ok',
-        lastSyncAtMs: Date.now(),
-        modelCount: 1,
-        lastErrorCode: null,
-        lastErrorMessage: null,
-      })),
-    }
 
     render(ModelPickerDialog, {
       props: {
@@ -404,8 +408,7 @@ describe('ModelPickerDialog', () => {
     await screen.findByTestId('model-picker-item-scoped/current-model')
 
     expect(scopedQuery).toHaveBeenCalledWith(expect.objectContaining({
-      providerKey: 'openrouter',
-      limit: 100,
+      timeoutMs: expect.any(Number),
     }))
     expect(legacyInvoke).not.toHaveBeenCalled()
     const payload = JSON.stringify(scopedQuery.mock.calls)
@@ -814,8 +817,9 @@ describe('ModelPickerDialog', () => {
           },
         ]),
       )
-      .mockImplementationOnce(async () => {
-        throw new Error('query failed')
+      .mockImplementation(async (input: CatalogQueryInput) => {
+        if (input.searchText === 'broken') throw new Error('query failed')
+        return createResult([])
       })
 
     const view = render(ModelPickerDialog, {
@@ -1131,7 +1135,10 @@ describe('ModelPickerDialog', () => {
         lastErrorMessage: null,
       })),
     }
-    const queryFn = vi.fn(async () => createResult([]))
+    const queryFn = vi.fn(async () => createResult([], null, {
+      status: 'synced', catalogRevision: 'rev-counts', modelCount: 150,
+      visibleModelCount: 140, hiddenModelCount: 10, lastSyncAtMs: now,
+    }))
 
     render(ModelPickerDialog, {
       props: {
@@ -1343,7 +1350,10 @@ describe('ModelPickerDialog', () => {
         lastErrorMessage: 'API Key 无效',
       })),
     }
-    const queryFn = vi.fn(async () => createResult([]))
+    const queryFn = vi.fn(async () => createResult([], null, {
+      status: 'failed', modelCount: 0, lastSyncAtMs: Date.now(),
+      errorCode: 'invalid_api_key', errorMessage: 'API Key 无效',
+    }))
 
     render(ModelPickerDialog, {
       props: {
@@ -1406,28 +1416,7 @@ describe('ModelPickerDialog', () => {
     expect(text).not.toContain('fallback')
   })
 
-  it('manual refresh button triggers force sync', async () => {
-    const syncNow = vi.fn(async () => ({
-      ok: true,
-      syncAttempted: true,
-      syncSucceeded: true,
-      providerKey: 'openrouter',
-      modelCount: 100,
-      lastSyncAtMs: Date.now(),
-      errorCode: null,
-      errorMessage: null,
-    }))
-    ;(globalThis as any).electronAPI = {
-      modelCatalogSyncNow: syncNow,
-      modelCatalogGetSyncStatus: vi.fn(async () => ({
-        providerKey: 'openrouter',
-        syncState: 'ok',
-        lastSyncAtMs: Date.now(),
-        modelCount: 100,
-        lastErrorCode: null,
-        lastErrorMessage: null,
-      })),
-    }
+  it('manual refresh button triggers a new V2 catalog authority query', async () => {
     const user = userEvent.setup()
     const queryFn = vi.fn(async () => createResult([]))
 
@@ -1445,13 +1434,13 @@ describe('ModelPickerDialog', () => {
       expect(screen.getByTestId('model-picker-sync-refresh')).toBeTruthy()
     })
 
-    syncNow.mockClear()
+    const callsBeforeRefresh = queryFn.mock.calls.length
     await user.click(screen.getByTestId('model-picker-sync-refresh'))
 
     await waitFor(() => {
-      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
-        force: true,
-        reason: 'manual_refresh',
+      expect(queryFn.mock.calls.length).toBeGreaterThan(callsBeforeRefresh)
+      expect(queryFn).toHaveBeenLastCalledWith(expect.objectContaining({
+        sourceProviderKey: 'openrouter',
       }))
     })
   })
@@ -1503,7 +1492,7 @@ describe('ModelPickerDialog', () => {
     expect(text).not.toContain('cache')
   })
 
-  it('after manual sync success, reopening shows synced via getSyncStatus', async () => {
+  it('restores synced status from the authoritative V2 catalog result on open', async () => {
     const now = Date.now()
     const getSyncStatus = vi.fn(async () => ({
       providerKey: 'openrouter',
@@ -1526,7 +1515,9 @@ describe('ModelPickerDialog', () => {
       })),
       modelCatalogGetSyncStatus: getSyncStatus,
     }
-    const queryFn = vi.fn(async () => createResult([]))
+    const queryFn = vi.fn(async () => createResult([], null, {
+      status: 'synced', catalogRevision: 'rev-open', modelCount: 300, lastSyncAtMs: now,
+    }))
 
     render(ModelPickerDialog, {
       props: {
@@ -1539,7 +1530,6 @@ describe('ModelPickerDialog', () => {
     })
 
     await waitFor(() => {
-      expect(getSyncStatus).toHaveBeenCalled()
       expect(screen.getByText(/已同步/)).toBeTruthy()
       const statusBar = screen.getByTestId('model-picker-sync-refresh').closest('[class*="border-t"]')
       expect(statusBar?.textContent).toContain('300')
@@ -1593,7 +1583,7 @@ describe('ModelPickerDialog', () => {
     expect(text).not.toContain('failed')
   })
 
-  it('auto-sync sends providerKey, force=false, reason=model_picker_opened', async () => {
+  it('stale-on-open policy performs one additional V2 provider-scoped query', async () => {
     const syncNow = vi.fn(async () => ({
       ok: true,
       syncAttempted: true,
@@ -1615,7 +1605,9 @@ describe('ModelPickerDialog', () => {
         lastErrorMessage: null,
       })),
     }
-    const queryFn = vi.fn(async () => createResult([]))
+    const queryFn = vi.fn(async () => createResult([], null, {
+      status: 'synced', catalogRevision: 'rev-stale', modelCount: 0, lastSyncAtMs: 1,
+    }))
 
     render(ModelPickerDialog, {
       props: {
@@ -1628,11 +1620,8 @@ describe('ModelPickerDialog', () => {
     })
 
     await waitFor(() => {
-      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
-        providerKey: 'openrouter',
-        force: false,
-        reason: 'model_picker_opened',
-      }))
+      expect(queryFn.mock.calls.length).toBeGreaterThanOrEqual(2)
+      expect(queryFn).toHaveBeenLastCalledWith(expect.objectContaining({ sourceProviderKey: 'openrouter' }))
     })
   })
 
@@ -1721,7 +1710,7 @@ describe('ModelPickerDialog', () => {
     expect(syncNow).not.toHaveBeenCalled()
   })
 
-  it('picker open policy always triggers force=false sync even when status is fresh', async () => {
+  it('picker open policy always performs a fresh V2 catalog query', async () => {
     setCatalogSettings({ openRouterCatalogPickerOpenSyncPolicy: 'always' })
     const syncNow = vi.fn(async () => ({
       ok: true,
@@ -1749,22 +1738,22 @@ describe('ModelPickerDialog', () => {
       })),
     }
 
+    const queryFn = vi.fn(async () => createResult([], null, {
+      status: 'synced', catalogRevision: 'rev-fresh', modelCount: 100, lastSyncAtMs: Date.now(),
+    }))
     render(ModelPickerDialog, {
       props: {
         open: true,
         selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        queryFn: vi.fn(async () => createResult([], null, { catalogRevision: 'rev-fresh' })),
+        queryFn,
         debounceMs: 0,
       },
     })
 
     await waitFor(() => {
-      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
-        providerKey: 'openrouter',
-        force: false,
-        reason: 'model_picker_opened',
-      }))
+      expect(queryFn.mock.calls.length).toBeGreaterThanOrEqual(2)
+      expect(queryFn).toHaveBeenLastCalledWith(expect.objectContaining({ sourceProviderKey: 'openrouter' }))
     })
   })
 
@@ -1793,6 +1782,7 @@ describe('ModelPickerDialog', () => {
       .fn()
       .mockResolvedValueOnce(createResult([oldModel], null, { catalogRevision: 'rev-old', modelCount: 1, lastSyncAtMs: 100 }))
       .mockResolvedValueOnce(createResult([newModel], null, { catalogRevision: 'rev-new', modelCount: 1, lastSyncAtMs: 200 }))
+      .mockResolvedValue(createResult([newModel], null, { catalogRevision: 'rev-new', modelCount: 1, lastSyncAtMs: 200 }))
     const syncNow = vi.fn(async () => ({
       ok: true,
       syncAttempted: true,
@@ -1834,7 +1824,7 @@ describe('ModelPickerDialog', () => {
 
     await screen.findByTestId('model-picker-item-openai/new')
     expect(screen.queryByTestId('model-picker-update-available')).toBeNull()
-    expect(queryFn).toHaveBeenCalledTimes(2)
+    expect(queryFn).toHaveBeenCalledTimes(3)
   })
 
   it('automatic update mode applies changed list and preserves search text without auto-selecting first item', async () => {
@@ -1862,6 +1852,7 @@ describe('ModelPickerDialog', () => {
       .fn()
       .mockResolvedValueOnce(createResult([oldModel], null, { catalogRevision: 'rev-old', modelCount: 1, lastSyncAtMs: 100 }))
       .mockResolvedValueOnce(createResult([newModel], null, { catalogRevision: 'rev-new', modelCount: 1, lastSyncAtMs: 200 }))
+      .mockResolvedValue(createResult([newModel], null, { catalogRevision: 'rev-new', modelCount: 1, lastSyncAtMs: 200 }))
     ;(globalThis as any).electronAPI = {
       modelCatalogSyncNow: vi.fn(async () => ({
         ok: true,
@@ -1970,7 +1961,7 @@ describe('ModelPickerDialog', () => {
     await waitFor(() => {
       expect(screen.getByText(/已同步/)).toBeTruthy()
     })
-    expect(queryFn).toHaveBeenCalledTimes(1)
+    expect(queryFn).toHaveBeenCalledTimes(2)
     expect(screen.queryByTestId('model-picker-update-available')).toBeNull()
     expect(screen.getByTestId('model-picker-item-openai/stable')).toBeTruthy()
   })

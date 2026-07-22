@@ -3,9 +3,11 @@ import { computed, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } f
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import { ModelPrefsService, type ModelPrefsFavorite, type ModelPrefsRecent, type ModelPrefsScopeInput } from '@/next/modelPrefs/modelPrefsService'
-import type { ChatSessionConfig, ChatSessionConfigAspectRatio, ChatSessionConfigImageResolution } from '../app/chatSessionConfig'
+import type { ChatSessionConfig, ChatSessionConfigAspectRatio, ChatSessionConfigImageResolution,
+  ChatSessionConfigReasoningEffort } from '../app/chatSessionConfig'
 import type { ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
 import type { GenerationParamsLayer, ResolvedGenerationParams } from '@/next/generation-params/generationParamTypes'
+import { getDefaultGenerationParamProfile, getSelectableReasoningEfforts } from '@/next/generation-params/generationParamProfiles'
 import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
@@ -102,7 +104,7 @@ const emit = defineEmits<{
   (e: 'update:model', value: string): void
   (e: 'refreshProviderModelsRequested'): void
   (e: 'updateReasoningEnabled', value: boolean): void
-  (e: 'updateReasoningEffort', value: 'low' | 'medium' | 'high'): void
+  (e: 'updateReasoningEffort', value: ChatSessionConfigReasoningEffort): void
   (e: 'updateGenerationParamsLayer', value: GenerationParamsLayer | null): void
   (e: 'updateWebSearchEnabled', value: boolean): void
   (e: 'updateWebSearchLevel', value: 'low' | 'high'): void
@@ -363,6 +365,15 @@ const selectedModelSelection = computed<ChatModelSelection | null>(() => selecte
   : null)
 const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === GOOGLE_AI_STUDIO_PROVIDER_KEY)
 const isOpenAIResponsesSelected = computed(() => selectedProviderId.value === OPENAI_RESPONSES_PROVIDER_KEY)
+const genericReasoningEffortOptions = computed<readonly ChatSessionConfigReasoningEffort[]>(() => {
+  if (!selectedProviderId.value) return Object.freeze([])
+  const profile = getDefaultGenerationParamProfile(selectedProviderId.value, {
+    requestKind: selectedProviderId.value === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+      isKnownGeminiImageGenerationModel(selectedModel.value) ? 'image_generation' : 'text',
+  })
+  return getSelectableReasoningEfforts(profile, selectedModel.value)
+    .filter((effort): effort is ChatSessionConfigReasoningEffort => effort !== 'none')
+})
 const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModel.value))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModel.value))
 const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModel.value }))
@@ -389,8 +400,7 @@ const googleThinkingConfig = computed(() => {
   }
 })
 const googleThinkingEnabled = computed(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana' &&
-    googleImageGenerationPolicy.value.kind !== 'interactions_image_v1beta'
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
   if (googleThinkingCapability.value.kind === 'budget') {
     return resolvedSessionConfig.value.generationParams.detail?.thinkingBudget?.mode === 'custom'
   }
@@ -1214,12 +1224,12 @@ onBeforeUnmount(() => {
             :label="t('composer.capabilities.reasoning')"
             :active-label="resolvedSessionConfig.reasoning.enabled ? resolvedSessionConfig.reasoning.effort : null"
             kind="reasoning"
-            :disabled="disabled"
-            :options="['low', 'medium', 'high']"
+            :disabled="disabled || genericReasoningEffortOptions.length === 0"
+            :options="genericReasoningEffortOptions"
             :selected-option="resolvedSessionConfig.reasoning.effort"
             data-test-id="reasoning-chip"
             @toggle="emit('updateReasoningEnabled', !resolvedSessionConfig.reasoning.enabled)"
-            @select-option="(v) => { emit('updateReasoningEffort', v as 'low' | 'medium' | 'high'); emit('updateReasoningEnabled', true) }"
+            @select-option="(v) => { emit('updateReasoningEffort', v as ChatSessionConfigReasoningEffort); emit('updateReasoningEnabled', true) }"
           >
             <template #icon>
               <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1236,7 +1246,7 @@ onBeforeUnmount(() => {
             :label="t('composer.capabilities.reasoning')"
             :active-label="googleThinkingActiveLabel"
             kind="reasoning"
-            :disabled="disabled || (isGoogleImageGenerationModel && (googleImageGenerationPolicy.kind === 'legacy_nano_banana' || googleImageGenerationPolicy.kind === 'interactions_image_v1beta')) || (!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported')"
+            :disabled="disabled || (isGoogleImageGenerationModel && googleImageGenerationPolicy.kind === 'legacy_nano_banana') || (!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported')"
             data-test-id="google-thinking-chip"
             @toggle="onGoogleThinkingToggle"
           >
