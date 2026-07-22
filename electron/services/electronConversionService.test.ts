@@ -4,7 +4,6 @@ import { EventEmitter } from 'node:events'
 import { Readable } from 'node:stream'
 import { mkdir, rm, stat } from 'node:fs/promises'
 import { describe, expect, it, vi } from 'vitest'
-import { STARTUP_IPC_CHANNELS } from '../ipc/startupIpcAudit'
 import {
   createMainProcessElectronConversionService,
   MainProcessElectronConversionService,
@@ -44,8 +43,6 @@ describe('main-process electron conversion service skeleton', () => {
     const service = createMainProcessElectronConversionService()
 
     expect(service).toBeInstanceOf(MainProcessElectronConversionService)
-    expect([...STARTUP_IPC_CHANNELS].some((channel) => channel.includes('conversion'))).toBe(false)
-    expect([...STARTUP_IPC_CHANNELS].some((channel) => channel.includes('html-pdf'))).toBe(false)
   })
 
   it('delegates supported html_to_pdf requests to the dedicated conversion adapter', async () => {

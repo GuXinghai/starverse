@@ -48,7 +48,7 @@ export function bindPackagedTestDocxFixtureGrantInvalidationV1(input: Readonly<{
 
 export async function createPackagedTestDocxFixtureAuthorityV1(input: Readonly<{
   isPackaged: boolean
-  env: NodeJS.ProcessEnv
+  env: Readonly<Record<string, string | undefined>>
   argv: readonly string[]
   userDataRoot: string
   tempRoot: string
@@ -62,9 +62,11 @@ export async function createPackagedTestDocxFixtureAuthorityV1(input: Readonly<{
   if (!baseGate(input, nonce)) return null
   const root = await verifiedRoot(input.userDataRoot, input.repositoryRoot)
   if (root === null) return null
-  const marker = await readVerifiedMarker(root, nonce, input.argv, nowMs())
+  const verifiedFixtureRoot = root
+  const marker = await readVerifiedMarker(verifiedFixtureRoot, nonce, input.argv, nowMs())
   if (marker === null) return null
-  const stagingRoot = path.join(input.tempRoot, 'packaged-test-docx-fixture-v1', marker.nonce)
+  const verifiedMarker = marker
+  const stagingRoot = path.join(input.tempRoot, 'packaged-test-docx-fixture-v1', verifiedMarker.nonce)
   const issuedSenderIds = new Set<number>()
   let registered = false
   return Object.freeze({
@@ -76,9 +78,9 @@ export async function createPackagedTestDocxFixtureAuthorityV1(input: Readonly<{
           if (!isEmptyObject(payload) || !isMainFrameIpcEvent(event)) throw new Error('PACKAGED_TEST_FIXTURE_REQUEST_INVALID')
           const senderId = senderIdFromIpcEvent(event)
           const frameUrl = frameUrlFromIpcEvent(event)
-          if (senderId === null || senderId !== mainWindowSenderId() || !isPackagedApplicationUrl(frameUrl)) throw new Error('PACKAGED_TEST_FIXTURE_SENDER_INVALID')
-          if (await readVerifiedMarker(root, marker.nonce, input.argv, nowMs()) === null) throw new Error('PACKAGED_TEST_FIXTURE_MARKER_INVALID')
-          const staged = await stageVerifiedFixture({ root, stagingRoot, nonce: marker.nonce })
+          if (senderId === null || frameUrl === null || senderId !== mainWindowSenderId() || !isPackagedApplicationUrl(frameUrl)) throw new Error('PACKAGED_TEST_FIXTURE_SENDER_INVALID')
+          if (await readVerifiedMarker(verifiedFixtureRoot, verifiedMarker.nonce, input.argv, nowMs()) === null) throw new Error('PACKAGED_TEST_FIXTURE_MARKER_INVALID')
+          const staged = await stageVerifiedFixture({ root: verifiedFixtureRoot, stagingRoot, nonce: verifiedMarker.nonce })
           const grant = input.fileSelectionGrants.createOpaque({ senderId, filePath: staged, frameUrl })
           issuedSenderIds.add(senderId)
           return Object.freeze({ ok: true, value: Object.freeze({ fixtureId: FIXTURE_ID, mime: FIXTURE_MIME, sizeBytes: FIXTURE_SIZE_BYTES,
@@ -99,7 +101,7 @@ export async function createPackagedTestDocxFixtureAuthorityV1(input: Readonly<{
   })
 }
 
-function baseGate(input: Readonly<{ isPackaged: boolean; env: NodeJS.ProcessEnv; argv: readonly string[] }>, nonce: string): boolean {
+function baseGate(input: Readonly<{ isPackaged: boolean; env: Readonly<Record<string, string | undefined>>; argv: readonly string[] }>, nonce: string): boolean {
   return input.isPackaged && input.env.NODE_ENV === 'production' && input.env.SV_ELECTRON_SMOKE === '1' && input.env.SV_ELECTRON_SMOKE_DFC === '1' &&
     input.env.SV_PACKAGED_TEST_AUTHORITY === PACKAGED_TEST_DOCX_FIXTURE_AUTHORITY_V1 && /^[a-f0-9]{32}$/u.test(nonce) &&
     input.argv.some(argument => argument.startsWith('--user-data-dir=')) && input.argv.includes(`--sv-packaged-test-authority-nonce=${nonce}`)

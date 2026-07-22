@@ -32,7 +32,7 @@ describe('enginePluginLifecycleClient', () => {
 
   it('invokes lifecycle methods through the fixed epoch-2 plugin bridge and decodes responses', async () => {
     // eslint-disable-next-line max-lines-per-function
-    const invoke = vi.fn(async (method: string) => {
+    const invoke = vi.fn(async (method: string, _payload?: unknown) => {
       if (method === 'generation-v2:plugins:list-installed') {
         return [
           {

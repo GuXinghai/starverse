@@ -4,6 +4,7 @@ const electronMock = vi.hoisted(() => {
   const views: any[] = []
   const windows: any[] = []
   let nextWindowId = 1
+  let nextViewLoadError: Error | null = null
 
   class BrowserWindow {
     id = nextWindowId++
@@ -36,6 +37,11 @@ const electronMock = vi.hoisted(() => {
         this.handlers.set(eventName, handler)
       }),
       loadURL: vi.fn(async (url: string) => {
+        if (nextViewLoadError) {
+          const error = nextViewLoadError
+          nextViewLoadError = null
+          throw error
+        }
         this.currentUrl = url
       }),
       getURL: vi.fn(() => this.currentUrl),
@@ -65,6 +71,7 @@ const electronMock = vi.hoisted(() => {
     WebContentsView,
     clipboard: { writeText: vi.fn() },
     shell: { openExternal: vi.fn() },
+    rejectNextViewLoad: (error: Error) => { nextViewLoadError = error },
   }
 })
 
@@ -146,6 +153,21 @@ describe('InAppBrowserManager external URL policy', () => {
 
     expect(view.windowOpenHandler?.({ url: 'https://example.com/popup' })).toEqual({ action: 'deny' })
     expect(electronMock.views).toHaveLength(2)
+  })
+
+  it('logs only a fixed code and sanitized origin when tab loading fails', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    electronMock.rejectNextViewLoad(new Error('C:\\Users\\alice\\secret-profile\\Cookies'))
+
+    createManager().openLink('https://user:password@example.com/private?token=secret#fragment')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(errorLog).toHaveBeenCalledWith('[inapp] INAPP_TAB_LOAD_FAILED', { target: 'https://example.com' })
+    const serialized = JSON.stringify(errorLog.mock.calls)
+    expect(serialized).not.toContain('password')
+    expect(serialized).not.toContain('token=secret')
+    expect(serialized).not.toContain('secret-profile')
   })
 
   it('keeps exactly the chosen WebContentsView attached while switching and closing tabs', () => {

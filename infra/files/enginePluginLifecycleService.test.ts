@@ -17,7 +17,7 @@ import {
 } from '../../src/next/plugin-distribution/magikaOfficialRelease'
 import type { OfficialPackageReleaseMetadata } from '../../src/next/plugin-distribution/officialPackageRelease'
 import type { PackageDownloadTransport } from '../../src/next/plugin-distribution/packageDownloader'
-import { ensureEnginePluginRegistrySchema } from '../db/migrations/ensureEnginePluginRegistrySchema'
+import { applyGenerationV2SchemaForTest } from '../db/v2/testSchemaV2'
 import { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import {
   DFC_OFFICE_PDF_CAPABILITIES,
@@ -38,8 +38,7 @@ import {
 import { EnginePluginLifecycleService } from './enginePluginLifecycleService'
 
 function loadSchema(db: BetterSqlite3.Database) {
-  const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
-  db.exec(readFileSync(schemaPath, 'utf8'))
+  applyGenerationV2SchemaForTest(db, path.resolve(process.cwd()))
 }
 
 type Fixture = Readonly<{
@@ -179,7 +178,6 @@ function createService(
 ) {
   const db = new BetterSqlite3(':memory:')
   loadSchema(db)
-  ensureEnginePluginRegistrySchema(db)
   const repo = new EnginePluginRegistryRepo(db)
   const service = new EnginePluginLifecycleService({
     registryRepo: repo,
@@ -1903,7 +1901,6 @@ describe('EnginePluginLifecycleService', () => {
     const fixture = await createFixture()
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
     const repo = new EnginePluginRegistryRepo(db)
     const service = new EnginePluginLifecycleService({
       registryRepo: repo,
@@ -1926,7 +1923,6 @@ describe('EnginePluginLifecycleService', () => {
     const fixture = await createFixture()
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
     const repo = new EnginePluginRegistryRepo(db)
     const service = new EnginePluginLifecycleService({
       registryRepo: repo,
@@ -1963,7 +1959,6 @@ describe('EnginePluginLifecycleService', () => {
     }
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
     const repo = new EnginePluginRegistryRepo(db)
     const service = new EnginePluginLifecycleService({
       registryRepo: repo,
@@ -2043,7 +2038,6 @@ describe('EnginePluginLifecycleService', () => {
 
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
     const repo = new EnginePluginRegistryRepo(db)
     const service = new EnginePluginLifecycleService({
       registryRepo: repo,
@@ -2129,7 +2123,6 @@ describe('EnginePluginLifecycleService', () => {
 
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
     const repo = new EnginePluginRegistryRepo(db)
     const service = new EnginePluginLifecycleService({
       registryRepo: repo,
@@ -2215,7 +2208,6 @@ describe('EnginePluginLifecycleService', () => {
 
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
     const repo = new EnginePluginRegistryRepo(db)
     const service = new EnginePluginLifecycleService({
       registryRepo: repo,
@@ -2301,7 +2293,6 @@ describe('EnginePluginLifecycleService', () => {
 
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
-    ensureEnginePluginRegistrySchema(db)
     const repo = new EnginePluginRegistryRepo(db)
     const service = new EnginePluginLifecycleService({
       registryRepo: repo,
