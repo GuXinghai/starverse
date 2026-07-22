@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { validateExternalUrl } from '../security/externalUrlPolicy'
+import { urlOriginForLog } from '../ipc/logSanitizer'
 
 type InAppBrowserConfig = {
   preloadPath: string
@@ -200,8 +201,8 @@ export class InAppBrowserManager {
     win.on('closed', () => this.destroyWindow(win.id))
     win.on('resize', () => this.layoutActiveTab(win.id))
 
-    win.loadURL(this.config.shellUrl).catch((error) => {
-      console.error('[inapp] failed to load shell UI:', error)
+    win.loadURL(this.config.shellUrl).catch(() => {
+      console.error('[inapp] INAPP_SHELL_LOAD_FAILED', { target: urlOriginForLog(this.config.shellUrl) })
     })
 
     const entry: InternalWindow = {
@@ -290,8 +291,8 @@ export class InAppBrowserManager {
   private loadUrl(tabId: string, url: string) {
     const tab = this.tabs.get(tabId)
     if (!tab) return
-    tab.view.webContents.loadURL(url).catch((error) => {
-      console.error('[inapp] failed to load url:', url, error)
+    tab.view.webContents.loadURL(url).catch(() => {
+      console.error('[inapp] INAPP_TAB_LOAD_FAILED', { target: urlOriginForLog(url) })
     })
   }
 

@@ -23,7 +23,7 @@ import {
 } from '@/next/ipc/contracts/enginePluginLifecycleContracts'
 
 function requirePluginBridge(): NonNullable<Window['generationV2']>['plugins'] {
-  const bridge = globalThis.generationV2?.plugins
+  const bridge = (globalThis as unknown as { generationV2?: NonNullable<Window['generationV2']> }).generationV2?.plugins
   if (!bridge) throw new Error('Missing epoch-2 plugin lifecycle bridge')
   return bridge
 }

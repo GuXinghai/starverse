@@ -5,7 +5,7 @@ import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import type { PackageDownloadTransport } from '../../src/next/plugin-distribution/packageDownloader'
-import { ensureEnginePluginRegistrySchema } from '../db/migrations/ensureEnginePluginRegistrySchema'
+import { applyGenerationV2SchemaForTest } from '../db/v2/testSchemaV2'
 import { EnginePluginRegistryRepo } from '../db/repo/enginePluginRegistryRepo'
 import { EnginePluginLifecycleService } from './enginePluginLifecycleService'
 import {
@@ -16,6 +16,8 @@ import {
   resolveDfcLibreOfficePluginManagedRuntimeHandle,
 } from './dfcManagedLibreOfficeRuntime'
 import { readFileSync } from 'node:fs'
+
+function loadSchema(db: BetterSqlite3.Database) { applyGenerationV2SchemaForTest(db, path.resolve(process.cwd())) }
 
 const RUN_FLAG = 'STARVERSE_DFC_LIBREOFFICE_OFFICIAL_INSTALL_SMOKE'
 const APP_ROOT_ENV = 'STARVERSE_DFC_LIBREOFFICE_OFFICIAL_INSTALL_APP_ROOT'
@@ -55,7 +57,7 @@ describe('DFC M45 LibreOffice official install operation real smoke', () => {
     const db = new BetterSqlite3(':memory:')
     try {
       db.exec(readFileSync(path.resolve(process.cwd(), 'infra', 'db', 'schema.sql'), 'utf8'))
-      ensureEnginePluginRegistrySchema(db)
+      loadSchema(db)
       await rm(appRoot, { recursive: true, force: true })
       const repo = new EnginePluginRegistryRepo(db)
       const service = new EnginePluginLifecycleService({
