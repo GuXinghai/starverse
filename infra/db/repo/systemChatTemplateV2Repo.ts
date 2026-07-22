@@ -108,7 +108,10 @@ export class SystemChatTemplateV2Repo {
       )
       if (cleared.changes !== 1) throw new Error('GENERATION_V2_SYSTEM_TEMPLATE_REVISION_CONFLICT')
     }
-    if (input.resetModelConfig) this.resetConversationConfig(input.templateConversationId, at)
+    if (input.resetModelConfig) {
+      this.resetConversationConfig(input.templateConversationId, at)
+      this.resetConversationRoutePreference(input.templateConversationId)
+    }
     const result = this.db.prepare(`UPDATE system_chat_template_v2
       SET meta_json=CASE WHEN ?=1 THEN NULL ELSE meta_json END,
         template_revision=template_revision+1,updated_at_ms=?
@@ -209,7 +212,10 @@ export class SystemChatTemplateV2Repo {
     ).changes !== 1) throw new Error('GENERATION_V2_SYSTEM_TEMPLATE_REVISION_CONFLICT')
     this.insertTemplate({ projectId: row.project_id, conversationId: nextConversationId,
       branchId: nextBranchId, createdAtMs: at, revision: (row.template_revision as number) + 1, metaJson })
-    if (preserve) this.copyConversationConfig(input.conversationId, nextConversationId, at)
+    if (preserve) {
+      this.copyConversationConfig(input.conversationId, nextConversationId, at)
+      this.copyConversationRoutePreference(input.conversationId, nextConversationId, at)
+    }
     this.db.prepare(`UPDATE new_chat_lifecycle_v2 SET last_formal_conversation_id=?,updated_at_ms=? WHERE singleton_id=1`)
       .run(input.conversationId, at)
 
@@ -264,6 +270,20 @@ export class SystemChatTemplateV2Repo {
     )
   }
 
+  private copyConversationRoutePreference(sourceConversationId: string, targetConversationId: string, at: number): void {
+    const source = this.db.prepare(`SELECT selection_kind,selection_json
+      FROM conversation_route_preference_v2 WHERE conversation_id=?`).get(sourceConversationId) as Record<string, unknown> | undefined
+    if (!source) return
+    if (typeof source.selection_kind !== 'string' || typeof source.selection_json !== 'string') {
+      throw new Error('GENERATION_V2_SYSTEM_TEMPLATE_STATE_INVALID')
+    }
+    this.db.prepare(`INSERT INTO conversation_route_preference_v2(
+      conversation_id,revision,selection_kind,selection_json,created_at_ms,updated_at_ms
+    ) VALUES(?,1,?,?,?,?)`).run(
+      targetConversationId, source.selection_kind, source.selection_json, at, at,
+    )
+  }
+
   private resetConversationConfig(conversationId: string, at: number): void {
     const current = this.db.prepare(`SELECT revision_generation,semantic_json,semantic_hash FROM generation_config_v2
       WHERE owner_kind='conversation' AND owner_id=?`).get(conversationId) as Record<string, unknown> | undefined
@@ -277,6 +297,10 @@ export class SystemChatTemplateV2Repo {
       WHERE owner_kind='conversation' AND owner_id=?`).run(
       next, `config-v2:${next}:${EMPTY_CONFIG_HASH}`, EMPTY_CONFIG_JSON, EMPTY_CONFIG_HASH, at, conversationId,
     )
+  }
+
+  private resetConversationRoutePreference(conversationId: string): void {
+    this.db.prepare('DELETE FROM conversation_route_preference_v2 WHERE conversation_id=?').run(conversationId)
   }
 
   private templateRowOrNull(): TemplateRow | null {

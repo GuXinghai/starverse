@@ -27,6 +27,30 @@ type ProviderCredentialStatusSource =
 type ProviderCredentialBackendKind = 'electron_safe_storage' | 'unavailable'
 type OpenRouterCredentialSource = ProviderCredentialStatusSource
 
+type GenerationV2ModelPreferenceScopeType = 'global' | 'project' | 'conversation'
+type GenerationV2ModelPreferenceFavoriteRecord = Readonly<{
+  scopeType: GenerationV2ModelPreferenceScopeType
+  scopeId: string
+  providerKey: string
+  modelId: string
+  modelKey: string
+  sortRank: number
+  createdAtMs: number
+  updatedAtMs: number
+}>
+type GenerationV2ModelPreferenceRecentRecord = Readonly<{
+  scopeType: GenerationV2ModelPreferenceScopeType
+  scopeId: string
+  providerKey: string
+  modelId: string
+  modelKey: string
+  lastUsedAtMs: number
+  useCount: number
+  createdAtMs: number
+  updatedAtMs: number
+}>
+type GenerationV2ModelPreferenceRemoveResult = Readonly<{ removed: number }>
+
 type OpenRouterEndpointCredentialRef = Readonly<{ kind: 'credential_ref'; id: 'openrouter-first-party-v1' }>
 type OpenRouterCatalogCredentialRef = Readonly<{ kind: 'credential_ref'; id: 'openrouter-first-party-v1' }>
 
@@ -1160,6 +1184,10 @@ interface Window {
         postSendTemplateReset: 'reset_all' | 'preserve_model_config' }>) => Promise<unknown>
       getLastFormalConversation: () => Promise<unknown>
       setLastFormalConversation: (conversationId: string | null) => Promise<unknown>
+      getConversationRoutePreference: (conversationId: string) => Promise<unknown>
+      updateConversationRoutePreference: (payload: Readonly<{ conversationId: string; expectedRevision: number;
+        selection: unknown }>) => Promise<unknown>
+      clearConversationRoutePreference: (conversationId: string, expectedRevision: number) => Promise<unknown>
     }>
     composer: Readonly<{
       get: (conversationId: string) => Promise<unknown>
@@ -1204,14 +1232,18 @@ interface Window {
       listAnthropic: (payload?: unknown) => Promise<unknown>
       listGoogleAIStudio: (payload?: unknown) => Promise<unknown>
       listDeepSeek: (payload?: unknown) => Promise<unknown>
+      sync: (payload: unknown) => Promise<unknown>
+      status: (payload: unknown) => Promise<unknown>
+      clearCurrent: (payload: unknown) => Promise<unknown>
+      clearAll: (payload: unknown) => Promise<unknown>
     }>
     modelPreferences: Readonly<{
-      listFavorites: (payload: unknown) => Promise<unknown>
-      addFavorite: (payload: unknown) => Promise<unknown>
-      removeFavorite: (payload: unknown) => Promise<unknown>
-      reorderFavorites: (payload: unknown) => Promise<unknown>
-      listRecents: (payload: unknown) => Promise<unknown>
-      recordRecent: (payload: unknown) => Promise<unknown>
+      listFavorites: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceFavoriteRecord[]>
+      addFavorite: (payload: unknown) => Promise<GenerationV2ModelPreferenceFavoriteRecord>
+      removeFavorite: (payload: unknown) => Promise<GenerationV2ModelPreferenceRemoveResult>
+      reorderFavorites: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceFavoriteRecord[]>
+      listRecents: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceRecentRecord[]>
+      recordRecent: (payload: unknown) => Promise<GenerationV2ModelPreferenceRecentRecord>
     }>
     localProfiles: Readonly<{
       list: () => Promise<unknown>
@@ -1264,6 +1296,12 @@ interface Window {
       id: string; operationId: string; answerRootId: string; requestSequence: number
       providerId: string; modelId: string; serializedBody: string; bodyBytes: number
       bodySha256: string; capturedAtMs: number
+    }>[]>
+    listProviderErrorsByAnswerRootId: (answerRootId: string) => Promise<readonly Readonly<{
+      id: string; operationId: string; answerRootId: string; requestSequence: number
+      providerId: string; modelId: string; phase: 'http_response' | 'sse_event'; httpStatus: number
+      contentType: string | null; providerRequestId: string | null; payloadBase64: string
+      payloadText: string | null; payloadBytes: number; payloadSha256: string; capturedAtMs: number
     }>[]>
   }>
   networkProxy?: {

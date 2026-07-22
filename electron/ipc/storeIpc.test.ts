@@ -201,6 +201,52 @@ describe('registerStoreIpc', () => {
     expect(store.delete).toHaveBeenCalledWith('activeProvider')
   })
 
+  it('rejects unknown renderer keys for get, set, and delete without touching the store', async () => {
+    const { handlers, store } = registerHandlers({ initialStore: { unknownRuntimeAuthority: 'hidden' } })
+
+    expect(await handlers.get('store-get')?.({}, 'unknownRuntimeAuthority')).toBeUndefined()
+    expect(await handlers.get('store-set')?.({}, 'unknownRuntimeAuthority', 'tamper')).toBe(false)
+    expect(await handlers.get('store-delete')?.({}, 'unknownRuntimeAuthority')).toBe(false)
+    expect(store.get).not.toHaveBeenCalledWith('unknownRuntimeAuthority')
+    expect(store.set).not.toHaveBeenCalledWith('unknownRuntimeAuthority', 'tamper')
+    expect(store.delete).not.toHaveBeenCalledWith('unknownRuntimeAuthority')
+  })
+
+  it('rejects main-owned configuration authority keys and every dot-path descendant', async () => {
+    const { handlers, store } = registerHandlers()
+    const protectedPaths = ['configVersion', 'networkProxyPolicy', 'dbExp', 'dbExp.forceRebuildOnNextLaunch']
+
+    for (const key of protectedPaths) {
+      expect(await handlers.get('store-get')?.({}, key)).toBeUndefined()
+      expect(await handlers.get('store-set')?.({}, key, true)).toBe(false)
+      expect(await handlers.get('store-delete')?.({}, key)).toBe(false)
+      expect(store.get).not.toHaveBeenCalledWith(key)
+      expect(store.set).not.toHaveBeenCalledWith(key, true)
+      expect(store.delete).not.toHaveBeenCalledWith(key)
+    }
+  })
+
+  it('rejects oversized and non-serializable values before an allowed key is persisted', async () => {
+    const { handlers, store } = registerHandlers()
+    const cyclic: Record<string, unknown> = {}
+    cyclic.self = cyclic
+
+    expect(await handlers.get('store-set')?.({}, 'generationV2UiPreferences', 'x'.repeat(100_001))).toBe(false)
+    expect(await handlers.get('store-set')?.({}, 'generationV2UiPreferences', cyclic)).toBe(false)
+    expect(store.set).not.toHaveBeenCalledWith('generationV2UiPreferences', expect.anything())
+  })
+
+  it('does not preserve renderer-supplied unknown keys during safe clear', async () => {
+    vi.mocked(safeClearConfig).mockClear()
+    const { handlers } = registerHandlers()
+
+    await handlers.get('store-clear-safe')?.({}, ['language', 'unknownRuntimeAuthority'])
+
+    const keepKeys = vi.mocked(safeClearConfig).mock.calls.at(-1)?.[1] ?? []
+    expect(keepKeys).toContain('language')
+    expect(keepKeys).not.toContain('unknownRuntimeAuthority')
+  })
+
   it('characterizes preload as still exposing generic renderer store bridge methods', () => {
     const preloadSource = readFileSync(resolve(testDir, '..', 'preload.ts'), 'utf8')
 
@@ -208,19 +254,19 @@ describe('registerStoreIpc', () => {
     expect(preloadSource).toContain("get: (key: string) => ipcRenderer.invoke('store-get', key)")
     expect(preloadSource).toContain("set: (key: string, value: any) => ipcRenderer.invoke('store-set', key, value)")
     expect(preloadSource).toContain("delete: (key: string) => ipcRenderer.invoke('store-delete', key)")
-    expect(preloadSource).toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
-    expect(preloadSource).not.toContain('credentialRef')
+    expect(preloadSource).toContain("openRouter: createGenerationV2CredentialBridge('openrouter')")
+    expect(preloadSource).not.toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
   })
 
   it('preserves credential-bearing keys during renderer safe clear by default', async () => {
-    const compatibleKey = `${COMPATIBLE_CREDENTIAL_SECURE_STORE_KEY_PREFIX}ocp_credential_12345678`
+    const compatibleKey = `${OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX}ocp_credential_12345678`
     const { handlers } = registerHandlers({ initialStore: { [compatibleKey]: { ciphertextBase64: 'encrypted' } } })
 
     await handlers.get('store-clear-safe')?.({}, [])
 
     expect(vi.mocked(safeClearConfig)).toHaveBeenCalledWith(
       expect.anything(),
-      expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, 'providerCredentials', COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT])
+      expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, 'providerCredentials', OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT])
     )
   })
 
@@ -235,7 +281,7 @@ describe('registerStoreIpc', () => {
       'language',
       ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
       'providerCredentials',
-      COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
+      OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
     ]))
     expect(keepKeys).not.toContain('theme')
     expect(keepKeys).not.toContain('activeProvider')
@@ -251,7 +297,7 @@ describe('registerStoreIpc', () => {
     expect(keepKeys).toEqual(expect.arrayContaining([
       ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
       'providerCredentials',
-      COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
+      OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
     ]))
     expect(keepKeys.filter((key) => key === 'openRouterApiKey')).toHaveLength(1)
   })

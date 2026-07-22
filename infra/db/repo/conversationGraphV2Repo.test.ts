@@ -17,6 +17,7 @@ import { ComposerDraftV2Repo } from './composerDraftV2Repo'
 import { GenerationExecutionV2Repo } from './generationExecutionV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from './generationV2AuthorityTransactionInternal'
 import { SystemChatTemplateV2Repo } from './systemChatTemplateV2Repo'
+import { ConversationRoutePreferenceV2Repo } from './conversationRoutePreferenceV2Repo'
 
 const HASH_A = 'a'.repeat(64)
 
@@ -144,6 +145,15 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
         templateRepo.ensure(context, {
           projectId: 'project:1', conversationId: 'conversation:1', branchId: 'branch:1', createdAtMs: 2,
         })
+        new ConversationRoutePreferenceV2Repo(db, () => 2).upsert(context, {
+          conversationId: 'conversation:1', expectedRevision: 0,
+          selection: { schemaVersion: 1, kind: 'provider_model', providerId: 'deepseek', modelId: 'deepseek-v4-flash' },
+        })
+        templateRepo.setLifecycleSettings(context, {
+          startupNavigation: 'open_new',
+          startupTemplateReset: { modelConfig: false, draftAttachments: false },
+          postSendTemplateReset: 'preserve_model_config',
+        })
       })
       new ComposerDraftV2Repo(db, () => 3).updateText({
         conversationId: 'conversation:1', expectedRevision: 0, draftText: 'hello',
@@ -166,9 +176,36 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
       expect(next.conversation.branchId).not.toBe('branch:1')
       expect(next.draft).toMatchObject({ draftText: '', draftMode: 'compose', attachments: [] })
       expect(templateRepo.getLastFormalConversationId()).toBe('conversation:1')
+      expect(new ConversationRoutePreferenceV2Repo(db).get(next.conversation.id)?.selection).toEqual({
+        schemaVersion: 1, kind: 'provider_model', providerId: 'deepseek', modelId: 'deepseek-v4-flash',
+      })
       expect(projection).toMatchObject({ branchId: { value: 'branch:1' }, headMessageId: { value: 'answer:1' } })
       expect(db.prepare(`SELECT COUNT(*) AS count FROM system_chat_template_v2
         WHERE conversation_id='conversation:1'`).get()).toEqual({ count: 0 })
+    } finally { db.close() }
+  })
+
+  it('clears the route preference when the New Chat template model config is reset', () => {
+    const db = createDb()
+    try {
+      const graph = new ConversationGraphV2Repo(db)
+      const templateRepo = new SystemChatTemplateV2Repo(db, () => 3)
+      const routeRepo = new ConversationRoutePreferenceV2Repo(db, () => 2)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        graph.createProject(context, { projectId: 'project:1', name: 'Project', createdAtMs: 1 })
+        templateRepo.ensure(context, {
+          projectId: 'project:1', conversationId: 'conversation:1', branchId: 'branch:1', createdAtMs: 2,
+        })
+        routeRepo.upsert(context, { conversationId: 'conversation:1', expectedRevision: 0,
+          selection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: 'openai/gpt-4.1-mini' } })
+      })
+
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        templateRepo.reset(context, { templateConversationId: 'conversation:1', expectedTemplateRevision: 0,
+          resetModelConfig: true, resetDraftAttachments: false })
+      })
+
+      expect(routeRepo.get('conversation:1')).toBeNull()
     } finally { db.close() }
   })
 

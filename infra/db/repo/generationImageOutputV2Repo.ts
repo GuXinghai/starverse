@@ -59,14 +59,6 @@ function closedObject(value: unknown): Readonly<Record<string, unknown>> {
   return Object.freeze(Object.fromEntries(Object.entries(descriptors).map(([key, descriptor]) => [key, descriptor.value])))
 }
 
-function requiredString(value: unknown, max: number): string {
-  if (typeof value !== 'string' || value.length < 1 || value.length > max || value.trim() !== value ||
-      /[\u0000-\u001f\u007f]/u.test(value)) {
-    throw new GenerationImageOutputV2RepoError('GENERATION_V2_IMAGE_OUTPUT_INPUT_INVALID')
-  }
-  return value
-}
-
 function requiredIndex(value: unknown): number {
   if (!Number.isSafeInteger(value) || (value as number) < 0 || (value as number) > 9) {
     throw new GenerationImageOutputV2RepoError('GENERATION_V2_IMAGE_OUTPUT_INPUT_INVALID')

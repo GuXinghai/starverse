@@ -36,6 +36,13 @@ export const RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS = new Set([
   'networkProxySettingsV2',
 ])
 
+const RENDERER_MAIN_AUTHORITY_STORE_KEYS = new Set([
+  'configVersion',
+  'networkProxyPolicy',
+  // Destructive database controls are main-process authority, not renderer preferences.
+  'dbExp',
+])
+
 type RegisterStoreIpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   store: Store
@@ -58,6 +65,7 @@ function pathsOverlap(left: string, right: string): boolean {
 function isRendererBlockedCredentialStoreKey(key: string): boolean {
   const protectedPaths = [
     ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
+    ...RENDERER_MAIN_AUTHORITY_STORE_KEYS,
     PROVIDER_CREDENTIAL_SECURE_STORE_NAMESPACE,
     OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_NAMESPACE,
   ]
@@ -66,8 +74,14 @@ function isRendererBlockedCredentialStoreKey(key: string): boolean {
     isOpenAICompatibleCredentialV2StoreKey(key)
 }
 
+function isRendererAccessibleConfigKey(key: string): boolean {
+  return ALLOWED_CONFIG_KEYS.has(key) && !isRendererBlockedCredentialStoreKey(key)
+}
+
 function buildRendererSafeClearKeepKeys(keepKeys: unknown): string[] {
-  const safeKeepKeys = Array.isArray(keepKeys) ? keepKeys.map((item) => String(item)) : []
+  const safeKeepKeys = Array.isArray(keepKeys)
+    ? keepKeys.map((item) => String(item)).filter((key) => isRendererAccessibleConfigKey(key))
+    : []
   const providerCredentialRoot = PROVIDER_CREDENTIAL_SECURE_STORE_NAMESPACE.split('.')[0]!
   for (const key of [...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, providerCredentialRoot, OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT]) {
     if (!safeKeepKeys.includes(key)) {
@@ -82,27 +96,16 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
 
   registerInvoke('store-get', (_event: unknown, key: unknown) => {
     const keyText = String(key ?? '')
-    if (isRendererBlockedCredentialStoreKey(keyText)) return undefined
+    if (!isRendererAccessibleConfigKey(keyText)) return undefined
     return store.get(keyText)
   })
 
   registerInvoke('store-set', (_event: unknown, key: unknown, value: unknown) => {
     const keyText = String(key ?? '')
-    if (isRendererBlockedCredentialStoreKey(keyText)) return false
+    if (!isRendererAccessibleConfigKey(keyText)) return false
 
     const sizeCheck = checkFieldSize(keyText, value, isDev)
-    if (!sizeCheck.ok) {
-      // keep behavior: warn only, do not block write
-    }
-
-    if (!ALLOWED_CONFIG_KEYS.has(keyText)) {
-      if (isDev) {
-        console.warn(`[Config] ⚠️ 写入非白名单字段: "${keyText}"`)
-        console.warn('[Config] 如需使用，请添加到 config/configSchema.ts 的 ALLOWED_CONFIG_KEYS')
-      } else {
-        console.warn(`[Config] 未知配置字段: "${keyText}"`)
-      }
-    }
+    if (!sizeCheck.ok) return false
 
     store.set(keyText, value)
 
@@ -119,7 +122,7 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
 
   registerInvoke('store-delete', (_event: unknown, key: unknown) => {
     const keyText = String(key ?? '')
-    if (isRendererBlockedCredentialStoreKey(keyText)) return false
+    if (!isRendererAccessibleConfigKey(keyText)) return false
     store.delete(keyText)
     if (isLocaleConfigKey(keyText)) {
       refreshMainLocale?.()
@@ -137,8 +140,8 @@ export function registerStoreIpc(input: RegisterStoreIpcInput): string[] {
         refreshMainLocale?.()
       }
       return backupPath
-    } catch (error) {
-      console.error('[IPC] 安全清空配置失败:', error)
+    } catch {
+      console.error('[store-ipc] STORE_SAFE_CLEAR_FAILED')
       return null
     }
   })

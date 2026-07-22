@@ -168,7 +168,12 @@ export class ConversationReadV2Repo {
     ) as Row[]
     const unresolvedTurns = questions.map((question) => {
       const questionId = string(question.questionId)
-      const chosen = string(question.chosenAnswerRootId)
+      let chosen: string
+      try {
+        chosen = ConversationGraphV2Identity.create('answer_root_id', string(question.chosenAnswerRootId)).value
+      } catch {
+        throw new ConversationReadV2RepoError('GENERATION_V2_CONVERSATION_READ_STATE_INVALID')
+      }
       const answers = (this.db.prepare(`SELECT answer.answer_root_id AS answerRootId, answer.status,
         body.body_text AS body, answer.created_at_ms AS createdAtMs, answer.updated_at_ms AS updatedAtMs,
         operation.operation_id AS operationId,operation.action_kind AS actionKind,operation.error_code AS errorCode,

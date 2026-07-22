@@ -16,12 +16,15 @@ export type FileSelectionGrantConsumeResult =
   | Readonly<{ ok: true }>
   | Readonly<{ ok: false; code: 'grant_missing' | 'grant_expired' | 'sender_mismatch' | 'path_mismatch' | 'invalid_grant' }>
 
+export type OpaqueFileSelectionGrantConsumeResult =
+  | Readonly<{ ok: true; filePath: string }>
+  | Readonly<{ ok: false; code: 'grant_missing' | 'grant_expired' | 'sender_mismatch' | 'path_mismatch' | 'invalid_grant' }>
+
 export type FileSelectionGrantStore = Readonly<{
   create: (input: Readonly<{ senderId: number; filePath: string }>) => FileSelectionGrant
   consume: (input: Readonly<{ senderId: number; filePath: string; token: string }>) => FileSelectionGrantConsumeResult
   createOpaque: (input: Readonly<{ senderId: number; filePath: string; frameUrl: string }>) => OpaqueFileSelectionGrant
-  consumeOpaque: (input: Readonly<{ senderId: number; token: string; frameUrl: string }>) =>
-    FileSelectionGrantConsumeResult | Readonly<{ ok: true; filePath: string }>
+  consumeOpaque: (input: Readonly<{ senderId: number; token: string; frameUrl: string }>) => OpaqueFileSelectionGrantConsumeResult
   invalidateSender: (senderId: number) => void
 }>
 

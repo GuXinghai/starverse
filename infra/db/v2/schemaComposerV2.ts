@@ -12,7 +12,7 @@ const MANIFEST_TABLE_SQL = `
     schema_digest TEXT NOT NULL CHECK (
       length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
     ),
-    fragment_count INTEGER NOT NULL CHECK (fragment_count = 18),
+    fragment_count INTEGER NOT NULL CHECK (fragment_count = 20),
     object_projection_digest TEXT NOT NULL CHECK (
       length(object_projection_digest) = 64
       AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
@@ -37,7 +37,9 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'engine_plugin_registry_v1', fileName: 'enginePluginRegistrySchema.sql' }),
   Object.freeze({ id: 'openai_chat_compatible_v1', fileName: 'openAIChatCompatibleSchema.sql' }),
   Object.freeze({ id: 'model_preferences_v1', fileName: 'modelPreferencesSchema.sql' }),
+  Object.freeze({ id: 'model_catalog_v2', fileName: 'modelCatalogSchemaV2.sql' }),
   Object.freeze({ id: 'dfc_attachment_v1', fileName: 'dfcAttachmentSchema.sql' }),
+  Object.freeze({ id: 'conversation_route_preference_v1', fileName: 'conversationRoutePreferenceSchema.sql' }),
 ] as const)
 
 export class GenerationV2SchemaComposerError extends Error {
