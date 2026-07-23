@@ -3,6 +3,7 @@ import {
   type OpenRouterModelCategory,
 } from './openRouterCategoryCache'
 import { logModelCatalogEvent } from './modelCatalogObservability'
+import type { ProviderFailureV2 } from '../../shared/provider/providerFailureV2'
 
 type GenerationV2ModelsApi = Readonly<{
   listOpenRouter?: (options?: unknown) => Promise<unknown>
@@ -178,6 +179,7 @@ export type CatalogQueryResult = Readonly<{
   lastSyncAtMs?: number
   errorCode?: string | null
   errorMessage?: string | null
+  providerFailure?: ProviderFailureV2 | null
 }>
 
 function getGenerationV2ModelsApi(): GenerationV2ModelsApi | null {
@@ -556,8 +558,10 @@ async function queryGenerationV2Catalog(input: Readonly<{
   const response = readRecord(await list({ timeoutMs: 30_000,
     ...(input.sourceProviderKey === 'openrouter' && input.category ? { category: input.category } : {}) }))
   if (!response || response.ok !== true) return { items: [], nextCursor: null, notice: 'Model list is unavailable.', status: 'failed',
-    errorCode: typeof response?.code === 'string' ? response.code : 'provider_catalog_query_failed',
-    errorMessage: typeof response?.message === 'string' ? response.message : null }
+    errorCode: typeof response?.code === 'string' ? response.code : 'PROVIDER_CATALOG_SYNC_FAILED',
+    errorMessage: typeof response?.message === 'string' ? response.message : null,
+    providerFailure: response?.providerFailure && typeof response.providerFailure === 'object'
+      ? response.providerFailure as ProviderFailureV2 : null }
   const observedAtMs = readFiniteNumber(response.observedAtMs)
   const candidates = Array.isArray(response.items) ? response.items : Array.isArray(response.models) ? response.models : []
   const searchTokens = input.searchText?.trim().toLocaleLowerCase().split(/\s+/u)
