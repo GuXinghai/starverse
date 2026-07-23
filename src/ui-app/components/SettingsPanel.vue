@@ -46,19 +46,12 @@ import {
   DEFAULT_CATALOG_FRESHNESS_MS,
   DEFAULT_CATALOG_LIST_UPDATE_MODE,
   DEFAULT_CATALOG_RETENTION_MS,
-  OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
-  OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY,
-  OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY,
-  OPENROUTER_CATALOG_RETENTION_MS_KEY,
-  OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY,
-  normalizeCatalogAutoSyncPolicy,
-  normalizeCatalogFreshnessMs,
-  normalizeCatalogListUpdateMode,
-  normalizeCatalogRetentionMs,
   type CatalogAutoSyncPolicy,
   type CatalogListUpdateMode,
   type CatalogRetentionMs,
 } from '@/shared/modelCatalog/catalogSyncSettings'
+import { GLOBAL_CATALOG_POLICY_V2_STORE_KEY } from '@/shared/modelCatalog/catalogPolicyResolverV2'
+import { validateCatalogPolicyV2 } from '@/shared/modelCatalog/catalogPolicyV2'
 
 const props = defineProps<{
   disabled: boolean
@@ -838,11 +831,29 @@ async function load() {
     await loadAnthropicCredentialStatus()
     await loadDeepSeekCredentialStatus()
     cleanupLegacyModelStorage()
-    catalogStartupSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY))
-    catalogPickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(await store.get(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY))
-    catalogListUpdateMode.value = normalizeCatalogListUpdateMode(await store.get(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY))
-    catalogFreshnessMs.value = normalizeCatalogFreshnessMs(await store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY))
-    catalogRetentionMs.value = normalizeCatalogRetentionMs(await store.get(OPENROUTER_CATALOG_RETENTION_MS_KEY))
+    const storedCatalogPolicy = await store.get(GLOBAL_CATALOG_POLICY_V2_STORE_KEY)
+    if (storedCatalogPolicy && typeof storedCatalogPolicy === 'object') {
+      try {
+        const policy = validateCatalogPolicyV2(storedCatalogPolicy)
+        catalogStartupSyncPolicy.value = policy.startupSyncPolicy
+        catalogPickerOpenSyncPolicy.value = policy.pickerOpenSyncPolicy
+        catalogListUpdateMode.value = policy.listApplyMode
+        catalogFreshnessMs.value = policy.freshnessMs ?? DEFAULT_CATALOG_FRESHNESS_MS
+        catalogRetentionMs.value = policy.retentionMs
+      } catch {
+        catalogStartupSyncPolicy.value = DEFAULT_CATALOG_AUTO_SYNC_POLICY
+        catalogPickerOpenSyncPolicy.value = DEFAULT_CATALOG_AUTO_SYNC_POLICY
+        catalogListUpdateMode.value = DEFAULT_CATALOG_LIST_UPDATE_MODE
+        catalogFreshnessMs.value = DEFAULT_CATALOG_FRESHNESS_MS
+        catalogRetentionMs.value = DEFAULT_CATALOG_RETENTION_MS
+      }
+    } else {
+      catalogStartupSyncPolicy.value = DEFAULT_CATALOG_AUTO_SYNC_POLICY
+      catalogPickerOpenSyncPolicy.value = DEFAULT_CATALOG_AUTO_SYNC_POLICY
+      catalogListUpdateMode.value = DEFAULT_CATALOG_LIST_UPDATE_MODE
+      catalogFreshnessMs.value = DEFAULT_CATALOG_FRESHNESS_MS
+      catalogRetentionMs.value = DEFAULT_CATALOG_RETENTION_MS
+    }
     const storedMaxRecentModels = parsePositiveIntegerText(String((await store.get(MAX_RECENT_MODELS_KEY)) ?? ''))
     maxRecentModelsDraft.value = String(storedMaxRecentModels ?? 8)
     requireParameters.value = await getOpenRouterProviderRequireParameters()
@@ -985,11 +996,13 @@ async function save() {
       }
       applyDeepSeekCredentialStatus(deepSeekCredentialResult.status)
     }
-    await store.set(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogStartupSyncPolicy.value))
-    await store.set(OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY, normalizeCatalogAutoSyncPolicy(catalogPickerOpenSyncPolicy.value))
-    await store.set(OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY, normalizeCatalogListUpdateMode(catalogListUpdateMode.value))
-    await store.set(OPENROUTER_CATALOG_FRESHNESS_MS_KEY, normalizeCatalogFreshnessMs(catalogFreshnessMs.value))
-    await store.set(OPENROUTER_CATALOG_RETENTION_MS_KEY, normalizeCatalogRetentionMs(catalogRetentionMs.value))
+    await store.set(GLOBAL_CATALOG_POLICY_V2_STORE_KEY, validateCatalogPolicyV2({
+      startupSyncPolicy: catalogStartupSyncPolicy.value,
+      pickerOpenSyncPolicy: catalogPickerOpenSyncPolicy.value,
+      listApplyMode: catalogListUpdateMode.value,
+      freshnessMs: catalogFreshnessMs.value,
+      retentionMs: catalogRetentionMs.value,
+    }))
     await store.set(MAX_RECENT_MODELS_KEY, nextMaxRecentModels)
     await setOpenRouterProviderRequireParameters(requireParameters.value === true)
     await setNetExpSettings({
@@ -1247,7 +1260,7 @@ async function verifyAndSync() {
     applyOpenRouterCredentialStatus(credentialResult.status)
 
     const result = await CatalogQueryService.sync({ sourceProviderKey: 'openrouter', timeoutMs: 30_000,
-      retentionMs: normalizeCatalogRetentionMs(catalogRetentionMs.value) }) as Record<string, unknown>
+      retentionMs: catalogRetentionMs.value }) as Record<string, unknown>
 
     if (result.ok === true) {
       const modelCount = Number(result.modelCount ?? 0)

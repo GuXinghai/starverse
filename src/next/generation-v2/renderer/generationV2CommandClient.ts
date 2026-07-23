@@ -1,3 +1,5 @@
+import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
+
 export type GenerationV2CommandResult = Readonly<{ ok: true; kind: 'created'|'idempotent_replay'; operationId:string;
   answerRootId:string; actionKind:string; branch:Readonly<{branchId:string;conversationId:string;questionId:string;
     headMessageId:string|null;chosenAnswerRootId:string|null;deletedAtMs:number|null}>;visibleAnswerRootIds:readonly string[];
@@ -5,7 +7,7 @@ export type GenerationV2CommandResult = Readonly<{ ok: true; kind: 'created'|'id
 export type GenerationV2Projection = Readonly<{type:'assistant_body';operationId:string;answerRootId:string;content:string}>|
   Readonly<{type:'reasoning_detail';operationId:string;answerRootId:string;detail:Readonly<Record<string,unknown>>}>|
   Readonly<{type:'image_output';operationId:string;answerRootId:string;assetId:string;assetRevisionId:string;mime:string}>|
-  Readonly<{type:'terminal';operationId:string;answerRootId:string;state:'completed'|'failed'|'cancelled';errorCode:string|null;errorMessage:string|null}>
+  Readonly<{type:'terminal';operationId:string;answerRootId:string;state:'completed'|'failed'|'cancelled';errorCode:string|null;errorMessage:string|null;errorFact?:ProviderFailureV2}>
 type Bridge = Readonly<{
   initial: (command: unknown) => Promise<unknown>
   retry: (command: unknown) => Promise<unknown>

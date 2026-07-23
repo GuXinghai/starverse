@@ -31,15 +31,7 @@ import {
   DEFAULT_CATALOG_FRESHNESS_MS,
   DEFAULT_CATALOG_LIST_UPDATE_MODE,
   DEFAULT_CATALOG_RETENTION_MS,
-  OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
-  OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY,
-  OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY,
-  OPENROUTER_CATALOG_RETENTION_MS_KEY,
   isCatalogStatusStale,
-  normalizeCatalogAutoSyncPolicy,
-  normalizeCatalogFreshnessMs,
-  normalizeCatalogListUpdateMode,
-  normalizeCatalogRetentionMs,
   type CatalogAutoSyncPolicy,
   type CatalogListUpdateMode,
   type CatalogRetentionMs,
@@ -48,7 +40,8 @@ import {
   isProviderCatalogSourceKey,
 } from '@/shared/modelCatalog/providerCatalogRegistry'
 import type { ProviderCatalogKnownProviderKey } from '@/shared/modelCatalog/providerCatalogContracts'
-import { providerCatalogSettingKey } from '@/shared/modelCatalog/providerCatalogSettings'
+import { GLOBAL_CATALOG_POLICY_V2_STORE_KEY, providerCatalogPolicyV2StoreKey } from '@/shared/modelCatalog/catalogPolicyResolverV2'
+import { resolveCatalogPolicyV2 } from '@/shared/modelCatalog/catalogPolicyV2'
 import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
@@ -58,6 +51,7 @@ import {
 import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
 import type { ProviderModelPickerItem, ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
 import type { CompatibleConfigurationPickerSource, CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
+import type { ProviderFailureV2 } from '@/shared/provider/providerFailureV2'
 
 type TriState = 'any' | 'yes' | 'no'
 type DetailTab = 'model' | 'endpoints'
@@ -178,6 +172,7 @@ type ProviderSyncSnapshot = Readonly<{
   lastSyncedAtMs: number | null
   errorCode: string | null
   errorMessage: string | null
+  providerFailure: ProviderFailureV2 | null
   isStale: boolean
   catalogRevision: string | null
 }>
@@ -606,28 +601,22 @@ async function loadCatalogSyncSettings(providerKey: ProviderCatalogKnownProvider
     catalogRetentionMs.value = DEFAULT_CATALOG_RETENTION_MS
     return
   }
-  const settingKey = (settingName: 'pickerOpenSyncPolicy' | 'listUpdateMode' | 'freshnessMs' | 'retentionMs') =>
-    providerKey === OPENROUTER_PROVIDER_ID
-      ? (
-          settingName === 'pickerOpenSyncPolicy'
-            ? OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY
-            : settingName === 'listUpdateMode'
-              ? OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY
-              : settingName === 'freshnessMs'
-                ? OPENROUTER_CATALOG_FRESHNESS_MS_KEY
-                : OPENROUTER_CATALOG_RETENTION_MS_KEY
-        )
-      : providerCatalogSettingKey(providerKey, settingName)
-  const [pickerPolicy, updateMode, freshness, retention] = await Promise.all([
-    store.get(settingKey('pickerOpenSyncPolicy')),
-    store.get(settingKey('listUpdateMode')),
-    store.get(settingKey('freshnessMs')),
-    store.get(settingKey('retentionMs')),
+  const [providerOverride, globalPolicy] = await Promise.all([
+    store.get(providerCatalogPolicyV2StoreKey(providerKey)),
+    store.get(GLOBAL_CATALOG_POLICY_V2_STORE_KEY),
   ])
-  pickerOpenSyncPolicy.value = normalizeCatalogAutoSyncPolicy(pickerPolicy)
-  catalogListUpdateMode.value = normalizeCatalogListUpdateMode(updateMode)
-  catalogFreshnessMs.value = normalizeCatalogFreshnessMs(freshness)
-  catalogRetentionMs.value = normalizeCatalogRetentionMs(retention)
+  const resolved = resolveCatalogPolicyV2({ providerOverride, globalPolicy })
+  if (!resolved.policy) {
+    pickerOpenSyncPolicy.value = DEFAULT_CATALOG_AUTO_SYNC_POLICY
+    catalogListUpdateMode.value = DEFAULT_CATALOG_LIST_UPDATE_MODE
+    catalogFreshnessMs.value = DEFAULT_CATALOG_FRESHNESS_MS
+    catalogRetentionMs.value = DEFAULT_CATALOG_RETENTION_MS
+    return
+  }
+  pickerOpenSyncPolicy.value = resolved.policy.pickerOpenSyncPolicy
+  catalogListUpdateMode.value = resolved.policy.listApplyMode
+  catalogFreshnessMs.value = resolved.policy.freshnessMs ?? DEFAULT_CATALOG_FRESHNESS_MS
+  catalogRetentionMs.value = resolved.policy.retentionMs
 }
 
 function normalizeCatalogRevision(value: unknown, modelCount?: unknown, lastSyncAtMs?: unknown): string | null {
@@ -658,6 +647,7 @@ function createProviderSyncSnapshot(input: Readonly<{
   lastSyncAtMs?: unknown
   lastErrorCode?: unknown
   lastErrorMessage?: unknown
+  providerFailure?: unknown
   catalogRevision?: unknown
   isStale?: unknown
 }>): ProviderSyncSnapshot {
@@ -680,6 +670,8 @@ function createProviderSyncSnapshot(input: Readonly<{
     lastSyncedAtMs: normalizedLastSyncedAtMs,
     errorCode: input.lastErrorCode ? String(input.lastErrorCode) : null,
     errorMessage: input.lastErrorMessage ? String(input.lastErrorMessage) : null,
+    providerFailure: input.providerFailure && typeof input.providerFailure === 'object'
+      ? input.providerFailure as ProviderFailureV2 : null,
     isStale: input.isStale === true || isCatalogStatusStale({
       status: status === 'synced' ? 'synced' : 'not_synced',
       lastSyncAtMs: normalizedLastSyncedAtMs,
@@ -732,6 +724,7 @@ function emptyProviderSyncSnapshot(): ProviderSyncSnapshot {
     lastSyncedAtMs: null,
     errorCode: null,
     errorMessage: null,
+    providerFailure: null,
     isStale: true,
     catalogRevision: null,
   }
@@ -1359,6 +1352,7 @@ async function fetchPage(options: Readonly<{ preserveUiState?: boolean; restoreU
         lastSyncAtMs: result.lastSyncAtMs ?? Date.now(),
         lastErrorCode: result.errorCode,
         lastErrorMessage: result.errorMessage,
+        providerFailure: result.providerFailure,
         catalogRevision: revision,
         isStale: result.status === 'failed',
       }))
@@ -1618,7 +1612,7 @@ async function fetchProviderSyncStatus(providerKey: ProviderCatalogKnownProvider
         : response.status === 'failed' ? 'error' : 'idle',
       modelCount: response.modelCount, visibleModelCount: response.visibleModelCount,
       hiddenModelCount: response.hiddenModelCount, lastSyncAtMs: response.observedAtMs,
-      lastErrorCode: response.errorCode, catalogRevision: response.responseDigest,
+      lastErrorCode: response.errorCode, providerFailure: response.providerFailure, catalogRevision: response.responseDigest,
       isStale: response.status !== 'synced',
     }))
   } catch (err) {
@@ -2695,6 +2689,9 @@ onBeforeUnmount(() => {
           </span>
           <span v-else-if="selectedSyncSnapshot.status === 'failed'" class="text-red-600">
             {{ tf('errors.modelCatalog.syncFailedReason', { reason: modelCatalogSyncFailureReasonText(selectedSyncSnapshot.errorCode) }) }}
+          </span>
+          <span v-if="selectedSyncSnapshot.providerFailure?.providerError?.message" class="block text-red-700" data-testid="model-picker-provider-error">
+            {{ selectedSyncSnapshot.providerFailure.providerError.message }}
           </span>
           <span class="text-gray-400" data-testid="model-picker-sync-last-synced">
             {{ tf('errors.modelCatalog.lastSyncedAt', { time: formatSyncTime(selectedSyncSnapshot.lastSyncedAtMs) }) }}

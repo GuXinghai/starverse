@@ -133,11 +133,14 @@ export type MessageVM = Readonly<{
   reasoningDurationIsFallback?: boolean
   errorEnvelope?: ErrorEnvelope | null
   errorSummary?: Readonly<{
-    completionClass?: string
-    phase?: string
-    code?: string
-    message?: string
-    provider?: string
+    completionClass?: string | null
+    phase?: string | null
+    code?: string | null
+    message?: string | null
+    provider?: string | null
+    source?: string | null
+    raw?: unknown
+    networkError?: unknown
   }> | null
   streaming: { isTarget: boolean; isComplete: boolean }
 }>
@@ -235,11 +238,14 @@ export type MessageState = Readonly<{
   requestedReasoningExclude: boolean
   errorEnvelope?: ErrorEnvelope | null
   errorSummary?: Readonly<{
-    completionClass?: string
-    phase?: string
-    code?: string
-    message?: string
-    provider?: string
+    completionClass?: string | null
+    phase?: string | null
+    code?: string | null
+    message?: string | null
+    provider?: string | null
+    source?: string | null
+    raw?: unknown
+    networkError?: unknown
   }> | null
 }>
 

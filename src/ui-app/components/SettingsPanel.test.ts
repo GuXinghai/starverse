@@ -474,11 +474,10 @@ describe('ui-app SettingsPanel', () => {
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).not.toHaveBeenCalledWith('openRouterApiKey', expect.anything())
-    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogStartupSyncPolicy', 'stale_only')
-    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogPickerOpenSyncPolicy', 'stale_only')
-    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogListUpdateMode', 'manual')
-    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogFreshnessMs', 24 * 60 * 60 * 1000)
-    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogRetentionMs', 90 * 24 * 60 * 60 * 1000)
+    expect(storeSet).toHaveBeenCalledWith('catalogPolicyV2', {
+      startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'manual',
+      freshnessMs: 24 * 60 * 60 * 1000, retentionMs: 90 * 24 * 60 * 60 * 1000,
+    })
 
     const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     expect(invoke).toHaveBeenCalledWith('settings.setOpenRouterProviderRequireParameters', { value: true })
@@ -745,8 +744,8 @@ describe('ui-app SettingsPanel', () => {
     await screen.findByText('设置')
     await waitFor(() => expect((globalThis as any).electronStore.get).toHaveBeenCalled())
 
-    expect(screen.getByTestId('settings-catalog-startup-sync-policy')).toHaveValue('stale_only')
-    expect(screen.getByTestId('settings-catalog-picker-open-sync-policy')).toHaveValue('stale_only')
+    expect(screen.getByTestId('settings-catalog-startup-sync-policy')).toHaveValue('never')
+    expect(screen.getByTestId('settings-catalog-picker-open-sync-policy')).toHaveValue('never')
     expect(screen.getByTestId('settings-catalog-list-update-mode')).toHaveValue('manual')
     expect(screen.getByTestId('settings-catalog-freshness')).toHaveValue(String(24 * 60 * 60 * 1000))
     expect(screen.getByTestId('settings-catalog-retention')).toHaveValue(String(90 * 24 * 60 * 60 * 1000))
@@ -770,11 +769,10 @@ describe('ui-app SettingsPanel', () => {
 
   it('normalizes invalid catalog sync settings to defaults', async () => {
     ;(globalThis as any).electronStore = createElectronStoreMockWith({
-      openRouterCatalogStartupSyncPolicy: 'bad',
-      openRouterCatalogPickerOpenSyncPolicy: 'bad',
-      openRouterCatalogListUpdateMode: 'bad',
-      openRouterCatalogFreshnessMs: 12345,
-      openRouterCatalogRetentionMs: 12345,
+      catalogPolicyV2: {
+        startupSyncPolicy: 'bad', pickerOpenSyncPolicy: 'bad', listApplyMode: 'bad',
+        freshnessMs: 12345, retentionMs: 12345,
+      },
     })
 
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
@@ -782,8 +780,8 @@ describe('ui-app SettingsPanel', () => {
     await screen.findByText('设置')
     await waitFor(() => expect((globalThis as any).electronStore.get).toHaveBeenCalled())
 
-    expect(screen.getByTestId('settings-catalog-startup-sync-policy')).toHaveValue('stale_only')
-    expect(screen.getByTestId('settings-catalog-picker-open-sync-policy')).toHaveValue('stale_only')
+    expect(screen.getByTestId('settings-catalog-startup-sync-policy')).toHaveValue('never')
+    expect(screen.getByTestId('settings-catalog-picker-open-sync-policy')).toHaveValue('never')
     expect(screen.getByTestId('settings-catalog-list-update-mode')).toHaveValue('manual')
     expect(screen.getByTestId('settings-catalog-freshness')).toHaveValue(String(24 * 60 * 60 * 1000))
     expect(screen.getByTestId('settings-catalog-retention')).toHaveValue(String(90 * 24 * 60 * 60 * 1000))
@@ -805,11 +803,10 @@ describe('ui-app SettingsPanel', () => {
     await user.click(screen.getByTestId('settings-save'))
 
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
-    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogStartupSyncPolicy', 'always')
-    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogPickerOpenSyncPolicy', 'never')
-    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogListUpdateMode', 'automatic')
-    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogFreshnessMs', 15 * 60 * 1000)
-    expect(storeSet).toHaveBeenCalledWith('openRouterCatalogRetentionMs', 'never')
+    expect(storeSet).toHaveBeenCalledWith('catalogPolicyV2', {
+      startupSyncPolicy: 'always', pickerOpenSyncPolicy: 'never', listApplyMode: 'automatic',
+      freshnessMs: 15 * 60 * 1000, retentionMs: 'never',
+    })
     expect(JSON.stringify(storeSet.mock.calls.filter(([key]) => String(key).startsWith('openRouterCatalog')))).not.toContain('sk-')
   })
 

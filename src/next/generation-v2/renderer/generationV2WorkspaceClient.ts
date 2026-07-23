@@ -1,6 +1,7 @@
 import type { CatalogQueryItem } from '../../modelCatalog/catalogQueryService'
 import type { RuntimeProviderKey } from '../../provider/runtimeSelection'
 import type { CompatibleConfigurationSelection } from '../../provider/openai-chat-compatible/ui/compatibleConfigurationSelection'
+import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
 
 type Result<T> = Readonly<{ ok: true; value: T }> | Readonly<{ ok: false; code: string }>
 function bridge() {
@@ -39,7 +40,7 @@ export type GenerationV2ConfigLayerView = Readonly<{ ownerKind:'global'|'project
 export type GenerationV2QuestionCandidate = Readonly<{ questionId:string; createdAtMs:number; status:'completed' }>
 export type GenerationV2OpenRouterModelCatalogResult = Readonly<
   {ok:true;responseDigest:string|null;status:'not_synced'|'syncing'|'synced'|'failed';observedAtMs:number|null;
-    items:readonly CatalogQueryItem[];modelCount:number;visibleModelCount:number;hiddenModelCount:number;errorCode:string|null}
+    items:readonly CatalogQueryItem[];modelCount:number;visibleModelCount:number;hiddenModelCount:number;errorCode:string|null;providerFailure?:ProviderFailureV2|null}
   | {ok:false;code:string}>
 
 export async function ensureGenerationV2DefaultWorkspace() { return unwrap<Readonly<{projectId:string;conversationId:string;branchId:string;created:boolean}>>(await bridge().ensureDefault()) }

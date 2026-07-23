@@ -806,10 +806,8 @@ function onImageChipOption(value: string) {
   const aspectRatios = imageGenerationAspectRatioOptions.value
   if (showImageGenerationSizeControl.value && (resolutions as readonly string[]).includes(value)) {
     emit('updateImageGenerationResolution', value as ChatSessionConfigImageResolution)
-    emit('updateImageGenerationEnabled', true)
   } else if ((aspectRatios as readonly string[]).includes(value)) {
     emit('updateImageGenerationAspectRatio', value as ChatSessionConfigAspectRatio)
-    emit('updateImageGenerationEnabled', true)
   }
 }
 
@@ -1229,7 +1227,7 @@ onBeforeUnmount(() => {
             :selected-option="resolvedSessionConfig.reasoning.effort"
             data-test-id="reasoning-chip"
             @toggle="emit('updateReasoningEnabled', !resolvedSessionConfig.reasoning.enabled)"
-            @select-option="(v) => { emit('updateReasoningEffort', v as ChatSessionConfigReasoningEffort); emit('updateReasoningEnabled', true) }"
+            @select-option="(v) => emit('updateReasoningEffort', v as ChatSessionConfigReasoningEffort)"
           >
             <template #icon>
               <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1339,7 +1337,7 @@ onBeforeUnmount(() => {
             :selected-option="resolvedSessionConfig.webSearch.level"
             data-test-id="web-search-chip"
             @toggle="emit('updateWebSearchEnabled', !resolvedSessionConfig.webSearch.enabled)"
-            @select-option="(v) => { emit('updateWebSearchLevel', v as 'low' | 'high'); emit('updateWebSearchEnabled', true) }"
+            @select-option="(v) => emit('updateWebSearchLevel', v as 'low' | 'high')"
           >
             <template #icon>
               <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
