@@ -12,6 +12,7 @@ import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2
 import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
+import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
 import {
   decodeGeminiPlainTextInitialSendCommandV2,
@@ -31,6 +32,7 @@ export function createGeminiPlainTextInitialSendCoordinatorV2(input: Readonly<{
   fetchImpl?: typeof fetch
   nowMs?: () => number
   createGraphId?: (kind: 'question' | 'answer') => string
+  attachmentBlobStore?: Epoch2AttachmentBlobStoreV2
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const createGraphId = input.createGraphId ?? ((kind: 'question' | 'answer') => `${kind}:${randomUUID()}`)
@@ -59,7 +61,7 @@ export function createGeminiPlainTextInitialSendCoordinatorV2(input: Readonly<{
       if (!execution) throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       const history = historyRepo.loadRequestHistory(context, command.operationId.value)
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
-      const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution, history, toolRegistry })
+      const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
       return issueGenerationTextCommandResultV2({
         kind: 'idempotent_replay', execution,
         projection: graphRepo.getInitialSendReplayProjectionInTransaction(context, command.operationId.value),
@@ -93,7 +95,7 @@ export function createGeminiPlainTextInitialSendCoordinatorV2(input: Readonly<{
               }
               const history = historyRepo.loadRequestHistory(context, command.operationId.value)
               const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced)
-              const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution: raced, history, toolRegistry })
+              const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution: raced, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
               return issueGenerationTextCommandResultV2({ kind: 'idempotent_replay', execution: raced,
                 projection: graphRepo.getInitialSendReplayProjectionInTransaction(context, command.operationId.value),
                 preparedRequest, request: requestRepo.replayPrepared(context, raced, preparedRequest) })
@@ -121,7 +123,7 @@ export function createGeminiPlainTextInitialSendCoordinatorV2(input: Readonly<{
                     graphRepo.commitInitialTurnProjection(context, pending)
                     const history = historyRepo.loadRequestHistory(context, command.operationId.value)
                     const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({
-                      context, execution: persisted.bundle, history, toolRegistry,
+                      context, execution: persisted.bundle, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore,
                     })
                     return issueGenerationTextCommandResultV2({
                       kind: 'created', execution: persisted.bundle,

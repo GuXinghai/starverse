@@ -10,6 +10,8 @@ export class GeminiInteractionsImageStreamV1Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE'
     | 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT'
+    | 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_EVENT_MISMATCH'
+    | 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_MISSING_EVENT'
     | 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_LIMIT_EXCEEDED'
     | 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_UNSUPPORTED_CONTENT'
     | 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_MULTI_IMAGE_UNSUPPORTED'
@@ -35,6 +37,9 @@ export type GeminiInteractionsReasoningDetailV1 = Readonly<{
   data: string
   mimeType: string
   thoughtSignature?: string
+}> | Readonly<{
+  type: 'thought_signature'
+  signature: string
 }>
 
 export type GeminiInteractionsImageResultV1 = Readonly<{
@@ -81,13 +86,19 @@ function index(value: unknown): number {
   }
   return value as number
 }
-function canonicalRaw(raw: Readonly<Record<string, unknown>>): GeminiInteractionsImageNativeEventV1 {
+type GeminiInteractionsEventTypeV1 = Exclude<GeminiInteractionsImageNativeEventV1['eventType'], 'done'>
+const KNOWN_EVENT_TYPES = new Set<GeminiInteractionsEventTypeV1>([
+  'interaction.created', 'interaction.status_update', 'step.start', 'step.delta',
+  'step.stop', 'interaction.completed', 'error',
+])
+function isKnownEventType(value: unknown): value is GeminiInteractionsEventTypeV1 {
+  return typeof value === 'string' && KNOWN_EVENT_TYPES.has(value as GeminiInteractionsEventTypeV1)
+}
+function canonicalRaw(raw: Readonly<Record<string, unknown>>, eventType: GeminiInteractionsEventTypeV1): GeminiInteractionsImageNativeEventV1 {
   let canonicalJson: string
   try { canonicalJson = stableSerializeProviderRequestBoundedV2(raw, MAX_ARTIFACT_BYTES) } catch {
     return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_LIMIT_EXCEEDED')
   }
-  const eventType = raw.event_type
-  if (typeof eventType !== 'string') return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
   return Object.freeze({ eventType: eventType as GeminiInteractionsImageNativeEventV1['eventType'], canonicalJson, raw })
 }
 function readInteraction(value: unknown, terminal: boolean): Readonly<Record<string, unknown>> {
@@ -122,11 +133,17 @@ function readImage(value: unknown): Readonly<{ data: string | null; mime: string
 }
 function readText(value: unknown): string {
   const text = record(value)
-  if (text.type !== 'output_text' && text.type !== 'text_output') {
+  if (text.type !== 'text' && text.type !== 'output_text' && text.type !== 'text_output') {
     return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_UNSUPPORTED_CONTENT')
   }
   keys(text, ['type', 'text'])
   return typeof text.text === 'string' ? text.text : fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
+}
+function readThoughtSignature(value: unknown): GeminiInteractionsReasoningDetailV1 {
+  const thought = record(value)
+  if (thought.type !== 'thought_signature') return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_UNSUPPORTED_CONTENT')
+  keys(thought, ['type', 'signature'])
+  return Object.freeze({ type: 'thought_signature' as const, signature: boundedString(thought.signature, MAX_STREAM_BYTES) })
 }
 function readThoughtSummary(value: unknown): GeminiInteractionsReasoningDetailV1 {
   const thought = record(value)
@@ -158,29 +175,39 @@ function readOutput(value: unknown): Readonly<{ kind: 'image'; value: ReturnType
   const output = record(value)
   return output.type === 'image'
     ? Object.freeze({ kind: 'image' as const, value: readImage(output) })
-    : output.type === 'output_text' || output.type === 'text_output'
+    : output.type === 'text' || output.type === 'output_text' || output.type === 'text_output'
       ? Object.freeze({ kind: 'text' as const, value: readText(output) })
+      : output.type === 'thought_signature'
+        ? Object.freeze({ kind: 'thought' as const, value: readThoughtSignature(output) })
       : Object.freeze({ kind: 'thought' as const, value: readThoughtSummary(output) })
 }
 
-function parseJsonEvent(rawText: string): GeminiInteractionsImageNativeEventV1 {
+function parseJsonEvent(rawText: string, sseEvent: string | null): GeminiInteractionsImageNativeEventV1 {
   let parsed: unknown
   try { parsed = JSON.parse(rawText) } catch { return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE') }
   const raw = record(parsed)
-  switch (raw.event_type) {
+  const payloadEvent = typeof raw.event_type === 'string'
+    ? raw.event_type
+    : typeof raw.type === 'string' && isKnownEventType(raw.type) ? raw.type : null
+  if (sseEvent !== null && payloadEvent !== null && sseEvent !== payloadEvent) {
+    return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_EVENT_MISMATCH')
+  }
+  const eventType = sseEvent ?? payloadEvent
+  if (!isKnownEventType(eventType)) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_MISSING_EVENT')
+  switch (eventType) {
     case 'interaction.created':
-      keys(raw, ['event_type', 'interaction'], ['event_id', 'metadata'])
+      keys(raw, ['interaction'], ['event_type', 'type', 'event_id', 'metadata'])
       readInteraction(raw.interaction, false)
       break
     case 'interaction.status_update':
-      keys(raw, ['event_type', 'interaction_id', 'status'], ['event_id', 'metadata'])
+      keys(raw, ['interaction_id', 'status'], ['event_type', 'type', 'event_id', 'metadata'])
       boundedString(raw.interaction_id, 4096)
       if (!['in_progress', 'requires_action', 'completed', 'failed', 'cancelled', 'incomplete', 'budget_exceeded'].includes(raw.status as string)) {
         return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
       }
       break
     case 'step.start': {
-      keys(raw, ['event_type', 'index', 'step'], ['event_id', 'metadata'])
+      keys(raw, ['index', 'step'], ['event_type', 'type', 'event_id', 'metadata'])
       index(raw.index)
       const step = record(raw.step)
       keys(step, ['type'], ['content', 'error'])
@@ -195,21 +222,21 @@ function parseJsonEvent(rawText: string): GeminiInteractionsImageNativeEventV1 {
       break
     }
     case 'step.delta':
-      keys(raw, ['event_type', 'index', 'delta'], ['event_id', 'metadata'])
+      keys(raw, ['index', 'delta'], ['event_type', 'type', 'event_id', 'metadata'])
       index(raw.index); readOutput(raw.delta)
       break
     case 'step.stop':
-      keys(raw, ['event_type', 'index'], ['event_id', 'metadata', 'step_usage', 'usage'])
+      keys(raw, ['index'], ['event_type', 'type', 'event_id', 'metadata', 'step_usage', 'usage'])
       index(raw.index)
       if (raw.step_usage !== undefined) record(raw.step_usage)
       if (raw.usage !== undefined) record(raw.usage)
       break
     case 'interaction.completed':
-      keys(raw, ['event_type', 'interaction'], ['event_id', 'metadata'])
+      keys(raw, ['interaction'], ['event_type', 'type', 'event_id', 'metadata'])
       readInteraction(raw.interaction, true)
       break
     case 'error':
-      keys(raw, ['event_type'], ['event_id', 'metadata', 'error'])
+      keys(raw, [], ['event_type', 'type', 'event_id', 'metadata', 'error'])
       if (raw.error !== undefined) {
         const error = record(raw.error)
         keys(error, [], ['code', 'message'])
@@ -220,7 +247,32 @@ function parseJsonEvent(rawText: string): GeminiInteractionsImageNativeEventV1 {
     default:
       return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_EVENT')
   }
-  return canonicalRaw(raw)
+  return canonicalRaw(raw, eventType)
+}
+
+function parseSseFrame(frame: string): GeminiInteractionsImageNativeEventV1 | null {
+  const data: string[] = []
+  let event: string | null = null
+  for (const line of frame.split(/\r?\n/u)) {
+    if (line.length === 0 || line.startsWith(':')) continue
+    const separator = line.indexOf(':')
+    const field = separator < 0 ? line : line.slice(0, separator)
+    const value = separator < 0 ? '' : line.slice(separator + 1).replace(/^ /u, '')
+    if (field === 'data') data.push(value)
+    else if (field === 'event') event = value.length === 0 ? null : boundedString(value, 256)
+    else if (field === 'id') boundedString(value, 4096)
+    else if (field === 'retry') {
+      if (!/^\d{1,9}$/u.test(value)) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE')
+    }
+    // Unknown SSE fields are ignored by the SSE protocol.
+  }
+  if (data.length === 0) return null
+  const joined = data.join('\n')
+  if (joined === '[DONE]') {
+    if (event !== null && event !== 'done') return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_EVENT_MISMATCH')
+    return Object.freeze({ eventType: 'done', canonicalJson: '{"event_type":"done"}', raw: null })
+  }
+  return parseJsonEvent(joined, event)
 }
 
 export class GeminiInteractionsImageSseDecoderV1 {
@@ -256,19 +308,23 @@ export class GeminiInteractionsImageSseDecoderV1 {
       const frame = this.#buffer.slice(0, match.index)
       this.#buffer = this.#buffer.slice(match.index + match[0].length)
       if (Buffer.byteLength(frame, 'utf8') > MAX_FRAME_BYTES || this.#doneSeen) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE')
-      const data: string[] = []
-      for (const line of frame.split(/\r?\n/u)) {
-        if (line === 'data' || line.startsWith('data:')) data.push(line === 'data' ? '' : line.slice(5).replace(/^ /u, ''))
-        else if (line.length !== 0 && !line.startsWith(':')) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE')
+      const event = parseSseFrame(frame)
+      if (event) {
+        if (event.eventType === 'done') this.#doneSeen = true
+        events.push(event)
       }
-      if (data.length === 0) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE')
-      const joined = data.join('\n')
-      if (joined === '[DONE]') {
-        this.#doneSeen = true
-        events.push(Object.freeze({ eventType: 'done', canonicalJson: '{"event_type":"done"}', raw: null }))
-      } else events.push(parseJsonEvent(joined))
     }
-    if (final && this.#buffer.trim().length === 0) this.#buffer = ''
+    if (final && this.#buffer.trim().length !== 0) {
+      if (Buffer.byteLength(this.#buffer, 'utf8') > MAX_FRAME_BYTES || this.#doneSeen) {
+        return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE')
+      }
+      const event = parseSseFrame(this.#buffer)
+      this.#buffer = ''
+      if (event) {
+        if (event.eventType === 'done') this.#doneSeen = true
+        events.push(event)
+      }
+    } else if (final) this.#buffer = ''
     return Object.freeze(events)
   }
 }

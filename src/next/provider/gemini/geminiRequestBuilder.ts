@@ -43,7 +43,6 @@ export type GeminiGenerationConfig = Readonly<{
   temperature?: number
   topP?: number
   maxOutputTokens?: number
-  candidateCount?: number
   thinkingConfig?: Readonly<{
     thinkingBudget?: number
     thinkingLevel?: GeminiThinkingLevel
@@ -142,11 +141,9 @@ export function buildGeminiRequest(input: GeminiRequestInput): GeminiRequest {
     }
     Object.assign(genConfig, nativeGenerationConfig)
   }
-  const candidateCount = genConfig.candidateCount
-  if (candidateCount !== undefined && candidateCount !== 1) {
-    throw new Error('Google AI Studio generateContent continuation requires candidateCount=1.')
+  if (Object.prototype.hasOwnProperty.call(genConfig, 'candidateCount')) {
+    throw new Error('Google AI Studio does not expose candidateCount; omit it and let Google choose one candidate.')
   }
-  genConfig.candidateCount = 1
 
   if (Object.keys(genConfig).length > 0) {
     request.generationConfig = genConfig

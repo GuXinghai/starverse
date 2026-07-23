@@ -29,10 +29,27 @@ export type OpenRouterChatRequestV1 = Readonly<{
   stop?: readonly string[]
   frequency_penalty?: number
   presence_penalty?: number
+  repetition_penalty?: number
+  verbosity?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  response_format?: OpenRouterChatResponseFormatV1
+  parallel_tool_calls?: boolean
   reasoning?: Readonly<Record<string, unknown>>
   tools?: readonly Record<string, unknown>[]
   tool_choice?: 'auto' | 'none' | 'required' | Readonly<{ type: 'function'; function: Readonly<{ name: string }> }>
 }>
+
+export type OpenRouterChatResponseFormatV1 =
+  | Readonly<{ type: 'text' }>
+  | Readonly<{ type: 'json_object' }>
+  | Readonly<{
+      type: 'json_schema'
+      json_schema: Readonly<{
+        name: string
+        description?: string
+        schema: Readonly<Record<string, unknown>>
+        strict?: boolean
+      }>
+    }>
 
 export type OpenRouterWebSearchServerToolV1 = Readonly<{
   type: 'openrouter:web_search'
@@ -119,6 +136,31 @@ function boundedNumber(value: unknown, min: number, max: number): number {
   return value
 }
 
+function responseFormat(value: unknown): OpenRouterChatResponseFormatV1 {
+  const input = asClosedObject(value, ['type', 'json_schema'], ['type'])
+  if (input.type === 'text' || input.type === 'json_object') {
+    if (Object.keys(input).length !== 1) throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
+    return Object.freeze({ type: input.type }) as OpenRouterChatResponseFormatV1
+  }
+  if (input.type !== 'json_schema') throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
+  const schema = asClosedObject(input.json_schema, ['name', 'description', 'schema', 'strict'], ['name', 'schema'])
+  if (typeof schema.name !== 'string' || !/^[A-Za-z_][A-Za-z0-9_-]{0,63}$/u.test(schema.name) ||
+      schema.description !== undefined && (typeof schema.description !== 'string' || schema.description.length > 4096) ||
+      schema.strict !== undefined && typeof schema.strict !== 'boolean') {
+    throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
+  }
+  const clonedSchema = jsonClone(schema.schema)
+  return Object.freeze({
+    type: 'json_schema' as const,
+    json_schema: Object.freeze({
+      name: schema.name,
+      ...(schema.description === undefined ? {} : { description: schema.description }),
+      schema: clonedSchema,
+      ...(schema.strict === undefined ? {} : { strict: schema.strict }),
+    }),
+  })
+}
+
 function stringList(value: unknown, maximum: number): readonly string[] {
   if (!Array.isArray(value) || value.length === 0 || value.length > maximum ||
       value.some((item) => typeof item !== 'string' || item.length === 0) || new Set(value).size !== value.length) {
@@ -182,6 +224,7 @@ function compileWebSearchServerTool(value: unknown): OpenRouterWebSearchServerTo
 export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatCompilationV1 {
   const input = asClosedObject(raw, [
     'model', 'messages', 'generation', 'reasoning', 'tools', 'toolChoice', 'webSearch',
+    'verbosity', 'responseFormat', 'parallelToolCalls',
   ], ['model', 'messages'])
   if (typeof input.model !== 'string' || input.model.length === 0 || input.model.length > 256 ||
       !Array.isArray(input.messages) || input.messages.length === 0 || input.messages.length > 4_096) {
@@ -189,9 +232,9 @@ export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatComp
   }
   const messages = Object.freeze(input.messages.map(jsonClone))
   const generation: Readonly<{ maxTokens?: unknown; temperature?: unknown; topP?: unknown; topK?: unknown; minP?: unknown;
-    topA?: unknown; seed?: unknown; stop?: unknown; frequencyPenalty?: unknown; presencePenalty?: unknown }> = input.generation === undefined
+    topA?: unknown; seed?: unknown; stop?: unknown; frequencyPenalty?: unknown; presencePenalty?: unknown; repetitionPenalty?: unknown }> = input.generation === undefined
     ? Object.freeze({})
-    : asClosedObject(input.generation, ['maxTokens', 'temperature', 'topP', 'topK', 'minP', 'topA', 'seed', 'stop', 'frequencyPenalty', 'presencePenalty'], [])
+    : asClosedObject(input.generation, ['maxTokens', 'temperature', 'topP', 'topK', 'minP', 'topA', 'seed', 'stop', 'frequencyPenalty', 'presencePenalty', 'repetitionPenalty'], [])
   const tools = input.tools === undefined
     ? undefined
     : (() => {
@@ -209,6 +252,16 @@ export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatComp
     toolNames.add((fn as Record<string, unknown>).name as string)
   }
   const webSearchTool = input.webSearch === undefined ? undefined : compileWebSearchServerTool(input.webSearch)
+  const verbosity = input.verbosity === undefined ? undefined : (() => {
+    if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(input.verbosity as string)) {
+      throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
+    }
+    return input.verbosity as 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  })()
+  if (input.parallelToolCalls !== undefined && typeof input.parallelToolCalls !== 'boolean') {
+    throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
+  }
+  const response = input.responseFormat === undefined ? undefined : responseFormat(input.responseFormat)
   const requestTools = tools === undefined && webSearchTool === undefined
     ? undefined
     : Object.freeze([...(tools ?? []), ...(webSearchTool === undefined ? [] : [webSearchTool])])
@@ -227,6 +280,10 @@ export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatComp
     ...(generation.stop === undefined ? {} : { stop: stringList(generation.stop, 16) }),
     ...(generation.frequencyPenalty === undefined ? {} : { frequency_penalty: boundedNumber(generation.frequencyPenalty, -2, 2) }),
     ...(generation.presencePenalty === undefined ? {} : { presence_penalty: boundedNumber(generation.presencePenalty, -2, 2) }),
+    ...(generation.repetitionPenalty === undefined ? {} : { repetition_penalty: boundedNumber(generation.repetitionPenalty, 0, 2) }),
+    ...(verbosity === undefined ? {} : { verbosity }),
+    ...(response === undefined ? {} : { response_format: response }),
+    ...(input.parallelToolCalls === undefined ? {} : { parallel_tool_calls: input.parallelToolCalls }),
     ...(input.reasoning === undefined ? {} : { reasoning: jsonClone(input.reasoning) }),
     ...(requestTools === undefined ? {} : { tools: requestTools }),
     ...(input.toolChoice === undefined ? {} : { tool_choice: toolChoice(input.toolChoice, toolNames) }),

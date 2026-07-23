@@ -10,6 +10,7 @@ import { createAnthropicPlainTextEditResendCoordinatorV2 } from './anthropicPlai
 import { createAnthropicToolContinuationCoordinatorV2 } from './anthropicToolContinuationCoordinatorV2'
 import type { GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import type { GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
+import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 
 export class AnthropicGenerationV2RuntimeError extends Error {
   constructor(readonly code: 'GENERATION_V2_ANTHROPIC_RUNTIME_CREDENTIAL_INVALID') {
@@ -40,12 +41,14 @@ export function createAnthropicGenerationV2Runtime(input: Readonly<{
   rawGenerationRequestStore?: RawGenerationRequestStore
   streamProjectionSink?: GenerationStreamProjectionSinkV2
   nowMs?: () => number
+  attachmentBlobStore?: Epoch2AttachmentBlobStoreV2
 }>): AnthropicGenerationV2Runtime {
   const initial = createAnthropicPlainTextInitialSendCoordinatorV2({
     db: input.db,
     credentialService: input.credentialService,
     fetchImpl: input.fetchImpl,
     nowMs: input.nowMs,
+    attachmentBlobStore: input.attachmentBlobStore,
   })
   const runner = createAnthropicMessagesStreamRunnerV2({
     db: input.db,
@@ -59,21 +62,24 @@ export function createAnthropicGenerationV2Runtime(input: Readonly<{
     db: input.db,
     credentialService: input.credentialService,
     nowMs: input.nowMs,
+    attachmentBlobStore: input.attachmentBlobStore,
   })
   const regenerate = createAnthropicPlainTextRegenerateCoordinatorV2({
     db: input.db,
     credentialService: input.credentialService,
     fetchImpl: input.fetchImpl,
     nowMs: input.nowMs,
+    attachmentBlobStore: input.attachmentBlobStore,
   })
   const editResend = createAnthropicPlainTextEditResendCoordinatorV2({
     db: input.db,
     credentialService: input.credentialService,
     fetchImpl: input.fetchImpl,
     nowMs: input.nowMs,
+    attachmentBlobStore: input.attachmentBlobStore,
   })
   const continuation = createAnthropicToolContinuationCoordinatorV2({
-    db: input.db, credentialService: input.credentialService, nowMs: input.nowMs,
+    db: input.db, credentialService: input.credentialService, nowMs: input.nowMs, attachmentBlobStore: input.attachmentBlobStore,
   })
   const activeControllers = new Map<string, AbortController>()
 

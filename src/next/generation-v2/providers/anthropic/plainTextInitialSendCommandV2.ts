@@ -8,6 +8,8 @@ import {
   type ConversationGraphV2Identity as GraphIdentity,
 } from '../../domain/conversationGraphV2'
 import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../domain/identityV2'
+import { decodeAnthropicCommandAttachmentsV2, projectAnthropicCommandAttachmentsV2 } from './commandAttachmentsV2'
+import type { AttachmentIntentV2 } from '../../domain/generationIntentV2'
 
 const MAX_COMMAND_JSON_BYTES = 21 * 1024 * 1024
 const MAX_USER_BODY_BYTES = 20 * 1024 * 1024
@@ -37,7 +39,7 @@ export type AnthropicPlainTextInitialSendCommandV2 = Readonly<{
   providerId: Identity<'provider_id'>
   endpointProfileId: Identity<'endpoint_profile_id'>
   modelId: Identity<'model_id'>
-  commandAttachments: readonly []
+  commandAttachments: readonly AttachmentIntentV2[]
   canonicalJson: string
   requestFingerprint: string
 }>
@@ -76,8 +78,7 @@ export function decodeAnthropicPlainTextInitialSendCommandV2(
     if (typeof raw.operationId !== 'string' || typeof raw.branchId !== 'string' ||
         typeof raw.userBody !== 'string' || typeof raw.modelId !== 'string' ||
         (raw.expectedHeadMessageId !== null && typeof raw.expectedHeadMessageId !== 'string') ||
-        !Array.isArray(raw.commandAttachments) || raw.commandAttachments.length !== 0 ||
-        Reflect.ownKeys(raw.commandAttachments).length !== 1 ||
+        !Array.isArray(raw.commandAttachments) ||
         new TextEncoder().encode(raw.userBody).byteLength > MAX_USER_BODY_BYTES) fail()
 
     const contract = readAnthropicDeveloperApiContractV2()
@@ -97,7 +98,7 @@ export function decodeAnthropicPlainTextInitialSendCommandV2(
       providerId: contract.providerId,
       endpointProfileId: contract.contractFamilyId,
       modelId: modelId.value,
-      commandAttachments: Object.freeze([]),
+      commandAttachments: projectAnthropicCommandAttachmentsV2(decodeAnthropicCommandAttachmentsV2(raw.commandAttachments)),
     })
     const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_JSON_BYTES)
     const command = Object.freeze({
@@ -108,7 +109,7 @@ export function decodeAnthropicPlainTextInitialSendCommandV2(
       providerId: GenerationV2Identity.create('provider_id', contract.providerId),
       endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', contract.contractFamilyId),
       modelId,
-      commandAttachments: Object.freeze([]) as readonly [],
+      commandAttachments: decodeAnthropicCommandAttachmentsV2(raw.commandAttachments),
       canonicalJson,
       requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)),
     })

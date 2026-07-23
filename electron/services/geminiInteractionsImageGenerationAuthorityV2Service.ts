@@ -83,7 +83,6 @@ function unsupported(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
 function fields(modelId: string): readonly PersistedRuntimeCapabilityFieldV2[] {
   const policy = readGeminiInteractionsImageModelPolicyV1(modelId)
   const values = new Map(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => [path, unsupported(path)] as const))
-  values.set('generation.candidateCount', supported('generation.candidateCount', { kind: 'range', min: 1, max: 1, integer: true }))
   values.set('generation.temperature', supported('generation.temperature', { kind: 'range', min: 0, max: 2, integer: false }))
   values.set('generation.topP', supported('generation.topP', { kind: 'range', min: 0, max: 1, integer: false }))
   values.set('generation.maxOutputTokens', supported('generation.maxOutputTokens', { kind: 'range', min: 0, max: policy.maxOutputTokens, integer: true }))

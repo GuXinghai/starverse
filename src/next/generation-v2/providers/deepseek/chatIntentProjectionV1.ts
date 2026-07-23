@@ -66,7 +66,7 @@ const IMAGE_KEYS = Object.freeze([
 const REASONING_MODES = ['disabled', 'enabled'] as const satisfies readonly ReasoningIntentV2['mode'][]
 const WEB_MODES = ['disabled', 'provider_search'] as const satisfies readonly WebSearchIntentV2['mode'][]
 const TOOL_MODES = ['disabled', 'enabled'] as const satisfies readonly ToolPolicyIntentV2['mode'][]
-const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses', 'anthropic_messages', 'gemini_generate_content'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
+const PROVIDER_EXTENSION_KINDS = ['none', 'openrouter_chat', 'openai_responses', 'anthropic_messages', 'gemini_generate_content'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
 
 const samplingKeysAreExhaustive: Exclude<keyof SamplingIntentV2, typeof SAMPLING_KEYS[number]> extends never
   ? true : never = true

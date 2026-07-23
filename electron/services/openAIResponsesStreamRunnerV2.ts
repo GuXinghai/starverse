@@ -26,6 +26,13 @@ import {
   publishGenerationStreamProjectionV2,
   type GenerationStreamProjectionSinkV2,
 } from './generationStreamProjectionV2'
+import {
+  createProviderFailureV2,
+  ProviderFailureErrorV2,
+  providerFailureFromUnknownV2,
+  providerFailurePrimaryMessageV2,
+  type ProviderFailureV2,
+} from '../../src/shared/provider/providerFailureV2'
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
 
@@ -92,21 +99,6 @@ async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
   })
 }
 
-function errorCode(error: unknown, timedOut: boolean): string {
-  if (timedOut) return 'GENERATION_V2_OPENAI_RUNNER_TIMEOUT'
-  if (error instanceof OpenAIResponsesStreamRunnerV2Error || error instanceof OpenAIResponsesStreamV1Error) {
-    return error.code
-  }
-  return 'GENERATION_V2_OPENAI_RUNNER_TRANSPORT_FAILED'
-}
-
-function errorMessage(error: unknown): string {
-  if (error instanceof OpenAIResponsesStreamRunnerV2Error || error instanceof OpenAIResponsesStreamV1Error) {
-    return error.code
-  }
-  return 'OpenAI Responses generation failed.'
-}
-
 function hasUnresolvedFunctionCall(terminal: OpenAIResponsesTerminalResultV1): boolean {
   return terminal.output.some((item) => 'type' in item && item.type === 'function_call')
 }
@@ -171,6 +163,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
     terminalErrorCode: string | null,
     terminalErrorMessage: string | null,
     phase: 'pre_stream' | 'mid_stream',
+    terminalErrorFact: ProviderFailureV2 | null = null,
   ): OpenAIResponsesStreamRunResultV2 {
     const at = nowMs()
     let resultState: OpenAIResponsesStreamRunResultV2['state'] = state
@@ -229,7 +222,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
       } else {
         graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, null, at)
         executionRepo.terminalizeOperation(context, execution, {
-          state, errorCode: terminalErrorCode, errorMessage: terminalErrorMessage,
+          state, errorCode: terminalErrorCode, errorMessage: terminalErrorMessage, errorFact: terminalErrorFact,
         }, at)
       }
     })
@@ -237,6 +230,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
       operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId,
       state: resultState, errorCode: terminalErrorCode, errorMessage: terminalErrorMessage,
+      ...(terminalErrorFact ? { errorFact: terminalErrorFact } : {}),
     })
     publishGenerationStreamProjectionV2(input.streamProjectionSink, {
       type: 'terminal', operationId: terminalProjection.operationId, answerRootId: terminalProjection.answerRootId,
@@ -253,10 +247,24 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
   ): Promise<OpenAIResponsesTerminalResultV1> {
     if (response.status !== 200 || !response.body ||
         response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'text/event-stream') {
-      try { await response.body?.cancel() } catch { /* best effort */ }
-      throw new OpenAIResponsesStreamRunnerV2Error(
-        response.status === 200 ? 'GENERATION_V2_OPENAI_RUNNER_RESPONSE_INVALID' : 'GENERATION_V2_OPENAI_RUNNER_HTTP_FAILED',
-      )
+      let bodyText: string | null = null
+      try { bodyText = response.body ? await response.text() : null } catch { /* preserve the transport fact below */ }
+      throw new ProviderFailureErrorV2(createProviderFailureV2({
+        context: {
+          origin: response.status === 200 ? 'response_decoder' : 'http_response',
+          phase: response.status === 200 ? 'response_headers' : 'response_body',
+          providerId: command.preparedRequest.providerId,
+          contractId: command.preparedRequest.contractId,
+          operationId: command.preparedRequest.operationId,
+          requestSequence: command.preparedRequest.requestSequence,
+          starverseDiagnosticCode: response.status === 200
+            ? 'PROVIDER_RESPONSE_DECODE_FAILED' : 'PROVIDER_RESPONSE_HTTP_ERROR',
+        },
+        httpStatus: response.status,
+        httpStatusText: response.statusText,
+        bodyText,
+        headers: Object.fromEntries(response.headers.entries()),
+      }))
     }
     const decoder = new OpenAIResponsesTypedSseDecoderV1()
     const assembler = new OpenAIResponsesStreamAssemblerV1()
@@ -366,16 +374,41 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
           return finalize(command, 'completed', terminal, null, null, 'mid_stream')
         }
         const providerCode = terminal.terminalKind === 'failed'
-          ? 'GENERATION_V2_OPENAI_RUNNER_PROVIDER_FAILED'
-          : 'GENERATION_V2_OPENAI_RUNNER_PROVIDER_INCOMPLETE'
+          ? 'provider_failed'
+          : 'provider_incomplete'
         const providerMessage = terminal.error?.message ?? terminal.incompleteReason ?? providerCode
-        return finalize(command, 'failed', terminal, providerCode, providerMessage, 'mid_stream')
+        const providerFailure = createProviderFailureV2({
+          context: {
+            origin: 'provider_runtime', phase: 'response_body',
+            providerId: command.preparedRequest.providerId,
+            contractId: command.preparedRequest.contractId,
+            operationId: command.preparedRequest.operationId,
+            requestSequence: command.preparedRequest.requestSequence,
+            starverseDiagnosticCode: 'PROVIDER_RESPONSE_HTTP_ERROR',
+          },
+          body: { error: { code: terminal.error?.code ?? providerCode, message: providerMessage } },
+        })
+        return finalize(command, 'failed', terminal, providerFailure.starverseDiagnosticCode,
+          providerFailurePrimaryMessageV2(providerFailure), 'mid_stream', providerFailure)
       } catch (error) {
         const cancelled = signal?.aborted === true && !scope.timedOut()
-        const code = cancelled ? 'user_cancelled' : errorCode(error, scope.timedOut())
-        const message = cancelled ? 'Generation cancelled by user.' : errorMessage(error)
+        const failure = cancelled ? null : providerFailureFromUnknownV2(error, {
+          origin: error instanceof OpenAIResponsesStreamV1Error ? 'response_decoder'
+            : responseStarted ? 'response_stream' : 'network_transport',
+          phase: error instanceof OpenAIResponsesStreamV1Error ? 'stream_decode'
+            : responseStarted ? 'stream_read' : 'request_open',
+          providerId: command.preparedRequest.providerId,
+          contractId: command.preparedRequest.contractId,
+          operationId: command.preparedRequest.operationId,
+          requestSequence: command.preparedRequest.requestSequence,
+          starverseDiagnosticCode: error instanceof OpenAIResponsesStreamV1Error
+            ? 'PROVIDER_RESPONSE_DECODE_FAILED'
+            : responseStarted ? 'PROVIDER_RESPONSE_STREAM_FAILED' : 'PROVIDER_REQUEST_OPEN_FAILED',
+        })
+        const code = cancelled ? 'user_cancelled' : failure!.starverseDiagnosticCode
+        const message = cancelled ? 'Generation cancelled by user.' : providerFailurePrimaryMessageV2(failure!)
         return finalize(command, cancelled ? 'cancelled' : 'failed', null, code, message,
-          responseStarted ? 'mid_stream' : 'pre_stream')
+          responseStarted ? 'mid_stream' : 'pre_stream', failure)
       } finally {
         scope.dispose()
       }

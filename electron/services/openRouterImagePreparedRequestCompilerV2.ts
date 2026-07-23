@@ -6,7 +6,9 @@ import {
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
+  createPreparedAttachmentRequirementsV2,
   issuePreparedProviderRequestV2,
+  type PreparedAttachmentEncodingProofV2,
   type PreparedProviderRequestV2,
 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
@@ -70,6 +72,8 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
       'GENERATION_V2_OPENROUTER_IMAGE_COMPILER_SEMANTIC_REJECTED',
     )
   }
+  const attachmentRequirements = createPreparedAttachmentRequirementsV2(snapshot.semanticIntent.attachments)
+  const inputReferences = urlReferences.map((attachment) => attachment.originalUrl)
   const compiled = compileOpenRouterImageRequestV1({
     prompt: input.prompt,
     intent: projectGenerationIntentLayerV2(snapshot.semanticIntent),
@@ -77,8 +81,13 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     providerTag: selector.providerTag.value,
     providerSlug: selector.providerSlug.value,
     descriptorSet: input.descriptorSet,
-    inputReferences: urlReferences.map((attachment) => attachment.originalUrl),
+    inputReferences,
   })
+  const attachmentEncodingProofs: PreparedAttachmentEncodingProofV2[] = attachmentRequirements.map((requirement, index) => Object.freeze({
+    semanticPath: requirement.semanticPath,
+    requirement,
+    wireFragment: inputReferences[index],
+  }))
   const ledger = createSemanticConsumptionLedgerV2(projection.dispositions.map((disposition) => {
     if (disposition.outcome === 'rejected') {
       throw new OpenRouterImagePreparedRequestCompilerV2Error(
@@ -107,6 +116,8 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     headersPlan: createBearerAuthorizationHeaderPlanV2(),
     body: compiled.preparedBody,
     ledger,
+    attachmentRequirements,
+    attachmentEncodingProofs,
     capabilityRevision: capability.revision.value,
     snapshotHash: snapshot.snapshotHash.value,
   })

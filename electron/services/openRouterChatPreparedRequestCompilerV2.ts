@@ -16,7 +16,9 @@ import {
 import { createSemanticConsumptionLedgerV2, type SemanticConsumptionLedgerEntryV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
+  createPreparedAttachmentRequirementsV2,
   issuePreparedProviderRequestV2,
+  type PreparedAttachmentEncodingProofV2,
   type PreparedProviderRequestV2,
 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { buildOpenRouterNativeRequestHistoryV1, buildOpenRouterProjectedNativeRequestHistoryV1, OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1 } from '../../src/next/generation-v2/providers/openrouter/nativeMessagesV1'
@@ -77,7 +79,8 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
     throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_BINDING_INVALID')
   }
   const intent = snapshot.semanticIntent
-  if (intent.image.mode !== 'disabled' || intent.providerExtension.kind !== 'none' ||
+  if (intent.image.mode !== 'disabled' ||
+      intent.providerExtension.kind !== 'none' && intent.providerExtension.kind !== 'openrouter_chat' ||
       intent.reasoning.mode === 'enabled' && intent.reasoning.summary !== undefined ||
       (intent.tools.mode === 'enabled') !== (input.toolRegistry !== null)) {
     throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_SEMANTIC_REJECTED')
@@ -85,22 +88,46 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
   const generation: Record<string, unknown> = {}
   const generationMap = Object.freeze({
     maxOutputTokens: 'maxTokens', temperature: 'temperature', topP: 'topP', topK: 'topK', minP: 'minP', topA: 'topA', seed: 'seed', stop: 'stop',
-    frequencyPenalty: 'frequencyPenalty', presencePenalty: 'presencePenalty',
+    frequencyPenalty: 'frequencyPenalty', presencePenalty: 'presencePenalty', repetitionPenalty: 'repetitionPenalty',
   } as const)
   const ledger: SemanticConsumptionLedgerEntryV2[] = []
+  const attachmentRequirements = createPreparedAttachmentRequirementsV2(intent.attachments)
+  const attachmentEncodingProofs: PreparedAttachmentEncodingProofV2[] = []
   let messages = input.history.projectedPrefixMessages === null
     ? buildOpenRouterNativeRequestHistoryV1({
       priorArtifact: input.history.priorArtifact, clientMessages: input.history.clientMessages,
     })
     : buildOpenRouterProjectedNativeRequestHistoryV1({
       replayMessages: [...input.history.projectedPrefixMessages, ...input.history.clientMessages],
-    })
+  })
   if (intent.attachments.length > 0) {
+    if (intent.attachments.some((attachment) => attachment.include && attachment.kind !== 'managed_file')) {
+      throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_SEMANTIC_REJECTED')
+    }
     if (input.history.requestSequence !== 1) {
       // Continuations already replay the original native multimodal user message.
       if (input.history.priorArtifact === null) {
         throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_AUTHORITY_INVALID')
       }
+      const included = intent.attachments.filter((attachment) => attachment.include)
+      let userIndex = -1
+      for (let index = messages.length - 1; index >= 0; index -= 1) {
+        if (messages[index]?.role === 'user') { userIndex = index; break }
+      }
+      const user = userIndex < 0 ? undefined : messages[userIndex]
+      const userContent = user && Array.isArray(user.content) ? user.content : null
+      if (!userContent || userContent.length - 1 !== included.length) {
+        throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_AUTHORITY_INVALID')
+      }
+      included.forEach((_, index) => {
+        const requirement = attachmentRequirements[index]
+        if (!requirement) throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_AUTHORITY_INVALID')
+        attachmentEncodingProofs.push(Object.freeze({
+          semanticPath: requirement.semanticPath,
+          requirement,
+          wireFragment: userContent[index + 1],
+        }))
+      })
     } else {
       if (!(input.attachmentRepo instanceof AttachmentAssetV2Repo) || !input.attachmentBlobStore) {
         throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_AUTHORITY_INVALID')
@@ -108,14 +135,14 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
       const parts: Record<string, unknown>[] = []
       for (let attachmentIndex = 0; attachmentIndex < intent.attachments.length; attachmentIndex += 1) {
         const attachment = intent.attachments[attachmentIndex]
-        if (attachment.kind !== 'managed_file') {
-          throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_SEMANTIC_REJECTED')
-        }
         for (const field of ['assetId', 'assetRevisionId', 'assetSha256', 'include', 'sendAs', 'conversion']) {
           ledger.push(attachment.include ? consumed(`attachments[${attachmentIndex}].${field}`, 'messages[].content', route.contract.protocolContractId.value)
             : accepted(`attachments[${attachmentIndex}].${field}`, route.contract.protocolContractId.value))
         }
         if (!attachment.include) continue
+        if (attachment.kind !== 'managed_file') {
+          throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_SEMANTIC_REJECTED')
+        }
         const part = input.attachmentRepo.withSynchronousSnapshotReferenceAuthority(input.context, attachment, (authority) => {
           const bytes = input.attachmentBlobStore!.readRevisionBytes(authority.revision)
           try {
@@ -140,6 +167,13 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
           } finally { bytes.fill(0) }
         })
         parts.push(part)
+        const requirement = attachmentRequirements.find((candidate) => candidate.semanticPath === `attachments[${attachmentIndex}]`)
+        if (!requirement) throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_AUTHORITY_INVALID')
+        attachmentEncodingProofs.push(Object.freeze({
+          semanticPath: requirement.semanticPath,
+          requirement,
+          wireFragment: part,
+        }))
       }
       if (parts.length > 0) {
         let userIndex = -1
@@ -225,11 +259,36 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
       ledger.push(consumed('tools.toolChoice', 'tool_choice', route.contract.protocolContractId.value))
     }
   }
+  const openRouterExtension = intent.providerExtension.kind === 'openrouter_chat' ? intent.providerExtension : null
+  const verbosity = openRouterExtension?.verbosity
+  const parallelToolCalls = openRouterExtension?.parallelToolCalls
+  if (parallelToolCalls !== undefined && tools === undefined) {
+    throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_SEMANTIC_REJECTED')
+  }
+  const responseFormat = openRouterExtension?.responseFormat === undefined ? undefined : (() => {
+    const format = openRouterExtension.responseFormat!
+    if (format.type !== 'json_schema') return { type: format.type }
+    return {
+      type: 'json_schema' as const,
+      json_schema: {
+        name: format.jsonSchema.name,
+        ...(format.jsonSchema.description === undefined ? {} : { description: format.jsonSchema.description }),
+        schema: format.jsonSchema.schema,
+        ...(format.jsonSchema.strict === undefined ? {} : { strict: format.jsonSchema.strict }),
+      },
+    }
+  })()
   ledger.push(accepted('providerExtension.kind', route.contract.protocolContractId.value))
+  if (verbosity !== undefined) ledger.push(consumed('providerExtension.verbosity', 'verbosity', route.contract.protocolContractId.value))
+  if (parallelToolCalls !== undefined) ledger.push(consumed('providerExtension.parallelToolCalls', 'parallel_tool_calls', route.contract.protocolContractId.value))
+  if (responseFormat !== undefined) ledger.push(consumed('providerExtension.responseFormat', 'response_format', route.contract.protocolContractId.value))
   const compilation = compileOpenRouterChatRequestV1({
     model: binding.modelId.value,
     messages,
     generation, ...(reasoning === undefined ? {} : { reasoning }),
+    ...(verbosity === undefined ? {} : { verbosity }),
+    ...(parallelToolCalls === undefined ? {} : { parallelToolCalls }),
+    ...(responseFormat === undefined ? {} : { responseFormat }),
     ...(tools === undefined ? {} : { tools }),
     ...(toolChoice === undefined ? {} : { toolChoice }),
     ...(intent.web.mode === 'provider_search' ? { webSearch: {
@@ -251,6 +310,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
     effectiveEndpointId: descriptor.endpointId.value, endpoint: route.url,
     headersPlan: createBearerAuthorizationHeaderPlanV2(), body: compilation.preparedBody,
     ledger: createSemanticConsumptionLedgerV2(ledger), capabilityRevision: capability.revision.value,
+    attachmentRequirements, attachmentEncodingProofs,
     snapshotHash: snapshot.snapshotHash.value,
   })
 }

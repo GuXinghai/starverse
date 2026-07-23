@@ -4,6 +4,7 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import type { GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import type { GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
+import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import { createGeminiGenerateContentStreamRunnerV2 } from './geminiGenerateContentStreamRunnerV2'
 import { createGeminiPlainTextEditResendCoordinatorV2 } from './geminiPlainTextEditResendCoordinatorV2'
 import { createGeminiPlainTextInitialSendCoordinatorV2 } from './geminiPlainTextInitialSendCoordinatorV2'
@@ -35,6 +36,7 @@ export function createGeminiGenerateContentGenerationV2Runtime(input: Readonly<{
   rawGenerationRequestStore?: RawGenerationRequestStore
   streamProjectionSink?: GenerationStreamProjectionSinkV2
   fetchImpl?: typeof fetch
+  attachmentBlobStore?: Epoch2AttachmentBlobStoreV2
   nowMs?: () => number
 }>): GeminiGenerateContentGenerationV2Runtime {
   const initial = createGeminiPlainTextInitialSendCoordinatorV2(input)

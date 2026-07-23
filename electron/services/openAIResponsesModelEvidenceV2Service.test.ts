@@ -92,6 +92,16 @@ describe('OpenAI Responses model evidence V2 service', () => {
     } finally { db.close() }
   })
 
+  it('accepts Electron session.fetch responses that omit Response.url', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValue(response(body(), { url: '' }))
+      const service = createOpenAIResponsesModelEvidenceV2Service({ db, credentialService: credentialService(), nowMs: () => 100 })
+      await expect(service.refresh({ expectedCredentialRevision: 1, expectedCredentialScopeId: scope, endpointProfile }))
+        .resolves.toMatchObject({ rowGeneration: 1, modelCount: 2 })
+    } finally { db.close() }
+  })
+
   it('persists visibility but rejects an exact visible model without official capability evidence', async () => {
     const db = database()
     try {

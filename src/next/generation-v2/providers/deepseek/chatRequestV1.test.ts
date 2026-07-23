@@ -48,6 +48,25 @@ describe('DeepSeek stable Chat request V1', () => {
       .toBe(new TextEncoder().encode(result.preparedBody.copyUtf8Text()).byteLength)
   })
 
+  it.each(['high', 'max'] as const)('encodes official thinking effort %s and JSON Output without dropping either field', (effort) => {
+    const result = compileDeepSeekStableChatRequestV1({
+      model: 'deepseek-v4-pro', priorArtifact: null, clientEntries: [user('Return JSON.')],
+      thinking: { type: 'enabled', reasoningEffort: effort },
+      generation: { maxTokens: 256, responseFormat: 'json_object' },
+    })
+    expect(result.nativeRequest).toMatchObject({
+      thinking: { type: 'enabled' },
+      reasoning_effort: effort,
+      response_format: { type: 'json_object' },
+    })
+    expect(JSON.parse(result.preparedBody.copyUtf8Text())).toMatchObject({
+      model: 'deepseek-v4-pro',
+      reasoning_effort: effort,
+      response_format: { type: 'json_object' },
+      thinking: { type: 'enabled' },
+    })
+  })
+
   it.each([
     'auto', 'none', 'required', { type: 'function', function: { name: 'weather' } },
   ])('rejects explicit thinking tool_choice %j before compilation', (toolChoice) => {

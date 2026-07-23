@@ -105,11 +105,13 @@ describe('projectAnthropicMessagesIntentV1', () => {
       },
     }), 'claude-opus-4-6')
     for (const path of [
-      'generation.seed', 'generation.candidateCount', 'reasoning.summary', 'web.mode', 'web.types',
+      'generation.seed', 'generation.candidateCount', 'reasoning.summary',
       'image.mode', 'image.quality',
-      'attachments[0].include', 'attachments[0].sendAs', 'attachments[0].conversion',
     ]) {
       expect(projection.dispositions).toContainEqual(expect.objectContaining({ semanticPath: path, outcome: 'rejected' }))
+    }
+    for (const path of ['web.mode', 'web.types', 'attachments[0].include', 'attachments[0].sendAs', 'attachments[0].conversion']) {
+      expect(projection.dispositions).toContainEqual(expect.objectContaining({ semanticPath: path, outcome: 'encoded' }))
     }
     expect(projection.dispositions).toContainEqual(expect.objectContaining({
       semanticPath: 'tools.sideEffectConfirmation', outcome: 'accepted_no_wire',

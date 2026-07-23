@@ -14,6 +14,7 @@ export type ToolDefinitionV2 = Readonly<{
     name: string
     description?: string
     parameters?: Readonly<Record<string, unknown>>
+    strict?: boolean
   }>
   sideEffectPolicy: 'none' | 'confirmation_required_each_execution'
 }>
@@ -65,10 +66,11 @@ function cloneJson(value: unknown, depth = 0): unknown {
 function definition(value: unknown): ToolDefinitionV2 {
   const input = closedObject(value, ['toolId', 'kind', 'function', 'sideEffectPolicy'],
     ['toolId', 'kind', 'function', 'sideEffectPolicy'])
-  const fn = closedObject(input.function, ['name', 'description', 'parameters'], ['name'])
+  const fn = closedObject(input.function, ['name', 'description', 'parameters', 'strict'], ['name'])
   if (typeof input.toolId !== 'string' || !TOOL_ID.test(input.toolId) || input.kind !== 'function' ||
       typeof fn.name !== 'string' || !FUNCTION_NAME.test(fn.name) ||
       (fn.description !== undefined && (typeof fn.description !== 'string' || fn.description.length > 16_384)) ||
+      (fn.strict !== undefined && typeof fn.strict !== 'boolean') ||
       (input.sideEffectPolicy !== 'none' && input.sideEffectPolicy !== 'confirmation_required_each_execution')) {
     throw new ToolRegistryV2Error('GENERATION_V2_TOOL_REGISTRY_INVALID_VALUE')
   }
@@ -87,6 +89,7 @@ function definition(value: unknown): ToolDefinitionV2 {
       name: fn.name,
       ...(fn.description === undefined ? {} : { description: fn.description as string }),
       ...(parameters === undefined ? {} : { parameters }),
+      ...(fn.strict === undefined ? {} : { strict: fn.strict as boolean }),
     }),
     sideEffectPolicy: input.sideEffectPolicy,
   })

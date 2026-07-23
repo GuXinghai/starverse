@@ -25,8 +25,10 @@ export function projectGeminiInteractionsImageIntentV1(value: unknown, modelId: 
   const issues: string[] = []
   const reject = (path: string) => { if (!issues.includes(path)) issues.push(path) }
   const generation = intent.generation
-  if (generation.candidateCount !== 1) reject('generation.candidateCount')
-  else add(dispositions, 'generation.candidateCount', 'accepted_no_wire', null)
+  // Google AI Studio owns the candidate cardinality for this route. The
+  // provider currently returns one final image, so candidateCount is not a
+  // Google AI Studio semantic field and must never be silently ignored.
+  if (generation.candidateCount !== undefined) reject('generation.candidateCount')
   if (generation.temperature !== undefined) add(dispositions, 'generation.temperature', 'encoded', 'generation_config.temperature')
   if (generation.topP !== undefined) add(dispositions, 'generation.topP', 'encoded', 'generation_config.top_p')
   if (generation.maxOutputTokens !== undefined) {

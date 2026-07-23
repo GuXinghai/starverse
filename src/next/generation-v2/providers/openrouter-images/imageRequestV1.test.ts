@@ -84,7 +84,7 @@ describe('OpenRouter Images V1 exact request compiler', () => {
     })
   })
 
-  it('rejects descriptor capability mismatch, unsupported options and unrepresentable references before bytes exist', () => {
+  it('rejects descriptor mismatch, unsupported options and data URLs under the HTTP(S)-only reference policy', () => {
     const set = descriptorSet()
     const selected = binding(set)
     const changed = decodeCanonicalOpenRouterImageDescriptorSetV2({

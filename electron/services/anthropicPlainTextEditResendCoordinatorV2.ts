@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
+import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
+import { AnthropicMessagesFileDescriptorV2Repo } from '../../infra/db/repo/anthropicMessagesFileDescriptorV2Repo'
 import { AnthropicNativeHistoryV2Repo } from '../../infra/db/repo/anthropicNativeHistoryV2Repo'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
@@ -17,6 +19,7 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import { withVerifiedAnthropicGenerationAuthoritiesV2 } from './anthropicGenerationAuthorityV2Service'
 import { createAnthropicModelEvidenceV2Service } from './anthropicModelEvidenceV2Service'
 import { compileAnthropicMessagesPreparedRequestV2 } from './anthropicMessagesPreparedRequestCompilerV2'
+import { preflightAnthropicMessagesAttachmentDescriptorsV2 } from './anthropicMessagesAttachmentPreflightV2'
 import { commitVerifiedAnthropicPlainTextEditResendSnapshotV2 } from './anthropicPlainTextSnapshotCommitV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2, resolveGenerationToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
@@ -28,6 +31,7 @@ export function createAnthropicPlainTextEditResendCoordinatorV2(input: Readonly<
   nowMs?: () => number
   createQuestionId?: () => string
   createAnswerId?: () => string
+  attachmentBlobStore?: Epoch2AttachmentBlobStoreV2
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const createQuestionId = input.createQuestionId ?? (() => `question:${randomUUID()}`)
@@ -38,6 +42,7 @@ export function createAnthropicPlainTextEditResendCoordinatorV2(input: Readonly<
   const graphRepo = new ConversationGraphV2Repo(input.db)
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
+  const descriptorRepo = new AnthropicMessagesFileDescriptorV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
   const modelEvidenceService = createAnthropicModelEvidenceV2Service({
@@ -58,7 +63,7 @@ export function createAnthropicPlainTextEditResendCoordinatorV2(input: Readonly<
       }
       const history = historyRepo.loadRequestHistory(context, command.operationId.value)
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
-      const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution, history, toolRegistry })
+      const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
       return issueGenerationTextCommandResultV2({ kind: 'idempotent_replay', execution,
         projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value), preparedRequest,
         request: requestRepo.replayPrepared(context, execution, preparedRequest) })
@@ -71,6 +76,13 @@ export function createAnthropicPlainTextEditResendCoordinatorV2(input: Readonly<
       const existing = replay(command)
       if (existing) return existing
       try {
+        const attachmentDescriptors = await preflightAnthropicMessagesAttachmentDescriptorsV2({
+          db: input.db, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore, descriptorRepo,
+          credentialService: input.credentialService, fetchImpl: input.fetchImpl,
+          commandAttachments: command.commandAttachments,
+          expectedCredentialRevision: request.expectedCredentialRevision,
+          expectedCredentialScopeId: request.expectedCredentialScopeId, signal: request.signal,
+        })
         return await modelEvidenceService.withRefreshedExactModelEvidence({
           expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId,
@@ -83,7 +95,7 @@ export function createAnthropicPlainTextEditResendCoordinatorV2(input: Readonly<
               }
               const history = historyRepo.loadRequestHistory(context, command.operationId.value)
               const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced)
-              const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution: raced, history, toolRegistry })
+              const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution: raced, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
               return issueGenerationTextCommandResultV2({ kind: 'idempotent_replay', execution: raced,
                 projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value), preparedRequest,
                 request: requestRepo.replayPrepared(context, raced, preparedRequest) })
@@ -94,13 +106,13 @@ export function createAnthropicPlainTextEditResendCoordinatorV2(input: Readonly<
               expectedHeadMessageId: command.expectedHeadMessageId.value, questionId: createQuestionId(),
               answerRootId: createAnswerId(), userBody: command.userBody, createdAtMs: nowMs(),
             })
-            return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value, [], undefined, (commandFacts) => {
+            return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value, command.commandAttachments, undefined, (commandFacts) => {
               const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
               return withVerifiedAnthropicGenerationAuthoritiesV2({ context, modelEvidence, commandFacts, toolRegistry, operation: 'text', use: ({ binding, capability }) => {
-                const persisted = commitVerifiedAnthropicPlainTextEditResendSnapshotV2({ context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability, toolRegistry })
+                const persisted = commitVerifiedAnthropicPlainTextEditResendSnapshotV2({ context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability, toolRegistry, attachmentDescriptors })
                 graphRepo.commitEditedTurnProjection(context, pending)
                 const history = historyRepo.loadRequestHistory(context, command.operationId.value)
-                const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution: persisted.bundle, history, toolRegistry })
+                const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution: persisted.bundle, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
                 return issueGenerationTextCommandResultV2({ kind: 'created', execution: persisted.bundle,
                   projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value), preparedRequest,
                   request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest) })

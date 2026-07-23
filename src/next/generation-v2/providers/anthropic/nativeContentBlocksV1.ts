@@ -9,7 +9,11 @@ export const ANTHROPIC_NATIVE_HISTORY_CODEC_VERSION_V1 = 1 as const
 export const ANTHROPIC_NATIVE_HISTORY_MAX_BLOCKS_V1 = 4_096
 export const ANTHROPIC_NATIVE_HISTORY_MAX_SERIALIZED_BYTES_V1 = 20 * 1_024 * 1_024
 
-export type AnthropicTextBlockV1 = Readonly<{ type: 'text'; text: string; citations: null }>
+export type AnthropicTextBlockV1 = Readonly<{
+  type: 'text'
+  text: string
+  citations: readonly PlainJsonV1[] | null
+}>
 export type AnthropicThinkingBlockV1 = Readonly<{ type: 'thinking'; thinking: string; signature: string }>
 export type AnthropicRedactedThinkingBlockV1 = Readonly<{ type: 'redacted_thinking'; data: string }>
 export type AnthropicToolUseBlockV1 = Readonly<{
@@ -19,11 +23,24 @@ export type AnthropicToolUseBlockV1 = Readonly<{
   input: PlainJsonV1
   caller: Readonly<{ type: 'direct' }>
 }>
+export type AnthropicServerToolUseBlockV1 = Readonly<{
+  type: 'server_tool_use'
+  id: string
+  name: string
+  input: PlainJsonV1
+}>
+export type AnthropicWebSearchToolResultBlockV1 = Readonly<{
+  type: 'web_search_tool_result'
+  tool_use_id: string
+  content: PlainJsonV1
+}>
 export type AnthropicNativeContentBlockV1 =
   | AnthropicTextBlockV1
   | AnthropicThinkingBlockV1
   | AnthropicRedactedThinkingBlockV1
   | AnthropicToolUseBlockV1
+  | AnthropicServerToolUseBlockV1
+  | AnthropicWebSearchToolResultBlockV1
 
 export type PlainJsonV1 = null | boolean | number | string | readonly PlainJsonV1[] | Readonly<{ [key: string]: PlainJsonV1 }>
 
@@ -35,7 +52,7 @@ export type AnthropicNativeUsageV1 = Readonly<{
   cache_read_input_tokens: number | null
   inference_geo: string | null
   output_tokens_details: null
-  server_tool_use: null
+  server_tool_use: PlainJsonV1 | null
   service_tier: 'standard' | 'priority' | 'batch' | null
 }>
 
@@ -163,13 +180,18 @@ function clonePlainJson(value: unknown, active = new WeakSet<object>(), depth = 
 function decodeBlock(value: unknown): AnthropicNativeContentBlockV1 {
   const discriminator = closedObject(
     value,
-    ['type', 'text', 'citations', 'thinking', 'signature', 'data', 'id', 'name', 'input', 'caller'],
+    ['type', 'text', 'citations', 'thinking', 'signature', 'data', 'id', 'name', 'input', 'caller', 'tool_use_id', 'content'],
     ['type'],
   )
   if (discriminator.type === 'text') {
     const block = closedObject(value, ['type', 'text', 'citations'], ['type', 'text', 'citations'])
-    if (block.citations !== null) return fail('GENERATION_V2_ANTHROPIC_NATIVE_INVALID_VALUE')
-    return Object.freeze({ type: 'text', text: stringValue(block.text), citations: null })
+    if (block.citations !== null && !Array.isArray(block.citations)) {
+      return fail('GENERATION_V2_ANTHROPIC_NATIVE_INVALID_VALUE')
+    }
+    return Object.freeze({
+      type: 'text', text: stringValue(block.text),
+      citations: block.citations === null ? null : clonePlainJson(block.citations) as readonly PlainJsonV1[],
+    })
   }
   if (discriminator.type === 'thinking') {
     const block = closedObject(value, ['type', 'thinking', 'signature'], ['type', 'thinking', 'signature'])
@@ -191,6 +213,23 @@ function decodeBlock(value: unknown): AnthropicNativeContentBlockV1 {
       name: stringValue(block.name, true),
       input: clonePlainJson(block.input),
       caller: Object.freeze({ type: 'direct' as const }),
+    })
+  }
+  if (discriminator.type === 'server_tool_use') {
+    const block = closedObject(value, ['type', 'id', 'name', 'input'], ['type', 'id', 'name', 'input'])
+    return Object.freeze({
+      type: 'server_tool_use' as const,
+      id: stringValue(block.id, true),
+      name: stringValue(block.name, true),
+      input: clonePlainJson(block.input),
+    })
+  }
+  if (discriminator.type === 'web_search_tool_result') {
+    const block = closedObject(value, ['type', 'tool_use_id', 'content'], ['type', 'tool_use_id', 'content'])
+    return Object.freeze({
+      type: 'web_search_tool_result' as const,
+      tool_use_id: stringValue(block.tool_use_id, true),
+      content: clonePlainJson(block.content),
     })
   }
   return fail('GENERATION_V2_ANTHROPIC_NATIVE_INVALID_VALUE')
@@ -221,12 +260,15 @@ function decodeUsage(value: unknown): AnthropicNativeUsageV1 {
       'input_tokens', 'output_tokens', 'output_tokens_details', 'server_tool_use', 'service_tier',
     ],
   )
-  if (input.cache_creation !== null || input.output_tokens_details !== null || input.server_tool_use !== null ||
+  if (input.cache_creation !== null || input.output_tokens_details !== null ||
       (input.cache_creation_input_tokens !== null && !Number.isSafeInteger(input.cache_creation_input_tokens)) ||
       (input.cache_read_input_tokens !== null && !Number.isSafeInteger(input.cache_read_input_tokens)) ||
       (input.inference_geo !== null && typeof input.inference_geo !== 'string') ||
       (input.service_tier !== null && input.service_tier !== 'standard' && input.service_tier !== 'priority' &&
         input.service_tier !== 'batch')) {
+    return fail('GENERATION_V2_ANTHROPIC_NATIVE_INVALID_VALUE')
+  }
+  if (input.server_tool_use !== null && (typeof input.server_tool_use !== 'object' || Array.isArray(input.server_tool_use))) {
     return fail('GENERATION_V2_ANTHROPIC_NATIVE_INVALID_VALUE')
   }
   return Object.freeze({
@@ -239,7 +281,7 @@ function decodeUsage(value: unknown): AnthropicNativeUsageV1 {
     input_tokens: usageInteger(input.input_tokens),
     output_tokens: usageInteger(input.output_tokens),
     output_tokens_details: null,
-    server_tool_use: null,
+    server_tool_use: input.server_tool_use === null ? null : clonePlainJson(input.server_tool_use),
     service_tier: input.service_tier as AnthropicNativeUsageV1['service_tier'],
   })
 }

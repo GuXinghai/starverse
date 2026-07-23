@@ -1,3 +1,5 @@
+import type { ProviderFailureV2 } from '../../src/shared/provider/providerFailureV2'
+
 export type GenerationStreamProjectionV2 =
   | Readonly<{
     type: 'assistant_body'
@@ -28,6 +30,7 @@ export type GenerationStreamProjectionV2 =
     state: 'awaiting_tool' | 'completed' | 'failed' | 'cancelled'
     errorCode: string | null
     errorMessage: string | null
+    errorFact?: ProviderFailureV2
   }>
 
 export type GenerationStreamProjectionSinkV2 = Readonly<{

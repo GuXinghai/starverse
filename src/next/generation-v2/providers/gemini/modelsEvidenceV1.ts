@@ -64,15 +64,17 @@ function optionalFinite(value: unknown): number | undefined {
 
 function decodeModel(value: unknown): GeminiModelVisibilityRecordV1 {
   const input = record(value)
-  const allowed = ['name', 'baseModelId', 'version', 'displayName', 'description', 'inputTokenLimit',
-    'outputTokenLimit', 'supportedGenerationMethods', 'temperature', 'maxTemperature', 'topP', 'topK']
-  if (Object.keys(input).some((key) => !allowed.includes(key)) || !Array.isArray(input.supportedGenerationMethods) ||
+  // The Google model resource is extensible. Keep the evidence projection
+  // closed, but ignore additive provider fields (for example `thinking`) that
+  // are not consumed by this revision of the capability codec.
+  if (!Array.isArray(input.supportedGenerationMethods) ||
       input.supportedGenerationMethods.some((item) => typeof item !== 'string' || item.length === 0) ||
       new Set(input.supportedGenerationMethods).size !== input.supportedGenerationMethods.length) {
     throw new GeminiModelsEvidenceV1Error('GENERATION_V2_GEMINI_MODELS_EVIDENCE_INVALID')
   }
   const name = text(input.name)
-  const baseModelId = text(input.baseModelId)
+  const derivedBaseModelId = name.startsWith('models/') ? name.slice('models/'.length) : ''
+  const baseModelId = text(input.baseModelId ?? derivedBaseModelId)
   if (name !== `models/${baseModelId}` || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(baseModelId)) {
     throw new GeminiModelsEvidenceV1Error('GENERATION_V2_GEMINI_MODELS_EVIDENCE_INVALID')
   }
@@ -94,9 +96,11 @@ function decodeModel(value: unknown): GeminiModelVisibilityRecordV1 {
 
 export function decodeGeminiModelsEvidenceV1(value: unknown): GeminiModelsEvidenceV1 {
   const input = record(value)
-  if (Object.keys(input).some((key) => !['models', 'nextPageToken'].includes(key)) || !Array.isArray(input.models) ||
+  if (Object.keys(input).some((key) => !['models', 'nextPageToken', 'schemaVersion'].includes(key)) ||
+      (input.schemaVersion !== undefined && input.schemaVersion !== 1) || !Array.isArray(input.models) ||
       input.models.length === 0 || input.models.length > 10_000 ||
-      (input.nextPageToken !== undefined && (typeof input.nextPageToken !== 'string' || input.nextPageToken.length === 0))) {
+      (input.nextPageToken !== undefined && input.nextPageToken !== null &&
+        (typeof input.nextPageToken !== 'string' || input.nextPageToken.length === 0))) {
     throw new GeminiModelsEvidenceV1Error('GENERATION_V2_GEMINI_MODELS_EVIDENCE_INVALID')
   }
   const models = input.models.map(decodeModel)

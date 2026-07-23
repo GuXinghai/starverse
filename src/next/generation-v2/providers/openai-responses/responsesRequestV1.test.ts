@@ -104,6 +104,31 @@ describe('OpenAI Responses V1 exact-body compiler', () => {
     expect(result.nativeRequest.reasoning).toEqual({ effort: 'max', summary: 'auto' })
   })
 
+  it('encodes GPT-5.6 reasoning mode and persisted context in the exact body', () => {
+    const result = compileOpenAIResponsesRequestV1({
+      model: 'gpt-5.6-sol', priorArtifact: null, clientItems: [user('x')],
+      reasoning: { effort: 'max', summary: 'auto', mode: 'pro', context: 'all_turns' },
+    })
+    expect(result.nativeRequest.reasoning).toEqual({ effort: 'max', summary: 'auto', mode: 'pro', context: 'all_turns' })
+    expect(JSON.parse(result.preparedBody.copyUtf8Text()).reasoning).toEqual(result.nativeRequest.reasoning)
+  })
+
+  it('preserves input_image file_id and URL forms alongside input_file', () => {
+    const result = compileOpenAIResponsesRequestV1({
+      model: 'gpt-5.6-sol', priorArtifact: null,
+      clientItems: [{ role: 'user', content: [
+        { type: 'input_image', file_id: 'file_image_1', detail: 'high' },
+        { type: 'input_image', image_url: 'https://example.test/image.png', detail: 'auto' },
+        { type: 'input_file', file_id: 'file_pdf_1' },
+      ] }],
+    })
+    expect(result.nativeRequest.input[0]).toEqual({ role: 'user', content: [
+      { type: 'input_image', file_id: 'file_image_1', detail: 'high' },
+      { type: 'input_image', image_url: 'https://example.test/image.png', detail: 'auto' },
+      { type: 'input_file', file_id: 'file_pdf_1' },
+    ] })
+  })
+
   it('encodes a named function tool choice only when the exact function is present', () => {
     const result = compileOpenAIResponsesRequestV1({
       model: 'gpt-5.6-sol', priorArtifact: null, clientItems: [user('weather?')],
@@ -118,10 +143,10 @@ describe('OpenAI Responses V1 exact-body compiler', () => {
     })).toThrow('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   })
 
-  it('rejects unknown fields, unsupported reasoning fields, unsafe tool schemas and invalid explicit choices', () => {
+  it('rejects invalid reasoning values, unsafe tool schemas and invalid explicit choices', () => {
     expect(() => compileOpenAIResponsesRequestV1({
-      model: 'gpt-5.4', priorArtifact: null, clientItems: [user('x')], reasoning: { effort: 'medium', mode: 'auto' },
-    })).toThrow('GENERATION_V2_OPENAI_REQUEST_UNKNOWN_FIELD')
+      model: 'gpt-5.4', priorArtifact: null, clientItems: [user('x')], reasoning: { effort: 'medium', mode: 'invalid' },
+    })).toThrow('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
     expect(() => compileOpenAIResponsesRequestV1({
       model: 'gpt-5.4', priorArtifact: null, clientItems: [user('x')],
       tools: [{ type: 'function', name: 'x', parameters: { get value() { return 'x' } }, strict: true }],

@@ -85,9 +85,19 @@ function commitCurrentSnapshot(input: Readonly<{
     throw new GeminiPlainTextSnapshotCommitV2Error('GENERATION_V2_GEMINI_SNAPSHOT_INPUT_INVALID')
   }
   const intent = input.commandFacts.semanticIntent
-  if (intent.attachments.length !== 0 || input.commandFacts.attachmentSet.attachments.length !== 0 ||
-      input.commandFacts.attachmentSet.providerFileRequirements.length !== 0 ||
-      input.commandFacts.attachmentSet.requiresProviderFileAuthority) {
+  const attachmentUnsupported = intent.attachments.some((attachment) => {
+    if (!attachment.include || attachment.kind !== 'managed_file') return attachment.include
+    if ((attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text') ||
+        (attachment.sendAs === 'image_reference' && attachment.conversion === 'none') ||
+        (attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf')) return false
+    const assetRevisionId = attachment.kind === 'managed_file' ? attachment.assetRevisionId.value : null
+    const resolved = input.commandFacts.attachmentSet.attachments.find((item) => item.revision.assetRevisionId.value === assetRevisionId)
+    return !(attachment.sendAs === 'provider_file' && attachment.conversion === 'none' && resolved !== undefined &&
+      resolved.revision.blob.sizeBytes <= 4 * 1024 * 1024 &&
+      (/^(?:image|audio|video)\//u.test(resolved.revision.blob.mime) || resolved.revision.blob.mime === 'application/pdf'))
+  })
+  if (intent.attachments.length !== input.commandFacts.attachmentSet.attachments.length + input.commandFacts.attachmentSet.urlReferenceIntents.length ||
+      attachmentUnsupported) {
     throw new GeminiPlainTextSnapshotCommitV2Error('GENERATION_V2_GEMINI_SNAPSHOT_AUTHORITY_INVALID')
   }
   const toolRegistry = input.toolRegistry ?? null

@@ -77,6 +77,9 @@ function extensionForMime(mime: string): string {
 }
 
 function reasoningProjectionDetail(detail: GeminiInteractionsImageResultV1['reasoningDetails'][number]): Readonly<Record<string, unknown>> {
+  if (detail.type === 'thought_signature') {
+    return Object.freeze({ type: 'thought_signature', thought_signature: detail.signature })
+  }
   return detail.type === 'thought_summary'
     ? Object.freeze({ type: 'thought_summary', summary: detail.text,
         ...(detail.thoughtSignature === undefined ? {} : { thought_signature: detail.thoughtSignature }) })

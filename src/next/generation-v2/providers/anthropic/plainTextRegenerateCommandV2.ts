@@ -5,6 +5,8 @@ import {
   type ConversationGraphV2Identity as GraphIdentity,
 } from '../../domain/conversationGraphV2'
 import { GenerationV2Identity, type GenerationV2Identity as Identity } from '../../domain/identityV2'
+import { decodeAnthropicCommandAttachmentsV2, projectAnthropicCommandAttachmentsV2 } from './commandAttachmentsV2'
+import type { AttachmentIntentV2 } from '../../domain/generationIntentV2'
 
 const MAX_COMMAND_JSON_BYTES = 64 * 1024
 const COMMAND_KEYS = Object.freeze([
@@ -33,7 +35,7 @@ export type AnthropicPlainTextRegenerateCommandV2 = Readonly<{
   providerId: Identity<'provider_id'>
   endpointProfileId: Identity<'endpoint_profile_id'>
   modelId: Identity<'model_id'>
-  commandAttachments: readonly []
+  commandAttachments: readonly AttachmentIntentV2[]
   canonicalJson: string
   requestFingerprint: string
 }>
@@ -69,8 +71,8 @@ export function decodeAnthropicPlainTextRegenerateCommandV2(
       return field
     }
     const attachments = descriptors.commandAttachments.value
-    if (!Array.isArray(attachments) || attachments.length !== 0 ||
-        Reflect.ownKeys(attachments).length !== 1) invalid()
+    if (!Array.isArray(attachments)) invalid()
+    const commandAttachments = decodeAnthropicCommandAttachmentsV2(attachments)
     const contract = readAnthropicDeveloperApiContractV2()
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
     const branchId = ConversationGraphV2Identity.create('branch_id', read('branchId'))
@@ -90,7 +92,7 @@ export function decodeAnthropicPlainTextRegenerateCommandV2(
       providerId: contract.providerId,
       endpointProfileId: contract.contractFamilyId,
       modelId: modelId.value,
-      commandAttachments: Object.freeze([]),
+      commandAttachments: projectAnthropicCommandAttachmentsV2(commandAttachments),
     })
     const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_JSON_BYTES)
     const command = Object.freeze({
@@ -102,7 +104,7 @@ export function decodeAnthropicPlainTextRegenerateCommandV2(
       providerId: GenerationV2Identity.create('provider_id', contract.providerId),
       endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', contract.contractFamilyId),
       modelId,
-      commandAttachments: Object.freeze([]) as readonly [],
+      commandAttachments,
       canonicalJson,
       requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)),
     })

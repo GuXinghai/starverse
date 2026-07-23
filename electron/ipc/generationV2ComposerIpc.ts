@@ -11,7 +11,10 @@ import { frameUrlFromIpcEvent, isMainFrameIpcEvent, senderIdFromIpcEvent } from 
 import type { RegisterInvoke } from './types'
 import { fetchPublicHttpUrl } from '../../infra/files/urlProbe'
 import { sha256PreparedBytesV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
-import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+import {
+  decodeAssistantAnswerGenerationSnapshotJsonV2,
+  type DecodedAssistantAnswerGenerationSnapshotV2,
+} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
 import type { ProviderFetch } from '../net/providerHttpTransport'
 import { GenerationV2DfcService } from '../services/generationV2DfcService'
@@ -32,6 +35,17 @@ export const GENERATION_V2_COMPOSER_CHANNELS = Object.freeze([
   'generation-v2:composer:dfc-select',
   'generation-v2:composer:dfc-preview',
 ] as const)
+
+export function projectAnswerSnapshotAttachmentIntentsV2(
+  snapshot: Pick<DecodedAssistantAnswerGenerationSnapshotV2, 'semanticIntent'>,
+): readonly unknown[] {
+  const attachments = projectGenerationIntentLayerV2({
+    schemaVersion: 2,
+    attachments: snapshot.semanticIntent.attachments,
+  }).attachments
+  if (!Array.isArray(attachments)) throw new Error('GENERATION_V2_ANSWER_SNAPSHOT_INVALID')
+  return Object.freeze(attachments)
+}
 
 function object(value:unknown,keys:readonly string[]):Readonly<Record<string,unknown>> {
   if(!value||typeof value!=='object'||Array.isArray(value)||Object.getPrototypeOf(value)!==Object.prototype)throw new Error('GENERATION_V2_COMPOSER_INPUT_INVALID')
@@ -212,8 +226,7 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
         AND answer.answer_root_id=answer.message_id`).get(answerRootId,conversationId,questionId) as {canonicalJson?:unknown}|undefined
     if(!row||typeof row.canonicalJson!=='string')throw new Error('GENERATION_V2_ANSWER_SNAPSHOT_NOT_FOUND')
     const snapshot=decodeAssistantAnswerGenerationSnapshotJsonV2(row.canonicalJson)
-    const attachments=projectGenerationIntentLayerV2({schemaVersion:2,attachments:snapshot.semanticIntent.attachments}).attachments
-    if(!Array.isArray(attachments))throw new Error('GENERATION_V2_ANSWER_SNAPSHOT_INVALID')
+    const attachments=projectAnswerSnapshotAttachmentIntentsV2(snapshot)
     return drafts.replace({conversationId,expectedRevision:revision(raw.expectedRevision),draftText:raw.draftText,
       draftMode:'edit',editingSourceQuestionId:questionId,attachments})
   }))

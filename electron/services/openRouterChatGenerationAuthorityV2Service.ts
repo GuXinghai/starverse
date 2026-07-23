@@ -129,6 +129,7 @@ function field(
     case 'generation.stop': return byParameter('stop', { kind: 'string_list', maxItems: 16, maxItemLength: 16_384 })
     case 'generation.frequencyPenalty': return byParameter('frequency_penalty', { kind: 'range', min: -2, max: 2, integer: false })
     case 'generation.presencePenalty': return byParameter('presence_penalty', { kind: 'range', min: -2, max: 2, integer: false })
+    case 'generation.repetitionPenalty': return byParameter('repetition_penalty', { kind: 'range', min: 0.000001, max: 2, integer: false })
     case 'reasoning.mode': return supported({ kind: 'enum', values: Object.freeze(supportedParameters.has('reasoning') ? ['disabled', 'enabled'] : ['disabled']) })
     case 'reasoning.effort': return supportedParameters.has('reasoning')
       ? supported({ kind: 'enum', values: Object.freeze(['minimal', 'low', 'medium', 'high', 'xhigh']) }) : unsupported()
@@ -153,7 +154,16 @@ function field(
           domain: Object.freeze({ kind: 'enum' as const, values: Object.freeze(['required_each_retry']) }),
           constraints: Object.freeze([]), evidenceIds: Object.freeze([supportEvidence]) }) : unsupported()
     case 'image.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled']) })
-    case 'providerExtension.kind': return supported({ kind: 'enum', values: Object.freeze(['none']) })
+    case 'providerExtension.kind': return supported({ kind: 'enum', values: Object.freeze(['none', 'openrouter_chat']) })
+    case 'providerExtension.verbosity': return byParameter('verbosity', { kind: 'enum', values: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']) })
+    case 'providerExtension.parallelToolCalls': return toolsEnabled && supportedParameters.has('parallel_tool_calls')
+      ? supported({ kind: 'boolean' }) : unsupported()
+    case 'providerExtension.responseFormat': {
+      const types = supportedParameters.has('response_format')
+        ? ['text', 'json_object', ...(supportedParameters.has('structured_outputs') || supportedParameters.has('json_schema') ? ['json_schema'] : [])]
+        : []
+      return types.length > 0 ? supported({ kind: 'response_format', types: Object.freeze(types as ('text' | 'json_object' | 'json_schema')[]) }) : unsupported()
+    }
     default: return unsupported()
   }
 }
@@ -161,6 +171,11 @@ function field(
 function domainContains(fieldValue: PersistedRuntimeCapabilityFieldV2, value: unknown): boolean {
   const domain = fieldValue.domain
   if (!domain) return false
+  if (domain.kind === 'response_format') {
+    return Boolean(value && typeof value === 'object' && !Array.isArray(value) &&
+      typeof (value as Record<string, unknown>).type === 'string' &&
+      domain.types.includes((value as Record<string, unknown>).type as 'text' | 'json_object' | 'json_schema'))
+  }
   if (domain.kind === 'enum') return domain.values.includes(value as never)
   if (domain.kind === 'range') return typeof value === 'number' && value >= domain.min && value <= domain.max && (!domain.integer || Number.isSafeInteger(value))
   if (domain.kind === 'string_list') return Array.isArray(value) && value.length <= domain.maxItems && value.every((item) => typeof item === 'string' && item.length <= domain.maxItemLength)
@@ -219,7 +234,8 @@ function validateIntent(
       stableSerializeProviderRequestV2(intent.tools.mode === 'enabled' ? intent.tools.allowedToolIds.map((tool) => tool.value) : [])) {
     return fail('GENERATION_V2_OPENROUTER_CHAT_TOOL_AUTHORITY_REQUIRED')
   }
-  if (intent.image.mode !== 'disabled' || intent.providerExtension.kind !== 'none') {
+  if (intent.image.mode !== 'disabled' ||
+      intent.providerExtension.kind !== 'none' && intent.providerExtension.kind !== 'openrouter_chat') {
     return fail('GENERATION_V2_OPENROUTER_CHAT_EXPLICIT_FIELD_UNSUPPORTED')
   }
   const explicit = new Map<string, unknown>([
@@ -259,6 +275,11 @@ function validateIntent(
       ['tools.sideEffectConfirmation', intent.tools.sideEffectConfirmation] as const,
     ] : []),
     ['image.mode', intent.image.mode], ['providerExtension.kind', intent.providerExtension.kind],
+    ...(intent.providerExtension.kind === 'openrouter_chat' ? [
+      ...(intent.providerExtension.verbosity === undefined ? [] : [['providerExtension.verbosity', intent.providerExtension.verbosity] as const]),
+      ...(intent.providerExtension.parallelToolCalls === undefined ? [] : [['providerExtension.parallelToolCalls', intent.providerExtension.parallelToolCalls] as const]),
+      ...(intent.providerExtension.responseFormat === undefined ? [] : [['providerExtension.responseFormat', intent.providerExtension.responseFormat] as const]),
+    ] : []),
   ])
   const byPath = new Map(fields.map((item) => [item.path, item]))
   for (const [path, value] of explicit) {

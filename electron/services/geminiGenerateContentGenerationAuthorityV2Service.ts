@@ -29,6 +29,7 @@ import {
   GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2,
   GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2,
   hasReviewedGeminiGenerateContentReasoningWebCapabilityV2,
+  hasReviewedGeminiGenerateContentReasoningCapabilityV2,
   hasReviewedGeminiGenerateContentToolCapabilityV2,
 } from '../../src/next/generation-v2/providers/gemini/toolCapabilityPolicyV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
@@ -114,10 +115,9 @@ function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
 }
 
 function fields(evidence: VerifiedGeminiModelVisibilityEvidenceV2,
-  toolsReviewed: boolean, reasoningWebReviewed: boolean): readonly PersistedRuntimeCapabilityFieldV2[] {
+  toolsReviewed: boolean, reasoningReviewed: boolean, webReviewed: boolean): readonly PersistedRuntimeCapabilityFieldV2[] {
   const values = new Map<RuntimeCapabilitySemanticPathV2, PersistedRuntimeCapabilityFieldV2>()
   for (const path of RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2) values.set(path, unavailable(path))
-  values.set('generation.candidateCount', supported('generation.candidateCount', { kind: 'range', min: 1, max: 1, integer: true }))
   values.set('generation.maxOutputTokens', supported('generation.maxOutputTokens', {
     kind: 'range', min: 1, max: evidence.model.outputTokenLimit, integer: true,
   }))
@@ -132,33 +132,36 @@ function fields(evidence: VerifiedGeminiModelVisibilityEvidenceV2,
   }))
   values.set('generation.stop', supported('generation.stop', { kind: 'string_list', maxItems: 5, maxItemLength: 65_536 }))
   values.set('reasoning.mode', supported('reasoning.mode', {
-    kind: 'enum', values: Object.freeze(reasoningWebReviewed ? ['disabled', 'enabled'] : ['disabled']),
-  }, reasoningWebReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
-  if (reasoningWebReviewed) values.set('reasoning.effort', supported('reasoning.effort', {
+    kind: 'enum', values: Object.freeze(reasoningReviewed ? ['disabled', 'enabled'] : ['disabled']),
+  }, reasoningReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
+  if (reasoningReviewed) values.set('reasoning.effort', supported('reasoning.effort', {
     kind: 'enum', values: Object.freeze(['minimal', 'low', 'medium', 'high']),
   }, GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2))
   values.set('web.mode', supported('web.mode', {
-    kind: 'enum', values: Object.freeze(reasoningWebReviewed ? ['disabled', 'provider_search'] : ['disabled']),
-  }, reasoningWebReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
+    kind: 'enum', values: Object.freeze(webReviewed ? ['disabled', 'provider_search'] : ['disabled']),
+  }, webReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
   values.set('image.mode', supported('image.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
   values.set('tools.mode', supported('tools.mode', {
     kind: 'enum', values: Object.freeze(toolsReviewed ? ['disabled', 'enabled'] : ['disabled']),
   }, toolsReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
   values.set('providerExtension.kind', supported('providerExtension.kind', { kind: 'enum', values: Object.freeze(['gemini_generate_content']) }))
   values.set('providerExtension.thinkingMode', supported('providerExtension.thinkingMode', {
-    kind: 'enum', values: Object.freeze(reasoningWebReviewed ? ['provider_default', 'level'] : ['provider_default']),
-  }, reasoningWebReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
-  if (reasoningWebReviewed) values.set('providerExtension.thinkingLevel', supported('providerExtension.thinkingLevel', {
+    kind: 'enum', values: Object.freeze(reasoningReviewed ? ['provider_default', 'level', 'budget'] : ['provider_default']),
+  }, reasoningReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
+  if (reasoningReviewed) values.set('providerExtension.thinkingLevel', supported('providerExtension.thinkingLevel', {
     kind: 'enum', values: Object.freeze(['minimal', 'low', 'medium', 'high']),
   }, GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2))
+  if (reasoningReviewed) values.set('providerExtension.thinkingBudget', supported('providerExtension.thinkingBudget', {
+    kind: 'range', min: -1, max: 1_000_000, integer: true,
+  }, GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2))
   values.set('providerExtension.includeThoughts', supported('providerExtension.includeThoughts', {
-    kind: 'enum', values: Object.freeze(reasoningWebReviewed ? ['provider_default', 'enabled', 'disabled'] : ['provider_default']),
-  }, reasoningWebReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
+    kind: 'enum', values: Object.freeze(reasoningReviewed ? ['provider_default', 'enabled', 'disabled'] : ['provider_default']),
+  }, reasoningReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
   for (const path of ['generation.seed', 'generation.frequencyPenalty', 'generation.presencePenalty',
     'generation.repetitionPenalty', 'reasoning.exclude', 'reasoning.summary',
-    'providerExtension.thinkingBudget'] as const) values.set(path, unsupported(path))
-  if (!reasoningWebReviewed) values.set('providerExtension.thinkingLevel', unsupported('providerExtension.thinkingLevel'))
-  if (!reasoningWebReviewed) values.set('reasoning.effort', unsupported('reasoning.effort'))
+    ] as const) values.set(path, unsupported(path))
+  if (!reasoningReviewed) values.set('providerExtension.thinkingLevel', unsupported('providerExtension.thinkingLevel'))
+  if (!reasoningReviewed) values.set('reasoning.effort', unsupported('reasoning.effort'))
   return Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => values.get(path)!))
 }
 
@@ -166,7 +169,8 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: Verif
   toolRegistry: ToolRegistryRepositoryFactV2 | null, toolsReviewed: boolean): void {
   const intent = facts.semanticIntent
   const tools = intent.tools
-  const reasoningWebReviewed = hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(evidence.modelId.value)
+  const reasoningReviewed = hasReviewedGeminiGenerateContentReasoningCapabilityV2(evidence.modelId.value)
+  const webReviewed = hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(evidence.modelId.value)
   if ((tools.mode === 'enabled') !== (toolRegistry !== null)) {
     throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_TOOL_REGISTRY_AUTHORITY_REQUIRED')
   }
@@ -183,20 +187,33 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: Verif
   const validReasoning = intent.reasoning.mode === 'disabled'
     ? extension.kind === 'gemini_generate_content' && extension.thinkingMode === 'provider_default' &&
       extension.includeThoughts === 'provider_default'
-    : reasoningWebReviewed && intent.reasoning.effort !== undefined &&
+    : reasoningReviewed && intent.reasoning.effort !== undefined &&
       ['minimal', 'low', 'medium', 'high'].includes(intent.reasoning.effort) &&
       intent.reasoning.summary === undefined && intent.reasoning.exclude === undefined &&
-      extension.kind === 'gemini_generate_content' && extension.thinkingMode === 'level' &&
-      extension.thinkingLevel === intent.reasoning.effort
-  const validWeb = intent.web.mode === 'disabled' || (reasoningWebReviewed &&
+      extension.kind === 'gemini_generate_content' &&
+      ((/^gemini-2\.5(?:-|$)/u.test(evidence.modelId.value) && extension.thinkingMode === 'budget' && extension.thinkingBudget >= -1) ||
+        (!/^gemini-2\.5(?:-|$)/u.test(evidence.modelId.value) && extension.thinkingMode === 'level' &&
+          extension.thinkingLevel === intent.reasoning.effort))
+  const validWeb = intent.web.mode === 'disabled' || (webReviewed &&
     intent.web.types.length === 1 && intent.web.types[0] === 'web' && intent.web.engine === undefined &&
     intent.web.maxResults === undefined && intent.web.maxTotalResults === undefined &&
     intent.web.searchContextSize === undefined && intent.web.maxCharacters === undefined &&
     intent.web.userLocation === undefined && intent.web.allowedDomains === undefined && intent.web.excludedDomains === undefined)
-  if (intent.attachments.length !== 0 || facts.attachmentSet.attachments.length !== 0 ||
-      facts.attachmentSet.providerFileRequirements.length !== 0 || facts.attachmentSet.requiresProviderFileAuthority ||
+  const attachmentUnsupported = intent.attachments.some((attachment) => {
+    if (!attachment.include || attachment.kind !== 'managed_file') return attachment.include
+    if ((attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text') ||
+        (attachment.sendAs === 'image_reference' && attachment.conversion === 'none') ||
+        (attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf')) return false
+    const assetRevisionId = attachment.kind === 'managed_file' ? attachment.assetRevisionId.value : null
+    const resolved = facts.attachmentSet.attachments.find((item) => item.revision.assetRevisionId.value === assetRevisionId)
+    return !(attachment.sendAs === 'provider_file' && attachment.conversion === 'none' && resolved !== undefined &&
+      resolved.revision.blob.sizeBytes <= 4 * 1024 * 1024 &&
+      (/^(?:image|audio|video)\//u.test(resolved.revision.blob.mime) || resolved.revision.blob.mime === 'application/pdf'))
+  })
+  if (intent.attachments.length !== facts.attachmentSet.attachments.length + facts.attachmentSet.urlReferenceIntents.length ||
+      attachmentUnsupported ||
       !validReasoning || !validWeb || intent.image.mode !== 'disabled' ||
-      intent.generation.candidateCount !== 1 ||
+      intent.generation.candidateCount !== undefined ||
       (intent.generation.maxOutputTokens !== undefined && intent.generation.maxOutputTokens > evidence.model.outputTokenLimit) ||
       intent.generation.seed !== undefined || intent.generation.frequencyPenalty !== undefined ||
       intent.generation.presencePenalty !== undefined || intent.generation.repetitionPenalty !== undefined) {
@@ -251,7 +268,7 @@ function composeBinding(evidence: VerifiedGeminiModelVisibilityEvidenceV2): Veri
 
 function composeCapability(binding: VerifiedGeminiGenerateContentProviderBindingAuthorityV2,
   evidence: VerifiedGeminiModelVisibilityEvidenceV2, toolRegistry: ToolRegistryRepositoryFactV2 | null,
-  toolsReviewed: boolean, reasoningWebReviewed: boolean) {
+  toolsReviewed: boolean, reasoningReviewed: boolean, webReviewed: boolean) {
   const hash = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex')
   const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
     schemaVersion: 2, resolvedAt: new Date(Date.now()).toISOString(),
@@ -276,7 +293,7 @@ function composeCapability(binding: VerifiedGeminiGenerateContentProviderBinding
         verifiedAt: '2026-07-20T00:00:00.000Z',
         contentDigest: hash(GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2) },
     ],
-    fields: fields(evidence, toolsReviewed, reasoningWebReviewed),
+    fields: fields(evidence, toolsReviewed, reasoningReviewed, webReviewed),
     tools: toolRegistry?.selectedDefinitions.map((tool) => ({
       toolId: tool.toolId, kind: tool.kind,
       state: tool.sideEffectPolicy === 'none' ? 'supported' : 'requires_confirmation',
@@ -333,7 +350,8 @@ export function withVerifiedGeminiGenerateContentGenerationAuthoritiesV2<T>(inpu
     throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_TOOL_REGISTRY_AUTHORITY_REQUIRED')
   }
   const toolsReviewed = hasReviewedGeminiGenerateContentToolCapabilityV2(input.modelEvidence.modelId.value)
-  const reasoningWebReviewed = hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(input.modelEvidence.modelId.value)
+  const reasoningReviewed = hasReviewedGeminiGenerateContentReasoningCapabilityV2(input.modelEvidence.modelId.value)
+  const webReviewed = hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(input.modelEvidence.modelId.value)
   input.modelEvidence.assertCurrent()
   validateFacts(input.commandFacts, input.modelEvidence, toolRegistry, toolsReviewed)
   let binding: VerifiedGeminiGenerateContentProviderBindingAuthorityV2 | undefined
@@ -342,7 +360,7 @@ export function withVerifiedGeminiGenerateContentGenerationAuthoritiesV2<T>(inpu
   let completed = false
   try {
     binding = composeBinding(input.modelEvidence)
-    capability = composeCapability(binding, input.modelEvidence, toolRegistry, toolsReviewed, reasoningWebReviewed)
+    capability = composeCapability(binding, input.modelEvidence, toolRegistry, toolsReviewed, reasoningReviewed, webReviewed)
     const revoke = () => { if (capability) capabilities.delete(capability); if (binding) bindings.delete(binding) }
     registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
       preCommit: () => { if (!completed) throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_GENERATION_AUTHORITY_INVALID'); capability!.assertCurrent() },

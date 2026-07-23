@@ -11,7 +11,13 @@ import { compileOpenAIResponsesRequestV1 } from '../../src/next/generation-v2/pr
 import { projectOpenAIResponsesIntentV1 } from '../../src/next/generation-v2/providers/openai-responses/responsesIntentProjectionV1'
 import { isVerifiedOpenAIResponsesEndpointProfileV2, readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
-import { createBearerAuthorizationHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+import {
+  createBearerAuthorizationHeaderPlanV2,
+  createPreparedAttachmentRequirementsV2,
+  issuePreparedProviderRequestV2,
+  type PreparedAttachmentEncodingProofV2,
+  type PreparedProviderRequestV2,
+} from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 
 export class OpenAIResponsesPreparedRequestCompilerV2Error extends Error {
@@ -93,7 +99,7 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
   const functionTools = input.toolRegistry?.selectedDefinitions.map((tool) => Object.freeze({
     type: 'function' as const, name: tool.function.name,
     ...(tool.function.description === undefined ? {} : { description: tool.function.description }),
-    parameters: tool.function.parameters ?? Object.freeze({}), strict: false,
+    parameters: tool.function.parameters ?? Object.freeze({}), strict: tool.function.strict ?? true,
   })) ?? []
   const compiled = compileOpenAIResponsesRequestV1({
     model: binding.modelId.value,
@@ -110,6 +116,19 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     ...(projection.request.parallelToolCalls === undefined ? {} : { parallelToolCalls: projection.request.parallelToolCalls }),
     ...(projection.request.serviceTier === undefined ? {} : { serviceTier: projection.request.serviceTier }),
   })
+  const attachmentRequirements = createPreparedAttachmentRequirementsV2(snapshot.semanticIntent.attachments)
+  const latestUser = [...compiled.nativeRequest.input].reverse().find((item) => 'role' in item && item.role === 'user')
+  const wireFiles = latestUser && 'content' in latestUser
+    ? latestUser.content.filter((part) => part.type === 'input_file' || part.type === 'input_image')
+    : []
+  if (wireFiles.length !== attachmentRequirements.length) {
+    throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_SEMANTIC_REJECTED')
+  }
+  const attachmentEncodingProofs: PreparedAttachmentEncodingProofV2[] = attachmentRequirements.map((requirement, index) => Object.freeze({
+    semanticPath: requirement.semanticPath,
+    requirement,
+    wireFragment: wireFiles[index],
+  }))
   const ledger = createSemanticConsumptionLedgerV2(projection.dispositions.map((value) => ({
     kind: 'consumed' as const, path: value.semanticPath, disposition: value.outcome,
     nativeField: value.wireKey ?? null, evidence: value.evidence,
@@ -122,7 +141,8 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     effectiveEndpointId: profile.descriptor.endpointId.value,
     endpoint: new URL(profile.descriptor.responsesPath, profile.descriptor.apiOrigin).toString(),
     headersPlan: createBearerAuthorizationHeaderPlanV2(),
-    body: compiled.preparedBody, ledger, capabilityRevision: capability.revision.value,
+    body: compiled.preparedBody, ledger, attachmentRequirements, attachmentEncodingProofs,
+    capabilityRevision: capability.revision.value,
     snapshotHash: snapshot.snapshotHash.value,
   })
 }

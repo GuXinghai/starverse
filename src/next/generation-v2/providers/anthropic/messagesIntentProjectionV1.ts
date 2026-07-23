@@ -23,6 +23,7 @@ export type AnthropicMessagesIntentProjectionIssueV1 = Readonly<{
     | 'ANTHROPIC_EFFORT_UNSUPPORTED_BY_MODEL'
     | 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD'
     | 'ANTHROPIC_FIELD_VALUE_UNSUPPORTED'
+    | 'ANTHROPIC_WEB_SEARCH_TYPE_UNSUPPORTED'
   wireKey?: string
 }>
 
@@ -201,8 +202,22 @@ export function projectAnthropicMessagesIntentV1(
 
   if (intent.web.mode === 'disabled') accepted('web.mode')
   else {
-    rejected('web.mode', 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
-    rejected('web.types', 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
+    const supportedWebSearch = intent.web.types.length === 1 && intent.web.types[0] === 'web'
+    if (!supportedWebSearch) {
+      rejected('web.mode', 'ANTHROPIC_WEB_SEARCH_TYPE_UNSUPPORTED', 'tools')
+      rejected('web.types', 'ANTHROPIC_WEB_SEARCH_TYPE_UNSUPPORTED', 'tools')
+    } else {
+      encoded('web.mode', 'tools', Object.freeze({ mode: 'provider_search' }))
+      encoded('web.types', 'tools', intent.web.types)
+      if (intent.web.maxResults !== undefined) encoded('web.maxResults', 'tools', intent.web.maxResults)
+      if (intent.web.allowedDomains !== undefined) encoded('web.allowedDomains', 'tools', intent.web.allowedDomains)
+      if (intent.web.excludedDomains !== undefined) encoded('web.excludedDomains', 'tools', intent.web.excludedDomains)
+      if (intent.web.userLocation !== undefined) encoded('web.userLocation', 'tools', intent.web.userLocation)
+    }
+    if (intent.web.engine !== undefined) rejected('web.engine', 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD', 'tools')
+    if (intent.web.maxTotalResults !== undefined) rejected('web.maxTotalResults', 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD', 'tools')
+    if (intent.web.searchContextSize !== undefined) rejected('web.searchContextSize', 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD', 'tools')
+    if (intent.web.maxCharacters !== undefined) rejected('web.maxCharacters', 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD', 'tools')
   }
   if (intent.image.mode === 'disabled') accepted('image.mode')
   else {
@@ -228,9 +243,9 @@ export function projectAnthropicMessagesIntentV1(
     accepted(`${base}.assetRevisionId`)
     accepted(`${base}.assetSha256`)
     if (attachment.include) {
-      rejected(`${base}.include`, 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
-      rejected(`${base}.sendAs`, 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
-      rejected(`${base}.conversion`, 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
+      encoded(`${base}.include`, 'messages[].content', true)
+      encoded(`${base}.sendAs`, 'messages[].content', attachment.sendAs)
+      encoded(`${base}.conversion`, 'messages[].content', attachment.conversion)
     } else {
       accepted(`${base}.include`)
       accepted(`${base}.sendAs`)

@@ -515,7 +515,8 @@ export function createAnthropicModelEvidenceV2Service(input: Readonly<{
         if (error instanceof AnthropicModelEvidenceV2ServiceError) throw error
         return fail('GENERATION_V2_ANTHROPIC_MODEL_EVIDENCE_TRANSPORT_FAILED')
       }
-      if (http.status !== 200 || http.url !== endpoint.url) {
+      const responseUrl = typeof http.url === 'string' ? http.url.trim() : ''
+      if (http.status !== 200 || (responseUrl.length > 0 && responseUrl !== endpoint.url)) {
         try { void http.body?.cancel().catch(() => undefined) } catch { /* best effort */ }
         return fail('GENERATION_V2_ANTHROPIC_MODEL_EVIDENCE_HTTP_FAILED')
       }

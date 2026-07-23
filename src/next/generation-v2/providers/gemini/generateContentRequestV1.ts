@@ -17,7 +17,6 @@ export type GeminiGenerateContentRequestV1 = Readonly<{
   contents: readonly GeminiGenerateContentNativeContentV1[]
   systemInstruction?: Readonly<{ parts: readonly Readonly<{ text: string }>[] }>
   generationConfig: Readonly<{
-    candidateCount: 1
     temperature?: number
     topP?: number
     topK?: number
@@ -183,7 +182,6 @@ export function compileGeminiGenerateContentRequestV1(inputValue: unknown): Read
   }
 
   const generationConfig = Object.freeze({
-    candidateCount: 1 as const,
     ...(generation.temperature === undefined ? {} : { temperature: number(generation.temperature, 0, 2) }),
     ...(generation.topP === undefined ? {} : { topP: number(generation.topP, 0, 1) }),
     ...(generation.topK === undefined ? {} : { topK: integer(generation.topK, 1) }),
