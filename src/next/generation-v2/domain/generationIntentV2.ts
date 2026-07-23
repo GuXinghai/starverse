@@ -1,4 +1,6 @@
 import { GenerationV2Digest, GenerationV2Identity } from './identityV2'
+import type { CompatibleJsonValue } from '../../../shared/provider/openai-chat-compatible/request/messageTypes'
+import { compatibleBoundedJsonValueSchema } from '../../../shared/provider/openai-chat-compatible/schemas'
 
 export type SamplingIntentV2 = Readonly<{
   maxOutputTokens?: number
@@ -124,11 +126,19 @@ export function requiresProviderFileBindingV2(
 export type ProviderSemanticExtensionV2 =
   | Readonly<{ kind: 'none' }>
   | Readonly<{
+      kind: 'openrouter_chat'
+      verbosity?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+      parallelToolCalls?: boolean
+      responseFormat?: OpenRouterResponseFormatIntentV2
+    }>
+  | Readonly<{
       kind: 'openai_responses'
       verbosity?: 'low' | 'medium' | 'high'
       maxToolCalls?: number
       parallelToolCalls?: boolean
       serviceTier?: 'auto' | 'default' | 'flex' | 'priority'
+      reasoningMode?: 'standard' | 'pro'
+      reasoningContext?: 'auto' | 'current_turn' | 'all_turns'
     }>
   | Readonly<{
       kind: 'anthropic_messages'
@@ -158,6 +168,19 @@ export type ProviderSemanticExtensionV2 =
       thinkingMode: 'budget'
       thinkingBudget: number
       includeThoughts: 'provider_default' | 'enabled' | 'disabled'
+    }>
+
+export type OpenRouterResponseFormatIntentV2 =
+  | Readonly<{ type: 'text' }>
+  | Readonly<{ type: 'json_object' }>
+  | Readonly<{
+      type: 'json_schema'
+      jsonSchema: Readonly<{
+        name: string
+        description?: string
+        schema: Readonly<Record<string, CompatibleJsonValue>>
+        strict?: boolean
+      }>
     }>
 
 const attachmentIntentsV2 = new WeakSet<object>()
@@ -302,6 +325,42 @@ function compact<T extends object>(value: T): T {
     if ((value as ClosedInput)[key] === undefined) delete (value as { [key: string]: unknown })[key]
   }
   return Object.freeze(value)
+}
+
+function validResponseFormatName(value: unknown): value is string {
+  return typeof value === 'string' && /^[A-Za-z_][A-Za-z0-9_-]{0,63}$/u.test(value)
+}
+
+function decodeOpenRouterResponseFormat(value: unknown): OpenRouterResponseFormatIntentV2 {
+  const input = closedObject(value, ['type', 'jsonSchema'])
+  if (input.type === 'text' || input.type === 'json_object') {
+    if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    return Object.freeze({ type: input.type }) as OpenRouterResponseFormatIntentV2
+  }
+  if (input.type !== 'json_schema') throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  const jsonSchema = closedObject(input.jsonSchema, ['name', 'description', 'schema', 'strict'])
+  if (!validResponseFormatName(jsonSchema.name) ||
+      !jsonSchema.schema || typeof jsonSchema.schema !== 'object' || Array.isArray(jsonSchema.schema) ||
+      (jsonSchema.description !== undefined && (typeof jsonSchema.description !== 'string' || jsonSchema.description.length > 4096)) ||
+      (jsonSchema.strict !== undefined && typeof jsonSchema.strict !== 'boolean')) {
+    throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  }
+  let schema: CompatibleJsonValue
+  try { schema = compatibleBoundedJsonValueSchema.parse(jsonSchema.schema) as CompatibleJsonValue } catch {
+    throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  }
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  }
+  return Object.freeze({
+    type: 'json_schema' as const,
+    jsonSchema: Object.freeze({
+      name: jsonSchema.name,
+      ...(jsonSchema.description === undefined ? {} : { description: jsonSchema.description }),
+      schema: Object.freeze(schema as Readonly<Record<string, CompatibleJsonValue>>),
+      ...(jsonSchema.strict === undefined ? {} : { strict: jsonSchema.strict }),
+    }),
+  })
 }
 
 function decodeSampling(value: unknown): SamplingIntentV2 {
@@ -568,16 +627,31 @@ function decodeAttachment(value: unknown): AttachmentIntentV2 {
 function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
   const input = closedObject(value, [
     'kind', 'verbosity', 'maxToolCalls', 'parallelToolCalls', 'serviceTier',
+    'reasoningMode', 'reasoningContext',
     'thinkingDisplay', 'thinkingMode', 'manualThinkingBudgetTokens',
-    'thinkingLevel', 'thinkingBudget', 'includeThoughts',
+    'thinkingLevel', 'thinkingBudget', 'includeThoughts', 'responseFormat',
   ])
   if (input.kind === 'none') {
     if (Object.keys(input).length !== 1) throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
     return Object.freeze({ kind: 'none' })
   }
+  if (input.kind === 'openrouter_chat') {
+    const verbosity = optionalEnum(input, 'verbosity', ['low', 'medium', 'high', 'xhigh', 'max'])
+    if (input.parallelToolCalls !== undefined && typeof input.parallelToolCalls !== 'boolean') {
+      throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+    }
+    return compact({
+      kind: 'openrouter_chat' as const,
+      verbosity,
+      parallelToolCalls: input.parallelToolCalls as boolean | undefined,
+      responseFormat: input.responseFormat === undefined ? undefined : decodeOpenRouterResponseFormat(input.responseFormat),
+    }) as ProviderSemanticExtensionV2
+  }
   if (input.kind === 'openai_responses') {
     const verbosity = optionalEnum(input, 'verbosity', ['low', 'medium', 'high'])
     const serviceTier = optionalEnum(input, 'serviceTier', ['auto', 'default', 'flex', 'priority'])
+    const reasoningMode = optionalEnum(input, 'reasoningMode', ['standard', 'pro'])
+    const reasoningContext = optionalEnum(input, 'reasoningContext', ['auto', 'current_turn', 'all_turns'])
     if (input.maxToolCalls !== undefined && (!Number.isSafeInteger(input.maxToolCalls) || (input.maxToolCalls as number) < 1) ||
         input.parallelToolCalls !== undefined && typeof input.parallelToolCalls !== 'boolean') {
       throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
@@ -588,6 +662,8 @@ function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
       maxToolCalls: input.maxToolCalls as number | undefined,
       parallelToolCalls: input.parallelToolCalls as boolean | undefined,
       serviceTier,
+      reasoningMode,
+      reasoningContext,
     }) as ProviderSemanticExtensionV2
   }
   if (input.kind === 'anthropic_messages') {

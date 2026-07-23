@@ -1,6 +1,7 @@
 import { createHash } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { stableSerializeProviderRequestBoundedV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import type { ProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
 
 const MAX_ITEMS_JSON_BYTES = 32 * 1024 * 1024
 const ID_PATTERN = /^[A-Za-z0-9._:/-]{1,512}$/u
@@ -25,6 +26,7 @@ export type ModelCatalogStatusV2 = Readonly<{
   hiddenModelCount: number
   activeSnapshotDigest: string | null
   categoryKey: string
+  lastErrorFact: ProviderFailureV2 | null
 }>
 
 export type ModelCatalogActiveSnapshotV2 = Readonly<{
@@ -89,6 +91,28 @@ function decodeItems(value: string): readonly Readonly<Record<string, unknown>>[
   return Object.freeze(parsed.map((item) => Object.freeze({ ...(item as Record<string, unknown>) })))
 }
 
+function encodeErrorFact(value: ProviderFailureV2 | null | undefined): string | null {
+  if (!value) return null
+  let encoded: string
+  try { encoded = JSON.stringify(value) } catch {
+    throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_INPUT_INVALID')
+  }
+  if (!encoded || Buffer.byteLength(encoded, 'utf8') > 1024 * 1024) {
+    throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_INPUT_INVALID')
+  }
+  return encoded
+}
+
+function decodeErrorFact(value: unknown): ProviderFailureV2 | null {
+  if (value === null || value === undefined) return null
+  try {
+    const parsed = JSON.parse(String(value))
+    return parsed && typeof parsed === 'object' ? parsed as ProviderFailureV2 : null
+  } catch {
+    throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
+  }
+}
+
 export class ModelCatalogV2Repo {
   constructor(private readonly db: BetterSqlite3.Database, private readonly nowMs: () => number = Date.now) {}
 
@@ -102,7 +126,7 @@ export class ModelCatalogV2Repo {
       VALUES (@scopeId,@providerKey,@credentialScopeId,@endpointProfileId,@operationContractId,@categoryKey,
        'syncing',@attemptId,@now,@now,@now)
       ON CONFLICT(scope_id) DO UPDATE SET sync_state='syncing',active_attempt_id=excluded.active_attempt_id,
-       last_attempt_at_ms=excluded.last_attempt_at_ms,last_error_code=NULL,last_error_message=NULL,updated_at_ms=excluded.updated_at_ms`)
+       last_attempt_at_ms=excluded.last_attempt_at_ms,last_error_code=NULL,last_error_message=NULL,last_error_fact_json=NULL,updated_at_ms=excluded.updated_at_ms`)
       .run({ ...scope, attemptId, now })
     return scope.scopeId
   }
@@ -136,7 +160,7 @@ export class ModelCatalogV2Repo {
         VALUES (?,?,?,?,?,?,?,?,?)`).run(scope.scopeId, scope.categoryKey, input.responseDigest, observedAtMs,
           modelCount, visibleModelCount, hiddenModelCount, itemsJson, now)
       return this.db.prepare(`UPDATE model_catalog_scope_v2 SET active_snapshot_digest=?,sync_state='ok',active_attempt_id=NULL,
-        last_success_at_ms=?,last_error_code=NULL,last_error_message=NULL,model_count=?,visible_model_count=?,hidden_model_count=?,updated_at_ms=?
+        last_success_at_ms=?,last_error_code=NULL,last_error_message=NULL,last_error_fact_json=NULL,model_count=?,visible_model_count=?,hidden_model_count=?,updated_at_ms=?
         WHERE scope_id=? AND active_attempt_id=?`).run(input.responseDigest, observedAtMs, modelCount, visibleModelCount,
           hiddenModelCount, now, scope.scopeId, attemptId).changes
     }).immediate()
@@ -146,28 +170,33 @@ export class ModelCatalogV2Repo {
     return active
   }
 
-  failSync(scopeValue: ModelCatalogScopeIdentityV2, attemptIdValue: string, errorCodeValue: string): ModelCatalogStatusV2 {
+  failSync(
+    scopeValue: ModelCatalogScopeIdentityV2,
+    attemptIdValue: string,
+    error: string | ProviderFailureV2,
+  ): ModelCatalogStatusV2 {
     const scope = identity(scopeValue)
     const attemptId = text(attemptIdValue)
-    const errorCode = text(errorCodeValue)
+    const errorCode = text(typeof error === 'string' ? error : error.starverseDiagnosticCode)
+    const errorFact = typeof error === 'string' ? null : encodeErrorFact(error)
     const now = safeTime(this.nowMs())
     const changes = this.db.prepare(`UPDATE model_catalog_scope_v2 SET sync_state='error',active_attempt_id=NULL,
-      last_error_code=?,last_error_message=NULL,updated_at_ms=? WHERE scope_id=? AND active_attempt_id=?`)
-      .run(errorCode, now, scope.scopeId, attemptId).changes
+      last_error_code=?,last_error_message=NULL,last_error_fact_json=?,updated_at_ms=? WHERE scope_id=? AND active_attempt_id=?`)
+      .run(errorCode, errorFact, now, scope.scopeId, attemptId).changes
     if (changes !== 1) throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STALE_ATTEMPT')
     return this.readStatus(scopeValue)!
   }
 
   readStatus(scopeValue: ModelCatalogScopeIdentityV2): ModelCatalogStatusV2 | null {
     const scope = identity(scopeValue)
-    const row = this.db.prepare(`SELECT provider_key,sync_state,last_attempt_at_ms,last_success_at_ms,last_error_code,
+    const row = this.db.prepare(`SELECT provider_key,sync_state,last_attempt_at_ms,last_success_at_ms,last_error_code,last_error_fact_json,
       model_count,visible_model_count,hidden_model_count,active_snapshot_digest,active_category_key
       FROM model_catalog_scope_v2 WHERE scope_id=?`).get(scope.scopeId) as Record<string, unknown> | undefined
     if (!row) return null
     return Object.freeze({ providerKey: String(row.provider_key), syncState: row.sync_state as ModelCatalogStatusV2['syncState'],
       lastAttemptAtMs: row.last_attempt_at_ms === null ? null : Number(row.last_attempt_at_ms),
       lastSuccessAtMs: row.last_success_at_ms === null ? null : Number(row.last_success_at_ms),
-      errorCode: row.last_error_code === null ? null : String(row.last_error_code), modelCount: Number(row.model_count),
+      errorCode: row.last_error_code === null ? null : String(row.last_error_code), lastErrorFact: decodeErrorFact(row.last_error_fact_json), modelCount: Number(row.model_count),
       visibleModelCount: Number(row.visible_model_count), hiddenModelCount: Number(row.hidden_model_count),
       activeSnapshotDigest: row.active_snapshot_digest === null ? null : String(row.active_snapshot_digest),
       categoryKey: String(row.active_category_key) })

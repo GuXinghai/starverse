@@ -39,6 +39,7 @@ function createAttachment(
     sendAs: 'provider_file' | 'converted_document' | 'inline_text'
     conversion?: 'none' | 'pdf'
   }>,
+  db?: BetterSqlite3.Database,
 ): Readonly<{ intent: AttachmentIntentV2; bytes: Uint8Array }> {
   const bytes = new Uint8Array(value.bytes)
   const blob = repo.recordBlobFromBytes(bytes, 'application/octet-stream')
@@ -61,6 +62,12 @@ function createAttachment(
       filename: `${value.assetId}.pdf`, parentAssetRevisionId: sourceRevisionId,
       conversionKind: 'pdf', conversionContractId: 'test-pdf', conversionRevision: '1', blob: effectiveBlob,
     })
+    db!.prepare(`INSERT INTO dfc_conversion_output_v2 (
+      derived_asset_revision_id, source_asset_revision_id, target_kind, converter_contract_id,
+      converter_revision, conversion_settings_digest, warnings_json, created_at_ms
+    ) VALUES (?, ?, 'pdf_attachment', 'test-pdf', '1', ?, '[]', 10)`).run(
+      value.revisionId, sourceRevisionId, '0'.repeat(64),
+    )
   }
   const layer = decodeGenerationIntentLayerV2({
     schemaVersion: 2,
@@ -200,7 +207,7 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
       const convertedPdf = createAttachment(repo, {
         assetId: 'asset:d', revisionId: 'revision:d', bytes: [4], include: true,
         sendAs: 'converted_document', conversion: 'pdf',
-      })
+      }, db)
       let escaped: ResolvedAttachmentSetAuthorityV2 | undefined
       let escapedItem: unknown
       const lease = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>

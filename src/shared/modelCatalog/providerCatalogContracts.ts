@@ -29,6 +29,13 @@ export type ProviderCatalogSourceCapabilities = Readonly<{
   endpointDetails: boolean
   curatedMetadata: boolean
   countProbe: boolean
+  remoteSync: boolean
+  supportsStartupSync: boolean
+  supportsPickerOpenSync: boolean
+  supportsManualSync: boolean
+  requiresCredential: boolean
+  scopedByCredential: boolean
+  scopedByBaseUrl: boolean
 }>
 
 export type ProviderCatalogSourceDescriptor = Readonly<{

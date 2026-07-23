@@ -72,6 +72,13 @@ CREATE TABLE IF NOT EXISTS generation_operation_v2 (
   error_message TEXT CHECK (
     error_message IS NULL OR length(CAST(error_message AS BLOB)) <= 1048576
   ),
+  error_fact_json TEXT CHECK (
+    error_fact_json IS NULL OR (
+      length(CAST(error_fact_json AS BLOB)) <= 1048576
+      AND json_valid(error_fact_json)
+      AND json_type(error_fact_json) = 'object'
+    )
+  ),
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
   terminal_at_ms INTEGER CHECK (terminal_at_ms IS NULL OR terminal_at_ms >= created_at_ms),
@@ -95,9 +102,9 @@ CREATE TABLE IF NOT EXISTS generation_operation_v2 (
   ),
   CHECK (
     (state IN ('committed', 'streaming') AND terminal_at_ms IS NULL
-      AND error_code IS NULL AND error_message IS NULL)
+      AND error_code IS NULL AND error_message IS NULL AND error_fact_json IS NULL)
     OR (state = 'completed' AND terminal_at_ms IS NOT NULL
-      AND error_code IS NULL AND error_message IS NULL)
+      AND error_code IS NULL AND error_message IS NULL AND error_fact_json IS NULL)
     OR (state IN ('failed', 'cancelled') AND terminal_at_ms IS NOT NULL)
   )
 );
@@ -295,6 +302,7 @@ BEFORE UPDATE ON generation_operation_v2
 WHEN OLD.state IN ('completed', 'failed', 'cancelled') AND (
   NEW.state IS NOT OLD.state OR NEW.error_code IS NOT OLD.error_code
   OR NEW.error_message IS NOT OLD.error_message
+  OR NEW.error_fact_json IS NOT OLD.error_fact_json
   OR NEW.updated_at_ms IS NOT OLD.updated_at_ms
   OR NEW.terminal_at_ms IS NOT OLD.terminal_at_ms
 )

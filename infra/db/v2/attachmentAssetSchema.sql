@@ -100,6 +100,49 @@ BEGIN
   SELECT RAISE(ABORT, 'GENERATION_V2_OPENAI_FILE_DESCRIPTOR_IMMUTABLE');
 END;
 
+-- Anthropic Files API handles are immutable snapshot inputs, separate from the
+-- OpenAI Responses descriptor family even though both use provider file ids.
+CREATE TABLE IF NOT EXISTS anthropic_messages_file_descriptor_v2 (
+  descriptor_id TEXT PRIMARY KEY CHECK (length(descriptor_id) BETWEEN 1 AND 512),
+  descriptor_revision TEXT NOT NULL UNIQUE CHECK (length(descriptor_revision) BETWEEN 1 AND 512),
+  descriptor_hash TEXT NOT NULL UNIQUE CHECK (
+    length(descriptor_hash) = 64 AND descriptor_hash NOT GLOB '*[^0-9a-f]*'
+  ),
+  credential_scope_id TEXT NOT NULL CHECK (length(credential_scope_id) BETWEEN 1 AND 512),
+  endpoint_profile_id TEXT NOT NULL CHECK (endpoint_profile_id = 'anthropic-messages-2023-06-01'),
+  asset_revision_id TEXT NOT NULL REFERENCES asset_revision_v2(asset_revision_id) ON DELETE RESTRICT,
+  asset_sha256 TEXT NOT NULL CHECK (
+    length(asset_sha256) = 64 AND asset_sha256 NOT GLOB '*[^0-9a-f]*'
+  ),
+  file_id TEXT NOT NULL CHECK (length(file_id) BETWEEN 1 AND 256),
+  created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
+  UNIQUE (credential_scope_id, endpoint_profile_id, asset_revision_id)
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_anthropic_messages_file_descriptor_v2_insert_conflict_guard
+BEFORE INSERT ON anthropic_messages_file_descriptor_v2
+WHEN EXISTS (SELECT 1 FROM anthropic_messages_file_descriptor_v2
+  WHERE descriptor_id = NEW.descriptor_id OR descriptor_revision = NEW.descriptor_revision
+    OR descriptor_hash = NEW.descriptor_hash
+    OR (credential_scope_id = NEW.credential_scope_id
+      AND endpoint_profile_id = NEW.endpoint_profile_id
+      AND asset_revision_id = NEW.asset_revision_id))
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_ANTHROPIC_FILE_DESCRIPTOR_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_anthropic_messages_file_descriptor_v2_immutable
+BEFORE UPDATE ON anthropic_messages_file_descriptor_v2
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_ANTHROPIC_FILE_DESCRIPTOR_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_anthropic_messages_file_descriptor_v2_delete_guard
+BEFORE DELETE ON anthropic_messages_file_descriptor_v2
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_ANTHROPIC_FILE_DESCRIPTOR_IMMUTABLE');
+END;
+
 CREATE TRIGGER IF NOT EXISTS trg_file_blob_v2_insert_conflict_guard
 BEFORE INSERT ON file_blob_v2
 WHEN EXISTS (SELECT 1 FROM file_blob_v2 WHERE blob_id = NEW.blob_id OR sha256 = NEW.sha256)

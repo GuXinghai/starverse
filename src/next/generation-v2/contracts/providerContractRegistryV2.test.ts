@@ -238,6 +238,7 @@ describe('Generation V2 reviewed provider contract registry', () => {
         mode: 'client_managed_native_items',
         store: false,
         requiredInclude: ['reasoning.encrypted_content'],
+        legacyCompatibleInclude: ['reasoning.encrypted_content'],
         forbiddenRequestFields: ['previous_response_id', 'conversation'],
         replayPolicy: 'complete_ordered_output_items',
         assistantMessagePhasePolicy: 'preserve_when_present',
@@ -248,7 +249,7 @@ describe('Generation V2 reviewed provider contract registry', () => {
         relativePathTemplate: '/v1/responses',
         streamRequestPolicy: { responseProtocol: 'typed_sse', doneSentinel: 'forbidden' },
       },
-      evidence: { openApiSha256: null, verifiedAt: '2026-07-15' },
+      evidence: { openApiSha256: null, verifiedAt: '2026-07-22' },
     })
   })
 

@@ -47,6 +47,7 @@ export type ProviderFileDescriptorReferenceV2 = Readonly<{
   descriptorId: GenerationV2Identity<'provider_file_descriptor_id'>
   descriptorRevision: GenerationV2Identity<'provider_file_descriptor_revision'>
   descriptorHash: GenerationV2Digest<'provider_file_descriptor_hash'>
+  providerFileId?: string
 }>
 
 export type AttachmentProviderFileBindingV2 = Readonly<{
@@ -233,20 +234,22 @@ function decodeCapabilityBinding(value: unknown): CapabilityBindingV2 {
 function decodeAttachmentBindings(
   value: unknown,
   attachments: readonly AttachmentIntentV2[],
+  providerId: string,
 ): readonly AttachmentProviderFileBindingV2[] {
   const bindings = closedDenseArray(value).map((item) => {
     const input = closedObject(item, ['assetRevisionId', 'providerFileDescriptor'])
-    const descriptor = closedObject(input.providerFileDescriptor, ['descriptorId', 'descriptorRevision', 'descriptorHash'])
+    const descriptor = closedObject(input.providerFileDescriptor, ['descriptorId', 'descriptorRevision', 'descriptorHash', 'providerFileId'])
     return Object.freeze({
       assetRevisionId: GenerationV2Identity.create('asset_revision_id', requiredString(input, 'assetRevisionId')),
       providerFileDescriptor: Object.freeze({
         descriptorId: GenerationV2Identity.create('provider_file_descriptor_id', requiredString(descriptor, 'descriptorId')),
         descriptorRevision: GenerationV2Identity.create('provider_file_descriptor_revision', requiredString(descriptor, 'descriptorRevision')),
         descriptorHash: GenerationV2Digest.create('provider_file_descriptor_hash', requiredString(descriptor, 'descriptorHash')),
+        ...(descriptor.providerFileId === undefined ? {} : { providerFileId: requiredString(descriptor, 'providerFileId') }),
       }),
     })
   })
-  const expected = attachments
+  const expected = providerId === 'google_ai_studio' ? [] : attachments
     .filter(requiresProviderFileBindingV2)
     .map((item) => readGenerationV2Identity(item.assetRevisionId, 'asset_revision_id'))
     .sort(compareCodePoints)
@@ -389,7 +392,7 @@ function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; proj
   const providerBinding = decodeProviderBindingRecordV2(input.providerBinding)
   const capabilityBinding = decodeCapabilityBinding(input.capabilityBinding)
   const attachmentProviderFileBindings = decodeAttachmentBindings(
-    input.attachmentProviderFileBindings, semanticIntent.attachments,
+    input.attachmentProviderFileBindings, semanticIntent.attachments, providerBinding.providerId.value,
   )
   const toolAuthority = decodeToolAuthority(input.toolAuthority, semanticIntent)
   const providerConfiguration = decodeProviderConfiguration(input.providerConfiguration ?? { kind: 'none' }, providerBinding)
@@ -420,6 +423,7 @@ function decodePayload(value: unknown): Readonly<{ decoded: DecodedPayload; proj
         descriptorHash: readGenerationV2Digest(
           item.providerFileDescriptor.descriptorHash, 'provider_file_descriptor_hash',
         ),
+        ...(item.providerFileDescriptor.providerFileId === undefined ? {} : { providerFileId: item.providerFileDescriptor.providerFileId }),
       },
     })),
     toolAuthority: toolAuthority.kind === 'none' ? { kind: 'none' } : {

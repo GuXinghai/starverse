@@ -46,6 +46,7 @@ type RuntimeCapabilityRequiredSemanticPathV2 =
   | `tools.${Extract<keyof Extract<ToolPolicyIntentV2, { mode: 'enabled' }>, string>}`
   | `attachments[].${AttachmentSemanticFieldV2}`
   | 'providerExtension.kind'
+  | 'providerExtension.responseFormat'
   | `providerExtension.${ProviderExtensionSemanticFieldV2}`
 
 export const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 = Object.freeze([
@@ -91,6 +92,9 @@ export const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 = Object.freeze([
   'providerExtension.manualThinkingBudgetTokens',
   'providerExtension.maxToolCalls',
   'providerExtension.parallelToolCalls',
+  'providerExtension.reasoningContext',
+  'providerExtension.reasoningMode',
+  'providerExtension.responseFormat',
   'providerExtension.serviceTier',
   'providerExtension.thinkingBudget',
   'providerExtension.thinkingDisplay',
@@ -135,6 +139,7 @@ export type RuntimeCapabilityDomainV2 =
   | Readonly<{ kind: 'boolean' }>
   | Readonly<{ kind: 'identity' }>
   | Readonly<{ kind: 'enum'; values: readonly RuntimeCapabilityScalarV2[] }>
+  | Readonly<{ kind: 'response_format'; types: readonly ('text' | 'json_object' | 'json_schema')[] }>
   | Readonly<{ kind: 'enum_list'; values: readonly RuntimeCapabilityScalarV2[]; maxItems: number }>
   | Readonly<{ kind: 'range'; min: number; max: number; integer: boolean }>
   | Readonly<{ kind: 'string_list'; maxItems: number; maxItemLength: number }>
@@ -402,7 +407,7 @@ function decodeScalarSet(value: unknown): readonly RuntimeCapabilityScalarV2[] {
 
 function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
   const discriminator = closedObject(value, [
-    'kind', 'values', 'min', 'max', 'integer', 'maxItems', 'maxItemLength',
+    'kind', 'types', 'values', 'min', 'max', 'integer', 'maxItems', 'maxItemLength',
     'maxFieldLength', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
   ])
   if (discriminator.kind === 'boolean' || discriminator.kind === 'identity') {
@@ -414,6 +419,15 @@ function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
   if (discriminator.kind === 'enum') {
     const input = closedObject(value, ['kind', 'values'])
     return Object.freeze({ kind: 'enum', values: decodeScalarSet(input.values) })
+  }
+  if (discriminator.kind === 'response_format') {
+    const input = closedObject(value, ['kind', 'types'])
+    const types = closedDenseArray(input.types)
+    if (types.length < 1 || types.length > 3 || types.some((item) => item !== 'text' && item !== 'json_object' && item !== 'json_schema') ||
+        new Set(types).size !== types.length) {
+      throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+    }
+    return Object.freeze({ kind: 'response_format', types: Object.freeze([...types] as ('text' | 'json_object' | 'json_schema')[]) })
   }
   if (discriminator.kind === 'enum_list') {
     const input = closedObject(value, ['kind', 'values', 'maxItems'])
@@ -506,13 +520,15 @@ const ENUM_VALUES_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPath
   'image.outputMode': ['image_only', 'image_and_text'],
   'image.quality': ['auto', 'low', 'medium', 'high'],
   'image.resolution': ['512', '1K', '2K', '4K'],
-  'providerExtension.kind': ['none', 'anthropic_messages', 'gemini_generate_content', 'openai_responses'],
+  'providerExtension.kind': ['none', 'openrouter_chat', 'anthropic_messages', 'gemini_generate_content', 'openai_responses'],
   'providerExtension.includeThoughts': ['provider_default', 'enabled', 'disabled'],
   'providerExtension.thinkingLevel': ['minimal', 'low', 'medium', 'high'],
   'providerExtension.thinkingMode': ['model_recommended', 'manual', 'adaptive', 'provider_default', 'level', 'budget'],
   'providerExtension.serviceTier': ['auto', 'default', 'flex', 'priority'],
+  'providerExtension.reasoningContext': ['auto', 'current_turn', 'all_turns'],
+  'providerExtension.reasoningMode': ['standard', 'pro'],
   'providerExtension.thinkingDisplay': ['provider_default', 'summarized', 'omitted'],
-  'providerExtension.verbosity': ['low', 'medium', 'high'],
+  'providerExtension.verbosity': ['low', 'medium', 'high', 'xhigh', 'max'],
   'reasoning.effort': ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
   'reasoning.mode': ['disabled', 'enabled'],
   'reasoning.summary': ['auto', 'concise', 'detailed'],
@@ -577,7 +593,9 @@ function assertDomainMatchesPath(path: RuntimeCapabilitySemanticPathV2, domain: 
           : path === 'tools.allowedToolIds' ? 'identity_list'
             : path === 'web.types' ? 'enum_list'
               : path === 'image.size' ? 'dimensions'
-                : path === 'image.aspectRatio' ? 'enum'
+              : path === 'image.aspectRatio' || path === 'providerExtension.reasoningMode' || path === 'providerExtension.reasoningContext' ||
+                  path === 'attachments[].kind' || path === 'attachments[].mediaKind' || path === 'attachments[].sendAs' ? 'enum'
+                    : path === 'providerExtension.responseFormat' ? 'response_format'
                   : (() => { throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE') })()
   if ((path === 'image.size'
     ? domain.kind !== 'dimensions' && domain.kind !== 'dimensions_enum'
@@ -585,6 +603,8 @@ function assertDomainMatchesPath(path: RuntimeCapabilitySemanticPathV2, domain: 
       path === 'web.types' && domain.kind === 'enum_list' &&
         domain.values.some((value) => value !== 'web' && value !== 'image') ||
       path === 'web.userLocation' && domain.kind === 'approximate_location' && domain.maxFieldLength > 4_096 ||
+      path === 'providerExtension.responseFormat' && domain.kind === 'response_format' &&
+        domain.types.some((value) => value !== 'text' && value !== 'json_object' && value !== 'json_schema') ||
       path === 'image.aspectRatio' && domain.kind === 'enum' &&
         domain.values.some((value) => typeof value !== 'string' ||
           (value !== 'auto' && !/^[1-9]\d{0,4}:[1-9]\d{0,4}$/u.test(value)))) {

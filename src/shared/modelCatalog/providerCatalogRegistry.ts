@@ -16,6 +16,8 @@ export const PROVIDER_CATALOG_SOURCE_DESCRIPTORS = [
       endpointDetails: true,
       curatedMetadata: true,
       countProbe: true,
+      remoteSync: true, supportsStartupSync: true, supportsPickerOpenSync: true, supportsManualSync: true,
+      requiresCredential: true, scopedByCredential: true, scopedByBaseUrl: false,
     },
   },
   {
@@ -30,6 +32,8 @@ export const PROVIDER_CATALOG_SOURCE_DESCRIPTORS = [
       endpointDetails: false,
       curatedMetadata: true,
       countProbe: false,
+      remoteSync: true, supportsStartupSync: true, supportsPickerOpenSync: true, supportsManualSync: true,
+      requiresCredential: true, scopedByCredential: true, scopedByBaseUrl: false,
     },
   },
   {
@@ -44,6 +48,8 @@ export const PROVIDER_CATALOG_SOURCE_DESCRIPTORS = [
       endpointDetails: false,
       curatedMetadata: true,
       countProbe: false,
+      remoteSync: true, supportsStartupSync: true, supportsPickerOpenSync: true, supportsManualSync: true,
+      requiresCredential: true, scopedByCredential: true, scopedByBaseUrl: false,
     },
   },
   {
@@ -58,6 +64,8 @@ export const PROVIDER_CATALOG_SOURCE_DESCRIPTORS = [
       endpointDetails: false,
       curatedMetadata: true,
       countProbe: false,
+      remoteSync: true, supportsStartupSync: true, supportsPickerOpenSync: true, supportsManualSync: true,
+      requiresCredential: true, scopedByCredential: true, scopedByBaseUrl: false,
     },
   },
   {
@@ -72,6 +80,8 @@ export const PROVIDER_CATALOG_SOURCE_DESCRIPTORS = [
       endpointDetails: false,
       curatedMetadata: true,
       countProbe: false,
+      remoteSync: true, supportsStartupSync: true, supportsPickerOpenSync: true, supportsManualSync: true,
+      requiresCredential: true, scopedByCredential: true, scopedByBaseUrl: false,
     },
   },
 ] as const satisfies ReadonlyArray<ProviderCatalogSourceDescriptor>
@@ -103,4 +113,3 @@ export function requireProviderCatalogSourceDescriptor(
   }
   return descriptor
 }
-

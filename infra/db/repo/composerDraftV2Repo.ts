@@ -62,6 +62,7 @@ export class ComposerDraftV2RepoError extends Error {
     | 'GENERATION_V2_DRAFT_NOT_FOUND'
     | 'GENERATION_V2_DRAFT_CONFLICT'
     | 'GENERATION_V2_DRAFT_STATE_INVALID'
+    | 'GENERATION_V2_DRAFT_DFC_PROVENANCE_INVALID'
     | 'GENERATION_V2_DRAFT_LOCK_CONFLICT') {
     super(code)
     this.name = 'ComposerDraftV2RepoError'
@@ -301,6 +302,10 @@ export class ComposerDraftV2Repo {
         typeof value.effectiveAssetSha256!=='string'||!/^[0-9a-f]{64}$/u.test(value.effectiveAssetSha256)) {
       throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_INPUT_INVALID')
     }
+    this.verifyDfcSelection({
+      sourceAssetRevisionId, targetKind: value.targetKind, sendStrategy: value.sendStrategy,
+      effectiveAssetId, effectiveAssetRevisionId, effectiveAssetSha256: value.effectiveAssetSha256,
+    })
     const now=time(this.nowMs())
     this.immediate(this.db.transaction(()=>{
       const current=this.db.prepare('SELECT revision FROM composer_draft_v2 WHERE conversation_id=?').get(conversationId) as {revision:unknown}|undefined
@@ -322,6 +327,41 @@ export class ComposerDraftV2Repo {
     const result=this.db.prepare(`UPDATE composer_draft_v2 SET revision=revision+1,updated_at_ms=?
       WHERE conversation_id=? AND revision=?`).run(now,conversationId,expectedRevision)
     if(result.changes!==1)throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_CONFLICT')
+  }
+  private verifyDfcSelection(value: Readonly<{
+    sourceAssetRevisionId: string; targetKind: 'original_file'|'plain_text'|'markdown'|'code'|'table_markdown'|'pdf_attachment'
+    sendStrategy: 'text_in_prompt'|'file_attachment'; effectiveAssetId:string; effectiveAssetRevisionId:string; effectiveAssetSha256:string
+  }>): void {
+    const source = this.db.prepare(`SELECT asset_id, revision_kind, retired_at_ms FROM asset_revision_v2
+      JOIN file_asset_v2 USING (asset_id) WHERE asset_revision_id=?`).get(value.sourceAssetRevisionId) as Record<string, unknown> | undefined
+    const effective = this.db.prepare(`SELECT r.asset_id, r.revision_kind, r.parent_asset_revision_id,
+      r.conversion_kind, r.conversion_contract_id, r.conversion_revision, a.retired_at_ms, b.sha256
+      FROM asset_revision_v2 r JOIN file_asset_v2 a ON a.asset_id=r.asset_id
+      JOIN file_blob_v2 b ON b.blob_id=r.blob_id WHERE r.asset_id=? AND r.asset_revision_id=?`).get(
+      value.effectiveAssetId, value.effectiveAssetRevisionId,
+    ) as Record<string, unknown> | undefined
+    if (!source || source.revision_kind !== 'source' || source.retired_at_ms !== null || !effective ||
+        effective.retired_at_ms !== null || effective.sha256 !== value.effectiveAssetSha256 ||
+        (value.targetKind === 'original_file' && (value.sendStrategy !== 'file_attachment' ||
+          effective.asset_id !== source.asset_id || value.effectiveAssetRevisionId !== value.sourceAssetRevisionId)) ||
+        (value.targetKind !== 'original_file' && value.sendStrategy !== (value.targetKind === 'pdf_attachment' ? 'file_attachment' : 'text_in_prompt')) ||
+        (value.targetKind !== 'original_file' && (effective.revision_kind !== 'derived' ||
+          effective.parent_asset_revision_id !== value.sourceAssetRevisionId ||
+          effective.conversion_kind !== (value.targetKind === 'pdf_attachment' ? 'pdf' : 'plain_text') ||
+          typeof effective.conversion_contract_id !== 'string' || typeof effective.conversion_revision !== 'string'))) {
+      throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_DFC_PROVENANCE_INVALID')
+    }
+    if (value.targetKind !== 'original_file') {
+      const output = this.db.prepare(`SELECT source_asset_revision_id, target_kind,
+        converter_contract_id, converter_revision, conversion_settings_digest, json_valid(warnings_json) AS warnings_valid
+        FROM dfc_conversion_output_v2 WHERE derived_asset_revision_id=?`).get(value.effectiveAssetRevisionId) as Record<string, unknown> | undefined
+      if (!output || output.source_asset_revision_id !== value.sourceAssetRevisionId || output.target_kind !== value.targetKind ||
+          output.converter_contract_id !== effective.conversion_contract_id || output.converter_revision !== effective.conversion_revision ||
+          typeof output.conversion_settings_digest !== 'string' || !/^[0-9a-f]{64}$/u.test(output.conversion_settings_digest) ||
+          output.warnings_valid !== 1) {
+        throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_DFC_PROVENANCE_INVALID')
+      }
+    }
   }
   private insertAttachment(conversationId:string,attachment:AttachmentIntentV2,order:number,now:number):void {
     this.db.prepare(`INSERT INTO composer_draft_attachment_v2

@@ -102,6 +102,7 @@ export class AttachmentAssetV2RepoError extends Error {
     | 'GENERATION_V2_ASSET_NOT_FOUND'
     | 'GENERATION_V2_ASSET_RETIRED'
     | 'GENERATION_V2_ASSET_INTENT_MISMATCH'
+    | 'GENERATION_V2_ASSET_DFC_PROVENANCE_INVALID'
     | 'GENERATION_V2_URL_REFERENCE_NOT_FOUND'
     | 'GENERATION_V2_URL_REFERENCE_INTENT_MISMATCH'
     | 'GENERATION_V2_ASSET_DUPLICATE_REFERENCE'
@@ -1055,6 +1056,26 @@ export class AttachmentAssetV2Repo {
     if (fact.retiredAtMs !== null) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_RETIRED')
     if (reference.assetSha256 !== fact.blob.sha256.value || reference.conversion !== fact.conversionKind) {
       throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_INTENT_MISMATCH')
+    }
+    if (fact.revisionKind === 'derived') {
+      const targetKinds = fact.conversionKind === 'pdf' ? ['pdf_attachment']
+        : fact.conversionKind === 'plain_text' ? ['plain_text', 'markdown', 'code', 'table_markdown'] : []
+      const parentRevisionId = fact.parentAssetRevisionId?.value
+      const output = targetKinds.length === 0 || parentRevisionId === undefined ||
+        fact.conversionContractId === null || fact.conversionRevision === null ? undefined :
+        this.#db.prepare(`SELECT source_asset_revision_id, target_kind, converter_contract_id,
+          converter_revision, conversion_settings_digest, warnings_json, created_at_ms
+          FROM dfc_conversion_output_v2 WHERE derived_asset_revision_id=?`).get(
+          fact.assetRevisionId.value,
+        ) as Record<string, unknown> | undefined
+      if (!output || output.source_asset_revision_id !== parentRevisionId ||
+          typeof output.target_kind !== 'string' || !targetKinds.includes(output.target_kind) ||
+          output.converter_contract_id !== fact.conversionContractId || output.converter_revision !== fact.conversionRevision ||
+          typeof output.conversion_settings_digest !== 'string' || !/^[0-9a-f]{64}$/u.test(output.conversion_settings_digest) ||
+          typeof output.warnings_json !== 'string' || typeof output.created_at_ms !== 'number' ||
+          !Number.isSafeInteger(output.created_at_ms) || output.created_at_ms < 0) {
+        throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_DFC_PROVENANCE_INVALID')
+      }
     }
     return fact
   }

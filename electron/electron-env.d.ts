@@ -342,6 +342,10 @@ interface DeepSeekProviderModelAvailability {
     maxOutputTokens?: number
     tools?: boolean
     jsonOutput?: boolean
+    reasoning?: 'supported' | 'unsupported' | 'unknown'
+    functionCalling?: boolean | 'unknown'
+    structuredOutput?: boolean | 'unknown'
+    reasoningEffort?: ReadonlyArray<'high' | 'max'>
     fim?: boolean
     chatPrefixCompletion?: boolean
   }
@@ -365,7 +369,8 @@ type DeepSeekModelAvailabilityResult =
     models: DeepSeekProviderModelAvailability[]
     warnings: string[]
     sourceDocuments: Array<{
-      source: 'deepseek_list_models_api_docs' | 'deepseek_models_pricing_docs' | 'deepseek_api_intro_docs'
+      source: 'deepseek_list_models_api_docs' | 'deepseek_models_pricing_docs' | 'deepseek_api_intro_docs' |
+        'deepseek_thinking_mode_docs' | 'deepseek_tool_calls_docs' | 'deepseek_json_output_docs'
       url: string
       observedAtMs: number
     }>

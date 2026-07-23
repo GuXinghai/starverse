@@ -111,6 +111,8 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'netExp.tcpKeepAliveIdleMs',
   'networkProxyPolicy',   // Legacy Electron policy; removed with the legacy main path in Goal 2 Round 5.
   'networkProxySettingsV2', // Epoch-2 product modes: environment/manual/direct/system.
+  'catalogPolicyV2', // Provider-neutral user-selected model catalog policy.
+  'providerCatalog', // Provider-scoped catalog policy namespace.
 
   // ========== Database Dev Rebuild (dev-only) ==========
   'dbExp',                           // DB 开发态实验开关（破坏性重建）

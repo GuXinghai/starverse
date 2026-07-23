@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS model_catalog_scope_v2 (
   last_success_at_ms INTEGER,
   last_error_code TEXT,
   last_error_message TEXT,
+  last_error_fact_json TEXT CHECK (last_error_fact_json IS NULL OR (length(CAST(last_error_fact_json AS BLOB)) <= 1048576 AND json_valid(last_error_fact_json))),
   model_count INTEGER NOT NULL DEFAULT 0 CHECK (model_count >= 0),
   visible_model_count INTEGER NOT NULL DEFAULT 0 CHECK (visible_model_count >= 0),
   hidden_model_count INTEGER NOT NULL DEFAULT 0 CHECK (hidden_model_count >= 0),

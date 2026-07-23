@@ -4,6 +4,12 @@ import {
   type Epoch2ProviderCredentialDecryptValidator,
   type Epoch2ProviderCredentialRecord,
 } from '../credentials/epoch2ProviderCredentialRecord'
+import { parseNetworkProxySettingsStrict, type NetworkProxySettings } from '../../src/shared/plugin-distribution/networkProxyShared'
+import {
+  canonicalOpenRouterCatalogPolicyV2,
+  migrateOpenRouterCatalogSettingsV2,
+} from '../../src/shared/modelCatalog/openRouterCatalogSettingsMigrationV2'
+import { validateCatalogPolicyV2 } from '../../src/shared/modelCatalog/catalogPolicyV2'
 
 export const EPOCH2_PRESERVED_PROVIDER_KEYS = Object.freeze([
   'openrouter',
@@ -12,6 +18,10 @@ export const EPOCH2_PRESERVED_PROVIDER_KEYS = Object.freeze([
   'anthropic',
   'deepseek',
 ] as const satisfies readonly ProviderCredentialKey[])
+
+const EPOCH2_CATALOG_PROVIDER_KEYS = Object.freeze([
+  'openrouter', 'openai_responses', 'google_ai_studio', 'anthropic', 'deepseek',
+] as const)
 
 export type Epoch2CredentialDecryptValidator = Epoch2ProviderCredentialDecryptValidator
 
@@ -72,6 +82,68 @@ function copyPreferences(raw: Record<string, unknown>): Record<string, unknown> 
   return projected
 }
 
+function legacyProxyToV2(value: unknown): NetworkProxySettings | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null
+  const raw = value as Record<string, unknown>
+  if (raw.mode === 'system') return parseNetworkProxySettingsStrict({
+    proxyMode: 'system', manualProxyUrl: '', noProxy: '', strictSSL: true,
+  })
+  if (raw.mode === 'direct') return parseNetworkProxySettingsStrict({
+    proxyMode: 'direct', manualProxyUrl: '', noProxy: '', strictSSL: true,
+  })
+  return null
+}
+
+function projectNetworkProxy(raw: Record<string, unknown>, projected: Record<string, unknown>): void {
+  if (Object.prototype.hasOwnProperty.call(raw, 'networkProxySettingsV2')) {
+    try {
+      projected.networkProxySettingsV2 = parseNetworkProxySettingsStrict(raw.networkProxySettingsV2)
+    } catch {
+      throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID', 'networkProxySettingsV2')
+    }
+    return
+  }
+  if (Object.prototype.hasOwnProperty.call(raw, 'networkProxyPolicy')) {
+    const converted = legacyProxyToV2(raw.networkProxyPolicy)
+    if (!converted) throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID', 'networkProxyPolicy')
+    projected.networkProxySettingsV2 = converted
+  }
+}
+
+function projectCatalogPolicy(raw: Record<string, unknown>, projected: Record<string, unknown>): void {
+  if (Object.prototype.hasOwnProperty.call(raw, 'catalogPolicyV2')) {
+    try {
+      projected.catalogPolicyV2 = validateCatalogPolicyV2(raw.catalogPolicyV2)
+    } catch {
+      throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID', 'catalogPolicyV2')
+    }
+  }
+  const migrated = migrateOpenRouterCatalogSettingsV2(raw)
+  if (migrated) {
+    Object.assign(projected, canonicalOpenRouterCatalogPolicyV2(migrated))
+  }
+  const existingRoot = record(raw.providerCatalog)
+  if (Object.prototype.hasOwnProperty.call(raw, 'providerCatalog') && !existingRoot) {
+    throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID', 'providerCatalog')
+  }
+  if (!existingRoot) return
+  const projectedRoot = record(projected.providerCatalog) ?? {}
+  const preserved: Record<string, unknown> = { ...projectedRoot }
+  for (const providerKey of EPOCH2_CATALOG_PROVIDER_KEYS) {
+    const existingProvider = record(existingRoot[providerKey])
+    if (!existingProvider || existingProvider.policyV2 === undefined) continue
+    try {
+      preserved[providerKey] = {
+        ...(record(preserved[providerKey]) ?? {}),
+        policyV2: validateCatalogPolicyV2(existingProvider.policyV2),
+      }
+    } catch {
+      throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID', `providerCatalog.${providerKey}.policyV2`)
+    }
+  }
+  if (Object.keys(preserved).length > 0) projected.providerCatalog = preserved
+}
+
 export async function projectEpoch2Config(input: Readonly<{
   rawConfig: unknown
   validateDecrypt: Epoch2CredentialDecryptValidator
@@ -79,6 +151,8 @@ export async function projectEpoch2Config(input: Readonly<{
   const raw = record(input.rawConfig)
   if (!raw) throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID')
   const projected = copyPreferences(raw)
+  projectNetworkProxy(raw, projected)
+  projectCatalogPolicy(raw, projected)
   const credentialRoot = record(raw.providerCredentials)
   const credentialV1 = record(credentialRoot?.v1)
   if ((raw.providerCredentials !== undefined && !credentialRoot) ||
