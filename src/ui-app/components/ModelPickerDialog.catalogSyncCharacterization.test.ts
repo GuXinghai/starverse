@@ -75,8 +75,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     const now = mockNow()
     const staleSyncedAtMs = now - 16 * 60 * 1000
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'stale_only',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'stale_only', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async () => ({
       ok: true,
@@ -129,8 +128,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
   it('picker-open stale_only skips sync when the current OpenRouter scope is fresh', async () => {
     const now = mockNow()
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'stale_only',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'stale_only', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async () => ({
       ok: true,
@@ -178,8 +176,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
   it('picker-open never policy skips automatic sync even when the current OpenRouter scope is stale', async () => {
     const now = mockNow()
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'never',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async () => ({
       ok: true,
@@ -228,8 +225,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
   it('manual refresh sends force sync even when the current OpenRouter scope is fresh', async () => {
     const now = mockNow()
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'stale_only',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'stale_only', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async () => ({
       ok: true,
@@ -286,10 +282,8 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
   it('provider filter routes catalog query while bottom sync provider routes manual sync scope', async () => {
     const now = mockNow()
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'never',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
-      'providerCatalog.google_ai_studio.pickerOpenSyncPolicy': 'stale_only',
-      'providerCatalog.google_ai_studio.freshnessMs': 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
+      'providerCatalog.google_ai_studio.policyV2': { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'stale_only', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async (options: any) => ({
       ok: true,
@@ -417,10 +411,8 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
   it('provider row refresh sends force sync for that provider scope and reloads checked provider results', async () => {
     const now = mockNow()
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'never',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
-      'providerCatalog.google_ai_studio.pickerOpenSyncPolicy': 'never',
-      'providerCatalog.google_ai_studio.freshnessMs': 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
+      'providerCatalog.google_ai_studio.policyV2': { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async (options: any) => ({
       ok: true,

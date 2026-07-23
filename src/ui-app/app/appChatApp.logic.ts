@@ -195,14 +195,10 @@ import {
 } from '@/next/generation-v2/renderer/generationV2ComposerClient'
 import { normalizeExtension } from '@/shared/files/fileRules'
 import {
-  OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
-  OPENROUTER_CATALOG_RETENTION_MS_KEY,
-  OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY,
   isCatalogStatusStale,
-  normalizeCatalogAutoSyncPolicy,
-  normalizeCatalogFreshnessMs,
-  normalizeCatalogRetentionMs,
 } from '@/shared/modelCatalog/catalogSyncSettings'
+import { GLOBAL_CATALOG_POLICY_V2_STORE_KEY, providerCatalogPolicyV2StoreKey } from '@/shared/modelCatalog/catalogPolicyResolverV2'
+import { resolveCatalogPolicyV2 } from '@/shared/modelCatalog/catalogPolicyV2'
 
 import {
   extractConvoWebSearchOverride,
@@ -259,6 +255,7 @@ import {
 } from './generationV2SessionConfigProjection'
 import type { ProviderModelPickerSource } from './providerModelPickerViewModel'
 import { deriveSendButtonMode, type SendButtonMode } from './sendButtonMode'
+import { createConversationConfigUpdateQueue } from './conversationConfigUpdateQueue'
 import {
   resolveNetworkErrorDisplayMessage,
 } from './networkErrorDisplay'
@@ -287,6 +284,7 @@ export function useAppChatAppLogic() {
   const inboxId = ref<string | null>(null)
   const activeConvoId = ref<string | null>(null)
   const systemTemplateSnapshot = ref<SystemChatTemplateSnapshot | null>(null)
+  const conversationConfigUpdateQueue = createConversationConfigUpdateQueue()
   const projectsOnlyWorkspace = ref(false)
   const activeBranchId = ref<string | null>(null)
   const branches = ref<BranchSummary[]>([])
@@ -1378,11 +1376,13 @@ export function useAppChatAppLogic() {
   }
 
   type ErrorSummary = Readonly<{
-    completionClass?: string
-    phase?: string
-    code?: string
-    message?: string
-    provider?: string
+    completionClass?: string | null
+    phase?: string | null
+    code?: string | null
+    message?: string | null
+    provider?: string | null
+    source?: string | null
+    raw?: unknown
     networkError?: unknown
   }>
 
@@ -1411,7 +1411,7 @@ export function useAppChatAppLogic() {
       message: text,
       provider,
       truncated: envelope?.truncated === true,
-      details: envelope ?? null,
+      details: envelope ?? summary?.raw ?? null,
     }
   }
 
@@ -1420,14 +1420,16 @@ export function useAppChatAppLogic() {
     const raw = obj?.error_summary
     if (!raw || typeof raw !== 'object') return null
     const record = raw as Record<string, unknown>
-    const completionClass = typeof record.completionClass === 'string' ? record.completionClass : undefined
-    const phase = typeof record.phase === 'string' ? record.phase : undefined
-    const code = typeof record.code === 'string' ? record.code : undefined
-    const message = typeof record.message === 'string' ? record.message : undefined
-    const provider = typeof record.provider === 'string' ? record.provider : undefined
+    const completionClass = record.completionClass === null || typeof record.completionClass === 'string' ? record.completionClass as string | null | undefined : undefined
+    const phase = record.phase === null || typeof record.phase === 'string' ? record.phase as string | null | undefined : undefined
+    const code = record.code === null || typeof record.code === 'string' ? record.code as string | null | undefined : undefined
+    const message = record.message === null || typeof record.message === 'string' ? record.message as string | null | undefined : undefined
+    const provider = record.provider === null || typeof record.provider === 'string' ? record.provider as string | null | undefined : undefined
+    const source = record.source === null || typeof record.source === 'string' ? record.source as string | null | undefined : undefined
+    const rawValue = record.raw
     const networkError = record.networkError
-    if (!completionClass && !phase && !code && !message && !provider && networkError === undefined) return null
-    return { completionClass, phase, code, message, provider, networkError }
+    if (!completionClass && !phase && !code && !message && !provider && !source && rawValue === undefined && networkError === undefined) return null
+    return { completionClass, phase, code, message, provider, source, raw: rawValue, networkError }
   }
 
       function applyErrorEnvelopesToState(envelopes: Map<string, ErrorEnvelope>) {
@@ -1603,22 +1605,21 @@ export function useAppChatAppLogic() {
     const models = window.generationV2?.models
     const store = (globalThis as typeof globalThis & { electronStore?: { get?: (key: string) => Promise<unknown> } }).electronStore
     if (!models || typeof models.status !== 'function' || typeof models.sync !== 'function' || typeof store?.get !== 'function') return
-    const [policyValue, freshnessValue, retentionValue] = await Promise.all([
-      store.get(OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY),
-      store.get(OPENROUTER_CATALOG_FRESHNESS_MS_KEY),
-      store.get(OPENROUTER_CATALOG_RETENTION_MS_KEY),
+    const [providerPolicy, globalPolicy] = await Promise.all([
+      store.get(providerCatalogPolicyV2StoreKey('openrouter')),
+      store.get(GLOBAL_CATALOG_POLICY_V2_STORE_KEY),
     ])
-    const policy = normalizeCatalogAutoSyncPolicy(policyValue)
-    if (policy === 'never') return
+    const resolved = resolveCatalogPolicyV2({ providerOverride: providerPolicy, globalPolicy })
+    if (!resolved.policy || resolved.policy.startupSyncPolicy === 'never') return
     const current = await models.status({ providerKey: 'openrouter' }) as Record<string, unknown>
     const stale = current.ok !== true || isCatalogStatusStale({
       status: current.status === 'synced' ? 'synced' : 'not_synced',
       lastSyncAtMs: current.observedAtMs,
-      freshnessMs: normalizeCatalogFreshnessMs(freshnessValue),
+      freshnessMs: resolved.policy.freshnessMs ?? undefined,
     })
-    if (policy === 'stale_only' && !stale) return
+    if (resolved.policy.startupSyncPolicy === 'stale_only' && !stale) return
     await models.sync({ providerKey: 'openrouter', timeoutMs: 30_000,
-      retentionMs: normalizeCatalogRetentionMs(retentionValue) })
+      retentionMs: resolved.policy.retentionMs })
   }
 
   async function refreshModelLists() {
@@ -3317,30 +3318,35 @@ export function useAppChatAppLogic() {
         expectedRevision: current?.revision ?? 0, selection }))
   }
 
-                        async function updateActiveConvoSessionConfig(patch: ChatSessionConfigPatch): Promise<ChatSessionConfig | null> {
-    const convo = getActiveConvoRecord()
-    if (!convo) return null
-    const current = getChatSessionConfigForConvo(convo)
-    const nextConfig = mergeChatSessionConfig(current, patch)
-    if (patch.model) await persistGenerationV2RoutePreference(convo.id, nextConfig.model)
-    const nextMeta = serializeChatSessionConfigToConvoMeta({
-      baseMeta: convo.meta ?? null,
-      config: { ...nextConfig, model: {
-        selectedProviderId: null, selectedModelKey: null, compatibleSelection: null,
-      } },
-      convoProjectId: convo.projectId ?? null,
-      defaultModelKey: DEFAULT_OPENROUTER_MODEL_ID,
+  async function updateActiveConvoSessionConfig(patch: ChatSessionConfigPatch): Promise<ChatSessionConfig | null> {
+    const initialConvo = getActiveConvoRecord()
+    if (!initialConvo) return null
+    const conversationId = initialConvo.id
+    return conversationConfigUpdateQueue.enqueue(conversationId, async () => {
+      const convo = getActiveConvoRecord()
+      if (!convo || convo.id !== conversationId) return null
+      const current = getChatSessionConfigForConvo(convo)
+      const nextConfig = mergeChatSessionConfig(current, patch)
+      if (patch.model) await persistGenerationV2RoutePreference(convo.id, nextConfig.model)
+      const nextMeta = serializeChatSessionConfigToConvoMeta({
+        baseMeta: convo.meta ?? null,
+        config: { ...nextConfig, model: {
+          selectedProviderId: null, selectedModelKey: null, compatibleSelection: null,
+        } },
+        convoProjectId: convo.projectId ?? null,
+        defaultModelKey: DEFAULT_OPENROUTER_MODEL_ID,
+      })
+      if (convo.id === systemTemplateSnapshot.value?.conversation.id) {
+        await persistConvoMetaUpdate(convo, nextMeta)
+      } else {
+        const providerId: RuntimeProviderKey | null = nextConfig.model.compatibleSelection
+          ? 'local_endpoint' : nextConfig.model.selectedProviderId ?? null
+        if (!providerId) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
+        await persistCurrentGenerationV2SemanticLayer(providerId, convo.id, true, nextConfig)
+      }
+      updateLocalConvoMeta(convo.id, nextMeta)
+      return nextConfig
     })
-    updateLocalConvoMeta(convo.id, nextMeta)
-    if (convo.id === systemTemplateSnapshot.value?.conversation.id) {
-      await persistConvoMetaUpdate(convo, nextMeta)
-    } else {
-      const providerId: RuntimeProviderKey | null = nextConfig.model.compatibleSelection
-        ? 'local_endpoint' : nextConfig.model.selectedProviderId ?? null
-      if (!providerId) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
-      await persistCurrentGenerationV2SemanticLayer(providerId, convo.id, true, nextConfig)
-    }
-    return nextConfig
   }
 
   async function onUpdateReasoningEnabled(nextEnabled: boolean) {
@@ -3390,7 +3396,7 @@ export function useAppChatAppLogic() {
     if ('maxResults' in detail) delete detail.maxResults
     await updateActiveConvoSessionConfig({
       webSearch: {
-        enabled: current.enabled,
+        enabled: true,
         level: nextLevel,
         detail,
       },
@@ -3417,7 +3423,7 @@ export function useAppChatAppLogic() {
     const current = activeSessionConfig.value.imageGeneration
     await updateActiveConvoSessionConfig({
       imageGeneration: {
-        enabled: current.enabled,
+        enabled: true,
         resolution: nextResolution,
         aspectRatio: current.aspectRatio,
         mode: 'custom',
@@ -3432,7 +3438,7 @@ export function useAppChatAppLogic() {
     const current = activeSessionConfig.value.imageGeneration
     await updateActiveConvoSessionConfig({
       imageGeneration: {
-        enabled: current.enabled,
+        enabled: true,
         resolution: current.resolution,
         aspectRatio: nextAspectRatio,
         mode: 'custom',
@@ -6901,14 +6907,14 @@ export function useAppChatAppLogic() {
       const common = { operationId: crypto.randomUUID(), branchId: branch.id, questionId: qid,
         expectedHeadMessageId: chosen, modelId: route.kind === 'gemini_interactions_image'
           ? normalizeGeminiImageGenerationModelId(modelId) : modelId }
+      const composerDraft = generationV2ComposerDraft.value?.conversationId === view.conversationId
+        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId)
+      const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
       const result = await submitGenerationV2Regenerate(route, route.kind === 'openrouter_images'
-        ? { ...common, requestedProviderTag: null }
+        ? { ...common, requestedProviderTag: null, commandAttachments }
         : route.kind === 'gemini_interactions_image'
-          ? common
-        : { ...common, commandAttachments: projectGenerationV2ComposerAttachments(
-          generationV2ComposerDraft.value?.conversationId === view.conversationId
-            ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId),
-        ), ...(compatibleSelection ? { providerInstanceId: compatibleSelection.providerInstanceId, extraBody: compatibleSelection.extraBody } : {}),
+          ? { ...common, commandAttachments }
+        : { ...common, commandAttachments, ...(compatibleSelection ? { providerInstanceId: compatibleSelection.providerInstanceId, extraBody: compatibleSelection.extraBody } : {}),
           ...(endpointProfileId === null ? {} : { endpointProfileId }) })
       if (!result.ok) throw new Error(result.code)
       invalidateCandidatesForQuestion(qid)

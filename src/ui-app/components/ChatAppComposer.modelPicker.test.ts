@@ -1574,10 +1574,14 @@ describe('ChatAppComposer model picker integration', () => {
       thoughtSummaryMode: { mode: 'custom', value: 'none' },
     }])
 
-    await openImageMenu()
-    const options = screen.getAllByTestId('capability-chip-option').map((node) => node.textContent)
+    const imageMenu = await openImageMenu()
+    const options = within(imageMenu).getAllByTestId('capability-chip-option').map((node) => node.textContent)
     expect(options).toContain('512')
     expect(options).toContain('4K')
+
+    await fireEvent.click(within(imageMenu).getByText('2K'))
+    expect(view.emitted('updateImageGenerationResolution')).toEqual([['2K']])
+    expect(view.emitted('updateImageGenerationEnabled')).toBeUndefined()
   })
 
   it('forces image generation on and disables reasoning for legacy Nano Banana', async () => {
