@@ -10,6 +10,7 @@ type ClosedObject = Readonly<Record<string, unknown>>
 export type OpenAIResponsesUserInputContentPartV1 =
   | Readonly<{ type: 'input_text'; text: string }>
   | Readonly<{ type: 'input_file'; file_id: string }>
+  | Readonly<{ type: 'input_image'; file_id?: string; image_url?: string; detail?: 'low' | 'high' | 'auto' }>
 
 export type OpenAIResponsesUserInputItemV1 = Readonly<{
   role: 'user'
@@ -205,7 +206,7 @@ function userInputParts(
   const parts = denseArray(value, OPENAI_RESPONSES_MAX_REPLAY_ITEMS_V1, false)
   node(budget, parts.length)
   return Object.freeze(parts.map((raw) => {
-    const discriminator = closedObject(raw, ['type', 'text', 'file_id'], ['type'])
+    const discriminator = closedObject(raw, ['type', 'text', 'file_id', 'image_url', 'detail'], ['type'])
     if (discriminator.type === 'input_text') {
       const input = closedObject(raw, ['type', 'text'], ['type', 'text'])
       return Object.freeze({ type: 'input_text' as const, text: stringValue(input.text, budget) })
@@ -213,6 +214,24 @@ function userInputParts(
     if (discriminator.type === 'input_file') {
       const input = closedObject(raw, ['type', 'file_id'], ['type', 'file_id'])
       return Object.freeze({ type: 'input_file' as const, file_id: stringValue(input.file_id, budget, true) })
+    }
+    if (discriminator.type === 'input_image') {
+      const input = closedObject(raw, ['type', 'file_id', 'image_url', 'detail'], ['type'])
+      const hasFileId = input.file_id !== undefined
+      const hasImageUrl = input.image_url !== undefined
+      if (hasFileId === hasImageUrl ||
+          (hasFileId && (typeof input.file_id !== 'string' || input.file_id.length === 0 || input.file_id.trim() !== input.file_id)) ||
+          (hasImageUrl && (typeof input.image_url !== 'string' || input.image_url.length === 0 || input.image_url.trim() !== input.image_url))) {
+        return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
+      }
+      if (input.detail !== undefined && input.detail !== 'low' && input.detail !== 'high' && input.detail !== 'auto') {
+        return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
+      }
+      return Object.freeze({
+        type: 'input_image' as const,
+        ...(hasFileId ? { file_id: stringValue(input.file_id, budget, true) } : { image_url: stringValue(input.image_url, budget) }),
+        ...(input.detail === undefined ? {} : { detail: input.detail as 'low' | 'high' | 'auto' }),
+      })
     }
     return fail('GENERATION_V2_OPENAI_NATIVE_ITEM_INVALID_VALUE')
   }))

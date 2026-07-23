@@ -79,7 +79,7 @@ async function issue<T>(db: BetterSqlite3.Database, use: (value: Readonly<{
 
 beforeEach(() => {
   mocks.fetch.mockReset()
-  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-17T12:00:00.000Z'))
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-23T12:00:00.000Z'))
 })
 afterEach(() => vi.restoreAllMocks())
 

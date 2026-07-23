@@ -153,7 +153,22 @@ function fieldsForModel(evidence: VerifiedAnthropicModelEvidenceV2, toolsEnabled
   else values.set('reasoning.effort', unsupported('reasoning.effort'))
   values.set('reasoning.summary', unsupported('reasoning.summary'))
   values.set('reasoning.exclude', unsupported('reasoning.exclude'))
-  values.set('web.mode', supported('web.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
+  values.set('web.mode', supported('web.mode', { kind: 'enum', values: Object.freeze(['disabled', 'provider_search']) }))
+  values.set('web.types', supported('web.types', { kind: 'enum_list', values: Object.freeze(['web']), maxItems: 1 }))
+  values.set('web.maxResults', supported('web.maxResults', { kind: 'range', min: 1, max: 20, integer: true }))
+  values.set('web.allowedDomains', supported('web.allowedDomains', { kind: 'string_list', maxItems: 100, maxItemLength: 253 }))
+  values.set('web.excludedDomains', supported('web.excludedDomains', { kind: 'string_list', maxItems: 100, maxItemLength: 253 }))
+  values.set('web.userLocation', supported('web.userLocation', { kind: 'approximate_location', maxFieldLength: 256 }))
+  values.set('web.engine', unsupported('web.engine'))
+  values.set('web.maxTotalResults', unsupported('web.maxTotalResults'))
+  values.set('web.searchContextSize', unsupported('web.searchContextSize'))
+  values.set('web.maxCharacters', unsupported('web.maxCharacters'))
+  values.set('attachments[].assetId', supported('attachments[].assetId', { kind: 'identity' }))
+  values.set('attachments[].assetRevisionId', supported('attachments[].assetRevisionId', { kind: 'identity' }))
+  values.set('attachments[].assetSha256', supported('attachments[].assetSha256', { kind: 'identity' }))
+  values.set('attachments[].include', supported('attachments[].include', { kind: 'boolean' }))
+  values.set('attachments[].sendAs', supported('attachments[].sendAs', { kind: 'enum', values: Object.freeze(['provider_file', 'inline_text', 'image_reference', 'converted_document']) }))
+  values.set('attachments[].conversion', supported('attachments[].conversion', { kind: 'enum', values: Object.freeze(['none', 'pdf', 'plain_text', 'images']) }))
   values.set('image.mode', supported('image.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
   values.set('tools.mode', supported('tools.mode', { kind: 'enum', values: Object.freeze(toolsEnabled ? ['disabled', 'enabled'] : ['disabled']) }))
   if (toolsEnabled) {
@@ -179,9 +194,31 @@ function fieldsForModel(evidence: VerifiedAnthropicModelEvidenceV2, toolsEnabled
 function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: VerifiedAnthropicModelEvidenceV2, toolRegistry?: ToolRegistryRepositoryFactV2 | null): void {
   const intent = facts.semanticIntent
   const tools = intent.tools ?? { mode: 'disabled' as const }
-  if (intent.attachments.length !== 0 || facts.attachmentSet.attachments.length !== 0 ||
-      facts.attachmentSet.providerFileRequirements.length !== 0 || facts.attachmentSet.requiresProviderFileAuthority ||
-      intent.web.mode !== 'disabled' || intent.image.mode !== 'disabled') {
+  if (intent.attachments.length !== facts.attachmentSet.attachments.length + facts.attachmentSet.urlReferenceIntents.length ||
+      intent.image.mode !== 'disabled') {
+    throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED')
+  }
+  for (const attachment of intent.attachments) {
+    if (!attachment.include) continue
+    if (attachment.kind === 'url_reference') {
+      if (attachment.mediaKind !== 'image' && attachment.mediaKind !== 'document') {
+        throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED')
+      }
+      continue
+    }
+    const resolved = facts.attachmentSet.attachments.find((item) => item.intent === attachment)
+    if (!resolved) throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED')
+    const mime = resolved.revision.blob.mime
+    const requiresFile = facts.attachmentSet.providerFileRequirements.some((item) => item.assetRevisionId.value === attachment.assetRevisionId.value)
+    const admissible = attachment.sendAs === 'provider_file' && attachment.conversion === 'none' && requiresFile ||
+      attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' && mime.startsWith('text/') ||
+      attachment.sendAs === 'image_reference' && attachment.conversion === 'none' && resolved.revision.assetKind === 'image' && mime.startsWith('image/') ||
+      attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf' && mime === 'application/pdf' && requiresFile
+    if (!admissible || (requiresFile && !['provider_file', 'converted_document'].includes(attachment.sendAs))) {
+      throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED')
+    }
+  }
+  if (intent.web.mode === 'provider_search' && (intent.web.types.length !== 1 || intent.web.types[0] !== 'web')) {
     throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED')
   }
   if (tools.mode === 'enabled') {

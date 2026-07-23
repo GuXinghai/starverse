@@ -44,20 +44,21 @@ export function decodeOpenRouterImageRetryCommandV2(value: unknown): OpenRouterI
 export type OpenRouterImageRegenerateCommandV2 = Readonly<{
   schemaVersion: 1; kind: 'openrouter_image_regenerate'; operationId: Identity<'operation_id'>; branchId: GraphIdentity<'branch_id'>
   questionId: GraphIdentity<'question_id'>; expectedHeadMessageId: GraphIdentity<'message_id'>; modelId: Identity<'model_id'>
-  requestedProviderTag: Identity<'provider_tag'> | null
+  requestedProviderTag: Identity<'provider_tag'> | null; commandAttachments: readonly AttachmentIntentV2[]
   canonicalJson: string; requestFingerprint: string
 }>
 export function isOpenRouterImageRegenerateCommandV2(value: unknown): value is OpenRouterImageRegenerateCommandV2 { return Boolean(value && typeof value === 'object' && commands.has(value) && (value as OpenRouterImageRegenerateCommandV2).kind === 'openrouter_image_regenerate') }
 export function decodeOpenRouterImageRegenerateCommandV2(value: unknown): OpenRouterImageRegenerateCommandV2 {
   try {
-    const raw = object(value, ['operationId', 'branchId', 'questionId', 'expectedHeadMessageId', 'modelId', 'requestedProviderTag'])
+    const raw = object(value, ['operationId', 'branchId', 'questionId', 'expectedHeadMessageId', 'modelId', 'requestedProviderTag', 'commandAttachments'])
     const operationId = GenerationV2Identity.create('operation_id', text(raw.operationId)); const branchId = ConversationGraphV2Identity.create('branch_id', text(raw.branchId))
     const questionId = ConversationGraphV2Identity.create('question_id', text(raw.questionId)); const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', text(raw.expectedHeadMessageId))
     const modelId = GenerationV2Identity.create('model_id', text(raw.modelId)); const requestedProviderTag = raw.requestedProviderTag === null ? null : GenerationV2Identity.create('provider_tag', text(raw.requestedProviderTag))
+    const commandAttachments = decodeGenerationCommandAttachmentsV2(raw.commandAttachments)
     const projection = { schemaVersion: 1 as const, kind: 'openrouter_image_regenerate' as const, operationId: operationId.value, branchId: branchId.value,
       questionId: questionId.value, expectedHeadMessageId: expectedHeadMessageId.value, modelId: modelId.value,
-      requestedProviderTag: requestedProviderTag?.value ?? null }
-    return issue(projection, { ...projection, operationId, branchId, questionId, expectedHeadMessageId, modelId, requestedProviderTag })
+      requestedProviderTag: requestedProviderTag?.value ?? null, commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments) }
+    return issue(projection, { ...projection, operationId, branchId, questionId, expectedHeadMessageId, modelId, requestedProviderTag, commandAttachments })
   } catch { throw new Error('GENERATION_V2_OPENROUTER_IMAGE_REGENERATE_COMMAND_INVALID') }
 }
 

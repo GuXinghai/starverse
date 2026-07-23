@@ -9,11 +9,11 @@ describe('toolRegistryV2', () => {
         toolId: 'tool:weather', kind: 'function', sideEffectPolicy: 'none',
         function: { name: 'weather', description: 'Lookup weather', parameters: {
           required: ['city'], type: 'object', properties: { city: { type: 'string' } },
-        } },
+        }, strict: true },
       }],
     })
     expect(registry.revision).toBe(`tool-registry-v2:${registry.definitionsDigest}`)
-    expect(selectToolDefinitionsV2(registry, ['tool:weather'])[0].function.name).toBe('weather')
+    expect(selectToolDefinitionsV2(registry, ['tool:weather'])[0].function).toMatchObject({ name: 'weather', strict: true })
   })
 
   it('rejects duplicate ids, names, unknown fields and missing selections', () => {

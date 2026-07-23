@@ -25,7 +25,7 @@ function database() {
   const configs = new GenerationConfigV2Repo(db)
   const current = configs.getScope('conversation', 'conversation:1')
   configs.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
-    schemaVersion: 2, generation: { candidateCount: 1 }, reasoning: { mode: 'disabled' }, web: { mode: 'disabled' },
+    schemaVersion: 2, generation: {}, reasoning: { mode: 'disabled' }, web: { mode: 'disabled' },
     image: { mode: 'generate', aspectRatio: '1:1', resolution: '1K', format: 'jpeg', stream: true },
     tools: { mode: 'disabled' }, providerExtension: { kind: 'none' },
   })
@@ -53,7 +53,7 @@ function streamResponse(): Response {
     { event_type: 'step.stop', index: 0 },
     { event_type: 'interaction.completed', interaction },
   ]
-  const body = `${events.map((event) => `data: ${JSON.stringify(event)}`).join('\n\n')}\n\ndata: [DONE]\n\n`
+  const body = `${events.map((event) => `event: ${event.event_type}\ndata: ${JSON.stringify(event)}`).join('\n\n')}\n\nevent: done\ndata: [DONE]\n\n`
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 

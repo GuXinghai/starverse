@@ -122,15 +122,18 @@ describe('Anthropic Messages native history artifact V1', () => {
     )
   })
 
-  it('fails closed on unknown blocks, non-null citations, non-direct callers, and future typed usage', () => {
+  it('preserves server search blocks and citations while rejecting non-direct callers', () => {
     for (const content of [
-      [{ type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: {} }],
-      [{ type: 'text', text: 'cited', citations: [] }],
       [{ type: 'tool_use', id: 'x', name: 'x', input: {}, caller: { type: 'server' } }],
     ]) {
       expect(() => createAnthropicNativeHistoryArtifactV1(snapshot({ content }))).toThrow(AnthropicNativeContentBlocksV1Error)
     }
-    for (const field of ['cache_creation', 'output_tokens_details', 'server_tool_use'] as const) {
+    expect(createAnthropicNativeHistoryArtifactV1(snapshot({ content: [
+      { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'x' } },
+      { type: 'web_search_tool_result', tool_use_id: 'srv_1', content: [{ type: 'web_search_result_location', url: 'https://example.test', title: 'Example', encrypted_index: 'idx', cited_text: 'x' }] },
+      { type: 'text', text: 'cited', citations: [{ type: 'web_search_result_location', url: 'https://example.test' }] },
+    ] }))).toMatchObject({ assistantMessage: { content: expect.any(Array) } })
+    for (const field of ['cache_creation', 'output_tokens_details'] as const) {
       expect(() => createAnthropicNativeHistoryArtifactV1(snapshot({
         usage: { ...usage, [field]: { future: true } },
       }))).toThrow(AnthropicNativeContentBlocksV1Error)

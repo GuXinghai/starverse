@@ -108,11 +108,15 @@ describe('DeepSeek curated model metadata seed', () => {
       displayName: 'DeepSeek V4 Flash',
       capabilitySeed: {
         textChat: true,
+        reasoning: 'supported',
+        functionCalling: true,
+        structuredOutput: true,
         thinkingMode: 'supported',
         contextLength: 1000000,
         maxOutputTokens: 384000,
         tools: true,
         jsonOutput: true,
+        reasoningEffort: ['high', 'max'],
       },
       pricingSeed: {
         inputCacheHitPer1MTokens: '0.0028',
@@ -131,6 +135,13 @@ describe('DeepSeek curated model metadata seed', () => {
       source: 'deepseek_pricing_metadata',
       confidence: 'curated',
       displayName: 'DeepSeek V4 Pro',
+      capabilitySeed: {
+        reasoning: 'supported',
+        thinkingMode: 'supported',
+        reasoningEffort: ['high', 'max'],
+        tools: true,
+        jsonOutput: true,
+      },
       pricingSeed: {
         inputCacheHitPer1MTokens: '0.003625',
         inputCacheMissPer1MTokens: '0.435',
@@ -179,6 +190,14 @@ describe('DeepSeek curated model metadata seed', () => {
       confidence: 'provider_reported',
       pricingSeed: { source: 'deepseek_pricing_metadata' },
     })
+    expect(result.ok ? result.sourceDocuments.map((entry) => entry.source) : []).toEqual([
+      'deepseek_list_models_api_docs',
+      'deepseek_models_pricing_docs',
+      'deepseek_api_intro_docs',
+      'deepseek_thinking_mode_docs',
+      'deepseek_tool_calls_docs',
+      'deepseek_json_output_docs',
+    ])
     expect(result.ok && result.models.some((model) => model.nativeModelId === 'deepseek-chat')).toBe(true)
   })
 })

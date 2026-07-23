@@ -133,6 +133,16 @@ describe('DeepSeek stable model evidence V2 service', () => {
     } finally { db.close() }
   })
 
+  it('accepts Electron session.fetch responses that omit Response.url', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValue(response(modelResponse(), { url: '' }))
+      const service = createDeepSeekStableModelEvidenceV2Service({ db, credentialService: credentialService(), nowMs: () => 100 })
+      await expect(service.refresh({ expectedCredentialRevision: 1, expectedCredentialScopeId: scope, endpointProfile: profile }))
+        .resolves.toMatchObject({ rowGeneration: 1, modelCount: 2 })
+    } finally { db.close() }
+  })
+
   it('preserves the last complete success across HTTP, endpoint, decode and premature-body failures', async () => {
     const db = database()
     try {

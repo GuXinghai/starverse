@@ -15,7 +15,6 @@ import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/r
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
-import { decodeAssistantAnswerGenerationSnapshotV2 } from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import {
   decodeOpenRouterImageEditResendCommandV2,
   decodeOpenRouterImageRegenerateCommandV2,
@@ -88,26 +87,6 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       throw new Error('BOUND_ENDPOINT_DESCRIPTOR_PROVENANCE_MISMATCH')
     }
   }
-  function loadRegenerateSnapshotAttachments(command: OpenRouterImageRegenerateCommandV2): unknown {
-    const row = input.db.prepare(`SELECT snapshot.canonical_json AS canonicalJson
-      FROM branch_v2 AS branch
-      JOIN branch_choice_v2 AS choice ON choice.branch_id=branch.branch_id AND choice.question_id=?
-      JOIN generation_operation_v2 AS operation ON operation.result_answer_root_id=choice.chosen_answer_root_id
-      JOIN assistant_generation_snapshot_v2 AS snapshot ON snapshot.operation_id=operation.operation_id
-      WHERE branch.branch_id=? AND branch.deleted_at_ms IS NULL
-        AND branch.head_message_id=? AND choice.chosen_answer_root_id=?`).get(
-      command.questionId.value, command.branchId.value, command.expectedHeadMessageId.value,
-      command.expectedHeadMessageId.value,
-    ) as { canonicalJson?: unknown } | undefined
-    if (!row || typeof row.canonicalJson !== 'string') {
-      throw new Error('GENERATION_V2_OPENROUTER_IMAGE_REGENERATE_SOURCE_SNAPSHOT_INVALID')
-    }
-    const snapshot = decodeAssistantAnswerGenerationSnapshotV2(row.canonicalJson)
-    // Regenerate resolves current provider/config facts, but attachment references
-    // are historical message facts. In particular this preserves URL strings without
-    // consulting the current composer or attempting a fresh download.
-    return projectGenerationCommandAttachmentsV2(snapshot.semanticIntent.attachments)
-  }
   function currentSelection(context: GenerationV2AuthorityTransactionContextV2, command: CurrentCommand,
     descriptor: Awaited<ReturnType<typeof descriptorAuthority.resolve>>, commandFacts: GenerationCommandFactsAuthorityV2,
     freshness: ReturnType<OpenRouterImageSettingsRepo['readOrRestore']>['settings']['pair']) {
@@ -176,9 +155,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       credentialScopeId: status.credentialScopeId, settings: freshness, signal })
     try { return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       assertDescriptorCurrent(descriptor)
-      const sourceAttachments = command.kind === 'openrouter_image_regenerate'
-        ? loadRegenerateSnapshotAttachments(command)
-        : projectGenerationCommandAttachmentsV2(command.commandAttachments)
+      const sourceAttachments = projectGenerationCommandAttachmentsV2(command.commandAttachments)
       const pending = command.kind === 'openrouter_image_regenerate'
         ? graphRepo.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: 'regenerate_question', branchId: command.branchId.value,
           questionId: command.questionId.value, targetAnswerRootId: null, expectedHeadMessageId: command.expectedHeadMessageId.value,

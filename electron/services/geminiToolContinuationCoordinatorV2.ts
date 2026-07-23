@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GeminiGenerateContentNativeHistoryV2Repo } from '../../infra/db/repo/geminiGenerateContentNativeHistoryV2Repo'
 import { GenerationExecutionV2Repo } from '../../infra/db/repo/generationExecutionV2Repo'
@@ -6,6 +7,7 @@ import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
+import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import {
   decodeGeminiToolContinuationCommandV2,
@@ -31,6 +33,7 @@ export function createGeminiToolContinuationCoordinatorV2(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
   nowMs?: () => number
+  attachmentBlobStore?: Epoch2AttachmentBlobStoreV2
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const executionRepo = new GenerationExecutionV2Repo(input.db, nowMs)
@@ -38,6 +41,7 @@ export function createGeminiToolContinuationCoordinatorV2(input: Readonly<{
   const historyRepo = new GeminiGenerateContentNativeHistoryV2Repo(input.db)
   const graphRepo = new ConversationGraphV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
+  const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
 
   function replay(command: GeminiToolContinuationCommandV2): GenerationTextCommandResultV2 | null {
     const requestSequence = command.priorRequestSequence + 1
@@ -61,7 +65,7 @@ export function createGeminiToolContinuationCoordinatorV2(input: Readonly<{
               stableSerializeProviderRequestV2(record.response) !== stableSerializeProviderRequestV2(output.response) ||
               (record.sideEffectPolicy === 'confirmation_required_each_execution') !== output.userConfirmedExternalSideEffect
           })) invalid()
-      const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution, history, toolRegistry })
+      const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
       const request = requestRepo.replayPrepared(context, execution, preparedRequest)
       if (request.continuationCommandFingerprint !== command.requestFingerprint) invalid()
       return issueGenerationTextCommandResultV2({ kind: 'idempotent_replay', execution,
@@ -90,7 +94,7 @@ export function createGeminiToolContinuationCoordinatorV2(input: Readonly<{
       if (!toolRegistry) invalid()
       const at = nowMs()
       const history = historyRepo.prepareToolContinuationHistory(context, execution, command, toolRegistry, at)
-      const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution, history, toolRegistry })
+      const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
       const existing = input.db.prepare('SELECT 1 FROM generation_request_v2 WHERE operation_id=? AND request_sequence=?')
         .get(command.operationId.value, history.requestSequence)
       const request = existing ? requestRepo.replayPrepared(context, execution, preparedRequest)

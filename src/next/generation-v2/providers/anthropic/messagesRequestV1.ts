@@ -17,8 +17,44 @@ import {
 } from './messagesIntentProjectionV1'
 
 export const ANTHROPIC_MESSAGES_REQUEST_MAX_BYTES_V1 = 20 * 1_024 * 1_024
+export type AnthropicMessagesCacheControlV1 = Readonly<{
+  type: 'ephemeral'
+  ttl?: '5m' | '1h'
+}>
+export type AnthropicMessagesUserTextBlockV1 = Readonly<{
+  type: 'text'
+  text: string
+  cache_control?: AnthropicMessagesCacheControlV1
+}>
+export type AnthropicMessagesImageBlockV1 = Readonly<{
+  type: 'image'
+  source: Readonly<
+    | { type: 'base64'; media_type: string; data: string }
+    | { type: 'url'; url: string }
+    | { type: 'file'; file_id: string }
+  >
+  cache_control?: AnthropicMessagesCacheControlV1
+}>
+export type AnthropicMessagesDocumentBlockV1 = Readonly<{
+  type: 'document'
+  source: Readonly<
+    | { type: 'base64'; media_type: string; data: string }
+    | { type: 'text'; media_type: 'text/plain'; data: string }
+    | { type: 'url'; url: string }
+    | { type: 'file'; file_id: string }
+    | { type: 'content'; content: readonly AnthropicMessagesUserTextBlockV1[] }
+  >
+  title?: string
+  context?: string
+  citations?: Readonly<{ enabled: boolean }>
+  cache_control?: AnthropicMessagesCacheControlV1
+}>
+export type AnthropicMessagesUserContentBlockV1 =
+  | AnthropicMessagesUserTextBlockV1
+  | AnthropicMessagesImageBlockV1
+  | AnthropicMessagesDocumentBlockV1
 export type AnthropicMessagesRequestMessageV1 =
-  | Readonly<{ role: 'user'; content: string | readonly AnthropicMessagesToolResultBlockV1[] }>
+  | Readonly<{ role: 'user'; content: string | readonly (AnthropicMessagesUserContentBlockV1 | AnthropicMessagesToolResultBlockV1)[] }>
   | Readonly<{ role: 'assistant'; content: readonly AnthropicNativeContentBlockV1[] }>
 export type AnthropicMessagesToolResultBlockV1 = Readonly<{
   type: 'tool_result'
@@ -27,9 +63,24 @@ export type AnthropicMessagesToolResultBlockV1 = Readonly<{
   is_error?: boolean
 }>
 export type AnthropicMessagesToolDefinitionV1 = Readonly<{
+  type?: undefined
   name: string
   description?: string
   input_schema: PlainJsonV1
+  cache_control?: AnthropicMessagesCacheControlV1
+}> | Readonly<{
+  type: 'web_search_20250305'
+  name: 'web_search'
+  max_uses?: number
+  allowed_domains?: readonly string[]
+  blocked_domains?: readonly string[]
+  user_location?: Readonly<{
+    type: 'approximate'
+    city?: string
+    region?: string
+    country?: string
+    timezone?: string
+  }>
 }>
 export type AnthropicMessagesToolChoiceV1 =
   | Readonly<{ type: 'auto' | 'any' | 'none' }>
@@ -137,12 +188,78 @@ function deepFreeze(value: unknown): unknown {
   }
   return value
 }
+function decodeCacheControl(value: unknown): AnthropicMessagesCacheControlV1 {
+  const input = closedObject(value, ['type', 'ttl'], ['type'])
+  if (input.type !== 'ephemeral' || (input.ttl !== undefined && input.ttl !== '5m' && input.ttl !== '1h')) {
+    return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
+  }
+  return Object.freeze({ type: 'ephemeral' as const, ...(input.ttl === undefined ? {} : { ttl: input.ttl }) })
+}
+function decodeUserContentBlock(value: unknown): AnthropicMessagesUserContentBlockV1 | AnthropicMessagesToolResultBlockV1 {
+  const discriminator = closedObject(value, [
+    'type', 'text', 'cache_control', 'source', 'title', 'context', 'citations',
+    'tool_use_id', 'content', 'is_error', 'media_type', 'data', 'url', 'file_id',
+  ], ['type'])
+  if (discriminator.type === 'tool_result') return decodeToolResultBlock(value)
+  if (discriminator.type === 'text') {
+    const block = closedObject(value, ['type', 'text', 'cache_control'], ['type', 'text'])
+    return Object.freeze({ type: 'text' as const, text: nonEmptyString(block.text),
+      ...(block.cache_control === undefined ? {} : { cache_control: decodeCacheControl(block.cache_control) }) })
+  }
+  if (discriminator.type === 'image') {
+    const block = closedObject(value, ['type', 'source', 'cache_control'], ['type', 'source'])
+    const source = closedObject(block.source, ['type', 'media_type', 'data', 'url', 'file_id'], ['type'])
+    let decodedSource: AnthropicMessagesImageBlockV1['source']
+    if (source.type === 'base64') decodedSource = Object.freeze({ type: 'base64', media_type: nonEmptyString(source.media_type), data: nonEmptyString(source.data) })
+    else if (source.type === 'url') decodedSource = Object.freeze({ type: 'url', url: nonEmptyString(source.url) })
+    else if (source.type === 'file') decodedSource = Object.freeze({ type: 'file', file_id: nonEmptyString(source.file_id) })
+    else return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
+    return Object.freeze({ type: 'image' as const, source: decodedSource,
+      ...(block.cache_control === undefined ? {} : { cache_control: decodeCacheControl(block.cache_control) }) })
+  }
+  if (discriminator.type === 'document') {
+    const block = closedObject(value, ['type', 'source', 'title', 'context', 'citations', 'cache_control'], ['type', 'source'])
+    const source = closedObject(block.source, ['type', 'media_type', 'data', 'url', 'file_id', 'content'], ['type'])
+    let decodedSource: AnthropicMessagesDocumentBlockV1['source']
+    if (source.type === 'base64') decodedSource = Object.freeze({ type: 'base64', media_type: nonEmptyString(source.media_type), data: nonEmptyString(source.data) })
+    else if (source.type === 'text') {
+      if (source.media_type !== 'text/plain') return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
+      decodedSource = Object.freeze({ type: 'text', media_type: 'text/plain', data: nonEmptyString(source.data) })
+    } else if (source.type === 'url') decodedSource = Object.freeze({ type: 'url', url: nonEmptyString(source.url) })
+    else if (source.type === 'file') decodedSource = Object.freeze({ type: 'file', file_id: nonEmptyString(source.file_id) })
+    else if (source.type === 'content') {
+      const content = denseArray(source.content, ANTHROPIC_NATIVE_HISTORY_MAX_BLOCKS_V1).map((item) => {
+        const decoded = decodeUserContentBlock(item)
+        if (decoded.type !== 'text') return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
+        return decoded
+      }) as readonly AnthropicMessagesUserTextBlockV1[]
+      decodedSource = Object.freeze({ type: 'content', content: Object.freeze(content) })
+    } else return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
+    let citations: AnthropicMessagesDocumentBlockV1['citations'] | undefined
+    if (block.citations !== undefined) {
+      const decoded = closedObject(block.citations, ['enabled'], ['enabled'])
+      if (typeof decoded.enabled !== 'boolean') return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
+      citations = Object.freeze({ enabled: decoded.enabled })
+    }
+    return Object.freeze({ type: 'document' as const, source: decodedSource,
+      ...(block.title === undefined ? {} : { title: nonEmptyString(block.title) }),
+      ...(block.context === undefined ? {} : { context: nonEmptyString(block.context) }),
+      ...(citations === undefined ? {} : { citations }),
+      ...(block.cache_control === undefined ? {} : { cache_control: decodeCacheControl(block.cache_control) }) })
+  }
+  return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
+}
 function decodeBlock(value: unknown): AnthropicNativeContentBlockV1 {
-  const discriminator = closedObject(value, ['type', 'text', 'citations', 'thinking', 'signature', 'data', 'id', 'name', 'input', 'caller'], ['type'])
+  const discriminator = closedObject(value, [
+    'type', 'text', 'citations', 'thinking', 'signature', 'data', 'id', 'name', 'input', 'caller', 'tool_use_id', 'content',
+  ], ['type'])
   if (discriminator.type === 'text') {
     const block = closedObject(value, ['type', 'text', 'citations'], ['type', 'text', 'citations'])
-    if (typeof block.text !== 'string' || block.citations !== null) return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
-    return Object.freeze({ type: 'text', text: block.text, citations: null })
+    if (typeof block.text !== 'string' || (block.citations !== null && !Array.isArray(block.citations))) {
+      return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
+    }
+    return Object.freeze({ type: 'text', text: block.text,
+      citations: block.citations === null ? null : clonePlainJson(block.citations) as readonly PlainJsonV1[] })
   }
   if (discriminator.type === 'thinking') {
     const block = closedObject(value, ['type', 'thinking', 'signature'], ['type', 'thinking', 'signature'])
@@ -162,6 +279,14 @@ function decodeBlock(value: unknown): AnthropicNativeContentBlockV1 {
       caller: Object.freeze({ type: 'direct' as const }),
     })
   }
+  if (discriminator.type === 'server_tool_use') {
+    const block = closedObject(value, ['type', 'id', 'name', 'input'], ['type', 'id', 'name', 'input'])
+    return Object.freeze({ type: 'server_tool_use' as const, id: nonEmptyString(block.id), name: nonEmptyString(block.name), input: clonePlainJson(block.input) })
+  }
+  if (discriminator.type === 'web_search_tool_result') {
+    const block = closedObject(value, ['type', 'tool_use_id', 'content'], ['type', 'tool_use_id', 'content'])
+    return Object.freeze({ type: 'web_search_tool_result' as const, tool_use_id: nonEmptyString(block.tool_use_id), content: clonePlainJson(block.content) })
+  }
   return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
 }
 function decodeToolResultBlock(value: unknown): AnthropicMessagesToolResultBlockV1 {
@@ -179,14 +304,43 @@ function decodeToolResultBlock(value: unknown): AnthropicMessagesToolResultBlock
 }
 function decodeTools(value: unknown): readonly AnthropicMessagesToolDefinitionV1[] {
   return Object.freeze(denseArray(value, 128).map((raw) => {
-    const tool = closedObject(raw, ['name', 'description', 'input_schema'], ['name', 'input_schema'])
-    if (tool.description !== undefined && typeof tool.description !== 'string') {
+    const discriminator = closedObject(raw, ['type', 'name', 'description', 'input_schema', 'cache_control', 'max_uses',
+      'allowed_domains', 'blocked_domains', 'user_location'], ['name'])
+    if (discriminator.type === 'web_search_20250305') {
+      if (discriminator.name !== 'web_search' || (discriminator.max_uses !== undefined &&
+          (!Number.isSafeInteger(discriminator.max_uses) || (discriminator.max_uses as number) < 1)) ||
+          (discriminator.allowed_domains !== undefined && !Array.isArray(discriminator.allowed_domains)) ||
+          (discriminator.blocked_domains !== undefined && !Array.isArray(discriminator.blocked_domains))) {
+        return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
+      }
+      const domains = (value: unknown): readonly string[] | undefined => value === undefined ? undefined : Object.freeze(
+        denseArray(value, 100).map((item) => nonEmptyString(item)),
+      )
+      let location: Readonly<{ type: 'approximate'; city?: string; region?: string; country?: string; timezone?: string }> | undefined
+      if (discriminator.user_location !== undefined) {
+        const rawLocation = closedObject(discriminator.user_location, ['type', 'city', 'region', 'country', 'timezone'], ['type'])
+        if (rawLocation.type !== 'approximate') return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
+        location = Object.freeze({ type: 'approximate',
+          ...(rawLocation.city === undefined ? {} : { city: nonEmptyString(rawLocation.city) }),
+          ...(rawLocation.region === undefined ? {} : { region: nonEmptyString(rawLocation.region) }),
+          ...(rawLocation.country === undefined ? {} : { country: nonEmptyString(rawLocation.country) }),
+          ...(rawLocation.timezone === undefined ? {} : { timezone: nonEmptyString(rawLocation.timezone) }) })
+      }
+      return Object.freeze({ type: 'web_search_20250305' as const, name: 'web_search' as const,
+        ...(discriminator.max_uses === undefined ? {} : { max_uses: discriminator.max_uses as number }),
+        ...(domains(discriminator.allowed_domains) === undefined ? {} : { allowed_domains: domains(discriminator.allowed_domains)! }),
+        ...(domains(discriminator.blocked_domains) === undefined ? {} : { blocked_domains: domains(discriminator.blocked_domains)! }),
+        ...(location === undefined ? {} : { user_location: location }) })
+    }
+    if (discriminator.type !== undefined || discriminator.name === undefined || discriminator.input_schema === undefined ||
+        (discriminator.description !== undefined && typeof discriminator.description !== 'string')) {
       return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
     }
     return Object.freeze({
-      name: nonEmptyString(tool.name),
-      ...(tool.description === undefined ? {} : { description: tool.description }),
-      input_schema: clonePlainJson(tool.input_schema),
+      name: nonEmptyString(discriminator.name),
+      ...(discriminator.description === undefined ? {} : { description: discriminator.description }),
+      input_schema: clonePlainJson(discriminator.input_schema),
+      ...(discriminator.cache_control === undefined ? {} : { cache_control: decodeCacheControl(discriminator.cache_control) }),
     })
   }))
 }
@@ -208,7 +362,7 @@ function decodeMessages(value: unknown): readonly AnthropicMessagesRequestMessag
       if (typeof message.content === 'string') return Object.freeze({ role: 'user' as const, content: nonEmptyString(message.content) })
       return Object.freeze({
         role: 'user' as const,
-        content: Object.freeze(denseArray(message.content, ANTHROPIC_NATIVE_HISTORY_MAX_BLOCKS_V1).map(decodeToolResultBlock)),
+        content: Object.freeze(denseArray(message.content, ANTHROPIC_NATIVE_HISTORY_MAX_BLOCKS_V1).map(decodeUserContentBlock)),
       })
     }
     if (message.role === 'assistant') {

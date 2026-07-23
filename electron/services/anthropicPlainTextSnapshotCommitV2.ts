@@ -29,6 +29,7 @@ import {
   RuntimeCapabilityV2Repo,
   isRuntimeCapabilityRepositoryFactV2,
 } from '../../infra/db/repo/runtimeCapabilityV2Repo'
+import { isAnthropicMessagesFileDescriptorV2, type AnthropicMessagesFileDescriptorV2 } from '../../infra/db/repo/anthropicMessagesFileDescriptorV2Repo'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
 import {
   isAnthropicPlainTextInitialSendCommandV2,
@@ -77,11 +78,29 @@ function fail(code: AnthropicPlainTextSnapshotCommitV2Error['code']): never {
 function assertPlainTextFacts(facts: GenerationCommandFactsAuthorityV2, context: GenerationV2AuthorityTransactionContextV2, toolRegistry?: ToolRegistryRepositoryFactV2 | null): void {
   const intent = facts.semanticIntent
   const tools = intent.tools ?? { mode: 'disabled' as const }
-  if (intent.attachments.length !== 0 || facts.attachmentSet.attachments.length !== 0 ||
-      facts.attachmentSet.providerFileRequirements.length !== 0 || facts.attachmentSet.requiresProviderFileAuthority ||
-      intent.web.mode !== 'disabled' || intent.image.mode !== 'disabled' ||
+  if (intent.attachments.length !== facts.attachmentSet.attachments.length + facts.attachmentSet.urlReferenceIntents.length ||
+      intent.image.mode !== 'disabled' ||
       intent.providerExtension.kind !== 'anthropic_messages') {
     throw new AnthropicPlainTextSnapshotCommitV2Error('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
+  }
+  for (const attachment of intent.attachments) {
+    if (!attachment.include) continue
+    if (attachment.kind === 'url_reference') {
+      if (attachment.mediaKind !== 'image' && attachment.mediaKind !== 'document') {
+        throw new AnthropicPlainTextSnapshotCommitV2Error('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
+      }
+      continue
+    }
+    const resolved = facts.attachmentSet.attachments.find((item) => item.intent === attachment)
+    const mime = resolved?.revision.blob.mime ?? ''
+    const requiresFile = facts.attachmentSet.providerFileRequirements.some((item) => item.assetRevisionId.value === attachment.assetRevisionId.value)
+    const admissible = attachment.sendAs === 'provider_file' && attachment.conversion === 'none' && requiresFile ||
+      attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' && mime.startsWith('text/') ||
+      attachment.sendAs === 'image_reference' && attachment.conversion === 'none' && resolved?.revision.assetKind === 'image' && mime.startsWith('image/') ||
+      attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf' && mime === 'application/pdf' && requiresFile
+    if (!resolved || !admissible || (requiresFile && !['provider_file', 'converted_document'].includes(attachment.sendAs))) {
+      throw new AnthropicPlainTextSnapshotCommitV2Error('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
+    }
   }
   if (tools.mode === 'enabled') {
     if (!toolRegistry || !isToolRegistryRepositoryFactForContextV2(toolRegistry, context) ||
@@ -92,6 +111,34 @@ function assertPlainTextFacts(facts: GenerationCommandFactsAuthorityV2, context:
   } else if (toolRegistry !== undefined && toolRegistry !== null) {
     throw new AnthropicPlainTextSnapshotCommitV2Error('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
   }
+}
+
+function snapshotAttachmentBindings(
+  facts: GenerationCommandFactsAuthorityV2,
+  binding: VerifiedAnthropicProviderBindingAuthorityV2,
+  descriptors: readonly AnthropicMessagesFileDescriptorV2[],
+): readonly Readonly<Record<string, unknown>>[] {
+  const requirements = facts.attachmentSet.providerFileRequirements
+  if (requirements.length !== descriptors.length || descriptors.some((descriptor) =>
+      !isAnthropicMessagesFileDescriptorV2(descriptor) ||
+      descriptor.credentialScopeId.value !== binding.binding.credentialScopeId.value ||
+      descriptor.endpointProfileId.value !== binding.binding.endpointProfileId.value)) {
+    return fail('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
+  }
+  const byRevision = new Map(descriptors.map((descriptor) => [descriptor.assetRevisionId.value, descriptor]))
+  return Object.freeze(requirements.map((requirement) => {
+    const descriptor = byRevision.get(requirement.assetRevisionId.value)
+    if (!descriptor || descriptor.assetSha256.value !== requirement.assetSha256.value) return fail('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_AUTHORITY_INVALID')
+    return Object.freeze({
+      assetRevisionId: requirement.assetRevisionId.value,
+      providerFileDescriptor: Object.freeze({
+        descriptorId: descriptor.descriptorId.value,
+        descriptorRevision: descriptor.descriptorRevision.value,
+        descriptorHash: descriptor.descriptorHash.value,
+        providerFileId: descriptor.fileId,
+      }),
+    })
+  }))
 }
 
 function snapshotToolAuthority(facts: GenerationCommandFactsAuthorityV2, toolRegistry?: ToolRegistryRepositoryFactV2 | null) {
@@ -113,6 +160,7 @@ function commitCurrentVerifiedSnapshot(input: Readonly<{
   actionKind: 'regenerate_question' | 'edit_resend'
   commandFingerprint: string
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
+  attachmentDescriptors?: readonly AnthropicMessagesFileDescriptorV2[]
 }>): AnthropicPlainTextSnapshotCommitResultV2 {
   assertPlainTextFacts(input.commandFacts, input.context, input.toolRegistry)
   input.binding.assertCurrent()
@@ -150,7 +198,7 @@ function commitCurrentVerifiedSnapshot(input: Readonly<{
         semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
         snapshotHash: input.capability.snapshot.snapshotHash.value,
       },
-      attachmentProviderFileBindings: [],
+      attachmentProviderFileBindings: snapshotAttachmentBindings(input.commandFacts, input.binding, input.attachmentDescriptors ?? []),
       toolAuthority: snapshotToolAuthority(input.commandFacts, input.toolRegistry),
     }),
   )
@@ -191,6 +239,7 @@ export function commitVerifiedAnthropicPlainTextInitialSnapshotV2(input: Readonl
   binding: VerifiedAnthropicProviderBindingAuthorityV2
   capability: VerifiedAnthropicRuntimeCapabilityAuthorityV2
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
+  attachmentDescriptors?: readonly AnthropicMessagesFileDescriptorV2[]
 }>): AnthropicPlainTextSnapshotCommitResultV2 {
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
@@ -248,7 +297,7 @@ export function commitVerifiedAnthropicPlainTextInitialSnapshotV2(input: Readonl
         semanticFieldsDigest: input.capability.snapshot.semanticFieldsDigest.value,
         snapshotHash: input.capability.snapshot.snapshotHash.value,
       },
-      attachmentProviderFileBindings: [],
+      attachmentProviderFileBindings: snapshotAttachmentBindings(input.commandFacts, input.binding, input.attachmentDescriptors ?? []),
       toolAuthority: snapshotToolAuthority(input.commandFacts, input.toolRegistry),
     }),
   )
@@ -305,8 +354,7 @@ export function commitAnthropicPlainTextRetrySnapshotV2(input: Readonly<{
       input.target.operation.resultAnswerRootId.value !== input.command.targetAnswerRootId.value ||
       input.target.operation.questionId.value !== input.command.questionId.value ||
       input.target.snapshot.providerBinding.providerId.value !== 'anthropic' ||
-      input.target.snapshot.providerBinding.operation !== 'text' ||
-      input.target.snapshot.attachmentProviderFileBindings.length !== 0) {
+      input.target.snapshot.providerBinding.operation !== 'text') {
     fail('GENERATION_V2_ANTHROPIC_SNAPSHOT_COMMIT_INPUT_INVALID')
   }
   const targetPayload = JSON.parse(input.target.snapshot.canonicalJson) as Record<string, unknown>
@@ -355,6 +403,7 @@ export function commitVerifiedAnthropicPlainTextRegenerateSnapshotV2(input: Read
   binding: VerifiedAnthropicProviderBindingAuthorityV2
   capability: VerifiedAnthropicRuntimeCapabilityAuthorityV2
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
+  attachmentDescriptors?: readonly AnthropicMessagesFileDescriptorV2[]
 }>): AnthropicPlainTextSnapshotCommitResultV2 {
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
@@ -381,6 +430,7 @@ export function commitVerifiedAnthropicPlainTextRegenerateSnapshotV2(input: Read
     actionKind: 'regenerate_question',
     commandFingerprint: input.command.requestFingerprint,
     toolRegistry: input.toolRegistry,
+    attachmentDescriptors: input.attachmentDescriptors ?? [],
   })
 }
 
@@ -394,6 +444,7 @@ export function commitVerifiedAnthropicPlainTextEditResendSnapshotV2(input: Read
   binding: VerifiedAnthropicProviderBindingAuthorityV2
   capability: VerifiedAnthropicRuntimeCapabilityAuthorityV2
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
+  attachmentDescriptors?: readonly AnthropicMessagesFileDescriptorV2[]
 }>): AnthropicPlainTextSnapshotCommitResultV2 {
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
@@ -421,5 +472,6 @@ export function commitVerifiedAnthropicPlainTextEditResendSnapshotV2(input: Read
     actionKind: 'edit_resend',
     commandFingerprint: input.command.requestFingerprint,
     toolRegistry: input.toolRegistry,
+    attachmentDescriptors: input.attachmentDescriptors ?? [],
   })
 }

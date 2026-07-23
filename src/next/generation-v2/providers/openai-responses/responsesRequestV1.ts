@@ -13,6 +13,8 @@ export const OPENAI_RESPONSES_REQUEST_MAX_BYTES_V1 = 28 * 1_024 * 1_024
 
 type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 type ReasoningSummary = 'auto' | 'concise' | 'detailed'
+type ReasoningMode = 'standard' | 'pro'
+type ReasoningContext = 'auto' | 'current_turn' | 'all_turns'
 type FunctionTool = Readonly<{
   type: 'function'
   name: string
@@ -42,9 +44,10 @@ export type OpenAIResponsesRequestV1 = Readonly<{
   input: readonly OpenAIResponsesReplayItemV1[]
   stream: true
   store: false
+  // Legacy-compatible under store:false: encrypted reasoning is already returned by default.
   include: readonly ['reasoning.encrypted_content']
   instructions?: string
-  reasoning?: Readonly<{ effort?: ReasoningEffort; summary?: ReasoningSummary }>
+  reasoning?: Readonly<{ effort?: ReasoningEffort; summary?: ReasoningSummary; mode?: ReasoningMode; context?: ReasoningContext }>
   temperature?: number
   top_p?: number
   max_output_tokens?: number
@@ -144,15 +147,21 @@ function deepFreeze(value: unknown): unknown {
 
 function decodeReasoning(value: unknown): OpenAIResponsesRequestV1['reasoning'] {
   if (value === undefined) return undefined
-  const input = closedObject(value, ['effort', 'summary'], [])
+  const input = closedObject(value, ['effort', 'summary', 'mode', 'context'], [])
   const efforts = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
   const summaries = new Set(['auto', 'concise', 'detailed'])
+  const modes = new Set(['standard', 'pro'])
+  const contexts = new Set(['auto', 'current_turn', 'all_turns'])
   if (input.effort !== undefined && !efforts.has(input.effort as string)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   if (input.summary !== undefined && !summaries.has(input.summary as string)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+  if (input.mode !== undefined && !modes.has(input.mode as string)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+  if (input.context !== undefined && !contexts.has(input.context as string)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   if (Object.keys(input).length === 0) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   return Object.freeze({
     ...(input.effort === undefined ? {} : { effort: input.effort as ReasoningEffort }),
     ...(input.summary === undefined ? {} : { summary: input.summary as ReasoningSummary }),
+    ...(input.mode === undefined ? {} : { mode: input.mode as ReasoningMode }),
+    ...(input.context === undefined ? {} : { context: input.context as ReasoningContext }),
   })
 }
 

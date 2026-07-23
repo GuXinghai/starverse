@@ -119,8 +119,7 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
             questionId: questionId(), answerRootId: answerId(), userBody: command.prompt, createdAtMs: nowMs() })
         const prompt = command.kind === 'gemini_interactions_image_regenerate'
           ? promptForQuestion(input.db, command.questionId.value) : command.prompt
-        const attachments = command.kind === 'gemini_interactions_image_regenerate'
-          ? [] : projectGenerationCommandAttachmentsV2(command.commandAttachments)
+        const attachments = projectGenerationCommandAttachmentsV2(command.commandAttachments)
         return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo,
           pending.conversationId.value, attachments, undefined, (commandFacts) =>
             withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2({ context,

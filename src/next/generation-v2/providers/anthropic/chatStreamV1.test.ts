@@ -95,6 +95,28 @@ describe('Anthropic Messages named-SSE V1', () => {
       .toThrow('GENERATION_V2_ANTHROPIC_STREAM_TERMINAL_INVALID')
   })
 
+  it('preserves web-search server blocks, result citations, and pause_turn over SSE', () => {
+    const stream = new AnthropicMessagesChatStreamV1()
+    const wire = startMessage() +
+      blockStart(0, { type: 'server_tool_use', id: 'srv_1', name: 'web_search', input: { query: 'Starverse' } }) +
+      blockStop(0) +
+      blockStart(1, { type: 'web_search_tool_result', tool_use_id: 'srv_1', content: [
+        { type: 'web_search_result_location', url: 'https://example.test', title: 'Example', encrypted_index: 'idx', cited_text: 'result' },
+      ] }) +
+      blockStop(1) +
+      blockStart(2, { type: 'text', text: '', citations: [{ type: 'web_search_result_location', url: 'https://example.test' }] }) +
+      blockDelta(2, { type: 'text_delta', text: 'answer' }) + blockStop(2) +
+      messageDelta('pause_turn') + messageStop()
+    stream.push(encoder.encode(wire))
+    const snapshot = stream.finish()
+    expect(snapshot.stopReason).toBe('pause_turn')
+    expect(snapshot.content).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'server_tool_use', id: 'srv_1' }),
+      expect.objectContaining({ type: 'web_search_tool_result', tool_use_id: 'srv_1' }),
+      expect.objectContaining({ type: 'text', text: 'answer', citations: [{ type: 'web_search_result_location', url: 'https://example.test' }] }),
+    ]))
+  })
+
   it('rejects deltas after block stop, duplicate block stop, and index holes', () => {
     for (const suffix of [
       blockStart(0, { type: 'text', text: '' }) + blockStop(0) + blockDelta(0, { type: 'text_delta', text: 'late' }),

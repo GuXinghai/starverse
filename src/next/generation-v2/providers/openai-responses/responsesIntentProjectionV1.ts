@@ -1,5 +1,6 @@
 import { projectGenerationIntentLayerV2 } from '../../domain/generationIntentProjectionV2'
 import { decodeResolvedGenerationIntentV2, type ResolvedGenerationIntentV2 } from '../../domain/resolvedGenerationIntentV2'
+import { requiresProviderFileBindingV2, type AttachmentIntentV2, type ManagedFileAttachmentIntentV2 } from '../../domain/generationIntentV2'
 import type { OpenAIResponsesToolV1 } from './responsesRequestV1'
 
 export type OpenAIResponsesIntentIssueV1 = Readonly<{
@@ -19,7 +20,7 @@ export type OpenAIResponsesIntentProjectionV1 = Readonly<{
   executionAuthority: 'none'
   intent: ResolvedGenerationIntentV2
   request: Readonly<{
-    reasoning?: Readonly<{ effort?: string; summary?: string }>
+    reasoning?: Readonly<{ effort?: string; summary?: string; mode?: 'standard' | 'pro'; context?: 'auto' | 'current_turn' | 'all_turns' }>
     generation: Readonly<{ maxOutputTokens?: number; verbosity?: string }>
     tools?: readonly OpenAIResponsesToolV1[]
     functionToolChoice?: Readonly<{ mode: 'omitted' | 'auto' | 'none' | 'required' | 'named'; toolId?: string }>
@@ -33,6 +34,13 @@ export type OpenAIResponsesIntentProjectionV1 = Readonly<{
 
 const CONTRACT = 'openai-responses-api-contract-20260715'
 const MODEL = 'openai-responses-gpt-5.6-capabilities-20260717'
+
+export function isOpenAIResponsesEncodedAttachmentIntentV1(
+  attachment: AttachmentIntentV2,
+): attachment is ManagedFileAttachmentIntentV2 | Extract<AttachmentIntentV2, { kind: 'url_reference' }> {
+  return requiresProviderFileBindingV2(attachment) ||
+    (attachment.kind === 'url_reference' && attachment.include && attachment.mediaKind === 'image')
+}
 
 export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesIntentProjectionV1 {
   const intent = decodeResolvedGenerationIntentV2(raw).value
@@ -57,11 +65,12 @@ export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesInt
     else if (key === 'temperature' || key === 'topP') reject(`generation.${key}`, 'OPENAI_CAPABILITY_UNAVAILABLE')
     else reject(`generation.${key}`, 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
   }
-  let reasoning: { effort?: string; summary?: string } | undefined
+  let reasoning: { effort?: string; summary?: string; mode?: 'standard' | 'pro'; context?: 'auto' | 'current_turn' | 'all_turns' } | undefined
   if (intent.reasoning.mode === 'disabled') accept('reasoning.mode', MODEL)
   else {
-    accept('reasoning.mode', MODEL)
-    reasoning = {}
+    encode('reasoning.mode', 'reasoning.mode', MODEL)
+    reasoning = { mode: intent.providerExtension.kind === 'openai_responses'
+      ? (intent.providerExtension.reasoningMode ?? 'standard') : 'standard' }
     if (intent.reasoning.effort !== undefined) { reasoning.effort = intent.reasoning.effort; encode('reasoning.effort', 'reasoning.effort', MODEL) }
     if (intent.reasoning.summary !== undefined) { reasoning.summary = intent.reasoning.summary; encode('reasoning.summary', 'reasoning.summary') }
     if (intent.reasoning.exclude !== undefined) reject('reasoning.exclude', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
@@ -124,14 +133,19 @@ export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesInt
     accept('attachments[].assetId', MODEL)
     accept('attachments[].assetRevisionId', MODEL)
     accept('attachments[].assetSha256', MODEL)
-    if (intent.attachments.some((attachment) => attachment.include)) {
-      encode('attachments[].include', 'input[].content[].input_file', MODEL)
-      encode('attachments[].sendAs', 'input[].content[].input_file', MODEL)
-      encode('attachments[].conversion', 'input[].content[].input_file', MODEL)
-    } else {
+    const included = intent.attachments.filter((attachment) => attachment.include)
+    if (included.length === 0) {
       accept('attachments[].include', MODEL)
       accept('attachments[].sendAs', MODEL)
       accept('attachments[].conversion', MODEL)
+    } else if (included.every(isOpenAIResponsesEncodedAttachmentIntentV1)) {
+      encode('attachments[].include', 'input[].content[].input_file|input_image', MODEL)
+      encode('attachments[].sendAs', 'input[].content[].input_file|input_image', MODEL)
+      encode('attachments[].conversion', 'input[].content[].input_file|input_image', MODEL)
+    } else {
+      reject('attachments[].include', 'OPENAI_FIELD_VALUE_UNSUPPORTED', 'input[].content[].input_file|input_image')
+      reject('attachments[].sendAs', 'OPENAI_FIELD_VALUE_UNSUPPORTED', 'input[].content[].input_file|input_image')
+      reject('attachments[].conversion', 'OPENAI_FIELD_VALUE_UNSUPPORTED', 'input[].content[].input_file|input_image')
     }
   }
 
@@ -156,6 +170,20 @@ export function projectOpenAIResponsesIntentV1(raw: unknown): OpenAIResponsesInt
     if (intent.providerExtension.serviceTier !== undefined) {
       serviceTier = intent.providerExtension.serviceTier
       encode('providerExtension.serviceTier', 'service_tier')
+    }
+    if (intent.providerExtension.reasoningMode !== undefined) {
+      if (intent.reasoning.mode === 'disabled') reject('providerExtension.reasoningMode', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD', 'reasoning.mode')
+      else {
+        if (reasoning) reasoning.mode = intent.providerExtension.reasoningMode
+        encode('providerExtension.reasoningMode', 'reasoning.mode', MODEL)
+      }
+    }
+    if (intent.providerExtension.reasoningContext !== undefined) {
+      if (intent.reasoning.mode === 'disabled') reject('providerExtension.reasoningContext', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD', 'reasoning.context')
+      else {
+        if (reasoning) reasoning.context = intent.providerExtension.reasoningContext
+        encode('providerExtension.reasoningContext', 'reasoning.context', MODEL)
+      }
     }
   } else if (intent.providerExtension.kind === 'anthropic_messages') {
     reject('providerExtension.kind', 'OPENAI_UNSUPPORTED_EXPLICIT_FIELD')

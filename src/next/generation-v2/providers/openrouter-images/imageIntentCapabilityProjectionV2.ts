@@ -68,7 +68,7 @@ const IMAGE_KEYS = [
 const REASONING_MODES = ['disabled', 'enabled'] as const satisfies readonly ReasoningIntentV2['mode'][]
 const WEB_MODES = ['disabled', 'provider_search'] as const satisfies readonly WebSearchIntentV2['mode'][]
 const TOOL_MODES = ['disabled', 'enabled'] as const satisfies readonly ToolPolicyIntentV2['mode'][]
-const PROVIDER_EXTENSION_KINDS = ['none', 'openai_responses', 'anthropic_messages', 'gemini_generate_content'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
+const PROVIDER_EXTENSION_KINDS = ['none', 'openrouter_chat', 'openai_responses', 'anthropic_messages', 'gemini_generate_content'] as const satisfies readonly ProviderSemanticExtensionV2['kind'][]
 type DeclaredTopLevelKey = typeof OPENROUTER_IMAGE_SEMANTIC_INTENT_KEYS_V2[number] |
   typeof OPENROUTER_IMAGE_NON_SEMANTIC_INTENT_KEYS_V2[number]
 const samplingKeysAreExhaustive: Exclude<keyof SamplingIntentV2, typeof SAMPLING_KEYS[number]> extends never ? true : never = true
@@ -150,7 +150,12 @@ export function projectOpenRouterImageIntentCapabilityV2(
   else if (intent.tools) acceptNoWire('tools.mode')
   if (intent.providerExtension) {
     if (intent.providerExtension.kind === 'none') acceptNoWire('providerExtension.kind')
-    else {
+    else if (intent.providerExtension.kind === 'openrouter_chat') {
+      reject('providerExtension.kind', 'UNSUPPORTED_EXPLICIT_FIELD')
+      if (intent.providerExtension.verbosity !== undefined) reject('providerExtension.verbosity', 'UNSUPPORTED_EXPLICIT_FIELD')
+      if (intent.providerExtension.parallelToolCalls !== undefined) reject('providerExtension.parallelToolCalls', 'UNSUPPORTED_EXPLICIT_FIELD')
+      if (intent.providerExtension.responseFormat !== undefined) reject('providerExtension.responseFormat', 'UNSUPPORTED_EXPLICIT_FIELD')
+    } else {
       reject('providerExtension.kind', 'UNSUPPORTED_EXPLICIT_FIELD')
       if (intent.providerExtension.kind === 'openai_responses') {
         if (intent.providerExtension.maxToolCalls !== undefined) reject('providerExtension.maxToolCalls', 'UNSUPPORTED_EXPLICIT_FIELD')

@@ -166,6 +166,14 @@ function attachmentForCommand(db: BetterSqlite3.Database, options: Readonly<{con
       conversionContractId: 'test-dfc-pdf', conversionRevision: '1', blob,
     })
     : sourceRevision
+  if (options.convertedPdf) {
+    db.prepare(`INSERT INTO dfc_conversion_output_v2 (
+      derived_asset_revision_id, source_asset_revision_id, target_kind, converter_contract_id,
+      converter_revision, conversion_settings_digest, warnings_json, created_at_ms
+    ) VALUES (?, ?, 'pdf_attachment', 'test-dfc-pdf', '1', ?, '[]', 90)`).run(
+      revision.assetRevisionId.value, sourceRevision.assetRevisionId.value, '0'.repeat(64),
+    )
+  }
   return Object.freeze({
     commandAttachment: Object.freeze({
       kind: 'managed_file',
@@ -186,7 +194,7 @@ function attachmentForCommand(db: BetterSqlite3.Database, options: Readonly<{con
 
 beforeEach(() => {
   mocks.fetch.mockReset()
-  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-17T12:00:00.000Z'))
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-23T12:00:00.000Z'))
 })
 afterEach(() => vi.restoreAllMocks())
 
@@ -237,7 +245,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         model: 'gpt-5.6-sol',
         input: [{ role: 'user', content: [{ type: 'input_text', text: 'hello' }] }],
         stream: true, store: false, include: ['reasoning.encrypted_content'],
-        reasoning: { effort: 'max', summary: 'auto' }, max_output_tokens: 2048,
+        reasoning: { effort: 'max', summary: 'auto', mode: 'standard' }, max_output_tokens: 2048,
         text: { verbosity: 'high' }, max_tool_calls: 4,
         parallel_tool_calls: false, service_tier: 'priority',
       })
@@ -469,7 +477,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
           toolId: 'tool:weather', kind: 'function', sideEffectPolicy: 'none',
           function: {
             name: 'weather', description: 'Lookup weather',
-            parameters: { type: 'object', properties: { city: { type: 'string' } } },
+            parameters: { type: 'object', properties: { city: { type: 'string' } } }, strict: false,
           },
         }],
       }, null)
@@ -722,7 +730,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
       }).run(created)
       expect(terminal).toMatchObject({
-        state: 'failed', errorCode: 'GENERATION_V2_OPENAI_RUNNER_PROVIDER_INCOMPLETE',
+        state: 'failed', errorCode: 'PROVIDER_RESPONSE_HTTP_ERROR',
       })
       expect(db.prepare("SELECT body_text AS body FROM message_body_v2 WHERE message_id='answer:2'").get())
         .toEqual({ body: 'terminal partial' })

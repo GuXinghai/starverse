@@ -18,6 +18,9 @@ export const DEEPSEEK_MODELS_DEFAULT_BASE_URL = 'https://api.deepseek.com' as co
 export const DEEPSEEK_LIST_MODELS_DOC_URL = 'https://api-docs.deepseek.com/api/list-models' as const
 export const DEEPSEEK_MODELS_PRICING_DOC_URL = 'https://api-docs.deepseek.com/quick_start/pricing' as const
 export const DEEPSEEK_API_INTRO_DOC_URL = 'https://api-docs.deepseek.com/api/deepseek-api' as const
+export const DEEPSEEK_THINKING_MODE_DOC_URL = 'https://api-docs.deepseek.com/guides/thinking_mode/' as const
+export const DEEPSEEK_TOOL_CALLS_DOC_URL = 'https://api-docs.deepseek.com/guides/tool_calls/' as const
+export const DEEPSEEK_JSON_OUTPUT_DOC_URL = 'https://api-docs.deepseek.com/guides/json_mode/' as const
 export const DEEPSEEK_ALIAS_DEPRECATION_AT_ISO = '2026-07-24T15:59:00.000Z' as const
 
 export type ProviderModelSourceKind =
@@ -61,6 +64,7 @@ export type ProviderModelAvailability = ProviderModelAvailabilityEnvelope<
     maxOutputTokens?: number
     tools?: boolean
     jsonOutput?: boolean
+    reasoningEffort?: readonly ('high' | 'max')[]
     fim?: boolean
     chatPrefixCompletion?: boolean
   }> & ProviderModelCapabilitySeed
@@ -79,6 +83,9 @@ export type DeepSeekModelSourceDocument = Readonly<{
     | 'deepseek_list_models_api_docs'
     | 'deepseek_models_pricing_docs'
     | 'deepseek_api_intro_docs'
+    | 'deepseek_thinking_mode_docs'
+    | 'deepseek_tool_calls_docs'
+    | 'deepseek_json_output_docs'
   url: string
   observedAtMs: number
 }>
@@ -145,6 +152,21 @@ function sourceDocuments(observedAtMs: number): DeepSeekModelSourceDocument[] {
     {
       source: 'deepseek_api_intro_docs',
       url: DEEPSEEK_API_INTRO_DOC_URL,
+      observedAtMs,
+    },
+    {
+      source: 'deepseek_thinking_mode_docs',
+      url: DEEPSEEK_THINKING_MODE_DOC_URL,
+      observedAtMs,
+    },
+    {
+      source: 'deepseek_tool_calls_docs',
+      url: DEEPSEEK_TOOL_CALLS_DOC_URL,
+      observedAtMs,
+    },
+    {
+      source: 'deepseek_json_output_docs',
+      url: DEEPSEEK_JSON_OUTPUT_DOC_URL,
       observedAtMs,
     },
   ]
@@ -295,11 +317,15 @@ function deepSeekPricingSeed(
 function sharedDeepSeekV4CapabilitySeed(): NonNullable<ProviderModelAvailability['capabilitySeed']> {
   return {
     textChat: true,
+    reasoning: 'supported',
+    functionCalling: true,
+    structuredOutput: true,
     thinkingMode: 'supported',
     contextLength: 1_000_000,
     maxOutputTokens: 384_000,
     tools: true,
     jsonOutput: true,
+    reasoningEffort: Object.freeze(['high', 'max'] as const),
     fim: true,
     chatPrefixCompletion: true,
   }

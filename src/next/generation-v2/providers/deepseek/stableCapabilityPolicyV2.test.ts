@@ -83,6 +83,13 @@ describe('DeepSeek stable family capability policy V2', () => {
     expect(rules.get('providerExtension.kind')).toMatchObject({
       kind: 'supported_static', domain: { kind: 'enum', values: ['none'] },
     })
+    for (const path of [
+      'providerExtension.reasoningMode',
+      'providerExtension.reasoningContext',
+      'providerExtension.responseFormat',
+    ] as const) {
+      expect(rules.get(path)).toMatchObject({ kind: 'unsupported' })
+    }
   })
 
   it('keeps conditional tool choice and retry confirmation fail-closed', () => {

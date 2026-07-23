@@ -25,13 +25,15 @@ describe('OpenAI Responses typed SSE V1', () => {
     const output = [
       { id: 'rs_1', type: 'reasoning', status: 'completed', summary: [{ type: 'summary_text', text: 'why' }], encrypted_content: 'enc' },
       { id: 'msg_1', type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'hello', annotations: [] }] },
+      { id: 'fc_1', type: 'function_call', call_id: 'call_1', name: 'weather', arguments: '{"city":"Paris"}', status: 'completed' },
     ]
     const chunks = [
       event('response.reasoning_summary_text.delta', 1, { item_id: 'rs_1', output_index: 0, summary_index: 0, delta: 'why' }),
       event('response.output_text.delta', 2, { item_id: 'msg_1', output_index: 1, content_index: 0, delta: 'hello' }),
       event('response.output_item.done', 3, { output_index: 0, item: output[0] }),
       event('response.output_item.done', 4, { output_index: 1, item: output[1] }),
-      event('response.completed', 5, { response: response('completed', output) }),
+      event('response.output_item.done', 5, { output_index: 2, item: output[2] }),
+      event('response.completed', 6, { response: response('completed', output) }),
     ]
     for (const chunk of chunks) for (const decoded of decoder.push(chunk)) assembler.push(decoded)
     for (const decoded of decoder.finish()) assembler.push(decoded)
@@ -39,6 +41,7 @@ describe('OpenAI Responses typed SSE V1', () => {
       terminalKind: 'completed', visibleText: 'hello', reasoningSummaryText: 'why',
       usage: { inputTokens: 3, outputTokens: 4, totalTokens: 7, cachedInputTokens: 1, reasoningTokens: 2 },
     })
+    expect(assembler.finish().output).toEqual(output)
   })
 
   it('preserves failed and incomplete terminal distinctions', () => {

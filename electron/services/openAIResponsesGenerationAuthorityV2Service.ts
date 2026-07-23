@@ -23,6 +23,7 @@ import {
 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import { requiresProviderFileBindingV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
+import { isOpenAIResponsesEncodedAttachmentIntentV1 } from '../../src/next/generation-v2/providers/openai-responses/responsesIntentProjectionV1'
 import {
   readGenerationV2Digest,
   readGenerationV2Identity,
@@ -205,12 +206,12 @@ function field(
     path, state: 'unavailable' as const, constraints: Object.freeze([]), evidenceIds: Object.freeze([]),
   })
   switch (path) {
-    case 'attachments[].kind':
+    case 'attachments[].kind': return supported({ kind: 'enum', values: Object.freeze(['managed_file', 'url_reference']) })
     case 'attachments[].referenceId':
     case 'attachments[].referenceRevision':
     case 'attachments[].originalUrl':
-    case 'attachments[].urlDigest':
-    case 'attachments[].mediaKind':
+    case 'attachments[].urlDigest': return unsupported()
+    case 'attachments[].mediaKind': return supported({ kind: 'enum', values: Object.freeze(['image']) })
     case 'attachments[].declaredMediaType':
     case 'attachments[].capturedAtMs':
     case 'attachments[].provenance': return unsupported()
@@ -219,7 +220,7 @@ function field(
     case 'attachments[].assetSha256': return supported({ kind: 'identity' })
     case 'attachments[].conversion': return supported({ kind: 'enum', values: Object.freeze(['none']) })
     case 'attachments[].include': return supported({ kind: 'boolean' })
-    case 'attachments[].sendAs': return supported({ kind: 'enum', values: Object.freeze(['provider_file']) })
+    case 'attachments[].sendAs': return supported({ kind: 'enum', values: Object.freeze(['provider_file', 'url_reference']) })
     case 'generation.maxOutputTokens': return supported({ kind: 'range', min: 1, max: maxOutputTokens, integer: true }, true)
     case 'generation.temperature':
     case 'generation.topP': return unavailable()
@@ -235,6 +236,8 @@ function field(
     case 'providerExtension.kind': return supported({ kind: 'enum', values: Object.freeze(['none', 'openai_responses']) })
     case 'providerExtension.maxToolCalls': return supported({ kind: 'range', min: 1, max: Number.MAX_SAFE_INTEGER, integer: true })
     case 'providerExtension.parallelToolCalls': return supported({ kind: 'boolean' })
+    case 'providerExtension.reasoningContext': return supported({ kind: 'enum', values: Object.freeze(['auto', 'current_turn', 'all_turns']) })
+    case 'providerExtension.reasoningMode': return supported({ kind: 'enum', values: Object.freeze(['standard', 'pro']) })
     case 'providerExtension.serviceTier': return supported({ kind: 'enum', values: Object.freeze(['auto', 'default', 'flex', 'priority']) })
     case 'providerExtension.verbosity': return supported({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high']) }, true)
     case 'reasoning.effort': return supported({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']) }, true)
@@ -284,7 +287,7 @@ function validateIntent(
   toolRegistry: ToolRegistryRepositoryFactV2 | null,
 ): void {
   const intent = commandFacts.semanticIntent
-  if (intent.attachments.some((attachment) => !requiresProviderFileBindingV2(attachment)) ||
+  if (intent.attachments.some((attachment) => attachment.include && !isOpenAIResponsesEncodedAttachmentIntentV1(attachment)) ||
       commandFacts.attachmentSet.attachments.length !== intent.attachments.length ||
       commandFacts.attachmentSet.requiresProviderFileAuthority !==
         intent.attachments.some(requiresProviderFileBindingV2)) {

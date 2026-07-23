@@ -206,12 +206,14 @@ export function createGeminiModelEvidenceV2Service(input: Readonly<{
         } catch {
           throw new GeminiModelEvidenceV2ServiceError('GENERATION_V2_GEMINI_MODEL_EVIDENCE_TRANSPORT_FAILED')
         }
-        if (response.status !== 200 || response.url !== url.toString() ||
+        const responseUrl = typeof response.url === 'string' ? response.url.trim() : ''
+        if (response.status !== 200 || (responseUrl.length > 0 && responseUrl !== url.toString()) ||
             response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() !== 'application/json') {
           try { void response.body?.cancel() } catch { /* release only */ }
           throw new GeminiModelEvidenceV2ServiceError('GENERATION_V2_GEMINI_MODEL_EVIDENCE_HTTP_FAILED')
         }
-        const decoded = decodeGeminiModelsEvidenceV1(await readBody(response, controller.signal))
+        const rawModels = await readBody(response, controller.signal)
+        const decoded = decodeGeminiModelsEvidenceV1(rawModels)
         all.push(...decoded.models)
         pageToken = decoded.nextPageToken
         if (!pageToken) break

@@ -415,7 +415,12 @@ export function createDeepSeekStableModelEvidenceV2Service(input: Readonly<{
           'GENERATION_V2_DEEPSEEK_MODEL_EVIDENCE_TRANSPORT_FAILED',
         )
       }
-      if (response.status !== 200 || response.url !== url) {
+      // Electron's session.fetch may return a Response with an empty `url`
+      // even though the request was issued with redirect:'error'. Treat an
+      // absent response URL as unavailable metadata; reject only a present,
+      // mismatching URL so endpoint redirects cannot be silently accepted.
+      const responseUrl = typeof response.url === 'string' ? response.url.trim() : ''
+      if (response.status !== 200 || (responseUrl.length > 0 && responseUrl !== url)) {
         cancelBody(response)
         throw new DeepSeekStableModelEvidenceV2ServiceError(
           'GENERATION_V2_DEEPSEEK_MODEL_EVIDENCE_HTTP_FAILED',

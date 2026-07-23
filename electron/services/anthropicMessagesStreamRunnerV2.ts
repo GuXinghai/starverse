@@ -177,8 +177,7 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
       if (state === 'completed') {
         const artifact = createAnthropicNativeHistoryArtifactV1(nativeSnapshot)
         const tools = execution.snapshot.semanticIntent.tools ?? { mode: 'disabled' as const }
-        if (artifact.stopReason === 'pause_turn' ||
-            (artifact.stopReason === 'tool_use' && tools.mode !== 'enabled')) {
+        if (artifact.stopReason === 'tool_use' && tools.mode !== 'enabled') {
           throw new AnthropicMessagesStreamRunnerV2Error('GENERATION_V2_ANTHROPIC_RUNNER_RESPONSE_INVALID')
         }
         if (artifact.stopReason === 'tool_use') {
@@ -329,6 +328,10 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
               headers: {
                 'content-type': plan.contentType,
                 accept: plan.accept,
+                ...(plan.ordinaryHeaders ?? []).reduce<Record<string, string>>((headers, header) => {
+                  headers[header.name] = header.value
+                  return headers
+                }, {}),
                 [credentialPlan.headerName]: lease.credential,
                 [credentialPlan.apiVersion.headerName]: credentialPlan.apiVersion.value,
               },

@@ -355,7 +355,12 @@ export function createOpenAIResponsesModelEvidenceV2Service(input: Readonly<{
         if (error instanceof OpenAIResponsesModelEvidenceV2ServiceError) throw error
         throw new OpenAIResponsesModelEvidenceV2ServiceError('GENERATION_V2_OPENAI_MODEL_EVIDENCE_TRANSPORT_FAILED')
       }
-      if (http.status !== 200 || http.url !== url) {
+      // Electron's session.fetch may return a Response with an empty `url`
+      // even though the request was issued with redirect:'error'. Treat an
+      // absent response URL as unavailable metadata; reject only a present,
+      // mismatching URL so endpoint redirects cannot be silently accepted.
+      const responseUrl = typeof http.url === 'string' ? http.url.trim() : ''
+      if (http.status !== 200 || (responseUrl.length > 0 && responseUrl !== url)) {
         cancelBody(http)
         throw new OpenAIResponsesModelEvidenceV2ServiceError('GENERATION_V2_OPENAI_MODEL_EVIDENCE_HTTP_FAILED')
       }

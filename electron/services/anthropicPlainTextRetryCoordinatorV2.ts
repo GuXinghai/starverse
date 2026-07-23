@@ -1,5 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
+import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
+import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
@@ -30,6 +32,7 @@ export function createAnthropicPlainTextRetryCoordinatorV2(input: Readonly<{
   credentialService: Epoch2RuntimeCredentialService
   nowMs?: () => number
   createAnswerId?: () => string
+  attachmentBlobStore?: Epoch2AttachmentBlobStoreV2
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const createAnswerId = input.createAnswerId ?? (() => `answer:${randomUUID()}`)
@@ -38,6 +41,7 @@ export function createAnthropicPlainTextRetryCoordinatorV2(input: Readonly<{
   const historyRepo = new AnthropicNativeHistoryV2Repo(input.db)
   const graphRepo = new ConversationGraphV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
+  const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
 
   function replay(command: AnthropicPlainTextRetryCommandV2): GenerationTextCommandResultV2 | null {
     const observed = executionRepo.findOperation(command.operationId.value)
@@ -58,7 +62,7 @@ export function createAnthropicPlainTextRetryCoordinatorV2(input: Readonly<{
       }
       const history = historyRepo.loadRequestHistory(context, command.operationId.value)
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
-      const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution, history, toolRegistry })
+      const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
       return issueGenerationTextCommandResultV2({
         kind: 'idempotent_replay', execution,
         projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
@@ -88,7 +92,7 @@ export function createAnthropicPlainTextRetryCoordinatorV2(input: Readonly<{
             }
             const history = historyRepo.loadRequestHistory(context, command.operationId.value)
             const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced)
-            const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution: raced, history, toolRegistry })
+            const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution: raced, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
             return issueGenerationTextCommandResultV2({
               kind: 'idempotent_replay', execution: raced,
               projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
@@ -121,7 +125,7 @@ export function createAnthropicPlainTextRetryCoordinatorV2(input: Readonly<{
           graphRepo.commitAnswerActionProjection(context, pending)
           const history = historyRepo.loadRequestHistory(context, command.operationId.value)
           const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, persisted.bundle)
-          const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution: persisted.bundle, history, toolRegistry })
+          const preparedRequest = compileAnthropicMessagesPreparedRequestV2({ context, execution: persisted.bundle, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
           return issueGenerationTextCommandResultV2({
             kind: 'created', execution: persisted.bundle,
             projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),

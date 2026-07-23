@@ -1,17 +1,18 @@
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
-import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
+import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
 import { GeminiGenerateContentNativeHistoryV2Repo } from '../../infra/db/repo/geminiGenerateContentNativeHistoryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
+import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
 import { decodeGeminiPlainTextRegenerateCommandV2, type GeminiPlainTextRegenerateCommandV2 } from '../../src/next/generation-v2/providers/gemini/plainTextActionCommandsV2'
 import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
@@ -28,6 +29,7 @@ export function createGeminiPlainTextRegenerateCoordinatorV2(input: Readonly<{
   fetchImpl?: typeof fetch
   nowMs?: () => number
   createAnswerId?: () => string
+  attachmentBlobStore?: Epoch2AttachmentBlobStoreV2
 }>) {
   const nowMs = input.nowMs ?? Date.now
   const createAnswerId = input.createAnswerId ?? (() => `answer:${randomUUID()}`)
@@ -57,7 +59,7 @@ export function createGeminiPlainTextRegenerateCoordinatorV2(input: Readonly<{
       if (!execution) throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       const history = historyRepo.loadRequestHistory(context, command.operationId.value)
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
-      const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution, history, toolRegistry })
+      const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
       return issueGenerationTextCommandResultV2({ kind: 'idempotent_replay', execution,
         projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
         preparedRequest, request: requestRepo.replayPrepared(context, execution, preparedRequest) })
@@ -82,7 +84,7 @@ export function createGeminiPlainTextRegenerateCoordinatorV2(input: Readonly<{
             }
             const history = historyRepo.loadRequestHistory(context, command.operationId.value)
             const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, raced)
-            const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution: raced, history, toolRegistry })
+            const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({ context, execution: raced, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore })
             return issueGenerationTextCommandResultV2({ kind: 'idempotent_replay', execution: raced,
               projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),
               preparedRequest, request: requestRepo.replayPrepared(context, raced, preparedRequest) })
@@ -103,7 +105,7 @@ export function createGeminiPlainTextRegenerateCoordinatorV2(input: Readonly<{
                   graphRepo.commitAnswerActionProjection(context, pending)
                   const history = historyRepo.loadRequestHistory(context, command.operationId.value)
                   const preparedRequest = compileGeminiGenerateContentPreparedRequestV2({
-                    context, execution: persisted.bundle, history, toolRegistry,
+                    context, execution: persisted.bundle, history, toolRegistry, attachmentRepo, attachmentBlobStore: input.attachmentBlobStore,
                   })
                   return issueGenerationTextCommandResultV2({ kind: 'created', execution: persisted.bundle,
                     projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value),

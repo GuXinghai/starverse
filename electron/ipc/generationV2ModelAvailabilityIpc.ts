@@ -27,6 +27,12 @@ import { OPENROUTER_MODEL_CATEGORIES, type OpenRouterModelCategory } from '../..
 import { CATALOG_RETENTION_PRESETS_MS } from '../../src/shared/modelCatalog/catalogSyncSettings'
 import { mapOpenRouterModelToCatalogModel } from '../../src/shared/modelCatalog/providers/openrouter/openRouterCatalogClient'
 import { ModelCatalogV2Repo, type ModelCatalogScopeIdentityV2 } from '../../infra/db/repo/modelCatalogV2Repo'
+import {
+  createProviderFailureV2,
+  providerFailureFromUnknownV2,
+  providerFailurePrimaryMessageV2,
+  type ProviderFailureV2,
+} from '../../src/shared/provider/providerFailureV2'
 
 export const GENERATION_V2_MODEL_AVAILABILITY_IPC_CHANNELS = Object.freeze([
   'openai-responses-models:list-availability',
@@ -51,7 +57,7 @@ type ProviderCatalogKey = 'openrouter' | 'openai_responses' | 'anthropic_message
 const PROVIDER_CATALOG_KEYS = new Set<ProviderCatalogKey>([
   'openrouter', 'openai_responses', 'anthropic_messages', 'google_ai_studio', 'deepseek',
 ])
-type ProviderResult = Readonly<Record<string, unknown>>
+type ProviderResult = Readonly<Record<string, unknown> & { providerFailure?: ProviderFailureV2 }>
 type ProviderConfig = Readonly<{
   providerKey: ProviderCredentialKey
   sourceProviderKey: ProviderCatalogKey
@@ -154,21 +160,44 @@ async function fetchOpenRouterModels(input: Readonly<{
     response = await input.fetchImpl(modelsUrl.toString(), { method: 'GET',
       headers: { Accept: 'application/json', Authorization: `Bearer ${input.credential}` }, redirect: 'error',
       credentials: 'omit', cache: 'no-store', signal: input.signal })
-  } catch { return Object.freeze({ ok: false, code: 'network_error' }) }
+  } catch (error) {
+    return Object.freeze({ ok: false, providerFailure: createProviderFailureV2({
+      context: { origin: 'network_transport', phase: 'request_open', providerId: 'openrouter', contractId: 'openrouter-chat-models-v1', operationId: 'catalog:openrouter', requestSequence: 1 },
+      transportError: error,
+    }) })
+  }
   const contentLength = response.headers.get('content-length')
   if (!response.ok || contentLength !== null && (!/^\d+$/u.test(contentLength) || Number(contentLength) > OPENROUTER_CHAT_MODELS_MAX_BYTES_V1)) {
-    try { await response.body?.cancel() } catch { /* best effort */ }
-    return Object.freeze({ ok: false, code: response.status === 401 || response.status === 403 ? 'credential_invalid' : 'http_error' })
+    let bodyText: string | null = null
+    try { bodyText = await response.text() } catch { /* preserve headers when body is unavailable */ }
+    return Object.freeze({ ok: false, providerFailure: createProviderFailureV2({
+      context: { origin: 'http_response', phase: 'response_body', providerId: 'openrouter', contractId: 'openrouter-chat-models-v1', operationId: 'catalog:openrouter', requestSequence: 1 },
+      httpStatus: response.status, httpStatusText: response.statusText, bodyText,
+      headers: Object.fromEntries(response.headers.entries()),
+    }) })
   }
   let body: string
-  try { body = await response.text() } catch { return Object.freeze({ ok: false, code: 'invalid_response' }) }
-  if (Buffer.byteLength(body, 'utf8') > OPENROUTER_CHAT_MODELS_MAX_BYTES_V1) return Object.freeze({ ok: false, code: 'invalid_response' })
+  try { body = await response.text() } catch (error) {
+    return Object.freeze({ ok: false, providerFailure: createProviderFailureV2({
+      context: { origin: 'network_transport', phase: 'response_body', providerId: 'openrouter', contractId: 'openrouter-chat-models-v1', operationId: 'catalog:openrouter', requestSequence: 1 },
+      transportError: error,
+    }) })
+  }
+  if (Buffer.byteLength(body, 'utf8') > OPENROUTER_CHAT_MODELS_MAX_BYTES_V1) return Object.freeze({ ok: false, providerFailure: createProviderFailureV2({
+    context: { origin: 'response_decoder', phase: 'stream_decode', providerId: 'openrouter', contractId: 'openrouter-chat-models-v1', operationId: 'catalog:openrouter', requestSequence: 1 },
+    bodyText: body,
+  }) })
   try {
     const observedAtMs = Date.now()
     const decoded = decodeOpenRouterChatModelsEvidenceV1(JSON.parse(body))
     return Object.freeze({ ok: true, responseDigest: decoded.responseDigest, observedAtMs,
       items: projectOpenRouterCatalogItems({ canonicalJson: decoded.canonicalJson, modelsUrl: modelsUrl.toString(), observedAtMs }) })
-  } catch { return Object.freeze({ ok: false, code: 'invalid_response' }) }
+  } catch (error) {
+    return Object.freeze({ ok: false, providerFailure: createProviderFailureV2({
+      context: { origin: 'response_decoder', phase: 'stream_decode', providerId: 'openrouter', contractId: 'openrouter-chat-models-v1', operationId: 'catalog:openrouter', requestSequence: 1 },
+      bodyText: body, transportError: error,
+    }) })
+  }
 }
 
 function createProviderConfigs(fetchImpl: ProviderFetch): Readonly<Record<ProviderCatalogKey, ProviderConfig>> {
@@ -214,12 +243,14 @@ function snapshotResult(repo: ModelCatalogV2Repo, scope: ModelCatalogScopeIdenti
     profileId: config.profileId } : {}
   if (!active) return Object.freeze({ ok: true, ...providerFields, items: Object.freeze([]), models: Object.freeze([]), status: status?.syncState === 'syncing' ? 'syncing' :
     status?.syncState === 'error' ? 'failed' : 'not_synced', responseDigest: null, observedAtMs: null,
-    modelCount: 0, visibleModelCount: 0, hiddenModelCount: 0, errorCode: status?.errorCode ?? null })
+    modelCount: 0, visibleModelCount: 0, hiddenModelCount: 0, errorCode: status?.errorCode ?? null,
+    providerFailure: status?.lastErrorFact ?? null })
   return Object.freeze({ ok: true, ...providerFields, items: active.items, models: active.items,
     status: status?.syncState === 'syncing' ? 'syncing' : status?.syncState === 'error' ? 'failed' : 'synced',
     responseDigest: active.status.activeSnapshotDigest, observedAtMs: active.observedAtMs,
     modelCount: active.status.modelCount, visibleModelCount: active.status.visibleModelCount,
-    hiddenModelCount: active.status.hiddenModelCount, errorCode: active.status.errorCode })
+    hiddenModelCount: active.status.hiddenModelCount, errorCode: active.status.errorCode,
+    providerFailure: active.status.lastErrorFact ?? null })
 }
 
 export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
@@ -270,14 +301,26 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
         expectedRevision: resolved.status.revision, expectedCredentialScopeId: resolved.status.credentialScopeId!,
         consume: (lease) => config.list(lease.credential, controller.signal, request.category) }) as ProviderResult
       if (result.ok !== true) {
-        const code = typeof result.code === 'string' ? result.code : 'provider_catalog_sync_failed'
-        repo.failSync(resolved.scope, attemptId, code)
-        return Object.freeze({ ok: false, code, active: snapshotResult(repo, resolved.scope, config) })
+        const providerFailure = result.providerFailure ?? providerFailureFromUnknownV2(result, {
+          origin: 'provider_runtime', phase: 'response_body', providerId: config.sourceProviderKey,
+          contractId: config.operationContractId, operationId: attemptId, requestSequence: 1,
+        })
+        const code = providerFailure.starverseDiagnosticCode
+        repo.failSync(resolved.scope, attemptId, providerFailure)
+        return Object.freeze({ ok: false, code, message: providerFailurePrimaryMessageV2(providerFailure), providerFailure,
+          active: snapshotResult(repo, resolved.scope, config) })
       }
       const items = Array.isArray(result.items) ? result.items : Array.isArray(result.models) ? result.models : null
       if (!items || items.some((item) => !item || typeof item !== 'object' || Array.isArray(item))) {
-        repo.failSync(resolved.scope, attemptId, 'invalid_response')
-        return Object.freeze({ ok: false, code: 'invalid_response', active: snapshotResult(repo, resolved.scope, config) })
+        const providerFailure = createProviderFailureV2({
+          context: { origin: 'response_decoder', phase: 'stream_decode', providerId: config.sourceProviderKey,
+            contractId: config.operationContractId, operationId: attemptId, requestSequence: 1 },
+          body: { diagnostic: 'catalog response shape invalid' },
+        })
+        repo.failSync(resolved.scope, attemptId, providerFailure)
+        return Object.freeze({ ok: false, code: providerFailure.starverseDiagnosticCode,
+          message: providerFailurePrimaryMessageV2(providerFailure), providerFailure,
+          active: snapshotResult(repo, resolved.scope, config) })
       }
       const observedAtMs = typeof result.observedAtMs === 'number' && Number.isSafeInteger(result.observedAtMs)
         ? result.observedAtMs : Date.now()
@@ -288,9 +331,15 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
       if (typeof request.retentionMs === 'number') repo.cleanupInactiveSnapshots(Date.now() - request.retentionMs)
       return snapshotResult(repo, resolved.scope, config)
     } catch (error) {
-      const code = error instanceof Error && error.name === 'AbortError' ? 'timeout' : 'provider_catalog_sync_failed'
-      try { repo.failSync(resolved.scope, attemptId, code) } catch { /* a newer attempt owns the scope */ }
-      return Object.freeze({ ok: false, code, active: snapshotResult(repo, resolved.scope, config) })
+      const providerFailure = providerFailureFromUnknownV2(error, {
+        origin: error instanceof Error && error.name === 'AbortError' ? 'network_transport' : 'provider_runtime',
+        phase: 'response_body', providerId: config.sourceProviderKey, contractId: config.operationContractId,
+        operationId: attemptId, requestSequence: 1,
+      })
+      try { repo.failSync(resolved.scope, attemptId, providerFailure) } catch { /* a newer attempt owns the scope */ }
+      return Object.freeze({ ok: false, code: providerFailure.starverseDiagnosticCode,
+        message: providerFailurePrimaryMessageV2(providerFailure), providerFailure,
+        active: snapshotResult(repo, resolved.scope, config) })
     } finally { clearTimeout(timer) }
   })
 

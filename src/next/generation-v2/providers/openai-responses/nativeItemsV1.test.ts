@@ -50,11 +50,13 @@ describe('OpenAI Responses V1 native replay items', () => {
     expect(Object.isFrozen((decoded[1] as any).content[0].annotations)).toBe(true)
   })
 
-  it('preserves text and persisted file-ID user input with string function outputs', () => {
+  it('preserves text, input images, persisted file-ID input and string function outputs', () => {
     const client = decodeOpenAIResponsesClientItemsV1([
       {
         role: 'user', content: [
           { type: 'input_text', text: 'hello' },
+          { type: 'input_image', file_id: 'file_image', detail: 'high' },
+          { type: 'input_image', image_url: 'https://example.com/image.png', detail: 'auto' },
           { type: 'input_file', file_id: 'file_abc123' },
         ],
       },
@@ -64,6 +66,8 @@ describe('OpenAI Responses V1 native replay items', () => {
       {
         role: 'user', content: [
           { type: 'input_text', text: 'hello' },
+          { type: 'input_image', file_id: 'file_image', detail: 'high' },
+          { type: 'input_image', image_url: 'https://example.com/image.png', detail: 'auto' },
           { type: 'input_file', file_id: 'file_abc123' },
         ],
       },
