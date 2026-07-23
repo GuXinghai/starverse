@@ -26,6 +26,7 @@ import {
 } from './openRouterChatApiContractV2'
 import type { OpenAIResponsesApiSurfaceDefinitionV2 } from './openAIResponsesApiContractV2'
 import { readOpenAIResponsesApiContractV2 } from './openAIResponsesApiContractV2'
+import type { ContractEvidenceStabilityV2 } from './contractEvidenceV2'
 
 export type ProviderContractOperationV2 = 'text' | 'image_generate' | 'image_edit' | 'tool_continue'
 
@@ -97,6 +98,9 @@ export type ReviewedProviderContractDefinitionV2 = Readonly<{
   implementationStatus: 'definition_only'
   evidence: Readonly<{
     verifiedAt: string
+    reviewAfter: string
+    stability: ContractEvidenceStabilityV2
+    sources: readonly Readonly<{ url: string; retrievedAt: string; digest: string }>[]
     openApiSha256: string | null
     provenanceUrls: readonly string[]
     localArtifacts: readonly Readonly<{
@@ -129,6 +133,9 @@ type DefinitionProjection = Readonly<{
   implementationStatus: 'definition_only'
   evidence: Readonly<{
     verifiedAt: string
+    reviewAfter?: string
+    stability?: ContractEvidenceStabilityV2
+    sources?: readonly Readonly<{ url: string; retrievedAt: string; digest: string }>[]
     openApiSha256: string | null
     provenanceUrls: readonly string[]
     localArtifacts: readonly Readonly<{
@@ -332,7 +339,7 @@ const OPENAI_RESPONSES_PROJECTION: DefinitionProjection = Object.freeze({
       Object.freeze({
         id: 'openai-responses-api-contract-20260715',
         path: 'docs/architecture/generation-compiler-v2/evidence/openai-responses-api-contract-20260715.json',
-        sha256: '2002b74420786ae4b2005bc9ccd32336885e92976b18849d75c5ec2d48563714',
+        sha256: '7b1573bccdba903ea8dd20f89550fdbbc0e08e231a887a1ee88e10fe634f9e25',
       }),
       Object.freeze({
         id: 'openai-responses-gpt-5.6-capabilities-20260717',
@@ -436,6 +443,11 @@ const reviewedDefinitions = new WeakSet<object>()
 
 function createDefinition(projection: DefinitionProjection): ReviewedProviderContractDefinitionV2 {
   const definitionDigestValue = digest(projection)
+  const verifiedAt = projection.evidence.verifiedAt
+  const reviewAfter = projection.evidence.reviewAfter ?? new Date(Date.parse(`${verifiedAt}T00:00:00Z`) + 90 * 24 * 60 * 60 * 1000).toISOString()
+  const sources = projection.evidence.sources ?? projection.evidence.provenanceUrls.map((url) => ({
+    url, retrievedAt: verifiedAt, digest: projection.evidence.openApiSha256 ?? definitionDigestValue,
+  }))
   const definition: ReviewedProviderContractDefinitionV2 = Object.freeze({
     classification: 'reviewed_definition',
     executionAuthority: 'none',
@@ -455,7 +467,12 @@ function createDefinition(projection: DefinitionProjection): ReviewedProviderCon
     continuationPolicy: projection.continuationPolicy,
     contextProjectionPolicy: projection.contextProjectionPolicy,
     implementationStatus: projection.implementationStatus,
-    evidence: projection.evidence,
+    evidence: Object.freeze({
+      ...projection.evidence,
+      reviewAfter,
+      stability: projection.evidence.stability ?? (projection.protocolContractId.includes('beta') ? 'beta' : 'stable'),
+      sources: Object.freeze(sources),
+    }),
   })
   reviewedDefinitions.add(definition)
   return definition

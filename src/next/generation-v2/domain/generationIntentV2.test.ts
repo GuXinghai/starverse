@@ -38,6 +38,34 @@ describe('GenerationIntentLayerV2 codec', () => {
     ]) expect(() => decodeGenerationIntentLayerV2({ schemaVersion: 2, providerExtension })).toThrow()
   })
 
+  it('preserves typed OpenRouter Chat verbosity, parallel tools and JSON Schema output', () => {
+    expect(decodeGenerationIntentLayerV2({
+      schemaVersion: 2,
+      providerExtension: {
+        kind: 'openrouter_chat', verbosity: 'xhigh', parallelToolCalls: true,
+        responseFormat: {
+          type: 'json_schema',
+          jsonSchema: {
+            name: 'answer', schema: { type: 'object', properties: { answer: { type: 'string' } } }, strict: true,
+          },
+        },
+      },
+    }).providerExtension).toEqual({
+      kind: 'openrouter_chat', verbosity: 'xhigh', parallelToolCalls: true,
+      responseFormat: {
+        type: 'json_schema',
+        jsonSchema: {
+          name: 'answer', schema: { type: 'object', properties: { answer: { type: 'string' } } }, strict: true,
+        },
+      },
+    })
+    for (const providerExtension of [
+      { kind: 'openrouter_chat', verbosity: 'unsupported' },
+      { kind: 'openrouter_chat', parallelToolCalls: 'true' },
+      { kind: 'openrouter_chat', responseFormat: { type: 'json_schema', jsonSchema: { name: 'answer', schema: [] } } },
+    ]) expect(() => decodeGenerationIntentLayerV2({ schemaVersion: 2, providerExtension })).toThrow()
+  })
+
   it('preserves Anthropic thinking semantics as provider-specific snapshot data', () => {
     for (const thinkingDisplay of ['provider_default', 'summarized', 'omitted'] as const) {
       expect(decodeGenerationIntentLayerV2({

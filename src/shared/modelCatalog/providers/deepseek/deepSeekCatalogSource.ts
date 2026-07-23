@@ -92,7 +92,11 @@ function catalogModelFromAvailability(
     outputModalities: ['text'],
     tokenizer: null,
     instructType: null,
-    supportedParameters: ['temperature', 'top_p', 'max_tokens'],
+    supportedParameters: [
+      'temperature', 'top_p', 'max_tokens', 'stop',
+      'thinking', 'reasoning_effort', 'response_format',
+      'tools', 'tool_choice',
+    ],
     capabilities: {
       reasoning: model.capabilitySeed.thinkingMode === 'supported' || model.capabilitySeed.thinkingMode === 'thinking_only',
       tools: model.capabilitySeed.tools === true,

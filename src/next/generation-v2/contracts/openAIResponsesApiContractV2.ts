@@ -29,12 +29,13 @@ export type OpenAIResponsesApiSurfaceDefinitionV2 = Readonly<
       doneSentinel: 'forbidden'
       terminalAuthority: 'response_terminal_event'
     }>
-    approvedReasoningRequestFields: readonly ['effort', 'summary']
-    contextManagementStatus: 'not_approved'
+    approvedReasoningRequestFields: readonly ['effort', 'summary', 'mode', 'context']
+    contextManagementStatus: 'approved'
     continuationPolicy: Readonly<{
       mode: 'client_managed_native_items'
       store: false
       requiredInclude: readonly ['reasoning.encrypted_content']
+      legacyCompatibleInclude: readonly ['reasoning.encrypted_content']
       forbiddenRequestFields: readonly ['previous_response_id', 'conversation']
       replayPolicy: 'complete_ordered_output_items'
       assistantMessagePhasePolicy: 'preserve_when_present'
@@ -75,7 +76,7 @@ export type OpenAIResponsesApiContractV2 = Readonly<{
   }>
   surfaces: readonly OpenAIResponsesApiSurfaceDefinitionV2[]
   evidence: Readonly<{
-    verifiedAt: '2026-07-15'
+    verifiedAt: '2026-07-22'
     provenanceUrls: readonly string[]
   }>
 }>
@@ -105,12 +106,13 @@ const responsesSurface = Object.freeze({
     doneSentinel: 'forbidden',
     terminalAuthority: 'response_terminal_event',
   }),
-  approvedReasoningRequestFields: Object.freeze(['effort', 'summary'] as const),
-  contextManagementStatus: 'not_approved',
+  approvedReasoningRequestFields: Object.freeze(['effort', 'summary', 'mode', 'context'] as const),
+  contextManagementStatus: 'approved',
   continuationPolicy: Object.freeze({
     mode: 'client_managed_native_items',
     store: false,
     requiredInclude: Object.freeze(['reasoning.encrypted_content'] as const),
+    legacyCompatibleInclude: Object.freeze(['reasoning.encrypted_content'] as const),
     forbiddenRequestFields: Object.freeze(['previous_response_id', 'conversation'] as const),
     replayPolicy: 'complete_ordered_output_items',
     assistantMessagePhasePolicy: 'preserve_when_present',
@@ -148,7 +150,7 @@ const contract = Object.freeze({
   auth: Object.freeze({ kind: 'bearer_header', name: 'Authorization', scheme: 'Bearer' }),
   surfaces: Object.freeze([responsesSurface, modelsSurface, filesSurface]),
   evidence: Object.freeze({
-    verifiedAt: '2026-07-15',
+    verifiedAt: '2026-07-22',
     provenanceUrls: Object.freeze([
       'https://developers.openai.com/api/reference/resources/responses/methods/create',
       'https://developers.openai.com/api/reference/resources/responses/streaming-events',

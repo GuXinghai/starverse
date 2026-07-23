@@ -9,7 +9,7 @@ export const OPENROUTER_CATALOG_FRESHNESS_MS_KEY = 'openRouterCatalogFreshnessMs
 export const OPENROUTER_CATALOG_RETENTION_MS_KEY = 'openRouterCatalogRetentionMs'
 export const OPENROUTER_DEPRECATED_CATALOG_CACHE_CLEARED_AT_MS_KEY = 'openRouterDeprecatedCatalogCacheClearedAtMs'
 
-export const DEFAULT_CATALOG_AUTO_SYNC_POLICY: CatalogAutoSyncPolicy = 'stale_only'
+export const DEFAULT_CATALOG_AUTO_SYNC_POLICY: CatalogAutoSyncPolicy = 'never'
 export const DEFAULT_CATALOG_LIST_UPDATE_MODE: CatalogListUpdateMode = 'manual'
 export const DEFAULT_CATALOG_FRESHNESS_MS = 24 * 60 * 60 * 1000
 export const DEFAULT_CATALOG_RETENTION_MS = 90 * 24 * 60 * 60 * 1000

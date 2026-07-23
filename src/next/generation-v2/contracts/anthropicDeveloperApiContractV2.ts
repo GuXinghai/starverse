@@ -96,6 +96,7 @@ export type AnthropicDeveloperApiContractV2 = Readonly<{
 export type AnthropicMessagesNonSecretHeaderPlanV2 = Readonly<{
   contentType: 'application/json'
   accept: 'text/event-stream'
+  ordinaryHeaders?: readonly Readonly<{ name: string; value: string }>[]
   credential: Readonly<{
     kind: 'anthropic_x_api_key'
     headerName: 'x-api-key'
@@ -225,10 +226,13 @@ export function readAnthropicMessagesRegistrySurfaceV2(): AnthropicMessagesRegis
   return messagesRegistrySurface
 }
 
-export function createAnthropicMessagesNonSecretHeaderPlanV2(): AnthropicMessagesNonSecretHeaderPlanV2 {
+export function createAnthropicMessagesNonSecretHeaderPlanV2(
+  ordinaryHeaders: readonly Readonly<{ name: string; value: string }>[] = [],
+): AnthropicMessagesNonSecretHeaderPlanV2 {
   return Object.freeze({
     contentType: 'application/json' as const,
     accept: 'text/event-stream' as const,
+    ...(ordinaryHeaders.length === 0 ? {} : { ordinaryHeaders: Object.freeze([...ordinaryHeaders]) }),
     credential: Object.freeze({
       kind: 'anthropic_x_api_key' as const,
       headerName: contract.auth.name,

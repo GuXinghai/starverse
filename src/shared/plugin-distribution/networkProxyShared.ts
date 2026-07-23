@@ -26,7 +26,7 @@ export type NetworkProxyDiagnosticCode =
   | 'proxy_strict_ssl_unsupported'
 
 export const DEFAULT_NETWORK_PROXY_SETTINGS: NetworkProxySettings = {
-  proxyMode: 'environment',
+  proxyMode: 'system',
   manualProxyUrl: '',
   noProxy: '',
   strictSSL: true,

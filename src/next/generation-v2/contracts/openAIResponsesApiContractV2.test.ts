@@ -50,12 +50,13 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
         doneSentinel: 'forbidden',
         terminalAuthority: 'response_terminal_event',
       },
-      approvedReasoningRequestFields: ['effort', 'summary'],
-      contextManagementStatus: 'not_approved',
+      approvedReasoningRequestFields: ['effort', 'summary', 'mode', 'context'],
+      contextManagementStatus: 'approved',
       continuationPolicy: {
         mode: 'client_managed_native_items',
         store: false,
         requiredInclude: ['reasoning.encrypted_content'],
+        legacyCompatibleInclude: ['reasoning.encrypted_content'],
         forbiddenRequestFields: ['previous_response_id', 'conversation'],
         replayPolicy: 'complete_ordered_output_items',
         assistantMessagePhasePolicy: 'preserve_when_present',
@@ -66,6 +67,7 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
     expect(Object.isFrozen(responses.approvedReasoningRequestFields)).toBe(true)
     expect(Object.isFrozen(responses.continuationPolicy)).toBe(true)
     expect(Object.isFrozen(responses.continuationPolicy.requiredInclude)).toBe(true)
+    expect(Object.isFrozen(responses.continuationPolicy.legacyCompatibleInclude)).toBe(true)
     expect(Object.isFrozen(responses.continuationPolicy.forbiddenRequestFields)).toBe(true)
   })
 
@@ -124,7 +126,7 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
     const bytes = readFileSync(artifactPath)
     const audit = JSON.parse(bytes.toString('utf8'))
     expect(createHash('sha256').update(bytes).digest('hex'))
-      .toBe('2002b74420786ae4b2005bc9ccd32336885e92976b18849d75c5ec2d48563714')
+      .toBe('7b1573bccdba903ea8dd20f89550fdbbc0e08e231a887a1ee88e10fe634f9e25')
     expect(audit.capturedAt).toBe(contract.evidence.verifiedAt)
     expect(audit.provider).toBe(contract.providerId)
     expect(audit.reviewedWireFacts).toMatchObject({
@@ -133,7 +135,7 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
       responses: {
         method: 'POST',
         path: '/v1/responses',
-        approvedReasoningRequestFields: ['effort', 'summary'],
+      approvedReasoningRequestFields: ['effort', 'summary', 'mode', 'context'],
       },
     })
     expect(contract.evidence.provenanceUrls).toEqual(expect.arrayContaining(

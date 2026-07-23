@@ -3,6 +3,8 @@ import { ImmutablePreparedBodyV2 } from './stableSerialize'
 import { createSemanticConsumptionLedgerV2 } from './semanticConsumptionLedgerV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
+  type PreparedAttachmentEncodingProofV2,
+  type PreparedAttachmentRequirementV2,
   createOpenAICompatibleCredentialHeaderPlanV2,
   issuePreparedProviderRequestV2,
   PreparedProviderRequestV2Error,
@@ -87,5 +89,48 @@ describe('PreparedProviderRequestV2 closed non-secret header plan', () => {
 
   it('rejects unknown credential placement rather than issuing an open header plan', () => {
     expect(() => issue('unknown')).toThrow(PreparedProviderRequestV2Error)
+  })
+})
+
+describe('PreparedProviderRequestV2 attachment encoding proof', () => {
+  const requirement: PreparedAttachmentRequirementV2 = {
+    semanticPath: 'attachments[0]', kind: 'managed_file',
+    assetRevisionId: 'revision:1', assetSha256: 'a'.repeat(64),
+  }
+  const body = ImmutablePreparedBodyV2.fromNativeRequest({
+    input: [{ type: 'input_file', file_id: 'file-1' }], stream: true,
+  })
+  const proof: PreparedAttachmentEncodingProofV2 = {
+    semanticPath: requirement.semanticPath, requirement,
+    wireFragment: { type: 'input_file', file_id: 'file-1' },
+  }
+  const issueWithProof = (requirements: readonly PreparedAttachmentRequirementV2[], proofs: readonly PreparedAttachmentEncodingProofV2[], preparedBody = body) =>
+    issuePreparedProviderRequestV2({
+      operationId: 'operation-proof', answerRootId: 'answer-proof', requestSequence: 1,
+      providerId: 'openai_responses', endpointProfileId: 'profile-proof', credentialScopeId: 'scope-proof',
+      contractId: 'openai-responses-v1', modelId: 'model-proof', effectiveEndpointId: 'endpoint-proof',
+      endpoint: 'https://example.com/v1/responses', headersPlan: createBearerAuthorizationHeaderPlanV2(),
+      body: preparedBody, ledger: createSemanticConsumptionLedgerV2([{
+        kind: 'consumed', path: 'attachments[].include', disposition: 'encoded',
+        nativeField: 'input[].content[].input_file', evidence: 'test',
+      }]), attachmentRequirements: requirements, attachmentEncodingProofs: proofs,
+      capabilityRevision: 'capability-proof', snapshotHash: 'a'.repeat(64),
+    })
+
+  it('requires exactly one proof whose fragment occurs in the immutable body', () => {
+    expect(issueWithProof([requirement], [proof]).body.copyUtf8Text()).toContain('file-1')
+  })
+
+  it.each([
+    ['missing', [], 'GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_MISSING'],
+    ['duplicate', [proof, proof], 'GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_DUPLICATE'],
+    ['wrong identity', [{ ...proof, requirement: { ...requirement, assetSha256: 'b'.repeat(64) } }], 'GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_MISMATCH'],
+    ['fragment absent', [{ ...proof, wireFragment: { type: 'input_file', file_id: 'file-other' } }], 'GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_FRAGMENT_MISSING'],
+  ] as const)('rejects %s before a prepared request can be issued', (_, proofs, code) => {
+    expect(() => issueWithProof([requirement], proofs)).toThrow(code)
+  })
+
+  it('does not require a wire proof when the requirement set is empty', () => {
+    expect(issueWithProof([], [], ImmutablePreparedBodyV2.fromNativeRequest({ stream: true }))).toBeTruthy()
   })
 })

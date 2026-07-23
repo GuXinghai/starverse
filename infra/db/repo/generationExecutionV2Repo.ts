@@ -35,6 +35,7 @@ import {
   registerGenerationV2AuthorityTransactionParticipantV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
+import type { ProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
 import { GenerationContextProjectionV2Repo } from './generationContextProjectionV2Repo'
 
 const MAX_JSON_BYTES = 1024 * 1024
@@ -61,6 +62,7 @@ export type GenerationExecutionOperationRepositoryFactV2 = Readonly<{
   state: GenerationExecutionOperationStateV2
   errorCode: string | null
   errorMessage: string | null
+  errorFact: ProviderFailureV2 | null
   createdAtMs: number
   updatedAtMs: number
   terminalAtMs: number | null
@@ -107,6 +109,7 @@ type OperationJoinedRow = {
   state: unknown
   error_code: unknown
   error_message: unknown
+  error_fact_json: unknown
   created_at_ms: unknown
   updated_at_ms: unknown
   terminal_at_ms: unknown
@@ -173,6 +176,36 @@ function requiredString(value: unknown): string {
   return value
 }
 
+function encodeProviderFailureFact(value: ProviderFailureV2 | null | undefined): string | null {
+  if (value === undefined || value === null) return null
+  let encoded: string
+  try {
+    encoded = stableSerializeProviderRequestBoundedV2(value, MAX_JSON_BYTES)
+  } catch {
+    throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
+  }
+  if (new TextEncoder().encode(encoded).byteLength > MAX_JSON_BYTES) {
+    throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
+  }
+  return encoded
+}
+
+function decodeProviderFailureFact(value: unknown): ProviderFailureV2 | null {
+  if (value === null) return null
+  if (typeof value !== 'string' || new TextEncoder().encode(value).byteLength > MAX_JSON_BYTES) {
+    throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
+  }
+  try {
+    const parsed: unknown = JSON.parse(value)
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('invalid error fact')
+    }
+    return Object.freeze(parsed as ProviderFailureV2)
+  } catch {
+    throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
+  }
+}
+
 function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperationBundleV2 {
   try {
     if (typeof row.operation_id !== 'string' || !ACTION_KINDS.includes(row.action_kind as GenerationCommandActionV2) ||
@@ -183,6 +216,7 @@ function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperati
         !OPERATION_STATES.includes(row.state as GenerationExecutionOperationStateV2) ||
         (row.error_code !== null && typeof row.error_code !== 'string') ||
         (row.error_message !== null && typeof row.error_message !== 'string') ||
+        (row.error_fact_json !== null && typeof row.error_fact_json !== 'string') ||
         row.snapshot_operation_id !== row.operation_id || row.snapshot_answer_root_id !== row.result_answer_root_id ||
         row.schema_version !== 2 || typeof row.canonical_json !== 'string' ||
         typeof row.snapshot_hash !== 'string' || typeof row.capability_revision !== 'string' ||
@@ -216,9 +250,10 @@ function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperati
       throw new Error('snapshot mismatch')
     }
     const state = row.state as GenerationExecutionOperationStateV2
-    if ((state === 'completed' && (row.error_code !== null || row.error_message !== null || terminalAtMs === null)) ||
+    const errorFact = decodeProviderFailureFact(row.error_fact_json)
+    if ((state === 'completed' && (row.error_code !== null || row.error_message !== null || errorFact !== null || terminalAtMs === null)) ||
         ((state === 'committed' || state === 'streaming') &&
-          (row.error_code !== null || row.error_message !== null || terminalAtMs !== null)) ||
+          (row.error_code !== null || row.error_message !== null || errorFact !== null || terminalAtMs !== null)) ||
         ((state === 'failed' || state === 'cancelled') && terminalAtMs === null)) {
       throw new Error('terminal mismatch')
     }
@@ -236,6 +271,7 @@ function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperati
       state,
       errorCode: row.error_code as string | null,
       errorMessage: row.error_message as string | null,
+      errorFact,
       createdAtMs,
       updatedAtMs,
       terminalAtMs,
@@ -393,12 +429,15 @@ export class GenerationExecutionV2Repo {
       state: 'completed' | 'failed' | 'cancelled'
       errorCode: string | null
       errorMessage: string | null
+      errorFact?: ProviderFailureV2 | null
     }>,
     atMs: number = this.#nowMs(),
   ): GenerationExecutionOperationBundleV2 {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
+    const errorFactJson = encodeProviderFailureFact(terminal.errorFact)
     if (!isGenerationExecutionOperationBundleForContextV2(bundle, context) ||
-        ((terminal.state === 'completed') !== (terminal.errorCode === null && terminal.errorMessage === null)) ||
+        ((terminal.state === 'completed') !==
+          (terminal.errorCode === null && terminal.errorMessage === null && errorFactJson === null)) ||
         (terminal.state !== 'completed' &&
           (typeof terminal.errorCode !== 'string' || terminal.errorCode.length === 0 ||
            terminal.errorCode.length > 256 || terminal.errorCode.trim() !== terminal.errorCode ||
@@ -407,7 +446,9 @@ export class GenerationExecutionV2Repo {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
     }
     if (bundle.operation.state === terminal.state) {
-      if (bundle.operation.errorCode !== terminal.errorCode || bundle.operation.errorMessage !== terminal.errorMessage) {
+      if (bundle.operation.errorCode !== terminal.errorCode ||
+          bundle.operation.errorMessage !== terminal.errorMessage ||
+          encodeProviderFailureFact(bundle.operation.errorFact) !== errorFactJson) {
         throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_TERMINAL_CONFLICT')
       }
       return bundle
@@ -424,9 +465,9 @@ export class GenerationExecutionV2Repo {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
     }
     const result = this.#db.prepare(`UPDATE generation_operation_v2
-      SET state=?, error_code=?, error_message=?, updated_at_ms=?, terminal_at_ms=?
+      SET state=?, error_code=?, error_message=?, error_fact_json=?, updated_at_ms=?, terminal_at_ms=?
       WHERE operation_id=? AND state=? AND updated_at_ms=?`).run(
-      terminal.state, terminal.errorCode, terminal.errorMessage, at, at,
+      terminal.state, terminal.errorCode, terminal.errorMessage, errorFactJson, at, at,
       bundle.operation.operationId.value, bundle.operation.state, bundle.operation.updatedAtMs,
     )
     if (result.changes !== 1) {
@@ -471,7 +512,7 @@ export class GenerationExecutionV2Repo {
       operation.operation_id, operation.action_kind, operation.command_fingerprint,
       operation.branch_id, operation.conversation_id, operation.question_id,
       operation.target_answer_root_id, operation.result_answer_root_id, operation.state,
-      operation.error_code, operation.error_message, operation.created_at_ms,
+      operation.error_code, operation.error_message, operation.error_fact_json, operation.created_at_ms,
       operation.updated_at_ms, operation.terminal_at_ms,
       snapshot.operation_id AS snapshot_operation_id,
       snapshot.answer_root_id AS snapshot_answer_root_id,

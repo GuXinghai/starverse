@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import { CatalogSyncRunner, type CatalogSyncRunnerMeta } from './catalogSyncRunner'
-import { buildNetworkErrorEnvelope } from '../network/networkErrorEnvelope'
 
 function buildMeta(partial: Partial<CatalogSyncRunnerMeta> = {}): CatalogSyncRunnerMeta {
   return {
@@ -20,6 +19,40 @@ function buildMeta(partial: Partial<CatalogSyncRunnerMeta> = {}): CatalogSyncRun
 }
 
 describe('CatalogSyncRunner', () => {
+  it('does not auto-sync an unconfigured policy, even with no cache', async () => {
+    const runSync = vi.fn(async () => ({ ok: true as const, snapshotId: 'should-not-run', modelCount: 1 }))
+    const result = await new CatalogSyncRunner({
+      providerKey: 'deepseek', expectedSchemaVersion: 1, resolvedPolicy: null, trigger: 'startup', readMeta: async () => null, runSync,
+      now: () => 2_000_000, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    }).run()
+    expect(result).toMatchObject({ reason: 'unconfigured_no_cache', syncAttempted: false, modelCountAfter: 0 })
+    expect(runSync).not.toHaveBeenCalled()
+  })
+
+  it('lets explicit manual refresh bypass never and freshness policies', async () => {
+    const runSync = vi.fn(async () => ({ ok: true as const, snapshotId: 'manual', modelCount: 2 }))
+    const result = await new CatalogSyncRunner({
+      providerKey: 'deepseek', expectedSchemaVersion: 1,
+      resolvedPolicy: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'manual', freshnessMs: null, retentionMs: 'never' },
+      trigger: 'manual', readMeta: async () => null, runSync,
+      now: () => 2_000_000, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    }).run()
+    expect(result).toMatchObject({ reason: 'synced', syncAttempted: true, syncSucceeded: true })
+    expect(runSync).toHaveBeenCalledTimes(1)
+  })
+
+  it('uses always policy on every picker-open trigger regardless of cache age', async () => {
+    const runSync = vi.fn(async () => ({ ok: true as const, snapshotId: 'always', modelCount: 3 }))
+    const result = await new CatalogSyncRunner({
+      providerKey: 'deepseek', expectedSchemaVersion: 1,
+      resolvedPolicy: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'always', listApplyMode: 'automatic', freshnessMs: null, retentionMs: 7_200_000 },
+      trigger: 'picker_open', readMeta: async () => buildMeta({ lastSyncAtMs: 1_999_999 }), runSync,
+      now: () => 2_000_000, logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
+    }).run()
+    expect(result.reason).toBe('synced')
+    expect(runSync).toHaveBeenCalledTimes(1)
+  })
+
   it('cold start without cache performs sync before ready', async () => {
     const readMeta = vi.fn(async () => null)
     const runSync = vi.fn(async () => ({ ok: true as const, snapshotId: 'snap_1', modelCount: 321 }))
@@ -76,16 +109,12 @@ describe('CatalogSyncRunner', () => {
     })
   })
 
-  it('preserves structured network error details when sync fails', async () => {
-    const networkError = buildNetworkErrorEnvelope({
-      requestPurpose: 'provider_catalog',
-      providerId: 'openrouter',
-      transportKind: 'electron_session_fetch',
-      reason: 'connection_timeout',
-    })
+  it('preserves raw failure facts without a semantic network category', async () => {
     const readMeta = vi.fn(async () => buildMeta({ modelCount: 99, lastSyncAtMs: 0 }))
     const runSync = vi.fn(async () => {
-      throw Object.assign(new Error('OpenRouter catalog: Connection timed out.'), { networkError })
+      throw Object.assign(new Error('The model is not available'), {
+        status: 404, statusText: 'Not Found', body: { error: { code: 'model_not_found', message: 'The model is not available' } },
+      })
     })
     const logger = { info: vi.fn(), warn: vi.fn(), error: vi.fn() }
     const runner = new CatalogSyncRunner({
@@ -102,15 +131,11 @@ describe('CatalogSyncRunner', () => {
     expect(result).toMatchObject({
       syncSucceeded: false,
       reason: 'sync_failed_with_cache',
-      failureMessage: 'OpenRouter catalog: Connection timed out.',
-      networkError: {
-        requestPurpose: 'provider_catalog',
-        providerId: 'openrouter',
-        safeDetailCode: 'connection_timeout',
-      },
+      failureMessage: expect.stringContaining('The model is not available'),
+      providerFailure: { httpStatus: 404, providerError: { code: 'model_not_found' } },
     })
     expect(logger.warn).toHaveBeenCalledWith('[CatalogSyncRunner] sync failed', expect.objectContaining({
-      networkError: 'connection_timeout',
+      diagnosticCode: 'PROVIDER_RESPONSE_HTTP_ERROR', httpStatus: 404,
     }))
   })
 
@@ -228,7 +253,7 @@ describe('CatalogSyncRunner', () => {
 
     const result = await runner.run()
     expect(result).toMatchObject({
-      hadCache: false,
+      hadCache: true,
       syncAttempted: false,
       reason: 'cache_fresh',
       modelCountBefore: 0,

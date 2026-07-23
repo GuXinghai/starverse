@@ -22,6 +22,7 @@ import {
   isGenerationExecutionOperationRepositoryFactV2,
 } from './generationExecutionV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from './generationV2AuthorityTransactionInternal'
+import { createProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
 
 const root = path.resolve(process.cwd())
 const HASH_A = 'a'.repeat(64)
@@ -432,6 +433,46 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
       expect(conflict.kind).toBe('conflict')
       expect(db.prepare(`SELECT terminal_at_ms FROM generation_attempt_v2
         WHERE operation_id=?`).get(input.operationId)).toEqual({ terminal_at_ms: 202 })
+    } finally { db.close() }
+  })
+
+  it('persists raw provider failure facts with the terminal operation', () => {
+    const db = createDb()
+    try {
+      const graph = seedGraph(db)
+      const repo = new GenerationExecutionV2Repo(db)
+      const input = commandInput(graph)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        repo.insertOperationAndSnapshot(context, input))
+      const failure = createProviderFailureV2({
+        context: {
+          origin: 'http_response', phase: 'response_headers', providerId: 'deepseek',
+          contractId: 'deepseek-stable-chat-v1', operationId: input.operationId,
+          requestSequence: 1,
+        },
+        httpStatus: 401,
+        httpStatusText: 'Unauthorized',
+        body: { error: { code: 'invalid_api_key', message: 'Invalid API key' } },
+      })
+      const terminal = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        repo.terminalizeOperation(context, repo.findOperationInTransaction(context, input.operationId)!, {
+          state: 'failed', errorCode: failure.starverseDiagnosticCode,
+          errorMessage: failure.providerError?.message ?? 'Provider request failed.', errorFact: failure,
+        }, 200))
+      expect(terminal.operation.errorFact).toMatchObject({
+        httpStatus: 401,
+        providerError: { code: 'invalid_api_key', message: 'Invalid API key' },
+      })
+      expect(db.prepare(`SELECT error_fact_json FROM generation_operation_v2
+        WHERE operation_id=?`).get(input.operationId)).toMatchObject({
+        error_fact_json: expect.stringContaining('invalid_api_key'),
+      })
+      const replay = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        repo.terminalizeOperation(context, repo.findOperationInTransaction(context, input.operationId)!, {
+          state: 'failed', errorCode: failure.starverseDiagnosticCode,
+          errorMessage: failure.providerError?.message ?? 'Provider request failed.', errorFact: failure,
+        }, 999))
+      expect(replay.operation.errorFact?.providerError?.requestId).toBeNull()
     } finally { db.close() }
   })
 

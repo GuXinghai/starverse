@@ -50,6 +50,18 @@ describe('ComposerDraftV2Repo DFC selection', () => {
           assetSha256: source.blob.sha256.value, include: true, sendAs: 'provider_file', conversion: 'none',
         },
       })
+      const orphanDerived = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, context =>
+        assets.createDerivedAssetRevisionInAuthorityTransaction(context, {
+          assetId: 'asset:orphan-derived', assetRevisionId: 'revision:orphan-derived', assetKind: 'file', filename: 'orphan.txt',
+          parentAssetRevisionId: source.assetRevisionId.value, conversionKind: 'plain_text',
+          conversionContractId: 'starverse-dfc-text-v1', conversionRevision: '1', blob: derivedBlob,
+        }))
+      expect(() => drafts.setDfcSelection({
+        conversationId: 'conversation:1', expectedRevision: attached.revision,
+        sourceAssetRevisionId: source.assetRevisionId.value, selectedOptionId: 'dfc:plain_text:orphan',
+        targetKind: 'plain_text', sendStrategy: 'text_in_prompt', effectiveAssetId: orphanDerived.assetId.value,
+        effectiveAssetRevisionId: orphanDerived.assetRevisionId.value, effectiveAssetSha256: orphanDerived.blob.sha256.value,
+      })).toThrow('GENERATION_V2_DRAFT_DFC_PROVENANCE_INVALID')
       const selected = drafts.setDfcSelection({
         conversationId: 'conversation:1', expectedRevision: attached.revision,
         sourceAssetRevisionId: source.assetRevisionId.value, selectedOptionId: 'dfc:markdown:revision:derived',

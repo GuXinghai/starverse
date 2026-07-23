@@ -1,8 +1,9 @@
-import { ImmutablePreparedBodyV2, isImmutablePreparedBodyV2 } from './stableSerialize'
+import { ImmutablePreparedBodyV2, isImmutablePreparedBodyV2, stableSerializeProviderRequestV2 } from './stableSerialize'
 import {
   isSemanticConsumptionLedgerV2,
   type SemanticConsumptionLedgerV2,
 } from './semanticConsumptionLedgerV2'
+import type { AttachmentIntentV2 } from '../domain/generationIntentV2'
 
 export type NonSecretHeaderPlanV2 = Readonly<{
   contentType: 'application/json'
@@ -50,14 +51,63 @@ export type PreparedProviderRequestV2 = Readonly<{
   snapshotHash: string
 }>
 
+export type PreparedAttachmentRequirementV2 = Readonly<{
+  semanticPath: string
+  kind: 'managed_file'
+  assetRevisionId: string
+  assetSha256: string
+} | {
+  semanticPath: string
+  kind: 'url_reference'
+  referenceRevision: string
+  urlDigest: string
+}>
+
+export type PreparedAttachmentEncodingProofV2 = Readonly<{
+  semanticPath: string
+  requirement: PreparedAttachmentRequirementV2
+  /** The exact provider-native fragment that must occur in the immutable body. */
+  wireFragment: unknown
+}>
+
 export class PreparedProviderRequestV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_PREPARED_REQUEST_INVALID_VALUE'
     | 'GENERATION_V2_PREPARED_REQUEST_UNBRANDED_BODY'
-    | 'GENERATION_V2_PREPARED_REQUEST_UNBRANDED_LEDGER') {
+    | 'GENERATION_V2_PREPARED_REQUEST_UNBRANDED_LEDGER'
+    | 'GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_MISSING'
+    | 'GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_DUPLICATE'
+    | 'GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_MISMATCH'
+    | 'GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_FRAGMENT_MISSING') {
     super(code)
     this.name = 'PreparedProviderRequestV2Error'
   }
+}
+
+export function createPreparedAttachmentRequirementsV2(
+  attachments: readonly AttachmentIntentV2[],
+): readonly PreparedAttachmentRequirementV2[] {
+  const requirements: PreparedAttachmentRequirementV2[] = []
+  attachments.forEach((attachment, index) => {
+    if (!attachment.include) return
+    const semanticPath = `attachments[${index}]`
+    if (attachment.kind === 'managed_file') {
+      requirements.push(Object.freeze({
+        semanticPath,
+        kind: 'managed_file' as const,
+        assetRevisionId: attachment.assetRevisionId.value,
+        assetSha256: attachment.assetSha256.value,
+      }))
+      return
+    }
+    requirements.push(Object.freeze({
+      semanticPath,
+      kind: 'url_reference' as const,
+      referenceRevision: attachment.referenceRevision.value,
+      urlDigest: attachment.urlDigest.value,
+    }))
+  })
+  return Object.freeze(requirements)
 }
 
 const preparedRequests = new WeakSet<object>()
@@ -84,6 +134,8 @@ export function issuePreparedProviderRequestV2(input: Readonly<{
   headersPlan: NonSecretHeaderPlanV2
   body: ImmutablePreparedBodyV2
   ledger: SemanticConsumptionLedgerV2
+  attachmentRequirements?: readonly PreparedAttachmentRequirementV2[]
+  attachmentEncodingProofs?: readonly PreparedAttachmentEncodingProofV2[]
   capabilityRevision: string
   snapshotHash: string
 }>): PreparedProviderRequestV2 {
@@ -93,6 +145,7 @@ export function issuePreparedProviderRequestV2(input: Readonly<{
   if (!isSemanticConsumptionLedgerV2(input.ledger)) {
     throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_UNBRANDED_LEDGER')
   }
+  validateAttachmentProofs(input.body, input.attachmentRequirements ?? [], input.attachmentEncodingProofs ?? [])
   if (!Number.isSafeInteger(input.requestSequence) || input.requestSequence < 1 ||
       !/^[0-9a-f]{64}$/u.test(input.snapshotHash)) {
     throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_INVALID_VALUE')
@@ -129,6 +182,66 @@ export function issuePreparedProviderRequestV2(input: Readonly<{
   })
   preparedRequests.add(request)
   return request
+}
+
+function validateAttachmentProofs(
+  body: ImmutablePreparedBodyV2,
+  requirements: readonly PreparedAttachmentRequirementV2[],
+  proofs: readonly PreparedAttachmentEncodingProofV2[],
+): void {
+  if (!Array.isArray(requirements) || !Array.isArray(proofs)) {
+    throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_INVALID_VALUE')
+  }
+  const bodyText = body.copyUtf8Text()
+  const requirementKeys = new Set<string>()
+  for (const requirement of requirements) {
+    if (!requirement || typeof requirement !== 'object' || typeof requirement.semanticPath !== 'string' ||
+        requirementKeys.has(requirement.semanticPath)) {
+      throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_DUPLICATE')
+    }
+    if (requirement.kind === 'managed_file') {
+      if (typeof requirement.assetRevisionId !== 'string' || !/^[0-9a-f]{64}$/u.test(requirement.assetSha256)) {
+        throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_INVALID_VALUE')
+      }
+    } else if (requirement.kind === 'url_reference') {
+      if (typeof requirement.referenceRevision !== 'string' || requirement.referenceRevision.length === 0 ||
+          !/^[0-9a-f]{64}$/u.test(requirement.urlDigest)) {
+        throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_INVALID_VALUE')
+      }
+    } else {
+      throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_INVALID_VALUE')
+    }
+    requirementKeys.add(requirement.semanticPath)
+  }
+  const proofKeys = new Set<string>()
+  for (const proof of proofs) {
+    if (!proof || typeof proof !== 'object' || typeof proof.semanticPath !== 'string' || proofKeys.has(proof.semanticPath)) {
+      throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_DUPLICATE')
+    }
+    if (!requirementKeys.has(proof.semanticPath) || !proof.requirement ||
+        proof.requirement.semanticPath !== proof.semanticPath) {
+      throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_MISMATCH')
+    }
+    const expected = requirements.find((requirement) => requirement.semanticPath === proof.semanticPath)
+    if (!expected || stableRequirementKey(expected) !== stableRequirementKey(proof.requirement)) {
+      throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_MISMATCH')
+    }
+    let fragment: string
+    try { fragment = stableSerializeProviderRequestV2(proof.wireFragment) } catch {
+      throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_MISMATCH')
+    }
+    if (!bodyText.includes(fragment)) {
+      throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_FRAGMENT_MISSING')
+    }
+    proofKeys.add(proof.semanticPath)
+  }
+  if (proofKeys.size !== requirementKeys.size) {
+    throw new PreparedProviderRequestV2Error('GENERATION_V2_PREPARED_REQUEST_ATTACHMENT_PROOF_MISSING')
+  }
+}
+
+function stableRequirementKey(value: PreparedAttachmentRequirementV2): string {
+  return stableSerializeProviderRequestV2(value)
 }
 
 function validateOrdinaryHeaders(value: unknown): readonly Readonly<{ name: string; value: string }>[] {

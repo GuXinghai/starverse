@@ -51,6 +51,11 @@ describe('deepSeekCatalogSource', () => {
           structuredOutputs: true,
           longContext: true,
         }),
+        supportedParameters: [
+          'temperature', 'top_p', 'max_tokens', 'stop',
+          'thinking', 'reasoning_effort', 'response_format',
+          'tools', 'tool_choice',
+        ],
       }),
     ]))
     expect(snapshot.models.map((model) => model.modelId)).toEqual(expect.arrayContaining([
