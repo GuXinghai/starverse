@@ -1,0 +1,17 @@
+{
+  "name": "models/gemini-2.5-flash-image",
+  "version": "2.0",
+  "displayName": "Nano Banana",
+  "description": "Gemini 2.5 Flash Preview Image",
+  "inputTokenLimit": 32768,
+  "outputTokenLimit": 32768,
+  "supportedGenerationMethods": [
+    "generateContent",
+    "countTokens",
+    "batchGenerateContent"
+  ],
+  "temperature": 1,
+  "topP": 0.95,
+  "topK": 64,
+  "maxTemperature": 1
+}

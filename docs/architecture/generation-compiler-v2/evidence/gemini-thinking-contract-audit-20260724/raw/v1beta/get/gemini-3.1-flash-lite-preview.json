@@ -1,0 +1,19 @@
+{
+  "name": "models/gemini-3.1-flash-lite-preview",
+  "version": "3.1-flash-lite-preview-03-2026",
+  "displayName": "Gemini 3.1 Flash Lite Preview",
+  "description": "Gemini 3.1 Flash Lite Preview",
+  "inputTokenLimit": 1048576,
+  "outputTokenLimit": 65536,
+  "supportedGenerationMethods": [
+    "generateContent",
+    "countTokens",
+    "createCachedContent",
+    "batchGenerateContent"
+  ],
+  "temperature": 1,
+  "topP": 0.95,
+  "topK": 64,
+  "maxTemperature": 2,
+  "thinking": true
+}

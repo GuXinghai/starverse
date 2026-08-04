@@ -1,0 +1,12 @@
+{
+  "name": "models/antigravity-preview-05-2026",
+  "version": "0.1",
+  "displayName": "Antigravity Agent Preview",
+  "description": "Preview release of Antigravity Agent (05-2026)",
+  "inputTokenLimit": 131072,
+  "outputTokenLimit": 65536,
+  "supportedGenerationMethods": [
+    "generateContent",
+    "countTokens"
+  ]
+}

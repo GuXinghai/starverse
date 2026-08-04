@@ -1,0 +1,19 @@
+{
+  "name": "models/gemini-robotics-er-1.6-preview",
+  "version": "1.6-preview",
+  "displayName": "Gemini Robotics-ER 1.6 Preview",
+  "description": "Gemini Robotics-ER 1.6 Preview",
+  "inputTokenLimit": 131072,
+  "outputTokenLimit": 65536,
+  "supportedGenerationMethods": [
+    "generateContent",
+    "countTokens",
+    "createCachedContent",
+    "batchGenerateContent"
+  ],
+  "temperature": 1,
+  "topP": 0.95,
+  "topK": 64,
+  "maxTemperature": 2,
+  "thinking": true
+}
