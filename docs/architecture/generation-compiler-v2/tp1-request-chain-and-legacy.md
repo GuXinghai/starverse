@@ -41,7 +41,7 @@ Architecture evidence:
 ## Normative decisions
 
 1. The only public generation entry is the V2 command layer; UI never calls builders, transports, DB branch mutations, or provider runtime switches directly.
-2. Every command carries explicit `branchId`, `questionId`, `targetAnswerRootId` where answer-scoped, `operationId`, and one semantic intent/snapshot reference. No target inference.
+2. Every command carries explicit `branchId`, `questionId`, `sourceAnswerId` where answer-scoped, `operationId`, and one semantic intent/snapshot reference. No target inference.
 3. DB transaction commits answer creation, snapshot, operation, chosen, head, and replace-hide together. Streaming begins only from the committed operation.
 4. Initial send and regenerate resolve current semantic config before transaction. Both retry commands load only the explicit chosen target's immutable V2 snapshot.
 5. Chosen answer root and branch head remain separate typed fields. Commands validate the allowed head group and follow-up-question constraint explicitly.
@@ -95,11 +95,11 @@ regenerateQuestionWithCurrentConfig({
 })
 
 retryChosenAnswerAsNew({
-  operationId, branchId, questionId, targetAnswerRootId
+  operationId, branchId, questionId, sourceAnswerId
 })
 
 retryChosenAnswerReplacing({
-  operationId, branchId, questionId, targetAnswerRootId
+  operationId, branchId, questionId, sourceAnswerId
 })
 ```
 
