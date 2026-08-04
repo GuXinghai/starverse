@@ -1,0 +1,1307 @@
+{
+  "version": "v1",
+  "list": {
+    "pageSize": 1000,
+    "pages": [
+      {
+        "pageNumber": 1,
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models?pageSize=1000",
+        "status": 200,
+        "statusText": "OK",
+        "rawFile": "raw/v1/list-page-001.json",
+        "rawSha256": "cfec9ef58d180504d8cc31d20471dcb4b5efd2e5c32254dd462ed65e532fc8be"
+      }
+    ],
+    "modelCount": 21,
+    "thinkingStateCounts": {
+      "true": 11,
+      "missing": 10
+    },
+    "errors": []
+  },
+  "generateContent": {
+    "modelCount": 16,
+    "getCount": 16,
+    "gets": [
+      {
+        "name": "models/gemini-2.5-flash",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-2.5-flash.json",
+        "rawSha256": "87e22e114e89f4a58fbb42b81a01600ed079b1d849d8791c6572bf209a0dbd8a",
+        "error": null
+      },
+      {
+        "name": "models/gemini-2.5-pro",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-pro",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-2.5-pro.json",
+        "rawSha256": "0861ce57b945308f12123c7666c29aa0d088056c82c9dca55d2e148fdc73e750",
+        "error": null
+      },
+      {
+        "name": "models/gemini-2.0-flash",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-2.0-flash.json",
+        "rawSha256": "a5385a66d54b3787deaa87beb3ff89d1fb0f00f88d1c8b6574d82ee06214ff04",
+        "error": null
+      },
+      {
+        "name": "models/gemini-2.0-flash-001",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-001",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-2.0-flash-001.json",
+        "rawSha256": "40eaf69292c630ad1e546910da3e42a8f7697a3d5172c5acf3bfe0eae0ce7da9",
+        "error": null
+      },
+      {
+        "name": "models/gemini-2.0-flash-lite-001",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-lite-001",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-2.0-flash-lite-001.json",
+        "rawSha256": "5b4dc24a0f8569a34a9c518f065921bf9bc98bc743539ef09be346a32cbc2737",
+        "error": null
+      },
+      {
+        "name": "models/gemini-2.0-flash-lite",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-2.0-flash-lite",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-2.0-flash-lite.json",
+        "rawSha256": "ba7425cf1944f8198dc244016695386914bca5ac9944f3fe17939dd843429382",
+        "error": null
+      },
+      {
+        "name": "models/gemma-4-26b-a4b-it",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemma-4-26b-a4b-it",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemma-4-26b-a4b-it.json",
+        "rawSha256": "a30b7b75a508e283811134a17b9d0b80d20dfbc3543c4fc85385743ca15ecc62",
+        "error": null
+      },
+      {
+        "name": "models/gemma-4-31b-it",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemma-4-31b-it",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemma-4-31b-it.json",
+        "rawSha256": "82797b3877f76fb5473ba1e9594c5f8d43a530e4b75e83d16fe08e66bdd5258e",
+        "error": null
+      },
+      {
+        "name": "models/gemini-2.5-flash-lite",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-lite",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-2.5-flash-lite.json",
+        "rawSha256": "505d07ad415d435c55931f81a0efe24ba1842d26c371b44a1e8867c6e8aa6be1",
+        "error": null
+      },
+      {
+        "name": "models/gemini-2.5-flash-image",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-2.5-flash-image",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-2.5-flash-image.json",
+        "rawSha256": "5f89dc078d7fd8817d7f38e1c0e2f4cb25cfbbd478420c4564462fd2d1f2c09e",
+        "error": null
+      },
+      {
+        "name": "models/gemini-3.1-flash-lite",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-3.1-flash-lite",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-3.1-flash-lite.json",
+        "rawSha256": "cd14b006195ba3ed5d3b1fbe9eac027009f23ef5e4927c4a83c79072f4c542ca",
+        "error": null
+      },
+      {
+        "name": "models/gemini-3.1-flash-image",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-3.1-flash-image",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-3.1-flash-image.json",
+        "rawSha256": "61288b6e31a102665621eaac04ddf101a37eb89422db9cb2080f2a275334a07f",
+        "error": null
+      },
+      {
+        "name": "models/gemini-3.1-flash-lite-image",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-3.1-flash-lite-image",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-3.1-flash-lite-image.json",
+        "rawSha256": "fdbb76a856995c6706e9c90961e7fb1868ff70699660794576fc349b14114b4b",
+        "error": null
+      },
+      {
+        "name": "models/gemini-3.5-flash",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-3.5-flash.json",
+        "rawSha256": "19f8f11eb4e1d3eed2306cf1ba2628d5f47620840adb5bb90e63120989747108",
+        "error": null
+      },
+      {
+        "name": "models/gemini-3.5-flash-lite",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-3.5-flash-lite",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-3.5-flash-lite.json",
+        "rawSha256": "5f30d4e96471ba628668a27a7b33c6da56f55b3d8b011d46bd5d83733f97f2b0",
+        "error": null
+      },
+      {
+        "name": "models/gemini-3.6-flash",
+        "requestUrl": "https://generativelanguage.googleapis.com/v1/models/gemini-3.6-flash",
+        "status": 200,
+        "rawFile": "raw/v1/get/gemini-3.6-flash.json",
+        "rawSha256": "451a0e2d161143e6ada1d8b392423c44141a9d6f20efe566f5642cb5cd868080",
+        "error": null
+      }
+    ],
+    "listGet": [
+      {
+        "name": "models/gemini-2.5-flash",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-2.5-flash",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "001",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-2.5-flash",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "001",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-2.5-pro",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-2.5-pro",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.5",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-2.5-pro",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.5",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-2.0-flash",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-2.0-flash",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": false,
+          "thinkingState": "missing",
+          "thinkingType": null,
+          "thinkingValue": null
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-2.0-flash",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": false,
+          "thinkingState": "missing",
+          "thinkingType": null,
+          "thinkingValue": null
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-2.0-flash-001",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-2.0-flash-001",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": false,
+          "thinkingState": "missing",
+          "thinkingType": null,
+          "thinkingValue": null
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-2.0-flash-001",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": false,
+          "thinkingState": "missing",
+          "thinkingType": null,
+          "thinkingValue": null
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-2.0-flash-lite-001",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-2.0-flash-lite-001",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": false,
+          "thinkingState": "missing",
+          "thinkingType": null,
+          "thinkingValue": null
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-2.0-flash-lite-001",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": false,
+          "thinkingState": "missing",
+          "thinkingType": null,
+          "thinkingValue": null
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-2.0-flash-lite",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-2.0-flash-lite",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": false,
+          "thinkingState": "missing",
+          "thinkingType": null,
+          "thinkingValue": null
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-2.0-flash-lite",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": false,
+          "thinkingState": "missing",
+          "thinkingType": null,
+          "thinkingValue": null
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemma-4-26b-a4b-it",
+        "list": {
+          "source": "list",
+          "name": "models/gemma-4-26b-a4b-it",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "001",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemma-4-26b-a4b-it",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "001",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemma-4-31b-it",
+        "list": {
+          "source": "list",
+          "name": "models/gemma-4-31b-it",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "001",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemma-4-31b-it",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "001",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-2.5-flash-lite",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-2.5-flash-lite",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "001",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-2.5-flash-lite",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "001",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-2.5-flash-image",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-2.5-flash-image",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": false,
+          "thinkingState": "missing",
+          "thinkingType": null,
+          "thinkingValue": null
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-2.5-flash-image",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "2.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": false,
+          "thinkingState": "missing",
+          "thinkingType": null,
+          "thinkingValue": null
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-3.1-flash-lite",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-3.1-flash-lite",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.1-flash-lite-05-2026",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-3.1-flash-lite",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.1-flash-lite-05-2026",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-3.1-flash-image",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-3.1-flash-image",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-3.1-flash-image",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-3.1-flash-lite-image",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-3.1-flash-lite-image",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-3.1-flash-lite-image",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.0",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-3.5-flash",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-3.5-flash",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.5-flash-05-2026",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-3.5-flash",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.5-flash-05-2026",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-3.5-flash-lite",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-3.5-flash-lite",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.5-flash-lite-07-2026",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-3.5-flash-lite",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.5-flash-lite-07-2026",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      },
+      {
+        "name": "models/gemini-3.6-flash",
+        "list": {
+          "source": "list",
+          "name": "models/gemini-3.6-flash",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.6-flash-07-2026",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "get": {
+          "source": "get",
+          "name": "models/gemini-3.6-flash",
+          "nameOwnProperty": true,
+          "baseModelId": null,
+          "baseModelIdOwnProperty": false,
+          "version": "3.6-flash-07-2026",
+          "versionOwnProperty": true,
+          "supportedGenerationMethods": [
+            "generateContent",
+            "countTokens",
+            "createCachedContent",
+            "batchGenerateContent"
+          ],
+          "supportedGenerationMethodsOwnProperty": true,
+          "thinkingOwnProperty": true,
+          "thinkingState": "true",
+          "thinkingType": "boolean",
+          "thinkingValue": true
+        },
+        "getStatus": 200,
+        "fieldDifferences": [],
+        "thinkingDifference": null
+      }
+    ]
+  },
+  "models": [
+    {
+      "source": "list",
+      "name": "models/gemini-2.5-flash",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "001",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-2.5-pro",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "2.5",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-2.0-flash",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "2.0",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": false,
+      "thinkingState": "missing",
+      "thinkingType": null,
+      "thinkingValue": null,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-2.0-flash-001",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "2.0",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": false,
+      "thinkingState": "missing",
+      "thinkingType": null,
+      "thinkingValue": null,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-2.0-flash-lite-001",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "2.0",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": false,
+      "thinkingState": "missing",
+      "thinkingType": null,
+      "thinkingValue": null,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-2.0-flash-lite",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "2.0",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": false,
+      "thinkingState": "missing",
+      "thinkingType": null,
+      "thinkingValue": null,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemma-4-26b-a4b-it",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "001",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemma-4-31b-it",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "001",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-2.5-flash-lite",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "001",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-2.5-flash-image",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "2.0",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": false,
+      "thinkingState": "missing",
+      "thinkingType": null,
+      "thinkingValue": null,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-3.1-flash-lite",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "3.1-flash-lite-05-2026",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-3.1-flash-image",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "3.0",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-3.1-flash-lite-image",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "3.0",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-3.5-flash",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "3.5-flash-05-2026",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-3.5-flash-lite",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "3.5-flash-lite-07-2026",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-3.6-flash",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "3.6-flash-07-2026",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "generateContent",
+        "countTokens",
+        "createCachedContent",
+        "batchGenerateContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": true,
+      "thinkingState": "true",
+      "thinkingType": "boolean",
+      "thinkingValue": true,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-embedding-001",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "001",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "embedContent",
+        "countTextTokens",
+        "countTokens",
+        "asyncBatchEmbedContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": false,
+      "thinkingState": "missing",
+      "thinkingType": null,
+      "thinkingValue": null,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/gemini-embedding-2",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "2",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "embedContent",
+        "countTextTokens",
+        "countTokens",
+        "asyncBatchEmbedContent"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": false,
+      "thinkingState": "missing",
+      "thinkingType": null,
+      "thinkingValue": null,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/imagen-4.0-generate-001",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "001",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "predict"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": false,
+      "thinkingState": "missing",
+      "thinkingType": null,
+      "thinkingValue": null,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/imagen-4.0-ultra-generate-001",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "001",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "predict"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": false,
+      "thinkingState": "missing",
+      "thinkingType": null,
+      "thinkingValue": null,
+      "lifecycleObservation": "stable_name_observation"
+    },
+    {
+      "source": "list",
+      "name": "models/imagen-4.0-fast-generate-001",
+      "nameOwnProperty": true,
+      "baseModelId": null,
+      "baseModelIdOwnProperty": false,
+      "version": "001",
+      "versionOwnProperty": true,
+      "supportedGenerationMethods": [
+        "predict"
+      ],
+      "supportedGenerationMethodsOwnProperty": true,
+      "thinkingOwnProperty": false,
+      "thinkingState": "missing",
+      "thinkingType": null,
+      "thinkingValue": null,
+      "lifecycleObservation": "stable_name_observation"
+    }
+  ]
+}

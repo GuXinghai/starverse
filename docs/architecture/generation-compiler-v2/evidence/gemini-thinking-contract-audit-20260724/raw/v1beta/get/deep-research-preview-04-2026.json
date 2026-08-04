@@ -1,0 +1,17 @@
+{
+  "name": "models/deep-research-preview-04-2026",
+  "version": "deepthink-exp-05-20",
+  "displayName": "Deep Research Preview (Apr-21-2026)",
+  "description": "Preview release (April 21th, 2026) of Deep Research",
+  "inputTokenLimit": 131072,
+  "outputTokenLimit": 65536,
+  "supportedGenerationMethods": [
+    "generateContent",
+    "countTokens"
+  ],
+  "temperature": 1,
+  "topP": 0.95,
+  "topK": 64,
+  "maxTemperature": 2,
+  "thinking": true
+}
