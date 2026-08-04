@@ -119,7 +119,6 @@
   },
   "dependencies": {
     "@floating-ui/vue": "^1.1.11",
-    "@google/generative-ai": "^0.24.1",
     "@types/dompurify": "^3.0.5",
     "@types/markdown-it": "^14.1.2",
     "@types/uuid": "^10.0.0",

@@ -16,7 +16,7 @@
 - **electron-store 11.0** - JSON 配置持久化
 
 ### AI 与渲染
-- **多提供商集成** - Google Gemini (@google/generative-ai 0.24) + OpenRouter API
+- **多提供商集成** - Google Gemini 原生 REST V2 + OpenRouter API
 - **marked 16.4** - GFM Markdown 解析 + **dompurify 3.3** (XSS 防护)
 - **highlight.js 11.11** - 200+ 语言语法高亮 + **katex 0.16** (LaTeX 公式)
 
