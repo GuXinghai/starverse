@@ -49,6 +49,8 @@ function createDb() {
   db.prepare('INSERT INTO project_v2 VALUES (?, ?, ?, ?)').run('project:1', 'Project', 1, 1)
   db.prepare('INSERT INTO conversation_v2 VALUES (?, ?, ?, ?, ?)')
     .run('conversation:1', 'project:1', 'Conversation', 2, 2)
+  db.prepare('INSERT INTO branch_v2 VALUES (?, ?, NULL, NULL, ?, ?, NULL, NULL)')
+    .run('branch:1', 'conversation:1', 2, 2)
   db.prepare(`INSERT INTO runtime_capability_snapshot_v2
     VALUES (?, 'capability:1', 2, ?, ?, ?, 1)`).run(
     HASH_A, stableSerializeProviderRequestV2({ binding: providerBinding() }), HASH_A, HASH_B,
@@ -67,9 +69,9 @@ function insertMessage(
   ordinal: number,
   body: string,
 ) {
-  db.prepare(`INSERT INTO message_v2 (message_id, conversation_id, role, status,
+  db.prepare(`INSERT INTO message_v2 (message_id, conversation_id, introduced_in_branch_id, role, status,
     parent_message_id, question_id, answer_root_id, ordinal, created_at_ms, updated_at_ms)
-    VALUES (?, 'conversation:1', ?, ?, ?, ?, ?, ?, ?, ?)`)
+    VALUES (?, 'conversation:1', 'branch:1', ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(id, role, status, parent, questionId, answerRootId, ordinal, ordinal + 10, ordinal + 10)
   db.prepare('UPDATE message_body_v2 SET body_text=? WHERE message_id=?').run(body, id)
 }
@@ -110,8 +112,8 @@ function insertOperationAndSnapshot(
   })
   db.transaction(() => {
     db.prepare(`INSERT INTO generation_operation_v2 (operation_id, action_kind,
-      command_fingerprint, branch_id, conversation_id, question_id, target_answer_root_id,
-      result_answer_root_id, state, created_at_ms, updated_at_ms)
+      command_fingerprint, branch_id, conversation_id, question_id, source_answer_id,
+      target_answer_id, state, created_at_ms, updated_at_ms)
       VALUES (?, 'initial_send', ?, 'branch:1', 'conversation:1', ?, NULL, ?, 'committed', ?, ?)`)
       .run(operationId, HASH_A, questionId, answerRootId, createdAtMs, createdAtMs)
     db.prepare(`INSERT INTO assistant_generation_snapshot_v2
@@ -203,15 +205,11 @@ function seedThreeTurns(db: BetterSqlite3.Database, corruptSecondLineage = false
   insertMessage(db, 'answer:2', 'assistant', 'streaming', 'question:2', 'question:2', 'answer:2', 3, 'second')
   insertMessage(db, 'question:3', 'user', 'completed', 'answer:2', null, null, 4, 'three')
   insertMessage(db, 'answer:3', 'assistant', 'streaming', 'question:3', 'question:3', 'answer:3', 5, '')
-  db.prepare('INSERT INTO branch_v2 VALUES (?, ?, ?, NULL, ?, ?, NULL)')
-    .run('branch:1', 'conversation:1', 'answer:3', 20, 20)
+  db.prepare("UPDATE branch_v2 SET head_message_id='answer:3',updated_at_ms=20 WHERE branch_id='branch:1'").run()
   for (const [question, answer] of [['question:1', 'answer:1'], ['question:2', 'answer:2'], ['question:3', 'answer:3']]) {
     db.prepare(`INSERT INTO branch_choice_v2 VALUES ('branch:1', 'conversation:1', ?, ?, 20)`)
       .run(question, answer)
   }
-  insertOperationAndSnapshot(db, 'operation:1', 'question:1', 'answer:1', 30)
-  insertOperationAndSnapshot(db, 'operation:2', 'question:2', 'answer:2', 40)
-  insertOperationAndSnapshot(db, 'operation:3', 'question:3', 'answer:3', 50)
   const first = completeDeepSeekNativeRequestV2({
     priorArtifact: null,
     clientEntries: [{ kind: 'client', message: { role: 'user', content: 'one' } }],
@@ -233,8 +231,11 @@ function seedThreeTurns(db: BetterSqlite3.Database, corruptSecondLineage = false
         assistantMessage: { role: 'assistant', content: 'second' },
         generatedWithThinking: 'disabled',
       })
+  insertOperationAndSnapshot(db, 'operation:1', 'question:1', 'answer:1', 30)
   completeOperation(db, 'operation:1', 'answer:1', first, 100)
+  insertOperationAndSnapshot(db, 'operation:2', 'question:2', 'answer:2', 40)
   completeOperation(db, 'operation:2', 'answer:2', second, 200)
+  insertOperationAndSnapshot(db, 'operation:3', 'question:3', 'answer:3', 50)
   insertContextProjection(db)
   return { first, second }
 }

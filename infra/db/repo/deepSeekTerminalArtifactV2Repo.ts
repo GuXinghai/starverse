@@ -52,7 +52,7 @@ export class DeepSeekTerminalArtifactV2Repo {
         !isDeepSeekStableTerminalArtifactV1(artifact) ||
         (execution.operation.state !== 'completed' && execution.operation.state !== 'streaming') ||
         request.operationId !== execution.operation.operationId.value ||
-        request.answerRootId !== execution.operation.resultAnswerRootId.value ||
+        request.answerRootId !== execution.operation.targetAnswerId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) {
       throw new DeepSeekTerminalArtifactV2RepoError(
         'GENERATION_V2_DEEPSEEK_TERMINAL_ARTIFACT_STATE_INVALID',

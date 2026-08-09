@@ -185,7 +185,7 @@ export class DeepSeekNativeHistoryV2Repo {
     seen.add(answerRootId)
     try {
       const operation = this.#db.prepare(`SELECT operation_id AS operationId,question_id AS questionId,
-        conversation_id AS conversationId,state FROM generation_operation_v2 WHERE result_answer_root_id=?`).get(answerRootId) as
+        conversation_id AS conversationId,state FROM generation_operation_v2 WHERE target_answer_id=?`).get(answerRootId) as
         Readonly<Record<string, unknown>> | undefined
       if (!operation || typeof operation.operationId !== 'string' || typeof operation.questionId !== 'string' ||
           typeof operation.conversationId !== 'string' || operation.state !== 'completed') return incompleteContextTurn()
@@ -235,7 +235,7 @@ export class DeepSeekNativeHistoryV2Repo {
     const operationId = GenerationV2Identity.create('operation_id', operationIdValue)
     const row = this.#db.prepare(`SELECT operation.branch_id AS branchId,
       operation.conversation_id AS conversationId, operation.question_id AS questionId,
-      operation.result_answer_root_id AS answerRootId, operation.state AS operationState,
+      operation.target_answer_id AS answerRootId, operation.state AS operationState,
       question.parent_message_id AS parentMessageId, questionBody.body_text AS questionBody,
       parent.role AS parentRole, parent.answer_root_id AS priorAnswerRootId,
       answer.status AS answerStatus
@@ -243,7 +243,7 @@ export class DeepSeekNativeHistoryV2Repo {
       JOIN message_v2 AS question ON question.message_id=operation.question_id
         AND question.conversation_id=operation.conversation_id AND question.role='user'
       JOIN message_body_v2 AS questionBody ON questionBody.message_id=question.message_id
-      JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
+      JOIN message_v2 AS answer ON answer.message_id=operation.target_answer_id
         AND answer.question_id=question.message_id AND answer.answer_root_id=answer.message_id
       JOIN branch_v2 AS branch ON branch.branch_id=operation.branch_id
         AND branch.conversation_id=operation.conversation_id
@@ -333,7 +333,7 @@ export class DeepSeekNativeHistoryV2Repo {
         execution.operation.state !== 'streaming' ||
         execution.operation.operationId.value !== command.operationId.value ||
         execution.operation.branchId.value !== command.branchId.value ||
-        execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+        execution.operation.targetAnswerId.value !== command.answerRootId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) invalidState()
     const projection = this.#db.prepare(`SELECT branch.head_message_id AS headMessageId,
       choice.chosen_answer_root_id AS chosenAnswerRootId, answer.status AS answerStatus,
@@ -418,8 +418,8 @@ export class DeepSeekNativeHistoryV2Repo {
       branchId: execution.operation.branchId,
       conversationId: execution.operation.conversationId,
       questionId: execution.operation.questionId,
-      answerRootId: execution.operation.resultAnswerRootId,
-      priorAnswerRootId: execution.operation.resultAnswerRootId,
+      answerRootId: execution.operation.targetAnswerId,
+      priorAnswerRootId: execution.operation.targetAnswerId,
       priorArtifact: decoded.artifact,
       clientEntries,
       contextProjection: new GenerationContextProjectionV2Repo(this.#db).load(context, command.operationId.value),
@@ -446,7 +446,7 @@ export class DeepSeekNativeHistoryV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     if (!Number.isSafeInteger(requestSequence) || requestSequence < 2) invalidState()
     const executionRow = this.#db.prepare(`SELECT branch_id AS branchId, conversation_id AS conversationId,
-      question_id AS questionId, result_answer_root_id AS answerRootId
+      question_id AS questionId, target_answer_id AS answerRootId
       FROM generation_operation_v2 WHERE operation_id=?`).get(operationIdValue) as
       Readonly<Record<string, unknown>> | undefined
     if (!executionRow || typeof executionRow.branchId !== 'string' ||
@@ -594,7 +594,7 @@ export class DeepSeekNativeHistoryV2Repo {
         !isDeepSeekNativeHistoryArtifactV2(artifact) ||
         (execution.operation.state !== 'completed' && execution.operation.state !== 'streaming') ||
         request.operationId !== execution.operation.operationId.value ||
-        request.answerRootId !== execution.operation.resultAnswerRootId.value ||
+        request.answerRootId !== execution.operation.targetAnswerId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) {
       throw new DeepSeekNativeHistoryV2RepoError('GENERATION_V2_DEEPSEEK_HISTORY_STATE_INVALID')
     }
@@ -686,7 +686,7 @@ export class DeepSeekNativeHistoryV2Repo {
               AND request.request_sequence=artifact.request_sequence
               AND request.answer_root_id=artifact.answer_root_id
             JOIN generation_operation_v2 AS operation ON operation.operation_id=artifact.operation_id
-              AND operation.result_answer_root_id=artifact.answer_root_id
+              AND operation.target_answer_id=artifact.answer_root_id
             JOIN message_v2 AS answer ON answer.message_id=artifact.answer_root_id
             WHERE artifact.answer_root_id=? AND artifact.artifact_kind=?
             ORDER BY artifact.request_sequence DESC LIMIT 1`).get(
@@ -700,7 +700,7 @@ export class DeepSeekNativeHistoryV2Repo {
               AND request.request_sequence=artifact.request_sequence
               AND request.answer_root_id=artifact.answer_root_id
             JOIN generation_operation_v2 AS operation ON operation.operation_id=artifact.operation_id
-              AND operation.result_answer_root_id=artifact.answer_root_id
+              AND operation.target_answer_id=artifact.answer_root_id
             JOIN message_v2 AS answer ON answer.message_id=artifact.answer_root_id
             WHERE artifact.answer_root_id=? AND artifact.request_sequence=?
               AND artifact.artifact_kind=?`).get(

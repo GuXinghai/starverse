@@ -36,12 +36,13 @@ function insertMessage(
   question: string | null,
   answerRoot: string | null,
   ordinal: number,
+  introducedInBranchId: string,
 ) {
   db.prepare(`INSERT INTO message_v2 (
-    message_id, conversation_id, role, status, parent_message_id, question_id,
+    message_id, conversation_id, introduced_in_branch_id, role, status, parent_message_id, question_id,
     answer_root_id, ordinal, created_at_ms, updated_at_ms
-  ) VALUES (?, 'conversation:1', ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, role, status, parent, question, answerRoot, ordinal, ordinal, ordinal)
+  ) VALUES (?, 'conversation:1', ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, introducedInBranchId, role, status, parent, question, answerRoot, ordinal, ordinal, ordinal)
 }
 
 function seedQuestion(
@@ -53,11 +54,12 @@ function seedQuestion(
   const questionId = `question:${suffix}`
   const targetId = `answer:${suffix}:target`
   const resultId = `answer:${suffix}:result`
-  insertMessage(db, questionId, 'user', 'completed', null, null, null, ordinal)
-  insertMessage(db, targetId, 'assistant', 'completed', questionId, questionId, targetId, ordinal + 1)
-  insertMessage(db, resultId, 'assistant', 'streaming', questionId, questionId, resultId, ordinal + 2)
-  db.prepare('INSERT INTO branch_v2 VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(branchId, 'conversation:1', resultId, null, ordinal + 3, ordinal + 3, null)
+  db.prepare('INSERT INTO branch_v2 VALUES (?, ?, ?, ?, ?, ?, ?, NULL)')
+    .run(branchId, 'conversation:1', null, null, ordinal + 3, ordinal + 3, null)
+  insertMessage(db, questionId, 'user', 'completed', null, null, null, ordinal, branchId)
+  insertMessage(db, targetId, 'assistant', 'completed', questionId, questionId, targetId, ordinal + 1, branchId)
+  insertMessage(db, resultId, 'assistant', 'streaming', questionId, questionId, resultId, ordinal + 2, branchId)
+  db.prepare('UPDATE branch_v2 SET head_message_id=? WHERE branch_id=?').run(resultId, branchId)
   db.prepare('INSERT INTO branch_choice_v2 VALUES (?, ?, ?, ?, ?)')
     .run(branchId, 'conversation:1', questionId, resultId, ordinal + 3)
   return { questionId, targetId, resultId, branchId }
@@ -86,7 +88,7 @@ function insertOperationAndSnapshot(
   db.transaction(() => {
     db.prepare(`INSERT INTO generation_operation_v2 (
       operation_id, action_kind, command_fingerprint, branch_id, conversation_id,
-      question_id, target_answer_root_id, result_answer_root_id, state,
+      question_id, source_answer_id, target_answer_id, state,
       created_at_ms, updated_at_ms
     ) VALUES (?, ?, ?, ?, 'conversation:1', ?, ?, ?, 'committed', 100, 100)`)
       .run(operationId, action, options.fingerprint ?? HASH_A, graph.branchId,
@@ -163,9 +165,9 @@ describe('Generation V2 provider-neutral execution schema', () => {
     try {
       const graph = seedGraph(db)
       const operationId = insertOperationAndSnapshot(db, graph)
-      expect(db.prepare(`SELECT operation_id, result_answer_root_id, state
+      expect(db.prepare(`SELECT operation_id, target_answer_id, state
         FROM generation_operation_v2`).get()).toEqual({
-        operation_id: operationId, result_answer_root_id: graph.resultId, state: 'committed',
+        operation_id: operationId, target_answer_id: graph.resultId, state: 'committed',
       })
       expect(() => db.prepare(`UPDATE assistant_generation_snapshot_v2
         SET snapshot_hash=? WHERE answer_root_id=?`).run(HASH_B, graph.resultId))
@@ -181,7 +183,7 @@ describe('Generation V2 provider-neutral execution schema', () => {
       expect(() => db.transaction(() => {
         db.prepare(`INSERT INTO generation_operation_v2 (
           operation_id, action_kind, command_fingerprint, branch_id, conversation_id,
-          question_id, target_answer_root_id, result_answer_root_id, state,
+          question_id, source_answer_id, target_answer_id, state,
           created_at_ms, updated_at_ms
         ) VALUES ('operation:missing', 'retry_as_new', ?, ?, 'conversation:1', ?, ?, ?,
           'committed', 100, 100)`)
@@ -198,7 +200,7 @@ describe('Generation V2 provider-neutral execution schema', () => {
       const graph = seedGraph(db)
       expect(() => db.prepare(`INSERT INTO generation_operation_v2 (
         operation_id, action_kind, command_fingerprint, branch_id, conversation_id,
-        question_id, target_answer_root_id, result_answer_root_id, state, error_code,
+        question_id, source_answer_id, target_answer_id, state, error_code,
         created_at_ms, updated_at_ms, terminal_at_ms
       ) VALUES ('operation:terminal-insert', 'retry_as_new', ?, ?, 'conversation:1',
         ?, ?, ?, 'failed', 'injected', 100, 100, 100)`)
@@ -208,22 +210,25 @@ describe('Generation V2 provider-neutral execution schema', () => {
         operationId: 'operation:no-target', target: null,
       })).toThrow(/CHECK constraint failed/u)
       expect(() => insertOperationAndSnapshot(db, graph, {
-        operationId: 'operation:unexpected-target', action: 'regenerate_question',
-      })).toThrow(/CHECK constraint failed/u)
+        operationId: 'operation:regenerate', action: 'regenerate_question',
+      })).not.toThrow()
+      db.prepare(`UPDATE generation_operation_v2 SET state='cancelled',error_code='test',
+        error_message='test',updated_at_ms=101,terminal_at_ms=101
+        WHERE operation_id='operation:regenerate'`).run()
 
       const other = seedQuestion(db, '2', 'branch:2', 20)
       expect(() => db.prepare(`INSERT INTO generation_operation_v2 (
         operation_id, action_kind, command_fingerprint, branch_id, conversation_id,
-        question_id, target_answer_root_id, result_answer_root_id, state,
+        question_id, source_answer_id, target_answer_id, state,
         created_at_ms, updated_at_ms
       ) VALUES ('operation:cross-question', 'regenerate_question', ?, ?, 'conversation:1',
-        ?, NULL, ?, 'committed', 100, 100)`)
-        .run(HASH_A, graph.branchId, graph.questionId, other.resultId))
-        .toThrow('GENERATION_V2_OPERATION_RESULT_INVALID')
+        ?, ?, ?, 'committed', 100, 100)`)
+        .run(HASH_A, graph.branchId, graph.questionId, graph.targetId, other.resultId))
+        .toThrow('GENERATION_V2_OPERATION_TARGET_INVALID')
     } finally { db.close() }
   })
 
-  it('allows shared command fingerprints but only one active operation per branch/question', () => {
+  it('allows shared command fingerprints but only one active operation per branch', () => {
     const db = createDb()
     try {
       const first = seedGraph(db)
@@ -234,7 +239,7 @@ describe('Generation V2 provider-neutral execution schema', () => {
         WHERE command_fingerprint=?`).get(HASH_A)).toEqual({ count: 2 })
 
       insertMessage(db, 'answer:1:third', 'assistant', 'streaming', first.questionId,
-        first.questionId, 'answer:1:third', 30)
+        first.questionId, 'answer:1:third', 30, first.branchId)
       expect(() => insertOperationAndSnapshot(db, {
         ...first, resultId: 'answer:1:third',
       }, { operationId: 'operation:3' })).toThrow(/UNIQUE constraint failed/u)

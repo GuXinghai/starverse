@@ -101,6 +101,33 @@ function createBrokenSchemaRoot(): string {
   return root
 }
 
+function createDivergentSchemaRoot(): string {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-v2-divergent-schema-'))
+  roots.push(root)
+  const target = path.join(root, 'infra', 'db', 'v2')
+  fs.mkdirSync(target, { recursive: true })
+  for (const file of [
+    'coreConversationSchema.sql',
+    'generationConfigSchema.sql',
+    'toolRegistrySchema.sql',
+    'attachmentAssetSchema.sql',
+    'openRouterImagesSchema.sql',
+    'localEndpointProfileSchema.sql',
+    'reasoningProjectionSchema.sql',
+    'composerDraftSchema.sql',
+    'generationExecutionSchema.sql',
+    'searchSchema.sql',
+    'enginePluginRegistrySchema.sql',
+    'openAIChatCompatibleSchema.sql',
+    'modelPreferencesSchema.sql',
+    'modelCatalogSchemaV2.sql',
+    'dfcAttachmentSchema.sql',
+    'conversationRoutePreferenceSchema.sql',
+  ]) fs.copyFileSync(path.join(repositoryRoot, 'infra', 'db', 'v2', file), path.join(target, file))
+  fs.appendFileSync(path.join(target, 'generationConfigSchema.sql'), '\n-- build advanced fixture\n')
+  return root
+}
+
 beforeEach(() => {
   safeStorageMock.available = true
   safeStorageMock.appRoot = repositoryRoot
@@ -264,6 +291,42 @@ describe('fresh epoch-2 database initializer', () => {
       try { db.exec(sql) } finally { db.close() }
       await expect(initializeOrVerifyFreshEpoch2Database(value))
         .rejects.toThrow('EPOCH2_DATABASE_TRANSACTION_FAILED')
+    } finally { value.lease.release() }
+  })
+
+  windowsIt('classifies a build-advanced schema digest mismatch instead of masking it as corruption', async () => {
+    const value = fixture('starverse-fresh-db-schema-mismatch')
+    try {
+      await initializeOrVerifyFreshEpoch2Database(value)
+      const divergentRoot = createDivergentSchemaRoot()
+      safeStorageMock.appRoot = divergentRoot
+      await expect(verifyExistingFreshEpoch2Database(value))
+        .rejects.toThrow('EPOCH2_DATABASE_SCHEMA_MISMATCH')
+      const db = new BetterSqlite3(value.layout.databasePath, { readonly: true })
+      try {
+        expect(db.pragma('integrity_check', { simple: true })).toBe('ok')
+      } finally { db.close() }
+    } finally { value.lease.release() }
+  })
+
+  windowsIt('classifies an app_meta schema digest divergence as a schema mismatch', async () => {
+    const value = fixture('starverse-fresh-db-app-meta-mismatch')
+    try {
+      await initializeOrVerifyFreshEpoch2Database(value)
+      const db = new BetterSqlite3(value.layout.databasePath)
+      try {
+        const triggers = db.prepare(`SELECT sql FROM sqlite_master
+          WHERE type = 'trigger' AND name LIKE 'trg_app_meta_v2_%' ORDER BY name`).all() as
+          Array<{ sql: string }>
+        expect(triggers).toHaveLength(2)
+        db.exec('DROP TRIGGER trg_app_meta_v2_immutable')
+        db.exec('DROP TRIGGER trg_app_meta_v2_delete_forbidden')
+        db.prepare(`UPDATE app_meta_v2 SET schema_digest = ?
+          WHERE singleton_id = 1`).run('0'.repeat(64))
+        for (const row of triggers) db.exec(row.sql)
+      } finally { db.close() }
+      await expect(verifyExistingFreshEpoch2Database(value))
+        .rejects.toThrow('EPOCH2_DATABASE_SCHEMA_MISMATCH')
     } finally { value.lease.release() }
   })
 })

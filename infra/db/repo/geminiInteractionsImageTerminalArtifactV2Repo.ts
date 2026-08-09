@@ -1,9 +1,9 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import {
-  isGeminiInteractionsImageTerminalArtifactV1,
-  serializeGeminiInteractionsImageTerminalArtifactV1,
-  type GeminiInteractionsImageTerminalArtifactV1,
-} from '../../../src/next/generation-v2/providers/gemini/interactionsTerminalArtifactV1'
+  isGeminiInteractionsImageTerminalArtifactV2,
+  serializeGeminiInteractionsImageTerminalArtifactV2,
+  type GeminiInteractionsImageTerminalArtifactV2,
+} from '../../../src/next/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
 import { assertGenerationV2AuthorityTransactionContextV2, type GenerationV2AuthorityTransactionContextV2 } from './generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from './generationExecutionV2Repo'
 import { isGenerationRequestRepositoryFactForContextV2, type GenerationRequestRepositoryFactV2 } from './generationRequestV2Repo'
@@ -19,17 +19,17 @@ export class GeminiInteractionsImageTerminalArtifactV2Repo {
   }
   insertRequestTerminal(context: GenerationV2AuthorityTransactionContextV2,
     execution: GenerationExecutionOperationBundleV2, request: GenerationRequestRepositoryFactV2,
-    artifact: GeminiInteractionsImageTerminalArtifactV1, createdAtMs: number): void {
+    artifact: GeminiInteractionsImageTerminalArtifactV2, createdAtMs: number): void {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db)
     if (!isGenerationExecutionOperationBundleForContextV2(execution, context) ||
         !isGenerationRequestRepositoryFactForContextV2(request, context) ||
-        !isGeminiInteractionsImageTerminalArtifactV1(artifact) ||
+        !isGeminiInteractionsImageTerminalArtifactV2(artifact) ||
         (execution.operation.state !== 'completed' && execution.operation.state !== 'streaming') ||
         execution.snapshot.providerBinding.protocolContractId.value !== 'gemini-interactions-v1beta' ||
         request.operationId !== execution.operation.operationId.value ||
-        request.answerRootId !== execution.operation.resultAnswerRootId.value ||
+        request.answerRootId !== execution.operation.targetAnswerId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) this.invalid()
-    const json = serializeGeminiInteractionsImageTerminalArtifactV1(artifact)
+    const json = serializeGeminiInteractionsImageTerminalArtifactV2(artifact)
     const existing = this.db.prepare(`SELECT operation_id AS operationId, codec_version AS codecVersion,
       artifact_json AS artifactJson, artifact_hash AS artifactHash FROM generation_native_artifact_v2
       WHERE answer_root_id=? AND request_sequence=? AND artifact_kind=?`).get(

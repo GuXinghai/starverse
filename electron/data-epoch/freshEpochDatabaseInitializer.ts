@@ -6,6 +6,7 @@ import { app, safeStorage } from 'electron'
 import {
   installGenerationV2SchemaInActiveTransaction,
   verifyInstalledGenerationV2SchemaInActiveTransaction,
+  GenerationV2SchemaComposerError,
   type GenerationV2SchemaBundle,
 } from '../../infra/db/v2/schemaComposerV2'
 import {
@@ -37,6 +38,7 @@ export class FreshEpochDatabaseInitializerError extends Error {
     | 'EPOCH2_DATABASE_OPEN_CANTOPEN'
     | 'EPOCH2_DATABASE_PRAGMA_INVALID'
     | 'EPOCH2_DATABASE_STATE_INVALID'
+    | 'EPOCH2_DATABASE_SCHEMA_MISMATCH'
     | 'EPOCH2_DATABASE_TRANSACTION_FAILED'
     | 'EPOCH2_DATABASE_POSTCOMMIT_INVALID'
     | 'EPOCH2_SCOPE_KEY_STORAGE_UNAVAILABLE'
@@ -69,9 +71,12 @@ function translateFailure(
   error: unknown,
   fallback: FreshEpochDatabaseInitializerError['code'],
 ): FreshEpochDatabaseInitializerError {
-  return error instanceof FreshEpochDatabaseInitializerError
-    ? error
-    : new FreshEpochDatabaseInitializerError(fallback)
+  if (error instanceof FreshEpochDatabaseInitializerError) return error
+  if (error instanceof GenerationV2SchemaComposerError &&
+      error.code === 'GENERATION_V2_SCHEMA_DIGEST_MISMATCH') {
+    return new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_SCHEMA_MISMATCH')
+  }
+  return new FreshEpochDatabaseInitializerError(fallback)
 }
 
 async function requireAsyncSafeStorage(): Promise<void> {
@@ -278,9 +283,16 @@ function readAndValidateIdentity(input: Readonly<{
       updated_at_ms: number
     } | undefined
   if (!meta || meta.data_epoch !== 2 || meta.application_id !== expected.applicationId ||
-      meta.root_id !== expected.rootId || meta.schema_digest !== input.bundle.schemaDigest ||
-      !Number.isSafeInteger(meta.created_at_ms) || meta.created_at_ms < 0 || !envelope ||
-      envelope.backend !== 'electron_safe_storage' || envelope.key_version !== 1 ||
+      meta.root_id !== expected.rootId || !Number.isSafeInteger(meta.created_at_ms) ||
+      meta.created_at_ms < 0) {
+    if (envelope && Buffer.isBuffer(envelope.ciphertext)) envelope.ciphertext.fill(0)
+    throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_STATE_INVALID')
+  }
+  if (meta.schema_digest !== input.bundle.schemaDigest) {
+    if (envelope && Buffer.isBuffer(envelope.ciphertext)) envelope.ciphertext.fill(0)
+    throw new FreshEpochDatabaseInitializerError('EPOCH2_DATABASE_SCHEMA_MISMATCH')
+  }
+  if (!envelope || envelope.backend !== 'electron_safe_storage' || envelope.key_version !== 1 ||
       !Number.isSafeInteger(envelope.envelope_revision) || envelope.envelope_revision < 1 ||
       envelope.created_at_ms !== meta.created_at_ms ||
       !Number.isSafeInteger(envelope.updated_at_ms) || envelope.updated_at_ms < envelope.created_at_ms ||

@@ -156,7 +156,7 @@ export class GenerationImageOutputV2Repo {
     }
     if (execution.snapshot.providerBinding.operation !== 'image_generate' ||
         request.operationId !== execution.operation.operationId.value ||
-        request.answerRootId !== execution.operation.resultAnswerRootId.value ||
+        request.answerRootId !== execution.operation.targetAnswerId.value ||
         request.requestSequence < 1 ||
         revision.assetKind !== 'image' || revision.sourceKind !== 'generated' ||
         revision.retiredAtMs !== null) {

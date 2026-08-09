@@ -5,6 +5,7 @@ import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../../src/next
 import { ConversationGraphV2Identity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
 import { GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
 import { BranchContextFilterV2Repo } from './branchContextFilterV2Repo'
+import { BranchRouteResolverV2 } from './branchRouteResolverV2'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   type GenerationV2AuthorityTransactionContextV2,
@@ -72,32 +73,35 @@ export class GenerationContextProjectionV2Repo {
       return invalid('GENERATION_V2_CONTEXT_PROJECTION_STATE_INVALID')
     }
     if (generationSnapshot.operationId.value !== operationId) invalid('GENERATION_V2_CONTEXT_PROJECTION_STATE_INVALID')
-    const rows = this.db.prepare(`WITH RECURSIVE lineage(message_id,parent_message_id,ordinal) AS (
-      SELECT question.message_id,question.parent_message_id,question.ordinal FROM message_v2 AS question
-      WHERE question.message_id=? AND question.conversation_id=? AND question.role='user'
-      UNION ALL
-      SELECT parent.message_id,parent.parent_message_id,parent.ordinal FROM message_v2 AS parent
-      JOIN lineage AS child ON child.parent_message_id=parent.message_id
-      WHERE parent.conversation_id=?
-    )
-    SELECT question.message_id AS questionId,choice.chosen_answer_root_id AS answerRootId,
-      answer.status AS answerStatus,question.ordinal AS ordinal
-    FROM lineage JOIN message_v2 AS question ON question.message_id=lineage.message_id
-    LEFT JOIN branch_choice_v2 AS choice ON choice.branch_id=? AND choice.question_id=question.message_id
-    LEFT JOIN message_v2 AS answer ON answer.message_id=choice.chosen_answer_root_id
-    WHERE question.role='user' AND question.status='completed'
-    ORDER BY question.ordinal ASC,question.message_id ASC`).all(questionId, conversationId, conversationId, branchId) as Row[]
-    if (rows.length === 0) invalid('GENERATION_V2_CONTEXT_PROJECTION_STATE_INVALID')
-    const current = rows[rows.length - 1]
-    if (current.questionId !== questionId) invalid('GENERATION_V2_CONTEXT_PROJECTION_STATE_INVALID')
-    const historical = rows.slice(0, -1).map((row) => {
-      if (typeof row.questionId !== 'string' || typeof row.answerRootId !== 'string' ||
-          !['completed', 'failed', 'cancelled'].includes(String(row.answerStatus))) {
+    let lineage: ReturnType<BranchRouteResolverV2['resolveMessageLineage']>
+    try {
+      lineage = new BranchRouteResolverV2(this.db).resolveMessageLineage(conversationId, questionId)
+    } catch {
+      return invalid('GENERATION_V2_CONTEXT_PROJECTION_STATE_INVALID')
+    }
+    if (lineage.length === 0 || lineage[lineage.length - 1]?.messageId !== questionId ||
+        lineage[lineage.length - 1]?.role !== 'user') {
+      invalid('GENERATION_V2_CONTEXT_PROJECTION_STATE_INVALID')
+    }
+    const selectedByQuestion = new Map<string, string>()
+    const statusByMessage = new Map(lineage.map((message) => [message.messageId, message.status]))
+    for (const message of lineage) {
+      if (message.role === 'assistant' && message.questionId !== null &&
+          message.answerRootId === message.messageId) {
+        selectedByQuestion.set(message.questionId, message.messageId)
+      }
+    }
+    const questionIds = lineage.filter((message) => message.role === 'user').map((message) => message.messageId)
+    if (questionIds[questionIds.length - 1] !== questionId) invalid('GENERATION_V2_CONTEXT_PROJECTION_STATE_INVALID')
+    const historical = questionIds.slice(0, -1).map((historicalQuestionId) => {
+      const chosenAnswerRootId = selectedByQuestion.get(historicalQuestionId)
+      if (!chosenAnswerRootId || !['completed', 'failed', 'cancelled'].includes(
+        statusByMessage.get(chosenAnswerRootId) ?? '',
+      )) {
         return invalid('GENERATION_V2_CONTEXT_PROJECTION_STATE_INVALID')
       }
-      return Object.freeze({ questionId: row.questionId, chosenAnswerRootId: row.answerRootId })
+      return Object.freeze({ questionId: historicalQuestionId, chosenAnswerRootId })
     })
-    if (current.answerRootId !== null && typeof current.answerRootId !== 'string') invalid('GENERATION_V2_CONTEXT_PROJECTION_STATE_INVALID')
     const filters = new BranchContextFilterV2Repo(this.db).readForTurns(branchId, historical)
     const turns = Object.freeze([
       ...historical.map((turn) => Object.freeze({ questionId: turn.questionId, answerRootId: turn.chosenAnswerRootId,

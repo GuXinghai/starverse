@@ -269,7 +269,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     seen.add(answerRootId)
     try {
       const row = this.#db.prepare(`SELECT operation_id AS operationId,state FROM generation_operation_v2
-        WHERE result_answer_root_id=?`).get(answerRootId) as { operationId?: unknown; state?: unknown } | undefined
+        WHERE target_answer_id=?`).get(answerRootId) as { operationId?: unknown; state?: unknown } | undefined
       if (typeof row?.operationId !== 'string' || row.state !== 'completed') return incompleteContextTurn()
       const artifact = this.#loadFinalArtifact(answerRootId)
       const projection = new GenerationContextProjectionV2Repo(this.#db).load(context, row.operationId)
@@ -317,7 +317,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     const operationId = GenerationV2Identity.create('operation_id', operationIdValue)
     const row = this.#db.prepare(`SELECT operation.branch_id AS branchId,
       operation.conversation_id AS conversationId, operation.question_id AS questionId,
-      operation.result_answer_root_id AS answerRootId, operation.state AS operationState,
+      operation.target_answer_id AS answerRootId, operation.state AS operationState,
       question.parent_message_id AS parentMessageId, questionBody.body_text AS questionBody,
       parent.role AS parentRole, parent.answer_root_id AS priorAnswerRootId,
       answer.status AS answerStatus, snapshot.canonical_json AS snapshotJson
@@ -325,10 +325,10 @@ export class OpenAIResponsesNativeHistoryV2Repo {
       JOIN message_v2 AS question ON question.message_id=operation.question_id
         AND question.conversation_id=operation.conversation_id AND question.role='user'
       JOIN message_body_v2 AS questionBody ON questionBody.message_id=question.message_id
-      JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
+      JOIN message_v2 AS answer ON answer.message_id=operation.target_answer_id
         AND answer.question_id=question.message_id AND answer.answer_root_id=answer.message_id
       JOIN assistant_generation_snapshot_v2 AS snapshot ON snapshot.operation_id=operation.operation_id
-        AND snapshot.answer_root_id=operation.result_answer_root_id
+        AND snapshot.answer_root_id=operation.target_answer_id
       JOIN branch_v2 AS branch ON branch.branch_id=operation.branch_id
         AND branch.conversation_id=operation.conversation_id
       LEFT JOIN message_v2 AS parent ON parent.message_id=question.parent_message_id
@@ -398,7 +398,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
         execution.operation.state !== 'streaming' ||
         execution.operation.operationId.value !== command.operationId.value ||
         execution.operation.branchId.value !== command.branchId.value ||
-        execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+        execution.operation.targetAnswerId.value !== command.answerRootId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) invalid()
     const state = this.#db.prepare(`SELECT branch.head_message_id AS headMessageId,
       choice.chosen_answer_root_id AS chosenAnswerRootId, answer.status AS answerStatus,
@@ -467,7 +467,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     return this.#createFact(context, {
       operationId: execution.operation.operationId, branchId: execution.operation.branchId,
       conversationId: execution.operation.conversationId, questionId: execution.operation.questionId,
-      answerRootId: execution.operation.resultAnswerRootId, priorAnswerRootId: execution.operation.resultAnswerRootId,
+      answerRootId: execution.operation.targetAnswerId, priorAnswerRootId: execution.operation.targetAnswerId,
       priorArtifact: prior,
       clientItems: Object.freeze(records.map((record) => Object.freeze({
         type: 'function_call_output' as const, call_id: record.toolCallId, output: record.content,
@@ -489,7 +489,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     if (!Number.isSafeInteger(requestSequence) || requestSequence < 2) invalid()
     const operation = this.#db.prepare(`SELECT branch_id AS branchId, conversation_id AS conversationId,
-      question_id AS questionId, result_answer_root_id AS answerRootId FROM generation_operation_v2 WHERE operation_id=?`).get(
+      question_id AS questionId, target_answer_id AS answerRootId FROM generation_operation_v2 WHERE operation_id=?`).get(
       operationIdValue,
     ) as Readonly<Record<string, unknown>> | undefined
     if (!operation || typeof operation.branchId !== 'string' || typeof operation.conversationId !== 'string' ||

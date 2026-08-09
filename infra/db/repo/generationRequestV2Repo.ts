@@ -288,7 +288,7 @@ export class GenerationRequestV2Repo {
     const existing = this.#find(context, execution.operation.operationId.value, requestSequence)
     if (!existing) throw new GenerationRequestV2RepoError('GENERATION_V2_REQUEST_NOT_FOUND')
     const binding = execution.snapshot.providerBinding
-    if (existing.answerRootId !== execution.operation.resultAnswerRootId.value ||
+    if (existing.answerRootId !== execution.operation.targetAnswerId.value ||
         existing.snapshotHash !== execution.snapshot.snapshotHash.value ||
         existing.providerId !== binding.providerId.value ||
         existing.endpointProfileId !== binding.endpointProfileId.value ||
@@ -358,7 +358,7 @@ export class GenerationRequestV2Repo {
     const { operation, snapshot, capability } = execution
     const binding = snapshot.providerBinding
     if (prepared.operationId !== operation.operationId.value ||
-        prepared.answerRootId !== operation.resultAnswerRootId.value ||
+        prepared.answerRootId !== operation.targetAnswerId.value ||
         prepared.snapshotHash !== snapshot.snapshotHash.value ||
         prepared.providerId !== binding.providerId.value ||
         prepared.endpointProfileId !== binding.endpointProfileId.value ||

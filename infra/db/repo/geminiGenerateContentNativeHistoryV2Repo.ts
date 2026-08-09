@@ -138,7 +138,7 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
     answerRootId: string,
   ): readonly GeminiGenerateContentNativeContentV1[] {
     const artifact = this.loadLatestCompletedArtifact(answerRootId)
-    const operation = this.db.prepare(`SELECT operation.question_id AS questionId, operation.result_answer_root_id AS answerRootId
+    const operation = this.db.prepare(`SELECT operation.question_id AS questionId, operation.target_answer_id AS answerRootId
       FROM generation_operation_v2 AS operation WHERE operation.operation_id=?`).get(artifact.operationId) as
       Readonly<Record<string, unknown>> | undefined
     if (operation?.answerRootId !== answerRootId || typeof operation.questionId !== 'string' ||
@@ -159,7 +159,7 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
     operationIdValue: string): GeminiGenerateContentHistoryRepositoryFactV2 {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db)
     const row = this.db.prepare(`SELECT operation.branch_id AS branchId, operation.conversation_id AS conversationId,
-      operation.question_id AS questionId, operation.result_answer_root_id AS answerRootId,
+      operation.question_id AS questionId, operation.target_answer_id AS answerRootId,
       questionBody.body_text AS questionBody
       FROM generation_operation_v2 AS operation
       JOIN message_v2 AS question ON question.message_id=operation.question_id AND question.role='user'
@@ -215,7 +215,7 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
         execution.operation.state !== 'streaming' ||
         execution.operation.operationId.value !== command.operationId.value ||
         execution.operation.branchId.value !== command.branchId.value ||
-        execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+        execution.operation.targetAnswerId.value !== command.answerRootId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) invalid()
     const projection = this.db.prepare(`SELECT branch.head_message_id AS headMessageId,
       choice.chosen_answer_root_id AS chosenAnswerRootId, answer.status AS answerStatus,
@@ -264,7 +264,7 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
       trust: 'gemini_generate_content_history_repository_fact_v2' as const,
       operationId: execution.operation.operationId, branchId: execution.operation.branchId,
       conversationId: execution.operation.conversationId, questionId: execution.operation.questionId,
-      answerRootId: execution.operation.resultAnswerRootId,
+      answerRootId: execution.operation.targetAnswerId,
       systemInstruction: this.#systemForQuestion(execution.operation.conversationId.value, execution.operation.questionId.value),
       replayContents, requestSequence, toolOutputRecords: Object.freeze(records),
     }))
@@ -276,7 +276,7 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db)
     if (!Number.isSafeInteger(requestSequence) || requestSequence < 2) invalid()
     const operation = this.db.prepare(`SELECT branch_id AS branchId, conversation_id AS conversationId,
-      question_id AS questionId, result_answer_root_id AS answerRootId FROM generation_operation_v2 WHERE operation_id=?`)
+      question_id AS questionId, target_answer_id AS answerRootId FROM generation_operation_v2 WHERE operation_id=?`)
       .get(operationIdValue) as Readonly<Record<string, unknown>> | undefined
     if (!operation || typeof operation.branchId !== 'string' || typeof operation.conversationId !== 'string' ||
         typeof operation.questionId !== 'string' || typeof operation.answerRootId !== 'string') invalid()
@@ -354,7 +354,7 @@ export class GeminiGenerateContentNativeHistoryV2Repo {
     if (!isGenerationExecutionOperationBundleForContextV2(execution, context) ||
         !isGenerationRequestRepositoryFactForContextV2(request, context) ||
         request.operationId !== execution.operation.operationId.value ||
-        request.answerRootId !== execution.operation.resultAnswerRootId.value) invalid()
+        request.answerRootId !== execution.operation.targetAnswerId.value) invalid()
     const history = this.loadPersistedRequestHistory(context, request.operationId, request.requestSequence)
     const parent = request.requestSequence === 1 ? null : this.#loadArtifactForSequence(
       request.operationId, request.answerRootId, request.requestSequence - 1, true,

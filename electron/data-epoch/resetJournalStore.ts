@@ -78,3 +78,30 @@ export function readEpoch2ResetJournal(input: Readonly<{
   assertEpoch2ResetJournalInventory(journal, input.layout)
   return journal
 }
+
+/**
+ * Sole sanctioned journal regression path: replaces a committed/database-created
+ * journal with a brand-new operation pinned at `epoch_root_created` so the next
+ * boot re-creates the database from scratch. This bypasses the monotonic
+ * transition guard of `writeEpoch2ResetJournalAtomic` and must only be called
+ * by an explicit recovery authority (backup-and-recreate on schema mismatch).
+ */
+export function writeEpoch2ResetJournalRecoveryAtomic(input: Readonly<{
+  layout: Epoch2WorkspaceLayout
+  lease: Win32EpochRootLease
+  journal: Epoch2ResetJournal
+}>): void {
+  assertAuthority(input)
+  const journal = decodeEpoch2ResetJournal(input.journal)
+  assertEpoch2ResetJournalInventory(journal, input.layout)
+  const current = readEpoch2ResetJournal(input)
+  if (current === null ||
+      (current.phase !== 'database_created' && current.phase !== 'committed') ||
+      journal.phase !== 'epoch_root_created' ||
+      journal.operationId === current.operationId) {
+    throw new Error('EPOCH2_RESET_JOURNAL_RECOVERY_INVALID')
+  }
+  if (input.lease.writeTransitionFile('reset_journal', serialized(journal)) !== 'written') {
+    throw new Error('EPOCH2_RESET_JOURNAL_RECOVERY_INVALID')
+  }
+}

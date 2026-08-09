@@ -198,7 +198,7 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
         !isToolRegistryRepositoryFactForContextV2(toolRegistry, context) || execution.operation.state !== 'streaming' ||
         execution.operation.operationId.value !== command.operationId.value ||
         execution.operation.branchId.value !== command.branchId.value ||
-        execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+        execution.operation.targetAnswerId.value !== command.answerRootId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     }
@@ -359,7 +359,7 @@ export class LmStudioOpenResponsesNativeHistoryV2Repo {
         (input.completionScope === 'operation_terminal' && input.execution.operation.state !== 'completed') ||
         input.execution.snapshot.providerBinding.protocolContractId.value !== 'lmstudio-openresponses' ||
         input.request.operationId !== input.execution.operation.operationId.value ||
-        input.request.answerRootId !== input.execution.operation.resultAnswerRootId.value) {
+        input.request.answerRootId !== input.execution.operation.targetAnswerId.value) {
       throw new LmStudioOpenResponsesNativeHistoryV2RepoError('GENERATION_V2_LMSTUDIO_HISTORY_STATE_INVALID')
     }
     const artifact = input.history.requestSequence === 1

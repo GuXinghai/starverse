@@ -25,6 +25,7 @@ CREATE TABLE IF NOT EXISTS message_v2 (
   parent_message_id TEXT,
   question_id TEXT,
   answer_root_id TEXT,
+  introduced_in_branch_id TEXT NOT NULL,
   ordinal INTEGER NOT NULL CHECK (ordinal >= 0 AND ordinal <= 9007199254740991),
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
@@ -36,6 +37,8 @@ CREATE TABLE IF NOT EXISTS message_v2 (
     REFERENCES message_v2(message_id, conversation_id) ON DELETE CASCADE,
   FOREIGN KEY (answer_root_id, conversation_id)
     REFERENCES message_v2(message_id, conversation_id) ON DELETE CASCADE,
+  FOREIGN KEY (introduced_in_branch_id, conversation_id)
+    REFERENCES branch_v2(branch_id, conversation_id),
   CHECK (parent_message_id IS NULL OR parent_message_id <> message_id),
   CHECK (question_id IS NULL OR question_id <> message_id),
   CHECK (
@@ -50,6 +53,8 @@ CREATE TABLE IF NOT EXISTS message_v2 (
 
 CREATE INDEX IF NOT EXISTS idx_message_v2_parent
   ON message_v2(conversation_id, parent_message_id);
+CREATE INDEX IF NOT EXISTS idx_message_v2_candidate_group
+  ON message_v2(conversation_id, parent_message_id, role, ordinal);
 CREATE INDEX IF NOT EXISTS idx_message_v2_answer_group
   ON message_v2(conversation_id, question_id, answer_root_id, ordinal);
 
@@ -104,7 +109,8 @@ BEGIN
 END;
 
 CREATE TRIGGER IF NOT EXISTS trg_message_v2_structure_immutable
-BEFORE UPDATE OF message_id, conversation_id, role, parent_message_id, question_id, answer_root_id, ordinal, created_at_ms
+BEFORE UPDATE OF message_id, conversation_id, role, parent_message_id, question_id, answer_root_id,
+  introduced_in_branch_id, ordinal, created_at_ms
 ON message_v2
 BEGIN
   SELECT RAISE(ABORT, 'GENERATION_V2_GRAPH_MESSAGE_STRUCTURE_IMMUTABLE');
@@ -128,7 +134,11 @@ CREATE TABLE IF NOT EXISTS branch_v2 (
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
   deleted_at_ms INTEGER CHECK (deleted_at_ms IS NULL OR deleted_at_ms >= created_at_ms),
-  UNIQUE (branch_id, conversation_id)
+  parent_branch_id TEXT,
+  UNIQUE (branch_id, conversation_id),
+  FOREIGN KEY (parent_branch_id, conversation_id)
+    REFERENCES branch_v2(branch_id, conversation_id) ON DELETE CASCADE,
+  CHECK (parent_branch_id IS NULL OR parent_branch_id <> branch_id)
 );
 
 CREATE TRIGGER IF NOT EXISTS trg_branch_v2_validate_head_insert
@@ -149,6 +159,23 @@ BEGIN
     SELECT 1 FROM message_v2 AS head
     WHERE head.message_id = NEW.head_message_id AND head.conversation_id = NEW.conversation_id
   ) THEN RAISE(ABORT, 'GENERATION_V2_GRAPH_BRANCH_HEAD_INVALID') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_branch_v2_validate_parent_insert
+AFTER INSERT ON branch_v2
+WHEN NEW.parent_branch_id IS NOT NULL
+BEGIN
+  SELECT CASE WHEN NOT EXISTS (
+    SELECT 1 FROM branch_v2 AS parent
+    WHERE parent.branch_id = NEW.parent_branch_id
+      AND parent.conversation_id = NEW.conversation_id
+  ) THEN RAISE(ABORT, 'GENERATION_V2_GRAPH_BRANCH_PARENT_INVALID') END;
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_branch_v2_parent_immutable
+BEFORE UPDATE OF parent_branch_id, conversation_id ON branch_v2
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_GRAPH_BRANCH_PARENT_IMMUTABLE');
 END;
 
 -- The retained New Chat workspace is a real graph/draft scope, but is hidden
@@ -263,8 +290,16 @@ BEGIN
       AND answer.question_id = NEW.question_id
   ) THEN RAISE(ABORT, 'GENERATION_V2_GRAPH_CHOICE_INVALID') END;
   SELECT CASE WHEN EXISTS (
-    SELECT 1 FROM branch_answer_hide_v2 AS hidden
-    WHERE hidden.branch_id = NEW.branch_id
+    WITH RECURSIVE ancestry(branch_id, parent_branch_id) AS (
+      SELECT branch_id, parent_branch_id FROM branch_v2 WHERE branch_id = NEW.branch_id
+      UNION ALL
+      SELECT parent.branch_id, parent.parent_branch_id
+      FROM branch_v2 AS parent
+      JOIN ancestry AS child ON child.parent_branch_id = parent.branch_id
+    )
+    SELECT 1 FROM ancestry
+    JOIN branch_answer_hide_v2 AS hidden ON hidden.branch_id = ancestry.branch_id
+    WHERE hidden.conversation_id = NEW.conversation_id
       AND hidden.question_id = NEW.question_id
       AND hidden.answer_root_id = NEW.chosen_answer_root_id
   ) THEN RAISE(ABORT, 'GENERATION_V2_GRAPH_CHOICE_HIDDEN') END;
@@ -282,8 +317,16 @@ BEGIN
       AND answer.question_id = NEW.question_id
   ) THEN RAISE(ABORT, 'GENERATION_V2_GRAPH_CHOICE_INVALID') END;
   SELECT CASE WHEN EXISTS (
-    SELECT 1 FROM branch_answer_hide_v2 AS hidden
-    WHERE hidden.branch_id = NEW.branch_id
+    WITH RECURSIVE ancestry(branch_id, parent_branch_id) AS (
+      SELECT branch_id, parent_branch_id FROM branch_v2 WHERE branch_id = NEW.branch_id
+      UNION ALL
+      SELECT parent.branch_id, parent.parent_branch_id
+      FROM branch_v2 AS parent
+      JOIN ancestry AS child ON child.parent_branch_id = parent.branch_id
+    )
+    SELECT 1 FROM ancestry
+    JOIN branch_answer_hide_v2 AS hidden ON hidden.branch_id = ancestry.branch_id
+    WHERE hidden.conversation_id = NEW.conversation_id
       AND hidden.question_id = NEW.question_id
       AND hidden.answer_root_id = NEW.chosen_answer_root_id
   ) THEN RAISE(ABORT, 'GENERATION_V2_GRAPH_CHOICE_HIDDEN') END;
@@ -318,6 +361,16 @@ CREATE TRIGGER IF NOT EXISTS trg_branch_answer_hide_v2_structure_immutable
 BEFORE UPDATE ON branch_answer_hide_v2
 BEGIN
   SELECT RAISE(ABORT, 'GENERATION_V2_GRAPH_HIDE_STRUCTURE_IMMUTABLE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg_branch_answer_hide_v2_delete_forbidden
+BEFORE DELETE ON branch_answer_hide_v2
+WHEN EXISTS (
+  SELECT 1 FROM branch_v2 AS branch
+  WHERE branch.branch_id = OLD.branch_id
+)
+BEGIN
+  SELECT RAISE(ABORT, 'GENERATION_V2_GRAPH_HIDE_DELETE_FORBIDDEN');
 END;
 
 CREATE TRIGGER IF NOT EXISTS trg_branch_question_hide_v2_validate_insert

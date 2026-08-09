@@ -80,18 +80,14 @@ import type {
   ListBranchParams,
   CreateBranchFromMessageInput,
   DeleteBranchInput,
-  SwitchCandidateInput,
   RegenerateFromQuestionInput,
   GetBranchPathParams,
-  GetCandidatesParams,
-  GetQuestionCandidatesParams,
   EffectiveFilterParams,
   BeginTurnInput,
   SetBranchHeadInput,
   SetBranchChoiceInput,
   SetBranchAnswerHideInput,
   RetryReplaceAnswerInput,
-  SwitchQuestionCandidateInput,
   ForkQuestionInput,
   RetryReplaceQuestionInput,
   TruncateBranchFromQuestionInput,
@@ -816,12 +812,6 @@ export const DeleteBranchSchema: ZodType<DeleteBranchInput> = z.object({
   branchId: z.string().min(1),
 })
 
-export const SwitchCandidateSchema: ZodType<SwitchCandidateInput> = z.object({
-  branchId: z.string().min(1),
-  questionId: z.string().min(1),
-  answerRootId: z.string().min(1),
-})
-
 export const RegenerateFromQuestionSchema: ZodType<RegenerateFromQuestionInput> = z.object({
   branchId: z.string().min(1),
   questionId: z.string().min(1),
@@ -839,7 +829,7 @@ export const RetryChosenAnswerSchema = z.object({
   operationId: z.string().trim().min(1).max(256),
   branchId: z.string().min(1),
   questionId: z.string().min(1),
-  targetAnswerRootId: z.string().min(1),
+  sourceAnswerId: z.string().min(1),
   compatibleExecutionPins: jsonSchema.optional(),
 })
 
@@ -853,18 +843,6 @@ export const FinalizeAssistantAnswerGenerationSchema = z.object({
 export const GetBranchPathSchema: ZodType<GetBranchPathParams> = z.object({
   branchId: z.string().min(1),
   limit: z.number().int().positive().max(5000).optional()
-})
-
-export const GetCandidatesSchema: ZodType<GetCandidatesParams> = z.object({
-  branchId: z.string().min(1),
-  questionId: z.string().min(1),
-  limit: z.number().int().positive().max(200).optional()
-})
-
-export const GetQuestionCandidatesSchema: ZodType<GetQuestionCandidatesParams> = z.object({
-  branchId: z.string().min(1),
-  baseMessageId: z.string().min(1).nullable(),
-  limit: z.number().int().positive().max(200).optional(),
 })
 
 export const EffectiveFilterSchema: ZodType<EffectiveFilterParams> = z.object({
@@ -904,12 +882,6 @@ export const RetryReplaceAnswerSchema: ZodType<RetryReplaceAnswerInput> = z.obje
   branchId: z.string().min(1),
   questionId: z.string().min(1),
   currentAnswerRootId: z.string().min(1)
-})
-
-export const SwitchQuestionCandidateSchema: ZodType<SwitchQuestionCandidateInput> = z.object({
-  branchId: z.string().min(1),
-  baseMessageId: z.string().min(1).nullable(),
-  questionId: z.string().min(1),
 })
 
 export const ForkQuestionSchema: ZodType<ForkQuestionInput> = z.object({
