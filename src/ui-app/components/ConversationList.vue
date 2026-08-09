@@ -10,12 +10,14 @@ const props = defineProps<{
   inboxId: string | null
   projects: readonly ProjectListItem[]
   disabled?: boolean
+  hasMore?: boolean
 }>()
 
 const emit = defineEmits<{
   select: [convoId: string]
   create: []
   refresh: []
+  loadMore: []
   rename: [convoId: string, title: string]
   delete: [convoId: string]
   moveToProject: [convoId: string, projectId: string | null]
@@ -513,6 +515,17 @@ function cancelProjectDialog() {
           </div>
         </div>
       </div>
+
+      <button
+        v-if="props.hasMore"
+        type="button"
+        class="mt-2 w-full rounded-md border border-gray-200 bg-white px-3 py-2 text-xs text-gray-700 shadow-sm hover:bg-gray-50 disabled:opacity-50"
+        :disabled="props.disabled"
+        data-testid="conversation-load-more"
+        @click="emit('loadMore')"
+      >
+        {{ t('chat.pagination.loadMore') }}
+      </button>
     </div>
 
     <div v-if="renameDialog" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" data-testid="rename-dialog">

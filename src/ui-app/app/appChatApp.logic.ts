@@ -1,7 +1,7 @@
-import { computed, markRaw, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, getCurrentInstance, markRaw, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { t, tf } from '@/shared/i18n'
 import type { ErrorPanelViewModel } from '@/ui-kit/chat/types'
-import type { CompletionOutcome, DomainEvent, MessageState, MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
+import type { CompletionOutcome, MessageState, MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
 import {
   saveConvo,
   type ConvoSummary,
@@ -37,32 +37,43 @@ import {
   deleteGenerationV2Conversation,
   deleteGenerationV2Project,
   forkGenerationV2Branch,
+  listGenerationV2Branches,
   listGenerationV2Conversations,
-  listGenerationV2QuestionCandidates,
   listGenerationV2Projects,
   moveGenerationV2Conversation,
   readGenerationV2Branch,
   renameGenerationV2Conversation,
   renameGenerationV2Project,
-  selectGenerationV2Answer,
-  selectGenerationV2QuestionCandidate,
+  getGenerationV2MessageCandidateNavigation,
   setGenerationV2ContextFilter,
   clearGenerationV2ContextFilter,
   truncateGenerationV2BranchFromQuestion,
   listGenerationV2LocalProfiles,
   createGenerationV2LocalProfile,
-  listGenerationV2OpenRouterModels,
   getGenerationV2ConversationRoutePreference,
   updateGenerationV2ConversationRoutePreference,
   clearGenerationV2ConversationRoutePreference,
   type GenerationV2BranchView,
+  type GenerationV2BranchCursor,
   type GenerationV2ConfigLayerView,
+  type GenerationV2ConversationCursor,
   type GenerationV2ConversationRoutePreferenceSnapshot,
   type GenerationV2ConversationRoutePreferenceSelection,
+  type GenerationV2MessageCandidateNavigation,
 } from '@/next/generation-v2/renderer/generationV2WorkspaceClient'
 import { projectGenerationV2BranchForExistingUi } from '@/next/generation-v2/renderer/generationV2BranchProjection'
-import { abortGenerationV2, submitGenerationV2EditResend, submitGenerationV2Initial, submitGenerationV2Regenerate, submitGenerationV2Retry, subscribeGenerationV2Projections,
-  type GenerationV2Route } from '@/next/generation-v2/renderer/generationV2CommandClient'
+import { abortGenerationV2, submitGenerationV2EditResend, submitGenerationV2Initial, submitGenerationV2Regenerate, submitGenerationV2Retry, subscribeGenerationV2Runtime,
+  type GenerationV2Route, type GenerationV2RuntimeUpdate } from '@/next/generation-v2/renderer/generationV2CommandClient'
+import {
+  BranchRuntimeCacheV2,
+  type BranchRuntimeCacheEntryV2,
+} from '@/next/generation-v2/renderer/branchRuntimeCacheV2'
+import { projectProviderFailureForUiV2 } from '@/shared/provider/providerFailureUiProjectionV2'
+import {
+  providerFailureFromUnknownV2,
+  providerFailurePrimaryMessageV2,
+  type ProviderFailureV2,
+} from '@/shared/provider/providerFailureV2'
 import {
   getOpenRouterImageEndpointSelectionV2,
   selectOpenRouterImageEndpointV2,
@@ -86,6 +97,11 @@ import {
 } from '@/next/settings/reasoningPanelDefaultClient'
 import { selectModelCatalogAll, selectModelCatalogVisible } from '@/next/modelCatalog/modelCatalogSelectors'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
+import { CatalogQueryService, type CatalogQueryItem } from '@/next/modelCatalog/catalogQueryService'
+import {
+  catalogRuntimeStoreV2ForApp,
+  registerCatalogModelSelectionCommandV2,
+} from '@/next/modelCatalog/catalogRuntimeStoreV2'
 import type { OpenRouterImageConfig, OpenRouterOutputModality } from '@/next/openrouter/buildRequest'
 import { evaluateImageGenerationModel, type ImageCapabilityClass, type ImageModelFilterReason } from '@/next/openrouter/imageGenerationContract'
 import {
@@ -104,6 +120,7 @@ import {
   DEEPSEEK_OFFICIAL_PROVIDER_KEY,
   type DeepSeekModelAvailabilityResult,
 } from '@/next/provider/deepseek/deepSeekModelSource'
+import { isDeepSeekSelectableReasoningEffort } from '@/next/provider/deepseek/deepSeekReasoningPolicy'
 import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
@@ -133,6 +150,12 @@ import {
   normalizeGeminiImageGenerationModelId,
   resolveGeminiImageGenerationPolicy,
 } from '@/next/provider/gemini/geminiImageGenerationPolicy'
+import {
+  isGeminiThinkingBudgetValid,
+  normalizeGeminiThinkingModelId,
+  resolveGeminiThinkingCapability,
+  type GeminiThinkingCapability,
+} from '@/next/provider/gemini/geminiThinkingPolicy'
 import { isGeminiInteractionsImageModelIdV1 } from '@/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
 import {
   ANTHROPIC_MESSAGES_ENDPOINT_ID,
@@ -194,11 +217,7 @@ import {
   type GenerationV2ComposerDraft,
 } from '@/next/generation-v2/renderer/generationV2ComposerClient'
 import { normalizeExtension } from '@/shared/files/fileRules'
-import {
-  isCatalogStatusStale,
-} from '@/shared/modelCatalog/catalogSyncSettings'
-import { GLOBAL_CATALOG_POLICY_V2_STORE_KEY, providerCatalogPolicyV2StoreKey } from '@/shared/modelCatalog/catalogPolicyResolverV2'
-import { resolveCatalogPolicyV2 } from '@/shared/modelCatalog/catalogPolicyV2'
+import { syncProviderCatalogsOnStartupV2 } from './providerCatalogStartupSyncV2'
 
 import {
   extractConvoWebSearchOverride,
@@ -262,8 +281,6 @@ import {
 
 type BranchSummary = Readonly<{ id:string;convoId:string;headMessageId:string|null;name:string|null;
   createdAt:number;updatedAt:number;deletedAt:number|null }>
-type BranchCandidate = Readonly<{ answerRootId:string;createdAt:number;status:string }>
-type QuestionCandidate = Readonly<{ questionId:string;createdAt:number;status:string }>
 
 /**
  * Architecture boundary (phase: containment):
@@ -275,9 +292,28 @@ type QuestionCandidate = Readonly<{ questionId:string;createdAt:number;status:st
  */
 export function useAppChatAppLogic() {
 
+  const appIdentity = getCurrentInstance()?.appContext.app
+  if (!appIdentity) throw new Error('CATALOG_RUNTIME_APP_CONTEXT_UNAVAILABLE')
+  const catalogRuntimeStore = catalogRuntimeStoreV2ForApp<CatalogQueryItem>(appIdentity)
+  const catalogRuntimeSnapshot = shallowRef(catalogRuntimeStore.snapshot())
+  const unsubscribeCatalogRuntimeStore = catalogRuntimeStore.subscribe(() => {
+    catalogRuntimeSnapshot.value = catalogRuntimeStore.snapshot()
+  })
+  const unregisterCatalogSelectionCommand = registerCatalogModelSelectionCommandV2(appIdentity, async (selection) => {
+    const previousModel = model.value
+    try {
+      await onUpdateModel(selection as unknown as ChatModelSelection | CompatibleConfigurationSelection)
+    } catch (error) {
+      model.value = previousModel
+      applySelectedModelOverrideForActiveConvo()
+      throw error
+    }
+  })
+
   const isReady = ref(false)
   const loadError = ref<string | null>(null)
   const convos = ref<ConvoSummary[]>([])
+  const conversationCursorByProjectId = ref<Map<string, GenerationV2ConversationCursor | null>>(new Map())
   const projects = ref<ProjectSummary[]>([])
   const projectCounts = ref<Map<string | null, number>>(new Map())
   const activeProjectId = ref<string | null>(null)
@@ -287,7 +323,15 @@ export function useAppChatAppLogic() {
   const conversationConfigUpdateQueue = createConversationConfigUpdateQueue()
   const projectsOnlyWorkspace = ref(false)
   const activeBranchId = ref<string | null>(null)
+  const navigationRevision = ref(0)
+  watch([activeConvoId, activeBranchId], () => {
+    navigationRevision.value += 1
+  }, { flush: 'sync' })
   const branches = ref<BranchSummary[]>([])
+  const branchNextCursor = ref<GenerationV2BranchCursor | null>(null)
+  const hasMoreConversations = computed(() =>
+    [...conversationCursorByProjectId.value.values()].some((cursor) => cursor !== null))
+  const hasMoreBranches = computed(() => branchNextCursor.value !== null)
   const draft = ref('')
   const reasoningDisplayMode = ref<'inline' | 'rail'>('inline')
   const rightRailOpen = ref(false)
@@ -296,34 +340,6 @@ export function useAppChatAppLogic() {
   const model = ref(DEFAULT_OPENROUTER_MODEL_ID)
   const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
   const requestedReasoningExclude = ref(false)
-  type DeepSeekModelAvailabilityFailureCode = Extract<DeepSeekModelAvailabilityResult, { ok: false }>['code']
-  type DeepSeekModelsBridge = Readonly<{
-    listAvailability: (payload?: unknown) => Promise<DeepSeekModelAvailabilityResult>
-    syncAvailability: (payload?: unknown) => Promise<Readonly<{ ok: boolean; code?: string }>>
-  }>
-  type OpenAIModelAvailabilityFailureCode = Extract<OpenAIModelAvailabilityResult, { ok: false }>['code']
-  type OpenAIResponsesModelsBridge = Readonly<{
-    listAvailability: (payload?: unknown) => Promise<OpenAIModelAvailabilityResult>
-    syncAvailability: (payload?: unknown) => Promise<Readonly<{ ok: boolean; code?: string }>>
-  }>
-  type GeminiModelAvailabilityFailureCode = Extract<GeminiModelAvailabilityResult, { ok: false }>['code']
-  type GoogleAIStudioModelsBridge = Readonly<{
-    listAvailability: (payload?: unknown) => Promise<GeminiModelAvailabilityResult>
-    syncAvailability: (payload?: unknown) => Promise<Readonly<{ ok: boolean; code?: string }>>
-  }>
-  type AnthropicModelAvailabilityFailureCode = Extract<AnthropicModelAvailabilityResult, { ok: false }>['code']
-  type AnthropicModelsBridge = Readonly<{
-    listAvailability: (payload?: unknown) => Promise<AnthropicModelAvailabilityResult>
-    syncAvailability: (payload?: unknown) => Promise<Readonly<{ ok: boolean; code?: string }>>
-  }>
-  const openAIResponsesModelAvailabilityLoading = ref(false)
-  const openAIResponsesModelAvailabilityResult = ref<OpenAIModelAvailabilityResult | null>(null)
-  const googleAIStudioModelAvailabilityLoading = ref(false)
-  const googleAIStudioModelAvailabilityResult = ref<GeminiModelAvailabilityResult | null>(null)
-  const anthropicModelAvailabilityLoading = ref(false)
-  const anthropicModelAvailabilityResult = ref<AnthropicModelAvailabilityResult | null>(null)
-  const deepSeekModelAvailabilityLoading = ref(false)
-  const deepSeekModelAvailabilityResult = ref<DeepSeekModelAvailabilityResult | null>(null)
   type ImageGenerationUiState = ImageGenerationUserConfig
   const imageGenerationState = ref<ImageGenerationUiState>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
   const imageGenerationConvoMode = ref<ConvoImageGenerationMode>('default')
@@ -724,18 +740,16 @@ export function useAppChatAppLogic() {
   const reasoningArtifactsByMessageId = ref<ReasoningArtifactsByMessageId>({})
   const turnFiltersByQuestionId = computed(() => branchViewSnapshot.value.turnByQuestionId)
   const questionTurnOrder = computed(() => branchViewSnapshot.value.questionTurnOrder)
-  const candidatesCache = ref<Map<string, BranchCandidate[]>>(new Map())
+  const messageCandidateNavigationCache = ref<Map<string, GenerationV2MessageCandidateNavigation>>(new Map())
   const generationV2BranchView = shallowRef<GenerationV2BranchView | null>(null)
+  const hasEarlierTranscript = computed(() => generationV2BranchView.value?.hasMoreTurns === true)
+  const branchRuntimeCache = new BranchRuntimeCacheV2()
+  const branchRuntimeCacheRevision = ref(0)
   const generationV2RoutePreferenceByConversationId = shallowRef<ReadonlyMap<string,
     GenerationV2ConversationRoutePreferenceSnapshot | null>>(new Map())
   const generationV2ConfigByConversationId = shallowRef<ReadonlyMap<string, GenerationV2ConfigLayerView>>(new Map())
-  const candidatesEpochGlobal = ref(0)
-  const candidatesEpochByQuestionId = ref<Map<string, number>>(new Map())
-  const candidatesLoading = ref<Map<string, string>>(new Map())
-  const questionCandidatesCache = ref<Map<string, QuestionCandidate[]>>(new Map())
-  const questionCandidatesEpochGlobal = ref(0)
-  const questionCandidatesEpochBySlot = ref<Map<string, number>>(new Map())
-  const questionCandidatesLoading = ref<Map<string, string>>(new Map())
+  const messageCandidateEpochGlobal = ref(0)
+  const messageCandidateLoading = ref<Map<string, string>>(new Map())
 
   const questionEditSession = ref<{
     questionId: string
@@ -760,8 +774,48 @@ export function useAppChatAppLogic() {
     diagnosticsBridge,
     isUiDebugEnabled,
     shouldLogDebug,
+    shouldLogReasoningDebug,
     isEventSchedulerEnabled,
   } = useDiagnostics()
+  type ReasoningProjectionTraceEntry = Readonly<{
+    sequence: number
+    atMs: number
+    stage: 'projection_received' | 'projection_dropped_unknown_answer' | 'reducer_applied' | 'reducer_failed' | 'branch_hydrated'
+    operationId: string
+    answerRootId: string
+    projectionType?: string
+    detailType?: string | null
+    activeBranchId: string | null
+    viewBranchId: string | null
+    answerKnownInView: boolean
+    rawDetailCount?: number
+    reasoningVersion?: number
+    hasProjectionContext?: boolean
+    displayBlockCount?: number
+    visibility?: string
+    messagePresentBefore?: boolean
+    messagePresentAfter?: boolean
+    stateReferenceChanged?: boolean
+    messageReferenceChanged?: boolean
+    transcriptContainsAnswer?: boolean
+    errorCode?: string
+  }>
+  const reasoningProjectionTrace: ReasoningProjectionTraceEntry[] = []
+  let reasoningProjectionTraceSequence = 0
+
+  function recordReasoningProjectionTrace(entry: Omit<ReasoningProjectionTraceEntry, 'sequence' | 'atMs'>) {
+    if (!shouldLogReasoningDebug()) return
+    const next = Object.freeze({ sequence: ++reasoningProjectionTraceSequence, atMs: Date.now(), ...entry })
+    reasoningProjectionTrace.push(next)
+    if (reasoningProjectionTrace.length > 80) reasoningProjectionTrace.splice(0, reasoningProjectionTrace.length - 80)
+    try {
+      ;(globalThis as typeof globalThis & { __svReasoningProjectionTrace?: readonly ReasoningProjectionTraceEntry[] })
+        .__svReasoningProjectionTrace = Object.freeze([...reasoningProjectionTrace])
+    } catch {
+      // Diagnostics must never affect generation.
+    }
+    console.info('[sv:reasoning-projection]', next)
+  }
   const { settingsOpen, openSettings, closeSettings } = useSettingsBindings({ isReady })
 
   // Latest-wins coordinator for the stable branch projection. Message runtime
@@ -991,6 +1045,11 @@ export function useAppChatAppLogic() {
     if (prevScopeValid) {
       await flushDraftPersistence()
     }
+    if (nextBranchId) {
+      branchRuntimeCache.get(nextBranchId)
+      branchRuntimeCache.prune(nextBranchId)
+      branchRuntimeCacheRevision.value += 1
+    }
     await restoreDraftForActiveScope()
   }, { flush: 'sync' })
 
@@ -1061,10 +1120,22 @@ export function useAppChatAppLogic() {
     }
     return null
   })
-  const activeAssistantMessageId = computed(() => activeGenerationV2Answer.value?.status === 'streaming'
-    ? activeGenerationV2Answer.value.answerRootId
-    : null)
-  const isRunning = computed(() => activeGenerationV2Answer.value?.status === 'streaming' ||
+  const activeBranchRuntime = computed(() => {
+    branchRuntimeCacheRevision.value
+    const branchId = activeBranchId.value
+    return branchId ? branchRuntimeCache.get(branchId, false) : null
+  })
+  function getBranchRuntimeStatus(branchId: string): BranchRuntimeCacheEntryV2['status'] | null {
+    branchRuntimeCacheRevision.value
+    return branchRuntimeCache.get(branchId, false)?.status ?? null
+  }
+  const activeAssistantMessageId = computed(() => activeBranchRuntime.value?.status === 'generating'
+    ? activeBranchRuntime.value.targetAnswerId
+    : activeGenerationV2Answer.value?.status === 'streaming'
+      ? activeGenerationV2Answer.value.answerRootId
+      : null)
+  const isRunning = computed(() => activeBranchRuntime.value?.status === 'generating' ||
+    activeGenerationV2Answer.value?.status === 'streaming' ||
     runVM.value?.status === 'requesting' || runVM.value?.status === 'streaming' || runVM.value?.status === 'tool_waiting')
 
   const {
@@ -1268,22 +1339,6 @@ export function useAppChatAppLogic() {
     void flushDraftPersistence()
   }
 
-  function commitImmediate(runId: string, event: DomainEvent) {
-    if (event.type === 'MessageDeltaReasoningDetail') recordDelta(1)
-    if (event.type === 'MessageDeltaReasoningDetailBatch') {
-      const count = Array.isArray(event.details) ? event.details.length : 0
-      if (count > 0) recordDelta(count)
-    }
-    if ('messageId' in event && typeof event.messageId === 'string') {
-      recordUpdatedMessages(1)
-    }
-    const measureId = beginCommitMeasure()
-    const next = applyEventsBatch(state.value, runId, [event])
-    state.value = next
-    const duration = endCommitMeasure(measureId)
-    recordCommit(duration)
-  }
-
       function metaStatusFromCompletionClass(
     completionClass: CompletionClass | null
   ): 'final' | 'error' | 'aborted' | null {
@@ -1430,6 +1485,21 @@ export function useAppChatAppLogic() {
     const networkError = record.networkError
     if (!completionClass && !phase && !code && !message && !provider && !source && rawValue === undefined && networkError === undefined) return null
     return { completionClass, phase, code, message, provider, source, raw: rawValue, networkError }
+  }
+
+  function extractReasoningProjectionContextFromMeta(meta: unknown): Readonly<{
+    providerId: string
+    protocolContractId: string
+    modelId: string
+  }> | null {
+    const obj = asRecord(meta)
+    if (typeof obj?.providerId !== 'string' || typeof obj.protocolContractId !== 'string' ||
+        typeof obj.modelId !== 'string') return null
+    return Object.freeze({
+      providerId: obj.providerId,
+      protocolContractId: obj.protocolContractId,
+      modelId: obj.modelId,
+    })
   }
 
       function applyErrorEnvelopesToState(envelopes: Map<string, ErrorEnvelope>) {
@@ -1601,59 +1671,178 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function syncOpenRouterCatalogOnStartup() {
+  async function syncProviderCatalogsOnStartup() {
     const models = window.generationV2?.models
     const store = (globalThis as typeof globalThis & { electronStore?: { get?: (key: string) => Promise<unknown> } }).electronStore
     if (!models || typeof models.status !== 'function' || typeof models.sync !== 'function' || typeof store?.get !== 'function') return
-    const [providerPolicy, globalPolicy] = await Promise.all([
-      store.get(providerCatalogPolicyV2StoreKey('openrouter')),
-      store.get(GLOBAL_CATALOG_POLICY_V2_STORE_KEY),
-    ])
-    const resolved = resolveCatalogPolicyV2({ providerOverride: providerPolicy, globalPolicy })
-    if (!resolved.policy || resolved.policy.startupSyncPolicy === 'never') return
-    const current = await models.status({ providerKey: 'openrouter' }) as Record<string, unknown>
-    const stale = current.ok !== true || isCatalogStatusStale({
-      status: current.status === 'synced' ? 'synced' : 'not_synced',
-      lastSyncAtMs: current.observedAtMs,
-      freshnessMs: resolved.policy.freshnessMs ?? undefined,
+    await syncProviderCatalogsOnStartupV2({
+      models: models as Parameters<typeof syncProviderCatalogsOnStartupV2>[0]['models'],
+      store: { get: (key) => store.get!(key) },
     })
-    if (resolved.policy.startupSyncPolicy === 'stale_only' && !stale) return
-    await models.sync({ providerKey: 'openrouter', timeoutMs: 30_000,
-      retentionMs: resolved.policy.retentionMs })
+  }
+
+  const FIRST_PARTY_CATALOG_PROVIDER_KEYS = Object.freeze([
+    OPENROUTER_PROVIDER_ID,
+    OPENAI_RESPONSES_PROVIDER_KEY,
+    GOOGLE_AI_STUDIO_PROVIDER_KEY,
+    ANTHROPIC_MESSAGES_PROVIDER_KEY,
+    DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+  ] as const)
+
+  function localCatalogFailure(providerKey: string, error: unknown): ProviderFailureV2 {
+    return providerFailureFromUnknownV2(error, {
+      origin: 'starverse_internal',
+      phase: 'response_body',
+      providerId: providerKey,
+      contractId: 'model-catalog-v2',
+      operationId: `catalog-renderer:${providerKey}`,
+      requestSequence: 1,
+      starverseDiagnosticCode: 'MODEL_CATALOG_RENDERER_HYDRATION_FAILED',
+    })
+  }
+
+  async function hydrateCatalogProvider(providerKey: string): Promise<void> {
+    const token = catalogRuntimeStore.beginQuery(providerKey)
+    const items: CatalogQueryItem[] = []
+    let cursor: import('@/next/modelCatalog/catalogQueryService').CatalogQueryCursor | null = null
+    let first: import('@/next/modelCatalog/catalogQueryService').CatalogQueryResult | null = null
+    let pages = 0
+    try {
+      do {
+        const page = await CatalogQueryService.query({
+          sourceProviderKey: providerKey,
+          ...(cursor?.snapshotDigest ? { snapshotDigest: cursor.snapshotDigest } : {}),
+          page: { limit: 500, cursor },
+        })
+        if (!first) first = page
+        if (page.authorityReadSucceeded === false || page.status === 'failed') {
+          const failure = page.providerFailure ?? localCatalogFailure(providerKey,
+            new Error(page.errorMessage ?? page.errorCode ?? 'MODEL_CATALOG_AUTHORITY_READ_FAILED'))
+          catalogRuntimeStore.acceptFailure({ token, failure })
+          return
+        }
+        items.push(...page.items)
+        cursor = page.nextCursor
+        pages += 1
+        if (pages > 100) throw new Error('MODEL_CATALOG_RENDERER_PAGINATION_LIMIT_EXCEEDED')
+      } while (cursor)
+
+      catalogRuntimeStore.acceptAuthority({
+        token,
+        authorityScopeId: first?.scopeId ?? null,
+        authorityRevision: first?.authorityRevision,
+        displayedSnapshotDigest: first?.catalogRevision ?? null,
+        pendingSnapshotDigest: first?.pendingSnapshotDigest ?? null,
+        items,
+        stale: first?.status === 'not_synced',
+        failure: first?.providerFailure ?? null,
+      })
+
+      if (providerKey !== OPENROUTER_PROVIDER_ID) return
+      modelCatalogItems.value = items.map((item) => ({ ...item, name: item.displayName,
+        vendor: item.vendor ?? '', status: 'visible' as const, supportedParameters: [...(item.supportedParameters ?? [])],
+        inputModalities: [...(item.inputModalities ?? [])], outputModalities: [...(item.outputModalities ?? [])],
+        lastSeenSnapshotId: first?.catalogRevision ?? `catalog:${item.syncedAtMs ?? 0}` })) as ModelCatalogItem[]
+      openRouterModelModalitiesById.value = new Map(items.map((item) => [item.modelId,
+        Object.freeze({ input: item.inputModalities ?? [], output: item.outputModalities ?? [] })]))
+      modelCatalogListStatus.value = first?.status === 'syncing' ? 'syncing'
+        : first?.status === 'not_synced' ? 'not_synced' : 'synced'
+      modelCatalogNotice.value = items.length === 0 ? t('errors.modelCatalog.notSynced') : null
+      applySelectedModelOverrideForActiveConvo()
+      await refreshSelectedModelImageCapability()
+    } catch (error) {
+      catalogRuntimeStore.acceptFailure({ token, failure: localCatalogFailure(providerKey, error) })
+      if (providerKey === OPENROUTER_PROVIDER_ID) {
+        modelCatalogListStatus.value = 'failed'
+        modelCatalogNotice.value = t('errors.modelCatalog.syncFailed')
+      }
+    }
   }
 
   async function refreshModelLists() {
-    try {
-      await syncOpenRouterCatalogOnStartup()
-      const catalog = await listGenerationV2OpenRouterModels()
-      if (!catalog.ok) throw new Error(catalog.code)
-      modelCatalogItems.value = catalog.items.map((item) => ({ ...item, name: item.displayName,
-        vendor: item.vendor ?? '', status: 'visible' as const, supportedParameters: [...(item.supportedParameters ?? [])],
-        inputModalities: [...(item.inputModalities ?? [])], outputModalities: [...(item.outputModalities ?? [])],
-        lastSeenSnapshotId: catalog.responseDigest ?? `catalog:${item.syncedAtMs ?? 0}` }))
-      openRouterModelModalitiesById.value = new Map(catalog.items.map((item) => [item.modelId,
-        Object.freeze({ input: item.inputModalities ?? [], output: item.outputModalities ?? [] })]))
-      modelCatalogListStatus.value = catalog.status === 'failed' ? 'failed' : catalog.status === 'syncing' ? 'syncing'
-        : catalog.status === 'not_synced' ? 'not_synced' : 'synced'
+    const startupSync = syncProviderCatalogsOnStartup().catch(() => undefined)
+    await Promise.all(FIRST_PARTY_CATALOG_PROVIDER_KEYS.map((providerKey) => hydrateCatalogProvider(providerKey)))
+    void startupSync.then(() => Promise.all(FIRST_PARTY_CATALOG_PROVIDER_KEYS.map((providerKey) =>
+      hydrateCatalogProvider(providerKey)))).catch(() => undefined)
+  }
 
-      if (catalog.items.length === 0) {
-        modelCatalogNotice.value = t('errors.modelCatalog.notSynced')
-      } else {
-        modelCatalogNotice.value = null
-      }
-      applySelectedModelOverrideForActiveConvo()
-      await refreshSelectedModelImageCapability()
-    } catch (err) {
-      modelCatalogItems.value = []
-      openRouterModelModalitiesById.value = new Map()
-      modelCatalogListStatus.value = 'failed'
-      modelCatalogNotice.value = t('errors.modelCatalog.syncFailed')
-      selectedModelImageCapabilityClass.value = null
-      selectedModelImageCapabilityReason.value = 'model catalog sync failed.'
-      if (shouldLogDebug()) {
-        console.warn('[ui-app] REFRESH_MODEL_LISTS_FAILED')
-      }
+  function runtimeErrorSummary(entry: BranchRuntimeCacheEntryV2): ErrorSummary | null {
+    const failure = entry.errorFact
+    if (!failure) return null
+    const message = failure.providerError?.message ?? failure.providerError?.rawText ??
+      failure.transportError?.message ?? failure.starverseDiagnosticCode
+    const phase = failure.phase === 'terminal_persistence'
+      ? 'post_stream'
+      : failure.phase === 'stream_read' || failure.phase === 'stream_decode'
+        ? 'mid_stream'
+        : 'pre_stream'
+    const source = failure.origin === 'http_response'
+      ? 'provider_http'
+      : failure.origin === 'response_stream'
+        ? 'provider_stream'
+        : failure.origin === 'network_transport'
+          ? 'transport'
+          : failure.origin === 'response_decoder'
+            ? 'local_decoder'
+            : failure.origin === 'starverse_internal'
+              ? 'persistence'
+              : 'provider'
+    return Object.freeze({
+      completionClass: entry.status === 'cancelled' ? 'cancelled' : 'error',
+      phase,
+      code: failure.starverseDiagnosticCode,
+      message,
+      provider: failure.providerId,
+      source,
+      raw: projectProviderFailureForUiV2(failure),
+    })
+  }
+
+  function applyBranchRuntimeOverlayToState(branchId: string): boolean {
+    const entry = branchRuntimeCache.get(branchId)
+    const targetAnswerId = entry?.targetAnswerId
+    if (!entry || !targetAnswerId) return false
+    const messages = state.value.entities?.messagesById ?? state.value.messages
+    const previous = messages[targetAnswerId]
+    if (!previous || previous.role !== 'assistant') return false
+    const nonTextBlocks = previous.contentBlocks.filter((block) => block.type !== 'text')
+    const contentBlocks = entry.body.length > 0
+      ? [{ type: 'text' as const, text: entry.body }, ...nonTextBlocks]
+      : nonTextBlocks
+    const errorSummary = runtimeErrorSummary(entry) ?? previous.errorSummary
+    const nextMessage: MessageState = {
+      ...previous,
+      contentText: entry.body,
+      contentBlocks: markRaw(contentBlocks),
+      reasoningDetailsRaw: markRaw([...entry.reasoning]),
+      reasoningVersion: previous.reasoningVersion + 1,
+      textVersion: previous.textVersion + 1,
+      streaming: {
+        isTarget: entry.status === 'generating',
+        isComplete: entry.status !== 'generating',
+      },
+      errorSummary,
     }
+    const nextMessages = { ...messages, [targetAnswerId]: nextMessage }
+    state.value = {
+      ...state.value,
+      messages: nextMessages,
+      entities: { messagesById: nextMessages },
+    }
+    const currentMeta = messageMetaById.value.get(targetAnswerId)
+    if (currentMeta) {
+      runtimeMessageMetaById.value = new Map(runtimeMessageMetaById.value).set(targetAnswerId, {
+        ...currentMeta,
+        status: entry.status === 'generating'
+          ? 'streaming'
+          : entry.status === 'completed'
+            ? 'final'
+            : entry.status === 'cancelled'
+              ? 'aborted'
+              : 'error',
+      })
+    }
+    return true
   }
 
   function hydrateStateFromPersistedMessages(
@@ -1674,6 +1863,7 @@ export function useAppChatAppLogic() {
 
       const meta = r.meta ?? null
       const reasoningDetailsRaw = extractReasoningDetailsFromMeta(meta)
+      const reasoningProjectionContext = extractReasoningProjectionContextFromMeta(meta)
       const providerNativeContents = extractProviderNativeContentsFromMeta(meta)
       const annotations = extractAnnotationsFromMeta(meta)
       const hasEncryptedReasoning = reasoningDetailsRaw.some((detail) => detail && typeof detail === 'object' && (detail as any).type === 'reasoning.encrypted')
@@ -1685,6 +1875,7 @@ export function useAppChatAppLogic() {
 
       const persistedMessage = {
         messageId,
+        ...(reasoningProjectionContext ?? {}),
         role,
         contentText,
         contentBlocks: markRaw(contentText.length > 0 ? [{ type: 'text', text: contentText }] : []),
@@ -1813,182 +2004,73 @@ export function useAppChatAppLogic() {
     return t?.effectiveMode === 'exclude'
   }
 
-  function getOrderedCandidatesOldToNew(questionId: string): BranchCandidate[] | null {
-    const cached = candidatesCache.value.get(questionId)
-    if (!cached) return null
-    return [...cached].reverse()
+  function messageCandidateCacheKey(branchId: string, messageId: string): string {
+    return `${branchId}\u001f${messageId}`
   }
 
-  function getCandidatePager(questionId: string): Readonly<{ index: number; total: number; canPrev: boolean; canNext: boolean }> | null {
-    const ordered = getOrderedCandidatesOldToNew(questionId)
-    if (!ordered) return null
-    const chosen = turnFiltersByQuestionId.value.get(questionId)?.chosenAnswerRootId
-    const total = ordered.length
-    if (!chosen || total <= 0) return { index: 0, total: Math.max(0, total), canPrev: false, canNext: false }
-    const idx = ordered.findIndex((c) => c.answerRootId === chosen)
-    if (idx < 0) return { index: 0, total, canPrev: false, canNext: false }
-    return { index: idx, total, canPrev: idx > 0, canNext: idx < total - 1 }
-  }
-
-  function getCandidateLoadToken(questionId: string): string {
-    const qid = String(questionId ?? '').trim()
-    const qEpoch = candidatesEpochByQuestionId.value.get(qid) ?? 0
-    return `${candidatesEpochGlobal.value}:${qEpoch}`
-  }
-
-  function getQuestionSlotKey(baseMessageId: string | null): string {
-    const base = baseMessageId === null ? null : String(baseMessageId ?? '').trim() || null
-    return base ?? '__root__'
-  }
-
-  function getQuestionCandidateLoadToken(slotKey: string): string {
-    const key = String(slotKey ?? '').trim()
-    const epoch = questionCandidatesEpochBySlot.value.get(key) ?? 0
-    return `${questionCandidatesEpochGlobal.value}:${epoch}`
-  }
-
-    async function ensureQuestionCandidatesLoadedForQuestion(questionId: string) {
-    const qid = String(questionId ?? '').trim()
-    const meta = qid ? messageMetaById.value.get(qid) : null
-    if (!qid || !meta || String(meta.role ?? '').trim() !== 'user') return
-    await ensureQuestionCandidatesLoadedForSlot(meta.parentId ?? null)
-  }
-
-  async function ensureQuestionCandidatesLoadedForSlot(baseMessageId: string | null) {
+  function getMessageCandidatePager(messageId: string): Readonly<{
+    index: number
+    total: number
+    canPrev: boolean
+    canNext: boolean
+  }> | null {
     const bid = activeBranchId.value
-    if (!bid) return
-
-    const slotKey = getQuestionSlotKey(baseMessageId)
-    if (questionCandidatesCache.value.has(slotKey)) return
-
-    const token = getQuestionCandidateLoadToken(slotKey)
-    if (questionCandidatesLoading.value.get(slotKey) === token) return
-
-    questionCandidatesLoading.value.set(slotKey, token)
-    questionCandidatesLoading.value = new Map(questionCandidatesLoading.value)
-    try {
-      const rows = await listGenerationV2QuestionCandidates(bid, baseMessageId, 200)
-      const list: QuestionCandidate[] = rows.map((row) => Object.freeze({
-        questionId: row.questionId, createdAt: row.createdAtMs, status: row.status,
-      }))
-
-      if (activeBranchId.value !== bid) return
-      if (getQuestionCandidateLoadToken(slotKey) !== token) return
-
-      questionCandidatesCache.value.set(slotKey, list)
-      questionCandidatesCache.value = new Map(questionCandidatesCache.value)
-    } finally {
-      if (questionCandidatesLoading.value.get(slotKey) === token) {
-        questionCandidatesLoading.value.delete(slotKey)
-        questionCandidatesLoading.value = new Map(questionCandidatesLoading.value)
-      }
-    }
+    const mid = String(messageId ?? '').trim()
+    if (!bid || !mid) return null
+    const navigation = messageCandidateNavigationCache.value.get(messageCandidateCacheKey(bid, mid))
+    if (!navigation) return null
+    return Object.freeze({
+      index: navigation.currentIndex,
+      total: navigation.total,
+      canPrev: navigation.previous !== null,
+      canNext: navigation.next !== null,
+    })
   }
 
-  function getOrderedQuestionCandidatesOldToNew(baseMessageId: string | null): QuestionCandidate[] | null {
-    const key = getQuestionSlotKey(baseMessageId)
-    const cached = questionCandidatesCache.value.get(key)
-    if (!cached) return null
-    return [...cached].reverse()
+  function getQuestionPagerForQuestion(questionId: string) {
+    return getMessageCandidatePager(questionId)
   }
 
-  function getQuestionPagerForQuestion(questionId: string): Readonly<{ index: number; total: number; canPrev: boolean; canNext: boolean }> | null {
-    const qid = String(questionId ?? '').trim()
-    if (!qid) return null
-    const meta = messageMetaById.value.get(qid)
-    if (!meta || meta.role !== 'user') return null
-
-    const ordered = getOrderedQuestionCandidatesOldToNew(meta.parentId ?? null)
-    if (!ordered) return null
-    const total = ordered.length
-    if (total <= 0) return { index: 0, total: 0, canPrev: false, canNext: false }
-
-    const idx = ordered.findIndex((c) => c.questionId === qid)
-    if (idx < 0) return { index: 0, total, canPrev: false, canNext: false }
-    return { index: idx, total, canPrev: idx > 0, canNext: idx < total - 1 }
+  function getCandidatePager(answerId: string) {
+    return getMessageCandidatePager(answerId)
   }
 
-  function isQuestionSlotLoadingForQuestion(questionId: string): boolean {
-    const qid = String(questionId ?? '').trim()
-    if (!qid) return false
-    const meta = messageMetaById.value.get(qid)
-    if (!meta || meta.role !== 'user') return false
-    const slotKey = getQuestionSlotKey(meta.parentId ?? null)
-    return questionCandidatesLoading.value.has(slotKey)
-  }
-
-  function invalidateCandidatesForQuestion(questionId: string) {
-    const qid = String(questionId ?? '').trim()
-    if (!qid) return
-
-    // Cancel any in-flight fetch and bump epoch so stale async results won't overwrite.
-    const nextEpoch = (candidatesEpochByQuestionId.value.get(qid) ?? 0) + 1
-    candidatesEpochByQuestionId.value.set(qid, nextEpoch)
-    candidatesEpochByQuestionId.value = new Map(candidatesEpochByQuestionId.value)
-
-    if (candidatesLoading.value.has(qid)) {
-      candidatesLoading.value.delete(qid)
-      candidatesLoading.value = new Map(candidatesLoading.value)
-    }
-
-    if (candidatesCache.value.has(qid)) {
-      candidatesCache.value.delete(qid)
-      candidatesCache.value = new Map(candidatesCache.value)
-    }
-
-    if (shouldLogDebug()) {
-      console.log('[ui-app] invalidateCandidatesForQuestion', { questionId: qid, epochGlobal: candidatesEpochGlobal.value, questionEpoch: nextEpoch })
-    }
-  }
-
-  async function ensureCandidatesLoaded(questionId: string) {
-    const qid = String(questionId ?? '').trim()
+  function isMessageCandidateLoading(messageId: string): boolean {
     const bid = activeBranchId.value
-    if (!qid || !bid) return
-    if (candidatesCache.value.has(qid)) return
+    const mid = String(messageId ?? '').trim()
+    return Boolean(bid && mid && messageCandidateLoading.value.has(messageCandidateCacheKey(bid, mid)))
+  }
 
-    const token = getCandidateLoadToken(qid)
-    if (candidatesLoading.value.get(qid) === token) return
-
-    candidatesLoading.value.set(qid, token)
-    candidatesLoading.value = new Map(candidatesLoading.value)
+  async function ensureMessageCandidateNavigationLoaded(messageId: string): Promise<void> {
+    const bid = activeBranchId.value
+    const mid = String(messageId ?? '').trim()
+    if (!bid || !mid) return
+    const key = messageCandidateCacheKey(bid, mid)
+    if (messageCandidateNavigationCache.value.has(key)) return
+    const token = `${messageCandidateEpochGlobal.value}:${key}`
+    if (messageCandidateLoading.value.get(key) === token) return
+    messageCandidateLoading.value.set(key, token)
+    messageCandidateLoading.value = new Map(messageCandidateLoading.value)
     try {
-      let view = generationV2BranchView.value
-      if (!view || view.branchId !== bid) view = await readGenerationV2Branch(bid)
-      const turn = view.turns.find((item) => item.questionId === qid)
-      const list: BranchCandidate[] = turn
-        ? [...turn.answers]
-          .sort((left, right) => right.createdAtMs - left.createdAtMs || right.answerRootId.localeCompare(left.answerRootId))
-          .map((answer) => ({ answerRootId: answer.answerRootId, createdAt: answer.createdAtMs, status: answer.status }))
-        : []
-
-      // Drop stale async results (regenerate/retry can invalidate cache while a fetch is in-flight).
-      if (activeBranchId.value !== bid) {
-        if (shouldLogDebug()) console.warn('[ui-app] ensureCandidatesLoaded discard (branch changed)', { questionId: qid, branchId: bid, token })
-        return
+      const navigation = await getGenerationV2MessageCandidateNavigation(bid, mid)
+      if (activeBranchId.value !== bid ||
+          token !== `${messageCandidateEpochGlobal.value}:${key}`) return
+      messageCandidateNavigationCache.value.set(key, navigation)
+      messageCandidateNavigationCache.value = new Map(messageCandidateNavigationCache.value)
+    } catch (error) {
+      if (activeBranchId.value === bid && token === `${messageCandidateEpochGlobal.value}:${key}`) {
+        loadError.value = error instanceof Error ? error.message : String(error)
       }
-      if (getCandidateLoadToken(qid) !== token) {
-        if (shouldLogDebug()) console.warn('[ui-app] ensureCandidatesLoaded discard (token mismatch)', { questionId: qid, branchId: bid, token })
-        return
-      }
-
-      if (shouldLogDebug()) {
-        console.log('[ui-app] ensureCandidatesLoaded', {
-          questionId: qid,
-          branchId: bid,
-          token,
-          candidateCount: list.length,
-          candidates: list.map(c => ({ answerRootId: c.answerRootId, status: c.status })),
-        })
-      }
-      candidatesCache.value.set(qid, list)
-      candidatesCache.value = new Map(candidatesCache.value)
     } finally {
-      if (candidatesLoading.value.get(qid) === token) {
-        candidatesLoading.value.delete(qid)
-        candidatesLoading.value = new Map(candidatesLoading.value)
+      if (messageCandidateLoading.value.get(key) === token) {
+        messageCandidateLoading.value.delete(key)
+        messageCandidateLoading.value = new Map(messageCandidateLoading.value)
       }
     }
+  }
+
+  function invalidateMessageCandidateNavigation() {
+    resetCandidatesCache()
   }
 
       async function refreshTurnFilters(branchId: string) {
@@ -1997,21 +2079,63 @@ export function useAppChatAppLogic() {
     await refreshRenderableBranchView(bid)
   }
 
-    async function refreshConvos() {
+  function projectConversationPageItems(
+    items: readonly Readonly<{
+      conversationId: string
+      projectId: string
+      title: string
+      updatedAtMs: number
+    }>[],
+  ): ConvoSummary[] {
+    return items.map((conversation) => ({
+      id: conversation.conversationId,
+      projectId: conversation.projectId,
+      title: conversation.title,
+      createdAt: conversation.updatedAtMs,
+      updatedAt: conversation.updatedAtMs,
+    }))
+  }
+
+  function sortConversationSummaries(items: readonly ConvoSummary[]): ConvoSummary[] {
+    return [...items].sort((left, right) =>
+      right.updatedAt - left.updatedAt || left.id.localeCompare(right.id))
+  }
+
+  async function refreshConvos() {
     loadError.value = null
     const filterProjectId = activeProjectId.value
     const projectIds = filterProjectId === null ? projects.value.map((project) => project.id) : [filterProjectId]
-    const listed = (await Promise.all(projectIds.map((projectId) => listGenerationV2Conversations(projectId)))).flat()
-    convos.value = listed
-      .map((conversation) => ({ id: conversation.conversationId, projectId: conversation.projectId,
-        title: conversation.title, createdAt: conversation.updatedAtMs, updatedAt: conversation.updatedAtMs }))
-      .sort((left, right) => right.updatedAt - left.updatedAt || left.id.localeCompare(right.id))
-    const active = activeConvoId.value
-    const activeIsTemplate = active === systemTemplateSnapshot.value?.conversation.id
-    if (active && !activeIsTemplate && !convos.value.some((c) => c.id === active)) {
-      activeConvoId.value = convos.value[0]?.id ?? null
-    }
+    const pages = await Promise.all(projectIds.map(async (projectId) =>
+      [projectId, await listGenerationV2Conversations(projectId)] as const))
+    if (activeProjectId.value !== filterProjectId) return
+    conversationCursorByProjectId.value = new Map(
+      pages.map(([projectId, page]) => [projectId, page.nextCursor]),
+    )
+    convos.value = sortConversationSummaries(
+      pages.flatMap(([, page]) => projectConversationPageItems(page.items)),
+    )
     if (!projectsOnlyWorkspace.value && !activeConvoId.value && convos.value.length > 0) activeConvoId.value = convos.value[0].id
+  }
+
+  async function loadMoreConvos() {
+    const filterProjectId = activeProjectId.value
+    const requests = [...conversationCursorByProjectId.value.entries()]
+      .filter(([, cursor]) => cursor !== null)
+      .map(async ([projectId, cursor]) =>
+        [projectId, await listGenerationV2Conversations(projectId, cursor)] as const)
+    if (requests.length === 0) return
+    const pages = await Promise.all(requests)
+    if (activeProjectId.value !== filterProjectId) return
+    const nextCursors = new Map(conversationCursorByProjectId.value)
+    const byId = new Map(convos.value.map((conversation) => [conversation.id, conversation]))
+    for (const [projectId, page] of pages) {
+      nextCursors.set(projectId, page.nextCursor)
+      for (const conversation of projectConversationPageItems(page.items)) {
+        byId.set(conversation.id, conversation)
+      }
+    }
+    conversationCursorByProjectId.value = nextCursors
+    convos.value = sortConversationSummaries([...byId.values()])
   }
 
     async function refreshProjects() {
@@ -2031,7 +2155,7 @@ export function useAppChatAppLogic() {
     }
 
     const counts = await Promise.all(projects.value.map(async (project) =>
-      [project.id, (await listGenerationV2Conversations(project.id)).length] as const))
+      [project.id, (await listGenerationV2Conversations(project.id)).totalCount] as const))
     projectCounts.value = new Map(counts)
   }
 
@@ -2039,6 +2163,7 @@ export function useAppChatAppLogic() {
     const convoId = activeConvoId.value
     if (!convoId) {
       branches.value = []
+      branchNextCursor.value = null
       return
     }
     const template = systemTemplateSnapshot.value
@@ -2052,19 +2177,42 @@ export function useAppChatAppLogic() {
         updatedAt: template.conversation.updatedAt,
         deletedAt: null,
       }]
+      branchNextCursor.value = null
       return
     }
-    for (const project of projects.value) {
-      const conversation = (await listGenerationV2Conversations(project.id))
-        .find((item) => item.conversationId === convoId)
-      if (conversation) {
-        branches.value = conversation.branches.map((branch) => ({ id: branch.branchId, convoId,
-          headMessageId: branch.headMessageId, name: branch.name, createdAt: branch.updatedAtMs,
-          updatedAt: branch.updatedAtMs, deletedAt: null }))
-        return
-      }
+    const page = await listGenerationV2Branches(convoId)
+    if (activeConvoId.value !== convoId) return
+    const firstPage = page.items.map((branch) => ({ id: branch.branchId, convoId,
+      headMessageId: branch.headMessageId, name: branch.name, createdAt: branch.updatedAtMs,
+      updatedAt: branch.updatedAtMs, deletedAt: null }))
+    const pinnedActive = branches.value.find((branch) =>
+      branch.convoId === convoId && branch.id === activeBranchId.value)
+    branches.value = pinnedActive && !firstPage.some((branch) => branch.id === pinnedActive.id)
+      ? [...firstPage, pinnedActive]
+      : firstPage
+    branchNextCursor.value = page.nextCursor
+  }
+
+  async function loadMoreBranches() {
+    const convoId = activeConvoId.value
+    const cursor = branchNextCursor.value
+    if (!convoId || !cursor) return
+    const page = await listGenerationV2Branches(convoId, cursor)
+    if (activeConvoId.value !== convoId || branchNextCursor.value !== cursor) return
+    const byId = new Map(branches.value.map((branch) => [branch.id, branch]))
+    for (const branch of page.items) {
+      byId.set(branch.branchId, {
+        id: branch.branchId,
+        convoId,
+        headMessageId: branch.headMessageId,
+        name: branch.name,
+        createdAt: branch.updatedAtMs,
+        updatedAt: branch.updatedAtMs,
+        deletedAt: null,
+      })
     }
-    branches.value = []
+    branches.value = [...byId.values()]
+    branchNextCursor.value = page.nextCursor
   }
 
   async function ensureGenerationV2BranchForConversation(conversationId: string): Promise<BranchSummary> {
@@ -2080,38 +2228,25 @@ export function useAppChatAppLogic() {
         deletedAt: null,
       }
     }
-    for (const project of projects.value) {
-      const conversation = (await listGenerationV2Conversations(project.id))
-        .find((item) => item.conversationId === conversationId)
-      const branch = conversation?.branches[0]
-      if (branch) return { id: branch.branchId, convoId: conversationId, headMessageId: branch.headMessageId,
-        name: branch.name, createdAt: branch.updatedAtMs, updatedAt: branch.updatedAtMs, deletedAt: null }
-    }
+    const branch = (await listGenerationV2Branches(conversationId)).items[0]
+    if (branch) return { id: branch.branchId, convoId: conversationId, headMessageId: branch.headMessageId,
+      name: branch.name, createdAt: branch.updatedAtMs, updatedAt: branch.updatedAtMs, deletedAt: null }
     throw new Error('GENERATION_V2_CONVERSATION_BRANCH_MISSING')
   }
 
   function resetCandidatesCache() {
-    // Invalidate all candidate loads so in-flight requests can't repopulate after resets (e.g. end-of-stream reloads).
-    candidatesEpochGlobal.value += 1
-    candidatesCache.value = new Map()
-    candidatesLoading.value = new Map()
-    candidatesEpochByQuestionId.value = new Map()
-    questionCandidatesEpochGlobal.value += 1
-    questionCandidatesCache.value = new Map()
-    questionCandidatesLoading.value = new Map()
-    questionCandidatesEpochBySlot.value = new Map()
+    messageCandidateEpochGlobal.value += 1
+    messageCandidateNavigationCache.value = new Map()
+    messageCandidateLoading.value = new Map()
     if (shouldLogDebug()) {
-      console.log('[ui-app] resetCandidatesCache', { answerEpochGlobal: candidatesEpochGlobal.value, questionEpochGlobal: questionCandidatesEpochGlobal.value })
+      console.log('[ui-app] resetCandidatesCache', {
+        messageCandidateEpochGlobal: messageCandidateEpochGlobal.value,
+      })
     }
   }
 
   async function refreshRenderableBranchView(branchId: string) {
     await loadTranscriptForBranch(branchId)
-    // Candidate cache can be stale after operations that add/hide candidates (regenerate/retryReplace);
-    // for switchCandidate we keep cache.
-    for (const qid of turnFiltersByQuestionId.value.keys()) {
-      void ensureCandidatesLoaded(qid)
-    }
   }
 
   function patchBranch(branchId: string, patch: Partial<Omit<BranchSummary, 'id'>>) {
@@ -2120,7 +2255,11 @@ export function useAppChatAppLogic() {
     branches.value = branches.value.map((b) => (b.id === bid ? ({ ...b, ...patch } satisfies BranchSummary) : b))
   }
 
-  async function loadTranscriptForBranch(branchId: string) {
+  async function loadTranscriptForBranch(
+    branchId: string,
+    beforeMessageId: string | null = null,
+    appendEarlier = false,
+  ) {
     const bid = String(branchId ?? '').trim()
     if (!bid) return
 
@@ -2131,7 +2270,14 @@ export function useAppChatAppLogic() {
     if (shouldLogDebug()) {
       console.log('[ui-app] loadTranscriptForBranch: fetching from DB', { branchId: bid, token: lease.revision, debug })
     }
-    const v2View = await readGenerationV2Branch(bid)
+    const page = await readGenerationV2Branch(bid, beforeMessageId)
+    const current = generationV2BranchView.value
+    const v2View: GenerationV2BranchView = appendEarlier && current?.branchId === bid
+      ? Object.freeze({
+          ...page,
+          turns: Object.freeze([...page.turns, ...current.turns]),
+        })
+      : page
     const v2Projection = projectGenerationV2BranchForExistingUi(v2View)
     const rendered = v2Projection.rendered
 
@@ -2187,6 +2333,24 @@ export function useAppChatAppLogic() {
       bid,
       rows.map((m) => ({ id: m.id, role: m.role, seq: m.seq, body: m.body, meta: m.meta }))
     )
+    applyBranchRuntimeOverlayToState(bid)
+    for (const row of rows) {
+      const hydrated = state.value.entities?.messagesById?.[row.id] ?? state.value.messages[row.id]
+      if (!hydrated || hydrated.role !== 'assistant') continue
+      recordReasoningProjectionTrace({
+        stage: 'branch_hydrated',
+        operationId: String((asRecord(row.meta)?.operationId) ?? ''),
+        answerRootId: row.id,
+        activeBranchId: activeBranchId.value,
+        viewBranchId: bid,
+        answerKnownInView: true,
+        rawDetailCount: hydrated.reasoningDetailsRaw.length,
+        reasoningVersion: hydrated.reasoningVersion,
+        hasProjectionContext: Boolean(hydrated.providerId && hydrated.protocolContractId),
+        messagePresentAfter: true,
+        transcriptContainsAnswer: state.value.runMessageIds[bid]?.includes(row.id) === true,
+      })
+    }
     applyErrorFallbacks(errorFallbacks)
     if (shouldLogDebug()) {
       const statuses = [...metaMap.entries()].map(([id, m]) => ({ id: id.slice(0, 8), status: m.status }))
@@ -2202,39 +2366,12 @@ export function useAppChatAppLogic() {
     // Epoch-2 answers carry their persisted terminal/provider projection in the branch view.
     // Provider-native reasoning hydration is handled by the V2 artifact projection, never by the legacy DB bridge.
 
-    // Self-heal: candidate cache may become stale after operations that add/hide candidates
-    // (regenerate/retryReplace). If the cached candidate list no longer contains the chosen answer root,
-    // drop the cache for that question so the next ensureCandidatesLoaded() re-fetches.
-    let invalidated = false
-    for (const [qid, t] of projection.turnByQuestionId.entries()) {
-      const cached = candidatesCache.value.get(qid)
-      if (!cached) continue
-      if (cached.some((c) => c.answerRootId === t.chosenAnswerRootId)) continue
-      candidatesCache.value.delete(qid)
-      invalidated = true
-    }
-    if (invalidated) candidatesCache.value = new Map(candidatesCache.value)
-
-    // Self-heal: question candidate cache may become stale after question replace (branch_question_hide).
-    // If the cached question variants no longer contain the currently-visible question, drop the cache for that slot.
-    let qInvalidated = false
-    for (const qid of projection.questionTurnOrder) {
-      const base = messageMetaById.value.get(qid)?.parentId ?? null
-      const slotKey = getQuestionSlotKey(base)
-      const cached = questionCandidatesCache.value.get(slotKey)
-      if (!cached) continue
-      if (cached.some((c) => c.questionId === qid)) continue
-      questionCandidatesCache.value.delete(slotKey)
-      qInvalidated = true
-    }
-    if (qInvalidated) questionCandidatesCache.value = new Map(questionCandidatesCache.value)
-
-    for (const qid of projection.turnByQuestionId.keys()) {
-      void ensureCandidatesLoaded(qid)
-    }
-
-    for (const qid of projection.questionTurnOrder) {
-      void ensureQuestionCandidatesLoadedForQuestion(qid)
+    for (const row of rows) {
+      const meta = metaMap.get(row.id)
+      if (meta?.role === 'user' ||
+          meta?.role === 'assistant' && meta.answerRootId === row.id) {
+        void ensureMessageCandidateNavigationLoaded(row.id)
+      }
     }
   }
 
@@ -2246,6 +2383,12 @@ export function useAppChatAppLogic() {
     const bid = activeBranchId.value
     if (!bid) return
     await loadTranscriptForBranch(bid)
+  }
+
+  async function loadEarlierTranscript() {
+    const view = generationV2BranchView.value
+    if (!view || view.branchId !== activeBranchId.value || !view.hasMoreTurns || !view.beforeMessageId) return
+    await loadTranscriptForBranch(view.branchId, view.beforeMessageId, true)
   }
 
   // ======== INVARIANT ASSERTION (Development Only) ========
@@ -2332,8 +2475,6 @@ export function useAppChatAppLogic() {
   }
 
   async function onSelectConvo(convoId: string) {
-    if (isRunning.value) return
-    if (isDraftInteractionLocked.value) return
     activeConvoId.value = convoId
     await loadTranscriptForActiveConvo()
     if (convoId !== systemTemplateSnapshot.value?.conversation.id) {
@@ -2343,14 +2484,80 @@ export function useAppChatAppLogic() {
   }
 
   async function onSelectBranch(branchId: string) {
-    if (isRunning.value) return
-    if (isDraftInteractionLocked.value) return
     const bid = String(branchId ?? '').trim()
     if (!bid || bid === activeBranchId.value) return
     activeBranchId.value = bid
     resetCandidatesCache()
     await refreshTranscriptLatestOnly()
     assertInvariants() // Stable boundary: branch switched and refreshed
+  }
+
+  function findRenderedMessageElement(messageId: string): HTMLElement | null {
+    const expected = `msg-wrap-${messageId}`
+    for (const element of document.querySelectorAll<HTMLElement>('[data-testid]')) {
+      if (element.getAttribute('data-testid') === expected) return element
+    }
+    return null
+  }
+
+  async function navigateToBranchMessage(
+    targetBranchId: string,
+    targetMessageId: string,
+    expectedConversationId: string,
+    expectedSourceRevision: number,
+  ): Promise<void> {
+    const bid = String(targetBranchId ?? '').trim()
+    const mid = String(targetMessageId ?? '').trim()
+    if (!bid || !mid || activeConvoId.value !== expectedConversationId ||
+        navigationRevision.value !== expectedSourceRevision) return
+
+    if (activeBranchId.value !== bid) {
+      activeBranchId.value = bid
+      resetCandidatesCache()
+    }
+    const targetRevision = navigationRevision.value
+    await refreshTranscriptLatestOnly()
+    if (activeConvoId.value !== expectedConversationId || activeBranchId.value !== bid ||
+        navigationRevision.value !== targetRevision) return
+
+    const loadedView = generationV2BranchView.value
+    if (loadedView?.branchId === bid && !branches.value.some((branch) => branch.id === bid)) {
+      const now = Date.now()
+      branches.value = [...branches.value, {
+        id: bid,
+        convoId: expectedConversationId,
+        headMessageId: loadedView.headMessageId,
+        name: loadedView.branchName,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      }]
+    }
+
+    let pageCount = 0
+    while (!isMessageInTranscript(mid)) {
+      const view = generationV2BranchView.value
+      if (!view || view.branchId !== bid || !view.hasMoreTurns || !view.beforeMessageId) break
+      if (pageCount >= 200) {
+        throw new Error('GENERATION_V2_MESSAGE_CANDIDATE_ANCHOR_PAGE_LIMIT')
+      }
+      pageCount += 1
+      await loadTranscriptForBranch(bid, view.beforeMessageId, true)
+      if (activeConvoId.value !== expectedConversationId || activeBranchId.value !== bid ||
+          navigationRevision.value !== targetRevision) return
+    }
+    if (!isMessageInTranscript(mid)) {
+      throw new Error('GENERATION_V2_MESSAGE_CANDIDATE_ANCHOR_NOT_FOUND')
+    }
+
+    setCursorForBranch(bid, mid)
+    await nextTick()
+    if (activeConvoId.value !== expectedConversationId || activeBranchId.value !== bid ||
+        navigationRevision.value !== targetRevision) return
+    const element = findRenderedMessageElement(mid)
+    if (!element) throw new Error('GENERATION_V2_MESSAGE_CANDIDATE_ANCHOR_NOT_RENDERED')
+    element.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    assertInvariants()
   }
 
   async function onRenameConvo(convoId: string, title: string) {
@@ -2421,7 +2628,6 @@ export function useAppChatAppLogic() {
   // ========== Project Management ==========
 
   function onSelectProject(projectId: string | null) {
-    if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     activeProjectId.value = projectId
     // 切换项目后刷新对话列表
@@ -2502,7 +2708,14 @@ export function useAppChatAppLogic() {
     convos.value.map((c) => ({ id: c.id, title: c.title, projectId: c.projectId ?? null }))
   )
 
-  const activeTitle = computed(() => getActiveConvoRecord()?.title ?? '')
+  const activeTitle = computed(() => (
+    getActiveConvoRecord()?.title
+    ?? (
+      generationV2BranchView.value?.conversationId === activeConvoId.value
+        ? generationV2BranchView.value.title
+        : ''
+    )
+  ))
 
   function openSearchModal() {
     searchModalOpen.value = true
@@ -2836,6 +3049,20 @@ export function useAppChatAppLogic() {
   }
 
   async function onAbort() {
+    const runtime = activeBranchRuntime.value
+    if (runtime?.status === 'generating' && runtime.activeOperationId) {
+      const snapshot = branchRuntimeCache.snapshotForOperation(runtime.activeOperationId)
+      if (!snapshot) {
+        loadError.value = 'GENERATION_V2_RUNTIME_OPERATION_UNKNOWN'
+        return
+      }
+      await abortGenerationV2(
+        generationV2RouteForPersistedAnswer({ protocolContractId: snapshot.binding.contractId }),
+        runtime.activeOperationId,
+      )
+      if (activeBranchId.value === runtime.branchId) await refreshRenderableBranchView(runtime.branchId)
+      return
+    }
     const v2Answer = activeGenerationV2Answer.value
     if (v2Answer?.status === 'streaming') {
       await abortGenerationV2(generationV2RouteForPersistedAnswer(v2Answer), v2Answer.operationId)
@@ -3036,262 +3263,170 @@ export function useAppChatAppLogic() {
     if (!activeConvoId.value) return 'none'
     return activeConvoId.value === systemTemplateSnapshot.value?.conversation.id ? 'template' : 'conversation'
   })
+
+  function legacyCatalogModels(providerKey: string, source: string): readonly Record<string, unknown>[] {
+    const state = catalogRuntimeSnapshot.value[providerKey] ?? catalogRuntimeStore.read(providerKey)
+    return state.items.map((item) => {
+      const raw = item.observation?.rawProviderRecord ?? {}
+      const resolution = item.capabilityResolution
+      const supportedGenerationMethods = Array.isArray(raw.supportedGenerationMethods)
+        ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string') : undefined
+      return Object.freeze({
+        providerKey,
+        nativeModelId: item.modelId,
+        modelId: item.modelId,
+        displayName: item.displayName,
+        description: item.description ?? undefined,
+        source,
+        confidence: 'provider_reported',
+        observedAtMs: item.observation?.observedAtMs ?? item.syncedAtMs ?? 0,
+        observation: item.observation ?? undefined,
+        resolvedCapabilities: resolution ?? undefined,
+        providerSpecific: Object.freeze({
+          thinkingOwnProperty: Object.prototype.hasOwnProperty.call(raw, 'thinking'),
+          thinkingRawValue: raw.thinking,
+          thinkingRawType: Object.prototype.hasOwnProperty.call(raw, 'thinking') ? typeof raw.thinking : 'missing',
+          supportedGenerationMethods,
+          inputTokenLimit: typeof raw.inputTokenLimit === 'number' ? raw.inputTokenLimit : undefined,
+          outputTokenLimit: typeof raw.outputTokenLimit === 'number' ? raw.outputTokenLimit : undefined,
+        }),
+        warnings: Object.freeze([]),
+      })
+    })
+  }
+
+  function legacyCatalogAvailability<T>(input: Readonly<{
+    providerKey: string
+    endpointId: string
+    profileId: string
+    source: string
+  }>): T | null {
+    const state = catalogRuntimeSnapshot.value[input.providerKey] ?? catalogRuntimeStore.read(input.providerKey)
+    if (state.hydrationState === 'idle') return null
+    if (state.failure) return Object.freeze({
+      ok: false,
+      providerKey: input.providerKey,
+      endpointId: input.endpointId,
+      profileId: input.profileId,
+      observedAtMs: Date.now(),
+      code: 'network_error',
+      message: providerFailurePrimaryMessageV2(state.failure),
+      providerFailure: state.failure,
+    }) as T
+    const models = legacyCatalogModels(input.providerKey, input.source)
+    const observedAtMs = models.reduce((latest, model) => Math.max(latest,
+      typeof model.observedAtMs === 'number' ? model.observedAtMs : 0), 0)
+    return Object.freeze({
+      ok: true,
+      providerKey: input.providerKey,
+      endpointId: input.endpointId,
+      profileId: input.profileId,
+      observedAtMs,
+      models,
+      warnings: Object.freeze([]),
+      sourceDocuments: Object.freeze([]),
+    }) as T
+  }
+
+  function catalogProviderLoading(providerKey: string): boolean {
+    const state = catalogRuntimeSnapshot.value[providerKey] ?? catalogRuntimeStore.read(providerKey)
+    return state.hydrationState === 'loading' || state.syncState === 'syncing'
+  }
+
   const openAIResponsesModelAvailabilityStatus = computed(() => ({
-    loading: openAIResponsesModelAvailabilityLoading.value,
-    result: openAIResponsesModelAvailabilityResult.value,
+    loading: catalogProviderLoading(OPENAI_RESPONSES_PROVIDER_KEY),
+    result: legacyCatalogAvailability<OpenAIModelAvailabilityResult>({ providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
+      endpointId: OPENAI_RESPONSES_ENDPOINT_ID, profileId: OPENAI_RESPONSES_PROFILE_ID, source: 'openai_models_api' }),
   }))
   const googleAIStudioModelAvailabilityStatus = computed(() => ({
-    loading: googleAIStudioModelAvailabilityLoading.value,
-    result: googleAIStudioModelAvailabilityResult.value,
+    loading: catalogProviderLoading(GOOGLE_AI_STUDIO_PROVIDER_KEY),
+    result: legacyCatalogAvailability<GeminiModelAvailabilityResult>({ providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+      endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID, profileId: GOOGLE_AI_STUDIO_PROFILE_ID, source: 'gemini_models_api' }),
   }))
   const anthropicModelAvailabilityStatus = computed(() => ({
-    loading: anthropicModelAvailabilityLoading.value,
-    result: anthropicModelAvailabilityResult.value,
+    loading: catalogProviderLoading(ANTHROPIC_MESSAGES_PROVIDER_KEY),
+    result: legacyCatalogAvailability<AnthropicModelAvailabilityResult>({ providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+      endpointId: ANTHROPIC_MESSAGES_ENDPOINT_ID, profileId: ANTHROPIC_MESSAGES_PROFILE_ID, source: 'anthropic_models_api' }),
   }))
   const deepSeekModelAvailabilityStatus = computed(() => ({
-    loading: deepSeekModelAvailabilityLoading.value,
-    result: deepSeekModelAvailabilityResult.value,
+    loading: catalogProviderLoading(DEEPSEEK_OFFICIAL_PROVIDER_KEY),
+    result: legacyCatalogAvailability<DeepSeekModelAvailabilityResult>({ providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+      endpointId: DEEPSEEK_OFFICIAL_ENDPOINT_ID, profileId: DEEPSEEK_OFFICIAL_PROFILE_ID, source: 'deepseek_models_api' }),
   }))
 
-  const providerModelPickerSources = computed<readonly ProviderModelPickerSource[]>(() => [
-    {
-      providerId: OPENAI_RESPONSES_PROVIDER_KEY,
-      providerName: 'OpenAI Responses',
-      statusKind: 'not_loaded',
-      statusLabel: 'catalog',
-      loading: false,
-      items: [],
-    },
-    {
-      providerId: GOOGLE_AI_STUDIO_PROVIDER_KEY,
-      providerName: 'Google AI Studio',
-      statusKind: 'not_loaded',
-      statusLabel: 'catalog',
-      loading: false,
-      items: [],
-    },
-    {
-      providerId: ANTHROPIC_MESSAGES_PROVIDER_KEY,
-      providerName: 'Anthropic Messages',
-      statusKind: 'not_loaded',
-      statusLabel: 'catalog',
-      loading: false,
-      items: [],
-    },
-    {
-      providerId: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
-      providerName: 'DeepSeek',
-      statusKind: 'not_loaded',
-      statusLabel: 'catalog',
-      loading: false,
-      items: [],
-    },
-  ])
-
-  async function onRefreshProviderModelPickerSources() {
-    await Promise.allSettled([
-      onRefreshOpenAIResponsesModels(),
-      onRefreshGoogleAIStudioModels(),
-      onRefreshAnthropicModels(),
-      onRefreshDeepSeekModels(),
-    ])
-  }
-
-  function getOpenAIResponsesModelsBridge(): OpenAIResponsesModelsBridge | null {
-    const bridge = window.generationV2?.models
-    return typeof bridge?.listOpenAIResponses === 'function' && typeof bridge.sync === 'function'
-      ? { listAvailability: (payload) => bridge.listOpenAIResponses(payload) as Promise<OpenAIModelAvailabilityResult>,
-          syncAvailability: (payload) => bridge.sync({ providerKey: 'openai_responses', ...(payload as object ?? {}) }) as Promise<Readonly<{ ok: boolean; code?: string }>> }
-      : null
-  }
-
-  function buildOpenAIResponsesModelAvailabilityFailure(
-    code: OpenAIModelAvailabilityFailureCode,
-    message: string,
-  ): OpenAIModelAvailabilityResult {
+  const providerModelPickerSources = computed<readonly ProviderModelPickerSource[]>(() => ([
+    [OPENAI_RESPONSES_PROVIDER_KEY, 'OpenAI Responses'],
+    [GOOGLE_AI_STUDIO_PROVIDER_KEY, 'Google AI Studio'],
+    [ANTHROPIC_MESSAGES_PROVIDER_KEY, 'Anthropic Messages'],
+    [DEEPSEEK_OFFICIAL_PROVIDER_KEY, 'DeepSeek'],
+  ] as const).map(([providerId, providerName]) => {
+    const state = catalogRuntimeSnapshot.value[providerId] ?? catalogRuntimeStore.read(providerId)
+    const statusKind = state.failure ? 'unavailable' as const
+      : state.hydrationState === 'loading' ? 'loading' as const
+        : state.items.length > 0 ? 'ready' as const : 'not_loaded' as const
     return {
-      ok: false,
-      providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
-      endpointId: OPENAI_RESPONSES_ENDPOINT_ID,
-      profileId: OPENAI_RESPONSES_PROFILE_ID,
-      observedAtMs: Date.now(),
-      code,
-      message,
+      providerId,
+      providerName,
+      statusKind,
+      statusLabel: state.failure?.providerError?.message ?? (state.items.length > 0 ? `${state.items.length} models` : 'catalog'),
+      loading: state.hydrationState === 'loading',
+      items: state.items.map((item) => ({
+        providerId,
+        providerName,
+        modelId: item.modelId,
+        modelKey: item.modelKey,
+        displayName: item.displayName,
+        description: item.description,
+        vendor: item.vendor,
+        capabilitySummary: item.capabilityResolution
+          ? [
+              ...Object.entries(item.capabilityResolution).flatMap(([key, fact]) =>
+                fact && typeof fact === 'object' && 'modelSupport' in fact
+                  ? [`${key}: ${fact.modelSupport} · ${fact.resolutionSource} · ${fact.wireImplementation}`]
+                  : [],
+              ),
+              ...(item.capabilityResolution.providerSpecific?.kind === 'gemini_image_generation'
+                ? ['imageGeneration: supported · verified_contract · implemented']
+                : []),
+            ].join(' | ')
+          : 'capability unknown',
+        capabilityResolution: item.capabilityResolution,
+        observation: item.observation,
+        statusKind: 'ready' as const,
+        statusLabel: item.status ?? 'available',
+        sourceLabel: 'provider catalog',
+        selectable: true,
+        inputModalities: [...(item.inputModalities ?? [])],
+        outputModalities: [...(item.outputModalities ?? [])],
+      })),
     }
-  }
+  }))
 
-  async function onRefreshOpenAIResponsesModels() {
-    if (openAIResponsesModelAvailabilityLoading.value) return
-    const bridge = getOpenAIResponsesModelsBridge()
-    if (!bridge) {
-      openAIResponsesModelAvailabilityResult.value = buildOpenAIResponsesModelAvailabilityFailure(
-        'invalid_payload',
-        'OpenAI Responses model availability bridge is unavailable.',
-      )
-      return
-    }
-
-    openAIResponsesModelAvailabilityLoading.value = true
+  async function refreshCatalogProvider(providerKey: string): Promise<void> {
+    const current = catalogRuntimeSnapshot.value[providerKey] ?? catalogRuntimeStore.read(providerKey)
+    if (current.syncState === 'syncing') return
+    const token = catalogRuntimeStore.beginMutation(providerKey)
     try {
-      const sync = await bridge.syncAvailability({ timeoutMs: 30_000 })
-      if (!sync.ok) throw new Error(sync.code ?? 'provider_catalog_sync_failed')
-      openAIResponsesModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
-    } catch {
-      openAIResponsesModelAvailabilityResult.value = buildOpenAIResponsesModelAvailabilityFailure(
-        'network_error',
-        t('errors.network.reason.networkUnknown'),
-      )
-    } finally {
-      openAIResponsesModelAvailabilityLoading.value = false
+      const raw = await CatalogQueryService.sync({ sourceProviderKey: providerKey, timeoutMs: 30_000 })
+      const result = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null
+      if (!result || result.ok !== true) {
+        const failure = result?.providerFailure && typeof result.providerFailure === 'object'
+          ? result.providerFailure as ProviderFailureV2
+          : localCatalogFailure(providerKey, new Error(String(result?.message ?? result?.code ?? 'MODEL_CATALOG_SYNC_FAILED')))
+        catalogRuntimeStore.acceptFailure({ token, failure })
+        return
+      }
+      CatalogQueryService.invalidateProviderRuntimeCache(providerKey)
+      await hydrateCatalogProvider(providerKey)
+    } catch (error) {
+      catalogRuntimeStore.acceptFailure({ token, failure: localCatalogFailure(providerKey, error) })
     }
   }
 
-  function getGoogleAIStudioModelsBridge(): GoogleAIStudioModelsBridge | null {
-    const bridge = window.generationV2?.models
-    return typeof bridge?.listGoogleAIStudio === 'function' && typeof bridge.sync === 'function'
-      ? { listAvailability: (payload) => bridge.listGoogleAIStudio(payload) as Promise<GeminiModelAvailabilityResult>,
-          syncAvailability: (payload) => bridge.sync({ providerKey: 'google_ai_studio', ...(payload as object ?? {}) }) as Promise<Readonly<{ ok: boolean; code?: string }>> }
-      : null
-  }
-
-  function buildGoogleAIStudioModelAvailabilityFailure(
-    code: GeminiModelAvailabilityFailureCode,
-    message: string,
-  ): GeminiModelAvailabilityResult {
-    return {
-      ok: false,
-      providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
-      endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID,
-      profileId: GOOGLE_AI_STUDIO_PROFILE_ID,
-      observedAtMs: Date.now(),
-      code,
-      message,
-    }
-  }
-
-  async function onRefreshGoogleAIStudioModels() {
-    if (googleAIStudioModelAvailabilityLoading.value) return
-    const bridge = getGoogleAIStudioModelsBridge()
-    if (!bridge) {
-      googleAIStudioModelAvailabilityResult.value = buildGoogleAIStudioModelAvailabilityFailure(
-        'invalid_payload',
-        'Google AI Studio model availability bridge is unavailable.',
-      )
-      return
-    }
-
-    googleAIStudioModelAvailabilityLoading.value = true
-    try {
-      const sync = await bridge.syncAvailability({ timeoutMs: 30_000 })
-      if (!sync.ok) throw new Error(sync.code ?? 'provider_catalog_sync_failed')
-      googleAIStudioModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
-    } catch {
-      googleAIStudioModelAvailabilityResult.value = buildGoogleAIStudioModelAvailabilityFailure(
-        'network_error',
-        t('errors.network.reason.networkUnknown'),
-      )
-    } finally {
-      googleAIStudioModelAvailabilityLoading.value = false
-    }
-  }
-
-  function getAnthropicModelsBridge(): AnthropicModelsBridge | null {
-    const bridge = window.generationV2?.models
-    return typeof bridge?.listAnthropic === 'function' && typeof bridge.sync === 'function'
-      ? { listAvailability: (payload) => bridge.listAnthropic(payload) as Promise<AnthropicModelAvailabilityResult>,
-          syncAvailability: (payload) => bridge.sync({ providerKey: 'anthropic_messages', ...(payload as object ?? {}) }) as Promise<Readonly<{ ok: boolean; code?: string }>> }
-      : null
-  }
-
-  function buildAnthropicModelAvailabilityFailure(
-    code: AnthropicModelAvailabilityFailureCode,
-    message: string,
-  ): AnthropicModelAvailabilityResult {
-    return {
-      ok: false,
-      providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
-      endpointId: ANTHROPIC_MESSAGES_ENDPOINT_ID,
-      profileId: ANTHROPIC_MESSAGES_PROFILE_ID,
-      observedAtMs: Date.now(),
-      code,
-      message,
-    }
-  }
-
-  async function onRefreshAnthropicModels() {
-    if (anthropicModelAvailabilityLoading.value) return
-    const bridge = getAnthropicModelsBridge()
-    if (!bridge) {
-      anthropicModelAvailabilityResult.value = buildAnthropicModelAvailabilityFailure(
-        'invalid_payload',
-        'Anthropic model availability bridge is unavailable.',
-      )
-      return
-    }
-
-    anthropicModelAvailabilityLoading.value = true
-    try {
-      const sync = await bridge.syncAvailability({ timeoutMs: 30_000 })
-      if (!sync.ok) throw new Error(sync.code ?? 'provider_catalog_sync_failed')
-      anthropicModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
-    } catch {
-      anthropicModelAvailabilityResult.value = buildAnthropicModelAvailabilityFailure(
-        'network_error',
-        t('errors.network.reason.networkUnknown'),
-      )
-    } finally {
-      anthropicModelAvailabilityLoading.value = false
-    }
-  }
-
-  function getDeepSeekModelsBridge(): DeepSeekModelsBridge | null {
-    const bridge = window.generationV2?.models
-    return typeof bridge?.listDeepSeek === 'function' && typeof bridge.sync === 'function'
-      ? { listAvailability: (payload) => bridge.listDeepSeek(payload) as Promise<DeepSeekModelAvailabilityResult>,
-          syncAvailability: (payload) => bridge.sync({ providerKey: 'deepseek', ...(payload as object ?? {}) }) as Promise<Readonly<{ ok: boolean; code?: string }>> }
-      : null
-  }
-
-  function buildDeepSeekModelAvailabilityFailure(
-    code: DeepSeekModelAvailabilityFailureCode,
-    message: string,
-  ): DeepSeekModelAvailabilityResult {
-    return {
-      ok: false,
-      providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
-      endpointId: DEEPSEEK_OFFICIAL_ENDPOINT_ID,
-      profileId: DEEPSEEK_OFFICIAL_PROFILE_ID,
-      observedAtMs: Date.now(),
-      code,
-      message,
-    }
-  }
-
-  async function onRefreshDeepSeekModels() {
-    if (deepSeekModelAvailabilityLoading.value) return
-    const bridge = getDeepSeekModelsBridge()
-    if (!bridge) {
-      deepSeekModelAvailabilityResult.value = buildDeepSeekModelAvailabilityFailure(
-        'invalid_payload',
-        'DeepSeek model availability bridge is unavailable.',
-      )
-      return
-    }
-
-    deepSeekModelAvailabilityLoading.value = true
-    try {
-      const sync = await bridge.syncAvailability({ timeoutMs: 30_000 })
-      if (!sync.ok) throw new Error(sync.code ?? 'provider_catalog_sync_failed')
-      deepSeekModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
-    } catch {
-      deepSeekModelAvailabilityResult.value = buildDeepSeekModelAvailabilityFailure(
-        'network_error',
-        t('errors.network.reason.networkUnknown'),
-      )
-    } finally {
-      deepSeekModelAvailabilityLoading.value = false
-    }
-  }
+  const onRefreshOpenAIResponsesModels = () => refreshCatalogProvider(OPENAI_RESPONSES_PROVIDER_KEY)
+  const onRefreshGoogleAIStudioModels = () => refreshCatalogProvider(GOOGLE_AI_STUDIO_PROVIDER_KEY)
+  const onRefreshAnthropicModels = () => refreshCatalogProvider(ANTHROPIC_MESSAGES_PROVIDER_KEY)
+  const onRefreshDeepSeekModels = () => refreshCatalogProvider(DEEPSEEK_OFFICIAL_PROVIDER_KEY)
 
   async function persistGenerationV2RoutePreference(
     conversationId: string,
@@ -3351,9 +3486,13 @@ export function useAppChatAppLogic() {
 
   async function onUpdateReasoningEnabled(nextEnabled: boolean) {
     if (isDraftInteractionLocked.value) return
+    const current = activeSessionConfig.value
+    const isDeepSeek = current.model.selectedProviderId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
     await updateActiveConvoSessionConfig({
       reasoning: {
         enabled: nextEnabled,
+        ...(isDeepSeek && nextEnabled && !isDeepSeekSelectableReasoningEffort(current.reasoning.effort)
+          ? { effort: 'high' as const } : {}),
       },
     })
     hydrateSessionConfigUiFromActiveConvo()
@@ -3361,6 +3500,11 @@ export function useAppChatAppLogic() {
 
   async function onUpdateReasoningEffortLevel(nextEffort: ChatSessionConfig['reasoning']['effort']) {
     if (isDraftInteractionLocked.value) return
+    const current = activeSessionConfig.value
+    const isDeepSeek = current.model.selectedProviderId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
+    if (isDeepSeek && !isDeepSeekSelectableReasoningEffort(nextEffort)) {
+      throw new Error('GENERATION_V2_DEEPSEEK_REASONING_EFFORT_UNSUPPORTED')
+    }
     await updateActiveConvoSessionConfig({
       reasoning: {
         enabled: true,
@@ -5206,6 +5350,23 @@ export function useAppChatAppLogic() {
     return getDefaultGenerationParamProfile(providerId, { requestKind }) ?? unsetGenerationProfile
   }
 
+  function geminiThinkingCapabilityForModel(modelId: string | null | undefined): GeminiThinkingCapability {
+    const normalized = normalizeGeminiThinkingModelId(modelId)
+    const state = catalogRuntimeSnapshot.value[GOOGLE_AI_STUDIO_PROVIDER_KEY] ??
+      catalogRuntimeStore.read(GOOGLE_AI_STUDIO_PROVIDER_KEY)
+    const model = state.items.find((candidate) => normalizeGeminiThinkingModelId(candidate.modelId) === normalized)
+    const raw = model?.observation?.rawProviderRecord ?? null
+    const thinkingOwnProperty = Boolean(raw && Object.prototype.hasOwnProperty.call(raw, 'thinking'))
+    const supportedGenerationMethods = raw && Array.isArray(raw.supportedGenerationMethods)
+      ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string') : undefined
+    return resolveGeminiThinkingCapability({
+      model: normalized,
+      thinking: thinkingOwnProperty ? raw?.thinking : undefined,
+      thinkingOwnProperty,
+      supportedGenerationMethods,
+    })
+  }
+
   const activeSessionGenerationParamsLayer = computed<GenerationParamsLayer | null>(() =>
     activeSessionConfig.value.generationParams.detail
   )
@@ -5225,6 +5386,9 @@ export function useAppChatAppLogic() {
     resolveGenerationParamsFromLayers({
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
+      geminiThinkingCapability: activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+        !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
+        ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
         conversation: getActiveConvoGenerationParamsLayer(),
         project: getActiveProjectGenerationParamsLayer(),
@@ -5273,6 +5437,9 @@ export function useAppChatAppLogic() {
     resolveGenerationParamsFromLayers({
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
+      geminiThinkingCapability: activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+        !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
+        ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
         conversation: sessionGenerationParamsDraft.value,
         project: getActiveProjectGenerationParamsLayer(),
@@ -5285,6 +5452,9 @@ export function useAppChatAppLogic() {
     resolveGenerationParamsFromLayers({
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
+      geminiThinkingCapability: activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+        !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
+        ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
         project: projectGenerationParamsDraft.value,
         global: globalGenerationParamsDefaults.value,
@@ -5933,12 +6103,13 @@ export function useAppChatAppLogic() {
 
   async function persistSelectedModelForActiveConvo(nextModelKey: ChatModelSelection | string) {
     const convo = getActiveConvoRecord()
-    if (!convo) return
+    if (!convo) throw new Error('ACTIVE_CONVERSATION_UNAVAILABLE')
 
     const selection = normalizeSelectionInput(nextModelKey)
     if (!selection) {
-      loadError.value = 'A provider and model must be selected together.'
-      return
+      const failure = new Error('A provider and model must be selected together.')
+      loadError.value = failure.message
+      throw failure
     }
     const normalized = selection.modelId
     const currentModel = getActiveSessionConfigSnapshot().model
@@ -5981,10 +6152,45 @@ export function useAppChatAppLogic() {
         requestKind: selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(normalized)
           ? 'image_generation' : 'text',
       })
+      if (selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !isKnownGeminiImageGenerationModel(normalized)) {
+        const thinkingCapability = geminiThinkingCapabilityForModel(normalized)
+        const detail = { ...(current.generationParams.detail ?? {}) }
+        if (thinkingCapability.kind === 'level') {
+          delete detail.thinkingBudget
+          const level = detail.thinkingLevel
+          if (level?.mode === 'custom' && !(thinkingCapability.levels as readonly string[]).includes(String(level.value))) {
+            detail.thinkingLevel = { mode: 'omit' }
+          }
+        } else if (thinkingCapability.kind === 'budget') {
+          delete detail.thinkingLevel
+          const budget = detail.thinkingBudget
+          if (budget?.mode === 'custom' && !isGeminiThinkingBudgetValid(thinkingCapability, budget.value)) {
+            detail.thinkingBudget = { mode: 'omit' }
+          }
+        } else {
+          delete detail.thinkingBudget
+          delete detail.thinkingLevel
+          delete detail.includeThoughts
+        }
+        if (thinkingCapability.kind !== 'level' && thinkingCapability.kind !== 'budget') {
+          delete detail.thinkingEnabled
+          delete detail.reasoningEffort
+        }
+        patch.generationParams = { detail: Object.freeze(detail) }
+      }
+      if (selection.providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY) {
+        if (current.reasoning.enabled && !isDeepSeekSelectableReasoningEffort(current.reasoning.effort)) {
+          patch.reasoning = { enabled: true, effort: 'high' }
+        }
+      }
       const persistedEffort = current.generationParams.detail?.reasoningEffort
       const hasExplicitMax = current.reasoning.enabled && current.reasoning.effort === 'max' ||
-        persistedEffort?.mode === 'custom' && persistedEffort.value === 'max'
-      if (hasExplicitMax && isReasoningEffortExplicitlyUnsupported(profile, normalized, 'max')) {
+        selection.providerId !== DEEPSEEK_OFFICIAL_PROVIDER_KEY &&
+          persistedEffort?.mode === 'custom' && persistedEffort.value === 'max'
+      if (hasExplicitMax && isReasoningEffortExplicitlyUnsupported(profile, normalized, 'max', {
+        geminiThinkingCapability: selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !isKnownGeminiImageGenerationModel(normalized)
+          ? geminiThinkingCapabilityForModel(normalized) : undefined,
+      })) {
         patch.reasoning = { enabled: false, effort: 'medium' }
         patch.generationParams = { detail: Object.freeze({
           ...(current.generationParams.detail ?? {}),
@@ -6332,6 +6538,8 @@ export function useAppChatAppLogic() {
     const resolved = resolveGenerationParamsFromLayers({
       profile: generationParamProfileForProvider(providerId, modelId),
       modelId,
+      geminiThinkingCapability: providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !isGeminiInteractionsImageModelIdV1(normalizeGeminiImageGenerationModelId(modelId))
+        ? geminiThinkingCapabilityForModel(modelId) : undefined,
       layers: {
         conversation: sessionConfig.generationParams.detail,
         project: getActiveProjectGenerationParamsLayer(),
@@ -6343,6 +6551,15 @@ export function useAppChatAppLogic() {
     const imageConfig = resolveImageGenerationConfigForRequest(providerId, sessionConfig)
     const geminiInteractionsImage = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
       isGeminiInteractionsImageModelIdV1(normalizeGeminiImageGenerationModelId(sessionConfig.model.selectedModelKey)) && imageConfig !== null
+    const geminiGenerateThinkingCapability = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !geminiInteractionsImage
+      ? geminiThinkingCapabilityForModel(modelId) : null
+    if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !geminiInteractionsImage) {
+      for (const key of ['thinkingBudget', 'thinkingLevel', 'includeThoughts'] as const) {
+        if (sessionConfig.generationParams.detail?.[key]?.mode === 'custom' && resolved.decisions[key]?.state === 'unsupported') {
+          throw new Error(`GENERATION_V2_GEMINI_THINKING_UNSUPPORTED_${key.toUpperCase()}`)
+        }
+      }
+    }
     const mappedParamKeys = new Set([
       'temperature', 'topP', 'topK', 'minP', 'topA', 'frequencyPenalty', 'presencePenalty',
       'repetitionPenalty', 'seed', 'maxOutputTokens', 'stopSequences', 'reasoningEffort',
@@ -6371,12 +6588,17 @@ export function useAppChatAppLogic() {
       requestedReasoningEffortValue: sessionConfig.reasoning.enabled ? sessionConfig.reasoning.effort : undefined,
       requestedReasoningExclude: sessionConfig.reasoning.enabled && requestedReasoningExclude.value,
     } : null
-    const thinkingEnabled = params.thinkingEnabled
-    const rawEffort = String(openRouterReasoning?.requestedReasoningEffortValue ??
-      (geminiInteractionsImage ? params.thinkingLevel : undefined) ?? params.reasoningEffort ?? '').trim()
-    const explicitReasoningDisabled = rawEffort === 'none' || thinkingEnabled === false
+    const deepSeekReasoning = providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY ? sessionConfig.reasoning : null
+    const thinkingEnabled = deepSeekReasoning ? deepSeekReasoning.enabled : params.thinkingEnabled
+    const rawEffort = String(deepSeekReasoning
+      ? (deepSeekReasoning.enabled ? deepSeekReasoning.effort : '')
+      : openRouterReasoning?.requestedReasoningEffortValue ??
+        (geminiInteractionsImage ? params.thinkingLevel : undefined) ?? params.thinkingLevel ?? params.reasoningEffort ?? '').trim()
+    const explicitReasoningDisabled = deepSeekReasoning
+      ? !deepSeekReasoning.enabled
+      : rawEffort === 'none' || thinkingEnabled === false
     const effort = rawEffort === 'none' ? '' : rawEffort
-    const summary = String(geminiInteractionsImage && params.thoughtSummaryMode === 'auto'
+    const summary = String(deepSeekReasoning ? '' : geminiInteractionsImage && params.thoughtSummaryMode === 'auto'
       ? 'auto' : params.reasoningSummary ?? '').trim()
     if (effort && !['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) {
       throw new Error('GENERATION_V2_REASONING_EFFORT_UNSUPPORTED')
@@ -6384,8 +6606,11 @@ export function useAppChatAppLogic() {
     if (summary && !['auto', 'concise', 'detailed'].includes(summary)) {
       throw new Error('GENERATION_V2_REASONING_SUMMARY_UNSUPPORTED')
     }
-    const reasoningEnabled = openRouterReasoning?.requestedReasoningMode === 'auto' || thinkingEnabled === true || effort.length > 0 || summary.length > 0 ||
-      params.thinkingLevel !== undefined || params.thinkingBudget !== undefined
+    const reasoningEnabled = deepSeekReasoning
+      ? deepSeekReasoning.enabled
+      : openRouterReasoning?.requestedReasoningMode === 'auto' || thinkingEnabled === true || effort.length > 0 || summary.length > 0 ||
+        geminiGenerateThinkingCapability?.thinkingSupported === 'supported' ||
+        params.thinkingLevel !== undefined || params.thinkingBudget !== undefined
     const reasoning = explicitReasoningDisabled || !reasoningEnabled
       ? { mode: 'disabled' as const }
       : {
@@ -6460,7 +6685,7 @@ export function useAppChatAppLogic() {
       else if (['minimal', 'low', 'medium', 'high'].includes(String(params.thinkingLevel))) providerExtension = {
         kind: 'gemini_generate_content', thinkingMode: 'level', thinkingLevel: params.thinkingLevel, includeThoughts,
       }
-      else providerExtension = { kind: 'gemini_generate_content', thinkingMode: 'provider_default', includeThoughts }
+      else providerExtension = { kind: 'gemini_generate_content', thinkingMode: 'default', includeThoughts }
     }
 
     return Object.freeze({ schemaVersion: 2, generation, reasoning, web, image,
@@ -6787,95 +7012,29 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function onCandidateShift(questionId: string, delta: -1 | 1) {
-    if (isDraftInteractionLocked.value) return
+  async function onMessageCandidateShift(messageId: string, delta: -1 | 1) {
     const bid = activeBranchId.value
-    if (!bid) return
-    if (activeAssistantMessageId.value) return
-
-    const ordered = getOrderedCandidatesOldToNew(questionId)
-    if (!ordered) {
-      if (import.meta.env?.DEV) {
-        console.log('[ui-app] onCandidateShift: no cached candidates, triggering load', { questionId })
-      }
-      await ensureCandidatesLoaded(questionId)
-      return
-    }
-
-    const current = turnFiltersByQuestionId.value.get(questionId)
-    const chosen = current?.chosenAnswerRootId
-    const idx = chosen ? ordered.findIndex((c) => c.answerRootId === chosen) : -1
-    const targetIndex = idx + delta
-
-    if (import.meta.env?.DEV) {
-      console.log('[ui-app] onCandidateShift', {
-        questionId,
-        delta,
-        orderedCount: ordered.length,
-        orderedIds: ordered.map(c => c.answerRootId),
-        chosenAnswerRootId: chosen,
-        currentIndex: idx,
-        targetIndex,
-        canShift: idx >= 0 && targetIndex >= 0 && targetIndex < ordered.length,
-      })
-    }
-
-    if (idx < 0 || targetIndex < 0 || targetIndex >= ordered.length) return
-
-    const target = ordered[targetIndex]
+    const mid = String(messageId ?? '').trim()
+    const conversationId = activeConvoId.value
+    if (!bid || !mid || !conversationId) return
+    const sourceRevision = navigationRevision.value
+    const key = messageCandidateCacheKey(bid, mid)
     try {
-      if (import.meta.env?.DEV) {
-        console.log('[ui-app] switchCandidate', {
-          branchId: bid,
-          questionId,
-          from: `${idx + 1}/${ordered.length}`,
-          to: `${targetIndex + 1}/${ordered.length}`,
-          oldAnswerRootId: chosen,
-          newAnswerRootId: target.answerRootId,
-        })
-      }
-      await selectGenerationV2Answer({ branchId: bid, questionId,
-        expectedChosenAnswerRootId: chosen!, targetAnswerRootId: target.answerRootId })
-      await refreshRenderableBranchView(bid)
-    } catch (err: any) {
-      loadError.value = err?.message ? String(err.message) : String(err)
-      await refreshRenderableBranchView(bid)
-    }
-  }
-
-  async function onQuestionCandidateShift(questionId: string, delta: -1 | 1) {
-    if (isDraftInteractionLocked.value) return
-    const bid = activeBranchId.value
-    if (!bid) return
-    if (activeAssistantMessageId.value) return
-
-    const qid = String(questionId ?? '').trim()
-    const meta = qid ? messageMetaById.value.get(qid) : null
-    if (!qid || !meta || meta.role !== 'user') return
-
-    const baseMessageId = meta.parentId ?? null
-    const ordered = getOrderedQuestionCandidatesOldToNew(baseMessageId)
-    if (!ordered) {
-      await ensureQuestionCandidatesLoadedForSlot(baseMessageId)
-      return
-    }
-
-    const idx = ordered.findIndex((c) => c.questionId === qid)
-    const targetIndex = idx + delta
-    if (idx < 0 || targetIndex < 0 || targetIndex >= ordered.length) return
-    const target = ordered[targetIndex]
-
-    try {
-      const expectedHeadMessageId = activeBranch.value?.headMessageId
-      if (!expectedHeadMessageId) return
-      const res = await selectGenerationV2QuestionCandidate({ branchId: bid, baseMessageId,
-        expectedCurrentQuestionId: qid, targetQuestionId: target.questionId, expectedHeadMessageId })
-      // Branch tip update (definition): backend returns the new insertion point after switching question candidate.
-      patchBranch(bid, { headMessageId: res.headMessageId, updatedAt: Date.now() })
-      await refreshRenderableBranchView(bid)
-    } catch (err: any) {
-      loadError.value = err?.message ? String(err.message) : String(err)
-      await refreshRenderableBranchView(bid)
+      const navigation = await getGenerationV2MessageCandidateNavigation(bid, mid)
+      if (activeConvoId.value !== conversationId || activeBranchId.value !== bid ||
+          navigationRevision.value !== sourceRevision) return
+      messageCandidateNavigationCache.value.set(key, navigation)
+      messageCandidateNavigationCache.value = new Map(messageCandidateNavigationCache.value)
+      const target = delta < 0 ? navigation.previous : navigation.next
+      if (!target) return
+      await navigateToBranchMessage(
+        target.branchId,
+        target.messageId,
+        conversationId,
+        sourceRevision,
+      )
+    } catch (error) {
+      loadError.value = error instanceof Error ? error.message : String(error)
     }
   }
 
@@ -6884,7 +7043,7 @@ export function useAppChatAppLogic() {
     const branch = activeBranch.value
     const qid = String(questionId ?? '').trim()
     const chosen = turnFiltersByQuestionId.value.get(qid)?.chosenAnswerRootId
-    if (!branch?.id || !qid || !chosen || branch.headMessageId !== chosen) return
+    if (!branch?.id || !qid || !chosen) return
     const compatibleSelection = activeSessionConfig.value.model.compatibleSelection
     const currentSelection = compatibleSelection ? null : resolveCurrentRuntimeSelectionForSend()
     const selectedRuntime = currentSelection?.state === 'selected' ? currentSelection : null
@@ -6897,6 +7056,9 @@ export function useAppChatAppLogic() {
       if (!view || view.branchId !== branch.id || view.conversationId !== activeConvoId.value) throw new Error('GENERATION_V2_BRANCH_PROJECTION_STALE')
       const sourceTurn = view.turns.find((turn) => turn.questionId === qid)
       if (!sourceTurn) throw new Error('GENERATION_V2_BRANCH_PROJECTION_STALE')
+      const sourceNavigationRevision = navigationRevision.value
+      const sourceConversationId = view.conversationId
+      const sourceBranchId = view.branchId
       const nativeProviderId: RuntimeProviderKey = compatibleSelection ? 'local_endpoint' : selectedRuntime!.providerId
       const route: GenerationV2Route = compatibleSelection ? { kind: 'openai_chat_compatible' }
         : nativeProviderId === OPENROUTER_PROVIDER_ID && resolveImageGenerationConfigForRequest(nativeProviderId)
@@ -6904,8 +7066,9 @@ export function useAppChatAppLogic() {
       await persistCurrentGenerationV2SemanticLayer(nativeProviderId, view.conversationId)
       const endpointProfileId = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
         ? await resolveGenerationV2LocalProfileForSend(route, modelId) : null
-      const common = { operationId: crypto.randomUUID(), branchId: branch.id, questionId: qid,
-        expectedHeadMessageId: chosen, modelId: route.kind === 'gemini_interactions_image'
+      const operationId = crypto.randomUUID()
+      const common = { operationId, clientActionId: operationId, sourceBranchId: branch.id, questionId: qid,
+        sourceAnswerId: chosen, expectedHeadMessageId: view.headMessageId, modelId: route.kind === 'gemini_interactions_image'
           ? normalizeGeminiImageGenerationModelId(modelId) : modelId }
       const composerDraft = generationV2ComposerDraft.value?.conversationId === view.conversationId
         ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId)
@@ -6917,9 +7080,15 @@ export function useAppChatAppLogic() {
         : { ...common, commandAttachments, ...(compatibleSelection ? { providerInstanceId: compatibleSelection.providerInstanceId, extraBody: compatibleSelection.extraBody } : {}),
           ...(endpointProfileId === null ? {} : { endpointProfileId }) })
       if (!result.ok) throw new Error(result.code)
-      invalidateCandidatesForQuestion(qid)
-      patchBranch(branch.id, { headMessageId: result.branch.headMessageId, updatedAt: Date.now() })
-      await refreshRenderableBranchView(branch.id)
+      invalidateMessageCandidateNavigation()
+      if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
+      const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
+        activeConvoId.value === sourceConversationId && activeBranchId.value === sourceBranchId
+      if (shouldFollow) {
+        activeBranchId.value = result.branch.branchId
+        resetCandidatesCache()
+        await refreshRenderableBranchView(result.branch.branchId)
+      }
     } catch (error) {
       loadError.value = error instanceof Error ? error.message : String(error)
       await refreshRenderableBranchView(branch.id)
@@ -6980,16 +7149,7 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function canReplaceQuestionInUi(questionId: string): boolean {
-    const qid = String(questionId ?? '').trim()
-    if (!qid) return false
-    const meta = messageMetaById.value.get(qid)
-    if (!meta || meta.role !== 'user') return false
-    const lastQ = questionTurnOrder.value.length > 0 ? questionTurnOrder.value[questionTurnOrder.value.length - 1] : null
-    return lastQ === qid
-  }
-
-  async function submitQuestionEdit(mode: 'new' | 'replace') {
+  async function submitQuestionEdit() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     if (activeAssistantMessageId.value) return
@@ -7005,8 +7165,7 @@ export function useAppChatAppLogic() {
 
     const v2View = generationV2BranchView.value
     const sourceTurn = v2View?.turns.find((turn) => turn.questionId === oldQuestionId) ?? null
-    if (!v2View || v2View.branchId !== branch.id || !sourceTurn ||
-        v2View.headMessageId !== sourceTurn.chosenAnswerRootId) {
+    if (!v2View || v2View.branchId !== branch.id || !sourceTurn || !v2View.headMessageId) {
       loadError.value = 'GENERATION_V2_EDIT_TARGET_STALE'
       return
     }
@@ -7029,9 +7188,12 @@ export function useAppChatAppLogic() {
       const endpointProfileId = v2Route.kind === 'lmstudio_openresponses' || v2Route.kind === 'generic_local_openai_chat' || v2Route.kind === 'ollama_chat'
         ? await resolveGenerationV2LocalProfileForSend(v2Route, v2ModelId) : null
       const operationId = crypto.randomUUID()
-      const common = { operationId, mode: mode === 'new' ? 'fork' : 'replace', branchId: v2View.branchId,
+      const sourceNavigationRevision = navigationRevision.value
+      const sourceConversationId = v2View.conversationId
+      const sourceBranchId = v2View.branchId
+      const common = { operationId, clientActionId: operationId, sourceBranchId: v2View.branchId,
         sourceQuestionId: oldQuestionId, sourceAnswerRootId: sourceTurn.chosenAnswerRootId,
-        expectedHeadMessageId: sourceTurn.chosenAnswerRootId, modelId: v2Route.kind === 'gemini_interactions_image'
+        expectedHeadMessageId: v2View.headMessageId, modelId: v2Route.kind === 'gemini_interactions_image'
           ? normalizeGeminiImageGenerationModelId(v2ModelId) : v2ModelId, commandAttachments }
       const result = await submitGenerationV2EditResend(v2Route, v2Route.kind === 'openrouter_images'
         ? { ...common, prompt: newText, requestedProviderTag: null }
@@ -7050,7 +7212,14 @@ export function useAppChatAppLogic() {
       } catch (error) {
         if (shouldLogDebug()) console.warn('[ui-app] COMMITTED_V2_EDIT_RESEND_DRAFT_CLEAR_FAILED')
       }
-      await refreshRenderableBranchView(v2View.branchId)
+      if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
+      const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
+        activeConvoId.value === sourceConversationId && activeBranchId.value === sourceBranchId
+      if (shouldFollow) {
+        activeBranchId.value = result.branch.branchId
+        resetCandidatesCache()
+        await refreshRenderableBranchView(result.branch.branchId)
+      }
       if (!compatibleSelection) void recordRecentModelUsage(v2ModelId, v2ProviderId)
     } catch (error) {
       loadError.value = error instanceof Error ? error.message : 'GENERATION_V2_EDIT_RESEND_FAILED'
@@ -7152,21 +7321,34 @@ export function useAppChatAppLogic() {
     const view = generationV2BranchView.value
     const turn = view?.turns.find((item) => item.questionId === qid)
     const answer = turn?.answers.find((item) => item.answerRootId === current)
-    if (!branch?.id || !qid || !current || !turn || !answer || turn.chosenAnswerRootId !== current || branch.headMessageId !== current) return
+    if (!branch?.id || !qid || !current || !turn || !answer || turn.chosenAnswerRootId !== current ||
+        answer.status === 'streaming' || !view?.headMessageId ||
+        (mode === 'replace' && branch.headMessageId !== current)) return
     loadError.value = null
     try {
+      const operationId = crypto.randomUUID()
+      const sourceNavigationRevision = navigationRevision.value
+      const sourceConversationId = view.conversationId
+      const sourceBranchId = view.branchId
       const result = await submitGenerationV2Retry(generationV2RouteForPersistedAnswer(answer), {
         actionKind: mode === 'replace' ? 'retry_replace' : 'retry_as_new',
-        operationId: crypto.randomUUID(),
-        branchId: branch.id,
+        operationId,
+        clientActionId: operationId,
+        sourceBranchId: branch.id,
         questionId: qid,
-        targetAnswerRootId: current,
-        expectedHeadMessageId: current,
+        sourceAnswerId: current,
+        expectedHeadMessageId: view.headMessageId,
       })
       if (!result.ok) throw new Error(result.code)
-      invalidateCandidatesForQuestion(qid)
-      patchBranch(branch.id, { headMessageId: result.branch.headMessageId, updatedAt: Date.now() })
-      await refreshRenderableBranchView(branch.id)
+      invalidateMessageCandidateNavigation()
+      if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
+      const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
+        activeConvoId.value === sourceConversationId && activeBranchId.value === sourceBranchId
+      if (shouldFollow) {
+        activeBranchId.value = result.branch.branchId
+        resetCandidatesCache()
+        await refreshRenderableBranchView(result.branch.branchId)
+      }
     } catch (error) {
       loadError.value = error instanceof Error ? error.message : String(error)
       await refreshRenderableBranchView(branch.id)
@@ -7240,10 +7422,9 @@ export function useAppChatAppLogic() {
         activeBranchId.value = null
       } else if (startupNavigation === 'restore_last_formal') {
         const lastFormalConversationId = await getLastFormalConversationId()
-        const available = lastFormalConversationId !== null && convos.value.some((convo) => convo.id === lastFormalConversationId)
         projectsOnlyWorkspace.value = false
-        activeConvoId.value = available ? lastFormalConversationId : template.conversation.id
-        activeBranchId.value = available ? null : template.conversation.branchId
+        activeConvoId.value = lastFormalConversationId ?? template.conversation.id
+        activeBranchId.value = lastFormalConversationId === null ? template.conversation.branchId : null
       } else {
         projectsOnlyWorkspace.value = false
         activeProjectId.value = template.conversation.projectId
@@ -7278,7 +7459,17 @@ export function useAppChatAppLogic() {
       }
       handleGenerationV2OllamaSettingsUpdated()
       reasoningDisplayMode.value = await getChatReasoningDisplayMode()
-      await loadTranscriptForActiveConvo()
+      try {
+        await loadTranscriptForActiveConvo()
+      } catch (error) {
+        if (startupNavigation !== 'restore_last_formal' ||
+            activeConvoId.value === template.conversation.id ||
+            !(error instanceof Error) ||
+            error.message !== 'GENERATION_V2_CONVERSATION_BRANCH_MISSING') throw error
+        activeConvoId.value = template.conversation.id
+        activeBranchId.value = template.conversation.branchId
+        await loadTranscriptForActiveConvo()
+      }
       await restoreDraftForActiveScope()
 
       assertInvariants() // Stable boundary: initial load complete
@@ -7408,28 +7599,65 @@ export function useAppChatAppLogic() {
     }
   })
 
-  let unsubscribeGenerationV2Projection: (() => void) | null = null
-  let generationV2ProjectionRefreshTimer: ReturnType<typeof setTimeout> | null = null
+  let unsubscribeGenerationV2Runtime: (() => void) | null = null
+  let generationV2RuntimeRefreshTimer: ReturnType<typeof setTimeout> | null = null
+
+  function scheduleCurrentRuntimeRefresh(branchId: string) {
+    if (generationV2RuntimeRefreshTimer) return
+    generationV2RuntimeRefreshTimer = setTimeout(() => {
+      generationV2RuntimeRefreshTimer = null
+      if (activeBranchId.value === branchId) void refreshRenderableBranchView(branchId)
+    }, 40)
+  }
 
   onMounted(() => {
-    unsubscribeGenerationV2Projection = subscribeGenerationV2Projections((projection) => {
-      const view = generationV2BranchView.value
-      if (!view || !view.turns.some((turn) => turn.answers.some((answer) => answer.answerRootId === projection.answerRootId))) return
-      if (projection.type === 'reasoning_detail') {
-        commitImmediate(view.conversationId, { type: 'MessageDeltaReasoningDetail', messageId: projection.answerRootId,
-          choiceIndex: 0, detail: projection.detail })
+    unsubscribeGenerationV2Runtime = subscribeGenerationV2Runtime((update: GenerationV2RuntimeUpdate) => {
+      if (update.type === 'sync_error') {
+        console.error('[ui-app] generation V2 runtime synchronization failed', {
+          operationId: update.operationId,
+          code: update.code,
+        })
+        loadError.value = update.code
         return
       }
-      if (generationV2ProjectionRefreshTimer) return
-      generationV2ProjectionRefreshTimer = setTimeout(() => {
-        generationV2ProjectionRefreshTimer = null
-        const branchId = activeBranchId.value
-        if (branchId) void refreshRenderableBranchView(branchId)
-      }, 40)
+      const snapshot = update.snapshot
+      const entry = branchRuntimeCache.upsert(snapshot, activeBranchId.value)
+      branchRuntimeCacheRevision.value += 1
+      patchBranch(snapshot.binding.branchId, { updatedAt: snapshot.updatedAtMs })
+      const current = activeBranchId.value === snapshot.binding.branchId
+      const applied = current && applyBranchRuntimeOverlayToState(snapshot.binding.branchId)
+      if (update.type === 'event' && update.event.payload.type === 'reasoning_detail') {
+        const detail = update.event.payload.detail
+        const detailType = typeof detail.type === 'string' ? detail.type : null
+        recordReasoningProjectionTrace({
+          stage: applied ? 'reducer_applied' : 'projection_received',
+          operationId: update.event.operationId,
+          answerRootId: snapshot.binding.targetAnswerId,
+          projectionType: 'reasoning_detail',
+          detailType,
+          activeBranchId: activeBranchId.value,
+          viewBranchId: generationV2BranchView.value?.branchId ?? null,
+          answerKnownInView: applied,
+          rawDetailCount: entry.reasoning.length,
+          reasoningVersion: applied
+            ? (state.value.entities?.messagesById?.[snapshot.binding.targetAnswerId]?.reasoningVersion ?? 0)
+            : 0,
+          messagePresentAfter: applied,
+          transcriptContainsAnswer: state.value.runMessageIds[snapshot.binding.branchId]
+            ?.includes(snapshot.binding.targetAnswerId) === true,
+        })
+      }
+      if (!current) return
+      if (!applied || snapshot.status !== 'generating' || (update.type === 'event' &&
+          update.event.payload.type === 'image_output')) {
+        scheduleCurrentRuntimeRefresh(snapshot.binding.branchId)
+      }
     })
   })
 
   onUnmounted(() => {
+    unregisterCatalogSelectionCommand()
+    unsubscribeCatalogRuntimeStore()
     branchProjectionRefreshCoordinator.invalidate()
     transcriptRefreshToken.value += 1
     void flushDraftPersistence()
@@ -7446,10 +7674,10 @@ export function useAppChatAppLogic() {
     removeExperimentalProviderChatEventListeners()
     window.removeEventListener('pagehide', handlePageHide)
     window.removeEventListener('beforeunload', handlePageHide)
-    unsubscribeGenerationV2Projection?.()
-    unsubscribeGenerationV2Projection = null
-    if (generationV2ProjectionRefreshTimer) clearTimeout(generationV2ProjectionRefreshTimer)
-    generationV2ProjectionRefreshTimer = null
+    unsubscribeGenerationV2Runtime?.()
+    unsubscribeGenerationV2Runtime = null
+    if (generationV2RuntimeRefreshTimer) clearTimeout(generationV2RuntimeRefreshTimer)
+    generationV2RuntimeRefreshTimer = null
 
     diagnosticsBridge?.dispose()
 
@@ -7529,6 +7757,8 @@ export function useAppChatAppLogic() {
     onCreateConvo,
     onResetSystemTemplate,
     refreshConvos,
+    loadMoreConvos,
+    hasMoreConversations,
     onRenameConvo,
     onDeleteConvo,
     onMoveConvoToProject,
@@ -7555,8 +7785,11 @@ export function useAppChatAppLogic() {
     isRunning,
     activeTitle,
     branches,
+    hasMoreBranches,
     activeBranchId,
     onSelectBranch,
+    loadMoreBranches,
+    getBranchRuntimeStatus,
     activeBranch,
     onForkFromHead,
     onDeleteActiveBranch,
@@ -7573,6 +7806,8 @@ export function useAppChatAppLogic() {
     copyErrorDetails,
     transcriptMessageIds,
     transcriptMessagesById,
+    hasEarlierTranscript,
+    loadEarlierTranscript,
     getReasoningArtifactsForMessage,
     activeCursorMessageId,
     isTurnExcludedForMessage,
@@ -7593,8 +7828,7 @@ export function useAppChatAppLogic() {
     onRegenerateFromQuestion,
     openQuestionEdit,
     getQuestionPagerForQuestion,
-    isQuestionSlotLoadingForQuestion,
-    onQuestionCandidateShift,
+    onMessageCandidateShift,
     isAnswerRootMessage,
     getAssistantVisibleText,
     copyAssistantMessage,
@@ -7606,8 +7840,7 @@ export function useAppChatAppLogic() {
     onRetryReplaceAnswer,
     onRetryAnswerAsNew,
     getCandidatePager,
-    candidatesLoading,
-    onCandidateShift,
+    isMessageCandidateLoading,
     questionIdForMessage,
     lastAssistantReasoningView,
     lastAssistantReasoningVersion,
@@ -7731,7 +7964,6 @@ export function useAppChatAppLogic() {
     onUpdateOpenAIResponsesChatEnabled,
     onClearOpenAIResponsesChat,
     onRefreshOpenAIResponsesModels,
-    onRefreshProviderModelPickerSources,
     onUpdateGoogleAIStudioChatEnabled,
     onClearGoogleAIStudioChat,
     onRefreshGoogleAIStudioModels,
@@ -7788,7 +8020,6 @@ export function useAppChatAppLogic() {
     isQuestionEditMode,
     closeQuestionEdit,
     submitQuestionEdit,
-    canReplaceQuestionInUi,
     pendingDeleteQuestionId,
     requestDeleteQuestion,
     cancelDeleteQuestion,

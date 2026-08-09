@@ -16,12 +16,18 @@ function unwrap<T>(value: unknown): T {
 }
 export type GenerationV2ProjectView = Readonly<{ projectId: string; name: string; createdAtMs: number; updatedAtMs: number }>
 export type GenerationV2ConversationView = Readonly<{ conversationId: string; projectId: string; title: string; updatedAtMs: number;
-  branches: readonly Readonly<{ branchId: string; name: string | null; headMessageId: string | null; updatedAtMs: number }>[] }>
+  branches: readonly Readonly<{ branchId: string; name: string | null; headMessageId: string | null; updatedAtMs: number }>[];
+  branchesHasMore:boolean }>
+export type GenerationV2ConversationCursor = Readonly<{updatedAtMs:number;conversationId:string}>
+export type GenerationV2ConversationPage = Readonly<{items:readonly GenerationV2ConversationView[];
+  nextCursor:GenerationV2ConversationCursor|null;totalCount:number}>
 export type GenerationV2BranchView = Readonly<{ branchId: string; conversationId: string; projectId: string; title: string;
-  branchName: string | null; headMessageId: string | null; turns: readonly Readonly<{ questionId: string; questionBody: string; questionCreatedAtMs:number;
+  branchName: string | null; headMessageId: string | null; beforeMessageId:string|null;hasMoreTurns:boolean;
+  turns: readonly Readonly<{ questionId: string; questionBody: string; questionCreatedAtMs:number;
     chosenAnswerRootId: string; contextFilter:Readonly<{questionMode:'include'|'exclude';answerMode:'include'|'exclude';effectiveMode:'include'|'exclude';lockedByQuestionExclude:boolean}>; answers: readonly Readonly<{ answerRootId: string; status: 'streaming'|'completed'|'failed'|'cancelled';
       body: string; createdAtMs: number; updatedAtMs: number; chosen: boolean; operationId: string; actionKind: string;
       providerId: string; modelId: string; errorCode: string|null; errorMessage: string|null;
+      errorFact?: ProviderFailureV2 | null;
       endpointProfileId:string; protocolContractId:string;
       reasoningDetails:readonly Readonly<Record<string,unknown>>[];
       attachments:readonly (Readonly<{kind:'managed_file';assetId:string;assetRevisionId:string;assetSha256:string;include:boolean;
@@ -37,7 +43,21 @@ export type GenerationV2LocalEndpointProfile = Readonly<{ endpointProfileId:stri
   revisionGeneration:number; profileRevision:string; profileDigest:string; createdAtMs:number; updatedAtMs:number }>
 export type GenerationV2ConfigLayerView = Readonly<{ ownerKind:'global'|'project'|'conversation'; ownerId:string;
   configRevision:string; semanticLayer:Readonly<Record<string,unknown>> }>
-export type GenerationV2QuestionCandidate = Readonly<{ questionId:string; createdAtMs:number; status:'completed' }>
+export type GenerationV2MessageCandidateTarget = Readonly<{messageId:string;branchId:string}>
+export type GenerationV2MessageCandidateNavigation = Readonly<{
+  conversationId:string
+  currentBranchId:string
+  messageId:string
+  parentMessageId:string|null
+  role:'user'|'assistant'
+  currentIndex:number
+  total:number
+  previous:GenerationV2MessageCandidateTarget|null
+  next:GenerationV2MessageCandidateTarget|null
+}>
+export type GenerationV2BranchCursor = Readonly<{updatedAtMs:number;branchId:string}>
+export type GenerationV2BranchPage = Readonly<{items:readonly Readonly<{branchId:string;name:string|null;
+  headMessageId:string|null;updatedAtMs:number}>[];nextCursor:GenerationV2BranchCursor|null;totalCount:number}>
 export type GenerationV2OpenRouterModelCatalogResult = Readonly<
   {ok:true;responseDigest:string|null;status:'not_synced'|'syncing'|'synced'|'failed';observedAtMs:number|null;
     items:readonly CatalogQueryItem[];modelCount:number;visibleModelCount:number;hiddenModelCount:number;errorCode:string|null;providerFailure?:ProviderFailureV2|null}
@@ -45,21 +65,29 @@ export type GenerationV2OpenRouterModelCatalogResult = Readonly<
 
 export async function ensureGenerationV2DefaultWorkspace() { return unwrap<Readonly<{projectId:string;conversationId:string;branchId:string;created:boolean}>>(await bridge().ensureDefault()) }
 export async function listGenerationV2Projects() { return unwrap<readonly GenerationV2ProjectView[]>(await bridge().listProjects()) }
-export async function listGenerationV2Conversations(projectId:string) { return unwrap<readonly GenerationV2ConversationView[]>(await bridge().listConversations(projectId)) }
-export async function readGenerationV2Branch(branchId:string) { return unwrap<GenerationV2BranchView>(await bridge().readBranch(branchId)) }
-export async function listGenerationV2QuestionCandidates(branchId:string,baseMessageId:string|null,limit=200) {
-  return unwrap<readonly GenerationV2QuestionCandidate[]>(await bridge().listQuestionCandidates(branchId,baseMessageId,limit))
+export async function listGenerationV2Conversations(projectId:string,cursor:GenerationV2ConversationCursor|null=null,limit=50) {
+  return unwrap<GenerationV2ConversationPage>(await bridge().listConversations(projectId,cursor,limit))
 }
-export async function selectGenerationV2QuestionCandidate(payload:Readonly<{branchId:string;baseMessageId:string|null;
-  expectedCurrentQuestionId:string;targetQuestionId:string;expectedHeadMessageId:string}>) {
-  return unwrap<Readonly<{headMessageId:string;chosenAnswerRootId:string}>>(await bridge().selectQuestionCandidate(payload))
+export async function readGenerationV2Branch(branchId:string,beforeMessageId:string|null=null,limit=50) {
+  return unwrap<GenerationV2BranchView>(await bridge().readBranch(branchId,beforeMessageId,limit))
 }
-export async function selectGenerationV2Answer(payload:Readonly<{branchId:string;questionId:string;expectedChosenAnswerRootId:string;targetAnswerRootId:string}>) { return unwrap(await bridge().selectAnswer(payload)) }
+export async function getGenerationV2MessageCandidateNavigation(branchId:string,messageId:string) {
+  return unwrap<GenerationV2MessageCandidateNavigation>(
+    await bridge().getMessageCandidateNavigation(branchId,messageId),
+  )
+}
 export async function setGenerationV2ContextFilter(payload:Readonly<{branchId:string;targetType:'question'|'answer';targetId:string;mode:'include'|'exclude'}>) {
   return unwrap(await bridge().setContextFilter(payload))
 }
 export async function clearGenerationV2ContextFilter(payload:Readonly<{branchId:string;targetType:'question'|'answer';targetId:string}>) {
   return unwrap(await bridge().clearContextFilter(payload))
+}
+export async function hideGenerationV2Answer(branchId:string,answerId:string) {
+  return unwrap<Readonly<{created:boolean}>>(await bridge().hideAnswer(branchId,answerId))
+}
+export async function listGenerationV2Branches(conversationId:string,
+  cursor:GenerationV2BranchCursor|null=null,limit=50) {
+  return unwrap<GenerationV2BranchPage>(await bridge().listBranches(conversationId,cursor,limit))
 }
 export async function createGenerationV2Project(name:string) { return unwrap<Readonly<{projectId:string}>>(await bridge().createProject(name)) }
 export async function renameGenerationV2Project(projectId:string,name:string) { return unwrap(await bridge().renameProject(projectId,name)) }

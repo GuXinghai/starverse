@@ -19,6 +19,16 @@ function readFixtureText(fileName: string) {
   return fs.readFileSync(fullPath, 'utf8')
 }
 
+it('reports an explicit error when an event targets a missing run', () => {
+  const state = createInitialState()
+  expect(() => applyEvent(state, 'missing-run', {
+    type: 'MessageDeltaReasoningDetail',
+    messageId: 'assistant-missing',
+    choiceIndex: 0,
+    detail: { type: 'reasoning.text', text: 'reasoning' },
+  })).toThrow('STATE_EVENT_RUN_NOT_FOUND')
+})
+
 
   it('keeps non-target message references and transcript ids stable across deltas', () => {
     const runId = 'r1'

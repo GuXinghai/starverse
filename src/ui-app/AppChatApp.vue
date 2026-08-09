@@ -43,6 +43,8 @@ const {
   onCreateConvo,
   onResetSystemTemplate,
   refreshConvos,
+  loadMoreConvos,
+  hasMoreConversations,
   onRenameConvo,
   onDeleteConvo,
   onMoveConvoToProject,
@@ -56,7 +58,13 @@ const {
   runVM,
   isRunning,
   activeTitle,
+  branches,
+  hasMoreBranches,
+  activeBranchId,
   activeBranch,
+  onSelectBranch,
+  loadMoreBranches,
+  getBranchRuntimeStatus,
   reasoningDisplayMode,
   reasoningPanelDefaultExpanded,
   reasoningPanelAutoCollapseAfterReasoning,
@@ -69,6 +77,8 @@ const {
   normalizedErrorActionHint,
   transcriptMessageIds,
   transcriptMessagesById,
+  hasEarlierTranscript,
+  loadEarlierTranscript,
   getReasoningArtifactsForMessage,
   activeCursorMessageId,
   isTurnExcludedForMessage,
@@ -88,8 +98,7 @@ const {
   onRegenerateFromQuestion,
   openQuestionEdit,
   getQuestionPagerForQuestion,
-  isQuestionSlotLoadingForQuestion,
-  onQuestionCandidateShift,
+  onMessageCandidateShift,
   isAnswerRootMessage,
   getAssistantVisibleText,
   copyAssistantMessage,
@@ -101,8 +110,7 @@ const {
   onRetryReplaceAnswer,
   onRetryAnswerAsNew,
   getCandidatePager,
-  candidatesLoading,
-  onCandidateShift,
+  isMessageCandidateLoading,
   lastAssistantReasoningView,
   lastAssistantReasoningVersion,
   lastAssistantIsStreaming,
@@ -202,7 +210,6 @@ const {
   onUpdateOpenAIResponsesChatEnabled,
   onClearOpenAIResponsesChat,
   onRefreshOpenAIResponsesModels,
-  onRefreshProviderModelPickerSources,
   onUpdateGoogleAIStudioChatEnabled,
   onClearGoogleAIStudioChat,
   onRefreshGoogleAIStudioModels,
@@ -256,7 +263,6 @@ const {
   isQuestionEditMode,
   closeQuestionEdit,
   submitQuestionEdit,
-  canReplaceQuestionInUi,
   pendingDeleteQuestionId,
   requestDeleteQuestion,
   cancelDeleteQuestion,
@@ -377,7 +383,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
       :convos="searchConvoOptions"
       :activeProjectId="activeProjectId"
       :activeConvoId="activeConvoId"
-      :disabled="!isReady || isRunning || isDraftInteractionLocked"
+      :disabled="!isReady || isDraftInteractionLocked"
       @close="closeSearchModal"
       @select="onSelectSearchHit"
     />
@@ -393,7 +399,8 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           :activeProjectId="activeProjectId"
           :inboxId="inboxId"
           :projects="projectListItems"
-          :disabled="!isReady || isRunning || isDraftInteractionLocked"
+          :disabled="!isReady || isDraftInteractionLocked"
+          :hasMore="hasMoreConversations"
           @openSearch="openSearchModal"
           @selectProject="onSelectProject"
           @openProjectSettings="onOpenProjectWebSearchSettings"
@@ -403,6 +410,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           @select="onSelectConvo"
           @create="onCreateConvo"
           @refresh="refreshConvos"
+          @loadMore="loadMoreConvos"
           @rename="onRenameConvo"
           @delete="onDeleteConvo"
           @moveToProject="onMoveConvoToProject"
@@ -426,6 +434,38 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
           @openSettings="openSettings"
           @toggleConsolePanel="toggleConsolePanel"
         />
+        <div
+          v-if="workspaceMode !== 'none' && (branches.length > 1 || hasMoreBranches)"
+          class="border-b border-gray-100 px-3 pb-2"
+        >
+          <div class="flex items-center gap-2">
+          <label class="flex min-w-0 flex-1 items-center gap-2 text-xs text-gray-600">
+            <span>{{ t('chat.topBar.branch') }}</span>
+            <select
+              :value="activeBranchId ?? ''"
+              :disabled="!isReady"
+              class="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800"
+              data-testid="branch-selector"
+              @change="onSelectBranch(($event.target as HTMLSelectElement).value)"
+            >
+              <option v-for="branch in branches" :key="branch.id" :value="branch.id">
+                {{ branch.name?.trim() || branch.id.slice(0, 8) }}
+                {{ getBranchRuntimeStatus(branch.id) ? ` · ${getBranchRuntimeStatus(branch.id)}` : '' }}
+              </option>
+            </select>
+          </label>
+          <button
+            v-if="hasMoreBranches"
+            type="button"
+            class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!isReady"
+            data-testid="branch-load-more"
+            @click="loadMoreBranches"
+          >
+            {{ t('chat.pagination.loadMore') }}
+          </button>
+          </div>
+        </div>
         <div v-if="workspaceMode === 'template'" class="relative px-3 pb-2">
           <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700" data-testid="new-template-reset-open" @click="templateResetOpen = !templateResetOpen">
             {{ t('chat.newTemplate.reset') }}
@@ -442,6 +482,20 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
       </template>
 
       <template #transcript>
+        <div
+          v-if="workspaceMode !== 'none' && hasEarlierTranscript"
+          class="flex justify-center border-b border-gray-100 bg-white px-3 py-2"
+        >
+          <button
+            type="button"
+            class="rounded border border-gray-200 bg-white px-3 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!isReady"
+            data-testid="transcript-load-earlier"
+            @click="loadEarlierTranscript"
+          >
+            {{ t('chat.pagination.loadEarlier') }}
+          </button>
+        </div>
         <ChatTranscript
           v-if="workspaceMode !== 'none'"
           :messageIds="transcriptMessageIds"
@@ -570,13 +624,11 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                       type="button"
                       class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       :disabled="
-                        activeAssistantMessageId != null ||
-                        isQuestionSlotLoadingForQuestion(message.messageId) ||
-                        !getQuestionPagerForQuestion(message.messageId)?.canPrev ||
-                        isAnswerGroupStreamingForQuestion(message.messageId)
+                        isMessageCandidateLoading(message.messageId) ||
+                        !getQuestionPagerForQuestion(message.messageId)?.canPrev
                       "
                       :data-testid="`qvar-prev-${message.messageId}`"
-                      @click="onQuestionCandidateShift(message.messageId, -1)"
+                      @click="onMessageCandidateShift(message.messageId, -1)"
                     >
                       &lt;
                     </button>
@@ -589,13 +641,11 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                       type="button"
                       class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       :disabled="
-                        activeAssistantMessageId != null ||
-                        isQuestionSlotLoadingForQuestion(message.messageId) ||
-                        !getQuestionPagerForQuestion(message.messageId)?.canNext ||
-                        isAnswerGroupStreamingForQuestion(message.messageId)
+                        isMessageCandidateLoading(message.messageId) ||
+                        !getQuestionPagerForQuestion(message.messageId)?.canNext
                       "
                       :data-testid="`qvar-next-${message.messageId}`"
-                      @click="onQuestionCandidateShift(message.messageId, 1)"
+                      @click="onMessageCandidateShift(message.messageId, 1)"
                     >
                       &gt;
                     </button>
@@ -689,37 +739,33 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                   >
                     {{ t('chat.message.actions.retryAsNew') }}
                   </button>
-                  <div v-if="(getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.total ?? 0) > 1" class="ml-auto flex items-center gap-1 text-gray-600">
+                  <div v-if="(getCandidatePager(message.messageId)?.total ?? 0) > 1" class="ml-auto flex items-center gap-1 text-gray-600">
                     <button
                       type="button"
                       class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       :disabled="
-                        activeAssistantMessageId != null ||
-                        candidatesLoading.has(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
-                        !getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.canPrev ||
-                        isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!)
+                        isMessageCandidateLoading(message.messageId) ||
+                        !getCandidatePager(message.messageId)?.canPrev
                       "
                       :data-testid="`cand-prev-${chosenQuestionIdForAnswerRootMessage(message.messageId)!}`"
-                      @click="onCandidateShift(chosenQuestionIdForAnswerRootMessage(message.messageId)!, -1)"
+                      @click="onMessageCandidateShift(message.messageId, -1)"
                     >
                       &lt;
                     </button>
                     <div :data-testid="`cand-pos-${chosenQuestionIdForAnswerRootMessage(message.messageId)!}`" class="min-w-[48px] text-center">
                       {{
-                        `${(getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.index ?? 0) + 1}/${getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.total ?? 1}`
+                        `${(getCandidatePager(message.messageId)?.index ?? 0) + 1}/${getCandidatePager(message.messageId)?.total ?? 1}`
                       }}
                     </div>
                     <button
                       type="button"
                       class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       :disabled="
-                        activeAssistantMessageId != null ||
-                        candidatesLoading.has(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
-                        !getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.canNext ||
-                        isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!)
+                        isMessageCandidateLoading(message.messageId) ||
+                        !getCandidatePager(message.messageId)?.canNext
                       "
                       :data-testid="`cand-next-${chosenQuestionIdForAnswerRootMessage(message.messageId)!}`"
-                      @click="onCandidateShift(chosenQuestionIdForAnswerRootMessage(message.messageId)!, 1)"
+                      @click="onMessageCandidateShift(message.messageId, 1)"
                     >
                       &gt;
                     </button>
@@ -854,18 +900,9 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
                 class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 :disabled="isDraftInteractionLocked || isRunning || draft.trim().length === 0"
                 data-testid="question-edit-new"
-                @click="submitQuestionEdit('new')"
+                @click="submitQuestionEdit()"
               >
                 {{ t('chat.message.actions.newQuestion') }}
-              </button>
-              <button
-                type="button"
-                class="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                :disabled="isDraftInteractionLocked || isRunning || draft.trim().length === 0 || !canReplaceQuestionInUi(questionEditSession.questionId)"
-                data-testid="question-edit-replace"
-                @click="submitQuestionEdit('replace')"
-              >
-                {{ t('chat.message.actions.replaceQuestion') }}
               </button>
             </div>
           </div>
@@ -891,8 +928,8 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             :isSendPlanLoading="composerSendPlanLoading"
             :historyIncompatibleSummary="historyIncompatibleAttachmentSummary"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
+            :googleAIStudioModelAvailability="googleAIStudioModelAvailabilityStatus"
             @updateModel="onUpdateModel"
-            @refreshProviderModelsRequested="onRefreshProviderModelPickerSources"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
             @updateGenerationParamsLayer="onComposerUpdateGenerationParamsLayer"
@@ -1092,7 +1129,13 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
       </div>
     </div>
 
-    <SettingsModal :open="settingsOpen" :disabled="!isReady" :isRunning="effectiveIsRunning" @close="closeSettings">
+    <SettingsModal
+      :open="settingsOpen"
+      :disabled="!isReady"
+      :isRunning="effectiveIsRunning"
+      variant="categorized"
+      @close="closeSettings"
+    >
       <SettingsPanel :disabled="!isReady" :isRunning="effectiveIsRunning" />
     </SettingsModal>
 

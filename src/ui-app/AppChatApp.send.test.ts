@@ -4,14 +4,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_OPENROUTER_TEST_MODEL, OPENROUTER_TEST_MODELS } from '@/next/openrouter/openRouterTestModels'
 import AppChatApp from './AppChatApp.vue'
 
-const streamOpenRouterChatCallArgs: any[] = []
-const localEndpointTextChatCallArgs: any[] = []
-const lmStudioTextChatCallArgs: any[] = []
-const ollamaTextChatCallArgs: any[] = []
-const openAIResponsesTextChatCallArgs: any[] = []
-const googleAIStudioTextChatCallArgs: any[] = []
-const anthropicTextChatCallArgs: any[] = []
-const deepSeekTextChatCallArgs: any[] = []
 const imageCapableModel = OPENROUTER_TEST_MODELS[1] ?? OPENROUTER_TEST_MODELS[0]
 
 const draftBox = () => screen.getByTestId('composer-draft') as HTMLTextAreaElement
@@ -23,216 +15,237 @@ const waitForAppReady = async () => {
   })
 }
 
-const configuredCredential = () => ({ ok: true, status: { apiKeyConfigured: true, warnings: [] } })
-const missingCredential = () => ({ ok: true, status: { apiKeyConfigured: false, warnings: [] } })
-const availability = (providerKey: string, modelId: string) => ({
-  ok: true,
-  providerKey,
-  endpointId: `${providerKey}-endpoint`,
-  profileId: `${providerKey}-profile`,
-  observedAtMs: 123,
-  models: [{ nativeModelId: modelId, displayName: modelId, warnings: [], capabilitySeed: { textChat: true } }],
-  warnings: [],
-  sourceDocuments: [],
-})
-const localEndpointProbe = (modelId = 'local-model') => ({
-  ok: true,
-  diagnostics: {
-    kind: 'local_endpoint_diagnostics',
-    status: 'reachable',
-    endpointFamily: 'openai_compatible',
-    safeBaseUrl: 'http://localhost:1234/v1',
-    modelList: { ok: true, source: 'openai_v1_models', models: [modelId, 'settings-selected-model'], truncated: false },
-    capabilitySummary: { chatSendAvailable: false, textChat: 'diagnostics_only', streaming: 'not_probed', tools: false, files: false, reasoning: false, webSearch: false },
-    message: 'reachable',
-  },
-})
-const lmStudioProbe = (modelId = 'openai/gpt-oss-20b') => ({
-  ok: true,
-  diagnostics: {
-    kind: 'lm_studio_local_provider_diagnostics',
-    providerKey: 'lm_studio',
-    safeBaseUrl: 'http://127.0.0.1:1234',
-    nativeRestAvailable: true,
-    openAICompatibleAvailable: true,
-    nativeRest: { ok: true, source: 'lm_studio_api_v1_models', models: [{ key: modelId, displayName: modelId, type: 'llm', loaded: true, loadedInstances: ['1'] }], modelIds: [modelId], loadedCount: 1, unloadedCount: 0 },
-    openAICompatible: { ok: true, source: 'lm_studio_openai_v1_models', models: [{ key: modelId, displayName: modelId, type: 'llm', loaded: true, loadedInstances: ['1'] }], modelIds: [modelId], loadedCount: 1, unloadedCount: 0 },
-    selectedModelLoaded: true,
-    warnings: [],
-    message: 'available',
-  },
-})
-const ollamaProbe = (modelId = 'llama3.2:latest') => ({
-  ok: true,
-  diagnostics: {
-    kind: 'ollama_local_provider_diagnostics',
-    providerKey: 'ollama_local',
-    safeBaseUrl: 'http://127.0.0.1:11434',
-    nativeRestAvailable: true,
-    openAICompatibleAvailable: true,
-    localModels: { ok: true, source: 'ollama_api_tags', models: [{ key: modelId, displayName: modelId, running: true }], modelIds: [modelId], count: 1 },
-    runningModels: { ok: true, source: 'ollama_api_ps', models: [{ key: modelId, displayName: modelId, running: true }], modelIds: [modelId], count: 1 },
-    version: { ok: true, version: '0.0.0-test' },
-    openAICompatible: { ok: true, source: 'ollama_openai_v1_models', models: [{ key: modelId, displayName: modelId, running: true }], modelIds: [modelId], count: 1 },
-    selectedModelKnown: true,
-    selectedModelRunning: true,
-    warnings: [],
-    message: 'available',
-  },
-})
+const ok = <T>(value: T) => ({ ok: true as const, value })
 
-vi.mock('@/next/live/openRouterLiveStream', () => {
-  async function* streamOpenRouterChatAsEvents(options: any) {
-    streamOpenRouterChatCallArgs.push(options)
-    const selectedModel = String(options?.config?.model ?? DEFAULT_OPENROUTER_TEST_MODEL)
-    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
-    yield { type: 'MetaDelta', meta: { id: 'gen_1', model: selectedModel } }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'h' }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'i' }
-    if (options?.config?.imageGeneration) {
-      yield {
-        type: 'MessageAppendContentBlock',
-        messageId: assistantMessageId,
-        choiceIndex: 0,
-        block: { type: 'image', url: 'asset://img_1' },
-      }
-    }
-    yield {
-      type: 'MessageDeltaAnnotationBatch',
-      messageId: assistantMessageId,
-      choiceIndex: 0,
-      mergeStrategy: 'append',
-      annotations: [
-        {
-          type: 'url_citation',
-          url_citation: { url: 'https://example.com', title: 'Example', start_index: 0, end_index: 1 },
-        },
-      ],
-    }
-    yield {
-      type: 'UsageDelta',
-      usage: {
-        prompt_tokens: 11,
-        completion_tokens: 7,
-        total_tokens: 18,
-        cost: 0.0123,
-        cost_currency: 'usd',
-      },
-    }
-    yield { type: 'StreamDone' }
-  }
-  return { streamOpenRouterChatAsEvents }
-})
+const bridge = () => (globalThis as any).generationV2
 
-vi.mock('@/next/live/localEndpointTextChat', () => {
-  async function* streamLocalEndpointTextChatAsDomainEvents(options: any) {
-    localEndpointTextChatCallArgs.push(options)
-    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
-    yield { type: 'MetaDelta', meta: { id: 'local_gen_1', model: String(options?.model ?? 'local-model'), provider: 'local_endpoint' } }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'local ' }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
-    yield { type: 'StreamDone' }
-  }
-  return { streamLocalEndpointTextChatAsDomainEvents }
-})
+const ALL_COMMAND_ROUTE_PATHS = [
+  'openRouter.chat',
+  'openRouter.images',
+  'openAIResponses',
+  'anthropic',
+  'deepSeek',
+  'gemini.generateContent',
+  'gemini.interactionsImage',
+  'openAICompatible.commands',
+  'lmStudio.openResponses',
+  'genericLocal.openAIChatCompletions',
+  'ollama.chat',
+] as const
 
-vi.mock('@/next/live/lmStudioTextChat', () => {
-  async function* streamLMStudioTextChatAsDomainEvents(options: any) {
-    lmStudioTextChatCallArgs.push(options)
-    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
-    yield { type: 'MetaDelta', meta: { id: 'lm_studio_gen_1', model: String(options?.model ?? 'openai/gpt-oss-20b'), provider: 'lm_studio' } }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'lm studio ' }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
-    yield { type: 'StreamDone' }
-  }
-  return { streamLMStudioTextChatAsDomainEvents }
-})
+function getAtPath(obj: any, path: string): any {
+  return path.split('.').reduce((node, part) => node?.[part], obj)
+}
 
-vi.mock('@/next/live/ollamaTextChat', () => {
-  async function* streamOllamaTextChatAsDomainEvents(options: any) {
-    ollamaTextChatCallArgs.push(options)
-    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
-    yield { type: 'MetaDelta', meta: { id: 'ollama_gen_1', model: String(options?.model ?? 'llama3.2:latest'), provider: 'ollama_local' } }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'ollama ' }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
-    yield { type: 'StreamDone' }
-  }
-  return { streamOllamaTextChatAsDomainEvents }
-})
+const ROUTES: Record<string, { path: string; providerId: string; contractId: string }> = {
+  openrouter: { path: 'openRouter.chat', providerId: 'openrouter', contractId: 'openrouter-chat-completions-v1' },
+  openai_responses: { path: 'openAIResponses', providerId: 'openai_responses', contractId: 'openai-responses-v1' },
+  google_ai_studio: { path: 'gemini.generateContent', providerId: 'google_ai_studio', contractId: 'gemini-generate-content-v1' },
+  deepseek: { path: 'deepSeek', providerId: 'deepseek', contractId: 'deepseek-chat-v1' },
+  anthropic_messages: { path: 'anthropic', providerId: 'anthropic_messages', contractId: 'anthropic-messages-v1' },
+  local_endpoint: { path: 'genericLocal.openAIChatCompletions', providerId: 'local_endpoint', contractId: 'generic-local-openai-chat-v1' },
+  ollama_local: { path: 'ollama.chat', providerId: 'ollama_local', contractId: 'ollama-chat-v1' },
+  lm_studio: { path: 'lmStudio.openResponses', providerId: 'lm_studio', contractId: 'lmstudio-openresponses-v1' },
+}
 
-vi.mock('@/next/live/openAIResponsesTextChat', () => {
-  async function* streamOpenAIResponsesTextChatAsDomainEvents(options: any) {
-    openAIResponsesTextChatCallArgs.push(options)
-    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
-    yield { type: 'MetaDelta', meta: { id: 'openai_responses_gen_1', model: String(options?.model ?? 'gpt-4.1-mini'), provider: 'openai-responses' } }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'openai ' }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
-    yield { type: 'StreamDone' }
-  }
-  return { streamOpenAIResponsesTextChatAsDomainEvents }
-})
+const DEFAULT_ANSWER_TEXT: Record<string, string> = {
+  openrouter: 'hi',
+  openai_responses: 'openai hi',
+  google_ai_studio: 'gemini hi',
+  deepseek: 'deepseek hi',
+  local_endpoint: 'local hi',
+  ollama_local: 'ollama hi',
+}
 
-vi.mock('@/next/live/googleAIStudioTextChat', () => {
-  async function* streamGoogleAIStudioTextChatAsDomainEvents(options: any) {
-    googleAIStudioTextChatCallArgs.push(options)
-    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
-    yield { type: 'MetaDelta', meta: { id: 'google_ai_studio_gen_1', model: String(options?.model ?? 'gemini-2.5-flash'), provider: 'google-ai-studio' } }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'gemini ' }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
-    yield { type: 'StreamDone' }
-  }
-  return { streamGoogleAIStudioTextChatAsDomainEvents }
-})
-
-vi.mock('@/next/live/anthropicTextChat', () => {
-  async function* streamAnthropicTextChatAsDomainEvents(options: any) {
-    anthropicTextChatCallArgs.push(options)
-    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
-    yield { type: 'MetaDelta', meta: { id: 'anthropic_gen_1', model: String(options?.model ?? 'claude-sonnet-4-5'), provider: 'anthropic' } }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'anthropic ' }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
-    yield { type: 'StreamDone' }
-  }
-  return { streamAnthropicTextChatAsDomainEvents }
-})
-
-vi.mock('@/next/live/deepSeekTextChat', () => {
-  async function* streamDeepSeekTextChatAsDomainEvents(options: any) {
-    deepSeekTextChatCallArgs.push(options)
-    const assistantMessageId = String(options?.assistantMessageId ?? 'a1')
-    yield { type: 'MetaDelta', meta: { id: 'deepseek_gen_1', model: String(options?.model ?? 'deepseek-chat'), provider: 'deepseek' } }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'deepseek ' }
-    yield { type: 'MessageDeltaText', messageId: assistantMessageId, choiceIndex: 0, text: 'hi' }
-    yield { type: 'StreamDone' }
-  }
-  return { streamDeepSeekTextChatAsDomainEvents }
-})
-
-describe('ui-app AppChatApp (send: pure text)', () => {
-  const originalDbBridge = (globalThis as any).dbBridge
-  const originalElectronAPI = (globalThis as any).electronAPI
+describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
   const originalElectronStore = (globalThis as any).electronStore
-  const originalOpenRouterCredential = (globalThis as any).openRouterCredential
-  const originalOpenAIResponsesCredential = (globalThis as any).openAIResponsesCredential
-  const originalGoogleAIStudioCredential = (globalThis as any).googleAIStudioCredential
-  const originalAnthropicCredential = (globalThis as any).anthropicCredential
-  const originalDeepSeekCredential = (globalThis as any).deepSeekCredential
-  const originalOpenAIResponsesModels = (globalThis as any).openAIResponsesModels
-  const originalGoogleAIStudioModels = (globalThis as any).googleAIStudioModels
-  const originalAnthropicModels = (globalThis as any).anthropicModels
-  const originalDeepSeekModels = (globalThis as any).deepSeekModels
-  const originalLocalEndpointDiagnostics = (globalThis as any).localEndpointDiagnostics
-  const originalLMStudioProvider = (globalThis as any).lmStudioProvider
-  const originalOllamaProvider = (globalThis as any).ollamaProvider
   const originalSetTimeout = globalThis.setTimeout
-  let convoListMeta: Record<string, unknown> | null = null
+  let sessionMeta: Record<string, unknown> | null
+  let routePreference: any
+  let turns: Array<{
+    questionId: string
+    questionBody: string
+    answerRootId: string
+    answerBody: string
+    status: 'streaming' | 'completed'
+    modelId: string
+    providerId: string
+    contractId: string
+    operationId: string
+  }>
+  let headMessageId: string | null
+  let turnSeq: number
+  let updateConfigCalls: any[]
+  let updateRoutePreferenceCalls: any[]
+  let commandInitialCalls: Array<{ path: string; command: any }>
+  let localEndpointProfileBaseUrl: string
+  const initialStubs: Record<string, any> = {}
 
-  function selectRuntimeProvider(providerId: string, modelId: string) {
-    convoListMeta = {
-      ...(convoListMeta ?? {}),
-      selectedProviderId: providerId,
-      selectedModelKey: modelId,
+  function commitTurn(input: {
+    questionBody: string
+    answerBody: string
+    modelId: string
+    providerId: string
+    contractId: string
+    status: 'streaming' | 'completed'
+  }) {
+    turnSeq += 1
+    const turn = {
+      questionId: `u${turnSeq}`,
+      questionBody: input.questionBody,
+      answerRootId: `a${turnSeq}`,
+      answerBody: input.answerBody,
+      status: input.status,
+      modelId: input.modelId,
+      providerId: input.providerId,
+      contractId: input.contractId,
+      operationId: `operation:a${turnSeq}`,
     }
+    turns.push(turn)
+    headMessageId = turn.answerRootId
+    return turn
+  }
+
+  function snapshotForTurn(turn: (typeof turns)[number]) {
+    return {
+      binding: {
+        operationId: turn.operationId,
+        conversationId: 'c1',
+        branchId: 'b1',
+        targetAnswerId: turn.answerRootId,
+        sourceAnswerId: null,
+        snapshotHash: 'a'.repeat(64),
+        providerId: turn.providerId,
+        contractId: turn.contractId,
+      },
+      status: turn.status === 'completed' ? 'completed' : 'generating',
+      body: turn.answerBody,
+      reasoning: [],
+      images: [],
+      lastSequence: 1,
+      errorFact: null,
+      updatedAtMs: 2,
+    }
+  }
+
+  function branchView() {
+    return ok({
+      branchId: 'b1',
+      conversationId: 'c1',
+      projectId: 'project:test',
+      title: 'Chat 1',
+      branchName: 'Main',
+      headMessageId,
+      beforeMessageId: null,
+      hasMoreTurns: false,
+      turns: turns.map((turn) => ({
+        questionId: turn.questionId,
+        questionBody: turn.questionBody,
+        questionCreatedAtMs: 1,
+        chosenAnswerRootId: turn.answerRootId,
+        contextFilter: {
+          questionMode: 'include',
+          answerMode: 'include',
+          effectiveMode: 'include',
+          lockedByQuestionExclude: false,
+        },
+        answers: [
+          {
+            answerRootId: turn.answerRootId,
+            status: turn.status,
+            body: turn.answerBody,
+            updatedAtMs: 2,
+            chosen: true,
+            operationId: turn.operationId,
+            actionKind: 'initial',
+            modelId: turn.modelId,
+            providerId: turn.providerId,
+            errorCode: null,
+            errorMessage: null,
+            endpointProfileId: 'openrouter-first-party-v1',
+            protocolContractId: turn.contractId,
+            reasoningDetails: [],
+            attachments: [],
+            images: [],
+          },
+        ],
+      })),
+    })
+  }
+
+  function installCommandStub(path: string, opts: {
+    providerId: string
+    contractId: string
+    modelId: string
+    answerText?: string
+    rejectCode?: string
+    status?: 'streaming' | 'completed'
+  }) {
+    const node = getAtPath(bridge(), path)
+    const initial = vi.fn(async (command: any) => {
+      commandInitialCalls.push({ path, command })
+      if (opts.rejectCode) {
+        return { ok: false, code: opts.rejectCode }
+      }
+      const turn = commitTurn({
+        questionBody: String(command?.userBody ?? command?.prompt ?? ''),
+        answerBody: opts.answerText ?? 'hi',
+        modelId: opts.modelId,
+        providerId: opts.providerId,
+        contractId: opts.contractId,
+        status: opts.status ?? 'completed',
+      })
+      return {
+        ok: true,
+        kind: 'created',
+        operationId: turn.operationId,
+        answerRootId: turn.answerRootId,
+        actionKind: 'initial',
+        branch: {
+          branchId: 'b1',
+          conversationId: 'c1',
+          questionId: turn.questionId,
+          headMessageId: turn.answerRootId,
+          chosenAnswerRootId: turn.answerRootId,
+          deletedAtMs: null,
+        },
+      }
+    })
+    node.initial = initial
+    initialStubs[path] = initial
+    return initial
+  }
+
+  function setRuntimeSelection(providerId: string, modelId: string) {
+    const route = ROUTES[providerId]
+    if (!route) throw new Error(`unknown runtime provider: ${providerId}`)
+    routePreference = {
+      conversationId: 'c1',
+      revision: 1,
+      selection: { schemaVersion: 1, kind: 'provider_model', providerId: route.providerId, modelId },
+    }
+    sessionMeta = { selectedProviderId: route.providerId, selectedModelKey: modelId }
+  }
+
+  function selectRuntimeProvider(providerId: string, modelId: string, opts: {
+    rejectCode?: string
+    status?: 'streaming' | 'completed'
+    answerText?: string
+  } = {}) {
+    const route = ROUTES[providerId]
+    setRuntimeSelection(providerId, modelId)
+    installCommandStub(route.path, {
+      providerId: route.providerId,
+      contractId: route.contractId,
+      modelId,
+      answerText: opts.answerText ?? DEFAULT_ANSWER_TEXT[providerId] ?? 'hi',
+      rejectCode: opts.rejectCode,
+      status: opts.status,
+    })
+  }
+
+  function setSessionMeta(meta: Record<string, unknown>) {
+    sessionMeta = { ...(sessionMeta ?? {}), ...meta }
   }
 
   async function expectProviderlessSendBlocked(user: ReturnType<typeof userEvent.setup>, prompt: string) {
@@ -241,36 +254,37 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await user.click(sendButton())
     await new Promise<void>((resolve) => originalSetTimeout(resolve, 20))
     expect(draftBox().value).toBe(prompt)
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('branch.beginTurn')
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(lmStudioTextChatCallArgs).toHaveLength(0)
-    expect(ollamaTextChatCallArgs).toHaveLength(0)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
-    expect(anthropicTextChatCallArgs).toHaveLength(0)
-    expect(deepSeekTextChatCallArgs).toHaveLength(0)
+    for (const path of ALL_COMMAND_ROUTE_PATHS) {
+      expect(getAtPath(bridge(), path).initial).not.toHaveBeenCalled()
+    }
+  }
+
+  async function expectBlockedBeforeStream(
+    user: ReturnType<typeof userEvent.setup>,
+    prompt: string,
+    path: string,
+    rejectCode: string,
+    commandSubmitted = true,
+  ) {
+    await user.click(draftBox())
+    await user.type(draftBox(), prompt)
+    await user.click(sendButton())
+    await waitFor(() => {
+      if (commandSubmitted) {
+        expect(initialStubs[path]).toHaveBeenCalledTimes(1)
+      } else {
+        expect(getAtPath(bridge(), path).initial).not.toHaveBeenCalled()
+      }
+    })
+    expect(draftBox().value).toBe(prompt)
+    if (commandSubmitted) await screen.findByText(rejectCode)
   }
 
   beforeEach(() => {
     vi.useFakeTimers()
-    streamOpenRouterChatCallArgs.length = 0
-    localEndpointTextChatCallArgs.length = 0
-    lmStudioTextChatCallArgs.length = 0
-    ollamaTextChatCallArgs.length = 0
-    openAIResponsesTextChatCallArgs.length = 0
-    googleAIStudioTextChatCallArgs.length = 0
-    anthropicTextChatCallArgs.length = 0
-    deepSeekTextChatCallArgs.length = 0
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
-    globalThis.localStorage?.removeItem('starverse.lmStudioTextChat.enabled')
-    globalThis.localStorage?.removeItem('starverse.lmStudio.endpointUrl')
-    globalThis.localStorage?.removeItem('starverse.lmStudio.model')
-    globalThis.localStorage?.removeItem('starverse.lmStudio.chatMode')
-    globalThis.localStorage?.removeItem('starverse.lmStudio.openAICompatible.preferredEndpoint')
     globalThis.localStorage?.removeItem('starverse.lmStudioTextChat.enabled')
     globalThis.localStorage?.removeItem('starverse.lmStudio.endpointUrl')
     globalThis.localStorage?.removeItem('starverse.lmStudio.model')
@@ -292,385 +306,205 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.model')
     globalThis.localStorage?.removeItem('starverse.openRouterTextChat.enabled')
     globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
-    convoListMeta = null
+    sessionMeta = null
+    routePreference = null
+    turns = []
+    headMessageId = null
+    turnSeq = 0
+    updateConfigCalls = []
+    updateRoutePreferenceCalls = []
+    commandInitialCalls = []
+    localEndpointProfileBaseUrl = 'http://localhost:1234'
+    for (const key of Object.keys(initialStubs)) delete initialStubs[key]
     // Make throttle immediate in tests (while still exercising scheduling code paths).
     globalThis.setTimeout = ((fn: (...args: any[]) => void) => originalSetTimeout(fn, 0)) as any
-
-    const catalogRows: Array<any> = [
-      {
-        modelId: imageCapableModel,
-        name: 'Image-Capable Test Model',
-        vendor: 'anthropic',
-        status: 'visible',
-        supportedParameters: [],
-        lastSeenSnapshotId: 'snap_1',
-      },
-    ]
-
-    ;(globalThis as any).electronAPI = {
-      modelCatalogQueryScopedCurrent: vi.fn(async (options?: any) => {
-        const requestedIds = Array.isArray(options?.modelIds)
-          ? new Set(options.modelIds.map((id: unknown) => String(id)))
-          : null
-        return {
-          status: 'synced',
-          catalogRevision: 'checksum-send',
-          modelCount: catalogRows.length,
-          lastSyncAtMs: 123,
-          items: catalogRows
-            .filter((row) => !requestedIds || requestedIds.has(String(row.modelId)))
-            .map((row) => ({
-              providerKey: 'openrouter',
-              modelId: String(row.modelId),
-              modelKey: `openrouter::${String(row.modelId)}`,
-              canonicalSlug: String(row.modelId),
-              displayName: String(row.name),
-              description: null,
-              vendor: String(row.vendor),
-              family: null,
-              status: 'active',
-              visibility: row.status === 'hidden' ? 'hidden' : 'visible',
-              contextLength: 200000,
-              maxOutputTokens: 8192,
-              inputModalities: ['text'],
-              outputModalities: ['text', 'image'],
-              supportedParameters: [...row.supportedParameters],
-              pricing: {
-                prompt: '0.01',
-                completion: '0.02',
-                request: '0',
-                image: '0.04',
-              },
-              capabilities: {
-                reasoning: true,
-                tools: false,
-                structuredOutputs: false,
-                vision: false,
-                longContext: true,
-              },
-              createdAtSec: 1700000123,
-              firstSeenAtMs: 1700000000000,
-              lastSeenAtMs: 1700000000000,
-              syncedAtMs: 1700000000000,
-              raw: {
-                inputModalitiesJson: '["text"]',
-                outputModalitiesJson: '["text","image"]',
-                supportedParametersJson: JSON.stringify(row.supportedParameters),
-                capabilitiesJson: '{"reasoning":true,"tools":false,"structuredOutputs":false,"vision":false,"longContext":true}',
-                pricingJson: '{"prompt":"0.01","completion":"0.02","request":"0","image":"0.04"}',
-              },
-            })),
-          nextCursor: null,
-        }
-      }),
-      modelCatalogGetSyncStatus: vi.fn(async () => ({
-        ok: true,
-        providerKey: 'openrouter',
-        status: 'synced',
-        syncState: 'ok',
-        failureReasonCode: null,
-        lastSyncedAtMs: 123,
-        modelCount: catalogRows.length,
-      })),
-      modelCatalogSyncNow: vi.fn(async () => ({
-        ok: true,
-        providerKey: 'openrouter',
-        status: 'synced',
-        syncState: 'ok',
-        syncAttempted: false,
-        modelCount: catalogRows.length,
-        lastSyncedAtMs: 123,
-      })),
-    }
 
     ;(globalThis as any).electronStore = {
       get: vi.fn(async (key: string) => {
         if (key === 'openRouterApiKey') return 'redacted-test-key'
+        if (key === 'generationV2UiPreferences') {
+          return {
+            reasoningPrefs: { mode: 'auto', effort: 'auto', exclude: false },
+            webSearchDefaults: {},
+            generationParamsDefaults: {},
+            imageGenerationDefault: null,
+          }
+        }
         return undefined
       }),
     }
-    ;(globalThis as any).openRouterCredential = { getStatus: vi.fn(async () => configuredCredential()) }
-    ;(globalThis as any).openAIResponsesCredential = { getStatus: vi.fn(async () => configuredCredential()) }
-    ;(globalThis as any).googleAIStudioCredential = { getStatus: vi.fn(async () => configuredCredential()) }
-    ;(globalThis as any).anthropicCredential = { getStatus: vi.fn(async () => configuredCredential()) }
-    ;(globalThis as any).deepSeekCredential = { getStatus: vi.fn(async () => configuredCredential()) }
-    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-4.1-mini')) }
-    ;(globalThis as any).googleAIStudioModels = { listAvailability: vi.fn(async () => availability('google_ai_studio', 'gemini-2.5-flash')) }
-    ;(globalThis as any).anthropicModels = { listAvailability: vi.fn(async () => availability('anthropic_messages', 'claude-sonnet-4-5')) }
-    ;(globalThis as any).deepSeekModels = { listAvailability: vi.fn(async () => availability('deepseek', 'deepseek-chat')) }
-    ;(globalThis as any).localEndpointDiagnostics = { probe: vi.fn(async () => localEndpointProbe()) }
-    ;(globalThis as any).lmStudioProvider = { probe: vi.fn(async () => lmStudioProbe()) }
-    ;(globalThis as any).ollamaProvider = { probe: vi.fn(async () => ollamaProbe()) }
 
-    const persisted: Array<any> = []
-    let turnCounter = 0
-
-    const buildTurns = () => {
-      const turns = persisted
-        .filter((message) => String(message.role) === 'user')
-        .map((userMessage) => {
-          const chosenAssistant = [...persisted]
-            .reverse()
-            .find(
-              (message) =>
-                String(message.role) === 'assistant' &&
-                String(message.questionId ?? '') === String(userMessage.id),
-            )
-          if (!chosenAssistant) return null
-          return {
-            questionId: String(userMessage.id),
-            chosenAnswerRootId: String(chosenAssistant.id),
-            questionMode: 'include',
-            answerMode: 'include',
-            effectiveMode: 'include',
-            lockedByQuestionExclude: false,
-          }
-        })
-        .filter((row): row is NonNullable<typeof row> => row !== null)
-
-      return {
-        turns,
-        chosenAnswerRootByQuestionId: Object.fromEntries(
-          turns.map((turn) => [turn.questionId, turn.chosenAnswerRootId]),
-        ),
-      }
-    }
-
-    const invoke = vi.fn(async (method: string, params?: any) => {
-      if (method === 'project.getInbox') return null
-      if (method === 'project.list') return []
-      if (method === 'project.countConversationsBatch') return { counts: {} }
-      if (method === 'settings.getImageGenerationDefault') return { value: null }
-      if (method === 'settings.getWebSearchDefaults') return { value: null }
-      if (method === 'settings.getGenerationParamsDefaults') return { value: null }
-      if (method === 'settings.getReasoningPrefs') return { value: { mode: 'auto', effort: 'auto', exclude: false } }
-      if (method === 'settings.getUserMessageRenderDefault') return { value: false }
-      if (method === 'messageAsset.listByMessageIds') return []
-      if (method === 'message.listReasoningDisplayBlocksByMessageIds') return []
-      if (method === 'messageAsset.persistFromDataUrls') return { ok: true, assets: [] }
-      if (method === 'convo.list') {
-        return [{ id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1, meta: convoListMeta }]
-      }
-      if (method === 'modelCatalog.list') return catalogRows
-      if (method === 'modelCatalog.queryCore') {
-        return {
-          items: catalogRows.map((row) => ({
-            providerKey: 'openrouter',
-            modelId: String(row.modelId),
-            modelKey: `openrouter::${String(row.modelId)}`,
-            canonicalSlug: String(row.modelId),
-            displayName: String(row.name),
-            description: null,
-            vendor: String(row.vendor),
-            contextLength: null,
-            createdAtSec: null,
-            pricePrompt: null,
-            priceCompletion: null,
-            priceRequest: null,
-            priceImage: null,
-            capReasoning: 1,
-            capTools: 0,
-            capStructuredOutputs: 0,
-            capVision: 0,
-            capLongContext: 0,
-          })),
-          nextCursor: null,
-        }
-      }
-      if (method === 'modelCatalog.getCoreMeta') {
-        return {
-          providerKey: 'openrouter',
-          baseUrl: 'https://openrouter.ai/api/v1',
-        }
-      }
-      if (method === 'modelCatalog.getModelDetail') {
-        const modelId = String(params?.modelId ?? '')
-        if (modelId === imageCapableModel) {
-          return {
-            providerKey: 'openrouter',
-            modelId: imageCapableModel,
-            modelKey: `openrouter::${imageCapableModel}`,
-            canonicalSlug: imageCapableModel,
-            displayName: 'Image-Capable Test Model',
-            description: null,
-            vendor: 'anthropic',
-            family: null,
-            status: 'active',
-            visibility: 'visible',
-            contextLength: 200000,
-            maxOutputTokens: 8192,
-            architectureModality: 'text->text,image',
-            inputModalitiesJson: '["text"]',
-            outputModalitiesJson: '["text","image"]',
-            tokenizer: null,
-            instructType: null,
-            supportedParametersJson: '[]',
-            capabilitiesJson: '{"reasoning":true,"tools":false,"structuredOutputs":false,"vision":false,"longContext":true}',
-            pricePrompt: '0.01',
-            priceCompletion: '0.02',
-            priceRequest: '0',
-            priceImage: '0.04',
-            pricingJson: '{"prompt":"0.01","completion":"0.02","request":"0","image":"0.04"}',
-            createdAtSec: 1700000123,
-            expirationDate: null,
-            expirationAtSec: null,
-            unknownExpiration: 0,
-            hasPerRequestLimits: 0,
-            hasDefaultParameters: 0,
-            perRequestLimitsJson: null,
-            defaultParametersJson: null,
-            topProviderContextLength: null,
-            topProviderIsModerated: null,
-            firstSeenAtMs: 1700000000000,
-            lastSeenAtMs: 1700000000000,
-            syncedAtMs: 1700000000000,
-          }
-        }
-        return null
-      }
-      if (method === 'conversationDraft.restore' || method === 'conversationDraft.updateText') {
-        return {
-          conversationId: 'c1',
-          draftText: '',
-          draftMode: 'compose',
-          editingSourceMessageId: null,
-          attachedAssetIds: [],
-          attachments: [],
-          updatedAt: Date.now(),
-        }
-      }
-      if (method === 'modelCatalog.listEndpointMeta') return []
-      if (method === 'modelCatalog.replaceEndpointMeta') return { ok: true }
-      if (method === 'reasoningIndex.list') return []
-      if (method === 'modelPrefs.recordRecent') {
-        const now = Date.now()
-        return {
-          scopeType: 'global',
-          scopeId: '',
-          providerKey: String(params?.providerKey ?? 'openrouter'),
-          modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
-          lastUsedAtMs: now,
-          useCount: 1,
-          createdAtMs: now,
-          updatedAtMs: now,
-        }
-      }
-      if (method === 'branch.ensureDefault') {
-        return { id: 'b1', convoId: 'c1', headMessageId: null, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }
-      }
-      if (method === 'branch.list') {
-        return [{ id: 'b1', convoId: 'c1', headMessageId: persisted[persisted.length - 1]?.id ?? null, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
-      }
-      if (method === 'context.getRenderableTurns') {
-        const builtTurns = buildTurns()
-        return {
-          messages: persisted,
-          turns: builtTurns.turns,
-          debug: {
-            branchId: 'b1',
-            excludedQuestionIds: [],
-            includedMessageIds: persisted.map((m) => m.id),
-            chosenAnswerRootByQuestionId: builtTurns.chosenAnswerRootByQuestionId,
-          },
-        }
-      }
-      if (method === 'context.buildForBranch') {
-        return { messages: [], debug: { branchId: 'b1', excludedQuestionIds: [], includedMessageIds: [], chosenAnswerRootByQuestionId: {} } }
-      }
-      if (method === 'branch.beginTurn') {
-        turnCounter += 1
-        const userBody = String(params?.userBody ?? '')
-        const now = Date.now()
-        const questionId = `u${turnCounter}`
-        const assistantId = `a${turnCounter}`
-        const questionSeq = turnCounter * 2 - 1
-        const assistantSeq = turnCounter * 2
-        persisted.push({
-          id: questionId,
-          convoId: 'c1',
-          role: 'user',
-          seq: questionSeq,
-          createdAt: now,
-          parentId: null,
-          status: 'final',
-          answerRootId: null,
-          questionId: null,
-          body: userBody,
-          meta: null,
-        })
-        persisted.push({
-          id: assistantId,
-          convoId: 'c1',
-          role: 'assistant',
-          seq: assistantSeq,
-          createdAt: now + 1,
-          parentId: questionId,
-          status: 'streaming',
-          answerRootId: assistantId,
-          questionId,
-          body: '',
-          meta: null,
-        })
-        return {
-          ok: true,
-          convoId: 'c1',
-          branchId: 'b1',
-          questionId,
-          questionSeq,
-          assistantId,
-          assistantSeq,
-        }
-      }
-      if (method === 'message.appendDelta') {
-        const targetSeq = Number(params?.seq ?? NaN)
-        const appendBody = String(params?.appendBody ?? '')
-        const msg = persisted.find((m) => Number(m.seq) === targetSeq)
-        if (msg && appendBody) msg.body = String(msg.body ?? '') + appendBody
-        return { ok: true }
-      }
-      if (method === 'message.setStatus') {
-        const messageId = String(params?.messageId ?? '')
-        const status = String(params?.status ?? '')
-        const msg = persisted.find((m) => String(m.id) === messageId)
-        if (msg) msg.status = status
-        return { ok: true }
-      }
-      if (method === 'convo.create') return { id: 'c1', title: 'Chat 1', createdAt: 1, updatedAt: 1 }
-      return { ok: true }
+    const g = bridge()
+    const openRouterItems = [
+      {
+        providerKey: 'openrouter',
+        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        modelKey: `openrouter::${DEFAULT_OPENROUTER_TEST_MODEL}`,
+        canonicalSlug: DEFAULT_OPENROUTER_TEST_MODEL,
+        displayName: DEFAULT_OPENROUTER_TEST_MODEL,
+        status: 'active',
+        visibility: 'visible',
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+      },
+      {
+        providerKey: 'openrouter',
+        modelId: imageCapableModel,
+        modelKey: `openrouter::${imageCapableModel}`,
+        canonicalSlug: imageCapableModel,
+        displayName: 'Image-Capable Test Model',
+        status: 'active',
+        visibility: 'visible',
+        inputModalities: ['text'],
+        outputModalities: ['text', 'image'],
+      },
+    ]
+    const googleItems = [
+      {
+        providerKey: 'google_ai_studio',
+        modelId: 'gemini-3.1-flash-lite',
+        modelKey: 'google_ai_studio::gemini-3.1-flash-lite',
+        canonicalSlug: 'gemini-3.1-flash-lite',
+        displayName: 'Gemini 3.1 Flash Lite',
+        status: 'active',
+        visibility: 'visible',
+        inputModalities: ['text'],
+        outputModalities: ['text'],
+        raw: {
+          buckets: [
+            {
+              payload: {
+                observation: {
+                  schemaVersion: 2,
+                  providerKey: 'google_ai_studio',
+                  nativeModelId: 'gemini-3.1-flash-lite',
+                  observedAtMs: 1,
+                  rawProviderRecord: {
+                    thinking: true,
+                    supportedGenerationMethods: ['generateContent', 'streamGenerateContent'],
+                  },
+                  facts: {
+                    textChat: { presence: 'missing', value: null, providerPath: null },
+                    reasoning: { presence: 'missing', value: null, providerPath: null },
+                    tools: { presence: 'missing', value: null, providerPath: null },
+                    structuredOutputs: { presence: 'missing', value: null, providerPath: null },
+                    vision: { presence: 'missing', value: null, providerPath: null },
+                  },
+                  provenance: {},
+                },
+              },
+            },
+          ],
+        },
+      },
+    ]
+    const catalogResponse = (items: any[]) => ({
+      ok: true,
+      status: 'synced',
+      responseDigest: 'a'.repeat(64),
+      modelCount: items.length,
+      visibleModelCount: items.length,
+      hiddenModelCount: 0,
+      items,
+      nextCursor: null,
     })
+    g.models.listOpenRouter = vi.fn(async () => catalogResponse(openRouterItems))
+    g.models.listOpenAIResponses = vi.fn(async () => catalogResponse([]))
+    g.models.listAnthropic = vi.fn(async () => catalogResponse([]))
+    g.models.listGoogleAIStudio = vi.fn(async () => catalogResponse(googleItems))
+    g.models.listDeepSeek = vi.fn(async () => catalogResponse([]))
 
-    ;(globalThis as any).dbBridge = { invoke }
+    g.workspace.ensureDefault = vi.fn(async () => ok({ projectId: 'project:test', conversationId: 'c1', branchId: 'b1', created: false }))
+    g.workspace.getSystemTemplate = vi.fn(async () => ok({
+      conversation: {
+        id: 'c1',
+        projectId: 'project:test',
+        branchId: 'b1',
+        title: 'New Chat',
+        createdAt: 1,
+        updatedAt: 1,
+        meta: sessionMeta,
+        systemKey: 'new_template',
+        templateRevision: 0,
+      },
+      draft: {
+        conversationId: 'c1',
+        draftText: '',
+        draftMode: 'compose',
+        editingSourceQuestionId: null,
+        revision: 0,
+        updatedAtMs: 1,
+        attachments: [],
+      },
+      settings: {
+        startupNavigation: 'open_new',
+        startupTemplateReset: { modelConfig: false, draftAttachments: false },
+        postSendTemplateReset: 'reset_all',
+      },
+    }))
+    g.workspace.listConversations = vi.fn(async () => ok({
+      items: [
+        {
+          conversationId: 'c1',
+          projectId: 'project:test',
+          title: 'Chat 1',
+          updatedAtMs: 1,
+          meta: sessionMeta,
+          branches: [{ branchId: 'b1', name: 'Main', headMessageId, updatedAtMs: 1 }],
+          branchesHasMore: false,
+        },
+      ],
+      nextCursor: null,
+      totalCount: 1,
+    }))
+    g.workspace.getConversationRoutePreference = vi.fn(async () => ok(routePreference))
+    g.workspace.readBranch = vi.fn(async () => branchView())
+    g.workspace.updateConfig = vi.fn(async (input: any) => {
+      updateConfigCalls.push(input)
+      return ok({
+        ownerKind: input.ownerKind,
+        ownerId: input.ownerId,
+        configRevision: 'config-revision:test-next',
+        semanticLayer: input.semanticLayer ?? {},
+      })
+    })
+    g.workspace.updateConversationRoutePreference = vi.fn(async (input: any) => {
+      updateRoutePreferenceCalls.push(input)
+      routePreference = { conversationId: input.conversationId, revision: 1, selection: input.selection }
+      return ok(routePreference)
+    })
+    g.runtime.subscribe = vi.fn(async () => ok(turns
+      .filter((turn) => turn.status === 'streaming')
+      .map(snapshotForTurn)))
+    g.runtime.snapshot = vi.fn(async (operationId: string) => {
+      const turn = turns.find((candidate) => candidate.operationId === operationId)
+      return ok(turn ? snapshotForTurn(turn) : null)
+    })
+    g.runtime.abort = vi.fn(async () => ok({ aborted: false }))
+    g.runtime.onEvent = vi.fn(() => () => undefined)
+    g.localProfiles = {
+      list: vi.fn(async () => ok([
+        {
+          providerId: 'generic_local',
+          protocolContractId: 'generic-local-openai-chat-completions',
+          baseUrl: localEndpointProfileBaseUrl,
+          endpointProfileId: 'generic-local-http',
+          protocolConfig: {},
+        },
+        {
+          providerId: 'ollama',
+          protocolContractId: 'ollama-chat-v1',
+          baseUrl: 'http://127.0.0.1:11434',
+          endpointProfileId: 'ollama-http',
+          protocolConfig: { modelId: 'llama3.2:latest', thinkingControl: 'effort', tools: true },
+        },
+      ])),
+    }
   })
 
   afterEach(() => {
-    ;(globalThis as any).dbBridge = originalDbBridge
-    ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).electronStore = originalElectronStore
-    ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
-    ;(globalThis as any).openAIResponsesCredential = originalOpenAIResponsesCredential
-    ;(globalThis as any).googleAIStudioCredential = originalGoogleAIStudioCredential
-    ;(globalThis as any).anthropicCredential = originalAnthropicCredential
-    ;(globalThis as any).deepSeekCredential = originalDeepSeekCredential
-    ;(globalThis as any).openAIResponsesModels = originalOpenAIResponsesModels
-    ;(globalThis as any).googleAIStudioModels = originalGoogleAIStudioModels
-    ;(globalThis as any).anthropicModels = originalAnthropicModels
-    ;(globalThis as any).deepSeekModels = originalDeepSeekModels
-    ;(globalThis as any).localEndpointDiagnostics = originalLocalEndpointDiagnostics
-    ;(globalThis as any).lmStudioProvider = originalLMStudioProvider
-    ;(globalThis as any).ollamaProvider = originalOllamaProvider
     globalThis.setTimeout = originalSetTimeout
-    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
-    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
-    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
-    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
-    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
-    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.enabled')
-    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
-    globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.enabled')
-    globalThis.localStorage?.removeItem('starverse.anthropicMessagesTextChat.model')
-    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.enabled')
-    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.model')
     globalThis.localStorage?.removeItem('starverse.openRouterTextChat.enabled')
     vi.useRealTimers()
   })
@@ -691,137 +525,46 @@ describe('ui-app AppChatApp (send: pure text)', () => {
   })
 
   it.each([
-    {
-      label: 'OpenRouter',
-      credentialBridge: 'openRouterCredential',
-      prompt: 'openrouter missing key ping',
-      setup: () => {},
-    },
-    {
-      label: 'OpenAI Responses',
-      credentialBridge: 'openAIResponsesCredential',
-      prompt: 'openai missing key ping',
-      setup: () => {
-        globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
-        selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')
-      },
-    },
-    {
-      label: 'Anthropic',
-      credentialBridge: 'anthropicCredential',
-      prompt: 'anthropic missing key ping',
-      setup: () => {
-        globalThis.localStorage?.setItem('starverse.anthropicMessagesTextChat.enabled', '1')
-        selectRuntimeProvider('anthropic_messages', 'claude-sonnet-4-5')
-      },
-    },
-    {
-      label: 'Google AI Studio',
-      credentialBridge: 'googleAIStudioCredential',
-      prompt: 'gemini missing key ping',
-      setup: () => {
-        globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
-        selectRuntimeProvider('google_ai_studio', 'gemini-2.5-flash')
-      },
-    },
-    {
-      label: 'DeepSeek',
-      credentialBridge: 'deepSeekCredential',
-      prompt: 'deepseek missing key ping',
-      setup: () => {
-        globalThis.localStorage?.setItem('starverse.deepSeekTextChat.enabled', '1')
-        selectRuntimeProvider('deepseek', 'deepseek-chat')
-      },
-    },
-  ])('blocks $label before provider stream when credential is missing', async ({ credentialBridge, prompt, setup }) => {
-    ;(globalThis as any)[credentialBridge] = { getStatus: vi.fn(async () => missingCredential()) }
-    setup()
+    { label: 'OpenRouter', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL, prompt: 'openrouter missing key ping' },
+    { label: 'OpenAI Responses', providerId: 'openai_responses', modelId: 'gpt-4.1-mini', prompt: 'openai missing key ping' },
+    { label: 'Anthropic', providerId: 'anthropic_messages', modelId: 'claude-sonnet-4-5', prompt: 'anthropic missing key ping' },
+    { label: 'Google AI Studio', providerId: 'google_ai_studio', modelId: 'gemini-2.5-flash', prompt: 'gemini missing key ping' },
+    { label: 'DeepSeek', providerId: 'deepseek', modelId: 'deepseek-chat', prompt: 'deepseek missing key ping' },
+  ])('blocks $label before provider stream when credential is missing', async ({ providerId, modelId, prompt }) => {
+    selectRuntimeProvider(providerId, modelId, { rejectCode: 'CREDENTIAL_MISSING' })
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
 
-    await user.click(draftBox())
-    await user.type(draftBox(), prompt)
-    await user.click(sendButton())
-
-    await waitFor(() => expect(draftBox().value).toBe(prompt))
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(lmStudioTextChatCallArgs).toHaveLength(0)
-    expect(ollamaTextChatCallArgs).toHaveLength(0)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
-    expect(anthropicTextChatCallArgs).toHaveLength(0)
-    expect(deepSeekTextChatCallArgs).toHaveLength(0)
+    await expectBlockedBeforeStream(user, prompt, ROUTES[providerId].path, 'CREDENTIAL_MISSING')
   })
 
   it.each([
-    {
-      label: 'LocalEndpoint',
-      prompt: 'local endpoint down ping',
-      setup: () => {
-        globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
-        globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:1234/v1')
-        selectRuntimeProvider('local_endpoint', 'local-model')
-        ;(globalThis as any).localEndpointDiagnostics = { probe: vi.fn(async () => ({ ok: false, code: 'network_error', message: 'Local endpoint unavailable.' })) }
-      },
-    },
-    {
-      label: 'LM Studio',
-      prompt: 'lm studio down ping',
-      setup: () => {
-        globalThis.localStorage?.setItem('starverse.lmStudioTextChat.enabled', '1')
-        globalThis.localStorage?.setItem('starverse.lmStudio.endpointUrl', 'http://127.0.0.1:1234')
-        globalThis.localStorage?.setItem('starverse.lmStudio.chatMode', 'openai_compatible')
-        selectRuntimeProvider('lm_studio', 'openai/gpt-oss-20b')
-        ;(globalThis as any).lmStudioProvider = { probe: vi.fn(async () => ({ ok: false, code: 'network_error', message: 'LM Studio unavailable.' })) }
-      },
-    },
-    {
-      label: 'Ollama',
-      prompt: 'ollama down ping',
-      setup: () => {
-        globalThis.localStorage?.setItem('starverse.ollamaTextChat.enabled', '1')
-        globalThis.localStorage?.setItem('starverse.ollama.endpointUrl', 'http://127.0.0.1:11434')
-        globalThis.localStorage?.setItem('starverse.ollama.chatMode', 'native_rest')
-        selectRuntimeProvider('ollama_local', 'llama3.2:latest')
-        ;(globalThis as any).ollamaProvider = { probe: vi.fn(async () => ({ ok: false, code: 'network_error', message: 'Ollama unavailable.' })) }
-      },
-    },
-  ])('blocks $label before provider stream when endpoint probe is unavailable', async ({ prompt, setup }) => {
-    setup()
+    { label: 'LocalEndpoint', providerId: 'local_endpoint', modelId: 'local-model', prompt: 'local endpoint down ping', submitted: true },
+    { label: 'LM Studio', providerId: 'lm_studio', modelId: 'openai/gpt-oss-20b', prompt: 'lm studio down ping', submitted: false },
+    { label: 'Ollama', providerId: 'ollama_local', modelId: 'llama3.2:latest', prompt: 'ollama down ping', submitted: false },
+  ])('blocks $label before provider stream when endpoint probe is unavailable', async ({ providerId, modelId, prompt, submitted }) => {
+    globalThis.localStorage?.setItem('starverse.lmStudio.chatMode', 'openai_compatible')
+    selectRuntimeProvider(providerId, modelId, { rejectCode: 'ENDPOINT_PROBE_UNAVAILABLE' })
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
 
-    await user.click(draftBox())
-    await user.type(draftBox(), prompt)
-    await user.click(sendButton())
-
-    await waitFor(() => expect(draftBox().value).toBe(prompt))
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(lmStudioTextChatCallArgs).toHaveLength(0)
-    expect(ollamaTextChatCallArgs).toHaveLength(0)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
-    expect(anthropicTextChatCallArgs).toHaveLength(0)
-    expect(deepSeekTextChatCallArgs).toHaveLength(0)
+    await expectBlockedBeforeStream(user, prompt, ROUTES[providerId].path, 'ENDPOINT_PROBE_UNAVAILABLE', submitted)
   })
 
-  it('appends user+assistant, streams text, persists via message.appendDelta', async () => {
+  it('appends user+assistant, submits the initial command, renders the streamed answer', async () => {
     selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
 
-    const box = draftBox()
-    await user.click(box)
-    await user.type(box, 'ping')
-    expect((box as HTMLTextAreaElement).value).toBe('ping')
+    await user.click(draftBox())
+    await user.type(draftBox(), 'ping')
+    expect((draftBox() as HTMLTextAreaElement).value).toBe('ping')
 
     const send = sendButton()
     expect(send).not.toBeDisabled()
@@ -829,37 +572,24 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
     await screen.findByText('ping')
     await screen.findByText('hi')
-
     await vi.runAllTimersAsync()
 
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    expect(invoke).toHaveBeenCalledWith('context.buildForBranch', expect.objectContaining({ branchId: 'b1' }))
-    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'ping' }))
-    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
-    expect(invoke).toHaveBeenCalledWith('message.setAnnotations', expect.objectContaining({ messageId: 'a1' }))
-    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
-    expect(invoke).toHaveBeenCalledWith(
-      'message.setStatus',
-      expect.objectContaining({
-        messageId: 'a1',
-        metaPatch: expect.objectContaining({
-          usage: expect.objectContaining({
-            total_tokens: 18,
-            cost: 0.0123,
-          }),
-        }),
-      }),
-    )
-    const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
-    expect(last?.config?.imageGeneration).toBeUndefined()
-    expect(last?.config?.webSearch?.requestPatch?.plugins?.[0]).toMatchObject({ id: 'web', enabled: false })
-    expect(invoke.mock.calls.filter((c) => c[0] === 'message.appendDelta').length).toBeGreaterThanOrEqual(1)
-    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelCatalog.list')
-    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelCatalog.queryCore')
-    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('reasoningIndex.list')
+    expect(initialStubs['openRouter.chat']).toHaveBeenCalledWith(expect.objectContaining({
+      branchId: 'b1',
+      expectedHeadMessageId: null,
+      userBody: 'ping',
+      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      commandAttachments: [],
+    }))
+    expect((draftBox() as HTMLTextAreaElement).value).toBe('')
+    const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
+    expect(layer?.schemaVersion).toBe(2)
+    expect(layer?.image).toEqual({ mode: 'disabled' })
+    expect(layer?.web).toEqual({ mode: 'disabled' })
+    expect(layer?.tools).toEqual({ mode: 'disabled' })
   })
 
-  it('routes experimental LocalEndpoint text chat through the normal transcript without OpenRouter send', async () => {
+  it('routes experimental LocalEndpoint text chat through the genericLocal command without OpenRouter send', async () => {
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:1234/v1')
     selectRuntimeProvider('local_endpoint', 'local-model')
@@ -876,26 +606,20 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('local hi')
     await vi.runAllTimersAsync()
 
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(1)
-    expect(localEndpointTextChatCallArgs[0]).toMatchObject({
-      endpointUrl: 'http://localhost:1234/v1',
-      model: 'local-model',
-      userText: 'local ping',
-    })
-    expect(localEndpointTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
-    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'local ping' }))
-    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
-    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
-    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
+    expect(initialStubs['genericLocal.openAIChatCompletions']).toHaveBeenCalledWith(expect.objectContaining({
+      userBody: 'local ping',
+      modelId: 'local-model',
+    }))
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
   })
 
-  it('routes explicit Ollama Local text chat through the normal transcript without OpenRouter send', async () => {
+  it('routes explicit Ollama Local text chat through the ollama command without OpenRouter send', async () => {
     globalThis.localStorage?.setItem('starverse.ollamaTextChat.enabled', '1')
     globalThis.localStorage?.setItem('starverse.ollama.endpointUrl', 'http://127.0.0.1:11434')
     globalThis.localStorage?.setItem('starverse.ollama.chatMode', 'native_rest')
     globalThis.localStorage?.setItem('starverse.ollama.nativeRest.preferredEndpoint', 'chat')
+    globalThis.localStorage?.setItem('starverse.ollama.nativeRest.thinkingControl', 'effort')
+    globalThis.localStorage?.setItem('starverse.ollama.nativeRest.toolsSupported', '1')
     selectRuntimeProvider('ollama_local', 'llama3.2:latest')
     const user = userEvent.setup()
     render(AppChatApp)
@@ -910,29 +634,16 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('ollama hi')
     await vi.runAllTimersAsync()
 
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(ollamaTextChatCallArgs).toHaveLength(1)
-    expect(ollamaTextChatCallArgs[0]).toMatchObject({
-      config: {
-        providerKey: 'ollama_local',
-        endpointUrl: 'http://127.0.0.1:11434',
-        chatMode: 'native_rest',
-        nativeRest: { basePath: '/api', preferredEndpoint: 'chat' },
-      },
-      model: 'llama3.2:latest',
-      userText: 'ollama ping',
-    })
-    expect(ollamaTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
-    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'ollama ping' }))
-    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
-    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
-    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
+    expect(initialStubs['ollama.chat']).toHaveBeenCalledWith(expect.objectContaining({
+      userBody: 'ollama ping',
+      modelId: 'llama3.2:latest',
+    }))
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
   })
 
   it('uses session-selected LocalEndpoint model with SettingsPanel endpoint updates', async () => {
     globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
+    localEndpointProfileBaseUrl = 'http://localhost:4321'
     selectRuntimeProvider('local_endpoint', 'settings-selected-model')
     const user = userEvent.setup()
     render(AppChatApp)
@@ -952,13 +663,11 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('settings local ping')
     await screen.findByText('local hi')
 
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(1)
-    expect(localEndpointTextChatCallArgs[0]).toMatchObject({
-      endpointUrl: 'http://localhost:4321/v1',
-      model: 'settings-selected-model',
-      userText: 'settings local ping',
-    })
+    expect(initialStubs['genericLocal.openAIChatCompletions']).toHaveBeenCalledWith(expect.objectContaining({
+      userBody: 'settings local ping',
+      modelId: 'settings-selected-model',
+    }))
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
   })
 
   it('keeps provider selection unset when SettingsPanel only applies LocalEndpoint defaults', async () => {
@@ -972,7 +681,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await expectProviderlessSendBlocked(user, 'default off ping')
   })
 
-  it('routes explicit OpenAI Responses text chat through the normal transcript without OpenRouter send', async () => {
+  it('routes explicit OpenAI Responses text chat through the openAIResponses command without OpenRouter send', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
     selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')
     const user = userEvent.setup()
@@ -988,26 +697,17 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('openai hi')
     await vi.runAllTimersAsync()
 
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
-    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
-      model: 'gpt-4.1-mini',
-      userText: 'openai ping',
-    })
-    expect(openAIResponsesTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
-    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'openai ping' }))
-    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
-    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
-    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
+    expect(initialStubs['openAIResponses']).toHaveBeenCalledWith(expect.objectContaining({
+      userBody: 'openai ping',
+      modelId: 'gpt-4.1-mini',
+    }))
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
   })
 
-  it('passes resolved generation params to experimental provider sends', async () => {
+  it('passes resolved generation params to the conversation semantic layer', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
     selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')
-    convoListMeta = {
-      ...(convoListMeta ?? {}),
+    setSessionMeta({
       generationParamsOverride: {
         version: 1,
         params: {
@@ -1016,7 +716,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
           maxOutputTokens: { mode: 'custom', value: 64 },
         },
       },
-    }
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1030,25 +730,15 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('openai hi')
     await vi.runAllTimersAsync()
 
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
-    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
-      model: 'gpt-4.1-mini',
-      userText: 'openai generation params ping',
-      generationParams: {
-        temperature: 0.2,
-        max_output_tokens: 64,
-      },
-    })
-    expect(openAIResponsesTextChatCallArgs[0].generationParams).not.toHaveProperty('top_p')
+    const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
+    expect(layer?.generation).toMatchObject({ temperature: 0.2, maxOutputTokens: 64 })
+    expect(layer?.generation).not.toHaveProperty('topP')
   })
 
   it('omits OpenAI Responses reasoning effort when provider auto is selected', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
-    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
     selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
-    convoListMeta = {
-      ...(convoListMeta ?? {}),
+    setSessionMeta({
       generationParamsOverride: {
         version: 1,
         params: {
@@ -1056,7 +746,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
           maxOutputTokens: { mode: 'custom', value: 64 },
         },
       },
-    }
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1070,29 +760,22 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('openai hi')
     await vi.runAllTimersAsync()
 
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
-    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
-      model: 'gpt-5.4-nano',
-      generationParams: {
-        max_output_tokens: 64,
-      },
-    })
-    expect(openAIResponsesTextChatCallArgs[0].generationParams).not.toHaveProperty('reasoning')
+    const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
+    expect(layer?.reasoning).toEqual({ mode: 'disabled' })
+    expect(layer?.generation?.maxOutputTokens).toBe(64)
   })
 
   it('sends explicit OpenAI Responses reasoning effort when supported by the selected model', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
-    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
     selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
-    convoListMeta = {
-      ...(convoListMeta ?? {}),
+    setSessionMeta({
       generationParamsOverride: {
         version: 1,
         params: {
           reasoningEffort: { mode: 'custom', value: 'low' },
         },
       },
-    }
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1106,21 +789,14 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('openai hi')
     await vi.runAllTimersAsync()
 
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
-    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
-      model: 'gpt-5.4-nano',
-      generationParams: {
-        reasoning: { effort: 'low' },
-      },
-    })
+    const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
+    expect(layer?.reasoning).toEqual({ mode: 'enabled', effort: 'low' })
   })
 
   it('sends OpenAI Responses reasoning summary without explicit effort when configured', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
-    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
     selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
-    convoListMeta = {
-      ...(convoListMeta ?? {}),
+    setSessionMeta({
       generationParamsOverride: {
         version: 1,
         params: {
@@ -1128,7 +804,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
           reasoningSummary: { mode: 'custom', value: 'concise' },
         },
       },
-    }
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1142,22 +818,14 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('openai hi')
     await vi.runAllTimersAsync()
 
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
-    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
-      model: 'gpt-5.4-nano',
-      generationParams: {
-        reasoning: { summary: 'concise' },
-      },
-    })
-    expect(openAIResponsesTextChatCallArgs[0].generationParams?.reasoning).not.toHaveProperty('effort')
+    const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
+    expect(layer?.reasoning).toEqual({ mode: 'enabled', summary: 'concise' })
   })
 
   it('omits OpenAI Responses reasoning summary when configured off', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
-    ;(globalThis as any).openAIResponsesModels = { listAvailability: vi.fn(async () => availability('openai_responses', 'gpt-5.4-nano')) }
     selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
-    convoListMeta = {
-      ...(convoListMeta ?? {}),
+    setSessionMeta({
       generationParamsOverride: {
         version: 1,
         params: {
@@ -1165,7 +833,7 @@ describe('ui-app AppChatApp (send: pure text)', () => {
           reasoningSummary: { mode: 'omit' },
         },
       },
-    }
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1179,25 +847,21 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('openai hi')
     await vi.runAllTimersAsync()
 
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
-    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
-      model: 'gpt-5.4-nano',
-    })
-    expect(openAIResponsesTextChatCallArgs[0].generationParams ?? {}).not.toHaveProperty('reasoning')
+    const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
+    expect(layer?.reasoning).toEqual({ mode: 'disabled' })
   })
 
   it('does not send OpenAI Responses reasoning effort for models without explicit effort support', async () => {
     globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
     selectRuntimeProvider('openai_responses', 'gpt-4.1-mini')
-    convoListMeta = {
-      ...(convoListMeta ?? {}),
+    setSessionMeta({
       generationParamsOverride: {
         version: 1,
         params: {
           reasoningEffort: { mode: 'custom', value: 'high' },
         },
       },
-    }
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
@@ -1211,21 +875,14 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('openai hi')
     await vi.runAllTimersAsync()
 
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(1)
-    expect(openAIResponsesTextChatCallArgs[0]).toMatchObject({
-      model: 'gpt-4.1-mini',
-    })
-    expect(openAIResponsesTextChatCallArgs[0].generationParams ?? {}).not.toHaveProperty('reasoning')
+    const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
+    expect(layer?.reasoning).toEqual({ mode: 'disabled' })
   })
 
-  it('routes explicit Google AI Studio text chat through the normal transcript without OpenRouter or old Gemini send', async () => {
+  it('routes explicit Google AI Studio text chat through gemini generateContent with the thinking provider extension', async () => {
     globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
-    ;(globalThis as any).googleAIStudioModels = {
-      listAvailability: vi.fn(async () => availability('google_ai_studio', 'gemini-3.1-flash-lite')),
-    }
     selectRuntimeProvider('google_ai_studio', 'gemini-3.1-flash-lite')
-    convoListMeta = {
-      ...(convoListMeta ?? {}),
+    setSessionMeta({
       generationParamsOverride: {
         version: 1,
         params: {
@@ -1233,11 +890,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
           includeThoughts: { mode: 'custom', value: true },
         },
       },
-    }
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
+    await vi.runAllTimersAsync()
 
     await user.click(draftBox())
     await user.type(draftBox(), 'gemini ping')
@@ -1247,44 +905,22 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('gemini hi')
     await vi.runAllTimersAsync()
 
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(googleAIStudioTextChatCallArgs).toHaveLength(1)
-    expect(googleAIStudioTextChatCallArgs[0]).toMatchObject({
-      model: 'gemini-3.1-flash-lite',
-      userText: 'gemini ping',
-      generationParams: {
-        generationConfig: {
-          thinkingConfig: {
-            thinkingLevel: 'medium',
-            includeThoughts: true,
-          },
-        },
-      },
+    expect(initialStubs['gemini.generateContent']).toHaveBeenCalledWith(expect.objectContaining({
+      userBody: 'gemini ping',
+      modelId: 'gemini-3.1-flash-lite',
+    }))
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
+    const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
+    expect(layer?.providerExtension).toEqual({
+      kind: 'gemini_generate_content',
+      thinkingMode: 'level',
+      thinkingLevel: 'medium',
+      includeThoughts: 'enabled',
     })
-    const snapshotCall = invoke.mock.calls.find((call) => call[0] === 'answerGeneration.persistSnapshot')
-    expect(snapshotCall?.[1]?.snapshot).toMatchObject({
-      route: { providerId: 'google_ai_studio', modelId: 'gemini-3.1-flash-lite' },
-      generationParams: {
-        requestParams: { thinkingLevel: 'medium', includeThoughts: true },
-        requestPatch: {
-          generationConfig: {
-            thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
-          },
-        },
-      },
-    })
-    expect(snapshotCall?.[1]?.snapshot?.providerOptions).not.toHaveProperty('geminiThinking')
-    expect(googleAIStudioTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
-    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'gemini ping' }))
-    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
-    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
-    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
+    expect(layer?.reasoning).toEqual({ mode: 'enabled', effort: 'medium' })
   })
 
-  it('routes explicit DeepSeek official text chat through the normal transcript without OpenRouter or Anthropic-compatible send', async () => {
+  it('routes explicit DeepSeek official text chat through the deepSeek command without OpenRouter or Anthropic-compatible send', async () => {
     globalThis.localStorage?.setItem('starverse.deepSeekTextChat.enabled', '1')
     selectRuntimeProvider('deepseek', 'deepseek-chat')
     const user = userEvent.setup()
@@ -1300,52 +936,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('deepseek hi')
     await vi.runAllTimersAsync()
 
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
-    expect(anthropicTextChatCallArgs).toHaveLength(0)
-    expect(deepSeekTextChatCallArgs).toHaveLength(1)
-    expect(deepSeekTextChatCallArgs[0]).toMatchObject({
-      model: 'deepseek-chat',
-      userText: 'deepseek ping',
-    })
-    expect(deepSeekTextChatCallArgs[0].currentUserContentBlocks).toBeUndefined()
-    expect(invoke).toHaveBeenCalledWith('branch.beginTurn', expect.objectContaining({ branchId: 'b1', userBody: 'deepseek ping' }))
-    expect(invoke).toHaveBeenCalledWith('message.appendDelta', expect.objectContaining({ convoId: 'c1', seq: 2 }))
-    expect(invoke).toHaveBeenCalledWith('message.setStatus', expect.objectContaining({ messageId: 'a1', status: 'final' }))
-    expect(invoke.mock.calls.map((call) => call[0])).not.toContain('modelPrefs.recordRecent')
-  })
-
-  it('keeps provider selection unset when SettingsPanel only applies an OpenAI Responses model default', async () => {
-    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
-    const user = userEvent.setup()
-    render(AppChatApp)
-
-    await waitForAppReady()
-
-    await expectProviderlessSendBlocked(user, 'openai default off ping')
-  })
-
-  it('keeps provider selection unset when SettingsPanel only applies a Google AI Studio model default', async () => {
-    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
-    const user = userEvent.setup()
-    render(AppChatApp)
-
-    await waitForAppReady()
-
-    await expectProviderlessSendBlocked(user, 'google default off ping')
-  })
-
-  it('keeps provider selection unset when SettingsPanel only applies a DeepSeek model default', async () => {
-    globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
-    const user = userEvent.setup()
-    render(AppChatApp)
-
-    await waitForAppReady()
-
-    await expectProviderlessSendBlocked(user, 'deepseek default off ping')
+    expect(initialStubs['deepSeek']).toHaveBeenCalledWith(expect.objectContaining({
+      userBody: 'deepseek ping',
+      modelId: 'deepseek-chat',
+    }))
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
   })
 
   it('keeps DeepSeek, Anthropic, Google AI Studio, OpenAI Responses, and LocalEndpoint experimental modes mutually exclusive', async () => {
@@ -1373,12 +969,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('mutual exclusion ping')
     await screen.findByText('deepseek hi')
 
-    expect(deepSeekTextChatCallArgs).toHaveLength(1)
-    expect(anthropicTextChatCallArgs).toHaveLength(0)
-    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(streamOpenRouterChatCallArgs).toHaveLength(0)
+    expect(initialStubs['deepSeek']).toHaveBeenCalledTimes(1)
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
+    expect(getAtPath(bridge(), 'anthropic').initial).not.toHaveBeenCalled()
+    expect(getAtPath(bridge(), 'gemini.generateContent').initial).not.toHaveBeenCalled()
+    expect(getAtPath(bridge(), 'openAIResponses').initial).not.toHaveBeenCalled()
+    expect(getAtPath(bridge(), 'genericLocal.openAIChatCompletions').initial).not.toHaveBeenCalled()
     expect(globalThis.localStorage?.getItem('starverse.anthropicMessagesTextChat.enabled')).toBe('0')
     expect(globalThis.localStorage?.getItem('starverse.googleAIStudioTextChat.enabled')).toBe('0')
     expect(globalThis.localStorage?.getItem('starverse.openAIResponsesTextChat.enabled')).toBe('0')
@@ -1387,18 +983,10 @@ describe('ui-app AppChatApp (send: pure text)', () => {
 
   it('uses the explicit OpenRouter path when OpenAI Responses chat is disabled or cleared', async () => {
     selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
-    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
-    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
-
-    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.enabled')
-    globalThis.localStorage?.removeItem('starverse.openAIResponsesTextChat.model')
-    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openAIResponsesTextChat.enabled' }))
-    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
-    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openRouterTextChat.enabled' }))
 
     await user.click(draftBox())
     await user.type(draftBox(), 'cleared openai responses ping')
@@ -1407,24 +995,16 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('cleared openai responses ping')
     await screen.findByText('hi')
 
-    expect(openAIResponsesTextChatCallArgs).toHaveLength(0)
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+    expect(initialStubs['openRouter.chat']).toHaveBeenCalledTimes(1)
+    expect(getAtPath(bridge(), 'openAIResponses').initial).not.toHaveBeenCalled()
   })
 
   it('uses the explicit OpenRouter path when Google AI Studio chat is disabled or cleared', async () => {
     selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
-    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.enabled', '1')
-    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
-
-    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.enabled')
-    globalThis.localStorage?.removeItem('starverse.googleAIStudioTextChat.model')
-    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.googleAIStudioTextChat.enabled' }))
-    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
-    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openRouterTextChat.enabled' }))
 
     await user.click(draftBox())
     await user.type(draftBox(), 'cleared google ai studio ping')
@@ -1433,26 +1013,16 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('cleared google ai studio ping')
     await screen.findByText('hi')
 
-    expect(googleAIStudioTextChatCallArgs).toHaveLength(0)
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+    expect(initialStubs['openRouter.chat']).toHaveBeenCalledTimes(1)
+    expect(getAtPath(bridge(), 'gemini.generateContent').initial).not.toHaveBeenCalled()
   })
 
   it('uses the explicit OpenRouter path when LocalEndpoint chat is disabled or cleared', async () => {
     selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
-    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.enabled', '1')
-    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.url', 'http://localhost:4321/v1')
-    globalThis.localStorage?.setItem('starverse.localEndpointTextChat.model', 'settings-selected-model')
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
-
-    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
-    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.url')
-    globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.model')
-    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.localEndpointTextChat.enabled' }))
-    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
-    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openRouterTextChat.enabled' }))
 
     await user.click(draftBox())
     await user.type(draftBox(), 'cleared local endpoint ping')
@@ -1461,24 +1031,16 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('cleared local endpoint ping')
     await screen.findByText('hi')
 
-    expect(localEndpointTextChatCallArgs).toHaveLength(0)
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+    expect(initialStubs['openRouter.chat']).toHaveBeenCalledTimes(1)
+    expect(getAtPath(bridge(), 'genericLocal.openAIChatCompletions').initial).not.toHaveBeenCalled()
   })
 
   it('uses the explicit OpenRouter path when DeepSeek official chat is disabled or cleared', async () => {
     selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
-    globalThis.localStorage?.setItem('starverse.deepSeekTextChat.enabled', '1')
-    globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
-
-    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.enabled')
-    globalThis.localStorage?.removeItem('starverse.deepSeekTextChat.model')
-    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.deepSeekTextChat.enabled' }))
-    globalThis.localStorage?.setItem('starverse.openRouterTextChat.enabled', '1')
-    window.dispatchEvent(new StorageEvent('storage', { key: 'starverse.openRouterTextChat.enabled' }))
 
     await user.click(draftBox())
     await user.type(draftBox(), 'cleared deepseek ping')
@@ -1487,11 +1049,11 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('cleared deepseek ping')
     await screen.findByText('hi')
 
-    expect(deepSeekTextChatCallArgs).toHaveLength(0)
-    expect(streamOpenRouterChatCallArgs).toHaveLength(1)
+    expect(initialStubs['openRouter.chat']).toHaveBeenCalledTimes(1)
+    expect(getAtPath(bridge(), 'deepSeek').initial).not.toHaveBeenCalled()
   })
 
-  it('uses selected model for next send and persists convo.meta.selectedModelKey', async () => {
+  it('uses selected model for next send and persists the conversation route preference', async () => {
     selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
     const user = userEvent.setup()
     render(AppChatApp)
@@ -1505,19 +1067,18 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('warmup')
     await screen.findByText('hi')
 
+    await vi.runAllTimersAsync()
     await user.click(await screen.findByTestId('current-model-pill'))
     const imageCapableModelItems = await screen.findAllByTestId(`model-picker-item-${imageCapableModel}`)
     await user.click(imageCapableModelItems[0]!)
 
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith(
-        'convo.save',
-        expect.objectContaining({
-          id: 'c1',
-          meta: expect.objectContaining({ selectedModelKey: imageCapableModel }),
-        }),
-      )
+      expect(updateRoutePreferenceCalls).toHaveLength(1)
+      expect(updateRoutePreferenceCalls[0]).toEqual({
+        conversationId: 'c1',
+        expectedRevision: 1,
+        selection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: imageCapableModel },
+      })
     })
 
     const box = draftBox()
@@ -1526,32 +1087,21 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await user.click(sendButton())
 
     await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith(
-        'branch.beginTurn',
-        expect.objectContaining({ branchId: 'b1', userBody: 'selected model send' }),
-      )
-      const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
-      expect(last?.config?.model).toBe(imageCapableModel)
-    })
-
-    await waitFor(() => {
-      expect(invoke).toHaveBeenCalledWith(
-        'modelPrefs.recordRecent',
-        expect.objectContaining({
-          scopeType: 'global',
-          scopeId: '',
-          providerKey: 'openrouter',
-          modelId: imageCapableModel,
-          modelKey: `openrouter::${imageCapableModel}`,
-        }),
-      )
+      expect(screen.getByText('selected model send')).toBeInTheDocument()
+      const lastCall = commandInitialCalls.filter((call) => call.path === 'openRouter.chat').pop()
+      expect(lastCall?.command).toMatchObject({ modelId: imageCapableModel })
     })
   })
 
   it('passes persisted image generation config for an image-capable model', async () => {
-    convoListMeta = {
-      selectedProviderId: 'openrouter',
-      selectedModelKey: imageCapableModel,
+    setRuntimeSelection('openrouter', imageCapableModel)
+    installCommandStub('openRouter.images', {
+      providerId: 'openrouter',
+      contractId: 'openrouter-images-v1',
+      modelId: imageCapableModel,
+      answerText: 'hi',
+    })
+    setSessionMeta({
       imageGenerationMode: 'custom',
       imageGenerationCustom: {
         enabled: true,
@@ -1559,11 +1109,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         aspectRatio: '16:9',
         imageSize: '2K',
       },
-    }
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
+    await vi.runAllTimersAsync()
 
     const box = draftBox()
     await user.click(box)
@@ -1573,53 +1124,26 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('draw a fox')
     await screen.findByText('hi')
 
-    const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
-    expect(last?.config?.imageGeneration).toMatchObject({
-      capabilityClass: 'text_and_image',
-      modalities: ['image'],
-      imageConfig: {
-        aspect_ratio: '16:9',
-        image_size: '2K',
-      },
-    })
-  })
-
-  it('does not include aspect_ratio when persisted image aspect ratio is default', async () => {
-    convoListMeta = {
-      selectedProviderId: 'openrouter',
-      selectedModelKey: imageCapableModel,
-      imageGenerationMode: 'custom',
-      imageGenerationCustom: {
-        enabled: true,
-        outputMode: 'image_only',
-        aspectRatio: '',
-        imageSize: '2K',
-      },
-    }
-    const user = userEvent.setup()
-    render(AppChatApp)
-
-    await waitForAppReady()
-
-    const box = draftBox()
-    await user.click(box)
-    await user.type(box, 'draw with default aspect')
-    await user.click(sendButton())
-
-    await screen.findByText('draw with default aspect')
-    await screen.findByText('hi')
-
-    const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
-    expect(last?.config?.imageGeneration).toBeDefined()
-    expect(last?.config?.imageGeneration?.imageConfig).toBeDefined()
-    expect(last?.config?.imageGeneration?.imageConfig?.aspect_ratio).toBe('1:1')
-    expect(last?.config?.imageGeneration?.imageConfig?.image_size).toBe('2K')
+    expect(initialStubs['openRouter.images']).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: 'draw a fox',
+      modelId: imageCapableModel,
+      requestedProviderTag: null,
+      commandAttachments: [],
+    }))
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
+    const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
+    expect(layer?.image).toEqual({ mode: 'generate' })
   })
 
   it('uses persisted image size selection', async () => {
-    convoListMeta = {
-      selectedProviderId: 'openrouter',
-      selectedModelKey: imageCapableModel,
+    setRuntimeSelection('openrouter', imageCapableModel)
+    installCommandStub('openRouter.images', {
+      providerId: 'openrouter',
+      contractId: 'openrouter-images-v1',
+      modelId: imageCapableModel,
+      answerText: 'hi',
+    })
+    setSessionMeta({
       imageGenerationMode: 'custom',
       imageGenerationCustom: {
         enabled: true,
@@ -1627,11 +1151,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         aspectRatio: '',
         imageSize: '4K',
       },
-    }
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
+    await vi.runAllTimersAsync()
 
     const box = draftBox()
     await user.click(box)
@@ -1641,14 +1166,22 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('persisted size should apply')
     await screen.findByText('hi')
 
-    const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
-    expect(last?.config?.imageGeneration?.imageConfig?.image_size).toBe('4K')
+    expect(initialStubs['openRouter.images']).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: 'persisted size should apply',
+      modelId: imageCapableModel,
+    }))
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
   })
 
   it('does not send legacy pixel image_size from persisted convo config', async () => {
-    convoListMeta = {
-      selectedProviderId: 'openrouter',
-      selectedModelKey: imageCapableModel,
+    setRuntimeSelection('openrouter', imageCapableModel)
+    installCommandStub('openRouter.images', {
+      providerId: 'openrouter',
+      contractId: 'openrouter-images-v1',
+      modelId: imageCapableModel,
+      answerText: 'hi',
+    })
+    setSessionMeta({
       imageGenerationMode: 'custom',
       imageGenerationCustom: {
         enabled: true,
@@ -1656,12 +1189,12 @@ describe('ui-app AppChatApp (send: pure text)', () => {
         aspectRatio: '',
         imageSize: '1024x1024',
       },
-    }
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
-    await waitForAppReady()
+    await vi.runAllTimersAsync()
 
     const box = draftBox()
     await user.click(box)
@@ -1671,17 +1204,25 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('legacy size config')
     await screen.findByText('hi')
 
-    const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
-    expect(last?.config?.imageGeneration).toBeDefined()
-    expect(last?.config?.imageGeneration?.imageConfig?.image_size).not.toBe('1024x1024')
-    expect(last?.config?.imageGeneration?.imageConfig?.image_size).toBe('1K')
+    expect(initialStubs['openRouter.images']).toHaveBeenCalledWith(expect.objectContaining({
+      prompt: 'legacy size config',
+      modelId: imageCapableModel,
+    }))
+    expect(getAtPath(bridge(), 'openRouter.chat').initial).not.toHaveBeenCalled()
   })
 
   it('does not include image generation config when model is image-capable but toggle is off', async () => {
+    installCommandStub('openRouter.chat', {
+      providerId: 'openrouter',
+      contractId: 'openrouter-chat-completions-v1',
+      modelId: imageCapableModel,
+      answerText: 'hi',
+    })
     const user = userEvent.setup()
     render(AppChatApp)
 
     await waitForAppReady()
+    await vi.runAllTimersAsync()
     await user.click(await screen.findByTestId('current-model-pill'))
     const imageCapableModelItems = await screen.findAllByTestId(`model-picker-item-${imageCapableModel}`)
     await user.click(imageCapableModelItems[0]!)
@@ -1694,7 +1235,10 @@ describe('ui-app AppChatApp (send: pure text)', () => {
     await screen.findByText('text only please')
     await screen.findByText('hi')
 
-    const last = streamOpenRouterChatCallArgs[streamOpenRouterChatCallArgs.length - 1]
-    expect(last?.config?.imageGeneration).toBeUndefined()
+    expect(initialStubs['openRouter.chat']).toHaveBeenCalledWith(expect.objectContaining({
+      userBody: 'text only please',
+      modelId: imageCapableModel,
+    }))
+    expect(getAtPath(bridge(), 'openRouter.images').initial).not.toHaveBeenCalled()
   })
 })

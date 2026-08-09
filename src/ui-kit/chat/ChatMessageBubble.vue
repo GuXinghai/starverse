@@ -4,6 +4,7 @@ import type { ErrorPanelViewModel, MessageVM } from './types'
 import ChatErrorPanel from './ChatErrorPanel.vue'
 import RichTextContent from './richtext/RichTextContent.vue'
 import RichTextFinal from './richtext/RichTextFinal.vue'
+import { sanitizeGoogleSearchSuggestions } from './googleSearchSuggestionsSanitizer'
 import './richtext/richtext.css'
 import { t, tf } from '@/shared/i18n'
 
@@ -57,6 +58,11 @@ const imageBlocks = computed<ImageBlockItem[]>(() => {
 const otherBlocks = computed(() =>
   props.message.contentBlocks.filter((block) => block.type !== 'text' && block.type !== 'image')
 )
+
+const searchSuggestions = computed(() => (props.message.googleSearchSuggestions ?? []).map((value) => ({
+  raw: value,
+  ...sanitizeGoogleSearchSuggestions(value),
+})))
 
 const showImagePlaceholder = computed(
   () =>
@@ -474,6 +480,27 @@ function bubbleClass(role: MessageVM['role']) {
           <div v-for="(b, idx) in otherBlocks" :key="`other-${idx}`">
             <div class="rounded-lg border border-black/10 bg-black/5 p-2">
               <pre class="whitespace-pre-wrap text-xs">{{ JSON.stringify(b, null, 2) }}</pre>
+            </div>
+          </div>
+
+          <div
+            v-if="isAssistant && searchSuggestions.length > 0"
+            class="mt-3 rounded-lg border border-blue-200 bg-blue-50/50 p-3"
+            data-testid="google-search-suggestions"
+          >
+            <div class="text-[11px] font-semibold uppercase tracking-wide text-blue-800">
+              {{ t('chat.message.googleSearchSuggestions') }}
+            </div>
+            <div
+              v-for="(suggestion, idx) in searchSuggestions"
+              :key="`google-search-suggestion-${idx}`"
+              class="mt-2 rounded border border-blue-100 bg-white/80 p-2 text-xs text-gray-700"
+            >
+              <div v-if="suggestion.html" v-html="suggestion.html" />
+              <pre v-else class="whitespace-pre-wrap">{{ suggestion.plainText || suggestion.raw }}</pre>
+              <div v-if="suggestion.removed" class="mt-1 text-[10px] text-amber-700">
+                {{ t('chat.message.googleSearchSuggestionsFiltered') }}
+              </div>
             </div>
           </div>
         </div>

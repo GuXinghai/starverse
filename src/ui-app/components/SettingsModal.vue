@@ -7,8 +7,10 @@ const props = withDefaults(defineProps<{
   disabled: boolean
   isRunning: boolean
   title?: string
+  variant?: 'default' | 'categorized'
 }>(), {
   title: '',
+  variant: 'default',
 })
 
 const emit = defineEmits<{
@@ -38,7 +40,14 @@ onUnmounted(() => {
 
 <template>
   <div v-if="props.open" class="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4" @click.self="onClose">
-    <div class="w-full max-w-xl overflow-hidden rounded-xl bg-white shadow-xl">
+    <div
+      role="dialog"
+      aria-modal="true"
+      :aria-label="props.title || t('settings.title')"
+      class="w-full overflow-hidden rounded-xl bg-white shadow-xl"
+      :class="props.variant === 'categorized' ? 'max-w-5xl' : 'max-w-xl'"
+      :data-testid="props.variant === 'categorized' ? 'settings-modal-categorized' : 'settings-modal-default'"
+    >
       <div class="flex items-center justify-between gap-2 border-b border-gray-200 px-4 py-3">
         <div class="text-sm font-semibold text-gray-900">{{ props.title || t('settings.title') }}</div>
         <button
@@ -52,7 +61,7 @@ onUnmounted(() => {
         </button>
       </div>
 
-      <div class="max-h-[80vh] overflow-auto">
+      <div :class="props.variant === 'categorized' ? 'h-[min(80vh,52rem)] overflow-hidden' : 'max-h-[80vh] overflow-auto'">
         <slot />
       </div>
     </div>

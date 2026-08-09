@@ -11,6 +11,31 @@
       "userAborted": "Request was cancelled.",
       "unknown": "An unknown error occurred."
     },
+    "providerFailureDetails": {
+      "title": "Provider failure facts",
+      "provider": "Provider",
+      "origin": "Origin",
+      "phase": "Phase",
+      "diagnosticCode": "Starverse diagnostic",
+      "contract": "Contract",
+      "operation": "Operation",
+      "requestSequence": "Request sequence",
+      "httpStatus": "HTTP status",
+      "providerCode": "Provider code",
+      "providerType": "Provider type",
+      "message": "Provider message",
+      "parameter": "Parameter",
+      "requestId": "Request ID",
+      "retryAfter": "Retry after (ms)",
+      "transport": "Transport error",
+      "redactions": "Redactions",
+      "truncations": "Truncations",
+      "rawFacts": "Raw provider facts",
+      "safeJson": "Renderer-safe projected JSON",
+      "uiTruncated": "Raw facts were truncated in this safe projection to satisfy the 64 KiB UI limit; truncation records include original byte counts and SHA-256.",
+      "copy": "Copy JSON",
+      "copied": "Copied"
+    },
     "network": {
       "reason": {
         "proxyResolutionFailed": "Proxy resolution failed.",
@@ -72,6 +97,11 @@
     },
     "modelCatalog": {
       "unavailable": "Model catalog is unavailable.",
+      "selectedModelUnlisted": "The selected model is not present in the current provider catalog.",
+      "selectedModelFiltered": "The selected model exists but is hidden by the current filters.",
+      "clearFiltersToReveal": "Clear filters to reveal the selected model.",
+      "usingLastKnownGood": "Model catalog refresh failed. Continuing to show the last successful result.",
+      "staleSnapshot": "The current catalog is older than your configured refresh interval. The last successful result remains available.",
       "notSynced": "Model catalog has not synced yet. Will auto-refresh shortly.",
       "empty": "Model catalog is empty. Fell back to reasoning model index.",
       "indexNotSynced": "Reasoning model index has not synced. Showing catalog only.",

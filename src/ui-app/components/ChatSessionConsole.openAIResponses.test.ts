@@ -107,17 +107,27 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
                 source: 'openai_models_api',
                 confidence: 'provider_reported',
                 observedAtMs: Date.UTC(2026, 5, 25),
-                warnings: ['OpenAI /models reports availability/basic ownership only; Responses capability hints are Starverse curated metadata.'],
-                capabilitySeed: {
-                  textChat: true,
-                  responsesApi: true,
-                  reasoning: 'unsupported',
-                  imageInput: 'unknown',
-                  fileInput: 'unknown',
-                  functionCalling: 'unknown',
-                  hostedTools: 'unknown',
-                  structuredOutput: 'unknown',
-                  audioInput: 'unknown',
+                warnings: [],
+                observation: {
+                  schemaVersion: 2,
+                  providerKey: 'openai_responses',
+                  endpointId: 'openai-responses-official',
+                  nativeModelId: 'gpt-4.1-mini',
+                  observedAtMs: Date.UTC(2026, 5, 25),
+                  rawProviderRecord: { id: 'gpt-4.1-mini', owned_by: 'system', created: 1745875200 },
+                  facts: {
+                    textChat: { providerPath: '$.textChat', ownProperty: false, presence: 'missing' },
+                    reasoning: { providerPath: '$.reasoning', ownProperty: false, presence: 'missing' },
+                    tools: { providerPath: '$.tools', ownProperty: false, presence: 'missing' },
+                    structuredOutputs: { providerPath: '$.structuredOutputs', ownProperty: false, presence: 'missing' },
+                    vision: { providerPath: '$.vision', ownProperty: false, presence: 'missing' },
+                  },
+                  provenance: {
+                    sourceKind: 'provider_api',
+                    sourceLabel: 'openai_models_api',
+                    observedAtMs: Date.UTC(2026, 5, 25),
+                    parserVersion: 2,
+                  },
                 },
               },
             ],
@@ -142,10 +152,8 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
     expect(diagnostics.textContent).toContain('openai_models_api')
     expect(diagnostics.textContent).toContain('provider_reported')
     expect(diagnostics.textContent).toContain(tf('chat.console.common.ownedBy', { owner: 'system' }))
-    expect(diagnostics.textContent).toContain('Responses API')
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.structuredOutput', { value: 'unknown' }))
+    expect(diagnostics.textContent).toContain(t('chat.console.capability.unknown'))
     expect(diagnostics.textContent).toContain('openai_list_models_api_docs')
-    expect(diagnostics.textContent).toContain('availability/basic ownership')
     expect((screen.getByTestId('openai-responses-models-list') as HTMLDetailsElement).open).toBe(false)
 
     await user.click(screen.getByTestId('openai-responses-models-refresh'))
