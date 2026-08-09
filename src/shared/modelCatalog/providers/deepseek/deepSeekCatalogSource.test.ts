@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createDeepSeekCatalogSource } from './deepSeekCatalogSource'
 
 describe('deepSeekCatalogSource', () => {
-  it('fetches DeepSeek /models into catalog entries with curated metadata', async () => {
+  it('publishes only models and capability facts returned by DeepSeek /models', async () => {
     const fetchImpl = vi.fn(async () => new Response(JSON.stringify({
       object: 'list',
       data: [
@@ -36,34 +36,23 @@ describe('deepSeekCatalogSource', () => {
         providerKey: 'deepseek',
         modelId: 'deepseek-v4-flash',
         modelKey: 'deepseek::deepseek-v4-flash',
-        displayName: 'DeepSeek V4 Flash',
+        displayName: 'deepseek-v4-flash',
         status: 'active',
         visibility: 'visible',
-        contextLength: 1000000,
-        maxOutputTokens: 384000,
-        pricing: expect.objectContaining({
-          prompt: '0.14',
-          completion: '0.28',
-        }),
+        contextLength: null,
+        maxOutputTokens: null,
+        pricing: null,
         capabilities: expect.objectContaining({
-          reasoning: true,
-          tools: true,
-          structuredOutputs: true,
-          longContext: true,
+          reasoning: false,
+          tools: false,
+          structuredOutputs: false,
+          longContext: false,
         }),
-        supportedParameters: [
-          'temperature', 'top_p', 'max_tokens', 'stop',
-          'thinking', 'reasoning_effort', 'response_format',
-          'tools', 'tool_choice',
-        ],
+        supportedParameters: [],
       }),
     ]))
-    expect(snapshot.models.map((model) => model.modelId)).toEqual(expect.arrayContaining([
-      'deepseek-v4-flash',
-      'deepseek-v4-pro',
-      'deepseek-chat',
-      'deepseek-reasoner',
-    ]))
+    expect(snapshot.models.map((model) => model.modelId)).toEqual(['deepseek-v4-flash'])
+    expect(snapshot.models[0]?.raw?.buckets[0]?.payload ?? {}).not.toHaveProperty('capabilitySeed')
     expect(JSON.stringify(snapshot)).not.toContain('sk-deepseek-test')
   })
 })

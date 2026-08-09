@@ -1,6 +1,16 @@
-export type CatalogAutoSyncPolicy = 'always' | 'stale_only' | 'never'
-export type CatalogListUpdateMode = 'automatic' | 'manual'
-export type CatalogRetentionMs = number | 'never'
+import {
+  decodeCatalogFreshnessMsV2,
+  decodeCatalogListApplyModeV2,
+  decodeCatalogRetentionV2,
+  decodeCatalogSyncTriggerPolicyV2,
+  type CatalogListApplyMode,
+  type CatalogRetention,
+  type CatalogSyncTriggerPolicy,
+} from './catalogPolicyV2'
+
+export type CatalogAutoSyncPolicy = CatalogSyncTriggerPolicy
+export type CatalogListUpdateMode = CatalogListApplyMode
+export type CatalogRetentionMs = CatalogRetention
 
 export const OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY = 'openRouterCatalogStartupSyncPolicy'
 export const OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY = 'openRouterCatalogPickerOpenSyncPolicy'
@@ -30,30 +40,19 @@ export const CATALOG_RETENTION_PRESETS_MS = [
 ] as const
 
 export function normalizeCatalogAutoSyncPolicy(value: unknown): CatalogAutoSyncPolicy {
-  return value === 'always' || value === 'stale_only' || value === 'never'
-    ? value
-    : DEFAULT_CATALOG_AUTO_SYNC_POLICY
+  try { return decodeCatalogSyncTriggerPolicyV2(value) } catch { return DEFAULT_CATALOG_AUTO_SYNC_POLICY }
 }
 
 export function normalizeCatalogListUpdateMode(value: unknown): CatalogListUpdateMode {
-  return value === 'automatic' || value === 'manual'
-    ? value
-    : DEFAULT_CATALOG_LIST_UPDATE_MODE
+  try { return decodeCatalogListApplyModeV2(value) } catch { return DEFAULT_CATALOG_LIST_UPDATE_MODE }
 }
 
 export function normalizeCatalogFreshnessMs(value: unknown): number {
-  const numeric = typeof value === 'number' ? value : Number(value)
-  return (CATALOG_FRESHNESS_PRESETS_MS as readonly number[]).includes(numeric)
-    ? numeric
-    : DEFAULT_CATALOG_FRESHNESS_MS
+  try { return decodeCatalogFreshnessMsV2(value) ?? DEFAULT_CATALOG_FRESHNESS_MS } catch { return DEFAULT_CATALOG_FRESHNESS_MS }
 }
 
 export function normalizeCatalogRetentionMs(value: unknown): CatalogRetentionMs {
-  if (value === 'never') return 'never'
-  const numeric = typeof value === 'number' ? value : Number(value)
-  return (CATALOG_RETENTION_PRESETS_MS as readonly number[]).includes(numeric)
-    ? numeric
-    : DEFAULT_CATALOG_RETENTION_MS
+  try { return decodeCatalogRetentionV2(value) } catch { return DEFAULT_CATALOG_RETENTION_MS }
 }
 
 export function isCatalogStatusStale(input: Readonly<{
@@ -65,6 +64,8 @@ export function isCatalogStatusStale(input: Readonly<{
   if (input.status !== 'synced') return true
   const lastSyncAtMs = Number(input.lastSyncAtMs ?? 0)
   if (!Number.isFinite(lastSyncAtMs) || lastSyncAtMs <= 0) return true
-  const freshnessMs = normalizeCatalogFreshnessMs(input.freshnessMs)
+  if (input.freshnessMs === null || input.freshnessMs === undefined) return false
+  const freshnessMs = decodeCatalogFreshnessMsV2(input.freshnessMs)
+  if (freshnessMs === null) return false
   return (input.nowMs ?? Date.now()) - lastSyncAtMs >= freshnessMs
 }

@@ -11,6 +11,7 @@ describe('openAIResponsesCatalogSource', () => {
           id: 'gpt-4.1',
           owned_by: 'openai',
           created: 1710000000,
+          deprecation_date: '2026-10-23',
         },
         {
           object: 'model',
@@ -41,12 +42,13 @@ describe('openAIResponsesCatalogSource', () => {
     expect(snapshot.models[0]).toMatchObject({
       providerKey: 'openai_responses',
       modelKey: 'openai_responses::gpt-4.1',
-      displayName: 'GPT-4.1',
+      displayName: 'gpt-4.1',
       vendor: 'openai',
       family: 'gpt',
       status: 'active',
       visibility: 'visible',
       createdAtSec: 1710000000,
+      expirationDate: '2026-10-23',
       capabilities: expect.objectContaining({
         reasoning: false,
       }),
@@ -59,8 +61,8 @@ describe('openAIResponsesCatalogSource', () => {
       family: 'non',
       status: 'active',
       visibility: 'visible',
-      inputModalities: ['text'],
-      outputModalities: ['text'],
+      inputModalities: [],
+      outputModalities: [],
       capabilities: expect.objectContaining({
         reasoning: false,
         tools: false,
@@ -68,6 +70,7 @@ describe('openAIResponsesCatalogSource', () => {
         vision: false,
       }),
     })
+    expect(snapshot.models[0]?.raw?.buckets[0]?.payload ?? {}).not.toHaveProperty('capabilitySeed')
     expect(JSON.stringify(snapshot)).not.toContain('sk-openai-test')
   })
 })

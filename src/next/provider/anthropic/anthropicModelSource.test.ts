@@ -1,10 +1,8 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
   ANTHROPIC_MODELS_API_VERSION,
-  getAnthropicCuratedModelAvailabilitySeeds,
   listAnthropicProviderModelAvailability,
   parseAnthropicModelsResponse,
-  resolveAnthropicModelAvailabilityFromModelsPayload,
 } from './anthropicModelSource'
 
 const OBSERVED_AT_MS = Date.UTC(2026, 5, 25, 0, 0, 0)
@@ -45,11 +43,8 @@ describe('Anthropic Models API parser', () => {
         source: 'anthropic_models_api',
         confidence: 'provider_reported',
         observedAtMs: OBSERVED_AT_MS,
-        capabilitySeed: expect.objectContaining({
-          textChat: true,
-          imageInput: 'unknown',
-          thinking: 'unknown',
-          toolUse: 'unknown',
+        observation: expect.objectContaining({
+          rawProviderRecord: expect.objectContaining({ id: 'claude-sonnet-4-5' }),
         }),
       }),
     ])
@@ -127,7 +122,7 @@ describe('Anthropic Models API parser', () => {
     })
   })
 
-  it('maps provider-reported capability seed and token limits when present', () => {
+  it('preserves provider-reported capability fields without projecting a seed', () => {
     const result = parseAnthropicModelsResponse({
       data: [
         {
@@ -136,12 +131,12 @@ describe('Anthropic Models API parser', () => {
           max_input_tokens: 200000,
           max_tokens: 64000,
           capabilities: {
-            vision: true,
-            thinking: true,
+            image_input: { supported: true },
+            thinking: { supported: true },
             adaptive_thinking: true,
             tool_use: true,
             files: false,
-            structured_output: false,
+            structured_outputs: { supported: false },
             citations: true,
             future_safe_key: true,
           },
@@ -151,98 +146,25 @@ describe('Anthropic Models API parser', () => {
     }, OBSERVED_AT_MS)
 
     expect(result.ok).toBe(true)
-    expect(result.ok && result.models[0]?.capabilitySeed).toEqual({
-      textChat: true,
-      imageInput: true,
-      maxInputTokens: 200000,
-      maxOutputTokens: 64000,
-      thinking: 'supported',
-      adaptiveThinking: true,
-      toolUse: true,
-      files: false,
-      structuredOutput: false,
-      citations: true,
-      capabilitiesRawKeys: [
+    expect(result.ok && result.models[0]?.observation).toMatchObject({
+      rawProviderRecord: expect.objectContaining({ max_input_tokens: 200000, max_tokens: 64000 }),
+      facts: {
+        reasoning: expect.objectContaining({ presence: 'present', value: true }),
+        tools: expect.objectContaining({ presence: 'present', value: true }),
+        structuredOutputs: expect.objectContaining({ presence: 'present', value: false }),
+        vision: expect.objectContaining({ presence: 'present', value: true }),
+      },
+    })
+    expect(result.ok && result.models[0]?.providerSpecific?.capabilitiesRawKeys).toEqual([
         'adaptive_thinking',
         'citations',
         'files',
         'future_safe_key',
-        'structured_output',
+        'image_input',
+        'structured_outputs',
         'thinking',
         'tool_use',
-        'vision',
-      ],
-    })
-  })
-})
-
-describe('Anthropic curated metadata seed', () => {
-  it('distinguishes curated metadata from provider-reported availability', () => {
-    const seeds = getAnthropicCuratedModelAvailabilitySeeds(OBSERVED_AT_MS)
-
-    expect(seeds).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        nativeModelId: 'claude-sonnet-4-5',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs: OBSERVED_AT_MS,
-        capabilitySeed: expect.objectContaining({
-          textChat: true,
-          imageInput: true,
-          thinking: 'unknown',
-          toolUse: 'unknown',
-          files: 'unknown',
-          structuredOutput: 'unknown',
-        }),
-      }),
-    ]))
-  })
-
-  it('merges curated warnings without overriding provider-reported source confidence', () => {
-    const result = resolveAnthropicModelAvailabilityFromModelsPayload({
-      data: [
-        { id: 'claude-sonnet-4-5', type: 'model', display_name: 'Provider Sonnet' },
-      ],
-      has_more: false,
-    }, OBSERVED_AT_MS)
-
-    expect(result.ok).toBe(true)
-    const sonnet = result.ok ? result.models.find((model) => model.nativeModelId === 'claude-sonnet-4-5') : null
-    expect(sonnet).toMatchObject({
-      source: 'anthropic_models_api',
-      confidence: 'provider_reported',
-      displayName: 'Provider Sonnet',
-      capabilitySeed: expect.objectContaining({
-        textChat: true,
-        imageInput: 'unknown',
-      }),
-    })
-    expect(sonnet?.warnings.join('\n')).toContain('Starverse curated metadata is supplemental')
-  })
-
-  it('does not overclaim capabilities or add curated-only models for unknown provider-reported models', () => {
-    const result = resolveAnthropicModelAvailabilityFromModelsPayload({
-      data: [
-        { id: 'claude-future-model', type: 'model' },
-      ],
-      has_more: false,
-    }, OBSERVED_AT_MS)
-
-    expect(result.ok).toBe(true)
-    const unknown = result.ok ? result.models.find((model) => model.nativeModelId === 'claude-future-model') : null
-    expect(unknown).toMatchObject({
-      source: 'anthropic_models_api',
-      confidence: 'provider_reported',
-      nativeModelId: 'claude-future-model',
-      capabilitySeed: expect.objectContaining({
-        textChat: true,
-        imageInput: 'unknown',
-        thinking: 'unknown',
-        toolUse: 'unknown',
-        structuredOutput: 'unknown',
-      }),
-    })
-    expect(result.ok && result.models.some((model) => model.nativeModelId === 'claude-sonnet-4-5')).toBe(false)
+      ])
   })
 })
 
@@ -283,7 +205,7 @@ describe('Anthropic Models API client pagination', () => {
     expect(JSON.stringify(result)).not.toContain('sk-ant-secret')
   })
 
-  it('warns when pagination is truncated by the bounded R5 page limit', async () => {
+  it('fails explicitly when pagination is truncated by the bounded page limit', async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({
       data: [{ id: 'claude-sonnet-4-5', type: 'model' }],
       last_id: 'claude-sonnet-4-5',
@@ -297,8 +219,12 @@ describe('Anthropic Models API client pagination', () => {
       maxPages: 1,
     })
 
-    expect(result.ok).toBe(true)
-    expect(result.ok && result.warnings).toContain('Anthropic models pagination was truncated after the bounded R5 page limit.')
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'pagination_incomplete',
+      pagesFetched: 1,
+      nextPageCursor: 'claude-sonnet-4-5',
+    })
   })
 
   it('redacts provider HTTP errors', async () => {
@@ -319,8 +245,16 @@ describe('Anthropic Models API client pagination', () => {
       code: 'http_error',
       httpStatus: 401,
       message: 'Anthropic model source credential was rejected.',
+      providerFailure: {
+        origin: 'http_response',
+        phase: 'response_headers',
+        httpStatus: 401,
+        providerError: {
+          message: 'x-api-key [redacted] failed',
+          rawJson: { error: { message: 'x-api-key [redacted] failed' } },
+        },
+      },
     })
     expect(JSON.stringify(result)).not.toContain('sk-ant-secret')
-    expect(JSON.stringify(result)).not.toContain('x-api-key')
   })
 })

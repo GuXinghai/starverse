@@ -4,6 +4,10 @@ import {
 } from './openRouterCategoryCache'
 import { logModelCatalogEvent } from './modelCatalogObservability'
 import type { ProviderFailureV2 } from '../../shared/provider/providerFailureV2'
+import type {
+  CatalogProviderModelObservationV2,
+} from '../../shared/modelCatalog/providerModelObservationV2'
+import { resolveModelCapabilitiesV2, type ResolvedModelCapabilitiesV2 } from './modelCapabilityResolverV2'
 
 type GenerationV2ModelsApi = Readonly<{
   listOpenRouter?: (options?: unknown) => Promise<unknown>
@@ -15,6 +19,8 @@ type GenerationV2ModelsApi = Readonly<{
   status?: (options: unknown) => Promise<unknown>
   clearCurrent?: (options: unknown) => Promise<unknown>
   clearAll?: (options: unknown) => Promise<unknown>
+  applyPending?: (options: unknown) => Promise<unknown>
+  discardPending?: (options: unknown) => Promise<unknown>
 }>
 
 export type CatalogQuerySortBy = 'name' | 'created_at' | 'context_length' | 'max_output_tokens'
@@ -42,14 +48,8 @@ export type CatalogQueryCursor = Readonly<{
   contextLength?: number
   maxOutputTokens?: number
   modelKey: string
-  /**
-   * @deprecated Legacy cursor payload fields.
-   */
-  providerKey?: string
-  /**
-   * @deprecated Legacy cursor payload fields.
-   */
-  modelId?: string
+  /** Immutable catalog snapshot selected by the first page of a query. */
+  snapshotDigest?: string
 }>
 
 export type CatalogQueryInput = Readonly<{
@@ -57,11 +57,9 @@ export type CatalogQueryInput = Readonly<{
    * Source catalog provider dimension.
    * Examples: openrouter, openai-direct, anthropic-direct.
    */
-  sourceProviderKey?: string
-  /**
-   * @deprecated Use sourceProviderKey. Kept for short-term compatibility.
-   */
-  providerKey?: string
+  sourceProviderKey: string
+  /** Immutable snapshot selected by the first page of a multi-page renderer query. */
+  snapshotDigest?: string
   searchText?: string
   includeDescriptionInSearch?: boolean
   filter?: Readonly<{
@@ -69,11 +67,6 @@ export type CatalogQueryInput = Readonly<{
      * Model vendor/author dimension. Mapped to models.vendor.
      */
     vendors?: string[]
-    /**
-     * @deprecated Use vendors. Kept for short-term compatibility.
-     * Note: this is vendor/author filtering, not source provider filtering.
-     */
-    providers?: string[]
     tags?: string[]
     contextBuckets?: CatalogQueryContextBucket[]
     contextLength?: CatalogQueryNumberRange
@@ -84,10 +77,6 @@ export type CatalogQueryInput = Readonly<{
     hasDefaultParameters?: boolean
     topProviderIsModerated?: boolean
     category?: OpenRouterModelCategory
-    /**
-     * @deprecated Use category. Legacy multi-value field is downgraded to first value.
-     */
-    categories?: OpenRouterModelCategory[]
     architectureModalities?: string[]
     tokenizers?: string[]
     instructTypes?: string[]
@@ -135,6 +124,8 @@ export type CatalogQueryItem = Readonly<{
     vision: boolean
     longContext: boolean
   }>
+  observation?: CatalogProviderModelObservationV2 | null
+  capabilityResolution?: ResolvedModelCapabilitiesV2 | null
   family?: string | null
   status?: string | null
   visibility?: string | null
@@ -170,9 +161,13 @@ export type CatalogQueryItem = Readonly<{
 export type CatalogQueryResult = Readonly<{
   items: CatalogQueryItem[]
   nextCursor: CatalogQueryCursor | null
+  authorityReadSucceeded?: boolean
   notice?: string | null
   status?: 'not_synced' | 'syncing' | 'synced' | 'failed'
   catalogRevision?: string | null
+  scopeId?: string | null
+  authorityRevision?: number
+  pendingSnapshotDigest?: string | null
   modelCount?: number
   visibleModelCount?: number
   hiddenModelCount?: number
@@ -216,35 +211,12 @@ function normalizeNumberRange(input: unknown): CatalogQueryNumberRange | undefin
   return { min, max }
 }
 
-function normalizeCategoryArray(input: unknown): OpenRouterModelCategory[] | undefined {
-  if (!Array.isArray(input)) return undefined
-  const allowed = new Set<string>(OPENROUTER_MODEL_CATEGORIES)
-  const out = Array.from(
-    new Set(
-      input
-        .map((value) => String(value ?? '').trim().toLowerCase())
-        .filter((value) => allowed.has(value))
-    )
-  ) as OpenRouterModelCategory[]
-  return out.length > 0 ? out : undefined
-}
-
 function normalizeSingleCategory(input: unknown): OpenRouterModelCategory | undefined {
   const value = String(input ?? '').trim().toLowerCase()
   if (!value) return undefined
   const allowed = new Set<string>(OPENROUTER_MODEL_CATEGORIES)
   if (!allowed.has(value)) return undefined
   return value as OpenRouterModelCategory
-}
-
-function mergeUniqueStrings(...inputs: unknown[]): string[] | undefined {
-  const merged: string[] = []
-  for (const input of inputs) {
-    const normalized = normalizeStringArray(input)
-    if (normalized) merged.push(...normalized)
-  }
-  if (merged.length === 0) return undefined
-  return Array.from(new Set(merged))
 }
 
 function normalizeBooleanCapabilityFilters(input: unknown): CatalogQueryCapabilitiesFilter | undefined {
@@ -263,7 +235,7 @@ function normalizeDirectStringArray(input: unknown): string[] {
 }
 
 function summarizeFilter(input: CatalogQueryInput['filter']): Record<string, unknown> {
-  const vendors = mergeUniqueStrings(input?.vendors, input?.providers)
+  const vendors = normalizeStringArray(input?.vendors)
   const tags = normalizeStringArray(input?.tags)
   const architectureModalities = normalizeStringArray(input?.architectureModalities)
   const tokenizers = normalizeStringArray(input?.tokenizers)
@@ -275,7 +247,6 @@ function summarizeFilter(input: CatalogQueryInput['filter']): Record<string, unk
   const contextBuckets = normalizeStringArray(input?.contextBuckets)
   const priceBuckets = normalizeStringArray(input?.priceBuckets)
   const category = normalizeSingleCategory(input?.category)
-  const legacyCategories = normalizeCategoryArray(input?.categories)
   return {
     vendorsCount: vendors?.length ?? 0,
     tagsCount: tags?.length ?? 0,
@@ -296,7 +267,6 @@ function summarizeFilter(input: CatalogQueryInput['filter']): Record<string, unk
     hasTopProviderIsModerated: typeof input?.topProviderIsModerated === 'boolean',
     hasExpiringWithinDays: typeof input?.expiringWithinDays === 'number',
     category: category ?? null,
-    legacyCategoriesCount: legacyCategories?.length ?? 0,
   }
 }
 
@@ -304,14 +274,7 @@ function normalizeCursor(input: unknown): CatalogQueryCursor | null {
   if (!input || typeof input !== 'object') return null
   const raw = input as Record<string, unknown>
   const modelKeyRaw = String(raw.modelKey ?? '').trim()
-  const providerKeyRaw = String(raw.providerKey ?? '').trim()
-  const modelIdRaw = String(raw.modelId ?? '').trim()
-  const modelKey =
-    modelKeyRaw.length > 0
-      ? modelKeyRaw
-      : providerKeyRaw.length > 0 && modelIdRaw.length > 0
-        ? `${providerKeyRaw}::${modelIdRaw}`
-        : ''
+  const modelKey = modelKeyRaw
   if (!modelKey) return null
 
   const sortBy: CatalogQuerySortBy =
@@ -336,8 +299,9 @@ function normalizeCursor(input: unknown): CatalogQueryCursor | null {
       ? { maxOutputTokens: raw.maxOutputTokens }
       : {}),
     modelKey,
-    ...(providerKeyRaw ? { providerKey: providerKeyRaw } : {}),
-    ...(modelIdRaw ? { modelId: modelIdRaw } : {}),
+    ...(typeof raw.snapshotDigest === 'string' && raw.snapshotDigest.trim()
+      ? { snapshotDigest: raw.snapshotDigest.trim() }
+      : {}),
   }
 }
 
@@ -348,6 +312,39 @@ const V2_MODEL_LIST_METHOD_BY_SOURCE = Object.freeze({
   google_ai_studio: 'listGoogleAIStudio',
   deepseek: 'listDeepSeek',
 } as const)
+
+const MAX_IMMUTABLE_SNAPSHOT_CACHE_ENTRIES = 24
+const immutableSnapshotResponses = new Map<string, Record<string, unknown>>()
+
+function immutableSnapshotCacheKey(sourceProviderKey: string, category: OpenRouterModelCategory | undefined, digest: string): string {
+  return `${sourceProviderKey}\u0000${category ?? ''}\u0000${digest}`
+}
+
+function rememberImmutableSnapshotResponse(
+  sourceProviderKey: string,
+  category: OpenRouterModelCategory | undefined,
+  response: Record<string, unknown>,
+): void {
+  const digest = typeof response.responseDigest === 'string' && /^[0-9a-f]{64}$/u.test(response.responseDigest)
+    ? response.responseDigest
+    : null
+  if (!digest) return
+  const key = immutableSnapshotCacheKey(sourceProviderKey, category, digest)
+  immutableSnapshotResponses.delete(key)
+  immutableSnapshotResponses.set(key, response)
+  while (immutableSnapshotResponses.size > MAX_IMMUTABLE_SNAPSHOT_CACHE_ENTRIES) {
+    const oldest = immutableSnapshotResponses.keys().next().value as string | undefined
+    if (!oldest) break
+    immutableSnapshotResponses.delete(oldest)
+  }
+}
+
+function forgetImmutableSnapshotResponses(sourceProviderKey: string): void {
+  const prefix = `${sourceProviderKey}\u0000`
+  for (const key of immutableSnapshotResponses.keys()) {
+    if (key.startsWith(prefix)) immutableSnapshotResponses.delete(key)
+  }
+}
 
 function readRecord(input: unknown): Record<string, unknown> | null {
   return input && typeof input === 'object' && !Array.isArray(input) ? input as Record<string, unknown> : null
@@ -364,6 +361,8 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
   const numberOrNull = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
   const pricing = readRecord(row.pricing)
   const capabilities = readRecord(row.capabilities)
+  const observation = readCatalogObservation(row.raw)
+  const capabilityResolution = observation ? resolveModelCapabilitiesV2(observation) : null
   const raw = readRecord(row.raw)
   return {
     providerKey, modelId, modelKey,
@@ -402,12 +401,14 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
       inputCacheWrite: typeof pricing?.inputCacheWrite === 'string' ? pricing.inputCacheWrite : null,
     },
     capabilities: {
-      reasoning: capabilities?.reasoning === true || row.capReasoning === 1,
-      tools: capabilities?.tools === true || row.capTools === 1,
-      structuredOutputs: capabilities?.structuredOutputs === true || row.capStructuredOutputs === 1,
-      vision: capabilities?.vision === true || row.capVision === 1,
+      reasoning: capabilityResolution?.reasoning.enabled ?? (capabilities?.reasoning === true || row.capReasoning === 1),
+      tools: capabilityResolution?.tools.enabled ?? (capabilities?.tools === true || row.capTools === 1),
+      structuredOutputs: capabilityResolution?.structuredOutputs.enabled ?? (capabilities?.structuredOutputs === true || row.capStructuredOutputs === 1),
+      vision: capabilityResolution?.vision.enabled ?? (capabilities?.vision === true || row.capVision === 1),
       longContext: capabilities?.longContext === true || row.capLongContext === 1,
     },
+    observation,
+    capabilityResolution,
     firstSeenAtMs: numberOrNull(row.firstSeenAtMs), lastSeenAtMs: numberOrNull(row.lastSeenAtMs), syncedAtMs: numberOrNull(row.syncedAtMs),
     raw: raw ? { rawJson: typeof raw.rawJson === 'string' ? raw.rawJson : null,
       inputModalitiesJson: typeof raw.inputModalitiesJson === 'string' ? raw.inputModalitiesJson : null,
@@ -422,9 +423,19 @@ function readFiniteNumber(input: unknown): number | null {
   return typeof input === 'number' && Number.isFinite(input) ? input : null
 }
 
-function readCapabilitySeed(input: unknown): Record<string, unknown> | null {
-  const record = readRecord(input)
-  return record && readRecord(record.capabilitySeed) ? readRecord(record.capabilitySeed) : null
+function readCatalogObservation(rawValue: unknown): CatalogProviderModelObservationV2 | null {
+  const raw = readRecord(rawValue)
+  const buckets = Array.isArray(raw?.buckets) ? raw.buckets : []
+  for (const bucketValue of buckets) {
+    const bucket = readRecord(bucketValue)
+    const payload = readRecord(bucket?.payload)
+    const candidate = readRecord(bucket?.observation) ?? readRecord(payload?.observation)
+    if (candidate?.schemaVersion !== 2 || typeof candidate.providerKey !== 'string' ||
+        typeof candidate.nativeModelId !== 'string' || typeof candidate.observedAtMs !== 'number' ||
+        !readRecord(candidate.rawProviderRecord) || !readRecord(candidate.facts) || !readRecord(candidate.provenance)) continue
+    return candidate as CatalogProviderModelObservationV2
+  }
+  return null
 }
 
 function v2AvailabilityItemToCatalogItem(sourceProviderKey: string, input: unknown, observedAtMs: number | null): CatalogQueryItem | null {
@@ -432,7 +443,7 @@ function v2AvailabilityItemToCatalogItem(sourceProviderKey: string, input: unkno
   if (!row) return null
   // A provider authority may return the complete reviewed catalog projection;
   // retain it instead of collapsing it to the smaller availability seed. The
-  // availability fallback below remains valid for providers whose official
+  // availability projection below remains valid for providers whose official
   // model-list contract exposes only identity/capability fields.
   const complete = normalizeItem({ ...row, providerKey: sourceProviderKey })
   if (complete) return complete
@@ -442,14 +453,14 @@ function v2AvailabilityItemToCatalogItem(sourceProviderKey: string, input: unkno
   if (sourceProviderKey === 'openrouter') return null
   const modelId = String(row.modelId ?? row.nativeModelId ?? '').trim()
   if (!modelId) return null
-  const capabilitySeed = readCapabilitySeed(row)
   const inputModalities = normalizeDirectStringArray(row.inputModalities)
   const outputModalities = normalizeDirectStringArray(row.outputModalities)
-  const reasoning = capabilitySeed?.reasoning === 'supported' || capabilitySeed?.thinking === 'supported'
-  const tools = capabilitySeed?.functionCalling === true || capabilitySeed?.toolUse === true
-  const structuredOutputs = capabilitySeed?.structuredOutput === true
-  const vision = inputModalities.includes('image') || capabilitySeed?.imageInput === true
-  const imageGeneration = capabilitySeed?.imageGeneration === true
+  const observation = readCatalogObservation(row.raw) ?? readRecord(row.observation) as CatalogProviderModelObservationV2 | null
+  const capabilityResolution = observation ? resolveModelCapabilitiesV2(observation) : null
+  const reasoning = capabilityResolution?.reasoning.enabled === true
+  const tools = capabilityResolution?.tools.enabled === true
+  const structuredOutputs = capabilityResolution?.structuredOutputs.enabled === true
+  const vision = capabilityResolution?.vision.enabled === true
   return {
     providerKey: sourceProviderKey,
     modelId,
@@ -459,14 +470,16 @@ function v2AvailabilityItemToCatalogItem(sourceProviderKey: string, input: unkno
     description: typeof row.description === 'string' ? row.description : null,
     vendor: typeof row.vendor === 'string' ? row.vendor : null,
     status: typeof row.status === 'string' ? row.status : 'visible',
-    contextLength: readFiniteNumber(capabilitySeed?.contextLength),
-    maxOutputTokens: readFiniteNumber(capabilitySeed?.maxOutputTokens),
+    contextLength: readFiniteNumber(row.contextLength),
+    maxOutputTokens: readFiniteNumber(row.maxOutputTokens),
     createdAtSec: null,
     inputModalities,
-    outputModalities: imageGeneration ? Array.from(new Set([...outputModalities, 'image'])) : outputModalities,
+    outputModalities,
     supportedParameters: normalizeDirectStringArray(row.supportedParameters),
     pricing: { prompt: null, completion: null, request: null, image: null },
     capabilities: { reasoning, tools, structuredOutputs, vision, longContext: false },
+    observation,
+    capabilityResolution,
     firstSeenAtMs: null,
     lastSeenAtMs: observedAtMs,
     syncedAtMs: observedAtMs,
@@ -517,9 +530,15 @@ function compareCatalogItems(a: CatalogQueryItem, b: CatalogQueryItem, sortBy: C
   return a.modelKey.localeCompare(b.modelKey) * direction
 }
 
-function cursorFor(item: CatalogQueryItem, sortBy: CatalogQuerySortBy, sortOrder: CatalogQuerySortOrder): CatalogQueryCursor {
+function cursorFor(
+  item: CatalogQueryItem,
+  sortBy: CatalogQuerySortBy,
+  sortOrder: CatalogQuerySortOrder,
+  snapshotDigest: string | null,
+): CatalogQueryCursor {
   return { sortBy, sortOrder, name: item.displayName, createdAtSec: item.createdAtSec ?? undefined,
-    contextLength: item.contextLength ?? undefined, maxOutputTokens: item.maxOutputTokens ?? undefined, modelKey: item.modelKey }
+    contextLength: item.contextLength ?? undefined, maxOutputTokens: item.maxOutputTokens ?? undefined, modelKey: item.modelKey,
+    ...(snapshotDigest ? { snapshotDigest } : {}) }
 }
 
 async function queryGenerationV2Catalog(input: Readonly<{
@@ -546,6 +565,7 @@ async function queryGenerationV2Catalog(input: Readonly<{
   tokenizers: string[] | undefined
   instructTypes: string[] | undefined
   category: OpenRouterModelCategory | undefined
+  snapshotDigest: string | undefined
   sortBy: CatalogQuerySortBy
   sortOrder: CatalogQuerySortOrder
   limit: number
@@ -553,15 +573,27 @@ async function queryGenerationV2Catalog(input: Readonly<{
 }>): Promise<CatalogQueryResult> {
   const methodName = V2_MODEL_LIST_METHOD_BY_SOURCE[input.sourceProviderKey as keyof typeof V2_MODEL_LIST_METHOD_BY_SOURCE]
   const list = methodName ? input.api[methodName] : undefined
-  if (!list) return { items: [], nextCursor: null, notice: 'This provider catalog is not available in Generation V2.', status: 'failed',
+  if (!list) return { items: [], nextCursor: null, authorityReadSucceeded: false, notice: 'This provider catalog is not available in Generation V2.', status: 'failed',
     errorCode: 'provider_catalog_unavailable', errorMessage: null }
-  const response = readRecord(await list({ timeoutMs: 30_000,
+  const cached = input.snapshotDigest
+    ? immutableSnapshotResponses.get(immutableSnapshotCacheKey(input.sourceProviderKey, input.category, input.snapshotDigest)) ?? null
+    : null
+  const response = cached ?? readRecord(await list({ timeoutMs: 30_000,
+    ...(input.snapshotDigest ? { snapshotDigest: input.snapshotDigest } : {}),
     ...(input.sourceProviderKey === 'openrouter' && input.category ? { category: input.category } : {}) }))
-  if (!response || response.ok !== true) return { items: [], nextCursor: null, notice: 'Model list is unavailable.', status: 'failed',
+  if (!response || response.ok !== true) return { items: [], nextCursor: null, authorityReadSucceeded: false, notice: 'Model list is unavailable.', status: 'failed',
     errorCode: typeof response?.code === 'string' ? response.code : 'PROVIDER_CATALOG_SYNC_FAILED',
     errorMessage: typeof response?.message === 'string' ? response.message : null,
     providerFailure: response?.providerFailure && typeof response.providerFailure === 'object'
       ? response.providerFailure as ProviderFailureV2 : null }
+  const responseDigest = typeof response.responseDigest === 'string' ? response.responseDigest.trim() : ''
+  if (input.snapshotDigest && responseDigest !== input.snapshotDigest) {
+    return { items: [], nextCursor: null, authorityReadSucceeded: false,
+      notice: 'The requested immutable model catalog snapshot is unavailable.', status: 'failed',
+      errorCode: 'catalog_snapshot_digest_mismatch',
+      errorMessage: `Requested ${input.snapshotDigest}; authority returned ${responseDigest || '(missing)'}.` }
+  }
+  rememberImmutableSnapshotResponse(input.sourceProviderKey, input.category, response)
   const observedAtMs = readFiniteNumber(response.observedAtMs)
   const candidates = Array.isArray(response.items) ? response.items : Array.isArray(response.models) ? response.models : []
   const searchTokens = input.searchText?.trim().toLocaleLowerCase().split(/\s+/u)
@@ -599,28 +631,69 @@ async function queryGenerationV2Catalog(input: Readonly<{
   const revision = typeof response.responseDigest === 'string' ? response.responseDigest : observedAtMs === null ? null : `${input.sourceProviderKey}:${observedAtMs}`
   const status = response.status === 'not_synced' || response.status === 'syncing' || response.status === 'failed'
     ? response.status : 'synced'
-  return { items, nextCursor: hasNextPage && lastItem ? cursorFor(lastItem, input.sortBy, input.sortOrder) : null,
+  return { items, nextCursor: hasNextPage && lastItem ? cursorFor(lastItem, input.sortBy, input.sortOrder, revision) : null,
+    authorityReadSucceeded: true,
     notice: status === 'not_synced' ? 'Model catalog has not been synchronized.' : null, status, catalogRevision: revision,
+    scopeId: typeof response.scopeId === 'string' ? response.scopeId : null,
+    authorityRevision: readFiniteNumber(response.authorityRevision) ?? 0,
+    pendingSnapshotDigest: typeof response.pendingSnapshotDigest === 'string' ? response.pendingSnapshotDigest : null,
     modelCount: readFiniteNumber(response.modelCount) ?? all.length,
     visibleModelCount: readFiniteNumber(response.visibleModelCount) ?? all.length,
     hiddenModelCount: readFiniteNumber(response.hiddenModelCount) ?? 0,
     errorCode: typeof response.errorCode === 'string' ? response.errorCode : null,
+    errorMessage: typeof response.errorMessage === 'string' ? response.errorMessage : null,
+    providerFailure: response.providerFailure && typeof response.providerFailure === 'object'
+      ? response.providerFailure as ProviderFailureV2 : null,
     ...(observedAtMs === null ? {} : { lastSyncAtMs: observedAtMs }) }
 }
 
 export class CatalogQueryService {
+  static invalidateProviderRuntimeCache(sourceProviderKey: string): void {
+    forgetImmutableSnapshotResponses(String(sourceProviderKey ?? '').trim())
+  }
+
   static async sync(input: Readonly<{
     sourceProviderKey: string
     category?: OpenRouterModelCategory
     timeoutMs?: number
     retentionMs?: number | 'never'
+    applyMode?: 'automatic' | 'manual'
   }>): Promise<unknown> {
     const api = getGenerationV2ModelsApi()
     if (!api?.sync) return Object.freeze({ ok: false, code: 'model_catalog_authority_unavailable' })
     return api.sync({ providerKey: String(input.sourceProviderKey ?? '').trim(),
       ...(input.category ? { category: input.category } : {}),
       ...(input.timeoutMs === undefined ? {} : { timeoutMs: input.timeoutMs }),
-      ...(input.retentionMs === undefined ? {} : { retentionMs: input.retentionMs }) })
+      ...(input.retentionMs === undefined ? {} : { retentionMs: input.retentionMs }),
+      ...(input.applyMode === undefined ? {} : { applyMode: input.applyMode }) })
+  }
+
+  static async applyPending(input: Readonly<{
+    sourceProviderKey: string
+    snapshotDigest: string
+    category?: OpenRouterModelCategory
+  }>): Promise<unknown> {
+    const api = getGenerationV2ModelsApi()
+    if (!api?.applyPending) return Object.freeze({ ok: false, code: 'model_catalog_authority_unavailable' })
+    return api.applyPending({
+      providerKey: String(input.sourceProviderKey ?? '').trim(),
+      snapshotDigest: String(input.snapshotDigest ?? '').trim(),
+      ...(input.category ? { category: input.category } : {}),
+    })
+  }
+
+  static async discardPending(input: Readonly<{
+    sourceProviderKey: string
+    snapshotDigest: string
+    category?: OpenRouterModelCategory
+  }>): Promise<unknown> {
+    const api = getGenerationV2ModelsApi()
+    if (!api?.discardPending) return Object.freeze({ ok: false, code: 'model_catalog_authority_unavailable' })
+    return api.discardPending({
+      providerKey: String(input.sourceProviderKey ?? '').trim(),
+      snapshotDigest: String(input.snapshotDigest ?? '').trim(),
+      ...(input.category ? { category: input.category } : {}),
+    })
   }
 
   static async status(input: Readonly<{ sourceProviderKey: string; category?: OpenRouterModelCategory }>): Promise<unknown> {
@@ -633,20 +706,25 @@ export class CatalogQueryService {
   static async clearCurrent(input: Readonly<{ sourceProviderKey: string; category?: OpenRouterModelCategory }>): Promise<unknown> {
     const api = getGenerationV2ModelsApi()
     if (!api?.clearCurrent) return Object.freeze({ ok: false, code: 'model_catalog_authority_unavailable' })
-    return api.clearCurrent({ providerKey: String(input.sourceProviderKey ?? '').trim(),
+    const sourceProviderKey = String(input.sourceProviderKey ?? '').trim()
+    const result = await api.clearCurrent({ providerKey: sourceProviderKey,
       ...(input.category ? { category: input.category } : {}) })
+    if (readRecord(result)?.ok === true) forgetImmutableSnapshotResponses(sourceProviderKey)
+    return result
   }
 
   static async clearAll(input: Readonly<{ sourceProviderKey: string }>): Promise<unknown> {
     const api = getGenerationV2ModelsApi()
     if (!api?.clearAll) return Object.freeze({ ok: false, code: 'model_catalog_authority_unavailable' })
-    return api.clearAll({ providerKey: String(input.sourceProviderKey ?? '').trim() })
+    const sourceProviderKey = String(input.sourceProviderKey ?? '').trim()
+    const result = await api.clearAll({ providerKey: sourceProviderKey })
+    if (readRecord(result)?.ok === true) forgetImmutableSnapshotResponses(sourceProviderKey)
+    return result
   }
 
   static async query(input: CatalogQueryInput): Promise<CatalogQueryResult> {
     const startedAtMs = Date.now()
-    const sourceProviderKey =
-      String(input.sourceProviderKey ?? input.providerKey ?? '').trim()
+    const sourceProviderKey = String(input.sourceProviderKey ?? '').trim()
     const sortBy: CatalogQuerySortBy =
       input.sort?.by === 'created_at' ||
       input.sort?.by === 'context_length' ||
@@ -690,9 +768,8 @@ export class CatalogQueryService {
     }
 
     try {
-      const legacyCategories = normalizeCategoryArray(input.filter?.categories)
       const singleCategory = normalizeSingleCategory(input.filter?.category)
-      const effectiveCategory = singleCategory ?? legacyCategories?.[0]
+      const effectiveCategory = singleCategory
 
       const unsupportedFilters = effectiveCategory && sourceProviderKey !== 'openrouter' ? ['category'] : []
       if (unsupportedFilters.length > 0) {
@@ -711,12 +788,19 @@ export class CatalogQueryService {
         }
       }
 
+      const cursor = normalizeCursor(input.page?.cursor)
+      const explicitSnapshotDigest = typeof input.snapshotDigest === 'string' ? input.snapshotDigest.trim() : ''
+      if (explicitSnapshotDigest && cursor?.snapshotDigest && explicitSnapshotDigest !== cursor.snapshotDigest) {
+        return { items: [], nextCursor: null, authorityReadSucceeded: false, status: 'failed',
+          notice: 'The catalog page cursor belongs to a different immutable snapshot.',
+          errorCode: 'catalog_snapshot_digest_mismatch', errorMessage: null }
+      }
       const result = await queryGenerationV2Catalog({
         sourceProviderKey,
         api: catalogApi,
         searchText: typeof input.searchText === 'string' ? input.searchText : undefined,
         includeDescriptionInSearch: input.includeDescriptionInSearch === true,
-        vendors: mergeUniqueStrings(input.filter?.vendors, input.filter?.providers),
+        vendors: normalizeStringArray(input.filter?.vendors),
         capabilities: normalizeBooleanCapabilityFilters(input.filter?.capabilities),
         contextLength: normalizeNumberRange(input.filter?.contextLength),
         maxOutputTokens: normalizeNumberRange(input.filter?.maxOutputTokens),
@@ -736,10 +820,11 @@ export class CatalogQueryService {
         tokenizers: normalizeStringArray(input.filter?.tokenizers),
         instructTypes: normalizeStringArray(input.filter?.instructTypes),
         category: sourceProviderKey === 'openrouter' ? effectiveCategory : undefined,
+        snapshotDigest: explicitSnapshotDigest || cursor?.snapshotDigest || undefined,
         sortBy,
         sortOrder,
         limit,
-        cursor: normalizeCursor(input.page?.cursor),
+        cursor,
       })
       logModelCatalogEvent('query', 'query_success', {
         ...querySummary,

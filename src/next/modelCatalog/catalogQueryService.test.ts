@@ -24,6 +24,9 @@ describe('CatalogQueryService.query', () => {
     ;(globalThis as any).electronAPI = originalElectronAPI
     ;(globalThis as any).electronStore = originalElectronStore
     ;(globalThis as any).fetch = originalFetch
+    for (const provider of ['openrouter', 'openai_responses', 'anthropic_messages', 'google_ai_studio', 'deepseek']) {
+      CatalogQueryService.invalidateProviderRuntimeCache(provider)
+    }
     vi.restoreAllMocks()
   })
 
@@ -38,7 +41,7 @@ describe('CatalogQueryService.query', () => {
 
   it('invokes scoped current query IPC with normalized payload and decodes items', async () => {
     const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
-      providerKey: 'openrouter',
+      sourceProviderKey: 'openrouter',
       status: 'synced',
       syncState: 'ok',
       failureReasonCode: null,
@@ -90,7 +93,7 @@ describe('CatalogQueryService.query', () => {
     }
 
     const result = await CatalogQueryService.query({
-      providerKey: 'openrouter',
+      sourceProviderKey: 'openrouter',
       searchText: 'gpt omni',
       includeDescriptionInSearch: true,
       filter: {
@@ -145,24 +148,6 @@ describe('CatalogQueryService.query', () => {
     })
   })
 
-  it('maps deprecated providers filter to scoped vendors payload', async () => {
-    const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
-      items: [],
-      nextCursor: null,
-      status: 'synced',
-    }))
-    installScopedFixture(modelCatalogQueryScopedCurrent)
-
-    await CatalogQueryService.query({
-      sourceProviderKey: 'openrouter',
-      filter: {
-        providers: ['openai', 'anthropic'],
-      },
-    })
-
-    expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({ timeoutMs: 30_000 })
-  })
-
   it('supports context_length and max_output_tokens sort fields with cursor normalization', async () => {
     const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
       items: [],
@@ -183,9 +168,8 @@ describe('CatalogQueryService.query', () => {
           sortBy: 'context_length',
           sortOrder: 'desc',
           contextLength: 8192,
-          providerKey: 'openrouter',
-          modelId: 'openai/gpt-4o',
-        } as any,
+          modelKey: 'openrouter::openai/gpt-4o',
+        },
       },
     })
 
@@ -202,20 +186,65 @@ describe('CatalogQueryService.query', () => {
     expect(modelCatalogQueryScopedCurrent).toHaveBeenLastCalledWith({ timeoutMs: 30_000 })
   })
 
-  it('prefers sourceProviderKey and passes it to scoped current query', async () => {
-    const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
-      items: [],
-      nextCursor: null,
-      status: 'synced',
-    }))
-    ;(globalThis as any).generationV2 = { ...(globalThis as any).generationV2, models: {} }
-
-    await CatalogQueryService.query({
-      sourceProviderKey: 'openai_responses',
+  it('pins subsequent pages to the immutable first-page snapshot without a second authority read', async () => {
+    const digest = 'a'.repeat(64)
+    const rows = Array.from({ length: 120 }, (_, index) => ({
       providerKey: 'openrouter',
-    })
+      modelId: `model-${String(index).padStart(3, '0')}`,
+      modelKey: `openrouter::model-${String(index).padStart(3, '0')}`,
+      displayName: `Model ${String(index).padStart(3, '0')}`,
+      capabilities: { reasoning: false, tools: false, structuredOutputs: false, vision: false, longContext: false },
+    }))
+    const list = vi.fn(async () => successfulGenerationV2Models(rows, { responseDigest: digest, observedAtMs: 123 }))
+    installGenerationV2ModelsList('openrouter', list)
 
-    expect(modelCatalogQueryScopedCurrent).not.toHaveBeenCalled()
+    const first = await CatalogQueryService.query({ sourceProviderKey: 'openrouter', page: { limit: 100 } })
+    const second = await CatalogQueryService.query({ sourceProviderKey: 'openrouter', snapshotDigest: digest,
+      page: { limit: 100, cursor: first.nextCursor } })
+
+    expect(list).toHaveBeenCalledTimes(1)
+    expect(first.items).toHaveLength(100)
+    expect(second.items).toHaveLength(20)
+    expect(second.catalogRevision).toBe(digest)
+    expect(first.nextCursor?.snapshotDigest).toBe(digest)
+  })
+
+  it('rejects an authority response that does not match the requested immutable snapshot digest', async () => {
+    const requested = 'b'.repeat(64)
+    const returned = 'c'.repeat(64)
+    installGenerationV2ModelsList('openrouter', async () => successfulGenerationV2Models([], { responseDigest: returned }))
+
+    const result = await CatalogQueryService.query({ sourceProviderKey: 'openrouter', snapshotDigest: requested })
+
+    expect(result).toMatchObject({ authorityReadSucceeded: false, status: 'failed',
+      errorCode: 'catalog_snapshot_digest_mismatch', items: [] })
+  })
+
+  it('degrades identity-only provider rows to capability-unknown catalog items without capability claims', async () => {
+    installGenerationV2ModelsList('deepseek', async () => successfulGenerationV2Models([
+      { nativeModelId: 'deepseek-chat', name: 'DeepSeek Chat', inputModalities: ['text'], outputModalities: ['text'] },
+    ], { responseDigest: 'd'.repeat(64), observedAtMs: 456 }))
+
+    const result = await CatalogQueryService.query({ sourceProviderKey: 'deepseek' })
+
+    expect(result).toMatchObject({ authorityReadSucceeded: true, status: 'synced' })
+    expect(result.items).toHaveLength(1)
+    const item = result.items[0]
+    expect(item).toMatchObject({
+      providerKey: 'deepseek',
+      modelId: 'deepseek-chat',
+      modelKey: 'deepseek::deepseek-chat',
+      displayName: 'DeepSeek Chat',
+    })
+    expect(item?.capabilityResolution).toBeNull()
+    expect(item?.observation).toBeNull()
+    expect(item?.capabilities).toEqual({
+      reasoning: false,
+      tools: false,
+      structuredOutputs: false,
+      vision: false,
+      longContext: false,
+    })
   })
 
   it('drops malformed rows and malformed cursor safely', async () => {
@@ -360,6 +389,70 @@ describe('CatalogQueryService.query', () => {
       status: 'failed',
       errorCode: 'cache_corrupted',
     })
+  })
+
+  it('preserves Last-Known-Good items and raw provider failure when the active scope status is failed', async () => {
+    const providerFailure = {
+      origin: 'http_response',
+      phase: 'response_body',
+      providerId: 'openrouter',
+      contractId: 'openrouter-chat-models-v1',
+      operationId: 'catalog:openrouter',
+      requestSequence: 1,
+      httpStatus: 429,
+      httpStatusText: 'Too Many Requests',
+      providerError: {
+        code: 'rate_limit_exceeded',
+        type: 'provider_error',
+        status: null,
+        message: 'Please retry later.',
+        param: null,
+        requestId: 'req_catalog_1',
+        retryAfterMs: 30_000,
+        rawJson: { error: { code: 'rate_limit_exceeded', message: 'Please retry later.' } },
+        rawText: null,
+      },
+      rawFrameExcerpt: null,
+      transportError: null,
+      starverseDiagnosticCode: 'PROVIDER_RESPONSE_HTTP_ERROR',
+      redactions: [],
+      truncations: [],
+    } as const
+    installGenerationV2ModelsList('openrouter', async () => ({
+      ok: true,
+      status: 'failed',
+      responseDigest: 'failed-lkg-digest',
+      observedAtMs: 456,
+      modelCount: 1,
+      visibleModelCount: 1,
+      hiddenModelCount: 0,
+      errorCode: 'PROVIDER_RESPONSE_HTTP_ERROR',
+      errorMessage: 'Please retry later.',
+      providerFailure,
+      items: [{
+        providerKey: 'openrouter',
+        modelId: 'openai/lkg',
+        modelKey: 'openrouter::openai/lkg',
+        displayName: 'LKG Model',
+        capabilities: {
+          reasoning: false,
+          tools: false,
+          structuredOutputs: false,
+          vision: false,
+          longContext: false,
+        },
+      }],
+    }))
+
+    const result = await CatalogQueryService.query({ sourceProviderKey: 'openrouter' })
+
+    expect(result).toMatchObject({
+      status: 'failed',
+      errorCode: 'PROVIDER_RESPONSE_HTTP_ERROR',
+      errorMessage: 'Please retry later.',
+      providerFailure,
+    })
+    expect(result.items.map((item) => item.modelId)).toEqual(['openai/lkg'])
   })
 
   it('does not default missing source provider to OpenRouter', async () => {
