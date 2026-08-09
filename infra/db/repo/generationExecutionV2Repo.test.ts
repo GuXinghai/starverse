@@ -90,17 +90,18 @@ function seedGraph(db: BetterSqlite3.Database, suffix = '1', ordinal = 10) {
   const targetId = `answer:${suffix}:target`
   const resultId = `answer:${suffix}:result`
   const branchId = `branch:${suffix}`
+  db.prepare('INSERT INTO branch_v2 VALUES (?, ?, NULL, ?, ?, ?, ?, NULL)')
+    .run(branchId, 'conversation:1', null, ordinal + 3, ordinal + 3, null)
   const insert = db.prepare(`INSERT INTO message_v2 (
-    message_id, conversation_id, role, status, parent_message_id, question_id,
+    message_id, conversation_id, introduced_in_branch_id, role, status, parent_message_id, question_id,
     answer_root_id, ordinal, created_at_ms, updated_at_ms
-  ) VALUES (?, 'conversation:1', ?, ?, ?, ?, ?, ?, ?, ?)`)
-  insert.run(questionId, 'user', 'completed', null, null, null, ordinal, ordinal, ordinal)
-  insert.run(targetId, 'assistant', 'completed', questionId, questionId, targetId,
+  ) VALUES (?, 'conversation:1', ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+  insert.run(questionId, branchId, 'user', 'completed', null, null, null, ordinal, ordinal, ordinal)
+  insert.run(targetId, branchId, 'assistant', 'completed', questionId, questionId, targetId,
     ordinal + 1, ordinal + 1, ordinal + 1)
-  insert.run(resultId, 'assistant', 'streaming', questionId, questionId, resultId,
+  insert.run(resultId, branchId, 'assistant', 'streaming', questionId, questionId, resultId,
     ordinal + 2, ordinal + 2, ordinal + 2)
-  db.prepare('INSERT INTO branch_v2 VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run(branchId, 'conversation:1', resultId, null, ordinal + 3, ordinal + 3, null)
+  db.prepare('UPDATE branch_v2 SET head_message_id=? WHERE branch_id=?').run(resultId, branchId)
   db.prepare('INSERT INTO branch_choice_v2 VALUES (?, ?, ?, ?, ?)')
     .run(branchId, 'conversation:1', questionId, resultId, ordinal + 3)
   return { questionId, targetId, resultId, branchId }
@@ -151,8 +152,8 @@ function commandInput(graph: ReturnType<typeof seedGraph>, operationId = 'operat
     branchId: graph.branchId,
     conversationId: 'conversation:1',
     questionId: graph.questionId,
-    targetAnswerRootId: graph.targetId,
-    resultAnswerRootId: graph.resultId,
+    sourceAnswerId: graph.targetId,
+    targetAnswerId: graph.resultId,
     snapshot: snapshotJson(operationId, graph.resultId),
     commandFingerprint: HASH_A,
     createdAtMs: 100,
@@ -190,7 +191,7 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
       const replay = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
         repo.insertOperationAndSnapshot(context, input))
       expect(replay.kind).toBe('idempotent_replay')
-      expect(replay.bundle.operation.resultAnswerRootId.value).toBe(graph.resultId)
+      expect(replay.bundle.operation.targetAnswerId.value).toBe(graph.resultId)
       expect(repo.getSnapshotByAnswerRootId(graph.resultId).canonicalJson).toBe(input.snapshot)
       const persistedProjection = db.prepare(`SELECT branch_id AS branchId,projection_digest AS projectionDigest,canonical_json AS canonicalJson
         FROM generation_context_projection_v2 WHERE operation_id='operation:1'`).get()
@@ -206,10 +207,10 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
         repo.insertOperationAndSnapshot(context, { ...input, actionKind: 'retry_replace' })))
         .toThrow('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       db.prepare(`INSERT INTO message_v2 (
-        message_id, conversation_id, role, status, parent_message_id, question_id,
+        message_id, conversation_id, introduced_in_branch_id, role, status, parent_message_id, question_id,
         answer_root_id, ordinal, created_at_ms, updated_at_ms
-      ) VALUES ('answer:1:other', 'conversation:1', 'assistant', 'streaming', ?, ?,
-        'answer:1:other', 20, 20, 20)`).run(graph.questionId, graph.questionId)
+      ) VALUES ('answer:1:other', 'conversation:1', ?, 'assistant', 'streaming', ?, ?,
+        'answer:1:other', 20, 20, 20)`).run(graph.branchId, graph.questionId, graph.questionId)
       expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
         repo.insertOperationAndSnapshot(context, commandInput({
           ...graph, resultId: 'answer:1:other',
@@ -280,7 +281,7 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
       db.transaction(() => {
         db.prepare(`INSERT INTO generation_operation_v2 (
           operation_id, action_kind, command_fingerprint, branch_id, conversation_id,
-          question_id, target_answer_root_id, result_answer_root_id, state,
+          question_id, source_answer_id, target_answer_id, state,
           created_at_ms, updated_at_ms
         ) VALUES (?, 'retry_as_new', ?, ?, 'conversation:1', ?, ?, ?, 'committed', 100, 100)`)
           .run(operationId, '0'.repeat(64), graph.branchId, graph.questionId, graph.targetId, graph.resultId)
@@ -321,7 +322,7 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
         new GenerationExecutionV2Repo(db).insertOperationAndSnapshot(context, {
           operationId, actionKind: 'initial_send', branchId: graph.branchId,
           conversationId: 'conversation:1', questionId: graph.questionId,
-          targetAnswerRootId: null, resultAnswerRootId: graph.resultId,
+          sourceAnswerId: null, targetAnswerId: graph.resultId,
           snapshot, commandFingerprint: '1'.repeat(64), createdAtMs: 100,
         }))
       expect(result.bundle.operation).toMatchObject({

@@ -160,19 +160,20 @@ function createDb(filename = ':memory:', terminalRequest = true) {
   db.prepare('INSERT INTO project_v2 VALUES (?, ?, ?, ?)').run('project:1', 'Project', 1, 1)
   db.prepare('INSERT INTO conversation_v2 VALUES (?, ?, ?, ?, ?)')
     .run('conversation:1', 'project:1', 'Conversation', 2, 2)
-  db.prepare(`INSERT INTO message_v2 (message_id, conversation_id, role, status,
+  db.prepare(`INSERT INTO branch_v2 VALUES ('branch:1', 'conversation:1', NULL, NULL, 12, 12, NULL, NULL)`).run()
+  db.prepare(`INSERT INTO message_v2 (message_id, conversation_id, introduced_in_branch_id, role, status,
     parent_message_id, question_id, answer_root_id, ordinal, created_at_ms, updated_at_ms)
-    VALUES ('question:1', 'conversation:1', 'user', 'completed', NULL, NULL, NULL, 1, 10, 10),
-      ('answer:1', 'conversation:1', 'assistant', 'streaming', 'question:1', 'question:1', 'answer:1', 2, 11, 11)`).run()
+    VALUES ('question:1', 'conversation:1', 'branch:1', 'user', 'completed', NULL, NULL, NULL, 1, 10, 10),
+      ('answer:1', 'conversation:1', 'branch:1', 'assistant', 'streaming', 'question:1', 'question:1', 'answer:1', 2, 11, 11)`).run()
   db.prepare(`UPDATE message_body_v2 SET body_text='question' WHERE message_id='question:1'`).run()
-  db.prepare(`INSERT INTO branch_v2 VALUES ('branch:1', 'conversation:1', 'answer:1', NULL, 12, 12, NULL)`).run()
+  db.prepare(`UPDATE branch_v2 SET head_message_id='answer:1' WHERE branch_id='branch:1'`).run()
   db.prepare(`INSERT INTO branch_choice_v2 VALUES ('branch:1', 'conversation:1', 'question:1', 'answer:1', 12)`).run()
   const executionRepo = new GenerationExecutionV2Repo(db)
   runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
     executionRepo.insertOperationAndSnapshot(context, {
       operationId: 'operation:1', actionKind: 'initial_send', branchId: 'branch:1',
-      conversationId: 'conversation:1', questionId: 'question:1', targetAnswerRootId: null,
-      resultAnswerRootId: 'answer:1', snapshot: snapshotJson(), commandFingerprint: HASH_A, createdAtMs: 20,
+      conversationId: 'conversation:1', questionId: 'question:1', sourceAnswerId: null,
+      targetAnswerId: 'answer:1', snapshot: snapshotJson(), commandFingerprint: HASH_A, createdAtMs: 20,
     }))
   const storedSnapshot = db.prepare(`SELECT snapshot_hash AS hash FROM assistant_generation_snapshot_v2
     WHERE operation_id='operation:1'`).get() as { hash: string }

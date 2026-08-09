@@ -1,4 +1,5 @@
 import fs, { existsSync, readFileSync } from 'node:fs'
+import { createHash } from 'node:crypto'
 import os from 'node:os'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
@@ -10,6 +11,7 @@ import {
 import {
   inspectGenerationV2SchemaBundle,
   installGenerationV2SchemaInActiveTransaction,
+  resetModelCatalogNamespaceV2InActiveTransaction,
 } from './schemaComposerV2'
 import { applyGenerationV2SchemaForTest as applyGenerationV2Schema } from './testSchemaV2'
 
@@ -21,21 +23,41 @@ function createDb() {
   return db
 }
 
+function installedProjectionDigest(db: BetterSqlite3.Database): string {
+  const ftsShadows = new Set([
+    'generation_v2_search_fts_config', 'generation_v2_search_fts_content',
+    'generation_v2_search_fts_data', 'generation_v2_search_fts_docsize',
+    'generation_v2_search_fts_idx',
+  ])
+  const rows = db.prepare(`SELECT type, name, tbl_name, sql FROM sqlite_master
+    WHERE name NOT LIKE 'sqlite_%' ORDER BY type, name`).all() as Array<{
+      type: string
+      name: string
+      tbl_name: string
+      sql: string | null
+    }>
+  const projection = rows
+    .filter((row) => !ftsShadows.has(row.name) && row.name !== 'generation_v2_schema_manifest')
+    .map((row) => ({ type: row.type, name: row.name, tableName: row.tbl_name, sql: row.sql }))
+  return createHash('sha256').update(JSON.stringify(projection), 'utf8').digest('hex')
+}
+
 function seedGraph(db: BetterSqlite3.Database) {
   db.prepare('INSERT INTO project_v2 VALUES (?, ?, ?, ?)').run('project:1', 'Project', 1, 1)
   db.prepare('INSERT INTO conversation_v2 VALUES (?, ?, ?, ?, ?)')
     .run('conversation:1', 'project:1', 'Conversation', 2, 2)
+  db.prepare('INSERT INTO branch_v2 VALUES (?, ?, ?, ?, ?, ?, ?, NULL)')
+    .run('branch:1', 'conversation:1', null, null, 8, 8, null)
   const insert = db.prepare(`INSERT INTO message_v2 (
-    message_id, conversation_id, role, status, parent_message_id, question_id,
+    message_id, conversation_id, introduced_in_branch_id, role, status, parent_message_id, question_id,
     answer_root_id, ordinal, created_at_ms, updated_at_ms
-  ) VALUES (?, 'conversation:1', ?, ?, ?, ?, ?, ?, ?, ?)`)
+  ) VALUES (?, 'conversation:1', 'branch:1', ?, ?, ?, ?, ?, ?, ?, ?)`)
   insert.run('question:1', 'user', 'completed', null, null, null, 1, 3, 3)
   insert.run('answer:1', 'assistant', 'streaming', 'question:1', 'question:1', 'answer:1', 2, 4, 4)
   insert.run('tool:1', 'tool', 'completed', 'answer:1', 'question:1', 'answer:1', 3, 5, 5)
   insert.run('answer:1:continuation', 'assistant', 'completed', 'tool:1', 'question:1', 'answer:1', 4, 6, 6)
   insert.run('answer:2', 'assistant', 'completed', 'question:1', 'question:1', 'answer:2', 5, 7, 7)
-  db.prepare('INSERT INTO branch_v2 VALUES (?, ?, ?, ?, ?, ?, ?)')
-    .run('branch:1', 'conversation:1', 'answer:1:continuation', null, 8, 8, null)
+  db.prepare("UPDATE branch_v2 SET head_message_id='answer:1:continuation' WHERE branch_id='branch:1'").run()
   db.prepare('INSERT INTO branch_choice_v2 VALUES (?, ?, ?, ?, ?)')
     .run('branch:1', 'conversation:1', 'question:1', 'answer:1', 8)
   db.prepare('INSERT INTO branch_answer_hide_v2 VALUES (?, ?, ?, ?, ?)')
@@ -65,9 +87,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     expect(first).toEqual(second)
     expect(first.fragmentIds).toEqual([
       'core_conversation_v1', 'generation_config_v1', 'tool_registry_v1', 'attachment_asset_v1', 'openrouter_images_v1',
-      'deepseek_stable_model_evidence_v1', 'openai_responses_model_evidence_v1',
-      'anthropic_model_evidence_v1',
-      'gemini_model_evidence_v1', 'local_endpoint_profile_v1', 'reasoning_projection_v1', 'composer_draft_v1',
+      'local_endpoint_profile_v1', 'reasoning_projection_v1', 'composer_draft_v1',
       'generation_execution_v1',
       'generation_v2_search_v1',
       'engine_plugin_registry_v1',
@@ -86,7 +106,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       expect(applyGenerationV2Schema(db, root)).toEqual(applied)
       expect(db.prepare('SELECT * FROM generation_v2_schema_manifest').get()).toEqual({
         manifest_id: 'generation_compiler_v2', schema_version: 1,
-        schema_digest: first.schemaDigest, fragment_count: 20,
+        schema_digest: first.schemaDigest, fragment_count: 16,
         object_projection_digest: applied.objectProjectionDigest,
       })
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='openrouter_image_endpoint_bindings'").get())
@@ -95,8 +115,143 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       expect(db.pragma('integrity_check', { simple: true })).toBe('ok')
       db.prepare("UPDATE generation_v2_schema_manifest SET schema_digest = ? WHERE manifest_id = 'generation_compiler_v2'")
         .run('0'.repeat(64))
-      expect(() => applyGenerationV2Schema(db, root)).toThrow('GENERATION_V2_SCHEMA_STATE_INVALID')
+      expect(() => applyGenerationV2Schema(db, root)).toThrow('GENERATION_V2_SCHEMA_DIGEST_MISMATCH')
     } finally { db.close() }
+  })
+
+  it('destructively rebuilds only the catalog namespace and advances both schema revisions atomically', () => {
+    const db = createDb()
+    const current = inspectGenerationV2SchemaBundle(root)
+    const oldDigest = '9'.repeat(64)
+    try {
+      db.prepare(`INSERT INTO app_meta_v2 (
+        singleton_id, data_epoch, application_id, root_id, schema_digest, created_at_ms
+      ) VALUES (1, 2, 'test.starverse', ?, ?, 1)`).run('8'.repeat(64), current.schemaDigest)
+      db.prepare(`INSERT INTO epoch_scope_key_envelope_v2 (
+        singleton_id, backend, key_version, envelope_revision, ciphertext, created_at_ms, updated_at_ms
+      ) VALUES (1, 'electron_safe_storage', 1, 7, ?, 1, 1)`).run(Buffer.from('encrypted-envelope'))
+      db.prepare('INSERT INTO project_v2 VALUES (?, ?, ?, ?)').run('project:preserved', 'Preserved', 2, 2)
+      db.prepare('INSERT INTO conversation_v2 VALUES (?, ?, ?, ?, ?)')
+        .run('conversation:preserved', 'project:preserved', 'Preserved conversation', 3, 3)
+      const attachmentDigest = '7'.repeat(64)
+      db.prepare('INSERT INTO file_blob_v2 VALUES (?, ?, ?, ?, ?, ?)').run(
+        `blob-v2:${attachmentDigest}`, attachmentDigest, 1, 'text/plain', `sha256/77/${attachmentDigest}`, 4,
+      )
+      for (const fileName of [
+        'deepSeekStableModelEvidenceSchema.sql', 'openAIResponsesModelEvidenceSchema.sql',
+        'anthropicModelEvidenceSchema.sql', 'geminiModelEvidenceSchema.sql',
+      ]) db.exec(readFileSync(path.join(root, 'infra', 'db', 'v2', fileName), 'utf8'))
+      const evidenceDigest = 'a'.repeat(64)
+      db.prepare(`INSERT INTO deepseek_stable_model_evidence_sets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        'credential:deepseek', 'deepseek-stable-api-v1', 1, 'endpoint:1',
+        `deepseek-stable-profile-v1:${evidenceDigest}`, evidenceDigest, 5,
+        `deepseek-stable-models-response-v1:${evidenceDigest}`, evidenceDigest, '{"object":"list","data":[]}',
+      )
+      db.prepare('INSERT INTO deepseek_stable_model_evidence_generation_clock VALUES (?, ?, ?)')
+        .run('credential:deepseek', 'deepseek-stable-api-v1', 1)
+      db.prepare(`INSERT INTO openai_responses_model_evidence_sets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        'credential:openai', 'openai-api-v1', 1, 'endpoint:1',
+        `openai-responses-profile-v1:${evidenceDigest}`, evidenceDigest, 5,
+        `openai-responses-models-v1:${evidenceDigest}`, evidenceDigest, '{"object":"list","data":[]}',
+      )
+      db.prepare('INSERT INTO openai_responses_model_evidence_generation_clock VALUES (?, ?, ?)')
+        .run('credential:openai', 'openai-api-v1', 1)
+      db.prepare(`INSERT INTO anthropic_model_evidence_sets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ).run(
+        'credential:anthropic', 'anthropic-developer-api-2023-06-01', 'claude-test', 1, 'endpoint:1',
+        `anthropic-profile-v1:${evidenceDigest}`, evidenceDigest, 5,
+        `anthropic-model-v1:${evidenceDigest}`, evidenceDigest, '{"type":"model","id":"claude-test"}',
+      )
+      db.prepare('INSERT INTO anthropic_model_evidence_generation_clock VALUES (?, ?, ?, ?)')
+        .run('credential:anthropic', 'anthropic-developer-api-2023-06-01', 'claude-test', 1)
+      db.prepare(`INSERT INTO gemini_model_evidence_sets VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)` ).run(
+        'credential:gemini', 'gemini-developer-api-v1beta', 1, 'endpoint:1',
+        `gemini-models-v1beta:${evidenceDigest}`, evidenceDigest, 5,
+        `gemini-models-v1:${evidenceDigest}`, evidenceDigest, '{"schemaVersion":1,"models":[]}',
+      )
+      db.prepare('INSERT INTO gemini_model_evidence_generation_clock VALUES (?, ?, ?)')
+        .run('credential:gemini', 'gemini-developer-api-v1beta', 1)
+
+      db.exec('BEGIN IMMEDIATE')
+      db.exec(`
+        DROP TRIGGER model_catalog_snapshot_v2_no_update;
+        DROP INDEX idx_model_catalog_snapshot_v2_retention;
+        DROP INDEX idx_model_catalog_scope_v2_provider;
+        DROP TABLE model_catalog_snapshot_v2;
+        DROP TABLE model_catalog_scope_v2;
+        CREATE TABLE model_catalog_scope_v2 (
+          scope_id TEXT PRIMARY KEY,
+          provider_key TEXT NOT NULL,
+          credential_scope_id TEXT NOT NULL,
+          endpoint_profile_id TEXT NOT NULL,
+          operation_contract_id TEXT NOT NULL,
+          active_snapshot_digest TEXT
+        );
+        CREATE TABLE model_catalog_snapshot_v2 (
+          scope_id TEXT NOT NULL REFERENCES model_catalog_scope_v2(scope_id) ON DELETE CASCADE,
+          snapshot_digest TEXT NOT NULL,
+          items_json TEXT NOT NULL,
+          PRIMARY KEY (scope_id, snapshot_digest)
+        );
+      `)
+      db.prepare(`INSERT INTO model_catalog_scope_v2 VALUES (?, ?, ?, ?, ?, ?)`).run(
+        'old-scope', 'openrouter', 'credential:old', 'endpoint:old', 'contract:old', 'a'.repeat(64),
+      )
+      db.prepare('INSERT INTO model_catalog_snapshot_v2 VALUES (?, ?, ?)')
+        .run('old-scope', 'a'.repeat(64), '[{"id":"old"}]')
+      db.exec('DROP TRIGGER trg_app_meta_v2_immutable')
+      db.prepare('UPDATE app_meta_v2 SET schema_digest = ? WHERE singleton_id = 1').run(oldDigest)
+      db.exec(readFileSync(path.resolve('infra/db/v2/generationExecutionSchema.sql'), 'utf8'))
+      db.prepare(`UPDATE generation_v2_schema_manifest
+        SET schema_digest = ?, object_projection_digest = ?
+        WHERE manifest_id = 'generation_compiler_v2'`).run(oldDigest, installedProjectionDigest(db))
+      db.exec('COMMIT')
+
+      db.exec('BEGIN IMMEDIATE')
+      const result = resetModelCatalogNamespaceV2InActiveTransaction(db, root)
+      expect(result).toMatchObject({
+        classification: 'model_catalog_namespace_reset_v2',
+        discardedScopeCount: 1,
+        discardedSnapshotCount: 1,
+        discardedLegacyEvidenceSetCount: 4,
+        discardedLegacyEvidenceClockCount: 4,
+        credentialEnvelopeRevision: 7,
+        schemaDigest: current.schemaDigest,
+      })
+      expect(db.prepare('SELECT count(*) AS count FROM model_catalog_scope_v2').get()).toEqual({ count: 0 })
+      expect(db.prepare('SELECT count(*) AS count FROM model_catalog_snapshot_v2').get()).toEqual({ count: 0 })
+      for (const table of [
+        'deepseek_stable_model_evidence_sets', 'deepseek_stable_model_evidence_generation_clock',
+        'openai_responses_model_evidence_sets', 'openai_responses_model_evidence_generation_clock',
+        'anthropic_model_evidence_sets', 'anthropic_model_evidence_generation_clock',
+        'gemini_model_evidence_sets', 'gemini_model_evidence_generation_clock',
+      ]) expect(db.prepare("SELECT count(*) AS count FROM sqlite_master WHERE type='table' AND name=?").get(table))
+        .toEqual({ count: 0 })
+      expect(db.prepare("SELECT name FROM project_v2 WHERE project_id='project:preserved'").get())
+        .toEqual({ name: 'Preserved' })
+      expect(db.prepare("SELECT title FROM conversation_v2 WHERE conversation_id='conversation:preserved'").get())
+        .toEqual({ title: 'Preserved conversation' })
+      expect(db.prepare('SELECT size_bytes FROM file_blob_v2 WHERE blob_id=?').get(`blob-v2:${attachmentDigest}`))
+        .toEqual({ size_bytes: 1 })
+      expect(db.prepare("SELECT revision_generation FROM generation_config_v2 WHERE owner_kind='project' AND owner_id='project:preserved'").get())
+        .toEqual({ revision_generation: 1 })
+      expect(db.prepare(`SELECT envelope_revision, ciphertext FROM epoch_scope_key_envelope_v2
+        WHERE singleton_id = 1`).get()).toEqual({
+        envelope_revision: 7,
+        ciphertext: Buffer.from('encrypted-envelope'),
+      })
+      expect(db.prepare('SELECT schema_digest FROM app_meta_v2 WHERE singleton_id = 1').get())
+        .toEqual({ schema_digest: current.schemaDigest })
+      expect(db.prepare(`SELECT schema_digest FROM generation_v2_schema_manifest
+        WHERE manifest_id = 'generation_compiler_v2'`).get()).toEqual({ schema_digest: current.schemaDigest })
+      db.exec('COMMIT')
+
+      db.exec('BEGIN IMMEDIATE')
+      expect(installGenerationV2SchemaInActiveTransaction(db, root).schemaDigest).toBe(current.schemaDigest)
+      db.exec('COMMIT')
+    } finally {
+      if (db.inTransaction) db.exec('ROLLBACK')
+      db.close()
+    }
   })
 
   it('rolls back every object and manifest when a later fragment fails', () => {
@@ -195,15 +350,31 @@ describe('Generation V2 schema composer and core conversation graph', () => {
         .run('conversation:1', 'project:1', 'First', 2, 2)
       db.prepare('INSERT INTO conversation_v2 VALUES (?, ?, ?, ?, ?)')
         .run('conversation:2', 'project:1', 'Second', 3, 3)
+      db.prepare('INSERT INTO branch_v2 VALUES (?, ?, NULL, NULL, ?, ?, NULL, NULL)')
+        .run('branch:1', 'conversation:1', 3, 3)
+      db.prepare('INSERT INTO branch_v2 VALUES (?, ?, NULL, NULL, ?, ?, NULL, NULL)')
+        .run('branch:2', 'conversation:2', 3, 3)
       const insert = db.prepare(`INSERT INTO message_v2 (
-        message_id, conversation_id, role, status, parent_message_id, question_id,
+        message_id, conversation_id, introduced_in_branch_id, role, status, parent_message_id, question_id,
         answer_root_id, ordinal, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, 'user', 'completed', ?, null, null, ?, ?, ?)`)
-      insert.run('question:1', 'conversation:1', null, 1, 4, 4)
-      expect(() => insert.run('question:cross', 'conversation:2', 'question:1', 1, 5, 5))
+      ) VALUES (?, ?, ?, 'user', 'completed', ?, null, null, ?, ?, ?)`)
+      insert.run('question:1', 'conversation:1', 'branch:1', null, 1, 4, 4)
+      expect(() => db.prepare(`UPDATE message_v2 SET introduced_in_branch_id='branch:2'
+        WHERE message_id='question:1'`).run())
+        .toThrow('GENERATION_V2_GRAPH_MESSAGE_STRUCTURE_IMMUTABLE')
+      expect(() => insert.run(
+        'question:wrong-introduction',
+        'conversation:2',
+        'branch:1',
+        null,
+        2,
+        5,
+        5,
+      )).toThrow(/FOREIGN KEY constraint failed/u)
+      expect(() => insert.run('question:cross', 'conversation:2', 'branch:2', 'question:1', 1, 5, 5))
         .toThrow(/FOREIGN KEY constraint failed/u)
 
-      insert.run('question:2', 'conversation:2', null, 1, 6, 6)
+      insert.run('question:2', 'conversation:2', 'branch:2', null, 1, 6, 6)
       expect(db.prepare("SELECT 1 AS present FROM message_body_v2 WHERE message_id='question:2'").get())
         .toEqual({ present: 1 })
       db.prepare("DELETE FROM message_v2 WHERE message_id='question:2'").run()
@@ -226,7 +397,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     } finally { db.close() }
   })
 
-  it('rejects direct body deletion while preserving message-owned cascade deletion', () => {
+  it('rejects direct body deletion and answer deletion that would erase an append-only Hide fact', () => {
     const db = createDb()
     try {
       seedGraph(db)
@@ -234,8 +405,10 @@ describe('Generation V2 schema composer and core conversation graph', () => {
         .toThrow('GENERATION_V2_GRAPH_MESSAGE_BODY_REQUIRED')
       expect(() => db.prepare('UPDATE message_body_v2 SET body_text = ? WHERE message_id = ?')
         .run('x'.repeat(20 * 1024 * 1024 + 1), 'answer:1')).toThrow(/CHECK constraint failed/u)
-      db.prepare("DELETE FROM message_v2 WHERE message_id='answer:2'").run()
-      expect(db.prepare("SELECT 1 FROM message_body_v2 WHERE message_id='answer:2'").get()).toBeUndefined()
+      expect(() => db.prepare("DELETE FROM message_v2 WHERE message_id='answer:2'").run())
+        .toThrow('GENERATION_V2_GRAPH_HIDE_DELETE_FORBIDDEN')
+      expect(db.prepare("SELECT 1 AS present FROM message_body_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ present: 1 })
     } finally { db.close() }
   })
 
@@ -245,19 +418,23 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       seedGraph(db)
       db.prepare('INSERT INTO conversation_v2 VALUES (?, ?, ?, ?, ?)')
         .run('conversation:2', 'project:1', 'Other', 9, 9)
-      const insert = db.prepare(`INSERT INTO message_v2 VALUES (
-        ?, 'conversation:2', ?, ?, ?, ?, ?, ?, ?, ?
-      )`)
+      db.prepare('INSERT INTO branch_v2 VALUES (?, ?, NULL, NULL, ?, ?, NULL, NULL)')
+        .run('branch:2', 'conversation:2', 10, 10)
+      const insert = db.prepare(`INSERT INTO message_v2(
+        message_id,conversation_id,introduced_in_branch_id,role,status,parent_message_id,
+        question_id,answer_root_id,ordinal,created_at_ms,updated_at_ms
+      ) VALUES (?, 'conversation:2', 'branch:2', ?, ?, ?, ?, ?, ?, ?, ?)`)
       expect(() => insert.run('bad:parent', 'user', 'completed', 'question:1', null, null, 1, 10, 10))
         .toThrow(/FOREIGN KEY constraint failed/u)
       expect(() => insert.run('bad:question', 'assistant', 'completed', 'question:1', 'question:1', 'bad:question', 2, 10, 10))
         .toThrow('GENERATION_V2_GRAPH_QUESTION_INVALID')
-      expect(() => db.prepare('INSERT INTO branch_v2 VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .run('branch:2', 'conversation:2', 'answer:1', null, 10, 10, null))
+      expect(() => db.prepare("UPDATE branch_v2 SET head_message_id='answer:1' WHERE branch_id='branch:2'").run())
         .toThrow('GENERATION_V2_GRAPH_BRANCH_HEAD_INVALID')
-      expect(() => db.prepare(`INSERT INTO message_v2 VALUES (
-        ?, 'conversation:1', 'assistant', 'completed', ?, ?, ?, ?, ?, ?
-      )`).run('bad:group', 'answer:2', 'question:1', 'answer:1', 6, 11, 11))
+      expect(() => db.prepare(`INSERT INTO message_v2(
+        message_id,conversation_id,introduced_in_branch_id,role,status,parent_message_id,
+        question_id,answer_root_id,ordinal,created_at_ms,updated_at_ms
+      ) VALUES (?, 'conversation:1', 'branch:1', 'assistant', 'completed', ?, ?, ?, ?, ?, ?)
+      `).run('bad:group', 'answer:2', 'question:1', 'answer:1', 6, 11, 11))
         .toThrow('GENERATION_V2_GRAPH_PARENT_GROUP_INVALID')
     } finally { db.close() }
   })
@@ -278,7 +455,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
         .toThrow('GENERATION_V2_GRAPH_CHOICE_INVALID')
       db.prepare('INSERT INTO branch_choice_v2 VALUES (?, ?, ?, ?, ?)')
         .run('branch:1', 'conversation:1', 'question:1', 'answer:1', 14)
-      db.prepare('INSERT INTO branch_v2 VALUES (?, ?, ?, ?, ?, ?, ?)')
+      db.prepare('INSERT INTO branch_v2 VALUES (?, ?, ?, ?, ?, ?, ?, NULL)')
         .run('branch:2', 'conversation:1', 'answer:1:continuation', null, 15, 15, null)
       db.prepare('INSERT INTO branch_choice_v2 VALUES (?, ?, ?, ?, ?)')
         .run('branch:2', 'conversation:1', 'question:1', 'answer:1', 15)
@@ -321,16 +498,15 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     } finally { db.close() }
   })
 
-  it('cascades one owned project graph without leaving foreign-key damage', () => {
+  it('allows owning-project physical cascade while forbidding direct Hide deletion', () => {
     const db = createDb()
     try {
       seedGraph(db)
+      expect(() => db.prepare('DELETE FROM branch_answer_hide_v2').run())
+        .toThrow('GENERATION_V2_GRAPH_HIDE_DELETE_FORBIDDEN')
       db.prepare('DELETE FROM project_v2 WHERE project_id = ?').run('project:1')
-      for (const table of ['conversation_v2', 'message_v2', 'message_body_v2', 'branch_v2', 'branch_choice_v2', 'branch_answer_hide_v2', 'branch_question_hide_v2']) {
-        expect(db.prepare(`SELECT count(*) AS count FROM ${table}`).get()).toEqual({ count: 0 })
-      }
-      expect(db.prepare("SELECT owner_kind, owner_id FROM generation_config_v2 ORDER BY owner_kind").all())
-        .toEqual([{ owner_kind: 'global', owner_id: 'global' }])
+      expect(db.prepare('SELECT count(*) AS count FROM branch_answer_hide_v2').get())
+        .toEqual({ count: 0 })
       expect(db.pragma('foreign_key_check')).toEqual([])
     } finally { db.close() }
   })

@@ -79,7 +79,7 @@ export class OpenAIResponsesArtifactsV2Repo {
           ? execution.operation.state !== 'completed'
           : (execution.operation.state !== 'completed' && execution.operation.state !== 'streaming')) ||
         request.operationId !== execution.operation.operationId.value ||
-        request.answerRootId !== execution.operation.resultAnswerRootId.value ||
+        request.answerRootId !== execution.operation.targetAnswerId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) {
       throw new OpenAIResponsesArtifactsV2RepoError('GENERATION_V2_OPENAI_ARTIFACT_STATE_INVALID')
     }

@@ -1,4 +1,5 @@
 import type BetterSqlite3 from 'better-sqlite3'
+import { createHash } from 'node:crypto'
 import {
   ConversationGraphV2Identity,
   type ConversationGraphV2Identity as GraphIdentity,
@@ -10,6 +11,7 @@ import {
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
 import { SystemChatTemplateV2Repo } from './systemChatTemplateV2Repo'
+import { BranchRouteResolverV2 } from './branchRouteResolverV2'
 
 const MAX_BODY_BYTES = 20 * 1024 * 1024
 
@@ -46,9 +48,10 @@ export type PendingAnswerActionV2 = Readonly<{
   operationId: Identity<'operation_id'>
   actionKind: 'regenerate_question' | 'retry_as_new' | 'retry_replace'
   conversationId: GraphIdentity<'conversation_id'>
+  sourceBranchId: GraphIdentity<'branch_id'>
   branchId: GraphIdentity<'branch_id'>
   questionId: GraphIdentity<'question_id'>
-  targetAnswerRootId: GraphIdentity<'answer_root_id'> | null
+  sourceAnswerId: GraphIdentity<'answer_root_id'>
   expectedHeadMessageId: GraphIdentity<'message_id'>
   answerRootId: GraphIdentity<'answer_root_id'>
   answerOrdinal: number
@@ -58,8 +61,8 @@ export type PendingAnswerActionV2 = Readonly<{
 export type PendingEditedTurnV2 = Readonly<{
   trust: 'pending_edited_turn_v2'
   operationId: Identity<'operation_id'>
-  mode: 'fork' | 'replace'
   conversationId: GraphIdentity<'conversation_id'>
+  sourceBranchId: GraphIdentity<'branch_id'>
   branchId: GraphIdentity<'branch_id'>
   sourceQuestionId: GraphIdentity<'question_id'>
   sourceAnswerRootId: GraphIdentity<'answer_root_id'>
@@ -82,10 +85,8 @@ export type BranchProjectionV2 = Readonly<{
 }>
 
 export type InitialSendReplayProjectionV2 = Readonly<{
-  resultAnswerRootId: GraphIdentity<'answer_root_id'>
+  targetAnswerId: GraphIdentity<'answer_root_id'>
   branchProjection: BranchProjectionV2
-  visibleCandidates: readonly GraphIdentity<'answer_root_id'>[]
-  visibleQuestionCandidates: readonly GraphIdentity<'question_id'>[]
 }>
 export type GenerationReplayProjectionV2 = InitialSendReplayProjectionV2
 
@@ -131,6 +132,11 @@ function safeTime(value: unknown): number {
   return value as number
 }
 
+function deriveChildBranchId(operationId: Identity<'operation_id'>): GraphIdentity<'branch_id'> {
+  const digest = createHash('sha256').update(operationId.value, 'utf8').digest('hex')
+  return ConversationGraphV2Identity.create('branch_id', `branch:operation:${digest}`)
+}
+
 function mapConstraint(error: unknown): never {
   const code = (error as { code?: unknown })?.code
   if (typeof code === 'string' && code.startsWith('SQLITE_CONSTRAINT')) {
@@ -164,6 +170,22 @@ export function isPendingEditedTurnForContextV2(
 ): value is PendingEditedTurnV2 {
   return Boolean(value && typeof value === 'object' && pendingEditedTurns.has(value) &&
     pendingEditedTurnContexts.get(value) === context)
+}
+
+export type PendingGenerationTurnV2 =
+  | PendingInitialTurnV2
+  | PendingAnswerActionV2
+  | PendingEditedTurnV2
+
+export function pendingSourceBranchIdV2(pending: PendingGenerationTurnV2): GraphIdentity<'branch_id'> {
+  return pending.trust === 'pending_initial_turn_v2' ? pending.branchId : pending.sourceBranchId
+}
+
+export function pendingSourceAnswerIdV2(
+  pending: PendingGenerationTurnV2,
+): GraphIdentity<'answer_root_id'> | null {
+  if (pending.trust === 'pending_initial_turn_v2') return null
+  return pending.trust === 'pending_answer_action_v2' ? pending.sourceAnswerId : pending.sourceAnswerRootId
 }
 
 export class ConversationGraphV2Repo {
@@ -209,7 +231,7 @@ export class ConversationGraphV2Repo {
     try {
       this.#db.prepare('INSERT INTO conversation_v2 VALUES (?, ?, ?, ?, ?)')
         .run(conversationId.value, projectId.value, title, createdAtMs, createdAtMs)
-      this.#db.prepare('INSERT INTO branch_v2 VALUES (?, ?, NULL, ?, ?, ?, NULL)')
+      this.#db.prepare('INSERT INTO branch_v2 VALUES (?, ?, NULL, ?, ?, ?, NULL, NULL)')
         .run(branchId.value, conversationId.value, branchName, createdAtMs, createdAtMs)
     } catch (error) { mapConstraint(error) }
     return Object.freeze({ conversationId, branchId })
@@ -267,13 +289,13 @@ export class ConversationGraphV2Repo {
     try {
       const insert = this.#db.prepare(`INSERT INTO message_v2 (
         message_id, conversation_id, role, status, parent_message_id, question_id,
-        answer_root_id, ordinal, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        answer_root_id, introduced_in_branch_id, ordinal, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       insert.run(questionId.value, conversationId.value, 'user', 'completed', expectedHead?.value ?? null,
-        null, null, questionOrdinal, createdAtMs, createdAtMs)
+        null, null, branchId.value, questionOrdinal, createdAtMs, createdAtMs)
       this.#db.prepare('UPDATE message_body_v2 SET body_text=? WHERE message_id=?').run(userBody, questionId.value)
       insert.run(answerRootId.value, conversationId.value, 'assistant', 'streaming', questionId.value,
-        questionId.value, answerRootId.value, answerOrdinal, createdAtMs, createdAtMs)
+        questionId.value, answerRootId.value, branchId.value, answerOrdinal, createdAtMs, createdAtMs)
     } catch (error) { mapConstraint(error) }
 
     const pending = Object.freeze({
@@ -306,9 +328,9 @@ export class ConversationGraphV2Repo {
           LEFT JOIN branch_choice_v2 AS choice
             ON choice.branch_id=branch.branch_id AND choice.question_id=?
           LEFT JOIN generation_operation_v2 AS operation
-            ON operation.operation_id=? AND operation.result_answer_root_id=?
+            ON operation.operation_id=? AND operation.target_answer_id=?
           LEFT JOIN assistant_generation_snapshot_v2 AS snapshot
-            ON snapshot.operation_id=operation.operation_id AND snapshot.answer_root_id=operation.result_answer_root_id
+            ON snapshot.operation_id=operation.operation_id AND snapshot.answer_root_id=operation.target_answer_id
           WHERE branch.branch_id=?`).get(
           questionId.value, operationId.value, answerRootId.value, branchId.value,
         ) as {
@@ -387,15 +409,14 @@ export class ConversationGraphV2Repo {
   ): PendingEditedTurnV2 {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     const input = closedObject(value, [
-      'operationId', 'mode', 'branchId', 'sourceQuestionId', 'sourceAnswerRootId',
+      'operationId', 'sourceBranchId', 'sourceQuestionId', 'sourceAnswerRootId',
       'expectedHeadMessageId', 'questionId', 'answerRootId', 'userBody', 'createdAtMs',
     ])
     const operationId = GenerationV2Identity.create('operation_id', requiredString(input.operationId))
-    if (input.mode !== 'fork' && input.mode !== 'replace') {
-      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID')
-    }
-    const mode = input.mode
-    const branchId = ConversationGraphV2Identity.create('branch_id', requiredString(input.branchId))
+    const sourceBranchId = ConversationGraphV2Identity.create(
+      'branch_id', requiredString(input.sourceBranchId),
+    )
+    const branchId = deriveChildBranchId(operationId)
     const sourceQuestionId = ConversationGraphV2Identity.create(
       'question_id', requiredString(input.sourceQuestionId),
     )
@@ -409,32 +430,34 @@ export class ConversationGraphV2Repo {
     const answerRootId = ConversationGraphV2Identity.create('answer_root_id', requiredString(input.answerRootId))
     const userBody = boundedText(input.userBody, MAX_BODY_BYTES)
     const createdAtMs = safeTime(input.createdAtMs)
+    const route = new BranchRouteResolverV2(this.#db).resolve(sourceBranchId.value)
+    if (route.headMessageId !== expectedHeadMessageId.value) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
+    }
+    const sourceTurn = route.turns.find((turn) => turn.questionId === sourceQuestionId.value)
+    if (!sourceTurn || sourceTurn.selectedAnswerId !== sourceAnswerRootId.value ||
+        route.hiddenAnswerIds.has(sourceAnswerRootId.value)) {
+      throw new ConversationGraphV2RepoError('STALE_CHOSEN_ANSWER')
+    }
     const row = this.#db.prepare(`SELECT branch.conversation_id AS conversationId,
       branch.head_message_id AS headMessageId, branch.deleted_at_ms AS deletedAtMs,
       branch.updated_at_ms AS branchUpdatedAtMs, conversation.updated_at_ms AS conversationUpdatedAtMs,
-      source.parent_message_id AS sourceParentMessageId, choice.chosen_answer_root_id AS chosenAnswerRootId,
-      answer.status AS answerStatus, hidden.question_id AS hiddenQuestionId
+      source.parent_message_id AS sourceParentMessageId, answer.status AS answerStatus
       FROM branch_v2 AS branch
       JOIN conversation_v2 AS conversation ON conversation.conversation_id=branch.conversation_id
       JOIN message_v2 AS source ON source.message_id=? AND source.conversation_id=branch.conversation_id
         AND source.role='user' AND source.status='completed'
-      JOIN branch_choice_v2 AS choice ON choice.branch_id=branch.branch_id
-        AND choice.question_id=source.message_id AND choice.conversation_id=branch.conversation_id
-      JOIN message_v2 AS answer ON answer.message_id=choice.chosen_answer_root_id
+      JOIN message_v2 AS answer ON answer.message_id=?
         AND answer.conversation_id=branch.conversation_id AND answer.question_id=source.message_id
         AND answer.role='assistant' AND answer.answer_root_id=answer.message_id
-      LEFT JOIN branch_question_hide_v2 AS hidden ON hidden.branch_id=branch.branch_id
-        AND hidden.question_id=source.message_id
-      WHERE branch.branch_id=?`).get(sourceQuestionId.value, branchId.value) as
+      WHERE branch.branch_id=?`).get(
+      sourceQuestionId.value, sourceAnswerRootId.value, sourceBranchId.value,
+    ) as
       Readonly<Record<string, unknown>> | undefined
     if (!row || typeof row.conversationId !== 'string') {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')
     }
-    if (row.chosenAnswerRootId !== sourceAnswerRootId.value) {
-      throw new ConversationGraphV2RepoError('STALE_CHOSEN_ANSWER')
-    }
-    if (row.headMessageId !== expectedHeadMessageId.value || row.headMessageId !== sourceAnswerRootId.value ||
-        row.deletedAtMs !== null || row.hiddenQuestionId !== null ||
+    if (row.headMessageId !== expectedHeadMessageId.value || row.deletedAtMs !== null ||
         !['completed', 'failed', 'cancelled'].includes(row.answerStatus as string)) {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
     }
@@ -451,21 +474,26 @@ export class ConversationGraphV2Repo {
     const questionOrdinal = (ordinalRow.maxOrdinal as number) + 1
     const answerOrdinal = questionOrdinal + 1
     try {
+      this.#db.prepare(`INSERT INTO branch_v2 (
+        branch_id,conversation_id,head_message_id,name,created_at_ms,updated_at_ms,deleted_at_ms,parent_branch_id
+      ) VALUES (?, ?, NULL, NULL, ?, ?, NULL, ?)`).run(
+        branchId.value, row.conversationId, createdAtMs, createdAtMs, sourceBranchId.value,
+      )
       const insert = this.#db.prepare(`INSERT INTO message_v2 (
         message_id, conversation_id, role, status, parent_message_id, question_id,
-        answer_root_id, ordinal, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+        answer_root_id, introduced_in_branch_id, ordinal, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
       insert.run(questionId.value, row.conversationId, 'user', 'completed', row.sourceParentMessageId,
-        null, null, questionOrdinal, createdAtMs, createdAtMs)
+        null, null, branchId.value, questionOrdinal, createdAtMs, createdAtMs)
       this.#db.prepare('UPDATE message_body_v2 SET body_text=? WHERE message_id=?').run(userBody, questionId.value)
       insert.run(answerRootId.value, row.conversationId, 'assistant', 'streaming', questionId.value,
-        questionId.value, answerRootId.value, answerOrdinal, createdAtMs, createdAtMs)
+        questionId.value, answerRootId.value, branchId.value, answerOrdinal, createdAtMs, createdAtMs)
     } catch (error) { mapConstraint(error) }
     const pending = Object.freeze({
       trust: 'pending_edited_turn_v2' as const,
       operationId,
-      mode,
       conversationId: ConversationGraphV2Identity.create('conversation_id', row.conversationId),
+      sourceBranchId,
       branchId,
       sourceQuestionId,
       sourceAnswerRootId,
@@ -483,26 +511,23 @@ export class ConversationGraphV2Repo {
       preCommit: () => {
         const exact = this.#db.prepare(`SELECT operation.action_kind AS actionKind,
           operation.question_id AS operationQuestionId,
-          operation.result_answer_root_id AS resultAnswerRootId,
+          operation.target_answer_id AS targetAnswerId,
           snapshot.answer_root_id AS snapshotAnswerRootId,
           choice.chosen_answer_root_id AS chosenAnswerRootId,
           branch.head_message_id AS headMessageId,
-          hidden.question_id AS hiddenQuestionId
+          branch.parent_branch_id AS parentBranchId
           FROM generation_operation_v2 AS operation
           JOIN assistant_generation_snapshot_v2 AS snapshot ON snapshot.operation_id=operation.operation_id
-            AND snapshot.answer_root_id=operation.result_answer_root_id
+            AND snapshot.answer_root_id=operation.target_answer_id
           JOIN branch_v2 AS branch ON branch.branch_id=operation.branch_id
           JOIN branch_choice_v2 AS choice ON choice.branch_id=operation.branch_id
             AND choice.question_id=operation.question_id
-          LEFT JOIN branch_question_hide_v2 AS hidden ON hidden.branch_id=operation.branch_id
-            AND hidden.question_id=?
-          WHERE operation.operation_id=?`).get(sourceQuestionId.value, operationId.value) as
+          WHERE operation.operation_id=?`).get(operationId.value) as
           Readonly<Record<string, unknown>> | undefined
-        const hiddenExpected = mode === 'replace' ? sourceQuestionId.value : null
         if (!exact || exact.actionKind !== 'edit_resend' || exact.operationQuestionId !== questionId.value ||
-            exact.resultAnswerRootId !== answerRootId.value || exact.snapshotAnswerRootId !== answerRootId.value ||
+            exact.targetAnswerId !== answerRootId.value || exact.snapshotAnswerRootId !== answerRootId.value ||
             exact.chosenAnswerRootId !== answerRootId.value || exact.headMessageId !== answerRootId.value ||
-            exact.hiddenQuestionId !== hiddenExpected) {
+            exact.parentBranchId !== sourceBranchId.value) {
           throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
         }
       },
@@ -534,9 +559,10 @@ export class ConversationGraphV2Repo {
         pending.answerRootId.value, pending.createdAtMs,
       )
       const branch = this.#db.prepare(`UPDATE branch_v2 SET head_message_id=?, updated_at_ms=?
-        WHERE branch_id=? AND conversation_id=? AND head_message_id=? AND deleted_at_ms IS NULL`).run(
+        WHERE branch_id=? AND conversation_id=? AND head_message_id IS NULL
+          AND parent_branch_id=? AND deleted_at_ms IS NULL`).run(
         pending.answerRootId.value, pending.createdAtMs, pending.branchId.value,
-        pending.conversationId.value, pending.expectedHeadMessageId.value,
+        pending.conversationId.value, pending.sourceBranchId.value,
       )
       const conversation = this.#db.prepare(`UPDATE conversation_v2 SET updated_at_ms=?
         WHERE conversation_id=? AND updated_at_ms<=?`).run(
@@ -544,14 +570,6 @@ export class ConversationGraphV2Repo {
       )
       if (branch.changes !== 1 || conversation.changes !== 1) {
         throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
-      }
-      if (pending.mode === 'replace') {
-        this.#db.prepare(`INSERT INTO branch_question_hide_v2 (
-          branch_id, conversation_id, question_id, hidden_at_ms
-        ) VALUES (?, ?, ?, ?)`).run(
-          pending.branchId.value, pending.conversationId.value,
-          pending.sourceQuestionId.value, pending.createdAtMs,
-        )
       }
     } catch (error) {
       if (error instanceof ConversationGraphV2RepoError) throw error
@@ -566,7 +584,7 @@ export class ConversationGraphV2Repo {
   ): PendingAnswerActionV2 {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     const input = closedObject(value, [
-      'operationId', 'actionKind', 'branchId', 'questionId', 'targetAnswerRootId',
+      'operationId', 'actionKind', 'sourceBranchId', 'questionId', 'sourceAnswerId',
       'expectedHeadMessageId', 'answerRootId', 'createdAtMs',
     ])
     const operationId = GenerationV2Identity.create('operation_id', requiredString(input.operationId))
@@ -575,49 +593,52 @@ export class ConversationGraphV2Repo {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID')
     }
     const actionKind = input.actionKind
-    const branchId = ConversationGraphV2Identity.create('branch_id', requiredString(input.branchId))
+    const sourceBranchId = ConversationGraphV2Identity.create(
+      'branch_id', requiredString(input.sourceBranchId),
+    )
+    const branchId = actionKind === 'retry_replace' ? sourceBranchId : deriveChildBranchId(operationId)
     const questionId = ConversationGraphV2Identity.create('question_id', requiredString(input.questionId))
-    const targetAnswerRootId = input.targetAnswerRootId === null ? null :
-      ConversationGraphV2Identity.create('answer_root_id', requiredString(input.targetAnswerRootId))
+    const sourceAnswerId = ConversationGraphV2Identity.create(
+      'answer_root_id', requiredString(input.sourceAnswerId),
+    )
     const expectedHeadMessageId = ConversationGraphV2Identity.create(
       'message_id', requiredString(input.expectedHeadMessageId),
     )
     const answerRootId = ConversationGraphV2Identity.create('answer_root_id', requiredString(input.answerRootId))
     const createdAtMs = safeTime(input.createdAtMs)
-    if ((actionKind === 'regenerate_question') !== (targetAnswerRootId === null)) {
-      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID')
+    const route = new BranchRouteResolverV2(this.#db).resolve(sourceBranchId.value)
+    if (route.headMessageId !== expectedHeadMessageId.value) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
+    }
+    const sourceTurn = route.turns.find((turn) => turn.questionId === questionId.value)
+    if (!sourceTurn || sourceTurn.selectedAnswerId !== sourceAnswerId.value ||
+        route.hiddenAnswerIds.has(sourceAnswerId.value)) {
+      throw new ConversationGraphV2RepoError('STALE_CHOSEN_ANSWER')
+    }
+    if (actionKind === 'retry_replace' && route.headMessageId !== sourceAnswerId.value) {
+      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
     }
     const row = this.#db.prepare(`SELECT branch.conversation_id AS conversationId,
       branch.head_message_id AS headMessageId, branch.deleted_at_ms AS deletedAtMs,
       branch.updated_at_ms AS branchUpdatedAtMs, conversation.updated_at_ms AS conversationUpdatedAtMs,
-      choice.chosen_answer_root_id AS chosenAnswerRootId, answer.status AS answerStatus,
-      hidden.answer_root_id AS hiddenAnswerRootId, question_hidden.question_id AS hiddenQuestionId
+      answer.status AS answerStatus
       FROM branch_v2 AS branch
       JOIN conversation_v2 AS conversation ON conversation.conversation_id=branch.conversation_id
       JOIN message_v2 AS question ON question.message_id=? AND question.conversation_id=branch.conversation_id
         AND question.role='user' AND question.status='completed'
-      JOIN branch_choice_v2 AS choice ON choice.branch_id=branch.branch_id
-        AND choice.question_id=question.message_id AND choice.conversation_id=branch.conversation_id
-      JOIN message_v2 AS answer ON answer.message_id=choice.chosen_answer_root_id
+      JOIN message_v2 AS answer ON answer.message_id=?
         AND answer.conversation_id=branch.conversation_id AND answer.question_id=question.message_id
         AND answer.role='assistant' AND answer.answer_root_id=answer.message_id
-      LEFT JOIN branch_answer_hide_v2 AS hidden ON hidden.branch_id=branch.branch_id
-        AND hidden.question_id=question.message_id AND hidden.answer_root_id=answer.answer_root_id
-      LEFT JOIN branch_question_hide_v2 AS question_hidden ON question_hidden.branch_id=branch.branch_id
-        AND question_hidden.question_id=question.message_id
-      WHERE branch.branch_id=?`).get(questionId.value, branchId.value) as Readonly<Record<string, unknown>> | undefined
+      WHERE branch.branch_id=?`).get(
+      questionId.value, sourceAnswerId.value, sourceBranchId.value,
+    ) as Readonly<Record<string, unknown>> | undefined
     if (!row || typeof row.conversationId !== 'string') {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')
-    }
-    if (targetAnswerRootId && row.chosenAnswerRootId !== targetAnswerRootId.value) {
-      throw new ConversationGraphV2RepoError('STALE_CHOSEN_ANSWER')
     }
     if (row.headMessageId !== expectedHeadMessageId.value) {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
     }
-    if (row.deletedAtMs !== null || row.hiddenAnswerRootId !== null || row.hiddenQuestionId !== null ||
-        typeof row.chosenAnswerRootId !== 'string' || row.headMessageId !== row.chosenAnswerRootId ||
-        !['completed', 'failed', 'cancelled'].includes(row.answerStatus as string)) {
+    if (row.deletedAtMs !== null || !['completed', 'failed', 'cancelled'].includes(row.answerStatus as string)) {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
     }
     if (!Number.isSafeInteger(row.branchUpdatedAtMs) || !Number.isSafeInteger(row.conversationUpdatedAtMs) ||
@@ -631,12 +652,19 @@ export class ConversationGraphV2Repo {
     }
     const answerOrdinal = (ordinalRow.maxOrdinal as number) + 1
     try {
+      if (actionKind !== 'retry_replace') {
+        this.#db.prepare(`INSERT INTO branch_v2 (
+          branch_id,conversation_id,head_message_id,name,created_at_ms,updated_at_ms,deleted_at_ms,parent_branch_id
+        ) VALUES (?, ?, NULL, NULL, ?, ?, NULL, ?)`).run(
+          branchId.value, row.conversationId, createdAtMs, createdAtMs, sourceBranchId.value,
+        )
+      }
       this.#db.prepare(`INSERT INTO message_v2 (
         message_id, conversation_id, role, status, parent_message_id, question_id,
-        answer_root_id, ordinal, created_at_ms, updated_at_ms
-      ) VALUES (?, ?, 'assistant', 'streaming', ?, ?, ?, ?, ?, ?)`).run(
+        answer_root_id, introduced_in_branch_id, ordinal, created_at_ms, updated_at_ms
+      ) VALUES (?, ?, 'assistant', 'streaming', ?, ?, ?, ?, ?, ?, ?)`).run(
         answerRootId.value, row.conversationId, questionId.value, questionId.value,
-        answerRootId.value, answerOrdinal, createdAtMs, createdAtMs,
+        answerRootId.value, branchId.value, answerOrdinal, createdAtMs, createdAtMs,
       )
     } catch (error) { mapConstraint(error) }
     const pending = Object.freeze({
@@ -644,9 +672,10 @@ export class ConversationGraphV2Repo {
       operationId,
       actionKind,
       conversationId: ConversationGraphV2Identity.create('conversation_id', row.conversationId),
+      sourceBranchId,
       branchId,
       questionId,
-      targetAnswerRootId,
+      sourceAnswerId,
       expectedHeadMessageId,
       answerRootId,
       answerOrdinal,
@@ -657,29 +686,30 @@ export class ConversationGraphV2Repo {
     registerGenerationV2AuthorityTransactionParticipantV2(context, this.#db, {
       preCommit: () => {
         const exact = this.#db.prepare(`SELECT operation.action_kind AS actionKind,
-          operation.target_answer_root_id AS targetAnswerRootId,
-          operation.result_answer_root_id AS resultAnswerRootId,
+          operation.source_answer_id AS sourceAnswerId,
+          operation.target_answer_id AS targetAnswerId,
           snapshot.answer_root_id AS snapshotAnswerRootId,
           choice.chosen_answer_root_id AS chosenAnswerRootId,
           branch.head_message_id AS headMessageId,
-          hidden.answer_root_id AS hiddenAnswerRootId
+          hidden.answer_root_id AS hiddenAnswerRootId,
+          branch.parent_branch_id AS parentBranchId
           FROM generation_operation_v2 AS operation
           JOIN assistant_generation_snapshot_v2 AS snapshot ON snapshot.operation_id=operation.operation_id
-            AND snapshot.answer_root_id=operation.result_answer_root_id
+            AND snapshot.answer_root_id=operation.target_answer_id
           JOIN branch_v2 AS branch ON branch.branch_id=operation.branch_id
           JOIN branch_choice_v2 AS choice ON choice.branch_id=operation.branch_id
             AND choice.question_id=operation.question_id
           LEFT JOIN branch_answer_hide_v2 AS hidden ON hidden.branch_id=operation.branch_id
             AND hidden.question_id=operation.question_id
-            AND hidden.answer_root_id=operation.target_answer_root_id
+            AND hidden.answer_root_id=operation.source_answer_id
           WHERE operation.operation_id=?`).get(operationId.value) as Readonly<Record<string, unknown>> | undefined
-        const hiddenExpected = actionKind === 'retry_replace' ? targetAnswerRootId?.value : null
+        const hiddenExpected = actionKind === 'retry_replace' ? sourceAnswerId.value : null
+        const parentExpected = actionKind === 'retry_replace' ? route.parentBranchId : sourceBranchId.value
         if (!exact || exact.actionKind !== actionKind ||
-            (exact.targetAnswerRootId !== targetAnswerRootId?.value &&
-              !(exact.targetAnswerRootId === null && targetAnswerRootId === null)) ||
-            exact.resultAnswerRootId !== answerRootId.value || exact.snapshotAnswerRootId !== answerRootId.value ||
+            exact.sourceAnswerId !== sourceAnswerId.value ||
+            exact.targetAnswerId !== answerRootId.value || exact.snapshotAnswerRootId !== answerRootId.value ||
             exact.chosenAnswerRootId !== answerRootId.value || exact.headMessageId !== answerRootId.value ||
-            exact.hiddenAnswerRootId !== hiddenExpected) {
+            exact.hiddenAnswerRootId !== hiddenExpected || exact.parentBranchId !== parentExpected) {
           throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
         }
       },
@@ -704,15 +734,60 @@ export class ConversationGraphV2Repo {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_INPUT_INVALID')
     }
     try {
-      const choice = this.#db.prepare(`UPDATE branch_choice_v2 SET chosen_answer_root_id=?, updated_at_ms=?
-        WHERE branch_id=? AND conversation_id=? AND question_id=?`).run(
-        pending.answerRootId.value, pending.createdAtMs, pending.branchId.value,
-        pending.conversationId.value, pending.questionId.value,
-      )
-      const branch = this.#db.prepare(`UPDATE branch_v2 SET head_message_id=?, updated_at_ms=?
-        WHERE branch_id=? AND conversation_id=? AND deleted_at_ms IS NULL`).run(
-        pending.answerRootId.value, pending.createdAtMs, pending.branchId.value, pending.conversationId.value,
-      )
+      if (pending.actionKind === 'retry_replace') {
+        const selectedByDescendant = this.#db.prepare(`WITH RECURSIVE descendants(branch_id,head_message_id) AS (
+          SELECT branch_id,head_message_id FROM branch_v2
+          WHERE parent_branch_id=? AND conversation_id=? AND deleted_at_ms IS NULL
+          UNION ALL
+          SELECT child.branch_id,child.head_message_id FROM branch_v2 AS child
+          JOIN descendants AS parent ON child.parent_branch_id=parent.branch_id
+          WHERE child.conversation_id=? AND child.deleted_at_ms IS NULL
+        ), lineage(branch_id,message_id,parent_message_id) AS (
+          SELECT descendants.branch_id,message.message_id,message.parent_message_id
+          FROM descendants JOIN message_v2 AS message
+            ON message.message_id=descendants.head_message_id AND message.conversation_id=?
+          UNION ALL
+          SELECT child.branch_id,parent.message_id,parent.parent_message_id
+          FROM lineage AS child JOIN message_v2 AS parent ON parent.message_id=child.parent_message_id
+          WHERE parent.conversation_id=?
+        )
+        SELECT 1 FROM lineage WHERE message_id=? LIMIT 1`).get(
+          pending.branchId.value,
+          pending.conversationId.value,
+          pending.conversationId.value,
+          pending.conversationId.value,
+          pending.conversationId.value,
+          pending.sourceAnswerId.value,
+        )
+        if (selectedByDescendant) {
+          throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_CONFLICT')
+        }
+      }
+      const choice = pending.actionKind === 'retry_replace'
+        ? this.#db.prepare(`UPDATE branch_choice_v2 SET chosen_answer_root_id=?, updated_at_ms=?
+          WHERE branch_id=? AND conversation_id=? AND question_id=? AND chosen_answer_root_id=?`).run(
+          pending.answerRootId.value, pending.createdAtMs, pending.branchId.value,
+          pending.conversationId.value, pending.questionId.value, pending.sourceAnswerId.value,
+        )
+        : this.#db.prepare(`INSERT INTO branch_choice_v2 (
+          branch_id,conversation_id,question_id,chosen_answer_root_id,updated_at_ms
+        ) VALUES (?, ?, ?, ?, ?)`).run(
+          pending.branchId.value, pending.conversationId.value, pending.questionId.value,
+          pending.answerRootId.value, pending.createdAtMs,
+        )
+      const branch = pending.actionKind === 'retry_replace'
+        ? this.#db.prepare(`UPDATE branch_v2 SET head_message_id=?, updated_at_ms=?
+          WHERE branch_id=? AND conversation_id=? AND head_message_id=?
+            AND deleted_at_ms IS NULL`).run(
+          pending.answerRootId.value, pending.createdAtMs, pending.branchId.value,
+          pending.conversationId.value, pending.expectedHeadMessageId.value,
+        )
+        : this.#db.prepare(`UPDATE branch_v2 SET head_message_id=?, updated_at_ms=?
+          WHERE branch_id=? AND conversation_id=? AND head_message_id IS NULL
+            AND parent_branch_id=? AND deleted_at_ms IS NULL`).run(
+          pending.answerRootId.value, pending.createdAtMs, pending.branchId.value,
+          pending.conversationId.value, pending.sourceBranchId.value,
+        )
       const conversation = this.#db.prepare(`UPDATE conversation_v2 SET updated_at_ms=?
         WHERE conversation_id=? AND updated_at_ms<=?`).run(
         pending.createdAtMs, pending.conversationId.value, pending.createdAtMs,
@@ -725,7 +800,7 @@ export class ConversationGraphV2Repo {
           branch_id, conversation_id, question_id, answer_root_id, hidden_at_ms
         ) VALUES (?, ?, ?, ?, ?)`).run(
           pending.branchId.value, pending.conversationId.value, pending.questionId.value,
-          pending.targetAnswerRootId!.value, pending.createdAtMs,
+          pending.sourceAnswerId.value, pending.createdAtMs,
         )
       }
     } catch (error) {
@@ -733,64 +808,6 @@ export class ConversationGraphV2Repo {
       mapConstraint(error)
     }
     return this.#readProjection(pending.branchId.value, pending.questionId.value)
-  }
-
-  selectCurrentVisibleAnswer(
-    context: GenerationV2AuthorityTransactionContextV2,
-    value: unknown,
-  ): BranchProjectionV2 {
-    assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
-    const input = closedObject(value, [
-      'branchId', 'questionId', 'expectedChosenAnswerRootId', 'targetAnswerRootId', 'updatedAtMs',
-    ])
-    const branchId = ConversationGraphV2Identity.create('branch_id', requiredString(input.branchId))
-    const questionId = ConversationGraphV2Identity.create('question_id', requiredString(input.questionId))
-    const expectedChosen = ConversationGraphV2Identity.create(
-      'answer_root_id', requiredString(input.expectedChosenAnswerRootId),
-    )
-    const target = ConversationGraphV2Identity.create('answer_root_id', requiredString(input.targetAnswerRootId))
-    const updatedAtMs = safeTime(input.updatedAtMs)
-    const row = this.#db.prepare(`SELECT branch.conversation_id AS conversationId,
-      branch.head_message_id AS headMessageId, branch.updated_at_ms AS branchUpdatedAtMs,
-      branch.deleted_at_ms AS deletedAtMs, conversation.updated_at_ms AS conversationUpdatedAtMs,
-      choice.chosen_answer_root_id AS chosenAnswerRootId, target.status AS targetStatus,
-      hidden.answer_root_id AS hiddenAnswerRootId, question_hidden.question_id AS hiddenQuestionId
-      FROM branch_v2 AS branch
-      JOIN conversation_v2 AS conversation ON conversation.conversation_id=branch.conversation_id
-      JOIN branch_choice_v2 AS choice ON choice.branch_id=branch.branch_id AND choice.question_id=?
-      JOIN message_v2 AS target ON target.message_id=? AND target.conversation_id=branch.conversation_id
-        AND target.question_id=choice.question_id AND target.role='assistant' AND target.answer_root_id=target.message_id
-      LEFT JOIN branch_answer_hide_v2 AS hidden ON hidden.branch_id=branch.branch_id
-        AND hidden.question_id=choice.question_id AND hidden.answer_root_id=target.answer_root_id
-      LEFT JOIN branch_question_hide_v2 AS question_hidden ON question_hidden.branch_id=branch.branch_id
-        AND question_hidden.question_id=choice.question_id
-      WHERE branch.branch_id=?`).get(questionId.value, target.value, branchId.value) as Readonly<Record<string, unknown>> | undefined
-    if (!row || typeof row.conversationId !== 'string') {
-      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')
-    }
-    if (row.chosenAnswerRootId !== expectedChosen.value || row.headMessageId !== expectedChosen.value) {
-      throw new ConversationGraphV2RepoError('STALE_CHOSEN_ANSWER')
-    }
-    if (row.deletedAtMs !== null || row.hiddenAnswerRootId !== null || row.hiddenQuestionId !== null ||
-        !['completed', 'failed', 'cancelled'].includes(row.targetStatus as string) ||
-        !Number.isSafeInteger(row.branchUpdatedAtMs) || !Number.isSafeInteger(row.conversationUpdatedAtMs) ||
-        updatedAtMs < (row.branchUpdatedAtMs as number) || updatedAtMs < (row.conversationUpdatedAtMs as number)) {
-      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
-    }
-    const choice = this.#db.prepare(`UPDATE branch_choice_v2 SET chosen_answer_root_id=?, updated_at_ms=?
-      WHERE branch_id=? AND question_id=? AND chosen_answer_root_id=?`).run(
-      target.value, updatedAtMs, branchId.value, questionId.value, expectedChosen.value,
-    )
-    const branch = this.#db.prepare(`UPDATE branch_v2 SET head_message_id=?, updated_at_ms=?
-      WHERE branch_id=? AND conversation_id=? AND head_message_id=? AND deleted_at_ms IS NULL`).run(
-      target.value, updatedAtMs, branchId.value, row.conversationId, expectedChosen.value,
-    )
-    const conversation = this.#db.prepare(`UPDATE conversation_v2 SET updated_at_ms=?
-      WHERE conversation_id=? AND updated_at_ms<=?`).run(updatedAtMs, row.conversationId, updatedAtMs)
-    if (choice.changes !== 1 || branch.changes !== 1 || conversation.changes !== 1) {
-      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
-    }
-    return this.#readProjection(branchId.value, questionId.value)
   }
 
   getBranchProjection(branchIdValue: string, questionIdValue: string): BranchProjectionV2 {
@@ -891,9 +908,9 @@ export class ConversationGraphV2Repo {
   ): GenerationReplayProjectionV2 {
     const operationId = GenerationV2Identity.create('operation_id', operationIdValue)
     const row = this.#db.prepare(`SELECT branch_id AS branchId, question_id AS questionId,
-      result_answer_root_id AS resultAnswerRootId FROM generation_operation_v2
+      target_answer_id AS targetAnswerId FROM generation_operation_v2
       WHERE operation_id=?`).get(operationId.value) as
-      { branchId: unknown; questionId: unknown; resultAnswerRootId: unknown; actionKind?: unknown } | undefined
+      { branchId: unknown; questionId: unknown; targetAnswerId: unknown; actionKind?: unknown } | undefined
     if (requiredAction) {
       const action = this.#db.prepare('SELECT action_kind AS actionKind FROM generation_operation_v2 WHERE operation_id=?')
         .get(operationId.value) as { actionKind: unknown } | undefined
@@ -902,47 +919,13 @@ export class ConversationGraphV2Repo {
       }
     }
     if (!row || typeof row.branchId !== 'string' || typeof row.questionId !== 'string' ||
-        typeof row.resultAnswerRootId !== 'string') {
+        typeof row.targetAnswerId !== 'string') {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')
     }
     const projection = this.#readProjection(row.branchId, row.questionId)
-    const candidates = this.#db.prepare(`SELECT answer.answer_root_id AS answerRootId
-      FROM message_v2 AS answer
-      LEFT JOIN branch_answer_hide_v2 AS hidden
-        ON hidden.branch_id=? AND hidden.question_id=answer.question_id
-       AND hidden.answer_root_id=answer.answer_root_id
-      WHERE answer.conversation_id=? AND answer.question_id=? AND answer.role='assistant'
-        AND answer.answer_root_id IS NOT NULL AND hidden.answer_root_id IS NULL
-      ORDER BY answer.ordinal ASC, answer.answer_root_id ASC`).all(
-      projection.branchId.value, projection.conversationId.value, projection.questionId.value,
-    ) as { answerRootId: unknown }[]
-    if (candidates.some((candidate) => typeof candidate.answerRootId !== 'string')) {
-      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
-    }
-    const visibleCandidates = Object.freeze(candidates.map((candidate) =>
-      ConversationGraphV2Identity.create('answer_root_id', candidate.answerRootId as string)))
-    const questionCandidates = this.#db.prepare(`SELECT candidate.message_id AS questionId
-      FROM message_v2 AS selected
-      JOIN message_v2 AS candidate ON candidate.conversation_id=selected.conversation_id
-        AND candidate.role='user' AND candidate.status='completed'
-        AND candidate.parent_message_id IS selected.parent_message_id
-      LEFT JOIN branch_question_hide_v2 AS hidden
-        ON hidden.branch_id=? AND hidden.question_id=candidate.message_id
-      WHERE selected.message_id=? AND selected.conversation_id=? AND selected.role='user'
-        AND hidden.question_id IS NULL
-      ORDER BY candidate.ordinal ASC, candidate.message_id ASC`).all(
-      projection.branchId.value, projection.questionId.value, projection.conversationId.value,
-    ) as { questionId: unknown }[]
-    if (questionCandidates.some((candidate) => typeof candidate.questionId !== 'string')) {
-      throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
-    }
-    const visibleQuestionCandidates = Object.freeze(questionCandidates.map((candidate) =>
-      ConversationGraphV2Identity.create('question_id', candidate.questionId as string)))
     return Object.freeze({
-      resultAnswerRootId: ConversationGraphV2Identity.create('answer_root_id', row.resultAnswerRootId),
+      targetAnswerId: ConversationGraphV2Identity.create('answer_root_id', row.targetAnswerId),
       branchProjection: projection,
-      visibleCandidates,
-      visibleQuestionCandidates,
     })
   }
 
@@ -950,32 +933,31 @@ export class ConversationGraphV2Repo {
     const branchId = ConversationGraphV2Identity.create('branch_id', branchIdValue)
     const questionId = ConversationGraphV2Identity.create('question_id', questionIdValue)
     const row = this.#db.prepare(`SELECT branch.conversation_id AS conversationId,
-      branch.head_message_id AS headMessageId, branch.deleted_at_ms AS deletedAtMs,
-      choice.chosen_answer_root_id AS chosenAnswerRootId
+      branch.head_message_id AS headMessageId, branch.deleted_at_ms AS deletedAtMs
       FROM branch_v2 AS branch
       JOIN message_v2 AS question
         ON question.message_id=? AND question.conversation_id=branch.conversation_id AND question.role='user'
-      LEFT JOIN branch_choice_v2 AS choice
-        ON choice.branch_id=branch.branch_id AND choice.question_id=?
-      WHERE branch.branch_id=?`).get(questionId.value, questionId.value, branchId.value) as
-      { conversationId: unknown; headMessageId: unknown; deletedAtMs: unknown; chosenAnswerRootId: unknown } | undefined
+      WHERE branch.branch_id=?`).get(questionId.value, branchId.value) as
+      { conversationId: unknown; headMessageId: unknown; deletedAtMs: unknown } | undefined
     if (!row) {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')
     }
     if (typeof row.conversationId !== 'string' ||
         (row.headMessageId !== null && typeof row.headMessageId !== 'string') ||
-        (row.chosenAnswerRootId !== null && typeof row.chosenAnswerRootId !== 'string') ||
         (row.deletedAtMs !== null && (!Number.isSafeInteger(row.deletedAtMs) || (row.deletedAtMs as number) < 0))) {
       throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
     }
+    const route = new BranchRouteResolverV2(this.#db).resolve(branchId.value)
+    const turn = route.turns.find((item) => item.questionId === questionId.value)
+    if (!turn) throw new ConversationGraphV2RepoError('GENERATION_V2_GRAPH_REPOSITORY_NOT_FOUND')
     return Object.freeze({
       branchId,
       conversationId: ConversationGraphV2Identity.create('conversation_id', row.conversationId),
       questionId,
       headMessageId: row.headMessageId === null ? null :
         ConversationGraphV2Identity.create('message_id', row.headMessageId),
-      chosenAnswerRootId: row.chosenAnswerRootId === null ? null :
-        ConversationGraphV2Identity.create('answer_root_id', row.chosenAnswerRootId),
+      chosenAnswerRootId: turn.selectedAnswerId === null ? null :
+        ConversationGraphV2Identity.create('answer_root_id', turn.selectedAnswerId),
       deletedAtMs: row.deletedAtMs as number | null,
     })
   }

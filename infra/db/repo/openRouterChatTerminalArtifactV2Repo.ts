@@ -27,7 +27,7 @@ export class OpenRouterChatTerminalArtifactV2Repo {
         !isOpenRouterChatTerminalArtifactV1(artifact) ||
         (execution.operation.state !== 'completed' && execution.operation.state !== 'streaming') ||
         request.operationId !== execution.operation.operationId.value ||
-        request.answerRootId !== execution.operation.resultAnswerRootId.value ||
+        request.answerRootId !== execution.operation.targetAnswerId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) this.invalid()
     const json = serializeOpenRouterChatTerminalArtifactV1(artifact)
     const existing = this.db.prepare(`SELECT operation_id AS operationId, codec_version AS codecVersion,

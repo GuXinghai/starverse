@@ -203,7 +203,7 @@ export class AnthropicNativeHistoryV2Repo {
     }
     const operation = this.#db.prepare(`SELECT operation.branch_id AS branchId,
       operation.conversation_id AS conversationId, operation.question_id AS questionId,
-      operation.result_answer_root_id AS answerRootId, operation.state AS operationState,
+      operation.target_answer_id AS answerRootId, operation.state AS operationState,
       answer.status AS answerStatus, question.parent_message_id AS parentMessageId,
       questionBody.body_text AS questionBody
       FROM generation_operation_v2 AS operation
@@ -212,7 +212,7 @@ export class AnthropicNativeHistoryV2Repo {
       JOIN message_v2 AS question ON question.message_id=operation.question_id
         AND question.conversation_id=operation.conversation_id AND question.role='user'
       JOIN message_body_v2 AS questionBody ON questionBody.message_id=question.message_id
-      JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
+      JOIN message_v2 AS answer ON answer.message_id=operation.target_answer_id
         AND answer.question_id=question.message_id AND answer.answer_root_id=answer.message_id
       WHERE operation.operation_id=?`).get(operationId.value) as Readonly<Record<string, unknown>> | undefined
     if (!operation || typeof operation.branchId !== 'string' || typeof operation.conversationId !== 'string' ||
@@ -276,7 +276,7 @@ export class AnthropicNativeHistoryV2Repo {
         execution.operation.state !== 'streaming' ||
         execution.operation.operationId.value !== command.operationId.value ||
         execution.operation.branchId.value !== command.branchId.value ||
-        execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+        execution.operation.targetAnswerId.value !== command.answerRootId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) {
       fail('GENERATION_V2_ANTHROPIC_HISTORY_STATE_INVALID')
     }
@@ -346,7 +346,7 @@ export class AnthropicNativeHistoryV2Repo {
       branchId: execution.operation.branchId,
       conversationId: execution.operation.conversationId,
       questionId: execution.operation.questionId,
-      answerRootId: execution.operation.resultAnswerRootId,
+      answerRootId: execution.operation.targetAnswerId,
       system: base.system,
       messages: Object.freeze([...base.messages, Object.freeze({ role: 'assistant' as const, content: prior.artifact.assistantMessage.content }),
         createAnthropicToolResultMessageV1(records)]),
@@ -440,7 +440,7 @@ export class AnthropicNativeHistoryV2Repo {
         !isGenerationRequestRepositoryFactForContextV2(request, context) ||
         !isAnthropicNativeHistoryArtifactV1(artifact) || request.providerId !== 'anthropic' ||
         request.operationId !== execution.operation.operationId.value ||
-        request.answerRootId !== execution.operation.resultAnswerRootId.value ||
+        request.answerRootId !== execution.operation.targetAnswerId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) {
       fail('GENERATION_V2_ANTHROPIC_HISTORY_STATE_INVALID')
     }
@@ -506,7 +506,7 @@ export class AnthropicNativeHistoryV2Repo {
       artifact.artifact_json AS artifactJson, artifact.artifact_hash AS artifactHash,
       artifact.completion_scope AS completionScope, request.state AS requestState,
       request.answer_root_id AS requestAnswerRootId, request.provider_id AS requestProviderId,
-      operation.state AS operationState, operation.result_answer_root_id AS operationAnswerRootId,
+      operation.state AS operationState, operation.target_answer_id AS operationAnswerRootId,
       operation.question_id AS questionId, message.status AS messageStatus,
       message.role AS messageRole, message.question_id AS messageQuestionId,
       message.answer_root_id AS messageAnswerRootId
@@ -583,7 +583,7 @@ export class AnthropicNativeHistoryV2Repo {
     answerRootId: string
   }> {
     const row = this.#db.prepare(`SELECT branch_id AS branchId, conversation_id AS conversationId,
-      question_id AS questionId, result_answer_root_id AS answerRootId
+      question_id AS questionId, target_answer_id AS answerRootId
       FROM generation_operation_v2 WHERE operation_id=?`).get(operationId) as Readonly<Record<string, unknown>> | undefined
     if (!row || typeof row.branchId !== 'string' || typeof row.conversationId !== 'string' ||
         typeof row.questionId !== 'string' || typeof row.answerRootId !== 'string') {
@@ -608,7 +608,7 @@ export class AnthropicNativeHistoryV2Repo {
       artifact.artifact_json AS artifactJson, artifact.artifact_hash AS artifactHash,
       artifact.completion_scope AS completionScope, request.state AS requestState,
       request.answer_root_id AS requestAnswerRootId, request.provider_id AS requestProviderId,
-      operation.state AS operationState, operation.result_answer_root_id AS operationAnswerRootId,
+      operation.state AS operationState, operation.target_answer_id AS operationAnswerRootId,
       operation.question_id AS questionId, message.status AS messageStatus,
       message.role AS messageRole, message.question_id AS messageQuestionId,
       message.answer_root_id AS messageAnswerRootId

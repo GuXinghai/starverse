@@ -1,5 +1,6 @@
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Identity } from '../../../src/next/generation-v2/domain/conversationGraphV2'
+import { BranchRouteResolverV2 } from './branchRouteResolverV2'
 import { assertGenerationV2AuthorityTransactionContextV2, type GenerationV2AuthorityTransactionContextV2 } from './generationV2AuthorityTransactionInternal'
 
 function title(value: unknown, max: number, allowEmpty: boolean): string {
@@ -27,6 +28,11 @@ export class ConversationWorkspaceV2Repo {
       ON conversation.conversation_id=template.conversation_id WHERE conversation.project_id=?`).get(id.value)) {
       throw new Error('GENERATION_V2_WORKSPACE_SYSTEM_TEMPLATE_MUTATION_FORBIDDEN')
     }
+    if (this.db.prepare(`SELECT 1 FROM generation_operation_v2 AS operation
+      JOIN conversation_v2 AS conversation ON conversation.conversation_id=operation.conversation_id
+      WHERE conversation.project_id=? AND operation.state IN ('committed','streaming') LIMIT 1`).get(id.value)) {
+      throw new Error('GENERATION_V2_WORKSPACE_PROJECT_HAS_ACTIVE_GENERATION')
+    }
     if (this.db.prepare('DELETE FROM project_v2 WHERE project_id=?').run(id.value).changes !== 1) throw new Error('GENERATION_V2_WORKSPACE_PROJECT_NOT_FOUND')
   }
   renameConversation(context: GenerationV2AuthorityTransactionContextV2, input: Readonly<{ conversationId: string; title: string; updatedAtMs: number }>): void {
@@ -48,6 +54,10 @@ export class ConversationWorkspaceV2Repo {
   deleteConversation(context: GenerationV2AuthorityTransactionContextV2, input: Readonly<{ conversationId: string }>): void {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db); const id = ConversationGraphV2Identity.create('conversation_id', input.conversationId)
     this.assertNotSystemTemplate(id.value)
+    if (this.db.prepare(`SELECT 1 FROM generation_operation_v2
+      WHERE conversation_id=? AND state IN ('committed','streaming') LIMIT 1`).get(id.value)) {
+      throw new Error('GENERATION_V2_WORKSPACE_CONVERSATION_HAS_ACTIVE_GENERATION')
+    }
     if (this.db.prepare('DELETE FROM conversation_v2 WHERE conversation_id=?').run(id.value).changes !== 1) throw new Error('GENERATION_V2_WORKSPACE_CONVERSATION_NOT_FOUND')
   }
   renameBranch(context: GenerationV2AuthorityTransactionContextV2, input: Readonly<{ branchId: string; name: string | null; updatedAtMs: number }>): void {
@@ -64,6 +74,51 @@ export class ConversationWorkspaceV2Repo {
     if (count.count === 1) throw new Error('GENERATION_V2_WORKSPACE_LAST_BRANCH_DELETE_FORBIDDEN')
     if (this.db.prepare(`UPDATE branch_v2 SET deleted_at_ms=?,updated_at_ms=? WHERE branch_id=? AND deleted_at_ms IS NULL AND updated_at_ms<=?`)
       .run(input.deletedAtMs, input.deletedAtMs, id.value, input.deletedAtMs).changes !== 1) throw new Error('GENERATION_V2_WORKSPACE_BRANCH_NOT_FOUND')
+  }
+
+  hideAnswer(
+    context: GenerationV2AuthorityTransactionContextV2,
+    input: Readonly<{ branchId: string; answerId: string; hiddenAtMs: number }>,
+  ): Readonly<{ created: boolean }> {
+    assertGenerationV2AuthorityTransactionContextV2(context, this.db)
+    const branchId = ConversationGraphV2Identity.create('branch_id', input.branchId)
+    const answerId = ConversationGraphV2Identity.create('answer_root_id', input.answerId)
+    const hiddenAtMs = time(input.hiddenAtMs)
+    const route = new BranchRouteResolverV2(this.db).resolve(branchId.value)
+    if (route.hiddenAnswerIds.has(answerId.value)) return Object.freeze({ created: false })
+    const answer = this.db.prepare(`SELECT question_id AS questionId FROM message_v2
+      WHERE message_id=? AND conversation_id=? AND role='assistant' AND answer_root_id=message_id`).get(
+      answerId.value, route.conversationId,
+    ) as Record<string, unknown> | undefined
+    if (!answer || typeof answer.questionId !== 'string') {
+      throw new Error('GENERATION_V2_WORKSPACE_ANSWER_HIDE_INVALID')
+    }
+    const selectedByDescendant = this.db.prepare(`WITH RECURSIVE descendants(branch_id,head_message_id) AS (
+      SELECT branch_id,head_message_id FROM branch_v2 WHERE branch_id=? AND conversation_id=?
+      UNION ALL
+      SELECT child.branch_id,child.head_message_id FROM branch_v2 AS child
+      JOIN descendants AS parent ON child.parent_branch_id=parent.branch_id
+      WHERE child.conversation_id=? AND child.deleted_at_ms IS NULL
+    ), lineage(branch_id,message_id,parent_message_id) AS (
+      SELECT descendants.branch_id,message.message_id,message.parent_message_id
+      FROM descendants JOIN message_v2 AS message
+        ON message.message_id=descendants.head_message_id AND message.conversation_id=?
+      UNION ALL
+      SELECT child.branch_id,parent.message_id,parent.parent_message_id
+      FROM lineage AS child JOIN message_v2 AS parent ON parent.message_id=child.parent_message_id
+      WHERE parent.conversation_id=?
+    )
+    SELECT 1 FROM lineage WHERE message_id=? LIMIT 1`).get(
+      branchId.value, route.conversationId, route.conversationId,
+      route.conversationId, route.conversationId, answerId.value,
+    )
+    if (selectedByDescendant) throw new Error('GENERATION_V2_WORKSPACE_ANSWER_HIDE_SELECTED')
+    const result = this.db.prepare(`INSERT INTO branch_answer_hide_v2(
+      branch_id,conversation_id,question_id,answer_root_id,hidden_at_ms
+    ) VALUES(?,?,?,?,?) ON CONFLICT(branch_id,question_id,answer_root_id) DO NOTHING`).run(
+      branchId.value, route.conversationId, answer.questionId, answerId.value, hiddenAtMs,
+    )
+    return Object.freeze({ created: result.changes === 1 })
   }
   truncateBranchFromQuestion(context: GenerationV2AuthorityTransactionContextV2, input: Readonly<{
     branchId: string; questionId: string; expectedHeadMessageId: string; updatedAtMs: number
@@ -98,85 +153,19 @@ export class ConversationWorkspaceV2Repo {
       .run(at, row.conversationId, at)
     return Object.freeze({ headMessageId: row.parentMessageId as string | null })
   }
-  selectQuestionCandidate(context: GenerationV2AuthorityTransactionContextV2, input: Readonly<{
-    branchId: string; baseMessageId: string | null; expectedCurrentQuestionId: string;
-    targetQuestionId: string; expectedHeadMessageId: string; updatedAtMs: number
-  }>): Readonly<{ headMessageId: string; chosenAnswerRootId: string }> {
-    assertGenerationV2AuthorityTransactionContextV2(context, this.db)
-    const branchId = ConversationGraphV2Identity.create('branch_id', input.branchId)
-    const currentQuestionId = ConversationGraphV2Identity.create('question_id', input.expectedCurrentQuestionId)
-    const targetQuestionId = ConversationGraphV2Identity.create('question_id', input.targetQuestionId)
-    const expectedHead = ConversationGraphV2Identity.create('message_id', input.expectedHeadMessageId)
-    const baseMessageId = input.baseMessageId === null ? null
-      : ConversationGraphV2Identity.create('message_id', input.baseMessageId).value
-    const at = time(input.updatedAtMs)
-    const row = this.db.prepare(`WITH RECURSIVE lineage(message_id,parent_message_id) AS (
-      SELECT message_id,parent_message_id FROM message_v2
-        WHERE message_id=(SELECT head_message_id FROM branch_v2 WHERE branch_id=?)
-      UNION ALL SELECT parent.message_id,parent.parent_message_id FROM message_v2 AS parent
-        JOIN lineage AS child ON child.parent_message_id=parent.message_id)
-      SELECT branch.conversation_id AS conversationId,branch.head_message_id AS headMessageId,
-        branch.updated_at_ms AS branchUpdatedAtMs,conversation.updated_at_ms AS conversationUpdatedAtMs,
-        current.parent_message_id AS currentParentMessageId,target.parent_message_id AS targetParentMessageId,
-        choice.chosen_answer_root_id AS chosenAnswerRootId,current_lineage.message_id AS currentLineageId,
-        target_hidden.question_id AS targetHiddenQuestionId,answer_hidden.answer_root_id AS answerHiddenRootId
-      FROM branch_v2 AS branch JOIN conversation_v2 AS conversation ON conversation.conversation_id=branch.conversation_id
-      JOIN message_v2 AS current ON current.message_id=? AND current.conversation_id=branch.conversation_id AND current.role='user'
-      JOIN lineage AS current_lineage ON current_lineage.message_id=current.message_id
-      JOIN message_v2 AS target ON target.message_id=? AND target.conversation_id=branch.conversation_id AND target.role='user'
-      JOIN branch_choice_v2 AS choice ON choice.branch_id=branch.branch_id AND choice.question_id=target.message_id
-      JOIN message_v2 AS chosen ON chosen.message_id=choice.chosen_answer_root_id
-        AND chosen.conversation_id=branch.conversation_id AND chosen.question_id=target.message_id
-        AND chosen.role='assistant' AND chosen.answer_root_id=chosen.message_id
-      LEFT JOIN branch_question_hide_v2 AS target_hidden
-        ON target_hidden.branch_id=branch.branch_id AND target_hidden.question_id=target.message_id
-      LEFT JOIN branch_answer_hide_v2 AS answer_hidden
-        ON answer_hidden.branch_id=branch.branch_id AND answer_hidden.question_id=target.message_id
-        AND answer_hidden.answer_root_id=choice.chosen_answer_root_id
-      WHERE branch.branch_id=? AND branch.deleted_at_ms IS NULL`).get(
-      branchId.value, currentQuestionId.value, targetQuestionId.value, branchId.value,
-    ) as Record<string, unknown> | undefined
-    const sameSlot = row && row.currentParentMessageId === row.targetParentMessageId &&
-      row.currentParentMessageId === baseMessageId
-    if (!row || !sameSlot || row.headMessageId !== expectedHead.value || row.currentLineageId !== currentQuestionId.value ||
-        row.targetHiddenQuestionId !== null || row.answerHiddenRootId !== null ||
-        typeof row.conversationId !== 'string' || typeof row.chosenAnswerRootId !== 'string' ||
-        !Number.isSafeInteger(row.branchUpdatedAtMs) || !Number.isSafeInteger(row.conversationUpdatedAtMs) ||
-        at < (row.branchUpdatedAtMs as number) || at < (row.conversationUpdatedAtMs as number)) {
-      throw new Error('GENERATION_V2_WORKSPACE_QUESTION_SELECTION_STALE')
-    }
-    if (this.db.prepare(`UPDATE branch_v2 SET head_message_id=?,updated_at_ms=?
-      WHERE branch_id=? AND head_message_id=? AND deleted_at_ms IS NULL AND updated_at_ms<=?`)
-      .run(row.chosenAnswerRootId, at, branchId.value, expectedHead.value, at).changes !== 1) {
-      throw new Error('GENERATION_V2_WORKSPACE_QUESTION_SELECTION_STALE')
-    }
-    this.db.prepare('UPDATE conversation_v2 SET updated_at_ms=? WHERE conversation_id=? AND updated_at_ms<=?')
-      .run(at, row.conversationId, at)
-    return Object.freeze({ headMessageId: row.chosenAnswerRootId, chosenAnswerRootId: row.chosenAnswerRootId })
-  }
   forkBranch(context: GenerationV2AuthorityTransactionContextV2, input: Readonly<{ sourceBranchId: string; branchId: string;
     headMessageId: string; name: string | null; createdAtMs: number }>): void {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db); const source = ConversationGraphV2Identity.create('branch_id', input.sourceBranchId)
     const branch = ConversationGraphV2Identity.create('branch_id', input.branchId); const head = ConversationGraphV2Identity.create('message_id', input.headMessageId)
     const at = time(input.createdAtMs); const name = input.name === null ? null : title(input.name, 4096, true)
-    const sourceRow = this.db.prepare(`SELECT branch.conversation_id AS conversationId,message.role FROM branch_v2 branch
-      JOIN message_v2 message ON message.message_id=? AND message.conversation_id=branch.conversation_id
-      WHERE branch.branch_id=? AND branch.deleted_at_ms IS NULL`).get(head.value, source.value) as Record<string, unknown> | undefined
-    if (!sourceRow || typeof sourceRow.conversationId !== 'string' || (sourceRow.role !== 'assistant' && sourceRow.role !== 'tool')) throw new Error('GENERATION_V2_WORKSPACE_BRANCH_FORK_INVALID')
-    this.db.prepare('INSERT INTO branch_v2 VALUES(?,?,?,?,?,?,NULL)').run(branch.value, sourceRow.conversationId, head.value, name, at, at)
-    this.db.prepare(`WITH RECURSIVE lineage(message_id,parent_message_id) AS (
-      SELECT message_id,parent_message_id FROM message_v2 WHERE message_id=? AND conversation_id=? UNION ALL
-      SELECT parent.message_id,parent.parent_message_id FROM message_v2 parent JOIN lineage child ON child.parent_message_id=parent.message_id
-      WHERE parent.conversation_id=?)
-      INSERT INTO branch_choice_v2(branch_id,conversation_id,question_id,chosen_answer_root_id,updated_at_ms)
-      SELECT ?,choice.conversation_id,choice.question_id,choice.chosen_answer_root_id,? FROM branch_choice_v2 choice
-      JOIN lineage ON lineage.message_id=choice.question_id WHERE choice.branch_id=?`).run(head.value, sourceRow.conversationId,
-      sourceRow.conversationId, branch.value, at, source.value)
-    this.db.prepare(`INSERT INTO branch_answer_hide_v2(branch_id,conversation_id,question_id,answer_root_id,hidden_at_ms)
-      SELECT ?,conversation_id,question_id,answer_root_id,? FROM branch_answer_hide_v2 WHERE branch_id=?
-      AND question_id IN(SELECT question_id FROM branch_choice_v2 WHERE branch_id=?)`).run(branch.value, at, source.value, branch.value)
-    this.db.prepare(`INSERT INTO branch_question_hide_v2(branch_id,conversation_id,question_id,hidden_at_ms)
-      SELECT ?,conversation_id,question_id,? FROM branch_question_hide_v2 WHERE branch_id=?
-      AND question_id IN(SELECT question_id FROM branch_choice_v2 WHERE branch_id=?)`).run(branch.value, at, source.value, branch.value)
+    const route = new BranchRouteResolverV2(this.db).resolve(source.value)
+    const routeHead = route.messages.find((message) => message.messageId === head.value)
+    if (!routeHead || (routeHead.role !== 'assistant' && routeHead.role !== 'tool') ||
+        routeHead.answerRootId !== null && route.hiddenAnswerIds.has(routeHead.answerRootId)) {
+      throw new Error('GENERATION_V2_WORKSPACE_BRANCH_FORK_INVALID')
+    }
+    this.db.prepare('INSERT INTO branch_v2 VALUES(?,?,?,?,?,?,NULL,?)').run(
+      branch.value, route.conversationId, head.value, name, at, at, source.value,
+    )
   }
 }

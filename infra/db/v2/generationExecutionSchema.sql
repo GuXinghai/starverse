@@ -65,8 +65,8 @@ CREATE TABLE IF NOT EXISTS generation_operation_v2 (
   branch_id TEXT NOT NULL,
   conversation_id TEXT NOT NULL,
   question_id TEXT NOT NULL,
-  target_answer_root_id TEXT,
-  result_answer_root_id TEXT NOT NULL,
+  source_answer_id TEXT,
+  target_answer_id TEXT NOT NULL,
   state TEXT NOT NULL CHECK (state IN ('committed', 'streaming', 'completed', 'failed', 'cancelled')),
   error_code TEXT CHECK (error_code IS NULL OR length(error_code) BETWEEN 1 AND 512),
   error_message TEXT CHECK (
@@ -82,23 +82,23 @@ CREATE TABLE IF NOT EXISTS generation_operation_v2 (
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),
   updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= created_at_ms),
   terminal_at_ms INTEGER CHECK (terminal_at_ms IS NULL OR terminal_at_ms >= created_at_ms),
-  UNIQUE (operation_id, result_answer_root_id),
-  UNIQUE (result_answer_root_id),
+  UNIQUE (operation_id, target_answer_id),
+  UNIQUE (target_answer_id),
   FOREIGN KEY (branch_id, conversation_id)
     REFERENCES branch_v2(branch_id, conversation_id) ON DELETE CASCADE,
   FOREIGN KEY (question_id, conversation_id)
     REFERENCES message_v2(message_id, conversation_id) ON DELETE CASCADE,
-  FOREIGN KEY (target_answer_root_id, conversation_id)
+  FOREIGN KEY (source_answer_id, conversation_id)
     REFERENCES message_v2(message_id, conversation_id) ON DELETE RESTRICT,
-  FOREIGN KEY (result_answer_root_id, conversation_id)
+  FOREIGN KEY (target_answer_id, conversation_id)
     REFERENCES message_v2(message_id, conversation_id) ON DELETE CASCADE
     DEFERRABLE INITIALLY DEFERRED,
-  FOREIGN KEY (operation_id, result_answer_root_id)
+  FOREIGN KEY (operation_id, target_answer_id)
     REFERENCES assistant_generation_snapshot_v2(operation_id, answer_root_id)
     DEFERRABLE INITIALLY DEFERRED,
   CHECK (
-    (action_kind IN ('retry_as_new', 'retry_replace') AND target_answer_root_id IS NOT NULL)
-    OR (action_kind NOT IN ('retry_as_new', 'retry_replace') AND target_answer_root_id IS NULL)
+    (action_kind = 'initial_send' AND source_answer_id IS NULL)
+    OR (action_kind <> 'initial_send' AND source_answer_id IS NOT NULL)
   ),
   CHECK (
     (state IN ('committed', 'streaming') AND terminal_at_ms IS NULL
@@ -109,8 +109,8 @@ CREATE TABLE IF NOT EXISTS generation_operation_v2 (
   )
 );
 
-CREATE UNIQUE INDEX IF NOT EXISTS ux_generation_operation_v2_active_question
-  ON generation_operation_v2(branch_id, question_id)
+CREATE UNIQUE INDEX IF NOT EXISTS ux_generation_operation_v2_active_branch
+  ON generation_operation_v2(branch_id)
   WHERE state IN ('committed', 'streaming');
 
 -- Immutable record of the model-visible branch projection at command commit.
@@ -211,7 +211,7 @@ CREATE TABLE IF NOT EXISTS assistant_generation_snapshot_v2 (
   UNIQUE (operation_id, answer_root_id, snapshot_hash),
   FOREIGN KEY (answer_root_id) REFERENCES message_v2(message_id) ON DELETE CASCADE,
   FOREIGN KEY (operation_id, answer_root_id)
-    REFERENCES generation_operation_v2(operation_id, result_answer_root_id)
+    REFERENCES generation_operation_v2(operation_id, target_answer_id)
     DEFERRABLE INITIALLY DEFERRED,
   FOREIGN KEY (
     capability_snapshot_hash, capability_revision,
@@ -260,27 +260,30 @@ BEGIN
       AND question.conversation_id = NEW.conversation_id
       AND question.role = 'user'
   ) THEN RAISE(ABORT, 'GENERATION_V2_OPERATION_QUESTION_INVALID') END;
-  SELECT CASE WHEN NEW.target_answer_root_id IS NOT NULL AND NOT EXISTS (
+  SELECT CASE WHEN NEW.source_answer_id IS NOT NULL AND NOT EXISTS (
     SELECT 1 FROM message_v2 AS target
-    WHERE target.message_id = NEW.target_answer_root_id
+    WHERE target.message_id = NEW.source_answer_id
       AND target.conversation_id = NEW.conversation_id
       AND target.role = 'assistant'
       AND target.answer_root_id = target.message_id
-      AND target.question_id = NEW.question_id
-  ) THEN RAISE(ABORT, 'GENERATION_V2_OPERATION_TARGET_INVALID') END;
+      AND (
+        NEW.action_kind = 'edit_resend'
+        OR target.question_id = NEW.question_id
+      )
+  ) THEN RAISE(ABORT, 'GENERATION_V2_OPERATION_SOURCE_INVALID') END;
   SELECT CASE WHEN NOT EXISTS (
     SELECT 1 FROM message_v2 AS result
-    WHERE result.message_id = NEW.result_answer_root_id
+    WHERE result.message_id = NEW.target_answer_id
       AND result.conversation_id = NEW.conversation_id
       AND result.role = 'assistant'
       AND result.answer_root_id = result.message_id
       AND result.question_id = NEW.question_id
-  ) THEN RAISE(ABORT, 'GENERATION_V2_OPERATION_RESULT_INVALID') END;
+  ) THEN RAISE(ABORT, 'GENERATION_V2_OPERATION_TARGET_INVALID') END;
 END;
 
 CREATE TRIGGER IF NOT EXISTS trg_generation_operation_v2_structure_immutable
 BEFORE UPDATE OF operation_id, action_kind, command_fingerprint, branch_id, conversation_id,
-  question_id, target_answer_root_id, result_answer_root_id, created_at_ms
+  question_id, source_answer_id, target_answer_id, created_at_ms
 ON generation_operation_v2
 BEGIN
   SELECT RAISE(ABORT, 'GENERATION_V2_OPERATION_STRUCTURE_IMMUTABLE');
@@ -563,7 +566,7 @@ BEGIN
     JOIN generation_operation_v2 AS operation ON operation.operation_id = request.operation_id
     JOIN assistant_generation_snapshot_v2 AS snapshot
       ON snapshot.operation_id = operation.operation_id
-      AND snapshot.answer_root_id = operation.result_answer_root_id
+      AND snapshot.answer_root_id = operation.target_answer_id
     JOIN message_v2 AS answer ON answer.message_id = request.answer_root_id
     JOIN asset_revision_v2 AS revision
       ON revision.asset_revision_id = NEW.asset_revision_id AND revision.asset_id = NEW.asset_id

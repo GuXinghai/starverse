@@ -133,6 +133,34 @@ function beginInput(overrides: Record<string, unknown> = {}) {
   }
 }
 
+function seedCompletedInitial(
+  db: BetterSqlite3.Database,
+  graph: ConversationGraphV2Repo,
+  execution: GenerationExecutionV2Repo,
+) {
+  seedContainer(db, graph)
+  runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+    const pending = graph.beginInitialTurn(context, beginInput())
+    execution.insertOperationAndSnapshot(context, {
+      operationId: 'operation:1',
+      actionKind: 'initial_send',
+      branchId: 'branch:1',
+      conversationId: 'conversation:1',
+      questionId: 'question:1',
+      sourceAnswerId: null,
+      targetAnswerId: 'answer:1',
+      snapshot: snapshotJson('operation:1', 'answer:1'),
+      commandFingerprint: HASH_A,
+      createdAtMs: 3,
+    })
+    graph.commitInitialTurnProjection(context, pending)
+    graph.terminalizeAssistantMessage(context, 'answer:1', 'completed', 'first answer', 4)
+  })
+  db.prepare(`UPDATE generation_operation_v2 SET state='cancelled',
+    error_code='test_terminal',error_message='test terminal',updated_at_ms=4,terminal_at_ms=4
+    WHERE operation_id='operation:1'`).run()
+}
+
 describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
   it('promotes the hidden New Chat template and creates its successor in the initial-command transaction', () => {
     const db = createDb()
@@ -164,8 +192,8 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
         const pending = graph.beginInitialTurn(context, beginInput())
         execution.insertOperationAndSnapshot(context, {
           operationId: 'operation:1', actionKind: 'initial_send', branchId: 'branch:1',
-          conversationId: 'conversation:1', questionId: 'question:1', targetAnswerRootId: null,
-          resultAnswerRootId: 'answer:1', snapshot: snapshotJson('operation:1', 'answer:1'),
+          conversationId: 'conversation:1', questionId: 'question:1', sourceAnswerId: null,
+          targetAnswerId: 'answer:1', snapshot: snapshotJson('operation:1', 'answer:1'),
           commandFingerprint: HASH_A, createdAtMs: 3,
         })
         return graph.commitInitialTurnProjection(context, pending)
@@ -253,8 +281,8 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
           branchId: 'branch:1',
           conversationId: 'conversation:1',
           questionId: 'question:1',
-          targetAnswerRootId: null,
-          resultAnswerRootId: 'answer:1',
+          sourceAnswerId: null,
+          targetAnswerId: 'answer:1',
           snapshot: snapshotJson('operation:1', 'answer:1'),
           commandFingerprint: HASH_A,
           createdAtMs: 3,
@@ -318,8 +346,8 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
           branchId: 'branch:1',
           conversationId: 'conversation:1',
           questionId: 'question:1',
-          targetAnswerRootId: null,
-          resultAnswerRootId: 'answer:1',
+          sourceAnswerId: null,
+          targetAnswerId: 'answer:1',
           snapshot: snapshotJson('operation:1', 'answer:different'),
           commandFingerprint: HASH_A,
           createdAtMs: 3,
@@ -336,7 +364,7 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
       const graph = new ConversationGraphV2Repo(db)
       const execution = new GenerationExecutionV2Repo(db)
       seedContainer(db, graph)
-      db.prepare('INSERT INTO branch_v2 VALUES (?, ?, NULL, ?, ?, ?, NULL)')
+      db.prepare('INSERT INTO branch_v2 VALUES (?, ?, NULL, ?, ?, ?, NULL, NULL)')
         .run('branch:2', 'conversation:1', 'Other', 2, 2)
       expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
         const pending = graph.beginInitialTurn(context, beginInput())
@@ -346,8 +374,8 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
           branchId: 'branch:2',
           conversationId: 'conversation:1',
           questionId: 'question:1',
-          targetAnswerRootId: null,
-          resultAnswerRootId: 'answer:1',
+          sourceAnswerId: null,
+          targetAnswerId: 'answer:1',
           snapshot: snapshotJson('operation:1', 'answer:1'),
           commandFingerprint: HASH_A,
           createdAtMs: 3,
@@ -370,5 +398,179 @@ describe('ConversationGraphV2Repo dormant atomic graph authority', () => {
         graph.getBranchProjection('branch:1', 'question:1')))
         .toThrow('GENERATION_V2_GRAPH_REPOSITORY_STATE_INVALID')
     } finally { db.close() }
+  })
+
+  it('creates regenerate and edit-resend child branches without mutating the source route', () => {
+    const db = createDb()
+    try {
+      const graph = new ConversationGraphV2Repo(db)
+      const execution = new GenerationExecutionV2Repo(db)
+      seedCompletedInitial(db, graph, execution)
+
+      let regenerateBranch = ''
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        const pending = graph.beginAnswerAction(context, {
+          operationId: 'operation:regenerate',
+          actionKind: 'regenerate_question',
+          sourceBranchId: 'branch:1',
+          questionId: 'question:1',
+          sourceAnswerId: 'answer:1',
+          expectedHeadMessageId: 'answer:1',
+          answerRootId: 'answer:regenerate',
+          createdAtMs: 5,
+        })
+        regenerateBranch = pending.branchId.value
+        execution.insertOperationAndSnapshot(context, {
+          operationId: 'operation:regenerate',
+          actionKind: 'regenerate_question',
+          branchId: pending.branchId.value,
+          conversationId: 'conversation:1',
+          questionId: 'question:1',
+          sourceAnswerId: 'answer:1',
+          targetAnswerId: 'answer:regenerate',
+          snapshot: snapshotJson('operation:regenerate', 'answer:regenerate'),
+          commandFingerprint: HASH_A,
+          createdAtMs: 5,
+        })
+        graph.commitAnswerActionProjection(context, pending)
+      })
+
+      let editBranch = ''
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        const pending = graph.beginEditedTurn(context, {
+          operationId: 'operation:edit',
+          sourceBranchId: 'branch:1',
+          sourceQuestionId: 'question:1',
+          sourceAnswerRootId: 'answer:1',
+          expectedHeadMessageId: 'answer:1',
+          questionId: 'question:edited',
+          answerRootId: 'answer:edited',
+          userBody: 'edited question',
+          createdAtMs: 6,
+        })
+        editBranch = pending.branchId.value
+        execution.insertOperationAndSnapshot(context, {
+          operationId: 'operation:edit',
+          actionKind: 'edit_resend',
+          branchId: pending.branchId.value,
+          conversationId: 'conversation:1',
+          questionId: 'question:edited',
+          sourceAnswerId: 'answer:1',
+          targetAnswerId: 'answer:edited',
+          snapshot: snapshotJson('operation:edit', 'answer:edited'),
+          commandFingerprint: HASH_A,
+          createdAtMs: 6,
+        })
+        graph.commitEditedTurnProjection(context, pending)
+      })
+
+      expect(graph.getBranchProjection('branch:1', 'question:1').headMessageId?.value).toBe('answer:1')
+      expect(graph.getBranchProjection(regenerateBranch, 'question:1')).toMatchObject({
+        headMessageId: { value: 'answer:regenerate' },
+        chosenAnswerRootId: { value: 'answer:regenerate' },
+      })
+      expect(graph.getBranchProjection(editBranch, 'question:edited')).toMatchObject({
+        headMessageId: { value: 'answer:edited' },
+        chosenAnswerRootId: { value: 'answer:edited' },
+      })
+      expect(db.prepare(`SELECT parent_branch_id AS parentBranchId FROM branch_v2
+        WHERE branch_id=?`).get(regenerateBranch)).toEqual({ parentBranchId: 'branch:1' })
+      expect(db.prepare(`SELECT parent_branch_id AS parentBranchId FROM branch_v2
+        WHERE branch_id=?`).get(editBranch)).toEqual({ parentBranchId: 'branch:1' })
+      expect(db.prepare(`SELECT count(*) AS count FROM message_v2
+        WHERE message_id IN ('question:1','answer:1')`).get()).toEqual({ count: 2 })
+    } finally {
+      db.close()
+    }
+  })
+
+  it('retry-replace stays on the source branch and append-only hides the replaced answer', () => {
+    const db = createDb()
+    try {
+      const graph = new ConversationGraphV2Repo(db)
+      const execution = new GenerationExecutionV2Repo(db)
+      seedCompletedInitial(db, graph, execution)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        const pending = graph.beginAnswerAction(context, {
+          operationId: 'operation:replace',
+          actionKind: 'retry_replace',
+          sourceBranchId: 'branch:1',
+          questionId: 'question:1',
+          sourceAnswerId: 'answer:1',
+          expectedHeadMessageId: 'answer:1',
+          answerRootId: 'answer:replace',
+          createdAtMs: 5,
+        })
+        execution.insertOperationAndSnapshot(context, {
+          operationId: 'operation:replace',
+          actionKind: 'retry_replace',
+          branchId: 'branch:1',
+          conversationId: 'conversation:1',
+          questionId: 'question:1',
+          sourceAnswerId: 'answer:1',
+          targetAnswerId: 'answer:replace',
+          snapshot: snapshotJson('operation:replace', 'answer:replace'),
+          commandFingerprint: HASH_A,
+          createdAtMs: 5,
+        })
+        graph.commitAnswerActionProjection(context, pending)
+      })
+
+      expect(graph.getBranchProjection('branch:1', 'question:1')).toMatchObject({
+        headMessageId: { value: 'answer:replace' },
+        chosenAnswerRootId: { value: 'answer:replace' },
+      })
+      expect(db.prepare(`SELECT answer_root_id AS answerId FROM branch_answer_hide_v2
+        WHERE branch_id='branch:1'`).all()).toEqual([{ answerId: 'answer:1' }])
+      expect(db.prepare(`SELECT count(*) AS count FROM branch_v2`).get()).toEqual({ count: 1 })
+    } finally {
+      db.close()
+    }
+  })
+
+  it('rejects retry-replace when an existing descendant still selects the source answer', () => {
+    const db = createDb()
+    try {
+      const graph = new ConversationGraphV2Repo(db)
+      const execution = new GenerationExecutionV2Repo(db)
+      seedCompletedInitial(db, graph, execution)
+      db.prepare(`INSERT INTO branch_v2(
+        branch_id,conversation_id,head_message_id,name,created_at_ms,updated_at_ms,deleted_at_ms,parent_branch_id
+      ) VALUES('branch:child','conversation:1','answer:1',NULL,5,5,NULL,'branch:1')`).run()
+
+      expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        const pending = graph.beginAnswerAction(context, {
+          operationId: 'operation:replace',
+          actionKind: 'retry_replace',
+          sourceBranchId: 'branch:1',
+          questionId: 'question:1',
+          sourceAnswerId: 'answer:1',
+          expectedHeadMessageId: 'answer:1',
+          answerRootId: 'answer:replace',
+          createdAtMs: 6,
+        })
+        execution.insertOperationAndSnapshot(context, {
+          operationId: 'operation:replace',
+          actionKind: 'retry_replace',
+          branchId: 'branch:1',
+          conversationId: 'conversation:1',
+          questionId: 'question:1',
+          sourceAnswerId: 'answer:1',
+          targetAnswerId: 'answer:replace',
+          snapshot: snapshotJson('operation:replace', 'answer:replace'),
+          commandFingerprint: HASH_A,
+          createdAtMs: 6,
+        })
+        graph.commitAnswerActionProjection(context, pending)
+      })).toThrow('GENERATION_V2_GRAPH_REPOSITORY_CONFLICT')
+
+      expect(db.prepare(`SELECT count(*) AS count FROM message_v2
+        WHERE message_id='answer:replace'`).get()).toEqual({ count: 0 })
+      expect(db.prepare(`SELECT count(*) AS count FROM generation_operation_v2
+        WHERE operation_id='operation:replace'`).get()).toEqual({ count: 0 })
+      expect(graph.getBranchProjection('branch:1', 'question:1').headMessageId?.value).toBe('answer:1')
+    } finally {
+      db.close()
+    }
   })
 })

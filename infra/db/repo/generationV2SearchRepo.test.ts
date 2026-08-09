@@ -15,13 +15,16 @@ describe('GenerationV2SearchRepo', () => {
       .run('project:1', 'Alpha project', 1_000, 1_000)
     db.prepare(`INSERT INTO conversation_v2 (conversation_id, project_id, title, created_at_ms, updated_at_ms) VALUES (?, ?, ?, ?, ?)`)
       .run('conversation:1', 'project:1', 'Alpha conversation', 2_000, 2_000)
+    db.prepare(`INSERT INTO branch_v2 (
+      branch_id,conversation_id,head_message_id,name,created_at_ms,updated_at_ms,deleted_at_ms,parent_branch_id
+    ) VALUES ('branch:1','conversation:1',NULL,NULL,2_000,2_000,NULL,NULL)`).run()
     return db
   }
 
   it('indexes completed epoch-2 messages as their bodies arrive and preserves the legacy result projection', () => {
     const db = database()
-    db.prepare(`INSERT INTO message_v2 (message_id, conversation_id, role, status, parent_message_id, question_id, answer_root_id, ordinal, created_at_ms, updated_at_ms)
-      VALUES (?, ?, 'user', 'completed', NULL, NULL, NULL, ?, ?, ?)`)
+    db.prepare(`INSERT INTO message_v2 (message_id, conversation_id, introduced_in_branch_id, role, status, parent_message_id, question_id, answer_root_id, ordinal, created_at_ms, updated_at_ms)
+      VALUES (?, ?, 'branch:1', 'user', 'completed', NULL, NULL, NULL, ?, ?, ?)`)
       .run('message:1', 'conversation:1', 0, 3_000, 3_000)
     db.prepare(`UPDATE message_body_v2 SET body_text=? WHERE message_id=?`).run('A precise nebula search term', 'message:1')
     const hits = new GenerationV2SearchRepo(db).query({ q: 'nebula', scope: { projectName: false, convoName: false, convoContent: true }, mode: 'fuzzy' })
@@ -40,8 +43,8 @@ describe('GenerationV2SearchRepo', () => {
 
   it('rebuilds only completed user and assistant content from epoch-2 tables', () => {
     const db = database()
-    db.prepare(`INSERT INTO message_v2 (message_id, conversation_id, role, status, parent_message_id, question_id, answer_root_id, ordinal, created_at_ms, updated_at_ms)
-      VALUES (?, ?, 'user', 'completed', NULL, NULL, NULL, ?, ?, ?)`)
+    db.prepare(`INSERT INTO message_v2 (message_id, conversation_id, introduced_in_branch_id, role, status, parent_message_id, question_id, answer_root_id, ordinal, created_at_ms, updated_at_ms)
+      VALUES (?, ?, 'branch:1', 'user', 'completed', NULL, NULL, NULL, ?, ?, ?)`)
       .run('message:visible', 'conversation:1', 0, 3_000, 3_000)
     db.prepare(`UPDATE message_body_v2 SET body_text=? WHERE message_id=?`).run('visible phrase', 'message:visible')
     const search = new GenerationV2SearchRepo(db)

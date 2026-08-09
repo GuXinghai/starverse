@@ -1,10 +1,30 @@
 import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
-import type BetterSqlite3 from 'better-sqlite3'
+import BetterSqlite3 from 'better-sqlite3'
 
 const MAX_FRAGMENT_BYTES = 4 * 1024 * 1024
 const MANIFEST_ID = 'generation_compiler_v2'
+const MODEL_CATALOG_FRAGMENT_ID = 'model_catalog_v2'
+const GENERATION_EXECUTION_FRAGMENT_ID = 'generation_execution_v1'
+const LEGACY_MODEL_EVIDENCE_NAMESPACES = Object.freeze([
+  Object.freeze({ setTable: 'deepseek_stable_model_evidence_sets', clockTable: 'deepseek_stable_model_evidence_generation_clock',
+    setDeleteTrigger: 'deepseek_stable_model_evidence_no_delete',
+    clockDeleteTrigger: 'deepseek_stable_model_evidence_clock_no_delete' }),
+  Object.freeze({ setTable: 'openai_responses_model_evidence_sets', clockTable: 'openai_responses_model_evidence_generation_clock',
+    setDeleteTrigger: 'openai_responses_model_evidence_no_delete',
+    clockDeleteTrigger: 'openai_responses_model_evidence_clock_no_delete' }),
+  Object.freeze({ setTable: 'anthropic_model_evidence_sets', clockTable: 'anthropic_model_evidence_generation_clock',
+    setDeleteTrigger: 'anthropic_model_evidence_no_delete',
+    clockDeleteTrigger: 'anthropic_model_evidence_clock_no_delete' }),
+  Object.freeze({ setTable: 'gemini_model_evidence_sets', clockTable: 'gemini_model_evidence_generation_clock',
+    setDeleteTrigger: 'gemini_model_evidence_no_delete',
+    clockDeleteTrigger: 'gemini_model_evidence_clock_no_delete' }),
+] as const)
+const MODEL_CATALOG_TABLES = Object.freeze([
+  'model_catalog_snapshot_v2',
+  'model_catalog_scope_v2',
+] as const)
 const MANIFEST_TABLE_SQL = `
   CREATE TABLE generation_v2_schema_manifest (
     manifest_id TEXT PRIMARY KEY CHECK (manifest_id = '${MANIFEST_ID}'),
@@ -12,7 +32,7 @@ const MANIFEST_TABLE_SQL = `
     schema_digest TEXT NOT NULL CHECK (
       length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
     ),
-    fragment_count INTEGER NOT NULL CHECK (fragment_count = 20),
+    fragment_count INTEGER NOT NULL CHECK (fragment_count = 16),
     object_projection_digest TEXT NOT NULL CHECK (
       length(object_projection_digest) = 64
       AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
@@ -25,10 +45,6 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'tool_registry_v1', fileName: 'toolRegistrySchema.sql' }),
   Object.freeze({ id: 'attachment_asset_v1', fileName: 'attachmentAssetSchema.sql' }),
   Object.freeze({ id: 'openrouter_images_v1', fileName: 'openRouterImagesSchema.sql' }),
-  Object.freeze({ id: 'deepseek_stable_model_evidence_v1', fileName: 'deepSeekStableModelEvidenceSchema.sql' }),
-  Object.freeze({ id: 'openai_responses_model_evidence_v1', fileName: 'openAIResponsesModelEvidenceSchema.sql' }),
-  Object.freeze({ id: 'anthropic_model_evidence_v1', fileName: 'anthropicModelEvidenceSchema.sql' }),
-  Object.freeze({ id: 'gemini_model_evidence_v1', fileName: 'geminiModelEvidenceSchema.sql' }),
   Object.freeze({ id: 'local_endpoint_profile_v1', fileName: 'localEndpointProfileSchema.sql' }),
   Object.freeze({ id: 'reasoning_projection_v1', fileName: 'reasoningProjectionSchema.sql' }),
   Object.freeze({ id: 'composer_draft_v1', fileName: 'composerDraftSchema.sql' }),
@@ -48,8 +64,9 @@ export class GenerationV2SchemaComposerError extends Error {
     | 'GENERATION_V2_SCHEMA_FRAGMENT_INVALID'
     | 'GENERATION_V2_SCHEMA_FRAGMENT_TOO_LARGE'
     | 'GENERATION_V2_SCHEMA_DATABASE_BUSY'
-    | 'GENERATION_V2_SCHEMA_STATE_INVALID') {
-    super(code)
+    | 'GENERATION_V2_SCHEMA_DIGEST_MISMATCH'
+    | 'GENERATION_V2_SCHEMA_STATE_INVALID', readonly detail: string | null = null) {
+    super(detail ? `${code}:${detail}` : code)
     this.name = 'GenerationV2SchemaComposerError'
   }
 }
@@ -75,6 +92,13 @@ type SchemaObject = Readonly<{
   name: string
 }>
 
+type InstalledSchemaRow = Readonly<{
+  type: string
+  name: string
+  tbl_name: string
+  sql: string | null
+}>
+
 // FTS5 owns these five SQLite-internal tables for the one reviewed epoch-2
 // virtual table. They are not user schema objects, but they must be present
 // exactly so the closed-schema verifier neither rejects a valid FTS index nor
@@ -90,6 +114,72 @@ const fts5SearchShadowNames = new Set<string>(FTS5_SEARCH_SHADOW_TABLES)
 
 function normalizedSql(sql: string): string {
   return sql.replace(/;\s*$/u, '').replace(/\s+/gu, ' ').trim()
+}
+
+function installedSchemaRows(db: BetterSqlite3.Database): readonly InstalledSchemaRow[] {
+  return db.prepare(`
+    SELECT type, name, tbl_name, sql
+    FROM sqlite_master
+    WHERE name NOT LIKE 'sqlite_%'
+    ORDER BY type, name
+  `).all() as InstalledSchemaRow[]
+}
+
+function projectionDigestFromRows(rows: readonly InstalledSchemaRow[]): string {
+  const projection = rows
+    .filter((row) => !fts5SearchShadowNames.has(row.name) && row.name !== 'generation_v2_schema_manifest')
+    .map((row) => Object.freeze({
+      type: row.type,
+      name: row.name,
+      tableName: row.tbl_name,
+      sql: row.sql,
+    }))
+  return createHash('sha256').update(JSON.stringify(projection), 'utf8').digest('hex')
+}
+
+function isModelCatalogObjectName(name: string): boolean {
+  return name.startsWith('model_catalog_')
+}
+
+function isModelCatalogSchemaRow(row: InstalledSchemaRow): boolean {
+  return isModelCatalogObjectName(row.name) || isModelCatalogObjectName(row.tbl_name)
+}
+
+function isLegacyModelEvidenceSchemaRow(row: InstalledSchemaRow): boolean {
+  return LEGACY_MODEL_EVIDENCE_NAMESPACES.some((namespace) =>
+    row.name === namespace.setTable || row.name === namespace.clockTable ||
+    row.name === namespace.setDeleteTrigger || row.name === namespace.clockDeleteTrigger ||
+    row.tbl_name === namespace.setTable || row.tbl_name === namespace.clockTable)
+}
+
+function schemaRowsEqual(left: readonly InstalledSchemaRow[], right: readonly InstalledSchemaRow[]): boolean {
+  if (left.length !== right.length) return false
+  return left.every((row, index) => {
+    const other = right[index]
+    return other !== undefined && row.type === other.type && row.name === other.name &&
+      row.tbl_name === other.tbl_name && normalizedSql(row.sql ?? '') === normalizedSql(other.sql ?? '')
+  })
+}
+
+function firstSchemaRowDifference(
+  left: readonly InstalledSchemaRow[],
+  right: readonly InstalledSchemaRow[],
+): string {
+  const length = Math.max(left.length, right.length)
+  for (let index = 0; index < length; index += 1) {
+    const current = left[index]
+    const expected = right[index]
+    if (!current) return `missing_installed:${expected?.type ?? 'unknown'}:${expected?.name ?? 'unknown'}`
+    if (!expected) return `unexpected_installed:${current.type}:${current.name}`
+    if (current.type !== expected.type || current.name !== expected.name) {
+      return `object_identity:${current.type}:${current.name}:${expected.type}:${expected.name}`
+    }
+    if (current.tbl_name !== expected.tbl_name) return `table_binding:${current.type}:${current.name}`
+    if (normalizedSql(current.sql ?? '') !== normalizedSql(expected.sql ?? '')) {
+      return `object_sql:${current.type}:${current.name}`
+    }
+  }
+  return 'unknown'
 }
 
 function assertRoot(rootPath: string): string {
@@ -169,17 +259,7 @@ function readInstalledProjection(
   expected: readonly SchemaObject[],
   manifestExpected: boolean,
 ): Readonly<{ rows: readonly unknown[]; digest: string }> {
-  const allRows = db.prepare(`
-    SELECT type, name, tbl_name, sql
-    FROM sqlite_master
-    WHERE name NOT LIKE 'sqlite_%'
-    ORDER BY type, name
-  `).all() as Array<{
-    type: string
-    name: string
-    tbl_name: string
-    sql: string | null
-  }>
+  const allRows = installedSchemaRows(db)
   const shadowRows = allRows.filter((row) => fts5SearchShadowNames.has(row.name))
   if (shadowRows.length !== FTS5_SEARCH_SHADOW_TABLES.length ||
       shadowRows.some((row) => row.type !== 'table' || typeof row.sql !== 'string') ||
@@ -247,9 +327,16 @@ function verifyLoadedGenerationV2Schema(
       fragment_count: number
       object_projection_digest: string
     } | undefined
-  if (!manifest || manifest.schema_version !== 1 || manifest.schema_digest !== schemaDigest ||
-      manifest.fragment_count !== fragments.length) {
+  if (!manifest || manifest.schema_version !== 1) {
     throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  if (manifest.schema_digest !== schemaDigest || manifest.fragment_count !== fragments.length) {
+    // The installed schema was built by a different fragment set than the
+    // current build. This is a deliberate, non-corrupting state transition
+    // (build advanced) and is classified separately from corruption/tampering
+    // so the caller can offer a backup-and-recreate recovery instead of
+    // reporting a damaged database.
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_DIGEST_MISMATCH')
   }
   const projection = readInstalledProjection(db, expectedObjects, true)
   if (projection.digest !== manifest.object_projection_digest ||
@@ -320,4 +407,182 @@ export function installGenerationV2SchemaInActiveTransaction(
     MANIFEST_ID, schemaDigest, fragments.length, projection.digest,
   )
   return verifyLoadedGenerationV2Schema(db, fragments, schemaDigest, expectedObjects)
+}
+
+export type ModelCatalogNamespaceResetV2Result = Readonly<{
+  classification: 'model_catalog_namespace_reset_v2'
+  discardedScopeCount: number
+  discardedSnapshotCount: number
+  discardedLegacyEvidenceSetCount: number
+  discardedLegacyEvidenceClockCount: number
+  credentialEnvelopeRevision: number
+  schemaDigest: string
+  objectProjectionDigest: string
+}>
+
+/**
+ * Explicit, destructive catalog-only maintenance authority.
+ *
+ * This is intentionally not called by normal schema installation: an old
+ * catalog is never decoded or migrated. The caller must own one active write
+ * transaction. Every non-catalog schema object must already match the current
+ * build exactly before the two catalog tables can be replaced.
+ */
+export function resetModelCatalogNamespaceV2InActiveTransaction(
+  db: BetterSqlite3.Database,
+  rootPath: string,
+): ModelCatalogNamespaceResetV2Result {
+  if (!db.inTransaction) throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_DATABASE_BUSY')
+  if (db.pragma('foreign_keys', { simple: true }) !== 1) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  const credentialEnvelopeBefore = db.prepare(`SELECT envelope_revision
+    FROM epoch_scope_key_envelope_v2 WHERE singleton_id = 1`).get() as { envelope_revision: number } | undefined
+  if (!credentialEnvelopeBefore || !Number.isSafeInteger(credentialEnvelopeBefore.envelope_revision) ||
+      credentialEnvelopeBefore.envelope_revision < 1) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+
+  const fragments = loadFragments(rootPath)
+  const schemaDigest = digestFragments(fragments)
+  const expectedObjects = extractExpectedObjects(fragments)
+  const catalogFragment = fragments.find((fragment) => fragment.id === MODEL_CATALOG_FRAGMENT_ID)
+  const generationExecutionFragment = fragments.find((fragment) => fragment.id === GENERATION_EXECUTION_FRAGMENT_ID)
+  if (!catalogFragment || !generationExecutionFragment) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_FRAGMENT_INVALID')
+  }
+
+  const manifestObject = db.prepare(
+    "SELECT type, sql FROM sqlite_master WHERE name = 'generation_v2_schema_manifest'",
+  ).get() as { type: string; sql: string | null } | undefined
+  if (manifestObject?.type !== 'table' || typeof manifestObject.sql !== 'string' ||
+      normalizedSql(manifestObject.sql) !== normalizedSql(MANIFEST_TABLE_SQL)) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  const manifest = db.prepare(`SELECT schema_version, schema_digest, fragment_count, object_projection_digest
+    FROM generation_v2_schema_manifest WHERE manifest_id = ?`).get(MANIFEST_ID) as {
+      schema_version: number
+      schema_digest: string
+      fragment_count: number
+      object_projection_digest: string
+    } | undefined
+  const appMeta = db.prepare('SELECT schema_digest FROM app_meta_v2 WHERE singleton_id = 1').get() as {
+    schema_digest: string
+  } | undefined
+  if (!manifest || manifest.schema_version !== 1 || manifest.fragment_count !== fragments.length ||
+      !/^[0-9a-f]{64}$/u.test(manifest.schema_digest) ||
+      !/^[0-9a-f]{64}$/u.test(manifest.object_projection_digest) ||
+      appMeta?.schema_digest !== manifest.schema_digest) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+
+  const installedRows = installedSchemaRows(db)
+  if (projectionDigestFromRows(installedRows) !== manifest.object_projection_digest) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+
+  const expectedDb = new BetterSqlite3(':memory:')
+  let expectedRows: readonly InstalledSchemaRow[]
+  try {
+    expectedDb.pragma('foreign_keys = ON')
+    expectedDb.exec('BEGIN IMMEDIATE')
+    installGenerationV2SchemaInActiveTransaction(expectedDb, rootPath)
+    expectedDb.exec('COMMIT')
+    expectedRows = installedSchemaRows(expectedDb)
+  } finally {
+    if (expectedDb.open) expectedDb.close()
+  }
+
+  const outsideCatalog = (row: InstalledSchemaRow) =>
+    !isModelCatalogSchemaRow(row) && !isLegacyModelEvidenceSchemaRow(row) &&
+    row.name !== 'generation_v2_schema_manifest'
+  const installedOutsideCatalog = installedRows.filter(outsideCatalog)
+  const expectedOutsideCatalog = expectedRows.filter(outsideCatalog)
+  if (!schemaRowsEqual(installedOutsideCatalog, expectedOutsideCatalog)) {
+    throw new GenerationV2SchemaComposerError(
+      'GENERATION_V2_SCHEMA_STATE_INVALID',
+      firstSchemaRowDifference(installedOutsideCatalog, expectedOutsideCatalog),
+    )
+  }
+  const installedCatalogRows = installedRows.filter(isModelCatalogSchemaRow)
+  const expectedCatalogRows = expectedRows.filter(isModelCatalogSchemaRow)
+  if (schemaRowsEqual(installedCatalogRows, expectedCatalogRows)) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  const installedCatalogTables = installedCatalogRows
+    .filter((row) => row.type === 'table')
+    .map((row) => row.name)
+    .sort()
+  if (installedCatalogTables.join('\0') !== [...MODEL_CATALOG_TABLES].sort().join('\0')) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+
+  for (const row of installedRows.filter((candidate) => candidate.type === 'table' && outsideCatalog(candidate))) {
+    const escapedName = row.name.replace(/"/gu, '""')
+    const references = db.prepare(`PRAGMA foreign_key_list("${escapedName}")`).all() as Array<{ table: string }>
+    if (references.some((reference) => isModelCatalogObjectName(reference.table))) {
+      throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+    }
+  }
+
+  const discardedScopeCount = (db.prepare('SELECT count(*) AS count FROM model_catalog_scope_v2').get() as { count: number }).count
+  const discardedSnapshotCount = (db.prepare('SELECT count(*) AS count FROM model_catalog_snapshot_v2').get() as { count: number }).count
+  for (const type of ['trigger', 'view', 'index'] as const) {
+    for (const row of installedCatalogRows.filter((candidate) => candidate.type === type)) {
+      const escapedName = row.name.replace(/"/gu, '""')
+      db.exec(`DROP ${type.toUpperCase()} "${escapedName}"`)
+    }
+  }
+  db.exec('DROP TABLE model_catalog_snapshot_v2')
+  db.exec('DROP TABLE model_catalog_scope_v2')
+  db.exec(catalogFragment.sql)
+
+  let discardedLegacyEvidenceSetCount = 0
+  let discardedLegacyEvidenceClockCount = 0
+  for (const namespace of LEGACY_MODEL_EVIDENCE_NAMESPACES) {
+    const setExists = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(namespace.setTable)
+    const clockExists = db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name=?").get(namespace.clockTable)
+    if (!setExists && !clockExists) continue
+    if (!setExists || !clockExists) throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+    discardedLegacyEvidenceSetCount += (db.prepare(`SELECT count(*) AS count FROM "${namespace.setTable}"`).get() as
+      { count: number }).count
+    discardedLegacyEvidenceClockCount += (db.prepare(`SELECT count(*) AS count FROM "${namespace.clockTable}"`).get() as
+      { count: number }).count
+    db.exec(`DROP TRIGGER IF EXISTS "${namespace.setDeleteTrigger}"`)
+    db.exec(`DROP TRIGGER IF EXISTS "${namespace.clockDeleteTrigger}"`)
+    db.exec(`DROP TABLE "${namespace.setTable}"`)
+    db.exec(`DROP TABLE "${namespace.clockTable}"`)
+  }
+
+  db.exec('DROP TRIGGER trg_app_meta_v2_immutable')
+  const metaUpdate = db.prepare('UPDATE app_meta_v2 SET schema_digest = ? WHERE singleton_id = 1')
+    .run(schemaDigest)
+  db.exec(generationExecutionFragment.sql)
+  if (metaUpdate.changes !== 1) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+
+  const projection = readInstalledProjection(db, expectedObjects, true)
+  const manifestUpdate = db.prepare(`UPDATE generation_v2_schema_manifest
+    SET schema_digest = ?, fragment_count = ?, object_projection_digest = ?
+    WHERE manifest_id = ?`).run(schemaDigest, fragments.length, projection.digest, MANIFEST_ID)
+  if (manifestUpdate.changes !== 1) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  const verified = verifyLoadedGenerationV2Schema(db, fragments, schemaDigest, expectedObjects)
+  const credentialEnvelopeAfter = db.prepare(`SELECT envelope_revision
+    FROM epoch_scope_key_envelope_v2 WHERE singleton_id = 1`).get() as { envelope_revision: number } | undefined
+  if (!credentialEnvelopeAfter || credentialEnvelopeAfter.envelope_revision !== credentialEnvelopeBefore.envelope_revision) {
+    throw new GenerationV2SchemaComposerError('GENERATION_V2_SCHEMA_STATE_INVALID')
+  }
+  return Object.freeze({
+    classification: 'model_catalog_namespace_reset_v2',
+    discardedScopeCount,
+    discardedSnapshotCount,
+    discardedLegacyEvidenceSetCount,
+    discardedLegacyEvidenceClockCount,
+    credentialEnvelopeRevision: credentialEnvelopeAfter.envelope_revision,
+    schemaDigest: verified.schemaDigest,
+    objectProjectionDigest: verified.objectProjectionDigest!,
+  })
 }

@@ -112,7 +112,7 @@ export class OpenRouterNativeHistoryV2Repo {
     seen.add(answerRootId)
     try {
       const operation = this.db.prepare(`SELECT operation_id AS operationId,question_id AS questionId,
-        conversation_id AS conversationId,state FROM generation_operation_v2 WHERE result_answer_root_id=?`).get(answerRootId) as Record<string, unknown> | undefined
+        conversation_id AS conversationId,state FROM generation_operation_v2 WHERE target_answer_id=?`).get(answerRootId) as Record<string, unknown> | undefined
       if (!operation || typeof operation.operationId !== 'string' || typeof operation.questionId !== 'string' ||
           typeof operation.conversationId !== 'string' || operation.state !== 'completed') return incompleteContextTurn()
       const artifact = this.loadLatestCompletedArtifact(answerRootId)
@@ -166,14 +166,14 @@ export class OpenRouterNativeHistoryV2Repo {
   loadRequestHistory(context: GenerationV2AuthorityTransactionContextV2, operationIdValue: string): OpenRouterRequestHistoryRepositoryFactV2 {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db)
     const row = this.db.prepare(`SELECT operation.branch_id AS branchId, operation.conversation_id AS conversationId,
-      operation.question_id AS questionId, operation.result_answer_root_id AS answerRootId,
+      operation.question_id AS questionId, operation.target_answer_id AS answerRootId,
       operation.state AS operationState, question.parent_message_id AS parentMessageId,
       questionBody.body_text AS questionBody, parent.role AS parentRole,
       parent.answer_root_id AS priorAnswerRootId, answer.status AS answerStatus
       FROM generation_operation_v2 AS operation
       JOIN message_v2 AS question ON question.message_id=operation.question_id AND question.role='user'
       JOIN message_body_v2 AS questionBody ON questionBody.message_id=question.message_id
-      JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id AND answer.role='assistant'
+      JOIN message_v2 AS answer ON answer.message_id=operation.target_answer_id AND answer.role='assistant'
       LEFT JOIN message_v2 AS parent ON parent.message_id=question.parent_message_id AND parent.conversation_id=operation.conversation_id
       WHERE operation.operation_id=?`).get(operationIdValue) as Record<string, unknown> | undefined
     if (!row || typeof row.branchId !== 'string' || typeof row.conversationId !== 'string' ||
@@ -233,7 +233,7 @@ export class OpenRouterNativeHistoryV2Repo {
         execution.operation.state !== 'streaming' ||
         execution.operation.operationId.value !== command.operationId.value ||
         execution.operation.branchId.value !== command.branchId.value ||
-        execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+        execution.operation.targetAnswerId.value !== command.answerRootId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) invalid()
     const projection = this.db.prepare(`SELECT branch.head_message_id AS headMessageId,
       choice.chosen_answer_root_id AS chosenAnswerRootId, answer.status AS answerStatus,
@@ -286,7 +286,7 @@ export class OpenRouterNativeHistoryV2Repo {
     return this.issueFact(context, {
       operationId: execution.operation.operationId, branchId: execution.operation.branchId,
       conversationId: execution.operation.conversationId, questionId: execution.operation.questionId,
-      answerRootId: execution.operation.resultAnswerRootId, priorArtifact,
+      answerRootId: execution.operation.targetAnswerId, priorArtifact,
       clientMessages: records.map((record) => Object.freeze({ role: 'tool', tool_call_id: record.toolCallId, content: record.content })),
       contextProjection: new GenerationContextProjectionV2Repo(this.db).load(context, command.operationId.value),
       projectedPrefixMessages: null,
@@ -303,7 +303,7 @@ export class OpenRouterNativeHistoryV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db)
     if (!Number.isSafeInteger(requestSequence) || requestSequence < 2) invalid()
     const row = this.db.prepare(`SELECT branch_id AS branchId, conversation_id AS conversationId,
-      question_id AS questionId, result_answer_root_id AS answerRootId
+      question_id AS questionId, target_answer_id AS answerRootId
       FROM generation_operation_v2 WHERE operation_id=?`).get(operationIdValue) as Readonly<Record<string, unknown>> | undefined
     if (!row || typeof row.branchId !== 'string' || typeof row.conversationId !== 'string' ||
         typeof row.questionId !== 'string' || typeof row.answerRootId !== 'string') invalid()
@@ -380,7 +380,7 @@ export class OpenRouterNativeHistoryV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.db)
     if (!isGenerationExecutionOperationBundleForContextV2(execution, context) ||
         !isGenerationRequestRepositoryFactForContextV2(request, context) || !isOpenRouterNativeHistoryArtifactV1(artifact) ||
-        request.operationId !== execution.operation.operationId.value || request.answerRootId !== execution.operation.resultAnswerRootId.value ||
+        request.operationId !== execution.operation.operationId.value || request.answerRootId !== execution.operation.targetAnswerId.value ||
         !Number.isSafeInteger(createdAtMs) || createdAtMs < execution.operation.updatedAtMs) invalid()
     const canonical = stableSerializeProviderRequestV2(artifact)
     const existing = this.db.prepare(`SELECT artifact_json AS artifactJson, artifact_hash AS artifactHash FROM generation_native_artifact_v2

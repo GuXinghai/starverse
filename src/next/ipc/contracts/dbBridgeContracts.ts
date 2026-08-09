@@ -409,14 +409,10 @@ export type DecodedBeginTurnResult = Readonly<{
   assistantSeq: number
 }>
 
-export type DecodedSwitchCandidateResult = Readonly<{ headMessageId: string }>
-
 export type DecodedRegenerateFromQuestionResult = Readonly<{
   newAnswerRootId: string
   newAssistantSeq: number
 }>
-
-export type DecodedSwitchQuestionCandidateResult = Readonly<{ headMessageId: string }>
 
 export type DecodedForkQuestionResult = Readonly<{
   baseMessageId: string | null
@@ -1336,15 +1332,6 @@ const beginTurnResultSchema = z.object({
   assistantSeq: z.number().finite(),
 })
 
-const switchCandidateResultSchema = z.object({
-  headMessageId: nonEmpty,
-})
-
-const switchQuestionCandidateResultSchema = z.object({
-  ok: z.literal(true),
-  headMessageId: nonEmpty,
-})
-
 const regenerateFromQuestionResultSchema = z.object({
   ok: z.literal(true),
   newAnswerRootId: nonEmpty,
@@ -1923,15 +1910,6 @@ export function decodeBranchBeginTurnResponse(raw: unknown): DecodedBeginTurnRes
     assistantId: row.assistantId,
     assistantSeq: row.assistantSeq,
   }
-}
-
-export function decodeBranchSwitchCandidateResponse(raw: unknown): DecodedSwitchCandidateResult {
-  return decodeWithSchema('branch.switchCandidate', switchCandidateResultSchema, raw)
-}
-
-export function decodeBranchSwitchQuestionCandidateResponse(raw: unknown): DecodedSwitchQuestionCandidateResult {
-  const row = decodeWithSchema('branch.switchQuestionCandidate', switchQuestionCandidateResultSchema, raw)
-  return { headMessageId: row.headMessageId }
 }
 
 export function decodeBranchRegenerateFromQuestionResponse(raw: unknown): DecodedRegenerateFromQuestionResult {

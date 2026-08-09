@@ -23,12 +23,19 @@ export function requireEpoch2ApplicationRuntime(): Epoch2ApplicationRuntime {
   return installed
 }
 
+export function resolveEpoch2BootstrapLayout(): Epoch2WorkspaceLayout {
+  return resolveEpoch2WorkspaceLayout({
+    appDataRoot: app.getPath('appData'),
+    homeRoot: os.homedir(),
+    ...(app.isPackaged ? {} : { repositoryRoot: path.resolve(process.cwd()) }),
+  })
+}
+
 /** Runs only after Electron ready and before importing the normal main module. */
 export async function bootstrapEpoch2ApplicationRuntime(): Promise<Epoch2ApplicationRuntime> {
   if (!app.isReady()) throw new Error('EPOCH2_APPLICATION_BOOTSTRAP_BEFORE_READY')
   if (installed) return requireEpoch2ApplicationRuntime()
-  const layout = resolveEpoch2WorkspaceLayout({ appDataRoot: app.getPath('appData'), homeRoot: os.homedir(),
-    ...(app.isPackaged ? {} : { repositoryRoot: path.resolve(process.cwd()) }) })
+  const layout = resolveEpoch2BootstrapLayout()
   let configStore: Store | null = null
   const epoch2 = await bootstrapEpoch2ToCommitted({ layout,
     clearDefaultSessionData: async () => {

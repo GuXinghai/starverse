@@ -57,8 +57,8 @@ export type GenerationExecutionOperationRepositoryFactV2 = Readonly<{
   branchId: GraphIdentity<'branch_id'>
   conversationId: GraphIdentity<'conversation_id'>
   questionId: GraphIdentity<'question_id'>
-  targetAnswerRootId: GraphIdentity<'answer_root_id'> | null
-  resultAnswerRootId: GraphIdentity<'answer_root_id'>
+  sourceAnswerId: GraphIdentity<'answer_root_id'> | null
+  targetAnswerId: GraphIdentity<'answer_root_id'>
   state: GenerationExecutionOperationStateV2
   errorCode: string | null
   errorMessage: string | null
@@ -104,8 +104,8 @@ type OperationJoinedRow = {
   branch_id: unknown
   conversation_id: unknown
   question_id: unknown
-  target_answer_root_id: unknown
-  result_answer_root_id: unknown
+  source_answer_id: unknown
+  target_answer_id: unknown
   state: unknown
   error_code: unknown
   error_message: unknown
@@ -190,7 +190,7 @@ function encodeProviderFailureFact(value: ProviderFailureV2 | null | undefined):
   return encoded
 }
 
-function decodeProviderFailureFact(value: unknown): ProviderFailureV2 | null {
+export function decodeProviderFailureFact(value: unknown): ProviderFailureV2 | null {
   if (value === null) return null
   if (typeof value !== 'string' || new TextEncoder().encode(value).byteLength > MAX_JSON_BYTES) {
     throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
@@ -211,13 +211,13 @@ function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperati
     if (typeof row.operation_id !== 'string' || !ACTION_KINDS.includes(row.action_kind as GenerationCommandActionV2) ||
         typeof row.command_fingerprint !== 'string' || !/^[0-9a-f]{64}$/u.test(row.command_fingerprint) ||
         typeof row.branch_id !== 'string' || typeof row.conversation_id !== 'string' ||
-        typeof row.question_id !== 'string' || typeof row.result_answer_root_id !== 'string' ||
-        (row.target_answer_root_id !== null && typeof row.target_answer_root_id !== 'string') ||
+        typeof row.question_id !== 'string' || typeof row.target_answer_id !== 'string' ||
+        (row.source_answer_id !== null && typeof row.source_answer_id !== 'string') ||
         !OPERATION_STATES.includes(row.state as GenerationExecutionOperationStateV2) ||
         (row.error_code !== null && typeof row.error_code !== 'string') ||
         (row.error_message !== null && typeof row.error_message !== 'string') ||
         (row.error_fact_json !== null && typeof row.error_fact_json !== 'string') ||
-        row.snapshot_operation_id !== row.operation_id || row.snapshot_answer_root_id !== row.result_answer_root_id ||
+        row.snapshot_operation_id !== row.operation_id || row.snapshot_answer_root_id !== row.target_answer_id ||
         row.schema_version !== 2 || typeof row.canonical_json !== 'string' ||
         typeof row.snapshot_hash !== 'string' || typeof row.capability_revision !== 'string' ||
         typeof row.capability_snapshot_hash !== 'string' ||
@@ -235,7 +235,7 @@ function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperati
     }
     const snapshot = decodeAssistantAnswerGenerationSnapshotJsonV2(row.canonical_json)
     const capability = decodeRuntimeCapabilitySnapshotJsonV2(row.capability_canonical_json)
-    if (snapshot.operationId.value !== row.operation_id || snapshot.answerRootId.value !== row.result_answer_root_id ||
+    if (snapshot.operationId.value !== row.operation_id || snapshot.answerRootId.value !== row.target_answer_id ||
         snapshot.snapshotHash.value !== row.snapshot_hash ||
         snapshot.capabilityBinding.capabilityRevision.value !== row.capability_revision ||
         snapshot.capabilityBinding.snapshotHash.value !== row.capability_snapshot_hash ||
@@ -265,9 +265,9 @@ function decodeOperationRow(row: OperationJoinedRow): GenerationExecutionOperati
       branchId: ConversationGraphV2Identity.create('branch_id', row.branch_id),
       conversationId: ConversationGraphV2Identity.create('conversation_id', row.conversation_id),
       questionId: ConversationGraphV2Identity.create('question_id', row.question_id),
-      targetAnswerRootId: row.target_answer_root_id === null ? null :
-        ConversationGraphV2Identity.create('answer_root_id', row.target_answer_root_id),
-      resultAnswerRootId: ConversationGraphV2Identity.create('answer_root_id', row.result_answer_root_id),
+      sourceAnswerId: row.source_answer_id === null ? null :
+        ConversationGraphV2Identity.create('answer_root_id', row.source_answer_id),
+      targetAnswerId: ConversationGraphV2Identity.create('answer_root_id', row.target_answer_id),
       state,
       errorCode: row.error_code as string | null,
       errorMessage: row.error_message as string | null,
@@ -511,7 +511,7 @@ export class GenerationExecutionV2Repo {
     const row = this.#db.prepare(`SELECT
       operation.operation_id, operation.action_kind, operation.command_fingerprint,
       operation.branch_id, operation.conversation_id, operation.question_id,
-      operation.target_answer_root_id, operation.result_answer_root_id, operation.state,
+      operation.source_answer_id, operation.target_answer_id, operation.state,
       operation.error_code, operation.error_message, operation.error_fact_json, operation.created_at_ms,
       operation.updated_at_ms, operation.terminal_at_ms,
       snapshot.operation_id AS snapshot_operation_id,
@@ -525,7 +525,7 @@ export class GenerationExecutionV2Repo {
       FROM generation_operation_v2 AS operation
       JOIN assistant_generation_snapshot_v2 AS snapshot
         ON snapshot.operation_id = operation.operation_id
-       AND snapshot.answer_root_id = operation.result_answer_root_id
+       AND snapshot.answer_root_id = operation.target_answer_id
       JOIN runtime_capability_snapshot_v2 AS capability
         ON capability.capability_snapshot_hash = snapshot.capability_snapshot_hash
        AND capability.capability_revision = snapshot.capability_revision
@@ -575,14 +575,14 @@ export class GenerationExecutionV2Repo {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
     const input = closedObject(value, [
       'operationId', 'actionKind', 'branchId', 'conversationId', 'questionId',
-      'targetAnswerRootId', 'resultAnswerRootId', 'snapshot', 'commandFingerprint', 'createdAtMs',
+      'sourceAnswerId', 'targetAnswerId', 'snapshot', 'commandFingerprint', 'createdAtMs',
     ])
     let operationId: Identity<'operation_id'>
     let branchId: GraphIdentity<'branch_id'>
     let conversationId: GraphIdentity<'conversation_id'>
     let questionId: GraphIdentity<'question_id'>
-    let targetAnswerRootId: GraphIdentity<'answer_root_id'> | null
-    let resultAnswerRootId: GraphIdentity<'answer_root_id'>
+    let sourceAnswerId: GraphIdentity<'answer_root_id'> | null
+    let targetAnswerId: GraphIdentity<'answer_root_id'>
     let snapshot: DecodedAssistantAnswerGenerationSnapshotV2
     try {
       operationId = GenerationV2Identity.create('operation_id', requiredString(input.operationId))
@@ -590,10 +590,10 @@ export class GenerationExecutionV2Repo {
       branchId = ConversationGraphV2Identity.create('branch_id', requiredString(input.branchId))
       conversationId = ConversationGraphV2Identity.create('conversation_id', requiredString(input.conversationId))
       questionId = ConversationGraphV2Identity.create('question_id', requiredString(input.questionId))
-      targetAnswerRootId = input.targetAnswerRootId === null ? null :
-        ConversationGraphV2Identity.create('answer_root_id', requiredString(input.targetAnswerRootId))
-      resultAnswerRootId = ConversationGraphV2Identity.create(
-        'answer_root_id', requiredString(input.resultAnswerRootId),
+      sourceAnswerId = input.sourceAnswerId === null ? null :
+        ConversationGraphV2Identity.create('answer_root_id', requiredString(input.sourceAnswerId))
+      targetAnswerId = ConversationGraphV2Identity.create(
+        'answer_root_id', requiredString(input.targetAnswerId),
       )
       snapshot = decodeAssistantAnswerGenerationSnapshotJsonV2(requiredString(input.snapshot))
     } catch (error) {
@@ -601,9 +601,9 @@ export class GenerationExecutionV2Repo {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
     }
     const actionKind = input.actionKind as GenerationCommandActionV2
-    if ((actionKind === 'retry_as_new' || actionKind === 'retry_replace') !== (targetAnswerRootId !== null) ||
+    if ((actionKind !== 'initial_send') !== (sourceAnswerId !== null) ||
         snapshot.operationId.value !== operationId.value ||
-        snapshot.answerRootId.value !== resultAnswerRootId.value) {
+        snapshot.answerRootId.value !== targetAnswerId.value) {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
     }
     this.#assertSnapshotCapability(snapshot)
@@ -619,8 +619,8 @@ export class GenerationExecutionV2Repo {
         existing.operation.branchId.value === branchId.value &&
         existing.operation.conversationId.value === conversationId.value &&
         existing.operation.questionId.value === questionId.value &&
-        existing.operation.targetAnswerRootId?.value === targetAnswerRootId?.value &&
-        existing.operation.resultAnswerRootId.value === resultAnswerRootId.value &&
+        existing.operation.sourceAnswerId?.value === sourceAnswerId?.value &&
+        existing.operation.targetAnswerId.value === targetAnswerId.value &&
         existing.snapshot.canonicalJson === snapshot.canonicalJson
       if (!exact) throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       return Object.freeze({ kind: 'idempotent_replay', bundle: existing })
@@ -631,11 +631,11 @@ export class GenerationExecutionV2Repo {
     try {
       this.#db.prepare(`INSERT INTO generation_operation_v2 (
         operation_id, action_kind, command_fingerprint, branch_id, conversation_id,
-        question_id, target_answer_root_id, result_answer_root_id, state,
+        question_id, source_answer_id, target_answer_id, state,
         created_at_ms, updated_at_ms
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'committed', ?, ?)`).run(
         operationId.value, actionKind, fingerprint, branchId.value, conversationId.value,
-        questionId.value, targetAnswerRootId?.value ?? null, resultAnswerRootId.value,
+        questionId.value, sourceAnswerId?.value ?? null, targetAnswerId.value,
         createdAtMs, createdAtMs,
       )
       this.#db.prepare(`INSERT INTO assistant_generation_snapshot_v2 (
@@ -644,7 +644,7 @@ export class GenerationExecutionV2Repo {
         capability_evidence_digest, capability_semantic_fields_digest,
         created_at_ms
       ) VALUES (?, ?, 2, ?, ?, ?, ?, ?, ?, ?)`).run(
-        resultAnswerRootId.value, operationId.value, snapshot.canonicalJson,
+        targetAnswerId.value, operationId.value, snapshot.canonicalJson,
         snapshot.snapshotHash.value,
         snapshot.capabilityBinding.capabilityRevision.value,
         snapshot.capabilityBinding.snapshotHash.value,
