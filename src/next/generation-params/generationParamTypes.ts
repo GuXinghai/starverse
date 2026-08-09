@@ -1,4 +1,5 @@
 import type { RuntimeProviderKey } from '../provider/runtimeSelection'
+import type { GeminiThinkingCapability } from '../provider/gemini/geminiThinkingPolicy'
 
 export type GenerationProviderId = RuntimeProviderKey | 'unset'
 
@@ -111,6 +112,7 @@ export type GenerationParamCapability = Readonly<{
   supported: boolean
   wireKey?: string
   wirePath?: readonly string[]
+  wireEncoding?: 'gemini_interactions_google_search_type'
   valueType: GenerationParamValueType
   range?: Readonly<{
     min?: number
@@ -119,6 +121,7 @@ export type GenerationParamCapability = Readonly<{
     integer?: boolean
   }>
   enumValues?: readonly string[]
+  specialValues?: readonly number[]
   status?: GenerationParamCapabilityStatus
   ui?: Readonly<{
     visibleByDefault: boolean
@@ -151,11 +154,13 @@ export type ProviderGenerationParamProfile = Readonly<{
 export type ResolveGenerationParamsInput = Readonly<{
   profile: ProviderGenerationParamProfile
   modelId?: string | null
+  geminiThinkingCapability?: GeminiThinkingCapability
   layers: GenerationParamsLayers
 }>
 
 export type MapGenerationParamsInput = Readonly<{
   profile: ProviderGenerationParamProfile
   modelId?: string | null
+  geminiThinkingCapability?: GeminiThinkingCapability
   requestParams: Partial<Record<GenerationParamKey, GenerationParamValue>>
 }>

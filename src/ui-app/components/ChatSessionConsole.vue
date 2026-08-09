@@ -34,6 +34,8 @@ import type {
   GeminiProviderModelAvailability,
 } from '@/next/provider/gemini/geminiModelSource'
 import {
+  isGeminiThinkingBudgetValid,
+  normalizeGeminiThinkingModelId,
   resolveGeminiThinkingCapability,
   type GeminiThinkingLevel,
 } from '@/next/provider/gemini/geminiThinkingPolicy'
@@ -49,6 +51,7 @@ import type { ChatSessionConfig, ChatSessionConfigAspectRatio, ChatSessionConfig
 import WebSearchSettingsEditor from './WebSearchSettingsEditor.vue'
 import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import ImageGenerationSettingsEditor from './ImageGenerationSettingsEditor.vue'
+import type { OpenRouterImageEndpointSelectionClientStateV2 } from '@/next/generation-v2/renderer/openRouterImageEndpointClientV2'
 import { t, tf } from '@/shared/i18n'
 import {
   OPENROUTER_PROVIDER_ID,
@@ -105,6 +108,8 @@ const props = defineProps<{
     chatMode: 'native_rest' | 'openai_compatible'
     nativeRestPreferredEndpoint: 'chat' | 'generate'
     openAICompatiblePreferredEndpoint: 'chat_completions' | 'responses'
+    thinkingControl: 'boolean' | 'effort' | null
+    toolsSupported: boolean | null
     nativeControls: Readonly<{
       diagnosticsEnabled: boolean
       manualLoadUnloadEnabled: boolean
@@ -161,6 +166,7 @@ const props = defineProps<{
   anthropicChat?: Readonly<{
     enabled: boolean
     model: string
+    thinkingDisplay: 'provider_default' | 'summarized' | 'omitted'
     experimentalLabel: string
   }> | null
   anthropicModelAvailability?: Readonly<{
@@ -189,6 +195,9 @@ const props = defineProps<{
   modelCatalog: readonly ModelCatalogItem[]
   webSearchResolved: ResolvedSearchSettings | null
   generationParamsResolved: ResolvedGenerationParams | null
+  openRouterImageEndpointSelection?: OpenRouterImageEndpointSelectionClientStateV2 | null
+  openRouterImageEndpointSelectionLoading?: boolean
+  openRouterImageEndpointSelectionError?: string | null
 }>()
 
 const emit = defineEmits<{
@@ -203,6 +212,11 @@ const emit = defineEmits<{
   (e: 'updateImageGenerationResolution', value: ChatSessionConfigImageResolution): void
   (e: 'updateImageGenerationAspectRatio', value: ChatSessionConfigAspectRatio): void
   (e: 'updateImageGeneration', value: ImageGenerationUserConfig): void
+  (e: 'refreshOpenRouterImageEndpoints'): void
+  (e: 'selectOpenRouterImageEndpoint', providerTag: string): void
+  (e: 'updateOpenRouterImageEndpointFreshness', value: Readonly<{
+    refreshAfterMs: number; hardExpireAfterMs: number; expectedRevision: number
+  }>): void
   (e: 'updateOpenRouterChatEnabled', enabled: boolean): void
   (e: 'updateLMStudioChatEnabled', enabled: boolean): void
   (e: 'updateLMStudioEndpointUrl', value: string): void
@@ -219,6 +233,7 @@ const emit = defineEmits<{
   (e: 'updateOllamaChatMode', mode: 'native_rest' | 'openai_compatible'): void
   (e: 'updateOllamaNativeRestPreferredEndpoint', endpoint: 'chat' | 'generate'): void
   (e: 'updateOllamaOpenAICompatiblePreferredEndpoint', endpoint: 'chat_completions' | 'responses'): void
+  (e: 'updateOllamaProfileCapability', key: 'thinkingControl' | 'toolsSupported', value: 'boolean' | 'effort' | boolean): void
   (
     e: 'updateOllamaNativeControl',
     key: 'diagnosticsEnabled' | 'manualLoadUnloadEnabled' | 'autoLoadBeforeSendEnabled' | 'autoUnloadAfterSendEnabled' | 'autoUnloadAfterIdleEnabled',
@@ -235,6 +250,7 @@ const emit = defineEmits<{
   (e: 'clearGoogleAIStudioChat'): void
   (e: 'refreshGoogleAIStudioModels'): void
   (e: 'updateAnthropicChatEnabled', enabled: boolean): void
+  (e: 'updateAnthropicThinkingDisplay', value: 'provider_default' | 'summarized' | 'omitted'): void
   (e: 'clearAnthropicChat'): void
   (e: 'refreshAnthropicModels'): void
   (e: 'updateDeepSeekChatEnabled', enabled: boolean): void
@@ -264,9 +280,42 @@ const openRouterModelValue = computed(() => (
 ))
 const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === 'google_ai_studio')
 const isOpenAIResponsesSelected = computed(() => selectedProviderId.value === OPENAI_RESPONSES_PROVIDER_KEY)
+const showOpenRouterImageEndpointControls = computed(() =>
+  selectedProviderId.value === OPENROUTER_PROVIDER_ID && props.sessionConfig.imageGeneration.enabled)
+const openRouterImageEndpointState = computed(() =>
+  props.openRouterImageEndpointSelection?.modelId === selectedModelId.value
+    ? props.openRouterImageEndpointSelection : null)
+const openRouterImageRefreshPresets = Object.freeze([900000, 3600000, 21600000, 86400000, 604800000])
+const openRouterImageHardExpiryPresets = Object.freeze([3600000, 21600000, 86400000, 604800000, 2592000000])
+function formatFreshnessDuration(value: number): string {
+  const hour = 60 * 60 * 1000
+  const day = 24 * hour
+  return value % day === 0 ? `${value / day}d` : value % hour === 0 ? `${value / hour}h` : `${value / 60000}m`
+}
+function updateOpenRouterImageFreshness(key: 'refreshAfterMs' | 'hardExpireAfterMs', event: Event): void {
+  const state = openRouterImageEndpointState.value
+  const value = Number((event.target as HTMLSelectElement).value)
+  if (!state || !Number.isSafeInteger(value)) return
+  const pair = { ...state.settings, [key]: value }
+  if (pair.refreshAfterMs >= pair.hardExpireAfterMs) return
+  emit('updateOpenRouterImageEndpointFreshness', {
+    refreshAfterMs: pair.refreshAfterMs,
+    hardExpireAfterMs: pair.hardExpireAfterMs,
+    expectedRevision: state.settings.revision,
+  })
+}
 const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModelId.value))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModelId.value))
-const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModelId.value }))
+const googleThinkingCapability = computed(() => {
+  const result = props.googleAIStudioModelAvailability?.result
+  const model = result?.ok ? result.models.find((candidate) => normalizeGeminiThinkingModelId(candidate.nativeModelId) === normalizeGeminiThinkingModelId(selectedModelId.value)) : undefined
+  return resolveGeminiThinkingCapability({
+    model: selectedModelId.value,
+    thinking: model?.providerSpecific?.thinkingRawValue,
+    thinkingOwnProperty: model?.providerSpecific?.thinkingOwnProperty ?? false,
+    supportedGenerationMethods: model?.providerSpecific?.supportedGenerationMethods,
+  })
+})
 function customGenerationParamValue(key: 'thinkingBudget' | 'thinkingLevel' | 'includeThoughts' | 'thoughtSummaryMode'): unknown {
   const setting = props.sessionConfig.generationParams.detail?.[key]
   if (setting?.mode === 'custom') return setting.value
@@ -282,7 +331,7 @@ const googleThinkingConfig = computed(() => {
   return {
     thinkingBudget: typeof budget === 'number'
       ? budget
-      : capability.kind === 'budget' ? capability.defaultBudget : 8192,
+      : capability.kind === 'budget' ? (capability.defaultBudgetMode === 'dynamic' ? -1 : 0) : 8192,
     thinkingLevel: typeof level === 'string'
       ? level as GeminiThinkingLevel
       : capability.kind === 'level' ? capability.defaultLevel : 'low' as GeminiThinkingLevel,
@@ -291,18 +340,18 @@ const googleThinkingConfig = computed(() => {
 })
 const googleThinkingEnabled = computed(() => {
   if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
-  if (googleThinkingCapability.value.kind === 'budget') {
-    return props.sessionConfig.generationParams.detail?.thinkingBudget?.mode === 'custom'
-  }
-  if (googleThinkingCapability.value.kind === 'level') {
-    return props.sessionConfig.generationParams.detail?.thinkingLevel?.mode === 'custom'
-  }
-  return false
+  return googleThinkingCapability.value.kind === 'level' || googleThinkingCapability.value.kind === 'budget'
 })
-const googleImageThinkingLevelValue = computed(() => {
+const googleImageThinkingLevelSelection = computed(() => {
   const policy = googleImageGenerationPolicy.value
-  const configured = googleThinkingConfig.value.thinkingLevel
-  if (configured && (policy.thinkingLevels as readonly string[]).includes(configured)) return configured
+  const setting = props.sessionConfig.generationParams.detail?.thinkingLevel
+  return setting?.mode === 'custom' &&
+    (policy.thinkingLevels as readonly string[]).includes(String(setting.value))
+    ? String(setting.value)
+    : 'default'
+})
+const googleImageDefaultThinkingLevel = computed(() => {
+  const policy = googleImageGenerationPolicy.value
   return 'defaultThinkingLevel' in policy ? policy.defaultThinkingLevel : policy.thinkingLevels[0] ?? ''
 })
 const imageGenerationSizeOptions = computed<readonly ChatSessionConfigImageResolution[]>(() => {
@@ -448,7 +497,7 @@ const lmStudioSelectedInstanceId = computed(() => {
   return Array.isArray(model?.loadedInstances) && model.loadedInstances[0] ? String(model.loadedInstances[0]) : lmStudioChat.value.model.trim()
 })
 const lmStudioBridgeAvailable = computed(() => {
-  const bridge = (globalThis as any).lmStudioProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.lmStudio
   return !!bridge && typeof bridge.probe === 'function' && typeof bridge.loadModel === 'function' && typeof bridge.unloadModel === 'function'
 })
 function formatLMStudioAvailability(available: boolean): string {
@@ -461,6 +510,8 @@ const ollamaChat = computed(() => props.ollamaChat ?? {
   chatMode: 'native_rest' as const,
   nativeRestPreferredEndpoint: 'chat' as const,
   openAICompatiblePreferredEndpoint: 'chat_completions' as const,
+  thinkingControl: null,
+  toolsSupported: null,
   nativeControls: {
     diagnosticsEnabled: true,
     manualLoadUnloadEnabled: true,
@@ -498,7 +549,7 @@ const ollamaRunningModels = computed(() => {
   return result?.ok && result.diagnostics?.runningModels?.ok ? result.diagnostics.runningModels.models as any[] : []
 })
 const ollamaBridgeAvailable = computed(() => {
-  const bridge = (globalThis as any).ollamaProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.ollama
   return !!bridge && typeof bridge.probe === 'function' && typeof bridge.loadModel === 'function' && typeof bridge.unloadModel === 'function'
 })
 function formatOllamaAvailability(available: boolean): string {
@@ -589,8 +640,34 @@ const googleAIStudioAvailabilitySummary = computed(() => {
 const anthropicChat = computed(() => props.anthropicChat ?? {
   enabled: false,
   model: '',
+  thinkingDisplay: 'summarized' as const,
   experimentalLabel: t('chat.console.provider.anthropic.experimentalLabel'),
 })
+const googleThinkingLevelSelection = computed(() => {
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'level') return 'default'
+  const setting = props.sessionConfig.generationParams.detail?.thinkingLevel
+  return setting?.mode === 'custom' && (capability.levels as readonly string[]).includes(String(setting.value))
+    ? String(setting.value) : 'default'
+})
+const googleThinkingBudgetMode = computed(() => {
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'budget') return 'default'
+  const setting = props.sessionConfig.generationParams.detail?.thinkingBudget
+  if (setting?.mode !== 'custom' || typeof setting.value !== 'number') return 'default'
+  if (setting.value === -1) return 'dynamic'
+  if (setting.value === 0 && capability.allowOff) return 'off'
+  return isGeminiThinkingBudgetValid(capability, setting.value) ? 'fixed' : 'default'
+})
+const googleThinkingBudgetInput = computed(() => {
+  const capability = googleThinkingCapability.value
+  const setting = props.sessionConfig.generationParams.detail?.thinkingBudget
+  return capability.kind === 'budget' && setting?.mode === 'custom' && typeof setting.value === 'number' &&
+    setting.value > 0 && isGeminiThinkingBudgetValid(capability, setting.value) ? String(setting.value) : ''
+})
+function googleThinkingLevelLabel(level: GeminiThinkingLevel): string {
+  return level === 'high' ? t('chat.console.reasoning.highDynamic') : level
+}
 const anthropicChatStatusLabel = computed(() => anthropicChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
 const anthropicModelAvailability = computed(() => props.anthropicModelAvailability ?? {
   loading: false,
@@ -694,7 +771,7 @@ function onGoogleThinkingEnabledChange(enabled: boolean) {
   if (googleThinkingCapability.value.kind === 'budget') {
     emit('updateGenerationParamsLayer', {
       ...current,
-      thinkingBudget: { mode: 'custom', value: googleThinkingCapability.value.defaultBudget },
+      thinkingBudget: { mode: 'custom', value: googleThinkingCapability.value.defaultBudgetMode === 'dynamic' ? -1 : 0 },
     })
     return
   }
@@ -708,24 +785,69 @@ function onGoogleThinkingEnabledChange(enabled: boolean) {
 
 function onGoogleThinkingBudgetChange(event: Event) {
   const value = Number((event.target as HTMLInputElement).value)
-  if (!Number.isFinite(value) || value <= 0) return
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'budget' || !Number.isSafeInteger(value) || value <= 0 || !isGeminiThinkingBudgetValid(capability, value)) return
   emit('updateGenerationParamsLayer', {
     ...(props.sessionConfig.generationParams.detail ?? {}),
-    thinkingBudget: { mode: 'custom', value: Math.trunc(value) },
+    thinkingLevel: { mode: 'omit' },
+    thinkingBudget: { mode: 'custom', value },
   })
 }
 
+function onGoogleThinkingBudgetModeChange(event: Event) {
+  const mode = (event.target as HTMLSelectElement).value
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'budget') return
+  const current = props.sessionConfig.generationParams.detail ?? {}
+  if (mode === 'default') {
+    emit('updateGenerationParamsLayer', { ...current, thinkingBudget: { mode: 'omit' }, thinkingLevel: { mode: 'omit' } })
+  } else if (mode === 'dynamic') {
+    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value: -1 } })
+  } else if (mode === 'off' && capability.allowOff) {
+    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value: 0 } })
+  } else if (mode === 'fixed') {
+    const existing = current.thinkingBudget
+    const value = existing?.mode === 'custom' && isGeminiThinkingBudgetValid(capability, existing.value) && existing.value > 0
+      ? existing.value : capability.minBudget
+    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value } })
+  }
+}
+
 function onGoogleThinkingLevelChange(event: Event) {
-  const value = (event.target as HTMLSelectElement).value as GeminiThinkingLevel
-  if (
-    isGoogleImageGenerationModel.value &&
-    !(googleImageGenerationPolicy.value.thinkingLevels as readonly string[]).includes(value)
-  ) {
+  const value = (event.target as HTMLSelectElement).value
+  if (isGoogleImageGenerationModel.value) {
+    const current = props.sessionConfig.generationParams.detail ?? {}
+    if (value === 'default') {
+      emit('updateGenerationParamsLayer', {
+        ...current,
+        thinkingLevel: { mode: 'omit' },
+        thinkingBudget: { mode: 'omit' },
+      })
+      return
+    }
+    if (!(googleImageGenerationPolicy.value.thinkingLevels as readonly string[]).includes(value)) return
+    emit('updateGenerationParamsLayer', {
+      ...current,
+      thinkingBudget: { mode: 'omit' },
+      thinkingLevel: { mode: 'custom', value: value as GeminiThinkingLevel },
+    })
     return
   }
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'level') return
+  if (value === 'default') {
+    emit('updateGenerationParamsLayer', {
+      ...(props.sessionConfig.generationParams.detail ?? {}),
+      thinkingBudget: { mode: 'omit' },
+      thinkingLevel: { mode: 'omit' },
+    })
+    return
+  }
+  if (!(capability.levels as readonly string[]).includes(value)) return
   emit('updateGenerationParamsLayer', {
     ...(props.sessionConfig.generationParams.detail ?? {}),
-    thinkingLevel: { mode: 'custom', value },
+    thinkingBudget: { mode: 'omit' },
+    thinkingLevel: { mode: 'custom', value: value as GeminiThinkingLevel },
   })
 }
 
@@ -748,7 +870,7 @@ function formatLMStudioModels(models: any[]): string {
 }
 
 async function probeLMStudio(options: Readonly<{ clearAction?: boolean }> = {}) {
-  const bridge = (globalThis as any).lmStudioProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.lmStudio
   if (!lmStudioBridgeAvailable.value) {
     lmStudioActionResult.value = t('settings.lmStudio.bridgeUnavailable')
     return
@@ -771,7 +893,7 @@ async function probeLMStudio(options: Readonly<{ clearAction?: boolean }> = {}) 
 }
 
 async function loadLMStudioSelectedModel() {
-  const bridge = (globalThis as any).lmStudioProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.lmStudio
   const model = selectedModelFor('lm_studio').trim()
   if (!lmStudioBridgeAvailable.value || !model) return
   lmStudioActionLoading.value = true
@@ -795,7 +917,7 @@ async function loadLMStudioSelectedModel() {
 }
 
 async function unloadLMStudioSelectedModel() {
-  const bridge = (globalThis as any).lmStudioProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.lmStudio
   const instanceId = lmStudioSelectedInstanceId.value.trim()
   if (!lmStudioBridgeAvailable.value || !instanceId) return
   lmStudioActionLoading.value = true
@@ -823,7 +945,7 @@ function formatOllamaModels(models: any[]): string {
 }
 
 async function probeOllama(options: Readonly<{ clearAction?: boolean }> = {}) {
-  const bridge = (globalThis as any).ollamaProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.ollama
   if (!ollamaBridgeAvailable.value) {
     ollamaActionResult.value = t('settings.ollama.bridgeUnavailable')
     return
@@ -846,7 +968,7 @@ async function probeOllama(options: Readonly<{ clearAction?: boolean }> = {}) {
 }
 
 async function loadOllamaSelectedModel() {
-  const bridge = (globalThis as any).ollamaProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.ollama
   const model = selectedModelFor('ollama_local').trim()
   if (!ollamaBridgeAvailable.value || !model) return
   ollamaActionLoading.value = true
@@ -870,7 +992,7 @@ async function loadOllamaSelectedModel() {
 }
 
 async function unloadOllamaSelectedModel() {
-  const bridge = (globalThis as any).ollamaProvider
+  const bridge = (globalThis as any).generationV2?.localRuntime?.ollama
   const model = selectedModelFor('ollama_local').trim()
   if (!ollamaBridgeAvailable.value || !model) return
   ollamaActionLoading.value = true
@@ -893,87 +1015,39 @@ async function unloadOllamaSelectedModel() {
   }
 }
 
-function formatDeepSeekCapabilitySeed(model: ProviderModelAvailability): string {
-  const seed = model.capabilitySeed
-  if (!seed) return t('chat.console.capability.unknown')
-  const chunks = [
-    seed.textChat === true ? t('chat.console.capability.textChat') : null,
-    seed.thinkingMode ? tf('chat.console.capability.thinking', { value: seed.thinkingMode }) : null,
-    typeof seed.contextLength === 'number' ? tf('chat.console.capability.context', { value: seed.contextLength }) : null,
-    typeof seed.maxOutputTokens === 'number' ? tf('chat.console.capability.maxOutput', { value: seed.maxOutputTokens }) : null,
-  ].filter(Boolean)
+function formatResolvedCapabilities(model: unknown): string {
+  const record = model && typeof model === 'object' ? model as Record<string, unknown> : null
+  const resolutions = record?.resolvedCapabilities && typeof record.resolvedCapabilities === 'object'
+    ? record.resolvedCapabilities as Readonly<Record<string, Readonly<{
+        effective?: Readonly<{ state?: string; source?: string }>
+        wireSupport?: string
+      }>>>
+    : null
+  if (!resolutions) return t('chat.console.capability.unknown')
+  const chunks = Object.entries(resolutions).map(([key, value]) =>
+    `${key}: ${value.effective?.state ?? 'unknown'} · ${value.effective?.source ?? 'none'} · ${value.wireSupport ?? 'unsupported'}`)
   return chunks.length > 0 ? chunks.join(' · ') : t('chat.console.capability.unknown')
+}
+
+function formatDeepSeekCapabilities(model: ProviderModelAvailability): string {
+  return formatResolvedCapabilities(model)
 }
 
 function formatDeepSeekPricingSeed(model: ProviderModelAvailability): string {
-  const pricing = model.pricingSeed
-  if (!pricing) return t('chat.console.capability.pricingUnknown')
-  const currency = pricing.currency ?? 'USD'
-  return tf('chat.console.capability.pricing', {
-    currency,
-    hit: pricing.inputCacheHitPer1MTokens ?? '?',
-    miss: pricing.inputCacheMissPer1MTokens ?? '?',
-    output: pricing.outputPer1MTokens ?? '?',
-  })
+  void model
+  return t('chat.console.capability.pricingUnknown')
 }
 
-function formatOpenAICapabilitySeed(model: OpenAIProviderModelAvailability): string {
-  const seed = model.capabilitySeed
-  if (!seed) return t('chat.console.capability.unknown')
-  const chunks = [
-    seed.textChat === true ? t('chat.console.capability.textChat') : seed.textChat === false ? t('chat.console.capability.textChatBlocked') : null,
-    seed.responsesApi === true ? t('chat.console.capability.responsesApi') : seed.responsesApi === false ? t('chat.console.capability.responsesApiBlocked') : null,
-    seed.reasoning ? tf('chat.console.capability.reasoning', { value: seed.reasoning }) : null,
-    Array.isArray(seed.reasoningEffort) && seed.reasoningEffort.length > 0
-      ? tf('chat.console.capability.effort', { value: seed.reasoningEffort.join(', ') })
-      : null,
-    seed.functionCalling ? tf('chat.console.capability.functionCalling', { value: String(seed.functionCalling) }) : null,
-    seed.hostedTools ? tf('chat.console.capability.hostedTools', { value: String(seed.hostedTools) }) : null,
-    seed.structuredOutput ? tf('chat.console.capability.structuredOutput', { value: String(seed.structuredOutput) }) : null,
-    seed.imageInput ? tf('chat.console.capability.imageInput', { value: String(seed.imageInput) }) : null,
-    seed.fileInput ? tf('chat.console.capability.fileInput', { value: String(seed.fileInput) }) : null,
-    seed.audioInput ? tf('chat.console.capability.audioInput', { value: String(seed.audioInput) }) : null,
-  ].filter(Boolean)
-  return chunks.length > 0 ? chunks.join(' · ') : t('chat.console.capability.unknown')
+function formatOpenAICapabilities(model: OpenAIProviderModelAvailability): string {
+  return formatResolvedCapabilities(model)
 }
 
-function formatGeminiCapabilitySeed(model: GeminiProviderModelAvailability): string {
-  const seed = model.capabilitySeed
-  if (!seed) return t('chat.console.capability.unknown')
-  const chunks = [
-    seed.textChat === true ? t('chat.console.capability.textChat') : seed.textChat === false ? t('chat.console.capability.textChatBlocked') : null,
-    Array.isArray(seed.supportedGenerationMethods) && seed.supportedGenerationMethods.length > 0
-      ? tf('chat.console.capability.methods', { value: seed.supportedGenerationMethods.join(', ') })
-      : null,
-    typeof seed.inputTokenLimit === 'number' ? tf('chat.console.capability.input', { value: seed.inputTokenLimit }) : null,
-    typeof seed.outputTokenLimit === 'number' ? tf('chat.console.capability.output', { value: seed.outputTokenLimit }) : null,
-    seed.thinking ? tf('chat.console.capability.thinking', { value: seed.thinking }) : null,
-    seed.functionCalling ? tf('chat.console.capability.functionCalling', { value: String(seed.functionCalling) }) : null,
-    seed.vision ? tf('chat.console.capability.vision', { value: String(seed.vision) }) : null,
-    seed.structuredOutput ? tf('chat.console.capability.structuredOutput', { value: String(seed.structuredOutput) }) : null,
-  ].filter(Boolean)
-  return chunks.length > 0 ? chunks.join(' · ') : t('chat.console.capability.unknown')
+function formatGeminiCapabilities(model: GeminiProviderModelAvailability): string {
+  return formatResolvedCapabilities(model)
 }
 
-function formatAnthropicCapabilitySeed(model: AnthropicProviderModelAvailability): string {
-  const seed = model.capabilitySeed
-  if (!seed) return t('chat.console.capability.unknown')
-  const chunks = [
-    seed.textChat === true ? t('chat.console.capability.textChat') : seed.textChat === false ? t('chat.console.capability.textChatBlocked') : null,
-    seed.imageInput !== undefined ? tf('chat.console.capability.imageInput', { value: String(seed.imageInput) }) : null,
-    seed.thinking ? tf('chat.console.capability.thinking', { value: seed.thinking }) : null,
-    seed.adaptiveThinking !== undefined ? tf('chat.console.capability.adaptiveThinking', { value: String(seed.adaptiveThinking) }) : null,
-    typeof seed.maxInputTokens === 'number' ? tf('chat.console.capability.maxInput', { value: seed.maxInputTokens }) : null,
-    typeof seed.maxOutputTokens === 'number' ? tf('chat.console.capability.maxOutput', { value: seed.maxOutputTokens }) : null,
-    seed.toolUse !== undefined ? tf('chat.console.capability.toolUse', { value: String(seed.toolUse) }) : null,
-    seed.files !== undefined ? tf('chat.console.capability.files', { value: String(seed.files) }) : null,
-    seed.structuredOutput !== undefined ? tf('chat.console.capability.structuredOutput', { value: String(seed.structuredOutput) }) : null,
-    seed.citations !== undefined ? tf('chat.console.capability.citations', { value: String(seed.citations) }) : null,
-    Array.isArray(seed.capabilitiesRawKeys) && seed.capabilitiesRawKeys.length > 0
-      ? tf('chat.console.capability.rawCapabilityKeys', { value: seed.capabilitiesRawKeys.join(', ') })
-      : null,
-  ].filter(Boolean)
-  return chunks.length > 0 ? chunks.join(' · ') : t('chat.console.capability.unknown')
+function formatAnthropicCapabilities(model: AnthropicProviderModelAvailability): string {
+  return formatResolvedCapabilities(model)
 }
 
 function formatReasoningEffort(effort: string): string {
@@ -1203,7 +1277,7 @@ function chipClass(active: boolean): string {
                     <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
                     <div v-if="modelAvailability.ownedBy">{{ tf('chat.console.common.ownedBy', { owner: modelAvailability.ownedBy }) }}</div>
                     <div v-if="modelAvailability.createdAtSec">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAtSec }) }}</div>
-                    <div>{{ formatOpenAICapabilitySeed(modelAvailability) }}</div>
+                    <div>{{ formatOpenAICapabilities(modelAvailability) }}</div>
                   </div>
                   <button
                     type="button"
@@ -1274,6 +1348,31 @@ function chipClass(active: boolean): string {
           <div>{{ tf('chat.console.provider.anthropic.selectedModel', { model: selectedModelFor('anthropic_messages') || t('chat.console.status.none') }) }}</div>
           <div>{{ t('chat.console.provider.anthropic.credentialBridge') }}</div>
         </div>
+        <div class="space-y-2 rounded border border-rose-100 bg-white px-2 py-2 text-[11px] text-rose-900" data-testid="anthropic-thinking-display-controls">
+          <div>
+            <div class="font-semibold">{{ t('chat.console.provider.anthropic.thinkingDisplay.title') }}</div>
+            <div class="text-rose-700">
+              {{ props.sessionConfig.reasoning.enabled
+                ? t('chat.console.provider.anthropic.thinkingDisplay.description')
+                : t('chat.console.provider.anthropic.thinkingDisplay.disabledDescription') }}
+            </div>
+          </div>
+          <div class="grid grid-cols-1 gap-2 sm:grid-cols-3">
+            <button
+              v-for="option in (['provider_default', 'summarized', 'omitted'] as const)"
+              :key="option"
+              type="button"
+              class="rounded-md border px-2 py-1.5 text-left text-[11px] disabled:cursor-not-allowed disabled:opacity-50"
+              :class="chipClass(anthropicChat.thinkingDisplay === option)"
+              :disabled="disabled || !anthropicChat.enabled || !props.sessionConfig.reasoning.enabled"
+              :data-testid="`anthropic-thinking-display-${option}`"
+              @click="emit('updateAnthropicThinkingDisplay', option)"
+            >
+              <span class="block font-semibold">{{ t(`chat.console.provider.anthropic.thinkingDisplay.options.${option}.label`) }}</span>
+              <span class="mt-0.5 block opacity-80">{{ t(`chat.console.provider.anthropic.thinkingDisplay.options.${option}.description`) }}</span>
+            </button>
+          </div>
+        </div>
         <div class="space-y-2 rounded border border-rose-100 bg-white px-2 py-2 text-[11px] text-rose-900" data-testid="anthropic-models-diagnostics">
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div>
@@ -1319,7 +1418,7 @@ function chipClass(active: boolean): string {
                     <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
                     <div v-if="modelAvailability.modelType">{{ tf('chat.console.common.type', { type: modelAvailability.modelType }) }}</div>
                     <div v-if="modelAvailability.createdAt">{{ tf('chat.console.common.created', { createdAt: modelAvailability.createdAt }) }}</div>
-                    <div>{{ formatAnthropicCapabilitySeed(modelAvailability) }}</div>
+                    <div>{{ formatAnthropicCapabilities(modelAvailability) }}</div>
                   </div>
                   <button
                     type="button"
@@ -1434,7 +1533,7 @@ function chipClass(active: boolean): string {
                   <div>
                     <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
                     <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
-                    <div>{{ formatDeepSeekCapabilitySeed(modelAvailability) }}</div>
+                    <div>{{ formatDeepSeekCapabilities(modelAvailability) }}</div>
                     <div>{{ formatDeepSeekPricingSeed(modelAvailability) }}</div>
                   </div>
                   <button
@@ -1550,7 +1649,7 @@ function chipClass(active: boolean): string {
                     <div class="font-semibold">{{ modelAvailability.displayName || modelAvailability.nativeModelId }}</div>
                     <div>{{ modelAvailability.nativeModelId }} · {{ modelAvailability.source }} · {{ modelAvailability.confidence }}</div>
                     <div v-if="modelAvailability.providerModelName">{{ modelAvailability.providerModelName }}</div>
-                    <div>{{ formatGeminiCapabilitySeed(modelAvailability) }}</div>
+                    <div>{{ formatGeminiCapabilities(modelAvailability) }}</div>
                   </div>
                   <button
                     type="button"
@@ -1920,6 +2019,36 @@ function chipClass(active: boolean): string {
               /v1/responses
             </button>
           </div>
+          <div class="border-t border-green-100 pt-2">
+            <div class="mb-1 font-semibold">V2 model contract · thinking wire</div>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
+                :class="chipClass(ollamaChat.thinkingControl === 'boolean')"
+                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+                data-testid="ollama-profile-thinking-boolean"
+                @click="emit('updateOllamaProfileCapability', 'thinkingControl', 'boolean')">think: boolean</button>
+              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
+                :class="chipClass(ollamaChat.thinkingControl === 'effort')"
+                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+                data-testid="ollama-profile-thinking-effort"
+                @click="emit('updateOllamaProfileCapability', 'thinkingControl', 'effort')">think: low / medium / high</button>
+            </div>
+          </div>
+          <div>
+            <div class="mb-1 font-semibold">V2 model contract · native tools</div>
+            <div class="grid grid-cols-2 gap-2">
+              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
+                :class="chipClass(ollamaChat.toolsSupported === true)"
+                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+                data-testid="ollama-profile-tools-supported"
+                @click="emit('updateOllamaProfileCapability', 'toolsSupported', true)">tools supported</button>
+              <button type="button" class="rounded-md border px-2 py-1.5 text-[11px]"
+                :class="chipClass(ollamaChat.toolsSupported === false)"
+                :disabled="disabled || !ollamaChat.enabled || ollamaChat.chatMode !== 'native_rest' || ollamaChat.nativeRestPreferredEndpoint !== 'chat'"
+                data-testid="ollama-profile-tools-unsupported"
+                @click="emit('updateOllamaProfileCapability', 'toolsSupported', false)">tools unsupported</button>
+            </div>
+          </div>
         </div>
         <div class="grid grid-cols-1 gap-2 rounded border border-green-100 bg-white px-2 py-2 text-[11px] text-green-900 md:grid-cols-2">
           <label class="flex items-center gap-2">
@@ -2205,17 +2334,35 @@ function chipClass(active: boolean): string {
         <div v-else-if="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'budget'" class="space-y-2" data-testid="session-google-thinking-budget-controls">
           <label class="flex items-center justify-between gap-2 text-sm text-gray-700">
             <span>{{ t('chat.console.reasoning.thinkingBudget') }}</span>
+            <select
+              class="w-40 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
+              :value="googleThinkingBudgetMode"
+              :disabled="disabled"
+              data-testid="session-google-thinking-budget-mode"
+              @change="onGoogleThinkingBudgetModeChange"
+            >
+              <option value="default">{{ tf('chat.console.reasoning.default', { value: googleThinkingCapability.defaultBudgetMode === 'dynamic' ? t('chat.console.reasoning.dynamic') : t('chat.console.reasoning.off') }) }}</option>
+              <option v-if="googleThinkingCapability.allowDynamic" value="dynamic">{{ t('chat.console.reasoning.dynamic') }}</option>
+              <option v-if="googleThinkingCapability.allowOff" value="off">{{ t('chat.console.reasoning.off') }}</option>
+              <option value="fixed">{{ t('chat.console.reasoning.fixedBudget') }}</option>
+            </select>
+          </label>
+          <label v-if="googleThinkingBudgetMode === 'fixed'" class="flex items-center justify-between gap-2 text-sm text-gray-700">
+            <span>{{ t('chat.console.reasoning.fixedBudget') }}</span>
             <input
               type="number"
               class="w-32 rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
               :min="googleThinkingCapability.minBudget"
               :max="googleThinkingCapability.maxBudget"
-              :value="googleThinkingConfig.thinkingBudget"
+              :value="googleThinkingBudgetInput"
               :disabled="disabled"
               data-testid="session-google-thinking-budget"
               @input="onGoogleThinkingBudgetChange"
             />
           </label>
+          <div v-if="googleThinkingBudgetMode === 'fixed'" class="text-xs text-gray-500">
+            {{ tf('chat.console.reasoning.allowedRange', { min: googleThinkingCapability.minBudget, max: googleThinkingCapability.maxBudget }) }}
+          </div>
           <label class="flex items-center gap-2 text-sm text-gray-700">
             <input
               type="checkbox"
@@ -2232,11 +2379,12 @@ function chipClass(active: boolean): string {
             <span>{{ t('chat.console.reasoning.thinkingLevel') }}</span>
             <select
               class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
-              :value="googleImageThinkingLevelValue"
+              :value="googleImageThinkingLevelSelection"
               :disabled="disabled"
               data-testid="session-google-thinking-level"
               @change="onGoogleThinkingLevelChange"
             >
+              <option value="default">{{ tf('chat.console.reasoning.default', { value: googleImageDefaultThinkingLevel }) }}</option>
               <option v-for="level in googleImageGenerationPolicy.thinkingLevels" :key="level" :value="level">{{ level }}</option>
             </select>
           </label>
@@ -2277,12 +2425,13 @@ function chipClass(active: boolean): string {
             <span>{{ t('chat.console.reasoning.thinkingLevel') }}</span>
             <select
               class="rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800 disabled:opacity-50"
-              :value="googleThinkingConfig.thinkingLevel"
+              :value="googleThinkingLevelSelection"
               :disabled="disabled"
               data-testid="session-google-thinking-level"
               @change="onGoogleThinkingLevelChange"
             >
-              <option v-for="level in googleThinkingCapability.levels" :key="level" :value="level">{{ level }}</option>
+              <option value="default">{{ tf('chat.console.reasoning.default', { value: googleThinkingCapability.defaultLevel }) }}</option>
+              <option v-for="level in googleThinkingCapability.levels" :key="level" :value="level">{{ googleThinkingLevelLabel(level) }}</option>
             </select>
           </label>
           <label class="flex items-center gap-2 text-sm text-gray-700">
@@ -2406,6 +2555,89 @@ function chipClass(active: boolean): string {
           :lock-image-size-control="lockImageGenerationSizeControl"
           @update:model-value="emit('updateImageGeneration', { ...$event, enabled: effectiveImageGenerationEnabled })"
         />
+        <div
+          v-if="showOpenRouterImageEndpointControls"
+          class="space-y-3 rounded-md border border-gray-200 bg-white p-3"
+          data-testid="openrouter-image-endpoint-controls"
+        >
+          <div class="flex items-center justify-between gap-3">
+            <div>
+              <div class="text-sm font-medium text-gray-800">{{ t('chat.console.imageEndpoint.title') }}</div>
+              <div class="text-xs text-gray-500">{{ t('chat.console.imageEndpoint.description') }}</div>
+            </div>
+            <button
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2.5 py-1.5 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="disabled || props.openRouterImageEndpointSelectionLoading"
+              data-testid="openrouter-image-endpoint-refresh"
+              @click="emit('refreshOpenRouterImageEndpoints')"
+            >
+              {{ props.openRouterImageEndpointSelectionLoading ? t('chat.console.imageEndpoint.loading') : t('chat.console.imageEndpoint.refresh') }}
+            </button>
+          </div>
+          <div v-if="props.openRouterImageEndpointSelectionError" class="rounded bg-red-50 px-2 py-1.5 text-xs text-red-700">
+            {{ props.openRouterImageEndpointSelectionError }}
+          </div>
+          <div v-if="!openRouterImageEndpointState" class="text-xs text-gray-500">
+            {{ t('chat.console.imageEndpoint.loadHint') }}
+          </div>
+          <template v-else>
+            <div class="space-y-2">
+              <button
+                v-for="candidate in openRouterImageEndpointState.candidates"
+                :key="candidate.providerTag"
+                type="button"
+                class="flex w-full items-center justify-between gap-3 rounded-md border px-3 py-2 text-left text-sm"
+                :class="candidate.bound ? 'border-blue-500 bg-blue-50 text-blue-900' : 'border-gray-200 bg-white text-gray-700 hover:bg-gray-50'"
+                :disabled="disabled || props.openRouterImageEndpointSelectionLoading || !candidate.eligible"
+                :data-testid="`openrouter-image-endpoint-${candidate.providerTag}`"
+                @click="emit('selectOpenRouterImageEndpoint', candidate.providerTag)"
+              >
+                <span class="min-w-0">
+                  <span class="block truncate font-medium">{{ candidate.providerName }}</span>
+                  <code class="block truncate text-[11px] opacity-75">{{ candidate.providerTag }}</code>
+                </span>
+                <span class="shrink-0 text-xs">
+                  {{ candidate.bound ? t('chat.console.imageEndpoint.bound') : candidate.eligible ? t('chat.console.imageEndpoint.select') : t('chat.console.imageEndpoint.unsupported') }}
+                </span>
+              </button>
+            </div>
+            <div class="grid grid-cols-2 gap-2 border-t border-gray-100 pt-3">
+              <label class="space-y-1 text-xs text-gray-600">
+                <span>{{ t('chat.console.imageEndpoint.refreshAfter') }}</span>
+                <select
+                  class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800"
+                  :value="openRouterImageEndpointState.settings.refreshAfterMs"
+                  :disabled="disabled || props.openRouterImageEndpointSelectionLoading"
+                  @change="updateOpenRouterImageFreshness('refreshAfterMs', $event)"
+                >
+                  <option
+                    v-for="value in openRouterImageRefreshPresets"
+                    :key="value"
+                    :value="value"
+                    :disabled="value >= openRouterImageEndpointState.settings.hardExpireAfterMs"
+                  >{{ formatFreshnessDuration(value) }}</option>
+                </select>
+              </label>
+              <label class="space-y-1 text-xs text-gray-600">
+                <span>{{ t('chat.console.imageEndpoint.hardExpireAfter') }}</span>
+                <select
+                  class="w-full rounded-md border border-gray-200 bg-white px-2 py-1.5 text-sm text-gray-800"
+                  :value="openRouterImageEndpointState.settings.hardExpireAfterMs"
+                  :disabled="disabled || props.openRouterImageEndpointSelectionLoading"
+                  @change="updateOpenRouterImageFreshness('hardExpireAfterMs', $event)"
+                >
+                  <option
+                    v-for="value in openRouterImageHardExpiryPresets"
+                    :key="value"
+                    :value="value"
+                    :disabled="value <= openRouterImageEndpointState.settings.refreshAfterMs"
+                  >{{ formatFreshnessDuration(value) }}</option>
+                </select>
+              </label>
+            </div>
+          </template>
+        </div>
       </section>
 
       <section class="rounded-lg border border-gray-200 bg-gray-50/70 p-3">

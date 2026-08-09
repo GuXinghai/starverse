@@ -1,6 +1,7 @@
 import type { MessageState, MessageVM, ReasoningDisplayBlock, ReasoningViewVisibility, RootState, RunVM } from './types'
 import { beginDeriveMeasure, endDeriveMeasure, recordDerive } from './perfMetrics'
 import { recordSelectorsDerive, isSchedDiagEnabled, startTimer } from './schedulerDiagnostics'
+import { projectReasoningPresentationV2 } from '../generation-v2/reasoning/reasoningPresentationProjectorV2'
 
 type MessageCacheEntry = Readonly<{ source: MessageState; derived: MessageVM }>
 const messageCache = new Map<string, MessageCacheEntry>()
@@ -35,7 +36,7 @@ export function selectRun(state: RootState, runId: string): RunVM | null {
 
 /**
  * Compute reasoning visibility based on SSOT Section 3.4 rules:
- * - 'shown': has encrypted reasoning OR has reasoning_details/raw content
+ * - 'shown': has a displayable reasoning projection
  * - 'excluded': request had reasoning.exclude=true AND no reasoning returned (intentional hide)
  * - 'not_returned': no exclude requested but model didn't return reasoning (provider didn't provide)
  *
@@ -44,12 +45,10 @@ export function selectRun(state: RootState, runId: string): RunVM | null {
  */
 function computeReasoningVisibility(
   hasEncryptedReasoning: boolean,
-  reasoningDetailsRaw: unknown[],
   hasReasoningDisplayBlocks: boolean,
   requestedReasoningExclude: boolean
 ): ReasoningViewVisibility {
-  // If we have encrypted signal or actual reasoning content → shown
-  if (hasEncryptedReasoning || reasoningDetailsRaw.length > 0 || hasReasoningDisplayBlocks) {
+  if (hasEncryptedReasoning || hasReasoningDisplayBlocks) {
     return 'shown'
   }
   // No reasoning content: distinguish excluded vs not_returned
@@ -70,6 +69,29 @@ function normalizeReasoningDisplayBlocks(raw: ReadonlyArray<ReasoningDisplayBloc
   return blocks.length > 0 ? blocks : undefined
 }
 
+function projectGoogleSearchSuggestions(
+  raw: readonly unknown[],
+  providerId: string | undefined,
+  protocolContractId: string | undefined,
+): string[] | undefined {
+  if (protocolContractId !== undefined &&
+      (providerId !== 'google_ai_studio' || protocolContractId !== 'gemini-interactions-v1beta')) {
+    return undefined
+  }
+  const suggestions: string[] = []
+  const seen = new Set<string>()
+  for (const item of raw) {
+    if (!item || typeof item !== 'object') continue
+    const detail = item as Record<string, unknown>
+    if (detail.type !== 'google_search_result' || typeof detail.search_suggestions !== 'string') continue
+    const value = detail.search_suggestions.trim()
+    if (!value || seen.has(value)) continue
+    seen.add(value)
+    suggestions.push(value)
+  }
+  return suggestions.length > 0 ? suggestions : undefined
+}
+
 export function selectMessage(state: RootState, messageId: string): MessageVM | null {
   const messagesById = state.entities?.messagesById ?? state.messages
   const m = messagesById[messageId]
@@ -82,11 +104,31 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
   const diagEnabled = isSchedDiagEnabled()
   const endTimer = diagEnabled ? startTimer() : null
 
-  const displayBlocks = normalizeReasoningDisplayBlocks(m.reasoningDisplayBlocks)
+  const reasoningFacts = m.reasoningDetailsRaw.filter((fact): fact is Readonly<Record<string, unknown>> =>
+    Boolean(fact && typeof fact === 'object' && !Array.isArray(fact)))
+  const v2Presentation = m.protocolContractId && m.providerId
+    ? projectReasoningPresentationV2({
+      providerId: m.providerId,
+      contractId: m.protocolContractId,
+      modelId: m.modelId ?? '',
+      answerRootId: m.messageId,
+      orderedFacts: reasoningFacts,
+    })
+    : null
+  const displayBlocks = normalizeReasoningDisplayBlocks(
+    v2Presentation ? v2Presentation.displayBlocks : m.reasoningDisplayBlocks,
+  )
+  const googleSearchSuggestions = projectGoogleSearchSuggestions(
+    m.reasoningDetailsRaw,
+    m.providerId,
+    m.protocolContractId,
+  )
+  const hasEncryptedReasoning = v2Presentation
+    ? Boolean(displayBlocks?.some((block) => block.type === 'opaque' && block.opaqueKind === 'encrypted'))
+    : m.hasEncryptedReasoning
 
   const visibility = computeReasoningVisibility(
-    m.hasEncryptedReasoning,
-    m.reasoningDetailsRaw,
+    hasEncryptedReasoning,
     !!displayBlocks,
     m.requestedReasoningExclude
   )
@@ -99,12 +141,13 @@ export function selectMessage(state: RootState, messageId: string): MessageVM | 
     contentBlocks: m.contentBlocks,
     ...(m.requestedImageGeneration === true ? { requestedImageGeneration: true } : {}),
     ...(Array.isArray(m.annotations) && m.annotations.length > 0 ? { annotations: m.annotations } : {}),
+    ...(googleSearchSuggestions ? { googleSearchSuggestions } : {}),
     toolCalls: m.toolCalls,
     errorEnvelope: m.errorEnvelope ?? null,
     errorSummary: m.errorSummary ?? null,
     reasoningView: {
       ...(displayBlocks ? { displayBlocks } : {}),
-      hasEncrypted: m.hasEncryptedReasoning,
+      hasEncrypted: hasEncryptedReasoning,
       visibility,
       panelState: m.reasoningPanelState,
     },

@@ -49,6 +49,7 @@ export function createOpenRouterCatalogSource(options: Readonly<{
         apiKey,
         baseUrl,
         preferUserScopedModels: input.preferUserScopedModels !== false,
+        ...(input.category ? { category: input.category } : {}),
         signal: input.signal ?? null,
       })
 

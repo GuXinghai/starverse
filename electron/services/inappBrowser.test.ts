@@ -4,6 +4,7 @@ const electronMock = vi.hoisted(() => {
   const views: any[] = []
   const windows: any[] = []
   let nextWindowId = 1
+  let nextViewLoadError: Error | null = null
 
   class BrowserWindow {
     id = nextWindowId++
@@ -13,16 +14,18 @@ const electronMock = vi.hoisted(() => {
     }
     on = vi.fn()
     loadURL = vi.fn(async () => undefined)
-    setBrowserView = vi.fn()
-    removeBrowserView = vi.fn()
-    getSize = vi.fn(() => [1280, 800])
+    contentView = {
+      addChildView: vi.fn(),
+      removeChildView: vi.fn(),
+      getBounds: vi.fn(() => ({ x: 0, y: 0, width: 1280, height: 800 })),
+    }
 
     constructor() {
       windows.push(this)
     }
   }
 
-  class BrowserView {
+  class WebContentsView {
     windowOpenHandler: ((details: { url: string }) => { action: 'allow' | 'deny' }) | null = null
     handlers = new Map<string, (...args: any[]) => void>()
     currentUrl = 'https://example.com/'
@@ -34,20 +37,27 @@ const electronMock = vi.hoisted(() => {
         this.handlers.set(eventName, handler)
       }),
       loadURL: vi.fn(async (url: string) => {
+        if (nextViewLoadError) {
+          const error = nextViewLoadError
+          nextViewLoadError = null
+          throw error
+        }
         this.currentUrl = url
       }),
       getURL: vi.fn(() => this.currentUrl),
       getTitle: vi.fn(() => ''),
-      canGoBack: vi.fn(() => false),
-      canGoForward: vi.fn(() => false),
+      navigationHistory: {
+        canGoBack: vi.fn(() => false),
+        canGoForward: vi.fn(() => false),
+        goBack: vi.fn(),
+        goForward: vi.fn(),
+      },
       isLoading: vi.fn(() => false),
-      goBack: vi.fn(),
-      goForward: vi.fn(),
       reload: vi.fn(),
       removeAllListeners: vi.fn(),
+      close: vi.fn(),
     }
     setBounds = vi.fn()
-    setAutoResize = vi.fn()
 
     constructor() {
       views.push(this)
@@ -58,15 +68,16 @@ const electronMock = vi.hoisted(() => {
     views,
     windows,
     BrowserWindow,
-    BrowserView,
+    WebContentsView,
     clipboard: { writeText: vi.fn() },
     shell: { openExternal: vi.fn() },
+    rejectNextViewLoad: (error: Error) => { nextViewLoadError = error },
   }
 })
 
 vi.mock('electron', () => ({
   BrowserWindow: electronMock.BrowserWindow,
-  BrowserView: electronMock.BrowserView,
+  WebContentsView: electronMock.WebContentsView,
   clipboard: electronMock.clipboard,
   shell: electronMock.shell,
 }))
@@ -142,5 +153,57 @@ describe('InAppBrowserManager external URL policy', () => {
 
     expect(view.windowOpenHandler?.({ url: 'https://example.com/popup' })).toEqual({ action: 'deny' })
     expect(electronMock.views).toHaveLength(2)
+  })
+
+  it('logs only a fixed code and sanitized origin when tab loading fails', async () => {
+    const errorLog = vi.spyOn(console, 'error').mockImplementation(() => undefined)
+    electronMock.rejectNextViewLoad(new Error('C:\\Users\\alice\\secret-profile\\Cookies'))
+
+    createManager().openLink('https://user:password@example.com/private?token=secret#fragment')
+    await Promise.resolve()
+    await Promise.resolve()
+
+    expect(errorLog).toHaveBeenCalledWith('[inapp] INAPP_TAB_LOAD_FAILED', { target: 'https://example.com' })
+    const serialized = JSON.stringify(errorLog.mock.calls)
+    expect(serialized).not.toContain('password')
+    expect(serialized).not.toContain('token=secret')
+    expect(serialized).not.toContain('secret-profile')
+  })
+
+  it('keeps exactly the chosen WebContentsView attached while switching and closing tabs', () => {
+    const manager = createManager()
+    const first = manager.openLink('https://example.com/first')
+    const second = manager.openLink('https://example.com/second')
+    const win = electronMock.windows[0]
+    const firstView = electronMock.views[0]
+    const secondView = electronMock.views[1]
+
+    expect(win.contentView.addChildView).toHaveBeenNthCalledWith(1, firstView)
+    expect(win.contentView.removeChildView).toHaveBeenCalledWith(firstView)
+    expect(win.contentView.addChildView).toHaveBeenLastCalledWith(secondView)
+
+    expect(manager.focusTab(first.tabId)).toBe(true)
+    expect(win.contentView.removeChildView).toHaveBeenCalledWith(secondView)
+    expect(win.contentView.addChildView).toHaveBeenLastCalledWith(firstView)
+
+    expect(manager.closeTab(first.tabId)).toBe(true)
+    expect(firstView.webContents.close).toHaveBeenCalledWith({ waitForBeforeUnload: false })
+    expect(win.contentView.addChildView).toHaveBeenLastCalledWith(secondView)
+    expect(manager.getWindowSnapshot(second.windowId)?.activeTabId).toBe(second.tabId)
+  })
+
+  it('moves a chosen WebContentsView between root content views without duplicating tab ownership', () => {
+    const manager = createManager()
+    const opened = manager.openLink('https://example.com/detach')
+    const originalWindow = electronMock.windows[0]
+    const view = electronMock.views[0]
+
+    const detached = manager.detachTab(opened.tabId)
+    const targetWindow = electronMock.windows[1]
+    expect(detached).toEqual({ windowId: targetWindow.id, tabId: opened.tabId })
+    expect(originalWindow.contentView.removeChildView).toHaveBeenCalledWith(view)
+    expect(targetWindow.contentView.addChildView).toHaveBeenCalledWith(view)
+    expect(manager.getWindowSnapshot(originalWindow.id)?.tabs).toEqual([])
+    expect(manager.getWindowSnapshot(targetWindow.id)?.activeTabId).toBe(opened.tabId)
   })
 })

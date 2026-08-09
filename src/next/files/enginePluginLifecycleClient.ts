@@ -22,105 +22,92 @@ import {
   type RegisterLocalPackageRequest,
 } from '@/next/ipc/contracts/enginePluginLifecycleContracts'
 
-type DbBridge = Readonly<{
-  invoke: (method: string, params?: unknown) => Promise<unknown>
-}>
-
-function getDbBridge(): DbBridge | null {
-  const bridge = (globalThis as any).dbBridge as DbBridge | undefined
-  return bridge && typeof bridge.invoke === 'function' ? bridge : null
-}
-
-function requireDbBridge(): DbBridge {
-  const bridge = getDbBridge()
-  if (!bridge) throw new Error('Missing dbBridge')
+function requirePluginBridge(): NonNullable<Window['generationV2']>['plugins'] {
+  const bridge = (globalThis as unknown as { generationV2?: NonNullable<Window['generationV2']> }).generationV2?.plugins
+  if (!bridge) throw new Error('Missing epoch-2 plugin lifecycle bridge')
   return bridge
 }
 
 export async function listOfficialPlugins(
   params: ListOfficialPluginsRequest = {}
 ): Promise<DecodedLifecycleListOfficialResult> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.listOfficialPlugins', params)
+  const raw = await requirePluginBridge().listOfficial(params)
   return decodeListOfficialPluginsResponse(raw)
 }
 
 export async function listInstalledPlugins(): Promise<DecodedInstalledPlugin[]> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.listInstalledPlugins')
+  const raw = await requirePluginBridge().listInstalled()
   return decodeInstalledPluginsResponse(raw)
 }
 
 export async function registerLocalOfficialPlugin(
   params: RegisterLocalOfficialPluginRequest
 ): Promise<DecodedLifecycleInstalledResult> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.registerLocalOfficialPlugin', params)
+  const raw = await requirePluginBridge().registerLocalOfficial(params)
   return decodeLifecycleInstalledResult(raw)
 }
 
 export async function installOfficialPlugin(
   params: InstallOfficialPluginRequest
 ): Promise<DecodedInstallOfficialPluginResult> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.installOfficialPlugin', params)
+  const raw = await requirePluginBridge().installOfficial(params)
   return decodeInstallOfficialPluginResult(raw)
 }
 
 export async function getInstallOperationStatus(
   params: GetInstallOperationStatusRequest = {}
 ): Promise<DecodedInstallOperationStatusResult> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.getInstallOperationStatus', params)
+  const raw = await requirePluginBridge().installStatus(params)
   return decodeInstallOperationStatusResult(raw)
 }
 
 export async function cancelInstallOperation(
   params: CancelInstallOperationRequest = {}
 ): Promise<DecodedCancelInstallOperationResult> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.cancelInstallOperation', params)
+  const raw = await requirePluginBridge().cancelInstall(params)
   return decodeCancelInstallOperationResult(raw)
 }
 
 export async function enablePlugin(params: LifecycleEngineRequest): Promise<DecodedLifecycleInstalledResult> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.enablePlugin', params)
+  const raw = await requirePluginBridge().enable(params)
   return decodeLifecycleInstalledResult(raw)
 }
 
 export async function disablePlugin(params: LifecycleEngineRequest): Promise<DecodedLifecycleInstalledResult> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.disablePlugin', params)
+  const raw = await requirePluginBridge().disable(params)
   return decodeLifecycleInstalledResult(raw)
 }
 
 export async function uninstallPlugin(params: LifecycleEngineRequest): Promise<DecodedLifecycleInstalledResult> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.uninstallPlugin', params)
+  const raw = await requirePluginBridge().uninstall(params)
   return decodeLifecycleInstalledResult(raw)
 }
 
 export async function runPluginHealthCheck(params: LifecycleEngineRequest): Promise<DecodedLifecycleInstalledResult> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.runHealthCheck', params)
+  const raw = await requirePluginBridge().health(params)
   return decodeLifecycleInstalledResult(raw)
 }
 
 export async function registerLocalPackage(
   params: RegisterLocalPackageRequest
 ): Promise<DecodedLifecycleInstalledResult> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.registerLocalPackage', params)
+  const raw = await requirePluginBridge().registerLocalPackage(params)
   return decodeLifecycleInstalledResult(raw)
 }
 
 export async function importLibreOfficeSvpkg(): Promise<DecodedLifecycleInstalledResult> {
   const api = (globalThis as any).electronAPI as { importLibreOfficeSvpkg?: () => Promise<unknown> } | undefined
-  if (!api || typeof api.importLibreOfficeSvpkg !== 'function') {
-    throw new Error('LibreOffice package import is unavailable')
-  }
+  if (!api || typeof api.importLibreOfficeSvpkg !== 'function') throw new Error('LibreOffice package import is unavailable')
   return decodeLifecycleInstalledResult(await api.importLibreOfficeSvpkg())
 }
 
 export async function quarantineLibreOfficeRuntime(): Promise<DecodedLifecycleInstalledResult> {
   const api = (globalThis as any).electronAPI as { quarantineLibreOfficeRuntime?: () => Promise<unknown> } | undefined
-  if (!api || typeof api.quarantineLibreOfficeRuntime !== 'function') {
-    throw new Error('LibreOffice runtime quarantine is unavailable')
-  }
+  if (!api || typeof api.quarantineLibreOfficeRuntime !== 'function') throw new Error('LibreOffice runtime quarantine is unavailable')
   return decodeLifecycleInstalledResult(await api.quarantineLibreOfficeRuntime())
 }
 
 export async function getDiagnosticsSummary(): Promise<DecodedDiagnosticsSummary> {
-  const raw = await requireDbBridge().invoke('enginePluginLifecycle.getDiagnosticsSummary')
+  const raw = await requirePluginBridge().diagnostics()
   return decodeDiagnosticsSummary(raw)
 }

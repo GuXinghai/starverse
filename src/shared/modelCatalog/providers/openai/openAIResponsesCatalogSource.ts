@@ -11,6 +11,7 @@ import {
   OPENAI_MODELS_DEFAULT_BASE_URL,
   type OpenAIProviderModelAvailability,
 } from '../../../../next/provider/openai-responses/openAIResponsesModelSource'
+import { ProviderFailureErrorV2 } from '../../../provider/providerFailureV2'
 
 export const OPENAI_RESPONSES_PROVIDER_CATALOG_DESCRIPTOR: ProviderCatalogSourceDescriptor =
   requireProviderCatalogSourceDescriptor('openai_responses')
@@ -31,6 +32,13 @@ function requireFetchImpl(input: ProviderCatalogFetchInput): typeof fetch {
   return input.fetchImpl
 }
 
+function providerDateOnly(value: unknown): string | null {
+  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/u.test(value)) return null
+  const parsed = Date.parse(`${value}T00:00:00.000Z`)
+  if (!Number.isFinite(parsed)) return null
+  return new Date(parsed).toISOString().slice(0, 10) === value ? value : null
+}
+
 function rawEnvelopeForAvailability(
   model: OpenAIProviderModelAvailability,
   baseUrl: string,
@@ -48,7 +56,7 @@ function rawEnvelopeForAvailability(
       warnings: [...model.warnings],
       providerSpecific: model.providerSpecific ?? {},
       provenance: model.provenance ?? null,
-      capabilitySeed: model.capabilitySeed ?? {},
+      observation: model.observation ?? null,
     },
   }
   return { buckets: [bucket], schemaVersion: 1 }
@@ -59,9 +67,10 @@ function catalogModelFromAvailability(
   baseUrl: string,
   fetchedAtMs: number,
 ): CatalogModel {
-  const seed = model.capabilitySeed
-  const contextLength = seed?.contextLength ?? seed?.maxInputTokens ?? null
-  const maxOutputTokens = seed?.maxOutputTokens ?? null
+  const raw = model.observation?.rawProviderRecord
+  const providerDeprecationDate = providerDateOnly(raw?.deprecation_date)
+  const contextLength = null
+  const maxOutputTokens = null
   return {
     modelKey: `openai_responses::${model.nativeModelId}` as const,
     providerKey: 'openai_responses',
@@ -76,16 +85,16 @@ function catalogModelFromAvailability(
     contextLength,
     maxOutputTokens,
     architectureModality: null,
-    inputModalities: seed?.imageInput === true ? ['text', 'image'] : ['text'],
-    outputModalities: seed?.audioInput === true ? ['text', 'audio'] : ['text'],
+    inputModalities: [],
+    outputModalities: [],
     tokenizer: null,
     instructType: null,
-    supportedParameters: ['temperature', 'top_p', 'max_output_tokens'],
+    supportedParameters: [],
     capabilities: {
-      reasoning: seed?.reasoning === 'supported',
-      tools: seed?.functionCalling === true || seed?.hostedTools === true,
-      structuredOutputs: seed?.structuredOutput === true,
-      vision: seed?.imageInput === true,
+      reasoning: model.observation?.facts.reasoning.presence === 'present' && model.observation.facts.reasoning.value === true,
+      tools: model.observation?.facts.tools.presence === 'present' && model.observation.facts.tools.value === true,
+      structuredOutputs: model.observation?.facts.structuredOutputs.presence === 'present' && model.observation.facts.structuredOutputs.value === true,
+      vision: model.observation?.facts.vision.presence === 'present' && model.observation.facts.vision.value === true,
       longContext: typeof contextLength === 'number' && contextLength >= 128_000,
     },
     pricing: null,
@@ -94,7 +103,7 @@ function catalogModelFromAvailability(
     topProviderContextLength: contextLength,
     topProviderIsModerated: null,
     createdAtSec: model.createdAtSec ?? null,
-    expirationDate: null,
+    expirationDate: providerDeprecationDate,
     tags: [],
     firstSeenAtMs: fetchedAtMs,
     lastSeenAtMs: fetchedAtMs,
@@ -118,7 +127,10 @@ export function createOpenAIResponsesCatalogSource(): ProviderCatalogSource {
         signal: input.signal ?? null,
         observedAtMs,
       })
-      if (!result.ok) throw new Error(result.message)
+      if (!result.ok) {
+        if (result.providerFailure) throw new ProviderFailureErrorV2(result.providerFailure)
+        throw new Error(result.message)
+      }
       const models = result.models
         .map((model) => catalogModelFromAvailability(model, baseUrl, result.observedAtMs))
       return {

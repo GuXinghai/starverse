@@ -18,40 +18,12 @@ const generationConfigInteger = (field: string, min?: number): GenerationParamCa
   ui: { visibleByDefault: true, editable: true },
 })
 
-const generationConfigBoolean = (path: readonly string[]): GenerationParamCapability => ({
-  supported: true,
-  wirePath: path,
-  valueType: 'boolean',
-  status: 'stable',
-  ui: { visibleByDefault: true, editable: true },
-})
-
 const unsupportedThinkingParam = (valueType: GenerationParamCapability['valueType']): GenerationParamCapability => ({
   supported: false,
   valueType,
   status: 'unsupported',
   ui: { visibleByDefault: false, editable: false },
 })
-
-const thinkingBudgetCapability: GenerationParamCapability = {
-  supported: true,
-  wirePath: ['generationConfig', 'thinkingConfig', 'thinkingBudget'],
-  valueType: 'integer',
-  range: { min: 0, integer: true },
-  status: 'stable',
-  ui: { visibleByDefault: false, editable: true },
-}
-
-const thinkingLevelCapability: GenerationParamCapability = {
-  supported: true,
-  wirePath: ['generationConfig', 'thinkingConfig', 'thinkingLevel'],
-  valueType: 'enum',
-  enumValues: ['minimal', 'low', 'medium', 'high'],
-  status: 'stable',
-  ui: { visibleByDefault: true, editable: true },
-}
-
-const includeThoughtsCapability = generationConfigBoolean(['generationConfig', 'thinkingConfig', 'includeThoughts'])
 
 const gemini3DeprecatedSampling = (field: string, valueType: 'number' | 'integer'): GenerationParamCapability => ({
   supported: true,
@@ -85,24 +57,13 @@ export const geminiGenerationProfile: ProviderGenerationParamProfile = {
   },
   modelOverrides: [
     {
-      match: { modelIdPattern: '(^|/|models/)gemini-2\\.5-' },
-      params: {
-        thinkingBudget: thinkingBudgetCapability,
-        includeThoughts: includeThoughtsCapability,
-      },
-      notes: 'Gemini 2.5 uses thinkingBudget and may return thought summaries.',
-    },
-    {
       match: { modelIdPattern: '(^|/)gemini-3' },
       params: {
         temperature: gemini3DeprecatedSampling('temperature', 'number'),
         topP: { ...gemini3DeprecatedSampling('topP', 'number'), range: { min: 0, max: 1 } },
         topK: gemini3DeprecatedSampling('topK', 'integer'),
-        thinkingBudget: unsupportedThinkingParam('integer'),
-        thinkingLevel: thinkingLevelCapability,
-        includeThoughts: includeThoughtsCapability,
       },
-      notes: 'Gemini 3 uses thinkingLevel and deprecates explicit sampling controls.',
+      notes: 'Gemini 3 deprecates explicit sampling controls; thinking controls come from the Models API resolver.',
     },
   ],
 }

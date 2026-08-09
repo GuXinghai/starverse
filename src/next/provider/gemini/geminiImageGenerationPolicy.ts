@@ -143,6 +143,8 @@ function commonPolicy(input: Readonly<{
   supportsStopSequences?: boolean
   supportsGoogleSearch?: boolean
   supportsImageSearch?: boolean
+  supportedOutputModes?: readonly GeminiImageGenerationOutputMode[]
+  defaultOutputMode?: GeminiImageGenerationOutputMode
 }>): GeminiImageGenerationPolicyCommon {
   return {
     supportedImageSizes: input.supportedImageSizes,
@@ -150,8 +152,8 @@ function commonPolicy(input: Readonly<{
     imageSizeMode: input.imageSizeMode,
     supportedAspectRatios: input.supportedAspectRatios ?? GEMINI_IMAGE_GENERATION_ASPECT_RATIOS,
     defaultAspectRatio: input.defaultAspectRatio ?? '1:1',
-    supportedOutputModes: GEMINI_IMAGE_GENERATION_OUTPUT_MODES,
-    defaultOutputMode: 'image_and_text',
+    supportedOutputModes: input.supportedOutputModes ?? GEMINI_IMAGE_GENERATION_OUTPUT_MODES,
+    defaultOutputMode: input.defaultOutputMode ?? 'image_and_text',
     maxOutputTokens: input.maxOutputTokens ?? 32768,
     supportsStopSequences: input.supportsStopSequences ?? true,
     supportsGoogleSearch: input.supportsGoogleSearch ?? false,

@@ -58,14 +58,14 @@ export const geminiImageGenerationProfile: ProviderGenerationParamProfile = {
     thoughtSummaryMode: generationConfigEnum('thinking_summaries', ['none', 'auto']),
     googleSearch: {
       supported: true,
-      wirePath: ['tools', 'google_search'],
+      wireEncoding: 'gemini_interactions_google_search_type',
       valueType: 'boolean',
       status: 'stable',
       ui: { visibleByDefault: false, editable: true },
     },
     imageSearch: {
       supported: true,
-      wirePath: ['tools', 'image_search'],
+      wireEncoding: 'gemini_interactions_google_search_type',
       valueType: 'boolean',
       status: 'stable',
       ui: { visibleByDefault: false, editable: true },

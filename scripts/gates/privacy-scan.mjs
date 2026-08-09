@@ -45,14 +45,14 @@ const ALLOWLIST = [
   {
     id: 'sanitizer-redaction-implementations',
     reason: 'redaction implementations must name sensitive fields and path patterns',
-    path: /^(electron\/ipc\/logSanitizer|src\/next\/file-type\/(externalEngineRegistry|externalProcessRunner|magikaAdapter|magikaClassifyRunner|magikaRuntimeLoader)|src\/next\/plugin-distribution\/sanitization)\.ts$/u,
+    path: /^(electron\/ipc\/logSanitizer|src\/next\/file-type\/(externalEngineRegistry|externalProcessRunner|magikaAdapter|magikaClassifyRunner|magikaRuntimeLoader)|src\/(next|shared)\/plugin-distribution\/sanitization)\.ts$/u,
     matchTypes: ['contentToken', 'fullHash'],
     line: /(replace|CONTENT_TOKEN|FULL_HASH|redact|sanitize)/iu,
   },
   {
     id: 'file-fingerprint-domain-fields',
     reason: 'domain schema and detector code store fullHash/fullHashStatus as structured fingerprint fields',
-    path: /^(infra\/db\/types|infra\/files\/fileTypeDetectionService)\.ts$/u,
+    path: /^infra\/db\/types\.ts$/u,
     matchTypes: ['fullHash'],
     line: /\b(fullHash|fullHashStatus|fingerprint|sha256)\b/u,
   },

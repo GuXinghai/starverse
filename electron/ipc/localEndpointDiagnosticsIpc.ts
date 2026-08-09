@@ -1,9 +1,9 @@
 import type { RegisterInvoke } from './types'
 import { createLocalEndpointDirectFetch } from '../net/localEndpointTransport'
 
-export const LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS = [
-  'local-endpoint-diagnostics:probe',
-  'local-endpoint-diagnostics:stream-probe',
+export const LOCAL_ENDPOINT_DIAGNOSTICS_V2_IPC_CHANNELS = [
+  'generation-v2:local-runtime:generic:probe',
+  'generation-v2:local-runtime:generic:stream-probe',
 ] as const
 
 export type LocalEndpointProbePayload = Readonly<{
@@ -83,7 +83,7 @@ export type LocalEndpointStreamProbeResult =
 type LocalEndpointProbeFailureCode = 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected' | 'timeout' | 'network_error' | 'invalid_response'
 type LocalEndpointModelListFailureCode = 'unavailable' | 'invalid_response' | 'timeout' | 'network_error'
 
-type RegisterLocalEndpointDiagnosticsIpcInput = Readonly<{
+type RegisterLocalEndpointDiagnosticsV2IpcInput = Readonly<{
   registerInvoke: RegisterInvoke
   fetchImpl?: typeof fetch
 }>
@@ -602,22 +602,22 @@ export async function probeLocalEndpointStreamDiagnostics(
   }
 }
 
-export function registerLocalEndpointDiagnosticsIpc(
-  input: RegisterLocalEndpointDiagnosticsIpcInput,
+export function registerLocalEndpointDiagnosticsV2Ipc(
+  input: RegisterLocalEndpointDiagnosticsV2IpcInput,
 ): string[] {
-  input.registerInvoke('local-endpoint-diagnostics:probe', (_event: unknown, payload: unknown) => {
+  input.registerInvoke('generation-v2:local-runtime:generic:probe', (_event: unknown, payload: unknown) => {
     const safePayload = (payload && typeof payload === 'object' && !Array.isArray(payload))
       ? payload as LocalEndpointProbePayload
       : {}
     return probeLocalEndpointDiagnostics(safePayload, { fetchImpl: input.fetchImpl })
   })
 
-  input.registerInvoke('local-endpoint-diagnostics:stream-probe', (_event: unknown, payload: unknown) => {
+  input.registerInvoke('generation-v2:local-runtime:generic:stream-probe', (_event: unknown, payload: unknown) => {
     const safePayload = (payload && typeof payload === 'object' && !Array.isArray(payload))
       ? payload as LocalEndpointProbePayload
       : {}
     return probeLocalEndpointStreamDiagnostics(safePayload, { fetchImpl: input.fetchImpl })
   })
 
-  return [...LOCAL_ENDPOINT_DIAGNOSTICS_IPC_CHANNELS]
+  return [...LOCAL_ENDPOINT_DIAGNOSTICS_V2_IPC_CHANNELS]
 }

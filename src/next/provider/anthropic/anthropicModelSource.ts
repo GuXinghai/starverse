@@ -1,7 +1,6 @@
 import {
   createProviderModelAvailabilityProvenance,
   type ProviderModelAvailabilityEnvelope,
-  type ProviderModelCapabilitySeed,
   type ProviderModelSourceKind as CommonProviderModelSourceKind,
 } from '../modelAvailabilityEnvelope'
 import {
@@ -9,6 +8,19 @@ import {
   providerNetworkFailureMessage,
   type NetworkErrorEnvelope,
 } from '../../../shared/network/networkErrorEnvelope'
+import {
+  missingProviderBooleanFactV2,
+  preserveProviderRecordV2,
+  providerBooleanFactV2,
+  type CatalogProviderModelObservationV2,
+  type ProviderReportedFactV2,
+} from '../../../shared/modelCatalog/providerModelObservationV2'
+import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
+import {
+  providerModelHttpFailureV2,
+  providerModelTransportFailureV2,
+  readProviderModelResponseBodyV2,
+} from '../modelCatalogFailureV2'
 
 export const ANTHROPIC_MESSAGES_PROVIDER_KEY = 'anthropic_messages' as const
 export const ANTHROPIC_MESSAGES_ENDPOINT_ID = 'anthropic-official' as const
@@ -22,7 +34,6 @@ export const ANTHROPIC_MODELS_OVERVIEW_DOC_URL = 'https://docs.anthropic.com/en/
 
 export type AnthropicModelSourceKind =
   | 'anthropic_models_api'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 export type AnthropicProviderSpecificModelAvailability = Readonly<{
@@ -47,19 +58,7 @@ export type AnthropicProviderModelAvailability = ProviderModelAvailabilityEnvelo
   displayName?: string
   createdAt?: string
   modelType?: string
-  capabilitySeed?: Readonly<{
-    textChat?: boolean
-    imageInput?: boolean | 'unknown'
-    maxInputTokens?: number
-    maxOutputTokens?: number
-    thinking?: 'supported' | 'unsupported' | 'unknown'
-    adaptiveThinking?: boolean | 'unknown'
-    toolUse?: boolean | 'unknown'
-    files?: boolean | 'unknown'
-    structuredOutput?: boolean | 'unknown'
-    citations?: boolean | 'unknown'
-    capabilitiesRawKeys?: string[]
-  }> & ProviderModelCapabilitySeed
+  observation?: CatalogProviderModelObservationV2
 }>
 
 export type AnthropicModelSourceDocument = Readonly<{
@@ -92,9 +91,13 @@ export type AnthropicModelAvailabilityFailure = Readonly<{
     | 'invalid_response'
     | 'http_error'
     | 'network_error'
+    | 'pagination_incomplete'
   message: string
   httpStatus?: number
   networkError?: NetworkErrorEnvelope
+  pagesFetched?: number
+  nextPageCursor?: string
+  providerFailure?: ProviderFailureV2
 }>
 
 export type AnthropicModelAvailabilityResult =
@@ -185,15 +188,6 @@ function asTrimmedString(value: unknown): string | null {
   return trimmed.length > 0 ? trimmed : null
 }
 
-function asSafePositiveInteger(value: unknown): number | undefined {
-  if (typeof value !== 'number' || !Number.isSafeInteger(value) || value <= 0) return undefined
-  return value
-}
-
-function asSafeBoolean(value: unknown): boolean | undefined {
-  return typeof value === 'boolean' ? value : undefined
-}
-
 function isValidAnthropicModelId(value: string): boolean {
   if (value.length > 180) return false
   return /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(value)
@@ -212,75 +206,33 @@ function safeHttpErrorMessage(status: number): string {
   return `Anthropic model source returned HTTP ${status}.`
 }
 
-async function readJsonSafely(response: Response): Promise<unknown> {
-  const text = await response.text()
-  if (!text.trim()) return {}
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
 function asValidCreatedAt(value: unknown): string | undefined {
   const raw = asTrimmedString(value)
   if (!raw) return undefined
   return Number.isNaN(Date.parse(raw)) ? undefined : raw
 }
 
-function capabilityBoolean(
-  capabilities: ModelRecord | null,
+function firstProviderBooleanFact(
+  owner: ModelRecord | null,
   keys: readonly string[],
-): boolean | 'unknown' {
-  if (!capabilities) return 'unknown'
+  pathPrefix: string,
+): ProviderReportedFactV2<boolean> {
   for (const key of keys) {
-    const value = asSafeBoolean(capabilities[key])
-    if (value !== undefined) return value
+    if (owner && Object.prototype.hasOwnProperty.call(owner, key)) {
+      const nested = asObject(owner[key])
+      if (nested && typeof nested.supported === 'boolean') {
+        return {
+          providerPath: `${pathPrefix}.${key}.supported`,
+          ownProperty: true,
+          presence: 'present',
+          value: nested.supported,
+          rawValue: nested.supported,
+        }
+      }
+      return providerBooleanFactV2({ owner, key, providerPath: `${pathPrefix}.${key}` })
+    }
   }
-  return 'unknown'
-}
-
-function thinkingCapability(capabilities: ModelRecord | null): 'supported' | 'unsupported' | 'unknown' {
-  if (!capabilities) return 'unknown'
-  const thinking = asSafeBoolean(capabilities.thinking)
-  if (thinking !== undefined) return thinking ? 'supported' : 'unsupported'
-  const extendedThinking = asSafeBoolean(capabilities.extended_thinking)
-  if (extendedThinking !== undefined) return extendedThinking ? 'supported' : 'unsupported'
-  return 'unknown'
-}
-
-function rawCapabilityKeys(capabilities: ModelRecord | null): string[] | undefined {
-  if (!capabilities) return undefined
-  const keys = Object.keys(capabilities)
-    .filter((key) => /^[A-Za-z0-9_.:-]{1,80}$/.test(key))
-    .sort()
-    .slice(0, 30)
-  return keys.length > 0 ? keys : undefined
-}
-
-function capabilitySeedFromRecord(record: ModelRecord): NonNullable<AnthropicProviderModelAvailability['capabilitySeed']> {
-  const capabilities = asObject(record.capabilities)
-  const maxInputTokens = asSafePositiveInteger(record.max_input_tokens)
-    ?? asSafePositiveInteger(capabilities?.max_input_tokens)
-  const maxOutputTokens = asSafePositiveInteger(record.max_tokens)
-    ?? asSafePositiveInteger(record.max_output_tokens)
-    ?? asSafePositiveInteger(capabilities?.max_tokens)
-    ?? asSafePositiveInteger(capabilities?.max_output_tokens)
-  const adaptiveThinking = capabilityBoolean(capabilities, ['adaptive_thinking', 'extended_thinking'])
-
-  return {
-    textChat: true,
-    imageInput: capabilityBoolean(capabilities, ['vision', 'image_input']),
-    ...(maxInputTokens !== undefined ? { maxInputTokens } : {}),
-    ...(maxOutputTokens !== undefined ? { maxOutputTokens } : {}),
-    thinking: thinkingCapability(capabilities),
-    adaptiveThinking,
-    toolUse: capabilityBoolean(capabilities, ['tool_use', 'tools']),
-    files: capabilityBoolean(capabilities, ['files', 'file_input']),
-    structuredOutput: capabilityBoolean(capabilities, ['structured_output', 'json_schema']),
-    citations: capabilityBoolean(capabilities, ['citations']),
-    ...(rawCapabilityKeys(capabilities) ? { capabilitiesRawKeys: rawCapabilityKeys(capabilities) } : {}),
-  }
+  return missingProviderBooleanFactV2(`${pathPrefix}.${keys[0]}`)
 }
 
 function modelFromApiRecord(
@@ -301,6 +253,23 @@ function modelFromApiRecord(
   }
 
   const displayName = asTrimmedString(record.display_name) ?? undefined
+  const capabilities = asObject(record.capabilities)
+  const observation: CatalogProviderModelObservationV2 = {
+    schemaVersion: 2,
+    providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+    endpointId: ANTHROPIC_MESSAGES_ENDPOINT_ID,
+    nativeModelId: id,
+    observedAtMs,
+    rawProviderRecord: preserveProviderRecordV2(record),
+    facts: {
+      textChat: missingProviderBooleanFactV2('data[].text_chat'),
+      reasoning: firstProviderBooleanFact(capabilities, ['thinking', 'extended_thinking'], 'data[].capabilities'),
+      tools: firstProviderBooleanFact(capabilities, ['tool_use', 'tools'], 'data[].capabilities'),
+      structuredOutputs: firstProviderBooleanFact(capabilities, ['structured_outputs', 'structured_output', 'json_schema'], 'data[].capabilities'),
+      vision: firstProviderBooleanFact(capabilities, ['vision', 'image_input'], 'data[].capabilities'),
+    },
+    provenance: { sourceKind: 'provider_api', sourceLabel: 'anthropic_models_api', observedAtMs, parserVersion: 2 },
+  }
   return {
     ...availabilityBase({
       nativeModelId: id,
@@ -311,11 +280,11 @@ function modelFromApiRecord(
     ...(displayName ? { displayName } : {}),
     ...(createdAt ? { createdAt } : {}),
     modelType,
-    capabilitySeed: capabilitySeedFromRecord(record),
+    observation,
     providerSpecific: {
       ...(createdAt ? { createdAt } : {}),
       modelType,
-      ...(capabilitySeedFromRecord(record).capabilitiesRawKeys ? { capabilitiesRawKeys: capabilitySeedFromRecord(record).capabilitiesRawKeys } : {}),
+      ...(capabilities ? { capabilitiesRawKeys: Object.keys(capabilities).sort() } : {}),
     },
   }
 }
@@ -365,94 +334,6 @@ export function parseAnthropicModelsResponse(payload: unknown, observedAtMs: num
   }
 }
 
-function curatedWarning(): string {
-  return 'Anthropic Models API is the provider-reported source; Starverse curated metadata is supplemental and does not enable live capabilities.'
-}
-
-function curatedCapabilitySeed(input: Readonly<{
-  imageInput: boolean | 'unknown'
-  thinking: 'supported' | 'unsupported' | 'unknown'
-  maxInputTokens?: number
-  maxOutputTokens?: number
-}>): NonNullable<AnthropicProviderModelAvailability['capabilitySeed']> {
-  return {
-    textChat: true,
-    imageInput: input.imageInput,
-    ...(input.maxInputTokens !== undefined ? { maxInputTokens: input.maxInputTokens } : {}),
-    ...(input.maxOutputTokens !== undefined ? { maxOutputTokens: input.maxOutputTokens } : {}),
-    thinking: input.thinking,
-    adaptiveThinking: input.thinking === 'supported' ? 'unknown' : false,
-    toolUse: 'unknown',
-    files: 'unknown',
-    structuredOutput: 'unknown',
-    citations: 'unknown',
-  }
-}
-
-export function getAnthropicCuratedModelAvailabilitySeeds(observedAtMs: number): AnthropicProviderModelAvailability[] {
-  return [
-    {
-      ...availabilityBase({
-        nativeModelId: 'claude-sonnet-4-5',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs,
-        warnings: [curatedWarning()],
-      }),
-      displayName: 'Claude Sonnet 4.5',
-      capabilitySeed: curatedCapabilitySeed({
-        imageInput: true,
-        thinking: 'unknown',
-        maxInputTokens: 200000,
-      }),
-      providerSpecific: {},
-    },
-    {
-      ...availabilityBase({
-        nativeModelId: 'claude-opus-4-1',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs,
-        warnings: [curatedWarning()],
-      }),
-      displayName: 'Claude Opus 4.1',
-      capabilitySeed: curatedCapabilitySeed({
-        imageInput: true,
-        thinking: 'unknown',
-        maxInputTokens: 200000,
-      }),
-      providerSpecific: {},
-    },
-  ]
-}
-
-function mergeAvailability(
-  providerReported: AnthropicProviderModelAvailability[],
-  curated: AnthropicProviderModelAvailability[],
-): AnthropicProviderModelAvailability[] {
-  const curatedById = new Map(curated.map((model) => [model.nativeModelId, model]))
-  const merged = new Map<string, AnthropicProviderModelAvailability>()
-
-  for (const providerModel of providerReported) {
-    const seed = curatedById.get(providerModel.nativeModelId)
-    merged.set(providerModel.nativeModelId, {
-      ...providerModel,
-      ...(providerModel.displayName ? {} : seed?.displayName ? { displayName: seed.displayName } : {}),
-      ...(seed?.capabilitySeed ? { capabilitySeed: { ...seed.capabilitySeed, ...providerModel.capabilitySeed } } : {}),
-      providerSpecific: {
-        ...(providerModel.providerSpecific ?? {}),
-        ...(seed?.providerSpecific ?? {}),
-      },
-      warnings: [
-        ...providerModel.warnings,
-        ...(seed?.warnings ?? []),
-      ],
-    })
-  }
-
-  return Array.from(merged.values()).sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId))
-}
-
 export function resolveAnthropicModelAvailabilityFromModelsPayload(
   payload: unknown,
   observedAtMs: number,
@@ -470,18 +351,28 @@ export function resolveAnthropicModelAvailabilityFromModelsPayload(
     }
   }
 
+  if (parsed.hasMore) {
+    return {
+      ok: false,
+      providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+      endpointId: ANTHROPIC_MESSAGES_ENDPOINT_ID,
+      profileId: ANTHROPIC_MESSAGES_PROFILE_ID,
+      observedAtMs,
+      code: 'pagination_incomplete',
+      message: 'Anthropic Models API response is incomplete because more pages are available.',
+      pagesFetched: 1,
+      ...(parsed.lastId ? { nextPageCursor: parsed.lastId } : {}),
+    }
+  }
+
   return {
     ok: true,
     providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
     endpointId: ANTHROPIC_MESSAGES_ENDPOINT_ID,
     profileId: ANTHROPIC_MESSAGES_PROFILE_ID,
     observedAtMs,
-    models: mergeAvailability(parsed.models, getAnthropicCuratedModelAvailabilitySeeds(observedAtMs)),
-    warnings: [
-      ...parsed.warnings,
-      ...(parsed.hasMore ? ['Anthropic Models API response has more pages; use the client pagination path for a fuller snapshot.'] : []),
-      'Anthropic Models API is treated as availability and provider-reported capability seed where fields are present; curated metadata is supplemental and versioned by observedAtMs.',
-    ],
+    models: [...parsed.models].sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId)),
+    warnings: parsed.warnings,
     sourceDocuments: sourceDocuments(observedAtMs),
   }
 }
@@ -543,10 +434,12 @@ export async function listAnthropicProviderModelAvailability(
         code: 'network_error',
         message: providerNetworkFailureMessage('Anthropic model source', networkError),
         networkError,
+        providerFailure: providerModelTransportFailureV2({ providerId: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+          contractId: 'anthropic-models-v1', observedAtMs, requestSequence: page + 1, error, credential: apiKey }),
       }
     }
 
-    const payload = await readJsonSafely(response)
+    const body = await readProviderModelResponseBodyV2(response)
     if (!response.ok) {
       const networkError = buildNetworkErrorEnvelope({
         requestPurpose: 'provider_availability',
@@ -564,10 +457,12 @@ export async function listAnthropicProviderModelAvailability(
         message: safeHttpErrorMessage(response.status),
         httpStatus: response.status,
         networkError,
+        providerFailure: providerModelHttpFailureV2({ providerId: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+          contractId: 'anthropic-models-v1', observedAtMs, requestSequence: page + 1, response, body }),
       }
     }
 
-    const parsed = parseAnthropicModelsResponse(payload, observedAtMs)
+    const parsed = parseAnthropicModelsResponse(body.payload, observedAtMs)
     if (!parsed.ok) {
       return {
         ok: false,
@@ -583,14 +478,32 @@ export async function listAnthropicProviderModelAvailability(
     allModels.push(...parsed.models)
     allWarnings.push(...parsed.warnings)
     if (!parsed.hasMore) break
-    if (!parsed.lastId || page === maxPages - 1) {
+    if (!parsed.lastId) {
       truncated = true
       break
     }
     afterId = parsed.lastId
+    if (page === maxPages - 1) {
+      truncated = true
+      break
+    }
   }
 
-  const models = mergeAvailability(allModels, getAnthropicCuratedModelAvailabilitySeeds(observedAtMs))
+  if (truncated) {
+    return {
+      ok: false,
+      providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+      endpointId: ANTHROPIC_MESSAGES_ENDPOINT_ID,
+      profileId: ANTHROPIC_MESSAGES_PROFILE_ID,
+      observedAtMs,
+      code: 'pagination_incomplete',
+      message: 'Anthropic Models API pagination exceeded the configured page bound.',
+      pagesFetched: maxPages,
+      ...(afterId ? { nextPageCursor: afterId } : {}),
+    }
+  }
+
+  const models = [...allModels].sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId))
     .map((model) => ({
       ...model,
       providerSpecific: {
@@ -616,7 +529,6 @@ export async function listAnthropicProviderModelAvailability(
     warnings: [
       ...allWarnings,
       ...(truncated ? ['Anthropic models pagination was truncated after the bounded R5 page limit.'] : []),
-      'Anthropic Models API is treated as availability and provider-reported capability seed where fields are present; curated metadata is supplemental and versioned by observedAtMs.',
     ],
     sourceDocuments: sourceDocuments(observedAtMs),
   }

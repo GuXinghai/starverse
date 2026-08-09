@@ -1,4 +1,7 @@
-import type { ContextBuiltMessage, GetRenderableTurnsResult } from '@/next/context/contextClient'
+import type {
+  GenerationV2UiContextMessage,
+  GenerationV2UiRenderableTurns,
+} from '@/next/generation-v2/renderer/generationV2BranchProjection'
 import type { MessageState } from '@/next/state/types'
 
 export type BranchTurnProjection = Readonly<{
@@ -26,7 +29,7 @@ export type BranchProjectionConsistencyError = Readonly<{
 export type BranchViewSnapshot<MessageMeta> = Readonly<{
   branchId: string
   revision: number
-  rows: readonly ContextBuiltMessage[]
+  rows: readonly GenerationV2UiContextMessage[]
   messageSeqById: ReadonlyMap<string, number>
   messageMetaById: ReadonlyMap<string, MessageMeta>
   turnByQuestionId: ReadonlyMap<string, BranchTurnProjection>
@@ -52,7 +55,7 @@ export function emptyBranchViewSnapshot<MessageMeta>(): BranchViewSnapshot<Messa
 export function buildBranchViewSnapshot<MessageMeta>(input: Readonly<{
   branchId: string
   revision: number
-  rendered: GetRenderableTurnsResult
+  rendered: GenerationV2UiRenderableTurns
   messageMetaById: ReadonlyMap<string, MessageMeta>
 }>): BranchViewSnapshot<MessageMeta> {
   const branchId = String(input.branchId ?? '').trim()
@@ -182,6 +185,9 @@ export function mergePersistedMessageWithRuntimeOverlay(
       ? [...persisted.contentBlocks, ...previousNonTextBlocks]
       : persisted.contentBlocks,
     toolCalls: previous.toolCalls.length > 0 ? previous.toolCalls : persisted.toolCalls,
+    reasoningDetailsRaw: (previous.reasoningDetailsRaw?.length ?? 0) > 0
+      ? previous.reasoningDetailsRaw
+      : persisted.reasoningDetailsRaw,
     reasoningDisplayBlocks: (previous.reasoningDisplayBlocks?.length ?? 0) > 0
       ? previous.reasoningDisplayBlocks
       : persisted.reasoningDisplayBlocks,

@@ -3,6 +3,7 @@ import os from 'node:os'
 import path from 'node:path'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { RawGenerationRequestStore } from './rawGenerationRequestStore'
+import { ImmutablePreparedBodyV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 
 const roots: string[] = []
 afterEach(() => { while (roots.length) rmSync(roots.pop()!, { recursive: true, force: true }) })
@@ -31,6 +32,23 @@ describe('RawGenerationRequestStore', () => {
     store.close()
   })
 
+  it('persists the exact immutable prepared bytes and hash without reserialization', () => {
+    const store = fixture()
+    const prepared = ImmutablePreparedBodyV2.fromNativeRequest({
+      model: 'model-a',
+      messages: [{ role: 'user', content: 'exact body' }],
+      stream: true,
+    })
+    store.tryPersistPreparedV2(context, prepared)
+
+    const row = store.listByAnswerRootId('answer-1')[0]!
+    expect(row.serializedBody).toBe(prepared.copyUtf8Text())
+    expect(Buffer.from(row.serializedBody, 'utf8')).toEqual(Buffer.from(prepared.copyBytes()))
+    expect(row.bodyBytes).toBe(prepared.byteLength)
+    expect(row.bodySha256).toBe(prepared.sha256)
+    store.close()
+  })
+
   it('is idempotent for the same sequence and never overwrites a conflicting body', () => {
     const store = fixture()
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
@@ -53,6 +71,35 @@ describe('RawGenerationRequestStore', () => {
     expect(() => store.tryPersist(context, '{}')).not.toThrow()
     expect(store.getStatus()).toMatchObject({ available: false, schemaReady: false, errorCode: 'RAW_DEBUG_STORE_OPEN_FAILED' })
     expect(() => store.listByAnswerRootId('answer-1')).toThrow('RAW_DEBUG_QUERY_FAILED')
+    expect(warn.mock.calls).toEqual([
+      ['[raw-generation] RAW_DEBUG_CAPTURE_FAILED (non-fatal)'],
+      ['[raw-generation] RAW_DEBUG_STORE_OPEN_FAILED (non-fatal)'],
+      ['[raw-generation] RAW_DEBUG_QUERY_FAILED (non-fatal)'],
+    ])
+    expect(JSON.stringify(warn.mock.calls)).not.toContain(blocker)
     warn.mockRestore()
+  })
+
+  it('persists complete provider error bytes separately and idempotently', () => {
+    const store = fixture()
+    const payload = Buffer.from('{"error":{"code":429,"message":"raw provider error","metadata":{"future":true}}}', 'utf8')
+    store.tryPersistProviderError(context, {
+      phase: 'sse_event', httpStatus: 200, contentType: 'text/event-stream',
+      providerRequestId: 'gen-1', payload,
+    })
+    store.tryPersistProviderError(context, {
+      phase: 'sse_event', httpStatus: 200, contentType: 'text/event-stream',
+      providerRequestId: 'gen-1', payload,
+    })
+
+    const rows = store.listProviderErrorsByAnswerRootId('answer-1')
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toMatchObject({
+      phase: 'sse_event', httpStatus: 200, contentType: 'text/event-stream',
+      providerRequestId: 'gen-1', payloadText: payload.toString('utf8'), payloadBytes: payload.byteLength,
+    })
+    expect(Buffer.from(rows[0]!.payloadBase64, 'base64')).toEqual(payload)
+    expect(rows[0]!.payloadSha256).toMatch(/^[a-f0-9]{64}$/u)
+    store.close()
   })
 })

@@ -1,0 +1,1096 @@
+import BetterSqlite3 from 'better-sqlite3'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
+import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
+import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
+import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
+import { BranchContextFilterV2Repo } from '../../infra/db/repo/branchContextFilterV2Repo'
+import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
+
+const mocks = vi.hoisted(() => ({ fetch: vi.fn(), leases: new WeakSet<object>() }))
+vi.mock('electron', () => ({ session: { defaultSession: { fetch: mocks.fetch } } }))
+vi.mock('../credentials/epoch2RuntimeCredentialService', () => ({
+  isEpoch2RuntimeCredentialLease: (value: unknown) =>
+    Boolean(value && typeof value === 'object' && mocks.leases.has(value)),
+}))
+
+import { createOpenAIResponsesPlainTextInitialSendCoordinatorV2 } from './openAIResponsesPlainTextInitialSendCoordinatorV2'
+import { createOpenAIResponsesStreamRunnerV2 } from './openAIResponsesStreamRunnerV2'
+import { createOpenAIResponsesPlainTextRetryCoordinatorV2 } from './openAIResponsesPlainTextRetryCoordinatorV2'
+import { createOpenAIResponsesPlainTextRegenerateCoordinatorV2 } from './openAIResponsesPlainTextRegenerateCoordinatorV2'
+import { createOpenAIResponsesPlainTextEditResendCoordinatorV2 } from './openAIResponsesPlainTextEditResendCoordinatorV2'
+import { createOpenAIResponsesToolContinuationCoordinatorV2 } from './openAIResponsesToolContinuationCoordinatorV2'
+import { createOpenAIResponsesGenerationV2Runtime } from './openAIResponsesGenerationV2Runtime'
+
+const scope = 'credential-scope-v2:'.concat('d'.repeat(64)) as never
+
+function modelResponse(): Response {
+  const value = new Response(JSON.stringify({
+    object: 'list', data: [{ id: 'gpt-5.6-sol', object: 'model', created: 1, owned_by: 'openai' }],
+  }), { status: 200, headers: { 'content-type': 'application/json' } })
+  return Object.freeze({
+    status: 200, url: 'https://api.openai.com/v1/models', headers: value.headers, body: value.body,
+  }) as unknown as Response
+}
+
+function credentialService() {
+  return {
+    getStatus: async () => ({
+      providerKey: 'openai_responses', configured: true, revision: 1, credentialScopeId: scope,
+    }),
+    withCredential: async ({ consume }: { consume: (lease: never) => Promise<unknown> }) => {
+      const state = { active: true }
+      const lease = Object.freeze({
+        trust: 'epoch2_runtime_credential_lease', usage: 'provider_transport_only',
+        providerKey: 'openai_responses', credential: 'sk-test', revision: 1,
+        credentialScopeId: scope,
+        assertCurrent: () => { if (!state.active) throw new Error('stale credential') },
+      })
+      mocks.leases.add(lease)
+      try { return await consume(lease as never) } finally {
+        state.active = false
+        mocks.leases.delete(lease)
+      }
+    },
+  } as never
+}
+
+function sse(type: string, sequenceNumber: number, value: Record<string, unknown>): string {
+  return `event: ${type}\ndata: ${JSON.stringify({ type, sequence_number: sequenceNumber, ...value })}\n\n`
+}
+
+function completedStream(text = 'hello from OpenAI', messageId = 'msg_1'): Response {
+  const output = [{
+    id: messageId, type: 'message', role: 'assistant',
+    content: [{ type: 'output_text', text, annotations: [] }],
+  }]
+  const body = [
+    sse('response.output_text.delta', 1, {
+      item_id: messageId, output_index: 0, content_index: 0, delta: text,
+    }),
+    sse('response.output_item.done', 2, { output_index: 0, item: output[0] }),
+    sse('response.completed', 3, { response: {
+      id: 'resp_1', object: 'response', created_at: 1, completed_at: 2,
+      status: 'completed', model: 'gpt-5.6-sol', output,
+      usage: {
+        input_tokens: 3, output_tokens: 4, total_tokens: 7,
+        input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 },
+      }, error: null, incomplete_details: null,
+    } }),
+  ].join('')
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+function completedEncryptedReasoningStream(): Response {
+  const output = [
+    {
+      id: 'rs_1', type: 'reasoning', status: 'completed',
+      summary: [], encrypted_content: 'encrypted-provider-payload',
+    },
+    {
+      id: 'msg_1', type: 'message', role: 'assistant',
+      content: [{ type: 'output_text', text: 'answer', annotations: [] }],
+    },
+  ]
+  const body = [
+    sse('response.output_text.delta', 1, {
+      item_id: 'msg_1', output_index: 1, content_index: 0, delta: 'answer',
+    }),
+    sse('response.output_item.done', 2, { output_index: 0, item: output[0] }),
+    sse('response.output_item.done', 3, { output_index: 1, item: output[1] }),
+    sse('response.completed', 4, { response: {
+      id: 'resp_1', object: 'response', created_at: 1, completed_at: 2,
+      status: 'completed', model: 'gpt-5.6-sol', output,
+      usage: {
+        input_tokens: 3, output_tokens: 4, total_tokens: 7,
+        input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 2 },
+      }, error: null, incomplete_details: null,
+    } }),
+  ].join('')
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+function functionCallStream(): Response {
+  const output = [{
+    id: 'fc_1', type: 'function_call', call_id: 'call_weather', name: 'weather', arguments: '{"city":"Paris"}',
+    status: 'completed',
+  }]
+  const body = [
+    sse('response.output_item.done', 1, { output_index: 0, item: output[0] }),
+    sse('response.completed', 2, { response: {
+      id: 'resp_tool_1', object: 'response', created_at: 1, completed_at: 2,
+      status: 'completed', model: 'gpt-5.6-sol', output,
+      usage: {
+        input_tokens: 3, output_tokens: 4, total_tokens: 7,
+        input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 0 },
+      }, error: null, incomplete_details: null,
+    } }),
+  ].join('')
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+function unterminatedPartialStream(text = 'partial'): Response {
+  return new Response(sse('response.output_text.delta', 1, {
+    item_id: 'msg_1', output_index: 0, content_index: 0, delta: text,
+  }), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+function incompleteTerminalOnlyStream(text = 'terminal partial'): Response {
+  const output = [{
+    id: 'msg_incomplete', type: 'message', role: 'assistant',
+    content: [{ type: 'output_text', text, annotations: [] }],
+  }]
+  return new Response(sse('response.incomplete', 1, { response: {
+    id: 'resp_incomplete', object: 'response', created_at: 1, completed_at: null,
+    status: 'incomplete', model: 'gpt-5.6-sol', output, usage: null, error: null,
+    incomplete_details: { reason: 'max_output_tokens' },
+  } }), { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
+function database(): BetterSqlite3.Database {
+  const db = new BetterSqlite3(':memory:')
+  applyGenerationV2SchemaForTest(db, process.cwd())
+  const graph = new ConversationGraphV2Repo(db)
+  runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+    graph.createProject(context, { projectId: 'project:1', name: 'Project', createdAtMs: 1 })
+    graph.createConversationAndDefaultBranch(context, {
+      projectId: 'project:1', conversationId: 'conversation:1', branchId: 'branch:1',
+      title: 'Conversation', branchName: 'Main', createdAtMs: 2,
+    })
+  })
+  return db
+}
+
+function command(overrides: Record<string, unknown> = {}) {
+  return {
+    operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,
+    userBody: 'hello', modelId: 'gpt-5.6-sol', commandAttachments: [], ...overrides,
+  }
+}
+
+function coordinator(db: BetterSqlite3.Database, attachmentBlobStore?: unknown) {
+  let next = 0
+  return createOpenAIResponsesPlainTextInitialSendCoordinatorV2({
+    db, credentialService: credentialService(), nowMs: () => 100,
+    createGraphId: (kind) => `${kind}:${++next}`,
+    attachmentBlobStore: attachmentBlobStore as never,
+  })
+}
+
+function attachmentForCommand(db: BetterSqlite3.Database, options: Readonly<{convertedPdf?: boolean}> = {}) {
+  const sourceBytes = new TextEncoder().encode('Starverse attachment bytes')
+  const bytes = options.convertedPdf ? new TextEncoder().encode('%PDF-1.7\nStarverse derived PDF') : sourceBytes
+  const repo = new AttachmentAssetV2Repo(db, () => 90)
+  const sourceBlob = repo.recordBlobFromBytes(sourceBytes, 'text/plain')
+  const blob = options.convertedPdf ? repo.recordBlobFromBytes(bytes, 'application/pdf') : sourceBlob
+  const sourceAssetId = options.convertedPdf ? 'asset:1:source' : 'asset:1'
+  const sourceRevisionId = options.convertedPdf ? 'asset-revision:1:source' : 'asset-revision:1'
+  repo.createAsset({ assetId: sourceAssetId, assetKind: 'file', filename: 'notes.txt', sourceKind: 'user_import' })
+  const sourceRevision = repo.appendSourceRevision({ assetId: sourceAssetId, assetRevisionId: sourceRevisionId, blob: sourceBlob })
+  const revision = options.convertedPdf
+    ? repo.createDerivedAssetRevision({
+      assetId: 'asset:1', assetRevisionId: 'asset-revision:1', assetKind: 'file', filename: 'notes.pdf',
+      parentAssetRevisionId: sourceRevision.assetRevisionId.value, conversionKind: 'pdf',
+      conversionContractId: 'test-dfc-pdf', conversionRevision: '1', blob,
+    })
+    : sourceRevision
+  if (options.convertedPdf) {
+    db.prepare(`INSERT INTO dfc_conversion_output_v2 (
+      derived_asset_revision_id, source_asset_revision_id, target_kind, converter_contract_id,
+      converter_revision, conversion_settings_digest, warnings_json, created_at_ms
+    ) VALUES (?, ?, 'pdf_attachment', 'test-dfc-pdf', '1', ?, '[]', 90)`).run(
+      revision.assetRevisionId.value, sourceRevision.assetRevisionId.value, '0'.repeat(64),
+    )
+  }
+  return Object.freeze({
+    commandAttachment: Object.freeze({
+      kind: 'managed_file',
+      assetId: 'asset:1', assetRevisionId: 'asset-revision:1',
+      assetSha256: revision.blob.sha256.value, include: true,
+      sendAs: options.convertedPdf ? 'converted_document' : 'provider_file',
+      conversion: options.convertedPdf ? 'pdf' : 'none',
+    }),
+    blobStore: Object.freeze({
+      verifySnapshotAttachmentSendBytes: ({ attachmentRepo, context, intent }: Record<string, never>) =>
+        (attachmentRepo as AttachmentAssetV2Repo).withSynchronousSnapshotReferenceAuthority(
+          context as never, intent as never, (authority) =>
+            (attachmentRepo as AttachmentAssetV2Repo).verifyAttachmentSendBytes(authority, bytes),
+        ),
+    }),
+  })
+}
+
+beforeEach(() => {
+  mocks.fetch.mockReset()
+  vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-07-23T12:00:00.000Z'))
+})
+afterEach(() => vi.restoreAllMocks())
+
+describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
+  it('starts exactly one persisted request from the V2 runtime and never resends an idempotent replay', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('runtime answer'))
+      const runtime = createOpenAIResponsesGenerationV2Runtime({
+        db, credentialService: credentialService(), nowMs: () => 100,
+      })
+      const first = await runtime.submitInitial(command())
+      expect(first.kind).toBe('created')
+      await vi.waitFor(() => expect(mocks.fetch).toHaveBeenCalledTimes(2))
+      const replay = await runtime.submitInitial(command())
+      expect(replay.kind).toBe('idempotent_replay')
+      expect(mocks.fetch).toHaveBeenCalledTimes(2)
+      await vi.waitFor(() => expect(db.prepare(
+        "SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'",
+      ).get()).toEqual({ state: 'completed' }))
+    } finally { db.close() }
+  })
+
+  it('atomically commits the current answer projection and exact persisted request bytes', async () => {
+    const db = database()
+    try {
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2,
+        generation: { maxOutputTokens: 2048 },
+        reasoning: { mode: 'enabled', effort: 'max', summary: 'auto' },
+        providerExtension: {
+          kind: 'openai_responses', verbosity: 'high', maxToolCalls: 4,
+          parallelToolCalls: false, serviceTier: 'priority',
+        },
+      })
+      mocks.fetch.mockResolvedValueOnce(modelResponse())
+      const result = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(result.kind).toBe('created')
+      expect(result.projection.branchProjection).toMatchObject({
+        chosenAnswerRootId: { value: 'answer:2' }, headMessageId: { value: 'answer:2' },
+      })
+      expect(JSON.parse(result.preparedRequest.body.copyUtf8Text())).toEqual({
+        model: 'gpt-5.6-sol',
+        input: [{ role: 'user', content: [{ type: 'input_text', text: 'hello' }] }],
+        stream: true, store: false, include: ['reasoning.encrypted_content'],
+        reasoning: { effort: 'max', summary: 'auto', mode: 'standard' }, max_output_tokens: 2048,
+        text: { verbosity: 'high' }, max_tool_calls: 4,
+        parallel_tool_calls: false, service_tier: 'priority',
+      })
+      expect(result.preparedRequest.bodySha256).toBe(result.request.preparedBodySha256)
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM assistant_generation_snapshot_v2) AS snapshots,
+        (SELECT count(*) FROM generation_request_v2) AS requests`).get())
+        .toEqual({ operations: 1, snapshots: 1, requests: 1 })
+    } finally { db.close() }
+  })
+
+  it('compiles an active middle-turn exclusion as explicit selected native replay', async () => {
+    const db = database()
+    try {
+      const send = coordinator(db)
+      const runner = createOpenAIResponsesStreamRunnerV2({ db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110 })
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('first answer', 'msg_1'))
+        .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('second answer', 'msg_2'))
+        .mockResolvedValueOnce(modelResponse())
+      const first = await send.submit({ command: command({ userBody: 'first' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      await runner.run(first)
+      const second = await send.submit({ command: command({ operationId: 'operation:2', expectedHeadMessageId: first.execution.operation.targetAnswerId.value, userBody: 'second' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      await runner.run(second)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => new BranchContextFilterV2Repo(db).set(context, {
+        branchId: 'branch:1', targetType: 'answer', targetId: second.execution.operation.targetAnswerId.value,
+        mode: 'exclude', updatedAtMs: 120,
+      }))
+      const third = await send.submit({ command: command({ operationId: 'operation:3', expectedHeadMessageId: second.execution.operation.targetAnswerId.value, userBody: 'third' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      const body = JSON.parse(third.preparedRequest.body.copyUtf8Text())
+      expect(body.input).toEqual([
+        { role: 'user', content: [{ type: 'input_text', text: 'first' }] },
+        { id: 'msg_1', type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'first answer', annotations: [] }] },
+        { role: 'user', content: [{ type: 'input_text', text: 'third' }] },
+      ])
+      expect(JSON.stringify(body.input)).not.toContain('second')
+      expect(db.prepare(`SELECT canonical_json AS canonicalJson FROM generation_context_projection_v2
+        WHERE operation_id='operation:3'`).get()).toMatchObject({ canonicalJson: expect.stringContaining('"mode":"excluded"') })
+    } finally { db.close() }
+  })
+
+  it('keeps a filtered whole-turn projection for an OpenAI tool continuation', async () => {
+    const db = database()
+    try {
+      new ToolRegistryV2Repo(db, () => 50).installAndSelect({
+        schemaVersion: 2,
+        definitions: [{
+          toolId: 'tool:weather', kind: 'function', sideEffectPolicy: 'none',
+          function: { name: 'weather', parameters: { type: 'object' } },
+        }],
+      }, null)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2,
+        tools: { mode: 'enabled', allowedToolIds: ['tool:weather'], toolChoice: { mode: 'omitted' }, sideEffectConfirmation: 'required_each_retry' },
+      })
+      const send = coordinator(db)
+      const runner = createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      })
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('first answer', 'msg_1'))
+        .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('second answer', 'msg_2'))
+        .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(functionCallStream())
+      const first = await send.submit({ command: command({ userBody: 'first' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      await runner.run(first)
+      const second = await send.submit({ command: command({ operationId: 'operation:2', expectedHeadMessageId: first.execution.operation.targetAnswerId.value, userBody: 'second' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      await runner.run(second)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => new BranchContextFilterV2Repo(db).set(context, {
+        branchId: 'branch:1', targetType: 'answer', targetId: second.execution.operation.targetAnswerId.value,
+        mode: 'exclude', updatedAtMs: 120,
+      }))
+      const third = await send.submit({ command: command({
+        operationId: 'operation:3', expectedHeadMessageId: second.execution.operation.targetAnswerId.value, userBody: 'third',
+      }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      await runner.run(third)
+      const continuation = await createOpenAIResponsesToolContinuationCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 130,
+      }).submit({
+        operationId: 'operation:3', branchId: 'branch:1', answerRootId: third.execution.operation.targetAnswerId.value,
+        expectedHeadMessageId: third.execution.operation.targetAnswerId.value, priorRequestSequence: 1,
+        toolOutputs: [{ toolCallId: 'call_weather', content: '{"temperature":20}', userConfirmedExternalSideEffect: false }],
+      })
+      const input = JSON.parse(continuation.preparedRequest.body.copyUtf8Text()).input
+      expect(input).toEqual([
+        { role: 'user', content: [{ type: 'input_text', text: 'first' }] },
+        { id: 'msg_1', type: 'message', role: 'assistant', content: [{ type: 'output_text', text: 'first answer', annotations: [] }] },
+        { role: 'user', content: [{ type: 'input_text', text: 'third' }] },
+        { id: 'fc_1', type: 'function_call', call_id: 'call_weather', name: 'weather', arguments: '{"city":"Paris"}', status: 'completed' },
+        { type: 'function_call_output', call_id: 'call_weather', output: '{"temperature":20}' },
+      ])
+      expect(JSON.stringify(input)).not.toContain('second')
+    } finally { db.close() }
+  })
+
+  it('persists an immutable OpenAI file descriptor and sends its exact input_file id', async () => {
+    const db = database()
+    try {
+      const attachment = attachmentForCommand(db)
+      expect(attachment.commandAttachment).toMatchObject({
+        assetId: 'asset:1', assetRevisionId: 'asset-revision:1',
+        assetSha256: expect.stringMatching(/^[0-9a-f]{64}$/u), include: true,
+      })
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'file_input_1', purpose: 'user_data' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })).mockResolvedValueOnce(modelResponse())
+      const result = await coordinator(db, attachment.blobStore).submit({
+        command: command({ commandAttachments: [attachment.commandAttachment] }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(mocks.fetch.mock.calls[0]?.[0]).toBe('https://api.openai.com/v1/files')
+      expect(JSON.parse(result.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'hello' }, { type: 'input_file', file_id: 'file_input_1' },
+        ] }],
+      })
+      expect(result.execution.snapshot.attachmentProviderFileBindings).toHaveLength(1)
+      expect(db.prepare('SELECT file_id AS fileId FROM openai_responses_file_descriptor_v2').all())
+        .toEqual([{ fileId: 'file_input_1' }])
+    } finally { db.close() }
+  })
+
+  it('replays a converted PDF through the exact snapshot-bound OpenAI file descriptor', async () => {
+    const db = database()
+    try {
+      const attachment = attachmentForCommand(db, { convertedPdf: true })
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'file_pdf_1', purpose: 'user_data' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })).mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('attached PDF'))
+      const created = await coordinator(db, attachment.blobStore).submit({
+        command: command({ commandAttachments: [attachment.commandAttachment] }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(created)
+      const retried = await createOpenAIResponsesPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120, createAnswerId: () => 'answer:retry-pdf',
+      }).submit({
+        actionKind: 'retry_as_new', operationId: 'operation:retry-pdf', branchId: 'branch:1',
+        questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2',
+      })
+      expect(mocks.fetch).toHaveBeenCalledTimes(3)
+      expect(JSON.parse(retried.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'hello' }, { type: 'input_file', file_id: 'file_pdf_1' },
+        ] }],
+      })
+    } finally { db.close() }
+  })
+
+  it('retries an attachment answer from its copied snapshot without rereading attachment bytes', async () => {
+    const db = database()
+    try {
+      const attachment = attachmentForCommand(db)
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'file_retry_1', purpose: 'user_data' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })).mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('attached original'))
+      const created = await coordinator(db, attachment.blobStore).submit({
+        command: command({ commandAttachments: [attachment.commandAttachment] }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(created)
+      const retried = await createOpenAIResponsesPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120, createAnswerId: () => 'answer:retry-attachment',
+      }).submit({
+        actionKind: 'retry_as_new', operationId: 'operation:retry-attachment', branchId: 'branch:1',
+        questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2',
+      })
+      expect(mocks.fetch).toHaveBeenCalledTimes(3)
+      expect(JSON.parse(retried.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'hello' }, { type: 'input_file', file_id: 'file_retry_1' },
+        ] }],
+      })
+    } finally { db.close() }
+  })
+
+  it('rejects a failed Files upload before creating any graph or generation record', async () => {
+    const db = database()
+    try {
+      const attachment = attachmentForCommand(db)
+      mocks.fetch.mockResolvedValueOnce(new Response('provider denied', {
+        status: 403, headers: { 'content-type': 'text/plain' },
+      }))
+      await expect(coordinator(db, attachment.blobStore).submit({
+        command: command({ commandAttachments: [attachment.commandAttachment] }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })).rejects.toThrow('GENERATION_V2_OPENAI_FILE_UPLOAD_REJECTED')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages,
+        (SELECT count(*) FROM generation_request_v2) AS requests,
+        (SELECT count(*) FROM branch_choice_v2) AS choices`).get())
+        .toEqual({ operations: 0, messages: 0, requests: 0, choices: 0 })
+    } finally { db.close() }
+  })
+
+  it('bounds a Files response without a content length before any graph mutation', async () => {
+    const db = database()
+    try {
+      const attachment = attachmentForCommand(db)
+      mocks.fetch.mockResolvedValueOnce(new Response(new ReadableStream<Uint8Array>({
+        start(controller) {
+          controller.enqueue(new Uint8Array((256 * 1024) + 1))
+          controller.close()
+        },
+      }), { status: 200, headers: { 'content-type': 'application/json' } }))
+      await expect(coordinator(db, attachment.blobStore).submit({
+        command: command({ commandAttachments: [attachment.commandAttachment] }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })).rejects.toThrow('GENERATION_V2_OPENAI_FILE_UPLOAD_RESPONSE_INVALID')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages,
+        (SELECT count(*) FROM generation_request_v2) AS requests`).get())
+        .toEqual({ operations: 0, messages: 0, requests: 0 })
+    } finally { db.close() }
+  })
+
+  it('binds the current function registry into the OpenAI snapshot and exact request bytes', async () => {
+    const db = database()
+    try {
+      const registry = new ToolRegistryV2Repo(db, () => 50).installAndSelect({
+        schemaVersion: 2,
+        definitions: [{
+          toolId: 'tool:weather', kind: 'function', sideEffectPolicy: 'none',
+          function: {
+            name: 'weather', description: 'Lookup weather',
+            parameters: { type: 'object', properties: { city: { type: 'string' } } }, strict: false,
+          },
+        }],
+      }, null)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2,
+        tools: {
+          mode: 'enabled', allowedToolIds: ['tool:weather'], toolChoice: { mode: 'named', toolId: 'tool:weather' },
+          sideEffectConfirmation: 'required_each_retry',
+        },
+      })
+      mocks.fetch.mockResolvedValueOnce(modelResponse())
+      const result = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(result.execution.snapshot.toolAuthority).toMatchObject({
+        kind: 'registry', toolRegistryRevision: { value: registry.revision },
+        toolDefinitionsDigest: { value: registry.definitionsDigest },
+      })
+      expect(result.execution.capability.tools).toEqual([
+        expect.objectContaining({ toolId: 'tool:weather', state: 'supported' }),
+      ])
+      expect(JSON.parse(result.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        tools: [{
+          type: 'function', name: 'weather', description: 'Lookup weather', strict: false,
+          parameters: { type: 'object', properties: { city: { type: 'string' } } },
+        }],
+        tool_choice: { type: 'function', name: 'weather' },
+      })
+      expect(result.preparedRequest.ledger.entries).toEqual(expect.arrayContaining([
+        expect.objectContaining({ path: 'tools.allowedToolIds', disposition: 'encoded', nativeField: 'tools' }),
+        expect.objectContaining({ path: 'tools.toolChoice', disposition: 'encoded', nativeField: 'tool_choice' }),
+        expect.objectContaining({ path: 'tools.sideEffectConfirmation', disposition: 'accepted_no_wire' }),
+      ]))
+    } finally { db.close() }
+  })
+
+  it('replays one operation without rereading credentials or creating a sibling', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse())
+      const service = coordinator(db)
+      const first = await service.submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const replay = await service.submit({
+        command: command(), expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
+      })
+      expect(replay.kind).toBe('idempotent_replay')
+      expect(replay.execution.operation.targetAnswerId.value)
+        .toBe(first.execution.operation.targetAnswerId.value)
+      expect(replay.preparedRequest.bodySha256).toBe(first.preparedRequest.bodySha256)
+      expect(mocks.fetch).toHaveBeenCalledTimes(1)
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages,
+        (SELECT count(*) FROM generation_request_v2) AS requests`).get())
+        .toEqual({ operations: 1, messages: 2, requests: 1 })
+    } finally { db.close() }
+  })
+
+  it('leaves no graph or generation records when preflight evidence fails', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(new Response('denied', {
+        status: 401, headers: { 'content-type': 'text/plain' },
+      }))
+      await expect(coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })).rejects.toThrow()
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages,
+        (SELECT count(*) FROM generation_request_v2) AS requests,
+        (SELECT count(*) FROM branch_choice_v2) AS choices`).get())
+        .toEqual({ operations: 0, messages: 0, requests: 0, choices: 0 })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: null })
+    } finally { db.close() }
+  })
+
+  it('streams exact prepared bytes, publishes the persisted V2 projection and keeps the new answer current', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream())
+      const created = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const rawStore = { tryPersistPreparedV2: vi.fn(() => { throw new Error('debug database unavailable') }) }
+      const projections: unknown[] = []
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), rawGenerationRequestStore: rawStore as never,
+        fetchImpl: mocks.fetch, nowMs: () => 110,
+        streamProjectionSink: { publish: (projection) => projections.push(projection) },
+      }).run(created)
+      expect(terminal).toMatchObject({ state: 'completed', answerRootId: 'answer:2' })
+      expect(rawStore.tryPersistPreparedV2).toHaveBeenCalledTimes(1)
+      expect(projections).toEqual([
+        { type: 'assistant_body', operationId: 'operation:1', answerRootId: 'answer:2', content: 'hello from OpenAI' },
+        { type: 'terminal', operationId: 'operation:1', answerRootId: 'answer:2', state: 'completed', errorCode: null, errorMessage: null },
+      ])
+      const transport = mocks.fetch.mock.calls[1]
+      expect(transport?.[0]).toBe('https://api.openai.com/v1/responses')
+      expect(Buffer.from((transport?.[1] as RequestInit).body as Uint8Array).toString('utf8'))
+        .toBe(created.preparedRequest.body.copyUtf8Text())
+      expect(db.prepare("SELECT body_text AS body FROM message_body_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ body: 'hello from OpenAI' })
+      expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'completed' })
+      expect(db.prepare(`SELECT artifact_kind AS artifactKind, completion_scope AS completionScope
+        FROM generation_native_artifact_v2 ORDER BY artifact_kind`).all()).toEqual([
+        { artifactKind: 'openai_responses_ordered_native_items_v2', completionScope: 'operation_terminal' },
+        { artifactKind: 'openai_responses_terminal_v1', completionScope: 'operation_terminal' },
+      ])
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:2' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('publishes a non-sensitive opaque fact when OpenAI returns encrypted reasoning', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedEncryptedReasoningStream())
+      const created = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const projections: unknown[] = []
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+        streamProjectionSink: { publish: (projection) => projections.push(projection) },
+      }).run(created)
+
+      expect(terminal.state).toBe('completed')
+      expect(projections).toContainEqual({
+        type: 'reasoning_detail',
+        operationId: 'operation:1',
+        answerRootId: 'answer:2',
+        detail: {
+          provider: 'openai_responses',
+          type: 'reasoning.encrypted',
+          id: 'rs_1',
+          status: 'completed',
+        },
+      })
+      expect(JSON.stringify(projections)).not.toContain('encrypted-provider-payload')
+    } finally { db.close() }
+  })
+
+  it('keeps the answer current and persists request-terminal artifacts while awaiting a function output', async () => {
+    const db = database()
+    try {
+      new ToolRegistryV2Repo(db, () => 50).installAndSelect({
+        schemaVersion: 2,
+        definitions: [{
+          toolId: 'tool:weather', kind: 'function', sideEffectPolicy: 'none',
+          function: { name: 'weather', parameters: { type: 'object' } },
+        }],
+      }, null)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2,
+        tools: { mode: 'enabled', allowedToolIds: ['tool:weather'], toolChoice: { mode: 'omitted' }, sideEffectConfirmation: 'required_each_retry' },
+      })
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(functionCallStream())
+      const created = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(created)
+      expect(terminal).toMatchObject({ state: 'awaiting_tool', answerRootId: 'answer:2' })
+      expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'streaming' })
+      expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ status: 'streaming' })
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:2' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:2' })
+      expect(db.prepare(`SELECT artifact_kind AS kind, completion_scope AS scope FROM generation_native_artifact_v2
+        ORDER BY artifact_kind`).all()).toEqual([
+        { kind: 'openai_responses_ordered_native_items_v2', scope: 'request_terminal' },
+        { kind: 'openai_responses_terminal_v1', scope: 'request_terminal' },
+      ])
+      const continuation = await createOpenAIResponsesToolContinuationCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+      }).submit({
+        operationId: 'operation:1', branchId: 'branch:1', answerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+        priorRequestSequence: 1,
+        toolOutputs: [{ toolCallId: 'call_weather', content: '{"temperature":20}', userConfirmedExternalSideEffect: false }],
+      })
+      expect(continuation).toMatchObject({ kind: 'created', preparedRequest: { requestSequence: 2 } })
+      expect(JSON.parse(continuation.preparedRequest.body.copyUtf8Text()).input).toEqual([
+        { role: 'user', content: [{ type: 'input_text', text: 'hello' }] },
+        { id: 'fc_1', type: 'function_call', call_id: 'call_weather', name: 'weather', arguments: '{"city":"Paris"}', status: 'completed' },
+        { type: 'function_call_output', call_id: 'call_weather', output: '{"temperature":20}' },
+      ])
+      mocks.fetch.mockResolvedValueOnce(completedStream('after tool'))
+      const completed = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
+      }).run(continuation)
+      expect(completed).toMatchObject({ state: 'completed', answerRootId: 'answer:2' })
+      expect(db.prepare("SELECT state FROM generation_operation_v2 WHERE operation_id='operation:1'").get())
+        .toEqual({ state: 'completed' })
+      expect(db.prepare("SELECT body_text AS body FROM message_body_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ body: 'after tool' })
+    } finally { db.close() }
+  })
+
+  it('retains partial content and the committed branch after an unterminated stream', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(unterminatedPartialStream())
+      const created = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(created)
+      expect(terminal.state).toBe('failed')
+      expect(db.prepare("SELECT body_text AS body FROM message_body_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ body: 'partial' })
+      expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ status: 'failed' })
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:2' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('reconstructs complete stateless native input from the persisted parent artifact', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('first answer'))
+        .mockResolvedValueOnce(modelResponse())
+      const first = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(first)
+      const secondService = createOpenAIResponsesPlainTextInitialSendCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createGraphId: (kind) => kind === 'question' ? 'question:next' : 'answer:next',
+      })
+      const second = await secondService.submit({
+        command: command({
+          operationId: 'operation:next', expectedHeadMessageId: 'answer:2', userBody: 'follow up',
+        }),
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(second.preparedRequest.body.copyUtf8Text()).input).toEqual([
+        { role: 'user', content: [{ type: 'input_text', text: 'hello' }] },
+        {
+          id: 'msg_1', type: 'message', role: 'assistant',
+          content: [{ type: 'output_text', text: 'first answer', annotations: [] }],
+        },
+        { role: 'user', content: [{ type: 'input_text', text: 'follow up' }] },
+      ])
+      expect(second.projection.branchProjection).toMatchObject({
+        chosenAnswerRootId: { value: 'answer:next' }, headMessageId: { value: 'answer:next' },
+      })
+    } finally { db.close() }
+  })
+
+  it('persists terminal-only incomplete output as visible failed-answer content', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(incompleteTerminalOnlyStream())
+      const created = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(created)
+      expect(terminal).toMatchObject({
+        state: 'failed', errorCode: 'PROVIDER_RESPONSE_HTTP_ERROR',
+      })
+      expect(db.prepare("SELECT body_text AS body FROM message_body_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ body: 'terminal partial' })
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('terminalizes an already-cancelled command without restoring the previous branch state', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse())
+      const created = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const controller = new AbortController()
+      controller.abort()
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(created, controller.signal)
+      expect(terminal).toMatchObject({ state: 'cancelled', errorCode: 'user_cancelled' })
+      expect(db.prepare("SELECT status FROM message_v2 WHERE message_id='answer:2'").get())
+        .toEqual({ status: 'cancelled' })
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:2' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('retries only the chosen answer from its exact snapshot with as-new and replace semantics', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('original'))
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(initial)
+      const originalSnapshot = JSON.parse(initial.execution.snapshot.canonicalJson)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: { maxOutputTokens: 32 },
+      })
+      const asNewService = createOpenAIResponsesPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createAnswerId: () => 'answer:retry-new',
+      })
+      const asNewCommand = {
+        actionKind: 'retry_as_new', operationId: 'operation:retry-new', branchId: 'branch:1',
+        questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2',
+      }
+      const asNew = await asNewService.submit(asNewCommand)
+      expect(asNew.projection.branchProjection).toMatchObject({
+        chosenAnswerRootId: { value: 'answer:retry-new' }, headMessageId: { value: 'answer:retry-new' },
+      })
+      expect(JSON.parse(asNew.preparedRequest.body.copyUtf8Text())).not.toHaveProperty('max_output_tokens')
+      const copiedSnapshot = JSON.parse(asNew.execution.snapshot.canonicalJson)
+      for (const snapshot of [originalSnapshot, copiedSnapshot]) {
+        delete snapshot.answerRootId
+        delete snapshot.operationId
+        delete snapshot.snapshotHash
+      }
+      expect(copiedSnapshot).toEqual(originalSnapshot)
+      await expect(asNewService.submit(asNewCommand)).resolves.toMatchObject({ kind: 'idempotent_replay' })
+
+      const beforeStale = db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()
+      await expect(createOpenAIResponsesPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 121,
+        createAnswerId: () => 'answer:must-not-exist',
+      }).submit({ ...asNewCommand, operationId: 'operation:stale' }))
+        .rejects.toThrow('STALE_CHOSEN_ANSWER')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()).toEqual(beforeStale)
+
+      mocks.fetch.mockResolvedValueOnce(completedStream('retried'))
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
+      }).run(asNew)
+      const replace = await createOpenAIResponsesPlainTextRetryCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 140,
+        createAnswerId: () => 'answer:replacement',
+      }).submit({
+        actionKind: 'retry_replace', operationId: 'operation:replace', branchId: 'branch:1',
+        questionId: 'question:1', sourceAnswerId: 'answer:retry-new',
+        expectedHeadMessageId: 'answer:retry-new',
+      })
+      expect(db.prepare(`SELECT answer_root_id AS answerRootId FROM branch_answer_hide_v2
+        WHERE branch_id='branch:1' AND question_id='question:1'`).all())
+        .toEqual([{ answerRootId: 'answer:retry-new' }])
+      mocks.fetch.mockResolvedValueOnce(new Response('denied', {
+        status: 503, headers: { 'content-type': 'text/plain' },
+      }))
+      const failed = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 150,
+      }).run(replace)
+      expect(failed.state).toBe('failed')
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:replacement' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:replacement' })
+    } finally { db.close() }
+  })
+
+  it('regenerates from current config and never restores the prior chosen answer after failure', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('original'))
+        .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(modelResponse())
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(initial)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: { maxOutputTokens: 32 },
+        providerExtension: { kind: 'openai_responses', verbosity: 'low' },
+      })
+      const service = createOpenAIResponsesPlainTextRegenerateCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createAnswerId: () => 'answer:regenerated',
+      })
+      const regenerateCommand = {
+        operationId: 'operation:regenerate', branchId: 'branch:1', questionId: 'question:1',
+        expectedHeadMessageId: 'answer:2', modelId: 'gpt-5.6-sol', commandAttachments: [],
+      }
+      const regenerated = await service.submit({
+        command: regenerateCommand, expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(regenerated.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        max_output_tokens: 32, text: { verbosity: 'low' },
+      })
+      expect(regenerated.projection.branchProjection).toMatchObject({
+        chosenAnswerRootId: { value: 'answer:regenerated' }, headMessageId: { value: 'answer:regenerated' },
+      })
+      await expect(service.submit({
+        command: regenerateCommand, expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
+      })).resolves.toMatchObject({ kind: 'idempotent_replay' })
+      const beforeStale = db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()
+      await expect(service.submit({
+        command: { ...regenerateCommand, operationId: 'operation:regenerate-stale' },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })).rejects.toThrow('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
+      expect(db.prepare(`SELECT
+        (SELECT count(*) FROM generation_operation_v2) AS operations,
+        (SELECT count(*) FROM message_v2) AS messages`).get()).toEqual(beforeStale)
+      mocks.fetch.mockResolvedValueOnce(new Response('denied', {
+        status: 503, headers: { 'content-type': 'text/plain' },
+      }))
+      await expect(createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
+      }).run(regenerated)).resolves.toMatchObject({ state: 'failed' })
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ chosen: 'answer:regenerated' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:regenerated' })
+    } finally { db.close() }
+  })
+
+  it('regenerates with a newly bound OpenAI input_file from the current command', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('original'))
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(initial)
+      const attachment = attachmentForCommand(db)
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'file_regenerate_1', purpose: 'user_data' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })).mockResolvedValueOnce(modelResponse())
+      const regenerated = await createOpenAIResponsesPlainTextRegenerateCoordinatorV2({
+        db, credentialService: credentialService(), attachmentBlobStore: attachment.blobStore as never,
+        nowMs: () => 120, createAnswerId: () => 'answer:regenerated-attachment',
+      }).submit({
+        command: {
+          operationId: 'operation:regenerate-attachment', branchId: 'branch:1', questionId: 'question:1',
+          expectedHeadMessageId: 'answer:2', modelId: 'gpt-5.6-sol', commandAttachments: [attachment.commandAttachment],
+        },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(regenerated.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'hello' }, { type: 'input_file', file_id: 'file_regenerate_1' },
+        ] }],
+      })
+    } finally { db.close() }
+  })
+
+  it('edit-resends with fork/replace question semantics and no terminal branch rollback', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('original'))
+        .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('edited answer'))
+        .mockResolvedValueOnce(modelResponse())
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(initial)
+      const config = new GenerationConfigV2Repo(db)
+      const current = config.getScope('conversation', 'conversation:1')
+      config.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: { maxOutputTokens: 64 },
+      })
+      const forkService = createOpenAIResponsesPlainTextEditResendCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 120,
+        createQuestionId: () => 'question:edit-fork', createAnswerId: () => 'answer:edit-fork',
+      })
+      const forkCommand = {
+        operationId: 'operation:edit-fork', mode: 'fork', branchId: 'branch:1',
+        sourceQuestionId: 'question:1', sourceAnswerRootId: 'answer:2',
+        expectedHeadMessageId: 'answer:2', userBody: 'edited question',
+        modelId: 'gpt-5.6-sol', commandAttachments: [],
+      }
+      const fork = await forkService.submit({
+        command: forkCommand, expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(fork.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [{ type: 'input_text', text: 'edited question' }] }],
+        max_output_tokens: 64,
+      })
+      expect(fork.projection.branchProjection).toMatchObject({
+        questionId: { value: 'question:edit-fork' },
+        chosenAnswerRootId: { value: 'answer:edit-fork' }, headMessageId: { value: 'answer:edit-fork' },
+      })
+      await expect(forkService.submit({
+        command: forkCommand, expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
+      })).resolves.toMatchObject({ kind: 'idempotent_replay' })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 130,
+      }).run(fork)
+
+      const replace = await createOpenAIResponsesPlainTextEditResendCoordinatorV2({
+        db, credentialService: credentialService(), nowMs: () => 140,
+        createQuestionId: () => 'question:edit-replace', createAnswerId: () => 'answer:edit-replace',
+      }).submit({
+        command: {
+          ...forkCommand, operationId: 'operation:edit-replace', mode: 'replace',
+          sourceQuestionId: 'question:edit-fork', sourceAnswerRootId: 'answer:edit-fork',
+          expectedHeadMessageId: 'answer:edit-fork', userBody: 'edited again',
+        },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(db.prepare(`SELECT question_id AS questionId FROM branch_question_hide_v2
+        WHERE branch_id='branch:1'`).all()).toEqual([{ questionId: 'question:edit-fork' }])
+      mocks.fetch.mockResolvedValueOnce(new Response('denied', {
+        status: 503, headers: { 'content-type': 'text/plain' },
+      }))
+      await expect(createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 150,
+      }).run(replace)).resolves.toMatchObject({ state: 'failed' })
+      expect(db.prepare("SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id='branch:1' AND question_id='question:edit-replace'").get())
+        .toEqual({ chosen: 'answer:edit-replace' })
+      expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
+        .toEqual({ head: 'answer:edit-replace' })
+    } finally { db.close() }
+  })
+
+  it('edit-resends with a newly bound OpenAI input_file from the current command', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedStream('original'))
+      const initial = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+      }).run(initial)
+      const attachment = attachmentForCommand(db)
+      mocks.fetch.mockResolvedValueOnce(new Response(JSON.stringify({ id: 'file_edit_1', purpose: 'user_data' }), {
+        status: 200, headers: { 'content-type': 'application/json' },
+      })).mockResolvedValueOnce(modelResponse())
+      const edited = await createOpenAIResponsesPlainTextEditResendCoordinatorV2({
+        db, credentialService: credentialService(), attachmentBlobStore: attachment.blobStore as never,
+        nowMs: () => 120, createQuestionId: () => 'question:edited-attachment',
+        createAnswerId: () => 'answer:edited-attachment',
+      }).submit({
+        command: {
+          operationId: 'operation:edit-attachment', mode: 'fork', branchId: 'branch:1',
+          sourceQuestionId: 'question:1', sourceAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+          userBody: 'edited with a file', modelId: 'gpt-5.6-sol', commandAttachments: [attachment.commandAttachment],
+        },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(edited.preparedRequest.body.copyUtf8Text())).toMatchObject({
+        input: [{ role: 'user', content: [
+          { type: 'input_text', text: 'edited with a file' }, { type: 'input_file', file_id: 'file_edit_1' },
+        ] }],
+      })
+    } finally { db.close() }
+  })
+})

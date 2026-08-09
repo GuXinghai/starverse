@@ -64,6 +64,7 @@ export type ReasoningDisplayBlock =
       blockId: string
       ordinal: number
       type: 'opaque'
+      opaqueKind?: 'encrypted' | 'omitted' | 'redacted'
       label: string
       warning?: string
       providerKey: string
@@ -92,11 +93,14 @@ export type ErrorEnvelopeView = Readonly<{
 }> & Record<string, unknown>
 
 export type ErrorSummaryView = Readonly<{
-  completionClass?: string
-  phase?: string
-  code?: string
-  message?: string
-  provider?: string
+  completionClass?: string | null
+  phase?: string | null
+  code?: string | null
+  message?: string | null
+  provider?: string | null
+  source?: string | null
+  raw?: unknown
+  networkError?: unknown
 }>
 
 export type ErrorPanelViewModel = Readonly<{
@@ -122,6 +126,7 @@ export type MessageVM = Readonly<{
   contentBlocks: ContentBlock[]
   requestedImageGeneration?: boolean
   annotations?: MessageAnnotation[]
+  googleSearchSuggestions?: readonly string[]
   toolCalls: ToolCallVM[]
   reasoningView: ReasoningView
   reasoningDurationMs?: number | null

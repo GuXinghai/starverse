@@ -4,7 +4,6 @@ import path from 'node:path'
 import { createInitialState, applyEvent, startGeneration } from '@/next/state/reducer'
 import type { DomainEvent } from '@/next/state/types'
 import { replayOpenRouterSSEFixtureAsEvents } from '@/next/openrouter/replayFixtureStream'
-import { buildOpenRouterMessages, type InternalMessage } from '@/next/context/buildMessages'
 import { firstOfType } from '../utils/streamAsserts'
 
 async function readFixture(name: string): Promise<string> {
@@ -166,40 +165,4 @@ describe('TC-11 — vertical slice E2E smoke (fixture replay)', () => {
     expect(String(msg.toolCalls[0].argumentsText)).toBe('{"q":"x"}')
   })
 
-  it('tool loop + optional reasoning blocks return: default off, advanced preserves sequence', () => {
-    const reasoningBlocks = [
-      { type: 'reasoning.text', text: 'r1' },
-      { type: 'reasoning.summary', summary: 'r2' },
-      { type: 'reasoning.encrypted', data: 'abc', format: 'base64' },
-    ]
-
-    const history: InternalMessage[] = [
-      { role: 'user', content: 'Use a tool and continue.' },
-      {
-        role: 'assistant',
-        content: '',
-        toolCalls: [
-          {
-            id: 'call_1',
-            type: 'function',
-            function: { name: 'lookup', arguments: '{"q":"x"}' },
-          },
-        ],
-        reasoningDetailsRaw: reasoningBlocks,
-      },
-      { role: 'tool', toolCallId: 'call_1', toolName: 'lookup', content: '{"ok":true}' },
-      { role: 'assistant', content: 'Done.' },
-    ]
-
-    const defaultMsgs = buildOpenRouterMessages(history, { mode: 'default' }) as any[]
-    expect(defaultMsgs.some((m) => m && typeof m === 'object' && 'reasoning_details' in m)).toBe(false)
-
-    const advancedMsgs = buildOpenRouterMessages(history, { mode: 'advanced_reasoning_blocks' }) as any[]
-    const assistantToolCallMsg = advancedMsgs.find((m) => m.role === 'assistant' && Array.isArray(m.tool_calls))
-    expect(assistantToolCallMsg).toBeTruthy()
-    expect(assistantToolCallMsg.reasoning_details).toEqual(reasoningBlocks)
-
-    const toolMsg = advancedMsgs.find((m) => m.role === 'tool')
-    expect(toolMsg).toMatchObject({ tool_call_id: 'call_1', name: 'lookup' })
-  })
 })

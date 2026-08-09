@@ -4,7 +4,7 @@ import {
   parseOpenAiModelsResponse,
   probeLocalEndpointDiagnostics,
   probeLocalEndpointStreamDiagnostics,
-  registerLocalEndpointDiagnosticsIpc,
+  registerLocalEndpointDiagnosticsV2Ipc,
   validateLocalEndpointProbeUrl,
 } from './localEndpointDiagnosticsIpc'
 
@@ -287,11 +287,11 @@ describe('localEndpointDiagnosticsIpc', () => {
 
   it('registers only the manual diagnostics probe channel', async () => {
     const registerInvoke = vi.fn()
-    registerLocalEndpointDiagnosticsIpc({ registerInvoke, fetchImpl: vi.fn() as unknown as typeof fetch })
+    registerLocalEndpointDiagnosticsV2Ipc({ registerInvoke, fetchImpl: vi.fn() as unknown as typeof fetch })
 
     expect(registerInvoke.mock.calls.map(([channel]) => channel)).toEqual([
-      'local-endpoint-diagnostics:probe',
-      'local-endpoint-diagnostics:stream-probe',
+      'generation-v2:local-runtime:generic:probe',
+      'generation-v2:local-runtime:generic:stream-probe',
     ])
   })
 })

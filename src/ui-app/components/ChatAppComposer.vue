@@ -3,17 +3,21 @@ import { computed, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } f
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import { ModelPrefsService, type ModelPrefsFavorite, type ModelPrefsRecent, type ModelPrefsScopeInput } from '@/next/modelPrefs/modelPrefsService'
-import type { ChatSessionConfig, ChatSessionConfigAspectRatio, ChatSessionConfigImageResolution } from '../app/chatSessionConfig'
+import type { ChatSessionConfig, ChatSessionConfigAspectRatio, ChatSessionConfigImageResolution,
+  ChatSessionConfigReasoningEffort } from '../app/chatSessionConfig'
 import type { ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
 import type { GenerationParamsLayer, ResolvedGenerationParams } from '@/next/generation-params/generationParamTypes'
+import { getDefaultGenerationParamProfile, getSelectableReasoningEfforts } from '@/next/generation-params/generationParamProfiles'
 import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
   buildProviderModelKey,
   type ChatModelSelection,
 } from '@/next/provider/modelSelection'
-import { GOOGLE_AI_STUDIO_PROVIDER_KEY } from '@/next/provider/gemini/geminiModelSource'
+import { GOOGLE_AI_STUDIO_PROVIDER_KEY, type GeminiModelAvailabilityResult } from '@/next/provider/gemini/geminiModelSource'
 import {
+  isGeminiThinkingBudgetValid,
+  normalizeGeminiThinkingModelId,
   resolveGeminiThinkingCapability,
   type GeminiThinkingLevel,
 } from '@/next/provider/gemini/geminiThinkingPolicy'
@@ -33,9 +37,10 @@ import {
 import ComposerCapabilityChip from './ComposerCapabilityChip.vue'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 import { formatModelIndicatorName } from './modelIndicatorName'
-import { t } from '@/shared/i18n'
+import { t, tf } from '@/shared/i18n'
 import { createCompatibleCatalogClient } from '@/next/modelCatalog/compatibleCatalogClient'
 import { compatibleConfigurationSelectionSchema, createCompatibleProviderRegistryClient, type CompatibleConfigurationPickerSource, type CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
+import { DEEPSEEK_SELECTABLE_REASONING_EFFORTS } from '@/next/provider/deepseek/deepSeekReasoningPolicy'
 
 const props = defineProps<{
   draft: string
@@ -67,6 +72,7 @@ const props = defineProps<{
   modelCatalogNotice?: string | null
   maxRecentModels?: number | string | null
   generationParamsResolved?: ResolvedGenerationParams | null
+  googleAIStudioModelAvailability?: Readonly<{ result: GeminiModelAvailabilityResult | null }> | null
 }>()
 
 const defaultSessionConfig: ChatSessionConfig = {
@@ -100,9 +106,8 @@ const emit = defineEmits<{
   (e: 'update:draft', value: string): void
   (e: 'updateModel', value: ChatModelSelection | CompatibleConfigurationSelection): void
   (e: 'update:model', value: string): void
-  (e: 'refreshProviderModelsRequested'): void
   (e: 'updateReasoningEnabled', value: boolean): void
-  (e: 'updateReasoningEffort', value: 'low' | 'medium' | 'high'): void
+  (e: 'updateReasoningEffort', value: ChatSessionConfigReasoningEffort): void
   (e: 'updateGenerationParamsLayer', value: GenerationParamsLayer | null): void
   (e: 'updateWebSearchEnabled', value: boolean): void
   (e: 'updateWebSearchLevel', value: 'low' | 'high'): void
@@ -363,9 +368,30 @@ const selectedModelSelection = computed<ChatModelSelection | null>(() => selecte
   : null)
 const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === GOOGLE_AI_STUDIO_PROVIDER_KEY)
 const isOpenAIResponsesSelected = computed(() => selectedProviderId.value === OPENAI_RESPONSES_PROVIDER_KEY)
+const genericReasoningEffortOptions = computed<readonly ChatSessionConfigReasoningEffort[]>(() => {
+  if (!selectedProviderId.value) return Object.freeze([])
+  if (selectedProviderId.value === 'deepseek') return DEEPSEEK_SELECTABLE_REASONING_EFFORTS
+  const profile = getDefaultGenerationParamProfile(selectedProviderId.value, {
+    requestKind: selectedProviderId.value === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+      isKnownGeminiImageGenerationModel(selectedModel.value) ? 'image_generation' : 'text',
+  })
+  return getSelectableReasoningEfforts(profile, selectedModel.value, {
+    geminiThinkingCapability: isGoogleAIStudioSelected.value ? googleThinkingCapability.value : undefined,
+  })
+    .filter((effort): effort is ChatSessionConfigReasoningEffort => effort !== 'none')
+})
 const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModel.value))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModel.value))
-const googleThinkingCapability = computed(() => resolveGeminiThinkingCapability({ model: selectedModel.value }))
+const googleThinkingCapability = computed(() => {
+  const result = props.googleAIStudioModelAvailability?.result
+  const model = result?.ok ? result.models.find((candidate) => normalizeGeminiThinkingModelId(candidate.nativeModelId) === normalizeGeminiThinkingModelId(selectedModel.value)) : undefined
+  return resolveGeminiThinkingCapability({
+    model: selectedModel.value,
+    thinking: model?.providerSpecific?.thinkingRawValue,
+    thinkingOwnProperty: model?.providerSpecific?.thinkingOwnProperty ?? false,
+    supportedGenerationMethods: model?.providerSpecific?.supportedGenerationMethods,
+  })
+})
 function customGoogleGenerationParamValue(key: 'thinkingBudget' | 'thinkingLevel' | 'includeThoughts' | 'thoughtSummaryMode'): unknown {
   const setting = resolvedSessionConfig.value.generationParams.detail?.[key]
   if (setting?.mode === 'custom') return setting.value
@@ -379,7 +405,7 @@ const googleThinkingConfig = computed(() => {
   return {
     thinkingBudget: typeof budget === 'number'
       ? budget
-      : capability.kind === 'budget' ? capability.defaultBudget : 8192,
+      : capability.kind === 'budget' ? (capability.defaultBudgetMode === 'dynamic' ? -1 : 0) : 8192,
     thinkingLevel: typeof level === 'string'
       ? level as GeminiThinkingLevel
       : capability.kind === 'level' ? capability.defaultLevel : 'low' as GeminiThinkingLevel,
@@ -390,14 +416,33 @@ const googleThinkingConfig = computed(() => {
 })
 const googleThinkingEnabled = computed(() => {
   if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
-  if (googleThinkingCapability.value.kind === 'budget') {
-    return resolvedSessionConfig.value.generationParams.detail?.thinkingBudget?.mode === 'custom'
-  }
-  if (googleThinkingCapability.value.kind === 'level') {
-    return resolvedSessionConfig.value.generationParams.detail?.thinkingLevel?.mode === 'custom'
-  }
-  return false
+  return googleThinkingCapability.value.kind === 'level' || googleThinkingCapability.value.kind === 'budget'
 })
+const googleThinkingLevelSelection = computed(() => {
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'level') return 'default'
+  const setting = resolvedSessionConfig.value.generationParams.detail?.thinkingLevel
+  return setting?.mode === 'custom' && capability.levels.includes(setting.value as GeminiThinkingLevel)
+    ? setting.value as GeminiThinkingLevel : 'default'
+})
+const googleThinkingBudgetMode = computed(() => {
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'budget') return 'default'
+  const setting = resolvedSessionConfig.value.generationParams.detail?.thinkingBudget
+  if (setting?.mode !== 'custom' || typeof setting.value !== 'number') return 'default'
+  if (setting.value === -1) return 'dynamic'
+  if (setting.value === 0 && capability.allowOff) return 'off'
+  return isGeminiThinkingBudgetValid(capability, setting.value) ? 'fixed' : 'default'
+})
+const googleThinkingBudgetInput = computed(() => {
+  const capability = googleThinkingCapability.value
+  const setting = resolvedSessionConfig.value.generationParams.detail?.thinkingBudget
+  if (capability.kind !== 'budget' || setting?.mode !== 'custom' || typeof setting.value !== 'number') return ''
+  return setting.value > 0 && isGeminiThinkingBudgetValid(capability, setting.value) ? String(setting.value) : ''
+})
+function googleThinkingLevelLabel(level: GeminiThinkingLevel): string {
+  return level === 'high' ? t('chat.console.reasoning.highDynamic') : level
+}
 const googleThinkingActiveLabel = computed(() => {
   if (isGoogleImageGenerationModel.value) {
     const policy = googleImageGenerationPolicy.value
@@ -409,9 +454,21 @@ const googleThinkingActiveLabel = computed(() => {
     }
     return policy.supportsThoughtSummaries ? t('chat.console.reasoning.providerManaged') : null
   }
-  if (!googleThinkingEnabled.value) return null
-  if (googleThinkingCapability.value.kind === 'budget') return String(googleThinkingConfig.value.thinkingBudget ?? googleThinkingCapability.value.defaultBudget)
-  if (googleThinkingCapability.value.kind === 'level') return googleThinkingConfig.value.thinkingLevel ?? googleThinkingCapability.value.defaultLevel
+  if (googleThinkingCapability.value.kind === 'budget') {
+    const mode = googleThinkingBudgetMode.value
+    if (mode === 'default') return tf('chat.console.reasoning.default', {
+      value: googleThinkingCapability.value.defaultBudgetMode === 'dynamic'
+        ? t('chat.console.reasoning.dynamic') : t('chat.console.reasoning.off'),
+    })
+    if (mode === 'dynamic') return t('chat.console.reasoning.dynamic')
+    if (mode === 'off') return t('chat.console.reasoning.off')
+    return googleThinkingBudgetInput.value || t('chat.console.reasoning.fixedBudget')
+  }
+  if (googleThinkingCapability.value.kind === 'level') {
+    const selection = googleThinkingLevelSelection.value
+    if (selection === 'default') return tf('chat.console.reasoning.default', { value: googleThinkingCapability.value.defaultLevel })
+    return googleThinkingLevelLabel(selection)
+  }
   return null
 })
 const openAIResponsesReasoningSupported = computed(() =>
@@ -795,10 +852,8 @@ function onImageChipOption(value: string) {
   const aspectRatios = imageGenerationAspectRatioOptions.value
   if (showImageGenerationSizeControl.value && (resolutions as readonly string[]).includes(value)) {
     emit('updateImageGenerationResolution', value as ChatSessionConfigImageResolution)
-    emit('updateImageGenerationEnabled', true)
   } else if ((aspectRatios as readonly string[]).includes(value)) {
     emit('updateImageGenerationAspectRatio', value as ChatSessionConfigAspectRatio)
-    emit('updateImageGenerationEnabled', true)
   }
 }
 
@@ -817,7 +872,7 @@ function onGoogleThinkingToggle() {
   if (googleThinkingCapability.value.kind === 'budget') {
     emit('updateGenerationParamsLayer', {
       ...current,
-      thinkingBudget: { mode: 'custom', value: googleThinkingCapability.value.defaultBudget },
+      thinkingBudget: { mode: 'custom', value: googleThinkingCapability.value.defaultBudgetMode === 'dynamic' ? -1 : 0 },
     })
     return
   }
@@ -831,24 +886,61 @@ function onGoogleThinkingToggle() {
 
 function onGoogleThinkingBudgetInput(event: Event) {
   const raw = Number((event.target as HTMLInputElement).value)
-  if (!Number.isFinite(raw) || raw <= 0) return
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'budget' || !Number.isSafeInteger(raw) || raw <= 0 || !isGeminiThinkingBudgetValid(capability, raw)) return
   emit('updateGenerationParamsLayer', {
     ...(resolvedSessionConfig.value.generationParams.detail ?? {}),
-    thinkingBudget: { mode: 'custom', value: Math.trunc(raw) },
+    thinkingLevel: { mode: 'omit' },
+    thinkingBudget: { mode: 'custom', value: raw },
   })
 }
 
+function onGoogleThinkingBudgetModeInput(event: Event) {
+  const mode = (event.target as HTMLSelectElement).value
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'budget') return
+  const current = resolvedSessionConfig.value.generationParams.detail ?? {}
+  if (mode === 'default') {
+    emit('updateGenerationParamsLayer', { ...current, thinkingBudget: { mode: 'omit' }, thinkingLevel: { mode: 'omit' } })
+  } else if (mode === 'dynamic') {
+    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value: -1 } })
+  } else if (mode === 'off' && capability.allowOff) {
+    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value: 0 } })
+  } else if (mode === 'fixed') {
+    const existing = current.thinkingBudget
+    const value = existing?.mode === 'custom' && isGeminiThinkingBudgetValid(capability, existing.value) && existing.value > 0
+      ? existing.value : capability.minBudget
+    emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value } })
+  }
+}
+
 function onGoogleThinkingLevelInput(event: Event) {
-  const value = (event.target as HTMLSelectElement).value as GeminiThinkingLevel
-  if (
-    isGoogleImageGenerationModel.value &&
-    !(googleImageGenerationPolicy.value.thinkingLevels as readonly string[]).includes(value)
-  ) {
+  const value = (event.target as HTMLSelectElement).value
+  if (isGoogleImageGenerationModel.value) {
+    const policy = googleImageGenerationPolicy.value
+    if (!(policy.thinkingLevels as readonly string[]).includes(value)) return
+    emit('updateGenerationParamsLayer', {
+      ...(resolvedSessionConfig.value.generationParams.detail ?? {}),
+      thinkingLevel: { mode: 'custom', value: value as GeminiThinkingLevel },
+    })
     return
   }
+  const capability = googleThinkingCapability.value
+  if (capability.kind !== 'level') return
+  if (value === 'default') {
+    emit('updateGenerationParamsLayer', {
+      ...(resolvedSessionConfig.value.generationParams.detail ?? {}),
+      thinkingBudget: { mode: 'omit' },
+      thinkingLevel: { mode: 'omit' },
+    })
+    return
+  }
+  if (!(capability.levels as readonly string[]).includes(value)) return
+  const level = value as GeminiThinkingLevel
   emit('updateGenerationParamsLayer', {
     ...(resolvedSessionConfig.value.generationParams.detail ?? {}),
-    thinkingLevel: { mode: 'custom', value },
+    thinkingBudget: { mode: 'omit' },
+    thinkingLevel: { mode: 'custom', value: level },
   })
 }
 
@@ -870,6 +962,7 @@ async function loadCompatibleConfigurationSources() {
     compatibleConfigurationSources.value = await Promise.all(providers.filter((details) => details.provider.status === 'active').map(async (details) => {
       const endpoint = details.endpointRevisions[0]
       const responseProfile = details.activeConfiguration?.responseProfile as any
+      const requestProfile = (details.activeConfiguration as any)?.requestBundle?.profile?.config
       if (!endpoint || !responseProfile?.reasoningMappingId || !responseProfile?.inlinePolicyId) return { providerInstanceId: details.provider.providerInstanceId, providerName: details.provider.displayName, models: [] }
       const result = await catalog.query({ providerInstanceId: details.provider.providerInstanceId, includeStale: true, limit: 200 })
       return {
@@ -894,6 +987,7 @@ async function loadCompatibleConfigurationSources() {
             reasoningMappingVersion: responseProfile.reasoningMappingVersion,
             inlinePolicyId: responseProfile.inlinePolicyId,
             inlinePolicyVersion: responseProfile.inlinePolicyVersion,
+            extraBody: requestProfile?.defaultExtraBody ?? null,
           }),
         })),
       }
@@ -907,7 +1001,6 @@ function openModelPicker() {
   if (props.disabled) return
   modelQuickMode.value = null
   modelPickerOpen.value = true
-  emit('refreshProviderModelsRequested')
   void loadCompatibleConfigurationSources()
 }
 
@@ -1211,12 +1304,12 @@ onBeforeUnmount(() => {
             :label="t('composer.capabilities.reasoning')"
             :active-label="resolvedSessionConfig.reasoning.enabled ? resolvedSessionConfig.reasoning.effort : null"
             kind="reasoning"
-            :disabled="disabled"
-            :options="['low', 'medium', 'high']"
+            :disabled="disabled || genericReasoningEffortOptions.length === 0"
+            :options="genericReasoningEffortOptions"
             :selected-option="resolvedSessionConfig.reasoning.effort"
             data-test-id="reasoning-chip"
             @toggle="emit('updateReasoningEnabled', !resolvedSessionConfig.reasoning.enabled)"
-            @select-option="(v) => { emit('updateReasoningEffort', v as 'low' | 'medium' | 'high'); emit('updateReasoningEnabled', true) }"
+            @select-option="(v) => emit('updateReasoningEffort', v as ChatSessionConfigReasoningEffort)"
           >
             <template #icon>
               <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1253,16 +1346,32 @@ onBeforeUnmount(() => {
                 <template v-if="!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'budget'">
                   <label class="space-y-1">
                     <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.thinkingBudget') }}</span>
+                    <select
+                      class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
+                      :value="googleThinkingBudgetMode"
+                      :disabled="disabled"
+                      data-testid="composer-google-thinking-budget-mode"
+                      @change="onGoogleThinkingBudgetModeInput"
+                    >
+                      <option value="default">{{ tf('chat.console.reasoning.default', { value: googleThinkingCapability.defaultBudgetMode === 'dynamic' ? t('chat.console.reasoning.dynamic') : t('chat.console.reasoning.off') }) }}</option>
+                      <option v-if="googleThinkingCapability.allowDynamic" value="dynamic">{{ t('chat.console.reasoning.dynamic') }}</option>
+                      <option v-if="googleThinkingCapability.allowOff" value="off">{{ t('chat.console.reasoning.off') }}</option>
+                      <option value="fixed">{{ t('chat.console.reasoning.fixedBudget') }}</option>
+                    </select>
+                  </label>
+                  <label v-if="googleThinkingBudgetMode === 'fixed'" class="space-y-1">
+                    <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.fixedBudget') }}</span>
                     <input
                       type="number"
                       class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
                       :min="googleThinkingCapability.minBudget"
                       :max="googleThinkingCapability.maxBudget"
-                      :value="googleThinkingConfig.thinkingBudget"
+                      :value="googleThinkingBudgetInput"
                       :disabled="disabled"
                       data-testid="composer-google-thinking-budget"
                       @input="onGoogleThinkingBudgetInput"
                     />
+                    <span class="block text-[10px] text-gray-500">{{ tf('chat.console.reasoning.allowedRange', { min: googleThinkingCapability.minBudget, max: googleThinkingCapability.maxBudget }) }}</span>
                   </label>
                 </template>
                 <template v-else-if="isGoogleImageGenerationModel && googleImageGenerationPolicy.thinkingLevels.length > 0">
@@ -1284,12 +1393,13 @@ onBeforeUnmount(() => {
                     <span class="block font-medium text-gray-600">{{ t('chat.console.reasoning.thinkingLevel') }}</span>
                     <select
                       class="w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-800 disabled:opacity-50"
-                      :value="googleThinkingConfig.thinkingLevel"
+                      :value="googleThinkingLevelSelection"
                       :disabled="disabled"
                       data-testid="composer-google-thinking-level"
                       @change="onGoogleThinkingLevelInput"
                     >
-                      <option v-for="level in googleThinkingCapability.levels" :key="level" :value="level">{{ level }}</option>
+                      <option value="default">{{ tf('chat.console.reasoning.default', { value: googleThinkingCapability.defaultLevel }) }}</option>
+                      <option v-for="level in googleThinkingCapability.levels" :key="level" :value="level">{{ googleThinkingLevelLabel(level) }}</option>
                     </select>
                   </label>
                 </template>
@@ -1326,7 +1436,7 @@ onBeforeUnmount(() => {
             :selected-option="resolvedSessionConfig.webSearch.level"
             data-test-id="web-search-chip"
             @toggle="emit('updateWebSearchEnabled', !resolvedSessionConfig.webSearch.enabled)"
-            @select-option="(v) => { emit('updateWebSearchLevel', v as 'low' | 'high'); emit('updateWebSearchEnabled', true) }"
+            @select-option="(v) => emit('updateWebSearchLevel', v as 'low' | 'high')"
           >
             <template #icon>
               <svg class="h-3 w-3" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
@@ -1541,7 +1651,6 @@ onBeforeUnmount(() => {
     :compatibleConfigurationSources="compatibleConfigurationSources"
     :favoriteModelKeys="favoriteModelKeys"
     :recentModelKeys="recentModelKeys"
-    :fallbackModels="props.modelCatalog"
     :notice="props.modelCatalogNotice"
     :queryFn="props.modelPickerQueryFn"
     @close="closeModelPicker"

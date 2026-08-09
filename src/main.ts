@@ -17,7 +17,7 @@ async function logRendererBuildId() {
 		const buildId = typeof data?.buildId === 'string' ? data.buildId : 'unknown'
 		console.info(`[build] renderer build id: ${buildId}`)
 	} catch (err) {
-		console.warn('[build] renderer build id fetch error:', err)
+		console.warn('[build] RENDERER_BUILD_ID_FETCH_FAILED')
 	}
 }
 

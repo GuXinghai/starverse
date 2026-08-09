@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 
 function loadSchema(db: BetterSqlite3.Database) {
-  const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
+  const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'v2', 'modelPreferencesSchema.sql')
   db.exec(readFileSync(schemaPath, 'utf8'))
 }
 

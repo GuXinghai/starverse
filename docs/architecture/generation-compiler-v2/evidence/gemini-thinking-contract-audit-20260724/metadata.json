@@ -1,0 +1,21 @@
+{
+  "schema": "starverse-gemini-thinking-contract-audit-v1",
+  "retrievalStartedAt": "2026-07-23T20:33:34.864Z",
+  "retrievalFinishedAt": "2026-07-23T20:33:38.645Z",
+  "apiVersions": [
+    "v1beta",
+    "v1"
+  ],
+  "activeProjectContract": "gemini-generate-content-v1beta",
+  "v1Status": "exploratory_only_no_migration_plan_found",
+  "endpointPattern": "https://generativelanguage.googleapis.com/{version}/models[/{model}]",
+  "pageSize": 1000,
+  "auth": "x-goog-api-key header only; key excluded from all artifacts",
+  "officialSources": [
+    "https://ai.google.dev/api/models",
+    "https://ai.google.dev/gemini-api/docs/generate-content/thinking",
+    "https://ai.google.dev/gemini-api/docs/generate-content/whats-new-gemini-3.5",
+    "https://ai.google.dev/gemini-api/docs/generate-content/image-generation",
+    "https://ai.google.dev/gemini-api/docs/models"
+  ]
+}

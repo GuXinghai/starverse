@@ -30,6 +30,15 @@ function redactUrlForLog(value: string): string {
   }
 }
 
+export function urlOriginForLog(value: unknown): string {
+  try {
+    const url = new URL(typeof value === 'string' ? value : '')
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.origin : url.protocol
+  } catch {
+    return 'invalid:'
+  }
+}
+
 export function basenameForLog(inputPath: unknown): string {
   const raw = String(inputPath ?? '').trim()
   if (!raw) return '[redacted-path]'

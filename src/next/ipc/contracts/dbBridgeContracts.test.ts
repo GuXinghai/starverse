@@ -7,8 +7,6 @@ import {
   decodeBranchRegenerateFromQuestionResponse,
   decodeBranchRetryReplaceQuestionResponse,
   decodeBranchSetHeadResponse,
-  decodeBranchSwitchCandidateResponse,
-  decodeBranchSwitchQuestionCandidateResponse,
   decodeBranchTruncateFromQuestionResponse,
   decodeContextBuildForBranchResponse,
   decodeContextRenderableTurnsResponse,
@@ -75,7 +73,6 @@ import {
   decodeCompatibleRendererEndpoint,
 } from './dbBridgeContracts'
 import { IpcContractDecodeError } from './decodeError'
-import { switchQuestionCandidate, truncateBranchFromQuestion } from '@/next/branch/branchClient'
 import { listMessages, setMessageStatus } from '@/next/message/messageClient'
 
 function expectProtocolInvalidError(error: unknown): void {
@@ -869,20 +866,6 @@ const cases: ContractCase[] = [
     wrongType: { ok: true, convoId: 'c1', questionId: 'u1', questionSeq: '1', assistantId: 'a1', assistantSeq: 2 },
   },
   {
-    name: 'branch.switchCandidate',
-    decode: decodeBranchSwitchCandidateResponse,
-    valid: { headMessageId: 'a1' },
-    missing: {},
-    wrongType: { headMessageId: 123 },
-  },
-  {
-    name: 'branch.switchQuestionCandidate',
-    decode: decodeBranchSwitchQuestionCandidateResponse,
-    valid: { ok: true, headMessageId: 'a1' },
-    missing: { ok: true },
-    wrongType: { ok: true, headMessageId: 123 },
-  },
-  {
     name: 'branch.regenerateFromQuestion',
     decode: decodeBranchRegenerateFromQuestionResponse,
     valid: { ok: true, newAnswerRootId: 'a2', newAssistantSeq: 3 },
@@ -1210,43 +1193,6 @@ describe('client decode integration', () => {
     await expect(listMessages('c1')).rejects.toBeInstanceOf(IpcContractDecodeError)
     try {
       await listMessages('c1')
-    } catch (error) {
-      expectProtocolInvalidError(error)
-    }
-  })
-
-  it('branchClient.switchQuestionCandidate keeps signature and surfaces decode errors', async () => {
-    ;(globalThis as any).dbBridge = {
-      invoke: async () => ({ ok: true, headMessageId: 'm2' }),
-    }
-    const ok = await switchQuestionCandidate('b1', null, 'q1')
-    expect(ok.headMessageId).toBe('m2')
-
-    ;(globalThis as any).dbBridge = {
-      invoke: async () => ({ ok: true }),
-    }
-    await expect(switchQuestionCandidate('b1', null, 'q1')).rejects.toBeInstanceOf(IpcContractDecodeError)
-    try {
-      await switchQuestionCandidate('b1', null, 'q1')
-    } catch (error) {
-      expectProtocolInvalidError(error)
-    }
-  })
-
-  it('branchClient.truncateBranchFromQuestion keeps signature and surfaces decode errors', async () => {
-    ;(globalThis as any).dbBridge = {
-      invoke: async () => ({ ok: true, headMessageId: 'm2', fallbackQuestionId: null }),
-    }
-    const ok = await truncateBranchFromQuestion('b1', 'q1')
-    expect(ok.headMessageId).toBe('m2')
-    expect(ok.fallbackQuestionId).toBeNull()
-
-    ;(globalThis as any).dbBridge = {
-      invoke: async () => ({ ok: true }),
-    }
-    await expect(truncateBranchFromQuestion('b1', 'q1')).rejects.toBeInstanceOf(IpcContractDecodeError)
-    try {
-      await truncateBranchFromQuestion('b1', 'q1')
     } catch (error) {
       expectProtocolInvalidError(error)
     }

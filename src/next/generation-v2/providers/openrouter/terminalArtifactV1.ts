@@ -1,0 +1,76 @@
+import { createHash } from 'node:crypto'
+import { stableSerializeProviderRequestBoundedV2, stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
+import type { OpenRouterChatStreamResultV1 } from './chatStreamV1'
+
+export const OPENROUTER_CHAT_TERMINAL_ARTIFACT_KIND_V1 = 'openrouter_chat_terminal_result_v1' as const
+export const OPENROUTER_CHAT_TERMINAL_ARTIFACT_CODEC_VERSION_V1 = 1 as const
+export type OpenRouterChatTerminalArtifactV1 = Readonly<{
+  artifactKind: typeof OPENROUTER_CHAT_TERMINAL_ARTIFACT_KIND_V1
+  artifactCodecVersion: typeof OPENROUTER_CHAT_TERMINAL_ARTIFACT_CODEC_VERSION_V1
+  responseId: string
+  model: string
+  provider: string | null
+  finishReason: string
+  usage: Readonly<Record<string, unknown>> | null
+  artifactHash: string
+}>
+
+export class OpenRouterChatTerminalArtifactV1Error extends Error {
+  constructor() { super('GENERATION_V2_OPENROUTER_CHAT_TERMINAL_ARTIFACT_INVALID') }
+}
+const branded = new WeakSet<object>()
+function invalid(): never { throw new OpenRouterChatTerminalArtifactV1Error() }
+function cloneUsage(value: unknown): Readonly<Record<string, unknown>> | null {
+  if (value === null) return null
+  try {
+    const parsed = JSON.parse(stableSerializeProviderRequestBoundedV2(value, 1024 * 1024))
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) invalid()
+    return Object.freeze(parsed as Record<string, unknown>)
+  } catch (error) { if (error instanceof OpenRouterChatTerminalArtifactV1Error) throw error; return invalid() }
+}
+function issue(value: Omit<OpenRouterChatTerminalArtifactV1, 'artifactHash'>): OpenRouterChatTerminalArtifactV1 {
+  const artifact = Object.freeze({ ...value,
+    artifactHash: createHash('sha256').update(stableSerializeProviderRequestV2(value), 'utf8').digest('hex') })
+  branded.add(artifact); return artifact
+}
+export function createOpenRouterChatTerminalArtifactV1(result: OpenRouterChatStreamResultV1): OpenRouterChatTerminalArtifactV1 {
+  if (!result || typeof result.responseId !== 'string' || result.responseId.length === 0 ||
+      typeof result.model !== 'string' || result.model.length === 0 ||
+      (result.provider !== null && (typeof result.provider !== 'string' || result.provider.length === 0)) ||
+      typeof result.finishReason !== 'string' || result.finishReason.length === 0) invalid()
+  return issue({ artifactKind: OPENROUTER_CHAT_TERMINAL_ARTIFACT_KIND_V1,
+    artifactCodecVersion: OPENROUTER_CHAT_TERMINAL_ARTIFACT_CODEC_VERSION_V1,
+    responseId: result.responseId, model: result.model, provider: result.provider,
+    finishReason: result.finishReason, usage: cloneUsage(result.usage) })
+}
+export function isOpenRouterChatTerminalArtifactV1(value: unknown): value is OpenRouterChatTerminalArtifactV1 {
+  return Boolean(value && typeof value === 'object' && branded.has(value))
+}
+export function decodeOpenRouterChatTerminalArtifactV1(value: unknown): OpenRouterChatTerminalArtifactV1 {
+  if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) invalid()
+  const input = value as Record<string, unknown>
+  const keys = ['artifactKind', 'artifactCodecVersion', 'responseId', 'model', 'provider', 'finishReason', 'usage', 'artifactHash']
+  if (Object.keys(input).sort().join('\0') !== [...keys].sort().join('\0') ||
+      input.artifactKind !== OPENROUTER_CHAT_TERMINAL_ARTIFACT_KIND_V1 ||
+      input.artifactCodecVersion !== OPENROUTER_CHAT_TERMINAL_ARTIFACT_CODEC_VERSION_V1 ||
+      typeof input.responseId !== 'string' || input.responseId.length === 0 ||
+      typeof input.model !== 'string' || input.model.length === 0 ||
+      (input.provider !== null && (typeof input.provider !== 'string' || input.provider.length === 0)) ||
+      typeof input.finishReason !== 'string' || input.finishReason.length === 0 ||
+      typeof input.artifactHash !== 'string' || !/^[0-9a-f]{64}$/u.test(input.artifactHash)) invalid()
+  const artifact = issue({
+    artifactKind: OPENROUTER_CHAT_TERMINAL_ARTIFACT_KIND_V1,
+    artifactCodecVersion: OPENROUTER_CHAT_TERMINAL_ARTIFACT_CODEC_VERSION_V1,
+    responseId: input.responseId,
+    model: input.model,
+    provider: input.provider as string | null,
+    finishReason: input.finishReason,
+    usage: cloneUsage(input.usage),
+  })
+  if (artifact.artifactHash !== input.artifactHash) invalid()
+  return artifact
+}
+export function serializeOpenRouterChatTerminalArtifactV1(value: OpenRouterChatTerminalArtifactV1): string {
+  if (!isOpenRouterChatTerminalArtifactV1(value)) invalid()
+  return stableSerializeProviderRequestV2(value)
+}

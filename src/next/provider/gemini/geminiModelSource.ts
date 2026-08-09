@@ -1,7 +1,6 @@
 import {
   createProviderModelAvailabilityProvenance,
   type ProviderModelAvailabilityEnvelope,
-  type ProviderModelCapabilitySeed,
   type ProviderModelSourceKind as CommonProviderModelSourceKind,
 } from '../modelAvailabilityEnvelope'
 import {
@@ -10,6 +9,20 @@ import {
   type NetworkErrorEnvelope,
 } from '../../../shared/network/networkErrorEnvelope'
 import { resolveGeminiThinkingCapability } from './geminiThinkingPolicy'
+import type { GeminiImageGenerationPolicy } from './geminiImageGenerationPolicy'
+import type { JsonValue } from '../../../shared/modelCatalog/internalSchema'
+import {
+  missingProviderBooleanFactV2,
+  preserveProviderRecordV2,
+  providerBooleanFactV2,
+  type CatalogProviderModelObservationV2,
+} from '../../../shared/modelCatalog/providerModelObservationV2'
+import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
+import {
+  providerModelHttpFailureV2,
+  providerModelTransportFailureV2,
+  readProviderModelResponseBodyV2,
+} from '../modelCatalogFailureV2'
 
 export const GOOGLE_AI_STUDIO_PROVIDER_KEY = 'google_ai_studio' as const
 export const GOOGLE_AI_STUDIO_ENDPOINT_ID = 'google-ai-studio-official' as const
@@ -21,16 +34,19 @@ export const GEMINI_API_KEY_DOC_URL = 'https://ai.google.dev/gemini-api/docs/api
 
 export type GeminiModelSourceKind =
   | 'gemini_models_api'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 export type GeminiProviderSpecificModelAvailability = Readonly<{
   providerModelName?: string
   baseModelId?: string
+  thinkingOwnProperty?: boolean
+  thinkingRawValue?: JsonValue
+  thinkingRawType?: string
   supportedGenerationMethods?: string[]
   inputTokenLimit?: number
   outputTokenLimit?: number
   nextPageToken?: string
+  imageGenerationPolicy?: GeminiImageGenerationPolicy
 }>
 
 export type GeminiProviderModelAvailability = ProviderModelAvailabilityEnvelope<
@@ -44,17 +60,7 @@ export type GeminiProviderModelAvailability = ProviderModelAvailabilityEnvelope<
   providerModelName?: string
   displayName?: string
   description?: string
-  capabilitySeed?: Readonly<{
-    textChat?: boolean
-    supportedGenerationMethods?: string[]
-    inputTokenLimit?: number
-    outputTokenLimit?: number
-    thinking?: 'supported' | 'unknown'
-    functionCalling?: boolean | 'unknown'
-    builtInTools?: boolean | 'unknown'
-    vision?: boolean | 'unknown'
-    structuredOutput?: boolean | 'unknown'
-  }> & ProviderModelCapabilitySeed
+  observation?: CatalogProviderModelObservationV2
 }>
 
 export type GeminiModelSourceDocument = Readonly<{
@@ -87,6 +93,7 @@ export type GeminiModelAvailabilityFailure = Readonly<{
     | 'invalid_response'
     | 'http_error'
     | 'network_error'
+    | 'pagination_incomplete'
   message: string
   httpStatus?: number
   networkError?: NetworkErrorEnvelope
@@ -94,6 +101,9 @@ export type GeminiModelAvailabilityFailure = Readonly<{
     name?: string
     code?: string
   }>
+  pagesFetched?: number
+  nextPageCursor?: string
+  providerFailure?: ProviderFailureV2
 }>
 
 export type GeminiModelAvailabilityResult =
@@ -242,16 +252,6 @@ function safeTransportCause(error: unknown): NonNullable<GeminiModelAvailability
   }
 }
 
-async function readJsonSafely(response: Response): Promise<unknown> {
-  const text = await response.text()
-  if (!text.trim()) return {}
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
 function modelFromApiRecord(record: ModelRecord, observedAtMs: number): GeminiProviderModelAvailability | null {
   const nativeModelId = normalizeGeminiNativeModelId(record)
   if (!nativeModelId) return null
@@ -260,20 +260,35 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): GeminiPr
   const textChat = supportedGenerationMethods.includes('generateContent') || supportedGenerationMethods.includes('streamGenerateContent')
   const thinkingCapability = resolveGeminiThinkingCapability({
     model: nativeModelId,
+    thinking: record.thinking,
+    thinkingOwnProperty: Object.prototype.hasOwnProperty.call(record, 'thinking'),
     supportedGenerationMethods,
   })
-  const capabilitySeed: NonNullable<GeminiProviderModelAvailability['capabilitySeed']> = {
-    textChat,
-    supportedGenerationMethods,
-    ...(asPositiveInteger(record.inputTokenLimit) ? { inputTokenLimit: asPositiveInteger(record.inputTokenLimit) } : {}),
-    ...(asPositiveInteger(record.outputTokenLimit) ? { outputTokenLimit: asPositiveInteger(record.outputTokenLimit) } : {}),
-    thinking: thinkingCapability.kind === 'unsupported' ? 'unknown' : 'supported',
-    functionCalling: 'unknown',
-    builtInTools: 'unknown',
-    vision: 'unknown',
-    structuredOutput: 'unknown',
+  const methodsOwnProperty = Object.prototype.hasOwnProperty.call(record, 'supportedGenerationMethods')
+  const observation: CatalogProviderModelObservationV2 = {
+    schemaVersion: 2,
+    providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+    endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID,
+    nativeModelId,
+    observedAtMs,
+    rawProviderRecord: preserveProviderRecordV2(record),
+    facts: {
+      textChat: {
+        providerPath: 'models[].supportedGenerationMethods',
+        ownProperty: methodsOwnProperty,
+        presence: methodsOwnProperty && Array.isArray(record.supportedGenerationMethods)
+          ? 'present' : methodsOwnProperty ? 'invalid' : 'missing',
+        ...(methodsOwnProperty && Array.isArray(record.supportedGenerationMethods)
+          ? { value: textChat, rawValue: supportedGenerationMethods }
+          : methodsOwnProperty ? { rawValue: preserveProviderRecordV2({ value: record.supportedGenerationMethods }).value } : {}),
+      },
+      reasoning: providerBooleanFactV2({ owner: record, key: 'thinking', providerPath: 'models[].thinking' }),
+      tools: missingProviderBooleanFactV2('models[].functionCalling'),
+      structuredOutputs: missingProviderBooleanFactV2('models[].structuredOutput'),
+      vision: missingProviderBooleanFactV2('models[].vision'),
+    },
+    provenance: { sourceKind: 'provider_api', sourceLabel: 'gemini_models_api', observedAtMs, parserVersion: 2 },
   }
-
   const providerModelName = asTrimmedString(record.name) ?? undefined
   const baseModelId = asTrimmedString(record.baseModelId) ?? undefined
   const displayName = asTrimmedString(record.displayName) ?? undefined
@@ -290,13 +305,16 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): GeminiPr
     ...(providerModelName ? { providerModelName } : {}),
     ...(displayName ? { displayName } : {}),
     ...(description ? { description } : {}),
-    capabilitySeed,
+    observation,
     providerSpecific: {
       ...(providerModelName ? { providerModelName } : {}),
       ...(baseModelId ? { baseModelId } : {}),
       ...(supportedGenerationMethods.length > 0 ? { supportedGenerationMethods } : {}),
-      ...(capabilitySeed.inputTokenLimit ? { inputTokenLimit: capabilitySeed.inputTokenLimit } : {}),
-      ...(capabilitySeed.outputTokenLimit ? { outputTokenLimit: capabilitySeed.outputTokenLimit } : {}),
+      ...(asPositiveInteger(record.inputTokenLimit) ? { inputTokenLimit: asPositiveInteger(record.inputTokenLimit) } : {}),
+      ...(asPositiveInteger(record.outputTokenLimit) ? { outputTokenLimit: asPositiveInteger(record.outputTokenLimit) } : {}),
+      thinkingOwnProperty: thinkingCapability.thinkingOwnProperty,
+      ...(thinkingCapability.thinkingOwnProperty ? { thinkingRawValue: thinkingCapability.thinkingRawValue as JsonValue } : {}),
+      thinkingRawType: thinkingCapability.thinkingRawType,
     },
   }
 }
@@ -334,86 +352,6 @@ export function parseGeminiModelsResponse(payload: unknown, observedAtMs: number
   }
 }
 
-function curatedWarning(): string {
-  return 'Starverse curated Gemini capability hints are supplemental metadata and do not replace provider-reported model availability.'
-}
-
-export function getGeminiCuratedModelAvailabilitySeeds(observedAtMs: number): GeminiProviderModelAvailability[] {
-  return [
-    {
-      ...availabilityBase({
-        nativeModelId: 'gemini-2.5-flash',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs,
-        warnings: [curatedWarning()],
-      }),
-      displayName: 'Gemini 2.5 Flash',
-      capabilitySeed: {
-        textChat: true,
-        thinking: 'supported',
-        functionCalling: 'unknown',
-        builtInTools: 'unknown',
-        vision: 'unknown',
-        structuredOutput: 'unknown',
-      },
-      providerSpecific: {},
-    },
-    {
-      ...availabilityBase({
-        nativeModelId: 'gemini-2.5-pro',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs,
-        warnings: [curatedWarning()],
-      }),
-      displayName: 'Gemini 2.5 Pro',
-      capabilitySeed: {
-        textChat: true,
-        thinking: 'supported',
-        functionCalling: 'unknown',
-        builtInTools: 'unknown',
-        vision: 'unknown',
-        structuredOutput: 'unknown',
-      },
-      providerSpecific: {},
-    },
-  ]
-}
-
-function mergeAvailability(
-  providerReported: GeminiProviderModelAvailability[],
-  curated: GeminiProviderModelAvailability[],
-): GeminiProviderModelAvailability[] {
-  const curatedById = new Map(curated.map((model) => [model.nativeModelId, model]))
-  const merged = new Map<string, GeminiProviderModelAvailability>()
-
-  for (const providerModel of providerReported) {
-    const seed = curatedById.get(providerModel.nativeModelId)
-    merged.set(providerModel.nativeModelId, {
-      ...providerModel,
-      ...(providerModel.displayName ? {} : seed?.displayName ? { displayName: seed.displayName } : {}),
-      capabilitySeed: {
-        ...(seed?.capabilitySeed ?? {}),
-        ...(providerModel.capabilitySeed ?? {}),
-        thinking: providerModel.capabilitySeed?.thinking === 'unknown'
-          ? seed?.capabilitySeed?.thinking ?? 'unknown'
-          : providerModel.capabilitySeed?.thinking,
-      },
-      warnings: [
-        ...providerModel.warnings,
-        ...(seed?.warnings ?? []),
-      ],
-      providerSpecific: {
-        ...(providerModel.providerSpecific ?? {}),
-        ...(seed?.providerSpecific ?? {}),
-      },
-    })
-  }
-
-  return Array.from(merged.values()).sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId))
-}
-
 export function resolveGeminiModelAvailabilityFromModelsPayload(
   payload: unknown,
   observedAtMs: number,
@@ -431,21 +369,28 @@ export function resolveGeminiModelAvailabilityFromModelsPayload(
     }
   }
 
-  const warnings = [
-    ...parsed.warnings,
-    'Gemini models.list is treated as availability and capability seed; curated metadata is supplemental and versioned by observedAtMs.',
-  ]
   if (parsed.nextPageToken) {
-    warnings.push('Gemini models.list returned nextPageToken; use listGeminiProviderModelAvailability for bounded pagination.')
+    return {
+      ok: false,
+      providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+      endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID,
+      profileId: GOOGLE_AI_STUDIO_PROFILE_ID,
+      observedAtMs,
+      code: 'pagination_incomplete',
+      message: 'Gemini models.list response is incomplete because more pages are available.',
+      pagesFetched: 1,
+      nextPageCursor: parsed.nextPageToken,
+    }
   }
 
+  const warnings = parsed.warnings
   return {
     ok: true,
     providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
     endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID,
     profileId: GOOGLE_AI_STUDIO_PROFILE_ID,
     observedAtMs,
-    models: mergeAvailability(parsed.models, getGeminiCuratedModelAvailabilitySeeds(observedAtMs)),
+    models: [...parsed.models].sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId)),
     warnings,
     sourceDocuments: sourceDocuments(observedAtMs),
   }
@@ -513,10 +458,12 @@ export async function listGeminiProviderModelAvailability(
         message: providerNetworkFailureMessage('Google AI Studio model source', networkError),
         networkError,
         ...(transportCause ? { transportCause } : {}),
+        providerFailure: providerModelTransportFailureV2({ providerId: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+          contractId: 'gemini-models-v1beta', observedAtMs, requestSequence: page + 1, error, credential: apiKey }),
       }
     }
 
-    const payload = await readJsonSafely(response)
+    const body = await readProviderModelResponseBodyV2(response)
     if (!response.ok) {
       const networkError = buildNetworkErrorEnvelope({
         requestPurpose: 'provider_availability',
@@ -534,10 +481,12 @@ export async function listGeminiProviderModelAvailability(
         message: safeHttpErrorMessage(response.status),
         httpStatus: response.status,
         networkError,
+        providerFailure: providerModelHttpFailureV2({ providerId: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+          contractId: 'gemini-models-v1beta', observedAtMs, requestSequence: page + 1, response, body }),
       }
     }
 
-    const parsed = parseGeminiModelsResponse(payload, observedAtMs)
+    const parsed = parseGeminiModelsResponse(body.payload, observedAtMs)
     if (!parsed.ok) {
       return {
         ok: false,
@@ -557,7 +506,17 @@ export async function listGeminiProviderModelAvailability(
   }
 
   if (nextPageToken) {
-    warnings.push('Gemini models.list pagination was truncated after the bounded R3 page limit.')
+    return {
+      ok: false,
+      providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+      endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID,
+      profileId: GOOGLE_AI_STUDIO_PROFILE_ID,
+      observedAtMs,
+      code: 'pagination_incomplete',
+      message: 'Gemini models.list pagination exceeded the configured page bound.',
+      pagesFetched: maxPages,
+      nextPageCursor: nextPageToken,
+    }
   }
 
   return {
@@ -566,11 +525,8 @@ export async function listGeminiProviderModelAvailability(
     endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID,
     profileId: GOOGLE_AI_STUDIO_PROFILE_ID,
     observedAtMs,
-    models: mergeAvailability(allModels, getGeminiCuratedModelAvailabilitySeeds(observedAtMs)),
-    warnings: [
-      ...warnings,
-      'Gemini models.list is treated as availability and capability seed; curated metadata is supplemental and versioned by observedAtMs.',
-    ],
+    models: [...allModels].sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId)),
+    warnings,
     sourceDocuments: sourceDocuments(observedAtMs),
   }
 }

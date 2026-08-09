@@ -39,19 +39,19 @@ const DIAGNOSTIC_TAXONOMY = [
 ] as const
 
 describe('DFC LibreOffice M37-M39 plugin onboarding security evidence', () => {
-  it('keeps the managed runtime plugin owner-gated, DOCX-only, and download disabled', () => {
+  it('keeps the approved managed runtime DOCX-only and download disabled', () => {
     const catalog = getDfcLibreOfficeFirstPartyRuntimeCatalogEntry()
 
     expect(catalog.displayName).toBe('LibreOffice Office PDF')
     expect(catalog.capabilityIds).toEqual(['document_conversion', 'office_to_pdf', 'docx_to_pdf'])
     expect(catalog.supportedFormats).toEqual(['docx'])
-    expect(catalog.productionApproved).toBe(false)
-    expect(catalog.experimental).toBe(true)
+    expect(catalog.productionApproved).toBe(true)
+    expect(catalog.experimental).toBe(false)
     expect(catalog.artifactSourcePolicy.packagedBinaryIncluded).toBe(false)
     expect(catalog.artifactSourcePolicy.systemPathFallbackAllowed).toBe(false)
     expect(catalog.acquisitionSource.downloadEnabled).toBe(false)
-    expect(catalog.acquisitionSource.productionApproved).toBe(false)
-    expect(catalog.acquisitionSource.ownerGated).toBe(true)
+    expect(catalog.acquisitionSource.productionApproved).toBe(true)
+    expect(catalog.acquisitionSource.ownerGated).toBe(false)
     expect(catalog.layoutContract.sourcePolicy.systemPathFallbackAllowed).toBe(false)
     expect(catalog.layoutContract.executablePathPolicy.absolutePathAllowed).toBe(false)
   })

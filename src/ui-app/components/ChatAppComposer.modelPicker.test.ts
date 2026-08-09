@@ -39,6 +39,29 @@ function createBoundSessionConfig(model: { value: string }) {
   }))
 }
 
+function googleAvailability(modelId: string, thinking = true) {
+  return {
+    result: {
+      ok: true,
+      providerKey: 'google_ai_studio',
+      endpointId: 'google-ai-studio-official',
+      profileId: 'gemini_api_v1',
+      observedAtMs: Date.UTC(2026, 5, 25),
+      warnings: [],
+      sourceDocuments: [],
+      models: [{
+        providerKey: 'google_ai_studio', endpointId: 'google-ai-studio-official', profileId: 'gemini_api_v1',
+        nativeModelId: modelId, source: 'gemini_models_api', confidence: 'provider_reported',
+        observedAtMs: Date.UTC(2026, 5, 25), warnings: [],
+        providerSpecific: {
+          thinkingOwnProperty: true, thinkingRawValue: thinking,
+          thinkingRawType: 'boolean', supportedGenerationMethods: ['generateContent'],
+        },
+      }],
+    },
+  } as any
+}
+
 type ComposerTestUser = ReturnType<typeof userEvent.setup>
 
 async function openFavoritesStrip(user: ComposerTestUser) {
@@ -316,6 +339,29 @@ describe('ChatAppComposer model picker integration', () => {
     expect(updateGenerationParamsLayer).toHaveBeenCalledWith({
       reasoningEffort: { mode: 'custom', value: 'xhigh' },
     })
+  })
+
+  it('shows max in the quick reasoning control only when the effective capability includes it', async () => {
+    const user = userEvent.setup()
+    const updateReasoningEffort = vi.fn()
+    render(ChatAppComposer, {
+      props: {
+        draft: '', disabled: false, isRunning: false, modelCatalog: [],
+        sessionConfig: {
+          ...createSessionConfig(),
+          model: { selectedProviderId: 'deepseek' as const, selectedModelKey: 'deepseek-v4-flash' },
+          reasoning: { enabled: true, effort: 'high' as const },
+        },
+        'onUpdateReasoningEffort': updateReasoningEffort,
+      },
+    })
+
+    const chip = screen.getByTestId('reasoning-chip')
+    await user.click(within(chip).getByTestId('capability-chip-chevron'))
+    const menu = await screen.findByTestId('capability-chip-menu')
+    expect(within(menu).queryByRole('button', { name: 'low' })).not.toBeInTheDocument()
+    await user.click(within(menu).getByRole('button', { name: 'max' }))
+    expect(updateReasoningEffort).toHaveBeenCalledWith('max')
   })
 
   it('updates OpenAI Responses reasoning summary from the composer reasoning menu', async () => {
@@ -1470,6 +1516,7 @@ describe('ChatAppComposer model picker integration', () => {
             includeThoughts: { mode: 'custom', value: false },
           } },
         },
+        googleAIStudioModelAvailability: googleAvailability('gemini-2.5-flash'),
         modelCatalog: [],
       },
     })
@@ -1483,6 +1530,7 @@ describe('ChatAppComposer model picker integration', () => {
 
     await fireEvent.update(screen.getByTestId('composer-google-thinking-budget'), '4096')
     expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([{
+      thinkingLevel: { mode: 'omit' },
       thinkingBudget: { mode: 'custom', value: 4096 },
       includeThoughts: { mode: 'custom', value: false },
     }])
@@ -1496,12 +1544,13 @@ describe('ChatAppComposer model picker integration', () => {
         isRunning: false,
         sessionConfig: {
           ...createSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3-pro' },
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-pro-preview' },
           generationParams: { detail: {
             thinkingLevel: { mode: 'custom', value: 'high' },
             includeThoughts: { mode: 'custom', value: true },
           } },
         },
+        googleAIStudioModelAvailability: googleAvailability('gemini-3.1-pro-preview'),
         modelCatalog: [],
       },
     })
@@ -1512,9 +1561,10 @@ describe('ChatAppComposer model picker integration', () => {
     expect(screen.getByTestId('composer-google-thinking-level')).toHaveValue('high')
     expect(screen.queryByTestId('composer-google-thinking-budget')).not.toBeInTheDocument()
 
-    await fireEvent.update(screen.getByTestId('composer-google-thinking-level'), 'minimal')
+    await fireEvent.update(screen.getByTestId('composer-google-thinking-level'), 'medium')
     expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([{
-      thinkingLevel: { mode: 'custom', value: 'minimal' },
+      thinkingLevel: { mode: 'custom', value: 'medium' },
+      thinkingBudget: { mode: 'omit' },
       includeThoughts: { mode: 'custom', value: true },
     }])
   })
@@ -1551,10 +1601,14 @@ describe('ChatAppComposer model picker integration', () => {
       thoughtSummaryMode: { mode: 'custom', value: 'none' },
     }])
 
-    await openImageMenu()
-    const options = screen.getAllByTestId('capability-chip-option').map((node) => node.textContent)
+    const imageMenu = await openImageMenu()
+    const options = within(imageMenu).getAllByTestId('capability-chip-option').map((node) => node.textContent)
     expect(options).toContain('512')
     expect(options).toContain('4K')
+
+    await fireEvent.click(within(imageMenu).getByText('2K'))
+    expect(view.emitted('updateImageGenerationResolution')).toEqual([['2K']])
+    expect(view.emitted('updateImageGenerationEnabled')).toBeUndefined()
   })
 
   it('forces image generation on and disables reasoning for legacy Nano Banana', async () => {

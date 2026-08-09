@@ -1,0 +1,1069 @@
+{
+  "capturedAt": "2026-07-13T23:23:59.189Z",
+  "scope": "Local, zero-external-cost LM Studio OpenAI Responses exact-body compliance smoke",
+  "redaction": {
+    "authorizationHeadersCaptured": false,
+    "apiTokensCaptured": false,
+    "absoluteModelPathsCaptured": false,
+    "responseFieldsPreserved": "Complete local API and SSE fields are retained; only credentials and local filesystem paths are excluded."
+  },
+  "environment": {
+    "lmStudioFileVersion": "0.4.19+2",
+    "lmStudioProductVersion": "0.4.19.0",
+    "cliCommit": "9902c3a",
+    "selectedRuntime": "llama.cpp-win-x86_64-nvidia-cuda12-avx2@2.24.0",
+    "runtimeList": "LLM ENGINE                                        SELECTED    MODEL FORMAT\nllama.cpp-win-x86_64-avx2@2.5.0                                   GGUF    \nllama.cpp-win-x86_64-avx2@2.3.0                                   GGUF    \nllama.cpp-win-x86_64-nvidia-cuda-avx2@2.5.0                       GGUF    \nllama.cpp-win-x86_64-nvidia-cuda-avx2@2.3.0                       GGUF    \nllama.cpp-win-x86_64-nvidia-cuda12-avx2@2.24.0       ✓            GGUF    \nllama.cpp-win-x86_64-nvidia-cuda12-avx2@2.23.1                    GGUF    \nllama.cpp-win-x86_64-nvidia-cuda12-avx2@2.22.0                    GGUF    \nllama.cpp-win-x86_64-nvidia-cuda12-avx2@2.21.0                    GGUF    \nllama.cpp-win-x86_64-nvidia-cuda12-avx2@2.20.1                    GGUF    \nllama.cpp-win-x86_64-vulkan-avx2@2.5.0                            GGUF    \nllama.cpp-win-x86_64-vulkan-avx2@2.3.0                            GGUF    \n",
+    "baseUrl": "http://127.0.0.1:1234",
+    "models": [
+      "gate0-qwen3-4b",
+      "gate0-qwen35-2b"
+    ],
+    "externalProviderRequests": 0,
+    "externalCostUsd": 0
+  },
+  "invariants": {
+    "endpoint": "/v1/responses",
+    "storeAlwaysFalse": true,
+    "previousResponseIdNeverSent": true,
+    "fullItemsClientManaged": true,
+    "runtimeProtocolFallbackAttempted": false,
+    "nativeApiV1ChatAttempted": false
+  },
+  "coverage": {
+    "textMultiTurn": "pass",
+    "branchingFromPersistedPrefix": "pass",
+    "reasoningItemCaptureAndExactReplay": "pass",
+    "functionCallAndFunctionCallOutput": "pass",
+    "streamingEvents": "pass",
+    "clientProcessPersistedArtifactReload": "pass_with_pid_and_artifact_hash",
+    "providerSingleTerminalEventSample": "pass",
+    "starverseTerminalCoordinator": "implementation_acceptance_required"
+  },
+  "requests": [
+    {
+      "name": "text_turn_1",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen3-4b\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Remember the code word ORBIT. Reply exactly: ORBIT remembered.\"}]}],\"max_output_tokens\":64}",
+      "serializedBodySha256": "3adfbfb29048d07a42fdb1478bd016051247b4e29886e8fc2b6a7dd192c5687a",
+      "status": 200,
+      "response": {
+        "id": "resp_f421b3e929b21ebc1251d69ce05f399c580648326f89efc5",
+        "object": "response",
+        "created_at": 1783985034,
+        "completed_at": 1783985035,
+        "status": "completed",
+        "incomplete_details": null,
+        "model": "gate0-qwen3-4b",
+        "previous_response_id": null,
+        "instructions": null,
+        "output": [
+          {
+            "id": "msg_xcglh613kbqj690158pmsj",
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "ORBIT remembered.",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "error": null,
+        "tools": [],
+        "tool_choice": "auto",
+        "truncation": "auto",
+        "parallel_tool_calls": true,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "top_p": 0.8,
+        "presence_penalty": 0,
+        "frequency_penalty": 0,
+        "top_logprobs": 0,
+        "temperature": 0.7,
+        "reasoning": {
+          "summary": null,
+          "effort": null
+        },
+        "usage": {
+          "input_tokens": 22,
+          "output_tokens": 4,
+          "total_tokens": 26,
+          "input_tokens_details": {
+            "cached_tokens": 3
+          },
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "max_output_tokens": 64,
+        "max_tool_calls": null,
+        "store": false,
+        "background": false,
+        "service_tier": "default",
+        "metadata": {},
+        "safety_identifier": null,
+        "prompt_cache_key": null
+      }
+    },
+    {
+      "name": "text_turn_2_full_item_replay",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen3-4b\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Remember the code word ORBIT. Reply exactly: ORBIT remembered.\"}]},{\"id\":\"msg_xcglh613kbqj690158pmsj\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ORBIT remembered.\",\"annotations\":[],\"logprobs\":[]}]},{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"What was the code word? Reply exactly: ORBIT\"}]}],\"max_output_tokens\":64}",
+      "serializedBodySha256": "506c8b11fb751e163a0d1a5b7f4bb55191ec1e8c51eee07f8f8624a828a6c7f2",
+      "status": 200,
+      "response": {
+        "id": "resp_5aae8c90f2a16e21d7d298b2f80271e26ceaab01e945761f",
+        "object": "response",
+        "created_at": 1783985035,
+        "completed_at": 1783985035,
+        "status": "completed",
+        "incomplete_details": null,
+        "model": "gate0-qwen3-4b",
+        "previous_response_id": null,
+        "instructions": null,
+        "output": [
+          {
+            "id": "msg_tcerq2307j0bbcdwm1pvvb",
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "ORBIT",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "error": null,
+        "tools": [],
+        "tool_choice": "auto",
+        "truncation": "auto",
+        "parallel_tool_calls": true,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "top_p": 0.8,
+        "presence_penalty": 0,
+        "frequency_penalty": 0,
+        "top_logprobs": 0,
+        "temperature": 0.7,
+        "reasoning": {
+          "summary": null,
+          "effort": null
+        },
+        "usage": {
+          "input_tokens": 47,
+          "output_tokens": 2,
+          "total_tokens": 49,
+          "input_tokens_details": {
+            "cached_tokens": 26
+          },
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "max_output_tokens": 64,
+        "max_tool_calls": null,
+        "store": false,
+        "background": false,
+        "service_tier": "default",
+        "metadata": {},
+        "safety_identifier": null,
+        "prompt_cache_key": null
+      }
+    },
+    {
+      "name": "branch_a_from_same_prefix",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen3-4b\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Remember the code word ORBIT. Reply exactly: ORBIT remembered.\"}]},{\"id\":\"msg_xcglh613kbqj690158pmsj\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ORBIT remembered.\",\"annotations\":[],\"logprobs\":[]}]},{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"On branch A reply exactly: BRANCH-A ORBIT\"}]}],\"max_output_tokens\":64}",
+      "serializedBodySha256": "1e0fde8ef8e8be485e5e702d79b588feb22b9e0290eef207f0d73420a1c99026",
+      "status": 200,
+      "response": {
+        "id": "resp_bfa0379757077a3f90cbc8953c34e0c834748f4b9c709a3d",
+        "object": "response",
+        "created_at": 1783985035,
+        "completed_at": 1783985035,
+        "status": "completed",
+        "incomplete_details": null,
+        "model": "gate0-qwen3-4b",
+        "previous_response_id": null,
+        "instructions": null,
+        "output": [
+          {
+            "id": "msg_3wqnowowjb47pcy01rsaay",
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "BRANCH-A ORBIT",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "error": null,
+        "tools": [],
+        "tool_choice": "auto",
+        "truncation": "auto",
+        "parallel_tool_calls": true,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "top_p": 0.8,
+        "presence_penalty": 0,
+        "frequency_penalty": 0,
+        "top_logprobs": 0,
+        "temperature": 0.7,
+        "reasoning": {
+          "summary": null,
+          "effort": null
+        },
+        "usage": {
+          "input_tokens": 47,
+          "output_tokens": 5,
+          "total_tokens": 52,
+          "input_tokens_details": {
+            "cached_tokens": 31
+          },
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "max_output_tokens": 64,
+        "max_tool_calls": null,
+        "store": false,
+        "background": false,
+        "service_tier": "default",
+        "metadata": {},
+        "safety_identifier": null,
+        "prompt_cache_key": null
+      }
+    },
+    {
+      "name": "branch_b_from_same_prefix",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen3-4b\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Remember the code word ORBIT. Reply exactly: ORBIT remembered.\"}]},{\"id\":\"msg_xcglh613kbqj690158pmsj\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ORBIT remembered.\",\"annotations\":[],\"logprobs\":[]}]},{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"On branch B reply exactly: BRANCH-B ORBIT\"}]}],\"max_output_tokens\":64}",
+      "serializedBodySha256": "36caaefeba7cdc9f87111e8698d53775c83e374c9ff90bdadbc3ca61025ce213",
+      "status": 200,
+      "response": {
+        "id": "resp_106f578e25e6996852a0bb1b1e82619a0c3972e2b9f1581b",
+        "object": "response",
+        "created_at": 1783985035,
+        "completed_at": 1783985035,
+        "status": "completed",
+        "incomplete_details": null,
+        "model": "gate0-qwen3-4b",
+        "previous_response_id": null,
+        "instructions": null,
+        "output": [
+          {
+            "id": "msg_knzkd7nd87hrdjli1vq16",
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "BRANCH-B ORBIT",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "error": null,
+        "tools": [],
+        "tool_choice": "auto",
+        "truncation": "auto",
+        "parallel_tool_calls": true,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "top_p": 0.8,
+        "presence_penalty": 0,
+        "frequency_penalty": 0,
+        "top_logprobs": 0,
+        "temperature": 0.7,
+        "reasoning": {
+          "summary": null,
+          "effort": null
+        },
+        "usage": {
+          "input_tokens": 47,
+          "output_tokens": 5,
+          "total_tokens": 52,
+          "input_tokens_details": {
+            "cached_tokens": 33
+          },
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "max_output_tokens": 64,
+        "max_tool_calls": null,
+        "store": false,
+        "background": false,
+        "service_tier": "default",
+        "metadata": {},
+        "safety_identifier": null,
+        "prompt_cache_key": null
+      }
+    },
+    {
+      "name": "client_restart_full_item_replay",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen3-4b\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Remember the code word ORBIT. Reply exactly: ORBIT remembered.\"}]},{\"id\":\"msg_xcglh613kbqj690158pmsj\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ORBIT remembered.\",\"annotations\":[],\"logprobs\":[]}]},{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"After the client restart, reply exactly: RESTART ORBIT\"}]}],\"max_output_tokens\":64}",
+      "serializedBodySha256": "a7976ae93856c679ea011b96a5ca40a506a1f3c7d38c56c6ba6711697e38f2c0",
+      "status": 200,
+      "response": {
+        "id": "resp_e66f82394ad0d133bbe5b3ce3ae0539d47ce27a5a34c22fe",
+        "object": "response",
+        "created_at": 1783985035,
+        "completed_at": 1783985035,
+        "status": "completed",
+        "incomplete_details": null,
+        "model": "gate0-qwen3-4b",
+        "previous_response_id": null,
+        "instructions": null,
+        "output": [
+          {
+            "id": "msg_csckgz4vkwbb3psusnegs",
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "RESTART ORBIT",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "error": null,
+        "tools": [],
+        "tool_choice": "auto",
+        "truncation": "auto",
+        "parallel_tool_calls": true,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "top_p": 0.8,
+        "presence_penalty": 0,
+        "frequency_penalty": 0,
+        "top_logprobs": 0,
+        "temperature": 0.7,
+        "reasoning": {
+          "summary": null,
+          "effort": null
+        },
+        "usage": {
+          "input_tokens": 48,
+          "output_tokens": 4,
+          "total_tokens": 52,
+          "input_tokens_details": {
+            "cached_tokens": 31
+          },
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "max_output_tokens": 64,
+        "max_tool_calls": null,
+        "store": false,
+        "background": false,
+        "service_tier": "default",
+        "metadata": {},
+        "safety_identifier": null,
+        "prompt_cache_key": null
+      }
+    },
+    {
+      "name": "reasoning_item_capture",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen35-2b\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Think briefly about the number 7, then answer with a single digit.\"}]}],\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":96}",
+      "serializedBodySha256": "c109e30c4592696ec0a9a35d1d052b78a0aeaf0b2482265dd9b6ebffc7abd7c9",
+      "status": 200,
+      "response": {
+        "id": "resp_7a3a3501a6619dcd538044be58c519b342d256019f1d4d8f",
+        "object": "response",
+        "created_at": 1783985035,
+        "completed_at": 1783985037,
+        "status": "completed",
+        "incomplete_details": null,
+        "model": "gate0-qwen35-2b",
+        "previous_response_id": null,
+        "instructions": null,
+        "output": [
+          {
+            "id": "rs_jzeuaxo8v3ry82j6o1ifta",
+            "type": "reasoning",
+            "status": "completed",
+            "summary": [],
+            "content": [
+              {
+                "type": "reasoning_text",
+                "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Task: Think briefly about the number 7.\n    *   Output requirement: Answer with a single digit.\n\n2.  **Analyze the Subject (Number 7):**\n    *   Properties: Prime, odd, next even number after 6, Fibonacci sequence member, etc.\n    *   Context: The prompt asks me to \"think briefly\" and then answer with"
+              }
+            ]
+          }
+        ],
+        "error": null,
+        "tools": [],
+        "tool_choice": "auto",
+        "truncation": "auto",
+        "parallel_tool_calls": true,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "top_p": 0.95,
+        "presence_penalty": 0,
+        "frequency_penalty": 1.1,
+        "top_logprobs": 0,
+        "temperature": 0.1,
+        "reasoning": {
+          "summary": null,
+          "effort": "low"
+        },
+        "usage": {
+          "input_tokens": 25,
+          "output_tokens": 96,
+          "total_tokens": 121,
+          "input_tokens_details": {
+            "cached_tokens": 0
+          },
+          "output_tokens_details": {
+            "reasoning_tokens": 96
+          }
+        },
+        "max_output_tokens": 96,
+        "max_tool_calls": null,
+        "store": false,
+        "background": false,
+        "service_tier": "default",
+        "metadata": {},
+        "safety_identifier": null,
+        "prompt_cache_key": null
+      }
+    },
+    {
+      "name": "reasoning_item_exact_replay",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen35-2b\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Think briefly about the number 7, then answer with a single digit.\"}]},{\"id\":\"rs_jzeuaxo8v3ry82j6o1ifta\",\"type\":\"reasoning\",\"status\":\"completed\",\"summary\":[],\"content\":[{\"type\":\"reasoning_text\",\"text\":\"Thinking Process:\\n\\n1.  **Analyze the Request:**\\n    *   Task: Think briefly about the number 7.\\n    *   Output requirement: Answer with a single digit.\\n\\n2.  **Analyze the Subject (Number 7):**\\n    *   Properties: Prime, odd, next even number after 6, Fibonacci sequence member, etc.\\n    *   Context: The prompt asks me to \\\"think briefly\\\" and then answer with\"}]},{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Continue from the preserved reasoning item.\"}]}],\"reasoning\":{\"effort\":\"low\"},\"max_output_tokens\":64}",
+      "serializedBodySha256": "88528ba5e7bf67509a1fb678bd3d8f404b0cc884e407ba91b03c7f00116f837c",
+      "status": 200,
+      "response": {
+        "id": "resp_49a4c1b2b5a90ea00f102c9cfe2c11687350f9417df254b8",
+        "object": "response",
+        "created_at": 1783985037,
+        "completed_at": 1783985037,
+        "status": "completed",
+        "incomplete_details": null,
+        "model": "gate0-qwen35-2b",
+        "previous_response_id": null,
+        "instructions": null,
+        "output": [
+          {
+            "id": "rs_egb1rwoc3koh5r6bmzghup",
+            "type": "reasoning",
+            "status": "completed",
+            "summary": [],
+            "content": [
+              {
+                "type": "reasoning_text",
+                "text": "Thinking Process:\n\n1.  **Analyze the Request:**\n    *   Input: \"Think briefly about the number 7, then answer with a single digit.\" (This was the previous turn).\n    *   Current Turn: \"Continue from the preserved reasoning item.\"\n    *   Constraint: The"
+              }
+            ]
+          }
+        ],
+        "error": null,
+        "tools": [],
+        "tool_choice": "auto",
+        "truncation": "auto",
+        "parallel_tool_calls": true,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "top_p": 0.95,
+        "presence_penalty": 0,
+        "frequency_penalty": 1.1,
+        "top_logprobs": 0,
+        "temperature": 0.1,
+        "reasoning": {
+          "summary": null,
+          "effort": "low"
+        },
+        "usage": {
+          "input_tokens": 42,
+          "output_tokens": 64,
+          "total_tokens": 106,
+          "input_tokens_details": {
+            "cached_tokens": 21
+          },
+          "output_tokens_details": {
+            "reasoning_tokens": 64
+          }
+        },
+        "max_output_tokens": 64,
+        "max_tool_calls": null,
+        "store": false,
+        "background": false,
+        "service_tier": "default",
+        "metadata": {},
+        "safety_identifier": null,
+        "prompt_cache_key": null
+      }
+    },
+    {
+      "name": "function_call_capture",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen3-4b\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Call add_numbers with a=2 and b=3. Do not answer directly.\"}]}],\"tools\":[{\"type\":\"function\",\"name\":\"add_numbers\",\"description\":\"Add two integers.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\"},\"b\":{\"type\":\"integer\"}},\"required\":[\"a\",\"b\"],\"additionalProperties\":false},\"strict\":true}],\"tool_choice\":\"required\",\"max_output_tokens\":128}",
+      "serializedBodySha256": "c039e140991f1a30939475f6cfc027f14886e89da75fcac71a311d55b20e0ef1",
+      "status": 200,
+      "response": {
+        "id": "resp_ce18d8ffd706124cec6fef1da70002a9636d4c8d922ab799",
+        "object": "response",
+        "created_at": 1783985037,
+        "completed_at": 1783985038,
+        "status": "completed",
+        "incomplete_details": null,
+        "model": "gate0-qwen3-4b",
+        "previous_response_id": null,
+        "instructions": null,
+        "output": [
+          {
+            "id": "fc_o2nz1k6wdbjodhml2k4mh",
+            "call_id": "call_1345753369540001",
+            "type": "function_call",
+            "name": "add_numbers",
+            "arguments": "{\"a\":2,\"b\":3}",
+            "status": "completed"
+          }
+        ],
+        "error": null,
+        "tools": [
+          {
+            "type": "function",
+            "name": "add_numbers",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "integer"
+                },
+                "b": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "a",
+                "b"
+              ],
+              "additionalProperties": false
+            },
+            "strict": true,
+            "description": "Add two integers."
+          }
+        ],
+        "tool_choice": "required",
+        "truncation": "auto",
+        "parallel_tool_calls": true,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "top_p": 0.8,
+        "presence_penalty": 0,
+        "frequency_penalty": 0,
+        "top_logprobs": 0,
+        "temperature": 0.7,
+        "reasoning": {
+          "summary": null,
+          "effort": null
+        },
+        "usage": {
+          "input_tokens": 178,
+          "output_tokens": 26,
+          "total_tokens": 204,
+          "input_tokens_details": {
+            "cached_tokens": 177
+          },
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "max_output_tokens": 128,
+        "max_tool_calls": null,
+        "store": false,
+        "background": false,
+        "service_tier": "default",
+        "metadata": {},
+        "safety_identifier": null,
+        "prompt_cache_key": null
+      }
+    },
+    {
+      "name": "function_call_output_full_item_replay",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen3-4b\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Call add_numbers with a=2 and b=3. Do not answer directly.\"}]},{\"id\":\"fc_o2nz1k6wdbjodhml2k4mh\",\"call_id\":\"call_1345753369540001\",\"type\":\"function_call\",\"name\":\"add_numbers\",\"arguments\":\"{\\\"a\\\":2,\\\"b\\\":3}\",\"status\":\"completed\"},{\"type\":\"function_call_output\",\"call_id\":\"call_1345753369540001\",\"output\":\"5\"},{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Using the tool result, reply exactly: 5\"}]}],\"tools\":[{\"type\":\"function\",\"name\":\"add_numbers\",\"description\":\"Add two integers.\",\"parameters\":{\"type\":\"object\",\"properties\":{\"a\":{\"type\":\"integer\"},\"b\":{\"type\":\"integer\"}},\"required\":[\"a\",\"b\"],\"additionalProperties\":false},\"strict\":true}],\"tool_choice\":\"none\",\"max_output_tokens\":64}",
+      "serializedBodySha256": "22edc23a89c098b06b3353abdf2c5321888867abf3f14afe1d0cf08fd0f53173",
+      "status": 200,
+      "response": {
+        "id": "resp_6055f05904fb917f32323c95ca7757104f1575acfecdbe9f",
+        "object": "response",
+        "created_at": 1783985038,
+        "completed_at": 1783985038,
+        "status": "completed",
+        "incomplete_details": null,
+        "model": "gate0-qwen3-4b",
+        "previous_response_id": null,
+        "instructions": null,
+        "output": [
+          {
+            "id": "msg_fzyfu4vpa6wt4sgtvzihk",
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "5",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "error": null,
+        "tools": [
+          {
+            "type": "function",
+            "name": "add_numbers",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "a": {
+                  "type": "integer"
+                },
+                "b": {
+                  "type": "integer"
+                }
+              },
+              "required": [
+                "a",
+                "b"
+              ],
+              "additionalProperties": false
+            },
+            "strict": true,
+            "description": "Add two integers."
+          }
+        ],
+        "tool_choice": "none",
+        "truncation": "auto",
+        "parallel_tool_calls": true,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "top_p": 0.8,
+        "presence_penalty": 0,
+        "frequency_penalty": 0,
+        "top_logprobs": 0,
+        "temperature": 0.7,
+        "reasoning": {
+          "summary": null,
+          "effort": null
+        },
+        "usage": {
+          "input_tokens": 80,
+          "output_tokens": 1,
+          "total_tokens": 81,
+          "input_tokens_details": {
+            "cached_tokens": 79
+          },
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "max_output_tokens": 64,
+        "max_tool_calls": null,
+        "store": false,
+        "background": false,
+        "service_tier": "default",
+        "metadata": {},
+        "safety_identifier": null,
+        "prompt_cache_key": null
+      }
+    },
+    {
+      "name": "streaming_event_and_provider_terminal_sample",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen3-4b\",\"store\":false,\"stream\":true,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Reply exactly: STREAM OK\"}]}],\"max_output_tokens\":64}",
+      "serializedBodySha256": "60fc4d537b4755d70c8406ef5a1f911254b3d76a9fed7fb5a6642a2621fc01fc",
+      "status": 200,
+      "rawSse": "event: response.created\ndata: {\"type\":\"response.created\",\"response\":{\"id\":\"resp_74e35c6acc9d38525ca497ee5c108eb73e12d6c0643f186f\",\"object\":\"response\",\"created_at\":1783985038,\"completed_at\":null,\"status\":\"in_progress\",\"incomplete_details\":null,\"model\":\"gate0-qwen3-4b\",\"previous_response_id\":null,\"instructions\":null,\"output\":[],\"error\":null,\"tools\":[],\"tool_choice\":\"auto\",\"truncation\":\"auto\",\"parallel_tool_calls\":true,\"text\":{\"format\":{\"type\":\"text\"}},\"top_p\":0.8,\"presence_penalty\":0,\"frequency_penalty\":0,\"top_logprobs\":0,\"temperature\":0.7,\"reasoning\":{\"summary\":null,\"effort\":null},\"usage\":null,\"max_output_tokens\":64,\"max_tool_calls\":null,\"store\":false,\"background\":false,\"service_tier\":\"default\",\"metadata\":{},\"safety_identifier\":null,\"prompt_cache_key\":null},\"sequence_number\":0}\n\nevent: response.in_progress\ndata: {\"type\":\"response.in_progress\",\"response\":{\"id\":\"resp_74e35c6acc9d38525ca497ee5c108eb73e12d6c0643f186f\",\"object\":\"response\",\"created_at\":1783985038,\"completed_at\":null,\"status\":\"in_progress\",\"incomplete_details\":null,\"model\":\"gate0-qwen3-4b\",\"previous_response_id\":null,\"instructions\":null,\"output\":[],\"error\":null,\"tools\":[],\"tool_choice\":\"auto\",\"truncation\":\"auto\",\"parallel_tool_calls\":true,\"text\":{\"format\":{\"type\":\"text\"}},\"top_p\":0.8,\"presence_penalty\":0,\"frequency_penalty\":0,\"top_logprobs\":0,\"temperature\":0.7,\"reasoning\":{\"summary\":null,\"effort\":null},\"usage\":null,\"max_output_tokens\":64,\"max_tool_calls\":null,\"store\":false,\"background\":false,\"service_tier\":\"default\",\"metadata\":{},\"safety_identifier\":null,\"prompt_cache_key\":null},\"sequence_number\":1}\n\nevent: response.output_item.added\ndata: {\"type\":\"response.output_item.added\",\"output_index\":0,\"item\":{\"id\":\"msg_n4zayo7tggn354tm15ng\",\"type\":\"message\",\"status\":\"in_progress\",\"content\":[],\"role\":\"assistant\"},\"sequence_number\":2}\n\nevent: response.content_part.added\ndata: {\"type\":\"response.content_part.added\",\"item_id\":\"msg_n4zayo7tggn354tm15ng\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"\",\"annotations\":[],\"logprobs\":[]},\"sequence_number\":3}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_n4zayo7tggn354tm15ng\",\"output_index\":0,\"content_index\":0,\"delta\":\"STREAM\",\"logprobs\":[],\"sequence_number\":4}\n\nevent: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"item_id\":\"msg_n4zayo7tggn354tm15ng\",\"output_index\":0,\"content_index\":0,\"delta\":\" OK\",\"logprobs\":[],\"sequence_number\":5}\n\nevent: response.output_text.done\ndata: {\"type\":\"response.output_text.done\",\"item_id\":\"msg_n4zayo7tggn354tm15ng\",\"output_index\":0,\"content_index\":0,\"text\":\"STREAM OK\",\"logprobs\":[],\"sequence_number\":6}\n\nevent: response.content_part.done\ndata: {\"type\":\"response.content_part.done\",\"item_id\":\"msg_n4zayo7tggn354tm15ng\",\"output_index\":0,\"content_index\":0,\"part\":{\"type\":\"output_text\",\"text\":\"STREAM OK\",\"annotations\":[],\"logprobs\":[]},\"sequence_number\":7}\n\nevent: response.output_item.done\ndata: {\"type\":\"response.output_item.done\",\"output_index\":0,\"item\":{\"id\":\"msg_n4zayo7tggn354tm15ng\",\"type\":\"message\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"STREAM OK\",\"annotations\":[],\"logprobs\":[]}],\"role\":\"assistant\"},\"sequence_number\":8}\n\nevent: response.completed\ndata: {\"type\":\"response.completed\",\"response\":{\"id\":\"resp_74e35c6acc9d38525ca497ee5c108eb73e12d6c0643f186f\",\"object\":\"response\",\"created_at\":1783985038,\"completed_at\":1783985038,\"status\":\"completed\",\"incomplete_details\":null,\"model\":\"gate0-qwen3-4b\",\"previous_response_id\":null,\"instructions\":null,\"output\":[{\"id\":\"msg_n4zayo7tggn354tm15ng\",\"type\":\"message\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"STREAM OK\",\"annotations\":[],\"logprobs\":[]}],\"role\":\"assistant\"}],\"error\":null,\"tools\":[],\"tool_choice\":\"auto\",\"truncation\":\"auto\",\"parallel_tool_calls\":true,\"text\":{\"format\":{\"type\":\"text\"}},\"top_p\":0.8,\"presence_penalty\":0,\"frequency_penalty\":0,\"top_logprobs\":0,\"temperature\":0.7,\"reasoning\":{\"summary\":null,\"effort\":null},\"usage\":{\"input_tokens\":13,\"output_tokens\":2,\"total_tokens\":15,\"input_tokens_details\":{\"cached_tokens\":6},\"output_tokens_details\":{\"reasoning_tokens\":0}},\"max_output_tokens\":64,\"max_tool_calls\":null,\"store\":false,\"background\":false,\"service_tier\":\"default\",\"metadata\":{},\"safety_identifier\":null,\"prompt_cache_key\":null},\"sequence_number\":9}\n\n",
+      "events": [
+        {
+          "type": "response.created",
+          "response": {
+            "id": "resp_74e35c6acc9d38525ca497ee5c108eb73e12d6c0643f186f",
+            "object": "response",
+            "created_at": 1783985038,
+            "completed_at": null,
+            "status": "in_progress",
+            "incomplete_details": null,
+            "model": "gate0-qwen3-4b",
+            "previous_response_id": null,
+            "instructions": null,
+            "output": [],
+            "error": null,
+            "tools": [],
+            "tool_choice": "auto",
+            "truncation": "auto",
+            "parallel_tool_calls": true,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 0.8,
+            "presence_penalty": 0,
+            "frequency_penalty": 0,
+            "top_logprobs": 0,
+            "temperature": 0.7,
+            "reasoning": {
+              "summary": null,
+              "effort": null
+            },
+            "usage": null,
+            "max_output_tokens": 64,
+            "max_tool_calls": null,
+            "store": false,
+            "background": false,
+            "service_tier": "default",
+            "metadata": {},
+            "safety_identifier": null,
+            "prompt_cache_key": null
+          },
+          "sequence_number": 0
+        },
+        {
+          "type": "response.in_progress",
+          "response": {
+            "id": "resp_74e35c6acc9d38525ca497ee5c108eb73e12d6c0643f186f",
+            "object": "response",
+            "created_at": 1783985038,
+            "completed_at": null,
+            "status": "in_progress",
+            "incomplete_details": null,
+            "model": "gate0-qwen3-4b",
+            "previous_response_id": null,
+            "instructions": null,
+            "output": [],
+            "error": null,
+            "tools": [],
+            "tool_choice": "auto",
+            "truncation": "auto",
+            "parallel_tool_calls": true,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 0.8,
+            "presence_penalty": 0,
+            "frequency_penalty": 0,
+            "top_logprobs": 0,
+            "temperature": 0.7,
+            "reasoning": {
+              "summary": null,
+              "effort": null
+            },
+            "usage": null,
+            "max_output_tokens": 64,
+            "max_tool_calls": null,
+            "store": false,
+            "background": false,
+            "service_tier": "default",
+            "metadata": {},
+            "safety_identifier": null,
+            "prompt_cache_key": null
+          },
+          "sequence_number": 1
+        },
+        {
+          "type": "response.output_item.added",
+          "output_index": 0,
+          "item": {
+            "id": "msg_n4zayo7tggn354tm15ng",
+            "type": "message",
+            "status": "in_progress",
+            "content": [],
+            "role": "assistant"
+          },
+          "sequence_number": 2
+        },
+        {
+          "type": "response.content_part.added",
+          "item_id": "msg_n4zayo7tggn354tm15ng",
+          "output_index": 0,
+          "content_index": 0,
+          "part": {
+            "type": "output_text",
+            "text": "",
+            "annotations": [],
+            "logprobs": []
+          },
+          "sequence_number": 3
+        },
+        {
+          "type": "response.output_text.delta",
+          "item_id": "msg_n4zayo7tggn354tm15ng",
+          "output_index": 0,
+          "content_index": 0,
+          "delta": "STREAM",
+          "logprobs": [],
+          "sequence_number": 4
+        },
+        {
+          "type": "response.output_text.delta",
+          "item_id": "msg_n4zayo7tggn354tm15ng",
+          "output_index": 0,
+          "content_index": 0,
+          "delta": " OK",
+          "logprobs": [],
+          "sequence_number": 5
+        },
+        {
+          "type": "response.output_text.done",
+          "item_id": "msg_n4zayo7tggn354tm15ng",
+          "output_index": 0,
+          "content_index": 0,
+          "text": "STREAM OK",
+          "logprobs": [],
+          "sequence_number": 6
+        },
+        {
+          "type": "response.content_part.done",
+          "item_id": "msg_n4zayo7tggn354tm15ng",
+          "output_index": 0,
+          "content_index": 0,
+          "part": {
+            "type": "output_text",
+            "text": "STREAM OK",
+            "annotations": [],
+            "logprobs": []
+          },
+          "sequence_number": 7
+        },
+        {
+          "type": "response.output_item.done",
+          "output_index": 0,
+          "item": {
+            "id": "msg_n4zayo7tggn354tm15ng",
+            "type": "message",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "STREAM OK",
+                "annotations": [],
+                "logprobs": []
+              }
+            ],
+            "role": "assistant"
+          },
+          "sequence_number": 8
+        },
+        {
+          "type": "response.completed",
+          "response": {
+            "id": "resp_74e35c6acc9d38525ca497ee5c108eb73e12d6c0643f186f",
+            "object": "response",
+            "created_at": 1783985038,
+            "completed_at": 1783985038,
+            "status": "completed",
+            "incomplete_details": null,
+            "model": "gate0-qwen3-4b",
+            "previous_response_id": null,
+            "instructions": null,
+            "output": [
+              {
+                "id": "msg_n4zayo7tggn354tm15ng",
+                "type": "message",
+                "status": "completed",
+                "content": [
+                  {
+                    "type": "output_text",
+                    "text": "STREAM OK",
+                    "annotations": [],
+                    "logprobs": []
+                  }
+                ],
+                "role": "assistant"
+              }
+            ],
+            "error": null,
+            "tools": [],
+            "tool_choice": "auto",
+            "truncation": "auto",
+            "parallel_tool_calls": true,
+            "text": {
+              "format": {
+                "type": "text"
+              }
+            },
+            "top_p": 0.8,
+            "presence_penalty": 0,
+            "frequency_penalty": 0,
+            "top_logprobs": 0,
+            "temperature": 0.7,
+            "reasoning": {
+              "summary": null,
+              "effort": null
+            },
+            "usage": {
+              "input_tokens": 13,
+              "output_tokens": 2,
+              "total_tokens": 15,
+              "input_tokens_details": {
+                "cached_tokens": 6
+              },
+              "output_tokens_details": {
+                "reasoning_tokens": 0
+              }
+            },
+            "max_output_tokens": 64,
+            "max_tool_calls": null,
+            "store": false,
+            "background": false,
+            "service_tier": "default",
+            "metadata": {},
+            "safety_identifier": null,
+            "prompt_cache_key": null
+          },
+          "sequence_number": 9
+        }
+      ]
+    },
+    {
+      "name": "audited_fresh_process_persisted_item_replay",
+      "endpoint": "/v1/responses",
+      "serializedBody": "{\"model\":\"gate0-qwen3-4b\",\"store\":false,\"input\":[{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Remember the code word ORBIT. Reply exactly: ORBIT remembered.\"}]},{\"id\":\"msg_xcglh613kbqj690158pmsj\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ORBIT remembered.\",\"annotations\":[],\"logprobs\":[]}]},{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"After a fresh client process reload, reply exactly: PROCESS RESTART ORBIT\"}]}],\"max_output_tokens\":64}",
+      "serializedBodySha256": "3d537ed1d7efaf34a5471e753902ea98175d0e5c1109cddf52ffe4ec1f145c53",
+      "status": 200,
+      "response": {
+        "id": "resp_e5db08e322e9813b4e23b04b2fe009d09d3338dfffed34f6",
+        "object": "response",
+        "created_at": 1783985675,
+        "completed_at": 1783985676,
+        "status": "completed",
+        "incomplete_details": null,
+        "model": "gate0-qwen3-4b",
+        "previous_response_id": null,
+        "instructions": null,
+        "output": [
+          {
+            "id": "msg_l0xjxncjatogw11k8nktzf",
+            "type": "message",
+            "role": "assistant",
+            "status": "completed",
+            "content": [
+              {
+                "type": "output_text",
+                "text": "PROCESS RESTART ORBIT",
+                "annotations": [],
+                "logprobs": []
+              }
+            ]
+          }
+        ],
+        "error": null,
+        "tools": [],
+        "tool_choice": "auto",
+        "truncation": "auto",
+        "parallel_tool_calls": true,
+        "text": {
+          "format": {
+            "type": "text"
+          }
+        },
+        "top_p": 0.8,
+        "presence_penalty": 0,
+        "frequency_penalty": 0,
+        "top_logprobs": 0,
+        "temperature": 0.7,
+        "reasoning": {
+          "summary": null,
+          "effort": null
+        },
+        "usage": {
+          "input_tokens": 51,
+          "output_tokens": 5,
+          "total_tokens": 56,
+          "input_tokens_details": {
+            "cached_tokens": 0
+          },
+          "output_tokens_details": {
+            "reasoning_tokens": 0
+          }
+        },
+        "max_output_tokens": 64,
+        "max_tool_calls": null,
+        "store": false,
+        "background": false,
+        "service_tier": "default",
+        "metadata": {},
+        "safety_identifier": null,
+        "prompt_cache_key": null
+      },
+      "processBoundary": {
+        "childPid": 16092,
+        "observedParentPid": 27916,
+        "persistedArtifactSha256": "06de481179c4025664b140e6e32ddcdd3e9abe09fa52237ba5b75834f29dafc0",
+        "persistedArtifactBytes": 341,
+        "persistedArtifactSerialized": "{\"initialUser\":{\"role\":\"user\",\"content\":[{\"type\":\"input_text\",\"text\":\"Remember the code word ORBIT. Reply exactly: ORBIT remembered.\"}]},\"initialOutput\":[{\"id\":\"msg_xcglh613kbqj690158pmsj\",\"type\":\"message\",\"role\":\"assistant\",\"status\":\"completed\",\"content\":[{\"type\":\"output_text\",\"text\":\"ORBIT remembered.\",\"annotations\":[],\"logprobs\":[]}]}]}",
+        "artifactReloadedByChild": true,
+        "launcherPid": 27916,
+        "freshPidDistinct": true
+      }
+    }
+  ],
+  "conclusion": {
+    "result": "pass",
+    "endpointBinding": "lmstudio-openresponses",
+    "qualificationFailureBinding": "lmstudio-openai-chat-completions",
+    "qualificationFailurePolicy": "Authentication, connection, timeout, 5xx, unavailable-model, transient-runtime, cancellation, and inconclusive failures leave the endpoint unbound. Only a repeatable native-item contract failure on a healthy runtime may permit a separate explicitly initiated Chat Completions qualification.",
+    "runtimeFallbackAllowed": false,
+    "ordinaryConversationViaNativeApiV1ChatAllowed": false
+  }
+}

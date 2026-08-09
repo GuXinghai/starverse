@@ -43,8 +43,8 @@ describe('googleAIStudioCatalogSource', () => {
       providerKey: 'google_ai_studio',
       baseUrl: 'https://generativelanguage.googleapis.com',
       dataSource: 'models_user_primary',
-      models: [
-        expect.objectContaining({
+    })
+    expect(snapshot.models[0]).toEqual(expect.objectContaining({
           providerKey: 'google_ai_studio',
           modelId: 'gemini-2.5-flash',
           modelKey: 'google_ai_studio::gemini-2.5-flash',
@@ -56,13 +56,16 @@ describe('googleAIStudioCatalogSource', () => {
           contextLength: 1048576,
           maxOutputTokens: 65536,
           capabilities: expect.objectContaining({
-            reasoning: true,
+            reasoning: false,
             longContext: true,
           }),
-        }),
-      ],
+        }))
+    expect(snapshot.models.map((model) => model.modelId)).toEqual(['gemini-2.5-flash', 'gemini-embedding-001'])
+    expect(snapshot.models[0]?.raw?.buckets[0]?.payload ?? {}).toMatchObject({
+      observation: expect.objectContaining({
+        facts: expect.objectContaining({ reasoning: expect.objectContaining({ presence: 'missing' }) }),
+      }),
     })
-    expect(snapshot.models.map((model) => model.modelId)).not.toContain('gemini-embedding-001')
     expect(JSON.stringify(snapshot)).not.toContain('AIza-test-key')
   })
 

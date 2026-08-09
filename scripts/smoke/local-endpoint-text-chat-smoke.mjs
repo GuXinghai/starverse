@@ -15,7 +15,7 @@ const defaultRealModel = process.env.LOCAL_ENDPOINT_SMOKE_MODEL ?? ''
 const uiPort = Number.parseInt(process.env.SV_LOCAL_ENDPOINT_UI_SMOKE_PORT ?? '5182', 10)
 const uiHost = process.env.SV_LOCAL_ENDPOINT_UI_SMOKE_HOST ?? '127.0.0.1'
 const viteUrl = `http://${uiHost}:${uiPort}/`
-const mainPath = path.join(repoRoot, 'dist-electron', 'main.js')
+const mainPath = path.join(repoRoot, 'dist-electron', 'epoch2MainEntry.js')
 const viteConfigPath = path.join(repoRoot, 'scripts', 'smoke', 'vite.renderer-smoke.config.ts')
 const artifactRoot = path.join(repoRoot, '.artifacts', 'local-endpoint-smoke')
 

@@ -16,7 +16,7 @@ export type MessageRole = 'user' | 'assistant' | 'tool'
  * OpenRouter reasoning.effort enum (full set).
  * Note: reasoning.exclude is a separate switch; reasoning.enabled is not used in this repo.
  */
-export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
+export type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
 
 export type RequestedReasoningMode = 'auto' | 'effort'
 
@@ -86,6 +86,7 @@ export type ReasoningDisplayBlock =
       blockId: string
       ordinal: number
       type: 'opaque'
+      opaqueKind?: 'encrypted' | 'omitted' | 'redacted'
       label: string
       warning?: string
       providerKey: string
@@ -126,6 +127,7 @@ export type MessageVM = Readonly<{
   contentBlocks: ContentBlock[]
   requestedImageGeneration?: boolean
   annotations?: MessageAnnotation[]
+  googleSearchSuggestions?: readonly string[]
   toolCalls: ToolCallVM[]
   reasoningView: ReasoningView
   reasoningDurationMs?: number | null
@@ -133,11 +135,14 @@ export type MessageVM = Readonly<{
   reasoningDurationIsFallback?: boolean
   errorEnvelope?: ErrorEnvelope | null
   errorSummary?: Readonly<{
-    completionClass?: string
-    phase?: string
-    code?: string
-    message?: string
-    provider?: string
+    completionClass?: string | null
+    phase?: string | null
+    code?: string | null
+    message?: string | null
+    provider?: string | null
+    source?: string | null
+    raw?: unknown
+    networkError?: unknown
   }> | null
   streaming: { isTarget: boolean; isComplete: boolean }
 }>
@@ -207,6 +212,9 @@ export type DomainEvent =
 
 export type MessageState = Readonly<{
   messageId: string
+  providerId?: string
+  protocolContractId?: string
+  modelId?: string
   routeProvenanceId?: string
   choiceIndex?: number
   role: MessageRole
@@ -235,11 +243,14 @@ export type MessageState = Readonly<{
   requestedReasoningExclude: boolean
   errorEnvelope?: ErrorEnvelope | null
   errorSummary?: Readonly<{
-    completionClass?: string
-    phase?: string
-    code?: string
-    message?: string
-    provider?: string
+    completionClass?: string | null
+    phase?: string | null
+    code?: string | null
+    message?: string | null
+    provider?: string | null
+    source?: string | null
+    raw?: unknown
+    networkError?: unknown
   }> | null
 }>
 
@@ -286,6 +297,8 @@ export type StartGenerationInput = Readonly<{
   routeProvenanceId?: string
   choiceIndex?: number
   model?: string
+  providerId?: string
+  protocolContractId?: string
   assistantMessageId?: string
   userMessageId?: string
   userMessageText?: string

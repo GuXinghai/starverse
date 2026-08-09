@@ -7,15 +7,60 @@
   "private": true,
   "license": "MIT",
   "type": "module",
+  "build": {
+    "appId": "io.github.guxinghai.starverse",
+    "asar": true,
+    "directories": {
+      "output": "release/${version}"
+    },
+    "files": [
+      "dist",
+      "dist-electron",
+      "dist-native",
+      "infra/db/v2/*.sql"
+    ],
+    "asarUnpack": [
+      "dist-native/win32-x64/*.node"
+    ],
+    "mac": {
+      "target": [
+        "dmg"
+      ],
+      "artifactName": "${productName}-Mac-${version}-Installer.${ext}"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Windows-${version}-Setup.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": false
+    },
+    "linux": {
+      "target": [
+        "AppImage"
+      ],
+      "artifactName": "${productName}-Linux-${version}.${ext}"
+    }
+  },
   "engines": {
-    "node": ">=22 <23",
+    "node": ">=22.12 <23",
     "npm": ">=10 <11"
   },
   "scripts": {
-    "dev": "npm run gen:build-id && npm run build:worker && chcp 65001 >nul 2>&1 & cross-env FORCE_COLOR=1 vite --host",
-    "build": "npm run clean:dist && npm run gen:build-id && npm run build:worker && vue-tsc && vite build && electron-builder install-app-deps && electron-builder",
+    "dev": "npm run gen:build-id && chcp 65001 >nul 2>&1 & cross-env FORCE_COLOR=1 vite --host",
+    "build": "npm run clean:dist && npm run gen:build-id && vue-tsc && vite build && electron-builder install-app-deps && npm run build:native:epoch:electron && electron-builder",
     "preview": "vite preview",
-    "electron:dev": "chcp 65001 >nul 2>&1 & npm run rebuild:electron && cross-env FORCE_COLOR=1 concurrently --kill-others \"npm run watch:worker\" \"npm run dev\"",
+    "electron:dev": "chcp 65001 >nul 2>&1 & npm run rebuild:electron && npm run dev",
     "electron": "npm run electron:dev",
     "electron:build": "npm run build",
     "dev:netlog": "node ./scripts/run-electron-with-netlog.mjs",
@@ -24,26 +69,30 @@
     "dev:quiet": "npm run gen:build-id && chcp 65001 >nul 2>&1 & cross-env FORCE_COLOR=1 NODE_ENV=development vite --host --logLevel silent",
     "clean:dist": "node ./scripts/clean-dist.cjs",
     "gen:build-id": "node ./scripts/gen-build-id.cjs",
-    "rebuild:node": "npm rebuild better-sqlite3",
-    "rebuild:electron": "npx electron-rebuild -f -w better-sqlite3",
+    "build:native:epoch:node": "node ./scripts/build-epoch-native.cjs --runtime=node",
+    "build:native:epoch:electron": "node ./scripts/build-epoch-native.cjs --runtime=electron",
+    "rebuild:node": "npm rebuild better-sqlite3 && npm run build:native:epoch:node",
+    "rebuild:electron": "electron-rebuild -f -w better-sqlite3 && npm run build:native:epoch:electron",
     "rebuild": "npm run rebuild:electron",
-    "build:worker": "node ./scripts/build-db-worker.cjs",
-    "watch:worker": "node ./scripts/build-db-worker.cjs --watch",
-    "db:reset": "node ./scripts/db-reset.cjs",
-    "db:verify": "npm run rebuild:node && node ./scripts/db-verify.cjs",
     "test": "npm run rebuild:node && vitest --run",
-    "test:model-catalog:smoke": "vitest --run src/shared/modelCatalog/providers/openrouter/openRouterCatalogClient.test.ts src/shared/modelCatalog/providers/openrouter/openRouterCatalogSource.test.ts src/shared/modelCatalog/modelTagger.test.ts src/shared/modelCatalog/providerCatalogSourceRegistry.test.ts src/next/modelCatalog/catalogQueryService.test.ts electron/modelCatalog/providerCatalogSyncJob.test.ts electron/ipc/modelCatalogSyncIpc.test.ts infra/db/repo/modelCatalogRepo.test.ts tests/integration/model-catalog-sync-query-smoke.test.ts",
+    "test:model-catalog:smoke": "vitest --run src/next/modelCatalog/catalogQueryService.test.ts src/next/modelCatalog/modelCatalogClient.test.ts src/next/modelCatalog/modelDetailService.test.ts src/next/modelCatalog/modelEndpointDetailService.test.ts src/next/modelCatalog/compatibleCatalogClient.test.ts",
     "test:model-picker:smoke": "vitest --run tests/integration/model-catalog-sync-query-smoke.test.ts src/next/modelCatalog/catalogQueryService.test.ts src/next/modelCatalog/modelEndpointDetailService.test.ts src/ui-app/components/EndpointDetailPanel.test.ts src/ui-app/components/ModelPickerDialog.test.ts src/ui-app/components/ChatAppComposer.modelPicker.test.ts src/ui-app/AppChatApp.send.test.ts src/next/modelPrefs/modelPrefsService.test.ts infra/db/repo/modelPreferencesRepo.test.ts",
-    "test:electron-smoke": "npm run rebuild:electron && npm run build:worker && npx vite build --mode development --config vite.config.ts && node scripts/smoke/electron-shell-smoke.mjs",
-    "test:electron-compatible-e2e": "cross-env SV_ELECTRON_COMPATIBLE_E2E=1 npm run test:electron-smoke",
+    "test:electron-smoke": "npm run rebuild:electron && npx vite build --mode development --config vite.config.ts && node scripts/smoke/electron-shell-smoke.mjs",
+    "test:generation-v2-openrouter-chat-real-smoke": "node scripts/smoke/generation-v2-openrouter-chat-real-smoke.mjs",
+    "test:packaged-identity-smoke": "node scripts/smoke/packaged-identity-smoke.mjs",
+    "test:epoch-native:electron": "npm run build:native:epoch:electron && electron scripts/smoke/epoch-native-electron-smoke.cjs",
+    "test:epoch-database:electron": "npm run rebuild:electron && node scripts/smoke/fresh-epoch-database-electron-smoke.mjs",
+    "test:epoch-database-crash:electron": "npm run rebuild:electron && node scripts/smoke/fresh-epoch-database-crash-smoke.mjs",
+    "test:epoch2-normal-profile-initialization": "node scripts/smoke/epoch2-normal-profile-initialization.mjs",
+    "test:schema-mismatch-recovery": "node scripts/smoke/schema-mismatch-recovery-smoke.mjs",
     "diagnose:openai-responses-o-reasoning": "electron scripts/diagnostics/probe-openai-responses-o-reasoning-effort.cjs",
-    "smoke:generation-params-real-click": "node scripts/smoke/generation-params-real-click-smoke.mjs --use-main-user-data",
+    "audit:provider-model-catalog": "node scripts/audit/provider-model-catalog-live-audit.mjs",
     "test:office-pdf-libreoffice-dev-smoke": "node scripts/dfc/office-pdf-libreoffice-dev-smoke.mjs",
     "test:office-pdf-libreoffice-import-dev-smoke": "node scripts/dfc/office-pdf-libreoffice-import-dev-smoke.mjs",
     "test:office-pdf-libreoffice-official-install-smoke": "node scripts/dfc/office-pdf-libreoffice-official-install-smoke.mjs",
     "test:office-pdf-libreoffice-packaged-smoke": "node scripts/dfc/office-pdf-libreoffice-packaged-smoke.mjs",
     "test:office-pdf-libreoffice-packaged-electron-smoke": "node scripts/dfc/office-pdf-libreoffice-packaged-electron-smoke.mjs",
-    "test:office-pdf-libreoffice-live-installed-state-smoke": "npm run build:worker && npx vite build --mode development --config vite.config.ts && node scripts/dfc/office-pdf-libreoffice-live-installed-state-smoke.mjs",
+    "test:office-pdf-libreoffice-live-installed-state-smoke": "npx vite build --mode development --config vite.config.ts && node scripts/dfc/office-pdf-libreoffice-live-installed-state-smoke.mjs",
     "test:office-pdf-libreoffice-install-reliability-diagnosis": "node scripts/dfc/libreoffice-official-install-reliability-diagnosis.mjs",
     "test:watch": "vitest",
     "test:ui": "vitest --ui",
@@ -61,23 +110,22 @@
     "gate:vite-renderer-resolution": "node scripts/gates/vite-renderer-resolution-smoke.mjs",
     "gate:privacy": "node scripts/gates/privacy-scan.mjs",
     "gate:network-egress": "node scripts/gates/network-egress-gate.mjs",
-    "gate:no-legacy-compatible": "node scripts/gates/no-legacy-compatible-identities.mjs",
+    "gate:generation-v2-zero-residual": "node scripts/gates/generation-v2-zero-residual.mjs",
+    "gate:no-legacy-compatible": "npm run gate:generation-v2-zero-residual",
     "verify:artifact-katex-css": "npx vite build && npm run gate:tc20",
     "i18n:check": "node scripts/i18n/check-i18n-coverage.mjs",
     "i18n:scan-hardcoded": "node scripts/i18n/check-hardcoded-ui-text.mjs",
-    "i18n:sendplan-map": "node scripts/i18n/check-sendplan-code-map.mjs",
     "storybook": "storybook dev -p 6006",
     "build-storybook": "storybook build",
     "postinstall": "npm run rebuild:node"
   },
   "dependencies": {
     "@floating-ui/vue": "^1.1.11",
-    "@google/generative-ai": "^0.24.1",
     "@types/dompurify": "^3.0.5",
     "@types/markdown-it": "^14.1.2",
     "@types/uuid": "^10.0.0",
     "@vueuse/core": "^14.0.0",
-    "better-sqlite3": "^12.4.1",
+    "better-sqlite3": "^12.11.1",
     "dompurify": "^3.3.0",
     "electron-store": "^11.0.2",
     "exceljs": "^4.4.0",
@@ -95,6 +143,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.11.0",
+    "@electron/rebuild": "4.2.0",
     "@storybook/addon-a11y": "^8.6.14",
     "@storybook/addon-essentials": "^8.6.14",
     "@storybook/vue3": "^8.6.14",
@@ -114,12 +163,13 @@
     "autoprefixer": "^10.4.21",
     "concurrently": "^9.2.1",
     "cross-env": "^10.1.0",
-    "electron": "^38.6.0",
-    "electron-builder": "^24.13.3",
+    "electron": "^42.7.0",
+    "electron-builder": "^26.15.3",
     "electron-vite": "^4.0.1",
     "esbuild": "^0.23.0",
     "eslint": "^8.57.1",
     "jsdom": "^25.0.1",
+    "node-gyp": "12.4.0",
     "playwright": "^1.57.0",
     "postcss": "^8.5.6",
     "storybook": "^8.6.14",
@@ -133,5 +183,5 @@
     "vue-tsc": "^2.0.26",
     "wait-on": "^9.0.1"
   },
-  "main": "dist-electron/main.js"
+  "main": "dist-electron/epoch2MainEntry.js"
 }

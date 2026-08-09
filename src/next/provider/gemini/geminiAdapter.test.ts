@@ -105,7 +105,7 @@ describe('streamViaGemini', () => {
 
     const body = JSON.parse(init.body)
     expect(body.contents).toEqual([{ role: 'user', parts: [{ text: 'Hello' }] }])
-    expect(body.generationConfig).toEqual({ candidateCount: 1 })
+    expect(body.generationConfig).toBeUndefined()
   })
 
   it('emits provider-native Gemini content snapshots for stream continuation', async () => {

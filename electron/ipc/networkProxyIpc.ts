@@ -1,32 +1,34 @@
-import type { ElectronSessionProxyController } from '../net/electronSessionProxyController'
+import type { ProductNetworkProxyV2Controller } from '../net/productNetworkProxyV2'
 import type { RegisterInvoke } from './types'
 
-export const NETWORK_PROXY_IPC_CHANNELS = [
-  'network-proxy:get-policy',
-  'network-proxy:update-policy',
-  'network-proxy:reset-policy',
+export const NETWORK_PROXY_IPC_CHANNELS = Object.freeze([
+  'network-proxy:get-settings',
+  'network-proxy:update-settings',
+  'network-proxy:reset-settings',
+  'network-proxy:reapply-settings',
   'network-proxy:resolve-proxy',
-] as const
+] as const)
 
-type RegisterNetworkProxyIpcInput = Readonly<{
+/**
+ * Public product proxy IPC. Electron's internal PAC/auto-detect policy shapes
+ * never cross this boundary.
+ */
+export function registerNetworkProxyIpc(input: Readonly<{
   registerInvoke: RegisterInvoke
-  controller: ElectronSessionProxyController
-}>
-
-export function registerNetworkProxyIpc(input: RegisterNetworkProxyIpcInput): string[] {
-  const { registerInvoke, controller } = input
-
-  registerInvoke('network-proxy:get-policy', () => controller.getPolicy())
-  registerInvoke('network-proxy:update-policy', (_event: unknown, policy: unknown) => controller.updatePolicy(policy))
-  registerInvoke('network-proxy:reset-policy', () => controller.resetPolicy())
-  registerInvoke('network-proxy:resolve-proxy', (_event: unknown, payload: unknown) => {
+  controller: ProductNetworkProxyV2Controller
+}>): readonly string[] {
+  input.registerInvoke(NETWORK_PROXY_IPC_CHANNELS[0], () => input.controller.getSettings())
+  input.registerInvoke(NETWORK_PROXY_IPC_CHANNELS[1], (_event: unknown, settings: unknown) =>
+    input.controller.updateSettings(settings))
+  input.registerInvoke(NETWORK_PROXY_IPC_CHANNELS[2], () => input.controller.resetSettings())
+  input.registerInvoke(NETWORK_PROXY_IPC_CHANNELS[3], () => input.controller.applyStoredSettings())
+  input.registerInvoke(NETWORK_PROXY_IPC_CHANNELS[4], (_event: unknown, payload: unknown) => {
     const url = typeof payload === 'string'
       ? payload
-      : payload && typeof payload === 'object'
+      : payload && typeof payload === 'object' && !Array.isArray(payload)
         ? (payload as { url?: unknown }).url
         : undefined
-    return controller.resolveProxy(url)
+    return input.controller.resolveProxy(url)
   })
-
-  return [...NETWORK_PROXY_IPC_CHANNELS]
+  return NETWORK_PROXY_IPC_CHANNELS
 }

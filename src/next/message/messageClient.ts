@@ -444,7 +444,7 @@ export async function getReasoningSegmentsStats(messageId: string): Promise<Reas
     console.warn('[messageClient] getReasoningSegmentsStats: unexpected result format', result)
     return null
   } catch (err) {
-    console.warn('[messageClient] getReasoningSegmentsStats: invoke failed', err)
+    console.warn('[messageClient] REASONING_SEGMENTS_STATS_INVOKE_FAILED')
     return null
   }
 }

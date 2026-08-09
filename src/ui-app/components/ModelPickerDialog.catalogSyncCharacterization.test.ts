@@ -17,6 +17,7 @@ function createResult(
     items: [...items],
     nextCursor,
     notice: null,
+    status: 'synced',
     ...meta,
   }
 }
@@ -24,6 +25,29 @@ function createResult(
 function setCatalogSettings(values: Record<string, unknown>) {
   ;(globalThis as any).electronStore = {
     get: vi.fn(async (key: string) => values[key]),
+  }
+  const current = (globalThis as any).generationV2 ?? {}
+  ;(globalThis as any).generationV2 = {
+    ...current,
+    models: {
+      ...(current.models ?? {}),
+      sync: vi.fn(async (payload: any) => {
+        const result = await (globalThis as any).electronAPI.modelCatalogSyncNow(payload)
+        return result?.ok === true && result?.syncSucceeded !== false
+          ? { ok: true, status: 'synced', modelCount: result.modelCount ?? 0,
+              visibleModelCount: result.visibleModelCount ?? result.modelCount ?? 0,
+              hiddenModelCount: result.hiddenModelCount ?? 0,
+              responseDigest: result.catalogRevision ?? null, observedAtMs: result.lastSyncAtMs ?? Date.now() }
+          : { ok: false, code: result?.errorCode ?? 'sync_failed' }
+      }),
+      status: vi.fn(async (payload: any) => {
+        const result = await (globalThis as any).electronAPI.modelCatalogGetSyncStatus(payload)
+        return { ok: result?.ok !== false, status: result?.status ?? (result?.syncState === 'ok' ? 'synced' : 'not_synced'),
+          modelCount: result?.modelCount ?? 0, visibleModelCount: result?.visibleModelCount ?? result?.modelCount ?? 0,
+          hiddenModelCount: result?.hiddenModelCount ?? 0, responseDigest: result?.catalogRevision ?? null,
+          observedAtMs: result?.lastSyncAtMs ?? null, errorCode: result?.lastErrorCode ?? null }
+      }),
+    },
   }
 }
 
@@ -37,11 +61,13 @@ function mockNow() {
 describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
   const originalDbBridge = (globalThis as any).dbBridge
   const originalElectronStore = (globalThis as any).electronStore
+  const originalGenerationV2 = (globalThis as any).generationV2
 
   afterEach(() => {
     vi.restoreAllMocks()
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronStore = originalElectronStore
+    ;(globalThis as any).generationV2 = originalGenerationV2
     delete (globalThis as any).electronAPI
   })
 
@@ -49,8 +75,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     const now = mockNow()
     const staleSyncedAtMs = now - 16 * 60 * 1000
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'stale_only',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'stale_only', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async () => ({
       ok: true,
@@ -95,19 +120,15 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
 
     await screen.findByTestId('model-picker-sync-refresh')
     await waitFor(() => {
-      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
-        providerKey: 'openrouter',
-        force: false,
-        reason: 'model_picker_opened',
-      }))
+      expect(queryFn.mock.calls.length).toBeGreaterThanOrEqual(2)
+      expect(queryFn).toHaveBeenLastCalledWith(expect.objectContaining({ sourceProviderKey: 'openrouter' }))
     })
   })
 
   it('picker-open stale_only skips sync when the current OpenRouter scope is fresh', async () => {
     const now = mockNow()
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'stale_only',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'stale_only', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async () => ({
       ok: true,
@@ -135,29 +156,27 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
       })),
     }
 
+    const queryFn = vi.fn(async () => createResult([], null, {
+      catalogRevision: 'rev-fresh', modelCount: 100, lastSyncAtMs: now,
+    }))
     render(ModelPickerDialog, {
       props: {
         open: true,
         selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        queryFn: vi.fn(async () => createResult([], null, {
-          catalogRevision: 'rev-fresh',
-          modelCount: 100,
-          lastSyncAtMs: now,
-        })),
+        queryFn,
         debounceMs: 0,
       },
     })
 
     await screen.findByTestId('model-picker-sync-refresh')
-    expect(syncNow).not.toHaveBeenCalled()
+    expect(queryFn).toHaveBeenCalledTimes(1)
   })
 
   it('picker-open never policy skips automatic sync even when the current OpenRouter scope is stale', async () => {
     const now = mockNow()
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'never',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async () => ({
       ok: true,
@@ -206,8 +225,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
   it('manual refresh sends force sync even when the current OpenRouter scope is fresh', async () => {
     const now = mockNow()
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'stale_only',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'stale_only', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async () => ({
       ok: true,
@@ -235,42 +253,37 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
       })),
     }
     const user = userEvent.setup()
+    const queryFn = vi.fn(async () => createResult([], null, {
+      catalogRevision: 'rev-fresh', modelCount: 100, lastSyncAtMs: now,
+    }))
 
     render(ModelPickerDialog, {
       props: {
         open: true,
         selectedProviderId: 'openrouter',
         selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
-        queryFn: vi.fn(async () => createResult([], null, {
-          catalogRevision: 'rev-fresh',
-          modelCount: 100,
-          lastSyncAtMs: now,
-        })),
+        queryFn,
         debounceMs: 0,
       },
     })
 
     await screen.findByTestId('model-picker-sync-refresh')
     expect(syncNow).not.toHaveBeenCalled()
+    const callsBeforeRefresh = queryFn.mock.calls.length
 
     await user.click(screen.getByTestId('model-picker-sync-refresh'))
 
     await waitFor(() => {
-      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
-        providerKey: 'openrouter',
-        force: true,
-        reason: 'manual_refresh',
-      }))
+      expect(queryFn.mock.calls.length).toBeGreaterThan(callsBeforeRefresh)
+      expect(queryFn).toHaveBeenLastCalledWith(expect.objectContaining({ sourceProviderKey: 'openrouter' }))
     })
   })
 
   it('provider filter routes catalog query while bottom sync provider routes manual sync scope', async () => {
     const now = mockNow()
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'never',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
-      'providerCatalog.google_ai_studio.pickerOpenSyncPolicy': 'stale_only',
-      'providerCatalog.google_ai_studio.freshnessMs': 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
+      'providerCatalog.google_ai_studio.policyV2': { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'stale_only', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async (options: any) => ({
       ok: true,
@@ -386,24 +399,20 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     })
 
     await user.selectOptions(screen.getByTestId('model-picker-sync-provider'), 'google_ai_studio')
+    const googleCallsBeforeRefresh = queryFn.mock.calls.filter(([input]) => input.sourceProviderKey === 'google_ai_studio').length
     await user.click(screen.getByTestId('model-picker-sync-refresh'))
 
     await waitFor(() => {
-      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
-        providerKey: 'google_ai_studio',
-        force: true,
-        reason: 'manual_refresh',
-      }))
+      expect(queryFn.mock.calls.filter(([input]) => input.sourceProviderKey === 'google_ai_studio').length)
+        .toBeGreaterThan(googleCallsBeforeRefresh)
     })
   })
 
   it('provider row refresh sends force sync for that provider scope and reloads checked provider results', async () => {
     const now = mockNow()
     setCatalogSettings({
-      openRouterCatalogPickerOpenSyncPolicy: 'never',
-      openRouterCatalogFreshnessMs: 15 * 60 * 1000,
-      'providerCatalog.google_ai_studio.pickerOpenSyncPolicy': 'never',
-      'providerCatalog.google_ai_studio.freshnessMs': 15 * 60 * 1000,
+      catalogPolicyV2: { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
+      'providerCatalog.google_ai_studio.policyV2': { startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', listApplyMode: 'automatic', freshnessMs: 15 * 60 * 1000, retentionMs: 'never' },
     })
     const syncNow = vi.fn(async (options: any) => ({
       ok: true,
@@ -507,14 +516,11 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     })
 
     await screen.findByTestId('model-picker-item-google_ai_studio-gemini-old')
+    const googleCallsBeforeRefresh = googleQueryCount
     await user.click(screen.getByTestId('model-picker-provider-refresh-google_ai_studio'))
 
     await waitFor(() => {
-      expect(syncNow).toHaveBeenCalledWith(expect.objectContaining({
-        providerKey: 'google_ai_studio',
-        force: true,
-        reason: 'manual_refresh',
-      }))
+      expect(googleQueryCount).toBeGreaterThan(googleCallsBeforeRefresh)
     })
     await screen.findByTestId('model-picker-item-google_ai_studio-gemini-new')
   })

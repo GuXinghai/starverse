@@ -1,53 +1,19 @@
-import { computed, markRaw, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
+import { computed, getCurrentInstance, markRaw, nextTick, onMounted, onUnmounted, ref, shallowRef, watch } from 'vue'
 import { t, tf } from '@/shared/i18n'
 import type { ErrorPanelViewModel } from '@/ui-kit/chat/types'
-import type { CompletionOutcome, DomainEvent, MessageState, MessageVM, ReasoningDisplayBlock, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
+import type { CompletionOutcome, MessageState, MessageVM, ReasoningEffort, RequestedReasoningMode, ReasoningPrefs, RootState, StreamEndReason } from '@/next/state/types'
 import {
-  deleteConvo,
-  deleteConvos,
-  listConvos,
-  renameConvo,
   saveConvo,
-  setConvoProject,
-  setConvoProjectMany,
   type ConvoSummary,
 } from '@/next/convo/convoClient'
 import {
   getSystemChatTemplate,
   getLastFormalConversationId,
-  materializeSystemChatTemplate,
   resetSystemChatTemplate,
   setLastFormalConversationId,
   updateSystemChatTemplateConfig,
   type SystemChatTemplateSnapshot,
 } from '@/next/convo/systemChatTemplateClient'
-import {
-  clearBranchFilter,
-  createBranchFromMessage,
-  beginTurn,
-  forkQuestion,
-  regenerateQuestionWithCurrentConfig,
-  retryChosenAnswerReplacing,
-  retryChosenAnswerAsNew,
-  finalizeAssistantAnswerGeneration,
-  claimAssistantAnswerGenerationStream,
-  getAssistantAnswerGenerationSnapshot,
-  persistAssistantAnswerGenerationSnapshot,
-  retryReplaceQuestion,
-  getBranchCandidates,
-  getQuestionCandidates,
-  deleteBranch,
-  ensureDefaultBranch,
-  listBranches,
-  switchCandidate,
-  switchQuestionCandidate,
-  setBranchFilter,
-  truncateBranchFromQuestion,
-  type BranchSummary,
-  type BranchCandidate,
-  type QuestionCandidate,
-} from '@/next/branch/branchClient'
-import type { AssistantAnswerGenerationSnapshotV1 } from '@/next/generation/assistantAnswerGenerationSnapshot'
 import {
   BranchProjectionRefreshCoordinator,
   buildBranchViewSnapshot,
@@ -57,30 +23,63 @@ import {
   type BranchViewSnapshot,
 } from './branchViewProjection'
 import {
-  appendMessageDelta,
-  appendReasoningDetailSegments,
-  appendReasoningDisplayBlocks,
-  finalizeReasoningDisplayBlocks,
-  finalizeReasoningDetails,
-  getReasoningSegmentsStats,
-  listReasoningDisplayBlocksByMessageIds,
   listMessageErrorEnvelopes,
-  listMessageImageAssetsByMessageIds,
-  persistDetachedImageAssetsFromDataUrls,
-  persistMessageImageAssetsFromDataUrls,
-  setMessageAnnotations,
-  setMessageReasoningRequestConfig,
-  setMessageStatus,
-  upsertProviderNativeContent,
-  upsertMessageErrorEnvelope,
   type PersistedProviderNativeContent,
-  type PersistedMessageImageAsset,
 } from '@/next/message/messageClient'
-import { findProjectById, listProjects, saveProject, getInbox, createProject, deleteProject, countConversationsBatch, type ProjectSummary } from '@/next/project/projectClient'
+import { saveProject, type ProjectSummary } from '@/next/project/projectClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
 import {
-  deleteChatDraftsForConvo,
-} from '@/next/settings/chatDraftClient'
+  ensureGenerationV2DefaultWorkspace,
+  getGenerationV2Config,
+  updateGenerationV2Config,
+  createGenerationV2Project,
+  deleteGenerationV2Branch,
+  deleteGenerationV2Conversation,
+  deleteGenerationV2Project,
+  forkGenerationV2Branch,
+  listGenerationV2Branches,
+  listGenerationV2Conversations,
+  listGenerationV2Projects,
+  moveGenerationV2Conversation,
+  readGenerationV2Branch,
+  renameGenerationV2Conversation,
+  renameGenerationV2Project,
+  getGenerationV2MessageCandidateNavigation,
+  setGenerationV2ContextFilter,
+  clearGenerationV2ContextFilter,
+  truncateGenerationV2BranchFromQuestion,
+  listGenerationV2LocalProfiles,
+  createGenerationV2LocalProfile,
+  getGenerationV2ConversationRoutePreference,
+  updateGenerationV2ConversationRoutePreference,
+  clearGenerationV2ConversationRoutePreference,
+  type GenerationV2BranchView,
+  type GenerationV2BranchCursor,
+  type GenerationV2ConfigLayerView,
+  type GenerationV2ConversationCursor,
+  type GenerationV2ConversationRoutePreferenceSnapshot,
+  type GenerationV2ConversationRoutePreferenceSelection,
+  type GenerationV2MessageCandidateNavigation,
+} from '@/next/generation-v2/renderer/generationV2WorkspaceClient'
+import { projectGenerationV2BranchForExistingUi } from '@/next/generation-v2/renderer/generationV2BranchProjection'
+import { abortGenerationV2, submitGenerationV2EditResend, submitGenerationV2Initial, submitGenerationV2Regenerate, submitGenerationV2Retry, subscribeGenerationV2Runtime,
+  type GenerationV2Route, type GenerationV2RuntimeUpdate } from '@/next/generation-v2/renderer/generationV2CommandClient'
+import {
+  BranchRuntimeCacheV2,
+  type BranchRuntimeCacheEntryV2,
+} from '@/next/generation-v2/renderer/branchRuntimeCacheV2'
+import { projectProviderFailureForUiV2 } from '@/shared/provider/providerFailureUiProjectionV2'
+import {
+  providerFailureFromUnknownV2,
+  providerFailurePrimaryMessageV2,
+  type ProviderFailureV2,
+} from '@/shared/provider/providerFailureV2'
+import {
+  getOpenRouterImageEndpointSelectionV2,
+  selectOpenRouterImageEndpointV2,
+  updateOpenRouterImageEndpointSettingsV2,
+  type OpenRouterImageEndpointSelectionClientStateV2,
+} from '@/next/generation-v2/renderer/openRouterImageEndpointClientV2'
 import { getUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
 import { getWebSearchDefaults } from '@/next/settings/webSearchDefaultsClient'
 import { getImageGenerationDefault } from '@/next/settings/imageGenerationDefaultClient'
@@ -96,10 +95,13 @@ import {
   setChatReasoningPanelAutoCollapseAfterReasoning,
   setChatReasoningPanelDefaultExpanded,
 } from '@/next/settings/reasoningPanelDefaultClient'
-import { listScopedCurrentModelCatalog } from '@/next/modelCatalog/modelCatalogClient'
 import { selectModelCatalogAll, selectModelCatalogVisible } from '@/next/modelCatalog/modelCatalogSelectors'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
-import { getModelCatalogModelDetail } from '@/next/modelCatalog/modelDetailService'
+import { CatalogQueryService, type CatalogQueryItem } from '@/next/modelCatalog/catalogQueryService'
+import {
+  catalogRuntimeStoreV2ForApp,
+  registerCatalogModelSelectionCommandV2,
+} from '@/next/modelCatalog/catalogRuntimeStoreV2'
 import type { OpenRouterImageConfig, OpenRouterOutputModality } from '@/next/openrouter/buildRequest'
 import { evaluateImageGenerationModel, type ImageCapabilityClass, type ImageModelFilterReason } from '@/next/openrouter/imageGenerationContract'
 import {
@@ -109,12 +111,8 @@ import {
   type ImageGenerationUserConfig,
 } from '@/next/openrouter/imageGenerationSettingsPersistence'
 import { ModelPrefsService } from '@/next/modelPrefs/modelPrefsService'
-import { getNetExpSettings } from '@/next/netExp/netExpClient'
-import { startNetExpRunReport } from '@/next/netExp/netExpRunReport'
-import { applyEventsBatch, createInitialState, startGeneration, toggleReasoningPanelState } from '@/next/state/reducer'
+import { applyEventsBatch, createInitialState, toggleReasoningPanelState } from '@/next/state/reducer'
 import { selectMessage, selectRun } from '@/next/state/selectors'
-import { streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource } from '@/next/provider/openrouter/openRouterAdapter'
-import type { CompatibleRequestMessage } from '@/shared/provider/openai-chat-compatible'
 import type { CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
 import {
   DEEPSEEK_OFFICIAL_ENDPOINT_ID,
@@ -122,6 +120,7 @@ import {
   DEEPSEEK_OFFICIAL_PROVIDER_KEY,
   type DeepSeekModelAvailabilityResult,
 } from '@/next/provider/deepseek/deepSeekModelSource'
+import { isDeepSeekSelectableReasoningEffort } from '@/next/provider/deepseek/deepSeekReasoningPolicy'
 import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
@@ -131,7 +130,6 @@ import {
   type ChatModelSelection,
 } from '@/next/provider/modelSelection'
 import {
-  getRuntimeCapabilitySummaryLite,
   type CurrentRuntimeSelection,
   type RuntimeProviderKey,
 } from '@/next/provider/runtimeSelection'
@@ -149,73 +147,44 @@ import {
 } from '@/next/provider/gemini/geminiModelSource'
 import {
   isKnownGeminiImageGenerationModel,
+  normalizeGeminiImageGenerationModelId,
   resolveGeminiImageGenerationPolicy,
 } from '@/next/provider/gemini/geminiImageGenerationPolicy'
+import {
+  isGeminiThinkingBudgetValid,
+  normalizeGeminiThinkingModelId,
+  resolveGeminiThinkingCapability,
+  type GeminiThinkingCapability,
+} from '@/next/provider/gemini/geminiThinkingPolicy'
+import { isGeminiInteractionsImageModelIdV1 } from '@/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
 import {
   ANTHROPIC_MESSAGES_ENDPOINT_ID,
   ANTHROPIC_MESSAGES_PROFILE_ID,
   ANTHROPIC_MESSAGES_PROVIDER_KEY,
   type AnthropicModelAvailabilityResult,
 } from '@/next/provider/anthropic/anthropicModelSource'
-import type { ReasoningArtifact, ReasoningArtifactProvider } from '@/next/provider/reasoningArtifact'
-import {
-  collectReasoningArtifactsFromDomainEvent,
-  createReasoningArtifactCollector,
-  type ReasoningArtifactCollectorState,
-} from './reasoningArtifactCollector'
+import type { ReasoningArtifact } from '@/next/provider/reasoningArtifact'
 import {
   removeReasoningArtifactsForMessages,
-  replaceReasoningArtifactsForMessage,
   retainReasoningArtifactsForMessages,
   type ReasoningArtifactsByMessageId,
 } from './reasoningArtifactLifecycle'
-import {
-  createExperimentalRuntimeTextEvents,
-  getExperimentalRuntimeTextReasoningArtifactProvider,
-  getExperimentalRuntimeTextRequestPrefix,
-  isExperimentalRuntimeTextProviderKey,
-  resolveProviderRuntimeTextSendPreflight,
-  type ExperimentalRuntimeTextProviderKey,
-  type ProviderRuntimeAvailabilityPreflightResult,
-} from './providerRuntimeSendCoordinator'
 import { useExperimentalProviderChatSettings } from './useExperimentalProviderChatSettings'
-import {
-  prepareOpenRouterReplayFromMessage,
-  prepareOpenRouterSendFromDraft,
-  type PreparedOpenRouterReplay,
-  type PreparedOpenRouterSend,
-} from '@/next/openrouter/openRouterSendPreparation'
-import {
-  prepareProviderFileSendFromDraft,
-  type PreparedProviderFileSend,
-  type ProviderFileRuntimeProvider,
-} from '@/next/multimodal/providerFileSendPreparation'
-import { capturePdfAnnotationDerivatives } from '@/next/files/derivativeJobClient'
-import {
-  addConversationDraftAttachment,
-  attachConversationDraftToMessage,
-  cloneConversationDraftFromMessage,
-  ensureConversationDraftAttachmentDfcOptions,
-  getConversationDraftAttachmentDfcPreview,
-  removeConversationDraftAttachment,
-  restoreConversationDraft,
-  updateConversationDraftAttachmentSettings,
-  updateConversationDraftText,
-} from '@/next/files/conversationDraftClient'
-import { listFileAssetsByIds } from '@/next/files/fileAssetClient'
-import { ingestLocalFile, ingestUrl } from '@/next/files/fileIngestionClient'
-import { listMessageAttachmentsByMessageId } from '@/next/files/messageAttachmentClient'
-import { buildCurrentSendPlan } from '@/next/files/sendPlanClient'
+// file ingestion is owned by the V2 composer client below
 import type {
   SendPlan,
   SendPlanAttachment,
   SendPlanAttachmentDetectionSummary,
   SendPlanAttachmentFileTypeSummary,
-  SendPlanModelDescriptor,
-  SendPlanProviderContext,
 } from '@/shared/files/sendPlanTypes'
 import type { DraftAttachmentSendModePreference, DraftAttachmentUrlRetentionPreference, SendMode } from '@/shared/files/fileTypes'
-import type { DfcAttachmentSendSnapshot, DfcSendAssetRef, DfcSendStrategy, DfcTargetKind } from '@/shared/files/documentFormatConversion'
+import type {
+  DfcDraftAttachmentOptionsDto,
+  DfcDraftAttachmentPreviewDto,
+  DfcSendAssetRef,
+  DfcSendStrategy,
+  DfcTargetKind,
+} from '@/shared/files/documentFormatConversion'
 import {
   clearDfcAttachmentDefaultTarget,
   normalizeDfcAttachmentDefaults,
@@ -226,27 +195,38 @@ import {
 import type { MessageAttachmentDetectionInfo, MessageAttachmentDisplayStatus, MessageAttachmentFileTypeInfo, MessageAttachmentVM } from '@/ui-kit/chat/types'
 import type {
   DecodedConversationDraft,
-  DecodedDfcDraftAttachmentOptions,
-  DecodedDfcDraftAttachmentPreview,
   DecodedDraftAttachment,
   DecodedFileAsset,
-  DecodedMessageAttachment,
   DecodedPreviewPayload,
 } from '@/next/ipc/contracts/dbBridgeContracts'
-import { decodePreviewPayloadResponse } from '@/next/ipc/contracts/dbBridgeContracts'
-import { ensurePreview, getLatestReadyPreview } from '@/next/files/previewClient'
+import {
+  clearCommittedGenerationV2ComposerDraft,
+  addGenerationV2ComposerUrlReference,
+  getGenerationV2ComposerDraft,
+  importGenerationV2ComposerLocalFile,
+  importGenerationV2ComposerUrlFile,
+  projectGenerationV2ComposerAttachments,
+  readGenerationV2ComposerPreview,
+  replaceGenerationV2ComposerDraft,
+  replaceGenerationV2ComposerDraftFromAnswerSnapshot,
+  removeGenerationV2ComposerAttachment,
+  getGenerationV2ComposerDfcOptions,
+  getGenerationV2ComposerDfcPreview,
+  selectGenerationV2ComposerDfcOption,
+  updateGenerationV2ComposerText,
+  type GenerationV2ComposerDraft,
+} from '@/next/generation-v2/renderer/generationV2ComposerClient'
 import { normalizeExtension } from '@/shared/files/fileRules'
+import { syncProviderCatalogsOnStartupV2 } from './providerCatalogStartupSyncV2'
+
 import {
   extractConvoWebSearchOverride,
   extractProjectWebSearchDefaults,
   mergeProjectWebSearchDefaultsMeta,
   normalizeSearchSettingsLayer,
-  resolveSearchSettingsFromStoredLayers,
 } from '@/next/openrouter/searchSettingsPersistence'
 import {
   resolveSearchSettings,
-  type SearchMode as WebSearchMode,
-  type OpenRouterWebRequestPatch,
   type SearchSettingsLayer,
 } from '@/next/openrouter/searchSettingsResolver'
 import {
@@ -254,26 +234,18 @@ import {
   extractProjectGenerationParamsDefaults,
   mergeProjectGenerationParamsDefaultsMeta,
   normalizeGenerationParamsLayer,
-  resolveGenerationParamsFromStoredLayers,
 } from '@/next/generation-params/generationParamPersistence'
 import { resolveGenerationParamsFromLayers } from '@/next/generation-params/generationParamResolver'
-import { mapGenerationParamsToProviderRequestPatch } from '@/next/generation-params/generationParamMappers'
-import { getDefaultGenerationParamProfile, unsetGenerationProfile } from '@/next/generation-params/generationParamProfiles'
+import { getDefaultGenerationParamProfile, isReasoningEffortExplicitlyUnsupported,
+  unsetGenerationProfile } from '@/next/generation-params/generationParamProfiles'
 import type {
   GenerationParamsLayer,
   ProviderGenerationParamProfile,
   ResolvedGenerationParams,
 } from '@/next/generation-params/generationParamTypes'
 import type { SearchHit } from '@/next/search/searchTypes'
-import { buildContextForBranchInternalMessages, getRenderableTurnsForBranch } from '@/next/context/contextClient'
-import type { InternalMessage } from '@/next/context/buildMessages'
-import { toInternalMessagesFromBranchPath } from '@/next/context/loadBranchContext'
 import type { NormalizedErrorEnvelope } from '@/next/errors/normalizeOpenRouterError'
-import { normalizeTransportError, toNormalizedErrorEnvelope } from '@/next/errors/normalizeOpenRouterError'
-import type { AppErrorPhase } from '@/next/errors/appError'
-import type { CompletionClass, ErrorEnvelope, ErrorPhase } from '@/next/errors/openRouterErrorEnvelope'
-import { buildAbortEnvelope, buildTransportErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
-import { destroyDbEventBus, subscribeDbEvent, flushBuffer, type DbEvent } from '@/next/db/dbEventBus'
+import type { CompletionClass, ErrorEnvelope } from '@/next/errors/openRouterErrorEnvelope'
 import { createEventScheduler } from '@/next/state/eventScheduler'
 import {
   beginCommitMeasure,
@@ -283,10 +255,7 @@ import {
   recordUpdatedMessages,
   startPerfReporter,
 } from '@/next/state/perfMetrics'
-import type { ActiveStream } from './useLiveStreamController'
-import { useChatSession } from './useChatSession'
 import { useDiagnostics } from './useDiagnostics'
-import { useLiveStreamController } from './useLiveStreamController'
 import { useSettingsBindings } from './useSettingsBindings'
 import { nextTriState, resolveUserMessageRenderPolicy, type UserMessageRenderMode } from '../prefs/userMessageRenderPolicy'
 import type { SearchConvoOption, SearchProjectOption } from '../components/SearchModal.types'
@@ -299,12 +268,19 @@ import {
   type ChatSessionConfigAspectRatio,
   type ChatSessionConfigPatch,
 } from './chatSessionConfig'
+import {
+  isEmptyGenerationV2SemanticLayer,
+  projectGenerationV2SemanticLayerToSessionConfig,
+} from './generationV2SessionConfigProjection'
 import type { ProviderModelPickerSource } from './providerModelPickerViewModel'
 import { deriveSendButtonMode, type SendButtonMode } from './sendButtonMode'
+import { createConversationConfigUpdateQueue } from './conversationConfigUpdateQueue'
 import {
   resolveNetworkErrorDisplayMessage,
-  resolveNetworkFailureDisplayMessage,
 } from './networkErrorDisplay'
+
+type BranchSummary = Readonly<{ id:string;convoId:string;headMessageId:string|null;name:string|null;
+  createdAt:number;updatedAt:number;deletedAt:number|null }>
 
 /**
  * Architecture boundary (phase: containment):
@@ -316,71 +292,54 @@ import {
  */
 export function useAppChatAppLogic() {
 
+  const appIdentity = getCurrentInstance()?.appContext.app
+  if (!appIdentity) throw new Error('CATALOG_RUNTIME_APP_CONTEXT_UNAVAILABLE')
+  const catalogRuntimeStore = catalogRuntimeStoreV2ForApp<CatalogQueryItem>(appIdentity)
+  const catalogRuntimeSnapshot = shallowRef(catalogRuntimeStore.snapshot())
+  const unsubscribeCatalogRuntimeStore = catalogRuntimeStore.subscribe(() => {
+    catalogRuntimeSnapshot.value = catalogRuntimeStore.snapshot()
+  })
+  const unregisterCatalogSelectionCommand = registerCatalogModelSelectionCommandV2(appIdentity, async (selection) => {
+    const previousModel = model.value
+    try {
+      await onUpdateModel(selection as unknown as ChatModelSelection | CompatibleConfigurationSelection)
+    } catch (error) {
+      model.value = previousModel
+      applySelectedModelOverrideForActiveConvo()
+      throw error
+    }
+  })
+
   const isReady = ref(false)
   const loadError = ref<string | null>(null)
   const convos = ref<ConvoSummary[]>([])
+  const conversationCursorByProjectId = ref<Map<string, GenerationV2ConversationCursor | null>>(new Map())
   const projects = ref<ProjectSummary[]>([])
   const projectCounts = ref<Map<string | null, number>>(new Map())
   const activeProjectId = ref<string | null>(null)
   const inboxId = ref<string | null>(null)
   const activeConvoId = ref<string | null>(null)
   const systemTemplateSnapshot = ref<SystemChatTemplateSnapshot | null>(null)
+  const conversationConfigUpdateQueue = createConversationConfigUpdateQueue()
   const projectsOnlyWorkspace = ref(false)
   const activeBranchId = ref<string | null>(null)
+  const navigationRevision = ref(0)
+  watch([activeConvoId, activeBranchId], () => {
+    navigationRevision.value += 1
+  }, { flush: 'sync' })
   const branches = ref<BranchSummary[]>([])
+  const branchNextCursor = ref<GenerationV2BranchCursor | null>(null)
+  const hasMoreConversations = computed(() =>
+    [...conversationCursorByProjectId.value.values()].some((cursor) => cursor !== null))
+  const hasMoreBranches = computed(() => branchNextCursor.value !== null)
   const draft = ref('')
   const reasoningDisplayMode = ref<'inline' | 'rail'>('inline')
   const rightRailOpen = ref(false)
   const rightRailView = ref<'reasoning' | 'console'>('console')
   const pendingDeleteQuestionId = ref<string | null>(null)
-  const CONVO_META_SELECTED_MODEL_KEY = 'selectedModelKey'
-  const CONVO_META_SELECTED_PROVIDER_KEY = 'selectedProviderId'
   const model = ref(DEFAULT_OPENROUTER_MODEL_ID)
   const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
   const requestedReasoningExclude = ref(false)
-  type DeepSeekModelAvailabilityFailureCode = Extract<DeepSeekModelAvailabilityResult, { ok: false }>['code']
-  type DeepSeekModelsBridge = Readonly<{
-    listAvailability: (payload?: unknown) => Promise<DeepSeekModelAvailabilityResult>
-  }>
-  type OpenAIModelAvailabilityFailureCode = Extract<OpenAIModelAvailabilityResult, { ok: false }>['code']
-  type OpenAIResponsesModelsBridge = Readonly<{
-    listAvailability: (payload?: unknown) => Promise<OpenAIModelAvailabilityResult>
-  }>
-  type GeminiModelAvailabilityFailureCode = Extract<GeminiModelAvailabilityResult, { ok: false }>['code']
-  type GoogleAIStudioModelsBridge = Readonly<{
-    listAvailability: (payload?: unknown) => Promise<GeminiModelAvailabilityResult>
-  }>
-  type AnthropicModelAvailabilityFailureCode = Extract<AnthropicModelAvailabilityResult, { ok: false }>['code']
-  type AnthropicModelsBridge = Readonly<{
-    listAvailability: (payload?: unknown) => Promise<AnthropicModelAvailabilityResult>
-  }>
-  type ProviderCredentialStatusResult = Readonly<{
-    ok?: unknown
-    status?: Readonly<{
-      apiKeyConfigured?: unknown
-    }>
-    message?: unknown
-  }>
-  type ProviderCredentialStatusBridge = Readonly<{
-    getStatus: () => Promise<ProviderCredentialStatusResult>
-  }>
-  type LocalEndpointDiagnosticsBridge = Readonly<{
-    probe: (payload: { url?: string; timeoutMs?: number }) => Promise<unknown>
-  }>
-  type LMStudioProviderBridge = Readonly<{
-    probe: (payload: { endpointUrl?: string; selectedModel?: string; timeoutMs?: number }) => Promise<unknown>
-  }>
-  type OllamaProviderBridge = Readonly<{
-    probe: (payload: { endpointUrl?: string; selectedModel?: string; timeoutMs?: number }) => Promise<unknown>
-  }>
-  const openAIResponsesModelAvailabilityLoading = ref(false)
-  const openAIResponsesModelAvailabilityResult = ref<OpenAIModelAvailabilityResult | null>(null)
-  const googleAIStudioModelAvailabilityLoading = ref(false)
-  const googleAIStudioModelAvailabilityResult = ref<GeminiModelAvailabilityResult | null>(null)
-  const anthropicModelAvailabilityLoading = ref(false)
-  const anthropicModelAvailabilityResult = ref<AnthropicModelAvailabilityResult | null>(null)
-  const deepSeekModelAvailabilityLoading = ref(false)
-  const deepSeekModelAvailabilityResult = ref<DeepSeekModelAvailabilityResult | null>(null)
   type ImageGenerationUiState = ImageGenerationUserConfig
   const imageGenerationState = ref<ImageGenerationUiState>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
   const imageGenerationConvoMode = ref<ConvoImageGenerationMode>('default')
@@ -389,6 +348,9 @@ export function useAppChatAppLogic() {
   const selectedModelImageCapabilityReason = ref<string | null>(null)
   const selectedModelImageCapabilityLoading = ref(false)
   const imageCapabilityQuerySeq = ref(0)
+  const openRouterImageEndpointSelection = ref<OpenRouterImageEndpointSelectionClientStateV2 | null>(null)
+  const openRouterImageEndpointSelectionLoading = ref(false)
+  const openRouterImageEndpointSelectionError = ref<string | null>(null)
   const sessionWebSearchSettingsOpen = ref(false)
   const projectWebSearchSettingsOpen = ref(false)
   const projectWebSearchSettingsProjectId = ref<string | null>(null)
@@ -404,6 +366,7 @@ export function useAppChatAppLogic() {
   const sessionWebSearchSettingsStatus = ref<string | null>(null)
   const projectWebSearchSettingsStatus = ref<string | null>(null)
   const modelCatalogItems = ref<ModelCatalogItem[]>([])
+  const openRouterModelModalitiesById = ref(new Map<string, Readonly<{ input: readonly string[]; output: readonly string[] }>>())
   const modelCatalogListStatus = ref<'unknown' | 'not_synced' | 'syncing' | 'synced' | 'failed'>('unknown')
   const showHiddenModelsInPickers = ref(false)
   const modelCatalogNotice = ref<string | null>(null)
@@ -423,6 +386,7 @@ export function useAppChatAppLogic() {
   const draftSendPlanRefreshTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const draftAttachmentParsingPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const draftFlushPromise = ref<Promise<void> | null>(null)
+  const generationV2ComposerDraft = ref<GenerationV2ComposerDraft | null>(null)
   const lastDraftScopeKey = ref<string | null>(null)
   const attachmentFeedbackTone = ref<'info' | 'warning' | 'error' | 'success' | null>(null)
   const attachmentFeedbackMessage = ref<string | null>(null)
@@ -566,7 +530,6 @@ export function useAppChatAppLogic() {
     branchId: string | null
     displayStatus: HistoryIncompatibleAttachmentDisplayStatus
   }>
-  type HistoryAttachmentPreviewState = DecodedPreviewPayload | null
   type HistoryIncompatibleAttachmentSummary = Readonly<{
     count: number
     currentIndex: number
@@ -623,11 +586,6 @@ export function useAppChatAppLogic() {
     historyLocateActive: boolean
     historyLocateIndex: number
   }>
-  type AttachmentConfirmationRequestInput = Readonly<{
-    kind: AttachmentConfirmationSessionKind
-    historyItems: ConfirmationHistoryAttachmentItem[]
-    currentItems: ConfirmationCurrentAttachmentItem[]
-  }>
   type AttachmentConfirmationResult = Readonly<{
     confirmed: boolean
     decisions: AttachmentDecision[]
@@ -646,19 +604,13 @@ export function useAppChatAppLogic() {
   const composerSendPlanIsPartialAllowed = ref(false)
   const draftAttachmentPreviewCache = ref<Record<string, DecodedPreviewPayload | null>>({})
   const selectedDraftAttachmentAssetId = ref<string | null>(null)
-  const draftAttachmentDfcOptionsByAssetId = ref<Record<string, DecodedDfcDraftAttachmentOptions | null>>({})
+  const draftAttachmentDfcOptionsByAssetId = ref<Record<string, DfcDraftAttachmentOptionsDto | null>>({})
   const draftAttachmentDfcOptionsLoadingByAssetId = ref<Record<string, boolean>>({})
   const draftAttachmentDfcOptionsErrorByAssetId = ref<Record<string, string | null>>({})
-  const draftAttachmentDfcPreviewByAssetId = ref<Record<string, DecodedDfcDraftAttachmentPreview | null>>({})
+  const draftAttachmentDfcPreviewByAssetId = ref<Record<string, DfcDraftAttachmentPreviewDto | null>>({})
   const draftAttachmentDfcPreviewLoadingByAssetId = ref<Record<string, boolean>>({})
   const draftAttachmentDfcPreviewErrorByAssetId = ref<Record<string, string | null>>({})
-  const ELECTRON_SMOKE_DFC_ASSET_ID = 'asset-dfc-smoke'
-  const ELECTRON_SMOKE_DFC_OPTION_ID = `dfc:${ELECTRON_SMOKE_DFC_ASSET_ID}:markdown:derived_asset:derived-dfc-smoke-markdown`
-  const ELECTRON_SMOKE_DFC_DERIVED_ASSET_ID = 'derived-dfc-smoke-markdown'
-  const ELECTRON_SMOKE_DFC_PREVIEW_TEXT = 'Electron smoke DFC markdown preview from selected option.'
   const historyAttachmentViewModelsByMessageIdBase = ref<Record<string, MessageAttachmentVM[]>>({})
-  const historyAttachmentPreviewCache = ref<Record<string, HistoryAttachmentPreviewState>>({})
-  const historyAttachmentPreviewEnsuring = new Set<string>()
   const historyIncompatibleAttachmentItems = ref<HistoryIncompatibleAttachmentViewModel[]>([])
   const historyIncompatibleAttachmentIndex = ref(0)
   const historyIncompatibleNavigationActive = ref(false)
@@ -670,7 +622,6 @@ export function useAppChatAppLogic() {
   let draftAttachmentRefreshSeq = 0
   let draftAttachmentDfcOptionsSeq = 0
   let draftAttachmentDfcPreviewSeq = 0
-  const draftAttachmentPreviewEnsuring = new Set<string>()
   const selectedDraftAttachmentDetails = computed(() =>
     buildDraftAttachmentDetailsViewModel(selectedDraftAttachmentAssetId.value)
   )
@@ -729,11 +680,7 @@ export function useAppChatAppLogic() {
   const isAttachmentConfirmationActive = computed(() => attachmentConfirmationSession.value != null)
   const isDraftInteractionLocked = computed(() => isAttachmentConfirmationActive.value)
   const hasSendableDraftAttachment = computed(() =>
-    Object.values(draftAttachmentPlansByAssetId.value).some((plan) =>
-      plan != null &&
-      plan.source === 'draft' &&
-      (plan.eligibility === 'included' || plan.eligibility === 'warning')
-    )
+    draftAttachmentRecords.value.some((attachment) => attachment.includeInNextRequest)
   )
   const composerCanSend = computed(() => {
     if (isRunning.value) return false
@@ -781,19 +728,11 @@ export function useAppChatAppLogic() {
     modelId: string | null
     completionOutcome?: CompletionOutcome
   }
-  type AssistantTurnRuntimeSelection = Readonly<{
-    providerId: ChatModelSelection['providerId']
-    modelId: string
-  }>
-  const branchViewSnapshot = shallowRef<BranchViewSnapshot<MessageMetaEntry>>(
+    const branchViewSnapshot = shallowRef<BranchViewSnapshot<MessageMetaEntry>>(
     emptyBranchViewSnapshot<MessageMetaEntry>(),
   )
   const runtimeMessageSeqById = ref<Map<string, number>>(new Map())
   const runtimeMessageMetaById = ref<Map<string, MessageMetaEntry>>(new Map())
-  const messageSeqById = computed<ReadonlyMap<string, number>>(() => new Map([
-    ...branchViewSnapshot.value.messageSeqById,
-    ...runtimeMessageSeqById.value,
-  ]))
   const messageMetaById = computed<ReadonlyMap<string, MessageMetaEntry>>(() => new Map([
     ...branchViewSnapshot.value.messageMetaById,
     ...runtimeMessageMetaById.value,
@@ -801,18 +740,20 @@ export function useAppChatAppLogic() {
   const reasoningArtifactsByMessageId = ref<ReasoningArtifactsByMessageId>({})
   const turnFiltersByQuestionId = computed(() => branchViewSnapshot.value.turnByQuestionId)
   const questionTurnOrder = computed(() => branchViewSnapshot.value.questionTurnOrder)
-  const candidatesCache = ref<Map<string, BranchCandidate[]>>(new Map())
-  const candidatesEpochGlobal = ref(0)
-  const candidatesEpochByQuestionId = ref<Map<string, number>>(new Map())
-  const candidatesLoading = ref<Map<string, string>>(new Map())
-  const questionCandidatesCache = ref<Map<string, QuestionCandidate[]>>(new Map())
-  const questionCandidatesEpochGlobal = ref(0)
-  const questionCandidatesEpochBySlot = ref<Map<string, number>>(new Map())
-  const questionCandidatesLoading = ref<Map<string, string>>(new Map())
+  const messageCandidateNavigationCache = ref<Map<string, GenerationV2MessageCandidateNavigation>>(new Map())
+  const generationV2BranchView = shallowRef<GenerationV2BranchView | null>(null)
+  const hasEarlierTranscript = computed(() => generationV2BranchView.value?.hasMoreTurns === true)
+  const branchRuntimeCache = new BranchRuntimeCacheV2()
+  const branchRuntimeCacheRevision = ref(0)
+  const generationV2RoutePreferenceByConversationId = shallowRef<ReadonlyMap<string,
+    GenerationV2ConversationRoutePreferenceSnapshot | null>>(new Map())
+  const generationV2ConfigByConversationId = shallowRef<ReadonlyMap<string, GenerationV2ConfigLayerView>>(new Map())
+  const messageCandidateEpochGlobal = ref(0)
+  const messageCandidateLoading = ref<Map<string, string>>(new Map())
 
   const questionEditSession = ref<{
     questionId: string
-    previousDraft: DecodedConversationDraft
+    previousDraft: GenerationV2ComposerDraft
   } | null>(null)
   const isQuestionEditMode = computed(() => questionEditSession.value != null)
   const draftPersistenceMode = ref<'compose' | 'edit'>('compose')
@@ -827,108 +768,7 @@ export function useAppChatAppLogic() {
     draftPersistenceEditingSourceMessageId.value = next.editingSourceMessageId
   }
 
-  function applyDraftPersistenceStateFromDraft(next: Pick<DecodedConversationDraft, 'draftMode' | 'editingSourceMessageId'> | null | undefined) {
-    if (!next) {
-      applyDraftPersistenceState({ draftMode: 'compose', editingSourceMessageId: null })
-      return
-    }
-    applyDraftPersistenceState({
-      draftMode: next.draftMode,
-      editingSourceMessageId: next.editingSourceMessageId ?? null,
-    })
-  }
-
-  function isEditingDraftForMessage(messageId: string): boolean {
-    const normalized = String(messageId ?? '').trim()
-    if (!normalized) return false
-    return (
-      draftPersistenceMode.value === 'edit' &&
-      String(draftPersistenceEditingSourceMessageId.value ?? '').trim() === normalized
-    )
-  }
-
-  async function restoreDraftSnapshot(snapshot: DecodedConversationDraft): Promise<void> {
-    const convoId = String(activeConvoId.value ?? '').trim()
-    if (!convoId) return
-    const current = await restoreConversationDraft(convoId)
-    type DraftAttachmentEntry = readonly [string, DecodedDraftAttachment]
-    const toAttachmentEntries = (items: readonly DecodedDraftAttachment[]): DraftAttachmentEntry[] =>
-      items
-        .map((item): DraftAttachmentEntry | null => {
-          const assetId = String(item.assetId ?? '').trim()
-          if (!assetId) return null
-          return [assetId, item]
-        })
-        .filter((entry): entry is DraftAttachmentEntry => entry !== null)
-
-    const targetByAssetId = new Map(toAttachmentEntries(snapshot.attachments))
-    const currentByAssetId = new Map(toAttachmentEntries(current.attachments))
-
-    for (const [assetId] of currentByAssetId) {
-      if (targetByAssetId.has(assetId)) continue
-      await removeConversationDraftAttachment({ conversationId: convoId, assetId })
-    }
-    for (const [assetId, target] of targetByAssetId) {
-      const existing = currentByAssetId.get(assetId)
-      if (!existing) {
-        await addConversationDraftAttachment({
-          conversationId: convoId,
-          assetId,
-          attachmentOrder: target.attachmentOrder,
-          includeInNextRequest: target.includeInNextRequest,
-          excludedReason: target.excludedReason,
-          preferredSendMode: target.preferredSendMode,
-          urlRetentionMode: target.urlRetentionMode,
-        })
-        continue
-      }
-      const needsRecreate =
-        existing.includeInNextRequest !== target.includeInNextRequest ||
-        existing.excludedReason !== target.excludedReason
-      if (needsRecreate) {
-        await removeConversationDraftAttachment({
-          conversationId: convoId,
-          assetId,
-        })
-        await addConversationDraftAttachment({
-          conversationId: convoId,
-          assetId,
-          attachmentOrder: target.attachmentOrder,
-          includeInNextRequest: target.includeInNextRequest,
-          excludedReason: target.excludedReason,
-          preferredSendMode: target.preferredSendMode,
-          urlRetentionMode: target.urlRetentionMode,
-        })
-        continue
-      }
-      if (
-        existing.preferredSendMode !== target.preferredSendMode ||
-        existing.urlRetentionMode !== target.urlRetentionMode
-      ) {
-        await updateConversationDraftAttachmentSettings({
-          conversationId: convoId,
-          assetId,
-          preferredSendMode: target.preferredSendMode,
-          urlRetentionMode: target.urlRetentionMode,
-        })
-      }
-    }
-
-    const restored = await updateConversationDraftText({
-      conversationId: convoId,
-      draftText: snapshot.draftText,
-      draftMode: snapshot.draftMode,
-      editingSourceMessageId: snapshot.editingSourceMessageId ?? null,
-    })
-    applyDraftPersistenceStateFromDraft(restored)
-    draft.value = restored.draftText
-    editRestoredDraftAttachmentAssetIds.value = restored.draftMode === 'edit'
-      ? new Set(restored.attachedAssetIds.map((assetId) => String(assetId ?? '').trim()).filter(Boolean))
-      : new Set()
-    await refreshDraftAttachmentViewModels({ restoredDraft: restored })
-  }
-
-  const {
+        const {
     diagnosticsFlags,
     diagnosticsLogger,
     diagnosticsBridge,
@@ -937,8 +777,45 @@ export function useAppChatAppLogic() {
     shouldLogReasoningDebug,
     isEventSchedulerEnabled,
   } = useDiagnostics()
-  const { hasDbBridge, getIpcRenderer, getOpenRouterBaseUrl, randomId } = useChatSession()
-  const { activeStream, activeAssistantMessageId, createActiveStream } = useLiveStreamController()
+  type ReasoningProjectionTraceEntry = Readonly<{
+    sequence: number
+    atMs: number
+    stage: 'projection_received' | 'projection_dropped_unknown_answer' | 'reducer_applied' | 'reducer_failed' | 'branch_hydrated'
+    operationId: string
+    answerRootId: string
+    projectionType?: string
+    detailType?: string | null
+    activeBranchId: string | null
+    viewBranchId: string | null
+    answerKnownInView: boolean
+    rawDetailCount?: number
+    reasoningVersion?: number
+    hasProjectionContext?: boolean
+    displayBlockCount?: number
+    visibility?: string
+    messagePresentBefore?: boolean
+    messagePresentAfter?: boolean
+    stateReferenceChanged?: boolean
+    messageReferenceChanged?: boolean
+    transcriptContainsAnswer?: boolean
+    errorCode?: string
+  }>
+  const reasoningProjectionTrace: ReasoningProjectionTraceEntry[] = []
+  let reasoningProjectionTraceSequence = 0
+
+  function recordReasoningProjectionTrace(entry: Omit<ReasoningProjectionTraceEntry, 'sequence' | 'atMs'>) {
+    if (!shouldLogReasoningDebug()) return
+    const next = Object.freeze({ sequence: ++reasoningProjectionTraceSequence, atMs: Date.now(), ...entry })
+    reasoningProjectionTrace.push(next)
+    if (reasoningProjectionTrace.length > 80) reasoningProjectionTrace.splice(0, reasoningProjectionTrace.length - 80)
+    try {
+      ;(globalThis as typeof globalThis & { __svReasoningProjectionTrace?: readonly ReasoningProjectionTraceEntry[] })
+        .__svReasoningProjectionTrace = Object.freeze([...reasoningProjectionTrace])
+    } catch {
+      // Diagnostics must never affect generation.
+    }
+    console.info('[sv:reasoning-projection]', next)
+  }
   const { settingsOpen, openSettings, closeSettings } = useSettingsBindings({ isReady })
 
   // Latest-wins coordinator for the stable branch projection. Message runtime
@@ -1032,19 +909,7 @@ export function useAppChatAppLogic() {
     return map
   })
 
-  function setReasoningArtifactsForMessage(messageId: string, artifacts: readonly ReasoningArtifact[]) {
-    reasoningArtifactsByMessageId.value = replaceReasoningArtifactsForMessage(
-      reasoningArtifactsByMessageId.value,
-      messageId,
-      artifacts,
-    )
-  }
-
-  function resetReasoningArtifactsForMessage(messageId: string) {
-    setReasoningArtifactsForMessage(messageId, [])
-  }
-
-  function clearReasoningArtifactsForMessageIds(messageIds: Iterable<string>) {
+      function clearReasoningArtifactsForMessageIds(messageIds: Iterable<string>) {
     reasoningArtifactsByMessageId.value = removeReasoningArtifactsForMessages(
       reasoningArtifactsByMessageId.value,
       messageIds,
@@ -1180,6 +1045,11 @@ export function useAppChatAppLogic() {
     if (prevScopeValid) {
       await flushDraftPersistence()
     }
+    if (nextBranchId) {
+      branchRuntimeCache.get(nextBranchId)
+      branchRuntimeCache.prune(nextBranchId)
+      branchRuntimeCacheRevision.value += 1
+    }
     await restoreDraftForActiveScope()
   }, { flush: 'sync' })
 
@@ -1201,6 +1071,8 @@ export function useAppChatAppLogic() {
   watch(
     () => model.value,
     (next, prev) => {
+      openRouterImageEndpointSelection.value = null
+      openRouterImageEndpointSelectionError.value = null
       void refreshSelectedModelImageCapability()
       if (prev === undefined || next === prev) return
       if (draftAttachmentRecords.value.length > 0) {
@@ -1239,7 +1111,32 @@ export function useAppChatAppLogic() {
     return Boolean(s && s.isTarget && !s.isComplete)
   })
 
-  const isRunning = computed(() => runVM.value?.status === 'requesting' || runVM.value?.status === 'streaming' || runVM.value?.status === 'tool_waiting')
+  const activeGenerationV2Answer = computed(() => {
+    const view = generationV2BranchView.value
+    if (!view?.headMessageId) return null
+    for (let index = view.turns.length - 1; index >= 0; index -= 1) {
+      const answer = view.turns[index].answers.find((item) => item.answerRootId === view.headMessageId && item.chosen)
+      if (answer) return answer
+    }
+    return null
+  })
+  const activeBranchRuntime = computed(() => {
+    branchRuntimeCacheRevision.value
+    const branchId = activeBranchId.value
+    return branchId ? branchRuntimeCache.get(branchId, false) : null
+  })
+  function getBranchRuntimeStatus(branchId: string): BranchRuntimeCacheEntryV2['status'] | null {
+    branchRuntimeCacheRevision.value
+    return branchRuntimeCache.get(branchId, false)?.status ?? null
+  }
+  const activeAssistantMessageId = computed(() => activeBranchRuntime.value?.status === 'generating'
+    ? activeBranchRuntime.value.targetAnswerId
+    : activeGenerationV2Answer.value?.status === 'streaming'
+      ? activeGenerationV2Answer.value.answerRootId
+      : null)
+  const isRunning = computed(() => activeBranchRuntime.value?.status === 'generating' ||
+    activeGenerationV2Answer.value?.status === 'streaming' ||
+    runVM.value?.status === 'requesting' || runVM.value?.status === 'streaming' || runVM.value?.status === 'tool_waiting')
 
   const {
     lmStudioProviderConfig,
@@ -1271,6 +1168,7 @@ export function useAppChatAppLogic() {
     onUpdateOllamaChatMode,
     onUpdateOllamaNativeRestPreferredEndpoint,
     onUpdateOllamaOpenAICompatiblePreferredEndpoint,
+    onUpdateOllamaProfileCapability,
     onUpdateOllamaNativeControl,
     onClearOllamaChat,
     onUpdateLocalEndpointChatEnabled,
@@ -1281,6 +1179,8 @@ export function useAppChatAppLogic() {
     onUpdateGoogleAIStudioChatEnabled,
     onClearGoogleAIStudioChat,
     onUpdateAnthropicChatEnabled,
+    onUpdateAnthropicThinkingDisplay: updateAnthropicThinkingDisplayPreference,
+    applyAnthropicThinkingDisplayFromConversation,
     onClearAnthropicChat,
     onUpdateDeepSeekChatEnabled,
     onClearDeepSeekChat,
@@ -1439,33 +1339,7 @@ export function useAppChatAppLogic() {
     void flushDraftPersistence()
   }
 
-  function commitImmediate(runId: string, event: DomainEvent) {
-    if (event.type === 'MessageDeltaReasoningDetail') recordDelta(1)
-    if (event.type === 'MessageDeltaReasoningDetailBatch') {
-      const count = Array.isArray(event.details) ? event.details.length : 0
-      if (count > 0) recordDelta(count)
-    }
-    if ('messageId' in event && typeof event.messageId === 'string') {
-      recordUpdatedMessages(1)
-    }
-    const measureId = beginCommitMeasure()
-    const next = applyEventsBatch(state.value, runId, [event])
-    state.value = next
-    const duration = endCommitMeasure(measureId)
-    recordCommit(duration)
-  }
-
-  function completionClassFromEvent(event: DomainEvent): CompletionClass | null {
-    if (event.type === 'StreamError') return event.error?.completionClass ?? 'error'
-    if (event.type === 'StreamAbort') return event.envelope?.completionClass ?? 'aborted'
-    return null
-  }
-
-  function persistStatusFromCompletionClass(completionClass: CompletionClass | null): 'final' | 'error' {
-    return completionClass === 'error' ? 'error' : 'final'
-  }
-
-  function metaStatusFromCompletionClass(
+      function metaStatusFromCompletionClass(
     completionClass: CompletionClass | null
   ): 'final' | 'error' | 'aborted' | null {
     if (!completionClass) return null
@@ -1474,92 +1348,12 @@ export function useAppChatAppLogic() {
     return 'final'
   }
 
-  function mapAppPhaseToEnvelopePhase(appPhase: AppErrorPhase, fallback: ErrorPhase): ErrorPhase {
-    if (appPhase === 'pre_stream_request_error') return 'pre_stream'
-    if (appPhase === 'mid_stream_error') return 'mid_stream'
-    return fallback
-  }
-
-  function mapAppPhaseToEndReason(appPhase: AppErrorPhase, fallback: StreamEndReason): StreamEndReason {
-    if (appPhase === 'pre_stream_request_error') return 'pre_stream_error'
-    if (appPhase === 'mid_stream_error') return 'mid_stream_error'
-    if (appPhase === 'local_transport_error' || appPhase === 'local_protocol_error' || appPhase === 'internal_bug') {
-      return 'transport_error'
-    }
-    if (appPhase === 'user_cancelled') return 'user_abort'
-    return fallback
-  }
-
-  function ensureMessageMetaEntry(
-    messageId: string,
-    patch: Partial<MessageMetaEntry>
-  ) {
-    const id = String(messageId ?? '').trim()
-    if (!id) return
-    const next = new Map(runtimeMessageMetaById.value)
-    const stable = messageMetaById.value.get(id)
-    const prev = next.get(id) ?? stable
-    if (!prev) {
-      next.set(id, {
-        parentId: patch.parentId ?? null,
-        questionId: patch.questionId ?? null,
-        answerRootId: patch.answerRootId ?? null,
-        role: patch.role ?? 'assistant',
-        status: patch.status ?? 'streaming',
-        providerId: patch.providerId ?? null,
-        modelId: patch.modelId ?? null,
-      })
-    } else {
-      next.set(id, { ...prev, ...patch })
-    }
-    runtimeMessageMetaById.value = next
-  }
-
-  function setRuntimeMessageSeqEntries(entries: ReadonlyArray<readonly [string, number]>) {
-    const next = new Map(runtimeMessageSeqById.value)
-    for (const [messageId, seq] of entries) next.set(messageId, seq)
-    runtimeMessageSeqById.value = next
-  }
-
-  function asRecord(value: unknown): Record<string, unknown> | null {
+          function asRecord(value: unknown): Record<string, unknown> | null {
     if (!value || typeof value !== 'object') return null
     return value as Record<string, unknown>
   }
 
-  function parseNumberLike(value: unknown): number | null {
-    if (typeof value === 'number' && Number.isFinite(value)) return value
-    if (typeof value === 'string' && value.trim().length > 0) {
-      const parsed = Number(value)
-      if (Number.isFinite(parsed)) return parsed
-    }
-    return null
-  }
-
-  function normalizeUsageForMeta(usage: unknown): Record<string, unknown> | null {
-    if (!usage || typeof usage !== 'object' || Array.isArray(usage)) return null
-    return { ...(usage as Record<string, unknown>) }
-  }
-
-  function extractUsageCostForLog(usage: Record<string, unknown>): { cost: number | null; currency: string | null } {
-    const rawCost = usage.cost
-    let cost = parseNumberLike(rawCost)
-    if (cost == null && rawCost && typeof rawCost === 'object') {
-      const obj = rawCost as Record<string, unknown>
-      cost =
-        parseNumberLike(obj.amount) ??
-        parseNumberLike(obj.value) ??
-        parseNumberLike(obj.total) ??
-        parseNumberLike(obj.usd)
-    }
-    const rawCurrency =
-      (rawCost && typeof rawCost === 'object' ? (rawCost as Record<string, unknown>).currency : undefined) ??
-      usage.cost_currency ??
-      usage.currency
-    const currency = typeof rawCurrency === 'string' && rawCurrency.trim().length > 0 ? rawCurrency.trim().toUpperCase() : null
-    return { cost, currency }
-  }
-
-  function extractReasoningDetailsFromMeta(meta: unknown): unknown[] {
+        function extractReasoningDetailsFromMeta(meta: unknown): unknown[] {
     const obj = asRecord(meta)
     const raw = obj?.reasoningDetailsRaw
     if (Array.isArray(raw)) return raw as unknown[]
@@ -1582,397 +1376,7 @@ export function useAppChatAppLogic() {
     return raw.filter((item) => !!item && typeof item === 'object')
   }
 
-  function isDataImageUrl(value: unknown): boolean {
-    return typeof value === 'string' && value.startsWith('data:image/')
-  }
-
-  function resolveImageRenderUrl(asset: PersistedMessageImageAsset): string {
-    const assetUrl = typeof asset.assetUrl === 'string' ? asset.assetUrl.trim() : ''
-    if (assetUrl.length > 0) return assetUrl
-    return ''
-  }
-
-  function collectMessageImageDataUrls(messageId: string): string[] {
-    const id = String(messageId ?? '').trim()
-    if (!id) return []
-    const messages = state.value.entities?.messagesById ?? state.value.messages
-    const message = messages[id]
-    if (!message) return []
-    const out: string[] = []
-    for (const block of message.contentBlocks) {
-      if (block.type !== 'image') continue
-      if (!isDataImageUrl((block as any).url)) continue
-      out.push(String((block as any).url))
-    }
-    return out
-  }
-
-  function collectReasoningImageDataUrls(details: ReadonlyArray<unknown>): string[] {
-    const out: string[] = []
-    for (const detail of details) {
-      if (!detail || typeof detail !== 'object') continue
-      const record = detail as Record<string, unknown>
-      if (record.type !== 'thought_image') continue
-      const image = record.image
-      if (!image || typeof image !== 'object' || Array.isArray(image)) continue
-      const url = (image as Record<string, unknown>).url
-      if (isDataImageUrl(url)) out.push(String(url))
-    }
-    return out
-  }
-
-  function collectReasoningDisplayImageDataUrls(blocks: ReadonlyArray<ReasoningDisplayBlock>): string[] {
-    const out: string[] = []
-    for (const block of blocks) {
-      if (block.type !== 'image') continue
-      if (isDataImageUrl(block.url)) out.push(block.url)
-    }
-    return out
-  }
-
-  function replaceReasoningDisplayImageDataUrls(
-    blocks: ReadonlyArray<ReasoningDisplayBlock>,
-    assets: ReadonlyArray<PersistedMessageImageAsset>,
-  ): ReasoningDisplayBlock[] {
-    const sortedAssets = assets
-      .slice()
-      .sort((a, b) => a.ordinal - b.ordinal)
-    const replacementUrls = sortedAssets
-      .map((asset) => resolveImageRenderUrl(asset))
-      .filter((url) => url.length > 0)
-    if (replacementUrls.length === 0) return [...blocks]
-
-    let nextImageIndex = 0
-    return blocks.map((block) => {
-      if (block.type !== 'image') return block
-      if (!isDataImageUrl(block.url)) return block
-      const asset = sortedAssets[nextImageIndex] ?? sortedAssets[sortedAssets.length - 1]
-      const nextUrl = replacementUrls[nextImageIndex] ?? replacementUrls[replacementUrls.length - 1]
-      nextImageIndex += 1
-      return nextUrl
-        ? {
-            ...block,
-            url: nextUrl,
-            ...(asset?.assetId ? { assetId: asset.assetId } : {}),
-            ...(asset?.mime ? { mimeType: asset.mime } : {}),
-            ...(typeof asset?.width === 'number' ? { width: asset.width } : {}),
-            ...(typeof asset?.height === 'number' ? { height: asset.height } : {}),
-          }
-        : block
-    })
-  }
-
-  async function persistReasoningDisplayImageDataUrls(
-    messageId: string,
-    blocks: ReadonlyArray<ReasoningDisplayBlock>,
-  ): Promise<ReasoningDisplayBlock[]> {
-    const imageDataUrls = collectReasoningDisplayImageDataUrls(blocks)
-    if (imageDataUrls.length === 0) return [...blocks]
-    const assets = await persistDetachedImageAssetsFromDataUrls({ messageId, imageDataUrls })
-    return replaceReasoningDisplayImageDataUrls(blocks, assets)
-  }
-
-  function replaceReasoningImageDataUrls(
-    details: ReadonlyArray<unknown>,
-    assets: ReadonlyArray<PersistedMessageImageAsset>,
-  ): unknown[] {
-    const sortedAssets = assets
-      .slice()
-      .sort((a, b) => a.ordinal - b.ordinal)
-    const replacementUrls = sortedAssets
-      .map((asset) => resolveImageRenderUrl(asset))
-      .filter((url) => url.length > 0)
-    if (replacementUrls.length === 0) return [...details]
-
-    let nextImageIndex = 0
-    return details.map((detail) => {
-      if (!detail || typeof detail !== 'object') return detail
-      const record = detail as Record<string, unknown>
-      if (record.type !== 'thought_image') return detail
-      const image = record.image
-      if (!image || typeof image !== 'object' || Array.isArray(image)) return detail
-      const imageRecord = image as Record<string, unknown>
-      if (!isDataImageUrl(imageRecord.url)) return detail
-      const nextUrl = replacementUrls[nextImageIndex] ?? replacementUrls[replacementUrls.length - 1]
-      nextImageIndex += 1
-      if (!nextUrl) return detail
-      return {
-        ...record,
-        image: {
-          ...imageRecord,
-          url: nextUrl,
-        },
-      }
-    })
-  }
-
-  async function persistReasoningImageDataUrls(
-    messageId: string,
-    details: ReadonlyArray<unknown>,
-  ): Promise<unknown[]> {
-    const imageDataUrls = collectReasoningImageDataUrls(details)
-    if (imageDataUrls.length === 0) return [...details]
-    const assets = await persistDetachedImageAssetsFromDataUrls({ messageId, imageDataUrls })
-    return replaceReasoningImageDataUrls(details, assets)
-  }
-
-  function replaceMessageDataImageBlocks(messageId: string, assets: ReadonlyArray<PersistedMessageImageAsset>) {
-    const id = String(messageId ?? '').trim()
-    if (!id) return
-
-    const sortedAssets = assets
-      .filter((asset) => String(asset.messageId ?? '').trim() === id)
-      .sort((a, b) => a.ordinal - b.ordinal)
-    if (sortedAssets.length === 0) return
-
-    const replacementUrls = sortedAssets
-      .map((asset) => resolveImageRenderUrl(asset))
-      .filter((url) => url.length > 0)
-    if (replacementUrls.length === 0) return
-
-    const messages = state.value.entities?.messagesById ?? state.value.messages
-    const message = messages[id]
-    if (!message) return
-
-    let changed = false
-    let imageIndex = 0
-    const nextBlocks = message.contentBlocks.map((block) => {
-      if (block.type !== 'image') return block
-      const currentUrl = String((block as any).url ?? '')
-      if (!isDataImageUrl(currentUrl)) return block
-      const nextUrl = replacementUrls[imageIndex] ?? replacementUrls[replacementUrls.length - 1]
-      imageIndex += 1
-      if (!nextUrl || nextUrl === currentUrl) return block
-      changed = true
-      return markRaw({ type: 'image', url: nextUrl }) as any
-    })
-
-    if (!changed) return
-    const nextMessages: Record<string, MessageState> = {
-      ...(state.value.entities?.messagesById ?? state.value.messages),
-    }
-    nextMessages[id] = { ...message, contentBlocks: markRaw(nextBlocks) }
-    state.value = {
-      ...state.value,
-      messages: nextMessages,
-      runMessageIds: state.value.runMessageIds,
-      entities: { messagesById: nextMessages },
-      views: state.value.views,
-    }
-  }
-
-  function applyHydratedImageAssetsToState(assets: ReadonlyArray<PersistedMessageImageAsset>) {
-    if (assets.length === 0) return
-    const grouped = new Map<string, PersistedMessageImageAsset[]>()
-    for (const asset of assets) {
-      const messageId = String(asset.messageId ?? '').trim()
-      if (!messageId) continue
-      const list = grouped.get(messageId) ?? []
-      list.push(asset)
-      grouped.set(messageId, list)
-    }
-    if (grouped.size === 0) return
-
-    const messages = state.value.entities?.messagesById ?? state.value.messages
-    const nextMessages: Record<string, MessageState> = { ...messages }
-    let changed = false
-
-    for (const [messageId, refs] of grouped.entries()) {
-      const message = nextMessages[messageId]
-      if (!message) continue
-
-      const imageBlocks = refs
-        .slice()
-        .sort((a, b) => a.ordinal - b.ordinal)
-        .map((asset) => resolveImageRenderUrl(asset))
-        .filter((url) => url.length > 0)
-        .map((url) => markRaw({ type: 'image', url }) as any)
-      if (imageBlocks.length === 0) continue
-
-      const baseBlocks = message.contentBlocks.filter((block) => block.type !== 'image')
-      const nextBlocks = markRaw([...baseBlocks, ...imageBlocks])
-
-      const currentImageUrls = message.contentBlocks
-        .filter((block) => block.type === 'image')
-        .map((block) => String((block as any).url ?? ''))
-      const nextImageUrls = imageBlocks.map((block) => String((block as any).url ?? ''))
-      const sameImages =
-        currentImageUrls.length === nextImageUrls.length &&
-        currentImageUrls.every((url, idx) => url === nextImageUrls[idx])
-      if (sameImages && baseBlocks.length === message.contentBlocks.length - currentImageUrls.length) {
-        continue
-      }
-
-      nextMessages[messageId] = { ...message, contentBlocks: nextBlocks }
-      changed = true
-    }
-
-    if (!changed) return
-    state.value = {
-      ...state.value,
-      messages: nextMessages,
-      runMessageIds: state.value.runMessageIds,
-      entities: { messagesById: nextMessages },
-      views: state.value.views,
-    }
-  }
-
-  function applyHydratedReasoningDisplayBlocksToState(blocks: ReadonlyArray<ReasoningDisplayBlock>) {
-    if (blocks.length === 0) return
-    const grouped = new Map<string, ReasoningDisplayBlock[]>()
-    for (const block of blocks) {
-      const messageId = String((block as any).messageId ?? '').trim()
-      if (!messageId) continue
-      const normalized = { ...block }
-      delete (normalized as any).messageId
-      const list = grouped.get(messageId) ?? []
-      list.push(normalized)
-      grouped.set(messageId, list)
-    }
-    if (grouped.size === 0) return
-
-    const messages = state.value.entities?.messagesById ?? state.value.messages
-    const nextMessages: Record<string, MessageState> = { ...messages }
-    let changed = false
-
-    for (const [messageId, messageBlocks] of grouped.entries()) {
-      const message = nextMessages[messageId]
-      if (!message) continue
-      nextMessages[messageId] = {
-        ...message,
-        reasoningDisplayBlocks: markRaw([...messageBlocks].sort((a, b) => a.ordinal - b.ordinal)),
-        reasoningVersion: message.reasoningVersion + 1,
-      }
-      changed = true
-    }
-
-    if (!changed) return
-    state.value = {
-      ...state.value,
-      messages: nextMessages,
-      runMessageIds: state.value.runMessageIds,
-      entities: { messagesById: nextMessages },
-      views: state.value.views,
-    }
-  }
-
-  function normalizeAnnotationForMerge(input: unknown): Record<string, unknown> | null {
-    if (!input || typeof input !== 'object') return null
-    return input as Record<string, unknown>
-  }
-
-  function annotationMergeKey(annotation: Record<string, unknown>): string {
-    const type = typeof annotation.type === 'string' ? annotation.type : ''
-    const citation =
-      annotation.url_citation && typeof annotation.url_citation === 'object'
-        ? (annotation.url_citation as Record<string, unknown>)
-        : null
-
-    if (type === 'url_citation' && citation) {
-      const url = typeof citation.url === 'string' ? citation.url : ''
-      const start = typeof citation.start_index === 'number' ? citation.start_index : ''
-      const end = typeof citation.end_index === 'number' ? citation.end_index : ''
-      return `url_citation|${url}|${start}|${end}`
-    }
-
-    try {
-      return `raw|${JSON.stringify(annotation)}`
-    } catch {
-      return `raw|${String(annotation)}`
-    }
-  }
-
-  function mergeAnnotationLists(
-    prev: ReadonlyArray<Record<string, unknown>> | undefined,
-    incoming: ReadonlyArray<unknown>,
-    mergeStrategy: 'append' | 'replace'
-  ): Record<string, unknown>[] | undefined {
-    const normalized = incoming
-      .map(normalizeAnnotationForMerge)
-      .filter((item): item is Record<string, unknown> => !!item)
-
-    if (mergeStrategy === 'replace') {
-      if (normalized.length === 0) return undefined
-      const out: Record<string, unknown>[] = []
-      const indexByKey = new Map<string, number>()
-      for (const ann of normalized) {
-        const key = annotationMergeKey(ann)
-        const existingIndex = indexByKey.get(key)
-        if (typeof existingIndex === 'number') {
-          out[existingIndex] = ann
-          continue
-        }
-        indexByKey.set(key, out.length)
-        out.push(ann)
-      }
-      return out.length > 0 ? out : undefined
-    }
-
-    const base = Array.isArray(prev) ? [...prev] : []
-    if (normalized.length === 0) return base.length > 0 ? base : undefined
-
-    const indexByKey = new Map<string, number>()
-    for (let i = 0; i < base.length; i += 1) {
-      indexByKey.set(annotationMergeKey(base[i]), i)
-    }
-    for (const ann of normalized) {
-      const key = annotationMergeKey(ann)
-      const existingIndex = indexByKey.get(key)
-      if (typeof existingIndex === 'number') {
-        base[existingIndex] = ann
-        continue
-      }
-      indexByKey.set(key, base.length)
-      base.push(ann)
-    }
-    return base.length > 0 ? base : undefined
-  }
-
-  function extractReasoningTextFromDetails(details: ReadonlyArray<unknown> | null | undefined): {
-    reasoningText?: string
-    summaryText?: string
-    encryptedData?: string
-    isEncrypted: boolean
-  } {
-    const items = Array.isArray(details) ? details : []
-    let summaryText: string | undefined
-    let encryptedData: string | undefined
-    const reasoningTextParts: string[] = []
-    let isEncrypted = false
-
-    for (const detail of items) {
-      if (!detail || typeof detail !== 'object') continue
-      const type = (detail as any).type
-      if (type === 'reasoning.text') {
-        const text = (detail as any).text
-        if (typeof text === 'string' && text.length > 0) reasoningTextParts.push(text)
-        continue
-      }
-      if (type === 'reasoning.summary') {
-        const summary = (detail as any).summary ?? (detail as any).text
-        if (typeof summary === 'string' && summary.length > 0) summaryText = summary
-        continue
-      }
-      if (type === 'thought_summary' || type === 'thinking_summary' || type === 'reasoning_summary') {
-        const summary = (detail as any).summary ?? (detail as any).text
-        if (typeof summary === 'string' && summary.length > 0) summaryText = summary
-        continue
-      }
-      if (type === 'reasoning.encrypted') {
-        isEncrypted = true
-        const data = (detail as any).data
-        if (typeof data === 'string' && data.length > 0) {
-          encryptedData = encryptedData ? encryptedData + data : data
-        }
-        continue
-      }
-    }
-
-    const reasoningText = reasoningTextParts.length > 0 ? reasoningTextParts.join('') : undefined
-    return { reasoningText, summaryText, encryptedData, isEncrypted }
-  }
-
-  function extractRequestReasoningConfigFromMeta(meta: unknown): { mode: RequestedReasoningMode; effort?: ReasoningEffort; exclude?: boolean } | null {
+                function extractRequestReasoningConfigFromMeta(meta: unknown): { mode: RequestedReasoningMode; effort?: ReasoningEffort; exclude?: boolean } | null {
     const obj = asRecord(meta)
     const config = asRecord(obj?.requestReasoningConfig)
     const resolved = asRecord(config?.resolved) ?? asRecord(config?.normalized)
@@ -2027,11 +1431,13 @@ export function useAppChatAppLogic() {
   }
 
   type ErrorSummary = Readonly<{
-    completionClass?: string
-    phase?: string
-    code?: string
-    message?: string
-    provider?: string
+    completionClass?: string | null
+    phase?: string | null
+    code?: string | null
+    message?: string | null
+    provider?: string | null
+    source?: string | null
+    raw?: unknown
     networkError?: unknown
   }>
 
@@ -2060,7 +1466,7 @@ export function useAppChatAppLogic() {
       message: text,
       provider,
       truncated: envelope?.truncated === true,
-      details: envelope ?? null,
+      details: envelope ?? summary?.raw ?? null,
     }
   }
 
@@ -2069,31 +1475,34 @@ export function useAppChatAppLogic() {
     const raw = obj?.error_summary
     if (!raw || typeof raw !== 'object') return null
     const record = raw as Record<string, unknown>
-    const completionClass = typeof record.completionClass === 'string' ? record.completionClass : undefined
-    const phase = typeof record.phase === 'string' ? record.phase : undefined
-    const code = typeof record.code === 'string' ? record.code : undefined
-    const message = typeof record.message === 'string' ? record.message : undefined
-    const provider = typeof record.provider === 'string' ? record.provider : undefined
+    const completionClass = record.completionClass === null || typeof record.completionClass === 'string' ? record.completionClass as string | null | undefined : undefined
+    const phase = record.phase === null || typeof record.phase === 'string' ? record.phase as string | null | undefined : undefined
+    const code = record.code === null || typeof record.code === 'string' ? record.code as string | null | undefined : undefined
+    const message = record.message === null || typeof record.message === 'string' ? record.message as string | null | undefined : undefined
+    const provider = record.provider === null || typeof record.provider === 'string' ? record.provider as string | null | undefined : undefined
+    const source = record.source === null || typeof record.source === 'string' ? record.source as string | null | undefined : undefined
+    const rawValue = record.raw
     const networkError = record.networkError
-    if (!completionClass && !phase && !code && !message && !provider && networkError === undefined) return null
-    return { completionClass, phase, code, message, provider, networkError }
+    if (!completionClass && !phase && !code && !message && !provider && !source && rawValue === undefined && networkError === undefined) return null
+    return { completionClass, phase, code, message, provider, source, raw: rawValue, networkError }
   }
 
-  async function persistMessageErrorEnvelope(messageId: string, envelope: ErrorEnvelope) {
-    const id = String(messageId ?? '').trim()
-    if (!id) return
-    try {
-      await upsertMessageErrorEnvelope({ messageId: id, envelope })
-    } catch (err) {
-      if (shouldLogDebug()) {
-        console.warn('[ui-app] persistMessageErrorEnvelope failed (non-fatal):', err)
-      }
-    }
+  function extractReasoningProjectionContextFromMeta(meta: unknown): Readonly<{
+    providerId: string
+    protocolContractId: string
+    modelId: string
+  }> | null {
+    const obj = asRecord(meta)
+    if (typeof obj?.providerId !== 'string' || typeof obj.protocolContractId !== 'string' ||
+        typeof obj.modelId !== 'string') return null
+    return Object.freeze({
+      providerId: obj.providerId,
+      protocolContractId: obj.protocolContractId,
+      modelId: obj.modelId,
+    })
   }
 
-  const MAX_ERROR_HYDRATE = 200
-
-  function applyErrorEnvelopesToState(envelopes: Map<string, ErrorEnvelope>) {
+      function applyErrorEnvelopesToState(envelopes: Map<string, ErrorEnvelope>) {
     if (envelopes.size === 0) return
     const messages = state.value.entities?.messagesById ?? state.value.messages
     const nextMessages: Record<string, MessageState> = { ...messages }
@@ -2201,93 +1610,7 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function hydrateErrorEnvelopesForRows(
-    rows: ReadonlyArray<Readonly<{ id: string; role: string; meta?: unknown }>>,
-    lease: BranchProjectionRefreshLease,
-  ) {
-    const candidates: string[] = []
-    for (const row of rows) {
-      const id = String(row.id ?? '').trim()
-      if (!id) continue
-      const role = String((row as any)?.role ?? '').trim()
-      if (role && role !== 'assistant') continue
-      const meta = asRecord(row.meta)
-      const hasSummary = !!meta?.error_summary
-      const status = String((row as any)?.status ?? '').trim()
-      const needsFallback = !hasSummary && (status === 'error' || status === 'aborted')
-      if ((meta?.error_ref === true && !hasSummary) || needsFallback) {
-        candidates.push(id)
-      }
-    }
-
-    const ids = candidates.length > MAX_ERROR_HYDRATE
-      ? candidates.slice(candidates.length - MAX_ERROR_HYDRATE)
-      : candidates
-
-    if (ids.length === 0) return
-
-    const envelopes = await listMessageErrorEnvelopes(ids)
-    if (!isBranchProjectionLeaseCurrent(lease)) return
-    applyErrorEnvelopesToState(envelopes)
-  }
-
-  async function hydrateMessageAssetsForRows(
-    rows: ReadonlyArray<Readonly<{ id: string; role: string }>>,
-    lease: BranchProjectionRefreshLease,
-  ) {
-    const ids: string[] = []
-    for (const row of rows) {
-      const messageId = String(row.id ?? '').trim()
-      if (!messageId) continue
-      if (String(row.role ?? '').trim() !== 'assistant') continue
-      ids.push(messageId)
-    }
-    if (ids.length === 0) return
-
-    const assets = await listMessageImageAssetsByMessageIds(ids)
-    if (!isBranchProjectionLeaseCurrent(lease)) return
-    applyHydratedImageAssetsToState(assets)
-  }
-
-  async function hydrateReasoningDisplayBlocksForRows(
-    rows: ReadonlyArray<Readonly<{ id: string; role: string }>>,
-    lease: BranchProjectionRefreshLease,
-  ) {
-    const ids: string[] = []
-    for (const row of rows) {
-      const messageId = String(row.id ?? '').trim()
-      if (!messageId) continue
-      if (String(row.role ?? '').trim() !== 'assistant') continue
-      ids.push(messageId)
-    }
-    if (ids.length === 0) return
-
-    const blocks = await listReasoningDisplayBlocksByMessageIds(ids)
-    if (!isBranchProjectionLeaseCurrent(lease)) return
-    applyHydratedReasoningDisplayBlocksToState(blocks as any)
-  }
-
-  function startBranchProjectionHydration(
-    rows: ReadonlyArray<Readonly<{ id: string; role: string; meta?: unknown }>>,
-    lease: BranchProjectionRefreshLease,
-  ) {
-    const run = (kind: 'errors' | 'assets' | 'reasoning', task: Promise<void>) => {
-      void task.catch((error) => {
-        if (!isBranchProjectionLeaseCurrent(lease)) return
-        console.warn('[ui-app] branch projection hydration failed (non-fatal)', {
-          kind,
-          branchId: lease.branchId,
-          revision: lease.revision,
-          error: error instanceof Error ? error.message : String(error),
-        })
-      })
-    }
-    run('errors', hydrateErrorEnvelopesForRows(rows, lease))
-    run('assets', hydrateMessageAssetsForRows(rows, lease))
-    run('reasoning', hydrateReasoningDisplayBlocksForRows(rows, lease))
-  }
-
-  function hasErrorEnvelope(messageId: string): boolean {
+          function hasErrorEnvelope(messageId: string): boolean {
     const id = String(messageId ?? '').trim()
     if (!id) return false
     const messages = state.value.entities?.messagesById ?? state.value.messages
@@ -2348,54 +1671,178 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function getMessageTimingForPersist(messageId: string): {
-    reasoningDurationMs?: number | null
-    reasoningEndReason?: StreamEndReason | null
-    reasoningDurationIsFallback?: boolean
-  } {
-    const id = String(messageId ?? '').trim()
-    if (!id) return {}
-    const messages = state.value.entities?.messagesById ?? state.value.messages
-    const msg = messages[id]
-    if (!msg) return {}
-    return {
-      reasoningDurationMs: msg.reasoningDurationMs ?? null,
-      reasoningEndReason: msg.reasoningEndReason ?? null,
-      reasoningDurationIsFallback: msg.reasoningDurationIsFallback === true,
+  async function syncProviderCatalogsOnStartup() {
+    const models = window.generationV2?.models
+    const store = (globalThis as typeof globalThis & { electronStore?: { get?: (key: string) => Promise<unknown> } }).electronStore
+    if (!models || typeof models.status !== 'function' || typeof models.sync !== 'function' || typeof store?.get !== 'function') return
+    await syncProviderCatalogsOnStartupV2({
+      models: models as Parameters<typeof syncProviderCatalogsOnStartupV2>[0]['models'],
+      store: { get: (key) => store.get!(key) },
+    })
+  }
+
+  const FIRST_PARTY_CATALOG_PROVIDER_KEYS = Object.freeze([
+    OPENROUTER_PROVIDER_ID,
+    OPENAI_RESPONSES_PROVIDER_KEY,
+    GOOGLE_AI_STUDIO_PROVIDER_KEY,
+    ANTHROPIC_MESSAGES_PROVIDER_KEY,
+    DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+  ] as const)
+
+  function localCatalogFailure(providerKey: string, error: unknown): ProviderFailureV2 {
+    return providerFailureFromUnknownV2(error, {
+      origin: 'starverse_internal',
+      phase: 'response_body',
+      providerId: providerKey,
+      contractId: 'model-catalog-v2',
+      operationId: `catalog-renderer:${providerKey}`,
+      requestSequence: 1,
+      starverseDiagnosticCode: 'MODEL_CATALOG_RENDERER_HYDRATION_FAILED',
+    })
+  }
+
+  async function hydrateCatalogProvider(providerKey: string): Promise<void> {
+    const token = catalogRuntimeStore.beginQuery(providerKey)
+    const items: CatalogQueryItem[] = []
+    let cursor: import('@/next/modelCatalog/catalogQueryService').CatalogQueryCursor | null = null
+    let first: import('@/next/modelCatalog/catalogQueryService').CatalogQueryResult | null = null
+    let pages = 0
+    try {
+      do {
+        const page = await CatalogQueryService.query({
+          sourceProviderKey: providerKey,
+          ...(cursor?.snapshotDigest ? { snapshotDigest: cursor.snapshotDigest } : {}),
+          page: { limit: 500, cursor },
+        })
+        if (!first) first = page
+        if (page.authorityReadSucceeded === false || page.status === 'failed') {
+          const failure = page.providerFailure ?? localCatalogFailure(providerKey,
+            new Error(page.errorMessage ?? page.errorCode ?? 'MODEL_CATALOG_AUTHORITY_READ_FAILED'))
+          catalogRuntimeStore.acceptFailure({ token, failure })
+          return
+        }
+        items.push(...page.items)
+        cursor = page.nextCursor
+        pages += 1
+        if (pages > 100) throw new Error('MODEL_CATALOG_RENDERER_PAGINATION_LIMIT_EXCEEDED')
+      } while (cursor)
+
+      catalogRuntimeStore.acceptAuthority({
+        token,
+        authorityScopeId: first?.scopeId ?? null,
+        authorityRevision: first?.authorityRevision,
+        displayedSnapshotDigest: first?.catalogRevision ?? null,
+        pendingSnapshotDigest: first?.pendingSnapshotDigest ?? null,
+        items,
+        stale: first?.status === 'not_synced',
+        failure: first?.providerFailure ?? null,
+      })
+
+      if (providerKey !== OPENROUTER_PROVIDER_ID) return
+      modelCatalogItems.value = items.map((item) => ({ ...item, name: item.displayName,
+        vendor: item.vendor ?? '', status: 'visible' as const, supportedParameters: [...(item.supportedParameters ?? [])],
+        inputModalities: [...(item.inputModalities ?? [])], outputModalities: [...(item.outputModalities ?? [])],
+        lastSeenSnapshotId: first?.catalogRevision ?? `catalog:${item.syncedAtMs ?? 0}` })) as ModelCatalogItem[]
+      openRouterModelModalitiesById.value = new Map(items.map((item) => [item.modelId,
+        Object.freeze({ input: item.inputModalities ?? [], output: item.outputModalities ?? [] })]))
+      modelCatalogListStatus.value = first?.status === 'syncing' ? 'syncing'
+        : first?.status === 'not_synced' ? 'not_synced' : 'synced'
+      modelCatalogNotice.value = items.length === 0 ? t('errors.modelCatalog.notSynced') : null
+      applySelectedModelOverrideForActiveConvo()
+      await refreshSelectedModelImageCapability()
+    } catch (error) {
+      catalogRuntimeStore.acceptFailure({ token, failure: localCatalogFailure(providerKey, error) })
+      if (providerKey === OPENROUTER_PROVIDER_ID) {
+        modelCatalogListStatus.value = 'failed'
+        modelCatalogNotice.value = t('errors.modelCatalog.syncFailed')
+      }
     }
   }
 
   async function refreshModelLists() {
-    try {
-      const catalog = await listScopedCurrentModelCatalog('openrouter')
-      modelCatalogItems.value = catalog.items
-      modelCatalogListStatus.value = catalog.status ?? 'unknown'
-
-      if (!catalog.status && catalog.items.length === 0) {
-        modelCatalogNotice.value = t('errors.modelCatalog.unavailable')
-      } else if (catalog.status === 'not_synced' || (catalog.status === 'synced' && catalog.items.length === 0)) {
-        modelCatalogNotice.value = t('errors.modelCatalog.notSynced')
-      } else if (catalog.status === 'failed') {
-        modelCatalogNotice.value = t('errors.modelCatalog.syncFailed')
-      } else {
-        modelCatalogNotice.value = null
-      }
-      applySelectedModelOverrideForActiveConvo()
-      await refreshSelectedModelImageCapability()
-    } catch (err) {
-      modelCatalogItems.value = []
-      modelCatalogListStatus.value = 'failed'
-      modelCatalogNotice.value = t('errors.modelCatalog.syncFailed')
-      selectedModelImageCapabilityClass.value = null
-      selectedModelImageCapabilityReason.value = 'model catalog sync failed.'
-      if (shouldLogDebug()) {
-        console.warn('[ui-app] refreshModelLists failed (non-fatal):', err)
-      }
-    }
+    const startupSync = syncProviderCatalogsOnStartup().catch(() => undefined)
+    await Promise.all(FIRST_PARTY_CATALOG_PROVIDER_KEYS.map((providerKey) => hydrateCatalogProvider(providerKey)))
+    void startupSync.then(() => Promise.all(FIRST_PARTY_CATALOG_PROVIDER_KEYS.map((providerKey) =>
+      hydrateCatalogProvider(providerKey)))).catch(() => undefined)
   }
 
-  const onModelsSynced = async () => {
-    await refreshModelLists()
+  function runtimeErrorSummary(entry: BranchRuntimeCacheEntryV2): ErrorSummary | null {
+    const failure = entry.errorFact
+    if (!failure) return null
+    const message = failure.providerError?.message ?? failure.providerError?.rawText ??
+      failure.transportError?.message ?? failure.starverseDiagnosticCode
+    const phase = failure.phase === 'terminal_persistence'
+      ? 'post_stream'
+      : failure.phase === 'stream_read' || failure.phase === 'stream_decode'
+        ? 'mid_stream'
+        : 'pre_stream'
+    const source = failure.origin === 'http_response'
+      ? 'provider_http'
+      : failure.origin === 'response_stream'
+        ? 'provider_stream'
+        : failure.origin === 'network_transport'
+          ? 'transport'
+          : failure.origin === 'response_decoder'
+            ? 'local_decoder'
+            : failure.origin === 'starverse_internal'
+              ? 'persistence'
+              : 'provider'
+    return Object.freeze({
+      completionClass: entry.status === 'cancelled' ? 'cancelled' : 'error',
+      phase,
+      code: failure.starverseDiagnosticCode,
+      message,
+      provider: failure.providerId,
+      source,
+      raw: projectProviderFailureForUiV2(failure),
+    })
+  }
+
+  function applyBranchRuntimeOverlayToState(branchId: string): boolean {
+    const entry = branchRuntimeCache.get(branchId)
+    const targetAnswerId = entry?.targetAnswerId
+    if (!entry || !targetAnswerId) return false
+    const messages = state.value.entities?.messagesById ?? state.value.messages
+    const previous = messages[targetAnswerId]
+    if (!previous || previous.role !== 'assistant') return false
+    const nonTextBlocks = previous.contentBlocks.filter((block) => block.type !== 'text')
+    const contentBlocks = entry.body.length > 0
+      ? [{ type: 'text' as const, text: entry.body }, ...nonTextBlocks]
+      : nonTextBlocks
+    const errorSummary = runtimeErrorSummary(entry) ?? previous.errorSummary
+    const nextMessage: MessageState = {
+      ...previous,
+      contentText: entry.body,
+      contentBlocks: markRaw(contentBlocks),
+      reasoningDetailsRaw: markRaw([...entry.reasoning]),
+      reasoningVersion: previous.reasoningVersion + 1,
+      textVersion: previous.textVersion + 1,
+      streaming: {
+        isTarget: entry.status === 'generating',
+        isComplete: entry.status !== 'generating',
+      },
+      errorSummary,
+    }
+    const nextMessages = { ...messages, [targetAnswerId]: nextMessage }
+    state.value = {
+      ...state.value,
+      messages: nextMessages,
+      entities: { messagesById: nextMessages },
+    }
+    const currentMeta = messageMetaById.value.get(targetAnswerId)
+    if (currentMeta) {
+      runtimeMessageMetaById.value = new Map(runtimeMessageMetaById.value).set(targetAnswerId, {
+        ...currentMeta,
+        status: entry.status === 'generating'
+          ? 'streaming'
+          : entry.status === 'completed'
+            ? 'final'
+            : entry.status === 'cancelled'
+              ? 'aborted'
+              : 'error',
+      })
+    }
+    return true
   }
 
   function hydrateStateFromPersistedMessages(
@@ -2416,6 +1863,7 @@ export function useAppChatAppLogic() {
 
       const meta = r.meta ?? null
       const reasoningDetailsRaw = extractReasoningDetailsFromMeta(meta)
+      const reasoningProjectionContext = extractReasoningProjectionContextFromMeta(meta)
       const providerNativeContents = extractProviderNativeContentsFromMeta(meta)
       const annotations = extractAnnotationsFromMeta(meta)
       const hasEncryptedReasoning = reasoningDetailsRaw.some((detail) => detail && typeof detail === 'object' && (detail as any).type === 'reasoning.encrypted')
@@ -2427,6 +1875,7 @@ export function useAppChatAppLogic() {
 
       const persistedMessage = {
         messageId,
+        ...(reasoningProjectionContext ?? {}),
         role,
         contentText,
         contentBlocks: markRaw(contentText.length > 0 ? [{ type: 'text', text: contentText }] : []),
@@ -2452,7 +1901,7 @@ export function useAppChatAppLogic() {
       s.messages[messageId] = mergePersistedMessageWithRuntimeOverlay(
         persistedMessage,
         previousMessages[messageId],
-        activeAssistantMessageId.value === messageId,
+        activeAssistantMessageId.value === messageId || activeGenerationV2Answer.value?.answerRootId === messageId,
       )
 
       s.runMessageIds[convoId].push(messageId)
@@ -2555,396 +2004,147 @@ export function useAppChatAppLogic() {
     return t?.effectiveMode === 'exclude'
   }
 
-  function getOrderedCandidatesOldToNew(questionId: string): BranchCandidate[] | null {
-    const cached = candidatesCache.value.get(questionId)
-    if (!cached) return null
-    return [...cached].reverse()
+  function messageCandidateCacheKey(branchId: string, messageId: string): string {
+    return `${branchId}\u001f${messageId}`
   }
 
-  function getCandidatePager(questionId: string): Readonly<{ index: number; total: number; canPrev: boolean; canNext: boolean }> | null {
-    const ordered = getOrderedCandidatesOldToNew(questionId)
-    if (!ordered) return null
-    const chosen = turnFiltersByQuestionId.value.get(questionId)?.chosenAnswerRootId
-    const total = ordered.length
-    if (!chosen || total <= 0) return { index: 0, total: Math.max(0, total), canPrev: false, canNext: false }
-    const idx = ordered.findIndex((c) => c.answerRootId === chosen)
-    if (idx < 0) return { index: 0, total, canPrev: false, canNext: false }
-    return { index: idx, total, canPrev: idx > 0, canNext: idx < total - 1 }
-  }
-
-  function getCandidateLoadToken(questionId: string): string {
-    const qid = String(questionId ?? '').trim()
-    const qEpoch = candidatesEpochByQuestionId.value.get(qid) ?? 0
-    return `${candidatesEpochGlobal.value}:${qEpoch}`
-  }
-
-  function getQuestionSlotKey(baseMessageId: string | null): string {
-    const base = baseMessageId === null ? null : String(baseMessageId ?? '').trim() || null
-    return base ?? '__root__'
-  }
-
-  function getQuestionCandidateLoadToken(slotKey: string): string {
-    const key = String(slotKey ?? '').trim()
-    const epoch = questionCandidatesEpochBySlot.value.get(key) ?? 0
-    return `${questionCandidatesEpochGlobal.value}:${epoch}`
-  }
-
-  function invalidateQuestionCandidatesForSlot(baseMessageId: string | null) {
-    const slotKey = getQuestionSlotKey(baseMessageId)
-
-    const nextEpoch = (questionCandidatesEpochBySlot.value.get(slotKey) ?? 0) + 1
-    questionCandidatesEpochBySlot.value.set(slotKey, nextEpoch)
-    questionCandidatesEpochBySlot.value = new Map(questionCandidatesEpochBySlot.value)
-
-    if (questionCandidatesLoading.value.has(slotKey)) {
-      questionCandidatesLoading.value.delete(slotKey)
-      questionCandidatesLoading.value = new Map(questionCandidatesLoading.value)
-    }
-
-    if (questionCandidatesCache.value.has(slotKey)) {
-      questionCandidatesCache.value.delete(slotKey)
-      questionCandidatesCache.value = new Map(questionCandidatesCache.value)
-    }
-  }
-
-  async function ensureQuestionCandidatesLoadedForQuestion(questionId: string) {
-    const qid = String(questionId ?? '').trim()
-    const meta = qid ? messageMetaById.value.get(qid) : null
-    if (!qid || !meta || String(meta.role ?? '').trim() !== 'user') return
-    await ensureQuestionCandidatesLoadedForSlot(meta.parentId ?? null)
-  }
-
-  async function ensureQuestionCandidatesLoadedForSlot(baseMessageId: string | null) {
+  function getMessageCandidatePager(messageId: string): Readonly<{
+    index: number
+    total: number
+    canPrev: boolean
+    canNext: boolean
+  }> | null {
     const bid = activeBranchId.value
-    if (!bid) return
-
-    const slotKey = getQuestionSlotKey(baseMessageId)
-    if (questionCandidatesCache.value.has(slotKey)) return
-
-    const token = getQuestionCandidateLoadToken(slotKey)
-    if (questionCandidatesLoading.value.get(slotKey) === token) return
-
-    questionCandidatesLoading.value.set(slotKey, token)
-    questionCandidatesLoading.value = new Map(questionCandidatesLoading.value)
-    try {
-      const list = await getQuestionCandidates(bid, baseMessageId, { limit: 200 })
-
-      if (activeBranchId.value !== bid) return
-      if (getQuestionCandidateLoadToken(slotKey) !== token) return
-
-      questionCandidatesCache.value.set(slotKey, list)
-      questionCandidatesCache.value = new Map(questionCandidatesCache.value)
-    } finally {
-      if (questionCandidatesLoading.value.get(slotKey) === token) {
-        questionCandidatesLoading.value.delete(slotKey)
-        questionCandidatesLoading.value = new Map(questionCandidatesLoading.value)
-      }
-    }
+    const mid = String(messageId ?? '').trim()
+    if (!bid || !mid) return null
+    const navigation = messageCandidateNavigationCache.value.get(messageCandidateCacheKey(bid, mid))
+    if (!navigation) return null
+    return Object.freeze({
+      index: navigation.currentIndex,
+      total: navigation.total,
+      canPrev: navigation.previous !== null,
+      canNext: navigation.next !== null,
+    })
   }
 
-  function getOrderedQuestionCandidatesOldToNew(baseMessageId: string | null): QuestionCandidate[] | null {
-    const key = getQuestionSlotKey(baseMessageId)
-    const cached = questionCandidatesCache.value.get(key)
-    if (!cached) return null
-    return [...cached].reverse()
+  function getQuestionPagerForQuestion(questionId: string) {
+    return getMessageCandidatePager(questionId)
   }
 
-  function getQuestionPagerForQuestion(questionId: string): Readonly<{ index: number; total: number; canPrev: boolean; canNext: boolean }> | null {
-    const qid = String(questionId ?? '').trim()
-    if (!qid) return null
-    const meta = messageMetaById.value.get(qid)
-    if (!meta || meta.role !== 'user') return null
-
-    const ordered = getOrderedQuestionCandidatesOldToNew(meta.parentId ?? null)
-    if (!ordered) return null
-    const total = ordered.length
-    if (total <= 0) return { index: 0, total: 0, canPrev: false, canNext: false }
-
-    const idx = ordered.findIndex((c) => c.questionId === qid)
-    if (idx < 0) return { index: 0, total, canPrev: false, canNext: false }
-    return { index: idx, total, canPrev: idx > 0, canNext: idx < total - 1 }
+  function getCandidatePager(answerId: string) {
+    return getMessageCandidatePager(answerId)
   }
 
-  function isQuestionSlotLoadingForQuestion(questionId: string): boolean {
-    const qid = String(questionId ?? '').trim()
-    if (!qid) return false
-    const meta = messageMetaById.value.get(qid)
-    if (!meta || meta.role !== 'user') return false
-    const slotKey = getQuestionSlotKey(meta.parentId ?? null)
-    return questionCandidatesLoading.value.has(slotKey)
-  }
-
-  function invalidateCandidatesForQuestion(questionId: string) {
-    const qid = String(questionId ?? '').trim()
-    if (!qid) return
-
-    // Cancel any in-flight fetch and bump epoch so stale async results won't overwrite.
-    const nextEpoch = (candidatesEpochByQuestionId.value.get(qid) ?? 0) + 1
-    candidatesEpochByQuestionId.value.set(qid, nextEpoch)
-    candidatesEpochByQuestionId.value = new Map(candidatesEpochByQuestionId.value)
-
-    if (candidatesLoading.value.has(qid)) {
-      candidatesLoading.value.delete(qid)
-      candidatesLoading.value = new Map(candidatesLoading.value)
-    }
-
-    if (candidatesCache.value.has(qid)) {
-      candidatesCache.value.delete(qid)
-      candidatesCache.value = new Map(candidatesCache.value)
-    }
-
-    if (shouldLogDebug()) {
-      console.log('[ui-app] invalidateCandidatesForQuestion', { questionId: qid, epochGlobal: candidatesEpochGlobal.value, questionEpoch: nextEpoch })
-    }
-  }
-
-  async function ensureCandidatesLoaded(questionId: string) {
-    const qid = String(questionId ?? '').trim()
+  function isMessageCandidateLoading(messageId: string): boolean {
     const bid = activeBranchId.value
-    if (!qid || !bid) return
-    if (candidatesCache.value.has(qid)) return
+    const mid = String(messageId ?? '').trim()
+    return Boolean(bid && mid && messageCandidateLoading.value.has(messageCandidateCacheKey(bid, mid)))
+  }
 
-    const token = getCandidateLoadToken(qid)
-    if (candidatesLoading.value.get(qid) === token) return
-
-    candidatesLoading.value.set(qid, token)
-    candidatesLoading.value = new Map(candidatesLoading.value)
+  async function ensureMessageCandidateNavigationLoaded(messageId: string): Promise<void> {
+    const bid = activeBranchId.value
+    const mid = String(messageId ?? '').trim()
+    if (!bid || !mid) return
+    const key = messageCandidateCacheKey(bid, mid)
+    if (messageCandidateNavigationCache.value.has(key)) return
+    const token = `${messageCandidateEpochGlobal.value}:${key}`
+    if (messageCandidateLoading.value.get(key) === token) return
+    messageCandidateLoading.value.set(key, token)
+    messageCandidateLoading.value = new Map(messageCandidateLoading.value)
     try {
-      const list = await getBranchCandidates(bid, qid, { limit: 200 })
-
-      // Drop stale async results (regenerate/retry can invalidate cache while a fetch is in-flight).
-      if (activeBranchId.value !== bid) {
-        if (shouldLogDebug()) console.warn('[ui-app] ensureCandidatesLoaded discard (branch changed)', { questionId: qid, branchId: bid, token })
-        return
+      const navigation = await getGenerationV2MessageCandidateNavigation(bid, mid)
+      if (activeBranchId.value !== bid ||
+          token !== `${messageCandidateEpochGlobal.value}:${key}`) return
+      messageCandidateNavigationCache.value.set(key, navigation)
+      messageCandidateNavigationCache.value = new Map(messageCandidateNavigationCache.value)
+    } catch (error) {
+      if (activeBranchId.value === bid && token === `${messageCandidateEpochGlobal.value}:${key}`) {
+        loadError.value = error instanceof Error ? error.message : String(error)
       }
-      if (getCandidateLoadToken(qid) !== token) {
-        if (shouldLogDebug()) console.warn('[ui-app] ensureCandidatesLoaded discard (token mismatch)', { questionId: qid, branchId: bid, token })
-        return
-      }
-
-      if (shouldLogDebug()) {
-        console.log('[ui-app] ensureCandidatesLoaded', {
-          questionId: qid,
-          branchId: bid,
-          token,
-          candidateCount: list.length,
-          candidates: list.map(c => ({ answerRootId: c.answerRootId, status: c.status })),
-        })
-      }
-      candidatesCache.value.set(qid, list)
-      candidatesCache.value = new Map(candidatesCache.value)
     } finally {
-      if (candidatesLoading.value.get(qid) === token) {
-        candidatesLoading.value.delete(qid)
-        candidatesLoading.value = new Map(candidatesLoading.value)
+      if (messageCandidateLoading.value.get(key) === token) {
+        messageCandidateLoading.value.delete(key)
+        messageCandidateLoading.value = new Map(messageCandidateLoading.value)
       }
     }
   }
 
-  function getUserQuestionText(questionId: string): string {
-    const qid = String(questionId ?? '').trim()
-    if (!qid) return ''
-    const msg = (state.value as any)?.messages?.[qid] as { contentText?: string } | undefined
-    const text = typeof msg?.contentText === 'string' ? msg.contentText : ''
-    return text.trim()
+  function invalidateMessageCandidateNavigation() {
+    resetCandidatesCache()
   }
 
-  async function buildContextMessagesBeforeQuestion(branchId: string, questionId: string): Promise<InternalMessage[]> {
-    const bid = String(branchId ?? '').trim()
-    const qid = String(questionId ?? '').trim()
-    if (!bid || !qid) return []
-
-    const questionSeq = messageSeqById.value.get(qid)
-    if (typeof questionSeq !== 'number' || !Number.isFinite(questionSeq)) return []
-
-    const built = await buildContextForBranchInternalMessages(bid, { limit: 200, debug: !!import.meta.env?.DEV })
-    const rowsBefore = built.rawMessages.filter((m) => typeof m.seq === 'number' && m.seq < questionSeq)
-    return toInternalMessagesFromBranchPath(rowsBefore as any)
-  }
-
-  async function refreshTurnFilters(branchId: string) {
+      async function refreshTurnFilters(branchId: string) {
     const bid = String(branchId ?? '').trim()
     if (!bid) return
     await refreshRenderableBranchView(bid)
   }
 
-  async function flushPending(convoId: string, stream: ActiveStream) {
-    if (stream.flushing.value) return
-    const chunk = stream.pendingAppendText.value
-    if (!chunk) return
-    stream.flushing.value = true
-    stream.pendingAppendText.value = ''
-    try {
-      await appendMessageDelta({ convoId, seq: stream.assistantSeq, appendBody: chunk })
-    } finally {
-      stream.flushing.value = false
-    }
+  function projectConversationPageItems(
+    items: readonly Readonly<{
+      conversationId: string
+      projectId: string
+      title: string
+      updatedAtMs: number
+    }>[],
+  ): ConvoSummary[] {
+    return items.map((conversation) => ({
+      id: conversation.conversationId,
+      projectId: conversation.projectId,
+      title: conversation.title,
+      createdAt: conversation.updatedAtMs,
+      updatedAt: conversation.updatedAtMs,
+    }))
   }
 
-  function clearFlushTimer(stream: ActiveStream) {
-    if (!stream.flushTimer.id) return
-    clearTimeout(stream.flushTimer.id)
-    stream.flushTimer.id = null
-  }
-
-  function scheduleFlush(convoId: string, stream: ActiveStream, delayMs = 80) {
-    if (stream.flushTimer.id) return
-    stream.flushTimer.id = setTimeout(async () => {
-      stream.flushTimer.id = null
-      try {
-        await flushPending(convoId, stream)
-      } finally {
-        if (stream.pendingAppendText.value.length > 0) scheduleFlush(convoId, stream, delayMs)
-      }
-    }, delayMs)
-  }
-
-  function clearReasoningFlushTimer(stream: ActiveStream) {
-    if (!stream.reasoningFlushTimer.id) return
-    clearTimeout(stream.reasoningFlushTimer.id)
-    stream.reasoningFlushTimer.id = null
-  }
-
-  function clearProviderNativeFlushTimer(stream: ActiveStream) {
-    if (!stream.providerNativeFlushTimer.id) return
-    clearTimeout(stream.providerNativeFlushTimer.id)
-    stream.providerNativeFlushTimer.id = null
-  }
-
-  async function flushProviderNativeContents(stream: ActiveStream, assistantMessageId: string) {
-    const pending = stream.pendingProviderNativeContents.value
-    if (!pending || pending.length === 0) return
-    const batch = pending.splice(0, pending.length)
-    try {
-      for (const snapshot of batch) {
-        await upsertProviderNativeContent({ messageId: assistantMessageId, snapshot })
-      }
-    } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] upsertProviderNativeContent failed (non-fatal):', err)
-    }
-  }
-
-  async function flushReasoningDetailSegments(stream: ActiveStream, assistantMessageId: string) {
-    const pending = stream.pendingReasoningDetails.value
-    if (!pending || pending.length === 0) return
-    const batch = pending.splice(0, pending.length)
-    try {
-      const details = await persistReasoningImageDataUrls(assistantMessageId, batch)
-      const result = await appendReasoningDetailSegments({ messageId: assistantMessageId, details })
-      // 累加 DB 统计到 diagnosticTracker
-      stream.diagnosticTracker.dbInserted += result.inserted
-      stream.diagnosticTracker.dbSkipped += result.skipped
-      stream.diagnosticTracker.dbIgnored += result.ignored
-      stream.diagnosticTracker.dbSumDeltaLenInserted += result.sumDeltaLenInserted
-      if (shouldLogReasoningDebug() && (result.ignored > 0 || result.skipped > 0)) {
-        console.log('[reasoning-flush] batch stats', {
-          received: result.received,
-          inserted: result.inserted,
-          skipped: result.skipped,
-          ignored: result.ignored,
-          sumDeltaLenInserted: result.sumDeltaLenInserted,
-        })
-      }
-    } catch (err) {
-      if (shouldLogReasoningDebug()) console.warn('[ui-app] appendReasoningDetailSegments failed (non-fatal):', err)
-    }
-  }
-
-  async function flushReasoningDisplayBlocks(stream: ActiveStream, assistantMessageId: string) {
-    const pending = stream.pendingReasoningDisplayBlocks.value
-    if (!pending || pending.length === 0) return
-    const batch = pending.splice(0, pending.length)
-    try {
-      const blocks = await persistReasoningDisplayImageDataUrls(assistantMessageId, batch)
-      await appendReasoningDisplayBlocks({ messageId: assistantMessageId, blocks })
-    } catch (err) {
-      if (shouldLogReasoningDebug()) console.warn('[ui-app] appendReasoningDisplayBlocks failed (non-fatal):', err)
-    }
-  }
-
-  function scheduleReasoningDetailFlush(stream: ActiveStream, assistantMessageId: string, delayMs = 250) {
-    if (stream.reasoningFlushTimer.id) return
-    stream.reasoningFlushTimer.id = setTimeout(async () => {
-      stream.reasoningFlushTimer.id = null
-      try {
-        await flushReasoningDetailSegments(stream, assistantMessageId)
-        await flushReasoningDisplayBlocks(stream, assistantMessageId)
-      } finally {
-        if (stream.pendingReasoningDetails.value.length > 0 || stream.pendingReasoningDisplayBlocks.value.length > 0) {
-          scheduleReasoningDetailFlush(stream, assistantMessageId, delayMs)
-        }
-      }
-    }, delayMs)
-  }
-
-  function buildReasoningRequestConfigSnapshot(input: Readonly<{
-    requestedReasoningMode: RequestedReasoningMode
-    requestedReasoningEffortValue?: ReasoningEffort
-    requestedReasoningExclude: boolean
-  }>): Readonly<{ raw: unknown; normalized: unknown; resolved: unknown }> {
-    const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = input
-    const effort = requestedReasoningMode === 'auto' ? 'auto' : (requestedReasoningEffortValue ?? 'none')
-    const exclude = requestedReasoningMode === 'auto' || effort === 'none' ? false : requestedReasoningExclude
-    const rawReasoning =
-      requestedReasoningMode === 'auto'
-        ? null
-        : {
-            effort: requestedReasoningEffortValue ?? 'none',
-            ...(exclude ? { exclude: true } : {}),
-          }
-
-    const normalized = {
-      mode: requestedReasoningMode,
-      effort,
-      exclude,
-    }
-
-    const resolved =
-      requestedReasoningMode === 'auto'
-        ? { mode: 'auto', effort: 'auto', exclude: false }
-        : { mode: 'effort', effort: requestedReasoningEffortValue ?? 'none', exclude }
-
-    return {
-      raw: { reasoning: rawReasoning },
-      normalized,
-      resolved,
-    }
+  function sortConversationSummaries(items: readonly ConvoSummary[]): ConvoSummary[] {
+    return [...items].sort((left, right) =>
+      right.updatedAt - left.updatedAt || left.id.localeCompare(right.id))
   }
 
   async function refreshConvos() {
     loadError.value = null
-    // 根据当前选中的项目进行 DB 端筛选
-    // activeProjectId === null 表示"全部对话"，不传 projectId 参数
     const filterProjectId = activeProjectId.value
-    convos.value = await listConvos({
-      order: 'updatedAt',
-      limit: 200,
-      ...(filterProjectId !== null ? { projectId: filterProjectId } : {}),
-    })
-    const active = activeConvoId.value
-    const activeIsTemplate = active === systemTemplateSnapshot.value?.conversation.id
-    if (active && !activeIsTemplate && !convos.value.some((c) => c.id === active)) {
-      activeConvoId.value = convos.value[0]?.id ?? null
-    }
+    const projectIds = filterProjectId === null ? projects.value.map((project) => project.id) : [filterProjectId]
+    const pages = await Promise.all(projectIds.map(async (projectId) =>
+      [projectId, await listGenerationV2Conversations(projectId)] as const))
+    if (activeProjectId.value !== filterProjectId) return
+    conversationCursorByProjectId.value = new Map(
+      pages.map(([projectId, page]) => [projectId, page.nextCursor]),
+    )
+    convos.value = sortConversationSummaries(
+      pages.flatMap(([, page]) => projectConversationPageItems(page.items)),
+    )
     if (!projectsOnlyWorkspace.value && !activeConvoId.value && convos.value.length > 0) activeConvoId.value = convos.value[0].id
   }
 
-  function isLegacyPseudoProjectId(projectId: string): boolean {
-    const id = String(projectId ?? '').trim().toLowerCase()
-    return id === 'unassigned' || id === 'all'
+  async function loadMoreConvos() {
+    const filterProjectId = activeProjectId.value
+    const requests = [...conversationCursorByProjectId.value.entries()]
+      .filter(([, cursor]) => cursor !== null)
+      .map(async ([projectId, cursor]) =>
+        [projectId, await listGenerationV2Conversations(projectId, cursor)] as const)
+    if (requests.length === 0) return
+    const pages = await Promise.all(requests)
+    if (activeProjectId.value !== filterProjectId) return
+    const nextCursors = new Map(conversationCursorByProjectId.value)
+    const byId = new Map(convos.value.map((conversation) => [conversation.id, conversation]))
+    for (const [projectId, page] of pages) {
+      nextCursors.set(projectId, page.nextCursor)
+      for (const conversation of projectConversationPageItems(page.items)) {
+        byId.set(conversation.id, conversation)
+      }
+    }
+    conversationCursorByProjectId.value = nextCursors
+    convos.value = sortConversationSummaries([...byId.values()])
   }
 
-  async function refreshProjects() {
+    async function refreshProjects() {
     loadError.value = null
-    // 获取 Inbox
-    const inbox = await getInbox()
-    if (inbox) {
-      inboxId.value = inbox.id
-    }
-    // 获取所有项目
-    const listedProjects = await listProjects({ order: 'name', limit: 500 })
-    projects.value = listedProjects.filter((p) => !isLegacyPseudoProjectId(p.id))
-    // 更新项目计数（避免 N+1：批量获取）
+    const workspace = await ensureGenerationV2DefaultWorkspace()
+    inboxId.value = workspace.projectId
+    const listedProjects = await listGenerationV2Projects()
+    projects.value = listedProjects.map((project) => ({ id: project.projectId, name: project.name,
+      createdAt: project.createdAtMs, updatedAt: project.updatedAtMs }))
     await refreshProjectCounts()
   }
 
@@ -2954,41 +2154,99 @@ export function useAppChatAppLogic() {
       return
     }
 
-    const projectIds = projects.value.map(p => p.id)
-    projectCounts.value = await countConversationsBatch(projectIds)
+    const counts = await Promise.all(projects.value.map(async (project) =>
+      [project.id, (await listGenerationV2Conversations(project.id)).totalCount] as const))
+    projectCounts.value = new Map(counts)
   }
 
   async function refreshBranchesForActiveConvo() {
     const convoId = activeConvoId.value
     if (!convoId) {
       branches.value = []
+      branchNextCursor.value = null
       return
     }
-    branches.value = await listBranches(convoId)
+    const template = systemTemplateSnapshot.value
+    if (template?.conversation.id === convoId) {
+      branches.value = [{
+        id: template.conversation.branchId,
+        convoId,
+        headMessageId: null,
+        name: null,
+        createdAt: template.conversation.createdAt,
+        updatedAt: template.conversation.updatedAt,
+        deletedAt: null,
+      }]
+      branchNextCursor.value = null
+      return
+    }
+    const page = await listGenerationV2Branches(convoId)
+    if (activeConvoId.value !== convoId) return
+    const firstPage = page.items.map((branch) => ({ id: branch.branchId, convoId,
+      headMessageId: branch.headMessageId, name: branch.name, createdAt: branch.updatedAtMs,
+      updatedAt: branch.updatedAtMs, deletedAt: null }))
+    const pinnedActive = branches.value.find((branch) =>
+      branch.convoId === convoId && branch.id === activeBranchId.value)
+    branches.value = pinnedActive && !firstPage.some((branch) => branch.id === pinnedActive.id)
+      ? [...firstPage, pinnedActive]
+      : firstPage
+    branchNextCursor.value = page.nextCursor
+  }
+
+  async function loadMoreBranches() {
+    const convoId = activeConvoId.value
+    const cursor = branchNextCursor.value
+    if (!convoId || !cursor) return
+    const page = await listGenerationV2Branches(convoId, cursor)
+    if (activeConvoId.value !== convoId || branchNextCursor.value !== cursor) return
+    const byId = new Map(branches.value.map((branch) => [branch.id, branch]))
+    for (const branch of page.items) {
+      byId.set(branch.branchId, {
+        id: branch.branchId,
+        convoId,
+        headMessageId: branch.headMessageId,
+        name: branch.name,
+        createdAt: branch.updatedAtMs,
+        updatedAt: branch.updatedAtMs,
+        deletedAt: null,
+      })
+    }
+    branches.value = [...byId.values()]
+    branchNextCursor.value = page.nextCursor
+  }
+
+  async function ensureGenerationV2BranchForConversation(conversationId: string): Promise<BranchSummary> {
+    const template = systemTemplateSnapshot.value
+    if (template?.conversation.id === conversationId) {
+      return {
+        id: template.conversation.branchId,
+        convoId: conversationId,
+        headMessageId: null,
+        name: null,
+        createdAt: template.conversation.createdAt,
+        updatedAt: template.conversation.updatedAt,
+        deletedAt: null,
+      }
+    }
+    const branch = (await listGenerationV2Branches(conversationId)).items[0]
+    if (branch) return { id: branch.branchId, convoId: conversationId, headMessageId: branch.headMessageId,
+      name: branch.name, createdAt: branch.updatedAtMs, updatedAt: branch.updatedAtMs, deletedAt: null }
+    throw new Error('GENERATION_V2_CONVERSATION_BRANCH_MISSING')
   }
 
   function resetCandidatesCache() {
-    // Invalidate all candidate loads so in-flight requests can't repopulate after resets (e.g. end-of-stream reloads).
-    candidatesEpochGlobal.value += 1
-    candidatesCache.value = new Map()
-    candidatesLoading.value = new Map()
-    candidatesEpochByQuestionId.value = new Map()
-    questionCandidatesEpochGlobal.value += 1
-    questionCandidatesCache.value = new Map()
-    questionCandidatesLoading.value = new Map()
-    questionCandidatesEpochBySlot.value = new Map()
+    messageCandidateEpochGlobal.value += 1
+    messageCandidateNavigationCache.value = new Map()
+    messageCandidateLoading.value = new Map()
     if (shouldLogDebug()) {
-      console.log('[ui-app] resetCandidatesCache', { answerEpochGlobal: candidatesEpochGlobal.value, questionEpochGlobal: questionCandidatesEpochGlobal.value })
+      console.log('[ui-app] resetCandidatesCache', {
+        messageCandidateEpochGlobal: messageCandidateEpochGlobal.value,
+      })
     }
   }
 
   async function refreshRenderableBranchView(branchId: string) {
     await loadTranscriptForBranch(branchId)
-    // Candidate cache can be stale after operations that add/hide candidates (regenerate/retryReplace);
-    // for switchCandidate we keep cache.
-    for (const qid of turnFiltersByQuestionId.value.keys()) {
-      void ensureCandidatesLoaded(qid)
-    }
   }
 
   function patchBranch(branchId: string, patch: Partial<Omit<BranchSummary, 'id'>>) {
@@ -2997,7 +2255,11 @@ export function useAppChatAppLogic() {
     branches.value = branches.value.map((b) => (b.id === bid ? ({ ...b, ...patch } satisfies BranchSummary) : b))
   }
 
-  async function loadTranscriptForBranch(branchId: string) {
+  async function loadTranscriptForBranch(
+    branchId: string,
+    beforeMessageId: string | null = null,
+    appendEarlier = false,
+  ) {
     const bid = String(branchId ?? '').trim()
     if (!bid) return
 
@@ -3008,7 +2270,16 @@ export function useAppChatAppLogic() {
     if (shouldLogDebug()) {
       console.log('[ui-app] loadTranscriptForBranch: fetching from DB', { branchId: bid, token: lease.revision, debug })
     }
-    const rendered = await getRenderableTurnsForBranch(bid, { limit: 5000, debug })
+    const page = await readGenerationV2Branch(bid, beforeMessageId)
+    const current = generationV2BranchView.value
+    const v2View: GenerationV2BranchView = appendEarlier && current?.branchId === bid
+      ? Object.freeze({
+          ...page,
+          turns: Object.freeze([...page.turns, ...current.turns]),
+        })
+      : page
+    const v2Projection = projectGenerationV2BranchForExistingUi(v2View)
+    const rendered = v2Projection.rendered
 
     // Anti-reordering: discard if a newer refresh has started.
     if (!isBranchProjectionLeaseCurrent(lease)) {
@@ -3017,22 +2288,19 @@ export function useAppChatAppLogic() {
       }
       return
     }
-    if (debug && rendered.debug) console.log('[ui-app] context.getRenderableTurns debug', rendered.debug)
     const rows = rendered.messages
     const metaMap = new Map<string, MessageMetaEntry>()
     for (const m of rows) {
-      const completionOutcome = extractCompletionOutcomeFromMeta(m.meta ?? null)
-      const runtimeMeta = extractRuntimeSelectionFromMessageMeta(m.meta ?? null)
-      const generationState = m.meta && typeof m.meta === 'object'
-        ? String((m.meta as Record<string, unknown>).answerGenerationState ?? '')
-        : ''
+      const v2Meta = v2Projection.messageMetaById.get(m.id)
+      const completionOutcome = v2Meta?.completionOutcome ?? extractCompletionOutcomeFromMeta(m.meta ?? null)
+      const runtimeMeta = v2Meta ?? extractRuntimeSelectionFromMessageMeta(m.meta ?? null)
       metaMap.set(m.id, {
         parentId: m.parentId ?? null,
         questionId: m.questionId ?? null,
         answerRootId: m.answerRootId ?? null,
         role: String(m.role ?? '').trim(),
-        status: generationState === 'cancelled' ? 'aborted' : generationState === 'failed' ? 'error' : String(m.status ?? 'final'),
-        providerId: runtimeMeta.providerId,
+        status: v2Meta?.status === 'cancelled' ? 'aborted' : v2Meta?.status === 'failed' ? 'error' : String(v2Meta?.status ?? m.status ?? 'final'),
+        providerId: runtimeMeta.providerId as MessageMetaEntry['providerId'],
         modelId: runtimeMeta.modelId,
         completionOutcome,
       })
@@ -3048,6 +2316,11 @@ export function useAppChatAppLogic() {
     // Stable branch relationships land as one immutable root replacement before
     // the message runtime overlay exposes the corresponding transcript rows.
     branchViewSnapshot.value = projection
+    generationV2BranchView.value = v2View
+    // The branch read is the current epoch-2 projection authority. This also
+    // gives the promoted system-template branch its committed head immediately;
+    // the template shell itself intentionally has no duplicate head field.
+    patchBranch(bid, { headMessageId: v2View.headMessageId, updatedAt: Date.now() })
     const persistedIds = new Set(rows.map((row) => row.id))
     runtimeMessageSeqById.value = new Map(
       [...runtimeMessageSeqById.value].filter(([messageId]) => !persistedIds.has(messageId)),
@@ -3060,6 +2333,24 @@ export function useAppChatAppLogic() {
       bid,
       rows.map((m) => ({ id: m.id, role: m.role, seq: m.seq, body: m.body, meta: m.meta }))
     )
+    applyBranchRuntimeOverlayToState(bid)
+    for (const row of rows) {
+      const hydrated = state.value.entities?.messagesById?.[row.id] ?? state.value.messages[row.id]
+      if (!hydrated || hydrated.role !== 'assistant') continue
+      recordReasoningProjectionTrace({
+        stage: 'branch_hydrated',
+        operationId: String((asRecord(row.meta)?.operationId) ?? ''),
+        answerRootId: row.id,
+        activeBranchId: activeBranchId.value,
+        viewBranchId: bid,
+        answerKnownInView: true,
+        rawDetailCount: hydrated.reasoningDetailsRaw.length,
+        reasoningVersion: hydrated.reasoningVersion,
+        hasProjectionContext: Boolean(hydrated.providerId && hydrated.protocolContractId),
+        messagePresentAfter: true,
+        transcriptContainsAnswer: state.value.runMessageIds[bid]?.includes(row.id) === true,
+      })
+    }
     applyErrorFallbacks(errorFallbacks)
     if (shouldLogDebug()) {
       const statuses = [...metaMap.entries()].map(([id, m]) => ({ id: id.slice(0, 8), status: m.status }))
@@ -3072,41 +2363,15 @@ export function useAppChatAppLogic() {
         })
       }
     }
-    startBranchProjectionHydration(rows, lease)
+    // Epoch-2 answers carry their persisted terminal/provider projection in the branch view.
+    // Provider-native reasoning hydration is handled by the V2 artifact projection, never by the legacy DB bridge.
 
-    // Self-heal: candidate cache may become stale after operations that add/hide candidates
-    // (regenerate/retryReplace). If the cached candidate list no longer contains the chosen answer root,
-    // drop the cache for that question so the next ensureCandidatesLoaded() re-fetches.
-    let invalidated = false
-    for (const [qid, t] of projection.turnByQuestionId.entries()) {
-      const cached = candidatesCache.value.get(qid)
-      if (!cached) continue
-      if (cached.some((c) => c.answerRootId === t.chosenAnswerRootId)) continue
-      candidatesCache.value.delete(qid)
-      invalidated = true
-    }
-    if (invalidated) candidatesCache.value = new Map(candidatesCache.value)
-
-    // Self-heal: question candidate cache may become stale after question replace (branch_question_hide).
-    // If the cached question variants no longer contain the currently-visible question, drop the cache for that slot.
-    let qInvalidated = false
-    for (const qid of projection.questionTurnOrder) {
-      const base = messageMetaById.value.get(qid)?.parentId ?? null
-      const slotKey = getQuestionSlotKey(base)
-      const cached = questionCandidatesCache.value.get(slotKey)
-      if (!cached) continue
-      if (cached.some((c) => c.questionId === qid)) continue
-      questionCandidatesCache.value.delete(slotKey)
-      qInvalidated = true
-    }
-    if (qInvalidated) questionCandidatesCache.value = new Map(questionCandidatesCache.value)
-
-    for (const qid of projection.turnByQuestionId.keys()) {
-      void ensureCandidatesLoaded(qid)
-    }
-
-    for (const qid of projection.questionTurnOrder) {
-      void ensureQuestionCandidatesLoadedForQuestion(qid)
+    for (const row of rows) {
+      const meta = metaMap.get(row.id)
+      if (meta?.role === 'user' ||
+          meta?.role === 'assistant' && meta.answerRootId === row.id) {
+        void ensureMessageCandidateNavigationLoaded(row.id)
+      }
     }
   }
 
@@ -3118,6 +2383,12 @@ export function useAppChatAppLogic() {
     const bid = activeBranchId.value
     if (!bid) return
     await loadTranscriptForBranch(bid)
+  }
+
+  async function loadEarlierTranscript() {
+    const view = generationV2BranchView.value
+    if (!view || view.branchId !== activeBranchId.value || !view.hasMoreTurns || !view.beforeMessageId) return
+    await loadTranscriptForBranch(view.branchId, view.beforeMessageId, true)
   }
 
   // ======== INVARIANT ASSERTION (Development Only) ========
@@ -3139,47 +2410,33 @@ export function useAppChatAppLogic() {
 
   // ======== FINALIZATION HELPERS (Enforces Correct Ordering) ========
   // Encapsulates the critical pattern: refresh FIRST, then clear activeStream.
-  async function finalizeRun(assistantMessageId: string) {
-    // ① Refresh from DB first (get latest status into messageMetaById)
-    try {
-      await refreshTranscriptLatestOnly()
-      if (import.meta.env?.DEV) {
-        const meta = messageMetaById.value.get(assistantMessageId)
-        console.log('[ui-app] finalizeRun: after refresh', { assistantMessageId, statusInMeta: meta?.status })
-      }
-    } catch (err) {
-      if (import.meta.env?.DEV) {
-        console.warn('[ui-app] finalizeRun: refresh failed', err)
-      }
-    }
-
-    // ② Then clear activeStream (single re-render with consistent state)
-    clearActiveIfMatch(assistantMessageId)
-
-    // ③ Assert invariants at stable boundary (after both refresh and clear complete)
-    assertInvariants()
+  function cacheGenerationV2RoutePreference(
+    conversationId: string,
+    snapshot: GenerationV2ConversationRoutePreferenceSnapshot | null,
+  ): void {
+    const next = new Map(generationV2RoutePreferenceByConversationId.value)
+    next.set(conversationId, snapshot)
+    generationV2RoutePreferenceByConversationId.value = next
   }
 
-  function clearActiveIfMatch(assistantMessageId: string) {
-    const shouldClear = activeStream.value?.assistantMessageId === assistantMessageId
-    if (import.meta.env?.DEV) {
-      console.log('[ui-app] clearActiveIfMatch: checking', {
-        currentActiveStream: activeStream.value?.assistantMessageId,
-        targetMessageId: assistantMessageId,
-        shouldClear
-      })
-    }
-    if (shouldClear) {
-      activeStream.value = null
-      if (import.meta.env?.DEV) {
-        console.log('[ui-app] clearActiveIfMatch: cleared activeStream')
-      }
-    } else if (import.meta.env?.DEV && activeStream.value) {
-      console.warn('[ui-app] clearActiveIfMatch: activeStream mismatch, NOT clearing')
-    }
+  async function loadGenerationV2RoutePreference(conversationId: string): Promise<void> {
+    cacheGenerationV2RoutePreference(
+      conversationId,
+      await getGenerationV2ConversationRoutePreference(conversationId),
+    )
   }
 
-  async function loadTranscriptForActiveConvo() {
+  function cacheGenerationV2Config(conversationId: string, snapshot: GenerationV2ConfigLayerView): void {
+    const next = new Map(generationV2ConfigByConversationId.value)
+    next.set(conversationId, snapshot)
+    generationV2ConfigByConversationId.value = next
+  }
+
+  async function loadGenerationV2SemanticConfig(conversationId: string): Promise<void> {
+    cacheGenerationV2Config(conversationId, await getGenerationV2Config('conversation', conversationId))
+  }
+
+      async function loadTranscriptForActiveConvo() {
     const convoId = activeConvoId.value
     if (!convoId) {
       branchProjectionRefreshCoordinator.invalidate()
@@ -3195,7 +2452,11 @@ export function useAppChatAppLogic() {
       return
     }
 
-    const ensured = await ensureDefaultBranch(convoId, { name: 'Main' })
+    const ensured = await ensureGenerationV2BranchForConversation(convoId)
+    await Promise.all([
+      loadGenerationV2RoutePreference(convoId),
+      loadGenerationV2SemanticConfig(convoId),
+    ])
     await refreshBranchesForActiveConvo()
     if (!branches.value.some((b) => b.id === ensured.id)) branches.value = [ensured, ...branches.value]
 
@@ -3214,17 +2475,15 @@ export function useAppChatAppLogic() {
   }
 
   async function onSelectConvo(convoId: string) {
-    if (isRunning.value) return
-    if (isDraftInteractionLocked.value) return
     activeConvoId.value = convoId
-    if (convoId !== systemTemplateSnapshot.value?.conversation.id) await setLastFormalConversationId(convoId)
     await loadTranscriptForActiveConvo()
+    if (convoId !== systemTemplateSnapshot.value?.conversation.id) {
+      await setLastFormalConversationId(convoId)
+    }
     assertInvariants() // Stable boundary: conversation switched and refreshed
   }
 
   async function onSelectBranch(branchId: string) {
-    if (isRunning.value) return
-    if (isDraftInteractionLocked.value) return
     const bid = String(branchId ?? '').trim()
     if (!bid || bid === activeBranchId.value) return
     activeBranchId.value = bid
@@ -3233,11 +2492,79 @@ export function useAppChatAppLogic() {
     assertInvariants() // Stable boundary: branch switched and refreshed
   }
 
+  function findRenderedMessageElement(messageId: string): HTMLElement | null {
+    const expected = `msg-wrap-${messageId}`
+    for (const element of document.querySelectorAll<HTMLElement>('[data-testid]')) {
+      if (element.getAttribute('data-testid') === expected) return element
+    }
+    return null
+  }
+
+  async function navigateToBranchMessage(
+    targetBranchId: string,
+    targetMessageId: string,
+    expectedConversationId: string,
+    expectedSourceRevision: number,
+  ): Promise<void> {
+    const bid = String(targetBranchId ?? '').trim()
+    const mid = String(targetMessageId ?? '').trim()
+    if (!bid || !mid || activeConvoId.value !== expectedConversationId ||
+        navigationRevision.value !== expectedSourceRevision) return
+
+    if (activeBranchId.value !== bid) {
+      activeBranchId.value = bid
+      resetCandidatesCache()
+    }
+    const targetRevision = navigationRevision.value
+    await refreshTranscriptLatestOnly()
+    if (activeConvoId.value !== expectedConversationId || activeBranchId.value !== bid ||
+        navigationRevision.value !== targetRevision) return
+
+    const loadedView = generationV2BranchView.value
+    if (loadedView?.branchId === bid && !branches.value.some((branch) => branch.id === bid)) {
+      const now = Date.now()
+      branches.value = [...branches.value, {
+        id: bid,
+        convoId: expectedConversationId,
+        headMessageId: loadedView.headMessageId,
+        name: loadedView.branchName,
+        createdAt: now,
+        updatedAt: now,
+        deletedAt: null,
+      }]
+    }
+
+    let pageCount = 0
+    while (!isMessageInTranscript(mid)) {
+      const view = generationV2BranchView.value
+      if (!view || view.branchId !== bid || !view.hasMoreTurns || !view.beforeMessageId) break
+      if (pageCount >= 200) {
+        throw new Error('GENERATION_V2_MESSAGE_CANDIDATE_ANCHOR_PAGE_LIMIT')
+      }
+      pageCount += 1
+      await loadTranscriptForBranch(bid, view.beforeMessageId, true)
+      if (activeConvoId.value !== expectedConversationId || activeBranchId.value !== bid ||
+          navigationRevision.value !== targetRevision) return
+    }
+    if (!isMessageInTranscript(mid)) {
+      throw new Error('GENERATION_V2_MESSAGE_CANDIDATE_ANCHOR_NOT_FOUND')
+    }
+
+    setCursorForBranch(bid, mid)
+    await nextTick()
+    if (activeConvoId.value !== expectedConversationId || activeBranchId.value !== bid ||
+        navigationRevision.value !== targetRevision) return
+    const element = findRenderedMessageElement(mid)
+    if (!element) throw new Error('GENERATION_V2_MESSAGE_CANDIDATE_ANCHOR_NOT_RENDERED')
+    element.scrollIntoView({ block: 'center', behavior: 'smooth' })
+    assertInvariants()
+  }
+
   async function onRenameConvo(convoId: string, title: string) {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     try {
-      await renameConvo(convoId, title)
+      await renameGenerationV2Conversation(convoId, title)
       await refreshConvos()
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
@@ -3249,8 +2576,7 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value) return
     try {
       const deletingActiveConvo = String(activeConvoId.value ?? '') === String(convoId ?? '')
-      await deleteChatDraftsForConvo(convoId)
-      await deleteConvo(convoId)
+      await deleteGenerationV2Conversation(convoId)
       if (deletingActiveConvo) reasoningArtifactsByMessageId.value = {}
       await refreshConvos()
       await loadTranscriptForActiveConvo()
@@ -3263,10 +2589,9 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     try {
-      await setConvoProject(convoId, projectId)
-      await ensureProjectReasoningPrefsInitialized(projectId)
+      if (!projectId) throw new Error('GENERATION_V2_PROJECT_REQUIRED')
+      await moveGenerationV2Conversation(convoId, projectId)
       await refreshConvos()
-      await loadReasoningPrefsForActiveConvo()
       applyImageGenerationStateForActiveConvo()
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
@@ -3278,8 +2603,7 @@ export function useAppChatAppLogic() {
     if (isDraftInteractionLocked.value) return
     try {
       const activeDeleted = convoIds.some((id) => String(id ?? '') === String(activeConvoId.value ?? ''))
-      await Promise.all(convoIds.map((id) => deleteChatDraftsForConvo(id)))
-      await deleteConvos(convoIds)
+      await Promise.all(convoIds.map((id) => deleteGenerationV2Conversation(id)))
       if (activeDeleted) reasoningArtifactsByMessageId.value = {}
       await refreshConvos()
       await loadTranscriptForActiveConvo()
@@ -3292,10 +2616,9 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     try {
-      await setConvoProjectMany(convoIds, projectId)
-      await ensureProjectReasoningPrefsInitialized(projectId)
+      if (!projectId) throw new Error('GENERATION_V2_PROJECT_REQUIRED')
+      await Promise.all(convoIds.map((id) => moveGenerationV2Conversation(id, projectId)))
       await refreshConvos()
-      await loadReasoningPrefsForActiveConvo()
       applyImageGenerationStateForActiveConvo()
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
@@ -3305,7 +2628,6 @@ export function useAppChatAppLogic() {
   // ========== Project Management ==========
 
   function onSelectProject(projectId: string | null) {
-    if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     activeProjectId.value = projectId
     // 切换项目后刷新对话列表
@@ -3316,21 +2638,9 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     try {
-      const created = await createProject({ name })
-
-      // 如果是已存在的项目，直接选中，不刷新列表（避免不必要的 DB 查询）
-      if (created.alreadyExists) {
-        // 对系统项目（Inbox）给出特殊提示
-        if ((created as any).isSystemProject) {
-          console.info('[ui-app] Inbox is a system project, selected existing instance')
-        }
-        onSelectProject(created.id)
-        return
-      }
-
-      // 仅在真正创建新项目时刷新列表
+      const created = await createGenerationV2Project(name)
       await refreshProjects()
-      onSelectProject(created.id)
+      onSelectProject(created.projectId)
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
     }
@@ -3340,7 +2650,7 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     try {
-      await saveProject({ id: projectId, name })
+      await renameGenerationV2Project(projectId, name)
       await refreshProjects()
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
@@ -3351,11 +2661,7 @@ export function useAppChatAppLogic() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     try {
-      const result = await deleteProject(projectId)
-      if (!result.ok && result.error) {
-        loadError.value = result.error.message
-        return
-      }
+      await deleteGenerationV2Project(projectId)
       // 如果删除的是当前选中的项目，切换到全部对话
       if (activeProjectId.value === projectId) {
         activeProjectId.value = null
@@ -3370,12 +2676,15 @@ export function useAppChatAppLogic() {
   async function onCreateConvo() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
-    const template = systemTemplateSnapshot.value ?? await getSystemChatTemplate()
+    const template = await getSystemChatTemplate()
     systemTemplateSnapshot.value = template
     projectsOnlyWorkspace.value = false
+    activeProjectId.value = template.conversation.projectId
     activeConvoId.value = template.conversation.id
+    activeBranchId.value = template.conversation.branchId
     await loadTranscriptForActiveConvo()
-    assertInvariants() // Stable boundary: new conversation created and active
+    await restoreDraftForActiveScope()
+    assertInvariants() // Stable boundary: New Chat template is active without creating a formal conversation
   }
 
   const convoListItems = computed<ConversationListItem[]>(() =>
@@ -3399,7 +2708,14 @@ export function useAppChatAppLogic() {
     convos.value.map((c) => ({ id: c.id, title: c.title, projectId: c.projectId ?? null }))
   )
 
-  const activeTitle = computed(() => getActiveConvoRecord()?.title ?? '')
+  const activeTitle = computed(() => (
+    getActiveConvoRecord()?.title
+    ?? (
+      generationV2BranchView.value?.conversationId === activeConvoId.value
+        ? generationV2BranchView.value.title
+        : ''
+    )
+  ))
 
   function openSearchModal() {
     searchModalOpen.value = true
@@ -3487,153 +2803,7 @@ export function useAppChatAppLogic() {
     if (resolve) resolve(result)
   }
 
-  function historyAttachmentDetailText(item: MessageAttachmentVM | null): string {
-    if (!item) return 'history attachment'
-    const parts: string[] = []
-    if (item.sourceKind && item.sourceKind !== 'unknown') parts.push(item.sourceKind)
-    if (item.extension) parts.push(item.extension)
-    if (parts.length === 0 && item.assetKind) parts.push(item.assetKind)
-    return parts.join(' · ')
-  }
-
-  function buildHistoryConfirmationItemsFromReplayPrepared(
-    prepared: PreparedOpenRouterReplay | null | undefined
-  ): ConfirmationHistoryAttachmentItem[] {
-    if (!prepared) return []
-    const excluded = Array.isArray(prepared.excludedAttachments) ? prepared.excludedAttachments : []
-    if (excluded.length === 0) return []
-    const viewMap = new Map<string, MessageAttachmentVM>()
-    for (const attachments of Object.values(historyAttachmentViewModelsByMessageId.value)) {
-      for (const attachment of attachments) {
-        viewMap.set(attachment.attachmentId, attachment)
-      }
-    }
-    const out: ConfirmationHistoryAttachmentItem[] = []
-    for (const row of excluded) {
-      const attachmentId = String((row as any)?.attachmentId ?? '').trim()
-      const messageId = String((row as any)?.messageId ?? '').trim()
-      const assetId = String((row as any)?.assetId ?? '').trim()
-      if (!attachmentId || !messageId) continue
-      const vm = viewMap.get(attachmentId) ?? null
-      const reasonCode = String((row as any)?.exclusionReason ?? 'history_attachment_excluded').trim() || 'history_attachment_excluded'
-      out.push({
-        attachmentId,
-        messageId,
-        assetId: assetId || (vm?.assetId ?? ''),
-        filename: vm?.filename ?? (assetId || attachmentId),
-        detailText: historyAttachmentDetailText(vm),
-        reasonCode,
-        reasonText: sanitizeHistoryAttachmentReason(String((row as any)?.reason ?? (row as any)?.message ?? reasonCode)),
-        previewDataUrl: vm?.previewDataUrl ?? null,
-        iconKind: vm?.iconKind ?? 'file',
-      })
-    }
-    return out
-  }
-
-  function buildCurrentConfirmationItemsFromSendPlan(sendPlan: SendPlan): ConfirmationCurrentAttachmentItem[] {
-    const draftByAssetId = new Map(draftAttachmentRecords.value.map((item) => [item.assetId, item]))
-    const viewByAssetId = new Map(draftAttachmentViewModels.value.map((item) => [item.assetId, item]))
-    const restoredAssetIdSet = editRestoredDraftAttachmentAssetIds.value
-    const out: ConfirmationCurrentAttachmentItem[] = []
-    for (const plan of sendPlan.attachmentPlans) {
-      if (plan.source !== 'draft') continue
-      if (plan.eligibility === 'included' || plan.eligibility === 'warning') continue
-      const draftRecord = draftByAssetId.get(plan.assetId)
-      if (!draftRecord) continue
-      const view = viewByAssetId.get(plan.assetId)
-      const reasonCode = String(plan.exclusionReason ?? plan.displayStatus ?? 'unsupported_attachment').trim() || 'unsupported_attachment'
-      const source: 'draft' | 'edit_restored' =
-        restoredAssetIdSet.has(plan.assetId) ? 'edit_restored' : 'draft'
-      const detailParts: string[] = []
-      if (view?.sourceKind) detailParts.push(view.sourceKind)
-      if (view?.extension) detailParts.push(view.extension)
-      if (detailParts.length === 0) detailParts.push(view?.assetKind ?? 'attachment')
-      out.push({
-        attachmentId: draftRecord.id,
-        draftAttachmentId: draftRecord.id,
-        assetId: plan.assetId,
-        filename: view?.filename ?? plan.assetId,
-        detailText: detailParts.join(' · '),
-        reasonCode,
-        reasonText: sanitizeSendPlanSummaryMessage(plan.notes?.[0] ?? '') ?? 'Current model or send gate cannot include this attachment.',
-        previewDataUrl: view?.previewDataUrl ?? null,
-        source,
-      })
-    }
-    return out
-  }
-
-  function buildHistoryConfirmationItemsFromSendPlan(sendPlan: SendPlan): ConfirmationHistoryAttachmentItem[] {
-    const viewMap = new Map<string, MessageAttachmentVM>()
-    for (const attachments of Object.values(historyAttachmentViewModelsByMessageId.value)) {
-      for (const attachment of attachments) {
-        viewMap.set(attachment.attachmentId, attachment)
-      }
-    }
-    const out: ConfirmationHistoryAttachmentItem[] = []
-    for (const plan of sendPlan.attachmentPlans) {
-      if (plan.source !== 'history') continue
-      if (plan.eligibility === 'included' || plan.eligibility === 'warning') continue
-      const messageId = String(plan.messageId ?? '').trim()
-      if (!messageId) continue
-      const vm = viewMap.get(plan.attachmentId) ?? null
-      const reasonCode = String(plan.exclusionReason ?? plan.displayStatus ?? 'history_attachment_excluded').trim() || 'history_attachment_excluded'
-      out.push({
-        attachmentId: plan.attachmentId,
-        messageId,
-        assetId: plan.assetId,
-        filename: vm?.filename ?? plan.assetId,
-        detailText: historyAttachmentDetailText(vm),
-        reasonCode,
-        reasonText: sanitizeHistoryAttachmentReason(plan.notes?.[0] ?? reasonCode),
-        previewDataUrl: vm?.previewDataUrl ?? null,
-        iconKind: vm?.iconKind ?? 'file',
-      })
-    }
-    return out
-  }
-
-  function buildAttachmentConfirmationSession(input: AttachmentConfirmationRequestInput): AttachmentConfirmationSession | null {
-    if (input.historyItems.length === 0 && input.currentItems.length === 0) return null
-    const titleByKind: Record<AttachmentConfirmationSessionKind, string> = {
-      composer_send: t('sendPlan.confirmSendTitle'),
-      regenerate: t('sendPlan.confirmRegenerateTitle'),
-      retry_replace: t('sendPlan.confirmRetryTitle'),
-      retry_as_new: t('sendPlan.confirmRetryTitle'),
-      edit_submit: t('sendPlan.confirmEditTitle'),
-    }
-    return {
-      kind: input.kind,
-      title: titleByKind[input.kind],
-      historyItems: input.historyItems,
-      currentItems: input.currentItems,
-      historyAllExcluded: input.historyItems.length === 0,
-      currentDecisionsByAttachmentId: Object.fromEntries(input.currentItems.map((item) => [item.attachmentId, null])),
-      collapsed: false,
-      historySectionExpanded: true,
-      currentSectionExpanded: true,
-      showHistoryValidation: false,
-      currentValidationAttachmentId: null,
-      validationMessage: null,
-      historyLocateActive: false,
-      historyLocateIndex: 0,
-    }
-  }
-
-  async function requestAttachmentConfirmation(input: AttachmentConfirmationRequestInput): Promise<AttachmentConfirmationResult> {
-    if (attachmentConfirmationSession.value) {
-      return { confirmed: false, decisions: [] }
-    }
-    const session = buildAttachmentConfirmationSession(input)
-    if (!session) return { confirmed: true, decisions: [] }
-    return await new Promise<AttachmentConfirmationResult>((resolve) => {
-      attachmentConfirmationResolver.value = resolve
-      attachmentConfirmationSession.value = session
-    })
-  }
-
-  function closeAttachmentConfirmationByCancel() {
+            function closeAttachmentConfirmationByCancel() {
     closeAttachmentConfirmationSessionWith({ confirmed: false, decisions: [] })
   }
 
@@ -3826,43 +2996,7 @@ export function useAppChatAppLogic() {
     }))
   }
 
-  async function applyDraftAttachmentDecisions(decisions: ReadonlyArray<AttachmentDecision>): Promise<void> {
-    const convoId = String(activeConvoId.value ?? '').trim()
-    if (!convoId) return
-    for (const decision of decisions) {
-      if (decision.source === 'history') continue
-      const draftRecord = draftAttachmentRecords.value.find((item) => item.id === decision.attachmentId)
-      if (!draftRecord) continue
-      if (decision.decision === 'remove') {
-        await removeConversationDraftAttachment({
-          conversationId: convoId,
-          assetId: draftRecord.assetId,
-        })
-        if (editRestoredDraftAttachmentAssetIds.value.has(draftRecord.assetId)) {
-          const next = new Set(editRestoredDraftAttachmentAssetIds.value)
-          next.delete(draftRecord.assetId)
-          editRestoredDraftAttachmentAssetIds.value = next
-        }
-        continue
-      }
-      await removeConversationDraftAttachment({
-        conversationId: convoId,
-        assetId: draftRecord.assetId,
-      })
-      await addConversationDraftAttachment({
-        conversationId: convoId,
-        assetId: draftRecord.assetId,
-        attachmentOrder: draftRecord.attachmentOrder,
-        includeInNextRequest: false,
-        excludedReason: 'manually_excluded',
-        preferredSendMode: draftRecord.preferredSendMode,
-        urlRetentionMode: draftRecord.urlRetentionMode,
-      })
-    }
-    await refreshDraftAttachmentViewModels()
-  }
-
-  async function onSelectSearchHit(hit: SearchHit) {
+    async function onSelectSearchHit(hit: SearchHit) {
     if (hit.entityType === 'project') {
       onSelectProject(hit.entityId)
       return
@@ -3893,6 +3027,7 @@ export function useAppChatAppLogic() {
     systemTemplateSnapshot.value = template
     projectsOnlyWorkspace.value = false
     activeConvoId.value = template.conversation.id
+    activeBranchId.value = template.conversation.branchId
     await loadTranscriptForActiveConvo()
     return template.conversation.id
   }
@@ -3913,37 +3048,26 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function ensureActiveBranch(convoId: string): Promise<BranchSummary> {
-    const current = activeBranch.value
-    if (current && current.convoId === convoId && current.deletedAt == null) return current
-    const ensured = await ensureDefaultBranch(convoId, { name: 'Main' })
-    await refreshBranchesForActiveConvo()
-    if (!branches.value.some((b) => b.id === ensured.id)) branches.value = [ensured, ...branches.value]
-    activeBranchId.value = ensured.id
-    return ensured
-  }
-
   async function onAbort() {
-    if (compatibleActiveRequestId.value) {
-      await window.compatibleChat?.abort?.({ requestId: compatibleActiveRequestId.value })
-      return
-    }
-    const s = activeStream.value
-    if (!s) return
-    const currentBranchId = activeBranchId.value
-    if (!currentBranchId || s.branchId !== currentBranchId) {
-      if (import.meta.env?.DEV) {
-        console.warn('[ui-app] onAbort: activeStream branch mismatch, skipping abort', {
-          streamBranchId: s.branchId,
-          currentBranchId,
-        })
+    const runtime = activeBranchRuntime.value
+    if (runtime?.status === 'generating' && runtime.activeOperationId) {
+      const snapshot = branchRuntimeCache.snapshotForOperation(runtime.activeOperationId)
+      if (!snapshot) {
+        loadError.value = 'GENERATION_V2_RUNTIME_OPERATION_UNKNOWN'
+        return
       }
+      await abortGenerationV2(
+        generationV2RouteForPersistedAnswer({ protocolContractId: snapshot.binding.contractId }),
+        runtime.activeOperationId,
+      )
+      if (activeBranchId.value === runtime.branchId) await refreshRenderableBranchView(runtime.branchId)
       return
     }
-    if (enableEventScheduler) {
-      eventScheduler.flushNow(currentBranchId, 'flush')
+    const v2Answer = activeGenerationV2Answer.value
+    if (v2Answer?.status === 'streaming') {
+      await abortGenerationV2(generationV2RouteForPersistedAnswer(v2Answer), v2Answer.operationId)
+      if (activeBranchId.value) await refreshRenderableBranchView(activeBranchId.value)
     }
-    s.abort.abort('abort')
   }
 
   function onToggleReasoningPanelState(messageId?: string) {
@@ -3952,58 +3076,7 @@ export function useAppChatAppLogic() {
     state.value = toggleReasoningPanelState(state.value, targetId)
   }
 
-  function scheduleProviderNativeFlush(stream: ActiveStream, assistantMessageId: string, delayMs = 250) {
-    if (stream.providerNativeFlushTimer.id) return
-    stream.providerNativeFlushTimer.id = setTimeout(async () => {
-      stream.providerNativeFlushTimer.id = null
-      try {
-        await flushProviderNativeContents(stream, assistantMessageId)
-      } finally {
-        if (stream.pendingProviderNativeContents.value.length > 0) {
-          scheduleProviderNativeFlush(stream, assistantMessageId, delayMs)
-        }
-      }
-    }, delayMs)
-  }
-
-  function getMessageStateById(messageId: string): MessageState | null {
-    const id = String(messageId ?? '').trim()
-    if (!id) return null
-    const messagesById = state.value.entities?.messagesById ?? state.value.messages
-    return messagesById[id] ?? null
-  }
-
-  function setReasoningPanelExpandedForMessage(messageId: string, expanded: boolean): boolean {
-    const message = getMessageStateById(messageId)
-    if (!message) return false
-    const nextState = expanded ? 'expanded' : 'collapsed'
-    if (message.reasoningPanelState === nextState) return false
-    state.value = toggleReasoningPanelState(state.value, messageId)
-    return true
-  }
-
-  function autoOpenReasoningPanelForMessage(messageId: string) {
-    if (globalReasoningPanelDefaultExpanded.value === false) {
-      return
-    }
-    setReasoningPanelExpandedForMessage(messageId, true)
-    if (reasoningRailMode.value) {
-      rightRailView.value = 'reasoning'
-      rightRailOpen.value = true
-    }
-  }
-
-  function autoCollapseReasoningPanelForMessage(messageId: string) {
-    if (globalReasoningPanelAutoCollapseAfterReasoning.value !== true) {
-      return
-    }
-    setReasoningPanelExpandedForMessage(messageId, false)
-    if (reasoningRailMode.value && effectiveRightRailView.value === 'reasoning') {
-      rightRailOpen.value = false
-    }
-  }
-
-  function onOpenReasoningDisplayForMessage(messageId?: string) {
+          function onOpenReasoningDisplayForMessage(messageId?: string) {
     const targetId = typeof messageId === 'string' && messageId.trim().length > 0 ? messageId : lastAssistantMessageId.value
     if (!targetId) return
     if (reasoningRailMode.value) {
@@ -4042,8 +3115,10 @@ export function useAppChatAppLogic() {
     loadError.value = null
 
     try {
+      const expectedHeadMessageId = generationV2BranchView.value?.headMessageId
+      if (!expectedHeadMessageId) throw new Error('GENERATION_V2_WORKSPACE_QUESTION_TRUNCATE_STALE')
       clearReasoningArtifactsForMessageIds(getMessageIdsForQuestionRemoval(qid))
-      const result = await truncateBranchFromQuestion(bid, qid)
+      const result = await truncateGenerationV2BranchFromQuestion({ branchId: bid, questionId: qid, expectedHeadMessageId })
       patchBranch(bid, {
         headMessageId: result.headMessageId,
         updatedAt: Date.now(),
@@ -4057,25 +3132,8 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function getRequestedReasoningConfig(): Readonly<{
-    requestedReasoningMode: RequestedReasoningMode
-    requestedReasoningEffortValue?: ReasoningEffort
-    requestedReasoningExclude: boolean
-  }> {
-    const requestedReasoningMode: RequestedReasoningMode = requestedReasoningEffort.value === 'auto' ? 'auto' : 'effort'
-    const requestedReasoningEffortValue: ReasoningEffort | undefined =
-      requestedReasoningMode === 'auto' ? undefined : (requestedReasoningEffort.value as ReasoningEffort)
-    const requestedReasoningExcludeValue =
-      requestedReasoningMode === 'auto' || requestedReasoningEffortValue === 'none' ? false : requestedReasoningExclude.value
-    return {
-      requestedReasoningMode,
-      requestedReasoningEffortValue,
-      requestedReasoningExclude: requestedReasoningExcludeValue,
-    }
-  }
-
   const DEFAULT_REASONING_PREFS: ReasoningPrefs = { mode: 'auto', effort: 'auto', exclude: false }
-  const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
+  const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 
   function isReasoningEffort(value: unknown): value is ReasoningEffort {
     return typeof value === 'string' && (REASONING_EFFORTS as string[]).includes(value)
@@ -4097,12 +3155,7 @@ export function useAppChatAppLogic() {
     return { mode: 'effort', effort: resolvedEffort, exclude }
   }
 
-  function extractReasoningPrefs(meta: unknown): ReasoningPrefs | null {
-    if (!meta || typeof meta !== 'object') return null
-    return normalizeReasoningPrefs((meta as any).reasoningPrefs)
-  }
-
-  function buildReasoningPrefsFromUi(): ReasoningPrefs {
+    function buildReasoningPrefsFromUi(): ReasoningPrefs {
     const mode: RequestedReasoningMode = requestedReasoningEffort.value === 'auto' ? 'auto' : 'effort'
     const effort = requestedReasoningEffort.value
     const exclude = mode === 'auto' || effort === 'none' ? false : requestedReasoningExclude.value
@@ -4128,12 +3181,7 @@ export function useAppChatAppLogic() {
     }, 0)
   }
 
-  function mergeReasoningPrefsIntoMeta(meta: unknown, prefs: ReasoningPrefs): Record<string, unknown> {
-    const base = meta && typeof meta === 'object' ? { ...(meta as Record<string, unknown>) } : {}
-    return { ...base, reasoningPrefs: prefs }
-  }
-
-  function getActiveConvoRecord(): ConvoSummary | null {
+    function getActiveConvoRecord(): ConvoSummary | null {
     const convoId = activeConvoId.value
     if (!convoId) return null
     if (convoId === systemTemplateSnapshot.value?.conversation.id) {
@@ -4176,7 +3224,7 @@ export function useAppChatAppLogic() {
     const projectMeta = convo?.projectId
       ? getProjectByIdLocal(convo.projectId)?.meta ?? null
       : null
-    return deserializeChatSessionConfigFromConvoMeta({
+    const base = deserializeChatSessionConfigFromConvoMeta({
       convoMeta: convo?.meta ?? null,
       projectMeta,
       globalReasoningPrefs: globalReasoningPrefs.value,
@@ -4185,6 +3233,25 @@ export function useAppChatAppLogic() {
       globalImageGenerationDefault: globalImageGenerationDefault.value,
       defaultModelKey: DEFAULT_OPENROUTER_MODEL_ID,
     })
+    if (!convo || !generationV2RoutePreferenceByConversationId.value.has(convo.id)) return base
+    const preference = generationV2RoutePreferenceByConversationId.value.get(convo.id) ?? null
+    const withRoute = preference === null ? Object.freeze({ ...base, model: Object.freeze({
+      selectedProviderId: null, selectedModelKey: null, compatibleSelection: null,
+    }) }) : (() => {
+      const selection = preference.selection
+      return Object.freeze({ ...base, model: selection.kind === 'provider_model'
+        ? Object.freeze({ selectedProviderId: selection.providerId,
+            selectedModelKey: selection.modelId, compatibleSelection: null })
+        : Object.freeze({ selectedProviderId: null, selectedModelKey: selection.selection.modelId,
+            compatibleSelection: selection.selection }) })
+    })()
+    const persistedConfig = generationV2ConfigByConversationId.value.get(convo.id)
+    if (!persistedConfig || isEmptyGenerationV2SemanticLayer(persistedConfig.semanticLayer)) return withRoute
+    const projection = projectGenerationV2SemanticLayerToSessionConfig(
+      persistedConfig.semanticLayer,
+      withRoute.model.compatibleSelection ? 'local_endpoint' : withRoute.model.selectedProviderId ?? null,
+    )
+    return mergeChatSessionConfig(withRoute, projection.patch)
   }
 
   function getActiveSessionConfigSnapshot(): ChatSessionConfig {
@@ -4196,496 +3263,248 @@ export function useAppChatAppLogic() {
     if (!activeConvoId.value) return 'none'
     return activeConvoId.value === systemTemplateSnapshot.value?.conversation.id ? 'template' : 'conversation'
   })
-  const openAIResponsesModelAvailabilityStatus = computed(() => ({
-    loading: openAIResponsesModelAvailabilityLoading.value,
-    result: openAIResponsesModelAvailabilityResult.value,
-  }))
-  const googleAIStudioModelAvailabilityStatus = computed(() => ({
-    loading: googleAIStudioModelAvailabilityLoading.value,
-    result: googleAIStudioModelAvailabilityResult.value,
-  }))
-  const anthropicModelAvailabilityStatus = computed(() => ({
-    loading: anthropicModelAvailabilityLoading.value,
-    result: anthropicModelAvailabilityResult.value,
-  }))
-  const deepSeekModelAvailabilityStatus = computed(() => ({
-    loading: deepSeekModelAvailabilityLoading.value,
-    result: deepSeekModelAvailabilityResult.value,
-  }))
 
-  const providerModelPickerSources = computed<readonly ProviderModelPickerSource[]>(() => [
-    {
-      providerId: OPENAI_RESPONSES_PROVIDER_KEY,
-      providerName: 'OpenAI Responses',
-      statusKind: 'not_loaded',
-      statusLabel: 'catalog',
-      loading: false,
-      items: [],
-    },
-    {
-      providerId: GOOGLE_AI_STUDIO_PROVIDER_KEY,
-      providerName: 'Google AI Studio',
-      statusKind: 'not_loaded',
-      statusLabel: 'catalog',
-      loading: false,
-      items: [],
-    },
-    {
-      providerId: ANTHROPIC_MESSAGES_PROVIDER_KEY,
-      providerName: 'Anthropic Messages',
-      statusKind: 'not_loaded',
-      statusLabel: 'catalog',
-      loading: false,
-      items: [],
-    },
-    {
-      providerId: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
-      providerName: 'DeepSeek',
-      statusKind: 'not_loaded',
-      statusLabel: 'catalog',
-      loading: false,
-      items: [],
-    },
-  ])
-
-  async function onRefreshProviderModelPickerSources() {
-    await Promise.allSettled([
-      onRefreshOpenAIResponsesModels(),
-      onRefreshGoogleAIStudioModels(),
-      onRefreshAnthropicModels(),
-      onRefreshDeepSeekModels(),
-    ])
-  }
-
-  function getOpenAIResponsesModelsBridge(): OpenAIResponsesModelsBridge | null {
-    const bridge = (globalThis as any)?.openAIResponsesModels as OpenAIResponsesModelsBridge | undefined
-    return typeof bridge?.listAvailability === 'function' ? bridge : null
-  }
-
-  function buildOpenAIResponsesModelAvailabilityFailure(
-    code: OpenAIModelAvailabilityFailureCode,
-    message: string,
-  ): OpenAIModelAvailabilityResult {
-    return {
-      ok: false,
-      providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
-      endpointId: OPENAI_RESPONSES_ENDPOINT_ID,
-      profileId: OPENAI_RESPONSES_PROFILE_ID,
-      observedAtMs: Date.now(),
-      code,
-      message,
-    }
-  }
-
-  async function onRefreshOpenAIResponsesModels() {
-    if (openAIResponsesModelAvailabilityLoading.value) return
-    const bridge = getOpenAIResponsesModelsBridge()
-    if (!bridge) {
-      openAIResponsesModelAvailabilityResult.value = buildOpenAIResponsesModelAvailabilityFailure(
-        'invalid_payload',
-        'OpenAI Responses model availability bridge is unavailable.',
-      )
-      return
-    }
-
-    openAIResponsesModelAvailabilityLoading.value = true
-    try {
-      openAIResponsesModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
-    } catch {
-      openAIResponsesModelAvailabilityResult.value = buildOpenAIResponsesModelAvailabilityFailure(
-        'network_error',
-        t('errors.network.reason.networkUnknown'),
-      )
-    } finally {
-      openAIResponsesModelAvailabilityLoading.value = false
-    }
-  }
-
-  function getGoogleAIStudioModelsBridge(): GoogleAIStudioModelsBridge | null {
-    const bridge = (globalThis as any)?.googleAIStudioModels as GoogleAIStudioModelsBridge | undefined
-    return typeof bridge?.listAvailability === 'function' ? bridge : null
-  }
-
-  function buildGoogleAIStudioModelAvailabilityFailure(
-    code: GeminiModelAvailabilityFailureCode,
-    message: string,
-  ): GeminiModelAvailabilityResult {
-    return {
-      ok: false,
-      providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
-      endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID,
-      profileId: GOOGLE_AI_STUDIO_PROFILE_ID,
-      observedAtMs: Date.now(),
-      code,
-      message,
-    }
-  }
-
-  async function onRefreshGoogleAIStudioModels() {
-    if (googleAIStudioModelAvailabilityLoading.value) return
-    const bridge = getGoogleAIStudioModelsBridge()
-    if (!bridge) {
-      googleAIStudioModelAvailabilityResult.value = buildGoogleAIStudioModelAvailabilityFailure(
-        'invalid_payload',
-        'Google AI Studio model availability bridge is unavailable.',
-      )
-      return
-    }
-
-    googleAIStudioModelAvailabilityLoading.value = true
-    try {
-      googleAIStudioModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
-    } catch {
-      googleAIStudioModelAvailabilityResult.value = buildGoogleAIStudioModelAvailabilityFailure(
-        'network_error',
-        t('errors.network.reason.networkUnknown'),
-      )
-    } finally {
-      googleAIStudioModelAvailabilityLoading.value = false
-    }
-  }
-
-  function getAnthropicModelsBridge(): AnthropicModelsBridge | null {
-    const bridge = (globalThis as any)?.anthropicModels as AnthropicModelsBridge | undefined
-    return typeof bridge?.listAvailability === 'function' ? bridge : null
-  }
-
-  function buildAnthropicModelAvailabilityFailure(
-    code: AnthropicModelAvailabilityFailureCode,
-    message: string,
-  ): AnthropicModelAvailabilityResult {
-    return {
-      ok: false,
-      providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
-      endpointId: ANTHROPIC_MESSAGES_ENDPOINT_ID,
-      profileId: ANTHROPIC_MESSAGES_PROFILE_ID,
-      observedAtMs: Date.now(),
-      code,
-      message,
-    }
-  }
-
-  async function onRefreshAnthropicModels() {
-    if (anthropicModelAvailabilityLoading.value) return
-    const bridge = getAnthropicModelsBridge()
-    if (!bridge) {
-      anthropicModelAvailabilityResult.value = buildAnthropicModelAvailabilityFailure(
-        'invalid_payload',
-        'Anthropic model availability bridge is unavailable.',
-      )
-      return
-    }
-
-    anthropicModelAvailabilityLoading.value = true
-    try {
-      anthropicModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
-    } catch {
-      anthropicModelAvailabilityResult.value = buildAnthropicModelAvailabilityFailure(
-        'network_error',
-        t('errors.network.reason.networkUnknown'),
-      )
-    } finally {
-      anthropicModelAvailabilityLoading.value = false
-    }
-  }
-
-  function getDeepSeekModelsBridge(): DeepSeekModelsBridge | null {
-    const bridge = (globalThis as any)?.deepSeekModels as DeepSeekModelsBridge | undefined
-    return typeof bridge?.listAvailability === 'function' ? bridge : null
-  }
-
-  function buildDeepSeekModelAvailabilityFailure(
-    code: DeepSeekModelAvailabilityFailureCode,
-    message: string,
-  ): DeepSeekModelAvailabilityResult {
-    return {
-      ok: false,
-      providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
-      endpointId: DEEPSEEK_OFFICIAL_ENDPOINT_ID,
-      profileId: DEEPSEEK_OFFICIAL_PROFILE_ID,
-      observedAtMs: Date.now(),
-      code,
-      message,
-    }
-  }
-
-  async function onRefreshDeepSeekModels() {
-    if (deepSeekModelAvailabilityLoading.value) return
-    const bridge = getDeepSeekModelsBridge()
-    if (!bridge) {
-      deepSeekModelAvailabilityResult.value = buildDeepSeekModelAvailabilityFailure(
-        'invalid_payload',
-        'DeepSeek model availability bridge is unavailable.',
-      )
-      return
-    }
-
-    deepSeekModelAvailabilityLoading.value = true
-    try {
-      deepSeekModelAvailabilityResult.value = await bridge.listAvailability({ timeoutMs: 30000 })
-    } catch {
-      deepSeekModelAvailabilityResult.value = buildDeepSeekModelAvailabilityFailure(
-        'network_error',
-        t('errors.network.reason.networkUnknown'),
-      )
-    } finally {
-      deepSeekModelAvailabilityLoading.value = false
-    }
-  }
-
-  function getCredentialStatusBridge(providerKey: string): ProviderCredentialStatusBridge | null {
-    const global = globalThis as any
-    const bridge = providerKey === OPENROUTER_PROVIDER_ID
-      ? global?.openRouterCredential
-      : providerKey === OPENAI_RESPONSES_PROVIDER_KEY
-        ? global?.openAIResponsesCredential
-        : providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY
-          ? global?.googleAIStudioCredential
-          : providerKey === ANTHROPIC_MESSAGES_PROVIDER_KEY
-            ? global?.anthropicCredential
-            : providerKey === DEEPSEEK_OFFICIAL_PROVIDER_KEY
-              ? global?.deepSeekCredential
-              : null
-    return bridge && typeof bridge.getStatus === 'function' ? bridge as ProviderCredentialStatusBridge : null
-  }
-
-  function providerDisplayName(providerKey: string): string {
-    if (providerKey === OPENROUTER_PROVIDER_ID) return 'OpenRouter'
-    if (providerKey === OPENAI_RESPONSES_PROVIDER_KEY) return 'OpenAI Responses'
-    if (providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY) return 'Google AI Studio'
-    if (providerKey === ANTHROPIC_MESSAGES_PROVIDER_KEY) return 'Anthropic Messages'
-    if (providerKey === DEEPSEEK_OFFICIAL_PROVIDER_KEY) return 'DeepSeek'
-    if (providerKey === 'lm_studio') return 'LM Studio'
-    if (providerKey === 'ollama_local') return 'Ollama'
-    if (providerKey === 'local_endpoint') return 'Local/OpenAI-compatible'
-    return providerKey
-  }
-
-  async function preflightCloudCredential(providerKey: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
-    const providerName = providerDisplayName(providerKey)
-    const bridge = getCredentialStatusBridge(providerKey)
-    if (!bridge) return { ok: false, reason: `${providerName} credential status is unavailable. Restart Starverse and try again.` }
-    try {
-      const result = await bridge.getStatus()
-      if (result?.ok !== true) return { ok: false, reason: `${providerName} credential status is unavailable.` }
-      if (result.status?.apiKeyConfigured !== true) return { ok: false, reason: `${providerName} credential is not configured.` }
-      return { ok: true }
-    } catch {
-      return { ok: false, reason: `${providerName} credential status check failed safely.` }
-    }
-  }
-
-  function selectedModelKnownInAvailability(result: unknown, modelId: string): boolean {
-    if (!result || typeof result !== 'object' || (result as any).ok !== true) return false
-    const models = Array.isArray((result as any).models) ? (result as any).models : []
-    const normalized = normalizeModelKey(modelId)
-    return models.some((model: unknown) => String((model as any)?.nativeModelId ?? '').trim() === normalized)
-  }
-
-  async function ensureCloudAvailabilityResult(providerKey: string): Promise<unknown> {
-    if (providerKey === OPENAI_RESPONSES_PROVIDER_KEY) {
-      if (!openAIResponsesModelAvailabilityResult.value) await onRefreshOpenAIResponsesModels()
-      return openAIResponsesModelAvailabilityResult.value
-    }
-    if (providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY) {
-      if (!googleAIStudioModelAvailabilityResult.value) await onRefreshGoogleAIStudioModels()
-      return googleAIStudioModelAvailabilityResult.value
-    }
-    if (providerKey === ANTHROPIC_MESSAGES_PROVIDER_KEY) {
-      if (!anthropicModelAvailabilityResult.value) await onRefreshAnthropicModels()
-      return anthropicModelAvailabilityResult.value
-    }
-    if (providerKey === DEEPSEEK_OFFICIAL_PROVIDER_KEY) {
-      if (!deepSeekModelAvailabilityResult.value) await onRefreshDeepSeekModels()
-      return deepSeekModelAvailabilityResult.value
-    }
-    return null
-  }
-
-  async function preflightCloudModelAvailability(providerKey: string, modelId: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
-    const providerName = providerDisplayName(providerKey)
-    const result = await ensureCloudAvailabilityResult(providerKey)
-    if (!result || typeof result !== 'object') {
-      return { ok: false, reason: `${providerName} model availability is unavailable.` }
-    }
-    if ((result as any).ok !== true) {
-      const message = String((result as any).message ?? '').trim()
-      return { ok: false, reason: message || `${providerName} model availability check failed.` }
-    }
-    if (!selectedModelKnownInAvailability(result, modelId)) {
-      return { ok: false, reason: `${providerName} model "${normalizeModelKey(modelId)}" is not available for the current credential.` }
-    }
-    return { ok: true }
-  }
-
-  function localModelListIncludes(list: unknown, modelId: string): boolean | null {
-    if (!list || typeof list !== 'object') return null
-    if ((list as any).ok !== true) return null
-    const normalized = normalizeModelKey(modelId)
-    const modelIds = Array.isArray((list as any).modelIds)
-      ? (list as any).modelIds
-      : Array.isArray((list as any).models)
-        ? (list as any).models
-        : []
-    if (modelIds.length === 0) return null
-    return modelIds.some((item: unknown) => {
-      if (typeof item === 'string') return item.trim() === normalized
-      return String((item as any)?.key ?? (item as any)?.id ?? (item as any)?.name ?? '').trim() === normalized
+  function legacyCatalogModels(providerKey: string, source: string): readonly Record<string, unknown>[] {
+    const state = catalogRuntimeSnapshot.value[providerKey] ?? catalogRuntimeStore.read(providerKey)
+    return state.items.map((item) => {
+      const raw = item.observation?.rawProviderRecord ?? {}
+      const resolution = item.capabilityResolution
+      const supportedGenerationMethods = Array.isArray(raw.supportedGenerationMethods)
+        ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string') : undefined
+      return Object.freeze({
+        providerKey,
+        nativeModelId: item.modelId,
+        modelId: item.modelId,
+        displayName: item.displayName,
+        description: item.description ?? undefined,
+        source,
+        confidence: 'provider_reported',
+        observedAtMs: item.observation?.observedAtMs ?? item.syncedAtMs ?? 0,
+        observation: item.observation ?? undefined,
+        resolvedCapabilities: resolution ?? undefined,
+        providerSpecific: Object.freeze({
+          thinkingOwnProperty: Object.prototype.hasOwnProperty.call(raw, 'thinking'),
+          thinkingRawValue: raw.thinking,
+          thinkingRawType: Object.prototype.hasOwnProperty.call(raw, 'thinking') ? typeof raw.thinking : 'missing',
+          supportedGenerationMethods,
+          inputTokenLimit: typeof raw.inputTokenLimit === 'number' ? raw.inputTokenLimit : undefined,
+          outputTokenLimit: typeof raw.outputTokenLimit === 'number' ? raw.outputTokenLimit : undefined,
+        }),
+        warnings: Object.freeze([]),
+      })
     })
   }
 
-  async function preflightLocalEndpointAvailability(modelIdOverride?: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
-    const endpointUrl = localEndpointChatUrl.value.trim()
-    const modelId = normalizeRuntimeModelId(modelIdOverride)
-    if (!endpointUrl) return { ok: false, reason: 'Local/OpenAI-compatible endpoint URL is not configured.' }
-    if (!modelId) return { ok: false, reason: 'Local/OpenAI-compatible model is not configured.' }
-    const bridge = (globalThis as any)?.localEndpointDiagnostics as LocalEndpointDiagnosticsBridge | undefined
-    if (!bridge || typeof bridge.probe !== 'function') {
-      return { ok: false, reason: 'Local/OpenAI-compatible endpoint probe is unavailable.' }
+  function legacyCatalogAvailability<T>(input: Readonly<{
+    providerKey: string
+    endpointId: string
+    profileId: string
+    source: string
+  }>): T | null {
+    const state = catalogRuntimeSnapshot.value[input.providerKey] ?? catalogRuntimeStore.read(input.providerKey)
+    if (state.hydrationState === 'idle') return null
+    if (state.failure) return Object.freeze({
+      ok: false,
+      providerKey: input.providerKey,
+      endpointId: input.endpointId,
+      profileId: input.profileId,
+      observedAtMs: Date.now(),
+      code: 'network_error',
+      message: providerFailurePrimaryMessageV2(state.failure),
+      providerFailure: state.failure,
+    }) as T
+    const models = legacyCatalogModels(input.providerKey, input.source)
+    const observedAtMs = models.reduce((latest, model) => Math.max(latest,
+      typeof model.observedAtMs === 'number' ? model.observedAtMs : 0), 0)
+    return Object.freeze({
+      ok: true,
+      providerKey: input.providerKey,
+      endpointId: input.endpointId,
+      profileId: input.profileId,
+      observedAtMs,
+      models,
+      warnings: Object.freeze([]),
+      sourceDocuments: Object.freeze([]),
+    }) as T
+  }
+
+  function catalogProviderLoading(providerKey: string): boolean {
+    const state = catalogRuntimeSnapshot.value[providerKey] ?? catalogRuntimeStore.read(providerKey)
+    return state.hydrationState === 'loading' || state.syncState === 'syncing'
+  }
+
+  const openAIResponsesModelAvailabilityStatus = computed(() => ({
+    loading: catalogProviderLoading(OPENAI_RESPONSES_PROVIDER_KEY),
+    result: legacyCatalogAvailability<OpenAIModelAvailabilityResult>({ providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
+      endpointId: OPENAI_RESPONSES_ENDPOINT_ID, profileId: OPENAI_RESPONSES_PROFILE_ID, source: 'openai_models_api' }),
+  }))
+  const googleAIStudioModelAvailabilityStatus = computed(() => ({
+    loading: catalogProviderLoading(GOOGLE_AI_STUDIO_PROVIDER_KEY),
+    result: legacyCatalogAvailability<GeminiModelAvailabilityResult>({ providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+      endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID, profileId: GOOGLE_AI_STUDIO_PROFILE_ID, source: 'gemini_models_api' }),
+  }))
+  const anthropicModelAvailabilityStatus = computed(() => ({
+    loading: catalogProviderLoading(ANTHROPIC_MESSAGES_PROVIDER_KEY),
+    result: legacyCatalogAvailability<AnthropicModelAvailabilityResult>({ providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+      endpointId: ANTHROPIC_MESSAGES_ENDPOINT_ID, profileId: ANTHROPIC_MESSAGES_PROFILE_ID, source: 'anthropic_models_api' }),
+  }))
+  const deepSeekModelAvailabilityStatus = computed(() => ({
+    loading: catalogProviderLoading(DEEPSEEK_OFFICIAL_PROVIDER_KEY),
+    result: legacyCatalogAvailability<DeepSeekModelAvailabilityResult>({ providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+      endpointId: DEEPSEEK_OFFICIAL_ENDPOINT_ID, profileId: DEEPSEEK_OFFICIAL_PROFILE_ID, source: 'deepseek_models_api' }),
+  }))
+
+  const providerModelPickerSources = computed<readonly ProviderModelPickerSource[]>(() => ([
+    [OPENAI_RESPONSES_PROVIDER_KEY, 'OpenAI Responses'],
+    [GOOGLE_AI_STUDIO_PROVIDER_KEY, 'Google AI Studio'],
+    [ANTHROPIC_MESSAGES_PROVIDER_KEY, 'Anthropic Messages'],
+    [DEEPSEEK_OFFICIAL_PROVIDER_KEY, 'DeepSeek'],
+  ] as const).map(([providerId, providerName]) => {
+    const state = catalogRuntimeSnapshot.value[providerId] ?? catalogRuntimeStore.read(providerId)
+    const statusKind = state.failure ? 'unavailable' as const
+      : state.hydrationState === 'loading' ? 'loading' as const
+        : state.items.length > 0 ? 'ready' as const : 'not_loaded' as const
+    return {
+      providerId,
+      providerName,
+      statusKind,
+      statusLabel: state.failure?.providerError?.message ?? (state.items.length > 0 ? `${state.items.length} models` : 'catalog'),
+      loading: state.hydrationState === 'loading',
+      items: state.items.map((item) => ({
+        providerId,
+        providerName,
+        modelId: item.modelId,
+        modelKey: item.modelKey,
+        displayName: item.displayName,
+        description: item.description,
+        vendor: item.vendor,
+        capabilitySummary: item.capabilityResolution
+          ? [
+              ...Object.entries(item.capabilityResolution).flatMap(([key, fact]) =>
+                fact && typeof fact === 'object' && 'modelSupport' in fact
+                  ? [`${key}: ${fact.modelSupport} · ${fact.resolutionSource} · ${fact.wireImplementation}`]
+                  : [],
+              ),
+              ...(item.capabilityResolution.providerSpecific?.kind === 'gemini_image_generation'
+                ? ['imageGeneration: supported · verified_contract · implemented']
+                : []),
+            ].join(' | ')
+          : 'capability unknown',
+        capabilityResolution: item.capabilityResolution,
+        observation: item.observation,
+        statusKind: 'ready' as const,
+        statusLabel: item.status ?? 'available',
+        sourceLabel: 'provider catalog',
+        selectable: true,
+        inputModalities: [...(item.inputModalities ?? [])],
+        outputModalities: [...(item.outputModalities ?? [])],
+      })),
     }
+  }))
+
+  async function refreshCatalogProvider(providerKey: string): Promise<void> {
+    const current = catalogRuntimeSnapshot.value[providerKey] ?? catalogRuntimeStore.read(providerKey)
+    if (current.syncState === 'syncing') return
+    const token = catalogRuntimeStore.beginMutation(providerKey)
     try {
-      const result = await bridge.probe({ url: endpointUrl, timeoutMs: 5000 })
-      if (!result || typeof result !== 'object' || (result as any).ok !== true) {
-        return {
-          ok: false,
-          reason: resolveNetworkFailureDisplayMessage({
-            networkError: (result as any)?.networkError,
-            code: (result as any)?.code,
-            message: (result as any)?.message,
-          }) ?? 'Local/OpenAI-compatible endpoint is unavailable.',
-        }
+      const raw = await CatalogQueryService.sync({ sourceProviderKey: providerKey, timeoutMs: 30_000 })
+      const result = raw && typeof raw === 'object' ? raw as Record<string, unknown> : null
+      if (!result || result.ok !== true) {
+        const failure = result?.providerFailure && typeof result.providerFailure === 'object'
+          ? result.providerFailure as ProviderFailureV2
+          : localCatalogFailure(providerKey, new Error(String(result?.message ?? result?.code ?? 'MODEL_CATALOG_SYNC_FAILED')))
+        catalogRuntimeStore.acceptFailure({ token, failure })
+        return
       }
-      const diagnostics = (result as any).diagnostics
-      if (diagnostics?.status !== 'reachable') return { ok: false, reason: diagnostics?.message || 'Local/OpenAI-compatible endpoint is unavailable.' }
-      const known = localModelListIncludes(diagnostics?.modelList, modelId)
-      if (known === false) return { ok: false, reason: `Local/OpenAI-compatible model "${modelId}" is not available at the configured endpoint.` }
-      return { ok: true }
-    } catch {
-      return { ok: false, reason: t('errors.network.reason.networkUnknown') }
+      CatalogQueryService.invalidateProviderRuntimeCache(providerKey)
+      await hydrateCatalogProvider(providerKey)
+    } catch (error) {
+      catalogRuntimeStore.acceptFailure({ token, failure: localCatalogFailure(providerKey, error) })
     }
   }
 
-  async function preflightLMStudioAvailability(modelIdOverride?: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
-    const endpointUrl = lmStudioChatConfig.value.endpointUrl.trim()
-    const modelId = normalizeRuntimeModelId(modelIdOverride)
-    if (!endpointUrl) return { ok: false, reason: 'LM Studio endpoint URL is not configured.' }
-    if (!modelId) return { ok: false, reason: 'LM Studio model is not configured.' }
-    const bridge = (globalThis as any)?.lmStudioProvider as LMStudioProviderBridge | undefined
-    if (!bridge || typeof bridge.probe !== 'function') return { ok: false, reason: 'LM Studio endpoint probe is unavailable.' }
-    try {
-      const result = await bridge.probe({ endpointUrl, selectedModel: modelId, timeoutMs: 5000 })
-      if (!result || typeof result !== 'object' || (result as any).ok !== true) {
-        return {
-          ok: false,
-          reason: resolveNetworkFailureDisplayMessage({
-            networkError: (result as any)?.networkError,
-            code: (result as any)?.code,
-            message: (result as any)?.message,
-          }) ?? 'LM Studio endpoint is unavailable.',
-        }
-      }
-      const diagnostics = (result as any).diagnostics
-      const mode = lmStudioChatConfig.value.chatMode
-      const endpointAvailable = mode === 'native_rest'
-        ? diagnostics?.nativeRestAvailable === true
-        : diagnostics?.openAICompatibleAvailable === true
-      if (!endpointAvailable) return { ok: false, reason: 'LM Studio selected endpoint mode is unavailable.' }
-      const known = localModelListIncludes(mode === 'native_rest' ? diagnostics?.nativeRest : diagnostics?.openAICompatible, modelId)
-      if (known === false) return { ok: false, reason: `LM Studio model "${modelId}" is not available at the configured endpoint.` }
-      return { ok: true }
-    } catch {
-      return { ok: false, reason: t('errors.network.reason.networkUnknown') }
-    }
-  }
+  const onRefreshOpenAIResponsesModels = () => refreshCatalogProvider(OPENAI_RESPONSES_PROVIDER_KEY)
+  const onRefreshGoogleAIStudioModels = () => refreshCatalogProvider(GOOGLE_AI_STUDIO_PROVIDER_KEY)
+  const onRefreshAnthropicModels = () => refreshCatalogProvider(ANTHROPIC_MESSAGES_PROVIDER_KEY)
+  const onRefreshDeepSeekModels = () => refreshCatalogProvider(DEEPSEEK_OFFICIAL_PROVIDER_KEY)
 
-  async function preflightOllamaAvailability(modelIdOverride?: string): Promise<ProviderRuntimeAvailabilityPreflightResult> {
-    const endpointUrl = ollamaChatConfig.value.endpointUrl.trim()
-    const modelId = normalizeRuntimeModelId(modelIdOverride)
-    if (!endpointUrl) return { ok: false, reason: 'Ollama endpoint URL is not configured.' }
-    if (!modelId) return { ok: false, reason: 'Ollama model is not configured.' }
-    const bridge = (globalThis as any)?.ollamaProvider as OllamaProviderBridge | undefined
-    if (!bridge || typeof bridge.probe !== 'function') return { ok: false, reason: 'Ollama endpoint probe is unavailable.' }
-    try {
-      const result = await bridge.probe({ endpointUrl, selectedModel: modelId, timeoutMs: 5000 })
-      if (!result || typeof result !== 'object' || (result as any).ok !== true) {
-        return {
-          ok: false,
-          reason: resolveNetworkFailureDisplayMessage({
-            networkError: (result as any)?.networkError,
-            code: (result as any)?.code,
-            message: (result as any)?.message,
-          }) ?? 'Ollama endpoint is unavailable.',
-        }
-      }
-      const diagnostics = (result as any).diagnostics
-      const mode = ollamaChatConfig.value.chatMode
-      const endpointAvailable = mode === 'native_rest'
-        ? diagnostics?.nativeRestAvailable === true
-        : diagnostics?.openAICompatibleAvailable === true
-      if (!endpointAvailable) return { ok: false, reason: 'Ollama selected endpoint mode is unavailable.' }
-      const known = localModelListIncludes(mode === 'native_rest' ? diagnostics?.localModels : diagnostics?.openAICompatible, modelId)
-      if (known === false) return { ok: false, reason: `Ollama model "${modelId}" is not available at the configured endpoint.` }
-      return { ok: true }
-    } catch {
-      return { ok: false, reason: t('errors.network.reason.networkUnknown') }
+  async function persistGenerationV2RoutePreference(
+    conversationId: string,
+    modelConfig: ChatSessionConfig['model'],
+  ): Promise<void> {
+    if (!generationV2RoutePreferenceByConversationId.value.has(conversationId)) {
+      await loadGenerationV2RoutePreference(conversationId)
     }
-  }
-
-  async function resolveRuntimeAvailabilityPreflight(
-    selection: CurrentRuntimeSelection
-  ): Promise<ProviderRuntimeAvailabilityPreflightResult> {
-    if (selection.state !== 'selected') return { ok: true }
-    const modelId = selection.providerKey === OPENROUTER_PROVIDER_ID
-      ? normalizeModelKey(selection.modelId ?? selection.modelKey ?? selection.nativeModelId)
-      : normalizeRuntimeModelId(selection.modelId ?? selection.modelKey ?? selection.nativeModelId)
-    if (selection.providerKey === OPENROUTER_PROVIDER_ID) {
-      return await preflightCloudCredential(OPENROUTER_PROVIDER_ID)
+    const current = generationV2RoutePreferenceByConversationId.value.get(conversationId) ?? null
+    let selection: GenerationV2ConversationRoutePreferenceSelection | null = null
+    if (modelConfig.compatibleSelection) {
+      selection = { schemaVersion: 1, kind: 'openai_chat_compatible', selection: modelConfig.compatibleSelection }
+    } else if (modelConfig.selectedProviderId && modelConfig.selectedModelKey) {
+      selection = { schemaVersion: 1, kind: 'provider_model',
+        providerId: modelConfig.selectedProviderId, modelId: modelConfig.selectedModelKey }
     }
-    if (
-      selection.providerKey === OPENAI_RESPONSES_PROVIDER_KEY ||
-      selection.providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY ||
-      selection.providerKey === ANTHROPIC_MESSAGES_PROVIDER_KEY ||
-      selection.providerKey === DEEPSEEK_OFFICIAL_PROVIDER_KEY
-    ) {
-      if (!modelId) return { ok: false, reason: `${providerDisplayName(selection.providerKey)} model is not configured.` }
-      const credential = await preflightCloudCredential(selection.providerKey)
-      if (!credential.ok) return credential
-      return await preflightCloudModelAvailability(selection.providerKey, modelId)
+    if (selection === null) {
+      if (current !== null) await clearGenerationV2ConversationRoutePreference(conversationId, current.revision)
+      cacheGenerationV2RoutePreference(conversationId, null)
+      return
     }
-    if (selection.providerKey === 'local_endpoint') return await preflightLocalEndpointAvailability(modelId)
-    if (selection.providerKey === 'lm_studio') return await preflightLMStudioAvailability(modelId)
-    if (selection.providerKey === 'ollama_local') return await preflightOllamaAvailability(modelId)
-    return { ok: true }
+    cacheGenerationV2RoutePreference(conversationId,
+      await updateGenerationV2ConversationRoutePreference({ conversationId,
+        expectedRevision: current?.revision ?? 0, selection }))
   }
 
   async function updateActiveConvoSessionConfig(patch: ChatSessionConfigPatch): Promise<ChatSessionConfig | null> {
-    const convo = getActiveConvoRecord()
-    if (!convo) return null
-    const current = getChatSessionConfigForConvo(convo)
-    const nextConfig = mergeChatSessionConfig(current, patch)
-    const nextMeta = serializeChatSessionConfigToConvoMeta({
-      baseMeta: convo.meta ?? null,
-      config: nextConfig,
-      convoProjectId: convo.projectId ?? null,
-      defaultModelKey: DEFAULT_OPENROUTER_MODEL_ID,
+    const initialConvo = getActiveConvoRecord()
+    if (!initialConvo) return null
+    const conversationId = initialConvo.id
+    return conversationConfigUpdateQueue.enqueue(conversationId, async () => {
+      const convo = getActiveConvoRecord()
+      if (!convo || convo.id !== conversationId) return null
+      const current = getChatSessionConfigForConvo(convo)
+      const nextConfig = mergeChatSessionConfig(current, patch)
+      if (patch.model) await persistGenerationV2RoutePreference(convo.id, nextConfig.model)
+      const nextMeta = serializeChatSessionConfigToConvoMeta({
+        baseMeta: convo.meta ?? null,
+        config: { ...nextConfig, model: {
+          selectedProviderId: null, selectedModelKey: null, compatibleSelection: null,
+        } },
+        convoProjectId: convo.projectId ?? null,
+        defaultModelKey: DEFAULT_OPENROUTER_MODEL_ID,
+      })
+      if (convo.id === systemTemplateSnapshot.value?.conversation.id) {
+        await persistConvoMetaUpdate(convo, nextMeta)
+      } else {
+        const providerId: RuntimeProviderKey | null = nextConfig.model.compatibleSelection
+          ? 'local_endpoint' : nextConfig.model.selectedProviderId ?? null
+        if (!providerId) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
+        await persistCurrentGenerationV2SemanticLayer(providerId, convo.id, true, nextConfig)
+      }
+      updateLocalConvoMeta(convo.id, nextMeta)
+      return nextConfig
     })
-    updateLocalConvoMeta(convo.id, nextMeta)
-    await persistConvoMetaUpdate(convo, nextMeta)
-    return nextConfig
   }
 
   async function onUpdateReasoningEnabled(nextEnabled: boolean) {
     if (isDraftInteractionLocked.value) return
+    const current = activeSessionConfig.value
+    const isDeepSeek = current.model.selectedProviderId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
     await updateActiveConvoSessionConfig({
       reasoning: {
         enabled: nextEnabled,
+        ...(isDeepSeek && nextEnabled && !isDeepSeekSelectableReasoningEffort(current.reasoning.effort)
+          ? { effort: 'high' as const } : {}),
       },
     })
     hydrateSessionConfigUiFromActiveConvo()
   }
 
-  async function onUpdateReasoningEffortLevel(nextEffort: 'low' | 'medium' | 'high') {
+  async function onUpdateReasoningEffortLevel(nextEffort: ChatSessionConfig['reasoning']['effort']) {
     if (isDraftInteractionLocked.value) return
+    const current = activeSessionConfig.value
+    const isDeepSeek = current.model.selectedProviderId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
+    if (isDeepSeek && !isDeepSeekSelectableReasoningEffort(nextEffort)) {
+      throw new Error('GENERATION_V2_DEEPSEEK_REASONING_EFFORT_UNSUPPORTED')
+    }
     await updateActiveConvoSessionConfig({
       reasoning: {
         enabled: true,
@@ -4721,7 +3540,7 @@ export function useAppChatAppLogic() {
     if ('maxResults' in detail) delete detail.maxResults
     await updateActiveConvoSessionConfig({
       webSearch: {
-        enabled: current.enabled,
+        enabled: true,
         level: nextLevel,
         detail,
       },
@@ -4748,7 +3567,7 @@ export function useAppChatAppLogic() {
     const current = activeSessionConfig.value.imageGeneration
     await updateActiveConvoSessionConfig({
       imageGeneration: {
-        enabled: current.enabled,
+        enabled: true,
         resolution: nextResolution,
         aspectRatio: current.aspectRatio,
         mode: 'custom',
@@ -4763,7 +3582,7 @@ export function useAppChatAppLogic() {
     const current = activeSessionConfig.value.imageGeneration
     await updateActiveConvoSessionConfig({
       imageGeneration: {
-        enabled: current.enabled,
+        enabled: true,
         resolution: current.resolution,
         aspectRatio: nextAspectRatio,
         mode: 'custom',
@@ -4826,8 +3645,19 @@ export function useAppChatAppLogic() {
     model.value = selectedProviderId === OPENROUTER_PROVIDER_ID
       ? normalizeModelKey(config.model.selectedModelKey)
       : DEFAULT_OPENROUTER_MODEL_ID
-    requestedReasoningEffort.value = config.reasoning.enabled ? config.reasoning.effort : 'auto'
-    requestedReasoningExclude.value = false
+    const persistedConfig = activeConvoId.value
+      ? generationV2ConfigByConversationId.value.get(activeConvoId.value) : undefined
+    const semanticProjection = persistedConfig && !isEmptyGenerationV2SemanticLayer(persistedConfig.semanticLayer)
+      ? projectGenerationV2SemanticLayerToSessionConfig(
+          persistedConfig.semanticLayer,
+          config.model.compatibleSelection ? 'local_endpoint' : config.model.selectedProviderId ?? null,
+        ) : null
+    requestedReasoningEffort.value = semanticProjection?.requestedReasoningEffort ??
+      (config.reasoning.enabled ? config.reasoning.effort : 'auto')
+    requestedReasoningExclude.value = semanticProjection?.requestedReasoningExclude ?? false
+    if (semanticProjection?.anthropicThinkingDisplay) {
+      applyAnthropicThinkingDisplayFromConversation(semanticProjection.anthropicThinkingDisplay)
+    }
     imageGenerationConvoMode.value = config.imageGeneration.mode
     imageGenerationState.value = normalizeImageGenerationState({
       ...normalizeImageGenerationState(config.imageGeneration.detail),
@@ -4960,8 +3790,6 @@ export function useAppChatAppLogic() {
 
   function resetHistoryAttachmentViewModels() {
     historyAttachmentViewModelsByMessageIdBase.value = {}
-    historyAttachmentPreviewCache.value = {}
-    historyAttachmentPreviewEnsuring.clear()
   }
 
   function scheduleHistoryAttachmentRefresh() {
@@ -4978,15 +3806,7 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function scheduleDraftAttachmentParsingPoll() {
-    clearDraftAttachmentParsingPollTimer()
-    if (!draftAttachmentViewModels.value.some((item) => item.isParsing)) return
-    draftAttachmentParsingPollTimer.value = setTimeout(() => {
-      void refreshDraftAttachmentViewModels()
-    }, 1400)
-  }
-
-  function resetComposerSendPlanGateState() {
+    function resetComposerSendPlanGateState() {
     composerSendPlanStatus.value = null
     composerSendPlanCanProceed.value = true
     composerSendPlanBlockingSummary.value = null
@@ -5008,107 +3828,12 @@ export function useAppChatAppLogic() {
     activeHistoryIncompatibleAttachmentId.value = null
   }
 
-  function sanitizeHistoryAttachmentReason(reason: string | null | undefined): string {
-    const sanitized = sanitizeSendPlanSummaryMessage(reason)
-    if (sanitized) return sanitized
-    return t('sendPlan.historyAttachmentExcluded')
-  }
-
-  function buildHistoryIncompatibleAttachmentItem(
-    plan: SendPlanAttachment,
-    assetById: ReadonlyMap<string, DecodedFileAsset>,
-    branchId: string | null,
-  ): HistoryIncompatibleAttachmentViewModel {
-    const asset = assetById.get(plan.assetId)
-    const filename = String(asset?.filename ?? '').trim() || plan.assetId
-    const incompatible = plan.displayStatus === 'incompatible_with_current_model'
-    return {
-      messageId: String(plan.messageId ?? '').trim(),
-      attachmentId: plan.attachmentId,
-      assetId: plan.assetId,
-      filename,
-      aiPayloadKind: plan.aiPayloadKind,
-      reasonCode: incompatible
-        ? 'incompatible_with_current_model'
-        : String(plan.exclusionReason ?? 'excluded_from_current_context'),
-      reasonText: sanitizeHistoryAttachmentReason(plan.notes?.[0] ?? null),
-      source: 'history',
-      branchId,
-      displayStatus: incompatible ? 'incompatible_with_current_model' : 'excluded_from_current_context',
-    }
-  }
-
-  function applyHistoryIncompatibleAttachmentItems(items: HistoryIncompatibleAttachmentViewModel[]) {
-    const next = items.filter((item) => item.messageId.length > 0)
-    const prevActiveAttachmentId = activeHistoryIncompatibleAttachmentId.value
-    historyIncompatibleAttachmentItems.value = next
-    if (next.length === 0) {
-      historyIncompatibleAttachmentIndex.value = 0
-      historyIncompatibleNavigationActive.value = false
-      activeHistoryIncompatibleAttachmentId.value = null
-      return
-    }
-    const matchedIndex = prevActiveAttachmentId
-      ? next.findIndex((item) => item.attachmentId === prevActiveAttachmentId)
-      : -1
-    const nextIndex = matchedIndex >= 0 ? matchedIndex : normalizeHistoryIncompatibleIndex(historyIncompatibleAttachmentIndex.value, next.length)
-    historyIncompatibleAttachmentIndex.value = nextIndex
-    activeHistoryIncompatibleAttachmentId.value = next[nextIndex]?.attachmentId ?? null
-  }
-
-  async function computeHistoryScopeMessageIds(branchId: string): Promise<string[]> {
-    const built = await buildContextForBranchInternalMessages(branchId, { limit: 200, debug: !!import.meta.env?.DEV })
-    return built.rawMessages.map((message) => message.id)
-  }
-
-  async function refreshHistoryIncompatibleAttachments() {
-    const seq = ++historyIncompatibleRefreshSeq
-    const convoId = String(activeConvoId.value ?? '').trim()
-    const branchId = String(activeBranchId.value ?? '').trim()
-    if (!convoId || !branchId) {
-      resetHistoryIncompatibleAttachmentSummary()
-      return
-    }
-    try {
-      const historyMessageIds = await computeHistoryScopeMessageIds(branchId)
-      if (seq !== historyIncompatibleRefreshSeq) return
-      if (historyMessageIds.length === 0) {
-        resetHistoryIncompatibleAttachmentSummary()
-        return
-      }
-      const [modelDescriptor, baseUrl] = await Promise.all([
-        buildSendPlanModelDescriptor(model.value),
-        getOpenRouterBaseUrl().catch(() => null),
-      ])
-      if (seq !== historyIncompatibleRefreshSeq) return
-      const response = await buildCurrentSendPlan({
-        conversationId: convoId,
-        draftText: draft.value,
-        historyScope: { messageIds: historyMessageIds },
-        model: modelDescriptor,
-        providerContext: buildSendPlanProviderContext(baseUrl),
-      })
-      if (seq !== historyIncompatibleRefreshSeq) return
-      const assetById = new Map(response.assets.map((asset) => [asset.id, asset]))
-      const editingSourceMessageId = String(draftPersistenceEditingSourceMessageId.value ?? '').trim()
-      const editingAssetIdSet = editRestoredDraftAttachmentAssetIds.value
-      const items = response.sendPlan.attachmentPlans
-        .filter((plan) => plan.source === 'history')
-        .filter((plan) => {
-          if (draftPersistenceMode.value !== 'edit') return true
-          if (editingSourceMessageId && String(plan.messageId ?? '').trim() === editingSourceMessageId) return false
-          if (editingAssetIdSet.has(String(plan.assetId ?? '').trim())) return false
-          return true
-        })
-        .filter((plan) => plan.displayStatus === 'incompatible_with_current_model' || plan.eligibility === 'excluded')
-        .map((plan) => buildHistoryIncompatibleAttachmentItem(plan, assetById, branchId))
-      applyHistoryIncompatibleAttachmentItems(items)
-    } catch (error) {
-      if (shouldLogDebug()) {
-        console.warn('[ui-app] refreshHistoryIncompatibleAttachments failed (non-fatal):', error)
-      }
-      resetHistoryIncompatibleAttachmentSummary()
-    }
+  function refreshHistoryIncompatibleAttachments() {
+    ++historyIncompatibleRefreshSeq
+    // V2 validates the selected turn bundles and attachments inside the provider-specific
+    // command authority. The removed V1 send-plan IPC must not be used as a second,
+    // potentially divergent compatibility authority in the renderer.
+    resetHistoryIncompatibleAttachmentSummary()
   }
 
   async function refreshHistoryAttachmentViewModels() {
@@ -5123,109 +3848,52 @@ export function useAppChatAppLogic() {
       return
     }
 
-    try {
-      const attachmentResults = await Promise.all(
-        visibleUserMessageIds.map(async (messageId) => {
-          try {
-            const attachments = await listMessageAttachmentsByMessageId(messageId)
-            return { messageId, attachments, failed: false as const }
-          } catch (error) {
-            if (shouldLogDebug()) {
-              console.warn('[ui-app] listMessageAttachmentsByMessageId failed (non-fatal):', { messageId, error })
-            }
-            return { messageId, attachments: [] as DecodedMessageAttachment[], failed: true as const }
-          }
-        }),
-      )
-      if (seq !== historyAttachmentRefreshSeq) return
-
-      const allAttachments = attachmentResults.flatMap((row) => row.attachments)
-      const assetIds = Array.from(new Set(allAttachments.map((attachment) => attachment.assetId).filter((assetId) => String(assetId ?? '').trim().length > 0)))
-      let assets: DecodedFileAsset[] = []
-      if (assetIds.length > 0) {
-        try {
-          assets = await listFileAssetsByIds(assetIds)
-        } catch (error) {
-          if (shouldLogDebug()) {
-            console.warn('[ui-app] listFileAssetsByIds failed (non-fatal):', error)
-          }
-          assets = []
-        }
-      }
-      if (seq !== historyAttachmentRefreshSeq) return
-
-      const assetById = new Map(assets.map((asset) => [asset.id, asset]))
-      let historyPlanByAttachmentId = new Map<string, SendPlanAttachment>()
-      try {
-        const [modelDescriptor, baseUrl] = await Promise.all([
-          buildSendPlanModelDescriptor(model.value),
-          getOpenRouterBaseUrl().catch(() => null),
-        ])
-        if (seq !== historyAttachmentRefreshSeq) return
-        const historySendPlan = await buildCurrentSendPlan({
-          conversationId: convoId,
-          draftText: draft.value,
-          historyScope: { messageIds: visibleUserMessageIds, branchId },
-          model: modelDescriptor,
-          providerContext: buildSendPlanProviderContext(baseUrl),
-        })
-        if (seq !== historyAttachmentRefreshSeq) return
-        historyPlanByAttachmentId = new Map(
-          historySendPlan.sendPlan.attachmentPlans
-            .filter((plan) => plan.source === 'history')
-            .map((plan) => [plan.attachmentId, plan]),
-        )
-      } catch (error) {
-        if (shouldLogDebug()) {
-          console.warn('[ui-app] refreshHistoryAttachmentViewModels history send-plan probe failed (non-fatal):', error)
-        }
-      }
+    const v2Branch = generationV2BranchView.value
+    if (v2Branch?.branchId === branchId && v2Branch.conversationId === convoId) {
+      const visibleMessageIds = new Set(visibleUserMessageIds)
       const next: Record<string, MessageAttachmentVM[]> = {}
-
-      for (const result of attachmentResults) {
-        if (seq !== historyAttachmentRefreshSeq) return
-
-        if (result.failed) {
-          next[result.messageId] = [buildHistoryAttachmentFailureViewModel(result.messageId, t('errors.attachment.loadFailed'))]
-          continue
-        }
-
-        const sortedAttachments = [...result.attachments].sort((left, right) => {
-          if (left.createdAt !== right.createdAt) return left.createdAt - right.createdAt
-          if (left.updatedAt !== right.updatedAt) return left.updatedAt - right.updatedAt
-          return left.id.localeCompare(right.id)
-        })
-
-        const views = await Promise.all(
-          sortedAttachments.map(async (attachment) => {
-            if (seq !== historyAttachmentRefreshSeq) {
-              return buildHistoryAttachmentFailureViewModel(result.messageId, '附件加载失败。')
-            }
-            const asset = assetById.get(attachment.assetId) ?? null
-            const historyPlan = historyPlanByAttachmentId.get(attachment.id) ?? null
-            const preview = await resolveHistoryAttachmentPreview(attachment, asset, seq)
-            if (seq !== historyAttachmentRefreshSeq) {
-              return buildHistoryAttachmentFailureViewModel(result.messageId, '附件加载失败。')
-            }
-            return buildHistoryAttachmentViewModel(
-              attachment,
-              asset,
-              historyPlan,
-              preview?.status === 'ready' ? preview.dataUrl ?? null : null,
-            )
-          }),
-        )
-        next[result.messageId] = views
+      for (const turn of v2Branch.turns) {
+        if (!visibleMessageIds.has(turn.questionId)) continue
+        const answer = turn.answers.find((item) => item.answerRootId === turn.chosenAnswerRootId)
+        if (!answer) continue
+        next[turn.questionId] = await Promise.all(answer.attachments.map(async (attachment) => {
+          const managed = attachment.kind === 'managed_file'
+          const isImage = managed && attachment.assetKind === 'image'
+          let previewDataUrl: string | null = null
+          if (isImage) {
+            try {
+              const preview = await readGenerationV2ComposerPreview({ assetId: attachment.assetId, assetRevisionId: attachment.assetRevisionId })
+              previewDataUrl = preview.status === 'ready' ? preview.dataUrl : null
+            } catch { previewDataUrl = null }
+          }
+          return Object.freeze({
+            messageId: turn.questionId,
+            attachmentId: managed ? attachment.assetRevisionId : attachment.referenceRevision,
+            assetId: managed ? attachment.assetId : attachment.referenceId,
+            filename: managed ? attachment.filename : t('chat.message.urlReference'),
+            extension: managed ? normalizeExtension(attachment.filename) : null,
+            mime: managed ? attachment.mime : null,
+            assetKind: managed ? attachment.assetKind : 'url_reference',
+            aiPayloadKind: managed ? attachment.sendAs : 'url_reference',
+            sourceKind: managed ? attachment.sourceKind : 'url_reference',
+            displayStatus: attachment.include ? 'ready' : 'excluded_from_current_context',
+            borderTone: attachment.include ? 'green' : 'yellow',
+            isHistoryIncompatible: false,
+            incompatibilityReason: null,
+            isActiveLocatedAttachment: false,
+            previewDataUrl,
+            iconKind: isImage ? 'image' : attachment.kind === 'url_reference' ? 'link' : 'file',
+            createdAt: managed ? answer.createdAtMs : attachment.capturedAtMs,
+          } satisfies MessageAttachmentVM)
+        }))
       }
-
-      if (seq !== historyAttachmentRefreshSeq) return
-      historyAttachmentViewModelsByMessageIdBase.value = next
-    } catch (error) {
-      if (shouldLogDebug()) {
-        console.warn('[ui-app] refreshHistoryAttachmentViewModels failed (non-fatal):', error)
-      }
-      resetHistoryAttachmentViewModels()
+      if (seq === historyAttachmentRefreshSeq) historyAttachmentViewModelsByMessageIdBase.value = next
+      return
     }
+
+    // epoch-2 has no legacy message-attachment store. If the V2 branch projection is
+    // not available yet, keep the UI empty until the branch refresh completes.
+    resetHistoryAttachmentViewModels()
   }
 
   function openAttachmentUrlDialog(prefillUrl = '') {
@@ -5362,34 +4030,7 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function buildFallbackDraftAttachmentViewModel(
-    attachment: DecodedDraftAttachment,
-    asset: DecodedFileAsset | null,
-  ): DraftAttachmentViewModel {
-    const status = normalizeDraftAttachmentDisplayStatus(null, attachment, asset)
-    const filename = asset?.filename?.trim().length ? asset.filename : attachment.assetId
-    const extension = asset?.extension ?? normalizeExtension(filename)
-    return {
-      draftAttachmentId: attachment.id,
-      assetId: attachment.assetId,
-      filename,
-      extension,
-      assetKind: asset?.assetKind ?? attachment.aiPayloadKind,
-      aiPayloadKind: attachment.aiPayloadKind,
-      sourceKind: asset?.sourceKind ?? 'draft',
-      displayStatus: status,
-      borderTone: mapDraftAttachmentBorderTone(status),
-      isParsing: status === 'parsing',
-      warningReason: getDraftAttachmentWarningReason(null, status),
-      blockingReason: getDraftAttachmentBlockingReason(null, status),
-      fileTypeInfo: null,
-      detectionInfo: null,
-      previewDataUrl: null,
-      canRemove: true,
-    }
-  }
-
-  function buildDraftAttachmentViewModel(
+    function buildDraftAttachmentViewModel(
     attachment: DecodedDraftAttachment,
     asset: DecodedFileAsset | null,
     plan: SendPlanAttachment | null,
@@ -5435,175 +4076,11 @@ export function useAppChatAppLogic() {
     return typeof value === 'number' && Number.isFinite(value) ? value : null
   }
 
-  function isImageHistoryAttachment(asset: DecodedFileAsset | null, attachment: DecodedMessageAttachment): boolean {
-    if (asset?.assetKind === 'image') return true
-    if (attachment.aiPayloadKind === 'image') return true
-    const extension = normalizeExtension(asset?.extension ?? asset?.filename ?? '')
-    return extension ? ['png', 'jpg', 'jpeg', 'webp', 'gif', 'bmp'].includes(extension) : false
-  }
-
-  function isHistoryAttachmentUrlBased(asset: DecodedFileAsset | null): boolean {
-    if (!asset) return false
-    if (asset.sourceKind === 'url_import') return true
-    const meta = readAssetSourceMeta(asset)
-    return !!(readMetaString(meta, 'originalUrl') || readMetaString(meta, 'resolvedUrl'))
-  }
-
-  function resolveHistoryAttachmentIconKind(asset: DecodedFileAsset | null, attachment: DecodedMessageAttachment): MessageAttachmentVM['iconKind'] {
-    if (isImageHistoryAttachment(asset, attachment)) return 'image'
-    if (attachment.aiPayloadKind === 'pdf') return 'pdf'
-    if (attachment.aiPayloadKind === 'text') return 'text'
-    if (attachment.aiPayloadKind === 'audio') return 'audio'
-    if (attachment.aiPayloadKind === 'video') return 'video'
-    if (asset?.assetKind === 'archive' || asset?.assetKind === 'binary' || attachment.aiPayloadKind === 'binary') return 'file'
-    if (isHistoryAttachmentUrlBased(asset)) return 'link'
-    return 'file'
-  }
-
-  function resolveHistoryAttachmentDisplayStatus(
-    attachment: DecodedMessageAttachment,
-    asset: DecodedFileAsset | null,
-    incompatibleDisplayStatus: HistoryIncompatibleAttachmentDisplayStatus | null,
-  ): MessageAttachmentDisplayStatus {
-    if (incompatibleDisplayStatus) {
-      return incompatibleDisplayStatus
-    }
-    if (attachment.processingStatus === 'pending' || attachment.processingStatus === 'probing' || attachment.processingStatus === 'materializing') {
-      return 'parsing'
-    }
-    if (attachment.processingStatus === 'unsupported' || asset?.assetKind === 'archive' || asset?.assetKind === 'binary' || attachment.aiPayloadKind === 'binary') {
-      return 'unsupported'
-    }
-    if (!asset || asset.deletedAt != null || asset.ingestStatus === 'failed') {
-      return 'failed'
-    }
-    if (attachment.processingStatus === 'local_only' || attachment.processingStatus === 'convertible') {
-      return 'ready_with_warnings'
-    }
-    if (isHistoryAttachmentUrlBased(asset)) {
-      return 'ready_with_warnings'
-    }
-    return 'ready'
-  }
-
   function mapHistoryAttachmentBorderTone(status: MessageAttachmentDisplayStatus): MessageAttachmentVM['borderTone'] {
     if (status === 'ready') return 'green'
     if (status === 'ready_with_warnings') return 'yellow'
     if (status === 'parsing') return 'neutral'
     return 'red'
-  }
-
-  function buildHistoryAttachmentFailureViewModel(messageId: string, reason: string): MessageAttachmentVM {
-    const normalizedMessageId = String(messageId ?? '').trim()
-    const attachmentId = `history-attachment-load-${normalizedMessageId || 'unknown'}`
-    return {
-      messageId: normalizedMessageId,
-      attachmentId,
-      assetId: attachmentId,
-      filename: reason,
-      extension: null,
-      mime: null,
-      assetKind: 'binary',
-      aiPayloadKind: 'binary',
-      sourceKind: 'unknown',
-      displayStatus: 'failed',
-      borderTone: 'red',
-      isHistoryIncompatible: false,
-      incompatibilityReason: reason,
-      isActiveLocatedAttachment: false,
-      previewDataUrl: null,
-      iconKind: 'file',
-      fileTypeInfo: null,
-      detectionInfo: null,
-      createdAt: Date.now(),
-    }
-  }
-
-  function buildHistoryAttachmentViewModel(
-    attachment: DecodedMessageAttachment,
-    asset: DecodedFileAsset | null,
-    plan: SendPlanAttachment | null,
-    previewDataUrl: string | null,
-  ): MessageAttachmentVM {
-    const filename = asset?.filename?.trim().length ? asset.filename : attachment.assetId
-    const extension = asset?.extension ?? normalizeExtension(filename)
-    const displayStatus = resolveHistoryAttachmentDisplayStatus(attachment, asset, null)
-    return {
-      messageId: attachment.messageId,
-      attachmentId: attachment.id,
-      assetId: attachment.assetId,
-      filename,
-      extension,
-      mime: asset?.mime ?? null,
-      assetKind: asset?.assetKind ?? attachment.aiPayloadKind,
-      aiPayloadKind: attachment.aiPayloadKind,
-      sourceKind: asset?.sourceKind ?? 'unknown',
-      displayStatus,
-      borderTone: mapHistoryAttachmentBorderTone(displayStatus),
-      isHistoryIncompatible: false,
-      incompatibilityReason: null,
-      isActiveLocatedAttachment: false,
-      previewDataUrl,
-      iconKind: resolveHistoryAttachmentIconKind(asset, attachment),
-      fileTypeInfo: mapSendPlanFileTypeInfo(plan?.fileType),
-      detectionInfo: mapSendPlanDetectionInfo(plan?.detection),
-      createdAt: asset?.createdAt ?? attachment.createdAt,
-    }
-  }
-
-  async function resolveHistoryAttachmentPreview(
-    attachment: DecodedMessageAttachment,
-    asset: DecodedFileAsset | null,
-    seq: number,
-  ): Promise<HistoryAttachmentPreviewState> {
-    if (!isImageHistoryAttachment(asset, attachment)) return null
-
-    const cached = historyAttachmentPreviewCache.value[attachment.assetId]
-    if (cached?.status === 'ready') return cached
-
-    try {
-      const latest = await getLatestReadyPreview(attachment.assetId)
-      if (seq !== historyAttachmentRefreshSeq) return latest
-      historyAttachmentPreviewCache.value = {
-        ...historyAttachmentPreviewCache.value,
-        [attachment.assetId]: latest,
-      }
-      if (latest.status === 'ready') return latest
-      if (latest.status !== 'missing') return latest
-
-      if (historyAttachmentPreviewEnsuring.has(attachment.assetId)) return latest
-      historyAttachmentPreviewEnsuring.add(attachment.assetId)
-      try {
-        const ensured = await ensurePreview({ assetId: attachment.assetId })
-        if (seq !== historyAttachmentRefreshSeq) return ensured
-        historyAttachmentPreviewCache.value = {
-          ...historyAttachmentPreviewCache.value,
-          [attachment.assetId]: ensured,
-        }
-        return ensured
-      } finally {
-        historyAttachmentPreviewEnsuring.delete(attachment.assetId)
-      }
-    } catch (error) {
-      const failed: DecodedPreviewPayload = {
-        assetId: attachment.assetId,
-        status: 'failed',
-        derivativeId: null,
-        mime: null,
-        dataUrl: null,
-        width: null,
-        height: null,
-        bytes: null,
-        reused: false,
-        errorCode: 'preview_read_failed',
-        errorMessage: error instanceof Error ? error.message : String(error),
-      }
-      historyAttachmentPreviewCache.value = {
-        ...historyAttachmentPreviewCache.value,
-        [attachment.assetId]: failed,
-      }
-      return failed
-    }
   }
 
   function isUrlAttachment(asset: DecodedFileAsset | null, attachment: DecodedDraftAttachment): boolean {
@@ -5808,7 +4285,7 @@ export function useAppChatAppLogic() {
     return normalizeDfcDefaultFileTypeKey(asset?.assetKind ?? null)
   }
 
-  function buildDfcOptionDisabledReason(option: DecodedDfcDraftAttachmentOptions['options'][number]): string | null {
+  function buildDfcOptionDisabledReason(option: DfcDraftAttachmentOptionsDto['options'][number]): string | null {
     if (option.status === 'pending' || option.status === 'candidate' || option.compatibilityStatus === 'pending') return 'pending'
     if (option.status === 'failed') return 'failed'
     if (option.status === 'stale') return 'stale'
@@ -5930,355 +4407,6 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function isElectronSmokeDfcFixtureEnabled(): boolean {
-    if (typeof window === 'undefined') return false
-    try {
-      const params = new URLSearchParams(window.location.search)
-      return params.get('sv-electron-smoke-dfc') === '1' && (import.meta.env.DEV || window.location.protocol === 'file:')
-    } catch {
-      return false
-    }
-  }
-
-  type ElectronSmokeDfcBackendSeedResult = Readonly<{
-    backendOwned: true
-    conversationId: string
-    assetId: string
-    attachmentId: string
-    optionId: string
-    targetKind: DfcTargetKind
-    sendStrategy: DfcSendStrategy
-    previewText: string | null
-  }>
-
-  type ElectronSmokeDfcHtmlPdfSeedResult = Readonly<{
-    backendOwned: true
-    conversationId: string
-    assetId: string
-    attachmentId: string
-    optionId: string
-    targetKind: DfcTargetKind
-    sendStrategy: DfcSendStrategy
-    selectedAssetRefs: DfcSendAssetRef[]
-    previewKind: string
-    previewStatus: string | null
-    availableTargets: DfcTargetKind[]
-  }>
-
-  type ElectronSmokeDfcWindow = Window & {
-    __starverseElectronSmokeSeedDfcAttachment?: (filePath: string) => Promise<ElectronSmokeDfcBackendSeedResult>
-    __starverseElectronSmokeSeedHtmlPdfAttachment?: (filePath: string) => Promise<ElectronSmokeDfcHtmlPdfSeedResult>
-    __starverseElectronSmokeSeedDocxPdfAttachment?: (filePath: string) => Promise<ElectronSmokeDfcHtmlPdfSeedResult>
-  }
-
-  function installElectronSmokeDfcBackendSeeder() {
-    if (!isElectronSmokeDfcFixtureEnabled()) return
-    if (typeof window === 'undefined') return
-    const smokeWindow = window as ElectronSmokeDfcWindow
-    smokeWindow.__starverseElectronSmokeSeedDfcAttachment = seedElectronSmokeBackendDfcAttachment
-    smokeWindow.__starverseElectronSmokeSeedHtmlPdfAttachment = seedElectronSmokeBackendHtmlPdfAttachment
-    smokeWindow.__starverseElectronSmokeSeedDocxPdfAttachment = seedElectronSmokeBackendDocxPdfAttachment
-  }
-
-  async function seedElectronSmokeBackendDfcAttachment(filePath: string): Promise<ElectronSmokeDfcBackendSeedResult> {
-    if (!isElectronSmokeDfcFixtureEnabled()) throw new Error('Electron smoke DFC seam is disabled')
-    const normalizedFilePath = String(filePath ?? '').trim()
-    if (!normalizedFilePath) throw new Error('Electron smoke DFC fixture path is required')
-
-    const conversationId = await ensureActiveConvo()
-    const ingestion = await ingestLocalFile({
-      filePath: normalizedFilePath,
-      mimeType: 'text/markdown',
-      sourceKind: 'generated',
-    })
-    if (!ingestion.success || !ingestion.assetId) {
-      throw new Error('Electron smoke DFC fixture ingestion failed')
-    }
-
-    const attachment = await addConversationDraftAttachment({
-      conversationId,
-      assetId: ingestion.assetId,
-      attachmentOrder: 0,
-      includeInNextRequest: true,
-    })
-    await refreshDraftAttachmentViewModels()
-
-    const ensuredOptions = await ensureConversationDraftAttachmentDfcOptions({
-      conversationId,
-      assetId: ingestion.assetId,
-    })
-    const markdownOption = ensuredOptions.options.find((option) =>
-      option.targetKind === 'markdown'
-      && option.sendStrategy === 'text_in_prompt'
-      && option.isAvailable
-      && option.sendAssetRefs.some((ref) => ref.kind === 'derived_asset')
-    )
-    if (!markdownOption) {
-      draftAttachmentDfcOptionsByAssetId.value = {
-        ...draftAttachmentDfcOptionsByAssetId.value,
-        [ingestion.assetId]: ensuredOptions,
-      }
-      throw new Error('Electron smoke DFC backend markdown option is unavailable')
-    }
-
-    await updateConversationDraftAttachmentSettings({
-      conversationId,
-      assetId: ingestion.assetId,
-      dfcManaged: true,
-      selectedOptionId: markdownOption.optionId,
-      selectedAssetRefs: markdownOption.sendAssetRefs,
-    })
-    await refreshDraftAttachmentViewModels()
-
-    const selectedOptions = await ensureConversationDraftAttachmentDfcOptions({
-      conversationId,
-      assetId: ingestion.assetId,
-    })
-    const preview = await getConversationDraftAttachmentDfcPreview({
-      conversationId,
-      assetId: ingestion.assetId,
-      maxCharacters: 2048,
-    })
-    draftAttachmentDfcOptionsByAssetId.value = {
-      ...draftAttachmentDfcOptionsByAssetId.value,
-      [ingestion.assetId]: selectedOptions,
-    }
-    draftAttachmentDfcPreviewByAssetId.value = {
-      ...draftAttachmentDfcPreviewByAssetId.value,
-      [ingestion.assetId]: preview,
-    }
-
-    return {
-      backendOwned: true,
-      conversationId,
-      assetId: ingestion.assetId,
-      attachmentId: attachment.id,
-      optionId: markdownOption.optionId,
-      targetKind: markdownOption.targetKind,
-      sendStrategy: markdownOption.sendStrategy,
-      previewText: preview.preview.text,
-    }
-  }
-
-  async function seedElectronSmokeBackendHtmlPdfAttachment(filePath: string): Promise<ElectronSmokeDfcHtmlPdfSeedResult> {
-    if (!isElectronSmokeDfcFixtureEnabled()) throw new Error('Electron smoke DFC seam is disabled')
-    const normalizedFilePath = String(filePath ?? '').trim()
-    if (!normalizedFilePath) throw new Error('Electron smoke HTML fixture path is required')
-
-    const conversationId = await ensureActiveConvo()
-    const ingestion = await ingestLocalFile({
-      filePath: normalizedFilePath,
-      mimeType: 'text/html',
-      sourceKind: 'generated',
-    })
-    if (!ingestion.success || !ingestion.assetId) {
-      throw new Error('Electron smoke HTML fixture ingestion failed')
-    }
-
-    const attachment = await addConversationDraftAttachment({
-      conversationId,
-      assetId: ingestion.assetId,
-      attachmentOrder: draftAttachmentRecords.value.length,
-      includeInNextRequest: true,
-    })
-    await refreshDraftAttachmentViewModels()
-
-    const ensuredOptions = await ensureConversationDraftAttachmentDfcOptions({
-      conversationId,
-      assetId: ingestion.assetId,
-    })
-    const pdfOption = ensuredOptions.options.find((option) =>
-      option.targetKind === 'pdf_attachment'
-      && option.sendStrategy === 'file_attachment'
-      && option.isAvailable
-      && option.sendAssetRefs.some((ref) => ref.kind === 'derived_asset')
-    )
-    if (!pdfOption) {
-      draftAttachmentDfcOptionsByAssetId.value = {
-        ...draftAttachmentDfcOptionsByAssetId.value,
-        [ingestion.assetId]: ensuredOptions,
-      }
-      throw new Error('Electron smoke HTML PDF option is unavailable')
-    }
-
-    await updateConversationDraftAttachmentSettings({
-      conversationId,
-      assetId: ingestion.assetId,
-      dfcManaged: true,
-      selectedOptionId: pdfOption.optionId,
-      selectedAssetRefs: [...pdfOption.sendAssetRefs],
-    })
-    await refreshDraftAttachmentViewModels()
-
-    const selectedOptions = await ensureConversationDraftAttachmentDfcOptions({
-      conversationId,
-      assetId: ingestion.assetId,
-    })
-    const preview = await getConversationDraftAttachmentDfcPreview({
-      conversationId,
-      assetId: ingestion.assetId,
-      maxCharacters: 2048,
-    })
-    draftAttachmentDfcOptionsByAssetId.value = {
-      ...draftAttachmentDfcOptionsByAssetId.value,
-      [ingestion.assetId]: selectedOptions,
-    }
-    draftAttachmentDfcPreviewByAssetId.value = {
-      ...draftAttachmentDfcPreviewByAssetId.value,
-      [ingestion.assetId]: preview,
-    }
-
-    return {
-      backendOwned: true,
-      conversationId,
-      assetId: ingestion.assetId,
-      attachmentId: attachment.id,
-      optionId: pdfOption.optionId,
-      targetKind: pdfOption.targetKind,
-      sendStrategy: pdfOption.sendStrategy,
-      selectedAssetRefs: [...pdfOption.sendAssetRefs],
-      previewKind: preview.preview.kind,
-      previewStatus: preview.preview.status,
-      availableTargets: selectedOptions.options
-        .filter((option) => option.isAvailable)
-        .map((option) => option.targetKind),
-    }
-  }
-
-  function applyElectronSmokeDfcAttachmentFixture() {
-    if (!isElectronSmokeDfcFixtureEnabled()) return
-
-    const now = Date.now()
-    const sendAssetRefs: DfcSendAssetRef[] = [
-      { kind: 'derived_asset', assetId: ELECTRON_SMOKE_DFC_DERIVED_ASSET_ID },
-    ]
-    const attachment = {
-      id: `draft-attachment-${ELECTRON_SMOKE_DFC_ASSET_ID}`,
-      conversationId: String(activeConvoId.value ?? 'electron-smoke'),
-      assetId: ELECTRON_SMOKE_DFC_ASSET_ID,
-      attachmentOrder: 0,
-      aiPayloadKind: 'text',
-      processingStatus: 'native_supported',
-      includeInNextRequest: true,
-      excludedReason: null,
-      preferredSendMode: null,
-      urlRetentionMode: null,
-      dfcManaged: true,
-      selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
-      selectedAssetRefs: sendAssetRefs,
-      createdAt: now,
-      updatedAt: now,
-    } satisfies DecodedDraftAttachment
-    const view = {
-      draftAttachmentId: attachment.id,
-      assetId: attachment.assetId,
-      filename: 'electron-smoke-dfc.md',
-      extension: 'md',
-      assetKind: 'text',
-      aiPayloadKind: 'text',
-      sourceKind: 'electron_smoke_fixture',
-      displayStatus: 'ready',
-      borderTone: 'green',
-      isParsing: false,
-      warningReason: null,
-      blockingReason: null,
-      fileTypeInfo: null,
-      detectionInfo: null,
-      previewDataUrl: null,
-      canRemove: false,
-    } satisfies DraftAttachmentViewModel
-
-    draftAttachmentRecords.value = [attachment]
-    draftAttachmentAssetsById.value = { [ELECTRON_SMOKE_DFC_ASSET_ID]: null }
-    draftAttachmentPlansByAssetId.value = {}
-    draftAttachmentSendPlanStatus.value = 'sendable'
-    draftAttachmentViewModels.value = [view]
-    draftAttachmentDfcOptionsLoadingByAssetId.value = { [ELECTRON_SMOKE_DFC_ASSET_ID]: false }
-    draftAttachmentDfcOptionsErrorByAssetId.value = { [ELECTRON_SMOKE_DFC_ASSET_ID]: null }
-    draftAttachmentDfcPreviewLoadingByAssetId.value = { [ELECTRON_SMOKE_DFC_ASSET_ID]: false }
-    draftAttachmentDfcPreviewErrorByAssetId.value = { [ELECTRON_SMOKE_DFC_ASSET_ID]: null }
-    draftAttachmentDfcOptionsByAssetId.value = {
-      [ELECTRON_SMOKE_DFC_ASSET_ID]: {
-        attachmentId: attachment.id,
-        conversationId: attachment.conversationId,
-        rawFileId: attachment.assetId,
-        filename: view.filename,
-        sizeBytes: 64,
-        dfcManaged: true,
-        selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
-        selectedAssetRefs: sendAssetRefs,
-        recommendedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
-        recommendedReasonCode: 'backend_recommends_text_preview',
-        decision: {
-          status: 'ready',
-          reasonCode: null,
-          selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
-          targetKind: 'markdown',
-          sendStrategy: 'text_in_prompt',
-          sendAssetRefs,
-          needsUserAction: false,
-        },
-        options: [
-          {
-            optionId: `dfc:${ELECTRON_SMOKE_DFC_ASSET_ID}:original_file:raw_file:${ELECTRON_SMOKE_DFC_ASSET_ID}`,
-            targetKind: 'original_file',
-            sendStrategy: 'file_attachment',
-            status: 'ready',
-            isAvailable: true,
-            compatibilityStatus: 'compatible',
-            sendAssetRefs: [{ kind: 'raw_file', assetId: ELECTRON_SMOKE_DFC_ASSET_ID }],
-            warnings: [],
-            diagnostics: [],
-          },
-          {
-            optionId: ELECTRON_SMOKE_DFC_OPTION_ID,
-            targetKind: 'markdown',
-            sendStrategy: 'text_in_prompt',
-            status: 'ready',
-            isAvailable: true,
-            compatibilityStatus: 'compatible',
-            sendAssetRefs,
-            warnings: [],
-            diagnostics: [],
-          },
-        ],
-      } as DecodedDfcDraftAttachmentOptions,
-    }
-    draftAttachmentDfcPreviewByAssetId.value = {
-      [ELECTRON_SMOKE_DFC_ASSET_ID]: {
-        attachmentId: attachment.id,
-        conversationId: attachment.conversationId,
-        rawFileId: attachment.assetId,
-        filename: view.filename,
-        sizeBytes: 64,
-        dfcManaged: true,
-        selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
-        selectedAssetRefs: sendAssetRefs,
-        targetKind: 'markdown',
-        sendStrategy: 'text_in_prompt',
-        decision: {
-          status: 'ready',
-          reasonCode: null,
-          selectedOptionId: ELECTRON_SMOKE_DFC_OPTION_ID,
-          targetKind: 'markdown',
-          sendStrategy: 'text_in_prompt',
-          sendAssetRefs,
-          needsUserAction: false,
-        },
-        preview: {
-          kind: 'text',
-          status: 'ready',
-          text: ELECTRON_SMOKE_DFC_PREVIEW_TEXT,
-          characterCount: ELECTRON_SMOKE_DFC_PREVIEW_TEXT.length,
-          byteLength: new TextEncoder().encode(ELECTRON_SMOKE_DFC_PREVIEW_TEXT).byteLength,
-          truncated: false,
-          maxCharacters: 2048,
-          diagnostics: [],
-        },
-      } as DecodedDfcDraftAttachmentPreview,
-    }
-  }
-
   function buildDraftAttachmentDetailsViewModel(assetId: string | null): DraftAttachmentDetailsViewModel | null {
     const id = String(assetId ?? '').trim()
     if (!id) return null
@@ -6347,7 +4475,7 @@ export function useAppChatAppLogic() {
     attachment: DecodedDraftAttachment,
     asset: DecodedFileAsset | null,
     seq: number,
-    forceEnsure = false,
+    _forceEnsure = false,
   ): Promise<DecodedPreviewPayload | null> {
     if (!isImageAssetLike(asset, attachment)) return null
 
@@ -6355,37 +4483,32 @@ export function useAppChatAppLogic() {
     if (cached?.status === 'ready') return cached
 
     try {
-      const previewBridge = (globalThis as any).dbBridge as { invoke?: (method: string, params?: unknown) => Promise<unknown> } | undefined
-      if (!previewBridge?.invoke) {
-        throw new Error('Missing dbBridge for preview lookup')
+      const preview = await readGenerationV2ComposerPreview({
+        assetId: attachment.assetId,
+        assetRevisionId: attachment.id,
+      })
+      const resolved: DecodedPreviewPayload = {
+        assetId: attachment.assetId,
+        status: preview.status === 'ready' ? 'ready' : 'missing',
+        derivativeId: null,
+        mime: preview.mime ?? null,
+        dataUrl: preview.dataUrl ?? null,
+        width: null,
+        height: null,
+        bytes: typeof preview.sizeBytes === 'number' ? preview.sizeBytes : null,
+        reused: false,
+        errorCode: null,
+        errorMessage: null,
       }
-      const latestRaw = await previewBridge.invoke('preview.getLatestReady', { assetId: attachment.assetId })
-      const latest = decodePreviewPayloadResponse('preview.getLatestReady', latestRaw)
-      if (seq !== draftAttachmentRefreshSeq) return latest
+      if (seq !== draftAttachmentRefreshSeq) return resolved
       draftAttachmentPreviewCache.value = {
         ...draftAttachmentPreviewCache.value,
-        [attachment.assetId]: latest,
+        [attachment.assetId]: resolved,
       }
-      if (latest.status === 'ready') return latest
-      if (latest.status !== 'missing' && !forceEnsure) return latest
-
-      if (draftAttachmentPreviewEnsuring.has(attachment.assetId)) return latest
-      draftAttachmentPreviewEnsuring.add(attachment.assetId)
-      try {
-        const ensuredRaw = await previewBridge.invoke('preview.ensure', { assetId: attachment.assetId })
-        const ensured = decodePreviewPayloadResponse('preview.ensure', ensuredRaw)
-        if (seq !== draftAttachmentRefreshSeq) return ensured
-        draftAttachmentPreviewCache.value = {
-          ...draftAttachmentPreviewCache.value,
-          [attachment.assetId]: ensured,
-        }
-        return ensured
-      } finally {
-        draftAttachmentPreviewEnsuring.delete(attachment.assetId)
-      }
+      return resolved
     } catch (error) {
       if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
-        console.warn('[ui-app] resolveDraftAttachmentPreview failed (non-fatal):', error)
+        console.warn('[ui-app] RESOLVE_DRAFT_ATTACHMENT_PREVIEW_FAILED')
       }
       const failed: DecodedPreviewPayload = {
         assetId: attachment.assetId,
@@ -6435,114 +4558,89 @@ export function useAppChatAppLogic() {
     }
 
     const seq = ++draftAttachmentRefreshSeq
-    const shouldToggleComposerSendPlanLoading =
-      composerSendPlanStatus.value == null &&
-      composerSendPlanBlockingSummary.value == null &&
-      composerSendPlanWarningSummary.value == null
-    if (shouldToggleComposerSendPlanLoading) {
-      composerSendPlanLoading.value = true
-    }
-    const restored = input?.restoredDraft ?? await restoreConversationDraft(scope.convoId)
+    const current = await getGenerationV2ComposerDraft(scope.convoId)
     if (seq !== draftAttachmentRefreshSeq) return
-    applyDraftPersistenceStateFromDraft(restored)
-
-    if (input?.syncDraftText === true) {
-      draft.value = restored.draftText
-    }
-
-    const attachments = [...restored.attachments].sort((left, right) => left.attachmentOrder - right.attachmentOrder)
-    draftAttachmentRecords.value = attachments
-    try {
-      const [modelDescriptor, baseUrl] = await Promise.all([
-        buildSendPlanModelDescriptor(model.value),
-        getOpenRouterBaseUrl().catch(() => null),
-      ])
-      if (seq !== draftAttachmentRefreshSeq) return
-
-      const sendPlanResponse = await buildCurrentSendPlan({
-        conversationId: scope.convoId,
-        draftText: draft.value,
-        model: modelDescriptor,
-        providerContext: buildSendPlanProviderContext(baseUrl),
+    generationV2ComposerDraft.value = current
+    applyDraftPersistenceState({ draftMode: current.draftMode, editingSourceMessageId: current.editingSourceQuestionId })
+    if (input?.syncDraftText === true) draft.value = current.draftText
+    const records: DecodedDraftAttachment[] = current.attachments.map((attachment) => {
+      const selectedAssetRefs: DfcSendAssetRef[] = attachment.kind === 'managed_file' && attachment.dfcSelection
+        ? [{ kind: attachment.dfcSelection.targetKind === 'original_file' ? 'raw_file' : 'derived_asset', assetId: attachment.dfcSelection.effectiveAssetId }]
+        : []
+      return Object.freeze({
+        id: attachment.kind === 'managed_file' ? attachment.assetRevisionId : attachment.referenceRevision,
+        conversationId: current.conversationId,
+        assetId: attachment.kind === 'managed_file' ? attachment.assetId : attachment.referenceId,
+        attachmentOrder: attachment.attachmentOrder,
+        aiPayloadKind: attachment.kind === 'managed_file' ? (attachment.assetKind === 'image' ? 'image' : 'file') :
+          (attachment.mediaKind === 'image' ? 'image' : 'file'),
+        processingStatus: 'ready',
+        includeInNextRequest: attachment.include,
+        excludedReason: attachment.include ? null : 'user_excluded',
+        preferredSendMode: attachment.kind === 'managed_file' && attachment.sendAs === 'inline_text' ? 'inline_base64' : 'default',
+        urlRetentionMode: attachment.kind === 'url_reference' ? 'link_only' : attachment.sourceKind === 'url_import' ? 'link_and_file' : null,
+        dfcManaged: attachment.kind === 'managed_file',
+        selectedOptionId: attachment.kind === 'managed_file' ? attachment.dfcSelection?.optionId ?? null : null,
+        selectedAssetRefs,
+        createdAt: attachment.kind === 'url_reference' ? attachment.capturedAtMs : current.updatedAtMs,
+        updatedAt: current.updatedAtMs,
       })
-      if (seq !== draftAttachmentRefreshSeq) return
-
-      const assetById = new Map(sendPlanResponse.assets.map((asset) => [asset.id, asset]))
-      const draftPlans = new Map(
-        sendPlanResponse.sendPlan.attachmentPlans
-          .filter((plan) => plan.source === 'draft')
-          .map((plan) => [plan.assetId, plan]),
-      )
-      draftAttachmentAssetsById.value = Object.fromEntries(assetById.entries())
-      draftAttachmentPlansByAssetId.value = Object.fromEntries(draftPlans.entries())
-      draftAttachmentSendPlanStatus.value = sendPlanResponse.sendPlan.status
-      applyComposerSendPlanGateState(sendPlanResponse.sendPlan)
-
-      const next: DraftAttachmentViewModel[] = []
-      for (const attachment of attachments) {
-        if (seq !== draftAttachmentRefreshSeq) return
-        const asset = assetById.get(attachment.assetId) ?? null
-        const plan = draftPlans.get(attachment.assetId) ?? null
-        const preview = await resolveDraftAttachmentPreview(attachment, asset, seq)
-        if (seq !== draftAttachmentRefreshSeq) return
-        next.push(buildDraftAttachmentViewModel(attachment, asset, plan, preview?.dataUrl ?? null))
-      }
-      draftAttachmentViewModels.value = next
-      if (selectedDraftAttachmentAssetId.value && !next.some((item) => item.assetId === selectedDraftAttachmentAssetId.value)) {
-        selectedDraftAttachmentAssetId.value = null
-      }
-      const selectedAssetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
-      if (selectedAssetId && next.some((item) => item.assetId === selectedAssetId)) {
-        void refreshDraftAttachmentDfcOptions(selectedAssetId)
-        void refreshDraftAttachmentDfcPreview(selectedAssetId)
-      }
-      scheduleDraftAttachmentParsingPoll()
-      if (seq === draftAttachmentRefreshSeq && shouldToggleComposerSendPlanLoading) {
-        composerSendPlanLoading.value = false
-      }
-      scheduleHistoryIncompatibleRefresh()
-      return
-    } catch (error) {
-      if (shouldLogDebug()) {
-        console.warn('[ui-app] refreshDraftAttachmentViewModels send-plan fallback (non-fatal):', error)
-      }
-    }
-
-    const fallback: DraftAttachmentViewModel[] = attachments.map((attachment) => {
-      const asset = null
-      return buildFallbackDraftAttachmentViewModel(attachment, asset)
     })
-    if (seq !== draftAttachmentRefreshSeq) return
-    draftAttachmentAssetsById.value = {}
+    const assets = Object.fromEntries(current.attachments.map((attachment) => [attachment.kind === 'managed_file' ? attachment.assetId : attachment.referenceId, Object.freeze({
+      id: attachment.kind === 'managed_file' ? attachment.assetId : attachment.referenceId,
+      filename: attachment.kind === 'managed_file' ? attachment.filename : (() => { try { return new URL(attachment.originalUrl).pathname.split('/').filter(Boolean).pop() || 'remote-url' } catch { return 'remote-url' } })(),
+      extension: attachment.kind === 'managed_file' ? normalizeExtension(attachment.filename) : null,
+      mime: attachment.kind === 'managed_file' ? attachment.mime : attachment.declaredMediaType,
+      sizeBytes: attachment.kind === 'managed_file' ? attachment.sizeBytes : 0,
+      assetKind: attachment.kind === 'managed_file' ? attachment.assetKind : (attachment.mediaKind === 'image' ? 'image' : 'document'),
+      sourceKind: attachment.kind === 'managed_file' ? attachment.sourceKind : 'url_import',
+      storageBackend: attachment.kind === 'managed_file' ? 'epoch2_managed_blob' : 'remote_url',
+      ingestStatus: 'ready',
+      previewStatus: 'missing',
+      sourceMetaJson: attachment.kind === 'managed_file'
+        ? (attachment.originalUrl === null ? null : { originalUrl: attachment.originalUrl, retentionMode: 'link_and_file' })
+        : { originalUrl: attachment.originalUrl, retentionMode: 'link_only', urlDigest: attachment.urlDigest },
+      createdAt: attachment.kind === 'url_reference' ? attachment.capturedAtMs : current.updatedAtMs,
+      updatedAt: current.updatedAtMs,
+      deletedAt: null,
+    } satisfies DecodedFileAsset)]))
+    draftAttachmentRecords.value = records
+    draftAttachmentAssetsById.value = assets
     draftAttachmentPlansByAssetId.value = {}
-    draftAttachmentSendPlanStatus.value = null
-    draftAttachmentViewModels.value = fallback
-    const fallbackBlocking = fallback
-      .map((item) => item.blockingReason)
-      .find((value) => typeof value === 'string' && value.trim().length > 0) ?? null
-    const fallbackWarning = fallback
-      .map((item) => item.warningReason)
-      .find((value) => typeof value === 'string' && value.trim().length > 0) ?? null
-    composerSendPlanStatus.value = null
-    composerSendPlanCanProceed.value = fallbackBlocking == null
-    composerSendPlanBlockingSummary.value = fallbackBlocking
-    composerSendPlanWarningSummary.value = fallbackBlocking ? null : fallbackWarning
-    composerSendPlanIsPartialAllowed.value = false
-    if (selectedDraftAttachmentAssetId.value && !fallback.some((item) => item.assetId === selectedDraftAttachmentAssetId.value)) {
-      selectedDraftAttachmentAssetId.value = null
-    }
-    scheduleDraftAttachmentParsingPoll()
-    if (seq === draftAttachmentRefreshSeq && shouldToggleComposerSendPlanLoading) {
-      composerSendPlanLoading.value = false
-    }
-    scheduleHistoryIncompatibleRefresh()
+    draftAttachmentSendPlanStatus.value = records.length > 0 ? 'sendable' : null
+    const previewByRevision = new Map((await Promise.all(current.attachments.map(async (attachment) => {
+      if (attachment.kind !== 'managed_file' || attachment.assetKind !== 'image') {
+        return [attachment.kind === 'managed_file' ? attachment.assetRevisionId : attachment.referenceRevision, null] as const
+      }
+      try {
+        const preview = await readGenerationV2ComposerPreview({ assetId: attachment.assetId,
+          assetRevisionId: attachment.assetRevisionId })
+        return [attachment.assetRevisionId, preview.dataUrl] as const
+      } catch { return [attachment.assetRevisionId, null] as const }
+    })) as readonly (readonly [string,string|null])[]))
+    if (seq !== draftAttachmentRefreshSeq) return
+    draftAttachmentViewModels.value = records.map((record) => buildDraftAttachmentViewModel(
+      record, assets[record.assetId] ?? null, null, previewByRevision.get(record.id) ?? null,
+    ))
+    resetComposerSendPlanGateState()
+    selectedDraftAttachmentAssetId.value = selectedDraftAttachmentAssetId.value &&
+      records.some((record) => record.assetId === selectedDraftAttachmentAssetId.value)
+      ? selectedDraftAttachmentAssetId.value : null
+    composerSendPlanLoading.value = false
+    resetHistoryIncompatibleAttachmentSummary()
     return
+  }
+
+  async function onUpdateAnthropicThinkingDisplay(value: 'provider_default' | 'summarized' | 'omitted') {
+    updateAnthropicThinkingDisplayPreference(value)
+    await updateActiveConvoSessionConfig({})
   }
 
   async function ingestLocalFiles(
     filePaths: readonly (string | LocalFileIngestionTarget)[],
     options?: Readonly<{ mimeType?: string | null; sourceKind?: 'local_upload' | 'generated' }>,
   ) {
+    void options
     const cleaned = filePaths
       .map((value) => {
         if (typeof value === 'string') return { filePath: value.trim() }
@@ -6554,6 +4652,7 @@ export function useAppChatAppLogic() {
       .filter((value) => value.filePath.length > 0)
     if (cleaned.length === 0) return
     const convoId = await ensureActiveConvo()
+    await flushDraftPersistence({ failOnError: true })
 
     let successCount = 0
     let failureCount = 0
@@ -6561,26 +4660,18 @@ export function useAppChatAppLogic() {
 
     for (const file of cleaned) {
       try {
-        const result = await ingestLocalFile({
-          filePath: file.filePath,
-          ...(file.selectionGrantToken ? { selectionGrantToken: file.selectionGrantToken } : {}),
-          mimeType: options?.mimeType ?? null,
-          sourceKind: options?.sourceKind ?? 'local_upload',
-        })
-        if (!result.success || !result.assetId) {
-          failureCount += 1
-          continue
-        }
-        await addConversationDraftAttachment({
-          conversationId: convoId,
-          assetId: result.assetId,
-        })
+        if (!file.selectionGrantToken) throw new Error('GENERATION_V2_FILE_SELECTION_GRANT_INVALID')
+        const current = generationV2ComposerDraft.value?.conversationId === convoId
+          ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+        const updated = await importGenerationV2ComposerLocalFile({ conversationId: convoId,
+          expectedRevision: current.revision, filePath: file.filePath, selectionGrantToken: file.selectionGrantToken })
+        generationV2ComposerDraft.value = updated
         successCount += 1
-        lastSuccessLabel = result.normalizedExtension ?? result.assetKind ?? 'attachment'
-      } catch (error) {
+        lastSuccessLabel = normalizeExtension(file.filePath) ?? 'attachment'
+      } catch {
         failureCount += 1
         if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
-          console.warn('[ui-app] ingestLocalFiles failed for one file (non-fatal):', error)
+          console.warn('[ui-app] ingestLocalFiles failed for one file (non-fatal)')
         }
       }
     }
@@ -6605,25 +4696,18 @@ export function useAppChatAppLogic() {
     }
     try {
       const convoId = await ensureActiveConvo()
-      const result = await ingestUrl({
-        url: trimmed,
-        retentionMode: resolveAttachmentRetentionMode(retentionMode),
-      })
-      if (!result.success || !result.assetId) {
-        setAttachmentFeedback('error', t('errors.attachment.urlImportFailed'))
-        return
-      }
-      await addConversationDraftAttachment({
-        conversationId: convoId,
-        assetId: result.assetId,
-        urlRetentionMode: retentionMode,
-      })
+      const current = generationV2ComposerDraft.value?.conversationId === convoId
+        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+      const resolvedRetention = resolveAttachmentRetentionMode(retentionMode)
+      generationV2ComposerDraft.value = resolvedRetention === 'link_only'
+        ? await addGenerationV2ComposerUrlReference({ conversationId: convoId, expectedRevision: current.revision, url: trimmed })
+        : await importGenerationV2ComposerUrlFile({ conversationId: convoId, expectedRevision: current.revision, url: trimmed })
       void refreshDraftAttachmentViewModels()
       setAttachmentFeedback('success', t('errors.attachment.urlAdded'))
     } catch (error) {
       setAttachmentFeedback('error', error instanceof Error ? error.message : 'URL import failed.')
       if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
-        console.warn('[ui-app] ingestUrlAttachment failed:', error)
+        console.warn('[ui-app] INGEST_URL_ATTACHMENT_FAILED')
       }
     }
   }
@@ -6665,13 +4749,13 @@ export function useAppChatAppLogic() {
     }
     draftFlushPromise.value = (async () => {
       try {
-        const updated = await updateConversationDraftText({
-          conversationId: scope.convoId,
-          draftText: text,
-          draftMode: draftPersistenceMode.value,
-          editingSourceMessageId: draftPersistenceEditingSourceMessageId.value,
-        })
-        applyDraftPersistenceStateFromDraft(updated)
+        const current = generationV2ComposerDraft.value?.conversationId === scope.convoId
+          ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(scope.convoId)
+        const updated = await updateGenerationV2ComposerText({ conversationId: scope.convoId,
+          expectedRevision: current.revision, draftText: text, draftMode: draftPersistenceMode.value,
+          editingSourceQuestionId: draftPersistenceEditingSourceMessageId.value })
+        generationV2ComposerDraft.value = updated
+        applyDraftPersistenceState({ draftMode: updated.draftMode, editingSourceMessageId: updated.editingSourceQuestionId })
       } catch (err) {
         if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
           console.warn('[ui-app] flushDraftPersistence failed (non-fatal):', {
@@ -6711,6 +4795,7 @@ export function useAppChatAppLogic() {
     const scope = getActiveDraftScope()
     if (!scope) {
       lastDraftScopeKey.value = null
+      generationV2ComposerDraft.value = null
       draft.value = ''
       applyDraftPersistenceState({ draftMode: 'compose', editingSourceMessageId: null })
       editRestoredDraftAttachmentAssetIds.value = new Set()
@@ -6720,17 +4805,19 @@ export function useAppChatAppLogic() {
     }
     lastDraftScopeKey.value = getDraftScopeKey(scope)
     try {
-      const restored = await restoreConversationDraft(scope.convoId)
-      applyDraftPersistenceStateFromDraft(restored)
+      const restored = await getGenerationV2ComposerDraft(scope.convoId)
+      generationV2ComposerDraft.value = restored
+      applyDraftPersistenceState({ draftMode: restored.draftMode, editingSourceMessageId: restored.editingSourceQuestionId })
       draft.value = restored.draftText
       editRestoredDraftAttachmentAssetIds.value = restored.draftMode === 'edit'
-        ? new Set(restored.attachedAssetIds.map((assetId) => String(assetId ?? '').trim()).filter(Boolean))
+        ? new Set(restored.attachments.map((attachment) =>
+            attachment.kind === 'managed_file' ? attachment.assetId : attachment.referenceId))
         : new Set()
-      await refreshDraftAttachmentViewModels({ restoredDraft: restored })
+      await refreshDraftAttachmentViewModels()
       scheduleHistoryIncompatibleRefresh()
     } catch (err) {
       if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
-        console.warn('[ui-app] restoreDraftForActiveScope failed (non-fatal):', err)
+        console.warn('[ui-app] RESTORE_DRAFT_FOR_ACTIVE_SCOPE_FAILED')
       }
       draft.value = ''
       applyDraftPersistenceState({ draftMode: 'compose', editingSourceMessageId: null })
@@ -6796,16 +4883,15 @@ export function useAppChatAppLogic() {
     const convoId = String(activeConvoId.value ?? '').trim()
     if (!convoId || !assetId) return
     try {
-      const result = await removeConversationDraftAttachment({
-        conversationId: convoId,
-        assetId,
-      })
+      const current = generationV2ComposerDraft.value?.conversationId === convoId
+        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+      const target = current.attachments.find((attachment) =>
+        (attachment.kind === 'managed_file' ? attachment.assetId : attachment.referenceId) === assetId)
+      if (!target) { setAttachmentFeedback('warning', t('errors.attachment.alreadyRemoved')); return }
+      generationV2ComposerDraft.value = await removeGenerationV2ComposerAttachment({ conversationId: convoId,
+        expectedRevision: current.revision, assetRevisionId: target.kind === 'managed_file' ? target.assetRevisionId : target.referenceRevision })
       await refreshDraftAttachmentViewModels()
-      if (result.removed) {
-        setAttachmentFeedback('success', t('errors.attachment.removedFromDraft'))
-      } else {
-        setAttachmentFeedback('warning', t('errors.attachment.alreadyRemoved'))
-      }
+      setAttachmentFeedback('success', t('errors.attachment.removedFromDraft'))
     } catch (error) {
       setAttachmentFeedback('error', error instanceof Error ? error.message : t('errors.attachment.removeFailed'))
     }
@@ -6815,10 +4901,6 @@ export function useAppChatAppLogic() {
     const id = String(assetId ?? '').trim()
     if (!id) return
     selectedDraftAttachmentAssetId.value = id
-    if (isElectronSmokeDfcFixtureEnabled() && id === ELECTRON_SMOKE_DFC_ASSET_ID) {
-      applyElectronSmokeDfcAttachmentFixture()
-      return
-    }
     void refreshDraftAttachmentDfcOptions(id)
     void refreshDraftAttachmentDfcPreview(id)
   }
@@ -6844,8 +4926,11 @@ export function useAppChatAppLogic() {
       const input = {
         conversationId: scope.convoId,
         assetId: id,
+        providerId: activeSessionConfig.value.model.selectedProviderId ?? 'unset',
+        operation: activeSessionConfig.value.model.selectedProviderId === 'openai_responses' ? 'responses' as const
+          : activeSessionConfig.value.imageGeneration.enabled ? 'images' as const : 'chat_completions' as const,
       }
-      const dto = await ensureConversationDraftAttachmentDfcOptions(input)
+      const dto = await getGenerationV2ComposerDfcOptions(input)
       if (seq !== draftAttachmentDfcOptionsSeq) return
       draftAttachmentDfcOptionsByAssetId.value = {
         ...draftAttachmentDfcOptionsByAssetId.value,
@@ -6881,7 +4966,7 @@ export function useAppChatAppLogic() {
       [id]: null,
     }
     try {
-      const dto = await getConversationDraftAttachmentDfcPreview({
+      const dto = await getGenerationV2ComposerDfcPreview({
         conversationId: scope.convoId,
         assetId: id,
         maxCharacters: 2048,
@@ -6919,13 +5004,47 @@ export function useAppChatAppLogic() {
     const assetId = String(selectedDraftAttachmentAssetId.value ?? '').trim()
     if (!convoId || !assetId) return
     try {
-      await updateConversationDraftAttachmentSettings({
-        conversationId: convoId,
-        assetId,
-        ...input,
-      })
-      await refreshDraftAttachmentViewModels()
-      selectedDraftAttachmentAssetId.value = assetId
+      const current = generationV2ComposerDraft.value?.conversationId === convoId
+        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+      const attachment = current.attachments.find((item) =>
+        (item.kind === 'managed_file' ? item.assetId : item.referenceId) === assetId)
+      if (attachment) {
+        if (input.dfcManaged !== undefined || input.selectedOptionId !== undefined || input.selectedAssetRefs !== undefined) {
+          if (input.dfcManaged !== true || typeof input.selectedOptionId !== 'string' || input.selectedAssetRefs === undefined) {
+            throw new Error('GENERATION_V2_ATTACHMENT_SETTING_INVALID')
+          }
+          generationV2ComposerDraft.value = await selectGenerationV2ComposerDfcOption({
+            conversationId: convoId, expectedRevision: current.revision, assetId, optionId: input.selectedOptionId,
+            providerId: activeSessionConfig.value.model.selectedProviderId ?? 'unset',
+            operation: activeSessionConfig.value.model.selectedProviderId === 'openai_responses' ? 'responses' as const
+              : activeSessionConfig.value.imageGeneration.enabled ? 'images' as const : 'chat_completions' as const,
+          })
+          await refreshDraftAttachmentViewModels()
+          selectedDraftAttachmentAssetId.value = assetId
+          return
+        }
+        if (input.preferredSendMode !== undefined) {
+          throw new Error('GENERATION_V2_ATTACHMENT_SEND_MODE_NOT_SUPPORTED')
+        }
+        if (input.urlRetentionMode !== undefined && input.urlRetentionMode !== null) {
+          const wanted = resolveAttachmentRetentionMode(input.urlRetentionMode)
+          const currentMode = attachment.kind === 'url_reference' ? 'link_only' : attachment.sourceKind === 'url_import' ? 'link_and_file' : null
+          if (currentMode === wanted) return
+          const originalUrl = attachment.originalUrl
+          if (!originalUrl) throw new Error('GENERATION_V2_URL_PROVENANCE_UNAVAILABLE')
+          const updated = wanted === 'link_only'
+            ? await addGenerationV2ComposerUrlReference({ conversationId: convoId, expectedRevision: current.revision, url: originalUrl })
+            : await importGenerationV2ComposerUrlFile({ conversationId: convoId, expectedRevision: current.revision, url: originalUrl })
+          const oldRevision = attachment.kind === 'managed_file' ? attachment.assetRevisionId : attachment.referenceRevision
+          generationV2ComposerDraft.value = await removeGenerationV2ComposerAttachment({ conversationId: convoId,
+            expectedRevision: updated.revision, assetRevisionId: oldRevision })
+          await refreshDraftAttachmentViewModels()
+          selectedDraftAttachmentAssetId.value = assetId
+          return
+        }
+        return
+      }
+      throw new Error('GENERATION_V2_DRAFT_ATTACHMENT_NOT_FOUND')
     } catch (error) {
       setAttachmentFeedback('error', error instanceof Error ? error.message : t('errors.attachment.updateFailed'))
     }
@@ -7049,34 +5168,20 @@ export function useAppChatAppLogic() {
       return
     }
     try {
-      const result = await ingestUrl({
-        url: retryUrl,
-        retentionMode: 'link_and_file',
-      })
-      if (!result.success || !result.assetId) {
-        setAttachmentFeedback('warning', t('filePipeline.attachment.details.retrySnapshotStillBlocked'))
-        return
-      }
-      await addConversationDraftAttachment({
-        conversationId: convoId,
-        assetId: result.assetId,
-        attachmentOrder: attachment.attachmentOrder,
-        includeInNextRequest: attachment.includeInNextRequest,
-        excludedReason: attachment.excludedReason,
-        preferredSendMode: attachment.preferredSendMode,
-        urlRetentionMode: 'link_and_file',
-      })
-      await removeConversationDraftAttachment({
-        conversationId: convoId,
-        assetId: previousAssetId,
-      })
+      const current = generationV2ComposerDraft.value?.conversationId === convoId
+        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+      const replacement = await importGenerationV2ComposerUrlFile({ conversationId: convoId,
+        expectedRevision: current.revision, url: retryUrl })
+      const previous = current.attachments.find((item) =>
+        (item.kind === 'managed_file' ? item.assetId : item.referenceId) === previousAssetId)
+      if (!previous) throw new Error('GENERATION_V2_DRAFT_ATTACHMENT_NOT_FOUND')
+      generationV2ComposerDraft.value = await removeGenerationV2ComposerAttachment({ conversationId: convoId,
+        expectedRevision: replacement.revision,
+        assetRevisionId: previous.kind === 'managed_file' ? previous.assetRevisionId : previous.referenceRevision })
       await refreshDraftAttachmentViewModels()
-      selectedDraftAttachmentAssetId.value = result.assetId
-      if (result.materializationStatus === 'stored') {
-        setAttachmentFeedback('success', t('filePipeline.attachment.details.retrySnapshotReady'))
-      } else {
-        setAttachmentFeedback('warning', t('filePipeline.attachment.details.retrySnapshotStillBlocked'))
-      }
+      const replacementAsset = replacement.attachments.find((item) => item.kind === 'managed_file' && item.sourceKind === 'url_import')
+      selectedDraftAttachmentAssetId.value = replacementAsset?.kind === 'managed_file' ? replacementAsset.assetId : null
+      setAttachmentFeedback('success', t('filePipeline.attachment.details.retrySnapshotReady'))
     } catch {
       setAttachmentFeedback('warning', t('filePipeline.attachment.details.retrySnapshotStillBlocked'))
     }
@@ -7167,11 +5272,7 @@ export function useAppChatAppLogic() {
   }
 
   const ACCOUNT_DEFAULT_WEB_SEARCH_ENABLED = false
-  const FALLBACK_WEB_SEARCH_PATCH: OpenRouterWebRequestPatch = {
-    plugins: [{ id: 'web', enabled: false }],
-  }
-
-  type SearchModeSource = 'conversation' | 'project' | 'global' | 'account'
+    type SearchModeSource = 'conversation' | 'project' | 'global' | 'account'
 
   function resolveModeSource(
     convoLayer: SearchSettingsLayer | null | undefined,
@@ -7194,13 +5295,7 @@ export function useAppChatAppLogic() {
     return 'account'
   }
 
-  function getConvoById(convoId: string): ConvoSummary | null {
-    const id = String(convoId ?? '').trim()
-    if (!id) return null
-    return convos.value.find((c) => c.id === id) ?? null
-  }
-
-  function getProjectByIdLocal(projectId: string | null | undefined): ProjectSummary | null {
+    function getProjectByIdLocal(projectId: string | null | undefined): ProjectSummary | null {
     const id = String(projectId ?? '').trim()
     if (!id) return null
     return projects.value.find((p) => p.id === id) ?? null
@@ -7255,6 +5350,23 @@ export function useAppChatAppLogic() {
     return getDefaultGenerationParamProfile(providerId, { requestKind }) ?? unsetGenerationProfile
   }
 
+  function geminiThinkingCapabilityForModel(modelId: string | null | undefined): GeminiThinkingCapability {
+    const normalized = normalizeGeminiThinkingModelId(modelId)
+    const state = catalogRuntimeSnapshot.value[GOOGLE_AI_STUDIO_PROVIDER_KEY] ??
+      catalogRuntimeStore.read(GOOGLE_AI_STUDIO_PROVIDER_KEY)
+    const model = state.items.find((candidate) => normalizeGeminiThinkingModelId(candidate.modelId) === normalized)
+    const raw = model?.observation?.rawProviderRecord ?? null
+    const thinkingOwnProperty = Boolean(raw && Object.prototype.hasOwnProperty.call(raw, 'thinking'))
+    const supportedGenerationMethods = raw && Array.isArray(raw.supportedGenerationMethods)
+      ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string') : undefined
+    return resolveGeminiThinkingCapability({
+      model: normalized,
+      thinking: thinkingOwnProperty ? raw?.thinking : undefined,
+      thinkingOwnProperty,
+      supportedGenerationMethods,
+    })
+  }
+
   const activeSessionGenerationParamsLayer = computed<GenerationParamsLayer | null>(() =>
     activeSessionConfig.value.generationParams.detail
   )
@@ -7274,6 +5386,9 @@ export function useAppChatAppLogic() {
     resolveGenerationParamsFromLayers({
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
+      geminiThinkingCapability: activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+        !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
+        ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
         conversation: getActiveConvoGenerationParamsLayer(),
         project: getActiveProjectGenerationParamsLayer(),
@@ -7322,6 +5437,9 @@ export function useAppChatAppLogic() {
     resolveGenerationParamsFromLayers({
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
+      geminiThinkingCapability: activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+        !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
+        ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
         conversation: sessionGenerationParamsDraft.value,
         project: getActiveProjectGenerationParamsLayer(),
@@ -7334,6 +5452,9 @@ export function useAppChatAppLogic() {
     resolveGenerationParamsFromLayers({
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
+      geminiThinkingCapability: activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+        !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
+        ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
         project: projectGenerationParamsDraft.value,
         global: globalGenerationParamsDefaults.value,
@@ -7382,7 +5503,7 @@ export function useAppChatAppLogic() {
     } catch (err) {
       globalWebSearchDefaults.value = null
       if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
-        console.warn('[ui-app] refreshGlobalWebSearchDefaults failed:', err)
+        console.warn('[ui-app] REFRESH_GLOBAL_WEB_SEARCH_DEFAULTS_FAILED')
       }
       return null
     }
@@ -7399,7 +5520,7 @@ export function useAppChatAppLogic() {
     } catch (err) {
       globalGenerationParamsDefaults.value = null
       if (shouldLogDebug()) {
-        console.warn('[ui-app] refreshGlobalGenerationParamsDefaults failed:', err)
+        console.warn('[ui-app] REFRESH_GLOBAL_GENERATION_PARAMS_DEFAULTS_FAILED')
       }
       return null
     }
@@ -7547,138 +5668,7 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function buildExplicitWebSearchPatch(input: ReturnType<typeof resolveSearchSettingsFromStoredLayers>): OpenRouterWebRequestPatch {
-    if (!input.effectiveMode) {
-      return { plugins: [{ id: 'web', enabled: false }] }
-    }
-
-    const pluginFromResolver = input.requestPatch.plugins?.find((row) => row.id === 'web')
-    const plugin = pluginFromResolver
-      ? {
-        ...pluginFromResolver,
-        enabled: true,
-      }
-      : {
-        id: 'web' as const,
-        enabled: true,
-        max_results: input.effectiveMaxResults,
-        ...(input.effectiveEngine ? { engine: input.effectiveEngine } : {}),
-        ...(input.effectiveSearchPrompt ? { search_prompt: input.effectiveSearchPrompt } : {}),
-      }
-
-    return {
-      plugins: [plugin],
-      ...(input.requestPatch.web_search_options
-        ? { web_search_options: input.requestPatch.web_search_options }
-        : {}),
-    }
-  }
-
-  async function resolveWebSearchConfigForConvoId(convoId: string): Promise<Readonly<{
-    requestPatch: OpenRouterWebRequestPatch
-    resolvedMode: WebSearchMode
-  }>> {
-    const convo = getConvoById(convoId)
-    const projectMeta = convo?.projectId
-      ? getProjectByIdLocal(convo.projectId)?.meta ?? null
-      : null
-
-    try {
-      const resolved = resolveSearchSettingsFromStoredLayers({
-        convoMeta: convo?.meta ?? null,
-        projectMeta,
-        globalDefaults: globalWebSearchDefaults.value,
-        options: { accountDefaultEnabled: ACCOUNT_DEFAULT_WEB_SEARCH_ENABLED },
-      })
-      return {
-        requestPatch: buildExplicitWebSearchPatch(resolved),
-        resolvedMode: resolved.resolvedMode,
-      }
-    } catch (err) {
-      if (shouldLogDebug() && import.meta.env.MODE !== 'test') {
-        console.warn('[ui-app] resolveWebSearchConfigForConvoId failed, fallback disable:', err)
-      }
-      return {
-        requestPatch: FALLBACK_WEB_SEARCH_PATCH,
-        resolvedMode: 'default',
-      }
-    }
-  }
-
-  function hasGenerationParamsRequestPatch(patch: Record<string, unknown>): boolean {
-    return Object.keys(patch).length > 0
-  }
-
-  function shouldEmitGenerationParamsSmokeTrace(): boolean {
-    if (typeof window === 'undefined') return false
-    try {
-      return window.localStorage?.getItem('starverse.generationParamsSmokeTrace') === '1'
-    } catch {
-      return false
-    }
-  }
-
-  function emitGenerationParamsSmokeTrace(payload: Readonly<{
-    providerId: RuntimeProviderKey
-    modelId: string
-    requestParams: Record<string, unknown>
-    wireParams: Record<string, unknown>
-  }>) {
-    if (!shouldEmitGenerationParamsSmokeTrace()) return
-    console.info('[generation-params-smoke-trace]', {
-      providerId: payload.providerId,
-      modelId: payload.modelId,
-      requestParams: payload.requestParams,
-      wireParams: payload.wireParams,
-    })
-  }
-
-  function shouldResolveGenerationParamsForProvider(providerId: RuntimeProviderKey): boolean {
-    return (
-      providerId === OPENROUTER_PROVIDER_ID ||
-      providerId === OPENAI_RESPONSES_PROVIDER_KEY ||
-      providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY ||
-      providerId === ANTHROPIC_MESSAGES_PROVIDER_KEY ||
-      providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
-    )
-  }
-
-  async function resolveGenerationParamsConfigForConvoId(
-    convoId: string,
-    providerId: RuntimeProviderKey,
-    modelId: string,
-  ): Promise<Readonly<{
-    requestPatch: Record<string, unknown>
-    requestParams: Record<string, unknown>
-  }>> {
-    const convo = getConvoById(convoId)
-    const projectMeta = convo?.projectId
-      ? getProjectByIdLocal(convo.projectId)?.meta ?? null
-      : null
-    const profile = generationParamProfileForProvider(providerId, modelId)
-    const resolved = resolveGenerationParamsFromStoredLayers({
-      profile,
-      modelId,
-      convoMeta: convo?.meta ?? null,
-      projectMeta,
-      globalDefaults: globalGenerationParamsDefaults.value,
-    })
-    if (resolved.errors.length > 0) {
-      const first = resolved.errors[0]
-      throw new Error(first.key ? `${first.key}: ${first.message}` : first.message)
-    }
-    const requestParams: Record<string, unknown> = { ...resolved.requestParams }
-    const requestPatch = mapGenerationParamsToProviderRequestPatch({ profile, modelId, requestParams: requestParams as any })
-    emitGenerationParamsSmokeTrace({
-      providerId,
-      modelId,
-      requestParams: { ...requestParams },
-      wireParams: { ...requestPatch },
-    })
-    return { requestPatch, requestParams: { ...requestParams } }
-  }
-
-  function normalizeModelKey(value: unknown): string {
+                function normalizeModelKey(value: unknown): string {
     const normalized = String(value ?? '').trim()
     return normalized.length > 0 ? normalized : DEFAULT_OPENROUTER_MODEL_ID
   }
@@ -7785,95 +5775,7 @@ export function useAppChatAppLogic() {
     return buildCurrentRuntimeSelectionForChatModel({ providerId, modelId: selectedModel })
   }
 
-  function buildCurrentRuntimeSelectionForAssistantTurn(
-    selection: AssistantTurnRuntimeSelection
-  ): CurrentRuntimeSelection {
-    return buildCurrentRuntimeSelectionForChatModel({
-      providerId: selection.providerId,
-      modelId: selection.modelId,
-    })
-  }
-
-  function getStoredRuntimeSelectionForMessage(messageId: string): AssistantTurnRuntimeSelection | null {
-    const id = String(messageId ?? '').trim()
-    if (!id) return null
-    const meta = messageMetaById.value.get(id)
-    if (!meta) return null
-    const modelId = normalizeRuntimeModelId(meta.modelId)
-    if (meta.providerId && modelId) {
-      return {
-        providerId: meta.providerId,
-        modelId,
-      }
-    }
-    return null
-  }
-
-  function resolveHistoricalTurnRuntimeSelection(input: Readonly<{
-    questionId: string
-    answerRootId?: string | null
-  }>): AssistantTurnRuntimeSelection | null {
-    const questionId = String(input.questionId ?? '').trim()
-    const answerRootId = String(input.answerRootId ?? '').trim()
-    const chosenAnswerRootId = questionId
-      ? String(turnFiltersByQuestionId.value.get(questionId)?.chosenAnswerRootId ?? '').trim()
-      : ''
-    const candidateIds = [answerRootId, chosenAnswerRootId, questionId]
-      .map((id) => String(id ?? '').trim())
-      .filter((id, index, arr) => id.length > 0 && arr.indexOf(id) === index)
-    for (const id of candidateIds) {
-      const selection = getStoredRuntimeSelectionForMessage(id)
-      if (selection) return selection
-    }
-    return null
-  }
-
-  async function preflightAssistantTurnRuntimeSelection(input: Readonly<{
-    selection: AssistantTurnRuntimeSelection
-    text: string
-  }>): Promise<boolean> {
-    const runtimeSelection = buildCurrentRuntimeSelectionForAssistantTurn(input.selection)
-    const availability = await resolveRuntimeAvailabilityPreflight(runtimeSelection)
-    const preflight = resolveProviderRuntimeTextSendPreflight({
-      selection: runtimeSelection,
-      capability: getRuntimeCapabilitySummaryLite(runtimeSelection),
-      text: input.text,
-      hasDraftAttachments: false,
-      sessionConfig: activeSessionConfig.value,
-      availability,
-    })
-    if (preflight.ok) return true
-    loadError.value = preflight.reason
-    setAttachmentFeedback('error', preflight.reason)
-    return false
-  }
-
-  async function hasIncludedHistoricalAttachments(messageId: string): Promise<boolean> {
-    const id = String(messageId ?? '').trim()
-    if (!id) return false
-    try {
-      const attachments = await listMessageAttachmentsByMessageId(id)
-      return attachments.some((attachment) => attachment.includeInNextRequest === true)
-    } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] historical attachment lookup failed before resend', err)
-      return true
-    }
-  }
-
-  async function ensureHistoricalAttachmentsRoutableForSelection(input: Readonly<{
-    selection: AssistantTurnRuntimeSelection
-    userMessageId: string
-    actionLabel: string
-  }>): Promise<boolean> {
-    if (input.selection.providerId === OPENROUTER_PROVIDER_ID) return true
-    if (!await hasIncludedHistoricalAttachments(input.userMessageId)) return true
-    const message = `${input.actionLabel} with historical attachments is not available for ${providerDisplayName(input.selection.providerId)} yet.`
-    loadError.value = message
-    setAttachmentFeedback('error', message)
-    return false
-  }
-
-  function normalizeImageGenerationState(value: unknown): ImageGenerationUiState {
+              function normalizeImageGenerationState(value: unknown): ImageGenerationUiState {
     return normalizeImageGenerationUserConfig(value)
   }
 
@@ -7920,27 +5822,25 @@ export function useAppChatAppLogic() {
     }
 
     try {
-      const result = await getModelCatalogModelDetail({ providerKey: OPENROUTER_PROVIDER_ID, modelId })
+      const modalities = openRouterModelModalitiesById.value.get(modelId) ?? null
       if (seq !== imageCapabilityQuerySeq.value) return
-      const item = result.item
-      if (!item) {
+      if (!modalities) {
         selectedModelImageCapabilityClass.value = null
         selectedModelImageCapabilityReason.value = 'model detail unavailable for image capability detection.'
         composerImageInputSupported.value = null
         composerImageInputSupportReason.value = null
         return
       }
-      composerImageInputSupported.value = Array.isArray(item.inputModalities) && item.inputModalities.includes('image')
+      composerImageInputSupported.value = modalities.input.includes('image')
       composerImageInputSupportReason.value = composerImageInputSupported.value
         ? null
         : 'Current model does not support image inputs.'
       const eligibility = evaluateImageGenerationModel({
-        modelId: item.modelId,
-        inputModalities: item.inputModalities,
-        outputModalities: item.outputModalities,
-        status: item.status,
-        visibility: item.visibility,
-        expirationAtSec: item.expirationAtSec,
+        modelId,
+        inputModalities: modalities.input,
+        outputModalities: modalities.output,
+        status: 'active',
+        visibility: 'visible',
       })
       if (eligibility.eligible && eligibility.capabilityClass) {
         selectedModelImageCapabilityClass.value = eligibility.capabilityClass
@@ -7954,7 +5854,7 @@ export function useAppChatAppLogic() {
           : 'selected model cannot be used for image generation.'
     } catch (err) {
       if (shouldLogDebug()) {
-        console.warn('[ui-app] refreshSelectedModelImageCapability failed:', err)
+        console.warn('[ui-app] REFRESH_SELECTED_MODEL_IMAGE_CAPABILITY_FAILED')
       }
       if (seq !== imageCapabilityQuerySeq.value) return
       selectedModelImageCapabilityClass.value = null
@@ -7977,7 +5877,7 @@ export function useAppChatAppLogic() {
     } catch (err) {
       globalImageGenerationDefault.value = DEFAULT_IMAGE_GENERATION_USER_CONFIG
       if (shouldLogDebug()) {
-        console.warn('[ui-app] refreshGlobalImageGenerationDefault failed:', err)
+        console.warn('[ui-app] REFRESH_GLOBAL_IMAGE_GENERATION_DEFAULT_FAILED')
       }
     }
     return globalImageGenerationDefault.value
@@ -7989,7 +5889,7 @@ export function useAppChatAppLogic() {
     } catch (err) {
       dfcAttachmentDefaults.value = normalizeDfcAttachmentDefaults(null)
       if (shouldLogDebug()) {
-        console.warn('[ui-app] refreshDfcAttachmentDefaults failed:', err)
+        console.warn('[ui-app] REFRESH_DFC_ATTACHMENT_DEFAULTS_FAILED')
       }
     }
     return dfcAttachmentDefaults.value
@@ -8055,7 +5955,7 @@ export function useAppChatAppLogic() {
       await persistImageGenerationConfigForActiveConvo({ mode: targetMode, custom })
     } catch (err) {
       if (shouldLogDebug()) {
-        console.warn('[ui-app] persist image generation mode failed (non-fatal):', err)
+        console.warn('[ui-app] PERSIST_IMAGE_GENERATION_MODE_FAILED')
       }
     }
 
@@ -8076,12 +5976,15 @@ export function useAppChatAppLogic() {
       })
     } catch (err) {
       if (shouldLogDebug()) {
-        console.warn('[ui-app] persist image generation custom config failed (non-fatal):', err)
+        console.warn('[ui-app] PERSIST_IMAGE_GENERATION_CUSTOM_CONFIG_FAILED')
       }
     }
   }
 
-  function resolveImageGenerationConfigForRequest(providerKey: RuntimeProviderKey): Readonly<{
+  function resolveImageGenerationConfigForRequest(
+    providerKey: RuntimeProviderKey,
+    sessionConfig: ChatSessionConfig = activeSessionConfig.value,
+  ): Readonly<{
     capabilityClass?: ImageCapabilityClass
     modalities?: ReadonlyArray<OpenRouterOutputModality>
     outputMode?: ImageGenerationUserConfig['outputMode']
@@ -8089,8 +5992,13 @@ export function useAppChatAppLogic() {
     imageSize?: ImageGenerationUserConfig['imageSize']
     imageConfig?: OpenRouterImageConfig
   }> | null {
-    const ui = imageGenerationState.value
-    const selectedModelId = normalizeRuntimeModelId(activeSessionConfig.value.model.selectedModelKey ?? '')
+    const ui = normalizeImageGenerationState({
+      ...normalizeImageGenerationState(sessionConfig.imageGeneration.detail),
+      enabled: sessionConfig.imageGeneration.enabled,
+      imageSize: sessionConfig.imageGeneration.resolution,
+      aspectRatio: sessionConfig.imageGeneration.aspectRatio,
+    })
+    const selectedModelId = normalizeRuntimeModelId(sessionConfig.model.selectedModelKey ?? '')
     const isGeminiImageModel = providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(selectedModelId)
     if (!ui.enabled && !isGeminiImageModel) return null
 
@@ -8157,18 +6065,6 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function extractSelectedModelKey(meta: unknown): string | null {
-    if (!meta || typeof meta !== 'object') return null
-    const raw = (meta as Record<string, unknown>)[CONVO_META_SELECTED_MODEL_KEY]
-    const normalized = String(raw ?? '').trim()
-    return normalized.length > 0 ? normalized : null
-  }
-
-  function extractSelectedProviderId(meta: unknown): string | null {
-    if (!meta || typeof meta !== 'object') return null
-    return normalizeRuntimeProviderId((meta as Record<string, unknown>)[CONVO_META_SELECTED_PROVIDER_KEY])
-  }
-
   function resolveSelectedModelAvailability(modelKey: string): 'available' | 'hidden' | 'missing' | 'unknown' {
     const normalized = normalizeModelKey(modelKey)
     if (!normalized) return 'unknown'
@@ -8187,104 +6083,6 @@ export function useAppChatAppLogic() {
     return 'missing'
   }
 
-  async function seedElectronSmokeBackendDocxPdfAttachment(filePath: string): Promise<ElectronSmokeDfcHtmlPdfSeedResult> {
-    if (!isElectronSmokeDfcFixtureEnabled()) throw new Error('Electron smoke DFC seam is disabled')
-    const normalizedFilePath = String(filePath ?? '').trim()
-    if (!normalizedFilePath) throw new Error('Electron smoke DOCX fixture path is required')
-
-    const conversationId = await ensureActiveConvo()
-    const ingestion = await ingestLocalFile({
-      filePath: normalizedFilePath,
-      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-      sourceKind: 'generated',
-    })
-    if (!ingestion.success || !ingestion.assetId) {
-      throw new Error('Electron smoke DOCX fixture ingestion failed')
-    }
-
-    const attachment = await addConversationDraftAttachment({
-      conversationId,
-      assetId: ingestion.assetId,
-      attachmentOrder: draftAttachmentRecords.value.length,
-      includeInNextRequest: true,
-    })
-    await refreshDraftAttachmentViewModels()
-
-    const ensuredOptions = await ensureConversationDraftAttachmentDfcOptions({
-      conversationId,
-      assetId: ingestion.assetId,
-    })
-    const pdfOption = ensuredOptions.options.find((option) =>
-      option.targetKind === 'pdf_attachment'
-      && option.sendStrategy === 'file_attachment'
-      && option.isAvailable
-      && option.sendAssetRefs.some((ref) => ref.kind === 'derived_asset')
-    )
-    if (!pdfOption) {
-      draftAttachmentDfcOptionsByAssetId.value = {
-        ...draftAttachmentDfcOptionsByAssetId.value,
-        [ingestion.assetId]: ensuredOptions,
-      }
-      throw new Error(`Electron smoke DOCX PDF option is unavailable: ${JSON.stringify({
-        options: ensuredOptions.options.map((option) => ({
-          targetKind: option.targetKind,
-          isAvailable: option.isAvailable,
-          status: option.status,
-          sendStrategy: option.sendStrategy,
-          diagnostics: option.diagnostics?.map((diagnostic) => ({
-            code: diagnostic.code,
-            severity: diagnostic.severity ?? null,
-            productCode: diagnostic.productCode ?? null,
-            runtimeStatus: diagnostic.runtimeStatus ?? null,
-          })) ?? [],
-        })),
-      })}`)
-    }
-
-    await updateConversationDraftAttachmentSettings({
-      conversationId,
-      assetId: ingestion.assetId,
-      dfcManaged: true,
-      selectedOptionId: pdfOption.optionId,
-      selectedAssetRefs: [...pdfOption.sendAssetRefs],
-    })
-    await refreshDraftAttachmentViewModels()
-
-    const selectedOptions = await ensureConversationDraftAttachmentDfcOptions({
-      conversationId,
-      assetId: ingestion.assetId,
-    })
-    const preview = await getConversationDraftAttachmentDfcPreview({
-      conversationId,
-      assetId: ingestion.assetId,
-      maxCharacters: 2048,
-    })
-    draftAttachmentDfcOptionsByAssetId.value = {
-      ...draftAttachmentDfcOptionsByAssetId.value,
-      [ingestion.assetId]: selectedOptions,
-    }
-    draftAttachmentDfcPreviewByAssetId.value = {
-      ...draftAttachmentDfcPreviewByAssetId.value,
-      [ingestion.assetId]: preview,
-    }
-
-    return {
-      backendOwned: true,
-      conversationId,
-      assetId: ingestion.assetId,
-      attachmentId: attachment.id,
-      optionId: pdfOption.optionId,
-      targetKind: pdfOption.targetKind,
-      sendStrategy: pdfOption.sendStrategy,
-      selectedAssetRefs: [...pdfOption.sendAssetRefs],
-      previewKind: preview.preview.kind,
-      previewStatus: preview.preview.status,
-      availableTargets: selectedOptions.options
-        .filter((option) => option.isAvailable)
-        .map((option) => option.targetKind),
-    }
-  }
-
   function applySelectedModelOverrideForActiveConvo() {
     const currentSessionConfig = getActiveSessionConfigSnapshot()
     const selectedProviderId = currentSessionConfig.model.selectedProviderId
@@ -8295,7 +6093,7 @@ export function useAppChatAppLogic() {
 
     const availability = resolveSelectedModelAvailability(normalized)
     if ((availability === 'hidden' || availability === 'missing') && shouldLogDebug()) {
-      console.warn('[ui-app] selected model from convo meta is not currently visible in local catalog; keep using session override', {
+      console.warn('[ui-app] selected route model is not currently visible in local catalog; keep using the persisted session selection', {
         convoId: getActiveConvoRecord()?.id,
         selectedModelKey: normalized,
         availability,
@@ -8305,22 +6103,27 @@ export function useAppChatAppLogic() {
 
   async function persistSelectedModelForActiveConvo(nextModelKey: ChatModelSelection | string) {
     const convo = getActiveConvoRecord()
-    if (!convo) return
+    if (!convo) throw new Error('ACTIVE_CONVERSATION_UNAVAILABLE')
 
     const selection = normalizeSelectionInput(nextModelKey)
     if (!selection) {
-      loadError.value = 'A provider and model must be selected together.'
-      return
+      const failure = new Error('A provider and model must be selected together.')
+      loadError.value = failure.message
+      throw failure
     }
     const normalized = selection.modelId
-    const currentPersisted = extractSelectedModelKey(convo.meta ?? null)
-    const currentProvider = extractSelectedProviderId(convo.meta ?? null)
+    const currentModel = getActiveSessionConfigSnapshot().model
+    const currentPersisted = currentModel.selectedModelKey
+    const currentProvider = currentModel.selectedProviderId ?? null
     if (currentPersisted === normalized && currentProvider === selection.providerId) return
 
     try {
+      const current = getActiveSessionConfigSnapshot()
       const patch: {
         model: NonNullable<ChatSessionConfigPatch['model']>
         imageGeneration?: NonNullable<ChatSessionConfigPatch['imageGeneration']>
+        reasoning?: NonNullable<ChatSessionConfigPatch['reasoning']>
+        generationParams?: NonNullable<ChatSessionConfigPatch['generationParams']>
       } = {
         model: {
           selectedProviderId: selection.providerId,
@@ -8330,7 +6133,6 @@ export function useAppChatAppLogic() {
       }
       if (selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(normalized)) {
         const policy = resolveGeminiImageGenerationPolicy(normalized)
-        const current = getActiveSessionConfigSnapshot()
         const imageSize = policy.imageSizeMode === 'hidden' ? '' : policy.defaultImageSize
         patch.imageGeneration = {
           enabled: true,
@@ -8346,10 +6148,61 @@ export function useAppChatAppLogic() {
           }),
         }
       }
+      const profile = getDefaultGenerationParamProfile(selection.providerId, {
+        requestKind: selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(normalized)
+          ? 'image_generation' : 'text',
+      })
+      if (selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !isKnownGeminiImageGenerationModel(normalized)) {
+        const thinkingCapability = geminiThinkingCapabilityForModel(normalized)
+        const detail = { ...(current.generationParams.detail ?? {}) }
+        if (thinkingCapability.kind === 'level') {
+          delete detail.thinkingBudget
+          const level = detail.thinkingLevel
+          if (level?.mode === 'custom' && !(thinkingCapability.levels as readonly string[]).includes(String(level.value))) {
+            detail.thinkingLevel = { mode: 'omit' }
+          }
+        } else if (thinkingCapability.kind === 'budget') {
+          delete detail.thinkingLevel
+          const budget = detail.thinkingBudget
+          if (budget?.mode === 'custom' && !isGeminiThinkingBudgetValid(thinkingCapability, budget.value)) {
+            detail.thinkingBudget = { mode: 'omit' }
+          }
+        } else {
+          delete detail.thinkingBudget
+          delete detail.thinkingLevel
+          delete detail.includeThoughts
+        }
+        if (thinkingCapability.kind !== 'level' && thinkingCapability.kind !== 'budget') {
+          delete detail.thinkingEnabled
+          delete detail.reasoningEffort
+        }
+        patch.generationParams = { detail: Object.freeze(detail) }
+      }
+      if (selection.providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY) {
+        if (current.reasoning.enabled && !isDeepSeekSelectableReasoningEffort(current.reasoning.effort)) {
+          patch.reasoning = { enabled: true, effort: 'high' }
+        }
+      }
+      const persistedEffort = current.generationParams.detail?.reasoningEffort
+      const hasExplicitMax = current.reasoning.enabled && current.reasoning.effort === 'max' ||
+        selection.providerId !== DEEPSEEK_OFFICIAL_PROVIDER_KEY &&
+          persistedEffort?.mode === 'custom' && persistedEffort.value === 'max'
+      if (hasExplicitMax && isReasoningEffortExplicitlyUnsupported(profile, normalized, 'max', {
+        geminiThinkingCapability: selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !isKnownGeminiImageGenerationModel(normalized)
+          ? geminiThinkingCapabilityForModel(normalized) : undefined,
+      })) {
+        patch.reasoning = { enabled: false, effort: 'medium' }
+        patch.generationParams = { detail: Object.freeze({
+          ...(current.generationParams.detail ?? {}),
+          reasoningEffort: Object.freeze({ mode: 'omit' as const }),
+        }) }
+        requestedReasoningEffort.value = 'auto'
+        requestedReasoningExclude.value = false
+      }
       await updateActiveConvoSessionConfig(patch)
     } catch (err) {
       if (shouldLogDebug()) {
-        console.warn('[ui-app] persistSelectedModelForActiveConvo failed (non-fatal):', err, {
+        console.warn('[ui-app] PERSIST_SELECTED_MODEL_FOR_ACTIVE_CONVO_FAILED', {
           convoId: convo.id,
           selectedModelKey: normalized,
         })
@@ -8456,7 +6309,7 @@ export function useAppChatAppLogic() {
       })
       convos.value = convos.value.map((c) => (c.id === convo.id ? { ...c, meta: nextMeta } : c))
     } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] cycleUserMessageRenderMode failed (non-fatal):', err)
+      if (shouldLogDebug()) console.warn('[ui-app] CYCLE_USER_MESSAGE_RENDER_MODE_FAILED')
     }
   }
 
@@ -8565,7 +6418,7 @@ export function useAppChatAppLogic() {
       globalReasoningPrefs.value = normalized
       return normalized
     } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] refreshGlobalReasoningPrefs failed (non-fatal):', err)
+      if (shouldLogDebug()) console.warn('[ui-app] REFRESH_GLOBAL_REASONING_PREFS_FAILED')
       globalReasoningPrefs.value = null
       return null
     }
@@ -8577,7 +6430,7 @@ export function useAppChatAppLogic() {
       globalReasoningPanelDefaultExpanded.value = value
       return value
     } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] refreshGlobalReasoningPanelDefaultExpanded failed (non-fatal):', err)
+      if (shouldLogDebug()) console.warn('[ui-app] REFRESH_REASONING_PANEL_DEFAULT_EXPANDED_FAILED')
       globalReasoningPanelDefaultExpanded.value = true
       return true
     }
@@ -8589,29 +6442,13 @@ export function useAppChatAppLogic() {
       globalReasoningPanelAutoCollapseAfterReasoning.value = value
       return value
     } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] refreshGlobalReasoningPanelAutoCollapseAfterReasoning failed (non-fatal):', err)
+      if (shouldLogDebug()) console.warn('[ui-app] REFRESH_REASONING_PANEL_AUTO_COLLAPSE_FAILED')
       globalReasoningPanelAutoCollapseAfterReasoning.value = false
       return false
     }
   }
 
-  async function loadProjectReasoningPrefs(projectId: string): Promise<ReasoningPrefs | null> {
-    const cached = projects.value.find((p) => p.id === projectId)
-    const cachedPrefs = extractReasoningPrefs(cached?.meta ?? null)
-    if (cachedPrefs) return cachedPrefs
-
-    const found = await findProjectById(projectId)
-    if (found) {
-      projects.value = projects.value.some((p) => p.id === found.id)
-        ? projects.value.map((p) => (p.id === found.id ? found : p))
-        : [...projects.value, found]
-      return extractReasoningPrefs(found.meta ?? null)
-    }
-
-    return null
-  }
-
-  async function loadReasoningPrefsForActiveConvo() {
+    async function loadReasoningPrefsForActiveConvo() {
     const convo = getActiveConvoRecord()
     if (!convo) {
       applyReasoningPrefs(DEFAULT_REASONING_PREFS)
@@ -8656,15 +6493,11 @@ export function useAppChatAppLogic() {
         reasoning: {
           enabled: prefs.mode === 'effort' && prefs.effort !== 'none',
           effort:
-            prefs.effort === 'high' || prefs.effort === 'xhigh'
-              ? 'high'
-              : prefs.effort === 'low' || prefs.effort === 'minimal'
-                ? 'low'
-                : 'medium',
+            prefs.effort === 'auto' || prefs.effort === 'none' ? 'medium' : prefs.effort,
         },
       })
     } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] persistReasoningPrefs failed (non-fatal):', err)
+      if (shouldLogDebug()) console.warn('[ui-app] PERSIST_REASONING_PREFS_FAILED')
     }
 
     if (!convo.projectId) {
@@ -8672,2322 +6505,475 @@ export function useAppChatAppLogic() {
         await setReasoningPrefs(prefs)
         globalReasoningPrefs.value = prefs
       } catch (err) {
-        if (shouldLogDebug()) console.warn('[ui-app] setReasoningPrefs failed (non-fatal):', err)
+        if (shouldLogDebug()) console.warn('[ui-app] SET_REASONING_PREFS_FAILED')
       }
     }
   }
 
-  async function ensureProjectReasoningPrefsInitialized(projectId: string | null) {
-    if (!projectId) return
-    const existing = await loadProjectReasoningPrefs(projectId)
-    if (existing) return
-
-    const project = await findProjectById(projectId)
-    if (!project) return
-
-    const prefs = buildReasoningPrefsFromUi()
-    const nextMeta = mergeReasoningPrefsIntoMeta(project.meta ?? null, prefs)
-
-    try {
-      await saveProject({ id: project.id, name: project.name, meta: nextMeta })
-      projects.value = projects.value.some((p) => p.id === project.id)
-        ? projects.value.map((p) => (p.id === project.id ? { ...p, meta: nextMeta } : p))
-        : [...projects.value, { ...project, meta: nextMeta }]
-    } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] ensureProjectReasoningPrefsInitialized failed (non-fatal):', err)
-    }
-  }
-
-  type AssistantStreamSessionTelemetry = Readonly<{
-    onEvent?: (event: DomainEvent) => void
-    onEnd?: (status: 'done' | 'error' | 'aborted', error: unknown) => void
-  }>
-
-  type AssistantStreamSessionInput = Readonly<{
-    convoId: string
-    branchId: string
-    requestId: string
-    assistantMessageId: string
-    assistantSeq: number
-    providerId: ChatModelSelection['providerId']
-    modelId: string
-    createEvents: (signal: AbortSignal) => AsyncIterable<DomainEvent>
-    pdfAnnotationCaptureAssetIds?: ReadonlyArray<string>
-    replayManifestDraft?: Record<string, unknown> | null
-    reasoningArtifactProvider?: ReasoningArtifactProvider
-    telemetry?: AssistantStreamSessionTelemetry
-  }>
-
-  type FinalizeAssistantStreamSessionInput = Readonly<{
-    convoId: string
-    assistantMessageId: string
-    assistantSeq: number
-    stream: ActiveStream
-    errorPersistPromise: Promise<void> | null
-  }>
-
-  function isReasoningDetailEventForMessage(ev: DomainEvent, assistantMessageId: string): boolean {
-    if (ev.type === 'MessageDeltaReasoningDetail') {
-      return ev.messageId === assistantMessageId
-    }
-    if (ev.type === 'MessageDeltaReasoningDetailBatch') {
-      return ev.messageId === assistantMessageId && Array.isArray(ev.details) && ev.details.length > 0
-    }
-    return false
-  }
-
-  function isReasoningDisplayBlockEventForMessage(ev: DomainEvent, assistantMessageId: string): boolean {
-    return (ev.type === 'MessageAppendReasoningDisplayBlock' || ev.type === 'MessageUpsertReasoningDisplayBlock') && ev.messageId === assistantMessageId
-  }
-
-  function processReasoningDisplayBlockEvent(ev: DomainEvent, stream: ActiveStream, assistantMessageId: string) {
-    if ((ev.type !== 'MessageAppendReasoningDisplayBlock' && ev.type !== 'MessageUpsertReasoningDisplayBlock') || ev.messageId !== assistantMessageId) return
-    stream.pendingReasoningDisplayBlocks.value.push(ev.block)
-    scheduleReasoningDetailFlush(stream, assistantMessageId)
-  }
-
-  function processProviderNativeContentEvent(ev: DomainEvent, stream: ActiveStream, assistantMessageId: string) {
-    if (ev.type !== 'MessageUpsertProviderNativeContent' || ev.messageId !== assistantMessageId) return
-    stream.pendingProviderNativeContents.value.push(ev.snapshot)
-    scheduleProviderNativeFlush(stream, assistantMessageId)
-  }
-
-  function isAssistantTextEventForMessage(ev: DomainEvent, assistantMessageId: string): boolean {
-    if (ev.type === 'MessageDeltaText') {
-      return ev.messageId === assistantMessageId && ev.text.length > 0
-    }
-    if (ev.type === 'MessageAppendContentBlock' && ev.messageId === assistantMessageId && ev.block?.type === 'text') {
-      return String(ev.block.text ?? '').length > 0
-    }
-    return false
-  }
-
-  function processReasoningDetailEvent(ev: DomainEvent, stream: ActiveStream, assistantMessageId: string) {
-    if (ev.type !== 'MessageDeltaReasoningDetail' || ev.messageId !== assistantMessageId) return
-    // 使用 Merger 处理快照语义，提取真正的后缀增量
-    const merged = stream.reasoningMerger.merge(ev.detail)
-    const key = merged?.key ?? 'unknown'
-    const chunkNo = typeof ev.chunkNo === 'number' ? ev.chunkNo : -1
-
-    if (merged) {
-      const deltaLen = (merged.deltaText?.length ?? 0) + (merged.deltaSummary?.length ?? 0) + (merged.deltaData?.length ?? 0)
-      // 构建带有真正 delta 和 offset 信息的对象用于存储
-      const detailWithDelta = {
-        ...merged.originalDetail,
-        __deltaText: merged.deltaText,
-        __deltaSummary: merged.deltaSummary,
-        __deltaData: merged.deltaData,
-        __isSnapshot: merged.isSnapshot,
-        __hasNewMetadata: merged.hasNewMetadata,
-        __key: merged.key,
-        __offsetBefore: merged.offsetBefore,
-        __offsetAfter: merged.offsetAfter,
-        __metadataDigest: merged.metadataDigest,
-      }
-      stream.pendingReasoningDetails.value.push(detailWithDelta)
-      scheduleReasoningDetailFlush(stream, assistantMessageId)
-
-      // 追踪诊断信息
-      stream.diagnosticTracker.events.push({ chunkNo, key, offsetBefore: merged.offsetBefore, deltaLen, action: 'queued' })
-      stream.diagnosticTracker.totalQueued++
-      stream.diagnosticTracker.totalDeltaLen += deltaLen
-      // 记录 offset 到文本区间的映射 [start, end)
-      const start = stream.diagnosticTracker.textCursor
-      const end = start + deltaLen
-      stream.diagnosticTracker.chunkRanges.push({ chunkNo, key, offsetBefore: merged.offsetBefore, start, end })
-      stream.diagnosticTracker.textCursor = end
-
-      if (shouldLogReasoningDebug()) {
-        const snapshotTail = merged.isSnapshot && typeof (merged.originalDetail as any)?.text === 'string'
-          ? (merged.originalDetail as any).text.slice(-30)
-          : undefined
-        console.log('[reasoning-chunk]', { key, offsetBefore: merged.offsetBefore, deltaLen, hasNewMetadata: merged.hasNewMetadata, isSnapshot: merged.isSnapshot, deltaHead: merged.deltaText?.slice(0, 30), snapshotTail })
-      }
-      return
-    }
-
-    // Merger 返回 null，记录跳过
-    stream.diagnosticTracker.events.push({ chunkNo, key, deltaLen: 0, action: 'skipped', reason: 'merger_null' })
-    stream.diagnosticTracker.totalSkipped++
-    if (shouldLogReasoningDebug()) {
-      console.log('[reasoning-chunk] SKIPPED (merger returned null)', { key })
-    }
-  }
-
-  /* eslint-disable max-depth */
-  async function finalizeAssistantStreamSession(input: FinalizeAssistantStreamSessionInput) {
-    const { convoId, assistantMessageId, assistantSeq, stream, errorPersistPromise } = input
-    clearFlushTimer(stream)
-    clearReasoningFlushTimer(stream)
-    clearProviderNativeFlushTimer(stream)
-    // 输出 Merger 诊断统计
-    if (shouldLogReasoningDebug()) {
-      const stats = stream.reasoningMerger.getStats()
-      console.log('[reasoning-merger] stream stats:', stats)
-      if (stats.isLikelySnapshot) {
-        console.log('[reasoning-merger] ⚠️ 检测到快照语义 (>50% prefixMatch)，已自动提取后缀增量')
-      }
-    }
-    // Use unified finalization to enforce: refresh FIRST, then clear activeStream.
-    try {
-      // 记录 flush 前的队列信息
-      await flushReasoningDetailSegments(stream, assistantMessageId)
-      await flushReasoningDisplayBlocks(stream, assistantMessageId)
-      await flushProviderNativeContents(stream, assistantMessageId)
-      try {
-        await finalizeReasoningDisplayBlocks({ messageId: assistantMessageId })
-      } catch (err) {
-        if (shouldLogReasoningDebug()) console.warn('[ui-app] finalizeReasoningDisplayBlocks failed (non-fatal):', err)
-      }
-      await finalizeReasoningDetails({ messageId: assistantMessageId })
-
-      if (shouldLogReasoningDebug()) {
-        const mergerStats = stream.reasoningMerger.getStats()
-        const mergerSnapshot = stream.reasoningMerger.getMergedSnapshots()
-        const mergerExtracted = extractReasoningTextFromDetails(mergerSnapshot)
-        const mergerFinalText = mergerExtracted.reasoningText
-        const isEncryptedModel = mergerExtracted.isEncrypted
-
-        let dbReplaySnapshot: unknown[] | null = null
-        let dbFinalText: string | undefined
-        let dbExtracted: ReturnType<typeof extractReasoningTextFromDetails> | null = null
-        let dbSegmentsCount: number | undefined
-        try {
-          const bridge = (globalThis as any).dbBridge as { invoke?: (method: string, params?: unknown) => Promise<any> } | undefined
-          if (bridge?.invoke) {
-            const rows = await bridge.invoke('message.list', { convoId, fromSeq: assistantSeq, limit: 1 })
-            const row = Array.isArray(rows)
-              ? (rows.find((r) => r && typeof r === 'object' && (r as any).id === assistantMessageId) ?? rows[0])
-              : null
-            const meta = row && typeof (row as any).meta === 'object' ? (row as any).meta : null
-            const reasoningDetailsRaw = Array.isArray(meta?.reasoningDetailsRaw) ? meta.reasoningDetailsRaw : null
-            if (reasoningDetailsRaw) {
-              dbReplaySnapshot = reasoningDetailsRaw
-              dbExtracted = extractReasoningTextFromDetails(dbReplaySnapshot)
-              dbFinalText = dbExtracted.reasoningText
-            }
-            // 尝试获取 segments count（如果 meta 中有的话）
-            dbSegmentsCount = typeof meta?.reasoningSegmentsCount === 'number' ? meta.reasoningSegmentsCount : undefined
-          }
-        } catch (err) {
-          console.warn('[reasoning-verify] failed to load db replay snapshot:', err)
-        }
-
-        const uiDisplayBlockCount =
-          selectMessage(state.value, assistantMessageId)?.reasoningView?.displayBlocks?.length ?? 0
-
-        // 输出 diagnosticTracker 摘要（包含 DB 统计）
-        const tracker = stream.diagnosticTracker
-        console.log('[reasoning-diag] tracker summary', {
-          // UI 侧统计
-          totalQueued: tracker.totalQueued,
-          totalSkipped: tracker.totalSkipped,
-          totalDeltaLen: tracker.totalDeltaLen,
-          eventCount: tracker.events.length,
-          // DB 侧统计
-          dbInserted: tracker.dbInserted,
-          dbSkipped: tracker.dbSkipped,
-          dbIgnored: tracker.dbIgnored,
-          dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
-        })
-
-        // 一次性 DB 统计查询（作为对照）
-        const dbRealStats = await getReasoningSegmentsStats(assistantMessageId)
-        if (dbRealStats) {
-          const matchCnt = dbRealStats.cnt === tracker.dbInserted
-          const matchSum = dbRealStats.sumLen === tracker.dbSumDeltaLenInserted
-          console.log('[reasoning-diag] DB real stats', {
-            segmentsInDb: dbRealStats.cnt,
-            sumDeltaTextLenInDb: dbRealStats.sumLen,
-            trackerDbInserted: tracker.dbInserted,
-            trackerDbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
-            matchCnt,
-            matchSum,
-          })
-          // 失败时输出差异诊断
-          if (!matchCnt || !matchSum) {
-            console.warn('[reasoning-diag] MISMATCH', {
-              messageId: assistantMessageId,
-              cntDiff: dbRealStats.cnt - tracker.dbInserted,
-              sumDiff: dbRealStats.sumLen - tracker.dbSumDeltaLenInserted,
-              trackerIgnored: tracker.dbIgnored,
-              trackerSkipped: tracker.dbSkipped,
-            })
-          }
-        } else {
-          console.warn('[reasoning-diag] failed to get DB real stats for', assistantMessageId)
-        }
-
-        // 恒等式验证
-        const eventCountExpected = tracker.dbInserted + tracker.dbIgnored + tracker.dbSkipped
-        const invariant1 = tracker.totalQueued === eventCountExpected
-        console.log('[reasoning-diag] invariants', {
-          'eventCount == dbInserted + dbIgnored + dbSkipped': invariant1,
-          totalQueued: tracker.totalQueued,
-          eventCountExpected,
-          'totalDeltaLen == dbSumDeltaLenInserted': tracker.totalDeltaLen === tracker.dbSumDeltaLenInserted,
-          totalDeltaLen: tracker.totalDeltaLen,
-          dbSumDeltaLenInserted: tracker.dbSumDeltaLenInserted,
-          deltaLenDiff: tracker.totalDeltaLen - tracker.dbSumDeltaLenInserted,
-        })
-
-        // 详细诊断日志
-        console.log('[reasoning-verify] diagnostic info', {
-          messageId: assistantMessageId,
-          mergerChunkCount: mergerStats.chunkCount,
-          mergerDeltaCount: mergerStats.deltaCount,
-          mergerSnapshotCount: mergerStats.snapshotCount,
-          mergerUniqueKeys: mergerStats.uniqueKeys,
-          dbSegmentsCount,
-          isLikelySnapshot: mergerStats.isLikelySnapshot,
-          isEncryptedModel,
-        })
-
-        // 对于加密模型，比较 encryptedData；否则比较 reasoningText
-        const mergerCompareText = isEncryptedModel ? mergerExtracted.encryptedData : mergerFinalText
-        const dbCompareText = isEncryptedModel ? dbExtracted?.encryptedData : dbFinalText
-
-        console.log('[reasoning-verify] text compare', {
-          messageId: assistantMessageId,
-          isEncryptedModel,
-          mergerFinalTextLen: mergerCompareText?.length ?? 0,
-          dbFinalTextLen: dbCompareText?.length ?? 0,
-          uiDisplayBlockCount,
-          // 加密模型不输出原文（避免日志过大）
-          mergerFinalText: isEncryptedModel ? `[encrypted ${mergerCompareText?.length ?? 0} bytes]` : mergerFinalText,
-          dbFinalText: isEncryptedModel ? `[encrypted ${dbCompareText?.length ?? 0} bytes]` : dbFinalText,
-        })
-
-        // 加密模型：比较 encryptedData；非加密模型：比较 reasoningText
-        const textMismatch = mergerCompareText !== dbCompareText
-
-        if (textMismatch) {
-          // 找出具体差异位置（使用比较用的文本）
-          let diffPos = -1
-          const shorter = mergerCompareText && dbCompareText
-            ? (mergerCompareText.length <= dbCompareText.length ? mergerCompareText : dbCompareText)
-            : ''
-          const longer = mergerCompareText && dbCompareText
-            ? (mergerCompareText.length > dbCompareText.length ? mergerCompareText : dbCompareText)
-            : ''
-          for (let i = 0; i < shorter.length; i++) {
-            if (shorter[i] !== longer[i]) {
-              diffPos = i
-              break
-            }
-          }
-          if (diffPos === -1 && shorter.length !== longer.length) {
-            diffPos = shorter.length
-          }
-
-          console.warn('[reasoning-verify] MISMATCH DETECTED', {
-            messageId: assistantMessageId,
-            isEncryptedModel,
-            textMismatch,
-            diffPos,
-            diffContext: diffPos >= 0 && !isEncryptedModel ? {
-              mergerAround: mergerCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
-              dbAround: dbCompareText?.slice(Math.max(0, diffPos - 20), diffPos + 20),
-            } : null,
-            mergerSnapshotCount: mergerSnapshot.length,
-            dbSnapshotCount: dbReplaySnapshot?.length ?? 0,
-          })
-
-          // 用 diffPos 映射到 chunkNo（精确定位被吞的 chunk）
-          const affectedChunk = tracker.chunkRanges.find(r => r.start <= diffPos && diffPos < r.end)
-          console.warn('[reasoning-verify] diffPos → chunkNo mapping', {
-            diffPos,
-            affectedChunkNo: affectedChunk?.chunkNo ?? 'not found',
-            affectedChunkRange: affectedChunk ? `[${affectedChunk.start}, ${affectedChunk.end})` : null,
-            nearbyChunks: tracker.chunkRanges.filter(r =>
-              Math.abs(r.start - diffPos) < 50 || Math.abs(r.end - diffPos) < 50
-            ).slice(0, 5),
-          })
-
-          // 输出每个 snapshot 的 text 长度对比
-          console.warn('[reasoning-verify] snapshot details', {
-            mergerSnapshots: mergerSnapshot.map((s: any) => ({
-              key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
-              textLen: s.text?.length ?? 0,
-              textPreview: s.text?.slice(0, 50),
-            })),
-            dbSnapshots: dbReplaySnapshot?.map((s: any) => ({
-              key: `${s.id ?? ''}|${s.index ?? ''}|${s.type ?? ''}`,
-              textLen: s.text?.length ?? 0,
-              textPreview: s.text?.slice(0, 50),
-            })),
-          })
-        }
-      }
-    } catch (err) {
-      if (shouldLogReasoningDebug()) console.warn('[ui-app] finalizeReasoningDetails failed (non-fatal):', err)
-    }
-    if (errorPersistPromise) {
-      try {
-        await errorPersistPromise
-      } catch {
-        // no-op
-      }
-    }
-    await finalizeRun(assistantMessageId)
-  }
-  /* eslint-enable max-depth */
-
-  async function runAssistantStreamSession(input: AssistantStreamSessionInput) {
-    const { convoId, branchId, assistantMessageId, assistantSeq, providerId, modelId, requestId } = input
-    const stream = createActiveStream(branchId, assistantMessageId, assistantSeq)
-    activeStream.value = stream
-    const reasoningArtifactCollector: ReasoningArtifactCollectorState | null = input.reasoningArtifactProvider
-      ? createReasoningArtifactCollector({
-          providerKey: input.reasoningArtifactProvider,
-          messageId: assistantMessageId,
-          streamTurnId: requestId,
-        })
-      : null
-    if (reasoningArtifactCollector) resetReasoningArtifactsForMessage(assistantMessageId)
-
-    let finalStatus: 'final' | 'error' = 'final'
-    let finalMetaStatus: 'final' | 'error' | 'aborted' = 'final'
-    let finalCompletionOutcome: CompletionOutcome | undefined
-    let terminalSeen = false
-    let streamDrained = false
-    let imageAssetsPersisted = false
-    let statusPersisted = false
-    let annotationsPersisted = false
-    let errorPersisted = false
-    let errorPersistPromise: Promise<void> | null = null
-    let sawAnyEvent = false
-    let sawReasoningForPanel = false
-    let autoOpenedReasoningPanel = false
-    let autoCollapsedReasoningPanel = false
-    let latestUsageSnapshot: Record<string, unknown> | null = null
-
-    let telemetryTerminalStatus: 'done' | 'error' | 'aborted' = 'done'
-    let telemetryTerminalError: unknown = null
-    let telemetryFinalized = false
-    const finalizeTelemetry = (status: 'done' | 'error' | 'aborted', error: unknown) => {
-      if (telemetryFinalized) return
-      telemetryFinalized = true
-      input.telemetry?.onEnd?.(status, error)
-    }
-
-    const ensureTerminalDrainOnce = async () => {
-      if (streamDrained) return
-      streamDrained = true
-      if (enableEventScheduler) {
-        eventScheduler.flushNow(branchId, 'flush')
-      }
-      clearFlushTimer(stream)
-      await flushPending(convoId, stream)
-      clearReasoningFlushTimer(stream)
-      await flushReasoningDetailSegments(stream, assistantMessageId)
-      clearProviderNativeFlushTimer(stream)
-      await flushProviderNativeContents(stream, assistantMessageId)
-    }
-
-    const ensurePersistStatusOnce = async () => {
-      if (statusPersisted) return
-      statusPersisted = true
-      const metaPatch: Record<string, unknown> = {}
-      metaPatch.providerId = providerId
-      metaPatch.modelId = modelId
-      if (finalCompletionOutcome) {
-        metaPatch.completionOutcome = finalCompletionOutcome
-      }
-      if (latestUsageSnapshot) {
-        metaPatch.usage = latestUsageSnapshot
-      }
-      if (input.replayManifestDraft && typeof input.replayManifestDraft === 'object') {
-        metaPatch.currentReplayManifestDraft = input.replayManifestDraft
-      }
-      await setMessageStatus({
-        messageId: assistantMessageId,
-        status: finalStatus,
-        ...getMessageTimingForPersist(assistantMessageId),
-        ...(Object.keys(metaPatch).length > 0 ? { metaPatch } : {}),
-      })
-    }
-
-    const ensurePersistAnnotationsOnce = async () => {
-      if (annotationsPersisted) return
-      annotationsPersisted = true
-      if (!stream.annotationsTouched.value) return
-      try {
-        await setMessageAnnotations({
-          messageId: assistantMessageId,
-          annotations: stream.annotationsBuffer.value ?? [],
-        })
-        const pdfAssetIds = Array.from(new Set((input.pdfAnnotationCaptureAssetIds ?? []).map((id) => String(id ?? '').trim()).filter(Boolean)))
-        if (pdfAssetIds.length > 0) {
-          await capturePdfAnnotationDerivatives({
-            messageId: assistantMessageId,
-            assetIds: pdfAssetIds,
-          })
-        }
-      } catch (err) {
-        if (shouldLogDebug()) console.warn('[ui-app] setMessageAnnotations failed (non-fatal):', err)
-      }
-    }
-
-    const ensurePersistImageAssetsOnce = async () => {
-      if (imageAssetsPersisted) return
-      imageAssetsPersisted = true
-      const imageDataUrls = collectMessageImageDataUrls(assistantMessageId)
-      if (imageDataUrls.length === 0) return
-      try {
-        const assets = await persistMessageImageAssetsFromDataUrls({
-          messageId: assistantMessageId,
-          imageDataUrls,
-        })
-        replaceMessageDataImageBlocks(assistantMessageId, assets)
-      } catch (err) {
-        if (shouldLogDebug()) {
-          console.warn('[ui-app] persistMessageImageAssetsFromDataUrls failed (non-fatal):', err)
-        }
-      }
-    }
-
-    const ensurePersistErrorEnvelopeOnce = (envelope: ErrorEnvelope | null | undefined) => {
-      if (errorPersisted) return
-      if (!envelope || !envelope.completionClass || envelope.completionClass === 'ok') return
-      errorPersisted = true
-      errorPersistPromise = persistMessageErrorEnvelope(assistantMessageId, envelope)
-    }
-
-    try {
-      for await (const ev of input.createEvents(stream.abort.signal)) {
-        sawAnyEvent = true
-        input.telemetry?.onEvent?.(ev)
-
-        if (ev.type === 'StreamError' || ev.type === 'StreamAbort') {
-          const completionClass = completionClassFromEvent(ev) ?? 'error'
-          if (completionClass === 'aborted') {
-            telemetryTerminalStatus = 'aborted'
-          } else if (completionClass === 'error' && telemetryTerminalStatus !== 'aborted') {
-            telemetryTerminalStatus = 'error'
-            telemetryTerminalError = ev.type === 'StreamError' ? ev.error : ev.envelope
-          }
-          const envelope = ev.type === 'StreamError' ? ev.error : ev.envelope
-          ensurePersistErrorEnvelopeOnce(envelope)
-        }
-
-        if (enableEventScheduler) {
-          eventScheduler.enqueue(branchId, ev)
-        } else {
-          commitImmediate(branchId, ev)
-        }
-
-        if (isReasoningDetailEventForMessage(ev, assistantMessageId) || isReasoningDisplayBlockEventForMessage(ev, assistantMessageId)) {
-          sawReasoningForPanel = true
-          if (!autoOpenedReasoningPanel) {
-            autoOpenedReasoningPanel = true
-            autoOpenReasoningPanelForMessage(assistantMessageId)
-          }
-        }
-        if (
-          sawReasoningForPanel &&
-          !autoCollapsedReasoningPanel &&
-          isAssistantTextEventForMessage(ev, assistantMessageId)
-        ) {
-          autoCollapsedReasoningPanel = true
-          autoCollapseReasoningPanelForMessage(assistantMessageId)
-        }
-
-        if (ev.type === 'MessageDeltaText' && ev.messageId === assistantMessageId) {
-          stream.pendingAppendText.value += ev.text
-          scheduleFlush(convoId, stream)
-        }
-        if (ev.type === 'MessageAppendContentBlock' && ev.messageId === assistantMessageId && ev.block?.type === 'text') {
-          stream.pendingAppendText.value += String((ev.block as any).text ?? '')
-          scheduleFlush(convoId, stream)
-        }
-
-        processReasoningDetailEvent(ev, stream, assistantMessageId)
-        processReasoningDisplayBlockEvent(ev, stream, assistantMessageId)
-        processProviderNativeContentEvent(ev, stream, assistantMessageId)
-        if (reasoningArtifactCollector) {
-          const created = collectReasoningArtifactsFromDomainEvent(reasoningArtifactCollector, ev)
-          if (created.length > 0) {
-            setReasoningArtifactsForMessage(assistantMessageId, reasoningArtifactCollector.artifacts)
-          }
-        }
-        if (ev.type === 'MessageDeltaAnnotationBatch' && ev.messageId === assistantMessageId) {
-          stream.annotationsTouched.value = true
-          stream.annotationsBuffer.value = mergeAnnotationLists(
-            stream.annotationsBuffer.value,
-            Array.isArray(ev.annotations) ? ev.annotations : [],
-            ev.mergeStrategy
-          )
-        }
-        if (ev.type === 'UsageDelta') {
-          const normalizedUsage = normalizeUsageForMeta(ev.usage)
-          if (normalizedUsage) {
-            latestUsageSnapshot = normalizedUsage
-            if (import.meta.env?.DEV) {
-              const promptTokens = parseNumberLike(normalizedUsage.prompt_tokens)
-              const completionTokens = parseNumberLike(normalizedUsage.completion_tokens)
-              const totalTokens = parseNumberLike(normalizedUsage.total_tokens)
-              const costInfo = extractUsageCostForLog(normalizedUsage)
-              console.info('[openrouter][usage]', {
-                requestId,
-                assistantMessageId,
-                prompt_tokens: promptTokens,
-                completion_tokens: completionTokens,
-                total_tokens: totalTokens,
-                cost: costInfo.cost,
-                currency: costInfo.currency ?? 'USD',
-              })
-            }
-          }
-        }
-
-        if (ev.type === 'StreamError') {
-          if (String(globalThis?.localStorage?.getItem('sv_debug_stream_error') ?? '').trim() === '1') {
-            console.error('[ui-app] stream error event', ev)
-          }
-        }
-        if (ev.type === 'StreamDone' || ev.type === 'StreamAbort' || ev.type === 'StreamError') {
-          terminalSeen = true
-          const completionClass = completionClassFromEvent(ev)
-          const metaStatus = metaStatusFromCompletionClass(completionClass)
-          if (metaStatus) {
-            finalMetaStatus = metaStatus
-            finalStatus = persistStatusFromCompletionClass(completionClass)
-            ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus, completionOutcome: undefined })
-          }
-          await ensureTerminalDrainOnce()
-          await ensurePersistImageAssetsOnce()
-          await ensurePersistAnnotationsOnce()
-          if (ev.type === 'StreamDone') {
-            const terminalRun = selectRun(state.value, branchId)
-            finalCompletionOutcome = terminalRun?.completionOutcome
-            if (finalCompletionOutcome) {
-              ensureMessageMetaEntry(assistantMessageId, { completionOutcome: finalCompletionOutcome })
-            }
-          } else {
-            finalCompletionOutcome = undefined
-          }
-        }
-      }
-
-      await ensureTerminalDrainOnce()
-      await ensurePersistImageAssetsOnce()
-      await ensurePersistAnnotationsOnce()
-      await ensurePersistStatusOnce()
-      finalizeTelemetry(telemetryTerminalStatus, telemetryTerminalError)
-    } catch (err: any) {
-      if (terminalSeen) {
-        finalizeTelemetry(telemetryTerminalStatus, telemetryTerminalError)
-      } else {
-        const appError = normalizeTransportError(err)
-        const completionClass: CompletionClass = appError.phase === 'user_cancelled' ? 'aborted' : 'error'
-        const fallbackPhase: ErrorPhase = sawAnyEvent ? 'mid_stream' : 'pre_stream'
-        const fallbackEndReason: StreamEndReason = sawAnyEvent ? 'mid_stream_error' : 'pre_stream_error'
-        const envelopePhase = mapAppPhaseToEnvelopePhase(appError.phase, fallbackPhase)
-        const endReason = mapAppPhaseToEndReason(appError.phase, fallbackEndReason)
-
-        finalStatus = persistStatusFromCompletionClass(completionClass)
-        finalMetaStatus = metaStatusFromCompletionClass(completionClass) ?? 'error'
-        finalizeTelemetry(completionClass === 'aborted' ? 'aborted' : 'error', err)
-        if (completionClass === 'error') {
-          loadError.value = appError.message
-        }
-
-        let envelope: ErrorEnvelope
-        let terminalEvent: DomainEvent
-        if (completionClass === 'aborted') {
-          envelope = buildAbortEnvelope({
-            phase: envelopePhase,
-            completionClass: 'aborted',
-            reason: appError.message,
-            request: { model: modelId, stream: true },
-          })
-          terminalEvent = { type: 'StreamAbort', reason: 'aborted', envelope }
-        } else {
-          const normalized = toNormalizedErrorEnvelope({
-            appError,
-            endpoint: 'chat.completions',
-            transport: 'sse',
-            phase: envelopePhase === 'pre_stream' ? 'request' : 'generation',
-            raw: {
-              type: 'ui_run_stream_session_catch',
-              ...(err && typeof err === 'object' ? { details: err as Record<string, unknown> } : {}),
-            },
-          })
-          envelope = buildTransportErrorEnvelope({
-            phase: envelopePhase,
-            completionClass: 'error',
-            message: appError.message,
-            normalized,
-            request: { model: modelId, stream: true },
-            kind: appError.phase === 'local_protocol_error' ? 'parse_error' : 'transport_error',
-          })
-          terminalEvent = { type: 'StreamError', error: envelope, terminal: true }
-        }
-
-        if (enableEventScheduler) {
-          eventScheduler.flushNow(branchId, 'flush')
-        }
-        try {
-          commitImmediate(branchId, { type: 'TimingSnapshot', tEnd: Date.now(), endReason } as DomainEvent)
-          commitImmediate(branchId, terminalEvent)
-          finalCompletionOutcome = undefined
-          ensureMessageMetaEntry(assistantMessageId, { status: finalMetaStatus, completionOutcome: undefined })
-        } catch {
-          // no-op
-        }
-        ensurePersistErrorEnvelopeOnce(envelope)
-      }
-      try {
-        await ensurePersistImageAssetsOnce()
-      } catch {
-        // no-op
-      }
-      try {
-        await ensurePersistAnnotationsOnce()
-      } catch {
-        // no-op
-      }
-      try {
-        if (errorPersistPromise) await errorPersistPromise
-      } catch {
-        // no-op
-      }
-      try {
-        await ensurePersistStatusOnce()
-      } catch {
-        // no-op
-      }
-    } finally {
-      await finalizeAssistantAnswerGeneration({
-        answerRootId: assistantMessageId,
-        state: finalMetaStatus === 'final' ? 'completed' : finalMetaStatus === 'aborted' ? 'cancelled' : 'failed',
-        ...(finalMetaStatus === 'error' ? { errorCode: 'stream_failed' } : {}),
-        ...(finalMetaStatus === 'aborted' ? { errorCode: 'user_cancelled' } : {}),
-      }).catch((error) => {
-        if (shouldLogDebug()) console.warn('[ui-app] answer generation finalize failed (non-fatal)', error)
-      })
-      await finalizeAssistantStreamSession({
-        convoId,
-        assistantMessageId,
-        assistantSeq,
-        stream,
-        errorPersistPromise,
-      })
-    }
-  }
-
-  async function resolveCurrentGenerationSnapshot(input: Readonly<{
-    convoId: string
-    questionId: string
-    runtimeSelection: AssistantTurnRuntimeSelection
-  }>): Promise<AssistantAnswerGenerationSnapshotV1> {
-    const providerId = input.runtimeSelection.providerId
-    const modelId = input.runtimeSelection.modelId
-    const generationParams = shouldResolveGenerationParamsForProvider(providerId)
-      ? await resolveGenerationParamsConfigForConvoId(input.convoId, providerId, modelId)
-      : { requestPatch: {}, requestParams: {} }
-    const reasoning = getRequestedReasoningConfig()
-    const webSearch = providerId === OPENROUTER_PROVIDER_ID
-      ? await resolveWebSearchConfigForConvoId(input.convoId)
-      : { enabled: false }
-    const imageGeneration = resolveImageGenerationConfigForRequest(providerId) ?? {}
-    const attachments = await listMessageAttachmentsByMessageId(input.questionId)
-    const providerOptions: Record<string, unknown> = {}
-    if (providerId === 'local_endpoint') providerOptions.endpointUrl = localEndpointChatUrl.value.trim()
-    if (providerId === 'lm_studio') providerOptions.lmStudio = { ...lmStudioProviderConfig.value }
-    if (providerId === 'ollama_local') providerOptions.ollama = { ...ollamaProviderConfig.value }
-    return Object.freeze({
-      schemaVersion: 1,
-      route: Object.freeze({
-        providerId,
-        modelId,
-        endpointId: runtimeEndpointIdForProvider(providerId),
-        profileId: runtimeProfileIdForProvider(providerId),
-      }),
-      generationParams: Object.freeze({
-        requestPatch: generationParams.requestPatch,
-        requestParams: generationParams.requestParams,
-      }),
-      reasoning: Object.freeze({
-        mode: reasoning.requestedReasoningMode,
-        effort: reasoning.requestedReasoningEffortValue ?? null,
-        exclude: reasoning.requestedReasoningExclude,
-      }),
-      webSearch: Object.freeze({ ...(webSearch as Record<string, unknown>) }),
-      imageGeneration: Object.freeze({ ...(imageGeneration as Record<string, unknown>) }),
-      providerOptions: Object.freeze(providerOptions),
-      tools: Object.freeze({ enabled: false, allowedToolIds: Object.freeze([]), requireExternalSideEffectConfirmation: true as const }),
-      attachments: Object.freeze({
-        sourceQuestionId: input.questionId,
-        items: Object.freeze(attachments.map((item) => Object.freeze({
-          attachmentId: item.id,
-          assetId: item.assetId,
-          include: item.includeInNextRequest,
-          aiPayloadKind: item.aiPayloadKind,
-          processingStatus: item.processingStatus,
-        }))),
-      }),
-    })
-  }
-
-  async function resolveCompatibleGenerationSnapshot(input: Readonly<{
-    questionId: string
-    selection: CompatibleConfigurationSelection
-  }>): Promise<AssistantAnswerGenerationSnapshotV1> {
-    const attachments = await listMessageAttachmentsByMessageId(input.questionId)
-    const selection = input.selection
-    return Object.freeze({
-      schemaVersion: 1,
-      route: Object.freeze({
-        providerId: 'openai_chat_compatible',
-        modelId: selection.modelId,
-        endpointId: selection.endpointRevisionId,
-        profileId: `${selection.requestProfileId}@${selection.requestProfileVersion}`,
-      }),
-      generationParams: Object.freeze({}),
-      reasoning: Object.freeze({ mappingId: selection.reasoningMappingId, mappingVersion: selection.reasoningMappingVersion }),
-      webSearch: Object.freeze({ enabled: false }),
-      imageGeneration: Object.freeze({}),
-      providerOptions: Object.freeze({
-        compatible: Object.freeze({
-          providerInstanceId: selection.providerInstanceId,
-          requestProfileId: selection.requestProfileId,
-          requestProfileVersion: selection.requestProfileVersion,
-          responseProfileId: selection.responseProfileId,
-          responseProfileVersion: selection.responseProfileVersion,
-          reasoningMappingId: selection.reasoningMappingId,
-          reasoningMappingVersion: selection.reasoningMappingVersion,
-          inlinePolicyId: selection.inlinePolicyId,
-          inlinePolicyVersion: selection.inlinePolicyVersion,
-        }),
-      }),
-      tools: Object.freeze({ enabled: false, allowedToolIds: Object.freeze([]), requireExternalSideEffectConfirmation: true as const }),
-      attachments: Object.freeze({
-        sourceQuestionId: input.questionId,
-        items: Object.freeze(attachments.map((item) => Object.freeze({
-          attachmentId: item.id, assetId: item.assetId, include: item.includeInNextRequest,
-          aiPayloadKind: item.aiPayloadKind, processingStatus: item.processingStatus,
-        }))),
-      }),
-    })
-  }
-
-  async function runAssistantStreamFromSnapshot(input: Readonly<{
-    convoId: string
-    branchId: string
-    questionId: string
-    questionText: string
-    assistantMessageId: string
-    assistantSeq: number
-    generationSnapshot: AssistantAnswerGenerationSnapshotV1
-    contextMessages: ReadonlyArray<InternalMessage>
-    replayPrepared?: PreparedOpenRouterReplay | null
-  }>) {
-    const convoId = String(input.convoId ?? '').trim()
-    const branchId = String(input.branchId ?? '').trim()
-    const questionId = String(input.questionId ?? '').trim()
-    const assistantMessageId = String(input.assistantMessageId ?? '').trim()
-    const assistantSeq = Number(input.assistantSeq ?? NaN)
-    const questionText = typeof input.questionText === 'string' ? input.questionText : String(input.questionText ?? '')
-    if (!convoId || !branchId || !questionId || !assistantMessageId || !Number.isFinite(assistantSeq) || !questionText.trim()) return
-    const replayPrepared = input.replayPrepared ?? null
-    const snapshot = input.generationSnapshot
-    const providerId = snapshot.route.providerId as RuntimeProviderKey
-    const modelId = snapshot.route.modelId
-
-    // Invariant: while streaming a regenerate/retry answer, the UI should already be projected onto the new chosen answer root.
-    // If not, force a single DB-backed rehydrate before we begin streaming to avoid temporarily rendering both old+new variants.
-    if (activeBranchId.value === branchId) {
-      const chosen = turnFiltersByQuestionId.value.get(questionId)?.chosenAnswerRootId ?? null
-      if (chosen && chosen !== assistantMessageId) {
-        if (shouldLogDebug()) {
-          console.warn('[ui-app] startStreamingForAssistantTurn: chosen mismatch; reloading transcript', {
-            branchId,
-            questionId,
-            chosenAnswerRootId: chosen,
-            assistantMessageId,
-          })
-        }
-        // Refresh through unified entry if this is the active branch, else direct call
-        if (branchId === activeBranchId.value) {
-          await refreshTranscriptLatestOnly()
-        } else {
-          await loadTranscriptForBranch(branchId)
-        }
-      }
-    }
-
-    if (providerId !== OPENROUTER_PROVIDER_ID) {
-      const providerKey = providerId
-      if (!isExperimentalRuntimeTextProviderKey(providerKey)) {
-        throw new Error('Selected runtime provider is not routable for text chat.')
-      }
-      const endpointUrl = providerKey === 'local_endpoint'
-        ? String(snapshot.providerOptions.endpointUrl ?? '').trim()
-        : undefined
-      const lmStudioConfig = providerKey === 'lm_studio'
-        ? snapshot.providerOptions.lmStudio as typeof lmStudioProviderConfig.value
-        : undefined
-      const ollamaConfig = providerKey === 'ollama_local'
-        ? snapshot.providerOptions.ollama as typeof ollamaProviderConfig.value
-        : undefined
-      const generationParamsConfig = snapshot.generationParams as any
-      const imageGenerationConfig = Object.keys(snapshot.imageGeneration).length > 0 ? snapshot.imageGeneration as any : null
-      const requestId = randomId(getExperimentalRuntimeTextRequestPrefix(providerKey))
-      const started = startGeneration(state.value, {
-        runId: branchId,
-        requestId,
-        model: modelId,
-        userMessageId: questionId,
-        userMessageText: questionText,
-        assistantMessageId,
-        reasoningPanelDefaultExpanded: globalReasoningPanelDefaultExpanded.value,
-        ...(imageGenerationConfig ? { requestedImageGeneration: true } : {}),
-        requestedReasoningMode: 'auto',
-      })
-      state.value = started.state
-      ensureMessageMetaEntry(assistantMessageId, {
-        parentId: questionId,
-        questionId,
-        answerRootId: assistantMessageId,
-        role: 'assistant',
-        status: 'streaming',
-        providerId: providerKey,
-        modelId,
-      })
-      void recordRecentModelUsage(modelId, providerKey)
-
-      const reasoningArtifactProvider = getExperimentalRuntimeTextReasoningArtifactProvider(providerKey)
-      await runAssistantStreamSession({
-        convoId,
-        branchId,
-        requestId,
-        assistantMessageId,
-        assistantSeq,
-        providerId: providerKey,
-        modelId,
-        ...(reasoningArtifactProvider ? { reasoningArtifactProvider } : {}),
-        createEvents: (signal) => createExperimentalRuntimeTextEvents({
-          providerKey,
-          requestId,
-          assistantMessageId,
-          modelId,
-          userText: questionText,
-          contextMessages: Array.from(input.contextMessages),
-          ...(lmStudioConfig ? { lmStudioConfig } : {}),
-          ...(ollamaConfig ? { ollamaConfig } : {}),
-          ...(endpointUrl ? { localEndpointUrl: endpointUrl } : {}),
-          ...(hasGenerationParamsRequestPatch(generationParamsConfig.requestPatch) ? { generationParams: generationParamsConfig.requestPatch } : {}),
-          ...(imageGenerationConfig ? { imageGeneration: imageGenerationConfig } : {}),
-          signal,
-        }),
-      })
-      return
-    }
-
-    const baseUrl = String(snapshot.providerOptions.baseUrl ?? (snapshot.route.endpointId === 'openrouter-official' ? 'https://openrouter.ai/api/v1' : '')).trim()
-    if (!baseUrl) throw new Error('Generation snapshot does not identify a routable OpenRouter endpoint.')
-
-    const requestedReasoningMode = snapshot.reasoning.mode as RequestedReasoningMode
-    const requestedReasoningEffortValue = snapshot.reasoning.effort as ReasoningEffort | undefined
-    const requestedReasoningExclude = snapshot.reasoning.exclude === true
-    const webSearchConfig = snapshot.webSearch as any
-    const generationParamsConfig = snapshot.generationParams as any
-    const imageGenerationConfig = Object.keys(snapshot.imageGeneration).length > 0 ? snapshot.imageGeneration as any : null
-
-    const requestId = randomId('req')
-    const netExpSettings = await getNetExpSettings()
-    const netExpRunTracker = startNetExpRunReport({
-      runId: branchId,
-      requestId,
-      streamMode: 'main',
-      model: modelId,
-      baseUrl: baseUrl ?? undefined,
-      settings: netExpSettings,
-    })
-
-    const started = startGeneration(state.value, {
-      runId: branchId,
-      requestId,
-      model: modelId,
-      userMessageId: questionId,
-      userMessageText: questionText,
-      assistantMessageId,
-      reasoningPanelDefaultExpanded: globalReasoningPanelDefaultExpanded.value,
-      ...(imageGenerationConfig ? { requestedImageGeneration: true } : {}),
-      requestedReasoningMode,
-      ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
-      ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
-    })
-    state.value = started.state
-    ensureMessageMetaEntry(assistantMessageId, {
-      parentId: questionId,
-      questionId,
-      answerRootId: assistantMessageId,
-      role: 'assistant',
-      status: 'streaming',
-      providerId: OPENROUTER_PROVIDER_ID,
-      modelId,
-    })
-    const requestReasoningConfig = buildReasoningRequestConfigSnapshot({
-      requestedReasoningMode,
-      requestedReasoningEffortValue,
-      requestedReasoningExclude,
-    })
-    try {
-      await setMessageReasoningRequestConfig({ messageId: assistantMessageId, value: requestReasoningConfig })
-    } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] setMessageReasoningRequestConfig failed (non-fatal):', err)
-    }
-    void recordRecentModelUsage(modelId, OPENROUTER_PROVIDER_ID)
-
-    await runAssistantStreamSession({
-      convoId,
-      branchId,
-      requestId,
-      assistantMessageId,
-      assistantSeq,
-      providerId: OPENROUTER_PROVIDER_ID,
-      modelId,
-      reasoningArtifactProvider: 'openrouter',
-      replayManifestDraft: replayPrepared?.manifestDraft ?? null,
-      createEvents: (signal) => streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource({
-        requestId,
-        assistantMessageId,
-        userText: questionText,
-        contextMessages: input.contextMessages,
-        ...(replayPrepared?.currentUserContentBlocks.length ? { currentUserContentBlocks: replayPrepared.currentUserContentBlocks } : {}),
-        signal,
-        config: {
-          model: modelId,
-          requestedReasoningMode,
-          webSearch: webSearchConfig,
-          ...(hasGenerationParamsRequestPatch(generationParamsConfig.requestPatch) ? { generationParams: generationParamsConfig.requestPatch } : {}),
-          ...(imageGenerationConfig ? { imageGeneration: imageGenerationConfig } : {}),
-          ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
-          ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
-          ...(baseUrl ? { baseUrl } : {}),
-        },
-      }),
-      telemetry: {
-        onEvent: (event) => netExpRunTracker.onEvent(event),
-        onEnd: (status, error) => netExpRunTracker.onEnd(status, error),
-      },
-    })
-  }
-
-  async function prepareReplayForHistoricalUserMessage(input: Readonly<{
-    branchId: string
-    userMessageId: string
-    userText: string
-    modelId: string
-    baseUrl?: string
-    attachmentDecisions?: ReadonlyArray<AttachmentDecision>
-  }>): Promise<PreparedOpenRouterReplay | null> {
-    const baseUrl = input.baseUrl ?? await getOpenRouterBaseUrl()
-    const modelDescriptor = await buildSendPlanModelDescriptor(input.modelId)
-    const prepared = await prepareOpenRouterReplayFromMessage({
-      branchId: input.branchId,
-      userMessageId: input.userMessageId,
-      model: modelDescriptor,
-      providerContext: buildSendPlanProviderContext(baseUrl),
-      replayMode: 'current',
-      editedUserText: input.userText,
-      attachmentDecisions: input.attachmentDecisions?.map((item) => ({
-        attachmentId: item.attachmentId,
-        source: item.source,
-        decision: item.decision,
-        ...(item.reasonCode ? { reasonCode: item.reasonCode } : {}),
-      })),
-    })
-    return prepared
-  }
-
-  function buildAttachmentConfirmationRequestFromSendPlan(
-    kind: AttachmentConfirmationSessionKind,
-    sendPlan: SendPlan | null | undefined
-  ): AttachmentConfirmationRequestInput | null {
-    if (!sendPlan) return null
-    const historyItems = buildHistoryConfirmationItemsFromSendPlan(sendPlan)
-    const currentItems = buildCurrentConfirmationItemsFromSendPlan(sendPlan)
-    if (historyItems.length === 0 && currentItems.length === 0) return null
-    return {
-      kind,
-      historyItems,
-      currentItems,
-    }
-  }
-
-  function buildAttachmentConfirmationRequestFromReplay(
-    kind: AttachmentConfirmationSessionKind,
-    replayPrepared: PreparedOpenRouterReplay | null | undefined
-  ): AttachmentConfirmationRequestInput | null {
-    if (!replayPrepared) return null
-    const historyItems = buildHistoryConfirmationItemsFromReplayPrepared(replayPrepared)
-    if (historyItems.length === 0) return null
-    return {
-      kind,
-      historyItems,
-      currentItems: [],
-    }
-  }
-
-  function buildReplayBlockedMessage(prepared: PreparedOpenRouterReplay | null | undefined): string {
-    const status = prepared?.status ?? 'blocked'
-    const reasons = Array.isArray(prepared?.blockingReasons) ? prepared!.blockingReasons : []
-    const reasonText = reasons
-      .map((item: any) => String(item?.message ?? item?.code ?? '').trim())
-      .find((value) => value.length > 0)
-    const normalizedReason = sanitizeSendPlanSummaryMessage(reasonText) ?? 'historical attachments require confirmation or remediation before resend.'
-    if (status === 'needs_confirmation') {
-      return `Current replay blocked (needs_confirmation): ${normalizedReason}`
-    }
-    return `Current replay blocked (${status}): ${normalizedReason}`
-  }
-
-  async function buildSendPlanModelDescriptor(modelId: string): Promise<SendPlanModelDescriptor> {
-    const normalized = normalizeModelKey(modelId)
-    try {
-      if (normalized !== DEFAULT_OPENROUTER_MODEL_ID) {
-        const detail = await getModelCatalogModelDetail({ providerKey: OPENROUTER_PROVIDER_ID, modelId: normalized })
-        if (detail.item) {
-          return {
-            providerKey: OPENROUTER_PROVIDER_ID,
-            modelId: detail.item.modelId,
-            modelKey: detail.item.modelKey,
-            inputModalities: detail.item.inputModalities,
-            outputModalities: detail.item.outputModalities,
-          }
-        }
-      }
-    } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] model detail unavailable for file send planning', err)
-    }
-    return {
-      providerKey: OPENROUTER_PROVIDER_ID,
-      modelId: normalized,
-      modelKey: buildProviderModelKey({ providerId: OPENROUTER_PROVIDER_ID, modelId: normalized }),
-      inputModalities: ['text'],
-      outputModalities: ['text'],
-    }
-  }
-
-  function buildSendPlanProviderContext(baseUrl: string | null): SendPlanProviderContext {
-    return {
-      providerKey: OPENROUTER_PROVIDER_ID,
-      ...(baseUrl ? { baseUrl } : {}),
-      supportsImageUrlRef: true,
-      supportsPdfInputs: true,
-      supportsPdfUrlRef: true,
-      supportsTextUrlRef: true,
-      supportsVideoUrlRef: false,
-      supportsInlineData: true,
-      supportsProviderFileRef: false,
-      preferredDraftSendModes: ['url_ref', 'inline_base64'],
-    }
-  }
-
-  /** Known SendPlan issue code → i18n key mapping */
-  const ISSUE_CODE_TO_I18N: Record<string, string> = {
-    'attachment_parsing_incomplete': 'sendPlan.detectionPending',
-    'current_draft_incompatible_with_current_model': 'sendPlan.routeUnavailable',
-    'draft_attachment_blocked': 'sendPlan.attachmentBlocked',
-    'history_attachment_blocked': 'sendPlan.historyAttachmentExcluded',
-    'file_type_detection_required': 'sendPlan.detectionRequired',
-    'file_type_detection_pending': 'sendPlan.detectionPending',
-    'file_type_detection_failed': 'sendPlan.detectionFailed',
-    'advanced_file_type_detection_failed': 'sendPlan.detectionFailed',
-    'file_type_route_blocked': 'sendPlan.attachmentBlocked',
-    'unsupported_attachment_payload': 'sendPlan.unsupportedAttachment',
-    'missing_text_input_capability': 'sendPlan.modelDoesNotSupportFiles',
-    'missing_mixed_input_capability': 'sendPlan.modelDoesNotSupportFiles',
-    'missing_pdf_input_capability': 'sendPlan.pdfNotSupportedByProvider',
-    'missing_file_input_capability': 'sendPlan.modelDoesNotSupportFiles',
-    'conversion_required_before_send': 'sendPlan.conversionRequired',
-    'unsupported_processing_status': 'sendPlan.conversionUnavailable',
-    'incompatible_with_current_model': 'sendPlan.routeUnavailable',
-    'converted_text_hard_limit_exceeded': 'sendPlan.attachmentBlocked',
-    'no_send_mode_available': 'sendPlan.routeUnavailable',
-    'no_sendable_representation': 'sendPlan.noSendableRepresentation',
-    'pdf_not_supported_by_provider': 'sendPlan.pdfNotSupportedByProvider',
-    'audio_requires_local_file': 'sendPlan.audioNoUrlRef',
-    'video_url_ref_not_allowed': 'sendPlan.unsupportedAttachment',
-    'preview_only_asset_not_sendable': 'sendPlan.attachmentBlocked',
-    'stale_derived_asset': 'sendPlan.attachmentBlocked',
-    'preview_send_asset_mismatch': 'sendPlan.attachmentBlocked',
-    'send_asset_not_ready': 'sendPlan.detectionPending',
-    'excluded_from_current_context': 'sendPlan.attachmentBlocked',
-    'deduped_to_current_draft': 'sendPlan.attachmentBlocked',
-    'duplicate_history_asset': 'sendPlan.attachmentBlocked',
-    'history_attachment_excluded': 'sendPlan.historyAttachmentExcluded',
-    'asset_record_missing': 'sendPlan.attachmentBlocked',
-    'asset_soft_deleted': 'sendPlan.attachmentBlocked',
-    'attachment_lineage_blocked': 'sendPlan.attachmentBlocked',
-    'url_snapshot_failed': 'sendPlan.attachmentBlocked',
-    'url_snapshot_pending': 'sendPlan.detectionPending',
-    'selected_option_missing': 'sendPlan.dfcSelectionRequired',
-    'selected_option_pending': 'sendPlan.dfcSelectionPending',
-    'selected_option_not_found': 'sendPlan.dfcSelectionUnavailable',
-    'selected_option_failed': 'sendPlan.dfcSelectionFailed',
-    'selected_option_stale': 'sendPlan.dfcSelectionStale',
-    'selected_option_blocked': 'sendPlan.dfcSelectionBlocked',
-    'selected_option_unavailable': 'sendPlan.dfcSelectionUnavailable',
-    'selected_option_incompatible': 'sendPlan.dfcSelectionIncompatible',
-    'raw_file_ref_missing': 'sendPlan.dfcRawFileMissing',
-    'derived_asset_ref_missing': 'sendPlan.dfcDerivedAssetMissing',
-    'send_asset_ref_kind_mismatch': 'sendPlan.dfcSendAssetRefMismatch',
-    'dfc_selected_option_blocked': 'sendPlan.dfcSelectionBlocked',
-  }
-
-  /**
-   * Resolve a SendPlan issue code or raw message to an i18n key.
-   *
-   * Priority:
-   * 1. If raw is already an i18n key (starts with registered namespace prefix), return as-is
-   * 2. If code maps to a known i18n key, return the i18n key
-   * 3. Otherwise return null (caller should use sanitized fallback)
-   */
-  function resolveIssueToI18nKey(raw: string | null | undefined, code?: string | null): string | null {
-    const trimmed = String(raw ?? '').trim()
-    if (!trimmed && !code) return null
-    // If raw is already an i18n key, use it directly
-    if (trimmed && /^(sendPlan|errors|common|settings|navigation|composer|filePipeline|diagnostics)\./.test(trimmed)) {
-      return trimmed
-    }
-    // Try code-based mapping
-    if (code) {
-      const mapped = ISSUE_CODE_TO_I18N[code]
-      if (mapped) return mapped
-    }
-    return null
-  }
-
-  function sanitizeSendPlanSummaryMessage(raw: string | null | undefined): string | null {
-    const input = String(raw ?? '').trim()
-    if (!input) return null
-    const hasInlineBase64 = /data:[^\s]{0,120};base64,/i.test(input) || /base64/i.test(input)
-    if (hasInlineBase64) {
-      return 'sendPlan.attachmentContentRisk'
-    }
-    const redacted = input
-      .replace(/[A-Za-z]:[\\/][^\s"''<>]+/g, '[local path]')
-      .replace(/\/(?:Users|home|var|tmp|private|mnt|opt)\/[^ "''<>]+/g, '[local path]')
-      .replace(/\s+/g, ' ')
-      .trim()
-    if (!redacted) return null
-    if (redacted.length <= 140) return redacted
-    return `${redacted.slice(0, 137)}...`
-  }
-
-  function resolveSendPlanBlockingMessage(sendPlan: SendPlan): string {
-    // Prefer code-based mapping from blocking reasons
-    for (const issue of sendPlan.blockingReasons) {
-      const i18nKey = resolveIssueToI18nKey(issue.message, issue.code)
-      if (i18nKey) return i18nKey
-    }
-    // Fallback to sanitized raw message
-    const reasonFromIssues = sendPlan.blockingReasons
-      .map((item) => String(item.message ?? '').trim())
-      .find((value) => value.length > 0 && value.toLowerCase() !== 'blocked')
-    const sanitizedReasonFromIssues = sanitizeSendPlanSummaryMessage(reasonFromIssues)
-    if (sanitizedReasonFromIssues) return sanitizedReasonFromIssues
-    const reasonFromPlans = sendPlan.attachmentPlans
-      .filter((item) => item.eligibility === 'blocked')
-      .flatMap((item) => item.notes ?? [])
-      .map((item) => String(item ?? '').trim())
-      .find((value) => value.length > 0)
-    const sanitizedReasonFromPlans = sanitizeSendPlanSummaryMessage(reasonFromPlans)
-    if (sanitizedReasonFromPlans) return sanitizedReasonFromPlans
-    return 'sendPlan.routeUnavailable'
-  }
-
-  function resolveSendPlanWarningMessage(sendPlan: SendPlan): string | null {
-    // Prefer code-based mapping from warnings
-    for (const issue of sendPlan.warnings) {
-      const i18nKey = resolveIssueToI18nKey(issue.message, issue.code)
-      if (i18nKey) return i18nKey
-    }
-    // Fallback to sanitized raw message
-    const reasonFromIssues = sendPlan.warnings
-      .map((item) => String(item.message ?? '').trim())
-      .find((value) => value.length > 0)
-    const sanitizedReasonFromIssues = sanitizeSendPlanSummaryMessage(reasonFromIssues)
-    if (sanitizedReasonFromIssues) return sanitizedReasonFromIssues
-    const reasonFromPlans = sendPlan.attachmentPlans
-      .filter((item) => item.eligibility === 'warning')
-      .flatMap((item) => item.notes ?? [])
-      .map((item) => String(item ?? '').trim())
-      .find((value) => value.length > 0)
-    const sanitizedReasonFromPlans = sanitizeSendPlanSummaryMessage(reasonFromPlans)
-    if (sanitizedReasonFromPlans) return sanitizedReasonFromPlans
-    if (sendPlan.status === 'sendable_with_warnings' || sendPlan.status === 'partially_sendable') {
-      return 'sendPlan.attachmentWarning'
-    }
-    return null
-  }
-
-  function canProceedForPartiallySendable(sendPlan: SendPlan): boolean {
-    if (sendPlan.status !== 'partially_sendable') return false
-    if (!sendPlan.canProceedAfterDroppingExcluded) return false
-    if (sendPlan.includedAttachments.length === 0) return false
-    const hasExcludedDraft = sendPlan.excludedAttachments.some((item) => item.source === 'draft')
-    if (hasExcludedDraft) return false
-    const hasBlockedDraft = sendPlan.attachmentPlans.some((item) =>
-      item.source === 'draft' && (item.eligibility === 'blocked' || item.displayStatus === 'parsing')
-    )
-    if (hasBlockedDraft) return false
-    return true
-  }
-
-  function evaluateComposerSendPlanGate(sendPlan: SendPlan): Readonly<{
-    status: SendPlan['status']
-    canProceed: boolean
-    blockingReason: string | null
-    warningReason: string | null
-    partialAllowed: boolean
-  }> {
-    const hasParsingDraft = sendPlan.attachmentPlans.some((item) =>
-      item.source === 'draft' && (item.displayStatus === 'parsing' || item.displayStatus === 'detection_pending')
-    )
-    if (hasParsingDraft) {
-      return {
-        status: sendPlan.status,
-        canProceed: false,
-        blockingReason: 'sendPlan.detectionPending',
-        warningReason: null,
-        partialAllowed: false,
-      }
-    }
-    const hasDetectionFailedDraft = sendPlan.attachmentPlans.some((item) =>
-      item.source === 'draft' && (item.displayStatus === 'detection_failed' || item.displayStatus === 'detection_required')
-    )
-    if (hasDetectionFailedDraft) {
-      return {
-        status: sendPlan.status,
-        canProceed: false,
-        blockingReason: 'sendPlan.detectionRequired',
-        warningReason: null,
-        partialAllowed: false,
-      }
-    }
-
-    const hasResolvableConfirmationItems = sendPlan.attachmentPlans.some((item) =>
-      (item.source === 'draft' || item.source === 'history') &&
-      item.displayStatus !== 'parsing' &&
-      (item.eligibility === 'excluded' || item.eligibility === 'blocked')
-    )
-
-    const hasBlockingDraft = sendPlan.attachmentPlans.some((item) => item.source === 'draft' && item.eligibility === 'blocked')
-    const isIdleEmptyDraftPlan =
-      sendPlan.status === 'blocked' &&
-      sendPlan.blockingReasons.length === 0 &&
-      sendPlan.attachmentPlans.length === 0
-    if (isIdleEmptyDraftPlan) {
-      return {
-        status: sendPlan.status,
-        canProceed: false,
-        blockingReason: null,
-        warningReason: null,
-        partialAllowed: false,
-      }
-    }
-    if (sendPlan.status === 'blocked' || sendPlan.blockingReasons.length > 0 || hasBlockingDraft) {
-      if (hasResolvableConfirmationItems) {
-        return {
-          status: sendPlan.status,
-          canProceed: true,
-          blockingReason: null,
-          warningReason: 'sendPlan.confirmationRequired',
-          partialAllowed: false,
-        }
-      }
-      return {
-        status: sendPlan.status,
-        canProceed: false,
-        blockingReason: resolveSendPlanBlockingMessage(sendPlan),
-        warningReason: null,
-        partialAllowed: false,
-      }
-    }
-
-    if (sendPlan.status === 'partially_sendable') {
-      if (hasResolvableConfirmationItems) {
-        return {
-          status: sendPlan.status,
-          canProceed: true,
-          blockingReason: null,
-          warningReason: 'sendPlan.confirmationRequired',
-          partialAllowed: false,
-        }
-      }
-      const partialAllowed = canProceedForPartiallySendable(sendPlan)
-      if (!partialAllowed) {
-        return {
-          status: sendPlan.status,
-          canProceed: false,
-          blockingReason: 'sendPlan.attachmentBlocked',
-          warningReason: null,
-          partialAllowed: false,
-        }
-      }
-      return {
-        status: sendPlan.status,
-        canProceed: true,
-        blockingReason: null,
-        warningReason: 'sendPlan.attachmentPartialBlock',
-        partialAllowed: true,
-      }
-    }
-
-    const warningReason = resolveSendPlanWarningMessage(sendPlan)
-    return {
-      status: sendPlan.status,
-      canProceed: true,
-      blockingReason: null,
-      warningReason,
-      partialAllowed: false,
-    }
-  }
-
-  function applyComposerSendPlanGateState(sendPlan: SendPlan | null) {
-    if (!sendPlan) {
-      resetComposerSendPlanGateState()
-      return
-    }
-    const evaluated = evaluateComposerSendPlanGate(sendPlan)
-    composerSendPlanStatus.value = evaluated.status
-    composerSendPlanCanProceed.value = evaluated.canProceed
-    composerSendPlanBlockingSummary.value = evaluated.blockingReason
-    composerSendPlanWarningSummary.value = evaluated.warningReason
-    composerSendPlanIsPartialAllowed.value = evaluated.partialAllowed
-  }
-
-  async function preflightDraftAttachmentSendGate(input: Readonly<{
-    conversationId: string
-    draftText: string
-    modelId: string
-    baseUrl: string | null
-    historyMessageIds: ReadonlyArray<string>
-  }>): Promise<Readonly<{
-    status: SendPlan['status'] | null
-    canProceed: boolean
-    blockingReason: string | null
-    warningReason: string | null
-    sendPlan: SendPlan | null
-  }>> {
-    if (draftAttachmentRecords.value.length === 0) {
-      return {
-        status: null,
-        canProceed: true,
-        blockingReason: null,
-        warningReason: null,
-        sendPlan: null,
-      }
-    }
-    const modelDescriptor = await buildSendPlanModelDescriptor(input.modelId)
-    const response = await buildCurrentSendPlan({
-      conversationId: input.conversationId,
-      draftText: input.draftText,
-      historyScope: input.historyMessageIds.length > 0 ? { messageIds: Array.from(input.historyMessageIds) } : null,
-      model: modelDescriptor,
-      providerContext: buildSendPlanProviderContext(input.baseUrl),
-    })
-    const sendPlan = response.sendPlan
-    const evaluated = evaluateComposerSendPlanGate(sendPlan)
-    return {
-      status: evaluated.status,
-      canProceed: evaluated.canProceed,
-      blockingReason: evaluated.blockingReason,
-      warningReason: evaluated.warningReason,
-      sendPlan,
-    }
-  }
-
-  async function prepareFileSend(input: Readonly<{
-    conversationId: string
-    userText: string
-    modelId: string
-    baseUrl: string | null
-    historyMessageIds?: ReadonlyArray<string>
-  }>): Promise<PreparedOpenRouterSend | null> {
-    const modelDescriptor = await buildSendPlanModelDescriptor(input.modelId)
-    const prepared = await prepareOpenRouterSendFromDraft({
-      conversationId: input.conversationId,
-      userText: input.userText,
-      model: modelDescriptor,
-      providerContext: buildSendPlanProviderContext(input.baseUrl),
-      historyMessageIds: input.historyMessageIds,
-    })
-    if (prepared && shouldLogDebug()) {
-      console.info('[ui-app] file send plan prepared', {
-        status: prepared.sendPlan.status,
-        includedAttachmentCount: prepared.diagnostics.includedAttachmentCount,
-        excludedAttachmentCount: prepared.diagnostics.excludedAttachmentCount,
-        injectedPlugins: prepared.diagnostics.injectedPlugins,
-      })
-    }
-    return prepared
-  }
-
-  type PreparedProviderFileSendOk = Extract<PreparedProviderFileSend, { ok: true }>
-  type ExperimentalProviderFileRuntimeProvider = Extract<ProviderFileRuntimeProvider, ExperimentalRuntimeTextProviderKey>
-
-  function isExperimentalProviderFileRuntime(
-    providerKey: ExperimentalRuntimeTextProviderKey
-  ): providerKey is ExperimentalProviderFileRuntimeProvider {
-    return providerKey === 'openai_responses' ||
-      providerKey === 'google_ai_studio' ||
-      providerKey === 'anthropic_messages' ||
-      providerKey === 'lm_studio' ||
-      providerKey === 'ollama_local'
-  }
-
-  function buildExperimentalImageSendPlanModelDescriptor(input: Readonly<{
-    providerKey: ExperimentalProviderFileRuntimeProvider
-    modelId: string
-  }>): SendPlanModelDescriptor {
-    const normalized = normalizeModelKey(input.modelId)
-    return {
-      providerKey: input.providerKey,
-      modelId: normalized,
-      modelKey: `${input.providerKey}::${normalized}`,
-      inputModalities: ['text', 'image', 'file'],
-      outputModalities: ['text'],
-    }
-  }
-
-  function buildExperimentalImageSendPlanProviderContext(providerKey: ExperimentalProviderFileRuntimeProvider): SendPlanProviderContext {
-    return {
-      providerKey,
-      supportsImageUrlRef: true,
-      supportsPdfInputs: providerKey === 'openai_responses' ||
-        providerKey === 'google_ai_studio' ||
-        providerKey === 'anthropic_messages',
-      supportsPdfUrlRef: providerKey === 'openai_responses' ||
-        providerKey === 'google_ai_studio' ||
-        providerKey === 'anthropic_messages',
-      supportsTextUrlRef: false,
-      supportsVideoUrlRef: false,
-      supportsInlineData: true,
-      supportsProviderFileRef: false,
-      preferredDraftSendModes: ['inline_base64', 'url_ref'],
-    }
-  }
-
-  async function prepareExperimentalProviderFileSend(input: Readonly<{
-    providerKey: ExperimentalProviderFileRuntimeProvider
-    conversationId: string
-    userText: string
-    modelId: string
-    historyMessageIds: ReadonlyArray<string>
-  }>): Promise<PreparedProviderFileSend | null> {
-    return await prepareProviderFileSendFromDraft({
-      provider: input.providerKey,
-      conversationId: input.conversationId,
-      userText: input.userText,
-      model: buildExperimentalImageSendPlanModelDescriptor({
-        providerKey: input.providerKey,
-        modelId: input.modelId,
-      }),
-      providerContext: buildExperimentalImageSendPlanProviderContext(input.providerKey),
-      historyMessageIds: input.historyMessageIds,
-    })
-  }
-
-  async function sendExperimentalProviderTextChat(input: Readonly<{
-    providerKey: ExperimentalRuntimeTextProviderKey
-    convoId: string
-    branch: BranchSummary
-    text: string
-    modelId: string
-    contextMessages: any[]
-    currentUserContentBlocks?: PreparedProviderFileSendOk['contentParts']
-    sentAssetIds?: ReadonlyArray<string>
-    attachConversationDraft?: boolean
-    begun?: Readonly<{
-      questionId: string; questionSeq: number; assistantId: string; assistantSeq: number
-    }>
-  }>) {
-    const modelId = normalizeRuntimeModelId(input.modelId)
-    const endpointUrl = input.providerKey === 'local_endpoint'
-      ? localEndpointChatUrl.value.trim()
-      : undefined
-    const lmStudioConfig = input.providerKey === 'lm_studio'
-      ? lmStudioProviderConfig.value
-      : undefined
-    const ollamaConfig = input.providerKey === 'ollama_local'
-      ? ollamaProviderConfig.value
-      : undefined
-    const generationParamsConfig = shouldResolveGenerationParamsForProvider(input.providerKey)
-      ? await resolveGenerationParamsConfigForConvoId(input.convoId, input.providerKey, modelId)
-      : { requestPatch: {}, requestParams: {} }
-    const imageGenerationConfig = resolveImageGenerationConfigForRequest(input.providerKey)
-
-    const begun = input.begun ?? await beginTurn(input.branch.id, input.text, {
-        ...(input.attachConversationDraft ? { attachConversationDraft: true } : {}),
-        ...(input.sentAssetIds?.length ? { sentAssetIds: Array.from(input.sentAssetIds) } : {}),
-      })
-    draft.value = ''
-    const cleared = await updateConversationDraftText({
-      conversationId: input.convoId,
-      draftText: '',
-      draftMode: 'compose',
-      editingSourceMessageId: null,
-    })
-    applyDraftPersistenceStateFromDraft(cleared)
-    void refreshDraftAttachmentViewModels()
-
-    patchBranch(input.branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
-
-    const userMessageId = begun.questionId
-    const assistantMessageId = begun.assistantId
-    const assistantSeq = begun.assistantSeq
-    const requestId = randomId(getExperimentalRuntimeTextRequestPrefix(input.providerKey))
-
-    setRuntimeMessageSeqEntries([
-      [userMessageId, begun.questionSeq],
-      [assistantMessageId, assistantSeq],
-    ])
-
-    ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
-    ensureMessageMetaEntry(assistantMessageId, {
-      parentId: userMessageId,
-      questionId: userMessageId,
-      answerRootId: assistantMessageId,
-      role: 'assistant',
-      status: 'streaming',
-      providerId: input.providerKey,
-      modelId,
-    })
-    await persistAssistantAnswerGenerationSnapshot(
-      assistantMessageId,
-      await resolveCurrentGenerationSnapshot({
-        convoId: input.convoId,
-        questionId: userMessageId,
-        runtimeSelection: { providerId: input.providerKey, modelId },
-      })
-    )
-    await refreshRenderableBranchView(input.branch.id)
-
-    const started = startGeneration(state.value, {
-      runId: input.branch.id,
-      requestId,
-      model: modelId,
-      userMessageId,
-      userMessageText: input.text,
-      assistantMessageId,
-      reasoningPanelDefaultExpanded: globalReasoningPanelDefaultExpanded.value,
-      ...(imageGenerationConfig ? { requestedImageGeneration: true } : {}),
-      requestedReasoningMode: 'auto',
-    })
-    state.value = started.state
-    if (pendingMaterializedAssistantId === assistantMessageId) pendingMaterializedAssistantId = null
-
-    const reasoningArtifactProvider = getExperimentalRuntimeTextReasoningArtifactProvider(input.providerKey)
-    await runAssistantStreamSession({
-      convoId: input.convoId,
-      branchId: input.branch.id,
-      requestId,
-      assistantMessageId,
-      assistantSeq,
-      providerId: input.providerKey,
-      modelId,
-      ...(reasoningArtifactProvider ? { reasoningArtifactProvider } : {}),
-      createEvents: (signal) => createExperimentalRuntimeTextEvents({
-        providerKey: input.providerKey,
-        requestId,
-        assistantMessageId,
-        modelId,
-        userText: input.text,
-        contextMessages: input.contextMessages,
-        currentUserContentBlocks: input.currentUserContentBlocks,
-        ...(lmStudioConfig ? { lmStudioConfig } : {}),
-        ...(ollamaConfig ? { ollamaConfig } : {}),
-        ...(endpointUrl ? { localEndpointUrl: endpointUrl } : {}),
-        ...(hasGenerationParamsRequestPatch(generationParamsConfig.requestPatch) ? { generationParams: generationParamsConfig.requestPatch } : {}),
-        ...(imageGenerationConfig ? { imageGeneration: imageGenerationConfig } : {}),
-        signal,
-      }),
-    })
-  }
-
-  let pendingMaterializedAssistantId: string | null = null
-
-  async function materializeActiveTemplateForSend(input: Readonly<{
-    requestId: string
-    sentAssetIds?: readonly string[]
-    dfcAttachmentSendSnapshots?: readonly unknown[]
-    compatibleRoute?: Readonly<{
-      route: Readonly<{
-        routeProvenanceId: string; requestId: string; providerInstanceId: string; modelId: string; createdAtMs: number
-      }>
-      pins: Readonly<{
-        providerInstanceId: string; modelId: string; endpointRevisionId: string; credentialVersionRef: string | null
-        requestProfileId: string; requestProfileVersion: number; responseProfileId: string; responseProfileVersion: number
-        reasoningMappingId: string; reasoningMappingVersion: number; inlinePolicyId: string; inlinePolicyVersion: number
-      }>
-    }>
-  }>): Promise<Readonly<{
-    convoId: string
-    branch: BranchSummary
-    begun: Readonly<{ questionId: string; questionSeq: number; assistantId: string; assistantSeq: number }>
-  }> | null> {
-    const templateId = systemTemplateSnapshot.value?.conversation.id
-    if (!templateId || activeConvoId.value !== templateId) return null
-    const current = await getSystemChatTemplate()
-    const materialized = await materializeSystemChatTemplate({
-      templateConversationId: current.conversation.id,
-      expectedTemplateRevision: current.conversation.templateRevision,
-      requestId: input.requestId,
-      ...(input.sentAssetIds ? { sentAssetIds: Array.from(input.sentAssetIds) } : {}),
-      ...(input.dfcAttachmentSendSnapshots?.length
-        ? { dfcAttachmentSendSnapshots: Array.from(input.dfcAttachmentSendSnapshots) }
-        : {}),
-      ...(input.compatibleRoute ? { compatibleRoute: input.compatibleRoute } : {}),
-    })
-    systemTemplateSnapshot.value = await getSystemChatTemplate()
-    activeConvoId.value = materialized.convoId
-    pendingMaterializedAssistantId = materialized.assistantId
-    await setLastFormalConversationId(materialized.convoId)
-    await refreshConvos()
-    await refreshBranchesForActiveConvo()
-    activeBranchId.value = materialized.branchId
-    const branch = await ensureActiveBranch(materialized.convoId)
-    return { convoId: materialized.convoId, branch, begun: materialized }
-  }
-
-  let sendOrchestrationLocked = false
-
-  function resolveUnifiedRuntimeDispatch() {
-    const compatibleSelection = activeSessionConfig.value.model.compatibleSelection
-    if (compatibleSelection) return { kind: 'compatible' as const, selection: compatibleSelection }
-    return { kind: 'native' as const, selection: resolveCurrentRuntimeSelectionForSend() }
-  }
+              let sendOrchestrationLocked = false
 
   async function onSend() {
-    if (sendOrchestrationLocked || isRunning.value || compatibleRunning.value || isDraftInteractionLocked.value) return
+    if (sendOrchestrationLocked || isRunning.value || isDraftInteractionLocked.value) return
     if (!draft.value.trim() && draftAttachmentRecords.value.length === 0) return
     sendOrchestrationLocked = true
     try {
       await flushDraftPersistence({ failOnError: true })
       await onSendUnlocked()
     } catch (error) {
-      if (pendingMaterializedAssistantId) {
-        await setMessageStatus({ messageId: pendingMaterializedAssistantId, status: 'error' }).catch(() => undefined)
-        pendingMaterializedAssistantId = null
-      }
       loadError.value = error instanceof Error ? error.message : 'send_orchestration_failed'
     } finally {
       sendOrchestrationLocked = false
     }
   }
 
-  async function onSendUnlocked() {
-    if (isRunning.value || compatibleRunning.value) return
-    if (isDraftInteractionLocked.value) return
-    const runtimeDispatch = resolveUnifiedRuntimeDispatch()
-    if (runtimeDispatch.kind === 'compatible') {
-      await sendCompatibleRuntime(runtimeDispatch.selection)
-      return
-    }
-    const text = draft.value.trim()
-    const hasDraftAttachments = draftAttachmentRecords.value.length > 0
-    if (!text && !hasDraftAttachments) return
+  function finiteGenerationNumber(value: unknown): number | undefined {
+    return typeof value === 'number' && Number.isFinite(value) ? value : undefined
+  }
 
-    const runtimeSelection = runtimeDispatch.selection
-    const runtimeAvailability = await resolveRuntimeAvailabilityPreflight(runtimeSelection)
-    const runtimePreflight = resolveProviderRuntimeTextSendPreflight({
-      selection: runtimeSelection,
-      capability: getRuntimeCapabilitySummaryLite(runtimeSelection),
-      text,
-      hasDraftAttachments,
-      sessionConfig: activeSessionConfig.value,
-      availability: runtimeAvailability,
+  function buildCurrentGenerationV2SemanticLayer(
+    providerId: RuntimeProviderKey,
+    sessionConfig: ChatSessionConfig = activeSessionConfig.value,
+  ): Readonly<Record<string, unknown>> {
+    const modelId = sessionConfig.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
+    const resolved = resolveGenerationParamsFromLayers({
+      profile: generationParamProfileForProvider(providerId, modelId),
+      modelId,
+      geminiThinkingCapability: providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !isGeminiInteractionsImageModelIdV1(normalizeGeminiImageGenerationModelId(modelId))
+        ? geminiThinkingCapabilityForModel(modelId) : undefined,
+      layers: {
+        conversation: sessionConfig.generationParams.detail,
+        project: getActiveProjectGenerationParamsLayer(),
+        global: globalGenerationParamsDefaults.value,
+      },
     })
-    if (!runtimePreflight.ok) {
-      setAttachmentFeedback('error', runtimePreflight.reason)
-      return
-    }
-    const runtimeRoute = runtimePreflight.route
-    let materializedBegun: Readonly<{
-      questionId: string; questionSeq: number; assistantId: string; assistantSeq: number
-    }> | null = null
-    let convoId = await ensureActiveConvo()
-    const sendingFromTemplate = convoId === systemTemplateSnapshot.value?.conversation.id
-    let branch: BranchSummary | null = sendingFromTemplate ? null : await ensureActiveBranch(convoId)
-    loadError.value = null
-
-    let contextMessages: any[] = []
-    let contextMessageIds: string[] = []
-    try {
-      if (branch) {
-        const built = await buildContextForBranchInternalMessages(branch.id, { limit: 200, debug: !!import.meta.env?.DEV })
-        contextMessages = built.contextMessages as any[]
-        contextMessageIds = built.rawMessages.map((message) => message.id)
-      }
-    } catch (err) {
-      if (import.meta.env?.DEV) console.warn('[ui-app] context.buildForBranch failed; using empty context', err)
-    }
-
-    if (runtimeRoute.kind === 'experimental_text') {
-      if (isExperimentalRuntimeTextProviderKey(runtimeRoute.providerKey)) {
-        const providerModelId = runtimeSelection.state === 'selected'
-          ? normalizeRuntimeModelId(runtimeSelection.modelId ?? runtimeSelection.modelKey ?? runtimeSelection.nativeModelId)
-          : ''
-        let preparedFileSend: PreparedProviderFileSendOk | null = null
-        if (hasDraftAttachments && isExperimentalProviderFileRuntime(runtimeRoute.providerKey)) {
-          composerSendPlanLoading.value = true
-          try {
-            const prepared = await prepareExperimentalProviderFileSend({
-              providerKey: runtimeRoute.providerKey,
-              conversationId: convoId,
-              userText: text,
-              modelId: providerModelId,
-              historyMessageIds: contextMessageIds,
-            })
-            if (!prepared) {
-              setAttachmentFeedback('error', 'Provider file input preparation is unavailable.')
-              return
-            }
-            if (!prepared.ok) {
-              if (prepared.sendPlan) applyComposerSendPlanGateState(prepared.sendPlan)
-              setAttachmentFeedback('error', sanitizeSendPlanSummaryMessage(prepared.message) ?? 'Provider file input preparation failed.')
-              return
-            }
-            applyComposerSendPlanGateState(prepared.sendPlan)
-            if (prepared.contentParts.length === 0) {
-              setAttachmentFeedback('error', 'No sendable image or PDF attachment was found for this runtime.')
-              return
-            }
-            preparedFileSend = prepared
-          } catch (err: any) {
-            loadError.value = err?.message ? String(err.message) : String(err)
-            return
-          } finally {
-            composerSendPlanLoading.value = false
-          }
-        }
-        if (sendingFromTemplate) {
-          const materialized = await materializeActiveTemplateForSend({
-            requestId: randomId('new-chat'),
-            ...(preparedFileSend?.sentAssetIds.length ? { sentAssetIds: preparedFileSend.sentAssetIds } : {}),
-            ...(preparedFileSend
-              ? { dfcAttachmentSendSnapshots: collectDfcAttachmentSendSnapshots(preparedFileSend.sendPlan) }
-              : {}),
-          })
-          if (!materialized) throw new Error('new_chat_template_materialization_missing')
-          convoId = materialized.convoId
-          branch = materialized.branch
-          materializedBegun = materialized.begun
-        }
-        if (!branch) throw new Error('active_branch_missing_after_new_chat_materialization')
-        await sendExperimentalProviderTextChat({
-          providerKey: runtimeRoute.providerKey,
-          convoId,
-          branch,
-          text,
-          modelId: providerModelId,
-          contextMessages,
-          ...(preparedFileSend ? { currentUserContentBlocks: preparedFileSend.contentParts } : {}),
-          ...(preparedFileSend?.hasDraftAttachmentPlans ? { attachConversationDraft: true } : {}),
-          ...(preparedFileSend?.sentAssetIds.length ? { sentAssetIds: preparedFileSend.sentAssetIds } : {}),
-          ...(materializedBegun ? { begun: materializedBegun } : {}),
-        })
-        return
-      }
-      setAttachmentFeedback('error', 'Selected runtime provider is not routable for text chat.')
-      return
-    }
-
-    if (runtimeRoute.kind !== 'openrouter_existing') {
-      setAttachmentFeedback('error', 'Selected runtime provider is not routable for text chat.')
-      return
-    }
-
-    const baseUrl = await getOpenRouterBaseUrl()
-    const modelId = runtimeSelection.state === 'selected'
-      ? normalizeModelKey(runtimeSelection.modelId ?? runtimeSelection.modelKey ?? runtimeSelection.nativeModelId)
-      : DEFAULT_OPENROUTER_MODEL_ID
-
-    composerSendPlanLoading.value = true
-    let gate: Readonly<{
-      status: SendPlan['status'] | null
-      canProceed: boolean
-      blockingReason: string | null
-      warningReason: string | null
-      sendPlan: SendPlan | null
-    }> = {
-      status: null,
-      canProceed: true,
-      blockingReason: null,
-      warningReason: null,
-      sendPlan: null,
-    }
-    try {
-      gate = await preflightDraftAttachmentSendGate({
-        conversationId: convoId,
-        draftText: text,
-        modelId,
-        baseUrl,
-        historyMessageIds: contextMessageIds,
-      })
-      applyComposerSendPlanGateState(gate.sendPlan)
-      const confirmationRequest = buildAttachmentConfirmationRequestFromSendPlan('composer_send', gate.sendPlan)
-      if (confirmationRequest) {
-        const result = await requestAttachmentConfirmation(confirmationRequest)
-        if (!result.confirmed) return
-        const draftDecisions = result.decisions.filter((item) => item.source !== 'history')
-        if (draftDecisions.length > 0) {
-          await applyDraftAttachmentDecisions(draftDecisions)
-          gate = await preflightDraftAttachmentSendGate({
-            conversationId: convoId,
-            draftText: text,
-            modelId,
-            baseUrl,
-            historyMessageIds: contextMessageIds,
-          })
-          applyComposerSendPlanGateState(gate.sendPlan)
+    if (resolved.errors.length > 0) throw new Error(resolved.errors[0]?.message ?? 'GENERATION_V2_CONFIG_INVALID')
+    const params = resolved.requestParams
+    const imageConfig = resolveImageGenerationConfigForRequest(providerId, sessionConfig)
+    const geminiInteractionsImage = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+      isGeminiInteractionsImageModelIdV1(normalizeGeminiImageGenerationModelId(sessionConfig.model.selectedModelKey)) && imageConfig !== null
+    const geminiGenerateThinkingCapability = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !geminiInteractionsImage
+      ? geminiThinkingCapabilityForModel(modelId) : null
+    if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !geminiInteractionsImage) {
+      for (const key of ['thinkingBudget', 'thinkingLevel', 'includeThoughts'] as const) {
+        if (sessionConfig.generationParams.detail?.[key]?.mode === 'custom' && resolved.decisions[key]?.state === 'unsupported') {
+          throw new Error(`GENERATION_V2_GEMINI_THINKING_UNSUPPORTED_${key.toUpperCase()}`)
         }
       }
-      if (!gate.canProceed) {
-        setAttachmentFeedback('error', gate.blockingReason ?? '当前请求无法发送，请处理附件或更换模型。')
-        return
-      }
-      if (gate.warningReason) {
-        setAttachmentFeedback('warning', gate.warningReason)
-      }
-    } catch (err: any) {
-      loadError.value = err?.message ? String(err.message) : String(err)
-      return
-    } finally {
-      composerSendPlanLoading.value = false
     }
-
-    let preparedFileSend: PreparedOpenRouterSend | null = null
-    try {
-      preparedFileSend = await prepareFileSend({
-        conversationId: convoId,
-        userText: text,
-        modelId,
-        baseUrl,
-        historyMessageIds: contextMessageIds,
-      })
-    } catch (err: any) {
-      loadError.value = err?.message ? String(err.message) : String(err)
-      return
-    }
-
-    const dfcAttachmentSendSnapshots = preparedFileSend
-      ? collectDfcAttachmentSendSnapshots(preparedFileSend.sendPlan)
-      : []
-    if (sendingFromTemplate) {
-      const materialized = await materializeActiveTemplateForSend({
-        requestId: randomId('new-chat'),
-        ...(preparedFileSend ? { sentAssetIds: collectSentAssetIds(preparedFileSend.sendPlan) } : {}),
-        ...(dfcAttachmentSendSnapshots.length > 0 ? { dfcAttachmentSendSnapshots } : {}),
-      })
-      if (!materialized) throw new Error('new_chat_template_materialization_missing')
-      convoId = materialized.convoId
-      branch = materialized.branch
-      materializedBegun = materialized.begun
-    }
-    if (!branch) throw new Error('active_branch_missing_after_new_chat_materialization')
-    const begun = materializedBegun ?? await beginTurn(branch.id, text, {
-        ...(preparedFileSend?.hasDraftAttachmentPlans ? { attachConversationDraft: true } : {}),
-        ...(preparedFileSend ? { sentAssetIds: collectSentAssetIds(preparedFileSend.sendPlan) } : {}),
-        ...(dfcAttachmentSendSnapshots.length > 0 ? { dfcAttachmentSendSnapshots } : {}),
-      })
-    draft.value = ''
-    const cleared = await updateConversationDraftText({
-      conversationId: convoId,
-      draftText: '',
-      draftMode: 'compose',
-      editingSourceMessageId: null,
-    })
-    applyDraftPersistenceStateFromDraft(cleared)
-    void refreshDraftAttachmentViewModels()
-    // Branch tip update (definition): the new assistant becomes the insertion point for the next turn.
-    patchBranch(branch.id, { headMessageId: begun.assistantId, updatedAt: Date.now() })
-
-    const userMessageId = begun.questionId
-    const assistantMessageId = begun.assistantId
-    const assistantSeq = begun.assistantSeq
-
-    setRuntimeMessageSeqEntries([
-      [userMessageId, begun.questionSeq],
-      [assistantMessageId, assistantSeq],
+    const mappedParamKeys = new Set([
+      'temperature', 'topP', 'topK', 'minP', 'topA', 'frequencyPenalty', 'presencePenalty',
+      'repetitionPenalty', 'seed', 'maxOutputTokens', 'stopSequences', 'reasoningEffort',
+      'reasoningSummary', 'thinkingEnabled', 'thinkingBudget', 'thinkingLevel', 'includeThoughts',
+      'thoughtSummaryMode', 'googleSearch', 'imageSearch', 'verbosity',
     ])
+    const unmappedParam = Object.keys(params).find((key) => !mappedParamKeys.has(key))
+    if (unmappedParam) throw new Error(`GENERATION_V2_EXPLICIT_PARAMETER_UNMAPPED_${unmappedParam.toUpperCase()}`)
+    const generationEntries: [string, unknown][] = [
+      ['temperature', finiteGenerationNumber(params.temperature)],
+      ['topP', finiteGenerationNumber(params.topP)],
+      ['topK', finiteGenerationNumber(params.topK)],
+      ['minP', finiteGenerationNumber(params.minP)],
+      ['topA', finiteGenerationNumber(params.topA)],
+      ['frequencyPenalty', finiteGenerationNumber(params.frequencyPenalty)],
+      ['presencePenalty', finiteGenerationNumber(params.presencePenalty)],
+      ['repetitionPenalty', finiteGenerationNumber(params.repetitionPenalty)],
+      ['seed', finiteGenerationNumber(params.seed)],
+      ['maxOutputTokens', finiteGenerationNumber(params.maxOutputTokens)],
+      ['stop', Array.isArray(params.stopSequences) ? [...params.stopSequences] : undefined],
+    ]
+    const generation = Object.fromEntries(generationEntries.filter((entry) => entry[1] !== undefined))
 
-    ensureMessageMetaEntry(userMessageId, { role: 'user', status: 'final' })
-    ensureMessageMetaEntry(assistantMessageId, {
-      parentId: userMessageId,
-      questionId: userMessageId,
-      answerRootId: assistantMessageId,
-      role: 'assistant',
-      status: 'streaming',
-      providerId: OPENROUTER_PROVIDER_ID,
-      modelId,
-    })
-
-    const { requestedReasoningMode, requestedReasoningEffortValue, requestedReasoningExclude } = getRequestedReasoningConfig()
-    const webSearchConfig = await resolveWebSearchConfigForConvoId(convoId)
-    const generationParamsConfig = await resolveGenerationParamsConfigForConvoId(convoId, OPENROUTER_PROVIDER_ID, modelId)
-    const imageGenerationConfig = resolveImageGenerationConfigForRequest(OPENROUTER_PROVIDER_ID)
-    await persistAssistantAnswerGenerationSnapshot(
-      assistantMessageId,
-      await resolveCurrentGenerationSnapshot({
-        convoId,
-        questionId: userMessageId,
-        runtimeSelection: { providerId: OPENROUTER_PROVIDER_ID, modelId },
-      })
-    )
-    await refreshRenderableBranchView(branch.id)
-    const requestId = randomId('req')
-
-    const started = startGeneration(state.value, {
-      runId: branch.id,
-      requestId,
-      model: modelId,
-      userMessageId,
-      userMessageText: text,
-      assistantMessageId,
-      reasoningPanelDefaultExpanded: globalReasoningPanelDefaultExpanded.value,
-      ...(imageGenerationConfig ? { requestedImageGeneration: true } : {}),
-      requestedReasoningMode,
-      ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
-      ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
-    })
-    state.value = started.state
-    if (pendingMaterializedAssistantId === assistantMessageId) pendingMaterializedAssistantId = null
-
-    const requestReasoningConfig = buildReasoningRequestConfigSnapshot({
-      requestedReasoningMode,
-      requestedReasoningEffortValue,
-      requestedReasoningExclude,
-    })
-    try {
-      await setMessageReasoningRequestConfig({ messageId: assistantMessageId, value: requestReasoningConfig })
-    } catch (err) {
-      if (shouldLogDebug()) console.warn('[ui-app] setMessageReasoningRequestConfig failed (non-fatal):', err)
+    const openRouterReasoning = providerId === OPENROUTER_PROVIDER_ID ? {
+      requestedReasoningMode: sessionConfig.reasoning.enabled ? 'effort' as const : 'auto' as const,
+      requestedReasoningEffortValue: sessionConfig.reasoning.enabled ? sessionConfig.reasoning.effort : undefined,
+      requestedReasoningExclude: sessionConfig.reasoning.enabled && requestedReasoningExclude.value,
+    } : null
+    const deepSeekReasoning = providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY ? sessionConfig.reasoning : null
+    const thinkingEnabled = deepSeekReasoning ? deepSeekReasoning.enabled : params.thinkingEnabled
+    const rawEffort = String(deepSeekReasoning
+      ? (deepSeekReasoning.enabled ? deepSeekReasoning.effort : '')
+      : openRouterReasoning?.requestedReasoningEffortValue ??
+        (geminiInteractionsImage ? params.thinkingLevel : undefined) ?? params.thinkingLevel ?? params.reasoningEffort ?? '').trim()
+    const explicitReasoningDisabled = deepSeekReasoning
+      ? !deepSeekReasoning.enabled
+      : rawEffort === 'none' || thinkingEnabled === false
+    const effort = rawEffort === 'none' ? '' : rawEffort
+    const summary = String(deepSeekReasoning ? '' : geminiInteractionsImage && params.thoughtSummaryMode === 'auto'
+      ? 'auto' : params.reasoningSummary ?? '').trim()
+    if (effort && !['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) {
+      throw new Error('GENERATION_V2_REASONING_EFFORT_UNSUPPORTED')
     }
-    void recordRecentModelUsage(modelId, OPENROUTER_PROVIDER_ID)
+    if (summary && !['auto', 'concise', 'detailed'].includes(summary)) {
+      throw new Error('GENERATION_V2_REASONING_SUMMARY_UNSUPPORTED')
+    }
+    const reasoningEnabled = deepSeekReasoning
+      ? deepSeekReasoning.enabled
+      : openRouterReasoning?.requestedReasoningMode === 'auto' || thinkingEnabled === true || effort.length > 0 || summary.length > 0 ||
+        geminiGenerateThinkingCapability?.thinkingSupported === 'supported' ||
+        params.thinkingLevel !== undefined || params.thinkingBudget !== undefined
+    const reasoning = explicitReasoningDisabled || !reasoningEnabled
+      ? { mode: 'disabled' as const }
+      : {
+          mode: 'enabled' as const,
+          ...(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort) ? { effort } : {}),
+          ...(['auto', 'concise', 'detailed'].includes(summary) ? { summary } : {}),
+          ...(openRouterReasoning?.requestedReasoningExclude ? { exclude: true } : {}),
+        }
 
-    await runAssistantStreamSession({
-      convoId,
-      branchId: branch.id,
-      requestId,
-      assistantMessageId,
-      assistantSeq,
-      providerId: OPENROUTER_PROVIDER_ID,
+    const search = resolveSearchSettings({
+      convo: sessionConfig.webSearch.detail,
+      project: getActiveProjectWebSearchLayer(),
+      global: globalWebSearchDefaults.value,
+    }, { accountDefaultEnabled: ACCOUNT_DEFAULT_WEB_SEARCH_ENABLED })
+    if (search.effectiveMode && search.effectiveSearchPrompt) {
+      throw new Error('GENERATION_V2_WEB_SEARCH_PROMPT_UNSUPPORTED')
+    }
+    const requestedWeb = search.effectiveMode || params.googleSearch === true || params.imageSearch === true
+    const webTypes = Object.freeze([
+      ...(search.effectiveMode || params.googleSearch === true ? ['web' as const] : []),
+      ...(params.imageSearch === true ? ['image' as const] : []),
+    ])
+    const web = requestedWeb
+      ? {
+          mode: 'provider_search' as const,
+          types: webTypes,
+          ...(geminiInteractionsImage ? {} : {
+            ...(search.effectiveEngine ? { engine: search.effectiveEngine } : {}),
+            maxResults: search.effectiveMaxResults,
+            searchContextSize: search.effectiveSearchContextSize,
+          }),
+        }
+      : { mode: 'disabled' as const }
+
+    let image: Readonly<Record<string, unknown>> = { mode: 'disabled' }
+    if (imageConfig) {
+      if (providerId === OPENROUTER_PROVIDER_ID && imageConfig.modalities?.includes('text')) {
+        throw new Error('OPENROUTER_IMAGES_OUTPUT_MODE_UNSUPPORTED')
+      }
+      if (providerId === OPENAI_RESPONSES_PROVIDER_KEY && imageConfig.outputMode === 'image_only') {
+        throw new Error('OPENAI_RESPONSES_IMAGE_ONLY_OUTPUT_UNSUPPORTED')
+      }
+      if (providerId === OPENAI_RESPONSES_PROVIDER_KEY) {
+        const ratio = String(imageConfig.aspectRatio ?? '')
+        const size = ratio === '3:4' ? { width: 1024, height: 1536 }
+          : ratio === '4:3' || ratio === '16:9' ? { width: 1536, height: 1024 }
+            : { width: 1024, height: 1024 }
+        image = { mode: 'generate', size }
+      } else image = {
+        mode: 'generate',
+        ...(geminiInteractionsImage ? { outputMode: imageConfig.outputMode } : {}),
+        ...(imageConfig.aspectRatio && imageConfig.aspectRatio !== 'auto' ? { aspectRatio: imageConfig.aspectRatio } : {}),
+        ...(['512', '1K', '2K', '4K'].includes(String(imageConfig.imageSize)) ? { resolution: imageConfig.imageSize } : {}),
+      }
+    }
+
+    let providerExtension: Readonly<Record<string, unknown>> = { kind: 'none' }
+    if (providerId === OPENAI_RESPONSES_PROVIDER_KEY) {
+      providerExtension = {
+        kind: 'openai_responses',
+        ...(['low', 'medium', 'high'].includes(String(params.verbosity)) ? { verbosity: params.verbosity } : {}),
+      }
+    } else if (providerId === ANTHROPIC_MESSAGES_PROVIDER_KEY) {
+      providerExtension = { kind: 'anthropic_messages', thinkingDisplay: anthropicChatConfig.value.thinkingDisplay,
+        thinkingMode: 'model_recommended' }
+    } else if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !geminiInteractionsImage) {
+      const includeThoughts = params.includeThoughts === true || params.thoughtSummaryMode === 'auto' ? 'enabled'
+        : params.includeThoughts === false || params.thoughtSummaryMode === 'none' ? 'disabled' : 'provider_default'
+      if (typeof params.thinkingBudget === 'number') providerExtension = {
+        kind: 'gemini_generate_content', thinkingMode: 'budget', thinkingBudget: params.thinkingBudget, includeThoughts,
+      }
+      else if (['minimal', 'low', 'medium', 'high'].includes(String(params.thinkingLevel))) providerExtension = {
+        kind: 'gemini_generate_content', thinkingMode: 'level', thinkingLevel: params.thinkingLevel, includeThoughts,
+      }
+      else providerExtension = { kind: 'gemini_generate_content', thinkingMode: 'default', includeThoughts }
+    }
+
+    return Object.freeze({ schemaVersion: 2, generation, reasoning, web, image,
+      tools: Object.freeze({ mode: 'disabled' }), providerExtension })
+  }
+
+  async function persistCurrentGenerationV2SemanticLayer(
+    providerId: RuntimeProviderKey,
+    conversationId: string,
+    force = false,
+    sessionConfig: ChatSessionConfig = activeSessionConfig.value,
+  ): Promise<void> {
+    let current = generationV2ConfigByConversationId.value.get(conversationId)
+    if (!current) {
+      current = await getGenerationV2Config('conversation', conversationId)
+      cacheGenerationV2Config(conversationId, current)
+    }
+    if (!force && !isEmptyGenerationV2SemanticLayer(current.semanticLayer)) return
+    cacheGenerationV2Config(conversationId, await updateGenerationV2Config({ ownerKind: 'conversation', ownerId: conversationId,
+      expectedConfigRevision: current.configRevision, semanticLayer: buildCurrentGenerationV2SemanticLayer(providerId, sessionConfig) }))
+  }
+
+  function currentOpenRouterImageEndpointSelectionInput(): Readonly<{ modelId: string; semanticIntent: unknown }> {
+    const config = activeSessionConfig.value
+    if (config.model.selectedProviderId !== OPENROUTER_PROVIDER_ID || !config.imageGeneration.enabled) {
+      throw new Error('GENERATION_V2_OPENROUTER_IMAGE_ENDPOINT_NOT_ACTIVE')
+    }
+    const modelId = normalizeRuntimeModelId(config.model.selectedModelKey)
+    if (!modelId) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
+    const draftSnapshot = generationV2ComposerDraft.value?.conversationId === activeConvoId.value
+      ? generationV2ComposerDraft.value : null
+    return Object.freeze({
       modelId,
-      reasoningArtifactProvider: 'openrouter',
-      ...(preparedFileSend ? { pdfAnnotationCaptureAssetIds: getPreparedPdfAssetIds(preparedFileSend) } : {}),
-      createEvents: (signal) => streamViaOpenRouterAsDomainEventsWithLegacyStoreCredentialSource({
-        requestId,
-        assistantMessageId,
-        userText: text,
-        contextMessages,
-        ...(preparedFileSend?.contentParts.length ? { currentUserContentBlocks: preparedFileSend.contentParts } : {}),
-        signal,
-        config: {
-          model: modelId,
-          requestedReasoningMode,
-          webSearch: webSearchConfig,
-          ...(hasGenerationParamsRequestPatch(generationParamsConfig.requestPatch) ? { generationParams: generationParamsConfig.requestPatch } : {}),
-          ...(imageGenerationConfig ? { imageGeneration: imageGenerationConfig } : {}),
-          ...(requestedReasoningEffortValue ? { requestedReasoningEffort: requestedReasoningEffortValue } : {}),
-          ...(requestedReasoningExclude ? { requestedReasoningExclude: true } : {}),
-          ...(preparedFileSend?.additionalPlugins.length ? { additionalPlugins: preparedFileSend.additionalPlugins } : {}),
-          ...(baseUrl ? { baseUrl } : {}),
-        },
+      semanticIntent: Object.freeze({
+        ...buildCurrentGenerationV2SemanticLayer(OPENROUTER_PROVIDER_ID),
+        attachments: draftSnapshot ? projectGenerationV2ComposerAttachments(draftSnapshot) : Object.freeze([]),
       }),
     })
   }
 
-  const compatibleActiveRequestId = ref<string | null>(null)
-  const compatibleRunning = computed(() => compatibleActiveRequestId.value !== null)
-
-  function toCompatibleRequestMessages(raw: readonly unknown[]): CompatibleRequestMessage[] {
-    const output: CompatibleRequestMessage[] = []
-    for (const item of raw) {
-      if (!item || typeof item !== 'object' || Array.isArray(item)) continue
-      const message = item as Record<string, unknown>
-      if (!['system', 'developer', 'user', 'assistant', 'tool'].includes(String(message.role))) continue
-      if (message.role === 'tool') {
-        if (typeof message.tool_call_id === 'string' && typeof message.content === 'string') output.push({ role: 'tool', tool_call_id: message.tool_call_id, content: message.content })
-        continue
-      }
-      if (typeof message.content !== 'string') continue
-      if (message.role === 'assistant') output.push({ role: 'assistant', content: message.content })
-      else output.push({ role: message.role as 'system' | 'developer' | 'user', content: message.content })
-    }
-    return output
-  }
-
-  async function sendCompatibleRuntime(selection: CompatibleConfigurationSelection) {
-    if (isRunning.value || compatibleRunning.value || isDraftInteractionLocked.value) return
-    if (draftAttachmentRecords.value.length > 0) {
-      setAttachmentFeedback('error', 'Compatible endpoint file attachments are not enabled for this model contract.')
-      return
-    }
-    const text = draft.value.trim()
-    if (!text) return
-    const bridge = window.compatibleChat
-    if (!bridge?.start || !bridge.preflight) {
-      setAttachmentFeedback('error', 'Compatible chat runtime is unavailable.')
-      return
-    }
-    const selectedPins = {
-      providerInstanceId: selection.providerInstanceId,
-      modelId: selection.modelId,
-      endpointRevisionId: selection.endpointRevisionId,
-      credentialVersionRef: selection.credentialVersionRef,
-      requestProfileId: selection.requestProfileId,
-      requestProfileVersion: selection.requestProfileVersion,
-      responseProfileId: selection.responseProfileId,
-      responseProfileVersion: selection.responseProfileVersion,
-      reasoningMappingId: selection.reasoningMappingId,
-      reasoningMappingVersion: selection.reasoningMappingVersion,
-      inlinePolicyId: selection.inlinePolicyId,
-      inlinePolicyVersion: selection.inlinePolicyVersion,
-    }
-    const eligibility = await bridge.preflight(selectedPins)
-    if (!eligibility.ok || !eligibility.route) {
-      setAttachmentFeedback('error', eligibility.code ?? 'compatible_preflight_blocked')
-      return
-    }
-    let convoId = await ensureActiveConvo()
-    let existingPreparedTurn: Readonly<{ routeProvenanceId: string; branchId: string; questionId: string; assistantId: string }> | null = null
-    if (convoId === systemTemplateSnapshot.value?.conversation.id) {
-      const materialized = await materializeActiveTemplateForSend({
-        requestId: randomId('new-chat-compatible'),
-        compatibleRoute: { route: eligibility.route, pins: selectedPins },
-      })
-      if (!materialized) throw new Error('new_chat_template_materialization_missing')
-      existingPreparedTurn = {
-        routeProvenanceId: eligibility.route.routeProvenanceId,
-        branchId: materialized.branch.id,
-        questionId: materialized.begun.questionId,
-        assistantId: materialized.begun.assistantId,
-      }
-      convoId = materialized.convoId
-    }
-    const branch = await ensureActiveBranch(convoId)
-    const built = existingPreparedTurn
-      ? { contextMessages: [] }
-      : await buildContextForBranchInternalMessages(branch.id, { limit: 200, debug: !!import.meta.env?.DEV })
-    const messages = toCompatibleRequestMessages(built.contextMessages as unknown[])
-    messages.push({ role: 'user', content: text })
-    const requestId = randomId('compatible')
-    compatibleActiveRequestId.value = requestId
-    loadError.value = null
-    let refreshQueued = false
-    const scheduleRefresh = () => {
-      if (refreshQueued) return
-      refreshQueued = true
-      queueMicrotask(() => {
-        refreshQueued = false
-        void refreshRenderableBranchView(branch.id)
-      })
-    }
-    const offPrepared = bridge.onPrepared?.((raw) => {
-      const payload = raw as { requestId?: unknown; prepared?: { assistantId?: unknown; questionId?: unknown } }
-      if (payload.requestId !== requestId) return
-      draft.value = ''
-      void updateConversationDraftText({ conversationId: convoId, draftText: '', draftMode: 'compose', editingSourceMessageId: null }).then(applyDraftPersistenceStateFromDraft)
-      if (typeof payload.prepared?.assistantId === 'string') {
-        patchBranch(branch.id, { headMessageId: payload.prepared.assistantId, updatedAt: Date.now() })
-        if (typeof payload.prepared.questionId === 'string') {
-          void resolveCompatibleGenerationSnapshot({ questionId: payload.prepared.questionId, selection })
-            .then((snapshot) => persistAssistantAnswerGenerationSnapshot(payload.prepared!.assistantId as string, snapshot))
-            .catch((error) => { if (shouldLogDebug()) console.warn('[ui-app] compatible snapshot persist failed', error) })
-        }
-      }
-      scheduleRefresh()
-    })
-    const offEvent = bridge.onEvent?.((raw) => {
-      if ((raw as { requestId?: unknown }).requestId === requestId) scheduleRefresh()
-    })
+  async function refreshOpenRouterImageEndpointSelection(): Promise<void> {
+    if (openRouterImageEndpointSelectionLoading.value) return
+    openRouterImageEndpointSelectionLoading.value = true
+    openRouterImageEndpointSelectionError.value = null
     try {
-      const result = await bridge.start({
-        requestId,
-        selection: selectedPins,
-        turn: { branchId: branch.id, userBody: text },
-        ...(existingPreparedTurn ? { existingPreparedTurn } : {}),
-        messages,
-        stream: true,
-      }) as { ok?: boolean; error?: string }
-      if (!result?.ok) loadError.value = result?.error ?? 'compatible_runtime_failed'
-    } catch (error) {
-      loadError.value = error instanceof Error ? error.message : 'compatible_runtime_failed'
-    } finally {
-      offPrepared?.()
-      offEvent?.()
-      compatibleActiveRequestId.value = null
-      if (existingPreparedTurn && pendingMaterializedAssistantId === existingPreparedTurn.assistantId) {
-        pendingMaterializedAssistantId = null
-      }
-      await refreshRenderableBranchView(branch.id)
-    }
-  }
-
-  type CompatibleHistoricalIdentity = Readonly<{ routeProvenanceId: string; providerInstanceId: string; modelId: string }>
-
-  async function resolveCompatibleHistoricalIdentity(source: Readonly<{ kind: 'request_message' | 'choice_message'; messageId: string }>): Promise<CompatibleHistoricalIdentity | null> {
-    const result = await window.compatibleChat?.resolveHistorical?.(source) as { ok?: boolean; route?: CompatibleHistoricalIdentity } | undefined
-    return result?.ok && result.route ? result.route : null
-  }
-
-  async function startCompatibleExistingHistorical(input: Readonly<{
-    identity: CompatibleHistoricalIdentity
-    branchId: string
-    questionId: string
-    assistantId: string
-    text: string
-    contextMessages: readonly unknown[]
-  }>): Promise<void> {
-    const bridge = window.compatibleChat
-    if (!bridge?.start) throw new Error('Compatible chat runtime is unavailable.')
-    const requestId = randomId('compatible-history')
-    compatibleActiveRequestId.value = requestId
-    const messages = toCompatibleRequestMessages(input.contextMessages)
-    messages.push({ role: 'user', content: input.text })
-    let refreshQueued = false
-    const scheduleRefresh = () => {
-      if (refreshQueued) return
-      refreshQueued = true
-      queueMicrotask(() => { refreshQueued = false; void refreshRenderableBranchView(input.branchId) })
-    }
-    const offEvent = bridge.onEvent?.((raw) => { if ((raw as { requestId?: unknown }).requestId === requestId) scheduleRefresh() })
-    try {
-      const result = await bridge.start({
-        requestId,
-        selection: { providerInstanceId: input.identity.providerInstanceId, modelId: input.identity.modelId },
-        turn: { branchId: input.branchId, userBody: input.text },
-        messages,
-        stream: true,
-        existingHistoricalTurn: {
-          sourceRouteProvenanceId: input.identity.routeProvenanceId,
-          branchId: input.branchId,
-          questionId: input.questionId,
-          assistantId: input.assistantId,
-        },
-      }) as { ok?: boolean; error?: string }
-      if (!result?.ok) throw new Error(result?.error ?? 'compatible_runtime_failed')
-    } finally {
-      offEvent?.()
-      compatibleActiveRequestId.value = null
-      await refreshRenderableBranchView(input.branchId)
-    }
-  }
-
-  async function runCompatibleStreamFromSnapshot(input: Readonly<{
-    selection: CompatibleConfigurationSelection
-    routeProvenanceId: string
-    branchId: string
-    questionId: string
-    assistantId: string
-    text: string
-    contextMessages: readonly unknown[]
-  }>): Promise<void> {
-    const bridge = window.compatibleChat
-    if (!bridge?.start) throw new Error('Compatible chat runtime is unavailable.')
-    const requestId = randomId('compatible-answer-generation')
-    compatibleActiveRequestId.value = requestId
-    const messages = toCompatibleRequestMessages(input.contextMessages)
-    messages.push({ role: 'user', content: input.text })
-    let terminalState: 'completed' | 'failed' | 'cancelled' = 'completed'
-    let terminalError: string | null = null
-    const offEvent = bridge.onEvent?.((raw) => {
-      if ((raw as { requestId?: unknown }).requestId === requestId) void refreshRenderableBranchView(input.branchId)
-    })
-    try {
-      const result = await bridge.start({
-        requestId,
-        selection: input.selection,
-        turn: { branchId: input.branchId, userBody: input.text },
-        messages,
-        stream: true,
-        existingPreparedTurn: {
-          routeProvenanceId: input.routeProvenanceId,
-          branchId: input.branchId,
-          questionId: input.questionId,
-          assistantId: input.assistantId,
-        },
-      }) as { ok?: boolean; error?: string }
-      if (!result?.ok) {
-        terminalError = result?.error ?? 'compatible_runtime_failed'
-        terminalState = /abort|cancel/i.test(terminalError) ? 'cancelled' : 'failed'
-        throw new Error(terminalError)
-      }
-    } catch (error) {
-      terminalError = error instanceof Error ? error.message : String(error)
-      terminalState = /abort|cancel/i.test(terminalError) ? 'cancelled' : 'failed'
-      throw error
-    } finally {
-      await finalizeAssistantAnswerGeneration({
-        answerRootId: input.assistantId,
-        state: terminalState,
-        ...(terminalError ? { errorCode: terminalError, errorMessage: terminalError } : {}),
-      }).catch(() => undefined)
-      offEvent?.()
-      compatibleActiveRequestId.value = null
-      await refreshRenderableBranchView(input.branchId)
-    }
-  }
-
-  function getPreparedPdfAssetIds(prepared: PreparedOpenRouterSend): string[] {
-    return Array.from(
-      new Set(
-        prepared.sendPlan.attachmentPlans
-          .filter((plan) => (plan.eligibility === 'included' || plan.eligibility === 'warning') && plan.aiPayloadKind === 'pdf')
-          .map((plan) => plan.assetId)
+      openRouterImageEndpointSelection.value = await getOpenRouterImageEndpointSelectionV2(
+        currentOpenRouterImageEndpointSelectionInput(),
       )
+    } catch (error) {
+      openRouterImageEndpointSelectionError.value = error instanceof Error
+        ? error.message : 'GENERATION_V2_OPENROUTER_IMAGE_ENDPOINT_COMMAND_FAILED'
+    } finally {
+      openRouterImageEndpointSelectionLoading.value = false
+    }
+  }
+
+  async function chooseOpenRouterImageEndpoint(providerTag: string): Promise<void> {
+    if (openRouterImageEndpointSelectionLoading.value) return
+    openRouterImageEndpointSelectionLoading.value = true
+    openRouterImageEndpointSelectionError.value = null
+    try {
+      const selection = currentOpenRouterImageEndpointSelectionInput()
+      openRouterImageEndpointSelection.value = await selectOpenRouterImageEndpointV2({ ...selection, providerTag })
+    } catch (error) {
+      openRouterImageEndpointSelectionError.value = error instanceof Error
+        ? error.message : 'GENERATION_V2_OPENROUTER_IMAGE_ENDPOINT_COMMAND_FAILED'
+    } finally {
+      openRouterImageEndpointSelectionLoading.value = false
+    }
+  }
+
+  async function updateOpenRouterImageEndpointFreshness(input: Readonly<{
+    refreshAfterMs: number
+    hardExpireAfterMs: number
+    expectedRevision: number
+  }>): Promise<void> {
+    if (openRouterImageEndpointSelectionLoading.value) return
+    openRouterImageEndpointSelectionLoading.value = true
+    openRouterImageEndpointSelectionError.value = null
+    try {
+      await updateOpenRouterImageEndpointSettingsV2(input)
+      openRouterImageEndpointSelection.value = await getOpenRouterImageEndpointSelectionV2(
+        currentOpenRouterImageEndpointSelectionInput(),
+      )
+    } catch (error) {
+      openRouterImageEndpointSelectionError.value = error instanceof Error
+        ? error.message : 'GENERATION_V2_OPENROUTER_IMAGE_ENDPOINT_COMMAND_FAILED'
+    } finally {
+      openRouterImageEndpointSelectionLoading.value = false
+    }
+  }
+
+  function canonicalEndpointBase(value: string): string {
+    const url = new URL(value)
+    url.hash = ''; url.search = ''; url.pathname = url.pathname.replace(/\/+$/u, '') || '/'
+    return url.toString().replace(/\/$/u, '')
+  }
+
+  let genericLocalProfileSync: Promise<string> | null = null
+  function ensureGenerationV2GenericLocalProfileFromSavedSettings(): Promise<string> {
+    if (genericLocalProfileSync) return genericLocalProfileSync
+    const work = (async () => {
+      const baseUrl = canonicalEndpointBase(new URL(localEndpointChatUrl.value.trim()).origin)
+      const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
+        profile.providerId === 'generic_local' &&
+        profile.protocolContractId === 'generic-local-openai-chat-completions' &&
+        canonicalEndpointBase(profile.baseUrl) === baseUrl)
+      if (matches.length === 1) return matches[0].endpointProfileId
+      if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
+      const created = await createGenerationV2LocalProfile({
+        providerId: 'generic_local',
+        protocolContractId: 'generic-local-openai-chat-completions',
+        baseUrl,
+      })
+      return created.endpointProfileId
+    })()
+    genericLocalProfileSync = work
+    void work.then(
+      () => { if (genericLocalProfileSync === work) genericLocalProfileSync = null },
+      () => { if (genericLocalProfileSync === work) genericLocalProfileSync = null },
     )
+    return work
   }
 
-  function collectSentAssetIds(sendPlan: SendPlan | null | undefined): string[] {
-    if (!sendPlan) return []
-    return Array.from(new Set(sendPlan.includedAttachments.map((attachment) => attachment.assetId)))
+  function handleGenerationV2GenericLocalSettingsUpdated(): void {
+    if (!window.generationV2) return
+    void ensureGenerationV2GenericLocalProfileFromSavedSettings().catch((error) => {
+      loadError.value = error instanceof Error ? error.message : 'GENERATION_V2_LOCAL_PROFILE_SYNC_FAILED'
+    })
   }
 
-  function collectDfcAttachmentSendSnapshots(sendPlan: SendPlan | null | undefined): DfcAttachmentSendSnapshot[] {
-    if (!sendPlan) return []
-    const includedDraftAttachmentIds = new Set(
-      sendPlan.includedAttachments
-        .filter((attachment) => attachment.source === 'draft')
-        .map((attachment) => attachment.attachmentId)
-    )
-    return sendPlan.attachmentPlans
-      .filter((plan) => plan.source === 'draft' && includedDraftAttachmentIds.has(plan.attachmentId))
-      .filter((plan) => Array.isArray(plan.sendAssetRefs) && plan.sendAssetRefs.length > 0)
-      .filter((plan): plan is SendPlanAttachment & Readonly<{
-        semantic: Readonly<{
-          targetKind: DfcAttachmentSendSnapshot['targetKind']
-          sendStrategy: DfcAttachmentSendSnapshot['sendStrategy']
-        }>
-      }> => isDfcSnapshotTargetKind(plan.semantic.targetKind) && isDfcSnapshotSendStrategy(plan.semantic.sendStrategy))
-      .map((plan) => ({
-        attachmentId: plan.attachmentId,
-        assetId: plan.assetId,
-        targetKind: plan.semantic.targetKind,
-        sendStrategy: plan.semantic.sendStrategy,
-        sendAssetRefs: [...plan.sendAssetRefs],
-      }))
+  async function ensureGenerationV2LmStudioProfileFromSavedSettings(): Promise<string> {
+    if (!lmStudioChatConfig.value.enabled || lmStudioChatConfig.value.chatMode !== 'openai_compatible' ||
+        lmStudioChatConfig.value.openAICompatiblePreferredEndpoint !== 'responses') {
+      throw new Error('GENERATION_V2_LMSTUDIO_OPENRESPONSES_NOT_SELECTED')
+    }
+    const baseUrl = canonicalEndpointBase(lmStudioChatConfig.value.endpointUrl.trim())
+    const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
+      profile.providerId === 'lmstudio' && profile.protocolContractId === 'lmstudio-openresponses' &&
+      canonicalEndpointBase(profile.baseUrl) === baseUrl)
+    if (matches.length === 1) return matches[0].endpointProfileId
+    if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
+    return (await createGenerationV2LocalProfile({
+      providerId: 'lmstudio', protocolContractId: 'lmstudio-openresponses', baseUrl,
+    })).endpointProfileId
   }
 
-  function isDfcSnapshotTargetKind(value: string): value is DfcAttachmentSendSnapshot['targetKind'] {
-    return value === 'original_file'
-      || value === 'plain_text'
-      || value === 'markdown'
-      || value === 'code'
-      || value === 'table_markdown'
-      || value === 'pdf_attachment'
+  async function ensureGenerationV2OllamaProfileFromSavedSettings(modelId: string): Promise<string> {
+    if (!ollamaChatConfig.value.enabled || ollamaChatConfig.value.chatMode !== 'native_rest' ||
+        ollamaChatConfig.value.nativeRestPreferredEndpoint !== 'chat') {
+      throw new Error('GENERATION_V2_OLLAMA_NATIVE_CHAT_NOT_SELECTED')
+    }
+    if (ollamaChatConfig.value.thinkingControl === null || ollamaChatConfig.value.toolsSupported === null) {
+      throw new Error('GENERATION_V2_OLLAMA_PROFILE_CAPABILITY_REQUIRED')
+    }
+    const baseUrl = canonicalEndpointBase(ollamaChatConfig.value.endpointUrl.trim())
+    const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
+      profile.providerId === 'ollama' && profile.protocolContractId === 'ollama-chat-v1' &&
+      canonicalEndpointBase(profile.baseUrl) === baseUrl && profile.protocolConfig.modelId === modelId &&
+      profile.protocolConfig.thinkingControl === ollamaChatConfig.value.thinkingControl &&
+      profile.protocolConfig.tools === ollamaChatConfig.value.toolsSupported)
+    if (matches.length === 1) return matches[0].endpointProfileId
+    if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
+    return (await createGenerationV2LocalProfile({
+      providerId: 'ollama', protocolContractId: 'ollama-chat-v1', baseUrl,
+      protocolConfig: { modelId, thinkingControl: ollamaChatConfig.value.thinkingControl, tools: ollamaChatConfig.value.toolsSupported },
+    })).endpointProfileId
   }
 
-  function isDfcSnapshotSendStrategy(value: string): value is DfcAttachmentSendSnapshot['sendStrategy'] {
-    return value === 'text_in_prompt' || value === 'file_attachment'
+  function handleGenerationV2LmStudioSettingsUpdated(): void {
+    if (!window.generationV2) return
+    void ensureGenerationV2LmStudioProfileFromSavedSettings().catch(() => {
+      if (shouldLogDebug()) console.warn('[ui-app] V2_LM_STUDIO_PROFILE_SYNC_FAILED')
+    })
+  }
+
+  function handleGenerationV2OllamaSettingsUpdated(): void {
+    const selection = resolveCurrentRuntimeSelectionForSend()
+    if (!window.generationV2 || selection.state !== 'selected' ||
+        selection.providerKey !== 'ollama_local') return
+    const modelId = normalizeRuntimeModelId(selection.modelId ?? selection.modelKey ?? selection.nativeModelId)
+    if (!modelId) return
+    void ensureGenerationV2OllamaProfileFromSavedSettings(modelId).catch(() => {
+      if (shouldLogDebug()) console.warn('[ui-app] V2_OLLAMA_PROFILE_SYNC_FAILED')
+    })
+  }
+
+  async function resolveGenerationV2LocalProfileForSend(route: GenerationV2Route, modelId: string): Promise<string> {
+    if (route.kind === 'lmstudio_openresponses' &&
+        (lmStudioChatConfig.value.chatMode !== 'openai_compatible' ||
+         lmStudioChatConfig.value.openAICompatiblePreferredEndpoint !== 'responses')) {
+      throw new Error('GENERATION_V2_LMSTUDIO_OPENRESPONSES_NOT_SELECTED')
+    }
+    if (route.kind === 'ollama_chat' &&
+        (ollamaChatConfig.value.chatMode !== 'native_rest' || ollamaChatConfig.value.nativeRestPreferredEndpoint !== 'chat')) {
+      throw new Error('GENERATION_V2_OLLAMA_NATIVE_CHAT_NOT_SELECTED')
+    }
+    if (route.kind === 'ollama_chat' &&
+        (ollamaChatConfig.value.thinkingControl === null || ollamaChatConfig.value.toolsSupported === null)) {
+      throw new Error('GENERATION_V2_OLLAMA_PROFILE_CAPABILITY_REQUIRED')
+    }
+    const expectation = route.kind === 'lmstudio_openresponses'
+      ? { providerId: 'lmstudio', protocol: 'lmstudio-openresponses', baseUrl: lmStudioChatConfig.value.endpointUrl }
+      : route.kind === 'generic_local_openai_chat'
+        ? { providerId: 'generic_local', protocol: 'generic-local-openai-chat-completions', baseUrl: new URL(localEndpointChatUrl.value).origin }
+        : route.kind === 'ollama_chat'
+          ? { providerId: 'ollama', protocol: 'ollama-chat-v1', baseUrl: ollamaChatConfig.value.endpointUrl }
+          : null
+    if (!expectation) throw new Error('GENERATION_V2_LOCAL_PROFILE_ROUTE_INVALID')
+    const baseUrl = canonicalEndpointBase(String(expectation.baseUrl ?? '').trim())
+    const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
+      profile.providerId === expectation.providerId && profile.protocolContractId === expectation.protocol &&
+      canonicalEndpointBase(profile.baseUrl) === baseUrl && (route.kind !== 'ollama_chat' ||
+        profile.protocolConfig.modelId === modelId &&
+        profile.protocolConfig.thinkingControl === ollamaChatConfig.value.thinkingControl &&
+        profile.protocolConfig.tools === ollamaChatConfig.value.toolsSupported))
+    if (route.kind === 'generic_local_openai_chat' && matches.length === 0) {
+      throw new Error('GENERATION_V2_LOCAL_PROFILE_REQUIRED')
+    }
+    if (matches.length !== 1) throw new Error(matches.length === 0
+      ? 'GENERATION_V2_LOCAL_PROFILE_REQUIRED'
+      : 'GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
+    return matches[0].endpointProfileId
+  }
+
+  async function onSendUnlocked() {
+    if (isRunning.value || isDraftInteractionLocked.value) return
+    const text = draft.value.trim()
+    if (!text && draftAttachmentRecords.value.length === 0) return
+    const compatibleSelection = activeSessionConfig.value.model.compatibleSelection
+    const selection = compatibleSelection ? null : resolveCurrentRuntimeSelectionForSend()
+    const selectedRuntime = selection?.state === 'selected' ? selection : null
+    if (!compatibleSelection && !selectedRuntime) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
+    const providerId: RuntimeProviderKey = compatibleSelection ? 'local_endpoint' : selectedRuntime!.providerId
+    const modelId = normalizeRuntimeModelId(compatibleSelection?.modelId ?? selectedRuntime?.modelId ?? selectedRuntime?.modelKey ?? selectedRuntime?.nativeModelId)
+    if (!modelId) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
+    const view = generationV2BranchView.value
+    if (!view || view.branchId !== activeBranchId.value || view.conversationId !== activeConvoId.value) {
+      throw new Error('GENERATION_V2_BRANCH_PROJECTION_STALE')
+    }
+    await flushDraftPersistence({ failOnError: true })
+    const composerDraft = generationV2ComposerDraft.value?.conversationId === view.conversationId
+      ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId)
+    const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
+    const route: GenerationV2Route = compatibleSelection ? { kind: 'openai_chat_compatible' }
+      : providerId === OPENROUTER_PROVIDER_ID && resolveImageGenerationConfigForRequest(providerId)
+        ? { kind: 'openrouter_images' }
+        : generationV2RouteForProvider(providerId, modelId)
+    if ((route.kind === 'openrouter_images' || route.kind === 'gemini_interactions_image') && !text) {
+      throw new Error('GENERATION_V2_IMAGE_PROMPT_REQUIRED')
+    }
+    await persistCurrentGenerationV2SemanticLayer(providerId, view.conversationId)
+    const endpointProfileId = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
+      ? await resolveGenerationV2LocalProfileForSend(route, modelId) : null
+    const commandModelId = route.kind === 'gemini_interactions_image'
+      ? normalizeGeminiImageGenerationModelId(modelId) : modelId
+    const operationId = crypto.randomUUID()
+    const sendingFromTemplate = view.conversationId === systemTemplateSnapshot.value?.conversation.id
+    const result = await submitGenerationV2Initial(route, route.kind === 'openrouter_images'
+      ? { operationId, branchId: view.branchId, expectedHeadMessageId: view.headMessageId,
+          prompt: text, modelId: commandModelId, requestedProviderTag: null, commandAttachments }
+      : route.kind === 'gemini_interactions_image'
+        ? { operationId, branchId: view.branchId, expectedHeadMessageId: view.headMessageId,
+            prompt: text, modelId: commandModelId, commandAttachments }
+      : { operationId, branchId: view.branchId, expectedHeadMessageId: view.headMessageId,
+          userBody: text, modelId: commandModelId, commandAttachments,
+          ...(compatibleSelection ? { providerInstanceId: compatibleSelection.providerInstanceId, extraBody: compatibleSelection.extraBody } : {}),
+          ...(endpointProfileId === null ? {} : { endpointProfileId }) })
+    if (!result.ok) throw new Error(result.code)
+    if (sendingFromTemplate) {
+      systemTemplateSnapshot.value = await getSystemChatTemplate()
+      activeConvoId.value = view.conversationId
+      activeBranchId.value = view.branchId
+      projectsOnlyWorkspace.value = false
+      await refreshConvos()
+      await refreshBranchesForActiveConvo()
+    }
+    try {
+      generationV2ComposerDraft.value = await clearCommittedGenerationV2ComposerDraft({
+        conversationId: view.conversationId, expectedRevision: composerDraft.revision,
+      })
+      draft.value = generationV2ComposerDraft.value.draftText
+      await refreshDraftAttachmentViewModels()
+    } catch (error) {
+      if (shouldLogDebug()) console.warn('[ui-app] COMMITTED_V2_SEND_DRAFT_CLEAR_FAILED')
+    }
+    await refreshRenderableBranchView(view.branchId)
+    if (!compatibleSelection) void recordRecentModelUsage(modelId, providerId)
   }
 
   async function onForkFromHead() {
@@ -10997,18 +6983,11 @@ export function useAppChatAppLogic() {
     if (!convoId || !branch?.id || !branch.headMessageId) return
 
     try {
-      const created = await createBranchFromMessage({
-        sourceBranchId: branch.id,
-        // Fork base is the branch tip (definition), not a UI cursor.
-        baseMessageId: branch.headMessageId,
-        copyChoices: true,
-        copyFilters: true,
-        requireOnSourcePath: true,
-      })
+      const created = await forkGenerationV2Branch(branch.id, branch.headMessageId, null)
       await refreshBranchesForActiveConvo()
-      activeBranchId.value = created.id
+      activeBranchId.value = created.branchId
       resetCandidatesCache()
-      await refreshRenderableBranchView(created.id)
+      await refreshRenderableBranchView(created.branchId)
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
     }
@@ -11022,9 +7001,9 @@ export function useAppChatAppLogic() {
     if (branches.value.length <= 1) return
 
     try {
-      await deleteBranch(bid)
+      await deleteGenerationV2Branch(bid)
       await refreshBranchesForActiveConvo()
-      const next = branches.value[0] ?? (await ensureDefaultBranch(convoId, { name: 'Main' }))
+      const next = branches.value[0] ?? (await ensureGenerationV2BranchForConversation(convoId))
       activeBranchId.value = next.id
       resetCandidatesCache()
       await refreshRenderableBranchView(next.id)
@@ -11033,253 +7012,85 @@ export function useAppChatAppLogic() {
     }
   }
 
-  async function onCandidateShift(questionId: string, delta: -1 | 1) {
-    if (isDraftInteractionLocked.value) return
+  async function onMessageCandidateShift(messageId: string, delta: -1 | 1) {
     const bid = activeBranchId.value
-    if (!bid) return
-    if (activeAssistantMessageId.value) return
-
-    const ordered = getOrderedCandidatesOldToNew(questionId)
-    if (!ordered) {
-      if (import.meta.env?.DEV) {
-        console.log('[ui-app] onCandidateShift: no cached candidates, triggering load', { questionId })
-      }
-      await ensureCandidatesLoaded(questionId)
-      return
-    }
-
-    const current = turnFiltersByQuestionId.value.get(questionId)
-    const chosen = current?.chosenAnswerRootId
-    const idx = chosen ? ordered.findIndex((c) => c.answerRootId === chosen) : -1
-    const targetIndex = idx + delta
-
-    if (import.meta.env?.DEV) {
-      console.log('[ui-app] onCandidateShift', {
-        questionId,
-        delta,
-        orderedCount: ordered.length,
-        orderedIds: ordered.map(c => c.answerRootId),
-        chosenAnswerRootId: chosen,
-        currentIndex: idx,
-        targetIndex,
-        canShift: idx >= 0 && targetIndex >= 0 && targetIndex < ordered.length,
-      })
-    }
-
-    if (idx < 0 || targetIndex < 0 || targetIndex >= ordered.length) return
-
-    const target = ordered[targetIndex]
+    const mid = String(messageId ?? '').trim()
+    const conversationId = activeConvoId.value
+    if (!bid || !mid || !conversationId) return
+    const sourceRevision = navigationRevision.value
+    const key = messageCandidateCacheKey(bid, mid)
     try {
-      if (import.meta.env?.DEV) {
-        console.log('[ui-app] switchCandidate', {
-          branchId: bid,
-          questionId,
-          from: `${idx + 1}/${ordered.length}`,
-          to: `${targetIndex + 1}/${ordered.length}`,
-          oldAnswerRootId: chosen,
-          newAnswerRootId: target.answerRootId,
-        })
-      }
-      await switchCandidate(bid, questionId, target.answerRootId)
-      await refreshRenderableBranchView(bid)
-    } catch (err: any) {
-      loadError.value = err?.message ? String(err.message) : String(err)
-      await refreshRenderableBranchView(bid)
+      const navigation = await getGenerationV2MessageCandidateNavigation(bid, mid)
+      if (activeConvoId.value !== conversationId || activeBranchId.value !== bid ||
+          navigationRevision.value !== sourceRevision) return
+      messageCandidateNavigationCache.value.set(key, navigation)
+      messageCandidateNavigationCache.value = new Map(messageCandidateNavigationCache.value)
+      const target = delta < 0 ? navigation.previous : navigation.next
+      if (!target) return
+      await navigateToBranchMessage(
+        target.branchId,
+        target.messageId,
+        conversationId,
+        sourceRevision,
+      )
+    } catch (error) {
+      loadError.value = error instanceof Error ? error.message : String(error)
     }
-  }
-
-  async function onQuestionCandidateShift(questionId: string, delta: -1 | 1) {
-    if (isDraftInteractionLocked.value) return
-    const bid = activeBranchId.value
-    if (!bid) return
-    if (activeAssistantMessageId.value) return
-
-    const qid = String(questionId ?? '').trim()
-    const meta = qid ? messageMetaById.value.get(qid) : null
-    if (!qid || !meta || meta.role !== 'user') return
-
-    const baseMessageId = meta.parentId ?? null
-    const ordered = getOrderedQuestionCandidatesOldToNew(baseMessageId)
-    if (!ordered) {
-      await ensureQuestionCandidatesLoadedForSlot(baseMessageId)
-      return
-    }
-
-    const idx = ordered.findIndex((c) => c.questionId === qid)
-    const targetIndex = idx + delta
-    if (idx < 0 || targetIndex < 0 || targetIndex >= ordered.length) return
-    const target = ordered[targetIndex]
-
-    try {
-      const res = await switchQuestionCandidate(bid, baseMessageId, target.questionId)
-      // Branch tip update (definition): backend returns the new insertion point after switching question candidate.
-      patchBranch(bid, { headMessageId: res.headMessageId, updatedAt: Date.now() })
-      await refreshRenderableBranchView(bid)
-    } catch (err: any) {
-      loadError.value = err?.message ? String(err.message) : String(err)
-      await refreshRenderableBranchView(bid)
-    }
-  }
-
-  function acquireAnswerGenerationOperationId(input: Readonly<{
-    action: 'regenerate' | 'retry_replace' | 'retry_as_new'
-    branchId: string
-    questionId: string
-    targetAnswerRootId?: string | null
-  }>): Readonly<{ id: string; storageKey: string }> {
-    const storageKey = `starverse.answerGeneration.pending:${input.action}:${input.branchId}:${input.questionId}:${input.targetAnswerRootId ?? ''}`
-    const stored = globalThis.localStorage?.getItem(storageKey)?.trim()
-    if (stored) return { id: stored, storageKey }
-    const id = randomId(`answer-op-${input.action}`)
-    globalThis.localStorage?.setItem(storageKey, id)
-    return { id, storageKey }
-  }
-
-  function releaseAnswerGenerationOperationId(lease: Readonly<{ id: string; storageKey: string }>): void {
-    if (globalThis.localStorage?.getItem(lease.storageKey) === lease.id) globalThis.localStorage.removeItem(lease.storageKey)
   }
 
   async function onRegenerateFromQuestion(questionId: string) {
-    if (isRunning.value) return
-    if (isDraftInteractionLocked.value) return
-    if (activeAssistantMessageId.value) return
-
-    const convoId = activeConvoId.value
+    if (isRunning.value || isDraftInteractionLocked.value || activeAssistantMessageId.value) return
     const branch = activeBranch.value
     const qid = String(questionId ?? '').trim()
-    if (!convoId || !branch?.id || !qid) return
-
-    const questionText = getUserQuestionText(qid)
-    if (!questionText) return
-
-    loadError.value = null
+    const chosen = turnFiltersByQuestionId.value.get(qid)?.chosenAnswerRootId
+    if (!branch?.id || !qid || !chosen) return
     const compatibleSelection = activeSessionConfig.value.model.compatibleSelection
-    if (compatibleSelection) {
-      if ((historyAttachmentViewModelsByMessageId.value[qid] ?? []).length > 0) {
-        loadError.value = 'Compatible regenerate with attachments is not enabled for this model contract.'
-        return
-      }
-      const eligibility = await window.compatibleChat?.preflight?.(compatibleSelection)
-      if (!eligibility?.ok) {
-        loadError.value = eligibility?.code ?? 'compatible_preflight_blocked'
-        return
-      }
-      const contextMessages = await buildContextMessagesBeforeQuestion(branch.id, qid)
-      let committedCompatibleAnswerId: string | null = null
-      const operationLease = acquireAnswerGenerationOperationId({ action: 'regenerate', branchId: branch.id, questionId: qid })
-      try {
-        const snapshot = await resolveCompatibleGenerationSnapshot({ questionId: qid, selection: compatibleSelection })
-        const regen = await regenerateQuestionWithCurrentConfig({
-          operationId: operationLease.id, branchId: branch.id, questionId: qid, snapshot,
-          compatibleExecutionPins: compatibleSelection,
-        })
-        committedCompatibleAnswerId = regen.newAnswerRootId
-        if (!await claimAssistantAnswerGenerationStream(regen.operationId, regen.newAnswerRootId)) return
-        releaseAnswerGenerationOperationId(operationLease)
-        if (!regen.compatibleRouteProvenanceId) throw new Error('compatible_route_not_prepared')
-        invalidateCandidatesForQuestion(qid)
-        patchBranch(branch.id, { headMessageId: regen.headMessageId, updatedAt: Date.now() })
-        await refreshRenderableBranchView(branch.id)
-        await runCompatibleStreamFromSnapshot({
-          selection: compatibleSelection,
-          routeProvenanceId: regen.compatibleRouteProvenanceId,
-          branchId: branch.id,
-          questionId: qid,
-          assistantId: regen.newAnswerRootId,
-          text: questionText,
-          contextMessages,
-        })
-      } catch (error) {
-        if (committedCompatibleAnswerId) {
-          await finalizeAssistantAnswerGeneration({
-            answerRootId: committedCompatibleAnswerId, state: 'failed', errorCode: 'stream_setup_failed',
-            errorMessage: error instanceof Error ? error.message : String(error),
-          }).catch(() => undefined)
-        }
-        loadError.value = error instanceof Error ? error.message : String(error)
-        await refreshRenderableBranchView(branch.id)
-      }
-      return
-    }
-    const currentSelection = resolveCurrentRuntimeSelectionForSend()
-    if (currentSelection.state !== 'selected') return
-    const currentModelId = normalizeRuntimeModelId(currentSelection.modelId ?? currentSelection.modelKey ?? currentSelection.nativeModelId)
-    if (!currentModelId) return
-    const runtimeSelection: AssistantTurnRuntimeSelection = { providerId: currentSelection.providerId, modelId: currentModelId }
-    if (!await preflightAssistantTurnRuntimeSelection({ selection: runtimeSelection, text: questionText })) return
-    if (!await ensureHistoricalAttachmentsRoutableForSelection({
-      selection: runtimeSelection,
-      userMessageId: qid,
-      actionLabel: 'Regenerate from question',
-    })) return
-    const contextMessages = await buildContextMessagesBeforeQuestion(branch.id, qid)
-    let replayPrepared: PreparedOpenRouterReplay | null = null
-    if (runtimeSelection.providerId === OPENROUTER_PROVIDER_ID) {
-      try {
-        replayPrepared = await prepareReplayForHistoricalUserMessage({
-          branchId: branch.id,
-          userMessageId: qid,
-          userText: questionText,
-          modelId: runtimeSelection.modelId,
-        })
-        const confirmationRequest = buildAttachmentConfirmationRequestFromReplay('regenerate', replayPrepared)
-        if (confirmationRequest) {
-          const result = await requestAttachmentConfirmation(confirmationRequest)
-          if (!result.confirmed) return
-          replayPrepared = await prepareReplayForHistoricalUserMessage({
-            branchId: branch.id,
-            userMessageId: qid,
-            userText: questionText,
-            modelId: runtimeSelection.modelId,
-            attachmentDecisions: result.decisions,
-          })
-        } else if (replayPrepared?.status === 'needs_confirmation') {
-          throw new Error(buildReplayBlockedMessage(replayPrepared))
-        }
-        if (!replayPrepared || replayPrepared.status !== 'sendable') {
-          throw new Error(buildReplayBlockedMessage(replayPrepared))
-        }
-      } catch (err: any) {
-        loadError.value = err?.message ? String(err.message) : String(err)
-        return
-      }
-    }
-
-    let committedAnswerId: string | null = null
-    const operationLease = acquireAnswerGenerationOperationId({ action: 'regenerate', branchId: branch.id, questionId: qid })
+    const currentSelection = compatibleSelection ? null : resolveCurrentRuntimeSelectionForSend()
+    const selectedRuntime = currentSelection?.state === 'selected' ? currentSelection : null
+    if (!compatibleSelection && !selectedRuntime) return
+    const modelId = normalizeRuntimeModelId(compatibleSelection?.modelId ?? selectedRuntime?.modelId ?? selectedRuntime?.modelKey ?? selectedRuntime?.nativeModelId)
+    if (!modelId) return
+    loadError.value = null
     try {
-      const snapshot = await resolveCurrentGenerationSnapshot({ convoId, questionId: qid, runtimeSelection })
-      const regen = await regenerateQuestionWithCurrentConfig({
-        operationId: operationLease.id,
-        branchId: branch.id,
-        questionId: qid,
-        snapshot,
-      })
-      committedAnswerId = regen.newAnswerRootId
-      if (!await claimAssistantAnswerGenerationStream(regen.operationId, regen.newAnswerRootId)) return
-      releaseAnswerGenerationOperationId(operationLease)
-      invalidateCandidatesForQuestion(qid)
-      patchBranch(branch.id, { headMessageId: regen.headMessageId, updatedAt: Date.now() })
-      await refreshRenderableBranchView(branch.id)
-      await runAssistantStreamFromSnapshot({
-        convoId,
-        branchId: branch.id,
-        questionId: qid,
-        questionText,
-        assistantMessageId: regen.newAnswerRootId,
-        assistantSeq: regen.newAssistantSeq,
-        generationSnapshot: regen.snapshot,
-        contextMessages,
-        replayPrepared,
-      })
-    } catch (err: any) {
-      if (committedAnswerId) {
-        await finalizeAssistantAnswerGeneration({
-          answerRootId: committedAnswerId, state: 'failed', errorCode: 'stream_setup_failed',
-          errorMessage: err?.message ? String(err.message) : String(err),
-        }).catch(() => undefined)
+      const view = generationV2BranchView.value
+      if (!view || view.branchId !== branch.id || view.conversationId !== activeConvoId.value) throw new Error('GENERATION_V2_BRANCH_PROJECTION_STALE')
+      const sourceTurn = view.turns.find((turn) => turn.questionId === qid)
+      if (!sourceTurn) throw new Error('GENERATION_V2_BRANCH_PROJECTION_STALE')
+      const sourceNavigationRevision = navigationRevision.value
+      const sourceConversationId = view.conversationId
+      const sourceBranchId = view.branchId
+      const nativeProviderId: RuntimeProviderKey = compatibleSelection ? 'local_endpoint' : selectedRuntime!.providerId
+      const route: GenerationV2Route = compatibleSelection ? { kind: 'openai_chat_compatible' }
+        : nativeProviderId === OPENROUTER_PROVIDER_ID && resolveImageGenerationConfigForRequest(nativeProviderId)
+          ? { kind: 'openrouter_images' } : generationV2RouteForProvider(nativeProviderId, modelId)
+      await persistCurrentGenerationV2SemanticLayer(nativeProviderId, view.conversationId)
+      const endpointProfileId = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
+        ? await resolveGenerationV2LocalProfileForSend(route, modelId) : null
+      const operationId = crypto.randomUUID()
+      const common = { operationId, clientActionId: operationId, sourceBranchId: branch.id, questionId: qid,
+        sourceAnswerId: chosen, expectedHeadMessageId: view.headMessageId, modelId: route.kind === 'gemini_interactions_image'
+          ? normalizeGeminiImageGenerationModelId(modelId) : modelId }
+      const composerDraft = generationV2ComposerDraft.value?.conversationId === view.conversationId
+        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId)
+      const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
+      const result = await submitGenerationV2Regenerate(route, route.kind === 'openrouter_images'
+        ? { ...common, requestedProviderTag: null, commandAttachments }
+        : route.kind === 'gemini_interactions_image'
+          ? { ...common, commandAttachments }
+        : { ...common, commandAttachments, ...(compatibleSelection ? { providerInstanceId: compatibleSelection.providerInstanceId, extraBody: compatibleSelection.extraBody } : {}),
+          ...(endpointProfileId === null ? {} : { endpointProfileId }) })
+      if (!result.ok) throw new Error(result.code)
+      invalidateMessageCandidateNavigation()
+      if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
+      const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
+        activeConvoId.value === sourceConversationId && activeBranchId.value === sourceBranchId
+      if (shouldFollow) {
+        activeBranchId.value = result.branch.branchId
+        resetCandidatesCache()
+        await refreshRenderableBranchView(result.branch.branchId)
       }
-      loadError.value = err?.message ? String(err.message) : String(err)
+    } catch (error) {
+      loadError.value = error instanceof Error ? error.message : String(error)
       await refreshRenderableBranchView(branch.id)
     }
   }
@@ -11293,15 +7104,20 @@ export function useAppChatAppLogic() {
     const convoId = String(activeConvoId.value ?? '').trim()
     if (!convoId) return
     try {
-      const previousDraft = await restoreConversationDraft(convoId)
-      const cloned = await cloneConversationDraftFromMessage({
-        conversationId: convoId,
-        sourceMessageId: qid,
-      })
-      applyDraftPersistenceStateFromDraft(cloned)
+      await flushDraftPersistence({ failOnError: true })
+      const previousDraft = generationV2ComposerDraft.value?.conversationId === convoId
+        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+      const turn = generationV2BranchView.value?.turns.find((candidate) => candidate.questionId === qid)
+      const chosen = turn?.answers.find((answer) => answer.answerRootId === turn.chosenAnswerRootId)
+      if (!turn || !chosen) throw new Error('GENERATION_V2_EDIT_TARGET_STALE')
+      const cloned = await replaceGenerationV2ComposerDraftFromAnswerSnapshot({ conversationId: convoId,
+        expectedRevision: previousDraft.revision, questionId: qid, answerRootId: chosen.answerRootId, draftText: turn.questionBody })
+      generationV2ComposerDraft.value = cloned
+      applyDraftPersistenceState({ draftMode: cloned.draftMode, editingSourceMessageId: cloned.editingSourceQuestionId })
       draft.value = cloned.draftText
-      editRestoredDraftAttachmentAssetIds.value = new Set(cloned.attachedAssetIds.map((assetId) => String(assetId ?? '').trim()).filter(Boolean))
-      await refreshDraftAttachmentViewModels({ restoredDraft: cloned })
+      editRestoredDraftAttachmentAssetIds.value = new Set(cloned.attachments.map((attachment) =>
+        attachment.kind === 'managed_file' ? attachment.assetId : attachment.referenceId))
+      await refreshDraftAttachmentViewModels()
       questionEditSession.value = { questionId: qid, previousDraft }
     } catch (err) {
       editRestoredDraftAttachmentAssetIds.value = new Set()
@@ -11316,22 +7132,24 @@ export function useAppChatAppLogic() {
     questionEditSession.value = null
     if (!session) return
     try {
-      await restoreDraftSnapshot(session.previousDraft)
+      const current = generationV2ComposerDraft.value?.conversationId === session.previousDraft.conversationId
+        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(session.previousDraft.conversationId)
+      generationV2ComposerDraft.value = await replaceGenerationV2ComposerDraft({
+        conversationId: session.previousDraft.conversationId, expectedRevision: current.revision,
+        draftText: session.previousDraft.draftText, draftMode: session.previousDraft.draftMode,
+        editingSourceQuestionId: session.previousDraft.editingSourceQuestionId,
+        attachments: projectGenerationV2ComposerAttachments(session.previousDraft),
+      })
+      draft.value = generationV2ComposerDraft.value.draftText
+      applyDraftPersistenceState({ draftMode: generationV2ComposerDraft.value.draftMode,
+        editingSourceMessageId: generationV2ComposerDraft.value.editingSourceQuestionId })
+      await refreshDraftAttachmentViewModels()
     } catch (err) {
       setAttachmentFeedback('error', err instanceof Error ? err.message : 'Failed to restore draft after cancel.')
     }
   }
 
-  function canReplaceQuestionInUi(questionId: string): boolean {
-    const qid = String(questionId ?? '').trim()
-    if (!qid) return false
-    const meta = messageMetaById.value.get(qid)
-    if (!meta || meta.role !== 'user') return false
-    const lastQ = questionTurnOrder.value.length > 0 ? questionTurnOrder.value[questionTurnOrder.value.length - 1] : null
-    return lastQ === qid
-  }
-
-  async function submitQuestionEdit(mode: 'new' | 'replace') {
+  async function submitQuestionEdit() {
     if (isRunning.value) return
     if (isDraftInteractionLocked.value) return
     if (activeAssistantMessageId.value) return
@@ -11342,170 +7160,69 @@ export function useAppChatAppLogic() {
     if (!convoId || !branch?.id || !editSession) return
 
     const oldQuestionId = String(editSession.questionId ?? '').trim()
-    const useDraftClone = isEditingDraftForMessage(oldQuestionId)
     const newText = draft.value.trim()
     if (!oldQuestionId || !newText) return
 
-    const baseMessageId = messageMetaById.value.get(oldQuestionId)?.parentId ?? null
-    if (mode === 'replace' && !canReplaceQuestionInUi(oldQuestionId)) return
-
-    loadError.value = null
-    const historicalAnswerId = turnFiltersByQuestionId.value.get(oldQuestionId)?.chosenAnswerRootId
-    const compatibleIdentity = historicalAnswerId
-      ? await resolveCompatibleHistoricalIdentity({ kind: 'choice_message', messageId: historicalAnswerId })
-      : await resolveCompatibleHistoricalIdentity({ kind: 'request_message', messageId: oldQuestionId })
-    if (compatibleIdentity) {
-      if (draftAttachmentRecords.value.length > 0) {
-        loadError.value = 'Compatible edit resend with attachments is not enabled for this model contract.'
-        return
-      }
-      try {
-        const res = mode === 'replace'
-          ? await retryReplaceQuestion(branch.id, oldQuestionId, newText)
-          : await forkQuestion(branch.id, oldQuestionId, newText)
-        invalidateQuestionCandidatesForSlot(baseMessageId)
-        patchBranch(branch.id, { headMessageId: res.assistantId, updatedAt: Date.now() })
-        const built = await buildContextForBranchInternalMessages(branch.id, { limit: 200, debug: !!import.meta.env?.DEV })
-        const rowsBefore = built.rawMessages.filter((message) => typeof message.seq === 'number' && message.seq < res.newQuestionSeq)
-        const contextMessages = toInternalMessagesFromBranchPath(rowsBefore as any)
-        questionEditSession.value = null
-        draft.value = ''
-        await refreshRenderableBranchView(branch.id)
-        await startCompatibleExistingHistorical({
-          identity: compatibleIdentity, branchId: branch.id, questionId: res.newQuestionId,
-          assistantId: res.assistantId, text: newText, contextMessages,
-        })
-      } catch (err) {
-        loadError.value = err instanceof Error ? err.message : 'compatible_runtime_failed'
-        await refreshRenderableBranchView(branch.id)
-      }
+    const v2View = generationV2BranchView.value
+    const sourceTurn = v2View?.turns.find((turn) => turn.questionId === oldQuestionId) ?? null
+    if (!v2View || v2View.branchId !== branch.id || !sourceTurn || !v2View.headMessageId) {
+      loadError.value = 'GENERATION_V2_EDIT_TARGET_STALE'
       return
     }
-    const runtimeSelection = resolveHistoricalTurnRuntimeSelection({ questionId: oldQuestionId })
-    if (!runtimeSelection) {
-      loadError.value = 'This historical turn has no persisted provider route and cannot be resent.'
-      return
-    }
-    if (!await preflightAssistantTurnRuntimeSelection({ selection: runtimeSelection, text: newText })) return
-    if (runtimeSelection.providerId !== OPENROUTER_PROVIDER_ID && draftAttachmentRecords.value.length > 0) {
-      const message = `Edit question resend with attachments is not available for ${providerDisplayName(runtimeSelection.providerId)} yet.`
-      loadError.value = message
-      setAttachmentFeedback('error', message)
-      return
-    }
-    let replayPreparedForEdit: PreparedOpenRouterReplay | null = null
-    let confirmedAttachmentDecisions: AttachmentDecision[] = []
-    if (!useDraftClone) {
-      loadError.value = 'Edit Question fallback path is blocked: historical attachments could not be restored into draft for current replay.'
-      setAttachmentFeedback('error', '无法恢复历史附件，已阻断本次编辑重发（避免静默纯文本发送）。')
-      return
-    }
-
-    const isOpenRouterRuntime = runtimeSelection.providerId === OPENROUTER_PROVIDER_ID
-    const modelId = isOpenRouterRuntime ? runtimeSelection.modelId : DEFAULT_OPENROUTER_MODEL_ID
-    const baseUrl = isOpenRouterRuntime ? await getOpenRouterBaseUrl() : null
-    let historyMessageIdsForGate: string[] = []
+    const compatibleSelection = activeSessionConfig.value.model.compatibleSelection
+    const currentSelection = compatibleSelection ? null : resolveCurrentRuntimeSelectionForSend()
+    const selectedRuntime = currentSelection?.state === 'selected' ? currentSelection : null
+    if (!compatibleSelection && !selectedRuntime) { loadError.value = 'GENERATION_V2_MODEL_SELECTION_REQUIRED'; return }
+    const v2ProviderId: RuntimeProviderKey = compatibleSelection ? 'local_endpoint' : selectedRuntime!.providerId
+    const v2ModelId = normalizeRuntimeModelId(compatibleSelection?.modelId ?? selectedRuntime?.modelId ?? selectedRuntime?.modelKey ?? selectedRuntime?.nativeModelId)
+    if (!v2ModelId) { loadError.value = 'GENERATION_V2_MODEL_SELECTION_REQUIRED'; return }
+    const v2Route: GenerationV2Route = compatibleSelection ? { kind: 'openai_chat_compatible' }
+      : v2ProviderId === OPENROUTER_PROVIDER_ID && resolveImageGenerationConfigForRequest(v2ProviderId)
+        ? { kind: 'openrouter_images' } : generationV2RouteForProvider(v2ProviderId, v2ModelId)
     try {
-      const built = await buildContextForBranchInternalMessages(branch.id, { limit: 200, debug: !!import.meta.env?.DEV })
-      historyMessageIdsForGate = built.rawMessages.map((message) => message.id)
-    } catch {
-      historyMessageIdsForGate = []
-    }
-    const runEditPreflight = async () => await preflightDraftAttachmentSendGate({
-      conversationId: convoId,
-      draftText: newText,
-      modelId,
-      baseUrl,
-      historyMessageIds: historyMessageIdsForGate,
-    })
-    let editGate = await runEditPreflight()
-    applyComposerSendPlanGateState(editGate.sendPlan)
-    const confirmationRequest = buildAttachmentConfirmationRequestFromSendPlan('edit_submit', editGate.sendPlan)
-    if (confirmationRequest) {
-      const result = await requestAttachmentConfirmation(confirmationRequest)
-      if (!result.confirmed) return
-      confirmedAttachmentDecisions = result.decisions
-      const draftDecisions = result.decisions.filter((item) => item.source !== 'history')
-      if (draftDecisions.length > 0) {
-        await applyDraftAttachmentDecisions(draftDecisions)
-        editGate = await runEditPreflight()
-        applyComposerSendPlanGateState(editGate.sendPlan)
-      }
-    }
-    if (!editGate.canProceed) {
-      setAttachmentFeedback('error', editGate.blockingReason ?? '当前编辑请求无法发送，请处理附件后重试。')
-      return
-    }
-
-    try {
-      const res =
-        mode === 'replace'
-          ? await retryReplaceQuestion(branch.id, oldQuestionId, newText)
-          : await forkQuestion(branch.id, oldQuestionId, newText)
-
-      if (useDraftClone) {
-        const dfcAttachmentSendSnapshots = collectDfcAttachmentSendSnapshots(editGate.sendPlan)
-        const attached = await attachConversationDraftToMessage({
-          conversationId: convoId,
-          messageId: res.newQuestionId,
-          sentAssetIds: collectSentAssetIds(editGate.sendPlan),
-          ...(dfcAttachmentSendSnapshots.length > 0 ? { dfcAttachmentSendSnapshots } : {}),
-        })
-        applyDraftPersistenceStateFromDraft(attached.draft)
-        draft.value = attached.draft.draftText
-        editRestoredDraftAttachmentAssetIds.value = new Set()
-        await refreshDraftAttachmentViewModels({ restoredDraft: attached.draft })
-        if (isOpenRouterRuntime) {
-          replayPreparedForEdit = await prepareReplayForHistoricalUserMessage({
-            branchId: branch.id,
-            userMessageId: res.newQuestionId,
-            userText: newText,
-            modelId: runtimeSelection.modelId,
-            attachmentDecisions: confirmedAttachmentDecisions,
-          })
-          if (!replayPreparedForEdit || replayPreparedForEdit.status !== 'sendable') {
-            throw new Error(buildReplayBlockedMessage(replayPreparedForEdit))
-          }
-        }
-      }
-
-      invalidateQuestionCandidatesForSlot(baseMessageId)
-      // Branch tip update (definition): fork/replace creates a new assistant and moves insertion point.
-      patchBranch(branch.id, { headMessageId: res.assistantId, updatedAt: Date.now() })
-
-      // Build context off the NEW head (branch is now pointed at the new assistant),
-      // then slice to messages strictly before the new question.
-      const built = await buildContextForBranchInternalMessages(branch.id, { limit: 200, debug: !!import.meta.env?.DEV })
-      const rowsBefore = built.rawMessages.filter((m) => typeof m.seq === 'number' && m.seq < res.newQuestionSeq)
-      const contextMessages = toInternalMessagesFromBranchPath(rowsBefore as any)
-
-      setRuntimeMessageSeqEntries([
-        [res.newQuestionId, res.newQuestionSeq],
-        [res.assistantId, res.assistantSeq],
-      ])
-
+      await flushDraftPersistence({ failOnError: true })
+      const composerDraft = generationV2ComposerDraft.value?.conversationId === convoId
+        ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(convoId)
+      const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
+      await persistCurrentGenerationV2SemanticLayer(v2ProviderId, v2View.conversationId)
+      const endpointProfileId = v2Route.kind === 'lmstudio_openresponses' || v2Route.kind === 'generic_local_openai_chat' || v2Route.kind === 'ollama_chat'
+        ? await resolveGenerationV2LocalProfileForSend(v2Route, v2ModelId) : null
+      const operationId = crypto.randomUUID()
+      const sourceNavigationRevision = navigationRevision.value
+      const sourceConversationId = v2View.conversationId
+      const sourceBranchId = v2View.branchId
+      const common = { operationId, clientActionId: operationId, sourceBranchId: v2View.branchId,
+        sourceQuestionId: oldQuestionId, sourceAnswerRootId: sourceTurn.chosenAnswerRootId,
+        expectedHeadMessageId: v2View.headMessageId, modelId: v2Route.kind === 'gemini_interactions_image'
+          ? normalizeGeminiImageGenerationModelId(v2ModelId) : v2ModelId, commandAttachments }
+      const result = await submitGenerationV2EditResend(v2Route, v2Route.kind === 'openrouter_images'
+        ? { ...common, prompt: newText, requestedProviderTag: null }
+        : v2Route.kind === 'gemini_interactions_image'
+          ? { ...common, prompt: newText }
+        : { ...common, userBody: newText,
+            ...(compatibleSelection ? { providerInstanceId: compatibleSelection.providerInstanceId, extraBody: compatibleSelection.extraBody } : {}),
+            ...(endpointProfileId === null ? {} : { endpointProfileId }) })
+      if (!result.ok) throw new Error(result.code)
       questionEditSession.value = null
-      await refreshRenderableBranchView(branch.id)
-
-      const generationSnapshot = await resolveCurrentGenerationSnapshot({
-        convoId,
-        questionId: res.newQuestionId,
-        runtimeSelection,
-      })
-      await runAssistantStreamFromSnapshot({
-        convoId,
-        branchId: branch.id,
-        questionId: res.newQuestionId,
-        questionText: newText,
-        assistantMessageId: res.assistantId,
-        assistantSeq: res.assistantSeq,
-        generationSnapshot,
-        contextMessages,
-        replayPrepared: replayPreparedForEdit,
-      })
-    } catch (err: any) {
-      loadError.value = err?.message ? String(err.message) : String(err)
-      await refreshRenderableBranchView(branch.id)
+      try {
+        generationV2ComposerDraft.value = await clearCommittedGenerationV2ComposerDraft({ conversationId: convoId,
+          expectedRevision: composerDraft.revision })
+        draft.value = generationV2ComposerDraft.value.draftText
+        await refreshDraftAttachmentViewModels()
+      } catch (error) {
+        if (shouldLogDebug()) console.warn('[ui-app] COMMITTED_V2_EDIT_RESEND_DRAFT_CLEAR_FAILED')
+      }
+      if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
+      const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
+        activeConvoId.value === sourceConversationId && activeBranchId.value === sourceBranchId
+      if (shouldFollow) {
+        activeBranchId.value = result.branch.branchId
+        resetCandidatesCache()
+        await refreshRenderableBranchView(result.branch.branchId)
+      }
+      if (!compatibleSelection) void recordRecentModelUsage(v2ModelId, v2ProviderId)
+    } catch (error) {
+      loadError.value = error instanceof Error ? error.message : 'GENERATION_V2_EDIT_RESEND_FAILED'
     }
   }
 
@@ -11554,169 +7271,86 @@ export function useAppChatAppLogic() {
     return true
   }
 
-  async function onRetryAnswer(questionId: string, currentAnswerRootId: string, mode: 'replace' | 'as_new') {
-    if (isRunning.value) return
-    if (isDraftInteractionLocked.value) return
-    if (activeAssistantMessageId.value) return
+  function generationV2RouteForProvider(providerId: string, modelId?: string): GenerationV2Route {
+    switch (providerId) {
+      case 'openrouter': return { kind: 'openrouter_chat' }
+      case 'openai_responses': return { kind: 'openai_responses' }
+      case 'anthropic':
+      case 'anthropic_messages': return { kind: 'anthropic' }
+      case 'deepseek': return { kind: 'deepseek' }
+      case 'google_ai_studio': {
+        const image = resolveImageGenerationConfigForRequest(GOOGLE_AI_STUDIO_PROVIDER_KEY)
+        if (!image) return { kind: 'gemini_generate_content' }
+        const normalizedModelId = normalizeGeminiImageGenerationModelId(modelId)
+        if (isGeminiInteractionsImageModelIdV1(normalizedModelId)) return { kind: 'gemini_interactions_image' }
+        if (isKnownGeminiImageGenerationModel(normalizedModelId)) throw new Error('GENERATION_V2_GEMINI_INTERACTIONS_MODEL_UNVERIFIED')
+        return { kind: 'gemini_generate_content' }
+      }
+      case 'lmstudio':
+      case 'lm_studio': return { kind: 'lmstudio_openresponses' }
+      case 'generic_local':
+      case 'local_endpoint': return { kind: 'generic_local_openai_chat' }
+      case 'ollama':
+      case 'ollama_local': return { kind: 'ollama_chat' }
+      default: throw new Error('GENERATION_V2_PROVIDER_ROUTE_UNAVAILABLE')
+    }
+  }
 
-    const convoId = activeConvoId.value
+  function generationV2RouteForPersistedAnswer(answer: Readonly<{ protocolContractId: string }>): GenerationV2Route {
+    switch (answer.protocolContractId) {
+      case 'openrouter-chat-completions-v1': return { kind: 'openrouter_chat' }
+      case 'openrouter-images-v1': return { kind: 'openrouter_images' }
+      case 'openai-responses-v1': return { kind: 'openai_responses' }
+      case 'anthropic-messages-2023-06-01': return { kind: 'anthropic' }
+      case 'deepseek-stable-chat-v1': return { kind: 'deepseek' }
+      case 'gemini-generate-content-v1beta': return { kind: 'gemini_generate_content' }
+      case 'gemini-interactions-v1beta': return { kind: 'gemini_interactions_image' }
+      case 'openai_chat_compatible': return { kind: 'openai_chat_compatible' }
+      case 'lmstudio-openresponses': return { kind: 'lmstudio_openresponses' }
+      case 'generic-local-openai-chat-completions': return { kind: 'generic_local_openai_chat' }
+      case 'ollama-chat-v1': return { kind: 'ollama_chat' }
+      default: throw new Error('GENERATION_V2_PERSISTED_OPERATION_ROUTE_UNAVAILABLE')
+    }
+  }
+
+  async function onRetryAnswer(questionId: string, currentAnswerRootId: string, mode: 'replace' | 'as_new') {
+    if (isRunning.value || isDraftInteractionLocked.value || activeAssistantMessageId.value) return
     const branch = activeBranch.value
     const qid = String(questionId ?? '').trim()
     const current = String(currentAnswerRootId ?? '').trim()
-    if (!convoId || !branch?.id || !qid || !current) return
-
-    const questionText = getUserQuestionText(qid)
-    if (!questionText) return
-
+    const view = generationV2BranchView.value
+    const turn = view?.turns.find((item) => item.questionId === qid)
+    const answer = turn?.answers.find((item) => item.answerRootId === current)
+    if (!branch?.id || !qid || !current || !turn || !answer || turn.chosenAnswerRootId !== current ||
+        answer.status === 'streaming' || !view?.headMessageId ||
+        (mode === 'replace' && branch.headMessageId !== current)) return
     loadError.value = null
-    const snapshot = await getAssistantAnswerGenerationSnapshot(current)
-    if (!snapshot || snapshot.schemaVersion !== 1) {
-      loadError.value = 'This answer has no complete generation snapshot and cannot be retried.'
-      return
-    }
-    if (snapshot.route.providerId === 'openai_chat_compatible') {
-      const selection = activeSessionConfig.value.model.compatibleSelection
-      const pinned = snapshot.providerOptions.compatible as Record<string, unknown> | undefined
-      if (!selection || !pinned || selection.providerInstanceId !== pinned.providerInstanceId ||
-          selection.modelId !== snapshot.route.modelId || selection.endpointRevisionId !== snapshot.route.endpointId ||
-          selection.requestProfileId !== pinned.requestProfileId || selection.requestProfileVersion !== pinned.requestProfileVersion ||
-          selection.responseProfileId !== pinned.responseProfileId || selection.responseProfileVersion !== pinned.responseProfileVersion) {
-        loadError.value = 'The compatible provider configuration required by this answer is not currently available.'
-        return
-      }
-      if ((historyAttachmentViewModelsByMessageId.value[qid] ?? []).length > 0) {
-        loadError.value = 'Compatible retry with attachments is not enabled for this model contract.'
-        return
-      }
-      const eligibility = await window.compatibleChat?.preflight?.(selection)
-      if (!eligibility?.ok) {
-        loadError.value = eligibility?.code ?? 'compatible_preflight_blocked'
-        return
-      }
-      const contextMessages = await buildContextMessagesBeforeQuestion(branch.id, qid)
-      let committedCompatibleAnswerId: string | null = null
-      const operationLease = acquireAnswerGenerationOperationId({
-        action: mode === 'replace' ? 'retry_replace' : 'retry_as_new',
-        branchId: branch.id, questionId: qid, targetAnswerRootId: current,
-      })
-      try {
-        const commandInput = {
-          operationId: operationLease.id,
-          branchId: branch.id, questionId: qid, targetAnswerRootId: current,
-          compatibleExecutionPins: selection,
-        }
-        const res = mode === 'replace'
-          ? await retryChosenAnswerReplacing(commandInput)
-          : await retryChosenAnswerAsNew(commandInput)
-        committedCompatibleAnswerId = res.newAnswerRootId
-        if (!await claimAssistantAnswerGenerationStream(res.operationId, res.newAnswerRootId)) return
-        releaseAnswerGenerationOperationId(operationLease)
-        if (!res.compatibleRouteProvenanceId) throw new Error('compatible_route_not_prepared')
-        invalidateCandidatesForQuestion(qid)
-        patchBranch(branch.id, { headMessageId: res.headMessageId, updatedAt: Date.now() })
-        await refreshRenderableBranchView(branch.id)
-        await runCompatibleStreamFromSnapshot({
-          selection, routeProvenanceId: res.compatibleRouteProvenanceId,
-          branchId: branch.id, questionId: qid, assistantId: res.newAnswerRootId,
-          text: questionText, contextMessages,
-        })
-      } catch (error) {
-        if (committedCompatibleAnswerId) {
-          await finalizeAssistantAnswerGeneration({
-            answerRootId: committedCompatibleAnswerId, state: 'failed', errorCode: 'stream_setup_failed',
-            errorMessage: error instanceof Error ? error.message : String(error),
-          }).catch(() => undefined)
-        }
-        loadError.value = error instanceof Error ? error.message : String(error)
-        await refreshRenderableBranchView(branch.id)
-      }
-      return
-    }
-    const runtimeSelection: AssistantTurnRuntimeSelection = {
-      providerId: snapshot.route.providerId as RuntimeProviderKey,
-      modelId: snapshot.route.modelId,
-    }
-    if (!await preflightAssistantTurnRuntimeSelection({ selection: runtimeSelection, text: questionText })) return
-    if (!await ensureHistoricalAttachmentsRoutableForSelection({
-      selection: runtimeSelection,
-      userMessageId: qid,
-      actionLabel: mode === 'replace' ? 'Retry replace answer' : 'Retry answer as new',
-    })) return
-    const contextMessages = await buildContextMessagesBeforeQuestion(branch.id, qid)
-    let replayPrepared: PreparedOpenRouterReplay | null = null
-    if (runtimeSelection.providerId === OPENROUTER_PROVIDER_ID) {
-      try {
-        replayPrepared = await prepareReplayForHistoricalUserMessage({
-          branchId: branch.id,
-          userMessageId: qid,
-          userText: questionText,
-          modelId: runtimeSelection.modelId,
-          baseUrl: String(snapshot.providerOptions.baseUrl ?? (snapshot.route.endpointId === 'openrouter-official' ? 'https://openrouter.ai/api/v1' : '')),
-        })
-        const confirmationRequest = buildAttachmentConfirmationRequestFromReplay(mode === 'replace' ? 'retry_replace' : 'retry_as_new', replayPrepared)
-        if (confirmationRequest) {
-          const result = await requestAttachmentConfirmation(confirmationRequest)
-          if (!result.confirmed) return
-          replayPrepared = await prepareReplayForHistoricalUserMessage({
-            branchId: branch.id,
-            userMessageId: qid,
-            userText: questionText,
-            modelId: runtimeSelection.modelId,
-            baseUrl: String(snapshot.providerOptions.baseUrl ?? (snapshot.route.endpointId === 'openrouter-official' ? 'https://openrouter.ai/api/v1' : '')),
-            attachmentDecisions: result.decisions,
-          })
-        } else if (replayPrepared?.status === 'needs_confirmation') {
-          throw new Error(buildReplayBlockedMessage(replayPrepared))
-        }
-        if (!replayPrepared || replayPrepared.status !== 'sendable') {
-          throw new Error(buildReplayBlockedMessage(replayPrepared))
-        }
-      } catch (err: any) {
-        loadError.value = err?.message ? String(err.message) : String(err)
-        return
-      }
-    }
-
-    let committedAnswerId: string | null = null
-    const operationLease = acquireAnswerGenerationOperationId({
-      action: mode === 'replace' ? 'retry_replace' : 'retry_as_new',
-      branchId: branch.id, questionId: qid, targetAnswerRootId: current,
-    })
     try {
-      const commandInput = {
-        operationId: operationLease.id,
-        branchId: branch.id,
+      const operationId = crypto.randomUUID()
+      const sourceNavigationRevision = navigationRevision.value
+      const sourceConversationId = view.conversationId
+      const sourceBranchId = view.branchId
+      const result = await submitGenerationV2Retry(generationV2RouteForPersistedAnswer(answer), {
+        actionKind: mode === 'replace' ? 'retry_replace' : 'retry_as_new',
+        operationId,
+        clientActionId: operationId,
+        sourceBranchId: branch.id,
         questionId: qid,
-        targetAnswerRootId: current,
-      }
-      const res = mode === 'replace'
-        ? await retryChosenAnswerReplacing(commandInput)
-        : await retryChosenAnswerAsNew(commandInput)
-      committedAnswerId = res.newAnswerRootId
-      if (!await claimAssistantAnswerGenerationStream(res.operationId, res.newAnswerRootId)) return
-      releaseAnswerGenerationOperationId(operationLease)
-      invalidateCandidatesForQuestion(qid)
-      patchBranch(branch.id, { headMessageId: res.headMessageId, updatedAt: Date.now() })
-      await refreshRenderableBranchView(branch.id)
-      await runAssistantStreamFromSnapshot({
-        convoId,
-        branchId: branch.id,
-        questionId: qid,
-        questionText,
-        assistantMessageId: res.newAnswerRootId,
-        assistantSeq: res.newAssistantSeq,
-        generationSnapshot: res.snapshot,
-        contextMessages,
-        replayPrepared,
+        sourceAnswerId: current,
+        expectedHeadMessageId: view.headMessageId,
       })
-    } catch (err: any) {
-      if (committedAnswerId) {
-        await finalizeAssistantAnswerGeneration({
-          answerRootId: committedAnswerId, state: 'failed', errorCode: 'stream_setup_failed',
-          errorMessage: err?.message ? String(err.message) : String(err),
-        }).catch(() => undefined)
+      if (!result.ok) throw new Error(result.code)
+      invalidateMessageCandidateNavigation()
+      if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
+      const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
+        activeConvoId.value === sourceConversationId && activeBranchId.value === sourceBranchId
+      if (shouldFollow) {
+        activeBranchId.value = result.branch.branchId
+        resetCandidatesCache()
+        await refreshRenderableBranchView(result.branch.branchId)
       }
-      loadError.value = err?.message ? String(err.message) : String(err)
+    } catch (error) {
+      loadError.value = error instanceof Error ? error.message : String(error)
       await refreshRenderableBranchView(branch.id)
     }
   }
@@ -11732,9 +7366,9 @@ export function useAppChatAppLogic() {
     if (!bid) return
     const current = turnFiltersByQuestionId.value.get(questionId)
     if (current?.questionMode === 'exclude') {
-      await clearBranchFilter({ branchId: bid, targetType: 'question', targetId: questionId })
+      await clearGenerationV2ContextFilter({ branchId: bid, targetType: 'question', targetId: questionId })
     } else {
-      await setBranchFilter({ branchId: bid, targetType: 'question', targetId: questionId, mode: 'exclude' })
+      await setGenerationV2ContextFilter({ branchId: bid, targetType: 'question', targetId: questionId, mode: 'exclude' })
     }
     await refreshTurnFilters(bid)
   }
@@ -11747,9 +7381,9 @@ export function useAppChatAppLogic() {
     if (current.lockedByQuestionExclude) return
 
     if (current.answerMode === 'exclude') {
-      await clearBranchFilter({ branchId: bid, targetType: 'answer', targetId: answerRootId })
+      await clearGenerationV2ContextFilter({ branchId: bid, targetType: 'answer', targetId: answerRootId })
     } else {
-      await setBranchFilter({ branchId: bid, targetType: 'answer', targetId: answerRootId, mode: 'exclude' })
+      await setGenerationV2ContextFilter({ branchId: bid, targetType: 'answer', targetId: answerRootId, mode: 'exclude' })
     }
     await refreshTurnFilters(bid)
   }
@@ -11759,46 +7393,47 @@ export function useAppChatAppLogic() {
     loadError.value = null
     readExperimentalProviderChatStorage()
 
-    if (!hasDbBridge()) {
+    if (!window.generationV2) {
       isReady.value = true
-      loadError.value = 'Missing dbBridge (run in Electron via `npm run electron:dev`)'
+      loadError.value = 'Missing Generation Compiler V2 bridge (run in Electron via `npm run electron:dev`)'
       return
     }
 
-    // 注意：dbEventBus 在模块导入时已自动初始化并开始缓冲
-    // 这里只需要在基线同步完成后 flush
-
     try {
       // 基线同步：先加载所有数据
-      let template: SystemChatTemplateSnapshot | null = null
-      try {
-        template = await getSystemChatTemplate()
-      } catch (error) {
-        if (import.meta.env.MODE !== 'test') throw error
+      const defaultWorkspace = await ensureGenerationV2DefaultWorkspace()
+      let template = await getSystemChatTemplate()
+      const startupReset = template.settings.startupTemplateReset
+      if (startupReset.modelConfig || startupReset.draftAttachments) {
+        template = await resetSystemChatTemplate({
+          templateConversationId: template.conversation.id,
+          expectedTemplateRevision: template.conversation.templateRevision,
+          resetModelConfig: startupReset.modelConfig,
+          resetDraftAttachments: startupReset.draftAttachments,
+        })
       }
-      if (template) {
-        const startupReset = template.settings.startupTemplateReset
-        if (startupReset.modelConfig || startupReset.draftAttachments) {
-          template = await resetSystemChatTemplate({
-            templateConversationId: template.conversation.id,
-            expectedTemplateRevision: template.conversation.templateRevision,
-            resetModelConfig: startupReset.modelConfig,
-            resetDraftAttachments: startupReset.draftAttachments,
-          })
-        }
-        systemTemplateSnapshot.value = template
-        projectsOnlyWorkspace.value = template.settings.startupNavigation === 'projects_only'
-        activeConvoId.value = template.settings.startupNavigation === 'open_new'
-          ? template.conversation.id
-          : null
-      }
+      systemTemplateSnapshot.value = template
       await refreshProjects()
       await refreshConvos()
-      if (template?.settings.startupNavigation === 'restore_last_formal') {
+      const startupNavigation = template.settings.startupNavigation
+      if (startupNavigation === 'projects_only') {
+        projectsOnlyWorkspace.value = true
+        activeConvoId.value = null
+        activeBranchId.value = null
+      } else if (startupNavigation === 'restore_last_formal') {
         const lastFormalConversationId = await getLastFormalConversationId()
-        activeConvoId.value = lastFormalConversationId && convos.value.some((convo) => convo.id === lastFormalConversationId)
-          ? lastFormalConversationId
-          : template.conversation.id
+        projectsOnlyWorkspace.value = false
+        activeConvoId.value = lastFormalConversationId ?? template.conversation.id
+        activeBranchId.value = lastFormalConversationId === null ? template.conversation.branchId : null
+      } else {
+        projectsOnlyWorkspace.value = false
+        activeProjectId.value = template.conversation.projectId
+        activeConvoId.value = template.conversation.id
+        activeBranchId.value = template.conversation.branchId
+      }
+      if (defaultWorkspace.conversationId !== template.conversation.id ||
+          defaultWorkspace.branchId !== template.conversation.branchId) {
+        throw new Error('GENERATION_V2_SYSTEM_TEMPLATE_STATE_INVALID')
       }
       await refreshGlobalReasoningPrefs()
       await refreshGlobalReasoningPanelDefaultExpanded()
@@ -11808,22 +7443,40 @@ export function useAppChatAppLogic() {
       await refreshGlobalUserMessageRenderDefault()
       await refreshGlobalImageGenerationDefault()
       await refreshDfcAttachmentDefaults()
+      if (localEndpointChatConfig.value.enabled) {
+        try {
+          await ensureGenerationV2GenericLocalProfileFromSavedSettings()
+        } catch (error) {
+          if (shouldLogDebug()) console.warn('[ui-app] V2_GENERIC_LOCAL_PROFILE_SYNC_FAILED')
+        }
+      }
+      if (lmStudioChatConfig.value.enabled) {
+        try {
+          await ensureGenerationV2LmStudioProfileFromSavedSettings()
+        } catch (error) {
+          if (shouldLogDebug()) console.warn('[ui-app] V2_LM_STUDIO_PROFILE_SYNC_FAILED')
+        }
+      }
+      handleGenerationV2OllamaSettingsUpdated()
       reasoningDisplayMode.value = await getChatReasoningDisplayMode()
-      await loadTranscriptForActiveConvo()
+      try {
+        await loadTranscriptForActiveConvo()
+      } catch (error) {
+        if (startupNavigation !== 'restore_last_formal' ||
+            activeConvoId.value === template.conversation.id ||
+            !(error instanceof Error) ||
+            error.message !== 'GENERATION_V2_CONVERSATION_BRANCH_MISSING') throw error
+        activeConvoId.value = template.conversation.id
+        activeBranchId.value = template.conversation.branchId
+        await loadTranscriptForActiveConvo()
+      }
       await restoreDraftForActiveScope()
-
-      // 基线同步完成，flush 缓冲的事件
-      flushBuffer()
 
       assertInvariants() // Stable boundary: initial load complete
     } catch (err: any) {
       loadError.value = err?.message ? String(err.message) : String(err)
     } finally {
       isReady.value = true
-      if (isElectronSmokeDfcFixtureEnabled()) {
-        await nextTick()
-        installElectronSmokeDfcBackendSeeder()
-      }
     }
   })
 
@@ -11835,10 +7488,26 @@ export function useAppChatAppLogic() {
     window.addEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.addEventListener('settings:generationParamsDefaultsUpdated', handleGlobalGenerationParamsDefaultsUpdated)
     window.addEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
+    window.addEventListener('settings:localEndpointTextChatUpdated', handleGenerationV2GenericLocalSettingsUpdated)
+    window.addEventListener('settings:lmStudioLocalProviderUpdated', handleGenerationV2LmStudioSettingsUpdated)
+    window.addEventListener('settings:ollamaLocalProviderUpdated', handleGenerationV2OllamaSettingsUpdated)
     addExperimentalProviderChatEventListeners()
     window.addEventListener('pagehide', handlePageHide)
     window.addEventListener('beforeunload', handlePageHide)
   })
+
+  watch(
+    () => {
+      const selection = resolveCurrentRuntimeSelectionForSend()
+      return selection.state === 'selected' && selection.providerKey === 'ollama_local'
+        ? normalizeRuntimeModelId(selection.modelId ?? selection.modelKey ?? selection.nativeModelId)
+        : null
+    },
+    (modelId) => {
+      if (modelId) handleGenerationV2OllamaSettingsUpdated()
+    },
+    { immediate: true },
+  )
 
   onMounted(() => {
     if (diagnosticsFlags.perf) {
@@ -11930,35 +7599,65 @@ export function useAppChatAppLogic() {
     }
   })
 
-  // DB 事件订阅
-  let unsubscribeDbEvent: (() => void) | null = null
+  let unsubscribeGenerationV2Runtime: (() => void) | null = null
+  let generationV2RuntimeRefreshTimer: ReturnType<typeof setTimeout> | null = null
 
-  onMounted(() => {
-    unsubscribeDbEvent = subscribeDbEvent(handleDbEvent)
-  })
-
-  function handleDbEvent(event: DbEvent) {
-    switch (event.type) {
-      case 'project.created':
-      case 'project.updated':
-      case 'project.deleted':
-        // 项目变更：刷新项目列表
-        void refreshProjects()
-        break
-      case 'conversation.moved':
-        // 对话移动：刷新对话列表和项目计数
-        void refreshConvos()
-        void refreshProjectCounts()
-        break
-      case 'conversation.activity_updated':
-        // 对话活动更新：如果是当前显示的对话列表，可能需要重新排序
-        // 优化：仅在 "全部对话" 或当前项目匹配时刷新
-        void refreshConvos()
-        break
-    }
+  function scheduleCurrentRuntimeRefresh(branchId: string) {
+    if (generationV2RuntimeRefreshTimer) return
+    generationV2RuntimeRefreshTimer = setTimeout(() => {
+      generationV2RuntimeRefreshTimer = null
+      if (activeBranchId.value === branchId) void refreshRenderableBranchView(branchId)
+    }, 40)
   }
 
+  onMounted(() => {
+    unsubscribeGenerationV2Runtime = subscribeGenerationV2Runtime((update: GenerationV2RuntimeUpdate) => {
+      if (update.type === 'sync_error') {
+        console.error('[ui-app] generation V2 runtime synchronization failed', {
+          operationId: update.operationId,
+          code: update.code,
+        })
+        loadError.value = update.code
+        return
+      }
+      const snapshot = update.snapshot
+      const entry = branchRuntimeCache.upsert(snapshot, activeBranchId.value)
+      branchRuntimeCacheRevision.value += 1
+      patchBranch(snapshot.binding.branchId, { updatedAt: snapshot.updatedAtMs })
+      const current = activeBranchId.value === snapshot.binding.branchId
+      const applied = current && applyBranchRuntimeOverlayToState(snapshot.binding.branchId)
+      if (update.type === 'event' && update.event.payload.type === 'reasoning_detail') {
+        const detail = update.event.payload.detail
+        const detailType = typeof detail.type === 'string' ? detail.type : null
+        recordReasoningProjectionTrace({
+          stage: applied ? 'reducer_applied' : 'projection_received',
+          operationId: update.event.operationId,
+          answerRootId: snapshot.binding.targetAnswerId,
+          projectionType: 'reasoning_detail',
+          detailType,
+          activeBranchId: activeBranchId.value,
+          viewBranchId: generationV2BranchView.value?.branchId ?? null,
+          answerKnownInView: applied,
+          rawDetailCount: entry.reasoning.length,
+          reasoningVersion: applied
+            ? (state.value.entities?.messagesById?.[snapshot.binding.targetAnswerId]?.reasoningVersion ?? 0)
+            : 0,
+          messagePresentAfter: applied,
+          transcriptContainsAnswer: state.value.runMessageIds[snapshot.binding.branchId]
+            ?.includes(snapshot.binding.targetAnswerId) === true,
+        })
+      }
+      if (!current) return
+      if (!applied || snapshot.status !== 'generating' || (update.type === 'event' &&
+          update.event.payload.type === 'image_output')) {
+        scheduleCurrentRuntimeRefresh(snapshot.binding.branchId)
+      }
+    })
+  })
+
   onUnmounted(() => {
+    unregisterCatalogSelectionCommand()
+    unsubscribeCatalogRuntimeStore()
     branchProjectionRefreshCoordinator.invalidate()
     transcriptRefreshToken.value += 1
     void flushDraftPersistence()
@@ -11969,15 +7668,16 @@ export function useAppChatAppLogic() {
     window.removeEventListener('settings:webSearchDefaultsUpdated', handleGlobalWebSearchDefaultsUpdated)
     window.removeEventListener('settings:generationParamsDefaultsUpdated', handleGlobalGenerationParamsDefaultsUpdated)
     window.removeEventListener('settings:imageGenerationDefaultUpdated', handleGlobalImageGenerationDefaultUpdated)
+    window.removeEventListener('settings:localEndpointTextChatUpdated', handleGenerationV2GenericLocalSettingsUpdated)
+    window.removeEventListener('settings:lmStudioLocalProviderUpdated', handleGenerationV2LmStudioSettingsUpdated)
+    window.removeEventListener('settings:ollamaLocalProviderUpdated', handleGenerationV2OllamaSettingsUpdated)
     removeExperimentalProviderChatEventListeners()
     window.removeEventListener('pagehide', handlePageHide)
     window.removeEventListener('beforeunload', handlePageHide)
-    // 清理 DB 事件订阅
-    if (unsubscribeDbEvent) {
-      unsubscribeDbEvent()
-      unsubscribeDbEvent = null
-    }
-    destroyDbEventBus()
+    unsubscribeGenerationV2Runtime?.()
+    unsubscribeGenerationV2Runtime = null
+    if (generationV2RuntimeRefreshTimer) clearTimeout(generationV2RuntimeRefreshTimer)
+    generationV2RuntimeRefreshTimer = null
 
     diagnosticsBridge?.dispose()
 
@@ -12012,9 +7712,6 @@ export function useAppChatAppLogic() {
 
   onMounted(() => {
     void refreshModelLists()
-    const ipc = getIpcRenderer()
-    if (!ipc) return
-    ipc.on('db:modelCatalogSynced', onModelsSynced)
   })
 
   const lastTranscriptSig = ref('')
@@ -12060,6 +7757,8 @@ export function useAppChatAppLogic() {
     onCreateConvo,
     onResetSystemTemplate,
     refreshConvos,
+    loadMoreConvos,
+    hasMoreConversations,
     onRenameConvo,
     onDeleteConvo,
     onMoveConvoToProject,
@@ -12086,8 +7785,11 @@ export function useAppChatAppLogic() {
     isRunning,
     activeTitle,
     branches,
+    hasMoreBranches,
     activeBranchId,
     onSelectBranch,
+    loadMoreBranches,
+    getBranchRuntimeStatus,
     activeBranch,
     onForkFromHead,
     onDeleteActiveBranch,
@@ -12104,6 +7806,8 @@ export function useAppChatAppLogic() {
     copyErrorDetails,
     transcriptMessageIds,
     transcriptMessagesById,
+    hasEarlierTranscript,
+    loadEarlierTranscript,
     getReasoningArtifactsForMessage,
     activeCursorMessageId,
     isTurnExcludedForMessage,
@@ -12124,8 +7828,7 @@ export function useAppChatAppLogic() {
     onRegenerateFromQuestion,
     openQuestionEdit,
     getQuestionPagerForQuestion,
-    isQuestionSlotLoadingForQuestion,
-    onQuestionCandidateShift,
+    onMessageCandidateShift,
     isAnswerRootMessage,
     getAssistantVisibleText,
     copyAssistantMessage,
@@ -12137,8 +7840,7 @@ export function useAppChatAppLogic() {
     onRetryReplaceAnswer,
     onRetryAnswerAsNew,
     getCandidatePager,
-    candidatesLoading,
-    onCandidateShift,
+    isMessageCandidateLoading,
     questionIdForMessage,
     lastAssistantReasoningView,
     lastAssistantReasoningVersion,
@@ -12220,6 +7922,12 @@ export function useAppChatAppLogic() {
     imageGenerationFollowDefault,
     selectedModelImageCapabilityClass,
     imageGenerationSupportHint,
+    openRouterImageEndpointSelection,
+    openRouterImageEndpointSelectionLoading,
+    openRouterImageEndpointSelectionError,
+    refreshOpenRouterImageEndpointSelection,
+    chooseOpenRouterImageEndpoint,
+    updateOpenRouterImageEndpointFreshness,
     onUpdateModel,
     onUpdateReasoningEnabled,
     onUpdateReasoningEffortLevel,
@@ -12247,6 +7955,7 @@ export function useAppChatAppLogic() {
     onUpdateOllamaChatMode,
     onUpdateOllamaNativeRestPreferredEndpoint,
     onUpdateOllamaOpenAICompatiblePreferredEndpoint,
+    onUpdateOllamaProfileCapability,
     onUpdateOllamaNativeControl,
     onClearOllamaChat,
     onUpdateLocalEndpointChatEnabled,
@@ -12255,11 +7964,11 @@ export function useAppChatAppLogic() {
     onUpdateOpenAIResponsesChatEnabled,
     onClearOpenAIResponsesChat,
     onRefreshOpenAIResponsesModels,
-    onRefreshProviderModelPickerSources,
     onUpdateGoogleAIStudioChatEnabled,
     onClearGoogleAIStudioChat,
     onRefreshGoogleAIStudioModels,
     onUpdateAnthropicChatEnabled,
+    onUpdateAnthropicThinkingDisplay,
     onClearAnthropicChat,
     onRefreshAnthropicModels,
     onUpdateDeepSeekChatEnabled,
@@ -12284,7 +7993,6 @@ export function useAppChatAppLogic() {
     closeAttachmentUrlDialog,
     submitAttachmentUrl,
     onSend,
-    compatibleRunning,
     onAbort,
     settingsOpen,
     closeSettings,
@@ -12312,7 +8020,6 @@ export function useAppChatAppLogic() {
     isQuestionEditMode,
     closeQuestionEdit,
     submitQuestionEdit,
-    canReplaceQuestionInUi,
     pendingDeleteQuestionId,
     requestDeleteQuestion,
     cancelDeleteQuestion,

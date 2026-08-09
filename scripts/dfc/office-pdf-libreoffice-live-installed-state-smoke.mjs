@@ -16,10 +16,10 @@ const port = Number.parseInt(process.env.SV_M47_LIVE_SMOKE_PORT ?? '5179', 10)
 const host = process.env.SV_M47_LIVE_SMOKE_HOST ?? '127.0.0.1'
 const viteUrl = `http://${host}:${port}/`
 const appUrl = `${viteUrl}?sv-electron-smoke-dfc=1`
-const mainPath = path.join(repoRoot, 'dist-electron', 'main.js')
+const mainPath = path.join(repoRoot, 'dist-electron', 'epoch2MainEntry.js')
 const viteConfigPath = path.join(repoRoot, 'scripts', 'smoke', 'vite.renderer-smoke.config.ts')
 const tmpRoot = path.join(os.tmpdir(), `svm47-live-lo-${process.pid}`)
-const docxFixturePath = path.join(tmpRoot, 'm47-live-docx-pdf-smoke.docx')
+const docxFixturePath = path.join(tmpRoot, 'fixture-docx.docx')
 const installTimeoutMs = Number.parseInt(process.env.SV_M47_LIVE_SMOKE_INSTALL_TIMEOUT_MS ?? String(30 * 60 * 1000), 10)
 const installIdleTimeoutMs = Number.parseInt(process.env.SV_M47_LIVE_SMOKE_INSTALL_IDLE_TIMEOUT_MS ?? String(10 * 60 * 1000), 10)
 const installedStateOnly = process.env.SV_M48_INSTALLED_STATE_ONLY === '1'
@@ -166,7 +166,7 @@ async function main() {
     const electronExecutable = require('electron')
     electronApp = await electron.launch({
       executablePath: electronExecutable,
-      args: [mainPath],
+      args: [`--user-data-dir=${tmpRoot}`, mainPath],
       cwd: repoRoot,
       env: buildElectronEnv(),
       timeout: 90_000,
@@ -174,11 +174,6 @@ async function main() {
     installElectronDiagnostics(electronApp, rendererDiagnostics)
     page = await waitForAppWindow(electronApp, 90_000)
     await waitForMountedApp(page, 120_000)
-    await page.waitForFunction(
-      () => typeof window.__starverseElectronSmokeSeedDocxPdfAttachment === 'function',
-      undefined,
-      { timeout: 90_000 },
-    )
 
     const initial = await readLibreOfficeState(page)
     const initialSummary = summarizeLibreOfficeState(initial)
@@ -399,9 +394,34 @@ function buildElectronEnv() {
     NODE_ENV: 'development',
     VITE_DEV_SERVER_URL: appUrl,
     SV_ELECTRON_SMOKE: '1',
+    SV_EPOCH2_SMOKE_FIXTURE_AUTHORITY: '1',
+    SV_EPOCH2_SMOKE_FIXTURE_ROOT: tmpRoot,
     STARVERSE_DB_WORKER_CALL_TIMEOUT_MS: process.env.STARVERSE_DB_WORKER_CALL_TIMEOUT_MS ?? String(3 * 60 * 1000),
     FORCE_COLOR: '0',
   }
+}
+
+async function seedV2DocxFixture(page) {
+  return page.evaluate(async () => {
+    const unwrap = (value) => { if (!value || value.ok !== true) throw new Error(value?.code ?? 'generation_v2_smoke_command_failed'); return value.value }
+    const api = window.generationV2
+    if (!api?.workspace || !api?.composer || !api?.smokeFixture) throw new Error('generation_v2_docx_fixture_bridge_missing')
+    const workspace = unwrap(await api.workspace.ensureDefault())
+    let draft = unwrap(await api.composer.get(workspace.conversationId))
+    const grant = unwrap(await api.smokeFixture.requestLocalFileGrant('docx'))
+    draft = unwrap(await api.composer.importLocal({ conversationId: workspace.conversationId, expectedRevision: draft.revision, filePath: grant.filePath, selectionGrantToken: grant.token }))
+    const attachment = [...draft.attachments].at(-1)
+    if (!attachment || attachment.kind !== 'managed_file') throw new Error('generation_v2_docx_import_missing')
+    const options = unwrap(await api.composer.dfcOptions({ conversationId: workspace.conversationId, assetId: attachment.assetId, providerId: 'openrouter', operation: 'chat_completions' }))
+    const option = options.options.find((item) => item.optionId === 'dfc:pdf_attachment:v1' && item.isAvailable)
+    if (!option) throw new Error('generation_v2_docx_pdf_option_unavailable')
+    draft = unwrap(await api.composer.dfcSelect({ conversationId: workspace.conversationId, expectedRevision: draft.revision, assetId: attachment.assetId, optionId: option.optionId, providerId: 'openrouter', operation: 'chat_completions' }))
+    const preview = unwrap(await api.composer.dfcPreview({ conversationId: workspace.conversationId, assetId: attachment.assetId, maxCharacters: 2048 }))
+    const selected = draft.attachments.find((item) => item.kind === 'managed_file' && item.assetId === attachment.assetId)
+    return { backendOwned: true, assetId: attachment.assetId, targetKind: option.targetKind, sendStrategy: option.sendStrategy,
+      selectedAssetRefs: selected?.dfcSelection ? [{ kind: selected.dfcSelection.targetKind === 'original_file' ? 'raw_file' : 'derived_asset', assetId: selected.dfcSelection.effectiveAssetId }] : [],
+      previewKind: preview.preview.kind, previewStatus: preview.preview.status, availableTargets: options.options.filter((item) => item.isAvailable).map((item) => item.targetKind) }
+  })
 }
 
 function spawnVite() {
@@ -935,11 +955,7 @@ async function recheckLibreOffice(page) {
 async function assertMissingConversionDoesNotDownload(page) {
   let diagnosticCode = null
   try {
-    await page.evaluate(async (filePath) => {
-      const seed = window.__starverseElectronSmokeSeedDocxPdfAttachment
-      if (typeof seed !== 'function') throw new Error('DOCX smoke seeder is missing')
-      return await seed(filePath)
-    }, docxFixturePath)
+    await seedV2DocxFixture(page)
   } catch (error) {
     diagnosticCode = sanitizeCode(extractDiagnosticFromError(error))
   }
@@ -1029,11 +1045,8 @@ function emitInstallProgress(operation) {
 }
 
 async function runDocxWorkflow(page) {
-  const result = await page.evaluate(async (filePath) => {
-    const seed = window.__starverseElectronSmokeSeedDocxPdfAttachment
-    if (typeof seed !== 'function') throw new Error('DOCX smoke seeder is missing')
-    return await seed(filePath)
-  }, docxFixturePath)
+  const result = await seedV2DocxFixture(page)
+  await page.reload()
   const ui = await page.evaluate((assetId) => {
     const card = document.querySelector(`[data-testid="draft-attachment-card-${assetId}"]`)
     const preview = document.querySelector('[data-testid="draft-attachment-dfc-preview"]')?.textContent ?? ''

@@ -89,10 +89,10 @@ After settings save, raw API keys, provider-native auth headers, Authorization h
 
 The Google AI Studio experimental path explicitly isolates from old Gemini remnants:
 - New credential store key: `googleAIStudioApiKey` (NOT `geminiApiKey`)
-- Native adapter: `streamViaGemini` from Phase 9 fixture (NOT `@google/generative-ai` SDK)
+- Native adapter: the Phase 9 Gemini REST adapter foundation (not the retired legacy SDK)
 - Native API endpoint: `https://generativelanguage.googleapis.com/v1beta/models/{model}:streamGenerateContent` (NOT old Gemini REST)
 - Old `geminiApiKey` remains blocked in `storeIpc.ts` (`RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS`) and classified as `deprecated-for-removal / migration-read-only`
-- `PROVIDERS.GEMINI` constant, `@google/generative-ai` dependency, and old `activeProvider: 'Gemini'` are untouched and remain `runtime-dead remnants`
+- `PROVIDERS.GEMINI` constant and old `activeProvider: 'Gemini'` remain `runtime-dead remnants`; the retired legacy SDK dependency has been removed
 
 ### Anthropic Messages native isolation
 
@@ -140,7 +140,7 @@ The DeepSeek experimental path is the official DeepSeek profile over OpenAI-comp
 | Misleading docs / README / UI claims | claims implying Gemini is an active runtime provider。 | Phase 0。 | stop misleading wording; mark as historical / legacy / future rebuild only。 | docs/UI no longer imply Gemini active runtime support。 |
 | Legacy default provider config | `activeProvider: 'Gemini'`。 | Phase 0 or Phase 1。 | migration-only; not runtime selection input。 | new configs do not create Gemini active defaults。 |
 | Legacy Gemini config reads | `geminiApiKey`。 | Phase 1 isolation; final removal after migration or if Owner drops Gemini。 | read-only migration; no runtime role。 | old fields do not affect active runtime。 |
-| Gemini constants / dependencies / remnants | `PROVIDERS.GEMINI`, `@google/generative-ai`。 | inventory in Phase 1/2; removal when no migration need remains or when future Gemini native adapter replaces them。 | deprecated-for-removal。 | no misleading imports/constants/docs remain。 |
+| Gemini constants / remnants | `PROVIDERS.GEMINI`。 | inventory in Phase 1/2; remove when no migration need remains。 | deprecated-for-removal。 | no legacy SDK dependency or misleading active import remains。 |
 | OpenRouter renderer credential access | renderer reads `openRouterApiKey` / `openRouterBaseUrl`。 | Phase 1 prohibits copying; Phase 2/3 defines migration path。 | legacy exception -> main/secure credential boundary。 | new providers never expose secrets to renderer; OpenRouter migration path documented。 |
 | OpenRouter raw schema as external contract | OpenRouter request/stream/error schema treated as app-wide schema。 | Phase 2。 | facade boundary; external users see Starverse IR。 | outside OpenRouter adapter/facade, no OpenRouter raw schema is treated as generic provider contract。 |
 

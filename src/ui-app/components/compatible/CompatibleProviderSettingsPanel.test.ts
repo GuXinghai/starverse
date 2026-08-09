@@ -2,6 +2,19 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import CompatibleProviderSettingsPanel from './CompatibleProviderSettingsPanel.vue'
 
+const clients = vi.hoisted(() => ({
+  registry: {
+    list: vi.fn(), create: vi.fn(), update: vi.fn(), updateEndpoint: vi.fn(), reviseConfiguration: vi.fn(),
+    listDiscovery: vi.fn(), ignoreDiscovery: vi.fn(), deleteCredential: vi.fn(), deleteProvider: vi.fn(), testConnection: vi.fn(),
+  },
+  catalog: {
+    query: vi.fn(), sync: vi.fn(), abortSync: vi.fn(), getStatus: vi.fn(), upsertManual: vi.fn(), deleteManual: vi.fn(),
+  },
+}))
+
+vi.mock('@/next/provider/openai-chat-compatible/ui', () => ({ createCompatibleProviderRegistryClient: () => clients.registry }))
+vi.mock('@/next/modelCatalog/compatibleCatalogClient', () => ({ createCompatibleCatalogClient: () => clients.catalog }))
+
 const firstId = 'ocp_provider_12345678'
 const secondId = 'ocp_provider_87654321'
 
@@ -35,27 +48,26 @@ describe('CompatibleProviderSettingsPanel', () => {
   let catalog: Record<string, ReturnType<typeof vi.fn>>
 
   beforeEach(() => {
+    vi.clearAllMocks()
     const rows = [details(firstId, 'First', 'https://first.example/v1'), details(secondId, 'Second', 'https://second.example/v1')]
-    registry = {
-      list: vi.fn(async () => ({ ok: true, value: rows })),
-      create: vi.fn(async () => ({ ok: true, value: rows[0] })),
-      update: vi.fn(async () => ({ ok: true, value: rows[0] })),
-      updateEndpoint: vi.fn(async () => ({ ok: true, value: rows[0] })),
-      reviseConfiguration: vi.fn(async () => ({ ok: true, value: rows[0] })),
-      listDiscovery: vi.fn(async () => ({ ok: true, value: [] })),
-      ignoreDiscovery: vi.fn(async () => ({ ok: true, value: [] })),
-      rotateCredential: vi.fn(async () => ({ ok: true, value: rows[0] })),
-      deleteProvider: vi.fn(async () => ({ ok: true, value: rows[0] })),
-    }
-    catalog = {
-      query: vi.fn(async ({ providerInstanceId }) => ({
+    registry = clients.registry
+    registry.list.mockResolvedValue(rows)
+    registry.create.mockResolvedValue(rows[0])
+    registry.update.mockResolvedValue(rows[0])
+    registry.updateEndpoint.mockResolvedValue(rows[0])
+    registry.reviseConfiguration.mockResolvedValue(rows[0])
+    registry.listDiscovery.mockResolvedValue([])
+    registry.ignoreDiscovery.mockResolvedValue([])
+    registry.deleteCredential.mockResolvedValue(rows[0])
+    registry.deleteProvider.mockResolvedValue(null)
+    registry.testConnection.mockImplementation(async (providerInstanceId: string, requestId: string) => ({ ok: true, requestId, providerInstanceId,
+      endpointRevisionId: 'ocp_endpoint_12345678', operation: 'connection_test', securityPolicy: 'compatibility_first', proxyRoute: 'system',
+      transportKind: 'electron_session', status: 200, durationMs: 1, warnings: [], diagnostics: {} }))
+    catalog = clients.catalog
+    catalog.query.mockImplementation(async ({ providerInstanceId }) => ({
         protocolKey: 'openai_chat_compatible', providerInstanceId,
         providerName: providerInstanceId === firstId ? 'First' : 'Second', providerStatus: 'active', syncState: null, total: 0, items: [],
-      })),
-      sync: vi.fn(), abortSync: vi.fn(), getStatus: vi.fn(), upsertManual: vi.fn(), deleteManual: vi.fn(),
-    }
-    Object.assign(window, { compatibleProviderRegistry: registry, compatibleCatalog: catalog })
-    Object.assign(window, { compatibleProviderTransport: { testConnection: vi.fn(async (input: any) => ({ ok: true, requestId: input.requestId, providerInstanceId: input.providerInstanceId, endpointRevisionId: 'ocp_endpoint_12345678', operation: 'connection_test', securityPolicy: 'compatibility_first', proxyRoute: 'system', transportKind: 'electron_session', status: 200, durationMs: 1, warnings: [], diagnostics: {} })), abortConnectionTest: vi.fn() } })
+      }))
   })
 
   it('keeps identical catalog model namespaces scoped to the selected provider instance', async () => {
@@ -72,13 +84,13 @@ describe('CompatibleProviderSettingsPanel', () => {
     await screen.findByText('Second')
     await fireEvent.click(screen.getByText('Second'))
     await fireEvent.click(screen.getByText(/Test connection|测试连接/))
-    await waitFor(() => expect(window.compatibleProviderTransport?.testConnection).toHaveBeenCalledWith(expect.objectContaining({ providerInstanceId: secondId })))
+    await waitFor(() => expect(registry.testConnection).toHaveBeenCalledWith(secondId, expect.any(String)))
     await fireEvent.click(screen.getByText(/Sync \/models|同步 \/models/))
     await waitFor(() => expect(catalog.sync).toHaveBeenCalledWith(expect.objectContaining({ providerInstanceId: secondId, force: true })))
   })
 
   it('treats credentials as write-only and clears the secret after create', async () => {
-    registry.list.mockResolvedValueOnce({ ok: true, value: [] }).mockResolvedValueOnce({ ok: true, value: [details(firstId, 'First', 'https://first.example/v1')] })
+    registry.list.mockResolvedValueOnce([]).mockResolvedValueOnce([details(firstId, 'First', 'https://first.example/v1')])
     render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
     const name = await screen.findByTestId('compatible-display-name')
     await fireEvent.update(name, 'First')
@@ -105,8 +117,7 @@ describe('CompatibleProviderSettingsPanel', () => {
     await fireEvent.update(screen.getByTestId('compatible-auth-mode'), 'none')
     await fireEvent.click(screen.getByTestId('compatible-save'))
     await waitFor(() => expect(registry.updateEndpoint).toHaveBeenCalledOnce())
-    expect(registry.updateEndpoint.mock.calls[0]![0]).toMatchObject({ providerInstanceId: firstId, clearAuthentication: true })
-    expect(registry.rotateCredential).not.toHaveBeenCalled()
+    expect(registry.updateEndpoint.mock.calls[0]![0]).toMatchObject({ providerInstanceId: firstId, credential: { mode: 'none' } })
   })
 
   it('writes manual capability, context and pricing provenance only to the selected instance', async () => {
@@ -135,8 +146,8 @@ describe('CompatibleProviderSettingsPanel', () => {
       reasoningMapping: { config: { schemaVersion: 1, mode: 'custom_only', rules: [], replay: { format: 'disabled', scope: 'never' } } },
       inlinePolicy: { config: { schemaVersion: 1, canonicalThinkTags: true, customTags: [] } },
     }
-    registry.list.mockResolvedValue({ ok: true, value: [configured] })
-    registry.reviseConfiguration.mockResolvedValue({ ok: true, value: configured })
+    registry.list.mockResolvedValue([configured])
+    registry.reviseConfiguration.mockResolvedValue(configured)
     render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
     await screen.findByText('First')
     await fireEvent.click(screen.getByText('First'))
@@ -158,14 +169,14 @@ describe('CompatibleProviderSettingsPanel', () => {
       reasoningMapping: { config: { schemaVersion: 1, mode: 'custom_only', rules: [], replay: { format: 'disabled', scope: 'never' } } },
       inlinePolicy: { config: { schemaVersion: 1, canonicalThinkTags: true, customTags: [] } },
     }
-    registry.list.mockResolvedValue({ ok: true, value: [configured] })
-    registry.reviseConfiguration.mockResolvedValue({ ok: true, value: configured })
-    registry.listDiscovery.mockResolvedValue({ ok: true, value: [{
+    registry.list.mockResolvedValue([configured])
+    registry.reviseConfiguration.mockResolvedValue(configured)
+    registry.listDiscovery.mockResolvedValue([{
       providerInstanceId: firstId, responseProfileId: 'ocp_response_profile_12345678', profileVersion: 1,
       streamPath: 'choices.*.delta.thought_process', state: 'candidate',
       aggregate: { schemaVersion: 1, observedShapes: ['string'], redactedPreview: null, sampleCount: 2 },
       occurrenceCount: 2, firstObservedAtMs: 1, lastObservedAtMs: 2,
-    }] })
+    }])
     render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
     await screen.findByText('First')
     await fireEvent.click(screen.getByText('First'))

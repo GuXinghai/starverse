@@ -193,4 +193,29 @@ describe('buildCompatibleChatRequest', () => {
     expect(() => buildCompatibleChatRequest({ ...base(), profile: shallowProfile, extraBody: { outer: { inner: true } } }))
       .toThrow('compatible_extra_body_overflow')
   })
+
+  it('replays only immutable mapped reasoning into the reviewed assistant wire shapes', () => {
+    const messages = [
+      { role: 'user' as const, content: 'question' },
+      { role: 'assistant' as const, content: 'answer' },
+    ]
+    expect(buildCompatibleChatRequest({ ...base(), messages, historyReasoningReplay: {
+      policy: { format: 'assistant_field', field: 'reasoning_content', scope: 'all_assistant_messages' },
+      entries: [{ assistantMessageIndex: 1, reasoning: 'native reasoning', hasCompleteToolChain: false }],
+    } }).body.messages).toEqual([
+      { role: 'user', content: 'question' },
+      { role: 'assistant', content: 'answer', reasoning_content: 'native reasoning' },
+    ])
+    expect(buildCompatibleChatRequest({ ...base(), messages, historyReasoningReplay: {
+      policy: { format: 'assistant_content_tags', openTag: '<r>', closeTag: '</r>', scope: 'all_assistant_messages' },
+      entries: [{ assistantMessageIndex: 1, reasoning: 'native reasoning', hasCompleteToolChain: false }],
+    } }).body.messages).toEqual([
+      { role: 'user', content: 'question' },
+      { role: 'assistant', content: '<r>native reasoning</r>answer' },
+    ])
+    expect(() => buildCompatibleChatRequest({ ...base(), messages, historyReasoningReplay: {
+      policy: { format: 'assistant_field', field: 'content', scope: 'all_assistant_messages' } as never,
+      entries: [{ assistantMessageIndex: 1, reasoning: 'native reasoning', hasCompleteToolChain: false }],
+    } })).toThrow('compatible_history_replay_invalid')
+  })
 })

@@ -4,6 +4,7 @@ import { describe, expect, it } from 'vitest'
 import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue'
 import { openrouterGenerationProfile } from '@/next/generation-params/providerProfiles/openrouterGenerationProfile'
 import { openaiResponsesGenerationProfile } from '@/next/generation-params/providerProfiles/openaiResponsesGenerationProfile'
+import { deepseekGenerationProfile } from '@/next/generation-params/providerProfiles/deepseekGenerationProfile'
 import { t } from '@/shared/i18n'
 
 describe('GenerationParamsSettingsEditor', () => {
@@ -83,6 +84,16 @@ describe('GenerationParamsSettingsEditor', () => {
     })
 
     expect(screen.queryByTestId('generation-param-mode-reasoningEffort')).toBeNull()
+  })
+
+  it('shows max only when the effective provider capability includes it', async () => {
+    const user = userEvent.setup()
+    render(GenerationParamsSettingsEditor, {
+      props: { modelValue: null, profile: deepseekGenerationProfile, modelId: 'deepseek-v4-flash', collapsible: false },
+    })
+    await user.selectOptions(screen.getByTestId('generation-param-mode-reasoningEffort'), 'custom')
+    const value = screen.getByTestId('generation-param-value-reasoningEffort') as HTMLSelectElement
+    expect(Array.from(value.options).map((option) => option.value)).toEqual(['high', 'max'])
   })
 
   it('uses OpenAI Responses summary enum values without legacy none', async () => {

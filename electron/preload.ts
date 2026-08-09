@@ -1,5 +1,11 @@
 import { ipcRenderer, contextBridge } from 'electron'
 
+const epoch2SmokeFixtureAuthorityEnabled = process.env.SV_EPOCH2_SMOKE_FIXTURE_AUTHORITY === '1' &&
+  process.argv.some((argument) => argument.startsWith('--user-data-dir='))
+const packagedTestDocxFixtureAuthorityEnabled = process.env.NODE_ENV === 'production' && process.env.SV_ELECTRON_SMOKE === '1' &&
+  process.env.SV_ELECTRON_SMOKE_DFC === '1' && process.env.SV_PACKAGED_TEST_AUTHORITY === 'packaged_test_docx_fixture_authority_v1' &&
+  typeof process.env.SV_PACKAGED_TEST_AUTHORITY_NONCE === 'string' && process.argv.some((argument) => argument.startsWith('--user-data-dir='))
+
 // Expose electron-store API
 contextBridge.exposeInMainWorld('electronStore', {
   get: (key: string) => ipcRenderer.invoke('store-get', key),
@@ -9,309 +15,322 @@ contextBridge.exposeInMainWorld('electronStore', {
   checkIntegrity: () => ipcRenderer.invoke('store-check-integrity'),
 })
 
-contextBridge.exposeInMainWorld('compatibleProviderRegistry', {
-  list: () => ipcRenderer.invoke('compatible-provider:list'),
-  get: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => ipcRenderer.invoke('compatible-provider:get', payload),
-  create: (payload: Readonly<{
-    displayName: string
-    endpoint: CompatibleRegistryEndpointInput
-    credential: CompatibleRegistryCredentialInput
-    requestMappings?: readonly CompatibleRegistryRequestMappingInput[]
-  }>) => ipcRenderer.invoke('compatible-provider:create', payload),
-  update: (payload: Readonly<{
-    providerInstanceId: CompatibleProviderInstanceId
-    displayName?: string
-    status?: 'active' | 'disabled'
-  }>) => ipcRenderer.invoke('compatible-provider:update', payload),
-  updateEndpoint: (payload: Readonly<{
-    providerInstanceId: CompatibleProviderInstanceId
-    endpoint: CompatibleRegistryEndpointInput
-    clearAuthentication?: boolean
-  }>) => ipcRenderer.invoke('compatible-provider:update-endpoint', payload),
-  reviseConfiguration: (payload: Readonly<{
-    providerInstanceId: CompatibleProviderInstanceId
-    requestProfile: unknown
-    requestMappings: readonly CompatibleRegistryRequestMappingInput[]
-    reasoningMapping: unknown
-    inlinePolicy: unknown
-    acceptedDiscoveryPaths?: readonly string[]
-  }>) => ipcRenderer.invoke('compatible-provider:revise-configuration', payload),
-  listDiscovery: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => ipcRenderer.invoke('compatible-provider:list-discovery', payload),
-  ignoreDiscovery: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; streamPath: string }>) => ipcRenderer.invoke('compatible-provider:ignore-discovery', payload),
-  rotateCredential: (payload: Readonly<{
-    providerInstanceId: CompatibleProviderInstanceId
-    credential: Exclude<CompatibleRegistryCredentialInput, Readonly<{ mode: 'none' }>>
-  }>) => ipcRenderer.invoke('compatible-provider:rotate-credential', payload),
-  deleteCredential: (payload: Readonly<{ credentialVersionRef: CompatibleCredentialVersionRef }>) => ipcRenderer.invoke('compatible-provider:delete-credential', payload),
-  deleteProvider: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => ipcRenderer.invoke('compatible-provider:delete', payload),
-})
-
-contextBridge.exposeInMainWorld('compatibleProviderTransport', {
-  testConnection: (payload: Readonly<{
-    providerInstanceId: CompatibleProviderInstanceId
-    requestId: string
-  }>) => ipcRenderer.invoke('compatible-provider:test-connection', payload),
-  abortConnectionTest: (payload: Readonly<{ requestId: string }>) => ipcRenderer.invoke('compatible-provider:abort-connection-test', payload),
-})
-
-contextBridge.exposeInMainWorld('compatibleChat', {
-  preflight: (payload: unknown) => ipcRenderer.invoke('compatible-chat:preflight', payload),
-  start: (payload: unknown) => ipcRenderer.invoke('compatible-chat:start', payload),
-  abort: (payload: Readonly<{ requestId: string }>) => ipcRenderer.invoke('compatible-chat:abort', payload),
-  resolveHistorical: (payload: unknown) => ipcRenderer.invoke('compatible-chat:resolve-historical', payload),
-  onEvent: (listener: (payload: unknown) => void) => {
-    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload)
-    ipcRenderer.on('compatible-chat:event', wrapped)
-    return () => ipcRenderer.removeListener('compatible-chat:event', wrapped)
-  },
-  onPrepared: (listener: (payload: unknown) => void) => {
-    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload)
-    ipcRenderer.on('compatible-chat:prepared', wrapped)
-    return () => ipcRenderer.removeListener('compatible-chat:prepared', wrapped)
-  },
-  onEnd: (listener: (payload: unknown) => void) => {
-    const wrapped = (_event: Electron.IpcRendererEvent, payload: unknown) => listener(payload)
-    ipcRenderer.on('compatible-chat:end', wrapped)
-    return () => ipcRenderer.removeListener('compatible-chat:end', wrapped)
-  },
-})
-
 contextBridge.exposeInMainWorld('rawGenerationDebug', {
   getStatus: () => ipcRenderer.invoke('raw-generation:get-status'),
   listByAnswerRootId: (answerRootId: string) => ipcRenderer.invoke('raw-generation:list-by-answer', { answerRootId }),
-})
-
-contextBridge.exposeInMainWorld('compatibleMaintenance', {
-  previewReset: () => ipcRenderer.invoke('compatible-reset:preview', {}),
-  applyReset: (confirmation: string) => ipcRenderer.invoke('compatible-reset:apply', { confirmation }),
-})
-
-contextBridge.exposeInMainWorld('compatibleCatalog', {
-  sync: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; requestId: string; force?: boolean }>) => ipcRenderer.invoke('compatible-catalog:sync', payload),
-  abortSync: (payload: Readonly<{ requestId: string }>) => ipcRenderer.invoke('compatible-catalog:abort-sync', payload),
-  query: (payload: Readonly<{
-    providerInstanceId: CompatibleProviderInstanceId
-    search?: string
-    includeStale?: boolean
-    offset?: number
-    limit?: number
-  }>) => ipcRenderer.invoke('compatible-catalog:query', payload),
-  getStatus: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => ipcRenderer.invoke('compatible-catalog:get-status', payload),
-  upsertManual: (payload: Readonly<{
-    providerInstanceId: CompatibleProviderInstanceId
-    modelId: string
-    metadata: CompatibleCatalogManualMetadataInput
-  }>) => ipcRenderer.invoke('compatible-catalog:upsert-manual', payload),
-  deleteManual: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; modelId: string }>) => ipcRenderer.invoke('compatible-catalog:delete-manual', payload),
-})
-
-contextBridge.exposeInMainWorld('openRouterCredential', {
-  getStatus: () => ipcRenderer.invoke('openrouter-credential:get-status'),
-  reveal: () => ipcRenderer.invoke('openrouter-credential:reveal'),
-  update: (payload: unknown) => ipcRenderer.invoke('openrouter-credential:update', payload),
-  clear: () => ipcRenderer.invoke('openrouter-credential:clear'),
-})
-
-contextBridge.exposeInMainWorld('openAIResponsesCredential', {
-  getStatus: () => ipcRenderer.invoke('openai-responses-credential:get-status'),
-  reveal: () => ipcRenderer.invoke('openai-responses-credential:reveal'),
-  update: (payload: unknown) => ipcRenderer.invoke('openai-responses-credential:update', payload),
-  clear: () => ipcRenderer.invoke('openai-responses-credential:clear'),
-})
-
-contextBridge.exposeInMainWorld('googleAIStudioCredential', {
-  getStatus: () => ipcRenderer.invoke('google-ai-studio-credential:get-status'),
-  reveal: () => ipcRenderer.invoke('google-ai-studio-credential:reveal'),
-  update: (payload: unknown) => ipcRenderer.invoke('google-ai-studio-credential:update', payload),
-  clear: () => ipcRenderer.invoke('google-ai-studio-credential:clear'),
-})
-
-contextBridge.exposeInMainWorld('anthropicCredential', {
-  getStatus: () => ipcRenderer.invoke('anthropic-credential:get-status'),
-  reveal: () => ipcRenderer.invoke('anthropic-credential:reveal'),
-  update: (payload: unknown) => ipcRenderer.invoke('anthropic-credential:update', payload),
-  clear: () => ipcRenderer.invoke('anthropic-credential:clear'),
-})
-
-contextBridge.exposeInMainWorld('anthropicModels', {
-  listAvailability: (payload?: unknown) => ipcRenderer.invoke('anthropic-models:list-availability', payload),
-})
-
-contextBridge.exposeInMainWorld('deepSeekCredential', {
-  getStatus: () => ipcRenderer.invoke('deepseek-credential:get-status'),
-  reveal: () => ipcRenderer.invoke('deepseek-credential:reveal'),
-  update: (payload: unknown) => ipcRenderer.invoke('deepseek-credential:update', payload),
-  clear: () => ipcRenderer.invoke('deepseek-credential:clear'),
-})
-
-contextBridge.exposeInMainWorld('deepSeekModels', {
-  listAvailability: (payload?: unknown) => ipcRenderer.invoke('deepseek-models:list-availability', payload),
-})
-
-contextBridge.exposeInMainWorld('openAIResponsesModels', {
-  listAvailability: (payload?: unknown) => ipcRenderer.invoke('openai-responses-models:list-availability', payload),
-})
-
-contextBridge.exposeInMainWorld('googleAIStudioModels', {
-  listAvailability: (payload?: unknown) => ipcRenderer.invoke('google-ai-studio-models:list-availability', payload),
+  listProviderErrorsByAnswerRootId: (answerRootId: string) => ipcRenderer.invoke('raw-generation:list-provider-errors-by-answer', { answerRootId }),
 })
 
 contextBridge.exposeInMainWorld('networkProxy', {
-  getPolicy: () => ipcRenderer.invoke('network-proxy:get-policy'),
-  updatePolicy: (policy: unknown) => ipcRenderer.invoke('network-proxy:update-policy', policy),
-  resetPolicy: () => ipcRenderer.invoke('network-proxy:reset-policy'),
+  getSettings: () => ipcRenderer.invoke('network-proxy:get-settings'),
+  updateSettings: (settings: unknown) => ipcRenderer.invoke('network-proxy:update-settings', settings),
+  resetSettings: () => ipcRenderer.invoke('network-proxy:reset-settings'),
+  reapplySettings: () => ipcRenderer.invoke('network-proxy:reapply-settings'),
   resolveProxy: (payload: unknown) => ipcRenderer.invoke('network-proxy:resolve-proxy', payload),
 })
 
-contextBridge.exposeInMainWorld('localEndpointDiagnostics', {
-  probe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:probe', payload),
-  streamProbe: (payload: unknown) => ipcRenderer.invoke('local-endpoint-diagnostics:stream-probe', payload),
-})
+type GenerationV2TextChannels = Readonly<{
+  initial: string
+  retry: string
+  regenerate: string
+  editResend: string
+  abort: string
+  projection: string
+  continueTool?: string
+}>
 
-contextBridge.exposeInMainWorld('localEndpointChat', {
-  startTextChat: (payload: unknown) => ipcRenderer.invoke('local-endpoint-chat:stream-text', payload),
-  abortTextChat: (requestId: string) => ipcRenderer.invoke('local-endpoint-chat:abort', requestId),
-  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
-    ipcRenderer.on(`local-endpoint-chat:chunk:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`local-endpoint-chat:chunk:${requestId}`, handler)
-    }
-  },
-  onTextChatEnd: (requestId: string, callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on(`local-endpoint-chat:end:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`local-endpoint-chat:end:${requestId}`, handler)
-    }
-  },
-})
+function createGenerationV2TextBridge(channels: GenerationV2TextChannels) {
+  return Object.freeze({
+    initial: (command: unknown) => ipcRenderer.invoke(channels.initial, command),
+    retry: (command: unknown) => ipcRenderer.invoke(channels.retry, command),
+    regenerate: (command: unknown) => ipcRenderer.invoke(channels.regenerate, command),
+    editResend: (command: unknown) => ipcRenderer.invoke(channels.editResend, command),
+    ...(channels.continueTool ? { continueTool: (command: unknown) => ipcRenderer.invoke(channels.continueTool!, command) } : {}),
+    abort: (operationId: string) => ipcRenderer.invoke(channels.abort, operationId),
+    onProjection: (listener: (projection: unknown) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, projection: unknown) => listener(projection)
+      ipcRenderer.on(channels.projection, handler)
+      return () => ipcRenderer.removeListener(channels.projection, handler)
+    },
+  })
+}
 
-contextBridge.exposeInMainWorld('lmStudioProvider', {
-  probe: (payload: unknown) => ipcRenderer.invoke('lm-studio:probe', payload),
-  loadModel: (payload: unknown) => ipcRenderer.invoke('lm-studio:load-model', payload),
-  unloadModel: (payload: unknown) => ipcRenderer.invoke('lm-studio:unload-model', payload),
-})
+function createGenerationV2CredentialBridge(provider: 'openrouter' | 'openai-responses' | 'google-ai-studio' | 'anthropic' | 'deepseek') {
+  const prefix = `generation-v2:credentials:${provider}`
+  return Object.freeze({
+    getStatus: () => ipcRenderer.invoke(`${prefix}:get-status`),
+    reveal: () => ipcRenderer.invoke(`${prefix}:reveal`),
+    update: (payload: unknown) => ipcRenderer.invoke(`${prefix}:update`, payload),
+    clear: () => ipcRenderer.invoke(`${prefix}:clear`),
+  })
+}
 
-contextBridge.exposeInMainWorld('lmStudioChat', {
-  startTextChat: (payload: unknown) => ipcRenderer.invoke('lm-studio-chat:stream-text', payload),
-  abortTextChat: (requestId: string) => ipcRenderer.invoke('lm-studio-chat:abort', requestId),
-  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
-    ipcRenderer.on(`lm-studio-chat:chunk:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`lm-studio-chat:chunk:${requestId}`, handler)
-    }
-  },
-  onTextChatEnd: (requestId: string, callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on(`lm-studio-chat:end:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`lm-studio-chat:end:${requestId}`, handler)
-    }
-  },
-})
+// Epoch-2 generation commands. Provider and operation contracts are selected
+// by these fixed channel maps, never inferred from command payload shape.
+contextBridge.exposeInMainWorld('generationV2', Object.freeze({
+  ...(epoch2SmokeFixtureAuthorityEnabled ? {
+    smokeFixture: Object.freeze({
+      requestLocalFileGrant: (fixtureName: 'markdown' | 'html' | 'docx') =>
+        ipcRenderer.invoke('generation-v2:smoke-fixture:request-local-file-grant', { fixtureName }),
+    }),
+  } : {}),
+  runtime: Object.freeze({
+    subscribe: () => ipcRenderer.invoke('generation-v2:runtime:subscribe'),
+    snapshot: (operationId: string | null = null) => ipcRenderer.invoke('generation-v2:runtime:snapshot', operationId),
+    abort: (operationId: string) => ipcRenderer.invoke('generation-v2:runtime:abort', operationId),
+    onEvent: (listener: (event: unknown) => void) => {
+      const handler = (_event: unknown, value: unknown) => listener(value)
+      ipcRenderer.on('generation-v2:runtime:event', handler)
+      return () => ipcRenderer.removeListener('generation-v2:runtime:event', handler)
+    },
+  }),
+  credentials: Object.freeze({
+    openRouter: createGenerationV2CredentialBridge('openrouter'),
+    openAIResponses: createGenerationV2CredentialBridge('openai-responses'),
+    googleAIStudio: createGenerationV2CredentialBridge('google-ai-studio'),
+    anthropic: createGenerationV2CredentialBridge('anthropic'),
+    deepSeek: createGenerationV2CredentialBridge('deepseek'),
+  }),
+  localRuntime: Object.freeze({
+    generic: Object.freeze({
+      probe: (payload: unknown) => ipcRenderer.invoke('generation-v2:local-runtime:generic:probe', payload),
+      streamProbe: (payload: unknown) => ipcRenderer.invoke('generation-v2:local-runtime:generic:stream-probe', payload),
+    }),
+    lmStudio: Object.freeze({
+      probe: (payload: unknown) => ipcRenderer.invoke('generation-v2:local-runtime:lmstudio:probe', payload),
+      loadModel: (payload: unknown) => ipcRenderer.invoke('generation-v2:local-runtime:lmstudio:load-model', payload),
+      unloadModel: (payload: unknown) => ipcRenderer.invoke('generation-v2:local-runtime:lmstudio:unload-model', payload),
+    }),
+    ollama: Object.freeze({
+      probe: (payload: unknown) => ipcRenderer.invoke('generation-v2:local-runtime:ollama:probe', payload),
+      loadModel: (payload: unknown) => ipcRenderer.invoke('generation-v2:local-runtime:ollama:load-model', payload),
+      unloadModel: (payload: unknown) => ipcRenderer.invoke('generation-v2:local-runtime:ollama:unload-model', payload),
+    }),
+  }),
+  openAICompatible: Object.freeze({
+    list: () => ipcRenderer.invoke('generation-v2:openai-compatible:list'),
+    get: (providerInstanceId: string) => ipcRenderer.invoke('generation-v2:openai-compatible:get', { providerInstanceId }),
+    create: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:create', payload),
+    reviseConfiguration: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:revise-configuration', payload),
+    writeCredential: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:write-credential', payload),
+    getCredentialStatus: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:get-credential-status', payload),
+    update: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:update', payload),
+    updateEndpoint: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:update-endpoint', payload),
+    delete: (providerInstanceId: string) => ipcRenderer.invoke('generation-v2:openai-compatible:delete', { providerInstanceId }),
+    clearCredential: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:clear-credential', payload),
+    testConnection: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:test-connection', payload),
+    abortConnectionTest: (requestId: string) => ipcRenderer.invoke('generation-v2:openai-compatible:abort-connection-test', { requestId }),
+    syncModels: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:model-sync', payload),
+    abortModelSync: (requestId: string) => ipcRenderer.invoke('generation-v2:openai-compatible:model-abort-sync', { requestId }),
+    queryModels: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:model-query', payload),
+    getModelStatus: (providerInstanceId: string) => ipcRenderer.invoke('generation-v2:openai-compatible:model-status', { providerInstanceId }),
+    upsertManualModel: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:model-upsert-manual', payload),
+    deleteManualModel: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:model-delete-manual', payload),
+    listDiscovery: (providerInstanceId: string) => ipcRenderer.invoke('generation-v2:openai-compatible:list-discovery', { providerInstanceId }),
+    ignoreDiscovery: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:ignore-discovery', payload),
+    confirmDiscovery: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:confirm-discovery', payload),
+    commands: createGenerationV2TextBridge({
+      initial: 'generation-v2:openai-compatible:initial', retry: 'generation-v2:openai-compatible:retry',
+      regenerate: 'generation-v2:openai-compatible:regenerate', editResend: 'generation-v2:openai-compatible:edit-resend',
+      abort: 'generation-v2:openai-compatible:abort', projection: 'generation-v2:openai-compatible:projection',
+    }),
+  }),
+  workspace: Object.freeze({
+    ensureDefault: () => ipcRenderer.invoke('generation-v2:workspace:ensure-default'),
+    listProjects: () => ipcRenderer.invoke('generation-v2:workspace:list-projects'),
+    listConversations: (projectId: string, cursor: Readonly<{ updatedAtMs: number;
+      conversationId: string }> | null = null, limit = 50) =>
+      ipcRenderer.invoke('generation-v2:workspace:list-conversations', { projectId, cursor, limit }),
+    readBranch: (branchId: string, beforeMessageId: string | null = null, limit = 50) =>
+      ipcRenderer.invoke('generation-v2:workspace:read-branch', { branchId, beforeMessageId, limit }),
+    getMessageCandidateNavigation: (branchId: string, messageId: string) =>
+      ipcRenderer.invoke('generation-v2:workspace:get-message-candidate-navigation', {
+        branchId, messageId,
+      }),
+    setContextFilter: (payload: Readonly<{ branchId:string;targetType:'question'|'answer';targetId:string;mode:'include'|'exclude' }>) =>
+      ipcRenderer.invoke('generation-v2:workspace:set-context-filter', payload),
+    clearContextFilter: (payload: Readonly<{ branchId:string;targetType:'question'|'answer';targetId:string }>) =>
+      ipcRenderer.invoke('generation-v2:workspace:clear-context-filter', payload),
+    getConfig: (ownerKind: 'global' | 'project' | 'conversation', ownerId: string) =>
+      ipcRenderer.invoke('generation-v2:config:get', { ownerKind, ownerId }),
+    updateConfig: (payload: Readonly<{ ownerKind: 'global' | 'project' | 'conversation'; ownerId: string;
+      expectedConfigRevision: string; semanticLayer: unknown }>) => ipcRenderer.invoke('generation-v2:config:update', payload),
+    createProject: (name: string) => ipcRenderer.invoke('generation-v2:workspace:create-project', { name }),
+    renameProject: (projectId: string, name: string) => ipcRenderer.invoke('generation-v2:workspace:rename-project', { projectId, name }),
+    deleteProject: (projectId: string) => ipcRenderer.invoke('generation-v2:workspace:delete-project', { projectId }),
+    createConversation: (projectId: string, title: string) => ipcRenderer.invoke('generation-v2:workspace:create-conversation', { projectId, title }),
+    renameConversation: (conversationId: string, title: string) => ipcRenderer.invoke('generation-v2:workspace:rename-conversation', { conversationId, title }),
+    moveConversation: (conversationId: string, projectId: string) => ipcRenderer.invoke('generation-v2:workspace:move-conversation', { conversationId, projectId }),
+    deleteConversation: (conversationId: string) => ipcRenderer.invoke('generation-v2:workspace:delete-conversation', { conversationId }),
+    forkBranch: (sourceBranchId: string, headMessageId: string, name: string | null) =>
+      ipcRenderer.invoke('generation-v2:workspace:fork-branch', { sourceBranchId, headMessageId, name }),
+    renameBranch: (branchId: string, name: string | null) => ipcRenderer.invoke('generation-v2:workspace:rename-branch', { branchId, name }),
+    deleteBranch: (branchId: string) => ipcRenderer.invoke('generation-v2:workspace:delete-branch', { branchId }),
+    truncateFromQuestion: (payload: Readonly<{branchId:string;questionId:string;expectedHeadMessageId:string}>) =>
+      ipcRenderer.invoke('generation-v2:workspace:truncate-from-question', payload),
+    getSystemTemplate: () => ipcRenderer.invoke('generation-v2:workspace:get-system-template'),
+    updateSystemTemplateConfig: (payload: unknown) => ipcRenderer.invoke('generation-v2:workspace:update-system-template-config', payload),
+    resetSystemTemplate: (payload: unknown) => ipcRenderer.invoke('generation-v2:workspace:reset-system-template', payload),
+    setNewChatLifecycle: (payload: unknown) => ipcRenderer.invoke('generation-v2:workspace:set-new-chat-lifecycle', payload),
+    getLastFormalConversation: () => ipcRenderer.invoke('generation-v2:workspace:get-last-formal-conversation'),
+    setLastFormalConversation: (conversationId: string | null) =>
+      ipcRenderer.invoke('generation-v2:workspace:set-last-formal-conversation', { conversationId }),
+    getConversationRoutePreference: (conversationId: string) =>
+      ipcRenderer.invoke('generation-v2:workspace:get-conversation-route-preference', { conversationId }),
+    updateConversationRoutePreference: (payload: unknown) =>
+      ipcRenderer.invoke('generation-v2:workspace:update-conversation-route-preference', payload),
+    clearConversationRoutePreference: (conversationId: string, expectedRevision: number) =>
+      ipcRenderer.invoke('generation-v2:workspace:clear-conversation-route-preference', { conversationId, expectedRevision }),
+    hideAnswer: (branchId: string, answerId: string) =>
+      ipcRenderer.invoke('generation-v2:workspace:hide-answer', { branchId, answerId }),
+    listBranches: (conversationId: string, cursor: Readonly<{
+      updatedAtMs: number; branchId: string }> | null = null, limit = 50) =>
+      ipcRenderer.invoke('generation-v2:workspace:list-branches', { conversationId, cursor, limit }),
+  }),
+  composer: Object.freeze({
+    get: (conversationId: string) => ipcRenderer.invoke('generation-v2:composer:get', { conversationId }),
+    updateText: (payload: Readonly<{conversationId:string;expectedRevision:number;draftText:string;
+      draftMode:'compose'|'edit';editingSourceQuestionId:string|null}>) =>
+      ipcRenderer.invoke('generation-v2:composer:update-text', payload),
+    importLocal: (payload: Readonly<{conversationId:string;expectedRevision:number;filePath:string;selectionGrantToken:string}>) =>
+      ipcRenderer.invoke('generation-v2:composer:import-local', payload),
+    addUrlReference: (payload: Readonly<{conversationId:string;expectedRevision:number;url:string}>) =>
+      ipcRenderer.invoke('generation-v2:composer:add-url-reference', payload),
+    importUrlFile: (payload: Readonly<{conversationId:string;expectedRevision:number;url:string}>) =>
+      ipcRenderer.invoke('generation-v2:composer:import-url-file', payload),
+    removeAttachment: (payload: Readonly<{conversationId:string;expectedRevision:number;assetRevisionId:string}>) =>
+      ipcRenderer.invoke('generation-v2:composer:remove-attachment', payload),
+    clearCommitted: (payload: Readonly<{conversationId:string;expectedRevision:number}>) =>
+      ipcRenderer.invoke('generation-v2:composer:clear-committed', payload),
+    readPreview: (payload: Readonly<{assetId:string;assetRevisionId:string}>) =>
+      ipcRenderer.invoke('generation-v2:composer:read-preview', payload),
+    replace: (payload: Readonly<{conversationId:string;expectedRevision:number;draftText:string;draftMode:'compose'|'edit';
+      editingSourceQuestionId:string|null;attachments:readonly unknown[]}>) => ipcRenderer.invoke('generation-v2:composer:replace', payload),
+    replaceFromAnswerSnapshot: (payload: Readonly<{conversationId:string;expectedRevision:number;questionId:string;answerRootId:string;draftText:string}>) =>
+      ipcRenderer.invoke('generation-v2:composer:replace-from-answer-snapshot', payload),
+    dfcOptions: (payload: Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => ipcRenderer.invoke('generation-v2:composer:dfc-options', payload),
+    dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => ipcRenderer.invoke('generation-v2:composer:dfc-select', payload),
+    dfcPreview: (payload: Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) => ipcRenderer.invoke('generation-v2:composer:dfc-preview', payload),
+  }),
+  search: Object.freeze({
+    query: (payload: unknown) => ipcRenderer.invoke('generation-v2:search:query', payload),
+    rebuild: () => ipcRenderer.invoke('generation-v2:search:rebuild'),
+  }),
+  plugins: Object.freeze({
+    listOfficial: (payload?: unknown) => ipcRenderer.invoke('generation-v2:plugins:list-official', payload),
+    listInstalled: () => ipcRenderer.invoke('generation-v2:plugins:list-installed'),
+    registerLocalOfficial: (payload: unknown) => ipcRenderer.invoke('generation-v2:plugins:register-local-official', payload),
+    installOfficial: (payload: unknown) => ipcRenderer.invoke('generation-v2:plugins:install-official', payload),
+    installStatus: (payload?: unknown) => ipcRenderer.invoke('generation-v2:plugins:install-status', payload),
+    cancelInstall: (payload?: unknown) => ipcRenderer.invoke('generation-v2:plugins:cancel-install', payload),
+    enable: (payload: unknown) => ipcRenderer.invoke('generation-v2:plugins:enable', payload),
+    disable: (payload: unknown) => ipcRenderer.invoke('generation-v2:plugins:disable', payload),
+    uninstall: (payload: unknown) => ipcRenderer.invoke('generation-v2:plugins:uninstall', payload),
+    health: (payload: unknown) => ipcRenderer.invoke('generation-v2:plugins:health', payload),
+    registerLocalPackage: (payload: unknown) => ipcRenderer.invoke('generation-v2:plugins:register-local-package', payload),
+    quarantineLibreOffice: () => ipcRenderer.invoke('generation-v2:plugins:quarantine-libreoffice'),
+    diagnostics: () => ipcRenderer.invoke('generation-v2:plugins:diagnostics'),
+    probeLibreOfficeDownload: () => ipcRenderer.invoke('generation-v2:plugins:probe-libreoffice-download'),
+  }),
+  models: Object.freeze({
+    listOpenRouter: (payload?: unknown) => ipcRenderer.invoke('generation-v2:openrouter-models:list', payload),
+    listOpenAIResponses: (payload?: unknown) => ipcRenderer.invoke('openai-responses-models:list-availability', payload),
+    listAnthropic: (payload?: unknown) => ipcRenderer.invoke('anthropic-models:list-availability', payload),
+    listGoogleAIStudio: (payload?: unknown) => ipcRenderer.invoke('google-ai-studio-models:list-availability', payload),
+    listDeepSeek: (payload?: unknown) => ipcRenderer.invoke('deepseek-models:list-availability', payload),
+    sync: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:sync', payload),
+    status: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:status', payload),
+    clearCurrent: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:clear-current', payload),
+    clearAll: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:clear-all', payload),
+    applyPending: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:apply-pending', payload),
+    discardPending: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:discard-pending', payload),
+  }),
+  modelPreferences: Object.freeze({
+    listFavorites: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:list-favorites', payload),
+    addFavorite: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:add-favorite', payload),
+    removeFavorite: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:remove-favorite', payload),
+    reorderFavorites: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:reorder-favorites', payload),
+    listRecents: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:list-recents', payload),
+    recordRecent: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:record-recent', payload),
+  }),
+  localProfiles: Object.freeze({
+    list: () => ipcRenderer.invoke('generation-v2:local-profile:list'),
+    create: (payload: Readonly<{ providerId: 'lmstudio' | 'ollama' | 'generic_local';
+      protocolContractId: string; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => ipcRenderer.invoke('generation-v2:local-profile:create', payload),
+    delete: (endpointProfileId: string) => ipcRenderer.invoke('generation-v2:local-profile:delete', { endpointProfileId }),
+  }),
+  lmStudio: Object.freeze({ openResponses: createGenerationV2TextBridge({
+    initial: 'generation-v2:lmstudio:openresponses:initial', retry: 'generation-v2:lmstudio:openresponses:retry',
+    regenerate: 'generation-v2:lmstudio:openresponses:regenerate', editResend: 'generation-v2:lmstudio:openresponses:edit-resend',
+    continueTool: 'generation-v2:lmstudio:openresponses:continue-tool',
+    abort: 'generation-v2:lmstudio:openresponses:abort', projection: 'generation-v2:lmstudio:projection',
+  }) }),
+  genericLocal: Object.freeze({ openAIChatCompletions: createGenerationV2TextBridge({
+    initial: 'generation-v2:generic-local:openai-chat:initial', retry: 'generation-v2:generic-local:openai-chat:retry',
+    regenerate: 'generation-v2:generic-local:openai-chat:regenerate', editResend: 'generation-v2:generic-local:openai-chat:edit-resend',
+    abort: 'generation-v2:generic-local:openai-chat:abort', projection: 'generation-v2:generic-local:projection',
+  }) }),
+  ollama: Object.freeze({ chat: createGenerationV2TextBridge({
+    initial: 'generation-v2:ollama:chat:initial', retry: 'generation-v2:ollama:chat:retry',
+    regenerate: 'generation-v2:ollama:chat:regenerate', editResend: 'generation-v2:ollama:chat:edit-resend',
+    abort: 'generation-v2:ollama:chat:abort', projection: 'generation-v2:ollama:projection',
+  }) }),
+  openRouter: Object.freeze({
+    chat: createGenerationV2TextBridge({
+      initial: 'generation-v2:openrouter:chat:initial', retry: 'generation-v2:openrouter:chat:retry',
+      regenerate: 'generation-v2:openrouter:chat:regenerate', editResend: 'generation-v2:openrouter:chat:edit-resend',
+      continueTool: 'generation-v2:openrouter:chat:continue-tool', abort: 'generation-v2:openrouter:chat:abort',
+      projection: 'generation-v2:openrouter:projection',
+    }),
+    images: Object.freeze({
+      ...createGenerationV2TextBridge({
+        initial: 'generation-v2:openrouter:images:initial', retry: 'generation-v2:openrouter:images:retry',
+        regenerate: 'generation-v2:openrouter:images:regenerate', editResend: 'generation-v2:openrouter:images:edit-resend',
+        abort: 'generation-v2:openrouter:images:abort', projection: 'generation-v2:openrouter:projection',
+      }),
+      getEndpointSelection: (payload: unknown) => ipcRenderer.invoke('generation-v2:openrouter:images:endpoints:get', payload),
+      selectEndpoint: (payload: unknown) => ipcRenderer.invoke('generation-v2:openrouter:images:endpoints:select', payload),
+      updateEndpointSettings: (payload: unknown) => ipcRenderer.invoke('generation-v2:openrouter:images:endpoints:update-settings', payload),
+    }),
+  }),
+  openAIResponses: createGenerationV2TextBridge({
+    initial: 'generation-v2:openai-responses:initial', retry: 'generation-v2:openai-responses:retry',
+    regenerate: 'generation-v2:openai-responses:regenerate', editResend: 'generation-v2:openai-responses:edit-resend',
+    continueTool: 'generation-v2:openai-responses:continue-tool', abort: 'generation-v2:openai-responses:abort',
+    projection: 'generation-v2:openai-responses:projection',
+  }),
+  anthropic: createGenerationV2TextBridge({
+    initial: 'generation-v2:anthropic:initial', retry: 'generation-v2:anthropic:retry',
+    regenerate: 'generation-v2:anthropic:regenerate', editResend: 'generation-v2:anthropic:edit-resend',
+    continueTool: 'generation-v2:anthropic:continue-tool', abort: 'generation-v2:anthropic:abort',
+    projection: 'generation-v2:anthropic:projection',
+  }),
+  deepSeek: createGenerationV2TextBridge({
+    initial: 'generation-v2:deepseek:initial', retry: 'generation-v2:deepseek:retry',
+    regenerate: 'generation-v2:deepseek:regenerate', editResend: 'generation-v2:deepseek:edit-resend',
+    continueTool: 'generation-v2:deepseek:continue-tool', abort: 'generation-v2:deepseek:abort',
+    projection: 'generation-v2:deepseek:projection',
+  }),
+  gemini: Object.freeze({
+    generateContent: createGenerationV2TextBridge({
+      initial: 'generation-v2:gemini:generate-content:initial', retry: 'generation-v2:gemini:generate-content:retry',
+      regenerate: 'generation-v2:gemini:generate-content:regenerate', editResend: 'generation-v2:gemini:generate-content:edit-resend',
+      continueTool: 'generation-v2:gemini:generate-content:continue-tool',
+      abort: 'generation-v2:gemini:generate-content:abort', projection: 'generation-v2:gemini:projection',
+    }),
+    interactionsImage: createGenerationV2TextBridge({
+      initial: 'generation-v2:gemini:interactions-image:initial', retry: 'generation-v2:gemini:interactions-image:retry',
+      regenerate: 'generation-v2:gemini:interactions-image:regenerate', editResend: 'generation-v2:gemini:interactions-image:edit-resend',
+      abort: 'generation-v2:gemini:interactions-image:abort', projection: 'generation-v2:gemini:interactions-image:projection',
+    }),
+  }),
+}))
 
-contextBridge.exposeInMainWorld('ollamaProvider', {
-  probe: (payload: unknown) => ipcRenderer.invoke('ollama:probe', payload),
-  loadModel: (payload: unknown) => ipcRenderer.invoke('ollama:load-model', payload),
-  unloadModel: (payload: unknown) => ipcRenderer.invoke('ollama:unload-model', payload),
-})
-
-contextBridge.exposeInMainWorld('ollamaChat', {
-  startTextChat: (payload: unknown) => ipcRenderer.invoke('ollama-chat:stream-text', payload),
-  abortTextChat: (requestId: string) => ipcRenderer.invoke('ollama-chat:abort', requestId),
-  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
-    ipcRenderer.on(`ollama-chat:chunk:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`ollama-chat:chunk:${requestId}`, handler)
-    }
-  },
-  onTextChatEnd: (requestId: string, callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on(`ollama-chat:end:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`ollama-chat:end:${requestId}`, handler)
-    }
-  },
-})
-
-contextBridge.exposeInMainWorld('openAIResponsesChat', {
-  startTextChat: (payload: unknown) => ipcRenderer.invoke('openai-responses-chat:stream-text', payload),
-  abortTextChat: (requestId: string) => ipcRenderer.invoke('openai-responses-chat:abort', requestId),
-  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
-    ipcRenderer.on(`openai-responses-chat:chunk:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`openai-responses-chat:chunk:${requestId}`, handler)
-    }
-  },
-  onTextChatEnd: (requestId: string, callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on(`openai-responses-chat:end:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`openai-responses-chat:end:${requestId}`, handler)
-    }
-  },
-})
-
-contextBridge.exposeInMainWorld('googleAIStudioChat', {
-  startTextChat: (payload: unknown) => ipcRenderer.invoke('google-ai-studio-chat:stream-text', payload),
-  abortTextChat: (requestId: string) => ipcRenderer.invoke('google-ai-studio-chat:abort', requestId),
-  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
-    ipcRenderer.on(`google-ai-studio-chat:chunk:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`google-ai-studio-chat:chunk:${requestId}`, handler)
-    }
-  },
-  onTextChatEnd: (requestId: string, callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on(`google-ai-studio-chat:end:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`google-ai-studio-chat:end:${requestId}`, handler)
-    }
-  },
-})
-
-contextBridge.exposeInMainWorld('anthropicChat', {
-  startTextChat: (payload: unknown) => ipcRenderer.invoke('anthropic-chat:stream-text', payload),
-  abortTextChat: (requestId: string) => ipcRenderer.invoke('anthropic-chat:abort', requestId),
-  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
-    ipcRenderer.on(`anthropic-chat:chunk:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`anthropic-chat:chunk:${requestId}`, handler)
-    }
-  },
-  onTextChatEnd: (requestId: string, callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on(`anthropic-chat:end:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`anthropic-chat:end:${requestId}`, handler)
-    }
-  },
-})
-
-contextBridge.exposeInMainWorld('deepSeekChat', {
-  startTextChat: (payload: unknown) => ipcRenderer.invoke('deepseek-chat:stream-text', payload),
-  abortTextChat: (requestId: string) => ipcRenderer.invoke('deepseek-chat:abort', requestId),
-  onTextChatChunk: (requestId: string, callback: (payload: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
-    ipcRenderer.on(`deepseek-chat:chunk:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`deepseek-chat:chunk:${requestId}`, handler)
-    }
-  },
-  onTextChatEnd: (requestId: string, callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on(`deepseek-chat:end:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`deepseek-chat:end:${requestId}`, handler)
-    }
-  },
-})
+if (packagedTestDocxFixtureAuthorityEnabled) {
+  contextBridge.exposeInMainWorld('packagedTestDocxFixtureV1', Object.freeze({
+    issueGrant: () => ipcRenderer.invoke('packaged-smoke:issue-docx-fixture-grant-v1', {}),
+  }))
+}
 
 // Expose file dialog API for image selection
 contextBridge.exposeInMainWorld('electronAPI', {
@@ -351,65 +370,4 @@ contextBridge.exposeInMainWorld('electronAPI', {
    */
   openInAppLink: (url: string, windowId?: number) => ipcRenderer.invoke('inapp:open-link', { url, windowId }),
 
-  /**
-   * 获取网络实验运行时信息（开关注入/版本/argv）
-   */
-  getNetExpRuntimeInfo: () => ipcRenderer.invoke('netexp:get-runtime-info'),
-  probeLibreOfficeSystemProxyDownloadNetwork: () =>
-    ipcRenderer.invoke('network-proxy:probe-libreoffice-system'),
-  onModelCatalogSynced: (callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on('db:modelCatalogSynced', handler)
-    return () => {
-      ipcRenderer.removeListener('db:modelCatalogSynced', handler)
-    }
-  },
-  modelCatalogSyncNow: (options?: { providerKey?: string; force?: boolean; reason?: string }) =>
-    ipcRenderer.invoke('modelCatalog.syncNow', options),
-  modelCatalogGetSyncStatus: (options?: { providerKey?: string }) =>
-    ipcRenderer.invoke('modelCatalog.getSyncStatus', options),
-  modelCatalogQueryScopedCurrent: (options?: unknown) =>
-    ipcRenderer.invoke('modelCatalog.queryScopedCurrent', options),
-  modelCatalogRepairCurrentScopedCache: () =>
-    ipcRenderer.invoke('modelCatalog.repairCurrentScopedCache'),
-  modelCatalogClearCurrentScopedCache: () =>
-    ipcRenderer.invoke('modelCatalog.clearCurrentScopedCache'),
-  modelCatalogClearAllOpenRouterScopedCaches: () =>
-    ipcRenderer.invoke('modelCatalog.clearAllOpenRouterScopedCaches'),
-  startOpenRouterStream: (payload: unknown) => ipcRenderer.invoke('openrouter:stream-chat', payload),
-  abortOpenRouterStream: (requestId: string) => ipcRenderer.invoke('openrouter:abort', requestId),
-  onOpenRouterChunk: (requestId: string, callback: (payload: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, payload: unknown) => callback(payload)
-    ipcRenderer.on(`openrouter:chunk:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`openrouter:chunk:${requestId}`, handler)
-    }
-  },
-  onOpenRouterEnd: (requestId: string, callback: () => void) => {
-    const handler = () => callback()
-    ipcRenderer.on(`openrouter:end:${requestId}`, handler)
-    return () => {
-      ipcRenderer.removeListener(`openrouter:end:${requestId}`, handler)
-    }
-  },
-})
-
-// Expose DB bridge for renderer storage access
-contextBridge.exposeInMainWorld('dbBridge', {
-  invoke: (method: string, params?: unknown) => ipcRenderer.invoke('db:invoke', { method, params }),
-  /**
-   * 订阅数据库事件（从 Worker 线程转发）
-   * @param callback 事件回调函数
-   * @returns 取消订阅函数
-   */
-  onEvent: (callback: (event: unknown) => void) => {
-    const handler = (_event: Electron.IpcRendererEvent, dbEvent: unknown) => {
-      callback(dbEvent)
-    }
-    ipcRenderer.on('db:event', handler)
-    // 返回取消订阅函数
-    return () => {
-      ipcRenderer.removeListener('db:event', handler)
-    }
-  },
 })

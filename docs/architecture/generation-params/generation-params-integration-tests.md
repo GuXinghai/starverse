@@ -249,7 +249,7 @@ git diff --check             passed
 ## 未解决问题
 
 1. `AssistantAnswerGenerationSnapshot` 尚未保存本次实际 generation request-shape。
-2. 真实桌面 smoke 已完成启动、composer 加载和 credential bridge 只读检查；Playwright 脚本已修正为从 package root 启动并复用 `C:\Users\m1389\AppData\Roaming\Starverse`。修正 credential bridge wrapper 解析后，五个 provider 均可从 secure store 读到 credential。OpenRouter / Google AI Studio / OpenAI Responses / Anthropic / DeepSeek 已完成可发送代表组合的真点击 smoke，其中 OpenRouter 已覆盖包含隐藏高级参数的 all-open；已观测的 provider 参数拒绝组合本轮仅记录，暂不在 resolver/profile 阻断。Gemini `topK` 等 provider/model metadata 差异也按不可用参数记录处理，暂不做发送前阻断。
+2. 真实桌面 smoke 已完成启动、composer 加载和 credential bridge 只读检查；Playwright 脚本已修正为从 package root 启动并复用 `[redacted-user-data]`。修正 credential bridge wrapper 解析后，五个 provider 均可从 secure store 读到 credential。OpenRouter / Google AI Studio / OpenAI Responses / Anthropic / DeepSeek 已完成可发送代表组合的真点击 smoke，其中 OpenRouter 已覆盖包含隐藏高级参数的 all-open；已观测的 provider 参数拒绝组合本轮仅记录，暂不在 resolver/profile 阻断。Gemini `topK` 等 provider/model metadata 差异也按不可用参数记录处理，暂不做发送前阻断。
 3. Gemini Interactions 生图 thinking summary/level 仍未并入 generation params SSOT；如果下一阶段要做 `AssistantAnswerGenerationSnapshot` 并覆盖图片生成，必须同时保存或统一这条 request-shape 输入。
 4. 历史 docs 中 sampling 术语仍需后续文档 cleanup。
 

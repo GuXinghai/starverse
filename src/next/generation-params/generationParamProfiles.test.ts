@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest'
-import { getDefaultGenerationParamProfile, getEffectiveGenerationParamCapabilities } from './generationParamProfiles'
+import { getDefaultGenerationParamProfile, getEffectiveGenerationParamCapabilities,
+  getSelectableReasoningEfforts, isReasoningEffortExplicitlyUnsupported } from './generationParamProfiles'
 import { anthropicGenerationProfile } from './providerProfiles/anthropicGenerationProfile'
 import { deepseekGenerationProfile } from './providerProfiles/deepseekGenerationProfile'
 import { geminiGenerationProfile } from './providerProfiles/geminiGenerationProfile'
 import { geminiImageGenerationProfile } from './providerProfiles/geminiImageGenerationProfile'
 import { openaiResponsesGenerationProfile } from './providerProfiles/openaiResponsesGenerationProfile'
 import { openrouterGenerationProfile } from './providerProfiles/openrouterGenerationProfile'
+import { resolveGeminiThinkingCapability } from '../provider/gemini/geminiThinkingPolicy'
+
+const gemini31ProCapability = resolveGeminiThinkingCapability({
+  model: 'gemini-3.1-pro-preview', thinking: true, thinkingOwnProperty: true, supportedGenerationMethods: ['generateContent'],
+})
+const gemini25FlashCapability = resolveGeminiThinkingCapability({
+  model: 'gemini-2.5-flash', thinking: true, thinkingOwnProperty: true, supportedGenerationMethods: ['generateContent'],
+})
 
 describe('generationParamProfiles', () => {
   it('keeps OpenRouter wide parameters in the OpenRouter profile only', () => {
@@ -18,7 +27,9 @@ describe('generationParamProfiles', () => {
   })
 
   it('marks Gemini 3 sampling capabilities deprecated by model override', () => {
-    const capabilities = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'models/gemini-3-pro-preview')
+    const capabilities = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'models/gemini-3.1-pro-preview', {
+      geminiThinkingCapability: gemini31ProCapability,
+    })
 
     expect(capabilities.temperature?.status).toBe('deprecated')
     expect(capabilities.topP?.status).toBe('deprecated')
@@ -29,8 +40,14 @@ describe('generationParamProfiles', () => {
   })
 
   it('exposes only model-family-correct Gemini thinking controls', () => {
-    const gemini25 = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'gemini-2.5-flash')
-    const unknown = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'future-gemini-model')
+    const gemini25 = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'gemini-2.5-flash', {
+      geminiThinkingCapability: gemini25FlashCapability,
+    })
+    const unknown = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'future-gemini-model', {
+      geminiThinkingCapability: resolveGeminiThinkingCapability({
+        model: 'future-gemini-model', thinking: false, thinkingOwnProperty: true, supportedGenerationMethods: ['generateContent'],
+      }),
+    })
 
     expect(gemini25.thinkingBudget?.supported).toBe(true)
     expect(gemini25.thinkingLevel?.supported).toBe(false)
@@ -53,6 +70,15 @@ describe('generationParamProfiles', () => {
     expect(lite.imageSearch?.supported).toBe(false)
   })
 
+  it('describes Interactions search parameters with the combined native tool encoding', () => {
+    expect(geminiImageGenerationProfile.params.googleSearch?.wirePath).toBeUndefined()
+    expect(geminiImageGenerationProfile.params.imageSearch?.wirePath).toBeUndefined()
+    expect(geminiImageGenerationProfile.params.googleSearch?.wireEncoding)
+      .toBe('gemini_interactions_google_search_type')
+    expect(geminiImageGenerationProfile.params.imageSearch?.wireEncoding)
+      .toBe('gemini_interactions_google_search_type')
+  })
+
   it('restricts OpenAI Responses model-specific reasoning effort', () => {
     const gpt51 = getEffectiveGenerationParamCapabilities(openaiResponsesGenerationProfile, 'gpt-5.1')
     const gpt54Nano = getEffectiveGenerationParamCapabilities(openaiResponsesGenerationProfile, 'gpt-5.4-nano')
@@ -70,7 +96,35 @@ describe('generationParamProfiles', () => {
     expect(gpt5Pro.reasoningEffort?.enumValues).toEqual(['auto', 'high'])
     expect(gpt41.reasoningEffort?.supported).toBe(false)
     expect(gpt41.reasoningSummary?.supported).toBe(false)
-    expect(unknown.reasoningEffort?.supported).toBe(false)
+    expect(unknown.reasoningEffort).toMatchObject({ supported: true, enumValues: ['auto', 'max'] })
+  })
+
+  it('projects max from explicit capability while preserving unknown versus unsupported', () => {
+    expect(getSelectableReasoningEfforts(deepseekGenerationProfile, 'deepseek-v4-flash')).toEqual(['high', 'max'])
+    expect(getSelectableReasoningEfforts(anthropicGenerationProfile, 'claude-sonnet-5')).toEqual(['low', 'medium', 'high'])
+    expect(isReasoningEffortExplicitlyUnsupported(anthropicGenerationProfile, 'claude-sonnet-5', 'max')).toBe(true)
+    expect(getSelectableReasoningEfforts(openaiResponsesGenerationProfile, 'future-model')).toEqual(['max'])
+    expect(isReasoningEffortExplicitlyUnsupported(openaiResponsesGenerationProfile, 'future-model', 'max')).toBe(false)
+    expect(getSelectableReasoningEfforts(openaiResponsesGenerationProfile, 'gpt-4.1-mini')).toEqual([])
+    expect(isReasoningEffortExplicitlyUnsupported(null, 'unknown-model', 'max')).toBe(false)
+
+    const readOnlyMaxProfile = {
+      ...deepseekGenerationProfile,
+      params: {
+        ...deepseekGenerationProfile.params,
+        reasoningEffort: {
+          ...deepseekGenerationProfile.params.reasoningEffort!,
+          ui: {
+            ...deepseekGenerationProfile.params.reasoningEffort!.ui,
+            visibleByDefault: deepseekGenerationProfile.params.reasoningEffort!.ui?.visibleByDefault ?? true,
+            editable: false,
+          },
+        },
+      },
+      modelOverrides: [],
+    }
+    expect(getSelectableReasoningEfforts(readOnlyMaxProfile, 'future-model')).toEqual([])
+    expect(isReasoningEffortExplicitlyUnsupported(readOnlyMaxProfile, 'future-model', 'max')).toBe(false)
   })
 
   it('marks modern Claude sampling controls rejected', () => {

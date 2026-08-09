@@ -1,9 +1,6 @@
 import type { CatalogEndpointMetric } from '../../shared/modelCatalog/internalSchema'
 import { buildModelKeyForLog, logModelCatalogEvent } from './modelCatalogObservability'
-
-type ElectronCatalogApi = Readonly<{
-  modelCatalogQueryScopedCurrent?: (options?: unknown) => Promise<any>
-}>
+import { CatalogQueryService } from './catalogQueryService'
 
 export type ModelEndpointDetail = Readonly<{
   endpointKey: string
@@ -36,11 +33,6 @@ export type GetModelEndpointDetailsInput = Readonly<{
   providerKey?: string
   forceRefresh?: boolean
 }>
-
-function getElectronCatalogApi(): ElectronCatalogApi | null {
-  const api = (globalThis as any).electronAPI as ElectronCatalogApi | undefined
-  return api && typeof api.modelCatalogQueryScopedCurrent === 'function' ? api : null
-}
 
 function normalizeEndpointPart(value: unknown): string {
   const normalized = String(value ?? '').trim()
@@ -112,15 +104,14 @@ export async function getModelEndpointDetails(
   const providerKey = String(input.providerKey ?? '').trim()
   const modelId = String(input.modelId ?? '').trim()
   const modelKey = buildModelKeyForLog(providerKey, modelId)
-  const catalogApi = getElectronCatalogApi()
-  if (!catalogApi?.modelCatalogQueryScopedCurrent || !providerKey || !modelId) {
+  if (!providerKey || !modelId) {
     logModelCatalogEvent('endpoints', 'fetch_fail', {
       stage: 'input_validation',
       providerKey,
       modelId,
       modelKey,
       durationMs: Date.now() - startedAtMs,
-      reason: 'missing_scoped_query_ipc_providerKey_or_modelId',
+      reason: 'missing_providerKey_or_modelId',
     })
     return {
       providerKey,
@@ -133,14 +124,11 @@ export async function getModelEndpointDetails(
   }
 
   try {
-    const raw = await catalogApi.modelCatalogQueryScopedCurrent({
-      providerKey,
-      modelIds: [modelId],
-      limit: 1,
-    })
-    const row = Array.isArray(raw?.items) && raw.items[0] && typeof raw.items[0] === 'object'
-      ? raw.items[0] as Record<string, unknown>
-      : null
+    const result = await CatalogQueryService.query({ sourceProviderKey: providerKey, searchText: modelId, page: { limit: 100 } })
+    if (result.status === 'failed') {
+      return { providerKey, modelId, fetchedAtMs: null, source: 'scoped_catalog', items: [], error: 'Endpoint details unavailable.' }
+    }
+    const row = result.items.find((item) => item.modelId === modelId) as Record<string, unknown> | undefined
     if (!row) {
       logModelCatalogEvent('endpoints', 'scoped_miss', {
         providerKey,
@@ -181,10 +169,7 @@ export async function getModelEndpointDetails(
       modelId,
       modelKey,
       durationMs: Date.now() - startedAtMs,
-      reason:
-        typeof error?.message === 'string' && error.message.trim().length > 0
-          ? error.message.trim()
-          : 'unknown_error',
+      reason: 'MODEL_CATALOG_ENDPOINT_QUERY_FAILED',
     })
     return {
       providerKey,

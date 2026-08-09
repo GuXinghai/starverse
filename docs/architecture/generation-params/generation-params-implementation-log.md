@@ -358,7 +358,7 @@ tsc                          passed
 
 1. `src/next/provider/openai-responses/openaiResponsesAdapter.ts` 仍有本轮之前的 raw HTTP / stream error diagnostic dirty diff；未纳入 generation params 语义。
 2. `AssistantAnswerGenerationSnapshot` 尚未实现；本轮只确保发送时 generation params request patch 已是可保存的 provider-native 参数补丁。文本 provider builders 已不再从 `requestedReasoningMode` / `requestedReasoningEffort` / text `geminiThinking` 写请求体；Gemini Interactions 生图路径仍使用 `geminiThinking` 生成 `generation_config.thinking_level` / `thinking_summaries`，需要后续并入 generation params 或 image-generation policy。
-3. 真实桌面 smoke 已完成启动、composer 加载和 credential bridge 只读检查；早期 Playwright 路径存在 profile 不一致风险，后续已修正为从 package root 启动，确认主用户 profile 为 `C:\Users\m1389\AppData\Roaming\Starverse`。修正 smoke 脚本对 `{ ok, status }` credential bridge wrapper 的解析后，OpenRouter / OpenAI Responses / Google AI Studio / Anthropic / DeepSeek 均返回 `apiKeyConfigured: true`，来源为 `secure_store`，`storageBackend` 为 `electron_safe_storage`。
+3. 真实桌面 smoke 已完成启动、composer 加载和 credential bridge 只读检查；早期 Playwright 路径存在 profile 不一致风险，后续已修正为从 package root 启动，确认主用户 profile 为 `[redacted-user-data]`。修正 smoke 脚本对 `{ ok, status }` credential bridge wrapper 的解析后，OpenRouter / OpenAI Responses / Google AI Studio / Anthropic / DeepSeek 均返回 `apiKeyConfigured: true`，来源为 `secure_store`，`storageBackend` 为 `electron_safe_storage`。
 4. 旧 `docs/features/*` 历史文档仍可能提到 sampling parameters；本轮工程路径已清理，历史文档可单独归档或更新。
 
 ## 当前完成状态汇总
@@ -377,7 +377,7 @@ tsc                          passed
 
 | 问题 | 当前状态 | 是否阻断 generation params 代码收口 | 建议处理 |
 | --- | --- | --- | --- |
-| 真实 provider smoke 请求 | 桌面启动、composer 加载、credential bridge 只读检查已完成；修正后主用户 profile 为 `C:\Users\m1389\AppData\Roaming\Starverse`，credential service 可读到五个 provider key；OpenRouter / Google AI Studio / OpenAI Responses / Anthropic / DeepSeek 已完成可发送代表组合的真点击 smoke，并记录 requestParams 与 wire 参数 | 不阻断代码收口；OpenAI Responses `temperature + reasoningEffort`、Anthropic `reasoningEffort`、DeepSeek `thinkingEnabled` 已观测 provider 拒绝，按 Owner 口径仅记录、不阻断 | 若要把不可用组合转为 UI/profile 阻断，需要单独 Owner 决策；本轮只保留记录 |
+| 真实 provider smoke 请求 | 桌面启动、composer 加载、credential bridge 只读检查已完成；修正后主用户 profile 为 `[redacted-user-data]`，credential service 可读到五个 provider key；OpenRouter / Google AI Studio / OpenAI Responses / Anthropic / DeepSeek 已完成可发送代表组合的真点击 smoke，并记录 requestParams 与 wire 参数 | 不阻断代码收口；OpenAI Responses `temperature + reasoningEffort`、Anthropic `reasoningEffort`、DeepSeek `thinkingEnabled` 已观测 provider 拒绝，按 Owner 口径仅记录、不阻断 | 若要把不可用组合转为 UI/profile 阻断，需要单独 Owner 决策；本轮只保留记录 |
 | `AssistantAnswerGenerationSnapshot` | 本轮非目标；当前 resolver/request config 已输出可保存的 provider-native generation params patch，文本 provider request builders 已切到 generationParams-only；Gemini 生图 thinking 仍是独立 request-shape 输入 | 不阻断本轮旧 sampling 清理，但阻止宣称完整 request-shape SSOT 覆盖全部图片生成功能 | 下一阶段若要保存完整 request-shape，需要把 Gemini image thinking summary/level 一并归入 generation params/image-generation snapshot |
 | Gemini Models API 动态 `topK` metadata | 当前只实现静态 provider profile 和 model override；未接入 Models API 返回的 per-model `topK` 空值记录 | 不阻断本轮静态 profile 交付；按 Owner 口径，先记录不可用参数，不做发送前阻断 | 后续把 catalog/model metadata 输入不可用参数审计记录；是否升级为 UI/profile 阻断需单独决策 |
 | DeepSeek thinking mode runtime context | 当前使用 model id pattern 判断 v4/reasoner/thinking 下的 noEffect 参数 | 不阻断本轮，但可能不如运行时 mode 精确 | 后续让 resolver 接收实际 thinking mode runtime context |
@@ -437,7 +437,7 @@ git diff --check passed
 ## 实际操作
 
 - `scripts/smoke/generation-params-real-click-smoke.mjs` 修正 credential bridge status 解析：bridge 返回 `{ ok, status }`，脚本应读取 `result.status`。
-- smoke 脚本保持从 package root `.` 启动 Electron，复用主用户 `C:\Users\m1389\AppData\Roaming\Starverse`。
+- smoke 脚本保持从 package root `.` 启动 Electron，复用主用户 `[redacted-user-data]`。
 - smoke 脚本在发送前记录 generation params editor applied snapshot，并在浮动控制台打开时先关闭控制台再点击发送。
 - `src/ui-app/app/chatSessionConfig.ts` 反序列化 conversation meta 时使用 `extractConvoGenerationParamsOverride()`，正确解包 `{ version: 1, params: ... }`。
 - `src/ui-app/app/appChatApp.logic.ts` 为 session generation params quick-save 增加 pending layer；保存进行中收到的新值按 last-write-wins 继续落库，避免 mode/value 快速连续更新时后一项被丢弃。

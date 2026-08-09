@@ -1,8 +1,8 @@
-import { isProviderCredentialSecureStoreKey } from '../credentials/providerCredentialService'
+import { isProviderCredentialSecureStoreKey } from '../credentials/providerCredentialContract'
 import {
-  COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT,
-  isCompatibleCredentialSecureStoreKey,
-} from '../credentials/compatibleCredentialService'
+  isOpenAICompatibleCredentialV2StoreKey,
+  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
+} from '../credentials/openAICompatibleCredentialV2Service'
 
 /**
  * configSchema.ts - 应用配置 Schema 定义
@@ -74,20 +74,11 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'configVersion',        // 配置版本号
   
   // ========== API Keys ==========
-  'geminiApiKey',         // Google Gemini API Key
-  'openRouterApiKey',     // OpenRouter API Key
-  'openAIResponsesApiKey', // Experimental OpenAI Responses API Key（main-process only）
-  'googleAIStudioApiKey', // Experimental Google AI Studio API Key（main-process only）
-  'anthropicApiKey',      // Experimental Anthropic Messages API Key（main-process only）
-  'deepSeekApiKey',       // Experimental DeepSeek official API Key（main-process only）
-  'openRouterCatalogLocalSecret', // Internal: OpenRouter catalog scope HMAC secret（禁止 renderer 读取）
   'openRouterCatalogStartupSyncPolicy', // OpenRouter 模型目录启动同步策略
   'openRouterCatalogPickerOpenSyncPolicy', // OpenRouter 模型选择器打开同步策略
   'openRouterCatalogListUpdateMode', // OpenRouter 模型目录列表更新应用方式
   'openRouterCatalogFreshnessMs', // OpenRouter 模型目录新鲜度
   'openRouterCatalogRetentionMs', // OpenRouter 模型目录缓存保留期
-  'openRouterDeprecatedCatalogCacheClearedAtMs', // Internal: deprecated OpenRouter catalog cleanup marker
-  'apiKey',               // 向后兼容：旧版 API Key 字段
   
   // ========== Provider & Model ==========
   'activeProvider',       // 当前激活的 AI Provider ('Gemini' | 'OpenRouter')
@@ -108,6 +99,7 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'showTimestamps',       // 是否显示时间戳
   'enableNotifications',  // 是否启用通知
   'maxRecentModels',      // Model Picker 最近使用模型数量上限（正整数）
+  'generationV2UiPreferences', // Epoch-2 retained UI-only preference namespace
 
   // ========== Network Experiments ==========
   'netExp',               // 网络实验开关（HTTP2/QUIC/KeepAlive 等）
@@ -117,7 +109,10 @@ export const ALLOWED_CONFIG_KEYS = new Set([
   'netExp.forceHttp1',
   'netExp.tcpKeepAliveEnable',
   'netExp.tcpKeepAliveIdleMs',
-  'networkProxyPolicy',   // Electron session proxy policy（system/direct/fixed_servers/pac_script/auto_detect）
+  'networkProxyPolicy',   // Legacy Electron policy; removed with the legacy main path in Goal 2 Round 5.
+  'networkProxySettingsV2', // Epoch-2 product modes: environment/manual/direct/system.
+  'catalogPolicyV2', // Provider-neutral user-selected model catalog policy.
+  'providerCatalog', // Provider-scoped catalog policy namespace.
 
   // ========== Database Dev Rebuild (dev-only) ==========
   'dbExp',                           // DB 开发态实验开关（破坏性重建）
@@ -149,9 +144,9 @@ export const ALLOWED_CONFIG_KEYS = new Set([
 function isAllowedConfigKey(key: string): boolean {
   return ALLOWED_CONFIG_KEYS.has(key) ||
     key === 'providerCredentials' ||
-    key === COMPATIBLE_CREDENTIAL_SECURE_STORE_ROOT ||
     isProviderCredentialSecureStoreKey(key) ||
-    isCompatibleCredentialSecureStoreKey(key)
+    key === OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT ||
+    isOpenAICompatibleCredentialV2StoreKey(key)
 }
 
 /**
@@ -306,9 +301,9 @@ export function checkFieldSize(
     // 正常大小
     return { ok: true, size, level: 'ok' }
     
-  } catch (error) {
+  } catch {
     // JSON 序列化失败（循环引用、特殊对象等）
-    console.error(`[Config] ❌ 无法序列化字段 "${key}":`, error)
+    console.error(`[Config] CONFIG_FIELD_SERIALIZATION_FAILED: ${key}`)
     console.error('[Config] 该值可能包含循环引用或不可序列化的对象')
     return { ok: false, size: 0, level: 'error' }
   }
@@ -389,7 +384,7 @@ export function safeClearConfig(
     const backupPath = backupConfig(store)
     
     console.log('[Config] 开始安全清空配置...')
-    console.log(`[Config] 备份文件: ${backupPath}`)
+    console.log('[Config] 配置备份已创建')
     
     // 2. 保存需要保留的字段
     const preserved: Record<string, any> = {}
@@ -419,8 +414,8 @@ export function safeClearConfig(
     
     return backupPath
     
-  } catch (error) {
-    console.error('[Config] 清空配置失败:', error)
+  } catch {
+    console.error('[Config] CONFIG_SAFE_CLEAR_FAILED')
     return null
   }
 }
@@ -485,10 +480,10 @@ export function checkConfigIntegrity(store: any): {
     
     return { ok: true }
     
-  } catch (error) {
+  } catch {
     return {
       ok: false,
-      reason: `Error reading config: ${error}`
+      reason: 'CONFIG_READ_FAILED'
     }
   }
 }

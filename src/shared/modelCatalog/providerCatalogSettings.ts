@@ -1,26 +1,16 @@
 import {
-  DEFAULT_CATALOG_AUTO_SYNC_POLICY,
-  DEFAULT_CATALOG_FRESHNESS_MS,
-  DEFAULT_CATALOG_LIST_UPDATE_MODE,
-  DEFAULT_CATALOG_RETENTION_MS,
-  OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
-  OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY,
-  OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY,
-  OPENROUTER_CATALOG_RETENTION_MS_KEY,
-  OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY,
-  type CatalogAutoSyncPolicy,
-  type CatalogListUpdateMode,
-  type CatalogRetentionMs,
-  normalizeCatalogAutoSyncPolicy,
-  normalizeCatalogFreshnessMs,
-  normalizeCatalogListUpdateMode,
-  normalizeCatalogRetentionMs,
-} from './catalogSyncSettings'
+  UNCONFIGURED_CATALOG_POLICY_V2,
+  type CatalogPolicySourceV2,
+  type CatalogRetention,
+  type CatalogSyncTriggerPolicy,
+  type CatalogListApplyMode,
+  type CatalogPolicyV2,
+} from './catalogPolicyV2'
+import { validateCatalogPolicyV2 } from './catalogPolicyV2'
+import { readResolvedCatalogPolicyV2 } from './catalogPolicyResolverV2'
 import type { ProviderCatalogKey } from './providerCatalogContracts'
 
-export type ProviderCatalogSettingsStoreReader = Readonly<{
-  get: (key: string) => unknown
-}>
+export type ProviderCatalogSettingsStoreReader = Readonly<{ get: (key: string) => unknown }>
 
 export type ProviderCatalogSettingName =
   | 'startupSyncPolicy'
@@ -31,74 +21,53 @@ export type ProviderCatalogSettingName =
 
 export type ProviderCatalogSettings = Readonly<{
   providerKey: ProviderCatalogKey
-  startupSyncPolicy: CatalogAutoSyncPolicy
-  pickerOpenSyncPolicy: CatalogAutoSyncPolicy
-  listUpdateMode: CatalogListUpdateMode
-  freshnessMs: number
-  retentionMs: CatalogRetentionMs
+  source: CatalogPolicySourceV2
+  startupSyncPolicy: CatalogSyncTriggerPolicy
+  pickerOpenSyncPolicy: CatalogSyncTriggerPolicy
+  listUpdateMode: CatalogListApplyMode
+  freshnessMs: number | null
+  retentionMs: CatalogRetention
+  policy: CatalogPolicyV2 | null
 }>
 
-const OPENROUTER_LEGACY_SETTING_KEYS: Readonly<Partial<Record<ProviderCatalogSettingName, string>>> = {
-  startupSyncPolicy: OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY,
-  pickerOpenSyncPolicy: OPENROUTER_CATALOG_PICKER_OPEN_SYNC_POLICY_KEY,
-  listUpdateMode: OPENROUTER_CATALOG_LIST_UPDATE_MODE_KEY,
-  freshnessMs: OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
-  retentionMs: OPENROUTER_CATALOG_RETENTION_MS_KEY,
-}
-
-export function providerCatalogSettingKey(
-  providerKey: ProviderCatalogKey,
-  settingName: ProviderCatalogSettingName,
-): string {
+export function providerCatalogSettingKey(providerKey: ProviderCatalogKey, settingName: ProviderCatalogSettingName): string {
   return `providerCatalog.${String(providerKey).trim()}.${settingName}`
 }
 
-function readProviderCatalogSetting(input: Readonly<{
-  store: ProviderCatalogSettingsStoreReader
-  providerKey: ProviderCatalogKey
-  settingName: ProviderCatalogSettingName
-}>): unknown {
-  const providerKey = String(input.providerKey).trim()
-  if (providerKey === 'openrouter') {
-    const legacyKey = OPENROUTER_LEGACY_SETTING_KEYS[input.settingName]
-    if (legacyKey) {
-      const legacyValue = input.store.get(legacyKey)
-      if (legacyValue !== undefined && legacyValue !== null && legacyValue !== '') return legacyValue
-    }
-  }
-  return input.store.get(providerCatalogSettingKey(providerKey, input.settingName))
+function policyFromCanonicalFields(store: ProviderCatalogSettingsStoreReader, providerKey: ProviderCatalogKey): CatalogPolicyV2 | undefined {
+  const values = Object.fromEntries(([
+    ['startupSyncPolicy', store.get(providerCatalogSettingKey(providerKey, 'startupSyncPolicy'))],
+    ['pickerOpenSyncPolicy', store.get(providerCatalogSettingKey(providerKey, 'pickerOpenSyncPolicy'))],
+    ['listApplyMode', store.get(providerCatalogSettingKey(providerKey, 'listUpdateMode'))],
+    ['freshnessMs', store.get(providerCatalogSettingKey(providerKey, 'freshnessMs'))],
+    ['retentionMs', store.get(providerCatalogSettingKey(providerKey, 'retentionMs'))],
+  ] as const).filter(([, value]) => value !== undefined))
+  return Object.keys(values).length === 0 ? undefined : values as CatalogPolicyV2
 }
 
 export function readProviderCatalogSettings(
   store: ProviderCatalogSettingsStoreReader,
   providerKey: ProviderCatalogKey,
 ): ProviderCatalogSettings {
-  return {
-    providerKey,
-    startupSyncPolicy: normalizeCatalogAutoSyncPolicy(readProviderCatalogSetting({
-      store,
-      providerKey,
-      settingName: 'startupSyncPolicy',
-    }) ?? DEFAULT_CATALOG_AUTO_SYNC_POLICY),
-    pickerOpenSyncPolicy: normalizeCatalogAutoSyncPolicy(readProviderCatalogSetting({
-      store,
-      providerKey,
-      settingName: 'pickerOpenSyncPolicy',
-    }) ?? DEFAULT_CATALOG_AUTO_SYNC_POLICY),
-    listUpdateMode: normalizeCatalogListUpdateMode(readProviderCatalogSetting({
-      store,
-      providerKey,
-      settingName: 'listUpdateMode',
-    }) ?? DEFAULT_CATALOG_LIST_UPDATE_MODE),
-    freshnessMs: normalizeCatalogFreshnessMs(readProviderCatalogSetting({
-      store,
-      providerKey,
-      settingName: 'freshnessMs',
-    }) ?? DEFAULT_CATALOG_FRESHNESS_MS),
-    retentionMs: normalizeCatalogRetentionMs(readProviderCatalogSetting({
-      store,
-      providerKey,
-      settingName: 'retentionMs',
-    }) ?? DEFAULT_CATALOG_RETENTION_MS),
+  const explicitPolicy = store.get(`providerCatalog.${String(providerKey).trim()}.policyV2`) ?? policyFromCanonicalFields(store, providerKey)
+  const resolved = explicitPolicy === undefined
+    ? readResolvedCatalogPolicyV2(store, providerKey)
+    : { source: 'provider_override' as const, policy: validateCatalogPolicyV2(explicitPolicy) }
+  const policy = resolved.policy
+  if (!policy) {
+    return Object.freeze({
+      providerKey, ...UNCONFIGURED_CATALOG_POLICY_V2, startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never',
+      listUpdateMode: 'manual', freshnessMs: null, retentionMs: 'never', policy: null,
+    })
   }
+  return Object.freeze({
+    providerKey,
+    source: resolved.source,
+    startupSyncPolicy: policy.startupSyncPolicy,
+    pickerOpenSyncPolicy: policy.pickerOpenSyncPolicy,
+    listUpdateMode: policy.listApplyMode,
+    freshnessMs: policy.freshnessMs,
+    retentionMs: policy.retentionMs,
+    policy,
+  })
 }

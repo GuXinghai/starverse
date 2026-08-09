@@ -4,11 +4,16 @@
       "untitledConversation": "Untitled conversation",
       "console": "Console",
       "hideConsole": "Hide console",
+      "branch": "Branch",
       "modelSummary": "Model · {model}",
       "modelSummaryWithProvider": "Model · {provider} · {model}"
     },
     "rightRail": {
       "closePanel": "Close panel"
+    },
+    "pagination": {
+      "loadMore": "Load more",
+      "loadEarlier": "Load earlier messages"
     },
     "message": {
       "role": {
@@ -39,6 +44,7 @@
       },
       "editingQuestion": "Editing question",
       "linkOnly": "Link only",
+      "urlReference": "URL reference",
       "linkWithLocalCopy": "Link + local copy",
       "imageAlt": "image-{index}",
       "imagePreviewAlt": "preview",
@@ -50,7 +56,9 @@
       "untitledSource": "Untitled source",
       "unknownTool": "unknown",
       "type": "type",
-      "arguments": "Arguments"
+      "arguments": "Arguments",
+      "googleSearchSuggestions": "Search suggestions",
+      "googleSearchSuggestionsFiltered": "Some search content was filtered; safe content is shown below."
     },
     "attachmentConfirm": {
       "openPanel": "Open panel",
@@ -110,6 +118,18 @@
         "none": "none",
         "unknown": "unknown",
         "source": "source {source}"
+      },
+      "imageEndpoint": {
+        "title": "OpenRouter image endpoint",
+        "description": "The endpoint is selected by you and pinned without fallback.",
+        "loading": "Loading...",
+        "refresh": "Load endpoints",
+        "loadHint": "Load endpoint descriptors to view or change the current binding.",
+        "bound": "Bound",
+        "select": "Select",
+        "unsupported": "Unsupported",
+        "refreshAfter": "Refresh after",
+        "hardExpireAfter": "Hard expiry"
       },
       "runtime": {
         "noProviderSelected": "No runtime provider selected",
@@ -190,12 +210,31 @@
         "anthropic": {
           "title": "Anthropic Messages Chat",
           "experimentalLabel": "Experimental · Anthropic Messages text-only · not OpenRouter",
-          "warning": "Native Anthropic Messages API text-only streaming. Attachments, web, tools, image generation, reasoning/thinking, and signatures are disabled.",
+          "warning": "Native Anthropic Messages API streaming with model-governed thinking, native tool history, and signature-preserving continuation. Unsupported explicit controls are rejected before sending.",
           "status": "Experimental Anthropic Messages chat is {status}.",
           "selectedModel": "Selected Claude model: {model}",
           "credentialBridge": "Anthropic chat uses a main-process credential bridge and does not expose API keys to this console.",
           "sourceTitle": "Anthropic official model source",
           "sourceName": "Anthropic",
+          "thinkingDisplay": {
+            "title": "Thinking display",
+            "description": "This value is stored in the generation snapshot and applies only to new generation commands.",
+            "disabledDescription": "Enable reasoning to configure how Anthropic returns visible thinking content.",
+            "options": {
+              "provider_default": {
+                "label": "Provider default",
+                "description": "Omit thinking.display and follow the selected model's default."
+              },
+              "summarized": {
+                "label": "Show summary",
+                "description": "Return a displayable thinking summary."
+              },
+              "omitted": {
+                "label": "Hide thinking",
+                "description": "Do not transmit visible thinking; reasoning still runs and is billed."
+              }
+            }
+          },
           "disable": "Disable Anthropic Messages chat",
           "clear": "Clear Anthropic Messages chat settings"
         },
@@ -240,6 +279,12 @@
         "thinkingBudget": "thinkingBudget",
         "thinkingLevel": "thinkingLevel",
         "includeThoughts": "include thoughts",
+        "default": "Default ({value})",
+        "dynamic": "Dynamic",
+        "off": "Off",
+        "fixedBudget": "Fixed budget",
+        "allowedRange": "Allowed range: {min}–{max} tokens",
+        "highDynamic": "High (dynamic)",
         "providerManaged": "on",
         "geminiImageProviderManaged": "Gemini image models use provider-managed thinking. Starverse can request summaries when the model supports them.",
         "geminiUnsupported": "Gemini thinking is not available for this model.",
@@ -320,6 +365,12 @@
       "emptyAssistant": "No assistant message yet.",
       "encryptedTitle": "Encrypted reasoning",
       "encryptedDescription": "This reasoning payload is encrypted by the provider and cannot be shown.",
+      "summaryTitle": "Reasoning summary",
+      "processTitle": "Reasoning process",
+      "thinkingTitle": "Thinking",
+      "opaqueEncrypted": "The provider returned encrypted reasoning for protocol continuation; its contents cannot be displayed.",
+      "opaqueOmitted": "The provider reported that thinking content was omitted.",
+      "opaqueRedacted": "The provider reported that thinking content was redacted.",
       "noPayloadShort": "(no reasoning payload)",
       "excluded": "This request asked the provider not to return reasoning (excluded).",
       "notReturned": "The model did not return reasoning, or this model does not support it."

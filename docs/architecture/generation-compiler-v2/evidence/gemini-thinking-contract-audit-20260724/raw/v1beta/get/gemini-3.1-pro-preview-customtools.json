@@ -1,0 +1,19 @@
+{
+  "name": "models/gemini-3.1-pro-preview-customtools",
+  "version": "3.1-pro-preview-01-2026",
+  "displayName": "Gemini 3.1 Pro Preview Custom Tools",
+  "description": "Gemini 3.1 Pro Preview optimized for custom tool usage",
+  "inputTokenLimit": 1048576,
+  "outputTokenLimit": 65536,
+  "supportedGenerationMethods": [
+    "generateContent",
+    "countTokens",
+    "createCachedContent",
+    "batchGenerateContent"
+  ],
+  "temperature": 1,
+  "topP": 0.95,
+  "topK": 64,
+  "maxTemperature": 2,
+  "thinking": true
+}

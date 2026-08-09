@@ -1,8 +1,9 @@
-import { BrowserView, BrowserWindow, clipboard, shell } from 'electron'
+import { BrowserWindow, WebContentsView, clipboard, shell } from 'electron'
 import { randomUUID } from 'node:crypto'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { validateExternalUrl } from '../security/externalUrlPolicy'
+import { urlOriginForLog } from '../ipc/logSanitizer'
 
 type InAppBrowserConfig = {
   preloadPath: string
@@ -21,7 +22,7 @@ export type InAppTabState = {
 }
 
 type InternalTab = InAppTabState & {
-  view: BrowserView
+  view: WebContentsView
 }
 
 type InternalWindow = {
@@ -39,7 +40,7 @@ const DEFAULT_TOOLBAR_HEIGHT = 120
 
 /**
  * 管理内链 WebView 的窗口与 Tab。
- * - 使用 BrowserView 承载网页内容
+ * - 使用 WebContentsView 承载网页内容
  * - BrowserWindow 承载控制 UI（public/inapp-shell.html）
  * - 默认复用单窗口多 Tab，可拆分 Tab 到新窗口
  */
@@ -69,15 +70,15 @@ export class InAppBrowserManager {
 
   goBack(tabId: string) {
     const tab = this.tabs.get(tabId)
-    if (tab && tab.view.webContents.canGoBack()) {
-      tab.view.webContents.goBack()
+    if (tab && tab.view.webContents.navigationHistory.canGoBack()) {
+      tab.view.webContents.navigationHistory.goBack()
     }
   }
 
   goForward(tabId: string) {
     const tab = this.tabs.get(tabId)
-    if (tab && tab.view.webContents.canGoForward()) {
-      tab.view.webContents.goForward()
+    if (tab && tab.view.webContents.navigationHistory.canGoForward()) {
+      tab.view.webContents.navigationHistory.goForward()
     }
   }
 
@@ -94,15 +95,16 @@ export class InAppBrowserManager {
       window.tabIds.delete(tabId)
       if (window.activeTabId === tabId) {
         window.activeTabId = [...window.tabIds][0] ?? null
+        window.win.contentView.removeChildView(tab.view)
       }
-      window.win.removeBrowserView(tab.view)
     }
     tab.view.webContents.removeAllListeners()
-    ;(tab.view.webContents as any).destroy?.()
+    tab.view.webContents.close({ waitForBeforeUnload: false })
     this.tabs.delete(tabId)
 
     if (window) {
-      this.sendWindowState(window.id)
+      if (window.activeTabId) this.setActiveTab(window.id, window.activeTabId)
+      else this.sendWindowState(window.id)
     }
     return true
   }
@@ -115,18 +117,18 @@ export class InAppBrowserManager {
 
     if (oldWindow) {
       oldWindow.tabIds.delete(tabId)
-      oldWindow.win.removeBrowserView(tab.view)
       if (oldWindow.activeTabId === tabId) {
         oldWindow.activeTabId = [...oldWindow.tabIds][0] ?? null
+        oldWindow.win.contentView.removeChildView(tab.view)
       }
     }
 
     tab.windowId = newWindow.id
-    this.attachTabToWindow(tab, newWindow)
     this.setActiveTab(newWindow.id, tab.id)
 
     if (oldWindow) {
-      this.sendWindowState(oldWindow.id)
+      if (oldWindow.activeTabId) this.setActiveTab(oldWindow.id, oldWindow.activeTabId)
+      else this.sendWindowState(oldWindow.id)
     }
     this.sendWindowState(newWindow.id)
 
@@ -199,8 +201,8 @@ export class InAppBrowserManager {
     win.on('closed', () => this.destroyWindow(win.id))
     win.on('resize', () => this.layoutActiveTab(win.id))
 
-    win.loadURL(this.config.shellUrl).catch((error) => {
-      console.error('[inapp] failed to load shell UI:', error)
+    win.loadURL(this.config.shellUrl).catch(() => {
+      console.error('[inapp] INAPP_SHELL_LOAD_FAILED', { target: urlOriginForLog(this.config.shellUrl) })
     })
 
     const entry: InternalWindow = {
@@ -226,7 +228,7 @@ export class InAppBrowserManager {
       const tab = this.tabs.get(tabId)
       if (tab) {
         tab.view.webContents.removeAllListeners()
-        ;(tab.view.webContents as any).destroy?.()
+        tab.view.webContents.close({ waitForBeforeUnload: false })
       }
       this.tabs.delete(tabId)
     }
@@ -241,7 +243,7 @@ export class InAppBrowserManager {
 
   private createTab(url: string, windowId: number) {
     const window = this.windows.get(windowId) ?? this.getOrCreatePrimaryWindow()
-    const view = new BrowserView({
+    const view = new WebContentsView({
       webPreferences: {
         sandbox: true,
         contextIsolation: true,
@@ -264,14 +266,12 @@ export class InAppBrowserManager {
 
     this.tabs.set(tab.id, tab)
     window.tabIds.add(tab.id)
-    this.attachTabToWindow(tab, window)
     this.registerViewEvents(tab)
     return tab
   }
 
   private attachTabToWindow(tab: InternalTab, window: InternalWindow) {
-    window.win.setBrowserView(tab.view)
-    this.layoutActiveTab(window.id)
+    window.win.contentView.addChildView(tab.view)
   }
 
   private layoutActiveTab(windowId: number) {
@@ -279,21 +279,20 @@ export class InAppBrowserManager {
     if (!window || !window.activeTabId) return
     const tab = this.tabs.get(window.activeTabId)
     if (!tab) return
-    const [width = 0, height = 0] = window.win.getSize()
+    const { width, height } = window.win.contentView.getBounds()
     tab.view.setBounds({
       x: 0,
       y: this.toolbarHeight,
       width,
       height: Math.max(0, height - this.toolbarHeight)
     })
-    tab.view.setAutoResize({ width: true, height: true })
   }
 
   private loadUrl(tabId: string, url: string) {
     const tab = this.tabs.get(tabId)
     if (!tab) return
-    tab.view.webContents.loadURL(url).catch((error) => {
-      console.error('[inapp] failed to load url:', url, error)
+    tab.view.webContents.loadURL(url).catch(() => {
+      console.error('[inapp] INAPP_TAB_LOAD_FAILED', { target: urlOriginForLog(url) })
     })
   }
 
@@ -316,8 +315,8 @@ export class InAppBrowserManager {
     const updateState = () => {
       const url = view.webContents.getURL()
       const title = view.webContents.getTitle() || url
-      const canGoBack = view.webContents.canGoBack()
-      const canGoForward = view.webContents.canGoForward()
+      const canGoBack = view.webContents.navigationHistory.canGoBack()
+      const canGoForward = view.webContents.navigationHistory.canGoForward()
       const isLoading = view.webContents.isLoading()
 
       tab.url = url
@@ -340,10 +339,17 @@ export class InAppBrowserManager {
   private setActiveTab(windowId: number, tabId: string) {
     const window = this.windows.get(windowId)
     if (!window) return
+    const tab = this.tabs.get(tabId)
+    if (!tab || tab.windowId !== windowId) return
+    const previous = window.activeTabId ? this.tabs.get(window.activeTabId) : undefined
+    if (previous && previous.id !== tabId) {
+      window.win.contentView.removeChildView(previous.view)
+    }
     if (!window.tabIds.has(tabId)) {
       window.tabIds.add(tabId)
     }
     window.activeTabId = tabId
+    this.attachTabToWindow(tab, window)
     this.layoutActiveTab(window.id)
     this.sendWindowState(window.id)
   }

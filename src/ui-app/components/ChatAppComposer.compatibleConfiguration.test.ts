@@ -3,36 +3,42 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import ChatAppComposer from './ChatAppComposer.vue'
 
 describe('ChatAppComposer compatible configuration-only selection', () => {
-  const originalRegistry = window.compatibleProviderRegistry
-  const originalCatalog = window.compatibleCatalog
+  const originalGenerationV2 = window.generationV2
 
   afterEach(() => {
-    window.compatibleProviderRegistry = originalRegistry
-    window.compatibleCatalog = originalCatalog
+    window.generationV2 = originalGenerationV2
   })
 
   it('carries the pinned route identities and enables the TP15 canonical send', async () => {
-    window.compatibleProviderRegistry = {
-      list: vi.fn(async () => ({ ok: true, value: [{
-        provider: { providerInstanceId: 'ocp_provider_12345678', protocolKey: 'openai_chat_compatible', displayName: 'First', status: 'active', createdAtMs: 1, updatedAtMs: 1, deletedAtMs: null },
-        endpointRevisions: [{
-          endpointRevisionId: 'ocp_endpoint_12345678', providerInstanceId: 'ocp_provider_12345678', revision: 1,
-          baseUrl: 'https://first.example/v1', allowInsecureHttp: false, securityPolicy: 'compatibility_first',
-          credentialVersionRef: 'ocp_credential_12345678', ordinaryHeaders: [], sensitiveHeaderRefs: [], query: [],
-          requestProfileId: 'ocp_request_profile_12345678', requestProfileVersion: 1,
-          responseProfileId: 'ocp_response_profile_12345678', responseProfileVersion: 1, createdAtMs: 1, authMode: 'bearer',
-        }],
-        credentials: [],
-        activeConfiguration: { endpointRevisionId: 'ocp_endpoint_12345678', requestBundle: {},
-          responseProfile: { reasoningMappingId: 'ocp_reasoning_mapping_12345678', reasoningMappingVersion: 1, inlinePolicyId: 'ocp_inline_policy_12345678', inlinePolicyVersion: 1 },
-          reasoningMapping: {}, inlinePolicy: {} },
-      }] })),
-    } as any
-    window.compatibleCatalog = {
-      query: vi.fn(async () => ({
-        protocolKey: 'openai_chat_compatible', providerInstanceId: 'ocp_provider_12345678', providerName: 'First', providerStatus: 'active', syncState: null, total: 1,
-        items: [{ providerInstanceId: 'ocp_provider_12345678', modelId: 'same-model', metadata: { schemaVersion: 1, displayName: 'Same model', contextLength: null, maxOutputTokens: null, capabilities: { text: null, vision: null, tools: null, structuredOutputs: null, reasoning: null }, pricing: { prompt: null, completion: null, request: null, image: null } }, fieldProvenance: {}, sourcePresence: { remote: false, manual: true }, conflictFields: [], staleRemote: false }],
-      })),
+    const queryModels = vi.fn(async () => ({ ok: true, value: {
+      protocolKey: 'openai_chat_compatible', providerInstanceId: 'ocp_provider_12345678', providerName: 'First', providerStatus: 'active', syncState: null, total: 1,
+      items: [{ providerInstanceId: 'ocp_provider_12345678', modelId: 'same-model', metadata: { schemaVersion: 1, displayName: 'Same model', contextLength: null, maxOutputTokens: null, capabilities: { text: null, vision: null, tools: null, structuredOutputs: null, reasoning: null }, pricing: { prompt: null, completion: null, request: null, image: null } }, fieldProvenance: {}, sourcePresence: { remote: false, manual: true }, conflictFields: [], staleRemote: false }],
+    } }))
+    const activeConfiguration = {
+      requestProfile: { configId: 'ocp_request_profile_12345678', version: 1, payload: {} },
+      requestMappings: [],
+      reasoningMapping: { configId: 'ocp_reasoning_mapping_12345678', version: 1, payload: {} },
+      inlinePolicy: { configId: 'ocp_inline_policy_12345678', version: 1, payload: {} },
+      responseProfile: { configId: 'ocp_response_profile_12345678', version: 1, payload: {
+        reasoningMapping: { mappingId: 'ocp_reasoning_mapping_12345678', version: 1 },
+        inlinePolicy: { inlinePolicyId: 'ocp_inline_policy_12345678', version: 1 },
+      } },
+    }
+    const details = {
+      providerInstanceId: 'ocp_provider_12345678', displayName: 'First', status: 'active', createdAtMs: 1, updatedAtMs: 1, deletedAtMs: null,
+      endpointRevisions: [{ endpointRevisionId: 'ocp_endpoint_12345678', providerInstanceId: 'ocp_provider_12345678', revision: 1,
+        baseUrl: 'https://first.example/v1', securityPolicy: 'compatibility_first', ordinaryHeaders: [], query: [],
+        requestProfileId: 'ocp_request_profile_12345678', requestProfileVersion: 1,
+        responseProfileId: 'ocp_response_profile_12345678', responseProfileVersion: 1, createdAtMs: 1,
+        auth: { mode: 'none', credentialVersionRef: null } }],
+    }
+    window.generationV2 = {
+      ...(originalGenerationV2 ?? {}),
+      openAICompatible: {
+        list: vi.fn(async () => ({ ok: true, value: [{ providerInstanceId: 'ocp_provider_12345678' }] })),
+        get: vi.fn(async () => ({ ok: true, value: { details, activeConfiguration } })),
+        queryModels,
+      },
     } as any
     const view = render(ChatAppComposer, {
       props: {
@@ -55,6 +61,6 @@ describe('ChatAppComposer compatible configuration-only selection', () => {
     expect(await screen.findByTestId('compatible-send-selection')).toHaveTextContent('First · same-model')
     expect(screen.getByTestId('composer-send')).toBeEnabled()
     expect(emittedSelection).toMatchObject({ providerInstanceId: 'ocp_provider_12345678', modelId: 'same-model', endpointRevisionId: 'ocp_endpoint_12345678' })
-    await waitFor(() => expect(window.compatibleCatalog?.query).toHaveBeenCalledWith(expect.objectContaining({ providerInstanceId: 'ocp_provider_12345678' })))
+    await waitFor(() => expect(queryModels).toHaveBeenCalledWith(expect.objectContaining({ providerInstanceId: 'ocp_provider_12345678' })))
   })
 })

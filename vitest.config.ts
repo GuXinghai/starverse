@@ -1,4 +1,4 @@
-import { defineConfig } from 'vitest/config'
+import { configDefaults, defineConfig } from 'vitest/config'
 import vue from '@vitejs/plugin-vue'
 import path from 'path'
 
@@ -8,6 +8,21 @@ export default defineConfig({
     globals: true,
     environment: 'jsdom',
     setupFiles: ['./tests/setup.ts'],
+    exclude: [
+      ...configDefaults.exclude,
+      '**/.external-runtime-work/**',
+      '**/.starverse-engines/**',
+      '**/managed-runtimes/**',
+      '**/staging/**',
+      '**/sandbox/**',
+      '**/temp/**',
+      '**/tmp/**',
+      '**/dist/**',
+      '**/dist-electron/**',
+      '**/dist-native/**',
+      '**/release/**',
+      '**/out/**',
+    ],
     env: {
       SV_TEST_VERBOSE_OPENROUTER: process.env.SV_TEST_VERBOSE_OPENROUTER ?? '0',
     },

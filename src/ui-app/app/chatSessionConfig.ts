@@ -27,7 +27,7 @@ import {
 import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
 import { compatibleConfigurationSelectionSchema, type CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
 
-export type ChatSessionConfigReasoningEffort = 'low' | 'medium' | 'high'
+export type ChatSessionConfigReasoningEffort = Exclude<ReasoningEffort, 'none'>
 export type ChatSessionConfigWebSearchLevel = 'low' | 'high'
 export type ChatSessionConfigImageResolution = '512' | '1K' | '2K' | '4K'
 export type ChatSessionConfigAspectRatio =
@@ -154,9 +154,8 @@ function mergeSelectedModelSelectionIntoMeta(
 }
 
 function normalizeReasoningEffortForQuickControls(prefs: ReasoningPrefs): ChatSessionConfigReasoningEffort {
-  if (prefs.effort === 'high' || prefs.effort === 'xhigh') return 'high'
-  if (prefs.effort === 'low' || prefs.effort === 'minimal') return 'low'
-  return 'medium'
+  const effort = prefs.effort
+  return effort && effort !== 'auto' && effort !== 'none' ? effort : 'medium'
 }
 
 function toReasoningPrefs(config: ChatSessionConfig['reasoning']): ReasoningPrefs {

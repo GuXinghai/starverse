@@ -410,15 +410,24 @@ describe('OpenRouterCatalogClient', () => {
     }
 
     expect(thrown).toMatchObject({
-      status: 429,
-      message: 'OpenRouter catalog: Rate limit was reached.',
-      networkError: {
-        requestPurpose: 'provider_catalog',
+      name: 'ProviderFailureErrorV2',
+      message: 'rate limit [redacted]',
+      failure: {
+        origin: 'http_response',
+        phase: 'response_headers',
         providerId: 'openrouter',
         httpStatus: 429,
-        safeDetailCode: 'http_429_rate_limited',
+        providerError: {
+          code: 429,
+          message: 'rate limit [redacted]',
+          rawJson: { error: { code: 429, message: 'rate limit [redacted]' } },
+        },
+        starverseDiagnosticCode: 'MODEL_CATALOG_PROVIDER_HTTP_ERROR',
       },
     })
+    expect((thrown as any).failure.redactions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: expect.stringContaining('providerError'), reason: 'credential' }),
+    ]))
     expect(JSON.stringify(thrown)).not.toContain('sk-test')
   })
 
@@ -440,13 +449,22 @@ describe('OpenRouterCatalogClient', () => {
     }
 
     expect(thrown).toMatchObject({
-      message: 'OpenRouter catalog: Connection timed out.',
-      networkError: {
-        requestPurpose: 'provider_catalog',
+      name: 'ProviderFailureErrorV2',
+      message: 'connect timeout [redacted]',
+      failure: {
+        origin: 'network_transport',
+        phase: 'request_open',
         providerId: 'openrouter',
-        safeDetailCode: 'connection_timeout',
+        starverseDiagnosticCode: 'MODEL_CATALOG_REQUEST_OPEN_FAILED',
+        transportError: {
+          code: 'UND_ERR_CONNECT_TIMEOUT',
+          message: 'connect timeout [redacted]',
+        },
       },
     })
+    expect((thrown as any).failure.redactions).toEqual(expect.arrayContaining([
+      expect.objectContaining({ path: 'transportError.message', reason: 'credential' }),
+    ]))
     expect(JSON.stringify(thrown)).not.toContain('sk-test')
   })
 })
