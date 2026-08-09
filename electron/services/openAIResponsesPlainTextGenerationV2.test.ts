@@ -82,6 +82,35 @@ function completedStream(text = 'hello from OpenAI', messageId = 'msg_1'): Respo
   return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
 }
 
+function completedEncryptedReasoningStream(): Response {
+  const output = [
+    {
+      id: 'rs_1', type: 'reasoning', status: 'completed',
+      summary: [], encrypted_content: 'encrypted-provider-payload',
+    },
+    {
+      id: 'msg_1', type: 'message', role: 'assistant',
+      content: [{ type: 'output_text', text: 'answer', annotations: [] }],
+    },
+  ]
+  const body = [
+    sse('response.output_text.delta', 1, {
+      item_id: 'msg_1', output_index: 1, content_index: 0, delta: 'answer',
+    }),
+    sse('response.output_item.done', 2, { output_index: 0, item: output[0] }),
+    sse('response.output_item.done', 3, { output_index: 1, item: output[1] }),
+    sse('response.completed', 4, { response: {
+      id: 'resp_1', object: 'response', created_at: 1, completed_at: 2,
+      status: 'completed', model: 'gpt-5.6-sol', output,
+      usage: {
+        input_tokens: 3, output_tokens: 4, total_tokens: 7,
+        input_tokens_details: { cached_tokens: 0 }, output_tokens_details: { reasoning_tokens: 2 },
+      }, error: null, incomplete_details: null,
+    } }),
+  ].join('')
+  return new Response(body, { status: 200, headers: { 'content-type': 'text/event-stream' } })
+}
+
 function functionCallStream(): Response {
   const output = [{
     id: 'fc_1', type: 'function_call', call_id: 'call_weather', name: 'weather', arguments: '{"city":"Paris"}',
@@ -240,7 +269,6 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       expect(result.projection.branchProjection).toMatchObject({
         chosenAnswerRootId: { value: 'answer:2' }, headMessageId: { value: 'answer:2' },
       })
-      expect(result.projection.visibleCandidates.map((candidate) => candidate.value)).toEqual(['answer:2'])
       expect(JSON.parse(result.preparedRequest.body.copyUtf8Text())).toEqual({
         model: 'gpt-5.6-sol',
         input: [{ role: 'user', content: [{ type: 'input_text', text: 'hello' }] }],
@@ -268,13 +296,13 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         .mockResolvedValueOnce(modelResponse())
       const first = await send.submit({ command: command({ userBody: 'first' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
       await runner.run(first)
-      const second = await send.submit({ command: command({ operationId: 'operation:2', expectedHeadMessageId: first.execution.operation.resultAnswerRootId.value, userBody: 'second' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      const second = await send.submit({ command: command({ operationId: 'operation:2', expectedHeadMessageId: first.execution.operation.targetAnswerId.value, userBody: 'second' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
       await runner.run(second)
       runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => new BranchContextFilterV2Repo(db).set(context, {
-        branchId: 'branch:1', targetType: 'answer', targetId: second.execution.operation.resultAnswerRootId.value,
+        branchId: 'branch:1', targetType: 'answer', targetId: second.execution.operation.targetAnswerId.value,
         mode: 'exclude', updatedAtMs: 120,
       }))
-      const third = await send.submit({ command: command({ operationId: 'operation:3', expectedHeadMessageId: second.execution.operation.resultAnswerRootId.value, userBody: 'third' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      const third = await send.submit({ command: command({ operationId: 'operation:3', expectedHeadMessageId: second.execution.operation.targetAnswerId.value, userBody: 'third' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
       const body = JSON.parse(third.preparedRequest.body.copyUtf8Text())
       expect(body.input).toEqual([
         { role: 'user', content: [{ type: 'input_text', text: 'first' }] },
@@ -312,21 +340,21 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         .mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(functionCallStream())
       const first = await send.submit({ command: command({ userBody: 'first' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
       await runner.run(first)
-      const second = await send.submit({ command: command({ operationId: 'operation:2', expectedHeadMessageId: first.execution.operation.resultAnswerRootId.value, userBody: 'second' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
+      const second = await send.submit({ command: command({ operationId: 'operation:2', expectedHeadMessageId: first.execution.operation.targetAnswerId.value, userBody: 'second' }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
       await runner.run(second)
       runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => new BranchContextFilterV2Repo(db).set(context, {
-        branchId: 'branch:1', targetType: 'answer', targetId: second.execution.operation.resultAnswerRootId.value,
+        branchId: 'branch:1', targetType: 'answer', targetId: second.execution.operation.targetAnswerId.value,
         mode: 'exclude', updatedAtMs: 120,
       }))
       const third = await send.submit({ command: command({
-        operationId: 'operation:3', expectedHeadMessageId: second.execution.operation.resultAnswerRootId.value, userBody: 'third',
+        operationId: 'operation:3', expectedHeadMessageId: second.execution.operation.targetAnswerId.value, userBody: 'third',
       }), expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
       await runner.run(third)
       const continuation = await createOpenAIResponsesToolContinuationCoordinatorV2({
         db, credentialService: credentialService(), nowMs: () => 130,
       }).submit({
-        operationId: 'operation:3', branchId: 'branch:1', answerRootId: third.execution.operation.resultAnswerRootId.value,
-        expectedHeadMessageId: third.execution.operation.resultAnswerRootId.value, priorRequestSequence: 1,
+        operationId: 'operation:3', branchId: 'branch:1', answerRootId: third.execution.operation.targetAnswerId.value,
+        expectedHeadMessageId: third.execution.operation.targetAnswerId.value, priorRequestSequence: 1,
         toolOutputs: [{ toolCallId: 'call_weather', content: '{"temperature":20}', userConfirmedExternalSideEffect: false }],
       })
       const input = JSON.parse(continuation.preparedRequest.body.copyUtf8Text()).input
@@ -386,7 +414,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         db, credentialService: credentialService(), nowMs: () => 120, createAnswerId: () => 'answer:retry-pdf',
       }).submit({
         actionKind: 'retry_as_new', operationId: 'operation:retry-pdf', branchId: 'branch:1',
-        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+        questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2',
       })
       expect(mocks.fetch).toHaveBeenCalledTimes(3)
       expect(JSON.parse(retried.preparedRequest.body.copyUtf8Text())).toMatchObject({
@@ -415,7 +443,7 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         db, credentialService: credentialService(), nowMs: () => 120, createAnswerId: () => 'answer:retry-attachment',
       }).submit({
         actionKind: 'retry_as_new', operationId: 'operation:retry-attachment', branchId: 'branch:1',
-        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+        questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2',
       })
       expect(mocks.fetch).toHaveBeenCalledTimes(3)
       expect(JSON.parse(retried.preparedRequest.body.copyUtf8Text())).toMatchObject({
@@ -528,8 +556,8 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         command: command(), expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
       })
       expect(replay.kind).toBe('idempotent_replay')
-      expect(replay.execution.operation.resultAnswerRootId.value)
-        .toBe(first.execution.operation.resultAnswerRootId.value)
+      expect(replay.execution.operation.targetAnswerId.value)
+        .toBe(first.execution.operation.targetAnswerId.value)
       expect(replay.preparedRequest.bodySha256).toBe(first.preparedRequest.bodySha256)
       expect(mocks.fetch).toHaveBeenCalledTimes(1)
       expect(db.prepare(`SELECT
@@ -597,6 +625,35 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         .toEqual({ chosen: 'answer:2' })
       expect(db.prepare("SELECT head_message_id AS head FROM branch_v2 WHERE branch_id='branch:1'").get())
         .toEqual({ head: 'answer:2' })
+    } finally { db.close() }
+  })
+
+  it('publishes a non-sensitive opaque fact when OpenAI returns encrypted reasoning', async () => {
+    const db = database()
+    try {
+      mocks.fetch.mockResolvedValueOnce(modelResponse()).mockResolvedValueOnce(completedEncryptedReasoningStream())
+      const created = await coordinator(db).submit({
+        command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      const projections: unknown[] = []
+      const terminal = await createOpenAIResponsesStreamRunnerV2({
+        db, credentialService: credentialService(), fetchImpl: mocks.fetch, nowMs: () => 110,
+        streamProjectionSink: { publish: (projection) => projections.push(projection) },
+      }).run(created)
+
+      expect(terminal.state).toBe('completed')
+      expect(projections).toContainEqual({
+        type: 'reasoning_detail',
+        operationId: 'operation:1',
+        answerRootId: 'answer:2',
+        detail: {
+          provider: 'openai_responses',
+          type: 'reasoning.encrypted',
+          id: 'rs_1',
+          status: 'completed',
+        },
+      })
+      expect(JSON.stringify(projections)).not.toContain('encrypted-provider-payload')
     } finally { db.close() }
   })
 
@@ -783,11 +840,9 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       })
       const asNewCommand = {
         actionKind: 'retry_as_new', operationId: 'operation:retry-new', branchId: 'branch:1',
-        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+        questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2',
       }
       const asNew = await asNewService.submit(asNewCommand)
-      expect(asNew.projection.visibleCandidates.map((candidate) => candidate.value))
-        .toEqual(['answer:2', 'answer:retry-new'])
       expect(asNew.projection.branchProjection).toMatchObject({
         chosenAnswerRootId: { value: 'answer:retry-new' }, headMessageId: { value: 'answer:retry-new' },
       })
@@ -822,11 +877,9 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         createAnswerId: () => 'answer:replacement',
       }).submit({
         actionKind: 'retry_replace', operationId: 'operation:replace', branchId: 'branch:1',
-        questionId: 'question:1', targetAnswerRootId: 'answer:retry-new',
+        questionId: 'question:1', sourceAnswerId: 'answer:retry-new',
         expectedHeadMessageId: 'answer:retry-new',
       })
-      expect(replace.projection.visibleCandidates.map((candidate) => candidate.value))
-        .toEqual(['answer:2', 'answer:replacement'])
       expect(db.prepare(`SELECT answer_root_id AS answerRootId FROM branch_answer_hide_v2
         WHERE branch_id='branch:1' AND question_id='question:1'`).all())
         .toEqual([{ answerRootId: 'answer:retry-new' }])
@@ -875,8 +928,6 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
       expect(JSON.parse(regenerated.preparedRequest.body.copyUtf8Text())).toMatchObject({
         max_output_tokens: 32, text: { verbosity: 'low' },
       })
-      expect(regenerated.projection.visibleCandidates.map((candidate) => candidate.value))
-        .toEqual(['answer:2', 'answer:regenerated'])
       expect(regenerated.projection.branchProjection).toMatchObject({
         chosenAnswerRootId: { value: 'answer:regenerated' }, headMessageId: { value: 'answer:regenerated' },
       })
@@ -972,8 +1023,6 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         input: [{ role: 'user', content: [{ type: 'input_text', text: 'edited question' }] }],
         max_output_tokens: 64,
       })
-      expect(fork.projection.visibleQuestionCandidates.map((candidate) => candidate.value))
-        .toEqual(['question:1', 'question:edit-fork'])
       expect(fork.projection.branchProjection).toMatchObject({
         questionId: { value: 'question:edit-fork' },
         chosenAnswerRootId: { value: 'answer:edit-fork' }, headMessageId: { value: 'answer:edit-fork' },
@@ -996,8 +1045,6 @@ describe('OpenAI Responses plain-text initial-send coordinator V2', () => {
         },
         expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
-      expect(replace.projection.visibleQuestionCandidates.map((candidate) => candidate.value))
-        .toEqual(['question:1', 'question:edit-replace'])
       expect(db.prepare(`SELECT question_id AS questionId FROM branch_question_hide_v2
         WHERE branch_id='branch:1'`).all()).toEqual([{ questionId: 'question:edit-fork' }])
       mocks.fetch.mockResolvedValueOnce(new Response('denied', {

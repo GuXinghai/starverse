@@ -71,7 +71,7 @@ function usage(value: unknown): DeepSeekStableUsageV1 {
   const input = record(value, Object.keys(value).sort())
   const allowed = new Set([
     'prompt_tokens', 'completion_tokens', 'total_tokens', 'prompt_cache_hit_tokens',
-    'prompt_cache_miss_tokens', 'completion_tokens_details',
+    'prompt_cache_miss_tokens', 'prompt_tokens_details', 'completion_tokens_details',
   ])
   if (Object.keys(input).some((key) => !allowed.has(key)) ||
       !Object.hasOwn(input, 'prompt_tokens') || !Object.hasOwn(input, 'completion_tokens') ||
@@ -82,6 +82,8 @@ function usage(value: unknown): DeepSeekStableUsageV1 {
   if (totalTokens !== promptTokens + completionTokens) invalid()
   const details = input.completion_tokens_details === undefined ? undefined :
     record(input.completion_tokens_details, ['reasoning_tokens'])
+  const promptDetails = input.prompt_tokens_details === undefined ? undefined :
+    record(input.prompt_tokens_details, ['cached_tokens'])
   return Object.freeze({
     prompt_tokens: promptTokens,
     completion_tokens: completionTokens,
@@ -90,6 +92,9 @@ function usage(value: unknown): DeepSeekStableUsageV1 {
       { prompt_cache_hit_tokens: integer(input.prompt_cache_hit_tokens) }),
     ...(input.prompt_cache_miss_tokens === undefined ? {} :
       { prompt_cache_miss_tokens: integer(input.prompt_cache_miss_tokens) }),
+    ...(promptDetails === undefined ? {} : {
+      prompt_tokens_details: Object.freeze({ cached_tokens: integer(promptDetails.cached_tokens) }),
+    }),
     ...(details === undefined ? {} : {
       completion_tokens_details: Object.freeze({ reasoning_tokens: integer(details.reasoning_tokens) }),
     }),

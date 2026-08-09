@@ -2,6 +2,7 @@ import type { RegisterInvoke } from './types'
 import type { GenerationStreamProjectionSinkV2 } from '../services/generationStreamProjectionV2'
 import type { LmStudioOpenResponsesGenerationV2Runtime } from '../services/lmStudioOpenResponsesGenerationV2Runtime'
 import { registerTextGenerationV2IpcCore } from './textGenerationV2IpcCore'
+import type { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
 
 export const LMSTUDIO_GENERATION_V2_IPC_CHANNELS = Object.freeze([
   'generation-v2:lmstudio:openresponses:initial', 'generation-v2:lmstudio:openresponses:retry',
@@ -12,8 +13,9 @@ export const LMSTUDIO_GENERATION_V2_PROJECTION_CHANNEL = 'generation-v2:lmstudio
 export function registerLmStudioGenerationV2Ipc(input: Readonly<{
   registerInvoke: RegisterInvoke
   createRuntime: (sink: GenerationStreamProjectionSinkV2) => LmStudioOpenResponsesGenerationV2Runtime
+  runtimeRegistry?: GenerationOperationRuntimeRegistryV2
 }>): readonly string[] {
-  return registerTextGenerationV2IpcCore({ registerInvoke: input.registerInvoke,
+  return registerTextGenerationV2IpcCore({ registerInvoke: input.registerInvoke, runtimeRegistry: input.runtimeRegistry,
     providerErrorPrefix: 'GENERATION_V2_LMSTUDIO_IPC', createRuntime: input.createRuntime,
     channels: { initial: LMSTUDIO_GENERATION_V2_IPC_CHANNELS[0], retry: LMSTUDIO_GENERATION_V2_IPC_CHANNELS[1],
       regenerate: LMSTUDIO_GENERATION_V2_IPC_CHANNELS[2], editResend: LMSTUDIO_GENERATION_V2_IPC_CHANNELS[3],

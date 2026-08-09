@@ -9,11 +9,14 @@ import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
+import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
 import { decodeGeminiInteractionsImageInitialCommandV2, type GeminiInteractionsImageInitialCommandV2 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCommandsV2'
 import { withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2 } from './geminiInteractionsImageGenerationAuthorityV2Service'
 import { commitGeminiInteractionsImageInitialSnapshotV2 } from './geminiInteractionsImageSnapshotCommitV2'
 import { compileGeminiInteractionsImagePreparedRequestV2 } from './geminiInteractionsImagePreparedRequestCompilerV2'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
+import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 
 export type GeminiInteractionsImageCommandResultV2 = Readonly<{
   kind: 'created' | 'idempotent_replay'
@@ -26,6 +29,7 @@ export type GeminiInteractionsImageCommandResultV2 = Readonly<{
 
 export function createGeminiInteractionsImageInitialSendCoordinatorV2(input: Readonly<{
   db: BetterSqlite3.Database
+  credentialService: Epoch2RuntimeCredentialService
   nowMs?: () => number
   createGraphId?: (kind: 'question' | 'answer') => string
 }>) {
@@ -37,6 +41,8 @@ export function createGeminiInteractionsImageInitialSendCoordinatorV2(input: Rea
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
+  const catalogAuthorityService = createActiveCatalogModelAuthorityV2Service(input)
+  const endpointProfile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
 
   function replay(command: GeminiInteractionsImageInitialCommandV2): GeminiInteractionsImageCommandResultV2 | null {
     const observed = executionRepo.findOperation(command.operationId.value)
@@ -63,7 +69,12 @@ export function createGeminiInteractionsImageInitialSendCoordinatorV2(input: Rea
       const existing = replay(command)
       if (existing) return existing
       try {
-        return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+        return catalogAuthorityService.withExactActiveModel({
+          providerKey: 'google_ai_studio', endpointProfile,
+          expectedCredentialRevision: request.expectedCredentialRevision,
+          expectedCredentialScopeId: request.expectedCredentialScopeId,
+          modelId: command.modelId,
+          consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
           const raced = executionRepo.findOperationInTransaction(context, command.operationId.value)
           if (raced) {
             if (raced.operation.commandFingerprint !== command.requestFingerprint) {
@@ -81,8 +92,7 @@ export function createGeminiInteractionsImageInitialSendCoordinatorV2(input: Rea
           return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo,
             pending.conversationId.value, projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined,
             (commandFacts) => withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2({ context,
-              credentialScopeId: request.expectedCredentialScopeId, credentialRevision: request.expectedCredentialRevision,
-              modelId: command.modelId.value,
+              modelEvidence, modelId: command.modelId.value,
               commandFacts, use: ({ binding, capability }) => {
                 const persisted = commitGeminiInteractionsImageInitialSnapshotV2({ context, executionRepo, capabilityRepo,
                   pending, command, commandFacts, binding, capability })
@@ -94,6 +104,7 @@ export function createGeminiInteractionsImageInitialSendCoordinatorV2(input: Rea
                   preparedRequest, request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest) })
               },
             }))
+          }),
         })
       } catch (error) {
         const winner = replay(command)

@@ -10,6 +10,8 @@ import {
   isPendingInitialTurnForContextV2,
   isPendingAnswerActionForContextV2,
   isPendingEditedTurnForContextV2,
+  pendingSourceBranchIdV2,
+  pendingSourceAnswerIdV2,
   type PendingAnswerActionV2,
   type PendingEditedTurnV2,
   type PendingInitialTurnV2,
@@ -65,8 +67,8 @@ export function commitOpenRouterImageRetrySnapshotV2(input: Readonly<{
       !isOpenRouterImageRetryCommandV2(input.command) ||
       !isGenerationExecutionOperationBundleForContextV2(input.target, input.context) ||
       input.pending.actionKind !== input.command.actionKind || input.pending.operationId.value !== input.command.operationId.value ||
-      input.pending.targetAnswerRootId?.value !== input.command.targetAnswerRootId.value ||
-      input.target.operation.resultAnswerRootId.value !== input.command.targetAnswerRootId.value ||
+      input.pending.sourceAnswerId?.value !== input.command.sourceAnswerId.value ||
+      input.target.operation.targetAnswerId.value !== input.command.sourceAnswerId.value ||
       input.target.snapshot.providerBinding.providerId.value !== 'openrouter' ||
       input.target.snapshot.providerBinding.operation !== 'image_generate') {
     return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_INPUT_INVALID')
@@ -79,8 +81,8 @@ export function commitOpenRouterImageRetrySnapshotV2(input: Readonly<{
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
     operationId: input.command.operationId.value, actionKind: input.command.actionKind,
     branchId: input.pending.branchId.value, conversationId: input.pending.conversationId.value,
-    questionId: input.pending.questionId.value, targetAnswerRootId: input.command.targetAnswerRootId.value,
-    resultAnswerRootId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
+    questionId: input.pending.questionId.value, sourceAnswerId: input.command.sourceAnswerId.value,
+    targetAnswerId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
   return Object.freeze({ bundle: execution.bundle })
@@ -102,7 +104,7 @@ export function commitOpenRouterImageCurrentSnapshotV2(input: Readonly<{
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) || !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
       (!regenerate && !edit) || !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
       !isOpenRouterImageBindingRepositoryFactV2(input.binding) || input.command.operationId.value !== input.pending.operationId.value ||
-      input.command.branchId.value !== input.pending.branchId.value || input.command.modelId.value !== input.binding.record.modelId.value ||
+      input.command.sourceBranchId.value !== pendingSourceBranchIdV2(input.pending).value || input.command.modelId.value !== input.binding.record.modelId.value ||
       input.commandFacts.conversationId.value !== input.pending.conversationId.value ||
       (input.commandFacts.attachmentSet.attachments.some((attachment) => attachment.intent.include) ||
         input.commandFacts.attachmentSet.urlReferenceIntents.some((attachment) =>
@@ -124,8 +126,8 @@ export function commitOpenRouterImageCurrentSnapshotV2(input: Readonly<{
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
     operationId: input.pending.operationId.value, actionKind: regenerate ? 'regenerate_question' : 'edit_resend',
     branchId: input.pending.branchId.value, conversationId: input.pending.conversationId.value,
-    questionId: input.pending.questionId.value, targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
+    questionId: input.pending.questionId.value, sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
   return Object.freeze({ bundle: execution.bundle })
@@ -179,7 +181,7 @@ export function commitOpenRouterImageInitialSnapshotV2(input: Readonly<{
       !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
       !isOpenRouterImageBindingRepositoryFactV2(input.binding) ||
       input.command.operationId.value !== input.pending.operationId.value ||
-      input.command.branchId.value !== input.pending.branchId.value ||
+      input.command.branchId.value !== pendingSourceBranchIdV2(input.pending).value ||
       input.command.expectedHeadMessageId?.value !== input.pending.expectedHeadMessageId?.value ||
       input.command.prompt !== input.pending.userBody ||
       input.command.modelId.value !== input.binding.record.modelId.value ||
@@ -225,8 +227,8 @@ export function commitOpenRouterImageInitialSnapshotV2(input: Readonly<{
     branchId: input.pending.branchId.value,
     conversationId: input.pending.conversationId.value,
     questionId: input.pending.questionId.value,
-    targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value,
+    sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value,
     snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint,
     createdAtMs: input.pending.createdAtMs,

@@ -43,4 +43,20 @@ describe('ProviderFailureV2', () => {
     expect(failure.truncations).toHaveLength(1)
     expect(failure.redactions).toContainEqual({ path: 'providerError.rawText', reason: 'size_limit' })
   })
+
+  it('preserves compact provider JSON containing a safe URL while redacting only sensitive URL facts', () => {
+    const failure = createProviderFailureV2({
+      context: { origin: 'http_response', phase: 'response_body', providerId: 'google_ai_studio',
+        contractId: 'gemini-models-v1beta', operationId: 'op-url', requestSequence: 1 },
+      bodyText: JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT',
+        message: 'See https://ai.google.dev/gemini-api/docs?api_key=secret for details' } }),
+    })
+    expect(failure.providerError).toMatchObject({ code: 400, status: 'INVALID_ARGUMENT' })
+    expect(failure.providerError?.message).toContain('https://ai.google.dev/gemini-api/docs?api_key=[redacted]')
+    expect(failure.providerError?.rawJson).toMatchObject({
+      error: { code: 400, message: expect.stringContaining('api_key=[redacted]') },
+    })
+    expect(failure.providerError?.rawText).toBeNull()
+    expect(failure.redactions).toContainEqual(expect.objectContaining({ reason: 'url_credential' }))
+  })
 })

@@ -216,10 +216,20 @@ export type PersistedRuntimeContinuationCapabilityV2 =
       evidenceIds: readonly string[]
     }>
 
+export type PersistedRuntimeCatalogAuthorityV2 = Readonly<{
+  scopeId: string
+  catalogDigest: string
+  authorityRevision: number
+  observationDigest: string
+  contractRevision: string
+  resolutionDigest: string
+}>
+
 export type PersistedRuntimeCapabilitySnapshotV2 = Readonly<{
   schemaVersion: 2
   resolvedAt: string
   binding: unknown
+  catalogAuthority?: PersistedRuntimeCatalogAuthorityV2
   evidence: readonly PersistedRuntimeCapabilityEvidenceV2[]
   fields: readonly PersistedRuntimeCapabilityFieldV2[]
   tools: readonly PersistedRuntimeToolCapabilityV2[]
@@ -241,6 +251,7 @@ export type DecodedRuntimeCapabilitySnapshotV2 = Readonly<{
   schemaVersion: 2
   resolvedAt: string
   binding: DecodedProviderBindingRecordV2
+  catalogAuthority?: PersistedRuntimeCatalogAuthorityV2
   evidence: readonly DecodedRuntimeCapabilityEvidenceV2[]
   fields: readonly PersistedRuntimeCapabilityFieldV2[]
   tools: readonly PersistedRuntimeToolCapabilityV2[]
@@ -275,6 +286,7 @@ type DraftSnapshot = Readonly<{
   schemaVersion: 2
   resolvedAt: string
   binding: unknown
+  catalogAuthority?: PersistedRuntimeCatalogAuthorityV2
   evidence: readonly DraftEvidence[]
   fields: readonly PersistedRuntimeCapabilityFieldV2[]
   tools: readonly PersistedRuntimeToolCapabilityV2[]
@@ -523,7 +535,7 @@ const ENUM_VALUES_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPath
   'providerExtension.kind': ['none', 'openrouter_chat', 'anthropic_messages', 'gemini_generate_content', 'openai_responses'],
   'providerExtension.includeThoughts': ['provider_default', 'enabled', 'disabled'],
   'providerExtension.thinkingLevel': ['minimal', 'low', 'medium', 'high'],
-  'providerExtension.thinkingMode': ['model_recommended', 'manual', 'adaptive', 'provider_default', 'level', 'budget'],
+  'providerExtension.thinkingMode': ['model_recommended', 'manual', 'adaptive', 'default', 'provider_default', 'level', 'budget'],
   'providerExtension.serviceTier': ['auto', 'default', 'flex', 'priority'],
   'providerExtension.reasoningContext': ['auto', 'current_turn', 'all_turns'],
   'providerExtension.reasoningMode': ['standard', 'pro'],
@@ -804,7 +816,7 @@ function decodeContinuation(value: unknown): PersistedRuntimeContinuationCapabil
       supportsBranchReplay: input.supportsBranchReplay,
       supportsRestartReplay: input.supportsRestartReplay,
       evidenceIds,
-    })
+    }) as PersistedRuntimeContinuationCapabilityV2
   }
   throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
 }
@@ -867,13 +879,28 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
   draft: DraftSnapshot
   supplied?: Readonly<{ evidenceDigest: string; semanticFieldsDigest: string; revision: string; snapshotHash: string }>
 }> {
-  const allowed = ['schemaVersion', 'resolvedAt', 'binding', 'evidence', 'fields', 'tools', 'continuation']
+  const allowed = ['schemaVersion', 'resolvedAt', 'binding', 'catalogAuthority', 'evidence', 'fields', 'tools', 'continuation']
   if (fullRecord) allowed.push('evidenceDigest', 'semanticFieldsDigest', 'revision', 'snapshotHash')
   const input = closedObject(value, allowed)
   if (input.schemaVersion !== 2) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   const resolvedAt = validateTimestamp(requiredString(input, 'resolvedAt'))
   const resolvedAtMs = Date.parse(resolvedAt)
   const binding = decodeProviderBindingRecordV2(input.binding)
+  let catalogAuthority: PersistedRuntimeCatalogAuthorityV2 | undefined
+  if (input.catalogAuthority !== undefined) {
+    const value = closedObject(input.catalogAuthority, ['scopeId', 'catalogDigest', 'authorityRevision',
+      'observationDigest', 'contractRevision', 'resolutionDigest'])
+    const scopeId = requiredString(value, 'scopeId'); const contractRevision = requiredString(value, 'contractRevision')
+    const catalogDigest = requiredString(value, 'catalogDigest'); const observationDigest = requiredString(value, 'observationDigest')
+    const resolutionDigest = requiredString(value, 'resolutionDigest'); const authorityRevision = value.authorityRevision
+    if (!Number.isSafeInteger(authorityRevision) || (authorityRevision as number) < 0 || scopeId.length > 512 ||
+        contractRevision.length > 512 || !/^[0-9a-f]{64}$/u.test(catalogDigest) ||
+        !/^[0-9a-f]{64}$/u.test(observationDigest) || !/^[0-9a-f]{64}$/u.test(resolutionDigest)) {
+      throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+    }
+    catalogAuthority = Object.freeze({ scopeId, catalogDigest, authorityRevision: authorityRevision as number,
+      observationDigest, contractRevision, resolutionDigest })
+  }
   if (binding.endpointBinding.kind === 'pinned' &&
       Date.parse(binding.endpointBinding.selector.selectedAt) > resolvedAtMs) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
@@ -922,6 +949,7 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
     schemaVersion: 2,
     resolvedAt,
     binding: projectDecodedProviderBindingRecordV2(binding),
+    ...(catalogAuthority ? { catalogAuthority } : {}),
     evidence: Object.freeze(canonicalEvidence),
     fields: Object.freeze(fields),
     tools: Object.freeze(tools),
@@ -1000,6 +1028,7 @@ export function decodeRuntimeCapabilitySnapshotV2(value: unknown): DecodedRuntim
     schemaVersion: 2,
     resolvedAt: expected.resolvedAt,
     binding,
+    ...(expected.catalogAuthority ? { catalogAuthority: expected.catalogAuthority } : {}),
     evidence: Object.freeze(evidence),
     fields: expected.fields,
     tools: expected.tools,

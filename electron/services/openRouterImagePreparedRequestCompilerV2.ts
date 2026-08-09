@@ -104,7 +104,7 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
   }))
   return issuePreparedProviderRequestV2({
     operationId: operation.operationId.value,
-    answerRootId: operation.resultAnswerRootId.value,
+    answerRootId: operation.targetAnswerId.value,
     requestSequence: 1,
     providerId: binding.providerId.value,
     endpointProfileId: binding.endpointProfileId.value,

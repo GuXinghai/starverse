@@ -60,9 +60,9 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
       ? graph.beginInitialTurn(context, { operationId: command.operationId.value, branchId: command.branchId.value,
         expectedHeadMessageId: command.expectedHeadMessageId?.value ?? null, questionId: createQuestionId(), answerRootId: createAnswerId(), userBody: command.userBody, createdAtMs: at })
       : command.kind === 'generic_local_openai_chat_regenerate'
-        ? graph.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: 'regenerate_question', branchId: command.branchId.value,
-          questionId: command.questionId.value, targetAnswerRootId: null, expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: at })
-        : graph.beginEditedTurn(context, { operationId: command.operationId.value, mode: command.mode, branchId: command.branchId.value,
+        ? graph.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: 'regenerate_question', sourceBranchId: command.sourceBranchId.value,
+          questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value, expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: at })
+        : graph.beginEditedTurn(context, { operationId: command.operationId.value, sourceBranchId: command.sourceBranchId.value,
           sourceQuestionId: command.sourceQuestionId.value, sourceAnswerRootId: command.sourceAnswerRootId.value,
           expectedHeadMessageId: command.expectedHeadMessageId.value, questionId: createQuestionId(), answerRootId: createAnswerId(), userBody: command.userBody, createdAtMs: at })
     return withSynchronousGenerationCommandFactsAuthorityV2(context, config, attachments, pending.conversationId.value,
@@ -88,14 +88,14 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
   async function retry(command: GenericLocalOpenAIChatRetryCommandV2) {
     const existing = replay(command, command.actionKind); if (existing) return existing
     try { return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
-      const row = input.db.prepare('SELECT operation_id AS operationId FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?').get(command.targetAnswerRootId.value) as { operationId?: unknown } | undefined
+      const row = input.db.prepare('SELECT operation_id AS operationId FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?').get(command.sourceAnswerId.value) as { operationId?: unknown } | undefined
       if (!row || typeof row.operationId !== 'string') throw new Error('GENERATION_V2_GENERIC_LOCAL_RETRY_TARGET_INVALID')
       const target = execution.findOperationInTransaction(context, row.operationId)
       if (!target || target.operation.questionId.value !== command.questionId.value || target.snapshot.providerBinding.protocolContractId.value !== 'generic-local-openai-chat-completions') throw new Error('GENERATION_V2_GENERIC_LOCAL_RETRY_TARGET_INVALID')
       const profile = profiles.get(target.snapshot.providerBinding.endpointProfileId.value)
       if (profile.profileRevision !== (target.snapshot.providerBinding.endpointBinding.kind === 'provider_managed_set' ? target.snapshot.providerBinding.endpointBinding.endpointSetRevision.value : '')) throw new Error('GENERATION_V2_GENERIC_LOCAL_PROFILE_STALE')
       const pending = graph.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: command.actionKind,
-        branchId: command.branchId.value, questionId: command.questionId.value, targetAnswerRootId: command.targetAnswerRootId.value,
+        sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
         expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: nowMs() })
       const persisted = commitGenericLocalRetrySnapshotV2({ context, executionRepo: execution, pending, command, target })
       graph.commitAnswerActionProjection(context, pending); const preparedRequest = compile(context, persisted.bundle)

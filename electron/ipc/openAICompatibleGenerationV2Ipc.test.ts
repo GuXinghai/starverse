@@ -3,10 +3,12 @@ import { OPENAI_COMPATIBLE_GENERATION_V2_IPC_CHANNELS, OPENAI_COMPATIBLE_GENERAT
 import type { GenerationStreamProjectionSinkV2 } from '../services/generationStreamProjectionV2'
 
 function commandResult() {
-  return { kind: 'created', preparedRequest: { operationId: 'operation:1', answerRootId: 'answer:1' }, execution: { operation: { actionKind: 'initial_send' } },
+  return { kind: 'created', preparedRequest: { operationId: 'operation:1', answerRootId: 'answer:1' },
+    execution: { operation: {
+      operationId: { value: 'operation:1' }, targetAnswerId: { value: 'answer:1' }, actionKind: 'initial_send',
+    } },
     projection: { branchProjection: { branchId: { value: 'branch:1' }, conversationId: { value: 'conversation:1' }, questionId: { value: 'question:1' },
-      headMessageId: { value: 'answer:1' }, chosenAnswerRootId: { value: 'answer:1' }, deletedAtMs: null },
-    visibleCandidates: [{ value: 'answer:0' }, { value: 'answer:1' }], visibleQuestionCandidates: [{ value: 'question:1' }] } } as never
+      headMessageId: { value: 'answer:1' }, chosenAnswerRootId: { value: 'answer:1' }, deletedAtMs: null } } } as never
 }
 
 describe('OpenAI-compatible Generation V2 IPC', () => {

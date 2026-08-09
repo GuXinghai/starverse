@@ -8,9 +8,10 @@ function command(overrides: Record<string, unknown> = {}) {
   return {
     actionKind: 'retry_as_new',
     operationId: 'operation:anthropic:retry',
-    branchId: 'branch:1',
+    clientActionId: 'operation:anthropic:retry',
+    sourceBranchId: 'branch:1',
     questionId: 'question:1',
-    targetAnswerRootId: 'answer:chosen',
+    sourceAnswerId: 'answer:chosen',
     expectedHeadMessageId: 'answer:chosen',
     ...overrides,
   }
@@ -25,16 +26,16 @@ describe('Anthropic plain-text retry command V2', () => {
       .not.toBe(first.requestFingerprint)
     expect(first).toMatchObject({
       kind: 'anthropic_plain_text_retry',
-      targetAnswerRootId: { value: 'answer:chosen' },
+      sourceAnswerId: { value: 'answer:chosen' },
       expectedHeadMessageId: { value: 'answer:chosen' },
     })
     expect(isAnthropicPlainTextRetryCommandV2(first)).toBe(true)
     expect(isAnthropicPlainTextRetryCommandV2({ ...first })).toBe(false)
   })
 
-  it('rejects a non-chosen head, unsupported action, and renderer provider/config input', () => {
+  it('rejects an inconsistent idempotency key, unsupported action, and renderer provider/config input', () => {
     for (const hostile of [
-      { expectedHeadMessageId: 'answer:other' },
+      { clientActionId: 'operation:other' },
       { actionKind: 'regenerate_question' },
       { providerId: 'anthropic' },
       { commandAttachments: [] },

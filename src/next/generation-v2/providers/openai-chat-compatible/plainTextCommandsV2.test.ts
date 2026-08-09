@@ -25,7 +25,7 @@ describe('OpenAI-compatible V2 text commands', () => {
   it('never lets retry replace or retry-as-new infer a different target', () => {
     expect(() => decodeOpenAIChatCompatibleRetryCommandV2({
       actionKind: 'retry_as_new', operationId: 'operation:2', branchId: 'branch:1', questionId: 'question:1',
-      targetAnswerRootId: 'answer:1', expectedHeadMessageId: 'answer:2',
+      sourceAnswerId: 'answer:1', expectedHeadMessageId: 'answer:2',
     })).toThrow('GENERATION_V2_OPENAI_COMPATIBLE_RETRY_COMMAND_INVALID')
   })
 })

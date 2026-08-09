@@ -171,9 +171,9 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
       operation.branchId.value !== input.history.branchId.value ||
       operation.conversationId.value !== input.history.conversationId.value ||
       operation.questionId.value !== input.history.questionId.value ||
-      operation.resultAnswerRootId.value !== input.history.answerRootId.value ||
+      operation.targetAnswerId.value !== input.history.answerRootId.value ||
       snapshot.operationId.value !== operation.operationId.value ||
-      snapshot.answerRootId.value !== operation.resultAnswerRootId.value) {
+      snapshot.answerRootId.value !== operation.targetAnswerId.value) {
     throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_AUTHORITY_INVALID')
   }
 
@@ -288,7 +288,7 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
   })
   return issuePreparedProviderRequestV2({
     operationId: operation.operationId.value,
-    answerRootId: operation.resultAnswerRootId.value,
+    answerRootId: operation.targetAnswerId.value,
     requestSequence: input.history.requestSequence,
     providerId: binding.providerId.value,
     endpointProfileId: binding.endpointProfileId.value,

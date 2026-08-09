@@ -52,7 +52,7 @@ export function createOpenAIResponsesToolContinuationCoordinatorV2(input: Readon
       const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
       if (!execution || !['streaming', 'completed', 'failed', 'cancelled'].includes(execution.operation.state) ||
           execution.operation.branchId.value !== command.branchId.value ||
-          execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+          execution.operation.targetAnswerId.value !== command.answerRootId.value ||
           command.expectedHeadMessageId.value !== command.answerRootId.value) invalid()
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
       if (!toolRegistry) invalid()
@@ -88,7 +88,7 @@ export function createOpenAIResponsesToolContinuationCoordinatorV2(input: Readon
         const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
         if (!execution || execution.operation.state !== 'streaming' ||
             execution.operation.branchId.value !== command.branchId.value ||
-            execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+            execution.operation.targetAnswerId.value !== command.answerRootId.value ||
             execution.snapshot.providerBinding.providerId.value !== 'openai_responses' ||
             execution.snapshot.providerBinding.operation !== 'text' ||
             execution.snapshot.providerBinding.credentialScopeId.value !== status.credentialScopeId) invalid()

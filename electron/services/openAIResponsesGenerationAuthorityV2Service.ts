@@ -8,6 +8,12 @@ import {
   type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import {
+  assertActiveCatalogOptionalCapabilitiesV2,
+  isActiveCatalogModelAuthorityV2,
+  projectActiveCatalogSnapshotAuthorityV2,
+  type ActiveCatalogModelAuthorityV2,
+} from './activeCatalogModelAuthorityV2Service'
+import {
   isReviewedProviderContractDefinitionV2,
   readReviewedOpenAIResponsesDefinitionV2,
 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
@@ -47,10 +53,6 @@ import {
   registerGenerationV2AuthorityTransactionParticipantForContextV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
-import {
-  isVerifiedOpenAIResponsesModelEvidenceV2,
-  type VerifiedOpenAIResponsesModelEvidenceV2,
-} from './openAIResponsesModelEvidenceV2Service'
 
 export type VerifiedOpenAIResponsesProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_openai_responses_provider_binding'
@@ -131,10 +133,10 @@ function evidenceIds(definition: ReturnType<typeof readReviewedOpenAIResponsesDe
   })
 }
 
-function composeBinding(modelEvidence: VerifiedOpenAIResponsesModelEvidenceV2) {
+function composeBinding(modelEvidence: ActiveCatalogModelAuthorityV2) {
   const profile = readVerifiedOpenAIResponsesEndpointProfileV2()
   const definition = readReviewedOpenAIResponsesDefinitionV2()
-  if (!isVerifiedOpenAIResponsesModelEvidenceV2(modelEvidence) ||
+  if (!isActiveCatalogModelAuthorityV2(modelEvidence, 'openai_responses') ||
       !isVerifiedOpenAIResponsesEndpointProfileV2(profile) ||
       !isReviewedProviderContractDefinitionV2(definition) ||
       definition.providerId.value !== 'openai_responses' ||
@@ -178,7 +180,7 @@ function composeBinding(modelEvidence: VerifiedOpenAIResponsesModelEvidenceV2) {
     binding, contractReference, credentialRevision: modelEvidence.credentialRevision,
     modelEvidenceRevision: modelEvidence.modelsResponseRevision,
     assertCurrent: () => {
-      if (!bindingAuthorities.has(authority) || !isVerifiedOpenAIResponsesModelEvidenceV2(modelEvidence)) {
+      if (!bindingAuthorities.has(authority) || !isActiveCatalogModelAuthorityV2(modelEvidence, 'openai_responses')) {
         return fail('GENERATION_V2_OPENAI_GENERATION_AUTHORITY_INVALID')
       }
       modelEvidence.assertCurrent()
@@ -343,7 +345,7 @@ function validateIntent(
 
 function composeCapability(input: Readonly<{
   binding: VerifiedOpenAIResponsesProviderBindingAuthorityV2
-  modelEvidence: VerifiedOpenAIResponsesModelEvidenceV2
+  modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   resolvedAt: string
   toolRegistry: ToolRegistryRepositoryFactV2 | null
@@ -381,6 +383,7 @@ function composeCapability(input: Readonly<{
   validateIntent(input.commandFacts, fields, input.toolRegistry)
   const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
     schemaVersion: 2, resolvedAt: input.resolvedAt,
+    ...projectActiveCatalogSnapshotAuthorityV2(input.modelEvidence),
     binding: projectDecodedProviderBindingRecordV2(input.binding.binding), evidence, fields,
     tools: input.toolRegistry?.selectedDefinitions.map((tool) => ({
       toolId: tool.toolId, kind: tool.kind,
@@ -421,7 +424,7 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
 
 export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
-  modelEvidence: VerifiedOpenAIResponsesModelEvidenceV2
+  modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   toolRegistry: ToolRegistryRepositoryFactV2 | null
   operation: 'text'
@@ -430,7 +433,7 @@ export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Rea
     capability: VerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2
   }>) => T extends PromiseLike<unknown> ? never : T
 }>): T {
-  if (!isVerifiedOpenAIResponsesModelEvidenceV2(input.modelEvidence) ||
+  if (!isActiveCatalogModelAuthorityV2(input.modelEvidence, 'openai_responses') ||
       !isGenerationCommandFactsAuthorityV2(input.commandFacts) ||
       !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
       input.operation !== 'text' || typeof input.use !== 'function' ||
@@ -443,6 +446,7 @@ export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Rea
       : 'GENERATION_V2_OPENAI_GENERATION_AUTHORITY_INVALID')
   }
   const resolvedAtMs = Date.now()
+  assertActiveCatalogOptionalCapabilitiesV2(input.modelEvidence, input.commandFacts.semanticIntent)
   if (!Number.isSafeInteger(resolvedAtMs) || resolvedAtMs < input.modelEvidence.observedAtMs) {
     return fail('GENERATION_V2_OPENAI_GENERATION_AUTHORITY_INVALID')
   }

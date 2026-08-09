@@ -17,6 +17,7 @@ import {
   AnthropicMessagesChatStreamV1,
   type AnthropicMessagesVisibleDeltaV1,
 } from '../../src/next/generation-v2/providers/anthropic/chatStreamV1'
+import type { AnthropicProviderNativeSnapshot } from '../../src/next/provider/anthropic/anthropicProviderNativeContent'
 import { createAnthropicNativeHistoryArtifactV1 } from '../../src/next/generation-v2/providers/anthropic/nativeContentBlocksV1'
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import {
@@ -27,6 +28,7 @@ import {
   publishGenerationStreamProjectionV2,
   type GenerationStreamProjectionSinkV2,
 } from './generationStreamProjectionV2'
+import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
 const MAX_WIRE_BYTES = 64 * 1_024 * 1_024
@@ -136,18 +138,6 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
     })
   }
 
-  function persistVisibleContent(command: GenerationTextCommandResultV2, expected: string, next: string): void {
-    runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
-      graphRepo.compareAndSetStreamingAssistantBody(
-        context, command.preparedRequest.answerRootId, expected, next, nowMs(),
-      )
-    })
-    publishGenerationStreamProjectionV2(input.streamProjectionSink, {
-      type: 'assistant_body', operationId: command.preparedRequest.operationId,
-      answerRootId: command.preparedRequest.answerRootId, content: next,
-    })
-  }
-
   function finalize(
     command: GenerationTextCommandResultV2,
     state: 'completed' | 'failed' | 'cancelled',
@@ -221,7 +211,7 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
     response: Response,
     signal: AbortSignal,
     onStreamStarted: () => void,
-  ): Promise<unknown> {
+  ): Promise<AnthropicProviderNativeSnapshot> {
     if (response.status !== 200 || !response.body ||
         response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'text/event-stream') {
       try { await response.body?.cancel() } catch { /* best effort */ }
@@ -238,15 +228,19 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
       throw new AnthropicMessagesStreamRunnerV2Error('GENERATION_V2_ANTHROPIC_RUNNER_AUTHORITY_INVALID')
     }
     let visibleContent = initial.body
+    const checkpoint = createGenerationTextBodyCheckpointV2({
+      db: input.db, graphRepo, command, initialBody: visibleContent,
+      streamProjectionSink: input.streamProjectionSink, nowMs,
+      onFailure: (error) => { void reader.cancel(error).catch(() => undefined) },
+    })
     let wireBytes = 0
     let completed = false
     const accept = (deltas: readonly AnthropicMessagesVisibleDeltaV1[]) => {
       const text = deltas.filter((delta) => delta.type === 'text').map((delta) => delta.text).join('')
       const thinking = deltas.filter((delta) => delta.type === 'thinking').map((delta) => delta.text).join('')
       if (text.length > 0) {
-        const previous = visibleContent
         visibleContent += text
-        persistVisibleContent(command, previous, visibleContent)
+        checkpoint.update(visibleContent)
       }
       if (thinking.length > 0) {
         publishGenerationStreamProjectionV2(input.streamProjectionSink, {
@@ -270,10 +264,13 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
       completed = true
       return snapshot
     } finally {
-      if (!completed) {
-        try { await reader.cancel() } catch { /* best effort */ }
+      try { checkpoint.flush() } finally {
+        checkpoint.dispose()
+        if (!completed) {
+          try { await reader.cancel() } catch { /* best effort */ }
+        }
+        try { reader.releaseLock() } catch { /* best effort */ }
       }
-      try { reader.releaseLock() } catch { /* best effort */ }
     }
   }
 
@@ -342,6 +339,24 @@ export function createAnthropicMessagesStreamRunnerV2(input: Readonly<{
             return receive(command, response, scope.signal, () => { responseStarted = true })
           },
         })
+        for (const nativeBlock of nativeSnapshot.content) {
+          if (nativeBlock.type === 'redacted_thinking') {
+            publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+              type: 'reasoning_detail',
+              operationId: command.preparedRequest.operationId,
+              answerRootId: command.preparedRequest.answerRootId,
+              detail: Object.freeze({ provider: 'anthropic', type: 'redacted_thinking' }),
+            })
+          } else if (nativeBlock.type === 'thinking' && nativeBlock.thinking === '' &&
+              typeof nativeBlock.signature === 'string' && nativeBlock.signature.length > 0) {
+            publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+              type: 'reasoning_detail',
+              operationId: command.preparedRequest.operationId,
+              answerRootId: command.preparedRequest.answerRootId,
+              detail: Object.freeze({ provider: 'anthropic', type: 'thinking_omitted' }),
+            })
+          }
+        }
         return finalize(command, 'completed', nativeSnapshot, null, null, 'mid_stream')
       } catch (error) {
         const cancelled = signal?.aborted === true && !scope.timedOut()

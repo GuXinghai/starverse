@@ -7,6 +7,14 @@ import { geminiGenerationProfile } from './providerProfiles/geminiGenerationProf
 import { geminiImageGenerationProfile } from './providerProfiles/geminiImageGenerationProfile'
 import { openaiResponsesGenerationProfile } from './providerProfiles/openaiResponsesGenerationProfile'
 import { openrouterGenerationProfile } from './providerProfiles/openrouterGenerationProfile'
+import { resolveGeminiThinkingCapability } from '../provider/gemini/geminiThinkingPolicy'
+
+const gemini31ProCapability = resolveGeminiThinkingCapability({
+  model: 'gemini-3.1-pro-preview', thinking: true, thinkingOwnProperty: true, supportedGenerationMethods: ['generateContent'],
+})
+const gemini25FlashCapability = resolveGeminiThinkingCapability({
+  model: 'gemini-2.5-flash', thinking: true, thinkingOwnProperty: true, supportedGenerationMethods: ['generateContent'],
+})
 
 describe('generationParamProfiles', () => {
   it('keeps OpenRouter wide parameters in the OpenRouter profile only', () => {
@@ -19,7 +27,9 @@ describe('generationParamProfiles', () => {
   })
 
   it('marks Gemini 3 sampling capabilities deprecated by model override', () => {
-    const capabilities = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'models/gemini-3-pro-preview')
+    const capabilities = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'models/gemini-3.1-pro-preview', {
+      geminiThinkingCapability: gemini31ProCapability,
+    })
 
     expect(capabilities.temperature?.status).toBe('deprecated')
     expect(capabilities.topP?.status).toBe('deprecated')
@@ -30,8 +40,14 @@ describe('generationParamProfiles', () => {
   })
 
   it('exposes only model-family-correct Gemini thinking controls', () => {
-    const gemini25 = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'gemini-2.5-flash')
-    const unknown = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'future-gemini-model')
+    const gemini25 = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'gemini-2.5-flash', {
+      geminiThinkingCapability: gemini25FlashCapability,
+    })
+    const unknown = getEffectiveGenerationParamCapabilities(geminiGenerationProfile, 'future-gemini-model', {
+      geminiThinkingCapability: resolveGeminiThinkingCapability({
+        model: 'future-gemini-model', thinking: false, thinkingOwnProperty: true, supportedGenerationMethods: ['generateContent'],
+      }),
+    })
 
     expect(gemini25.thinkingBudget?.supported).toBe(true)
     expect(gemini25.thinkingLevel?.supported).toBe(false)
@@ -52,6 +68,15 @@ describe('generationParamProfiles', () => {
     expect(lite.maxOutputTokens?.range?.max).toBe(4096)
     expect(lite.googleSearch?.supported).toBe(false)
     expect(lite.imageSearch?.supported).toBe(false)
+  })
+
+  it('describes Interactions search parameters with the combined native tool encoding', () => {
+    expect(geminiImageGenerationProfile.params.googleSearch?.wirePath).toBeUndefined()
+    expect(geminiImageGenerationProfile.params.imageSearch?.wirePath).toBeUndefined()
+    expect(geminiImageGenerationProfile.params.googleSearch?.wireEncoding)
+      .toBe('gemini_interactions_google_search_type')
+    expect(geminiImageGenerationProfile.params.imageSearch?.wireEncoding)
+      .toBe('gemini_interactions_google_search_type')
   })
 
   it('restricts OpenAI Responses model-specific reasoning effort', () => {

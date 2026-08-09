@@ -16,7 +16,7 @@ import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2Attachment
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
 import { decodeGeminiPlainTextRegenerateCommandV2, type GeminiPlainTextRegenerateCommandV2 } from '../../src/next/generation-v2/providers/gemini/plainTextActionCommandsV2'
 import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
-import { createGeminiModelEvidenceV2Service } from './geminiModelEvidenceV2Service'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedGeminiGenerateContentGenerationAuthoritiesV2 } from './geminiGenerateContentGenerationAuthorityV2Service'
 import { compileGeminiGenerateContentPreparedRequestV2 } from './geminiGenerateContentPreparedRequestCompilerV2'
 import { commitVerifiedGeminiPlainTextRegenerateSnapshotV2 } from './geminiPlainTextSnapshotCommitV2'
@@ -41,9 +41,7 @@ export function createGeminiPlainTextRegenerateCoordinatorV2(input: Readonly<{
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
-  const evidenceService = createGeminiModelEvidenceV2Service({
-    db: input.db, credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs,
-  })
+  const evidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
 
   function replay(command: GeminiPlainTextRegenerateCommandV2): GenerationTextCommandResultV2 | null {
@@ -72,10 +70,10 @@ export function createGeminiPlainTextRegenerateCoordinatorV2(input: Readonly<{
     const existing = replay(command)
     if (existing) return existing
     try {
-      return await evidenceService.withRefreshedExactModelEvidence({ endpointProfile,
+      return await evidenceService.withExactActiveModel({ providerKey: 'google_ai_studio', endpointProfile,
         expectedCredentialRevision: request.expectedCredentialRevision,
         expectedCredentialScopeId: request.expectedCredentialScopeId,
-        modelId: command.modelId, signal: request.signal,
+        modelId: command.modelId,
         consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
           const raced = executionRepo.findOperationInTransaction(context, command.operationId.value)
           if (raced) {
@@ -90,8 +88,8 @@ export function createGeminiPlainTextRegenerateCoordinatorV2(input: Readonly<{
               preparedRequest, request: requestRepo.replayPrepared(context, raced, preparedRequest) })
           }
           const pending = graphRepo.beginAnswerAction(context, { operationId: command.operationId.value,
-            actionKind: 'regenerate_question', branchId: command.branchId.value, questionId: command.questionId.value,
-            targetAnswerRootId: null, expectedHeadMessageId: command.expectedHeadMessageId.value,
+            actionKind: 'regenerate_question', sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value,
+            sourceAnswerId: command.sourceAnswerId.value, expectedHeadMessageId: command.expectedHeadMessageId.value,
             answerRootId: createAnswerId(), createdAtMs: nowMs() })
           return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo,
             pending.conversationId.value, projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined,

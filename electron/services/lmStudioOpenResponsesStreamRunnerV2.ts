@@ -12,6 +12,7 @@ import { LmStudioOpenResponsesStreamV1Error, LmStudioOpenResponsesTypedSseDecode
   type LmStudioOpenResponsesStreamResultV1 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/responsesStreamV1'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
+import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
 export class LmStudioOpenResponsesStreamRunnerV2Error extends Error {
@@ -59,12 +60,6 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
       requestRepo.markStreaming(context, request, nowMs())
       if (execution.operation.state === 'committed') executionRepo.markOperationStreaming(context, execution, nowMs())
     })
-  }
-  function append(command: GenerationTextCommandResultV2, previous: string, next: string): void {
-    runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) =>
-      graphRepo.compareAndSetStreamingAssistantBody(context, command.preparedRequest.answerRootId, previous, next, nowMs()))
-    publishGenerationStreamProjectionV2(input.streamProjectionSink, { type: 'assistant_body',
-      operationId: command.preparedRequest.operationId, answerRootId: command.preparedRequest.answerRootId, content: next })
   }
   function terminal(command: GenerationTextCommandResultV2, state: 'completed' | 'failed' | 'cancelled',
     result: LmStudioOpenResponsesStreamResultV1 | null, errorCode: string | null, errorMessage: string | null, phase: 'pre_stream' | 'mid_stream') {
@@ -124,6 +119,11 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
       throw new LmStudioOpenResponsesStreamRunnerV2Error('GENERATION_V2_LMSTUDIO_RUNNER_PROFILE_STALE')
     }
     begin(command); const scope = abortScope(signal, timeoutMs); let started = false; let visible = ''
+    const checkpoint = createGenerationTextBodyCheckpointV2({
+      db: input.db, graphRepo, command, initialBody: visible,
+      streamProjectionSink: input.streamProjectionSink, nowMs,
+      onFailure: () => undefined,
+    })
     try {
       try { input.rawGenerationRequestStore?.tryPersistPreparedV2({ operationId: command.preparedRequest.operationId,
         answerRootId: command.preparedRequest.answerRootId, requestSequence: command.preparedRequest.requestSequence, providerId: 'lmstudio',
@@ -139,7 +139,7 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
       const decoder = new LmStudioOpenResponsesTypedSseDecoderV1(); const reader = response.body.getReader()
       try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength > 0) started = true
         for (const event of decoder.push(item.value)) if ('delta' in event) {
-          if (event.type === 'output_text') { const previous = visible; visible += event.delta; append(command, previous, visible) }
+          if (event.type === 'output_text') { visible += event.delta; checkpoint.update(visible) }
           else if (event.type === 'reasoning_text') publishGenerationStreamProjectionV2(input.streamProjectionSink, {
             type: 'reasoning_detail', operationId: command.preparedRequest.operationId,
             answerRootId: command.preparedRequest.answerRootId, detail: Object.freeze({ type: 'thought', text: event.delta }) })
@@ -148,14 +148,18 @@ export function createLmStudioOpenResponsesStreamRunnerV2(input: Readonly<{
       if (result.state !== 'completed' || result.model !== command.preparedRequest.modelId) {
         throw new LmStudioOpenResponsesStreamRunnerV2Error('GENERATION_V2_LMSTUDIO_RUNNER_PROVIDER_FAILED')
       }
+      checkpoint.flush()
       return terminal(command, 'completed', result, null, null, 'mid_stream')
     } catch (error) {
+      let failure: unknown = error
+      try { checkpoint.flush() } catch (checkpointError) { failure = checkpointError }
       const cancelled = signal?.aborted === true && !scope.timedOut()
       const code = cancelled ? 'user_cancelled' : scope.timedOut() ? 'GENERATION_V2_LMSTUDIO_RUNNER_TIMEOUT'
-        : error instanceof LmStudioOpenResponsesStreamRunnerV2Error ? error.code
-          : error instanceof LmStudioOpenResponsesStreamV1Error ? error.code : 'GENERATION_V2_LMSTUDIO_RUNNER_TRANSPORT_FAILED'
+        : failure instanceof LmStudioOpenResponsesStreamRunnerV2Error ? failure.code
+          : failure instanceof LmStudioOpenResponsesStreamV1Error ? failure.code
+            : failure instanceof Error ? failure.message : 'GENERATION_V2_LMSTUDIO_RUNNER_TRANSPORT_FAILED'
       return terminal(command, cancelled ? 'cancelled' : 'failed', null, code,
         cancelled ? 'Generation cancelled by user.' : code, started ? 'mid_stream' : 'pre_stream')
-    } finally { scope.dispose() }
+    } finally { checkpoint.dispose(); scope.dispose() }
   } })
 }

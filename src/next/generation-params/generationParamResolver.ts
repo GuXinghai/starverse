@@ -73,7 +73,9 @@ function decision(
 }
 
 export function resolveGenerationParamsFromLayers(input: ResolveGenerationParamsInput): ResolvedGenerationParams {
-  const capabilities = getEffectiveGenerationParamCapabilities(input.profile, input.modelId)
+  const capabilities = getEffectiveGenerationParamCapabilities(input.profile, input.modelId, {
+    geminiThinkingCapability: input.geminiThinkingCapability,
+  })
   const requestParams: ResolvedGenerationParams['requestParams'] = {}
   const decisions: ResolvedGenerationParams['decisions'] = {}
   const warnings: ResolvedGenerationParams['warnings'] = []

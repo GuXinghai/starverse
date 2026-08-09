@@ -16,6 +16,7 @@ import {
 } from '../credentials/epoch2RuntimeCredentialService'
 import {
   DeepSeekStableChatStreamAssemblerV1,
+  DeepSeekStableChatStreamV1Error,
   DeepSeekStableSseDecoderV1,
   isDeepSeekStableStreamResultV1,
   type DeepSeekStableStreamDeltaV1,
@@ -32,6 +33,14 @@ import {
   publishGenerationStreamProjectionV2,
   type GenerationStreamProjectionSinkV2,
 } from './generationStreamProjectionV2'
+import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
+import {
+  createProviderFailureV2,
+  providerFailureFromUnknownV2,
+  providerFailurePrimaryMessageV2,
+  ProviderFailureErrorV2,
+  type ProviderFailureV2,
+} from '../../src/shared/provider/providerFailureV2'
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
 const MAX_WIRE_BYTES = 64 * 1024 * 1024
@@ -42,6 +51,7 @@ export type DeepSeekInitialStreamRunResultV2 = Readonly<{
   state: 'awaiting_tool' | 'completed' | 'failed' | 'cancelled'
   errorCode: string | null
   errorMessage: string | null
+  errorFact?: ProviderFailureV2
 }>
 
 export class DeepSeekInitialStreamRunnerV2Error extends Error {
@@ -97,17 +107,6 @@ async function abortable<T>(promise: Promise<T>, signal: AbortSignal): Promise<T
   })
 }
 
-function failureMessage(error: unknown): string {
-  if (error instanceof DeepSeekInitialStreamRunnerV2Error) return error.code
-  return 'DeepSeek generation failed.'
-}
-
-function terminalCode(error: unknown, timedOut: boolean): string {
-  if (timedOut) return 'GENERATION_V2_DEEPSEEK_RUNNER_TIMEOUT'
-  if (error instanceof DeepSeekInitialStreamRunnerV2Error) return error.code
-  return 'GENERATION_V2_DEEPSEEK_RUNNER_TRANSPORT_FAILED'
-}
-
 export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
   db: BetterSqlite3.Database
   credentialService: Epoch2RuntimeCredentialService
@@ -152,22 +151,6 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
     })
   }
 
-  function persistVisibleContent(
-    result: GenerationTextCommandResultV2,
-    expected: string,
-    next: string,
-  ): void {
-    runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
-      graphRepo.compareAndSetStreamingAssistantBody(
-        context, result.preparedRequest.answerRootId, expected, next, nowMs(),
-      )
-    })
-    publishGenerationStreamProjectionV2(input.streamProjectionSink, {
-      type: 'assistant_body', operationId: result.preparedRequest.operationId,
-      answerRootId: result.preparedRequest.answerRootId, content: next,
-    })
-  }
-
   function finalize(
     command: GenerationTextCommandResultV2,
     state: 'completed' | 'failed' | 'cancelled',
@@ -175,6 +158,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
     errorCode: string | null,
     errorMessage: string | null,
     phase: 'pre_stream' | 'mid_stream',
+    errorFact: ProviderFailureV2 | null = null,
   ): DeepSeekInitialStreamRunResultV2 {
     const at = nowMs()
     let resultState: DeepSeekInitialStreamRunResultV2['state'] = state
@@ -247,7 +231,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         graphRepo.terminalizeAssistantMessage(
           context, command.preparedRequest.answerRootId, state, null, at,
         )
-        executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, at)
+        executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage, errorFact }, at)
       }
     })
     const terminal = Object.freeze({
@@ -256,10 +240,12 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
       state: resultState,
       errorCode,
       errorMessage,
+      ...(errorFact ? { errorFact } : {}),
     })
     publishGenerationStreamProjectionV2(input.streamProjectionSink, {
       type: 'terminal', operationId: terminal.operationId, answerRootId: terminal.answerRootId,
       state: terminal.state, errorCode: terminal.errorCode, errorMessage: terminal.errorMessage,
+      ...(errorFact ? { errorFact } : {}),
     })
     return terminal
   }
@@ -272,12 +258,26 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
   ): Promise<Readonly<{ result: DeepSeekStableStreamResultV1; visibleContent: string }>> {
     if (response.status !== 200 || !response.body ||
         response.headers.get('content-type')?.split(';', 1)[0].trim().toLowerCase() !== 'text/event-stream') {
-      try { await response.body?.cancel() } catch { /* best-effort */ }
-      throw new DeepSeekInitialStreamRunnerV2Error(
-        response.status === 200
-          ? 'GENERATION_V2_DEEPSEEK_RUNNER_RESPONSE_INVALID'
-          : 'GENERATION_V2_DEEPSEEK_RUNNER_HTTP_FAILED',
-      )
+      const diagnosticCode = response.status === 200
+        ? 'GENERATION_V2_DEEPSEEK_RUNNER_RESPONSE_INVALID'
+        : 'GENERATION_V2_DEEPSEEK_RUNNER_HTTP_FAILED'
+      let bodyText: string | null = null
+      try { bodyText = response.body ? await response.text() : null } catch { /* Preserve headers/status if body read fails. */ }
+      throw new ProviderFailureErrorV2(createProviderFailureV2({
+        context: {
+          origin: 'http_response',
+          phase: response.status === 200 ? 'response_body' : 'response_headers',
+          providerId: command.preparedRequest.providerId,
+          contractId: command.preparedRequest.contractId,
+          operationId: command.preparedRequest.operationId,
+          requestSequence: command.preparedRequest.requestSequence,
+          starverseDiagnosticCode: diagnosticCode,
+        },
+        httpStatus: response.status,
+        httpStatusText: response.statusText,
+        bodyText,
+        headers: Object.fromEntries(response.headers.entries()),
+      }))
     }
     const thinkingMode = command.execution.snapshot.semanticIntent.reasoning.mode
     const decoder = new DeepSeekStableSseDecoderV1()
@@ -290,13 +290,17 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
       throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')
     }
     let visibleContent = initial.body
+    const checkpoint = createGenerationTextBodyCheckpointV2({
+      db: input.db, graphRepo, command, initialBody: visibleContent,
+      streamProjectionSink: input.streamProjectionSink, nowMs,
+      onFailure: (error) => { void reader.cancel(error).catch(() => undefined) },
+    })
     const accept = (deltas: readonly DeepSeekStableStreamDeltaV1[]): void => {
       const content = deltas.map((delta) => delta.contentDelta ?? '').join('')
       const reasoning = deltas.map((delta) => delta.reasoningDelta ?? '').join('')
       if (content.length > 0) {
-        const previous = visibleContent
         visibleContent += content
-        persistVisibleContent(command, previous, visibleContent)
+        checkpoint.update(visibleContent)
       }
       if (reasoning.length > 0) {
         publishGenerationStreamProjectionV2(input.streamProjectionSink, {
@@ -325,8 +329,11 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
       accept(eventsToDeltas(decoder.finish()))
       return Object.freeze({ result: assembler.acceptDone(), visibleContent })
     } finally {
-      try { await reader.cancel() } catch { /* best-effort */ }
-      reader.releaseLock()
+      try { checkpoint.flush() } finally {
+        checkpoint.dispose()
+        try { await reader.cancel() } catch { /* best-effort */ }
+        reader.releaseLock()
+      }
     }
   }
 
@@ -338,7 +345,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
           !isPreparedProviderRequestV2(command.preparedRequest) ||
           command.preparedRequest.providerId !== 'deepseek' || command.preparedRequest.requestSequence < 1 ||
           credentialPlan?.kind !== 'bearer_authorization' ||
-          command.preparedRequest.answerRootId !== command.execution.operation.resultAnswerRootId.value ||
+          command.preparedRequest.answerRootId !== command.execution.operation.targetAnswerId.value ||
           command.request.preparedBodySha256 !== command.preparedRequest.bodySha256) {
         throw new DeepSeekInitialStreamRunnerV2Error('GENERATION_V2_DEEPSEEK_RUNNER_AUTHORITY_INVALID')
       }
@@ -391,10 +398,45 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         return finalize(command, 'completed', received.result, null, null, 'mid_stream')
       } catch (error) {
         const cancelled = signal?.aborted === true && !scope.timedOut()
-        const code = cancelled ? 'user_cancelled' : terminalCode(error, scope.timedOut())
-        const message = cancelled ? 'Generation cancelled by user.' : failureMessage(error)
+        const failure = cancelled ? null : error instanceof ProviderFailureErrorV2
+          ? error.failure
+          : error instanceof DeepSeekStableChatStreamV1Error
+            ? createProviderFailureV2({
+              context: {
+                origin: 'response_decoder',
+                phase: 'stream_decode',
+                providerId: command.preparedRequest.providerId,
+                contractId: command.preparedRequest.contractId,
+                operationId: command.preparedRequest.operationId,
+                requestSequence: command.preparedRequest.requestSequence,
+                starverseDiagnosticCode: 'PROVIDER_RESPONSE_DECODE_FAILED',
+              },
+              body: {
+                error: { code: error.code, message: error.message },
+                deepSeekStreamDiagnostic: error.diagnostic,
+              },
+            })
+          : providerFailureFromUnknownV2(error, {
+            origin: responseStarted ? 'response_stream' : 'network_transport',
+            phase: responseStarted ? 'stream_read' : 'request_open',
+            providerId: command.preparedRequest.providerId,
+            contractId: command.preparedRequest.contractId,
+            operationId: command.preparedRequest.operationId,
+            requestSequence: command.preparedRequest.requestSequence,
+            starverseDiagnosticCode: scope.timedOut()
+              ? 'GENERATION_V2_DEEPSEEK_RUNNER_TIMEOUT'
+              : error instanceof DeepSeekInitialStreamRunnerV2Error
+                ? error.code
+                : responseStarted
+                  ? 'PROVIDER_RESPONSE_STREAM_FAILED'
+                  : 'GENERATION_V2_DEEPSEEK_RUNNER_TRANSPORT_FAILED',
+          })
+        const code = cancelled ? 'user_cancelled'
+          : failure?.starverseDiagnosticCode ?? 'GENERATION_V2_DEEPSEEK_RUNNER_TRANSPORT_FAILED'
+        const message = cancelled ? 'Generation cancelled by user.'
+          : failure ? providerFailurePrimaryMessageV2(failure) : code
         return finalize(command, cancelled ? 'cancelled' : 'failed', null, code, message,
-          responseStarted ? 'mid_stream' : 'pre_stream')
+          responseStarted ? 'mid_stream' : 'pre_stream', failure)
       } finally {
         scope.dispose()
       }

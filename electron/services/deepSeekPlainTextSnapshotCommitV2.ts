@@ -8,6 +8,8 @@ import {
   isPendingInitialTurnForContextV2,
   isPendingAnswerActionForContextV2,
   isPendingEditedTurnForContextV2,
+  pendingSourceBranchIdV2,
+  pendingSourceAnswerIdV2,
   type PendingAnswerActionV2,
   type PendingEditedTurnV2,
   type PendingInitialTurnV2,
@@ -61,8 +63,15 @@ export class DeepSeekPlainTextSnapshotCommitV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_INPUT_INVALID'
     | 'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_AUTHORITY_INVALID'
-    | 'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_RESULT_INVALID') {
-    super(code)
+    | 'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_RESULT_INVALID',
+    readonly diagnostic: Readonly<{
+      check: string
+      actionKind: string
+      operationId: string
+      expected: unknown
+      actual: unknown
+    }> | null = null) {
+    super(diagnostic === null ? code : `${code}: ${stableSerializeProviderRequestV2(diagnostic)}`)
     this.name = 'DeepSeekPlainTextSnapshotCommitV2Error'
   }
 }
@@ -72,6 +81,25 @@ export type DeepSeekPlainTextSnapshotCommitResultV2 = Readonly<{
   executionPersistence: 'created' | 'idempotent_replay'
   bundle: GenerationExecutionOperationBundleV2
 }>
+
+function failCommitResult(input: Readonly<{
+  check: string
+  actionKind: string
+  operationId: string
+  expected: unknown
+  actual: unknown
+}>): never {
+  throw new DeepSeekPlainTextSnapshotCommitV2Error(
+    'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_RESULT_INVALID',
+    Object.freeze({
+      check: input.check,
+      actionKind: input.actionKind,
+      operationId: input.operationId,
+      expected: input.expected,
+      actual: input.actual,
+    }),
+  )
+}
 
 function assertPlainTextFacts(commandFacts: GenerationCommandFactsAuthorityV2): void {
   const intent = commandFacts.semanticIntent
@@ -129,8 +157,8 @@ function assertCommittedProjection(
   if (operation.operationId.value !== pending.operationId.value ||
       operation.actionKind !== 'initial_send' || operation.branchId.value !== pending.branchId.value ||
       operation.conversationId.value !== pending.conversationId.value ||
-      operation.questionId.value !== pending.questionId.value || operation.targetAnswerRootId !== null ||
-      operation.resultAnswerRootId.value !== pending.answerRootId.value ||
+      operation.questionId.value !== pending.questionId.value || operation.sourceAnswerId !== null ||
+      operation.targetAnswerId.value !== pending.answerRootId.value ||
       operation.createdAtMs !== pending.createdAtMs || snapshot.canonicalJson !== expectedCanonicalJson ||
       snapshot.operationId.value !== pending.operationId.value ||
       snapshot.answerRootId.value !== pending.answerRootId.value ||
@@ -170,7 +198,7 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
       !isVerifiedDeepSeekStableProviderBindingAuthorityV2(input.binding) ||
       !isVerifiedDeepSeekStableRuntimeCapabilityAuthorityV2(input.capability) ||
       input.command.operationId.value !== input.pending.operationId.value ||
-      input.command.branchId.value !== input.pending.branchId.value ||
+      input.command.branchId.value !== pendingSourceBranchIdV2(input.pending).value ||
       input.command.expectedHeadMessageId?.value !== input.pending.expectedHeadMessageId?.value ||
       input.command.userBody !== input.pending.userBody ||
       input.command.providerId.value !== input.binding.binding.providerId.value ||
@@ -244,8 +272,8 @@ export function commitVerifiedDeepSeekPlainTextInitialSnapshotV2(input: Readonly
     branchId: input.pending.branchId.value,
     conversationId: input.pending.conversationId.value,
     questionId: input.pending.questionId.value,
-    targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value,
+    sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value,
     snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint,
     createdAtMs: input.pending.createdAtMs,
@@ -287,11 +315,11 @@ export function commitDeepSeekPlainTextRetrySnapshotV2(input: Readonly<{
       !isGenerationExecutionOperationBundleForContextV2(input.target, input.context) ||
       input.pending.actionKind !== input.command.actionKind ||
       input.pending.operationId.value !== input.command.operationId.value ||
-      input.pending.branchId.value !== input.command.branchId.value ||
+      pendingSourceBranchIdV2(input.pending).value !== input.command.sourceBranchId.value ||
       input.pending.questionId.value !== input.command.questionId.value ||
-      input.pending.targetAnswerRootId?.value !== input.command.targetAnswerRootId.value ||
+      input.pending.sourceAnswerId?.value !== input.command.sourceAnswerId.value ||
       input.pending.expectedHeadMessageId.value !== input.command.expectedHeadMessageId.value ||
-      input.target.operation.resultAnswerRootId.value !== input.command.targetAnswerRootId.value ||
+      input.target.operation.targetAnswerId.value !== input.command.sourceAnswerId.value ||
       input.target.operation.questionId.value !== input.command.questionId.value ||
       input.target.snapshot.providerBinding.providerId.value !== 'deepseek' ||
       input.target.snapshot.providerBinding.operation !== 'text') {
@@ -313,8 +341,8 @@ export function commitDeepSeekPlainTextRetrySnapshotV2(input: Readonly<{
     branchId: input.pending.branchId.value,
     conversationId: input.pending.conversationId.value,
     questionId: input.pending.questionId.value,
-    targetAnswerRootId: input.pending.targetAnswerRootId!.value,
-    resultAnswerRootId: input.pending.answerRootId.value,
+    sourceAnswerId: input.pending.sourceAnswerId.value,
+    targetAnswerId: input.pending.answerRootId.value,
     snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint,
     createdAtMs: input.pending.createdAtMs,
@@ -328,7 +356,7 @@ export function commitDeepSeekPlainTextRetrySnapshotV2(input: Readonly<{
   delete expectedPayload.operationId
   delete expectedPayload.snapshotHash
   if (execution.bundle.operation.actionKind !== input.command.actionKind ||
-      execution.bundle.operation.targetAnswerRootId?.value !== input.command.targetAnswerRootId.value ||
+      execution.bundle.operation.sourceAnswerId?.value !== input.command.sourceAnswerId.value ||
       stableSerializeProviderRequestV2(copiedPayload) !== stableSerializeProviderRequestV2(expectedPayload)) {
     throw new DeepSeekPlainTextSnapshotCommitV2Error(
       'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_RESULT_INVALID',
@@ -351,13 +379,12 @@ export function commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2(input: Reado
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
       !isPendingAnswerActionForContextV2(input.pending, input.context) ||
-      input.pending.actionKind !== 'regenerate_question' || input.pending.targetAnswerRootId !== null ||
-      !isDeepSeekPlainTextRegenerateCommandV2(input.command) ||
+      input.pending.actionKind !== 'regenerate_question' || !isDeepSeekPlainTextRegenerateCommandV2(input.command) ||
       !isVerifiedDeepSeekStableProviderBindingAuthorityV2(input.binding) ||
       !isVerifiedDeepSeekStableRuntimeCapabilityAuthorityV2(input.capability) ||
       !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
       input.command.operationId.value !== input.pending.operationId.value ||
-      input.command.branchId.value !== input.pending.branchId.value ||
+      input.command.sourceBranchId.value !== pendingSourceBranchIdV2(input.pending).value ||
       input.command.questionId.value !== input.pending.questionId.value ||
       input.command.expectedHeadMessageId.value !== input.pending.expectedHeadMessageId.value ||
       input.command.providerId.value !== input.binding.binding.providerId.value ||
@@ -418,19 +445,49 @@ export function commitVerifiedDeepSeekPlainTextRegenerateSnapshotV2(input: Reado
     branchId: input.pending.branchId.value,
     conversationId: input.pending.conversationId.value,
     questionId: input.pending.questionId.value,
-    targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value,
+    sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value,
     snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint,
     createdAtMs: input.pending.createdAtMs,
   })
-  if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact) ||
-      execution.bundle.operation.actionKind !== 'regenerate_question' ||
-      execution.bundle.operation.targetAnswerRootId !== null ||
-      execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson) {
-    throw new DeepSeekPlainTextSnapshotCommitV2Error(
-      'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_RESULT_INVALID',
-    )
+  if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact)) {
+    failCommitResult({
+      check: 'capability_persistence',
+      actionKind: 'regenerate_question',
+      operationId: input.pending.operationId.value,
+      expected: 'runtime_capability_repository_fact_v2',
+      actual: persistedCapability.fact,
+    })
+  }
+  if (execution.bundle.operation.actionKind !== 'regenerate_question') {
+    failCommitResult({
+      check: 'action_kind',
+      actionKind: 'regenerate_question',
+      operationId: input.pending.operationId.value,
+      expected: 'regenerate_question',
+      actual: execution.bundle.operation.actionKind,
+    })
+  }
+  const expectedRegenerateSourceAnswerId = pendingSourceAnswerIdV2(input.pending)?.value ?? null
+  const actualRegenerateSourceAnswerId = execution.bundle.operation.sourceAnswerId?.value ?? null
+  if (actualRegenerateSourceAnswerId !== expectedRegenerateSourceAnswerId) {
+    failCommitResult({
+      check: 'source_answer_binding',
+      actionKind: 'regenerate_question',
+      operationId: input.pending.operationId.value,
+      expected: Object.freeze({ sourceAnswerId: expectedRegenerateSourceAnswerId }),
+      actual: Object.freeze({ sourceAnswerId: actualRegenerateSourceAnswerId }),
+    })
+  }
+  if (execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson) {
+    failCommitResult({
+      check: 'snapshot_canonical_json',
+      actionKind: 'regenerate_question',
+      operationId: input.pending.operationId.value,
+      expected: snapshot.snapshotHash.value,
+      actual: execution.bundle.snapshot.snapshotHash.value,
+    })
   }
   commitCompleted = true
   return Object.freeze({
@@ -459,8 +516,7 @@ export function commitVerifiedDeepSeekPlainTextEditResendSnapshotV2(input: Reado
       !isVerifiedDeepSeekStableRuntimeCapabilityAuthorityV2(input.capability) ||
       !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
       input.command.operationId.value !== input.pending.operationId.value ||
-      input.command.mode !== input.pending.mode ||
-      input.command.branchId.value !== input.pending.branchId.value ||
+      input.command.sourceBranchId.value !== pendingSourceBranchIdV2(input.pending).value ||
       input.command.sourceQuestionId.value !== input.pending.sourceQuestionId.value ||
       input.command.sourceAnswerRootId.value !== input.pending.sourceAnswerRootId.value ||
       input.command.expectedHeadMessageId.value !== input.pending.expectedHeadMessageId.value ||
@@ -523,19 +579,49 @@ export function commitVerifiedDeepSeekPlainTextEditResendSnapshotV2(input: Reado
     branchId: input.pending.branchId.value,
     conversationId: input.pending.conversationId.value,
     questionId: input.pending.questionId.value,
-    targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value,
+    sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value,
     snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint,
     createdAtMs: input.pending.createdAtMs,
   })
-  if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact) ||
-      execution.bundle.operation.actionKind !== 'edit_resend' ||
-      execution.bundle.operation.targetAnswerRootId !== null ||
-      execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson) {
-    throw new DeepSeekPlainTextSnapshotCommitV2Error(
-      'GENERATION_V2_DEEPSEEK_SNAPSHOT_COMMIT_RESULT_INVALID',
-    )
+  if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact)) {
+    failCommitResult({
+      check: 'capability_persistence',
+      actionKind: 'edit_resend',
+      operationId: input.pending.operationId.value,
+      expected: 'runtime_capability_repository_fact_v2',
+      actual: persistedCapability.fact,
+    })
+  }
+  if (execution.bundle.operation.actionKind !== 'edit_resend') {
+    failCommitResult({
+      check: 'action_kind',
+      actionKind: 'edit_resend',
+      operationId: input.pending.operationId.value,
+      expected: 'edit_resend',
+      actual: execution.bundle.operation.actionKind,
+    })
+  }
+  const expectedEditSourceAnswerId = pendingSourceAnswerIdV2(input.pending)?.value ?? null
+  const actualEditSourceAnswerId = execution.bundle.operation.sourceAnswerId?.value ?? null
+  if (actualEditSourceAnswerId !== expectedEditSourceAnswerId) {
+    failCommitResult({
+      check: 'source_answer_binding',
+      actionKind: 'edit_resend',
+      operationId: input.pending.operationId.value,
+      expected: Object.freeze({ sourceAnswerId: expectedEditSourceAnswerId }),
+      actual: Object.freeze({ sourceAnswerId: actualEditSourceAnswerId }),
+    })
+  }
+  if (execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson) {
+    failCommitResult({
+      check: 'snapshot_canonical_json',
+      actionKind: 'edit_resend',
+      operationId: input.pending.operationId.value,
+      expected: snapshot.snapshotHash.value,
+      actual: execution.bundle.snapshot.snapshotHash.value,
+    })
   }
   commitCompleted = true
   return Object.freeze({

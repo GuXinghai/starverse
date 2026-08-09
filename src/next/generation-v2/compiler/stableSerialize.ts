@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { sha256HexBytes } from '../../../shared/crypto/sha256Hex'
 
 export class StableSerializeV2Error extends Error {
   constructor(readonly code:
@@ -124,7 +124,7 @@ export function stableSerializeProviderRequestBoundedV2(value: unknown, maxUtf8B
 }
 
 export function sha256PreparedBytesV2(bytes: Uint8Array): string {
-  return createHash('sha256').update(Buffer.from(bytes)).digest('hex')
+  return sha256HexBytes(bytes)
 }
 
 const preparedBodies = new WeakSet<object>()

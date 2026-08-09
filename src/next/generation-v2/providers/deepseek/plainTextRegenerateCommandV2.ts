@@ -18,8 +18,10 @@ export type DeepSeekPlainTextRegenerateCommandV2 = Readonly<{
   schemaVersion: 1
   kind: 'deepseek_plain_text_regenerate_question'
   operationId: Identity<'operation_id'>
-  branchId: GraphIdentity<'branch_id'>
+  clientActionId: string
+  sourceBranchId: GraphIdentity<'branch_id'>
   questionId: GraphIdentity<'question_id'>
+  sourceAnswerId: GraphIdentity<'answer_root_id'>
   expectedHeadMessageId: GraphIdentity<'message_id'>
   providerId: Identity<'provider_id'>
   endpointProfileId: Identity<'endpoint_profile_id'>
@@ -46,7 +48,7 @@ export function decodeDeepSeekPlainTextRegenerateCommandV2(
 ): DeepSeekPlainTextRegenerateCommandV2 {
   try {
     const keys = [
-      'operationId', 'branchId', 'questionId', 'expectedHeadMessageId', 'modelId', 'commandAttachments',
+      'operationId', 'clientActionId', 'sourceBranchId', 'questionId', 'sourceAnswerId', 'expectedHeadMessageId', 'modelId', 'commandAttachments',
     ]
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
       invalid()
@@ -64,16 +66,21 @@ export function decodeDeepSeekPlainTextRegenerateCommandV2(
     const attachments = descriptors.commandAttachments.value
     if (!Array.isArray(attachments) || attachments.length !== 0 || Reflect.ownKeys(attachments).length !== 1) invalid()
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
-    const branchId = ConversationGraphV2Identity.create('branch_id', read('branchId'))
+    const clientActionId = read('clientActionId')
+    if (clientActionId !== operationId.value) invalid()
+    const sourceBranchId = ConversationGraphV2Identity.create('branch_id', read('sourceBranchId'))
     const questionId = ConversationGraphV2Identity.create('question_id', read('questionId'))
+    const sourceAnswerId = ConversationGraphV2Identity.create('answer_root_id', read('sourceAnswerId'))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', read('expectedHeadMessageId'))
     const modelId = GenerationV2Identity.create('model_id', read('modelId'))
     const projection = Object.freeze({
       schemaVersion: 1,
       kind: 'deepseek_plain_text_regenerate_question',
       operationId: operationId.value,
-      branchId: branchId.value,
+      clientActionId,
+      sourceBranchId: sourceBranchId.value,
       questionId: questionId.value,
+      sourceAnswerId: sourceAnswerId.value,
       expectedHeadMessageId: expectedHeadMessageId.value,
       providerId: 'deepseek',
       endpointProfileId: 'deepseek-stable-api-v1',
@@ -84,8 +91,10 @@ export function decodeDeepSeekPlainTextRegenerateCommandV2(
     const command = Object.freeze({
       ...projection,
       operationId,
-      branchId,
+      clientActionId,
+      sourceBranchId,
       questionId,
+      sourceAnswerId,
       expectedHeadMessageId,
       providerId: GenerationV2Identity.create('provider_id', 'deepseek'),
       endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', 'deepseek-stable-api-v1'),

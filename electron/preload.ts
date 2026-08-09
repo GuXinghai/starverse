@@ -74,6 +74,16 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
         ipcRenderer.invoke('generation-v2:smoke-fixture:request-local-file-grant', { fixtureName }),
     }),
   } : {}),
+  runtime: Object.freeze({
+    subscribe: () => ipcRenderer.invoke('generation-v2:runtime:subscribe'),
+    snapshot: (operationId: string | null = null) => ipcRenderer.invoke('generation-v2:runtime:snapshot', operationId),
+    abort: (operationId: string) => ipcRenderer.invoke('generation-v2:runtime:abort', operationId),
+    onEvent: (listener: (event: unknown) => void) => {
+      const handler = (_event: unknown, value: unknown) => listener(value)
+      ipcRenderer.on('generation-v2:runtime:event', handler)
+      return () => ipcRenderer.removeListener('generation-v2:runtime:event', handler)
+    },
+  }),
   credentials: Object.freeze({
     openRouter: createGenerationV2CredentialBridge('openrouter'),
     openAIResponses: createGenerationV2CredentialBridge('openai-responses'),
@@ -128,16 +138,15 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
   workspace: Object.freeze({
     ensureDefault: () => ipcRenderer.invoke('generation-v2:workspace:ensure-default'),
     listProjects: () => ipcRenderer.invoke('generation-v2:workspace:list-projects'),
-    listConversations: (projectId: string) => ipcRenderer.invoke('generation-v2:workspace:list-conversations', { projectId }),
-    readBranch: (branchId: string) => ipcRenderer.invoke('generation-v2:workspace:read-branch', { branchId }),
-    listQuestionCandidates: (branchId: string, baseMessageId: string | null, limit: number) =>
-      ipcRenderer.invoke('generation-v2:workspace:list-question-candidates', { branchId, baseMessageId, limit }),
-    selectQuestionCandidate: (payload: Readonly<{ branchId: string; baseMessageId: string | null;
-      expectedCurrentQuestionId: string; targetQuestionId: string; expectedHeadMessageId: string }>) =>
-      ipcRenderer.invoke('generation-v2:workspace:select-question-candidate', payload),
-    selectAnswer: (payload: Readonly<{ branchId: string; questionId: string;
-      expectedChosenAnswerRootId: string; targetAnswerRootId: string }>) =>
-      ipcRenderer.invoke('generation-v2:workspace:select-answer', payload),
+    listConversations: (projectId: string, cursor: Readonly<{ updatedAtMs: number;
+      conversationId: string }> | null = null, limit = 50) =>
+      ipcRenderer.invoke('generation-v2:workspace:list-conversations', { projectId, cursor, limit }),
+    readBranch: (branchId: string, beforeMessageId: string | null = null, limit = 50) =>
+      ipcRenderer.invoke('generation-v2:workspace:read-branch', { branchId, beforeMessageId, limit }),
+    getMessageCandidateNavigation: (branchId: string, messageId: string) =>
+      ipcRenderer.invoke('generation-v2:workspace:get-message-candidate-navigation', {
+        branchId, messageId,
+      }),
     setContextFilter: (payload: Readonly<{ branchId:string;targetType:'question'|'answer';targetId:string;mode:'include'|'exclude' }>) =>
       ipcRenderer.invoke('generation-v2:workspace:set-context-filter', payload),
     clearContextFilter: (payload: Readonly<{ branchId:string;targetType:'question'|'answer';targetId:string }>) =>
@@ -172,6 +181,11 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
       ipcRenderer.invoke('generation-v2:workspace:update-conversation-route-preference', payload),
     clearConversationRoutePreference: (conversationId: string, expectedRevision: number) =>
       ipcRenderer.invoke('generation-v2:workspace:clear-conversation-route-preference', { conversationId, expectedRevision }),
+    hideAnswer: (branchId: string, answerId: string) =>
+      ipcRenderer.invoke('generation-v2:workspace:hide-answer', { branchId, answerId }),
+    listBranches: (conversationId: string, cursor: Readonly<{
+      updatedAtMs: number; branchId: string }> | null = null, limit = 50) =>
+      ipcRenderer.invoke('generation-v2:workspace:list-branches', { conversationId, cursor, limit }),
   }),
   composer: Object.freeze({
     get: (conversationId: string) => ipcRenderer.invoke('generation-v2:composer:get', { conversationId }),
@@ -228,6 +242,8 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     status: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:status', payload),
     clearCurrent: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:clear-current', payload),
     clearAll: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:clear-all', payload),
+    applyPending: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:apply-pending', payload),
+    discardPending: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-catalog:discard-pending', payload),
   }),
   modelPreferences: Object.freeze({
     listFavorites: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:list-favorites', payload),

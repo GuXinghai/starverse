@@ -101,7 +101,7 @@ export function compileOpenAIChatCompatiblePreparedRequestV2(input: Readonly<{
   const ordinaryHeaders = (input.endpoint.ordinaryHeaders as readonly { name: string; value: string }[]).map(({ name, value }) => ({ name, value }))
   const headersPlan = auth.mode === 'none' ? createNoCredentialHeaderPlanV2(ordinaryHeaders)
     : createOpenAICompatibleCredentialHeaderPlanV2(auth.mode, ordinaryHeaders)
-  return issuePreparedProviderRequestV2({ operationId: operation.operationId.value, answerRootId: operation.resultAnswerRootId.value,
+  return issuePreparedProviderRequestV2({ operationId: operation.operationId.value, answerRootId: operation.targetAnswerId.value,
     requestSequence: 1, providerId: 'openai_compatible', endpointProfileId: input.endpoint.providerInstanceId,
     credentialScopeId: binding.credentialScopeId.value, contractId: 'openai_chat_compatible', modelId: binding.modelId.value,
     effectiveEndpointId: input.endpoint.providerInstanceId, endpoint: readOpenAIChatCompatibleChatEndpointV2(input.endpoint),

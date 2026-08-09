@@ -19,7 +19,7 @@ import {
   type GeminiPlainTextInitialSendCommandV2,
 } from '../../src/next/generation-v2/providers/gemini/plainTextInitialSendCommandV2'
 import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
-import { createGeminiModelEvidenceV2Service } from './geminiModelEvidenceV2Service'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedGeminiGenerateContentGenerationAuthoritiesV2 } from './geminiGenerateContentGenerationAuthorityV2Service'
 import { commitVerifiedGeminiPlainTextInitialSnapshotV2 } from './geminiPlainTextSnapshotCommitV2'
 import { compileGeminiGenerateContentPreparedRequestV2 } from './geminiGenerateContentPreparedRequestCompilerV2'
@@ -44,9 +44,7 @@ export function createGeminiPlainTextInitialSendCoordinatorV2(input: Readonly<{
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
-  const evidenceService = createGeminiModelEvidenceV2Service({
-    db: input.db, credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs,
-  })
+  const evidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
 
   function replay(command: GeminiPlainTextInitialSendCommandV2): GenerationTextCommandResultV2 | null {
@@ -81,12 +79,11 @@ export function createGeminiPlainTextInitialSendCoordinatorV2(input: Readonly<{
       const existing = replay(command)
       if (existing) return existing
       try {
-        return await evidenceService.withRefreshedExactModelEvidence({
+        return await evidenceService.withExactActiveModel({ providerKey: 'google_ai_studio',
           expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId,
           endpointProfile,
           modelId: command.modelId,
-          signal: request.signal,
           consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
             const raced = executionRepo.findOperationInTransaction(context, command.operationId.value)
             if (raced) {

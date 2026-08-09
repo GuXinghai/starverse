@@ -59,7 +59,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
   }
   const { operation, snapshot, capability } = input.execution
   if (!['initial_send', 'edit_resend', 'regenerate_question', 'retry_as_new', 'retry_replace'].includes(operation.actionKind) ||
-      operation.operationId.value !== input.history.operationId.value || operation.resultAnswerRootId.value !== input.history.answerRootId.value ||
+      operation.operationId.value !== input.history.operationId.value || operation.targetAnswerId.value !== input.history.answerRootId.value ||
       !Number.isSafeInteger(input.history.requestSequence) || input.history.requestSequence < 1) {
     throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_AUTHORITY_INVALID')
   }
@@ -303,7 +303,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
     } } : {}),
   })
   return issuePreparedProviderRequestV2({
-    operationId: operation.operationId.value, answerRootId: operation.resultAnswerRootId.value,
+    operationId: operation.operationId.value, answerRootId: operation.targetAnswerId.value,
     requestSequence: input.history.requestSequence, providerId: binding.providerId.value,
     endpointProfileId: binding.endpointProfileId.value, credentialScopeId: binding.credentialScopeId.value,
     contractId: binding.protocolContractId.value, modelId: binding.modelId.value,

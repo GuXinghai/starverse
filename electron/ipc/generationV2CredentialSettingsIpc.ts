@@ -1,6 +1,10 @@
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { ProviderCredentialKey } from '../credentials/providerCredentialContract'
 import type { RegisterInvoke } from './types'
+import {
+  providerFailureFromUnknownV2,
+  providerFailurePrimaryMessageV2,
+} from '../../src/shared/provider/providerFailureV2'
 
 export const GENERATION_V2_CREDENTIAL_SETTINGS_IPC_CHANNELS = Object.freeze([
   'generation-v2:credentials:openrouter:get-status', 'generation-v2:credentials:openrouter:reveal',
@@ -44,9 +48,26 @@ function validUpdate(payload: unknown): payload is Readonly<{ apiKey?: string }>
   return descriptors.apiKey === undefined || descriptors.apiKey.value === undefined || typeof descriptors.apiKey.value === 'string'
 }
 
-function failure(code: 'invalid_payload' | 'store_unavailable') {
-  return Object.freeze({ ok: false, code, message: code === 'invalid_payload'
-    ? 'Provider credential settings payload is invalid.' : 'Provider credential settings store is unavailable.' })
+function failure(code: 'invalid_payload') {
+  return Object.freeze({ ok: false, code, message: 'Provider credential settings payload is invalid.' })
+}
+
+function credentialStoreFailure(provider: ProviderSettings, operation: string, error: unknown) {
+  const providerFailure = providerFailureFromUnknownV2(error, {
+    origin: 'secure_storage',
+    phase: 'terminal_persistence',
+    providerId: provider.providerId,
+    contractId: `credential-settings:${provider.profileId}`,
+    operationId: `credential:${operation}:${provider.providerKey}`,
+    requestSequence: 1,
+    starverseDiagnosticCode: 'PROVIDER_CREDENTIAL_STORE_FAILED',
+  })
+  return Object.freeze({
+    ok: false,
+    code: providerFailure.starverseDiagnosticCode,
+    message: providerFailurePrimaryMessageV2(providerFailure),
+    providerFailure,
+  })
 }
 
 async function status(service: Epoch2RuntimeCredentialService, provider: ProviderSettings) {
@@ -80,7 +101,7 @@ export function registerGenerationV2CredentialSettingsIpc(input: Readonly<{
   for (const provider of PROVIDERS) {
     input.registerInvoke(`${provider.channelPrefix}:get-status`, async () => {
       try { return Object.freeze({ ok: true, status: await status(input.credentialService, provider) }) }
-      catch { return failure('store_unavailable') }
+      catch (error) { return credentialStoreFailure(provider, 'status', error) }
     })
     input.registerInvoke(`${provider.channelPrefix}:reveal`, async () => {
       try {
@@ -91,7 +112,7 @@ export function registerGenerationV2CredentialSettingsIpc(input: Readonly<{
         return await input.credentialService.withCredential({ providerKey: provider.providerKey,
           expectedRevision: current.revision, expectedCredentialScopeId: current.credentialScopeId,
           consume: (lease) => Object.freeze({ ok: true as const, apiKey: lease.credential }) })
-      } catch { return Object.freeze({ ok: false, code: 'store_unavailable', message: 'Provider credential settings store is unavailable.' }) }
+      } catch (error) { return credentialStoreFailure(provider, 'reveal', error) }
     })
     input.registerInvoke(`${provider.channelPrefix}:update`, async (_event: unknown, payload: unknown) => {
       if (!validUpdate(payload)) return failure('invalid_payload')
@@ -101,7 +122,7 @@ export function registerGenerationV2CredentialSettingsIpc(input: Readonly<{
         if (apiKey) await input.credentialService.updateCredential({ providerKey: provider.providerKey,
           credential: apiKey, expectedRevision: current.revision })
         return Object.freeze({ ok: true, status: await status(input.credentialService, provider) })
-      } catch { return failure('store_unavailable') }
+      } catch (error) { return credentialStoreFailure(provider, 'update', error) }
     })
     input.registerInvoke(`${provider.channelPrefix}:clear`, async () => {
       try {
@@ -109,7 +130,7 @@ export function registerGenerationV2CredentialSettingsIpc(input: Readonly<{
         if (current.configured) await input.credentialService.clearCredential({ providerKey: provider.providerKey,
           expectedRevision: current.revision })
         return Object.freeze({ ok: true, status: await status(input.credentialService, provider) })
-      } catch { return failure('store_unavailable') }
+      } catch (error) { return credentialStoreFailure(provider, 'clear', error) }
     })
   }
   return GENERATION_V2_CREDENTIAL_SETTINGS_IPC_CHANNELS

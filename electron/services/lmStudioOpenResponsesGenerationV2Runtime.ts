@@ -5,6 +5,7 @@ import type { GenerationTextCommandResultV2 } from './generationTextCommandResul
 import { createLmStudioOpenResponsesGenerationV2Coordinator } from './lmStudioOpenResponsesGenerationV2Coordinator'
 import { createLmStudioOpenResponsesStreamRunnerV2 } from './lmStudioOpenResponsesStreamRunnerV2'
 import { createLmStudioOpenResponsesToolContinuationCoordinatorV2 } from './lmStudioOpenResponsesToolContinuationCoordinatorV2'
+import { GenerationRuntimeStarterV2 } from './generationRuntimeStarterV2'
 
 export type LmStudioOpenResponsesGenerationV2Runtime = Readonly<{
   submitInitial: (command: unknown) => Promise<GenerationTextCommandResultV2>
@@ -22,12 +23,9 @@ export function createLmStudioOpenResponsesGenerationV2Runtime(input: Readonly<{
   const coordinator = createLmStudioOpenResponsesGenerationV2Coordinator(input)
   const runner = createLmStudioOpenResponsesStreamRunnerV2(input)
   const continuation = createLmStudioOpenResponsesToolContinuationCoordinatorV2(input)
-  const controllers = new Map<string, AbortController>()
+  const starter = new GenerationRuntimeStarterV2(input.streamProjectionSink)
   function start(result: GenerationTextCommandResultV2): void {
-    if (result.kind !== 'created' || controllers.has(result.preparedRequest.operationId)) return
-    const controller = new AbortController(); controllers.set(result.preparedRequest.operationId, controller)
-    void runner.run(result, controller.signal).catch(() => undefined)
-      .finally(() => controllers.delete(result.preparedRequest.operationId))
+    starter.start(result, (signal) => runner.run(result, signal))
   }
   async function submit(promise: Promise<GenerationTextCommandResultV2>) {
     const result = await promise; start(result); return result
@@ -37,7 +35,6 @@ export function createLmStudioOpenResponsesGenerationV2Runtime(input: Readonly<{
     regenerate: (command: unknown) => submit(coordinator.regenerate(command)),
     editResend: (command: unknown) => submit(coordinator.editResend(command)),
     continueTool: (command: unknown) => submit(continuation.submit(command)),
-    abort: (operationId: string) => { const controller = controllers.get(operationId)
-      if (!controller || controller.signal.aborted) return false; controller.abort('user_cancelled'); return true },
+    abort: (operationId: string) => starter.abort(operationId),
   })
 }

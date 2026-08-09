@@ -52,7 +52,7 @@ export function createGeminiToolContinuationCoordinatorV2(input: Readonly<{
       const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
       if (!execution || !['streaming', 'completed', 'failed', 'cancelled'].includes(execution.operation.state) ||
           execution.operation.branchId.value !== command.branchId.value ||
-          execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+          execution.operation.targetAnswerId.value !== command.answerRootId.value ||
           command.expectedHeadMessageId.value !== command.answerRootId.value ||
           execution.snapshot.providerBinding.providerId.value !== 'google_ai_studio') invalid()
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
@@ -86,7 +86,7 @@ export function createGeminiToolContinuationCoordinatorV2(input: Readonly<{
       const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
       if (!execution || execution.operation.state !== 'streaming' ||
           execution.operation.branchId.value !== command.branchId.value ||
-          execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+          execution.operation.targetAnswerId.value !== command.answerRootId.value ||
           execution.snapshot.providerBinding.providerId.value !== 'google_ai_studio' ||
           execution.snapshot.providerBinding.protocolContractId.value !== 'gemini-generate-content-v1beta' ||
           execution.snapshot.providerBinding.credentialScopeId.value !== credential.credentialScopeId) invalid()

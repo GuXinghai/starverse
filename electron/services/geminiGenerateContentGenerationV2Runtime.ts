@@ -5,6 +5,7 @@ import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestSto
 import type { GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import type { GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
+import { GenerationRuntimeStarterV2 } from './generationRuntimeStarterV2'
 import { createGeminiGenerateContentStreamRunnerV2 } from './geminiGenerateContentStreamRunnerV2'
 import { createGeminiPlainTextEditResendCoordinatorV2 } from './geminiPlainTextEditResendCoordinatorV2'
 import { createGeminiPlainTextInitialSendCoordinatorV2 } from './geminiPlainTextInitialSendCoordinatorV2'
@@ -45,7 +46,7 @@ export function createGeminiGenerateContentGenerationV2Runtime(input: Readonly<{
   const editResend = createGeminiPlainTextEditResendCoordinatorV2(input)
   const toolContinuation = createGeminiToolContinuationCoordinatorV2(input)
   const runner = createGeminiGenerateContentStreamRunnerV2(input)
-  const controllers = new Map<string, AbortController>()
+  const starter = new GenerationRuntimeStarterV2(input.streamProjectionSink)
 
   async function credential(): Promise<CredentialExpectation> {
     const status = await input.credentialService.getStatus('google_ai_studio')
@@ -55,11 +56,7 @@ export function createGeminiGenerateContentGenerationV2Runtime(input: Readonly<{
     return Object.freeze({ revision: status.revision, credentialScopeId: status.credentialScopeId })
   }
   function start(result: GenerationTextCommandResultV2): void {
-    if (result.kind !== 'created' || controllers.has(result.preparedRequest.operationId)) return
-    const controller = new AbortController()
-    controllers.set(result.preparedRequest.operationId, controller)
-    void runner.run(result, controller.signal).catch(() => undefined)
-      .finally(() => controllers.delete(result.preparedRequest.operationId))
+    starter.start(result, (signal) => runner.run(result, signal))
   }
   async function commitAndStart(promise: Promise<GenerationTextCommandResultV2>): Promise<GenerationTextCommandResultV2> {
     const result = await promise
@@ -83,11 +80,6 @@ export function createGeminiGenerateContentGenerationV2Runtime(input: Readonly<{
     regenerate: (command: unknown, signal?: AbortSignal) => currentConfigSubmit(regenerate.submit, command, signal),
     editResend: (command: unknown, signal?: AbortSignal) => currentConfigSubmit(editResend.submit, command, signal),
     continueTool: (command: unknown) => commitAndStart(toolContinuation.submit(command)),
-    abort: (operationId: string) => {
-      const controller = controllers.get(operationId)
-      if (!controller || controller.signal.aborted) return false
-      controller.abort('user_cancelled')
-      return true
-    },
+    abort: (operationId: string) => starter.abort(operationId),
   })
 }

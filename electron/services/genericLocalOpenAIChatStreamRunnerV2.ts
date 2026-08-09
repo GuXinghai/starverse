@@ -12,6 +12,7 @@ import { GenericLocalOpenAIChatSseDecoderV1, GenericLocalOpenAIChatStreamAssembl
   type GenericLocalOpenAIChatStreamResultV1 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/chatStreamV1'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
+import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 
 function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
   const controller = new AbortController(); let timedOut = false; const abort = () => controller.abort('user_cancelled')
@@ -33,11 +34,6 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
     const request = requestRepo.replayPrepared(context, execution, command.preparedRequest)
     if (executionRepo.openAttempt(context, { operationId: command.preparedRequest.operationId, requestSequence: 1, attempt: 1 }, nowMs()).kind !== 'created') throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_ALREADY_STARTED')
     requestRepo.markStreaming(context, request, nowMs()); if (execution.operation.state === 'committed') executionRepo.markOperationStreaming(context, execution, nowMs()) }) }
-  function append(command: GenerationTextCommandResultV2, previous: string, next: string) {
-    runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => graphRepo.compareAndSetStreamingAssistantBody(context, command.preparedRequest.answerRootId, previous, next, nowMs()))
-    publishGenerationStreamProjectionV2(input.streamProjectionSink, { type: 'assistant_body', operationId: command.preparedRequest.operationId,
-      answerRootId: command.preparedRequest.answerRootId, content: next })
-  }
   function terminal(command: GenerationTextCommandResultV2, state: 'completed'|'failed'|'cancelled', result: GenericLocalOpenAIChatStreamResultV1 | null,
     errorCode: string | null, errorMessage: string | null, phase: 'pre_stream'|'mid_stream') {
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
@@ -65,6 +61,11 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
     const revision = endpointBinding.kind === 'provider_managed_set' ? endpointBinding.endpointSetRevision.value : null
     if (profile.credentialScopeId !== command.preparedRequest.credentialScopeId || profile.profileRevision !== revision) throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_PROFILE_STALE')
     begin(command); const scope = abortScope(signal, input.timeoutMs ?? 5 * 60_000); let started = false; let visible = ''
+    const checkpoint = createGenerationTextBodyCheckpointV2({
+      db: input.db, graphRepo, command, initialBody: visible,
+      streamProjectionSink: input.streamProjectionSink, nowMs,
+      onFailure: () => undefined,
+    })
     try {
       try { input.rawGenerationRequestStore?.tryPersistPreparedV2({ operationId: command.preparedRequest.operationId,
         answerRootId: command.preparedRequest.answerRootId, requestSequence: 1, providerId: 'generic_local', modelId: command.preparedRequest.modelId,
@@ -76,14 +77,16 @@ export function createGenericLocalOpenAIChatStreamRunnerV2(input: Readonly<{ db:
       if (!response.ok || !response.body) { try { await response.body?.cancel() } catch {}; throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_HTTP_FAILED') }
       const decoder = new GenericLocalOpenAIChatSseDecoderV1(); const assembler = new GenericLocalOpenAIChatStreamAssemblerV1(); const reader = response.body.getReader()
       try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength) started = true
-        for (const chunk of decoder.push(item.value)) { const delta = assembler.push(chunk); if (delta) { const previous = visible; visible += delta; append(command, previous, visible) } } }
+        for (const chunk of decoder.push(item.value)) { const delta = assembler.push(chunk); if (delta) { visible += delta; checkpoint.update(visible) } } }
         for (const chunk of decoder.finish()) assembler.push(chunk)
       } finally { try { await reader.cancel() } catch {}; reader.releaseLock() }
       const result = assembler.finish(); if (result.model !== command.preparedRequest.modelId) throw new Error('GENERATION_V2_GENERIC_LOCAL_RUNNER_PROVIDER_FAILED')
+      checkpoint.flush()
       return terminal(command, 'completed', result, null, null, 'mid_stream')
-    } catch (error) { const cancelled = signal?.aborted === true && !scope.timedOut(); const code = cancelled ? 'user_cancelled'
-      : scope.timedOut() ? 'GENERATION_V2_GENERIC_LOCAL_RUNNER_TIMEOUT' : error instanceof Error ? error.message : 'GENERATION_V2_GENERIC_LOCAL_RUNNER_TRANSPORT_FAILED'
+    } catch (error) { let failure: unknown = error; try { checkpoint.flush() } catch (checkpointError) { failure = checkpointError }
+      const cancelled = signal?.aborted === true && !scope.timedOut(); const code = cancelled ? 'user_cancelled'
+      : scope.timedOut() ? 'GENERATION_V2_GENERIC_LOCAL_RUNNER_TIMEOUT' : failure instanceof Error ? failure.message : 'GENERATION_V2_GENERIC_LOCAL_RUNNER_TRANSPORT_FAILED'
       return terminal(command, cancelled ? 'cancelled' : 'failed', null, code, cancelled ? 'Generation cancelled by user.' : code, started ? 'mid_stream' : 'pre_stream')
-    } finally { scope.dispose() }
+    } finally { checkpoint.dispose(); scope.dispose() }
   } })
 }

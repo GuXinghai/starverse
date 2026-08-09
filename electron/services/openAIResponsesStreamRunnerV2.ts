@@ -26,6 +26,7 @@ import {
   publishGenerationStreamProjectionV2,
   type GenerationStreamProjectionSinkV2,
 } from './generationStreamProjectionV2'
+import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 import {
   createProviderFailureV2,
   ProviderFailureErrorV2,
@@ -140,19 +141,6 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
       else if (execution.operation.state !== 'streaming') {
         throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
       }
-    })
-  }
-
-  function persistVisibleContent(command: GenerationTextCommandResultV2, expected: string, next: string): void {
-    if (expected === next) return
-    runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
-      graphRepo.compareAndSetStreamingAssistantBody(
-        context, command.preparedRequest.answerRootId, expected, next, nowMs(),
-      )
-    })
-    publishGenerationStreamProjectionV2(input.streamProjectionSink, {
-      type: 'assistant_body', operationId: command.preparedRequest.operationId,
-      answerRootId: command.preparedRequest.answerRootId, content: next,
     })
   }
 
@@ -275,6 +263,11 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
       throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
     }
     let visible = initial.body
+    const checkpoint = createGenerationTextBodyCheckpointV2({
+      db: input.db, graphRepo, command, initialBody: visible,
+      streamProjectionSink: input.streamProjectionSink, nowMs,
+      onFailure: (error) => { void reader.cancel(error).catch(() => undefined) },
+    })
     const accept = (events: readonly ReturnType<OpenAIResponsesTypedSseDecoderV1['push']>[number][]): void => {
       const reasoningBefore = assembler.readReasoningSummaryText()
       for (const event of events) assembler.push(event)
@@ -289,9 +282,8 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
       }
       const next = assembler.readVisibleText()
       if (next !== visible) {
-        const previous = visible
         visible = next
-        persistVisibleContent(command, previous, next)
+        checkpoint.update(next)
       }
     }
     try {
@@ -304,14 +296,16 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
       accept(decoder.finish())
       const terminal = assembler.finish()
       if (terminal.visibleText !== visible) {
-        const previous = visible
         visible = terminal.visibleText
-        persistVisibleContent(command, previous, visible)
+        checkpoint.update(visible)
       }
       return terminal
     } finally {
-      try { await reader.cancel() } catch { /* best effort */ }
-      reader.releaseLock()
+      try { checkpoint.flush() } finally {
+        checkpoint.dispose()
+        try { await reader.cancel() } catch { /* best effort */ }
+        reader.releaseLock()
+      }
     }
   }
 
@@ -322,7 +316,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
       if (!isGenerationTextCommandResultV2(command) || !isPreparedProviderRequestV2(command.preparedRequest) ||
           command.preparedRequest.providerId !== 'openai_responses' || command.preparedRequest.requestSequence < 1 ||
           credentialPlan?.kind !== 'bearer_authorization' ||
-          command.preparedRequest.answerRootId !== command.execution.operation.resultAnswerRootId.value ||
+          command.preparedRequest.answerRootId !== command.execution.operation.targetAnswerId.value ||
           command.request.preparedBodySha256 !== command.preparedRequest.bodySha256) {
         throw new OpenAIResponsesStreamRunnerV2Error('GENERATION_V2_OPENAI_RUNNER_AUTHORITY_INVALID')
       }
@@ -370,6 +364,22 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
             return receive(command, response, scope.signal, () => { responseStarted = true })
           },
         })
+        for (const outputItem of terminal.output) {
+          const item = outputItem as unknown as Readonly<Record<string, unknown>>
+          if (item.type !== 'reasoning' || typeof item.encrypted_content !== 'string' ||
+              item.encrypted_content.length === 0) continue
+          publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+            type: 'reasoning_detail',
+            operationId: command.preparedRequest.operationId,
+            answerRootId: command.preparedRequest.answerRootId,
+            detail: Object.freeze({
+              provider: 'openai_responses',
+              type: 'reasoning.encrypted',
+              ...(typeof item.id === 'string' ? { id: item.id } : {}),
+              ...(typeof item.status === 'string' ? { status: item.status } : {}),
+            }),
+          })
+        }
         if (terminal.terminalKind === 'completed') {
           return finalize(command, 'completed', terminal, null, null, 'mid_stream')
         }

@@ -19,7 +19,7 @@ import {
   type OpenRouterPlainTextInitialSendCommandV2,
 } from '../../src/next/generation-v2/providers/openrouter/plainTextInitialSendCommandV2'
 import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
-import { createOpenRouterChatModelEvidenceV2Service } from './openRouterChatModelEvidenceV2Service'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedOpenRouterChatGenerationAuthoritiesV2 } from './openRouterChatGenerationAuthorityV2Service'
 import {
   loadGenerationSnapshotToolRegistryAuthorityV2,
@@ -57,9 +57,7 @@ export function createOpenRouterChatPlainTextInitialSendCoordinatorV2(input: Rea
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
-  const modelEvidenceService = createOpenRouterChatModelEvidenceV2Service({
-    credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs,
-  })
+  const modelEvidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
 
   function replay(command: OpenRouterPlainTextInitialSendCommandV2): OpenRouterChatPlainTextInitialSendResultV2 | null {
@@ -94,10 +92,9 @@ export function createOpenRouterChatPlainTextInitialSendCoordinatorV2(input: Rea
       const existing = replay(command)
       if (existing) return existing
       try {
-        return await modelEvidenceService.withExactModelEvidence({
-          endpointProfile, expectedCredentialRevision: request.expectedCredentialRevision,
+        return await modelEvidenceService.withExactActiveModel({
+          providerKey: 'openrouter', endpointProfile, expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId, modelId: command.modelId,
-          signal: request.signal,
           consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
             const raced = executionRepo.findOperationInTransaction(context, command.operationId.value)
             if (raced) {

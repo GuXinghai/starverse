@@ -94,7 +94,13 @@ export function decodeGeminiGenerateContentPartV1(value: unknown): GeminiGenerat
     throw new GeminiGenerateContentNativeHistoryV1Error('GENERATION_V2_GEMINI_HISTORY_INVALID')
   }
   const thought = optionalThoughtFields(input)
-  if (input.text !== undefined) return Object.freeze({ text: requiredString(input.text), ...thought })
+  if (input.text !== undefined) {
+    if (typeof input.text !== 'string' ||
+        (input.text.length === 0 && thought.thoughtSignature === undefined)) {
+      throw new GeminiGenerateContentNativeHistoryV1Error('GENERATION_V2_GEMINI_HISTORY_INVALID')
+    }
+    return Object.freeze({ text: input.text, ...thought })
+  }
   if (input.inlineData !== undefined) {
     const data = plainRecord(input.inlineData)
     if (Object.keys(data).some((key) => !['mimeType', 'data'].includes(key))) {

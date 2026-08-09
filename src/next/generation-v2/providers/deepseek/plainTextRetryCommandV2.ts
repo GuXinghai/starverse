@@ -19,9 +19,10 @@ export type DeepSeekPlainTextRetryCommandV2 = Readonly<{
   kind: 'deepseek_plain_text_retry'
   actionKind: 'retry_as_new' | 'retry_replace'
   operationId: Identity<'operation_id'>
-  branchId: GraphIdentity<'branch_id'>
+  clientActionId: string
+  sourceBranchId: GraphIdentity<'branch_id'>
   questionId: GraphIdentity<'question_id'>
-  targetAnswerRootId: GraphIdentity<'answer_root_id'>
+  sourceAnswerId: GraphIdentity<'answer_root_id'>
   expectedHeadMessageId: GraphIdentity<'message_id'>
   canonicalJson: string
   requestFingerprint: string
@@ -40,7 +41,7 @@ function invalid(): never {
 export function decodeDeepSeekPlainTextRetryCommandV2(value: unknown): DeepSeekPlainTextRetryCommandV2 {
   try {
     const keys = [
-      'actionKind', 'operationId', 'branchId', 'questionId', 'targetAnswerRootId', 'expectedHeadMessageId',
+      'actionKind', 'operationId', 'clientActionId', 'sourceBranchId', 'questionId', 'sourceAnswerId', 'expectedHeadMessageId',
     ]
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
       invalid()
@@ -58,19 +59,21 @@ export function decodeDeepSeekPlainTextRetryCommandV2(value: unknown): DeepSeekP
     const actionKind = read('actionKind')
     if (actionKind !== 'retry_as_new' && actionKind !== 'retry_replace') invalid()
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
-    const branchId = ConversationGraphV2Identity.create('branch_id', read('branchId'))
+    const clientActionId = read('clientActionId')
+    if (clientActionId !== operationId.value) invalid()
+    const sourceBranchId = ConversationGraphV2Identity.create('branch_id', read('sourceBranchId'))
     const questionId = ConversationGraphV2Identity.create('question_id', read('questionId'))
-    const targetAnswerRootId = ConversationGraphV2Identity.create('answer_root_id', read('targetAnswerRootId'))
+    const sourceAnswerId = ConversationGraphV2Identity.create('answer_root_id', read('sourceAnswerId'))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', read('expectedHeadMessageId'))
-    if (expectedHeadMessageId.value !== targetAnswerRootId.value) invalid()
     const projection = Object.freeze({
       schemaVersion: 1,
       kind: 'deepseek_plain_text_retry',
       actionKind,
       operationId: operationId.value,
-      branchId: branchId.value,
+      clientActionId,
+      sourceBranchId: sourceBranchId.value,
       questionId: questionId.value,
-      targetAnswerRootId: targetAnswerRootId.value,
+      sourceAnswerId: sourceAnswerId.value,
       expectedHeadMessageId: expectedHeadMessageId.value,
     })
     const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_JSON_BYTES)
@@ -78,9 +81,10 @@ export function decodeDeepSeekPlainTextRetryCommandV2(value: unknown): DeepSeekP
       ...projection,
       actionKind,
       operationId,
-      branchId,
+      clientActionId,
+      sourceBranchId,
       questionId,
-      targetAnswerRootId,
+      sourceAnswerId,
       expectedHeadMessageId,
       canonicalJson,
       requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)),

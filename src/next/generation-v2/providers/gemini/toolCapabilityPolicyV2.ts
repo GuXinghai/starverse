@@ -37,13 +37,3 @@ export function hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(modelId
   return modelId === 'gemini-3.1-flash-lite' &&
     REVIEWED_GEMINI_GENERATE_CONTENT_MODEL_CAPABILITIES_V2['gemini-3.1-flash-lite'].googleSearch
 }
-
-/**
- * Reasoning is a wider GenerateContent capability than the reviewed tool/search
- * slice.  Gemini 2.5 uses thinkingBudget while Gemini 3.x uses thinkingLevel.
- * Keep this model-family fact separate so a 2.5 request is not rejected merely
- * because it cannot use the reviewed 3.x Search/tool fixture.
- */
-export function hasReviewedGeminiGenerateContentReasoningCapabilityV2(modelId: string): boolean {
-  return /^gemini-2\.5(?:-|$)/u.test(modelId) || modelId === 'gemini-3.1-flash-lite'
-}

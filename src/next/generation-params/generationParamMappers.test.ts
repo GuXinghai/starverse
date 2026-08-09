@@ -3,7 +3,9 @@ import { mapGenerationParamsToProviderRequestPatch } from './generationParamMapp
 import { geminiGenerationProfile } from './providerProfiles/geminiGenerationProfile'
 import { openaiResponsesGenerationProfile } from './providerProfiles/openaiResponsesGenerationProfile'
 import { openrouterGenerationProfile } from './providerProfiles/openrouterGenerationProfile'
+import { geminiImageGenerationProfile } from './providerProfiles/geminiImageGenerationProfile'
 import type { ProviderGenerationParamProfile } from './generationParamTypes'
+import { resolveGeminiThinkingCapability } from '../provider/gemini/geminiThinkingPolicy'
 
 describe('generationParamMappers', () => {
   it('maps OpenRouter canonical keys to snake_case top-level wire keys', () => {
@@ -34,10 +36,30 @@ describe('generationParamMappers', () => {
     })
   })
 
+  it('maps Gemini Interactions search toggles to the single official google_search tool', () => {
+    expect(mapGenerationParamsToProviderRequestPatch({
+      profile: geminiImageGenerationProfile,
+      modelId: 'gemini-3.1-flash-image',
+      requestParams: { googleSearch: true, imageSearch: true },
+    })).toEqual({
+      tools: [{ type: 'google_search', search_types: ['web_search', 'image_search'] }],
+    })
+    expect(mapGenerationParamsToProviderRequestPatch({
+      profile: geminiImageGenerationProfile,
+      modelId: 'gemini-3.1-flash-image',
+      requestParams: { googleSearch: false, imageSearch: true },
+    })).toEqual({
+      tools: [{ type: 'google_search', search_types: ['image_search'] }],
+    })
+  })
+
   it('maps Gemini 3 thinking controls into one native thinkingConfig object', () => {
     expect(mapGenerationParamsToProviderRequestPatch({
       profile: geminiGenerationProfile,
       modelId: 'gemini-3.1-flash-lite',
+      geminiThinkingCapability: resolveGeminiThinkingCapability({
+        model: 'gemini-3.1-flash-lite', thinking: true, thinkingOwnProperty: true, supportedGenerationMethods: ['generateContent'],
+      }),
       requestParams: {
         thinkingLevel: 'medium',
         includeThoughts: true,

@@ -48,7 +48,7 @@ export function createAnthropicPlainTextRetryCoordinatorV2(input: Readonly<{
     if (!observed) return null
     if (observed.operation.actionKind !== command.actionKind ||
         observed.operation.commandFingerprint !== command.requestFingerprint ||
-        observed.operation.targetAnswerRootId?.value !== command.targetAnswerRootId.value ||
+        observed.operation.sourceAnswerId?.value !== command.sourceAnswerId.value ||
         observed.snapshot.providerBinding.providerId.value !== 'anthropic') {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
     }
@@ -56,7 +56,7 @@ export function createAnthropicPlainTextRetryCoordinatorV2(input: Readonly<{
       const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
       if (!execution || execution.operation.actionKind !== command.actionKind ||
           execution.operation.commandFingerprint !== command.requestFingerprint ||
-          execution.operation.targetAnswerRootId?.value !== command.targetAnswerRootId.value ||
+          execution.operation.sourceAnswerId?.value !== command.sourceAnswerId.value ||
           execution.snapshot.providerBinding.providerId.value !== 'anthropic') {
         throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
       }
@@ -86,7 +86,7 @@ export function createAnthropicPlainTextRetryCoordinatorV2(input: Readonly<{
           if (raced) {
             if (raced.operation.actionKind !== command.actionKind ||
                 raced.operation.commandFingerprint !== command.requestFingerprint ||
-                raced.operation.targetAnswerRootId?.value !== command.targetAnswerRootId.value ||
+                raced.operation.sourceAnswerId?.value !== command.sourceAnswerId.value ||
                 raced.snapshot.providerBinding.providerId.value !== 'anthropic') {
               throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
             }
@@ -101,13 +101,13 @@ export function createAnthropicPlainTextRetryCoordinatorV2(input: Readonly<{
           }
           const targetRow = input.db.prepare(`SELECT operation_id AS operationId
             FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?`).get(
-            command.targetAnswerRootId.value,
+            command.sourceAnswerId.value,
           ) as { operationId: unknown } | undefined
           if (!targetRow || typeof targetRow.operationId !== 'string') {
             throw new AnthropicPlainTextRetryCoordinatorV2Error('GENERATION_V2_ANTHROPIC_RETRY_TARGET_INVALID')
           }
           const target = executionRepo.findOperationInTransaction(context, targetRow.operationId)
-          if (!target || target.operation.resultAnswerRootId.value !== command.targetAnswerRootId.value ||
+          if (!target || target.operation.targetAnswerId.value !== command.sourceAnswerId.value ||
               target.operation.questionId.value !== command.questionId.value ||
               target.snapshot.providerBinding.providerId.value !== 'anthropic' ||
               target.snapshot.providerBinding.operation !== 'text' ||
@@ -116,8 +116,8 @@ export function createAnthropicPlainTextRetryCoordinatorV2(input: Readonly<{
           }
           const pending = graphRepo.beginAnswerAction(context, {
             operationId: command.operationId.value, actionKind: command.actionKind,
-            branchId: command.branchId.value, questionId: command.questionId.value,
-            targetAnswerRootId: command.targetAnswerRootId.value,
+            sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value,
+            sourceAnswerId: command.sourceAnswerId.value,
             expectedHeadMessageId: command.expectedHeadMessageId.value,
             answerRootId: createAnswerId(), createdAtMs: nowMs(),
           })

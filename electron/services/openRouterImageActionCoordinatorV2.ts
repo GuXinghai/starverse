@@ -115,7 +115,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
   async function retry(raw: unknown, signal?: AbortSignal): Promise<OpenRouterImageActionResultV2> {
     const command = decodeOpenRouterImageRetryCommandV2(raw); const existing = replay(command.operationId.value, command.requestFingerprint); if (existing) return existing
     const targetObserved = input.db.prepare('SELECT operation_id AS operationId FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?')
-      .get(command.targetAnswerRootId.value) as { operationId?: unknown } | undefined
+      .get(command.sourceAnswerId.value) as { operationId?: unknown } | undefined
     if (!targetObserved || typeof targetObserved.operationId !== 'string') throw new Error('GENERATION_V2_OPENROUTER_IMAGE_RETRY_TARGET_INVALID')
     const targetPreflight = executionRepo.findOperation(targetObserved.operationId)
     if (!targetPreflight || targetPreflight.snapshot.providerBinding.providerId.value !== 'openrouter' ||
@@ -128,10 +128,10 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
     try { return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       assertDescriptorCurrent(descriptor)
       const target = executionRepo.findOperationInTransaction(context, targetObserved.operationId as string)
-      if (!target || target.operation.resultAnswerRootId.value !== command.targetAnswerRootId.value ||
+      if (!target || target.operation.targetAnswerId.value !== command.sourceAnswerId.value ||
           target.snapshot.providerBinding.credentialScopeId.value !== status.credentialScopeId) throw new Error('GENERATION_V2_OPENROUTER_IMAGE_RETRY_TARGET_INVALID')
       const pending = graphRepo.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: command.actionKind,
-        branchId: command.branchId.value, questionId: command.questionId.value, targetAnswerRootId: command.targetAnswerRootId.value,
+        sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
         expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: answerId(), createdAtMs: nowMs() })
       const persisted = commitOpenRouterImageRetrySnapshotV2({ context, executionRepo, pending, command, target })
       graphRepo.commitAnswerActionProjection(context, pending)
@@ -157,10 +157,10 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       assertDescriptorCurrent(descriptor)
       const sourceAttachments = projectGenerationCommandAttachmentsV2(command.commandAttachments)
       const pending = command.kind === 'openrouter_image_regenerate'
-        ? graphRepo.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: 'regenerate_question', branchId: command.branchId.value,
-          questionId: command.questionId.value, targetAnswerRootId: null, expectedHeadMessageId: command.expectedHeadMessageId.value,
+        ? graphRepo.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: 'regenerate_question', sourceBranchId: command.sourceBranchId.value,
+          questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value, expectedHeadMessageId: command.expectedHeadMessageId.value,
           answerRootId: answerId(), createdAtMs: nowMs() })
-        : graphRepo.beginEditedTurn(context, { operationId: command.operationId.value, mode: command.mode, branchId: command.branchId.value,
+        : graphRepo.beginEditedTurn(context, { operationId: command.operationId.value, sourceBranchId: command.sourceBranchId.value,
           sourceQuestionId: command.sourceQuestionId.value, sourceAnswerRootId: command.sourceAnswerRootId.value,
           expectedHeadMessageId: command.expectedHeadMessageId.value, questionId: questionId(), answerRootId: answerId(),
           userBody: command.prompt, createdAtMs: nowMs() })

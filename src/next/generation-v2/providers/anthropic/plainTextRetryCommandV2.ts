@@ -9,9 +9,10 @@ const MAX_COMMAND_JSON_BYTES = 64 * 1024
 const COMMAND_KEYS = Object.freeze([
   'actionKind',
   'operationId',
-  'branchId',
+  'clientActionId',
+  'sourceBranchId',
   'questionId',
-  'targetAnswerRootId',
+  'sourceAnswerId',
   'expectedHeadMessageId',
 ] as const)
 
@@ -27,9 +28,10 @@ export type AnthropicPlainTextRetryCommandV2 = Readonly<{
   kind: 'anthropic_plain_text_retry'
   actionKind: 'retry_as_new' | 'retry_replace'
   operationId: Identity<'operation_id'>
-  branchId: GraphIdentity<'branch_id'>
+  clientActionId: string
+  sourceBranchId: GraphIdentity<'branch_id'>
   questionId: GraphIdentity<'question_id'>
-  targetAnswerRootId: GraphIdentity<'answer_root_id'>
+  sourceAnswerId: GraphIdentity<'answer_root_id'>
   expectedHeadMessageId: GraphIdentity<'message_id'>
   canonicalJson: string
   requestFingerprint: string
@@ -66,25 +68,27 @@ export function decodeAnthropicPlainTextRetryCommandV2(
     const actionKind = read('actionKind')
     if (actionKind !== 'retry_as_new' && actionKind !== 'retry_replace') invalid()
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
-    const branchId = ConversationGraphV2Identity.create('branch_id', read('branchId'))
+    const clientActionId = read('clientActionId')
+    if (clientActionId !== operationId.value) invalid()
+    const sourceBranchId = ConversationGraphV2Identity.create('branch_id', read('sourceBranchId'))
     const questionId = ConversationGraphV2Identity.create('question_id', read('questionId'))
-    const targetAnswerRootId = ConversationGraphV2Identity.create(
+    const sourceAnswerId = ConversationGraphV2Identity.create(
       'answer_root_id',
-      read('targetAnswerRootId'),
+      read('sourceAnswerId'),
     )
     const expectedHeadMessageId = ConversationGraphV2Identity.create(
       'message_id',
       read('expectedHeadMessageId'),
     )
-    if (expectedHeadMessageId.value !== targetAnswerRootId.value) invalid()
     const projection = Object.freeze({
       schemaVersion: 1 as const,
       kind: 'anthropic_plain_text_retry' as const,
       actionKind,
       operationId: operationId.value,
-      branchId: branchId.value,
+      clientActionId,
+      sourceBranchId: sourceBranchId.value,
       questionId: questionId.value,
-      targetAnswerRootId: targetAnswerRootId.value,
+      sourceAnswerId: sourceAnswerId.value,
       expectedHeadMessageId: expectedHeadMessageId.value,
     })
     const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_JSON_BYTES)
@@ -92,9 +96,10 @@ export function decodeAnthropicPlainTextRetryCommandV2(
       ...projection,
       actionKind,
       operationId,
-      branchId,
+      clientActionId,
+      sourceBranchId,
       questionId,
-      targetAnswerRootId,
+      sourceAnswerId,
       expectedHeadMessageId,
       canonicalJson,
       requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)),

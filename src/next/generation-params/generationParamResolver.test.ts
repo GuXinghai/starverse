@@ -5,6 +5,7 @@ import { geminiGenerationProfile } from './providerProfiles/geminiGenerationProf
 import { openaiResponsesGenerationProfile } from './providerProfiles/openaiResponsesGenerationProfile'
 import { openrouterGenerationProfile } from './providerProfiles/openrouterGenerationProfile'
 import { resolveGenerationParamsFromLayers } from './generationParamResolver'
+import { resolveGeminiThinkingCapability } from '../provider/gemini/geminiThinkingPolicy'
 
 describe('generationParamResolver', () => {
   it('resolves custom precedence conversation > project > global', () => {
@@ -54,6 +55,9 @@ describe('generationParamResolver', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: geminiGenerationProfile,
       modelId: 'gemini-3.1-flash-lite',
+      geminiThinkingCapability: resolveGeminiThinkingCapability({
+        model: 'gemini-3.1-flash-lite', thinking: true, thinkingOwnProperty: true, supportedGenerationMethods: ['generateContent'],
+      }),
       layers: {
         conversation: {
           thinkingLevel: { mode: 'custom', value: 'medium' },

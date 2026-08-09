@@ -34,7 +34,7 @@ export function createAnthropicToolContinuationCoordinatorV2(input: Readonly<{ d
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
       if (!execution || execution.operation.state !== 'streaming' || execution.operation.branchId.value !== command.branchId.value ||
-          execution.operation.resultAnswerRootId.value !== command.answerRootId.value || command.expectedHeadMessageId.value !== command.answerRootId.value ||
+          execution.operation.targetAnswerId.value !== command.answerRootId.value || command.expectedHeadMessageId.value !== command.answerRootId.value ||
           execution.snapshot.providerBinding.providerId.value !== 'anthropic') invalid()
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
       if (!toolRegistry) invalid()
@@ -61,7 +61,7 @@ export function createAnthropicToolContinuationCoordinatorV2(input: Readonly<{ d
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
       if (!execution || execution.operation.state !== 'streaming' || execution.operation.branchId.value !== command.branchId.value ||
-          execution.operation.resultAnswerRootId.value !== command.answerRootId.value || execution.snapshot.providerBinding.providerId.value !== 'anthropic' ||
+          execution.operation.targetAnswerId.value !== command.answerRootId.value || execution.snapshot.providerBinding.providerId.value !== 'anthropic' ||
           execution.snapshot.providerBinding.credentialScopeId.value !== status.credentialScopeId) invalid()
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
       if (!toolRegistry) invalid()

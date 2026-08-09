@@ -146,7 +146,7 @@ export function recoverGenerationOrphansV2(
         FROM generation_operation_v2 AS operation
         JOIN generation_request_v2 AS request ON request.operation_id=operation.operation_id
           AND request.state IN ('prepared', 'streaming')
-        JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
+        JOIN message_v2 AS answer ON answer.message_id=operation.target_answer_id
         WHERE operation.operation_id=?
         ORDER BY request.request_sequence`).all(operationId) as ActiveRow[]
       if (rows.length === 0 && operation.operation.state === 'streaming') {
@@ -156,7 +156,7 @@ export function recoverGenerationOrphansV2(
           history.artifact_json AS artifactJson, history.artifact_hash AS artifactHash
           FROM generation_request_v2 AS request
           JOIN generation_operation_v2 AS operation ON operation.operation_id=request.operation_id
-          JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
+          JOIN message_v2 AS answer ON answer.message_id=operation.target_answer_id
           JOIN generation_native_artifact_v2 AS terminal
             ON terminal.operation_id=request.operation_id
             AND terminal.request_sequence=request.request_sequence
@@ -208,7 +208,7 @@ export function recoverGenerationOrphansV2(
           history.artifact_json AS historyJson, history.artifact_hash AS historyHash
           FROM generation_request_v2 AS request
           JOIN generation_operation_v2 AS operation ON operation.operation_id=request.operation_id
-          JOIN message_v2 AS answer ON answer.message_id=operation.result_answer_root_id
+          JOIN message_v2 AS answer ON answer.message_id=operation.target_answer_id
           JOIN generation_native_artifact_v2 AS terminal ON terminal.operation_id=request.operation_id
             AND terminal.request_sequence=request.request_sequence AND terminal.answer_root_id=request.answer_root_id
             AND terminal.artifact_kind='openai_responses_terminal_v1' AND terminal.completion_scope='request_terminal'
@@ -257,7 +257,7 @@ export function recoverGenerationOrphansV2(
       }
       requestRepo.terminalize(context, request, 'failed', atMs)
       graphRepo.terminalizeAssistantMessage(
-        context, operation.operation.resultAnswerRootId.value, 'failed', null, atMs,
+        context, operation.operation.targetAnswerId.value, 'failed', null, atMs,
       )
       executionRepo.terminalizeOperation(context, operation, {
         state: 'failed', errorCode: ERROR_CODE, errorMessage: ERROR_MESSAGE,

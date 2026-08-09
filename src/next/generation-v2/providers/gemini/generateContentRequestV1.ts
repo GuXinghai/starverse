@@ -181,6 +181,11 @@ export function compileGeminiGenerateContentRequestV1(inputValue: unknown): Read
     throw new GeminiGenerateContentRequestV1Error('GENERATION_V2_GEMINI_REQUEST_INVALID')
   }
 
+  const thinkingConfig = reasoning.mode === 'enabled' ? Object.freeze({
+    ...(reasoning.thinkingBudget === undefined ? {} : { thinkingBudget: integer(reasoning.thinkingBudget, -1) }),
+    ...(reasoning.thinkingLevel === undefined ? {} : { thinkingLevel: reasoning.thinkingLevel as 'minimal' | 'low' | 'medium' | 'high' }),
+    ...(reasoning.includeThoughts === undefined ? {} : { includeThoughts: reasoning.includeThoughts as boolean }),
+  }) : null
   const generationConfig = Object.freeze({
     ...(generation.temperature === undefined ? {} : { temperature: number(generation.temperature, 0, 2) }),
     ...(generation.topP === undefined ? {} : { topP: number(generation.topP, 0, 1) }),
@@ -191,11 +196,7 @@ export function compileGeminiGenerateContentRequestV1(inputValue: unknown): Read
     ...(generation.frequencyPenalty === undefined ? {} : { frequencyPenalty: number(generation.frequencyPenalty, -2, 1.999999999) }),
     ...(generation.seed === undefined ? {} : { seed: integer(generation.seed, 0) }),
     ...(generation.responseMimeType === undefined ? {} : { responseMimeType: generation.responseMimeType as 'text/plain' | 'application/json' }),
-    ...(reasoning.mode === 'enabled' ? { thinkingConfig: Object.freeze({
-      ...(reasoning.thinkingBudget === undefined ? {} : { thinkingBudget: integer(reasoning.thinkingBudget, -1) }),
-      ...(reasoning.thinkingLevel === undefined ? {} : { thinkingLevel: reasoning.thinkingLevel as 'minimal' | 'low' | 'medium' | 'high' }),
-      ...(reasoning.includeThoughts === undefined ? {} : { includeThoughts: reasoning.includeThoughts as boolean }),
-    }) } : {}),
+    ...(thinkingConfig && Object.keys(thinkingConfig).length > 0 ? { thinkingConfig } : {}),
   })
   const nativeTools = Object.freeze([
     ...(tools ? [Object.freeze({ functionDeclarations: tools })] : []),

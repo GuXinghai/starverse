@@ -16,7 +16,14 @@ import {
 } from '../../src/next/generation-v2/providers/gemini/generateContentStreamV1'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
+import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
+import {
+  createProviderFailureV2,
+  providerFailureFromUnknownV2,
+  providerFailurePrimaryMessageV2,
+  type ProviderFailureV2,
+} from '../../src/shared/provider/providerFailureV2'
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
 export type GeminiGenerateContentStreamRunResultV2 = Readonly<{
@@ -97,19 +104,9 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
     })
   }
 
-  function persistBody(command: GenerationTextCommandResultV2, expected: string, next: string): void {
-    runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
-      graphRepo.compareAndSetStreamingAssistantBody(context, command.preparedRequest.answerRootId, expected, next, nowMs())
-    })
-    publishGenerationStreamProjectionV2(input.streamProjectionSink, {
-      type: 'assistant_body', operationId: command.preparedRequest.operationId,
-      answerRootId: command.preparedRequest.answerRootId, content: next,
-    })
-  }
-
   function finalize(command: GenerationTextCommandResultV2, state: 'completed' | 'failed' | 'cancelled',
     stream: GeminiGenerateContentStreamResultV1 | null, errorCode: string | null, errorMessage: string | null,
-    phase: 'pre_stream' | 'mid_stream'): GeminiGenerateContentStreamRunResultV2 {
+    phase: 'pre_stream' | 'mid_stream', errorFact: ProviderFailureV2 | null = null): GeminiGenerateContentStreamRunResultV2 {
     const at = nowMs()
     let resultState: GeminiGenerateContentStreamRunResultV2['state'] = state
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
@@ -152,12 +149,14 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
         }
       } else {
         graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, null, at)
-        executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, at)
+        executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage, errorFact }, at)
       }
     })
     const result = Object.freeze({ operationId: command.preparedRequest.operationId,
       answerRootId: command.preparedRequest.answerRootId, state: resultState, errorCode, errorMessage })
-    publishGenerationStreamProjectionV2(input.streamProjectionSink, { type: 'terminal', ...result })
+    publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+      type: 'terminal', ...result, ...(errorFact ? { errorFact } : {}),
+    })
     return result
   }
 
@@ -175,6 +174,11 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
       .get(command.preparedRequest.answerRootId) as { body?: unknown } | undefined
     if (!initial || typeof initial.body !== 'string') throw new GeminiGenerateContentStreamRunnerV2Error('GENERATION_V2_GEMINI_RUNNER_AUTHORITY_INVALID')
     let visible = initial.body
+    const checkpoint = createGenerationTextBodyCheckpointV2({
+      db: input.db, graphRepo, command, initialBody: visible,
+      streamProjectionSink: input.streamProjectionSink, nowMs,
+      onFailure: (error) => { void reader.cancel(error).catch(() => undefined) },
+    })
     try {
       while (true) {
         const item = await abortable(reader.read(), signal)
@@ -182,7 +186,8 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
         if (item.value.byteLength > 0) started()
         for (const delta of stream.push(item.value)) {
           if (delta.type === 'text') {
-            const previous = visible; visible += delta.text; persistBody(command, previous, visible)
+            visible += delta.text
+            checkpoint.update(visible)
           } else if (delta.type === 'thought') {
             publishGenerationStreamProjectionV2(input.streamProjectionSink, {
               type: 'reasoning_detail', operationId: command.preparedRequest.operationId,
@@ -195,8 +200,11 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
       }
       return stream.finish()
     } finally {
-      try { await reader.cancel() } catch { /* release only */ }
-      reader.releaseLock()
+      try { checkpoint.flush() } finally {
+        checkpoint.dispose()
+        try { await reader.cancel() } catch { /* release only */ }
+        reader.releaseLock()
+      }
     }
   }
 
@@ -246,12 +254,56 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
         return finalize(command, 'completed', streamResult, null, null, 'mid_stream')
       } catch (error) {
         const cancelled = signal?.aborted === true && !scope.timedOut()
-        const code = cancelled ? 'user_cancelled' : scope.timedOut() ? 'GENERATION_V2_GEMINI_RUNNER_TIMEOUT'
-          : error instanceof GeminiGenerateContentStreamRunnerV2Error ? error.code
-            : error instanceof GeminiGenerateContentStreamV1Error ? error.code
-              : 'GENERATION_V2_GEMINI_RUNNER_TRANSPORT_FAILED'
-        return finalize(command, cancelled ? 'cancelled' : 'failed', null, code,
-          cancelled ? 'Generation cancelled by user.' : code, started ? 'mid_stream' : 'pre_stream')
+        if (error instanceof GeminiGenerateContentStreamV1Error &&
+            error.diagnostic?.reason === 'native_content_invalid') {
+          console.error('[generation-v2][gemini] native content decode failed', {
+            operationId: command.preparedRequest.operationId,
+            requestSequence: command.preparedRequest.requestSequence,
+            modelId: command.preparedRequest.modelId,
+            diagnostic: error.diagnostic,
+          })
+        }
+        const failure = cancelled ? null : error instanceof GeminiGenerateContentStreamV1Error
+          ? createProviderFailureV2({
+            context: {
+              origin: 'response_decoder', phase: 'stream_decode',
+              providerId: command.preparedRequest.providerId,
+              contractId: command.preparedRequest.contractId,
+              operationId: command.preparedRequest.operationId,
+              requestSequence: command.preparedRequest.requestSequence,
+              starverseDiagnosticCode: 'PROVIDER_RESPONSE_DECODE_FAILED',
+            },
+            body: {
+              error: {
+                code: error.code,
+                message: error.diagnostic
+                  ? `Gemini stream validation failed: ${error.diagnostic.reason}`
+                  : error.code,
+              },
+              geminiStreamDiagnostic: error.diagnostic,
+            },
+            rawFrameExcerpt: error.diagnostic?.rawChunk ? JSON.stringify(error.diagnostic.rawChunk) : null,
+          })
+          : providerFailureFromUnknownV2(error, {
+            origin: error instanceof GeminiGenerateContentStreamV1Error ? 'response_decoder'
+              : started ? 'response_stream' : 'network_transport',
+            phase: error instanceof GeminiGenerateContentStreamV1Error ? 'stream_decode'
+              : started ? 'stream_read' : 'request_open',
+            providerId: command.preparedRequest.providerId,
+            contractId: command.preparedRequest.contractId,
+            operationId: command.preparedRequest.operationId,
+            requestSequence: command.preparedRequest.requestSequence,
+            starverseDiagnosticCode: error instanceof GeminiGenerateContentStreamV1Error
+              ? 'PROVIDER_RESPONSE_DECODE_FAILED'
+              : started ? 'PROVIDER_RESPONSE_STREAM_FAILED' : 'PROVIDER_REQUEST_OPEN_FAILED',
+          })
+        const code = cancelled ? 'user_cancelled' : failure?.starverseDiagnosticCode
+          ?? (scope.timedOut() ? 'GENERATION_V2_GEMINI_RUNNER_TIMEOUT'
+            : error instanceof GeminiGenerateContentStreamRunnerV2Error ? error.code : 'GENERATION_V2_GEMINI_RUNNER_TRANSPORT_FAILED')
+        const message = cancelled ? 'Generation cancelled by user.'
+          : failure ? providerFailurePrimaryMessageV2(failure) : code
+        return finalize(command, cancelled ? 'cancelled' : 'failed', null, code, message,
+          started ? 'mid_stream' : 'pre_stream', failure)
       } finally { scope.dispose() }
     },
   })

@@ -8,6 +8,8 @@ import {
   isPendingAnswerActionForContextV2,
   isPendingEditedTurnForContextV2,
   isPendingInitialTurnForContextV2,
+  pendingSourceBranchIdV2,
+  pendingSourceAnswerIdV2,
   type PendingAnswerActionV2,
   type PendingEditedTurnV2,
   type PendingInitialTurnV2,
@@ -76,7 +78,7 @@ export function commitVerifiedOpenRouterChatInitialSnapshotV2(input: Readonly<{
       !isVerifiedOpenRouterChatBindingAuthorityV2(input.binding) ||
       !isVerifiedOpenRouterChatCapabilityAuthorityV2(input.capability) ||
       input.capability.bindingAuthority !== input.binding || input.command.operationId.value !== input.pending.operationId.value ||
-      input.command.branchId.value !== input.pending.branchId.value || input.command.userBody !== input.pending.userBody ||
+      input.command.branchId.value !== pendingSourceBranchIdV2(input.pending).value || input.command.userBody !== input.pending.userBody ||
       input.command.modelId.value !== input.binding.binding.modelId.value || input.binding.binding.providerId.value !== 'openrouter' ||
       input.commandFacts.conversationId.value !== input.pending.conversationId.value) {
     throw new OpenRouterChatSnapshotCommitV2Error('GENERATION_V2_OPENROUTER_CHAT_SNAPSHOT_INPUT_INVALID')
@@ -124,8 +126,8 @@ export function commitVerifiedOpenRouterChatInitialSnapshotV2(input: Readonly<{
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
     operationId: input.pending.operationId.value, actionKind: 'initial_send',
     branchId: input.pending.branchId.value, conversationId: input.pending.conversationId.value,
-    questionId: input.pending.questionId.value, targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
+    questionId: input.pending.questionId.value, sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
   if (execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson ||
@@ -149,8 +151,8 @@ export function commitOpenRouterChatRetrySnapshotV2(input: Readonly<{
       !isOpenRouterPlainTextRetryCommandV2(input.command) ||
       !isGenerationExecutionOperationBundleForContextV2(input.target, input.context) ||
       input.pending.actionKind !== input.command.actionKind || input.pending.operationId.value !== input.command.operationId.value ||
-      input.pending.targetAnswerRootId?.value !== input.command.targetAnswerRootId.value ||
-      input.target.operation.resultAnswerRootId.value !== input.command.targetAnswerRootId.value ||
+      input.pending.sourceAnswerId?.value !== input.command.sourceAnswerId.value ||
+      input.target.operation.targetAnswerId.value !== input.command.sourceAnswerId.value ||
       input.target.snapshot.providerBinding.providerId.value !== 'openrouter' || input.target.snapshot.providerBinding.operation !== 'text') {
     throw new OpenRouterChatSnapshotCommitV2Error('GENERATION_V2_OPENROUTER_CHAT_SNAPSHOT_INPUT_INVALID')
   }
@@ -162,8 +164,8 @@ export function commitOpenRouterChatRetrySnapshotV2(input: Readonly<{
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
     operationId: input.command.operationId.value, actionKind: input.command.actionKind,
     branchId: input.pending.branchId.value, conversationId: input.pending.conversationId.value,
-    questionId: input.pending.questionId.value, targetAnswerRootId: input.command.targetAnswerRootId.value,
-    resultAnswerRootId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
+    questionId: input.pending.questionId.value, sourceAnswerId: input.command.sourceAnswerId.value,
+    targetAnswerId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
   return Object.freeze({ bundle: execution.bundle })
@@ -188,7 +190,7 @@ function commitCurrentAnswerSnapshot(input: Readonly<{
       (!isRegenerate && !isEdit) || !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
       !isVerifiedOpenRouterChatBindingAuthorityV2(input.binding) || !isVerifiedOpenRouterChatCapabilityAuthorityV2(input.capability) ||
       input.capability.bindingAuthority !== input.binding || input.command.operationId.value !== input.pending.operationId.value ||
-      input.command.branchId.value !== input.pending.branchId.value || input.command.modelId.value !== input.binding.binding.modelId.value ||
+      input.command.sourceBranchId.value !== pendingSourceBranchIdV2(input.pending).value || input.command.modelId.value !== input.binding.binding.modelId.value ||
       input.commandFacts.conversationId.value !== input.pending.conversationId.value ||
       (input.commandFacts.semanticIntent.tools.mode === 'enabled') !== (input.toolRegistry !== null)) {
     throw new OpenRouterChatSnapshotCommitV2Error('GENERATION_V2_OPENROUTER_CHAT_SNAPSHOT_INPUT_INVALID')
@@ -218,7 +220,7 @@ function commitCurrentAnswerSnapshot(input: Readonly<{
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
     operationId: input.pending.operationId.value, actionKind, branchId: input.pending.branchId.value,
     conversationId: input.pending.conversationId.value, questionId: input.pending.questionId.value,
-    targetAnswerRootId: null, resultAnswerRootId: input.pending.answerRootId.value,
+    sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null, targetAnswerId: input.pending.answerRootId.value,
     snapshot: snapshot.canonicalJson, commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
   completed = true

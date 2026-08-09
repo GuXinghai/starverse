@@ -5,6 +5,8 @@ import type { GenerationTextCommandResultV2 } from '../services/generationTextCo
 import type { OpenRouterImageInitialSendResultV2 } from '../services/openRouterImageInitialSendCoordinatorV2'
 import type { OpenRouterImageActionResultV2 } from '../services/openRouterImageActionCoordinatorV2'
 import type { OpenRouterFirstPartyGenerationV2Runtime } from '../services/openRouterFirstPartyGenerationV2Runtime'
+import type { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
+import type { GenerationStreamEventV2 } from '../../src/next/generation-v2/domain/generationStreamEventV2'
 
 export const OPENROUTER_CHAT_GENERATION_V2_IPC_CHANNELS = Object.freeze([
   'generation-v2:openrouter:chat:initial', 'generation-v2:openrouter:chat:retry',
@@ -26,7 +28,7 @@ export const OPENROUTER_GENERATION_V2_PROJECTION_CHANNEL = 'generation-v2:openro
 type Result = GenerationTextCommandResultV2 | OpenRouterImageInitialSendResultV2 | OpenRouterImageActionResultV2
 type Success = Readonly<{ ok: true; kind: Result['kind']; operationId: string; answerRootId: string; actionKind: string
   branch: Readonly<{ branchId: string; conversationId: string; questionId: string; headMessageId: string | null;
-    chosenAnswerRootId: string | null; deletedAtMs: number | null }>; visibleAnswerRootIds: readonly string[]; visibleQuestionIds: readonly string[] }>
+    chosenAnswerRootId: string | null; deletedAtMs: number | null }> }>
 type Failure = Readonly<{ ok: false; code: string }>
 
 function operationId(value: unknown): string | null {
@@ -41,18 +43,22 @@ function sender(value: unknown): WebContents | null {
 function committed(result: Result): Success {
   const branch = result.projection.branchProjection
   return Object.freeze({ ok: true, kind: result.kind, operationId: result.execution.operation.operationId.value,
-    answerRootId: result.execution.operation.resultAnswerRootId.value, actionKind: result.execution.operation.actionKind,
+    answerRootId: result.execution.operation.targetAnswerId.value, actionKind: result.execution.operation.actionKind,
     branch: Object.freeze({ branchId: branch.branchId.value, conversationId: branch.conversationId.value,
       questionId: branch.questionId.value, headMessageId: branch.headMessageId?.value ?? null,
-      chosenAnswerRootId: branch.chosenAnswerRootId?.value ?? null, deletedAtMs: branch.deletedAtMs }),
-    visibleAnswerRootIds: Object.freeze(result.projection.visibleCandidates.map((item) => item.value)),
-    visibleQuestionIds: Object.freeze(result.projection.visibleQuestionCandidates.map((item) => item.value)) })
+      chosenAnswerRootId: branch.chosenAnswerRootId?.value ?? null, deletedAtMs: branch.deletedAtMs }) })
 }
 function safeProjection(value: GenerationStreamProjectionV2): GenerationStreamProjectionV2 {
   if (value.type === 'assistant_body') return Object.freeze({ ...value })
   if (value.type === 'reasoning_detail') return Object.freeze({ ...value, detail: Object.freeze({ ...value.detail }) })
   if (value.type === 'image_output') return Object.freeze({ ...value })
   return Object.freeze({ ...value })
+}
+function safeEvent(value: GenerationStreamEventV2): GenerationStreamEventV2 {
+  const payload = value.payload.type === 'reasoning_detail'
+    ? Object.freeze({ ...value.payload, detail: Object.freeze({ ...value.payload.detail }) })
+    : Object.freeze({ ...value.payload })
+  return Object.freeze({ operationId: value.operationId, sequence: value.sequence, payload })
 }
 function publicErrorCode(error: unknown): string {
   const value = error instanceof Error ? error.message : ''
@@ -63,18 +69,33 @@ function publicErrorCode(error: unknown): string {
 export function registerOpenRouterGenerationV2Ipc(input: Readonly<{
   registerInvoke: RegisterInvoke
   createRuntime: (sink: GenerationStreamProjectionSinkV2) => OpenRouterFirstPartyGenerationV2Runtime
+  runtimeRegistry?: GenerationOperationRuntimeRegistryV2
 }>): readonly string[] {
   const senders = new Map<string, WebContents>()
-  const runtime = input.createRuntime(Object.freeze({ publish: (projection) => {
+  const downstream = Object.freeze({ publish: (projection: GenerationStreamProjectionV2) => {
     const target = senders.get(projection.operationId); if (!target) return
     try { target.send(OPENROUTER_GENERATION_V2_PROJECTION_CHANNEL, safeProjection(projection)) } catch { /* downstream only */ }
     if (projection.type === 'terminal') senders.delete(projection.operationId)
-  } }))
-  const invoke = (dispatch: (command: unknown) => Promise<Result>) => async (event: unknown, payload: unknown): Promise<Success | Failure> => {
+  } })
+  const runtime = input.createRuntime(input.runtimeRegistry?.projectionSink ?? downstream)
+  if (input.runtimeRegistry) input.runtimeRegistry.subscribe((event) => {
+    const target = senders.get(event.operationId)
+    if (!target) return
+    try { target.send(OPENROUTER_GENERATION_V2_PROJECTION_CHANNEL, safeEvent(event)) } catch { /* downstream only */ }
+    if (event.payload.type === 'terminal' && event.payload.state !== 'awaiting_tool') senders.delete(event.operationId)
+  })
+  const invoke = (dispatch: (command: unknown) => Promise<Result>) =>
+    async (event: unknown, payload: unknown): Promise<Success | Failure> => {
     const target = sender(event); const id = operationId(payload)
     if (!target || !id) return Object.freeze({ ok: false, code: 'GENERATION_V2_OPENROUTER_IPC_INVALID_PAYLOAD' })
     senders.set(id, target)
-    try { return committed(await dispatch(payload)) } catch (error) {
+    try {
+      const result = await dispatch(payload)
+      if (input.runtimeRegistry) {
+        input.runtimeRegistry.register(result)
+      }
+      return committed(result)
+    } catch (error) {
       senders.delete(id); return Object.freeze({ ok: false, code: publicErrorCode(error) })
     }
   }
@@ -97,7 +118,9 @@ export function registerOpenRouterGenerationV2Ipc(input: Readonly<{
   input.registerInvoke('generation-v2:openrouter:images:endpoints:update-settings', endpointInvoke(runtime.imageEndpoints.updateSettings))
   const abort = (dispatch: (id: string) => boolean) => (_event: unknown, raw: unknown) => {
     const id = typeof raw === 'string' && raw.length > 0 && raw.length <= 512 && raw.trim() === raw ? raw : null
-    return id ? Object.freeze({ ok: true, aborted: dispatch(id) }) : Object.freeze({ ok: false, code: 'GENERATION_V2_OPENROUTER_IPC_INVALID_PAYLOAD' })
+    return id ? Object.freeze({ ok: true, aborted: input.runtimeRegistry
+      ? input.runtimeRegistry.abort(id)
+      : dispatch(id) }) : Object.freeze({ ok: false, code: 'GENERATION_V2_OPENROUTER_IPC_INVALID_PAYLOAD' })
   }
   input.registerInvoke('generation-v2:openrouter:chat:abort', abort(runtime.chat.abort))
   input.registerInvoke('generation-v2:openrouter:images:abort', abort(runtime.images.abort))

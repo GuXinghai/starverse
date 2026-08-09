@@ -8,6 +8,8 @@ import {
   isPendingInitialTurnForContextV2,
   isPendingAnswerActionForContextV2,
   isPendingEditedTurnForContextV2,
+  pendingSourceBranchIdV2,
+  pendingSourceAnswerIdV2,
   type PendingAnswerActionV2,
   type PendingEditedTurnV2,
   type PendingInitialTurnV2,
@@ -145,7 +147,7 @@ export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: R
       !isVerifiedOpenAIResponsesProviderBindingAuthorityV2(input.binding) ||
       !isVerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2(input.capability) ||
       input.command.operationId.value !== input.pending.operationId.value ||
-      input.command.branchId.value !== input.pending.branchId.value ||
+      input.command.branchId.value !== pendingSourceBranchIdV2(input.pending).value ||
       input.command.expectedHeadMessageId?.value !== input.pending.expectedHeadMessageId?.value ||
       input.command.userBody !== input.pending.userBody ||
       input.command.providerId.value !== input.binding.binding.providerId.value ||
@@ -196,8 +198,8 @@ export function commitVerifiedOpenAIResponsesPlainTextInitialSnapshotV2(input: R
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
     operationId: input.pending.operationId.value, actionKind: 'initial_send',
     branchId: input.pending.branchId.value, conversationId: input.pending.conversationId.value,
-    questionId: input.pending.questionId.value, targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
+    questionId: input.pending.questionId.value, sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
   if (execution.bundle.operation.operationId.value !== input.pending.operationId.value ||
@@ -232,11 +234,11 @@ export function commitOpenAIResponsesPlainTextRetrySnapshotV2(input: Readonly<{
       !isGenerationExecutionOperationBundleForContextV2(input.target, input.context) ||
       input.pending.actionKind !== input.command.actionKind ||
       input.pending.operationId.value !== input.command.operationId.value ||
-      input.pending.branchId.value !== input.command.branchId.value ||
+      pendingSourceBranchIdV2(input.pending).value !== input.command.sourceBranchId.value ||
       input.pending.questionId.value !== input.command.questionId.value ||
-      input.pending.targetAnswerRootId?.value !== input.command.targetAnswerRootId.value ||
+      input.pending.sourceAnswerId?.value !== input.command.sourceAnswerId.value ||
       input.pending.expectedHeadMessageId.value !== input.command.expectedHeadMessageId.value ||
-      input.target.operation.resultAnswerRootId.value !== input.command.targetAnswerRootId.value ||
+      input.target.operation.targetAnswerId.value !== input.command.sourceAnswerId.value ||
       input.target.operation.questionId.value !== input.command.questionId.value ||
       input.target.snapshot.providerBinding.providerId.value !== 'openai_responses' ||
       input.target.snapshot.providerBinding.operation !== 'text') {
@@ -256,8 +258,8 @@ export function commitOpenAIResponsesPlainTextRetrySnapshotV2(input: Readonly<{
     branchId: input.pending.branchId.value,
     conversationId: input.pending.conversationId.value,
     questionId: input.pending.questionId.value,
-    targetAnswerRootId: input.pending.targetAnswerRootId!.value,
-    resultAnswerRootId: input.pending.answerRootId.value,
+    sourceAnswerId: input.pending.sourceAnswerId.value,
+    targetAnswerId: input.pending.answerRootId.value,
     snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint,
     createdAtMs: input.pending.createdAtMs,
@@ -271,7 +273,7 @@ export function commitOpenAIResponsesPlainTextRetrySnapshotV2(input: Readonly<{
   delete expectedPayload.operationId
   delete expectedPayload.snapshotHash
   if (execution.bundle.operation.actionKind !== input.command.actionKind ||
-      execution.bundle.operation.targetAnswerRootId?.value !== input.command.targetAnswerRootId.value ||
+      execution.bundle.operation.sourceAnswerId?.value !== input.command.sourceAnswerId.value ||
       stableSerializeProviderRequestV2(copiedPayload) !== stableSerializeProviderRequestV2(expectedPayload)) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
@@ -293,13 +295,12 @@ export function commitVerifiedOpenAIResponsesPlainTextRegenerateSnapshotV2(input
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) ||
       !(input.capabilityRepo instanceof RuntimeCapabilityV2Repo) ||
       !isPendingAnswerActionForContextV2(input.pending, input.context) ||
-      input.pending.actionKind !== 'regenerate_question' || input.pending.targetAnswerRootId !== null ||
-      !isOpenAIResponsesPlainTextRegenerateCommandV2(input.command) ||
+      input.pending.actionKind !== 'regenerate_question' || !isOpenAIResponsesPlainTextRegenerateCommandV2(input.command) ||
       !isVerifiedOpenAIResponsesProviderBindingAuthorityV2(input.binding) ||
       !isVerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2(input.capability) ||
       !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
       input.command.operationId.value !== input.pending.operationId.value ||
-      input.command.branchId.value !== input.pending.branchId.value ||
+      input.command.sourceBranchId.value !== pendingSourceBranchIdV2(input.pending).value ||
       input.command.questionId.value !== input.pending.questionId.value ||
       input.command.expectedHeadMessageId.value !== input.pending.expectedHeadMessageId.value ||
       input.command.providerId.value !== input.binding.binding.providerId.value ||
@@ -358,14 +359,14 @@ export function commitVerifiedOpenAIResponsesPlainTextRegenerateSnapshotV2(input
     branchId: input.pending.branchId.value,
     conversationId: input.pending.conversationId.value,
     questionId: input.pending.questionId.value,
-    targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value,
+    sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value,
     snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint,
     createdAtMs: input.pending.createdAtMs,
   })
   if (execution.bundle.operation.actionKind !== 'regenerate_question' ||
-      execution.bundle.operation.targetAnswerRootId !== null ||
+      execution.bundle.operation.sourceAnswerId !== null ||
       execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_RESULT_INVALID')
   }
@@ -397,7 +398,7 @@ export function commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2(input
       !isVerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2(input.capability) ||
       !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
       input.command.operationId.value !== input.pending.operationId.value ||
-      input.command.mode !== input.pending.mode || input.command.branchId.value !== input.pending.branchId.value ||
+      input.command.sourceBranchId.value !== pendingSourceBranchIdV2(input.pending).value ||
       input.command.sourceQuestionId.value !== input.pending.sourceQuestionId.value ||
       input.command.sourceAnswerRootId.value !== input.pending.sourceAnswerRootId.value ||
       input.command.expectedHeadMessageId.value !== input.pending.expectedHeadMessageId.value ||
@@ -453,12 +454,12 @@ export function commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2(input
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
     operationId: input.pending.operationId.value, actionKind: 'edit_resend',
     branchId: input.pending.branchId.value, conversationId: input.pending.conversationId.value,
-    questionId: input.pending.questionId.value, targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
+    questionId: input.pending.questionId.value, sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
   if (execution.bundle.operation.actionKind !== 'edit_resend' ||
-      execution.bundle.operation.targetAnswerRootId !== null ||
+      execution.bundle.operation.sourceAnswerId !== null ||
       execution.bundle.snapshot.canonicalJson !== snapshot.canonicalJson) {
     return fail('GENERATION_V2_OPENAI_SNAPSHOT_COMMIT_RESULT_INVALID')
   }

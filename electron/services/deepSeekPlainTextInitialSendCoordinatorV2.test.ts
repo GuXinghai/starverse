@@ -227,12 +227,11 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       })
       expect(result.kind).toBe('created')
       expect(result.execution.operation).toMatchObject({
-        operationId: { value: 'operation:1' }, resultAnswerRootId: { value: 'answer:2' },
+        operationId: { value: 'operation:1' }, targetAnswerId: { value: 'answer:2' },
       })
       expect(result.projection.branchProjection).toMatchObject({
         chosenAnswerRootId: { value: 'answer:2' }, headMessageId: { value: 'answer:2' },
       })
-      expect(result.projection.visibleCandidates.map((value) => value.value)).toEqual(['answer:2'])
       expect(mocks.fetch).toHaveBeenCalledTimes(1)
     } finally { db.close() }
   })
@@ -432,8 +431,8 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         command: command(), expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
       })
       expect(replay.kind).toBe('idempotent_replay')
-      expect(replay.execution.operation.resultAnswerRootId.value)
-        .toBe(first.execution.operation.resultAnswerRootId.value)
+      expect(replay.execution.operation.targetAnswerId.value)
+        .toBe(first.execution.operation.targetAnswerId.value)
       expect(replay.preparedRequest.bodySha256).toBe(first.preparedRequest.bodySha256)
       expect(replay.preparedRequest.body.copyUtf8Text()).toBe(first.preparedRequest.body.copyUtf8Text())
       expect(replay.request.preparedBodySha256).toBe(first.request.preparedBodySha256)
@@ -466,8 +465,8 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         command: command(), expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
       })
       expect(replay.kind).toBe('idempotent_replay')
-      expect(replay.execution.operation.resultAnswerRootId.value)
-        .toBe(first.execution.operation.resultAnswerRootId.value)
+      expect(replay.execution.operation.targetAnswerId.value)
+        .toBe(first.execution.operation.targetAnswerId.value)
       expect(replay.preparedRequest.bodySha256).toBe(first.preparedRequest.bodySha256)
       expect(replay.request.compilerLedgerHash).toBe(first.request.compilerLedgerHash)
       expect(mocks.fetch).toHaveBeenCalledTimes(1)
@@ -494,8 +493,8 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       const raced = await firstPromise
       expect(winner.kind).toBe('created')
       expect(raced.kind).toBe('idempotent_replay')
-      expect(raced.execution.operation.resultAnswerRootId.value)
-        .toBe(winner.execution.operation.resultAnswerRootId.value)
+      expect(raced.execution.operation.targetAnswerId.value)
+        .toBe(winner.execution.operation.targetAnswerId.value)
       expect(db.prepare('SELECT count(*) AS count FROM generation_operation_v2').get()).toEqual({ count: 1 })
       expect(db.prepare('SELECT count(*) AS count FROM generation_request_v2').get()).toEqual({ count: 1 })
       expect(db.prepare('SELECT count(*) AS count FROM message_v2').get()).toEqual({ count: 2 })
@@ -529,7 +528,7 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       const first = await service.submit({
         command: command(), expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
-      const firstAnswer = first.execution.operation.resultAnswerRootId.value
+      const firstAnswer = first.execution.operation.targetAnswerId.value
       completeFirstRequest(db, firstAnswer)
       const later = await service.submit({
         command: command({
@@ -538,7 +537,7 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         expectedCredentialRevision: 1,
         expectedCredentialScopeId: scope,
       })
-      const laterHead = later.execution.operation.resultAnswerRootId.value
+      const laterHead = later.execution.operation.targetAnswerId.value
       const replay = await coordinator(db, true).submit({
         command: command(), expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
       })
@@ -821,20 +820,18 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       })
       const asNew = await asNewCoordinator.submit({
         actionKind: 'retry_as_new', operationId: 'operation:retry-new', branchId: 'branch:1',
-        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+        questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2',
       })
       expect(asNew.kind).toBe('created')
       const replay = await asNewCoordinator.submit({
         actionKind: 'retry_as_new', operationId: 'operation:retry-new', branchId: 'branch:1',
-        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+        questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2',
       })
       expect(replay.kind).toBe('idempotent_replay')
-      expect(replay.execution.operation.resultAnswerRootId.value).toBe('answer:retry-new')
+      expect(replay.execution.operation.targetAnswerId.value).toBe('answer:retry-new')
       expect(asNew.projection.branchProjection).toMatchObject({
         chosenAnswerRootId: { value: 'answer:retry-new' }, headMessageId: { value: 'answer:retry-new' },
       })
-      expect(asNew.projection.visibleCandidates.map((candidate) => candidate.value))
-        .toEqual(['answer:2', 'answer:retry-new'])
       expect(JSON.parse(asNew.preparedRequest.body.copyUtf8Text())).toEqual({
         messages: [{ role: 'user', content: 'hello' }], model: 'deepseek-v4-pro', stream: true,
         stream_options: { include_usage: true }, thinking: { type: 'disabled' },
@@ -855,7 +852,7 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         createAnswerId: () => 'answer:must-not-exist',
       }).submit({
         actionKind: 'retry_as_new', operationId: 'operation:stale', branchId: 'branch:1',
-        questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+        questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2',
       })).rejects.toThrow('STALE_CHOSEN_ANSWER')
       expect(db.prepare(`SELECT
         (SELECT count(*) FROM generation_operation_v2) AS operations,
@@ -869,11 +866,9 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         createAnswerId: () => 'answer:replacement',
       }).submit({
         actionKind: 'retry_replace', operationId: 'operation:replace', branchId: 'branch:1',
-        questionId: 'question:1', targetAnswerRootId: 'answer:retry-new',
+        questionId: 'question:1', sourceAnswerId: 'answer:retry-new',
         expectedHeadMessageId: 'answer:retry-new',
       })
-      expect(replace.projection.visibleCandidates.map((candidate) => candidate.value))
-        .toEqual(['answer:2', 'answer:replacement'])
       expect(db.prepare(`SELECT answer_root_id AS answerRootId FROM branch_answer_hide_v2
         WHERE branch_id='branch:1' AND question_id='question:1'`).all())
         .toEqual([{ answerRootId: 'answer:retry-new' }])
@@ -921,16 +916,14 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         expectedCredentialScopeId: scope,
       })
       expect(regenerated.execution.operation).toMatchObject({
-        actionKind: 'regenerate_question', targetAnswerRootId: null,
-        resultAnswerRootId: { value: 'answer:regenerated' },
+        actionKind: 'regenerate_question', sourceAnswerId: null,
+        targetAnswerId: { value: 'answer:regenerated' },
       })
       expect(JSON.parse(regenerated.preparedRequest.body.copyUtf8Text())).toEqual({
         messages: [{ role: 'user', content: 'hello' }], model: 'deepseek-chat', stream: true,
         stream_options: { include_usage: true }, temperature: 0.9,
         thinking: { type: 'disabled' }, top_p: 0.7,
       })
-      expect(regenerated.projection.visibleCandidates.map((candidate) => candidate.value))
-        .toEqual(['answer:2', 'answer:regenerated'])
       expect(regenerated.projection.branchProjection).toMatchObject({
         chosenAnswerRootId: { value: 'answer:regenerated' },
         headMessageId: { value: 'answer:regenerated' },
@@ -943,7 +936,7 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         expectedCredentialScopeId: scope,
       })
       expect(replay.kind).toBe('idempotent_replay')
-      expect(replay.execution.operation.resultAnswerRootId.value).toBe('answer:regenerated')
+      expect(replay.execution.operation.targetAnswerId.value).toBe('answer:regenerated')
       expect(replay.preparedRequest.bodySha256).toBe(regenerated.preparedRequest.bodySha256)
       expect(db.prepare(`SELECT
         (SELECT count(*) FROM generation_operation_v2) AS operations,
@@ -1007,14 +1000,12 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
       })
       expect(fork.execution.operation).toMatchObject({
         actionKind: 'edit_resend', questionId: { value: 'question:edit-fork' },
-        resultAnswerRootId: { value: 'answer:edit-fork' }, targetAnswerRootId: null,
+        targetAnswerId: { value: 'answer:edit-fork' }, sourceAnswerId: null,
       })
       expect(JSON.parse(fork.preparedRequest.body.copyUtf8Text())).toEqual({
         messages: [{ role: 'user', content: 'edited question' }], model: 'deepseek-chat', stream: true,
         stream_options: { include_usage: true }, temperature: 0.4, thinking: { type: 'disabled' },
       })
-      expect(fork.projection.visibleQuestionCandidates.map((candidate) => candidate.value))
-        .toEqual(['question:1', 'question:edit-fork'])
       expect(fork.projection.branchProjection).toMatchObject({
         questionId: { value: 'question:edit-fork' },
         chosenAnswerRootId: { value: 'answer:edit-fork' }, headMessageId: { value: 'answer:edit-fork' },
@@ -1023,7 +1014,7 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         command: forkCommand, expectedCredentialRevision: 999, expectedCredentialScopeId: scope,
       })
       expect(replay.kind).toBe('idempotent_replay')
-      expect(replay.execution.operation.resultAnswerRootId.value).toBe('answer:edit-fork')
+      expect(replay.execution.operation.targetAnswerId.value).toBe('answer:edit-fork')
       await createDeepSeekInitialStreamRunnerV2({
         db, credentialService: credentialService(), nowMs: () => 130,
       }).run(fork)
@@ -1054,8 +1045,6 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         },
         expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
       })
-      expect(replace.projection.visibleQuestionCandidates.map((candidate) => candidate.value))
-        .toEqual(['question:1', 'question:edit-replace'])
       expect(db.prepare(`SELECT question_id AS questionId FROM branch_question_hide_v2
         WHERE branch_id='branch:1'`).all()).toEqual([{ questionId: 'question:edit-fork' }])
       const failed = await createDeepSeekInitialStreamRunnerV2({
@@ -1075,7 +1064,7 @@ describe('DeepSeek plain-text initial-send coordinator V2', () => {
         createAnswerId: () => 'answer:hidden-action-must-not-exist',
       }).submit({
         actionKind: 'retry_as_new', operationId: 'operation:hidden-question', branchId: 'branch:1',
-        questionId: 'question:edit-fork', targetAnswerRootId: 'answer:edit-fork',
+        questionId: 'question:edit-fork', sourceAnswerId: 'answer:edit-fork',
         expectedHeadMessageId: 'answer:edit-fork',
       })).rejects.toThrow('GENERATION_V2_GRAPH_REPOSITORY_STALE_HEAD')
       expect(db.prepare(`SELECT

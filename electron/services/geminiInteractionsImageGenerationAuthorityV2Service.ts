@@ -1,5 +1,4 @@
 import { createHash } from 'node:crypto'
-import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import {
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
@@ -41,8 +40,13 @@ import {
 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import {
   isGeminiInteractionsImageModelIdV1,
-  readGeminiInteractionsImageModelPolicyV1,
 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
+import type { GeminiImageGenerationPolicy } from '../../src/next/provider/gemini/geminiImageGenerationPolicy'
+import {
+  isActiveCatalogModelAuthorityV2,
+  projectActiveCatalogSnapshotAuthorityV2,
+  type ActiveCatalogModelAuthorityV2,
+} from './activeCatalogModelAuthorityV2Service'
 
 export type VerifiedGeminiInteractionsImageProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_gemini_interactions_image_provider_binding'
@@ -50,6 +54,8 @@ export type VerifiedGeminiInteractionsImageProviderBindingAuthorityV2 = Readonly
   executionAuthority: 'none'
   binding: DecodedProviderBindingRecordV2
   contractReference: VerifiedProviderContractReferenceV2
+  catalogAuthority: ActiveCatalogModelAuthorityV2
+  imagePolicy: Exclude<GeminiImageGenerationPolicy, { kind: 'unsupported' }>
   credentialRevision: number
   assertCurrent(): void
 }>
@@ -80,8 +86,7 @@ function supported(path: RuntimeCapabilitySemanticPathV2, domain: RuntimeCapabil
 function unsupported(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCapabilityFieldV2 {
   return Object.freeze({ path, state: 'unsupported', constraints: Object.freeze([]), evidenceIds: Object.freeze([REJECTS]) })
 }
-function fields(modelId: string): readonly PersistedRuntimeCapabilityFieldV2[] {
-  const policy = readGeminiInteractionsImageModelPolicyV1(modelId)
+function fields(policy: Exclude<GeminiImageGenerationPolicy, { kind: 'unsupported' }>): readonly PersistedRuntimeCapabilityFieldV2[] {
   const values = new Map(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => [path, unsupported(path)] as const))
   values.set('generation.temperature', supported('generation.temperature', { kind: 'range', min: 0, max: 2, integer: false }))
   values.set('generation.topP', supported('generation.topP', { kind: 'range', min: 0, max: 1, integer: false }))
@@ -121,15 +126,22 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2, modelId: string
   }
 }
 
-function composeBinding(credentialScopeId: CredentialScopeIdV2, credentialRevision: number, modelId: string) {
+function composeBinding(catalogAuthority: ActiveCatalogModelAuthorityV2, modelId: string) {
   const profile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
   const definition = readReviewedGeminiInteractionsDefinitionV2()
+  const providerSpecific = catalogAuthority.resolutions?.providerSpecific
   if (!isVerifiedGeminiDeveloperApiEndpointProfileV2(profile) || !isReviewedProviderContractDefinitionV2(definition) ||
       definition.protocolContractId.value !== 'gemini-interactions-v1beta' || definition.providerId.value !== 'google_ai_studio' ||
-      !Number.isSafeInteger(credentialRevision) || credentialRevision < 1 || !isGeminiInteractionsImageModelIdV1(modelId)) invalid()
+      !isActiveCatalogModelAuthorityV2(catalogAuthority, 'google_ai_studio') ||
+      catalogAuthority.modelId?.value !== modelId || !isGeminiInteractionsImageModelIdV1(modelId) ||
+      providerSpecific?.kind !== 'gemini_image_generation' || providerSpecific.protocolContractId !== 'gemini-interactions-v1beta' ||
+      providerSpecific.policy.kind === 'unsupported') invalid()
+  catalogAuthority.assertCurrent()
   const descriptor = profile.descriptors.interactions
   const candidate = Object.freeze({
-    credentialScopeId,
+    credentialScopeId: typeof catalogAuthority.credentialScopeId === 'string'
+      ? catalogAuthority.credentialScopeId
+      : catalogAuthority.credentialScopeId?.value,
     providerId: readGenerationV2Identity(profile.providerId, 'provider_id'),
     endpointProfileId: readGenerationV2Identity(profile.endpointProfileId, 'endpoint_profile_id'),
     endpointBinding: { kind: 'provider_managed_set', endpointSetRevision: readGenerationV2Identity(profile.endpointSetRevision, 'endpoint_set_revision'),
@@ -147,8 +159,9 @@ function composeBinding(credentialScopeId: CredentialScopeIdV2, credentialRevisi
   const authority = Object.freeze({
     trust: 'verified_gemini_interactions_image_provider_binding' as const,
     usage: 'runtime_capability_and_snapshot_input_only' as const, executionAuthority: 'none' as const,
-    binding, contractReference, credentialRevision,
-    assertCurrent: () => { if (!bindings.has(authority)) invalid() },
+    binding, contractReference, catalogAuthority, imagePolicy: providerSpecific.policy,
+    credentialRevision: catalogAuthority.credentialRevision,
+    assertCurrent: () => { if (!bindings.has(authority)) invalid(); catalogAuthority.assertCurrent() },
   })
   bindings.add(authority)
   return authority
@@ -163,7 +176,8 @@ function composeCapability(binding: VerifiedGeminiInteractionsImageProviderBindi
       { evidenceId: REJECTS, kind: 'contract_invariant', effect: 'rejects',
         sourceRef: 'generation-v2-gemini-interactions-reviewed-model-matrix', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(REJECTS) },
     ],
-    fields: fields(binding.binding.modelId.value), tools: [], continuation: { kind: 'none', evidenceIds: [SUPPORTS] },
+    ...projectActiveCatalogSnapshotAuthorityV2(binding.catalogAuthority),
+    fields: fields(binding.imagePolicy), tools: [], continuation: { kind: 'none', evidenceIds: [SUPPORTS] },
   })
   const snapshot = decodeRuntimeCapabilitySnapshotV2(record)
   const authority = Object.freeze({
@@ -190,8 +204,7 @@ export function readVerifiedGeminiInteractionsImageProviderBindingRecordV2(
 }
 export function withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2<T>(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
-  credentialScopeId: CredentialScopeIdV2
-  credentialRevision: number
+  modelEvidence: ActiveCatalogModelAuthorityV2
   modelId: string
   commandFacts: GenerationCommandFactsAuthorityV2
   use: (authorities: Readonly<{ binding: VerifiedGeminiInteractionsImageProviderBindingAuthorityV2;
@@ -199,7 +212,7 @@ export function withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2<T>(in
 }>): T {
   if (!isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context)) invalid()
   validateFacts(input.commandFacts, input.modelId)
-  const binding = composeBinding(input.credentialScopeId, input.credentialRevision, input.modelId)
+  const binding = composeBinding(input.modelEvidence, input.modelId)
   const capability = composeCapability(binding)
   binding.assertCurrent(); capability.assertCurrent()
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {

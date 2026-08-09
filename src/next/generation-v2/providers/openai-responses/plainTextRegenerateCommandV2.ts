@@ -20,8 +20,10 @@ export type OpenAIResponsesPlainTextRegenerateCommandV2 = Readonly<{
   schemaVersion: 1
   kind: 'openai_responses_plain_text_regenerate_question'
   operationId: Identity<'operation_id'>
-  branchId: GraphIdentity<'branch_id'>
+  clientActionId: string
+  sourceBranchId: GraphIdentity<'branch_id'>
   questionId: GraphIdentity<'question_id'>
+  sourceAnswerId: GraphIdentity<'answer_root_id'>
   expectedHeadMessageId: GraphIdentity<'message_id'>
   providerId: Identity<'provider_id'>
   endpointProfileId: Identity<'endpoint_profile_id'>
@@ -47,7 +49,7 @@ export function decodeOpenAIResponsesPlainTextRegenerateCommandV2(
 ): OpenAIResponsesPlainTextRegenerateCommandV2 {
   try {
     const keys = [
-      'operationId', 'branchId', 'questionId', 'expectedHeadMessageId', 'modelId', 'commandAttachments',
+      'operationId', 'clientActionId', 'sourceBranchId', 'questionId', 'sourceAnswerId', 'expectedHeadMessageId', 'modelId', 'commandAttachments',
     ]
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) invalid()
     const descriptors = Object.getOwnPropertyDescriptors(value)
@@ -63,21 +65,27 @@ export function decodeOpenAIResponsesPlainTextRegenerateCommandV2(
     const attachments = descriptors.commandAttachments.value
     if (!Array.isArray(attachments)) invalid()
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
-    const branchId = ConversationGraphV2Identity.create('branch_id', read('branchId'))
+    const clientActionId = read('clientActionId')
+    if (clientActionId !== operationId.value) invalid()
+    const sourceBranchId = ConversationGraphV2Identity.create('branch_id', read('sourceBranchId'))
     const questionId = ConversationGraphV2Identity.create('question_id', read('questionId'))
+    const sourceAnswerId = ConversationGraphV2Identity.create('answer_root_id', read('sourceAnswerId'))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', read('expectedHeadMessageId'))
     const modelId = GenerationV2Identity.create('model_id', read('modelId'))
     const commandAttachments = decodeOpenAIResponsesCommandAttachmentsV2(attachments)
     const projection = Object.freeze({
       schemaVersion: 1 as const, kind: 'openai_responses_plain_text_regenerate_question' as const,
-      operationId: operationId.value, branchId: branchId.value, questionId: questionId.value,
+      operationId: operationId.value, clientActionId,
+      sourceBranchId: sourceBranchId.value, questionId: questionId.value,
+      sourceAnswerId: sourceAnswerId.value,
       expectedHeadMessageId: expectedHeadMessageId.value, providerId: 'openai_responses',
       endpointProfileId: 'openai-api-v1', modelId: modelId.value,
       commandAttachments: projectOpenAIResponsesCommandAttachmentsV2(commandAttachments),
     })
     const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_JSON_BYTES)
     const command = Object.freeze({
-      ...projection, operationId, branchId, questionId, expectedHeadMessageId,
+      ...projection, operationId, clientActionId, sourceBranchId, questionId, sourceAnswerId,
+      expectedHeadMessageId,
       providerId: GenerationV2Identity.create('provider_id', 'openai_responses'),
       endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', 'openai-api-v1'),
       modelId, commandAttachments, canonicalJson,

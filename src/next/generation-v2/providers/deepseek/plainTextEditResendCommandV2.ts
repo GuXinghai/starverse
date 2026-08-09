@@ -19,8 +19,8 @@ export type DeepSeekPlainTextEditResendCommandV2 = Readonly<{
   schemaVersion: 1
   kind: 'deepseek_plain_text_edit_resend'
   operationId: Identity<'operation_id'>
-  mode: 'fork' | 'replace'
-  branchId: GraphIdentity<'branch_id'>
+  clientActionId: string
+  sourceBranchId: GraphIdentity<'branch_id'>
   sourceQuestionId: GraphIdentity<'question_id'>
   sourceAnswerRootId: GraphIdentity<'answer_root_id'>
   expectedHeadMessageId: GraphIdentity<'message_id'>
@@ -50,7 +50,7 @@ export function decodeDeepSeekPlainTextEditResendCommandV2(
 ): DeepSeekPlainTextEditResendCommandV2 {
   try {
     const keys = [
-      'operationId', 'mode', 'branchId', 'sourceQuestionId', 'sourceAnswerRootId',
+      'operationId', 'clientActionId', 'sourceBranchId', 'sourceQuestionId', 'sourceAnswerRootId',
       'expectedHeadMessageId', 'userBody', 'modelId', 'commandAttachments',
     ]
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
@@ -66,14 +66,14 @@ export function decodeDeepSeekPlainTextEditResendCommandV2(
       if (typeof field !== 'string') invalid()
       return field
     }
-    const mode = descriptors.mode.value
-    if (mode !== 'fork' && mode !== 'replace') invalid()
     const userBody = read('userBody')
     if (userBody.trim().length === 0 || new TextEncoder().encode(userBody).byteLength > MAX_BODY_BYTES) invalid()
     const attachments = descriptors.commandAttachments.value
     if (!Array.isArray(attachments) || attachments.length !== 0 || Reflect.ownKeys(attachments).length !== 1) invalid()
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
-    const branchId = ConversationGraphV2Identity.create('branch_id', read('branchId'))
+    const clientActionId = read('clientActionId')
+    if (clientActionId !== operationId.value) invalid()
+    const sourceBranchId = ConversationGraphV2Identity.create('branch_id', read('sourceBranchId'))
     const sourceQuestionId = ConversationGraphV2Identity.create('question_id', read('sourceQuestionId'))
     const sourceAnswerRootId = ConversationGraphV2Identity.create('answer_root_id', read('sourceAnswerRootId'))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', read('expectedHeadMessageId'))
@@ -82,8 +82,8 @@ export function decodeDeepSeekPlainTextEditResendCommandV2(
       schemaVersion: 1,
       kind: 'deepseek_plain_text_edit_resend',
       operationId: operationId.value,
-      mode,
-      branchId: branchId.value,
+      clientActionId,
+      sourceBranchId: sourceBranchId.value,
       sourceQuestionId: sourceQuestionId.value,
       sourceAnswerRootId: sourceAnswerRootId.value,
       expectedHeadMessageId: expectedHeadMessageId.value,
@@ -97,7 +97,8 @@ export function decodeDeepSeekPlainTextEditResendCommandV2(
     const command = Object.freeze({
       ...projection,
       operationId,
-      branchId,
+      clientActionId,
+      sourceBranchId,
       sourceQuestionId,
       sourceAnswerRootId,
       expectedHeadMessageId,
