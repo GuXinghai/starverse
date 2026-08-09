@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from 'node:child_process'
+import { randomBytes } from 'node:crypto'
 import { readFile, rm, stat, writeFile } from 'node:fs/promises'
 import os from 'node:os'
 import path from 'node:path'
@@ -21,7 +22,9 @@ const userDataRoot = path.resolve(
   defaultShortUserDataRoot()
 )
 const activeRuntimeRoot = path.join(userDataRoot, 'managed-runtimes', 'dfc-office-pdf', 'libreoffice-office-pdf')
-const docxFixturePath = path.join(userDataRoot, 'm37-docx.pdf-smoke.docx')
+const docxFixturePath = path.join(userDataRoot, 'starverse-packaged-docx-pdf-v1.docx')
+const authorityMarkerPath = path.join(userDataRoot, '.starverse-packaged-test-authority-v1.json')
+const authorityNonce = randomBytes(16).toString('hex')
 const providedExecutable = String(process.env.STARVERSE_DFC_LIBREOFFICE_PACKAGED_ELECTRON_EXE || '').trim()
 
 async function main() {
@@ -37,6 +40,20 @@ async function main() {
   await runPackageManager('npm', ['run', 'rebuild:node'], { timeoutMs: 10 * 60 * 1000 })
   await stageManagedRuntime()
   await writeFile(docxFixturePath, createMinimalDocxBuffer())
+  await writeFile(authorityMarkerPath, JSON.stringify({
+    schemaVersion: 1,
+    nonce: authorityNonce,
+    createdAtMs: Date.now(),
+    expiresAtMs: Date.now() + 10 * 60 * 1000,
+    userDataDir: userDataRoot,
+    fixture: {
+      fixtureId: 'packaged-docx-pdf-v1',
+      filename: 'starverse-packaged-docx-pdf-v1.docx',
+      mime: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      sizeBytes: 1434,
+      sha256: '7d68acb8d46422123d6bff9ca37154b7d2a05efb081eeef4491787dec90d57e4',
+    },
+  }), 'utf8')
 
   const executablePath = providedExecutable || await buildPackagedAppDir()
   if (!(await pathExists(executablePath))) fail('packaged Electron executable is missing.')
@@ -45,28 +62,24 @@ async function main() {
   try {
     electronApp = await electron.launch({
       executablePath,
-      args: [`--user-data-dir=${userDataRoot}`],
+      args: [`--user-data-dir=${userDataRoot}`, `--sv-packaged-test-authority-nonce=${authorityNonce}`],
       cwd: repoRoot,
       env: {
         ...process.env,
         NODE_ENV: 'production',
         SV_ELECTRON_SMOKE: '1',
         SV_ELECTRON_SMOKE_DFC: '1',
+        SV_PACKAGED_TEST_AUTHORITY: 'packaged_test_docx_fixture_authority_v1',
+        SV_PACKAGED_TEST_AUTHORITY_NONCE: authorityNonce,
         FORCE_COLOR: '0',
       },
       timeout: 90_000,
     })
     const page = await waitForAppWindow(electronApp, 90_000)
     await waitForMountedApp(page, 120_000)
-    await page.waitForFunction(
-      () => typeof window.__starverseElectronSmokeSeedDocxPdfAttachment === 'function',
-      undefined,
-      { timeout: 90_000 },
-    )
-
     const runtimeState = await page.evaluate(async () => {
-      const installed = await window.dbBridge.invoke('enginePluginLifecycle.listInstalledPlugins', undefined)
-      const diagnostics = await window.dbBridge.invoke('enginePluginLifecycle.getDiagnosticsSummary', undefined)
+      const installed = await window.generationV2?.plugins.listInstalled()
+      const diagnostics = await window.generationV2?.plugins.diagnostics()
       return { installed, diagnostics }
     })
     const libreOffice = Array.isArray(runtimeState.installed)
@@ -83,11 +96,35 @@ async function main() {
     if (libreOffice.productGate?.downloadEnabled !== false) fail('LibreOffice automatic download policy changed.')
     if (libreOffice.productGate?.conversionTimeDownloadEnabled !== false) fail('LibreOffice conversion-time download policy changed.')
 
-    const result = await page.evaluate(async (filePath) => {
-      const seed = window.__starverseElectronSmokeSeedDocxPdfAttachment
-      if (typeof seed !== 'function') throw new Error('DOCX PDF smoke seeder is missing')
-      return await seed(filePath)
-    }, docxFixturePath)
+    const result = await page.evaluate(async () => {
+      const unwrap = (value) => {
+        if (!value || value.ok !== true) throw new Error(value?.code ?? 'packaged_smoke_command_failed')
+        return value.value
+      }
+      const fixture = window.packagedTestDocxFixtureV1
+      const api = window.generationV2
+      if (!fixture || !api?.workspace || !api.composer) throw new Error('packaged_test_docx_fixture_authority_missing')
+      const workspace = unwrap(await api.workspace.ensureDefault())
+      let draft = unwrap(await api.composer.get(workspace.conversationId))
+      const grant = unwrap(await fixture.issueGrant())
+      draft = unwrap(await api.composer.importLocal({ conversationId: workspace.conversationId, expectedRevision: draft.revision,
+        filePath: null, selectionGrantToken: grant.selectionGrantToken }))
+      const attachment = [...draft.attachments].at(-1)
+      if (!attachment || attachment.kind !== 'managed_file') throw new Error('packaged_docx_import_missing')
+      const options = unwrap(await api.composer.dfcOptions({ conversationId: workspace.conversationId, assetId: attachment.assetId,
+        providerId: 'openrouter', operation: 'chat_completions' }))
+      const option = options.options.find((item) => item.optionId === 'dfc:pdf_attachment:v1' && item.isAvailable)
+      if (!option) throw new Error('packaged_docx_pdf_option_unavailable')
+      draft = unwrap(await api.composer.dfcSelect({ conversationId: workspace.conversationId, expectedRevision: draft.revision,
+        assetId: attachment.assetId, optionId: option.optionId, providerId: 'openrouter', operation: 'chat_completions' }))
+      const preview = unwrap(await api.composer.dfcPreview({ conversationId: workspace.conversationId, assetId: attachment.assetId, maxCharacters: 2048 }))
+      const selected = draft.attachments.find((item) => item.kind === 'managed_file' && item.assetId === attachment.assetId)
+      return { backendOwned: true, conversationId: workspace.conversationId, assetId: attachment.assetId, attachmentId: attachment.assetRevisionId,
+        optionId: option.optionId, targetKind: option.targetKind, sendStrategy: option.sendStrategy,
+        selectedAssetRefs: selected?.dfcSelection ? [{ kind: selected.dfcSelection.targetKind === 'original_file' ? 'raw_file' : 'derived_asset', assetId: selected.dfcSelection.effectiveAssetId }] : [],
+        previewKind: preview.preview.kind, previewStatus: preview.preview.status, availableTargets: options.options.filter((item) => item.isAvailable).map((item) => item.targetKind) }
+    })
+    await page.reload()
 
     assertDocxPdfResult(result)
     const previewText = await page.evaluate((assetId) => {
@@ -158,10 +195,9 @@ async function buildPackagedAppDir() {
     fail('packaged Electron executable env is required when packaged build is skipped.')
   }
   await runPackageManager('npm', ['run', 'rebuild:electron'], { timeoutMs: 10 * 60 * 1000 })
-  await runPackageManager('npm', ['run', 'build:worker'], { timeoutMs: 5 * 60 * 1000 })
   await runPackageManager('npx', ['vite', 'build', '--config', 'vite.config.ts'], { timeoutMs: 10 * 60 * 1000 })
-  await runPackageManager('npx', ['electron-builder', '--dir', '--win', '--x64', '--config', 'electron-builder.json5'], { timeoutMs: 20 * 60 * 1000 })
-  return path.join(repoRoot, 'release', packageJson.version, 'win-unpacked', 'YourAppName.exe')
+  await runPackageManager('npx', ['electron-builder', '--dir', '--win', '--x64'], { timeoutMs: 20 * 60 * 1000 })
+  return path.join(repoRoot, 'release', packageJson.version, 'win-unpacked', `${packageJson.productName}.exe`)
 }
 
 async function runPackageManager(command, args, options) {

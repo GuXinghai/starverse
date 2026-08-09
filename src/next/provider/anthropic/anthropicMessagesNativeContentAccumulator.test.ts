@@ -49,7 +49,7 @@ describe('AnthropicMessagesNativeContentAccumulator', () => {
     ])
     expect(snapshot?.model).toBe('claude-sonnet-4-5')
     expect(snapshot?.stopReason).toBe('tool_use')
-    expect(snapshot?.usage).toEqual({ output_tokens: 7 })
+    expect(snapshot?.usage).toEqual({ input_tokens: 3, output_tokens: 7 })
   })
 
   it('appends thinking deltas and writes signature to the same thinking block', () => {
@@ -80,6 +80,32 @@ describe('AnthropicMessagesNativeContentAccumulator', () => {
     expect(snapshot?.content).toEqual([
       { type: 'thinking', thinking: '', signature: 'sig_only' },
     ])
+  })
+
+  it('appends opaque signature fragments and merges cumulative usage fields', () => {
+    const accumulator = createAnthropicMessagesNativeContentAccumulator({ messageId: 'assistant_1' })
+    accumulator.ingestEvent({
+      type: 'message_start',
+      message: {
+        model: 'claude-sonnet-4-5',
+        usage: { input_tokens: 3, cache_creation_input_tokens: 2, inference_geo: 'us' },
+      },
+    })
+    accumulator.ingestEvent(start(0, { type: 'thinking', thinking: '' }))
+    accumulator.ingestEvent(delta(0, { type: 'signature_delta', signature: 'opaque-' }))
+    accumulator.ingestEvent(delta(0, { type: 'signature_delta', signature: 'signature' }))
+    accumulator.ingestEvent(stop(0))
+    accumulator.ingestEvent({ type: 'message_delta', delta: { stop_reason: 'end_turn' }, usage: { output_tokens: 7 } })
+
+    const snapshot = finalSnapshot(accumulator.ingestEvent({ type: 'message_stop' }))
+
+    expect(snapshot?.content).toEqual([{ type: 'thinking', thinking: '', signature: 'opaque-signature' }])
+    expect(snapshot?.usage).toEqual({
+      input_tokens: 3,
+      cache_creation_input_tokens: 2,
+      inference_geo: 'us',
+      output_tokens: 7,
+    })
   })
 
   it('preserves redacted_thinking blocks losslessly', () => {

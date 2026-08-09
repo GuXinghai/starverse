@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "artifactId": "openrouter-chat-api-contract-20260715",
+  "providerId": "openrouter",
+  "contractFamilyId": "openrouter-chat-api-v1",
+  "verifiedAt": "2026-07-15",
+  "openApiSha256": null,
+  "sources": [
+    "https://openrouter.ai/docs/api/reference/overview",
+    "https://openrouter.ai/docs/api/reference/authentication",
+    "https://openrouter.ai/docs/api/reference/streaming",
+    "https://openrouter.ai/docs/api/reference/errors-and-debugging",
+    "https://openrouter.ai/docs/guides/best-practices/reasoning-tokens"
+  ],
+  "reviewedFacts": {
+    "apiOrigin": "https://openrouter.ai",
+    "authorization": {
+      "kind": "header",
+      "name": "Authorization",
+      "scheme": "Bearer"
+    },
+    "chat": {
+      "method": "POST",
+      "relativePath": "/api/v1/chat/completions",
+      "requestContentType": "application/json",
+      "streamRequest": {
+        "location": "body",
+        "field": "stream",
+        "requiredValue": true
+      },
+      "streamResponse": {
+        "protocol": "data_only_sse",
+        "commentsMayAppear": true,
+        "commentPolicy": "ignore",
+        "doneSentinel": "required"
+      },
+      "continuation": {
+        "family": "ordered_native_chat_messages_with_reasoning_details_and_tools",
+        "reasoningDetailsMustRemainOrderedAndUnmodified": true,
+        "assistantToolCallsAndToolResultsMustRoundTrip": true
+      }
+    }
+  },
+  "excludedFromThisDefinition": [
+    "server web-search tool exposure policy",
+    "legacy plugins web search",
+    "online model variants",
+    "chat image modalities and image_config",
+    "endpoint profile identity and credential scope",
+    "model capability claims",
+    "request compiler, SSE decoder, persistence and transport"
+  ],
+  "notes": [
+    "The official overview documents the exact Chat URL, POST, JSON, Bearer header and stream:true.",
+    "The official response schema states that streaming usage precedes the final [DONE] message.",
+    "The official streaming guide documents SSE keepalive comments and in-band mid-stream errors.",
+    "The official reasoning guide requires complete reasoning_details blocks to be preserved in order and passed back unmodified with tool history.",
+    "No OpenAPI hash is claimed by this artifact."
+  ]
+}

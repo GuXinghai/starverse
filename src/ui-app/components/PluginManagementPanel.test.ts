@@ -220,15 +220,26 @@ function deferred<T>() {
 
 describe('PluginManagementPanel', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+  const originalGenerationV2 = (globalThis as any).generationV2
   const originalElectronApi = (globalThis as any).electronAPI
   const originalConfirm = globalThis.confirm
+  let legacyTestBridge: { invoke: (method: string, params?: unknown) => Promise<unknown> } | undefined
 
   beforeEach(() => {
     resetI18nForTests()
+    Object.defineProperty(globalThis, 'dbBridge', {
+      configurable: true,
+      get: () => legacyTestBridge,
+      set: (bridge) => {
+        legacyTestBridge = bridge
+        ;(globalThis as any).generationV2 = { plugins: pluginBridgeForPanelTest(bridge) }
+      },
+    })
   })
 
   afterEach(() => {
-    ;(globalThis as any).dbBridge = originalDbBridge
+    Object.defineProperty(globalThis, 'dbBridge', { configurable: true, writable: true, value: originalDbBridge })
+    ;(globalThis as any).generationV2 = originalGenerationV2
     ;(globalThis as any).electronAPI = originalElectronApi
     globalThis.confirm = originalConfirm
     vi.restoreAllMocks()
@@ -1526,3 +1537,20 @@ describe('PluginManagementPanel', () => {
     expect(container.textContent).not.toContain(hash)
   })
 })
+
+function pluginBridgeForPanelTest(bridge: { invoke: (method: string, params?: unknown) => Promise<unknown> }) {
+  return {
+    listOfficial: (payload?: unknown) => bridge.invoke('enginePluginLifecycle.listOfficialPlugins', payload),
+    listInstalled: () => bridge.invoke('enginePluginLifecycle.listInstalledPlugins'),
+    registerLocalOfficial: (payload: unknown) => bridge.invoke('enginePluginLifecycle.registerLocalOfficialPlugin', payload),
+    installOfficial: (payload: unknown) => bridge.invoke('enginePluginLifecycle.installOfficialPlugin', payload),
+    installStatus: (payload?: unknown) => bridge.invoke('enginePluginLifecycle.getInstallOperationStatus', payload),
+    cancelInstall: (payload?: unknown) => bridge.invoke('enginePluginLifecycle.cancelInstallOperation', payload),
+    enable: (payload: unknown) => bridge.invoke('enginePluginLifecycle.enablePlugin', payload),
+    disable: (payload: unknown) => bridge.invoke('enginePluginLifecycle.disablePlugin', payload),
+    uninstall: (payload: unknown) => bridge.invoke('enginePluginLifecycle.uninstallPlugin', payload),
+    health: (payload: unknown) => bridge.invoke('enginePluginLifecycle.runHealthCheck', payload),
+    registerLocalPackage: (payload: unknown) => bridge.invoke('enginePluginLifecycle.registerLocalPackage', payload),
+    diagnostics: () => bridge.invoke('enginePluginLifecycle.getDiagnosticsSummary'),
+  }
+}

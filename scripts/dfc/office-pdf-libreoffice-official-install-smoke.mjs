@@ -43,7 +43,7 @@ async function main() {
   await runNode([
     path.join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'),
     '--run',
-    'infra/db/worker.filePipeline.test.ts',
+    'infra/files/dfcLibreOfficePdfAdapter.real-smoke.test.ts',
     '-t',
     'real managed',
     '--reporter=dot',

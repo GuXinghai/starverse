@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  getOpenAICuratedModelAvailabilitySeeds,
   listOpenAIProviderModelAvailability,
   parseOpenAIModelsResponse,
   resolveOpenAIModelAvailabilityFromModelsPayload,
@@ -101,32 +100,8 @@ describe('OpenAI /models parser', () => {
   })
 })
 
-describe('OpenAI curated metadata seed', () => {
-  it('distinguishes curated metadata from provider-reported availability', () => {
-    const seeds = getOpenAICuratedModelAvailabilitySeeds(OBSERVED_AT_MS)
-
-    expect(seeds).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        nativeModelId: 'gpt-4.1-mini',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs: OBSERVED_AT_MS,
-        capabilitySeed: {
-          textChat: true,
-          responsesApi: true,
-          reasoning: 'unsupported',
-          imageInput: 'unknown',
-          fileInput: 'unknown',
-          functionCalling: 'unknown',
-          hostedTools: 'unknown',
-          structuredOutput: 'unknown',
-          audioInput: 'unknown',
-        },
-      }),
-    ]))
-  })
-
-  it('merges curated warnings without overriding provider-reported source confidence', () => {
+describe('OpenAI catalog authority resolution', () => {
+  it('keeps provider observations free of reviewed contract projections', () => {
     const result = resolveOpenAIModelAvailabilityFromModelsPayload({
       object: 'list',
       data: [
@@ -140,33 +115,12 @@ describe('OpenAI curated metadata seed', () => {
       source: 'openai_models_api',
       confidence: 'provider_reported',
       ownedBy: 'system',
-      capabilitySeed: {
-        textChat: true,
-        responsesApi: true,
-        reasoning: 'unsupported',
-      },
+      observation: expect.objectContaining({
+        rawProviderRecord: expect.objectContaining({ id: 'gpt-4.1-mini' }),
+        facts: expect.objectContaining({ textChat: expect.objectContaining({ presence: 'missing' }) }),
+      }),
     })
-    expect(mini?.warnings.join('\n')).toContain('/models reports availability/basic ownership')
-  })
-
-  it('seeds provider-reported reasoning-capable models from the OpenAI Responses policy', () => {
-    const result = resolveOpenAIModelAvailabilityFromModelsPayload({
-      object: 'list',
-      data: [
-        { id: 'gpt-5.4-nano', object: 'model', created: 1745875200, owned_by: 'system' },
-      ],
-    }, OBSERVED_AT_MS)
-
-    expect(result.ok).toBe(true)
-    const nano = result.ok ? result.models.find((model) => model.nativeModelId === 'gpt-5.4-nano') : null
-    expect(nano).toMatchObject({
-      capabilitySeed: {
-        textChat: true,
-        responsesApi: true,
-        reasoning: 'supported',
-        reasoningEffort: ['none', 'low', 'medium', 'high', 'xhigh'],
-      },
-    })
+    expect(mini?.warnings).toEqual([])
   })
 
   it('does not overclaim capabilities for unknown provider-reported models', () => {
@@ -184,7 +138,7 @@ describe('OpenAI curated metadata seed', () => {
       confidence: 'provider_reported',
       nativeModelId: 'unknown-openai-model',
     })
-    expect(unknown?.capabilitySeed).toBeUndefined()
+    expect(unknown?.observation?.facts.textChat).toMatchObject({ presence: 'missing' })
     expect(result.ok && result.models.some((model) => model.nativeModelId === 'gpt-4.1-mini')).toBe(false)
   })
 })
@@ -214,6 +168,15 @@ describe('OpenAI model availability network errors', () => {
       message,
       networkError: {
         safeDetailCode,
+      },
+      providerFailure: {
+        origin: 'http_response',
+        phase: 'response_headers',
+        httpStatus: status,
+        providerError: {
+          message: 'redacted',
+          rawJson: { error: { message: 'redacted' } },
+        },
       },
     })
     expect(JSON.stringify(result)).not.toContain('sk-provider-should-not-leak')

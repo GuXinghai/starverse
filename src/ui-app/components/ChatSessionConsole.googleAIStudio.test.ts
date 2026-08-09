@@ -27,6 +27,37 @@ function googleAIStudioSessionConfig() {
   }
 }
 
+function googleAvailability(modelId: string, thinking = true) {
+  return {
+    loading: false,
+    result: {
+      ok: true,
+      providerKey: 'google_ai_studio',
+      endpointId: 'google-ai-studio-official',
+      profileId: 'gemini_api_v1',
+      observedAtMs: Date.UTC(2026, 5, 25),
+      warnings: [],
+      sourceDocuments: [],
+      models: [{
+        providerKey: 'google_ai_studio',
+        endpointId: 'google-ai-studio-official',
+        profileId: 'gemini_api_v1',
+        nativeModelId: modelId,
+        source: 'gemini_models_api',
+        confidence: 'provider_reported',
+        observedAtMs: Date.UTC(2026, 5, 25),
+        warnings: [],
+        providerSpecific: {
+          thinkingOwnProperty: true,
+          thinkingRawValue: thinking,
+          thinkingRawType: typeof thinking === 'boolean' ? 'boolean' : 'missing',
+          supportedGenerationMethods: ['generateContent'],
+        },
+      }],
+    },
+  } as any
+}
+
 describe('ChatSessionConsole Google AI Studio chat controls', () => {
   it('exposes explicit experimental Google AI Studio text chat without endpoint or profile picker UI', async () => {
     const user = userEvent.setup()
@@ -87,7 +118,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
             endpointId: 'google-ai-studio-official',
             profileId: 'gemini_api_v1',
             observedAtMs: Date.UTC(2026, 5, 25),
-            warnings: ['Gemini models.list is treated as availability and capability seed.'],
+            warnings: [],
             sourceDocuments: [
               {
                 source: 'gemini_models_api_docs',
@@ -106,17 +137,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
                 source: 'gemini_models_api',
                 confidence: 'provider_reported',
                 observedAtMs: Date.UTC(2026, 5, 25),
-                warnings: ['Starverse curated Gemini capability hints are supplemental metadata.'],
-                capabilitySeed: {
-                  textChat: true,
-                  supportedGenerationMethods: ['generateContent', 'countTokens'],
-                  inputTokenLimit: 1048576,
-                  outputTokenLimit: 65536,
-                  thinking: 'supported',
-                  functionCalling: 'unknown',
-                  vision: 'unknown',
-                  structuredOutput: 'unknown',
-                },
+                warnings: [],
               },
             ],
           },
@@ -139,10 +160,8 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     expect(diagnostics.textContent).toContain('gemini-2.5-flash')
     expect(diagnostics.textContent).toContain('gemini_models_api')
     expect(diagnostics.textContent).toContain('provider_reported')
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.methods', { value: 'generateContent, countTokens' }))
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.thinking', { value: 'supported' }))
+    expect(diagnostics.textContent).toContain(t('chat.console.capability.unknown'))
     expect(diagnostics.textContent).toContain('gemini_models_api_docs')
-    expect(diagnostics.textContent).toContain('supplemental metadata')
     expect((screen.getByTestId('google-ai-studio-models-list') as HTMLDetailsElement).open).toBe(false)
 
     await user.click(screen.getByTestId('google-ai-studio-models-refresh'))
@@ -172,6 +191,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
             },
           },
         },
+        googleAIStudioModelAvailability: googleAvailability('gemini-2.5-flash'),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
@@ -191,6 +211,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
       includeThoughts: { mode: 'custom', value: true },
     }])
     expect(view.emitted('updateGenerationParamsLayer')?.[1]).toEqual([{
+      thinkingLevel: { mode: 'omit' },
       thinkingBudget: { mode: 'custom', value: 4096 },
       includeThoughts: { mode: 'custom', value: false },
     }])
@@ -204,7 +225,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         isRunning: false,
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3-pro' },
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-pro-preview' },
           generationParams: {
             detail: {
               thinkingLevel: { mode: 'custom', value: 'high' },
@@ -212,6 +233,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
             },
           },
         },
+        googleAIStudioModelAvailability: googleAvailability('gemini-3.1-pro-preview'),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
@@ -223,13 +245,57 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     expect(screen.getByTestId('session-google-thinking-level')).toHaveValue('high')
     expect(screen.queryByTestId('session-google-thinking-budget')).not.toBeInTheDocument()
 
-    await fireEvent.update(screen.getByTestId('session-google-thinking-level'), 'minimal')
+    await fireEvent.update(screen.getByTestId('session-google-thinking-level'), 'medium')
 
     expect(view.emitted('updateGenerationParamsLayer')?.[0]).toEqual([{
-      thinkingLevel: { mode: 'custom', value: 'minimal' },
+      thinkingLevel: { mode: 'custom', value: 'medium' },
+      thinkingBudget: { mode: 'omit' },
       includeThoughts: { mode: 'custom', value: true },
     }])
     expect(view.emitted('updateReasoningEffort')).toBeUndefined()
+  })
+
+  it('renders model-specific default labels and keeps Dynamic out of the level enum', () => {
+    const view = render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...googleAIStudioSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.6-flash' },
+        },
+        googleAIStudioModelAvailability: googleAvailability('gemini-3.6-flash'),
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        generationParamsResolved: null,
+      },
+    })
+
+    const level = screen.getByTestId('session-google-thinking-level')
+    expect(within(level).getByRole('option', { name: '默认（medium）' })).toBeInTheDocument()
+    expect(within(level).getByRole('option', { name: 'High（动态）' })).toBeInTheDocument()
+    expect(within(level).queryByRole('option', { name: 'Dynamic' })).not.toBeInTheDocument()
+    view.unmount()
+
+    render(ChatSessionConsole, {
+      props: {
+        disabled: false,
+        isRunning: false,
+        sessionConfig: {
+          ...googleAIStudioSessionConfig(),
+          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-pro' },
+        },
+        googleAIStudioModelAvailability: googleAvailability('gemini-2.5-pro'),
+        reasoningDisplayMode: 'inline',
+        modelCatalog: [],
+        webSearchResolved: null,
+        generationParamsResolved: null,
+      },
+    })
+    const budget = screen.getByTestId('session-google-thinking-budget-mode')
+    expect(within(budget).getByRole('option', { name: '默认（动态）' })).toBeInTheDocument()
+    expect(within(budget).queryByRole('option', { name: '关闭' })).not.toBeInTheDocument()
   })
 
   it('uses managed Gemini image thinking controls and model-specific image sizes for Nano Banana 2 Lite', async () => {

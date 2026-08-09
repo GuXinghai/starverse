@@ -155,6 +155,9 @@ export function startGenerationCore(
         },
         reasoningPanelState
       ),
+      ...(input.providerId ? { providerId: input.providerId } : {}),
+      ...(input.protocolContractId ? { protocolContractId: input.protocolContractId } : {}),
+      ...(input.model ? { modelId: input.model } : {}),
       ...(input.routeProvenanceId ? { routeProvenanceId: input.routeProvenanceId } : {}),
       ...(input.choiceIndex !== undefined ? { choiceIndex: input.choiceIndex } : {}),
     },
@@ -191,7 +194,9 @@ export function applyEventCore(
   options?: ReducerCoreOptions
 ): RootState {
   const run = state.runs[runId]
-  if (!run) return state
+  if (!run) {
+    throw new Error('STATE_EVENT_RUN_NOT_FOUND')
+  }
 
   const handler = handlers[event.type]
   return handler({

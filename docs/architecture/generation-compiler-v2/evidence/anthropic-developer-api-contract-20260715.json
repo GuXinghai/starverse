@@ -1,0 +1,53 @@
+{
+  "schemaVersion": 1,
+  "capturedAt": "2026-07-15",
+  "provider": "anthropic",
+  "officialEvidence": {
+    "apiOverview": "https://platform.claude.com/docs/en/api/overview",
+    "versioning": "https://platform.claude.com/docs/en/api/versioning",
+    "messagesCreate": "https://platform.claude.com/docs/en/api/messages/create",
+    "streamingMessages": "https://platform.claude.com/docs/en/build-with-claude/streaming",
+    "models": "https://platform.claude.com/docs/en/api/models",
+    "filesBeta": "https://platform.claude.com/docs/en/api/beta/files",
+    "filesGuide": "https://platform.claude.com/docs/en/build-with-claude/files",
+    "extendedThinking": "https://platform.claude.com/docs/en/build-with-claude/extended-thinking",
+    "effort": "https://platform.claude.com/docs/en/build-with-claude/effort",
+    "webSearch": "https://platform.claude.com/docs/en/agents-and-tools/tool-use/web-search-tool"
+  },
+  "reviewedWireFacts": {
+    "origin": "https://api.anthropic.com",
+    "apiVersionHeader": {
+      "name": "anthropic-version",
+      "value": "2023-06-01"
+    },
+    "apiKeyHeader": "x-api-key",
+    "messagesPath": "/v1/messages",
+    "modelsPaths": [
+      "/v1/models",
+      "/v1/models/{model_id}"
+    ],
+    "filesBeta": {
+      "headerName": "anthropic-beta",
+      "headerValue": "files-api-2025-04-14",
+      "paths": [
+        "/v1/files",
+        "/v1/files/{file_id}",
+        "/v1/files/{file_id}/content"
+      ]
+    }
+  },
+  "implementationBoundary": {
+    "status": "definition_only",
+    "executionAuthority": "none",
+    "legacyRuntimeImported": false,
+    "exactBodyCodecActivated": false,
+    "capabilityMatrixActivated": false,
+    "ownerBlockedField": "thinking.display",
+    "notes": [
+      "Messages, Models and Files Beta are independent typed surfaces.",
+      "The Files beta header is not a global Messages header.",
+      "Image generation and edit are not Anthropic Messages capabilities.",
+      "Unknown request patches, regex model rules and automatic max_tokens correction are not authorized."
+    ]
+  }
+}

@@ -1,7 +1,6 @@
 import {
   createProviderModelAvailabilityProvenance,
   type ProviderModelAvailabilityEnvelope,
-  type ProviderModelCapabilitySeed,
   type ProviderModelSourceKind as CommonProviderModelSourceKind,
 } from '../modelAvailabilityEnvelope'
 import {
@@ -10,9 +9,16 @@ import {
   type NetworkErrorEnvelope,
 } from '../../../shared/network/networkErrorEnvelope'
 import {
-  getOpenAIResponsesReasoningSpec,
-  isKnownOpenAIResponsesNonReasoningModel,
-} from './openaiResponsesReasoningPolicy'
+  missingProviderBooleanFactV2,
+  preserveProviderRecordV2,
+  type CatalogProviderModelObservationV2,
+} from '../../../shared/modelCatalog/providerModelObservationV2'
+import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
+import {
+  providerModelHttpFailureV2,
+  providerModelTransportFailureV2,
+  readProviderModelResponseBodyV2,
+} from '../modelCatalogFailureV2'
 
 export const OPENAI_RESPONSES_PROVIDER_KEY = 'openai_responses' as const
 export const OPENAI_RESPONSES_ENDPOINT_ID = 'openai-responses-official' as const
@@ -24,7 +30,6 @@ export const OPENAI_RESPONSES_CREATE_DOC_URL = 'https://platform.openai.com/docs
 
 export type OpenAIModelSourceKind =
   | 'openai_models_api'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 export type OpenAIProviderSpecificModelAvailability = Readonly<{
@@ -44,18 +49,7 @@ export type OpenAIProviderModelAvailability = ProviderModelAvailabilityEnvelope<
   displayName?: string
   ownedBy?: string
   createdAtSec?: number
-  capabilitySeed?: Readonly<{
-    textChat?: boolean
-    responsesApi?: boolean
-    reasoning?: 'supported' | 'unsupported' | 'unknown'
-    reasoningEffort?: ReadonlyArray<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'>
-    imageInput?: boolean | 'unknown'
-    fileInput?: boolean | 'unknown'
-    functionCalling?: boolean | 'unknown'
-    hostedTools?: boolean | 'unknown'
-    structuredOutput?: boolean | 'unknown'
-    audioInput?: boolean | 'unknown'
-  }> & ProviderModelCapabilitySeed
+  observation: CatalogProviderModelObservationV2
 }>
 
 export type OpenAIModelSourceDocument = Readonly<{
@@ -91,6 +85,7 @@ export type OpenAIModelAvailabilityFailure = Readonly<{
   message: string
   httpStatus?: number
   networkError?: NetworkErrorEnvelope
+  providerFailure?: ProviderFailureV2
 }>
 
 export type OpenAIModelAvailabilityResult =
@@ -192,16 +187,6 @@ function safeHttpErrorMessage(status: number): string {
   return `OpenAI Responses model source returned HTTP ${status}.`
 }
 
-async function readJsonSafely(response: Response): Promise<unknown> {
-  const text = await response.text()
-  if (!text.trim()) return {}
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
 function modelFromApiRecord(record: ModelRecord, observedAtMs: number): OpenAIProviderModelAvailability | null {
   const id = asTrimmedString(record.id)
   if (!id || !isValidOpenAIModelId(id)) return null
@@ -211,7 +196,23 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): OpenAIPr
 
   const ownedBy = asTrimmedString(record.owned_by) ?? undefined
   const createdAtSec = asSafeCreatedAtSec(record.created)
-  const capabilitySeed = responsesTextCapabilitySeed(id)
+  const missingFact = (path: string) => missingProviderBooleanFactV2(path)
+  const observation: CatalogProviderModelObservationV2 = {
+    schemaVersion: 2,
+    providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
+    endpointId: OPENAI_RESPONSES_ENDPOINT_ID,
+    nativeModelId: id,
+    observedAtMs,
+    rawProviderRecord: preserveProviderRecordV2(record),
+    facts: {
+      textChat: missingFact('data[].text_chat'),
+      reasoning: missingFact('data[].reasoning'),
+      tools: missingFact('data[].tools'),
+      structuredOutputs: missingFact('data[].structured_outputs'),
+      vision: missingFact('data[].vision'),
+    },
+    provenance: { sourceKind: 'provider_api', sourceLabel: 'openai_models_api', observedAtMs, parserVersion: 2 },
+  }
   return {
     ...availabilityBase({
       nativeModelId: id,
@@ -221,7 +222,7 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): OpenAIPr
     }),
     ...(ownedBy ? { ownedBy } : {}),
     ...(createdAtSec !== undefined ? { createdAtSec } : {}),
-    ...(capabilitySeed ? { capabilitySeed } : {}),
+    observation,
     providerSpecific: {
       ...(ownedBy ? { ownedBy } : {}),
       ...(createdAtSec !== undefined ? { createdAtSec } : {}),
@@ -262,90 +263,6 @@ export function parseOpenAIModelsResponse(payload: unknown, observedAtMs: number
   return { ok: true, models, warnings }
 }
 
-function curatedWarning(): string {
-  return 'OpenAI /models reports availability/basic ownership only; Responses capability hints are Starverse curated metadata.'
-}
-
-function responsesTextCapabilitySeed(modelId: string): NonNullable<OpenAIProviderModelAvailability['capabilitySeed']> | null {
-  const reasoningSpec = getOpenAIResponsesReasoningSpec(modelId)
-  const reasoning = reasoningSpec
-    ? 'supported'
-    : isKnownOpenAIResponsesNonReasoningModel(modelId)
-      ? 'unsupported'
-      : null
-  if (!reasoning) return null
-  return {
-    textChat: true,
-    responsesApi: true,
-    reasoning,
-    ...(reasoningSpec ? { reasoningEffort: reasoningSpec.efforts } : {}),
-    imageInput: 'unknown',
-    fileInput: 'unknown',
-    functionCalling: 'unknown',
-    hostedTools: 'unknown',
-    structuredOutput: 'unknown',
-    audioInput: 'unknown',
-  }
-}
-
-export function getOpenAICuratedModelAvailabilitySeeds(observedAtMs: number): OpenAIProviderModelAvailability[] {
-  const gpt41Seed = responsesTextCapabilitySeed('gpt-4.1')
-  const gpt41MiniSeed = responsesTextCapabilitySeed('gpt-4.1-mini')
-  return [
-    {
-      ...availabilityBase({
-        nativeModelId: 'gpt-4.1',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs,
-        warnings: [curatedWarning()],
-      }),
-      displayName: 'GPT-4.1',
-      ...(gpt41Seed ? { capabilitySeed: gpt41Seed } : {}),
-      providerSpecific: {},
-    },
-    {
-      ...availabilityBase({
-        nativeModelId: 'gpt-4.1-mini',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs,
-        warnings: [curatedWarning()],
-      }),
-      displayName: 'GPT-4.1 mini',
-      ...(gpt41MiniSeed ? { capabilitySeed: gpt41MiniSeed } : {}),
-      providerSpecific: {},
-    },
-  ]
-}
-
-function mergeAvailability(
-  providerReported: OpenAIProviderModelAvailability[],
-  curated: OpenAIProviderModelAvailability[],
-): OpenAIProviderModelAvailability[] {
-  const curatedById = new Map(curated.map((model) => [model.nativeModelId, model]))
-  const merged = new Map<string, OpenAIProviderModelAvailability>()
-
-  for (const providerModel of providerReported) {
-    const seed = curatedById.get(providerModel.nativeModelId)
-    merged.set(providerModel.nativeModelId, {
-      ...providerModel,
-      ...(seed?.displayName ? { displayName: seed.displayName } : {}),
-      ...(seed?.capabilitySeed ? { capabilitySeed: seed.capabilitySeed } : {}),
-      providerSpecific: {
-        ...(providerModel.providerSpecific ?? {}),
-        ...(seed?.providerSpecific ?? {}),
-      },
-      warnings: [
-        ...providerModel.warnings,
-        ...(seed?.warnings ?? []),
-      ],
-    })
-  }
-
-  return Array.from(merged.values()).sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId))
-}
-
 export function resolveOpenAIModelAvailabilityFromModelsPayload(
   payload: unknown,
   observedAtMs: number,
@@ -369,11 +286,8 @@ export function resolveOpenAIModelAvailabilityFromModelsPayload(
     endpointId: OPENAI_RESPONSES_ENDPOINT_ID,
     profileId: OPENAI_RESPONSES_PROFILE_ID,
     observedAtMs,
-    models: mergeAvailability(parsed.models, getOpenAICuratedModelAvailabilitySeeds(observedAtMs)),
-    warnings: [
-      ...parsed.warnings,
-      'OpenAI /models is treated as availability/basic ownership seed; curated metadata is supplemental and versioned by observedAtMs.',
-    ],
+    models: [...parsed.models].sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId)),
+    warnings: parsed.warnings,
     sourceDocuments: sourceDocuments(observedAtMs),
   }
 }
@@ -423,10 +337,12 @@ export async function listOpenAIProviderModelAvailability(
       code: 'network_error',
       message: providerNetworkFailureMessage('OpenAI Responses model source', networkError),
       networkError,
+      providerFailure: providerModelTransportFailureV2({ providerId: OPENAI_RESPONSES_PROVIDER_KEY,
+        contractId: 'openai-models-v1', observedAtMs, requestSequence: 1, error, credential: apiKey }),
     }
   }
 
-  const payload = await readJsonSafely(response)
+  const body = await readProviderModelResponseBodyV2(response)
   if (!response.ok) {
     const networkError = buildNetworkErrorEnvelope({
       requestPurpose: 'provider_availability',
@@ -444,8 +360,10 @@ export async function listOpenAIProviderModelAvailability(
       message: safeHttpErrorMessage(response.status),
       httpStatus: response.status,
       networkError,
+      providerFailure: providerModelHttpFailureV2({ providerId: OPENAI_RESPONSES_PROVIDER_KEY,
+        contractId: 'openai-models-v1', observedAtMs, requestSequence: 1, response, body }),
     }
   }
 
-  return resolveOpenAIModelAvailabilityFromModelsPayload(payload, observedAtMs)
+  return resolveOpenAIModelAvailabilityFromModelsPayload(body.payload, observedAtMs)
 }

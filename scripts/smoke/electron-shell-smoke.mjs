@@ -13,8 +13,8 @@ const repoRoot = path.resolve(scriptDir, '..', '..')
 const port = Number.parseInt(process.env.SV_ELECTRON_SMOKE_PORT ?? '5177', 10)
 const host = process.env.SV_ELECTRON_SMOKE_HOST ?? '127.0.0.1'
 const viteUrl = `http://${host}:${port}/`
-const appUrl = `${viteUrl}?sv-electron-smoke-dfc=1`
-const mainPath = path.join(repoRoot, 'dist-electron', 'main.js')
+const appUrl = viteUrl
+const mainPath = path.join(repoRoot, 'dist-electron', 'epoch2MainEntry.js')
 const viteConfigPath = path.join(repoRoot, 'scripts', 'smoke', 'vite.renderer-smoke.config.ts')
 const tmpRoot = path.join(os.tmpdir(), `starverse-electron-smoke-${process.pid}`)
 const artifactRoot = path.join(repoRoot, '.artifacts', 'white-screen', 'electron-smoke')
@@ -26,15 +26,73 @@ const pageErrorLogPath = path.join(artifactRoot, 'pageerror.jsonl')
 const requestFailedLogPath = path.join(artifactRoot, 'requestfailed.jsonl')
 const responseErrorLogPath = path.join(artifactRoot, 'responses-4xx-5xx.jsonl')
 const runInfoPath = path.join(artifactRoot, 'run-info.json')
-const dfcSmokeFixtureFilename = 'electron-smoke-backend-dfc.md'
+const dfcSmokeFixtureFilename = 'fixture-markdown.md'
 const dfcSmokeFixturePreviewText = 'Backend-owned DFC markdown preview from smoke fixture.'
 const dfcSmokeFixturePath = path.join(tmpRoot, dfcSmokeFixtureFilename)
-const htmlPdfSmokeFixtureFilename = 'electron-smoke-html-pdf.html'
+const htmlPdfSmokeFixtureFilename = 'fixture-html.html'
 const htmlPdfSmokeFixturePath = path.join(tmpRoot, htmlPdfSmokeFixtureFilename)
 const htmlPdfSmokeFixtureTitle = 'Electron Smoke HTML PDF'
 
 function section(title) {
   process.stdout.write(`\n${'='.repeat(80)}\n${title}\n${'='.repeat(80)}\n`)
+}
+
+async function seedV2DfcFixture(page, fixtureName, optionId) {
+  return page.evaluate(async ({ fixtureName, optionId }) => {
+    const unwrap = (result) => {
+      if (!result || result.ok !== true) throw new Error(result?.code ?? 'generation_v2_smoke_command_failed')
+      return result.value
+    }
+    const api = window.generationV2
+    if (!api?.smokeFixture || !api.composer || !api.workspace) throw new Error('generation_v2_smoke_fixture_bridge_unavailable')
+    const workspace = unwrap(await api.workspace.ensureDefault())
+    let draft = unwrap(await api.composer.get(workspace.conversationId))
+    const grant = unwrap(await api.smokeFixture.requestLocalFileGrant(fixtureName))
+    draft = unwrap(await api.composer.importLocal({
+      conversationId: workspace.conversationId,
+      expectedRevision: draft.revision,
+      filePath: grant.filePath,
+      selectionGrantToken: grant.token,
+    }))
+    const attachment = [...draft.attachments].at(-1)
+    if (!attachment || attachment.kind !== 'managed_file') throw new Error('generation_v2_smoke_import_missing_attachment')
+    const options = unwrap(await api.composer.dfcOptions({
+      conversationId: workspace.conversationId,
+      assetId: attachment.assetId,
+      providerId: 'openrouter',
+      operation: 'chat_completions',
+    }))
+    const selected = options.options.find((option) => option.optionId === optionId && option.isAvailable)
+    if (!selected) throw new Error('generation_v2_smoke_option_unavailable')
+    draft = unwrap(await api.composer.dfcSelect({
+      conversationId: workspace.conversationId,
+      expectedRevision: draft.revision,
+      assetId: attachment.assetId,
+      optionId,
+      providerId: 'openrouter',
+      operation: 'chat_completions',
+    }))
+    const preview = unwrap(await api.composer.dfcPreview({
+      conversationId: workspace.conversationId,
+      assetId: attachment.assetId,
+      maxCharacters: 2048,
+    }))
+    const persisted = draft.attachments.find((item) => item.kind === 'managed_file' && item.assetId === attachment.assetId)
+    return {
+      backendOwned: true,
+      conversationId: workspace.conversationId,
+      assetId: attachment.assetId,
+      attachmentId: attachment.assetRevisionId,
+      optionId: selected.optionId,
+      targetKind: selected.targetKind,
+      sendStrategy: selected.sendStrategy,
+      selectedAssetRefs: persisted?.dfcSelection ? [{ kind: persisted.dfcSelection.targetKind === 'original_file' ? 'raw_file' : 'derived_asset', assetId: persisted.dfcSelection.effectiveAssetId }] : [],
+      previewText: preview.preview.text,
+      previewKind: preview.preview.kind,
+      previewStatus: preview.preview.status,
+      availableTargets: options.options.filter((option) => option.isAvailable).map((option) => option.targetKind),
+    }
+  }, { fixtureName, optionId })
 }
 
 async function pathExists(filePath) {
@@ -137,156 +195,6 @@ function buildRunInfoBase() {
     mainPath: artifactLabel(mainPath),
     viteConfigPath: artifactLabel(viteConfigPath),
   }
-}
-
-async function runCompatibleE2e(page) {
-  return await page.evaluate(async () => {
-    const registry = window.compatibleProviderRegistry
-    const catalog = window.compatibleCatalog
-    const chat = window.compatibleChat
-    const db = window.dbBridge
-    if (!registry || !catalog || !chat || !db) throw new Error('compatible E2E bridges are unavailable')
-
-    const created = await registry.create({
-      displayName: 'Electron Compatible Smoke',
-      endpoint: {
-        baseUrl: 'https://compatible-smoke.example/v1',
-        securityPolicy: 'compatibility_first',
-        ordinaryHeaders: [{ name: 'X-Smoke', value: 'public', classification: 'public_non_secret' }],
-        query: [{ name: 'fixture', value: 'electron', classification: 'public_non_secret' }],
-      },
-      credential: { mode: 'none' },
-    })
-    if (!created.ok) throw new Error(`compatible provider create failed: ${created.error?.code}`)
-    const details = created.value
-    const providerInstanceId = details.provider.providerInstanceId
-    const endpoint = details.endpointRevisions[0]
-    const config = details.activeConfiguration
-    if (!endpoint || !config) throw new Error('compatible provider configuration was not persisted')
-
-    const sync = await catalog.sync({ providerInstanceId, requestId: 'compatible-smoke-catalog', force: true })
-    await catalog.upsertManual({
-      providerInstanceId,
-      modelId: 'manual-smoke-model',
-      metadata: {
-        schemaVersion: 1,
-        displayName: 'Manual Smoke Model', contextLength: 4096, maxOutputTokens: null,
-        capabilities: { text: true, vision: null, tools: null, structuredOutputs: null, reasoning: null },
-        pricing: { prompt: null, completion: null, request: null, image: null },
-      },
-    })
-    const models = await catalog.query({ providerInstanceId, limit: 20 })
-    const modelIds = models.items.map((model) => model.modelId).sort()
-    if (!modelIds.includes('smoke-model') || !modelIds.includes('manual-smoke-model')) {
-      throw new Error('compatible remote/manual catalog merge is incomplete')
-    }
-
-    const requestBundle = config.requestBundle
-    const responseProfile = config.responseProfile
-    const reasoningMapping = config.reasoningMapping
-    const inlinePolicy = config.inlinePolicy
-    const selection = {
-      providerInstanceId,
-      modelId: 'smoke-model',
-      endpointRevisionId: endpoint.endpointRevisionId,
-      credentialVersionRef: null,
-      requestProfileId: requestBundle.profile.requestProfileId,
-      requestProfileVersion: requestBundle.profile.version,
-      responseProfileId: responseProfile.responseProfileId,
-      responseProfileVersion: responseProfile.version,
-      reasoningMappingId: reasoningMapping.mappingId,
-      reasoningMappingVersion: reasoningMapping.version,
-      inlinePolicyId: inlinePolicy.inlinePolicyId,
-      inlinePolicyVersion: inlinePolicy.version,
-    }
-    const initialTemplate = await db.invoke('systemChatTemplate.get')
-    const configuredTemplate = await db.invoke('systemChatTemplate.updateConfig', {
-      templateConversationId: initialTemplate.conversation.id,
-      expectedTemplateRevision: initialTemplate.conversation.templateRevision,
-      meta: {
-        compatibleConfigurationSelection: {
-          kind: 'openai_chat_compatible_configuration', providerName: details.provider.displayName, ...selection,
-        },
-      },
-    })
-    await db.invoke('conversationDraft.updateText', {
-      conversationId: configuredTemplate.conversation.id,
-      draftText: 'smoke stream',
-      draftMode: 'compose',
-      editingSourceMessageId: null,
-    })
-    const readyTemplate = await db.invoke('systemChatTemplate.get')
-    const eligibility = await chat.preflight(selection)
-    if (!eligibility.ok || !eligibility.route) throw new Error(`compatible template preflight failed: ${eligibility.code}`)
-    const materialized = await db.invoke('systemChatTemplate.materializeAndBeginTurn', {
-      templateConversationId: readyTemplate.conversation.id,
-      expectedTemplateRevision: readyTemplate.conversation.templateRevision,
-      requestId: 'compatible-smoke-materialize',
-      compatibleRoute: { route: eligibility.route, pins: selection },
-    })
-    const visibleConversations = await db.invoke('convo.list', {})
-    const resetTemplate = await db.invoke('systemChatTemplate.get')
-    if (!visibleConversations.some((item) => item.id === materialized.convoId) ||
-        visibleConversations.some((item) => item.id === readyTemplate.conversation.id) ||
-        resetTemplate.draft.draftText !== '') {
-      throw new Error('compatible New template materialization visibility/reset contract failed')
-    }
-    const branch = { id: materialized.branchId }
-    const events = []
-    const offEvent = chat.onEvent((payload) => events.push(payload))
-    const streamed = await chat.start({
-      requestId: 'compatible-smoke-stream', selection,
-      turn: { branchId: branch.id, userBody: 'smoke stream' },
-      existingPreparedTurn: {
-        routeProvenanceId: materialized.routeProvenanceId,
-        branchId: branch.id,
-        questionId: materialized.questionId,
-        assistantId: materialized.assistantId,
-      },
-      messages: [{ role: 'user', content: 'smoke stream' }], stream: true,
-    })
-    offEvent()
-    if (!streamed.ok) throw new Error(`compatible stream failed: ${streamed.error}`)
-    if (!events.some((item) => item.event?.kind === 'choice_content')) throw new Error('compatible stream content event missing')
-    if (!events.some((item) => item.event?.kind === 'terminal')) throw new Error('compatible terminal event missing')
-
-    const routeProvenanceId = streamed.prepared.route.routeProvenanceId
-    const bundleBeforeReload = await db.invoke('compatibleProjection.loadBundle', { routeProvenanceId })
-    const persistedContent = bundleBeforeReload?.choices?.[0]?.blocks
-      ?.filter((block) => block.kind === 'content')
-      .map((block) => block.text)
-      .join('')
-    if (persistedContent !== 'smoke complete') throw new Error('compatible projection was not persisted')
-    const historical = await chat.resolveHistorical({ kind: 'route', routeProvenanceId })
-    if (!historical.ok || historical.route.providerInstanceId !== providerInstanceId || historical.route.modelId !== 'smoke-model') {
-      throw new Error('compatible historical route identity did not round-trip')
-    }
-
-    const abortPromise = chat.start({
-      requestId: 'compatible-smoke-abort', selection,
-      turn: { branchId: branch.id, userBody: 'smoke-abort' },
-      messages: [{ role: 'user', content: 'smoke-abort' }], stream: true,
-    })
-    await new Promise((resolve) => setTimeout(resolve, 50))
-    const abort = await chat.abort({ requestId: 'compatible-smoke-abort' })
-    const aborted = await abortPromise
-    if (!abort.aborted || aborted.ok || aborted.error !== 'compatible_aborted') throw new Error('compatible abort lifecycle failed')
-
-    return {
-      providerInstanceId,
-      endpointRevisionId: endpoint.endpointRevisionId,
-      modelIds,
-      catalogStatus: sync.ok ? 'ok' : sync.error?.code,
-      streamContent: persistedContent,
-      routeProvenanceId,
-      newTemplateConversationId: readyTemplate.conversation.id,
-      materializedConversationId: materialized.convoId,
-      templateHidden: true,
-      templateDraftReset: true,
-      historicalIdentity: historical.route,
-      abortCode: aborted.error,
-    }
-  })
 }
 
 function createDiagnostics() {
@@ -523,6 +431,8 @@ async function main() {
         NODE_ENV: 'development',
         VITE_DEV_SERVER_URL: appUrl,
         SV_ELECTRON_SMOKE: '1',
+        SV_EPOCH2_SMOKE_FIXTURE_AUTHORITY: '1',
+        SV_EPOCH2_SMOKE_FIXTURE_ROOT: tmpRoot,
         FORCE_COLOR: '0',
       },
       timeout: 60_000,
@@ -542,7 +452,7 @@ async function main() {
         rawIpcRendererExposed: Object.prototype.hasOwnProperty.call(w, 'ipcRenderer'),
         electronAPIExposed: typeof w.electronAPI === 'object' && w.electronAPI !== null,
         electronStoreExposed: typeof w.electronStore === 'object' && w.electronStore !== null,
-        dbBridgeExposed: typeof w.dbBridge === 'object' && w.dbBridge !== null,
+        generationV2Exposed: typeof w.generationV2 === 'object' && w.generationV2 !== null,
       }
     })
 
@@ -552,29 +462,7 @@ async function main() {
     if (result.rawIpcRendererExposed) throw new Error('raw ipcRenderer is exposed to renderer')
     if (!result.electronAPIExposed) throw new Error('electronAPI scoped preload object is missing')
     if (!result.electronStoreExposed) throw new Error('electronStore scoped preload object is missing')
-    if (!result.dbBridgeExposed) throw new Error('dbBridge scoped preload object is missing')
-
-    if (process.env.SV_ELECTRON_COMPATIBLE_E2E === '1') {
-      section('Assert OpenAI-compatible Electron end-to-end journey')
-      const compatible = await runCompatibleE2e(page)
-      console.log(JSON.stringify(compatible, null, 2))
-      await page.reload({ waitUntil: 'domcontentloaded' })
-      await waitForMountedApp(page, 120_000)
-      const reloaded = await page.evaluate(async (routeProvenanceId) => {
-        return await window.dbBridge.invoke('compatibleProjection.loadBundle', { routeProvenanceId })
-      }, compatible.routeProvenanceId)
-      const reloadedContent = reloaded?.choices?.[0]?.blocks
-        ?.filter((block) => block.kind === 'content')
-        .map((block) => block.text)
-        .join('')
-      if (reloadedContent !== 'smoke complete') throw new Error('compatible projection did not survive renderer reload')
-      await writeRunInfo({
-        status: 'passed', completedAt: new Date().toISOString(), ...buildRunInfoBase(),
-        mode: 'compatible-e2e', selectedPage: await describePage(page), assertions: result, compatible,
-      })
-      console.log('\nPASS: OpenAI-compatible Electron E2E completed')
-      return
-    }
+    if (!result.generationV2Exposed) throw new Error('generationV2 scoped preload object is missing')
 
     if (process.env.SV_ELECTRON_SHELL_ONLY === '1') {
       await writeRunInfo({
@@ -586,22 +474,14 @@ async function main() {
     }
 
     section('Assert DFC attachment smoke seam')
-    await page.waitForFunction(
-      () => typeof window.__starverseElectronSmokeSeedDfcAttachment === 'function',
-      undefined,
-      { timeout: 60_000 },
-    )
-    const seedResult = await page.evaluate(async (filePath) => {
-      const seed = window.__starverseElectronSmokeSeedDfcAttachment
-      if (typeof seed !== 'function') throw new Error('DFC smoke backend seeder is missing')
-      return await seed(filePath)
-    }, dfcSmokeFixturePath)
+    const seedResult = await seedV2DfcFixture(page, 'markdown', 'dfc:markdown:v1')
     console.log(JSON.stringify(seedResult, null, 2))
 
     if (!seedResult.backendOwned) throw new Error('DFC smoke did not use backend-owned seeding')
     if (!seedResult.assetId || seedResult.assetId === 'asset-dfc-smoke') throw new Error('DFC smoke asset id was not backend-created')
     if (!seedResult.optionId || !seedResult.optionId.includes(':markdown:')) throw new Error('DFC smoke markdown option was not backend-owned')
 
+    await page.reload()
     await page.waitForSelector(`[data-testid="draft-attachment-card-${seedResult.assetId}"]`, { timeout: 60_000 })
     await page.click(`[data-testid="draft-attachment-card-${seedResult.assetId}"]`)
     await page.waitForSelector('[data-testid="draft-attachment-details-dialog"]', { timeout: 60_000 })
@@ -624,16 +504,9 @@ async function main() {
     await page.waitForSelector('[data-testid="draft-attachment-details-dialog"]', { state: 'detached', timeout: 60_000 })
 
     section('Assert HTML PDF Electron conversion smoke seam')
-    await page.waitForFunction(
-      () => typeof window.__starverseElectronSmokeSeedHtmlPdfAttachment === 'function',
-      undefined,
-      { timeout: 60_000 },
-    )
-    const htmlPdfSeedResult = await page.evaluate(async (filePath) => {
-      const seed = window.__starverseElectronSmokeSeedHtmlPdfAttachment
-      if (typeof seed !== 'function') throw new Error('HTML PDF smoke backend seeder is missing')
-      return await seed(filePath)
-    }, htmlPdfSmokeFixturePath)
+    const htmlPdfSeedResult = await seedV2DfcFixture(page, 'html', 'dfc:pdf_attachment:v1')
+    await page.reload()
+    await page.waitForSelector(`[data-testid="draft-attachment-card-${seedResult.assetId}"]`, { timeout: 60_000 })
     console.log(JSON.stringify(htmlPdfSeedResult, null, 2))
 
     if (!htmlPdfSeedResult.backendOwned) throw new Error('HTML PDF smoke did not use backend-owned seeding')

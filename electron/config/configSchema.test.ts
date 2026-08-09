@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 
 import { checkConfigIntegrity, validateAndCleanConfig } from './configSchema'
+import {
+  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX,
+  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
+} from '../credentials/openAICompatibleCredentialV2Service'
 
 describe('configSchema provider credential secure-store keys', () => {
   it('keeps network proxy policy during config cleanup', () => {
@@ -69,7 +73,7 @@ describe('configSchema provider credential secure-store keys', () => {
   })
 
   it('keeps versioned compatible credential ciphertext records during cleanup and integrity checks', () => {
-    const key = 'compatibleCredentials.v1.ocp_credential_12345678'
+    const key = `${OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX}ocp_credential_12345678`
     const record = {
       version: 1,
       credentialVersionRef: 'ocp_credential_12345678',
@@ -77,11 +81,13 @@ describe('configSchema provider credential secure-store keys', () => {
       ciphertextBase64: 'encrypted',
       createdAtMs: 1,
     }
-    const compatibleCredentials = { v1: { ocp_credential_12345678: record } }
-    const result = validateAndCleanConfig({ configVersion: 2, compatibleCredentials, [key]: record, unknown: true })
-    expect(result.cleaned.compatibleCredentials).toEqual(compatibleCredentials)
+    const compatibleCredentials = { v2: { ocp_credential_12345678: record } }
+    const result = validateAndCleanConfig({ configVersion: 2,
+      [OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT]: compatibleCredentials, [key]: record, unknown: true })
+    expect(result.cleaned[OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT]).toEqual(compatibleCredentials)
     expect(result.cleaned[key]).toEqual(record)
     expect(result.removed.map((item) => item.key)).toEqual(['unknown'])
-    expect(checkConfigIntegrity({ store: { configVersion: 2, compatibleCredentials } })).toEqual({ ok: true })
+    expect(checkConfigIntegrity({ store: { configVersion: 2,
+      [OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT]: compatibleCredentials } })).toEqual({ ok: true })
   })
 })

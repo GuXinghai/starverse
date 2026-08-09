@@ -18,6 +18,7 @@ import type {
   CompatibleReasoningControlState,
   CompatibleRequestMessage,
 } from './messageTypes'
+import type { CompatibleReasoningReplayPolicy } from '../reasoning/reasoningTypes'
 
 export type CompatibleStandardFieldName =
   | 'temperature' | 'top_p' | 'max_tokens' | 'max_completion_tokens' | 'stop' | 'seed'
@@ -31,6 +32,16 @@ export type CompatibleRequestBuildResult = Readonly<{
   serialized: string
   diagnostics: readonly CompatibleOwnedPath[]
   choiceCount: number
+}>
+
+/**
+ * Immutable native-history facts. These are never user extraBody patches:
+ * their one permitted wire shape is selected by a frozen response mapping.
+ */
+export type CompatibleHistoryReasoningReplay = Readonly<{
+  assistantMessageIndex: number
+  reasoning: string
+  hasCompleteToolChain: boolean
 }>
 
 const STANDARD_FIELDS: readonly CompatibleStandardFieldName[] = [
@@ -71,6 +82,10 @@ export function buildCompatibleChatRequest(input: Readonly<{
   reasoningControls?: CompatibleReasoningControlState
   requestMappings?: readonly CompatibleRequestFieldMappingConfig[]
   extraBody?: CompatibleJsonValue
+  historyReasoningReplay?: Readonly<{
+    policy: CompatibleReasoningReplayPolicy
+    entries: readonly CompatibleHistoryReasoningReplay[]
+  }>
 }>): CompatibleRequestBuildResult {
   const model = compatibleModelIdSchema.parse(input.modelId)
   const profile = compatibleRequestProfileConfigSchema.parse(input.profile)
@@ -91,7 +106,7 @@ export function buildCompatibleChatRequest(input: Readonly<{
   if (input.reasoningControls && Object.keys(input.reasoningControls).some((key) => !reasoningKeys.includes(key as typeof reasoningKeys[number]))) {
     throw new Error('compatible_request_mapping_invalid')
   }
-  const messages = validateMessages(input.messages)
+  const messages = applyHistoryReasoningReplay(validateMessages(input.messages), input.historyReasoningReplay)
   const body: Record<string, CompatibleJsonValue> = { model, messages: messages as unknown as CompatibleJsonValue, stream: input.stream }
   const diagnostics: CompatibleOwnedPath[] = [
     owned(['model'], 'builder', 'explicit'), owned(['messages'], 'builder', 'explicit'), owned(['stream'], 'builder', 'explicit'),
@@ -171,6 +186,35 @@ export function buildCompatibleChatRequest(input: Readonly<{
     diagnostics: Object.freeze(diagnostics.map((entry) => Object.freeze({ ...entry, path: Object.freeze([...entry.path]) }))),
     choiceCount: typeof validated.n === 'number' ? validated.n : 1,
   })
+}
+
+function applyHistoryReasoningReplay(messages: readonly CompatibleRequestMessage[], input: Readonly<{
+  policy: CompatibleReasoningReplayPolicy
+  entries: readonly CompatibleHistoryReasoningReplay[]
+}> | undefined): readonly CompatibleJsonValue[] {
+  if (!input) return messages as unknown as readonly CompatibleJsonValue[]
+  const seen = new Set<number>()
+  const result = messages.map((message) => ({ ...message })) as Array<Record<string, CompatibleJsonValue>>
+  for (const entry of input.entries) {
+    if (!Number.isSafeInteger(entry.assistantMessageIndex) || entry.assistantMessageIndex < 0 || entry.assistantMessageIndex >= result.length ||
+        seen.has(entry.assistantMessageIndex) || typeof entry.reasoning !== 'string' || entry.reasoning.length > 1_000_000 ||
+        typeof entry.hasCompleteToolChain !== 'boolean') throw new Error('compatible_history_replay_invalid')
+    seen.add(entry.assistantMessageIndex)
+    if (!entry.reasoning || input.policy.format === 'disabled' ||
+        input.policy.scope === 'tool_call_chain_only' && !entry.hasCompleteToolChain) continue
+    const assistant = result[entry.assistantMessageIndex]!
+    if (assistant.role !== 'assistant') throw new Error('compatible_history_replay_invalid')
+    if (input.policy.format === 'assistant_field') {
+      if (['role', 'content', 'tool_calls'].includes(input.policy.field) || Object.prototype.hasOwnProperty.call(assistant, input.policy.field)) {
+        throw new Error('compatible_history_replay_invalid')
+      }
+      assistant[input.policy.field] = entry.reasoning
+    } else {
+      if (assistant.content === null || typeof assistant.content !== 'string') throw new Error('compatible_history_replay_invalid')
+      assistant.content = `${input.policy.openTag}${entry.reasoning}${input.policy.closeTag}${assistant.content}`
+    }
+  }
+  return Object.freeze(result.map((message) => Object.freeze(message))) as unknown as readonly CompatibleJsonValue[]
 }
 
 function owned(path: readonly (string | number)[], owner: CompatibleOwnedPath['owner'], state: CompatibleOwnedPath['state']): CompatibleOwnedPath {

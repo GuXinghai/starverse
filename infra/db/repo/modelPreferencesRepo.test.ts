@@ -1,12 +1,11 @@
 import { describe, expect, it } from 'vitest'
 import BetterSqlite3 from 'better-sqlite3'
-import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { ModelPreferencesRepo } from './modelPreferencesRepo'
+import { applyGenerationV2SchemaForTest } from '../v2/testSchemaV2'
 
 function loadSchema(db: BetterSqlite3.Database) {
-  const schemaPath = path.resolve(process.cwd(), 'infra', 'db', 'schema.sql')
-  db.exec(readFileSync(schemaPath, 'utf8'))
+  applyGenerationV2SchemaForTest(db, path.resolve(process.cwd()))
 }
 
 describe('ModelPreferencesRepo', () => {

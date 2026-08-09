@@ -43,6 +43,8 @@ const {
   onCreateConvo,
   onResetSystemTemplate,
   refreshConvos,
+  loadMoreConvos,
+  hasMoreConversations,
   onRenameConvo,
   onDeleteConvo,
   onMoveConvoToProject,
@@ -56,7 +58,13 @@ const {
   runVM,
   isRunning,
   activeTitle,
+  branches,
+  hasMoreBranches,
+  activeBranchId,
   activeBranch,
+  onSelectBranch,
+  loadMoreBranches,
+  getBranchRuntimeStatus,
   reasoningDisplayMode,
   reasoningPanelDefaultExpanded,
   reasoningPanelAutoCollapseAfterReasoning,
@@ -69,6 +77,8 @@ const {
   normalizedErrorActionHint,
   transcriptMessageIds,
   transcriptMessagesById,
+  hasEarlierTranscript,
+  loadEarlierTranscript,
   getReasoningArtifactsForMessage,
   activeCursorMessageId,
   isTurnExcludedForMessage,
@@ -88,8 +98,7 @@ const {
   onRegenerateFromQuestion,
   openQuestionEdit,
   getQuestionPagerForQuestion,
-  isQuestionSlotLoadingForQuestion,
-  onQuestionCandidateShift,
+  onMessageCandidateShift,
   isAnswerRootMessage,
   getAssistantVisibleText,
   copyAssistantMessage,
@@ -101,8 +110,7 @@ const {
   onRetryReplaceAnswer,
   onRetryAnswerAsNew,
   getCandidatePager,
-  candidatesLoading,
-  onCandidateShift,
+  isMessageCandidateLoading,
   lastAssistantReasoningView,
   lastAssistantReasoningVersion,
   lastAssistantIsStreaming,
@@ -161,6 +169,12 @@ const {
   modelPrefsScopeForUi,
   activeSessionGenerationParamsResolved,
   activeSessionWebSearchResolved,
+  openRouterImageEndpointSelection,
+  openRouterImageEndpointSelectionLoading,
+  openRouterImageEndpointSelectionError,
+  refreshOpenRouterImageEndpointSelection,
+  chooseOpenRouterImageEndpoint,
+  updateOpenRouterImageEndpointFreshness,
   onUpdateModel,
   onUpdateReasoningEnabled,
   onUpdateReasoningEffortLevel,
@@ -187,6 +201,7 @@ const {
   onUpdateOllamaChatMode,
   onUpdateOllamaNativeRestPreferredEndpoint,
   onUpdateOllamaOpenAICompatiblePreferredEndpoint,
+  onUpdateOllamaProfileCapability,
   onUpdateOllamaNativeControl,
   onClearOllamaChat,
   onUpdateLocalEndpointChatEnabled,
@@ -195,11 +210,11 @@ const {
   onUpdateOpenAIResponsesChatEnabled,
   onClearOpenAIResponsesChat,
   onRefreshOpenAIResponsesModels,
-  onRefreshProviderModelPickerSources,
   onUpdateGoogleAIStudioChatEnabled,
   onClearGoogleAIStudioChat,
   onRefreshGoogleAIStudioModels,
   onUpdateAnthropicChatEnabled,
+  onUpdateAnthropicThinkingDisplay,
   onClearAnthropicChat,
   onRefreshAnthropicModels,
   onUpdateDeepSeekChatEnabled,
@@ -229,7 +244,6 @@ const {
   closeAttachmentUrlDialog,
   submitAttachmentUrl,
   onSend,
-  compatibleRunning,
   onAbort,
   settingsOpen,
   openSettings,
@@ -249,14 +263,13 @@ const {
   isQuestionEditMode,
   closeQuestionEdit,
   submitQuestionEdit,
-  canReplaceQuestionInUi,
   pendingDeleteQuestionId,
   requestDeleteQuestion,
   cancelDeleteQuestion,
   confirmDeleteQuestion,
   onOpenReasoningDisplayForMessage,
 } = useAppChatAppLogic()
-const effectiveIsRunning = computed(() => isRunning.value || compatibleRunning.value)
+const effectiveIsRunning = computed(() => isRunning.value)
 const templateResetOpen = ref(false)
 const resetTemplateModelConfig = ref(true)
 const resetTemplateDraftAttachments = ref(true)
@@ -314,10 +327,17 @@ type RawRequestRecord = Readonly<{
   id: string; requestSequence: number; providerId: string; modelId: string
   serializedBody: string; bodyBytes: number; bodySha256: string; capturedAtMs: number
 }>
+type RawProviderErrorRecord = Readonly<{
+  id: string; requestSequence: number; providerId: string; modelId: string
+  phase: 'http_response' | 'sse_event'; httpStatus: number; contentType: string | null
+  providerRequestId: string | null; payloadBase64: string; payloadText: string | null
+  payloadBytes: number; payloadSha256: string; capturedAtMs: number
+}>
 const rawDataOpen = ref(false)
 const rawDataLoading = ref(false)
 const rawDataAnswerRootId = ref('')
 const rawDataRecords = ref<readonly RawRequestRecord[]>([])
+const rawProviderErrorRecords = ref<readonly RawProviderErrorRecord[]>([])
 const rawDataError = ref<string | null>(null)
 
 async function openRawData(answerRootId: string) {
@@ -332,9 +352,13 @@ async function openRawData(answerRootId: string) {
     if (!status.available || !status.schemaReady) {
       throw new Error(status.errorCode ?? 'RAW_DEBUG_STORE_UNAVAILABLE')
     }
-    rawDataRecords.value = await debugBridge.listByAnswerRootId(answerRootId)
+    ;[rawDataRecords.value, rawProviderErrorRecords.value] = await Promise.all([
+      debugBridge.listByAnswerRootId(answerRootId),
+      debugBridge.listProviderErrorsByAnswerRootId(answerRootId),
+    ])
   } catch (error) {
     rawDataRecords.value = []
+    rawProviderErrorRecords.value = []
     rawDataError.value = error instanceof Error ? error.message : String(error)
   } finally {
     rawDataLoading.value = false
@@ -344,6 +368,10 @@ async function openRawData(answerRootId: string) {
 function closeRawData() { rawDataOpen.value = false }
 function formatRawRequestBody(body: string): string {
   try { return JSON.stringify(JSON.parse(body), null, 2) } catch { return body }
+}
+function formatRawProviderError(record: RawProviderErrorRecord): string {
+  if (record.payloadText === null) return record.payloadBase64
+  try { return JSON.stringify(JSON.parse(record.payloadText), null, 2) } catch { return record.payloadText }
 }
 </script>
 
@@ -355,7 +383,7 @@ function formatRawRequestBody(body: string): string {
       :convos="searchConvoOptions"
       :activeProjectId="activeProjectId"
       :activeConvoId="activeConvoId"
-      :disabled="!isReady || isRunning || isDraftInteractionLocked"
+      :disabled="!isReady || isDraftInteractionLocked"
       @close="closeSearchModal"
       @select="onSelectSearchHit"
     />
@@ -371,7 +399,8 @@ function formatRawRequestBody(body: string): string {
           :activeProjectId="activeProjectId"
           :inboxId="inboxId"
           :projects="projectListItems"
-          :disabled="!isReady || isRunning || isDraftInteractionLocked"
+          :disabled="!isReady || isDraftInteractionLocked"
+          :hasMore="hasMoreConversations"
           @openSearch="openSearchModal"
           @selectProject="onSelectProject"
           @openProjectSettings="onOpenProjectWebSearchSettings"
@@ -381,6 +410,7 @@ function formatRawRequestBody(body: string): string {
           @select="onSelectConvo"
           @create="onCreateConvo"
           @refresh="refreshConvos"
+          @loadMore="loadMoreConvos"
           @rename="onRenameConvo"
           @delete="onDeleteConvo"
           @moveToProject="onMoveConvoToProject"
@@ -404,6 +434,38 @@ function formatRawRequestBody(body: string): string {
           @openSettings="openSettings"
           @toggleConsolePanel="toggleConsolePanel"
         />
+        <div
+          v-if="workspaceMode !== 'none' && (branches.length > 1 || hasMoreBranches)"
+          class="border-b border-gray-100 px-3 pb-2"
+        >
+          <div class="flex items-center gap-2">
+          <label class="flex min-w-0 flex-1 items-center gap-2 text-xs text-gray-600">
+            <span>{{ t('chat.topBar.branch') }}</span>
+            <select
+              :value="activeBranchId ?? ''"
+              :disabled="!isReady"
+              class="min-w-0 flex-1 rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-800"
+              data-testid="branch-selector"
+              @change="onSelectBranch(($event.target as HTMLSelectElement).value)"
+            >
+              <option v-for="branch in branches" :key="branch.id" :value="branch.id">
+                {{ branch.name?.trim() || branch.id.slice(0, 8) }}
+                {{ getBranchRuntimeStatus(branch.id) ? ` · ${getBranchRuntimeStatus(branch.id)}` : '' }}
+              </option>
+            </select>
+          </label>
+          <button
+            v-if="hasMoreBranches"
+            type="button"
+            class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!isReady"
+            data-testid="branch-load-more"
+            @click="loadMoreBranches"
+          >
+            {{ t('chat.pagination.loadMore') }}
+          </button>
+          </div>
+        </div>
         <div v-if="workspaceMode === 'template'" class="relative px-3 pb-2">
           <button type="button" class="rounded border border-gray-200 bg-white px-2 py-1 text-xs text-gray-700" data-testid="new-template-reset-open" @click="templateResetOpen = !templateResetOpen">
             {{ t('chat.newTemplate.reset') }}
@@ -420,6 +482,20 @@ function formatRawRequestBody(body: string): string {
       </template>
 
       <template #transcript>
+        <div
+          v-if="workspaceMode !== 'none' && hasEarlierTranscript"
+          class="flex justify-center border-b border-gray-100 bg-white px-3 py-2"
+        >
+          <button
+            type="button"
+            class="rounded border border-gray-200 bg-white px-3 py-1 text-xs text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            :disabled="!isReady"
+            data-testid="transcript-load-earlier"
+            @click="loadEarlierTranscript"
+          >
+            {{ t('chat.pagination.loadEarlier') }}
+          </button>
+        </div>
         <ChatTranscript
           v-if="workspaceMode !== 'none'"
           :messageIds="transcriptMessageIds"
@@ -548,13 +624,11 @@ function formatRawRequestBody(body: string): string {
                       type="button"
                       class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       :disabled="
-                        activeAssistantMessageId != null ||
-                        isQuestionSlotLoadingForQuestion(message.messageId) ||
-                        !getQuestionPagerForQuestion(message.messageId)?.canPrev ||
-                        isAnswerGroupStreamingForQuestion(message.messageId)
+                        isMessageCandidateLoading(message.messageId) ||
+                        !getQuestionPagerForQuestion(message.messageId)?.canPrev
                       "
                       :data-testid="`qvar-prev-${message.messageId}`"
-                      @click="onQuestionCandidateShift(message.messageId, -1)"
+                      @click="onMessageCandidateShift(message.messageId, -1)"
                     >
                       &lt;
                     </button>
@@ -567,13 +641,11 @@ function formatRawRequestBody(body: string): string {
                       type="button"
                       class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       :disabled="
-                        activeAssistantMessageId != null ||
-                        isQuestionSlotLoadingForQuestion(message.messageId) ||
-                        !getQuestionPagerForQuestion(message.messageId)?.canNext ||
-                        isAnswerGroupStreamingForQuestion(message.messageId)
+                        isMessageCandidateLoading(message.messageId) ||
+                        !getQuestionPagerForQuestion(message.messageId)?.canNext
                       "
                       :data-testid="`qvar-next-${message.messageId}`"
-                      @click="onQuestionCandidateShift(message.messageId, 1)"
+                      @click="onMessageCandidateShift(message.messageId, 1)"
                     >
                       &gt;
                     </button>
@@ -667,37 +739,33 @@ function formatRawRequestBody(body: string): string {
                   >
                     {{ t('chat.message.actions.retryAsNew') }}
                   </button>
-                  <div v-if="(getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.total ?? 0) > 1" class="ml-auto flex items-center gap-1 text-gray-600">
+                  <div v-if="(getCandidatePager(message.messageId)?.total ?? 0) > 1" class="ml-auto flex items-center gap-1 text-gray-600">
                     <button
                       type="button"
                       class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       :disabled="
-                        activeAssistantMessageId != null ||
-                        candidatesLoading.has(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
-                        !getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.canPrev ||
-                        isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!)
+                        isMessageCandidateLoading(message.messageId) ||
+                        !getCandidatePager(message.messageId)?.canPrev
                       "
                       :data-testid="`cand-prev-${chosenQuestionIdForAnswerRootMessage(message.messageId)!}`"
-                      @click="onCandidateShift(chosenQuestionIdForAnswerRootMessage(message.messageId)!, -1)"
+                      @click="onMessageCandidateShift(message.messageId, -1)"
                     >
                       &lt;
                     </button>
                     <div :data-testid="`cand-pos-${chosenQuestionIdForAnswerRootMessage(message.messageId)!}`" class="min-w-[48px] text-center">
                       {{
-                        `${(getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.index ?? 0) + 1}/${getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.total ?? 1}`
+                        `${(getCandidatePager(message.messageId)?.index ?? 0) + 1}/${getCandidatePager(message.messageId)?.total ?? 1}`
                       }}
                     </div>
                     <button
                       type="button"
                       class="rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                       :disabled="
-                        activeAssistantMessageId != null ||
-                        candidatesLoading.has(chosenQuestionIdForAnswerRootMessage(message.messageId)!) ||
-                        !getCandidatePager(chosenQuestionIdForAnswerRootMessage(message.messageId)!)?.canNext ||
-                        isAnswerGroupStreamingForQuestion(chosenQuestionIdForAnswerRootMessage(message.messageId)!)
+                        isMessageCandidateLoading(message.messageId) ||
+                        !getCandidatePager(message.messageId)?.canNext
                       "
                       :data-testid="`cand-next-${chosenQuestionIdForAnswerRootMessage(message.messageId)!}`"
-                      @click="onCandidateShift(chosenQuestionIdForAnswerRootMessage(message.messageId)!, 1)"
+                      @click="onMessageCandidateShift(message.messageId, 1)"
                     >
                       &gt;
                     </button>
@@ -832,18 +900,9 @@ function formatRawRequestBody(body: string): string {
                 class="rounded border border-gray-200 bg-white px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                 :disabled="isDraftInteractionLocked || isRunning || draft.trim().length === 0"
                 data-testid="question-edit-new"
-                @click="submitQuestionEdit('new')"
+                @click="submitQuestionEdit()"
               >
                 {{ t('chat.message.actions.newQuestion') }}
-              </button>
-              <button
-                type="button"
-                class="rounded border border-amber-300 bg-amber-50 px-3 py-1.5 text-sm text-amber-900 hover:bg-amber-100 disabled:opacity-50"
-                :disabled="isDraftInteractionLocked || isRunning || draft.trim().length === 0 || !canReplaceQuestionInUi(questionEditSession.questionId)"
-                data-testid="question-edit-replace"
-                @click="submitQuestionEdit('replace')"
-              >
-                {{ t('chat.message.actions.replaceQuestion') }}
               </button>
             </div>
           </div>
@@ -869,8 +928,8 @@ function formatRawRequestBody(body: string): string {
             :isSendPlanLoading="composerSendPlanLoading"
             :historyIncompatibleSummary="historyIncompatibleAttachmentSummary"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
+            :googleAIStudioModelAvailability="googleAIStudioModelAvailabilityStatus"
             @updateModel="onUpdateModel"
-            @refreshProviderModelsRequested="onRefreshProviderModelPickerSources"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
             @updateGenerationParamsLayer="onComposerUpdateGenerationParamsLayer"
@@ -933,6 +992,9 @@ function formatRawRequestBody(body: string): string {
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
+            :openRouterImageEndpointSelection="openRouterImageEndpointSelection"
+            :openRouterImageEndpointSelectionLoading="openRouterImageEndpointSelectionLoading"
+            :openRouterImageEndpointSelectionError="openRouterImageEndpointSelectionError"
             @updateModel="onUpdateModel"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
@@ -944,6 +1006,9 @@ function formatRawRequestBody(body: string): string {
             @updateImageGenerationResolution="onUpdateImageGenerationResolution"
             @updateImageGenerationAspectRatio="onUpdateImageGenerationAspectRatio"
             @updateImageGeneration="onUpdateImageGeneration"
+            @refreshOpenRouterImageEndpoints="refreshOpenRouterImageEndpointSelection"
+            @selectOpenRouterImageEndpoint="chooseOpenRouterImageEndpoint"
+            @updateOpenRouterImageEndpointFreshness="updateOpenRouterImageEndpointFreshness"
             @updateOpenRouterChatEnabled="onUpdateOpenRouterChatEnabled"
             @updateLMStudioChatEnabled="onUpdateLMStudioChatEnabled"
             @updateLMStudioEndpointUrl="onUpdateLMStudioEndpointUrl"
@@ -956,6 +1021,7 @@ function formatRawRequestBody(body: string): string {
             @updateOllamaChatMode="onUpdateOllamaChatMode"
             @updateOllamaNativeRestPreferredEndpoint="onUpdateOllamaNativeRestPreferredEndpoint"
             @updateOllamaOpenAICompatiblePreferredEndpoint="onUpdateOllamaOpenAICompatiblePreferredEndpoint"
+            @updateOllamaProfileCapability="onUpdateOllamaProfileCapability"
             @updateOllamaNativeControl="onUpdateOllamaNativeControl"
             @clearOllamaChat="onClearOllamaChat"
             @updateLocalEndpointChatEnabled="onUpdateLocalEndpointChatEnabled"
@@ -968,6 +1034,7 @@ function formatRawRequestBody(body: string): string {
             @clearGoogleAIStudioChat="onClearGoogleAIStudioChat"
             @refreshGoogleAIStudioModels="onRefreshGoogleAIStudioModels"
             @updateAnthropicChatEnabled="onUpdateAnthropicChatEnabled"
+            @updateAnthropicThinkingDisplay="onUpdateAnthropicThinkingDisplay"
             @clearAnthropicChat="onClearAnthropicChat"
             @refreshAnthropicModels="onRefreshAnthropicModels"
             @updateDeepSeekChatEnabled="onUpdateDeepSeekChatEnabled"
@@ -1062,7 +1129,13 @@ function formatRawRequestBody(body: string): string {
       </div>
     </div>
 
-    <SettingsModal :open="settingsOpen" :disabled="!isReady" :isRunning="effectiveIsRunning" @close="closeSettings">
+    <SettingsModal
+      :open="settingsOpen"
+      :disabled="!isReady"
+      :isRunning="effectiveIsRunning"
+      variant="categorized"
+      @close="closeSettings"
+    >
       <SettingsPanel :disabled="!isReady" :isRunning="effectiveIsRunning" />
     </SettingsModal>
 
@@ -1122,7 +1195,7 @@ function formatRawRequestBody(body: string): string {
       <div class="flex max-h-[90vh] w-full max-w-5xl flex-col rounded-lg bg-white shadow-xl">
         <div class="flex items-center justify-between border-b px-4 py-3">
           <div>
-            <div class="font-semibold">Raw Request Data</div>
+            <div class="font-semibold">Raw Data</div>
             <div class="text-xs text-gray-500">Answer {{ rawDataAnswerRootId }}</div>
           </div>
           <button type="button" class="rounded border px-3 py-1 text-sm" data-testid="raw-data-close" @click="closeRawData">Close</button>
@@ -1130,13 +1203,20 @@ function formatRawRequestBody(body: string): string {
         <div class="min-h-0 flex-1 overflow-auto p-4">
           <div v-if="rawDataLoading" class="text-sm text-gray-500">Loading...</div>
           <div v-else-if="rawDataError" class="text-sm text-red-700">{{ rawDataError }}</div>
-          <div v-else-if="rawDataRecords.length === 0" class="text-sm text-gray-500">No persisted raw request body for this answer.</div>
+          <div v-else-if="rawDataRecords.length === 0 && rawProviderErrorRecords.length === 0" class="text-sm text-gray-500">No persisted raw data for this answer.</div>
           <div v-else class="space-y-4">
             <section v-for="record in rawDataRecords" :key="record.id" class="rounded border">
               <div class="border-b bg-gray-50 px-3 py-2 text-xs text-gray-600">
                 Request #{{ record.requestSequence }} · {{ record.providerId }} · {{ record.modelId }} · {{ record.bodyBytes }} bytes · SHA-256 {{ record.bodySha256 }}
               </div>
               <pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all p-3 text-xs" :data-testid="`raw-data-request-${record.requestSequence}`">{{ formatRawRequestBody(record.serializedBody) }}</pre>
+            </section>
+            <section v-for="record in rawProviderErrorRecords" :key="record.id" class="rounded border border-red-200">
+              <div class="border-b border-red-200 bg-red-50 px-3 py-2 text-xs text-red-800">
+                Provider Error #{{ record.requestSequence }} · {{ record.phase }} · HTTP {{ record.httpStatus }} · {{ record.providerId }} · {{ record.modelId }} · {{ record.payloadBytes }} bytes · SHA-256 {{ record.payloadSha256 }}
+                <span v-if="record.providerRequestId"> · Request {{ record.providerRequestId }}</span>
+              </div>
+              <pre class="max-h-[60vh] overflow-auto whitespace-pre-wrap break-all p-3 text-xs" :data-testid="`raw-data-provider-error-${record.requestSequence}`">{{ formatRawProviderError(record) }}</pre>
             </section>
           </div>
         </div>

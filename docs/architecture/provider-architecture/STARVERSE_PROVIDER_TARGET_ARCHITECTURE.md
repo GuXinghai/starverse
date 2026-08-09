@@ -60,9 +60,9 @@ Shared properties of experimental paths:
 Google AI Studio legacy isolation:
 
 - Uses `googleAIStudioApiKey` store key — NOT the old `geminiApiKey`
-- Imports `streamViaGemini` from the native Gemini adapter foundation — NOT the old `@google/generative-ai` SDK
+- Uses the native Gemini REST adapter foundation — NOT the retired legacy SDK
 - `profileId: 'gemini_api_v1'` identifies native Gemini API architecture
-- Old `geminiApiKey`, `PROVIDERS.GEMINI`, and `@google/generative-ai` remain `deprecated-for-removal` / `migration-read-only`; the new path does not reuse them
+- Old `geminiApiKey` and `PROVIDERS.GEMINI` remain `deprecated-for-removal` / `migration-read-only`; the new path does not reuse them
 
 Anthropic Messages text-only slice:
 

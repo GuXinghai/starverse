@@ -33,6 +33,8 @@ const OLLAMA_ENDPOINT_URL_KEY = 'starverse.ollama.endpointUrl'
 const OLLAMA_CHAT_MODE_KEY = 'starverse.ollama.chatMode'
 const OLLAMA_NATIVE_ENDPOINT_KEY = 'starverse.ollama.nativeRest.preferredEndpoint'
 const OLLAMA_OPENAI_ENDPOINT_KEY = 'starverse.ollama.openAICompatible.preferredEndpoint'
+const OLLAMA_THINKING_CONTROL_KEY = 'starverse.ollama.nativeRest.thinkingControl'
+const OLLAMA_TOOLS_SUPPORTED_KEY = 'starverse.ollama.nativeRest.toolsSupported'
 const OLLAMA_DIAGNOSTICS_ENABLED_KEY = 'starverse.ollama.nativeRest.diagnosticsEnabled'
 const OLLAMA_MANUAL_LOAD_UNLOAD_ENABLED_KEY = 'starverse.ollama.nativeRest.manualLoadUnloadEnabled'
 const OLLAMA_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY = 'starverse.ollama.nativeRest.autoLoadBeforeSendEnabled'
@@ -47,6 +49,7 @@ const DEFAULT_LOCAL_ENDPOINT_CHAT_URL = 'http://localhost:1234/v1'
 const OPENAI_RESPONSES_CHAT_ENABLED_KEY = 'starverse.openAIResponsesTextChat.enabled'
 const GOOGLE_AI_STUDIO_CHAT_ENABLED_KEY = 'starverse.googleAIStudioTextChat.enabled'
 const ANTHROPIC_CHAT_ENABLED_KEY = 'starverse.anthropicMessagesTextChat.enabled'
+const ANTHROPIC_THINKING_DISPLAY_KEY = 'starverse.anthropicMessagesTextChat.thinkingDisplay'
 const DEEPSEEK_CHAT_ENABLED_KEY = 'starverse.deepSeekTextChat.enabled'
 
 const LEGACY_MODEL_STORAGE_KEYS = [
@@ -64,7 +67,7 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
   const lmStudioChatEnabled = ref(false)
   const lmStudioEndpointUrl = ref(DEFAULT_LM_STUDIO_ENDPOINT_URL)
   const lmStudioChatMode = ref<'openai_compatible' | 'native_rest'>('openai_compatible')
-  const lmStudioOpenAICompatiblePreferredEndpoint = ref<'chat_completions' | 'responses'>('chat_completions')
+  const lmStudioOpenAICompatiblePreferredEndpoint = ref<'chat_completions' | 'responses'>('responses')
   const lmStudioDiagnosticsEnabled = ref(true)
   const lmStudioManualLoadUnloadEnabled = ref(true)
   const lmStudioAutoLoadBeforeSendEnabled = ref(false)
@@ -75,6 +78,8 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
   const ollamaChatMode = ref<'native_rest' | 'openai_compatible'>('native_rest')
   const ollamaNativeRestPreferredEndpoint = ref<'chat' | 'generate'>('chat')
   const ollamaOpenAICompatiblePreferredEndpoint = ref<'chat_completions' | 'responses'>('chat_completions')
+  const ollamaThinkingControl = ref<'boolean' | 'effort' | null>(null)
+  const ollamaToolsSupported = ref<boolean | null>(null)
   const ollamaDiagnosticsEnabled = ref(true)
   const ollamaManualLoadUnloadEnabled = ref(true)
   const ollamaAutoLoadBeforeSendEnabled = ref(false)
@@ -85,6 +90,7 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
   const openAIResponsesChatEnabled = ref(false)
   const googleAIStudioChatEnabled = ref(false)
   const anthropicChatEnabled = ref(false)
+  const anthropicThinkingDisplay = ref<'provider_default' | 'summarized' | 'omitted'>('summarized')
   const deepSeekChatEnabled = ref(false)
 
   const openRouterChatConfig = computed(() => ({
@@ -148,6 +154,8 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     chatMode: ollamaChatMode.value,
     nativeRestPreferredEndpoint: ollamaNativeRestPreferredEndpoint.value,
     openAICompatiblePreferredEndpoint: ollamaOpenAICompatiblePreferredEndpoint.value,
+    thinkingControl: ollamaThinkingControl.value,
+    toolsSupported: ollamaToolsSupported.value,
     nativeControls: ollamaProviderConfig.value.nativeControls,
     config: ollamaProviderConfig.value,
     experimentalLabel: t('settings.ollama.experimentalLabel'),
@@ -171,6 +179,7 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
   const anthropicChatConfig = computed(() => ({
     enabled: anthropicChatEnabled.value,
     model: '',
+    thinkingDisplay: anthropicThinkingDisplay.value,
     experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
   }))
   const deepSeekChatConfig = computed(() => ({
@@ -254,6 +263,8 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     endpointUrl?: unknown
     chatMode?: unknown
     openAICompatiblePreferredEndpoint?: unknown
+    thinkingControl?: unknown
+    toolsSupported?: unknown
     diagnosticsEnabled?: unknown
     manualLoadUnloadEnabled?: unknown
     autoLoadBeforeSendEnabled?: unknown
@@ -280,6 +291,8 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     chatMode?: unknown
     nativeRestPreferredEndpoint?: unknown
     openAICompatiblePreferredEndpoint?: unknown
+    thinkingControl?: unknown
+    toolsSupported?: unknown
     diagnosticsEnabled?: unknown
     manualLoadUnloadEnabled?: unknown
     autoLoadBeforeSendEnabled?: unknown
@@ -298,6 +311,9 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     if (openAIPreferredEndpoint === 'chat_completions' || openAIPreferredEndpoint === 'responses') {
       ollamaOpenAICompatiblePreferredEndpoint.value = openAIPreferredEndpoint
     }
+    const thinkingControl = String(payload.thinkingControl ?? '').trim()
+    if (thinkingControl === 'boolean' || thinkingControl === 'effort') ollamaThinkingControl.value = thinkingControl
+    if (typeof payload.toolsSupported === 'boolean') ollamaToolsSupported.value = payload.toolsSupported
     if (typeof payload.diagnosticsEnabled === 'boolean') ollamaDiagnosticsEnabled.value = payload.diagnosticsEnabled
     if (typeof payload.manualLoadUnloadEnabled === 'boolean') ollamaManualLoadUnloadEnabled.value = payload.manualLoadUnloadEnabled
     if (typeof payload.autoLoadBeforeSendEnabled === 'boolean') ollamaAutoLoadBeforeSendEnabled.value = payload.autoLoadBeforeSendEnabled
@@ -342,6 +358,10 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
         chatMode: globalThis.localStorage?.getItem(OLLAMA_CHAT_MODE_KEY),
         nativeRestPreferredEndpoint: globalThis.localStorage?.getItem(OLLAMA_NATIVE_ENDPOINT_KEY),
         openAICompatiblePreferredEndpoint: globalThis.localStorage?.getItem(OLLAMA_OPENAI_ENDPOINT_KEY),
+        thinkingControl: globalThis.localStorage?.getItem(OLLAMA_THINKING_CONTROL_KEY),
+        toolsSupported: globalThis.localStorage?.getItem(OLLAMA_TOOLS_SUPPORTED_KEY) === null
+          ? undefined
+          : globalThis.localStorage?.getItem(OLLAMA_TOOLS_SUPPORTED_KEY) === '1',
         diagnosticsEnabled: globalThis.localStorage?.getItem(OLLAMA_DIAGNOSTICS_ENABLED_KEY) !== '0',
         manualLoadUnloadEnabled: globalThis.localStorage?.getItem(OLLAMA_MANUAL_LOAD_UNLOAD_ENABLED_KEY) !== '0',
         autoLoadBeforeSendEnabled: globalThis.localStorage?.getItem(OLLAMA_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY) === '1',
@@ -387,6 +407,10 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     try {
       anthropicChatEnabled.value =
         String(globalThis.localStorage?.getItem(ANTHROPIC_CHAT_ENABLED_KEY) ?? '').trim() === '1'
+      const display = String(globalThis.localStorage?.getItem(ANTHROPIC_THINKING_DISPLAY_KEY) ?? '').trim()
+      if (display === 'provider_default' || display === 'summarized' || display === 'omitted') {
+        anthropicThinkingDisplay.value = display
+      }
     } catch {
       // Anthropic chat settings are non-secret renderer preferences; failure keeps defaults.
     }
@@ -427,6 +451,8 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
       endpointUrl?: unknown
       chatMode?: unknown
       openAICompatiblePreferredEndpoint?: unknown
+      thinkingControl?: unknown
+      toolsSupported?: unknown
       diagnosticsEnabled?: unknown
       manualLoadUnloadEnabled?: unknown
       autoLoadBeforeSendEnabled?: unknown
@@ -489,6 +515,8 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
       event.key !== OLLAMA_CHAT_MODE_KEY &&
       event.key !== OLLAMA_NATIVE_ENDPOINT_KEY &&
       event.key !== OLLAMA_OPENAI_ENDPOINT_KEY &&
+      event.key !== OLLAMA_THINKING_CONTROL_KEY &&
+      event.key !== OLLAMA_TOOLS_SUPPORTED_KEY &&
       event.key !== OLLAMA_DIAGNOSTICS_ENABLED_KEY &&
       event.key !== OLLAMA_MANUAL_LOAD_UNLOAD_ENABLED_KEY &&
       event.key !== OLLAMA_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY &&
@@ -512,7 +540,7 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
   }
 
   function handleAnthropicChatStorage(event: StorageEvent) {
-    if (event.key !== ANTHROPIC_CHAT_ENABLED_KEY) return
+    if (event.key !== ANTHROPIC_CHAT_ENABLED_KEY && event.key !== ANTHROPIC_THINKING_DISPLAY_KEY) return
     readAnthropicChatStorage()
     enforceExperimentalChatMutualExclusion()
   }
@@ -585,6 +613,10 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
       globalThis.localStorage?.setItem(OLLAMA_CHAT_MODE_KEY, ollamaChatMode.value)
       globalThis.localStorage?.setItem(OLLAMA_NATIVE_ENDPOINT_KEY, ollamaNativeRestPreferredEndpoint.value)
       globalThis.localStorage?.setItem(OLLAMA_OPENAI_ENDPOINT_KEY, ollamaOpenAICompatiblePreferredEndpoint.value)
+      if (ollamaThinkingControl.value === null) globalThis.localStorage?.removeItem(OLLAMA_THINKING_CONTROL_KEY)
+      else globalThis.localStorage?.setItem(OLLAMA_THINKING_CONTROL_KEY, ollamaThinkingControl.value)
+      if (ollamaToolsSupported.value === null) globalThis.localStorage?.removeItem(OLLAMA_TOOLS_SUPPORTED_KEY)
+      else globalThis.localStorage?.setItem(OLLAMA_TOOLS_SUPPORTED_KEY, ollamaToolsSupported.value ? '1' : '0')
       globalThis.localStorage?.setItem(OLLAMA_DIAGNOSTICS_ENABLED_KEY, ollamaDiagnosticsEnabled.value ? '1' : '0')
       globalThis.localStorage?.setItem(OLLAMA_MANUAL_LOAD_UNLOAD_ENABLED_KEY, ollamaManualLoadUnloadEnabled.value ? '1' : '0')
       globalThis.localStorage?.setItem(OLLAMA_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY, ollamaAutoLoadBeforeSendEnabled.value ? '1' : '0')
@@ -614,6 +646,7 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
   function persistAnthropicChatStorage() {
     try {
       globalThis.localStorage?.setItem(ANTHROPIC_CHAT_ENABLED_KEY, anthropicChatEnabled.value ? '1' : '0')
+      globalThis.localStorage?.setItem(ANTHROPIC_THINKING_DISPLAY_KEY, anthropicThinkingDisplay.value)
     } catch {
       // Non-fatal: the user can still use the current in-memory settings.
     }
@@ -832,7 +865,7 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     lmStudioChatEnabled.value = false
     lmStudioEndpointUrl.value = DEFAULT_LM_STUDIO_ENDPOINT_URL
     lmStudioChatMode.value = 'openai_compatible'
-    lmStudioOpenAICompatiblePreferredEndpoint.value = 'chat_completions'
+    lmStudioOpenAICompatiblePreferredEndpoint.value = 'responses'
     lmStudioDiagnosticsEnabled.value = true
     lmStudioManualLoadUnloadEnabled.value = true
     lmStudioAutoLoadBeforeSendEnabled.value = false
@@ -896,6 +929,15 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     persistOllamaChatStorage()
   }
 
+  function onUpdateOllamaProfileCapability(
+    key: 'thinkingControl' | 'toolsSupported',
+    value: 'boolean' | 'effort' | boolean,
+  ) {
+    if (key === 'thinkingControl' && (value === 'boolean' || value === 'effort')) ollamaThinkingControl.value = value
+    if (key === 'toolsSupported' && typeof value === 'boolean') ollamaToolsSupported.value = value
+    persistOllamaChatStorage()
+  }
+
   function onUpdateOllamaNativeControl(
     key: 'diagnosticsEnabled' | 'manualLoadUnloadEnabled' | 'autoLoadBeforeSendEnabled' | 'autoUnloadAfterSendEnabled' | 'autoUnloadAfterIdleEnabled',
     enabled: boolean,
@@ -915,6 +957,8 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     ollamaChatMode.value = 'native_rest'
     ollamaNativeRestPreferredEndpoint.value = 'chat'
     ollamaOpenAICompatiblePreferredEndpoint.value = 'chat_completions'
+    ollamaThinkingControl.value = null
+    ollamaToolsSupported.value = null
     ollamaDiagnosticsEnabled.value = true
     ollamaManualLoadUnloadEnabled.value = true
     ollamaAutoLoadBeforeSendEnabled.value = false
@@ -926,6 +970,8 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
       globalThis.localStorage?.removeItem(OLLAMA_CHAT_MODE_KEY)
       globalThis.localStorage?.removeItem(OLLAMA_NATIVE_ENDPOINT_KEY)
       globalThis.localStorage?.removeItem(OLLAMA_OPENAI_ENDPOINT_KEY)
+      globalThis.localStorage?.removeItem(OLLAMA_THINKING_CONTROL_KEY)
+      globalThis.localStorage?.removeItem(OLLAMA_TOOLS_SUPPORTED_KEY)
       globalThis.localStorage?.removeItem(OLLAMA_DIAGNOSTICS_ENABLED_KEY)
       globalThis.localStorage?.removeItem(OLLAMA_MANUAL_LOAD_UNLOAD_ENABLED_KEY)
       globalThis.localStorage?.removeItem(OLLAMA_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY)
@@ -1065,11 +1111,22 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     persistAnthropicChatStorage()
   }
 
+  function onUpdateAnthropicThinkingDisplay(value: 'provider_default' | 'summarized' | 'omitted') {
+    anthropicThinkingDisplay.value = value
+    persistAnthropicChatStorage()
+  }
+
+  function applyAnthropicThinkingDisplayFromConversation(value: 'provider_default' | 'summarized' | 'omitted') {
+    anthropicThinkingDisplay.value = value
+  }
+
   function onClearAnthropicChat() {
     if (input.isDraftInteractionLocked.value || input.isRunning.value) return
     anthropicChatEnabled.value = false
+    anthropicThinkingDisplay.value = 'summarized'
     try {
       globalThis.localStorage?.removeItem(ANTHROPIC_CHAT_ENABLED_KEY)
+      globalThis.localStorage?.removeItem(ANTHROPIC_THINKING_DISPLAY_KEY)
       cleanupLegacyModelStorage()
     } catch {
       // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
@@ -1139,6 +1196,7 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     onUpdateOllamaChatMode,
     onUpdateOllamaNativeRestPreferredEndpoint,
     onUpdateOllamaOpenAICompatiblePreferredEndpoint,
+    onUpdateOllamaProfileCapability,
     onUpdateOllamaNativeControl,
     onClearOllamaChat,
     onUpdateLocalEndpointChatEnabled,
@@ -1149,6 +1207,8 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     onUpdateGoogleAIStudioChatEnabled,
     onClearGoogleAIStudioChat,
     onUpdateAnthropicChatEnabled,
+    onUpdateAnthropicThinkingDisplay,
+    applyAnthropicThinkingDisplayFromConversation,
     onClearAnthropicChat,
     onUpdateDeepSeekChatEnabled,
     onClearDeepSeekChat,

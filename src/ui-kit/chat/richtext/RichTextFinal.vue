@@ -23,7 +23,7 @@ watchEffect(async () => {
     sanitizerRemoved.value = snapshot.sanitizerRemoved
     renderError.value = false
   } catch (err) {
-    console.error('[RichTextFinal] Render failed:', err)
+    console.error('[RichTextFinal] RENDER_FAILED')
     renderError.value = true
   }
 })

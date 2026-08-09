@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
 import {
-  getGeminiCuratedModelAvailabilitySeeds,
   listGeminiProviderModelAvailability,
   parseGeminiModelsResponse,
   resolveGeminiModelAvailabilityFromModelsPayload,
@@ -36,11 +35,12 @@ describe('Gemini models.list parser', () => {
         source: 'gemini_models_api',
         confidence: 'provider_reported',
         observedAtMs: OBSERVED_AT_MS,
-        capabilitySeed: expect.objectContaining({
-          textChat: true,
-          supportedGenerationMethods: ['generateContent', 'countTokens'],
-          inputTokenLimit: 1048576,
-          outputTokenLimit: 65536,
+        observation: expect.objectContaining({
+          rawProviderRecord: expect.objectContaining({
+            supportedGenerationMethods: ['generateContent', 'countTokens'],
+            inputTokenLimit: 1048576,
+            outputTokenLimit: 65536,
+          }),
         }),
       }),
     ])
@@ -114,38 +114,20 @@ describe('Gemini models.list parser', () => {
 
     expect(result.ok && result.models[0]).toMatchObject({
       nativeModelId: 'gemini-embedding-001',
-      capabilitySeed: {
-        textChat: false,
+      providerSpecific: expect.objectContaining({
         supportedGenerationMethods: ['embedContent'],
         inputTokenLimit: 2048,
         outputTokenLimit: 1,
-        thinking: 'unknown',
-        functionCalling: 'unknown',
-        vision: 'unknown',
-        structuredOutput: 'unknown',
-      },
+      }),
+      observation: expect.objectContaining({
+        facts: expect.objectContaining({ textChat: expect.objectContaining({ presence: 'present', value: false }) }),
+      }),
     })
   })
 })
 
-describe('Gemini curated metadata seed', () => {
-  it('distinguishes curated metadata from provider-reported availability', () => {
-    const seeds = getGeminiCuratedModelAvailabilitySeeds(OBSERVED_AT_MS)
-
-    expect(seeds).toEqual(expect.arrayContaining([
-      expect.objectContaining({
-        nativeModelId: 'gemini-2.5-flash',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs: OBSERVED_AT_MS,
-        warnings: expect.arrayContaining([
-          expect.stringContaining('supplemental metadata'),
-        ]),
-      }),
-    ]))
-  })
-
-  it('merges curated warnings without overriding provider-reported source confidence', () => {
+describe('Gemini provider observation authority', () => {
+  it('does not insert curated models into provider-reported observations', () => {
     const result = resolveGeminiModelAvailabilityFromModelsPayload({
       models: [
         {
@@ -160,13 +142,43 @@ describe('Gemini curated metadata seed', () => {
     expect(flash).toMatchObject({
       source: 'gemini_models_api',
       confidence: 'provider_reported',
-      capabilitySeed: {
-        textChat: true,
-        thinking: 'supported',
-      },
+      observation: expect.objectContaining({
+        facts: expect.objectContaining({ textChat: expect.objectContaining({ presence: 'present', value: true }) }),
+      }),
     })
-    expect(flash?.warnings.join('\n')).toContain('supplemental metadata')
+    expect(flash?.warnings).toEqual([])
     expect(result.ok && result.models.some((model) => model.nativeModelId === 'gemini-2.5-pro')).toBe(false)
+  })
+
+  it('preserves the raw thinking own-property evidence without inferring missing support', () => {
+    const result = parseGeminiModelsResponse({
+      models: [
+        {
+          name: 'models/gemini-3.1-flash-lite',
+          baseModelId: 'gemini-3.1-flash-lite',
+          supportedGenerationMethods: ['generateContent'],
+          thinking: true,
+        },
+        {
+          name: 'models/gemini-3.6-flash',
+          baseModelId: 'gemini-3.6-flash',
+          supportedGenerationMethods: ['generateContent'],
+        },
+      ],
+    }, OBSERVED_AT_MS)
+
+    expect(result.ok && result.models).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        nativeModelId: 'gemini-3.1-flash-lite',
+        providerSpecific: expect.objectContaining({ thinkingOwnProperty: true, thinkingRawValue: true, thinkingRawType: 'boolean' }),
+        observation: expect.objectContaining({ facts: expect.objectContaining({ reasoning: expect.objectContaining({ presence: 'present', value: true }) }) }),
+      }),
+      expect.objectContaining({
+        nativeModelId: 'gemini-3.6-flash',
+        providerSpecific: expect.objectContaining({ thinkingOwnProperty: false, thinkingRawType: 'missing' }),
+        observation: expect.objectContaining({ facts: expect.objectContaining({ reasoning: expect.objectContaining({ presence: 'missing' }) }) }),
+      }),
+    ]))
   })
 })
 
@@ -201,7 +213,13 @@ describe('Gemini model availability transport errors', () => {
     })
     const serialized = JSON.stringify(result)
     expect(serialized).not.toContain(secret)
-    expect(serialized).not.toContain('connect failed')
-    expect(serialized).not.toContain('fetch failed')
+    expect(result).toMatchObject({
+      providerFailure: {
+        origin: 'network_transport',
+        phase: 'request_open',
+        transportError: { name: 'TypeError', message: 'fetch failed [redacted]' },
+        redactions: expect.arrayContaining([expect.objectContaining({ reason: 'credential' })]),
+      },
+    })
   })
 })

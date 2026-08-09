@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-07-18",
+  "sources": {
+    "imageGenerationGuide": "https://openrouter.ai/docs/guides/overview/multimodal/image-generation",
+    "openApi": "https://openrouter.ai/openapi.json"
+  },
+  "openApi": {
+    "utf8Bytes": 1633174,
+    "sha256": "043b816d0cd67a9474ee69169803efb3654485978c180bf94f58ff7a89e5a880"
+  },
+  "streamingContract": {
+    "framing": "SSE data frames terminated by data: [DONE]",
+    "partial": {
+      "type": "image_generation.partial_image",
+      "required": ["partial_image_index", "b64_json"]
+    },
+    "completed": {
+      "type": "image_generation.completed",
+      "documented": ["b64_json", "media_type", "created", "usage"],
+      "mediaType": "official guide says it is omitted only when format cannot be determined"
+    },
+    "error": {
+      "type": "error",
+      "required": ["error.message", "error.code"]
+    }
+  },
+  "v2Scope": {
+    "enabled": "strict_n_1_only",
+    "rejectedBeforeRequest": ["n_gt_1"],
+    "rejectedOnStream": ["image_generation.text_chunk", "partial_image_index_gt_0", "multiple_completed"],
+    "missingMediaType": "reject_before_persistence because V2 image asset MIME cannot be invented"
+  },
+  "security": {
+    "containsCredential": false,
+    "containsAuthorization": false,
+    "containsImageBytes": false,
+    "containsRawOpenApi": false
+  }
+}

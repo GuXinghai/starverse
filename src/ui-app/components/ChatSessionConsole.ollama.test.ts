@@ -50,6 +50,8 @@ function ollamaChat(overrides: Partial<{
     chatMode: 'native_rest' as const,
     nativeRestPreferredEndpoint: 'chat' as const,
     openAICompatiblePreferredEndpoint: 'chat_completions' as const,
+    thinkingControl: 'boolean' as const,
+    toolsSupported: true,
     nativeControls,
     config: {
       providerKey: 'ollama_local' as const,

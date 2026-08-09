@@ -1,13 +1,14 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { listScopedCurrentModelCatalog } from './modelCatalogClient'
+import { installGenerationV2ModelsList, successfulGenerationV2Models } from '../../../tests/helpers/generationV2ModelsBridge'
 
 describe('listScopedCurrentModelCatalog', () => {
   const originalDbBridge = (globalThis as any).dbBridge
-  const originalElectronAPI = (globalThis as any).electronAPI
+  const originalGenerationV2 = (globalThis as any).generationV2
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
-    ;(globalThis as any).electronAPI = originalElectronAPI
+    ;(globalThis as any).generationV2 = originalGenerationV2
     vi.restoreAllMocks()
   })
 
@@ -15,13 +16,7 @@ describe('listScopedCurrentModelCatalog', () => {
     const legacyInvoke = vi.fn(async () => {
       throw new Error('legacy catalog IPC should not be called')
     })
-    const scopedQuery = vi
-      .fn()
-      .mockResolvedValueOnce({
-        status: 'synced',
-        catalogRevision: 'checksum-a',
-        modelCount: 2,
-        items: [
+    const scopedQuery = installGenerationV2ModelsList('openrouter', vi.fn(async () => successfulGenerationV2Models([
           {
             providerKey: 'openrouter',
             modelId: 'a/model',
@@ -40,19 +35,6 @@ describe('listScopedCurrentModelCatalog', () => {
               longContext: false,
             },
           },
-        ],
-        nextCursor: {
-          sortBy: 'name',
-          sortOrder: 'asc',
-          name: 'A Model',
-          modelKey: 'openrouter::a/model',
-        },
-      })
-      .mockResolvedValueOnce({
-        status: 'synced',
-        catalogRevision: 'checksum-a',
-        modelCount: 2,
-        items: [
           {
             providerKey: 'openrouter',
             modelId: 'b/model',
@@ -71,11 +53,8 @@ describe('listScopedCurrentModelCatalog', () => {
               longContext: false,
             },
           },
-        ],
-        nextCursor: null,
-      })
+        ], { responseDigest: 'checksum-a' })))
     ;(globalThis as any).dbBridge = { invoke: legacyInvoke }
-    ;(globalThis as any).electronAPI = { modelCatalogQueryScopedCurrent: scopedQuery }
 
     const result = await listScopedCurrentModelCatalog('openrouter')
 
@@ -100,12 +79,8 @@ describe('listScopedCurrentModelCatalog', () => {
         },
       ],
     })
-    expect(scopedQuery).toHaveBeenCalledTimes(2)
-    expect(scopedQuery).toHaveBeenNthCalledWith(1, expect.objectContaining({
-      providerKey: 'openrouter',
-      limit: 100,
-      cursor: null,
-    }))
+    expect(scopedQuery).toHaveBeenCalledTimes(1)
+    expect(scopedQuery).toHaveBeenCalledWith({ timeoutMs: 30_000 })
     expect(legacyInvoke).not.toHaveBeenCalled()
     expect(JSON.stringify(scopedQuery.mock.calls)).not.toContain('sk-')
     expect(JSON.stringify(scopedQuery.mock.calls)).not.toContain('catalogScopeKey')
@@ -119,12 +94,12 @@ describe('listScopedCurrentModelCatalog', () => {
       return []
     })
     ;(globalThis as any).dbBridge = { invoke: legacyInvoke }
-    ;(globalThis as any).electronAPI = undefined
+    ;(globalThis as any).generationV2 = { ...(globalThis as any).generationV2, models: {} }
 
     const result = await listScopedCurrentModelCatalog('openrouter')
 
     expect(result.items).toEqual([])
-    expect(result.status).toBeUndefined()
+    expect(result.status).toBe('failed')
     expect(legacyInvoke).not.toHaveBeenCalled()
   })
 })

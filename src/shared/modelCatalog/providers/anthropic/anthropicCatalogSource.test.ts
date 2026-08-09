@@ -11,7 +11,7 @@ describe('anthropicCatalogSource', () => {
           display_name: 'Claude Sonnet 4.5',
           created_at: '2026-01-01T00:00:00Z',
           max_input_tokens: 200000,
-          max_output_tokens: 64000,
+          max_tokens: 64000,
           capabilities: {
             vision: true,
             tool_use: true,

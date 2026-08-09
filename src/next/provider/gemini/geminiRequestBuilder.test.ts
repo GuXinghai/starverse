@@ -23,15 +23,15 @@ describe('buildGeminiRequest', () => {
     })
 
     expect(req.contents).toEqual(baseMessages)
-    expect((req.generationConfig as any).candidateCount).toBe(1)
+    expect(req.generationConfig).toBeUndefined()
   })
 
-  it('rejects candidateCount values other than 1', () => {
+  it('rejects the removed candidateCount field', () => {
     expect(() => buildGeminiRequest({
       model: 'gemini-2.5-pro',
       messages: baseMessages,
       config: baseConfig({ generationParams: { generationConfig: { candidateCount: 2 } } }),
-    })).toThrow(/candidateCount=1/)
+    })).toThrow(/does not expose candidateCount/)
   })
 
   it('preserves Gemini native signed parts without flattening', () => {
@@ -122,14 +122,14 @@ describe('buildGeminiRequest', () => {
     expect((req.generationConfig as any).maxOutputTokens).toBe(4096)
   })
 
-  it('includes only candidateCount when generationConfig is otherwise absent', () => {
+  it('omits generationConfig when no Google-specific generation field is configured', () => {
     const req = buildGeminiRequest({
       model: 'gemini-2.5-pro',
       messages: baseMessages,
       config: baseConfig(),
     })
 
-    expect(req.generationConfig).toEqual({ candidateCount: 1 })
+    expect(req.generationConfig).toBeUndefined()
   })
 
   it('includes native thinkingBudget from generationParams', () => {
@@ -184,7 +184,6 @@ describe('buildGeminiRequest', () => {
     })
 
     expect(req.generationConfig).toEqual({
-      candidateCount: 1,
       thinkingConfig: { thinkingLevel: 'medium', includeThoughts: true },
     })
   })
@@ -196,8 +195,7 @@ describe('buildGeminiRequest', () => {
       config: baseConfig({ requestedReasoningMode: 'effort', requestedReasoningEffort: 'high' }),
     })
 
-    expect(req.generationConfig).toEqual({ candidateCount: 1 })
-    expect((req.generationConfig as any).thinkingConfig).toBeUndefined()
+    expect(req.generationConfig).toBeUndefined()
   })
 
   it('includes tools when present and non-empty', () => {

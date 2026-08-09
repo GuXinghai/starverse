@@ -11,6 +11,31 @@
       "userAborted": "请求已取消。",
       "unknown": "发生未知错误。"
     },
+    "providerFailureDetails": {
+      "title": "提供方失败事实",
+      "provider": "提供方",
+      "origin": "来源",
+      "phase": "阶段",
+      "diagnosticCode": "Starverse 诊断码",
+      "contract": "契约",
+      "operation": "操作",
+      "requestSequence": "请求序号",
+      "httpStatus": "HTTP 状态",
+      "providerCode": "提供方错误码",
+      "providerType": "提供方错误类型",
+      "message": "提供方消息",
+      "parameter": "参数",
+      "requestId": "请求 ID",
+      "retryAfter": "重试等待（毫秒）",
+      "transport": "传输错误",
+      "redactions": "脱敏项",
+      "truncations": "截断项",
+      "rawFacts": "原始提供方事实",
+      "safeJson": "渲染器安全投影 JSON",
+      "uiTruncated": "为满足界面 64 KiB 上限，原始事实已在此安全投影中截断；截断记录包含原始字节数和 SHA-256。",
+      "copy": "复制 JSON",
+      "copied": "已复制"
+    },
     "network": {
       "reason": {
         "proxyResolutionFailed": "代理解析失败。",
@@ -72,6 +97,11 @@
     },
     "modelCatalog": {
       "unavailable": "模型目录不可用。",
+      "selectedModelUnlisted": "所选模型不在当前提供方目录中。",
+      "selectedModelFiltered": "所选模型存在，但被当前筛选条件隐藏。",
+      "clearFiltersToReveal": "清除筛选条件以显示所选模型。",
+      "usingLastKnownGood": "模型目录刷新失败，继续显示上次成功同步的结果。",
+      "staleSnapshot": "当前目录已超过您设置的刷新间隔，仍在显示上次成功同步的结果。",
       "notSynced": "模型目录尚未同步，稍后自动刷新。",
       "empty": "模型目录为空，已回退到推理模型索引。",
       "indexNotSynced": "推理模型索引尚未同步，仅显示目录。",

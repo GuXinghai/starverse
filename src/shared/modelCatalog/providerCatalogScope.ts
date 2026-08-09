@@ -1,7 +1,6 @@
 import type { CatalogProviderKey } from './internalSchema'
-import type { CatalogSyncRunnerMeta } from './catalogSyncRunner'
 
-export type ProviderCatalogScopeDataSource = CatalogSyncRunnerMeta['dataSource']
+export type ProviderCatalogScopeDataSource = 'models_user_primary' | 'models_fallback' | 'mixed'
 
 export type ProviderCatalogCredentialIdentity =
   | Readonly<{ kind: 'credential_fingerprint'; fingerprint: string }>
@@ -60,4 +59,3 @@ export function isProviderCatalogScopeDescriptor(value: unknown): value is Provi
         typeof record.credentialIdentity.fingerprint === 'string' &&
         record.credentialIdentity.fingerprint.length > 0))
 }
-

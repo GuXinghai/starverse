@@ -1,10 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import {
-  DEEPSEEK_ALIAS_DEPRECATION_AT_ISO,
-  getDeepSeekCuratedModelAvailabilitySeeds,
-  parseDeepSeekModelsResponse,
-  resolveDeepSeekModelAvailabilityFromModelsPayload,
-} from './deepSeekModelSource'
+import { parseDeepSeekModelsResponse, resolveDeepSeekModelAvailabilityFromModelsPayload } from './deepSeekModelSource'
 
 const OBSERVED_AT_MS = Date.UTC(2026, 5, 21, 0, 0, 0)
 
@@ -97,74 +92,8 @@ describe('DeepSeek /models parser', () => {
   })
 })
 
-describe('DeepSeek curated model metadata seed', () => {
-  it('seeds deepseek-v4-flash pricing and capabilities from observed docs metadata', () => {
-    const flash = getDeepSeekCuratedModelAvailabilitySeeds(OBSERVED_AT_MS)
-      .find((model) => model.nativeModelId === 'deepseek-v4-flash')
-
-    expect(flash).toMatchObject({
-      source: 'deepseek_pricing_metadata',
-      confidence: 'curated',
-      displayName: 'DeepSeek V4 Flash',
-      capabilitySeed: {
-        textChat: true,
-        thinkingMode: 'supported',
-        contextLength: 1000000,
-        maxOutputTokens: 384000,
-        tools: true,
-        jsonOutput: true,
-      },
-      pricingSeed: {
-        inputCacheHitPer1MTokens: '0.0028',
-        inputCacheMissPer1MTokens: '0.14',
-        outputPer1MTokens: '0.28',
-        currency: 'USD',
-      },
-    })
-  })
-
-  it('seeds deepseek-v4-pro pricing and capabilities from observed docs metadata', () => {
-    const pro = getDeepSeekCuratedModelAvailabilitySeeds(OBSERVED_AT_MS)
-      .find((model) => model.nativeModelId === 'deepseek-v4-pro')
-
-    expect(pro).toMatchObject({
-      source: 'deepseek_pricing_metadata',
-      confidence: 'curated',
-      displayName: 'DeepSeek V4 Pro',
-      pricingSeed: {
-        inputCacheHitPer1MTokens: '0.003625',
-        inputCacheMissPer1MTokens: '0.435',
-        outputPer1MTokens: '0.87',
-        currency: 'USD',
-      },
-    })
-  })
-
-  it('keeps deepseek-chat as a deprecated compatibility alias warning', () => {
-    const alias = getDeepSeekCuratedModelAvailabilitySeeds(OBSERVED_AT_MS)
-      .find((model) => model.nativeModelId === 'deepseek-chat')
-
-    expect(alias).toMatchObject({
-      source: 'starverse_curated_metadata',
-      confidence: 'curated',
-      capabilitySeed: { thinkingMode: 'non_thinking_only' },
-    })
-    expect(alias?.warnings.join('\n')).toContain(`deepseek-chat is a deprecated compatibility alias until ${DEEPSEEK_ALIAS_DEPRECATION_AT_ISO}`)
-  })
-
-  it('keeps deepseek-reasoner as a deprecated compatibility alias warning', () => {
-    const alias = getDeepSeekCuratedModelAvailabilitySeeds(OBSERVED_AT_MS)
-      .find((model) => model.nativeModelId === 'deepseek-reasoner')
-
-    expect(alias).toMatchObject({
-      source: 'starverse_curated_metadata',
-      confidence: 'curated',
-      capabilitySeed: { thinkingMode: 'thinking_only' },
-    })
-    expect(alias?.warnings.join('\n')).toContain(`deepseek-reasoner is a deprecated compatibility alias until ${DEEPSEEK_ALIAS_DEPRECATION_AT_ISO}`)
-  })
-
-  it('merges provider availability with curated pricing metadata without changing source confidence', () => {
+describe('DeepSeek catalog authority', () => {
+  it('publishes only provider-reported models without curated aliases', () => {
     const result = resolveDeepSeekModelAvailabilityFromModelsPayload({
       object: 'list',
       data: [
@@ -177,8 +106,16 @@ describe('DeepSeek curated model metadata seed', () => {
     expect(flash).toMatchObject({
       source: 'deepseek_models_api',
       confidence: 'provider_reported',
-      pricingSeed: { source: 'deepseek_pricing_metadata' },
+      observation: expect.objectContaining({ rawProviderRecord: expect.objectContaining({ id: 'deepseek-v4-flash' }) }),
     })
-    expect(result.ok && result.models.some((model) => model.nativeModelId === 'deepseek-chat')).toBe(true)
+    expect(result.ok ? result.sourceDocuments.map((entry) => entry.source) : []).toEqual([
+      'deepseek_list_models_api_docs',
+      'deepseek_models_pricing_docs',
+      'deepseek_api_intro_docs',
+      'deepseek_thinking_mode_docs',
+      'deepseek_tool_calls_docs',
+      'deepseek_json_output_docs',
+    ])
+    expect(result.ok && result.models.some((model) => model.nativeModelId === 'deepseek-chat')).toBe(false)
   })
 })

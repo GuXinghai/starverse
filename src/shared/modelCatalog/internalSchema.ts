@@ -45,6 +45,7 @@ export type CatalogRawBucket = Readonly<{
   fetchedAtMs: CatalogTimestampMs
   baseUrl: string
   payload: JsonValue
+  observation?: JsonObject
 }>
 
 export type CatalogRawEnvelope = Readonly<{
@@ -54,16 +55,6 @@ export type CatalogRawEnvelope = Readonly<{
    */
   buckets: ReadonlyArray<CatalogRawBucket>
   schemaVersion: number
-}>
-
-export type RawRetentionPolicy = Readonly<{
-  retainRawPayload: boolean
-  retainModelSnapshot: boolean
-  maxRawBytesUnit: 'utf8_bytes'
-  maxRawBytesPerEntity: number
-  overflowStrategy: 'drop_raw' | 'truncate_raw'
-  persistEncoding: 'json_string'
-  redactPaths?: ReadonlyArray<string>
 }>
 
 export type CatalogProvider = Readonly<{
@@ -118,6 +109,8 @@ export type CatalogModel = Readonly<{
   pricing?: CatalogPricing | null
   perRequestLimits?: JsonValue | null
   defaultParameters?: JsonValue | null
+  hasPerRequestLimits?: boolean
+  hasDefaultParameters?: boolean
   topProviderContextLength?: number | null
   topProviderIsModerated?: boolean | null
   createdAtSec?: number | null
@@ -132,26 +125,6 @@ export type CatalogModel = Readonly<{
 export type Provider = CatalogProvider
 export type Model = CatalogModel
 export type ModelTag = CatalogModelTag
-
-export type CatalogMeta = Readonly<{
-  providerKey: CatalogProviderKey
-  schemaVersion: number
-  dataSource: 'models_user_primary' | 'models_fallback' | 'mixed'
-  baseUrl: string
-  snapshotId: string
-  modelCount: number
-  visibleModelCount: number
-  hiddenModelCount: number
-  providerCount?: number | null
-  lastCountProbe?: number | null
-  lastCountProbeAtMs?: CatalogTimestampMs | null
-  lastSyncAtMs: CatalogTimestampMs
-  ttlSeconds: number
-  syncState: 'idle' | 'syncing' | 'ok' | 'error'
-  lastErrorCode?: string | null
-  lastErrorMessage?: string | null
-  rawRetentionPolicy: RawRetentionPolicy
-}>
 
 export type CatalogEndpointStatus = 0 | 1 | 2 | (number & {})
 
@@ -195,6 +168,7 @@ export type AdapterListModelsInput = Readonly<{
   apiKey: string
   baseUrl: string
   preferUserScopedModels: boolean
+  category?: string
   signal?: AbortSignal | null
 }>
 

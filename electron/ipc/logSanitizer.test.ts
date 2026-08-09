@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { basenameForLog, redactSensitiveString, summarizeErrorForLog, summarizeIpcParamsForLog } from './logSanitizer'
+import { basenameForLog, redactSensitiveString, summarizeErrorForLog, summarizeIpcParamsForLog, urlOriginForLog } from './logSanitizer'
 
 describe('logSanitizer', () => {
   it('redacts absolute paths, base64, contentToken, and fullHash fragments', () => {
@@ -23,6 +23,12 @@ describe('logSanitizer', () => {
     expect(output).not.toContain('token=secret')
     expect(output).not.toContain('sig=abc')
     expect(output).not.toContain('#frag')
+  })
+
+  it('reduces URL diagnostics to an origin or non-network protocol', () => {
+    expect(urlOriginForLog('https://user:pass@example.test/private?token=secret#fragment')).toBe('https://example.test')
+    expect(urlOriginForLog('file:///C:/Users/alice/secret.txt')).toBe('file:')
+    expect(urlOriginForLog('not a url')).toBe('invalid:')
   })
 
   it('returns basename only for local paths', () => {

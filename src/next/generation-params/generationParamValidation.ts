@@ -51,7 +51,9 @@ export function normalizeGenerationParamValue(
   }
 
   if (typeof raw !== 'number' || !Number.isFinite(raw)) return null
-  const normalized = capability.valueType === 'integer' || capability.range?.integer ? Math.round(raw) : raw
+  if ((capability.valueType === 'integer' || capability.range?.integer) && !Number.isSafeInteger(raw)) return null
+  const normalized = raw
+  if (capability.specialValues?.includes(normalized)) return normalized
   const range = capability.range
   if (range?.min !== undefined && normalized < range.min) return null
   if (range?.max !== undefined) {

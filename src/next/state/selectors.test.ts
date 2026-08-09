@@ -3,6 +3,27 @@ import { selectMessage, selectTranscript, selectUsageSessionTotalDerived, select
 import { applyEvent, createInitialState, startGeneration } from './reducer'
 
 describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
+  it('projects persisted Google Search suggestions from native reasoning details', () => {
+    const state = createInitialState()
+    const { state: started, assistantMessageId } = startGeneration(state, {
+      runId: 'run-search', requestId: 'req-search', model: 'gemini-3.1-flash-image',
+    })
+    const messages = {
+      ...started.messages,
+      [assistantMessageId]: {
+        ...started.messages[assistantMessageId],
+        reasoningDetailsRaw: [
+          { type: 'google_search_result', search_suggestions: '<div>safe</div>' },
+          { type: 'google_search_result', search_suggestions: '<div>safe</div>' },
+        ],
+      },
+    }
+    const projected = selectMessage({
+      ...started, messages, entities: { ...started.entities, messagesById: messages },
+    }, assistantMessageId)
+    expect(projected?.googleSearchSuggestions).toEqual(['<div>safe</div>'])
+  })
+
   it('returns "excluded" when reasoning.exclude was true and no reasoning returned', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
@@ -90,6 +111,8 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
       requestedReasoningMode: 'effort',
       requestedReasoningEffort: 'high',
       requestedReasoningExclude: true, // Even with exclude=true
+      providerId: 'openrouter',
+      protocolContractId: 'openrouter-chat-completions-v1',
     })
 
     // Simulate receiving reasoning content
@@ -217,7 +240,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
     ])
   })
 
-  it('does not derive UI display text from raw reasoning details', () => {
+  it('does not guess UI display text when raw details have no contract context', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
       runId: 'run1',
@@ -240,11 +263,11 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
 
     const vm = selectMessage(stateWithThought, assistantMessageId)
 
-    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.visibility).toBe('not_returned')
     expect(vm?.reasoningView.displayBlocks).toBeUndefined()
   })
 
-  it('does not derive UI summary text from raw reasoning summaries', () => {
+  it('does not guess UI summary text when raw summaries have no contract context', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
       runId: 'run1',
@@ -267,11 +290,11 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
 
     const vm = selectMessage(stateWithThoughtSummary, assistantMessageId)
 
-    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.visibility).toBe('not_returned')
     expect(vm?.reasoningView.displayBlocks).toBeUndefined()
   })
 
-  it('does not derive display image blocks from raw thought images', () => {
+  it('does not guess display images when raw thought images have no contract context', () => {
     const state = createInitialState()
     const { state: s1, assistantMessageId } = startGeneration(state, {
       runId: 'run1',
@@ -302,7 +325,7 @@ describe('selectMessage visibility (SSOT 3.4 compliance)', () => {
 
     const vm = selectMessage(stateWithThoughtImage, assistantMessageId)
 
-    expect(vm?.reasoningView.visibility).toBe('shown')
+    expect(vm?.reasoningView.visibility).toBe('not_returned')
     expect(vm?.reasoningView.displayBlocks).toBeUndefined()
   })
 
@@ -539,6 +562,81 @@ describe('selector reference stability', () => {
 
     expect(t2).not.toBe(t1)
     expect(userVm2).toBe(userVm1)
+  })
+})
+
+describe('Generation V2 reasoning presentation', () => {
+  it('derives Gemini summary blocks from persisted raw facts when the exact contract is present', () => {
+    let state = startGeneration(createInitialState(), {
+      runId: 'run-v2',
+      requestId: 'request-v2',
+      assistantMessageId: 'answer:v2',
+      model: 'gemini-3.5-flash-lite',
+      providerId: 'google_ai_studio',
+      protocolContractId: 'gemini-generate-content-v1beta',
+    }).state
+    state = applyEvent(state, 'run-v2', {
+      type: 'MessageDeltaReasoningDetail',
+      messageId: 'answer:v2',
+      choiceIndex: 0,
+      detail: { type: 'thought', text: 'visible summary' },
+    })
+
+    const vm = selectMessage(state, 'answer:v2')
+    expect(vm?.reasoningView).toMatchObject({
+      visibility: 'shown',
+      displayBlocks: [{
+        type: 'text',
+        text: 'visible summary',
+        semanticRole: 'summary',
+        providerKey: 'google_ai_studio',
+      }],
+    })
+  })
+
+  it('does not mark signature-only or search-only Gemini facts as shown', () => {
+    let state = startGeneration(createInitialState(), {
+      runId: 'run-v2',
+      requestId: 'request-v2',
+      assistantMessageId: 'answer:v2',
+      model: 'gemini-3.1-flash-image',
+      providerId: 'google_ai_studio',
+      protocolContractId: 'gemini-interactions-v1beta',
+    }).state
+    state = applyEvent(state, 'run-v2', {
+      type: 'MessageDeltaReasoningDetailBatch',
+      messageId: 'answer:v2',
+      choiceIndex: 0,
+      details: [
+        { type: 'thought_signature', thought_signature: 'secret' },
+        { type: 'google_search_call', id: 'search-1' },
+        { type: 'url_citation', url_citation: { url: 'https://example.com' } },
+      ],
+    })
+
+    expect(selectMessage(state, 'answer:v2')?.reasoningView).toMatchObject({
+      visibility: 'not_returned',
+    })
+    expect(selectMessage(state, 'answer:v2')?.reasoningView.displayBlocks).toBeUndefined()
+  })
+
+  it('does not project Gemini search suggestions through a mismatched V2 contract', () => {
+    let state = startGeneration(createInitialState(), {
+      runId: 'run-v2',
+      requestId: 'request-v2',
+      assistantMessageId: 'answer:v2',
+      model: 'gpt-5.6-sol',
+      providerId: 'openai_responses',
+      protocolContractId: 'openai-responses-v1',
+    }).state
+    state = applyEvent(state, 'run-v2', {
+      type: 'MessageDeltaReasoningDetail',
+      messageId: 'answer:v2',
+      choiceIndex: 0,
+      detail: { type: 'google_search_result', search_suggestions: '<a href="https://example.com">fake</a>' },
+    })
+
+    expect(selectMessage(state, 'answer:v2')?.googleSearchSuggestions).toBeUndefined()
   })
 })
 

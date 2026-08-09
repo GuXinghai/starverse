@@ -21,6 +21,8 @@ vi.mock('electron', () => ({
 }))
 
 import {
+  ProviderHttpTransportError,
+  classifyProviderHttpTransportDiagnostic,
   classifyProviderResolvedProxy,
   createElectronSessionProviderFetch,
   getProviderHttpProxyEnvDiagnostics,
@@ -67,6 +69,28 @@ describe('providerHttpTransport', () => {
       signal: controller.signal,
       redirect: 'error',
     })
+  })
+
+  it('fails governed requests before Electron fetch when the product proxy authority is blocked', async () => {
+    const beforeRequest = vi.fn(() => { throw new Error('proxy_environment_unavailable') })
+    const fetchImpl = createElectronSessionProviderFetch({ beforeRequest })
+
+    await expect(fetchImpl('https://api.openai.com/v1/models'))
+      .rejects.toThrow('proxy_environment_unavailable')
+    expect(beforeRequest).toHaveBeenCalledTimes(1)
+    expect(electronMock.defaultSessionAccessCount.value).toBe(0)
+    expect(electronMock.sessionFetch).not.toHaveBeenCalled()
+  })
+
+  it('retains only a safe diagnostic code for Electron transport failures', async () => {
+    electronMock.sessionFetch.mockRejectedValueOnce(new Error('net::ERR_CONNECTION_RESET https://secret.invalid/?token=secret'))
+    const fetchImpl = createElectronSessionProviderFetch()
+
+    const failure = await fetchImpl('https://api.openai.com/v1/models').catch((error) => error)
+    expect(failure).toBeInstanceOf(ProviderHttpTransportError)
+    expect(failure).toMatchObject({ diagnosticCode: 'ERR_CONNECTION_RESET', message: 'ERR_CONNECTION_RESET' })
+    expect(JSON.stringify(failure)).not.toContain('secret.invalid')
+    expect(classifyProviderHttpTransportDiagnostic(new Error('arbitrary raw message'))).toBe('Error')
   })
 
   it('reports only proxy env configured/missing status without values', () => {

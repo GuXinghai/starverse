@@ -23,18 +23,41 @@ declare namespace NodeJS {
 
 type ProviderCredentialStatusSource =
   | 'secure_store'
-  | 'plaintext_fallback'
   | 'missing'
-type ProviderCredentialBackendKind = 'electron_safe_storage' | 'plaintext_fallback' | 'unavailable'
+type ProviderCredentialBackendKind = 'electron_safe_storage' | 'unavailable'
 type OpenRouterCredentialSource = ProviderCredentialStatusSource
 
-type OpenRouterEndpointCredentialRef = Readonly<{ kind: 'credential_ref'; id: 'openrouter-chat-legacy-store' }>
-type OpenRouterCatalogCredentialRef = Readonly<{ kind: 'credential_ref'; id: 'openrouter-catalog-legacy-store' }>
+type GenerationV2ModelPreferenceScopeType = 'global' | 'project' | 'conversation'
+type GenerationV2ModelPreferenceFavoriteRecord = Readonly<{
+  scopeType: GenerationV2ModelPreferenceScopeType
+  scopeId: string
+  providerKey: string
+  modelId: string
+  modelKey: string
+  sortRank: number
+  createdAtMs: number
+  updatedAtMs: number
+}>
+type GenerationV2ModelPreferenceRecentRecord = Readonly<{
+  scopeType: GenerationV2ModelPreferenceScopeType
+  scopeId: string
+  providerKey: string
+  modelId: string
+  modelKey: string
+  lastUsedAtMs: number
+  useCount: number
+  createdAtMs: number
+  updatedAtMs: number
+}>
+type GenerationV2ModelPreferenceRemoveResult = Readonly<{ removed: number }>
+
+type OpenRouterEndpointCredentialRef = Readonly<{ kind: 'credential_ref'; id: 'openrouter-first-party-v1' }>
+type OpenRouterCatalogCredentialRef = Readonly<{ kind: 'credential_ref'; id: 'openrouter-first-party-v1' }>
 
 interface OpenRouterEndpointMetadataBase {
   kind: 'openrouter_endpoint'
   providerId: 'openrouter'
-  profileId: 'openrouter_v1_chat'
+  profileId: 'openrouter-first-party-v1'
   source: OpenRouterCredentialSource
   defaultBaseUrl: string
   credentialRef: OpenRouterEndpointCredentialRef
@@ -99,7 +122,6 @@ type OpenAIResponsesCredentialResult =
 type ProviderModelAvailabilityCommonSourceKind =
   | 'provider_api'
   | 'provider_docs'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
   | 'local_probe'
 
@@ -113,7 +135,6 @@ interface ProviderModelAvailabilityProvenance {
 
 type OpenAIModelSourceKind =
   | 'openai_models_api'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 interface OpenAIProviderModelAvailability {
@@ -125,23 +146,11 @@ interface OpenAIProviderModelAvailability {
   ownedBy?: string
   createdAtSec?: number
   source: OpenAIModelSourceKind
-  confidence: 'provider_reported' | 'curated' | 'manual'
+  confidence: 'provider_reported' | 'manual'
   observedAtMs: number
   warnings: string[]
   provenance?: ProviderModelAvailabilityProvenance
   providerSpecific?: unknown
-  capabilitySeed?: {
-    textChat?: boolean
-    responsesApi?: boolean
-    reasoning?: 'supported' | 'unsupported' | 'unknown'
-    reasoningEffort?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'>
-    imageInput?: boolean | 'unknown'
-    fileInput?: boolean | 'unknown'
-    functionCalling?: boolean | 'unknown'
-    hostedTools?: boolean | 'unknown'
-    structuredOutput?: boolean | 'unknown'
-    audioInput?: boolean | 'unknown'
-  }
 }
 
 type OpenAIModelAvailabilityResult =
@@ -214,7 +223,6 @@ type AnthropicCredentialResult =
 
 type AnthropicModelSourceKind =
   | 'anthropic_models_api'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 interface AnthropicProviderModelAvailability {
@@ -226,24 +234,11 @@ interface AnthropicProviderModelAvailability {
   createdAt?: string
   modelType?: string
   source: AnthropicModelSourceKind
-  confidence: 'provider_reported' | 'curated' | 'manual'
+  confidence: 'provider_reported' | 'manual'
   observedAtMs: number
   warnings: string[]
   provenance?: ProviderModelAvailabilityProvenance
   providerSpecific?: unknown
-  capabilitySeed?: {
-    textChat?: boolean
-    imageInput?: boolean | 'unknown'
-    maxInputTokens?: number
-    maxOutputTokens?: number
-    thinking?: 'supported' | 'unsupported' | 'unknown'
-    adaptiveThinking?: boolean | 'unknown'
-    toolUse?: boolean | 'unknown'
-    files?: boolean | 'unknown'
-    structuredOutput?: boolean | 'unknown'
-    citations?: boolean | 'unknown'
-    capabilitiesRawKeys?: string[]
-  }
 }
 
 type AnthropicModelAvailabilityResult =
@@ -296,7 +291,6 @@ type DeepSeekCredentialResult =
 type DeepSeekProviderModelSourceKind =
   | 'deepseek_models_api'
   | 'deepseek_pricing_metadata'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 interface DeepSeekProviderModelAvailability {
@@ -307,21 +301,11 @@ interface DeepSeekProviderModelAvailability {
   displayName?: string
   ownedBy?: string
   source: DeepSeekProviderModelSourceKind
-  confidence: 'provider_reported' | 'curated' | 'manual'
+  confidence: 'provider_reported' | 'manual'
   observedAtMs: number
   warnings: string[]
   provenance?: ProviderModelAvailabilityProvenance
   providerSpecific?: unknown
-  capabilitySeed?: {
-    textChat?: boolean
-    thinkingMode?: 'supported' | 'non_thinking_only' | 'thinking_only' | 'unknown'
-    contextLength?: number
-    maxOutputTokens?: number
-    tools?: boolean
-    jsonOutput?: boolean
-    fim?: boolean
-    chatPrefixCompletion?: boolean
-  }
   pricingSeed?: {
     inputCacheHitPer1MTokens?: string
     inputCacheMissPer1MTokens?: string
@@ -342,7 +326,8 @@ type DeepSeekModelAvailabilityResult =
     models: DeepSeekProviderModelAvailability[]
     warnings: string[]
     sourceDocuments: Array<{
-      source: 'deepseek_list_models_api_docs' | 'deepseek_models_pricing_docs' | 'deepseek_api_intro_docs'
+      source: 'deepseek_list_models_api_docs' | 'deepseek_models_pricing_docs' | 'deepseek_api_intro_docs' |
+        'deepseek_thinking_mode_docs' | 'deepseek_tool_calls_docs' | 'deepseek_json_output_docs'
       url: string
       observedAtMs: number
     }>
@@ -360,7 +345,6 @@ type DeepSeekModelAvailabilityResult =
 
 type GeminiModelSourceKind =
   | 'gemini_models_api'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 interface GeminiProviderModelAvailability {
@@ -372,22 +356,11 @@ interface GeminiProviderModelAvailability {
   displayName?: string
   description?: string
   source: GeminiModelSourceKind
-  confidence: 'provider_reported' | 'curated' | 'manual'
+  confidence: 'provider_reported' | 'manual'
   observedAtMs: number
   warnings: string[]
   provenance?: ProviderModelAvailabilityProvenance
   providerSpecific?: unknown
-  capabilitySeed?: {
-    textChat?: boolean
-    supportedGenerationMethods?: string[]
-    inputTokenLimit?: number
-    outputTokenLimit?: number
-    thinking?: 'supported' | 'unknown'
-    functionCalling?: boolean | 'unknown'
-    builtInTools?: boolean | 'unknown'
-    vision?: boolean | 'unknown'
-    structuredOutput?: boolean | 'unknown'
-  }
 }
 
 type GeminiModelAvailabilityResult =
@@ -416,70 +389,47 @@ type GeminiModelAvailabilityResult =
     httpStatus?: number
   }
 
-type NetworkProxyPolicyMode = 'system' | 'direct' | 'fixed_servers' | 'pac_script' | 'auto_detect'
+type NetworkProxyProductMode = 'environment' | 'manual' | 'direct' | 'system'
+type NetworkProxyProductErrorCode =
+  | 'proxy_settings_invalid'
+  | 'proxy_environment_unavailable'
+  | 'proxy_environment_invalid'
+  | 'proxy_manual_invalid'
+  | 'proxy_auth_required'
+  | 'proxy_bypass_invalid'
+  | 'proxy_strict_ssl_unsupported'
+  | 'proxy_session_apply_failed'
+  | 'proxy_store_unavailable'
+  | 'proxy_store_rollback_failed'
 
-interface NetworkProxyPolicy {
-  mode: NetworkProxyPolicyMode
-  proxyRules: string
-  proxyBypassRules: string
-  pacScript: string
-  credentialRef: string | null
+interface NetworkProxyProductSettings {
+  proxyMode: NetworkProxyProductMode
+  manualProxyUrl: string
+  noProxy: string
+  strictSSL: boolean
 }
 
-interface NetworkProxyPolicyValidationIssue {
-  code:
-    | 'proxy_policy_fixed_servers_requires_proxy_rules'
-    | 'proxy_policy_pac_script_requires_pac_script'
-    | 'proxy_policy_proxy_rules_contains_credentials'
-    | 'proxy_policy_pac_script_contains_credentials'
-  field: keyof NetworkProxyPolicy
-  message: string
+interface NetworkProxyProductState {
+  status: 'uninitialized' | 'ready' | 'blocked'
+  settings: NetworkProxyProductSettings
+  errorCode: NetworkProxyProductErrorCode | null
+  appliedAtMs: number | null
 }
 
-type NetworkProxyPolicyResult =
-  | { ok: true; policy: NetworkProxyPolicy }
-  | {
-    ok: false
-    code: 'invalid_policy' | 'store_unavailable'
-    message: string
-    issues?: readonly NetworkProxyPolicyValidationIssue[]
-  }
-
-type NetworkProxyApplyResult =
-  | {
-    ok: true
-    policy: NetworkProxyPolicy
-    config: {
-      mode?: NetworkProxyPolicyMode
-      pacScript?: string
-      proxyBypassRules?: string
-      proxyRules?: string
-    }
-    reason: 'startup' | 'manual'
-    closedConnections: boolean
-    appliedAtMs: number
-  }
-  | {
-    ok: false
-    code: 'invalid_policy' | 'session_proxy_failed' | 'store_unavailable'
-    message: string
-    policy: NetworkProxyPolicy
-    issues?: readonly NetworkProxyPolicyValidationIssue[]
-  }
+type NetworkProxyProductResult =
+  | { ok: true; settings: NetworkProxyProductSettings; state: NetworkProxyProductState }
+  | { ok: false; code: NetworkProxyProductErrorCode; message: string; settings: NetworkProxyProductSettings; state: NetworkProxyProductState }
 
 type NetworkProxyResolveResult =
   | {
     ok: true
-    url: string
     resolvedProxy: string
     proxyKind: 'DIRECT' | 'PROXY configured' | 'unknown/error'
-    observedAtMs: number
   }
   | {
     ok: false
-    code: 'invalid_url' | 'session_proxy_failed'
+    code: 'invalid_url' | NetworkProxyProductErrorCode
     message: string
-    safeUrl?: string
   }
 
 type LocalEndpointProbeModelList =
@@ -1072,6 +1022,42 @@ type CompatibleCatalogSyncResult =
       syncState: CompatibleCatalogSyncState
       sourceDiagnostics: Readonly<{ totalRows: number; acceptedRows: number; malformedRows: number; duplicateRows: number }>
     }>
+
+type GenerationV2IpcResult = Readonly<{
+  ok: boolean
+  code?: string
+  kind?: 'created' | 'idempotent_replay'
+  operationId?: string
+  answerRootId?: string
+  actionKind?: string
+  branch?: Readonly<{
+    branchId: string; conversationId: string; questionId: string
+    headMessageId: string | null; chosenAnswerRootId: string | null; deletedAtMs: number | null
+  }>
+}>
+
+type GenerationV2TextBridge = Readonly<{
+  initial: (command: unknown) => Promise<GenerationV2IpcResult>
+  retry: (command: unknown) => Promise<GenerationV2IpcResult>
+  regenerate: (command: unknown) => Promise<GenerationV2IpcResult>
+  editResend: (command: unknown) => Promise<GenerationV2IpcResult>
+  continueTool?: (command: unknown) => Promise<GenerationV2IpcResult>
+  abort: (operationId: string) => Promise<Readonly<{ ok: boolean; aborted?: boolean; code?: string }>>
+  onProjection: (listener: (projection: unknown) => void) => () => void
+}>
+
+type GenerationV2CredentialBridge = Readonly<{
+  getStatus: () => Promise<unknown>
+  reveal: () => Promise<unknown>
+  update: (payload: unknown) => Promise<unknown>
+  clear: () => Promise<unknown>
+}>
+
+type OpenRouterImageGenerationV2Bridge = GenerationV2TextBridge & Readonly<{
+  getEndpointSelection: (payload: unknown) => Promise<unknown>
+  selectEndpoint: (payload: unknown) => Promise<unknown>
+  updateEndpointSettings: (payload: unknown) => Promise<unknown>
+}>
   | Readonly<{
       ok: false
       requestId: string
@@ -1082,6 +1068,178 @@ type CompatibleCatalogSyncResult =
 
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
+  generationV2?: Readonly<{
+    runtime: Readonly<{
+      subscribe: () => Promise<unknown>
+      snapshot: (operationId?: string | null) => Promise<unknown>
+      abort: (operationId: string) => Promise<unknown>
+      onEvent: (listener: (event: unknown) => void) => () => void
+    }>
+    credentials: Readonly<{
+      openRouter: GenerationV2CredentialBridge
+      openAIResponses: GenerationV2CredentialBridge
+      googleAIStudio: GenerationV2CredentialBridge
+      anthropic: GenerationV2CredentialBridge
+      deepSeek: GenerationV2CredentialBridge
+    }>
+    localRuntime: Readonly<{
+      generic: Readonly<{
+        probe: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
+        streamProbe: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointStreamProbeResult>
+      }>
+      lmStudio: Readonly<{
+        probe: (payload: { endpointUrl?: string; selectedModel?: string; timeoutMs?: number }) => Promise<LMStudioProbeResult>
+        loadModel: (payload: { endpointUrl: string; model: string; manualLoadUnloadEnabled?: boolean;
+          timeoutMs?: number }) => Promise<LMStudioControlResult>
+        unloadModel: (payload: { endpointUrl: string; instanceId: string; manualLoadUnloadEnabled?: boolean;
+          timeoutMs?: number }) => Promise<LMStudioControlResult>
+      }>
+      ollama: Readonly<{
+        probe: (payload: { endpointUrl?: string; selectedModel?: string; timeoutMs?: number }) => Promise<OllamaProbeResult>
+        loadModel: (payload: { endpointUrl: string; model: string; manualLoadUnloadEnabled?: boolean;
+          timeoutMs?: number }) => Promise<OllamaControlResult>
+        unloadModel: (payload: { endpointUrl: string; model: string; manualLoadUnloadEnabled?: boolean;
+          timeoutMs?: number }) => Promise<OllamaControlResult>
+      }>
+    }>
+    workspace: Readonly<{
+      ensureDefault: () => Promise<unknown>
+      listProjects: () => Promise<unknown>
+      listConversations: (projectId: string, cursor?: Readonly<{ updatedAtMs: number;
+        conversationId: string }> | null, limit?: number) => Promise<unknown>
+      readBranch: (branchId: string, beforeMessageId?: string | null, limit?: number) => Promise<unknown>
+      getMessageCandidateNavigation: (branchId: string, messageId: string) => Promise<unknown>
+      setContextFilter: (payload: Readonly<{branchId:string;targetType:'question'|'answer';targetId:string;mode:'include'|'exclude'}>) => Promise<unknown>
+      clearContextFilter: (payload: Readonly<{branchId:string;targetType:'question'|'answer';targetId:string}>) => Promise<unknown>
+      getConfig: (ownerKind: 'global' | 'project' | 'conversation', ownerId: string) => Promise<unknown>
+      updateConfig: (payload: Readonly<{ ownerKind: 'global' | 'project' | 'conversation'; ownerId: string;
+        expectedConfigRevision: string; semanticLayer: unknown }>) => Promise<unknown>
+      createProject: (name: string) => Promise<unknown>
+      renameProject: (projectId: string, name: string) => Promise<unknown>
+      deleteProject: (projectId: string) => Promise<unknown>
+      createConversation: (projectId: string, title: string) => Promise<unknown>
+      renameConversation: (conversationId: string, title: string) => Promise<unknown>
+      moveConversation: (conversationId: string, projectId: string) => Promise<unknown>
+      deleteConversation: (conversationId: string) => Promise<unknown>
+      forkBranch: (sourceBranchId: string, headMessageId: string, name: string | null) => Promise<unknown>
+      renameBranch: (branchId: string, name: string | null) => Promise<unknown>
+      deleteBranch: (branchId: string) => Promise<unknown>
+      truncateFromQuestion: (payload: Readonly<{ branchId: string; questionId: string; expectedHeadMessageId: string }>) => Promise<unknown>
+      getSystemTemplate: () => Promise<unknown>
+      updateSystemTemplateConfig: (payload: Readonly<{ templateConversationId: string; expectedTemplateRevision: number;
+        meta: Readonly<Record<string, unknown>> | null }>) => Promise<unknown>
+      resetSystemTemplate: (payload: Readonly<{ templateConversationId: string; expectedTemplateRevision: number;
+        resetModelConfig: boolean; resetDraftAttachments: boolean }>) => Promise<unknown>
+      setNewChatLifecycle: (payload: Readonly<{ startupNavigation: 'open_new' | 'restore_last_formal' | 'projects_only';
+        startupTemplateReset: Readonly<{ modelConfig: boolean; draftAttachments: boolean }>;
+        postSendTemplateReset: 'reset_all' | 'preserve_model_config' }>) => Promise<unknown>
+      getLastFormalConversation: () => Promise<unknown>
+      setLastFormalConversation: (conversationId: string | null) => Promise<unknown>
+      getConversationRoutePreference: (conversationId: string) => Promise<unknown>
+      updateConversationRoutePreference: (payload: Readonly<{ conversationId: string; expectedRevision: number;
+        selection: unknown }>) => Promise<unknown>
+      clearConversationRoutePreference: (conversationId: string, expectedRevision: number) => Promise<unknown>
+      hideAnswer: (branchId: string, answerId: string) => Promise<unknown>
+      listBranches: (conversationId: string, cursor?: Readonly<{ updatedAtMs: number;
+        branchId: string }> | null, limit?: number) => Promise<unknown>
+    }>
+    composer: Readonly<{
+      get: (conversationId: string) => Promise<unknown>
+      updateText: (payload: Readonly<{conversationId:string;expectedRevision:number;draftText:string;
+        draftMode:'compose'|'edit';editingSourceQuestionId:string|null}>) => Promise<unknown>
+      importLocal: (payload: Readonly<{conversationId:string;expectedRevision:number;filePath:string;selectionGrantToken:string}>) => Promise<unknown>
+      addUrlReference: (payload: Readonly<{conversationId:string;expectedRevision:number;url:string}>) => Promise<unknown>
+      importUrlFile: (payload: Readonly<{conversationId:string;expectedRevision:number;url:string}>) => Promise<unknown>
+      removeAttachment: (payload: Readonly<{conversationId:string;expectedRevision:number;assetRevisionId:string}>) => Promise<unknown>
+      clearCommitted: (payload: Readonly<{conversationId:string;expectedRevision:number}>) => Promise<unknown>
+      readPreview: (payload: Readonly<{assetId:string;assetRevisionId:string}>) => Promise<unknown>
+      replace: (payload: Readonly<{conversationId:string;expectedRevision:number;draftText:string;draftMode:'compose'|'edit';
+        editingSourceQuestionId:string|null;attachments:readonly unknown[]}>) => Promise<unknown>
+      replaceFromAnswerSnapshot: (payload: Readonly<{conversationId:string;expectedRevision:number;questionId:string;answerRootId:string;draftText:string}>) => Promise<unknown>
+      dfcOptions: (payload: Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => Promise<unknown>
+      dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => Promise<unknown>
+      dfcPreview: (payload: Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) => Promise<unknown>
+    }>
+    search: Readonly<{
+      query: (payload: unknown) => Promise<unknown>
+      rebuild: () => Promise<unknown>
+    }>
+    plugins: Readonly<{
+      listOfficial: (payload?: unknown) => Promise<unknown>
+      listInstalled: () => Promise<unknown>
+      registerLocalOfficial: (payload: unknown) => Promise<unknown>
+      installOfficial: (payload: unknown) => Promise<unknown>
+      installStatus: (payload?: unknown) => Promise<unknown>
+      cancelInstall: (payload?: unknown) => Promise<unknown>
+      enable: (payload: unknown) => Promise<unknown>
+      disable: (payload: unknown) => Promise<unknown>
+      uninstall: (payload: unknown) => Promise<unknown>
+      health: (payload: unknown) => Promise<unknown>
+      registerLocalPackage: (payload: unknown) => Promise<unknown>
+      quarantineLibreOffice: () => Promise<unknown>
+      diagnostics: () => Promise<unknown>
+      probeLibreOfficeDownload: () => Promise<unknown>
+    }>
+    models: Readonly<{
+      listOpenRouter: (payload?: unknown) => Promise<unknown>
+      listOpenAIResponses: (payload?: unknown) => Promise<unknown>
+      listAnthropic: (payload?: unknown) => Promise<unknown>
+      listGoogleAIStudio: (payload?: unknown) => Promise<unknown>
+      listDeepSeek: (payload?: unknown) => Promise<unknown>
+      sync: (payload: unknown) => Promise<unknown>
+      status: (payload: unknown) => Promise<unknown>
+      clearCurrent: (payload: unknown) => Promise<unknown>
+      clearAll: (payload: unknown) => Promise<unknown>
+      applyPending: (payload: unknown) => Promise<unknown>
+      discardPending: (payload: unknown) => Promise<unknown>
+    }>
+    modelPreferences: Readonly<{
+      listFavorites: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceFavoriteRecord[]>
+      addFavorite: (payload: unknown) => Promise<GenerationV2ModelPreferenceFavoriteRecord>
+      removeFavorite: (payload: unknown) => Promise<GenerationV2ModelPreferenceRemoveResult>
+      reorderFavorites: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceFavoriteRecord[]>
+      listRecents: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceRecentRecord[]>
+      recordRecent: (payload: unknown) => Promise<GenerationV2ModelPreferenceRecentRecord>
+    }>
+    localProfiles: Readonly<{
+      list: () => Promise<unknown>
+      create: (payload: Readonly<{ providerId: 'lmstudio' | 'ollama' | 'generic_local';
+        protocolContractId: string; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => Promise<unknown>
+      delete: (endpointProfileId: string) => Promise<unknown>
+    }>
+    lmStudio: Readonly<{ openResponses: GenerationV2TextBridge }>
+    genericLocal: Readonly<{ openAIChatCompletions: GenerationV2TextBridge }>
+    ollama: Readonly<{ chat: GenerationV2TextBridge }>
+    openAICompatible: Readonly<{
+      list: () => Promise<unknown>
+      get: (providerInstanceId: string) => Promise<unknown>
+      create: (payload: unknown) => Promise<unknown>
+      reviseConfiguration: (payload: unknown) => Promise<unknown>
+      writeCredential: (payload: unknown) => Promise<unknown>
+      getCredentialStatus: (payload: unknown) => Promise<unknown>
+      update: (payload: unknown) => Promise<unknown>
+      updateEndpoint: (payload: unknown) => Promise<unknown>
+      delete: (providerInstanceId: string) => Promise<unknown>
+      clearCredential: (payload: unknown) => Promise<unknown>
+      testConnection: (payload: unknown) => Promise<unknown>
+      abortConnectionTest: (requestId: string) => Promise<unknown>
+      syncModels: (payload: unknown) => Promise<unknown>
+      abortModelSync: (requestId: string) => Promise<unknown>
+      queryModels: (payload: unknown) => Promise<unknown>
+      getModelStatus: (providerInstanceId: string) => Promise<unknown>
+      upsertManualModel: (payload: unknown) => Promise<unknown>
+      deleteManualModel: (payload: unknown) => Promise<unknown>
+      listDiscovery: (providerInstanceId: string) => Promise<unknown>
+      ignoreDiscovery: (payload: unknown) => Promise<unknown>
+      confirmDiscovery: (payload: unknown) => Promise<unknown>
+      commands: GenerationV2TextBridge
+    }>
+    openRouter: Readonly<{ chat: GenerationV2TextBridge; images: OpenRouterImageGenerationV2Bridge }>
+    openAIResponses: GenerationV2TextBridge
+    anthropic: GenerationV2TextBridge
+    deepSeek: GenerationV2TextBridge
+    gemini: Readonly<{ generateContent: GenerationV2TextBridge; interactionsImage: GenerationV2TextBridge }>
+  }>
   rawGenerationDebug?: Readonly<{
     getStatus: () => Promise<Readonly<{
       available: boolean
@@ -1095,292 +1253,26 @@ interface Window {
       providerId: string; modelId: string; serializedBody: string; bodyBytes: number
       bodySha256: string; capturedAtMs: number
     }>[]>
+    listProviderErrorsByAnswerRootId: (answerRootId: string) => Promise<readonly Readonly<{
+      id: string; operationId: string; answerRootId: string; requestSequence: number
+      providerId: string; modelId: string; phase: 'http_response' | 'sse_event'; httpStatus: number
+      contentType: string | null; providerRequestId: string | null; payloadBase64: string
+      payloadText: string | null; payloadBytes: number; payloadSha256: string; capturedAtMs: number
+    }>[]>
   }>
-  compatibleProviderRegistry?: {
-    list?: () => Promise<CompatibleProviderRegistryResult<readonly CompatibleProviderRegistryDetails[]>>
-    get?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
-    create?: (payload: Readonly<{
-      displayName: string
-      endpoint: CompatibleRegistryEndpointInput
-      credential: CompatibleRegistryCredentialInput
-      requestMappings?: readonly CompatibleRegistryRequestMappingInput[]
-    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
-    reviseConfiguration?: (payload: Readonly<{
-      providerInstanceId: CompatibleProviderInstanceId
-      requestProfile: unknown
-      requestMappings: readonly CompatibleRegistryRequestMappingInput[]
-      reasoningMapping: unknown
-      inlinePolicy: unknown
-      acceptedDiscoveryPaths?: readonly string[]
-    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
-    listDiscovery?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => Promise<CompatibleProviderRegistryResult<readonly CompatibleDiscoveredResponseField[]>>
-    ignoreDiscovery?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; streamPath: string }>) => Promise<CompatibleProviderRegistryResult<readonly CompatibleDiscoveredResponseField[]>>
-    update?: (payload: Readonly<{
-      providerInstanceId: CompatibleProviderInstanceId
-      displayName?: string
-      status?: 'active' | 'disabled'
-    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
-    updateEndpoint?: (payload: Readonly<{
-      providerInstanceId: CompatibleProviderInstanceId
-      endpoint: CompatibleRegistryEndpointInput
-      clearAuthentication?: boolean
-    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
-    rotateCredential?: (payload: Readonly<{
-      providerInstanceId: CompatibleProviderInstanceId
-      credential: Exclude<CompatibleRegistryCredentialInput, Readonly<{ mode: 'none' }>>
-    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
-    deleteCredential?: (payload: Readonly<{
-      credentialVersionRef: CompatibleCredentialVersionRef
-    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
-    deleteProvider?: (payload: Readonly<{
-      providerInstanceId: CompatibleProviderInstanceId
-    }>) => Promise<CompatibleProviderRegistryResult<CompatibleProviderRegistryDetails>>
-  }
-  compatibleProviderTransport?: {
-    testConnection?: (payload: Readonly<{
-      providerInstanceId: CompatibleProviderInstanceId
-      requestId: string
-    }>) => Promise<CompatibleConnectionTestResult>
-    abortConnectionTest?: (payload: Readonly<{ requestId: string }>) => Promise<Readonly<{ aborted: boolean }>>
-  }
-  compatibleChat?: {
-    preflight?: (payload: unknown) => Promise<Readonly<{
-      ok: boolean
-      code?: string
-      route?: Readonly<{
-        routeProvenanceId: string; requestId: string; providerInstanceId: string; modelId: string; createdAtMs: number
-      }>
-    }>>
-    start?: (payload: unknown) => Promise<unknown>
-    abort?: (payload: Readonly<{ requestId: string }>) => Promise<Readonly<{ aborted: boolean }>>
-    resolveHistorical?: (payload: unknown) => Promise<unknown>
-    onEvent?: (listener: (payload: unknown) => void) => () => void
-    onPrepared?: (listener: (payload: unknown) => void) => () => void
-    onEnd?: (listener: (payload: unknown) => void) => () => void
-  }
-  compatibleMaintenance?: {
-    previewReset: () => Promise<unknown>
-    applyReset: (confirmation: string) => Promise<unknown>
-  }
-  compatibleCatalog?: {
-    sync?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; requestId: string; force?: boolean }>) => Promise<CompatibleCatalogSyncResult>
-    abortSync?: (payload: Readonly<{ requestId: string }>) => Promise<Readonly<{ aborted: boolean }>>
-    query?: (payload: Readonly<{
-      providerInstanceId: CompatibleProviderInstanceId
-      search?: string
-      includeStale?: boolean
-      offset?: number
-      limit?: number
-    }>) => Promise<Readonly<{
-      protocolKey: 'openai_chat_compatible'
-      providerInstanceId: CompatibleProviderInstanceId
-      providerName: string
-      providerStatus: 'active' | 'disabled' | 'deleted'
-      syncState: CompatibleCatalogSyncState | null
-      total: number
-      items: readonly CompatibleCatalogMergedModel[]
-    }>>
-    getStatus?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId }>) => Promise<CompatibleCatalogSyncState | null>
-    upsertManual?: (payload: Readonly<{
-      providerInstanceId: CompatibleProviderInstanceId
-      modelId: string
-      metadata: CompatibleCatalogManualMetadataInput
-    }>) => Promise<CompatibleCatalogMergedModel>
-    deleteManual?: (payload: Readonly<{ providerInstanceId: CompatibleProviderInstanceId; modelId: string }>) => Promise<Readonly<{ deleted: boolean }>>
-  }
-  openRouterCredential?: {
-    getStatus?: () => Promise<OpenRouterCredentialResult>
-    reveal?: () => Promise<ProviderCredentialRevealResult>
-    update?: (payload: OpenRouterCredentialUpdatePayload) => Promise<OpenRouterCredentialResult>
-    clear?: () => Promise<OpenRouterCredentialResult>
-  }
-  openAIResponsesCredential?: {
-    getStatus?: () => Promise<OpenAIResponsesCredentialResult>
-    reveal?: () => Promise<ProviderCredentialRevealResult>
-    update?: (payload: OpenAIResponsesCredentialUpdatePayload) => Promise<OpenAIResponsesCredentialResult>
-    clear?: () => Promise<OpenAIResponsesCredentialResult>
-  }
-  openAIResponsesModels?: {
-    listAvailability?: (payload?: { timeoutMs?: number }) => Promise<OpenAIModelAvailabilityResult>
-  }
-  googleAIStudioCredential?: {
-    getStatus?: () => Promise<GoogleAIStudioCredentialResult>
-    reveal?: () => Promise<ProviderCredentialRevealResult>
-    update?: (payload: GoogleAIStudioCredentialUpdatePayload) => Promise<GoogleAIStudioCredentialResult>
-    clear?: () => Promise<GoogleAIStudioCredentialResult>
-  }
-  anthropicCredential?: {
-    getStatus?: () => Promise<AnthropicCredentialResult>
-    reveal?: () => Promise<ProviderCredentialRevealResult>
-    update?: (payload: AnthropicCredentialUpdatePayload) => Promise<AnthropicCredentialResult>
-    clear?: () => Promise<AnthropicCredentialResult>
-  }
-  anthropicModels?: {
-    listAvailability?: (payload?: { timeoutMs?: number }) => Promise<AnthropicModelAvailabilityResult>
-  }
-  deepSeekCredential?: {
-    getStatus?: () => Promise<DeepSeekCredentialResult>
-    reveal?: () => Promise<ProviderCredentialRevealResult>
-    update?: (payload: DeepSeekCredentialUpdatePayload) => Promise<DeepSeekCredentialResult>
-    clear?: () => Promise<DeepSeekCredentialResult>
-  }
-  deepSeekModels?: {
-    listAvailability?: (payload?: { timeoutMs?: number }) => Promise<DeepSeekModelAvailabilityResult>
-  }
-  googleAIStudioModels?: {
-    listAvailability?: (payload?: { timeoutMs?: number }) => Promise<GeminiModelAvailabilityResult>
-  }
   networkProxy?: {
-    getPolicy?: () => Promise<NetworkProxyPolicyResult>
-    updatePolicy?: (policy: Partial<NetworkProxyPolicy>) => Promise<NetworkProxyApplyResult>
-    resetPolicy?: () => Promise<NetworkProxyApplyResult>
+    getSettings?: () => Promise<NetworkProxyProductResult>
+    updateSettings?: (settings: NetworkProxyProductSettings) => Promise<NetworkProxyProductResult>
+    resetSettings?: () => Promise<NetworkProxyProductResult>
+    reapplySettings?: () => Promise<NetworkProxyProductResult>
     resolveProxy?: (payload: string | { url?: string }) => Promise<NetworkProxyResolveResult>
-  }
-  localEndpointDiagnostics?: {
-    probe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointProbeResult>
-    streamProbe?: (payload: { url?: string; timeoutMs?: number }) => Promise<LocalEndpointStreamProbeResult>
-  }
-  localEndpointChat?: {
-    startTextChat?: (payload: {
-      requestId: string
-      url: string
-      model: string
-      messages: LocalEndpointTextChatMessage[]
-      timeoutMs?: number
-    }) => Promise<LocalEndpointTextChatStartResult>
-    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
-    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
-    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
-  }
-  lmStudioProvider?: {
-    probe?: (payload: { endpointUrl?: string; selectedModel?: string; timeoutMs?: number }) => Promise<LMStudioProbeResult>
-    loadModel?: (payload: {
-      endpointUrl: string
-      model: string
-      manualLoadUnloadEnabled?: boolean
-      timeoutMs?: number
-    }) => Promise<LMStudioControlResult>
-    unloadModel?: (payload: {
-      endpointUrl: string
-      instanceId: string
-      manualLoadUnloadEnabled?: boolean
-      timeoutMs?: number
-    }) => Promise<LMStudioControlResult>
-  }
-  lmStudioChat?: {
-    startTextChat?: (payload: {
-      requestId: string
-      assistantMessageId: string
-      config: LMStudioLocalProviderConfig
-      model: string
-      messages: LMStudioTextChatMessage[]
-      timeoutMs?: number
-    }) => Promise<LMStudioTextChatStartResult>
-    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
-    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
-    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
-  }
-  ollamaProvider?: {
-    probe?: (payload: { endpointUrl?: string; selectedModel?: string; timeoutMs?: number }) => Promise<OllamaProbeResult>
-    loadModel?: (payload: {
-      endpointUrl: string
-      model: string
-      manualLoadUnloadEnabled?: boolean
-      timeoutMs?: number
-    }) => Promise<OllamaControlResult>
-    unloadModel?: (payload: {
-      endpointUrl: string
-      model: string
-      manualLoadUnloadEnabled?: boolean
-      timeoutMs?: number
-    }) => Promise<OllamaControlResult>
-  }
-  ollamaChat?: {
-    startTextChat?: (payload: {
-      requestId: string
-      assistantMessageId: string
-      config: OllamaLocalProviderConfig
-      model: string
-      messages: OllamaTextChatMessage[]
-      timeoutMs?: number
-    }) => Promise<OllamaTextChatStartResult>
-    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
-    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
-    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
-  }
-  openAIResponsesChat?: {
-    startTextChat?: (payload: {
-      requestId: string
-      assistantMessageId: string
-      model: string
-      messages: OpenAIResponsesTextChatMessage[]
-      generationParams?: unknown
-      imageGeneration?: unknown
-      timeoutMs?: number
-    }) => Promise<OpenAIResponsesTextChatStartResult>
-    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
-    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
-    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
-  }
-  googleAIStudioChat?: {
-    startTextChat?: (payload: {
-      requestId: string
-      assistantMessageId: string
-      model: string
-      messages: GoogleAIStudioTextChatMessage[]
-      generationParams?: unknown
-      imageGeneration?: unknown
-      timeoutMs?: number
-    }) => Promise<GoogleAIStudioTextChatStartResult>
-    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
-    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
-    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
-  }
-  anthropicChat?: {
-    startTextChat?: (payload: {
-      requestId: string
-      assistantMessageId: string
-      model: string
-      messages: AnthropicTextChatMessage[]
-      generationParams?: unknown
-      timeoutMs?: number
-    }) => Promise<AnthropicTextChatStartResult>
-    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
-    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
-    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
-  }
-  deepSeekChat?: {
-    startTextChat?: (payload: {
-      requestId: string
-      assistantMessageId: string
-      model: string
-      messages: DeepSeekTextChatMessage[]
-      generationParams?: unknown
-      timeoutMs?: number
-    }) => Promise<DeepSeekTextChatStartResult>
-    abortTextChat?: (requestId: string) => Promise<{ ok: true }>
-    onTextChatChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
-    onTextChatEnd?: (requestId: string, callback: () => void) => () => void
   }
   electronAPI?: {
     selectLocalFiles?: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) => Promise<{
       filePaths: string[]
       fileGrants?: Array<{ filePath: string; token: string; expiresAtMs: number }>
     } | null>
-    getNetExpRuntimeInfo?: () => Promise<unknown>
-    onModelCatalogSynced?: (callback: () => void) => () => void
-    modelCatalogSyncNow?: (options?: { providerKey?: string; force?: boolean; reason?: string }) => Promise<unknown>
-    modelCatalogGetSyncStatus?: (options?: { providerKey?: string }) => Promise<unknown>
-    modelCatalogQueryScopedCurrent?: (options?: unknown) => Promise<unknown>
-    modelCatalogRepairCurrentScopedCache?: () => Promise<unknown>
-    modelCatalogClearCurrentScopedCache?: () => Promise<unknown>
-    modelCatalogClearAllOpenRouterScopedCaches?: () => Promise<unknown>
     importLibreOfficeSvpkg?: () => Promise<unknown>
     quarantineLibreOfficeRuntime?: () => Promise<unknown>
-    probeLibreOfficeSystemProxyDownloadNetwork?: () => Promise<unknown>
-    startOpenRouterStream?: (payload: unknown) => Promise<unknown>
-    abortOpenRouterStream?: (requestId: string) => Promise<unknown>
-    onOpenRouterChunk?: (requestId: string, callback: (payload: unknown) => void) => () => void
-    onOpenRouterEnd?: (requestId: string, callback: () => void) => () => void
   }
 }

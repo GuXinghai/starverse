@@ -11,16 +11,16 @@ import {
 } from './catalogSyncSettings'
 
 describe('catalogSyncSettings', () => {
-  it('normalizes missing and invalid settings to defaults', () => {
+  it('normalizes missing and invalid settings to defaults while preserving valid custom freshness', () => {
     expect(normalizeCatalogAutoSyncPolicy(undefined)).toBe(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
     expect(normalizeCatalogAutoSyncPolicy('bad')).toBe(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
     expect(normalizeCatalogListUpdateMode(undefined)).toBe(DEFAULT_CATALOG_LIST_UPDATE_MODE)
     expect(normalizeCatalogListUpdateMode('bad')).toBe(DEFAULT_CATALOG_LIST_UPDATE_MODE)
     expect(normalizeCatalogFreshnessMs(undefined)).toBe(DEFAULT_CATALOG_FRESHNESS_MS)
-    expect(normalizeCatalogFreshnessMs(12345)).toBe(DEFAULT_CATALOG_FRESHNESS_MS)
+    expect(normalizeCatalogFreshnessMs(12345)).toBe(12345)
   })
 
-  it('accepts only approved freshness presets', () => {
+  it('accepts the product freshness presets without restricting custom values to them', () => {
     for (const preset of CATALOG_FRESHNESS_PRESETS_MS) {
       expect(normalizeCatalogFreshnessMs(preset)).toBe(preset)
       expect(normalizeCatalogFreshnessMs(String(preset))).toBe(preset)

@@ -1,9 +1,6 @@
 import { describe, expect, it, vi } from 'vitest'
-import {
-  OPENROUTER_CATALOG_FRESHNESS_MS_KEY,
-  OPENROUTER_CATALOG_RETENTION_MS_KEY,
-  OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY,
-} from './catalogSyncSettings'
+import { CATALOG_POLICY_PRESETS_V2 } from './catalogPolicyPresetsV2'
+import { GLOBAL_CATALOG_POLICY_V2_STORE_KEY, providerCatalogPolicyV2StoreKey } from './catalogPolicyResolverV2'
 import {
   providerCatalogSettingKey,
   readProviderCatalogSettings,
@@ -22,48 +19,38 @@ describe('providerCatalogSettings', () => {
       .toBe('providerCatalog.google_ai_studio.freshnessMs')
   })
 
-  it('keeps OpenRouter legacy settings as compatibility keys', () => {
+  it('uses provider overrides without reading OpenRouter legacy settings', () => {
     const store = createStore({
-      [OPENROUTER_CATALOG_STARTUP_SYNC_POLICY_KEY]: 'always',
-      [OPENROUTER_CATALOG_FRESHNESS_MS_KEY]: 15 * 60 * 1000,
-      [OPENROUTER_CATALOG_RETENTION_MS_KEY]: 'never',
-      [providerCatalogSettingKey('openrouter', 'startupSyncPolicy')]: 'never',
+      [GLOBAL_CATALOG_POLICY_V2_STORE_KEY]: CATALOG_POLICY_PRESETS_V2.balanced,
+      [providerCatalogPolicyV2StoreKey('openrouter')]: CATALOG_POLICY_PRESETS_V2.manual,
     })
 
     expect(readProviderCatalogSettings(store, 'openrouter')).toMatchObject({
       providerKey: 'openrouter',
-      startupSyncPolicy: 'always',
-      freshnessMs: 15 * 60 * 1000,
-      retentionMs: 'never',
+      source: 'provider_override', startupSyncPolicy: 'never', freshnessMs: null, retentionMs: 90 * 24 * 60 * 60 * 1000,
     })
   })
 
   it('uses provider-neutral keys for new providers', () => {
     const store = createStore({
-      [providerCatalogSettingKey('deepseek', 'startupSyncPolicy')]: 'never',
-      [providerCatalogSettingKey('deepseek', 'freshnessMs')]: 60 * 60 * 1000,
-      [providerCatalogSettingKey('deepseek', 'retentionMs')]: 7 * 24 * 60 * 60 * 1000,
+      [providerCatalogPolicyV2StoreKey('deepseek')]: { ...CATALOG_POLICY_PRESETS_V2.frequent, retentionMs: 7 * 24 * 60 * 60 * 1000 },
     })
 
     expect(readProviderCatalogSettings(store, 'deepseek')).toMatchObject({
       providerKey: 'deepseek',
-      startupSyncPolicy: 'never',
+      startupSyncPolicy: 'stale_only',
       freshnessMs: 60 * 60 * 1000,
       retentionMs: 7 * 24 * 60 * 60 * 1000,
     })
   })
 
-  it('falls back to safe defaults for invalid values', () => {
+  it('keeps an unconfigured provider network-quiet', () => {
     const store = createStore({
-      [providerCatalogSettingKey('google_ai_studio', 'startupSyncPolicy')]: 'bad',
-      [providerCatalogSettingKey('google_ai_studio', 'freshnessMs')]: 123,
-      [providerCatalogSettingKey('google_ai_studio', 'retentionMs')]: 456,
+      [GLOBAL_CATALOG_POLICY_V2_STORE_KEY]: undefined,
     })
 
     expect(readProviderCatalogSettings(store, 'google_ai_studio')).toMatchObject({
-      startupSyncPolicy: 'stale_only',
-      freshnessMs: 24 * 60 * 60 * 1000,
-      retentionMs: 90 * 24 * 60 * 60 * 1000,
+      source: 'unconfigured', startupSyncPolicy: 'never', pickerOpenSyncPolicy: 'never', freshnessMs: null, retentionMs: 'never',
     })
   })
 })

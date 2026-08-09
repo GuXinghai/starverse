@@ -1,0 +1,297 @@
+{
+  "schema": "starverse.openrouter-images-provider-tag-smoke.v1",
+  "observedAt": "2026-07-13T16:38:23.184Z",
+  "localDate": "2026-07-14",
+  "credential": {
+    "source": "existing Starverse OpenRouter credential",
+    "backend": "electron_safe_storage",
+    "persistedInEvidence": false
+  },
+  "discovery": {
+    "modelRequest": "GET /api/v1/images/models",
+    "selectedModel": {
+      "id": "google/gemini-3.1-flash-image",
+      "name": "Google: Nano Banana 2 (Gemini 3.1 Flash Image)",
+      "supports_streaming": false,
+      "endpoints": "/api/v1/images/models/google/gemini-3.1-flash-image/endpoints"
+    },
+    "endpointRequest": "GET /api/v1/images/models/google/gemini-3.1-flash-image/endpoints",
+    "descriptorsRedacted": {
+      "google_ai_studio": {
+        "provider_name": "Google AI Studio",
+        "provider_slug": "google-ai-studio",
+        "provider_tag": "google-ai-studio",
+        "supported_parameters": {
+          "resolution": { "type": "enum", "values": ["512", "1K", "2K", "4K"] },
+          "aspect_ratio": { "type": "enum", "values": ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"] },
+          "n": { "type": "range", "min": 1, "max": 1 },
+          "input_references": { "type": "range", "min": 0, "max": 14 }
+        },
+        "allowed_passthrough_parameters": ["cachedContent"],
+        "supports_streaming": false,
+        "pricing": [{ "billable": "output_image", "unit": "token", "cost_usd": 0.00006 }]
+      },
+      "google_vertex": {
+        "provider_name": "Google Vertex",
+        "provider_slug": "google-vertex/global",
+        "provider_tag": "google-vertex/global",
+        "supported_parameters": {
+          "resolution": { "type": "enum", "values": ["512", "1K", "2K", "4K"] },
+          "aspect_ratio": { "type": "enum", "values": ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"] },
+          "n": { "type": "range", "min": 1, "max": 1 },
+          "input_references": { "type": "range", "min": 0, "max": 14 }
+        },
+        "allowed_passthrough_parameters": ["cachedContent"],
+        "supports_streaming": false,
+        "pricing": [{ "billable": "output_image", "unit": "token", "cost_usd": 0.00006 }]
+      }
+    },
+    "descriptorCapture": "The two descriptor objects above are the complete endpoint objects extracted from the response envelope. No descriptor field was omitted; secret-like fields would have been replaced with [REDACTED], but neither object contained one.",
+    "endpointResponseEvidenceRefresh": {
+      "observedAt": "2026-07-13T16:54:09.3657646Z",
+      "request": "GET /api/v1/images/models/google/gemini-3.1-flash-image/endpoints",
+      "status": 200,
+      "contentType": "application/json",
+      "rawUtf8Bytes": 1183,
+      "rawResponseSha256": "be9d700ee208a564ac7aa4b36a014195320b191a6571e54a7bcdd3be1b26984e",
+      "modelId": "google/gemini-3.1-flash-image",
+      "descriptorCount": 2,
+      "members": [
+        { "provider_name": "Google Vertex", "provider_slug": "google-vertex/global", "provider_tag": "google-vertex/global" },
+        { "provider_name": "Google AI Studio", "provider_slug": "google-ai-studio", "provider_tag": "google-ai-studio" }
+      ],
+      "endpointIdsExposedByDescriptorResponse": false
+    },
+    "commonLowestCostParameters": {
+      "n": 1,
+      "resolution": "512",
+      "aspect_ratio": "1:1",
+      "stream": false
+    },
+    "openapi": {
+      "url": "https://openrouter.ai/openapi.json",
+      "bytes": 1593457,
+      "sha256": "d129cf2f5ee98c0eae272591532ffebe2a4a576275e3c7daffe13e00263115de",
+      "provider_tag_in_ImageGenerationRequest": false
+    }
+  },
+  "callBudget": {
+    "planned": 3,
+    "successful": 3,
+    "repeats": 0,
+    "totalCostUsd": 0.1344765
+  },
+  "commonPrompt": "A small blue circle centered on a plain white background.",
+  "cases": [
+    {
+      "name": "baseline_no_pin",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/images",
+        "body": {
+          "model": "google/gemini-3.1-flash-image",
+          "prompt": "A small blue circle centered on a plain white background.",
+          "n": 1,
+          "resolution": "512",
+          "aspect_ratio": "1:1"
+        },
+        "serializedBodyUtf8": "{\"model\":\"google/gemini-3.1-flash-image\",\"prompt\":\"A small blue circle centered on a plain white background.\",\"n\":1,\"resolution\":\"512\",\"aspect_ratio\":\"1:1\"}",
+        "bodySha256": "691ed65d9da0406d1f046d75826c18f1a4a516650e0bd5039d4bd6c5d1f9be30"
+      },
+      "responseRedacted": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json",
+          "x-generation-id": "gen-img-1783960650-MATE0Na7RDFiPXjkc7MP"
+        },
+        "image": "[OMITTED_IMAGE_DATA]",
+        "media_type": "image/png",
+        "usage": {
+          "prompt_tokens": 11,
+          "completion_tokens": 747,
+          "total_tokens": 758,
+          "cost": 0.0448255,
+          "is_byok": false,
+          "prompt_tokens_details": { "cached_tokens": 0, "cache_write_tokens": 0, "audio_tokens": 0, "video_tokens": 0 },
+          "cost_details": { "upstream_inference_cost": 0.0448255, "upstream_inference_prompt_cost": 0.0000055, "upstream_inference_completions_cost": 0.04482 },
+          "completion_tokens_details": { "reasoning_tokens": 0, "image_tokens": 747 }
+        }
+      },
+      "responseCapture": "The JSON response body is complete except image bytes, which are replaced with [OMITTED_IMAGE_DATA]. Headers retain content identity and OpenRouter generation/request identifiers; unrelated CDN headers were not retained.",
+      "generationMetadata": {
+        "source": "GET /api/v1/generation?id=gen-img-1783960650-MATE0Na7RDFiPXjkc7MP",
+        "status": 200,
+        "model": "google/gemini-3.1-flash-image-20260528",
+        "api_type": "image",
+        "finish_reason": "complete",
+        "provider_name": "Google",
+        "provider_responses": [{ "endpoint_id": "275d7d39-ae50-4df3-8140-5dd69c3ab883", "provider_name": "Google", "status": 200 }],
+        "tokens_prompt": 11,
+        "tokens_completion": 747,
+        "native_tokens_completion_images": 747,
+        "total_cost": 0.0448255,
+        "data_region": "global"
+      },
+      "generationMetadataRawRedacted": {
+        "created_at": "2026-07-13T16:37:30.996Z", "model": "google/gemini-3.1-flash-image-20260528", "app_id": 2516326,
+        "external_user": null, "streamed": false, "cancelled": false, "latency": 185, "moderation_latency": 0, "generation_time": 7232,
+        "tokens_prompt": 11, "tokens_completion": 747, "native_tokens_prompt": 11, "native_tokens_completion": 747, "native_tokens_completion_images": 747,
+        "native_tokens_reasoning": null, "native_tokens_cached": null, "num_media_prompt": 0, "num_input_audio_prompt": null, "num_media_completion": 1,
+        "num_search_results": null, "num_fetches": null, "web_search_engine": null, "origin": "https://github.com/GuXinghai/starverse", "is_byok": false,
+        "finish_reason": "complete", "native_finish_reason": "complete", "service_tier": null, "usage": 0.0448255, "router": null,
+        "provider_responses": [{ "endpoint_id": "275d7d39-ae50-4df3-8140-5dd69c3ab883", "is_byok": false, "latency": 7232, "model_permaslug": "google/gemini-3.1-flash-image-20260528", "provider_name": "Google", "status": 200 }],
+        "user_agent": null, "http_referer": null, "request_id": null, "session_id": null, "preset_id": null, "api_type": "image",
+        "id": "gen-img-1783960650-MATE0Na7RDFiPXjkc7MP", "upstream_id": null, "total_cost": 0.0448255, "cache_discount": null,
+        "upstream_inference_cost": 0, "provider_name": "Google", "response_cache_source_id": null, "data_region": "global"
+      }
+    },
+    {
+      "name": "pin_google_ai_studio",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/images",
+        "body": {
+          "model": "google/gemini-3.1-flash-image",
+          "prompt": "A small blue circle centered on a plain white background.",
+          "n": 1,
+          "resolution": "512",
+          "aspect_ratio": "1:1",
+          "provider_tag": "google-ai-studio"
+        },
+        "serializedBodyUtf8": "{\"model\":\"google/gemini-3.1-flash-image\",\"prompt\":\"A small blue circle centered on a plain white background.\",\"n\":1,\"resolution\":\"512\",\"aspect_ratio\":\"1:1\",\"provider_tag\":\"google-ai-studio\"}",
+        "bodySha256": "6dbcc6a0276937a89d772990297cd6b1ac6977e9c26f535e6d08072c6e1742fd"
+      },
+      "responseRedacted": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json",
+          "x-generation-id": "gen-img-1783960668-XabTyON61DpWv8Up2JqO"
+        },
+        "image": "[OMITTED_IMAGE_DATA]",
+        "media_type": "image/png",
+        "usage": {
+          "prompt_tokens": 11,
+          "completion_tokens": 747,
+          "total_tokens": 758,
+          "cost": 0.0448255,
+          "is_byok": false,
+          "prompt_tokens_details": { "cached_tokens": 0, "cache_write_tokens": 0, "audio_tokens": 0, "video_tokens": 0 },
+          "cost_details": { "upstream_inference_cost": 0.0448255, "upstream_inference_prompt_cost": 0.0000055, "upstream_inference_completions_cost": 0.04482 },
+          "completion_tokens_details": { "reasoning_tokens": 0, "image_tokens": 747 }
+        }
+      },
+      "responseCapture": "The JSON response body is complete except image bytes, which are replaced with [OMITTED_IMAGE_DATA]. Headers retain content identity and OpenRouter generation/request identifiers; unrelated CDN headers were not retained.",
+      "generationMetadata": {
+        "source": "GET /api/v1/generation?id=gen-img-1783960668-XabTyON61DpWv8Up2JqO",
+        "status": 200,
+        "model": "google/gemini-3.1-flash-image-20260528",
+        "api_type": "image",
+        "finish_reason": "complete",
+        "provider_name": "Google",
+        "provider_responses": [{ "endpoint_id": "275d7d39-ae50-4df3-8140-5dd69c3ab883", "provider_name": "Google", "status": 200 }],
+        "tokens_prompt": 11,
+        "tokens_completion": 747,
+        "native_tokens_completion_images": 747,
+        "total_cost": 0.0448255,
+        "data_region": "global"
+      },
+      "generationMetadataRawRedacted": {
+        "created_at": "2026-07-13T16:37:48.987Z", "model": "google/gemini-3.1-flash-image-20260528", "app_id": 2516326,
+        "external_user": null, "streamed": false, "cancelled": false, "latency": 2, "moderation_latency": 0, "generation_time": 7564,
+        "tokens_prompt": 11, "tokens_completion": 747, "native_tokens_prompt": 11, "native_tokens_completion": 747, "native_tokens_completion_images": 747,
+        "native_tokens_reasoning": null, "native_tokens_cached": null, "num_media_prompt": 0, "num_input_audio_prompt": null, "num_media_completion": 1,
+        "num_search_results": null, "num_fetches": null, "web_search_engine": null, "origin": "https://github.com/GuXinghai/starverse", "is_byok": false,
+        "finish_reason": "complete", "native_finish_reason": "complete", "service_tier": null, "usage": 0.0448255, "router": null,
+        "provider_responses": [{ "endpoint_id": "275d7d39-ae50-4df3-8140-5dd69c3ab883", "is_byok": false, "latency": 7564, "model_permaslug": "google/gemini-3.1-flash-image-20260528", "provider_name": "Google", "status": 200 }],
+        "user_agent": null, "http_referer": null, "request_id": null, "session_id": null, "preset_id": null, "api_type": "image",
+        "id": "gen-img-1783960668-XabTyON61DpWv8Up2JqO", "upstream_id": null, "total_cost": 0.0448255, "cache_discount": null,
+        "upstream_inference_cost": 0, "provider_name": "Google", "response_cache_source_id": null, "data_region": "global"
+      },
+      "pinExpectation": "Google AI Studio / google-ai-studio",
+      "pinObserved": false
+    },
+    {
+      "name": "pin_google_vertex",
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/images",
+        "body": {
+          "model": "google/gemini-3.1-flash-image",
+          "prompt": "A small blue circle centered on a plain white background.",
+          "n": 1,
+          "resolution": "512",
+          "aspect_ratio": "1:1",
+          "provider_tag": "google-vertex/global"
+        },
+        "serializedBodyUtf8": "{\"model\":\"google/gemini-3.1-flash-image\",\"prompt\":\"A small blue circle centered on a plain white background.\",\"n\":1,\"resolution\":\"512\",\"aspect_ratio\":\"1:1\",\"provider_tag\":\"google-vertex/global\"}",
+        "bodySha256": "433383613b81db7492ca623d9984d2d780464237707309afbfeb86f7df3c8915"
+      },
+      "responseRedacted": {
+        "status": 200,
+        "headers": {
+          "content-type": "application/json",
+          "x-generation-id": "gen-img-1783960686-PKg6Ordduz5sddynzTpo"
+        },
+        "image": "[OMITTED_IMAGE_DATA]",
+        "media_type": "image/png",
+        "usage": {
+          "prompt_tokens": 11,
+          "completion_tokens": 747,
+          "total_tokens": 758,
+          "cost": 0.0448255,
+          "is_byok": false,
+          "prompt_tokens_details": { "cached_tokens": 0, "cache_write_tokens": 0, "audio_tokens": 0, "video_tokens": 0 },
+          "cost_details": { "upstream_inference_cost": 0.0448255, "upstream_inference_prompt_cost": 0.0000055, "upstream_inference_completions_cost": 0.04482 },
+          "completion_tokens_details": { "reasoning_tokens": 0, "image_tokens": 747 }
+        }
+      },
+      "responseCapture": "The JSON response body is complete except image bytes, which are replaced with [OMITTED_IMAGE_DATA]. Headers retain content identity and OpenRouter generation/request identifiers; unrelated CDN headers were not retained.",
+      "generationMetadata": {
+        "source": "GET /api/v1/generation?id=gen-img-1783960686-PKg6Ordduz5sddynzTpo",
+        "status": 200,
+        "model": "google/gemini-3.1-flash-image-20260528",
+        "api_type": "image",
+        "finish_reason": "complete",
+        "provider_name": "Google",
+        "provider_responses": [{ "endpoint_id": "275d7d39-ae50-4df3-8140-5dd69c3ab883", "provider_name": "Google", "status": 200 }],
+        "tokens_prompt": 11,
+        "tokens_completion": 747,
+        "native_tokens_completion_images": 747,
+        "total_cost": 0.0448255,
+        "data_region": "global"
+      },
+      "generationMetadataRawRedacted": {
+        "created_at": "2026-07-13T16:38:06.191Z", "model": "google/gemini-3.1-flash-image-20260528", "app_id": 2516326,
+        "external_user": null, "streamed": false, "cancelled": false, "latency": 10, "moderation_latency": 0, "generation_time": 7320,
+        "tokens_prompt": 11, "tokens_completion": 747, "native_tokens_prompt": 11, "native_tokens_completion": 747, "native_tokens_completion_images": 747,
+        "native_tokens_reasoning": null, "native_tokens_cached": null, "num_media_prompt": 0, "num_input_audio_prompt": null, "num_media_completion": 1,
+        "num_search_results": null, "num_fetches": null, "web_search_engine": null, "origin": "https://github.com/GuXinghai/starverse", "is_byok": false,
+        "finish_reason": "complete", "native_finish_reason": "complete", "service_tier": null, "usage": 0.0448255, "router": null,
+        "provider_responses": [{ "endpoint_id": "275d7d39-ae50-4df3-8140-5dd69c3ab883", "is_byok": false, "latency": 7320, "model_permaslug": "google/gemini-3.1-flash-image-20260528", "provider_name": "Google", "status": 200 }],
+        "user_agent": null, "http_referer": null, "request_id": null, "session_id": null, "preset_id": null, "api_type": "image",
+        "id": "gen-img-1783960686-PKg6Ordduz5sddynzTpo", "upstream_id": null, "total_cost": 0.0448255, "cache_discount": null,
+        "upstream_inference_cost": 0, "provider_name": "Google", "response_cache_source_id": null, "data_region": "global"
+      },
+      "pinExpectation": "Google Vertex / google-vertex/global",
+      "pinObserved": false
+    }
+  ],
+  "routingComparison": {
+    "allEndpointIdsEqual": true,
+    "allProviderNamesEqual": true,
+    "sharedEndpointId": "275d7d39-ae50-4df3-8140-5dd69c3ab883",
+    "sharedProviderName": "Google",
+    "aiStudioTagRoutingProven": false,
+    "vertexTagRoutingProven": false,
+    "vertexTagDistinctFromBaseline": false
+  },
+  "conclusion": {
+    "requestContainingProviderTagAccepted": true,
+    "provider_tagReliablyPinsEndpoint": false,
+    "classification": "no_reliable_routing_effect_observed",
+    "decision": "Do not serialize top-level provider_tag. This smoke did not test the documented provider.only wire shape and therefore cannot decide whether endpoint-specific routing is available.",
+    "experimentalObservedExtensionRegistered": false,
+    "extraRepeatsRequired": false,
+    "supersededBy": "openrouter-images-provider-only-smoke-20260714.json"
+  }
+}

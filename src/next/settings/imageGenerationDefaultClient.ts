@@ -1,27 +1,12 @@
-import {
-  decodeBooleanAck,
-  decodeImageGenerationDefaultResponse,
-} from '@/next/ipc/contracts/dbBridgeContracts'
+import { decodeImageGenerationDefaultResponse } from '@/next/ipc/contracts/dbBridgeContracts'
+import { getGenerationV2UiPreference, setGenerationV2UiPreference } from '@/next/generation-v2/renderer/uiPreferenceStoreV2'
 
-type DbBridge = Readonly<{
-  invoke: (method: string, params?: unknown) => Promise<any>
-}>
-
-function getDbBridge(): DbBridge | null {
-  const bridge = (globalThis as any).dbBridge as DbBridge | undefined
-  return bridge && typeof bridge.invoke === 'function' ? bridge : null
-}
+const KEY = 'imageGenerationDefault'
 
 export async function getImageGenerationDefault(): Promise<unknown | null> {
-  const bridge = getDbBridge()
-  if (!bridge) return null
-  const result = await bridge.invoke('settings.getImageGenerationDefault')
-  return decodeImageGenerationDefaultResponse(result)
+  return decodeImageGenerationDefaultResponse({ value: (await getGenerationV2UiPreference(KEY)) ?? null })
 }
 
 export async function setImageGenerationDefault(value: unknown): Promise<boolean> {
-  const bridge = getDbBridge()
-  if (!bridge) return false
-  const result = await bridge.invoke('settings.setImageGenerationDefault', { value })
-  return decodeBooleanAck('settings.setImageGenerationDefault', result)
+  return setGenerationV2UiPreference(KEY, value)
 }

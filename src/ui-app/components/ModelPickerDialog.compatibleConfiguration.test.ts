@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/vue'
+import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import { describe, expect, it, vi } from 'vitest'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 import { compatibleConfigurationSelectionSchema } from '@/next/provider/openai-chat-compatible/ui'
@@ -15,14 +15,17 @@ describe('ModelPickerDialog compatible configuration-only source', () => {
       inlinePolicyId: 'ocp_inline_policy_12345678', inlinePolicyVersion: 1,
     })
     const onSelect = vi.fn()
+    const selectionCommand = vi.fn(async () => undefined)
     render(ModelPickerDialog, {
       props: {
-        open: true, selectedModelId: '', fallbackModels: [],
+        open: true, selectedModelId: '',
         compatibleConfigurationSources: [{ providerInstanceId: selection.providerInstanceId, providerName: 'First', models: [{ modelId: 'same-model', displayName: 'Same model', sourceLabel: 'manual', selection }] }],
+        selectionCommand,
         onSelect,
       },
     })
     await fireEvent.click(screen.getByTestId('compatible-model-ocp_provider_12345678-same-model'))
+    await waitFor(() => expect(selectionCommand).toHaveBeenCalledWith(selection))
     expect(onSelect).toHaveBeenCalledWith(selection, 'Same model')
   })
 })

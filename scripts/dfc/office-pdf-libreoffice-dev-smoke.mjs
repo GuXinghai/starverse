@@ -94,7 +94,6 @@ async function main() {
     path.join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'),
     '--run',
     'infra/files/dfcLibreOfficePdfAdapter.real-smoke.test.ts',
-    'infra/db/worker.filePipeline.test.ts',
     '-t',
     'real managed',
     '--reporter=dot',

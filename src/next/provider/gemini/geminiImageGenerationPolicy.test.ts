@@ -29,14 +29,15 @@ describe('geminiImageGenerationPolicy', () => {
     })
   })
 
-  it('matches Nano Banana 2 with 512 through 4K and minimal/high levels', () => {
+  it('preserves the complete Nano Banana 2 matrix for the exact stable model', () => {
     expect(resolveGeminiImageGenerationPolicy('gemini-3.1-flash-image')).toMatchObject({
       kind: 'nano_banana_2',
       supportedImageSizes: ['512', '1K', '2K', '4K'],
       imageSizeMode: 'selectable',
+      supportedAspectRatios: ['auto', '1:1', '9:16', '16:9', '3:4', '4:3', '3:2', '2:3', '5:4', '4:5', '21:9', '4:1', '1:4', '8:1', '1:8'],
+      supportedOutputModes: ['image_and_text', 'image_only'],
       supportsThoughtSummaries: true,
       thinkingLevels: ['minimal', 'high'],
-      defaultThinkingLevel: 'minimal',
       supportsGoogleSearch: true,
       supportsImageSearch: true,
     })

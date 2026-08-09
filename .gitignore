@@ -6,8 +6,11 @@ node_modules/
 # Build outputs
 dist/
 dist-electron/
+dist-native/
 out/
 build/
+native/epoch-win32/build/
+native/epoch-win32/.generated/
 public/build-id.json
 *.tsbuildinfo
 
@@ -102,6 +105,8 @@ temptest.ps1
 .artifacts/netlog/*.json
 .artifacts/white-screen/
 .artifacts/plugin-packages/
+.artifacts/epoch2-normal-profile-initialization/
+.artifacts/generation-v2-real-smoke/
 
 # Package manager
 .yarn/

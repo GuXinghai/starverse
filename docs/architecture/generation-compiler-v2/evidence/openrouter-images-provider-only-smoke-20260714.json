@@ -1,0 +1,213 @@
+{
+  "schema": "starverse.openrouter-images-provider-only-smoke.v1",
+  "observedAt": "2026-07-13T22:57:51.163Z",
+  "localDate": "2026-07-14",
+  "credential": {
+    "source": "existing Starverse OpenRouter credential",
+    "backend": "electron_safe_storage",
+    "persistedInEvidence": false
+  },
+  "officialDocumentation": {
+    "verifiedAt": "2026-07-14",
+    "imageGenerationGuide": "https://openrouter.ai/docs/guides/overview/multimodal/image-generation",
+    "providerSelectionGuide": "https://openrouter.ai/docs/guides/routing/provider-selection",
+    "documentedImageRoutingFields": ["provider.only", "provider.order", "provider.ignore", "provider.sort", "provider.allow_fallbacks"],
+    "documentedPinShape": { "provider": { "only": ["<provider_tag>"], "allow_fallbacks": false } }
+  },
+  "discovery": {
+    "modelRequest": "GET /api/v1/images/models",
+    "selectedModel": {
+      "id": "google/gemini-3.1-flash-image",
+      "name": "Google: Nano Banana 2 (Gemini 3.1 Flash Image)",
+      "supports_streaming": false,
+      "endpoints": "/api/v1/images/models/google/gemini-3.1-flash-image/endpoints"
+    },
+    "endpointResponse": {
+      "request": "GET /api/v1/images/models/google/gemini-3.1-flash-image/endpoints",
+      "status": 200,
+      "utf8Bytes": 1183,
+      "sha256": "be9d700ee208a564ac7aa4b36a014195320b191a6571e54a7bcdd3be1b26984e",
+      "descriptorCount": 2,
+      "descriptorsRedacted": [
+        {
+          "provider_name": "Google Vertex",
+          "provider_slug": "google-vertex/global",
+          "provider_tag": "google-vertex/global",
+          "supported_parameters": {
+            "resolution": { "type": "enum", "values": ["512", "1K", "2K", "4K"] },
+            "aspect_ratio": { "type": "enum", "values": ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"] },
+            "n": { "type": "range", "min": 1, "max": 1 },
+            "input_references": { "type": "range", "min": 0, "max": 14 }
+          },
+          "allowed_passthrough_parameters": ["cachedContent"],
+          "supports_streaming": false,
+          "pricing": [{ "billable": "output_image", "unit": "token", "cost_usd": 0.00006 }]
+        },
+        {
+          "provider_name": "Google AI Studio",
+          "provider_slug": "google-ai-studio",
+          "provider_tag": "google-ai-studio",
+          "supported_parameters": {
+            "resolution": { "type": "enum", "values": ["512", "1K", "2K", "4K"] },
+            "aspect_ratio": { "type": "enum", "values": ["1:1", "1:4", "1:8", "2:3", "3:2", "3:4", "4:1", "4:3", "4:5", "5:4", "8:1", "9:16", "16:9", "21:9"] },
+            "n": { "type": "range", "min": 1, "max": 1 },
+            "input_references": { "type": "range", "min": 0, "max": 14 }
+          },
+          "allowed_passthrough_parameters": ["cachedContent"],
+          "supports_streaming": false,
+          "pricing": [{ "billable": "output_image", "unit": "token", "cost_usd": 0.00006 }]
+        }
+      ]
+    },
+    "openapi": {
+      "url": "https://openrouter.ai/openapi.json",
+      "utf8Bytes": 1615258,
+      "sha256": "abaf90acc89dc3a2b4cd8824afcbf87734c8d0a5f4429ea85dca0d9eb02e353b",
+      "ImageGenerationRequest.providerResolvedKeys": ["options"],
+      "documentedRoutingFieldsMissingFromSchema": ["only", "order", "ignore", "sort", "allow_fallbacks"]
+    }
+  },
+  "prompt": "A single red apple centered on a plain white background.",
+  "callBudget": {
+    "planned": 2,
+    "attempted": 2,
+    "successful": 2,
+    "repeats": 0,
+    "totalCostUsd": 0.0908215
+  },
+  "results": [
+    {
+      "name": "provider_only_google_ai_studio",
+      "target": {
+        "descriptorProviderName": "Google AI Studio",
+        "provider_tag": "google-ai-studio"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/images",
+        "body": {
+          "model": "google/gemini-3.1-flash-image",
+          "prompt": "A single red apple centered on a plain white background.",
+          "n": 1,
+          "resolution": "512",
+          "aspect_ratio": "1:1",
+          "provider": { "only": ["google-ai-studio"], "allow_fallbacks": false }
+        },
+        "serializedBodyUtf8": "{\"model\":\"google/gemini-3.1-flash-image\",\"prompt\":\"A single red apple centered on a plain white background.\",\"n\":1,\"resolution\":\"512\",\"aspect_ratio\":\"1:1\",\"provider\":{\"only\":[\"google-ai-studio\"],\"allow_fallbacks\":false}}",
+        "bodySha256": "df25d7d1db4fbf297f781b9e6fb26213bdd62d6f0aca0129fc8c3a31aac72c35"
+      },
+      "responseRedacted": {
+        "status": 200,
+        "headers": { "content-type": "application/json", "x-generation-id": "gen-img-1783983435-tmdOjjdcw3HdZmXHp8q1" },
+        "body": {
+          "created": 0,
+          "data": [{ "b64_json": "[OMITTED_IMAGE_DATA]", "media_type": "image/jpeg" }],
+          "usage": {
+            "prompt_tokens": 12, "completion_tokens": 1137, "total_tokens": 1149, "cost": 0.045996, "is_byok": false,
+            "prompt_tokens_details": { "cached_tokens": 0, "cache_write_tokens": 0, "audio_tokens": 0, "video_tokens": 0 },
+            "cost_details": { "upstream_inference_cost": 0.045996, "upstream_inference_prompt_cost": 0.000006, "upstream_inference_completions_cost": 0.04599 },
+            "completion_tokens_details": { "reasoning_tokens": 0, "image_tokens": 747 }
+          }
+        }
+      },
+      "generationMetadataRedacted": {
+        "created_at": "2026-07-13T22:57:15.335Z", "model": "google/gemini-3.1-flash-image-20260528", "app_id": 2516326,
+        "external_user": null, "streamed": false, "cancelled": false, "latency": 193, "moderation_latency": 0, "generation_time": 7025,
+        "tokens_prompt": 12, "tokens_completion": 1137, "native_tokens_prompt": 12, "native_tokens_completion": 1137, "native_tokens_completion_images": 747,
+        "native_tokens_reasoning": null, "native_tokens_cached": null, "num_media_prompt": 0, "num_input_audio_prompt": null, "num_media_completion": 1,
+        "num_search_results": null, "num_fetches": null, "web_search_engine": null, "origin": "https://github.com/GuXinghai/starverse", "is_byok": false,
+        "finish_reason": "complete", "native_finish_reason": "complete", "service_tier": null, "usage": 0.045996, "router": null,
+        "provider_responses": [{ "endpoint_id": "a5c8267a-c7ec-42d3-9a53-08f34bce6af9", "is_byok": false, "latency": 7025, "model_permaslug": "google/gemini-3.1-flash-image-20260528", "provider_name": "Google AI Studio", "status": 200 }],
+        "user_agent": null, "http_referer": null, "request_id": null, "session_id": null, "preset_id": null, "api_type": "image",
+        "id": "gen-img-1783983435-tmdOjjdcw3HdZmXHp8q1", "upstream_id": null, "total_cost": 0.045996, "cache_discount": null,
+        "upstream_inference_cost": 0, "provider_name": "Google AI Studio", "response_cache_source_id": null, "data_region": "global"
+      },
+      "routingVerdict": {
+        "expectedProvider": "Google AI Studio",
+        "observedProvider": "Google AI Studio",
+        "observedEndpointId": "a5c8267a-c7ec-42d3-9a53-08f34bce6af9",
+        "matched": true,
+        "authenticatedLogsUi": {
+          "providerLabel": "Google AI Studio",
+          "displayedCostUsdRounded": 0.046,
+          "applicationLabel": "Starverse Generation Compiler V2 Gate 0 provider-only smoke"
+        }
+      }
+    },
+    {
+      "name": "provider_only_google_vertex_global",
+      "target": {
+        "descriptorProviderName": "Google Vertex",
+        "provider_tag": "google-vertex/global"
+      },
+      "request": {
+        "method": "POST",
+        "path": "/api/v1/images",
+        "body": {
+          "model": "google/gemini-3.1-flash-image",
+          "prompt": "A single red apple centered on a plain white background.",
+          "n": 1,
+          "resolution": "512",
+          "aspect_ratio": "1:1",
+          "provider": { "only": ["google-vertex/global"], "allow_fallbacks": false }
+        },
+        "serializedBodyUtf8": "{\"model\":\"google/gemini-3.1-flash-image\",\"prompt\":\"A single red apple centered on a plain white background.\",\"n\":1,\"resolution\":\"512\",\"aspect_ratio\":\"1:1\",\"provider\":{\"only\":[\"google-vertex/global\"],\"allow_fallbacks\":false}}",
+        "bodySha256": "3b3599a1350261cf6277cbe3d1367f9f5593ce9c1d740dd238dc2829809748a3"
+      },
+      "responseRedacted": {
+        "status": 200,
+        "headers": { "content-type": "application/json", "x-generation-id": "gen-img-1783983452-ECcmML1ExxspCVCK2FX1" },
+        "body": {
+          "created": 0,
+          "data": [{ "b64_json": "[OMITTED_IMAGE_DATA]", "media_type": "image/png" }],
+          "usage": {
+            "prompt_tokens": 11, "completion_tokens": 747, "total_tokens": 758, "cost": 0.0448255, "is_byok": false,
+            "prompt_tokens_details": { "cached_tokens": 0, "cache_write_tokens": 0, "audio_tokens": 0, "video_tokens": 0 },
+            "cost_details": { "upstream_inference_cost": 0.0448255, "upstream_inference_prompt_cost": 0.0000055, "upstream_inference_completions_cost": 0.04482 },
+            "completion_tokens_details": { "reasoning_tokens": 0, "image_tokens": 747 }
+          }
+        }
+      },
+      "generationMetadataRedacted": {
+        "created_at": "2026-07-13T22:57:32.539Z", "model": "google/gemini-3.1-flash-image-20260528", "app_id": 2516326,
+        "external_user": null, "streamed": false, "cancelled": false, "latency": 4, "moderation_latency": 0, "generation_time": 9513,
+        "tokens_prompt": 11, "tokens_completion": 747, "native_tokens_prompt": 11, "native_tokens_completion": 747, "native_tokens_completion_images": 747,
+        "native_tokens_reasoning": null, "native_tokens_cached": null, "num_media_prompt": 0, "num_input_audio_prompt": null, "num_media_completion": 1,
+        "num_search_results": null, "num_fetches": null, "web_search_engine": null, "origin": "https://github.com/GuXinghai/starverse", "is_byok": false,
+        "finish_reason": "complete", "native_finish_reason": "complete", "service_tier": null, "usage": 0.0448255, "router": null,
+        "provider_responses": [{ "endpoint_id": "275d7d39-ae50-4df3-8140-5dd69c3ab883", "is_byok": false, "latency": 9513, "model_permaslug": "google/gemini-3.1-flash-image-20260528", "provider_name": "Google", "status": 200 }],
+        "user_agent": null, "http_referer": null, "request_id": null, "session_id": null, "preset_id": null, "api_type": "image",
+        "id": "gen-img-1783983452-ECcmML1ExxspCVCK2FX1", "upstream_id": null, "total_cost": 0.0448255, "cache_discount": null,
+        "upstream_inference_cost": 0, "provider_name": "Google", "response_cache_source_id": null, "data_region": "global"
+      },
+      "routingVerdict": {
+        "expectedProvider": "Google Vertex Global",
+        "observedProvider": "Google",
+        "observedEndpointId": "275d7d39-ae50-4df3-8140-5dd69c3ab883",
+        "matched": true,
+        "basis": "The request allowed only the full google-vertex/global variant with fallbacks disabled; it succeeded on an endpoint distinct from the AI Studio endpoint. The authenticated OpenRouter Logs UI independently labeled the matching corrected-smoke row Google Vertex.",
+        "authenticatedLogsUi": {
+          "providerLabel": "Google Vertex",
+          "displayedCostUsdRounded": 0.0448,
+          "applicationLabel": "Starverse Generation Compiler V2 Gate 0 provider-only smoke"
+        }
+      }
+    }
+  ],
+  "comparison": {
+    "bothRequestsSucceeded": true,
+    "bothTargetsMatched": true,
+    "endpointIdsDistinct": true,
+    "aiStudioEndpointId": "a5c8267a-c7ec-42d3-9a53-08f34bce6af9",
+    "vertexGlobalEndpointId": "275d7d39-ae50-4df3-8140-5dd69c3ab883",
+    "totalCostUsd": 0.0908215
+  },
+  "conclusion": {
+    "documentedWireShapeImplementedByService": true,
+    "endpointPinVerifiedForBothTags": true,
+    "independentDashboardVerification": "Authenticated OpenRouter Logs showed the two corrected-smoke rows as Google AI Studio and Google Vertex, with rounded costs matching the corresponding generation metadata.",
+    "decision": "The endpoint-specific wire contract is verified: serialize provider.only=[selected provider_tag] with allow_fallbacks=false and reject before transport when no descriptor supports the complete explicit intent. Implementation still requires an Owner-frozen deterministic selection policy when multiple descriptors qualify.",
+    "previousTopLevelProviderTagEvidenceDisposition": "Retained only as evidence that top-level provider_tag produced no reliable routing effect; it does not contradict the documented provider.only contract.",
+    "subsequentOwnerDecision": "After this smoke, the Owner closed selection policy: user-owned persistent binding by credential scope/model/image-generation; sole eligible auto-bind; multiple eligible explicit selection required; no automatic ranking or same-command endpoint switch. See goal2-gate0-contract-audit.md."
+  }
+}

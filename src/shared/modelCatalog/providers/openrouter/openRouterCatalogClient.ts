@@ -19,10 +19,15 @@ import {
 } from '../../internalSchema'
 import { deriveModelTags } from '../../modelTagger'
 import {
-  buildNetworkErrorEnvelope,
-  providerNetworkFailureMessage,
-  type NetworkErrorEnvelope,
-} from '../../../network/networkErrorEnvelope'
+  preserveProviderRecordV2,
+  type CatalogProviderModelObservationV2,
+  type ProviderReportedFactV2,
+} from '../../providerModelObservationV2'
+import {
+  createProviderFailureV2,
+  ProviderFailureErrorV2,
+  type ProviderFailureV2,
+} from '../../../provider/providerFailureV2'
 
 const OPENROUTER_DEFAULT_BASE_URL = 'https://openrouter.ai/api/v1'
 const OPENROUTER_ATTRIBUTION_REFERER = 'https://github.com/GuXinghai/starverse'
@@ -37,6 +42,7 @@ type OpenRouterFetchContext = Readonly<{
   apiKey: string
   baseUrl: string
   signal?: AbortSignal | null
+  category?: string
 }>
 
 type OpenRouterModelsSource = 'models' | 'models_user'
@@ -50,15 +56,6 @@ type OpenRouterFetchOptions = Readonly<{
 export type OpenRouterModelsCountResult = Readonly<{
   count: number
   fetchedAtMs: number
-}>
-
-type OpenRouterHttpError = Readonly<{
-  status: number
-  statusText: string
-  message: string
-  code?: number | null
-  retryAfter?: string | null
-  networkError?: NetworkErrorEnvelope
 }>
 
 function normalizeBaseUrl(baseUrl: string): string {
@@ -244,67 +241,80 @@ function normalizeOpenRouterProviderSlug(rawProvider: OpenRouterProviderObject):
   return name.toLowerCase().replace(/\s+/g, '-')
 }
 
-function parseHttpError(response: Response, bodyText: string): OpenRouterHttpError {
-  let code: number | null = null
-  let message: string | null = null
-  try {
-    const parsed = JSON.parse(bodyText) as { error?: { code?: unknown; message?: unknown } }
-    const errorObj = asObject(parsed?.error)
-    const parsedCode = asNumber(errorObj?.code)
-    if (typeof parsedCode === 'number') code = parsedCode
-    const parsedMessage = asString(errorObj?.message)
-    if (parsedMessage) message = parsedMessage
-  } catch {
-    // ignore parse error, keep fallback message
-  }
+function responseHeaders(response: Response): Readonly<Record<string, string>> {
+  const headers: Record<string, string> = {}
+  response.headers.forEach((value, key) => { headers[key] = value })
+  return Object.freeze(headers)
+}
 
-  const retryAfter = response.headers?.get('retry-after') ?? null
-  const networkError = buildOpenRouterCatalogNetworkError({
+function redactCredentialFromFailure(failure: ProviderFailureV2, credential: string): ProviderFailureV2 {
+  const secret = credential.trim()
+  if (!secret) return failure
+  const redactionPaths = new Set<string>()
+  const redact = (value: unknown, path: string): unknown => {
+    if (typeof value === 'string') {
+      if (!value.includes(secret)) return value
+      redactionPaths.add(path)
+      return value.split(secret).join('[redacted]')
+    }
+    if (Array.isArray(value)) return value.map((item, index) => redact(item, `${path}[${index}]`))
+    if (!value || typeof value !== 'object') return value
+    return Object.fromEntries(Object.entries(value as Record<string, unknown>)
+      .map(([key, child]) => [key, redact(child, `${path}.${key}`)]))
+  }
+  const providerError = failure.providerError === null ? null : Object.freeze({
+    ...failure.providerError,
+    code: redact(failure.providerError.code, 'providerError.code') as string | number | null,
+    type: redact(failure.providerError.type, 'providerError.type') as string | null,
+    status: redact(failure.providerError.status, 'providerError.status') as string | null,
+    message: redact(failure.providerError.message, 'providerError.message') as string | null,
+    param: redact(failure.providerError.param, 'providerError.param') as string | null,
+    requestId: redact(failure.providerError.requestId, 'providerError.requestId') as string | null,
+    rawJson: redact(failure.providerError.rawJson, 'providerError.rawJson'),
+    rawText: redact(failure.providerError.rawText, 'providerError.rawText') as string | null,
+  })
+  const transportError = failure.transportError === null ? null : Object.freeze({
+    name: redact(failure.transportError.name, 'transportError.name') as string | null,
+    code: redact(failure.transportError.code, 'transportError.code') as string | null,
+    message: redact(failure.transportError.message, 'transportError.message') as string | null,
+  })
+  const rawFrameExcerpt = redact(failure.rawFrameExcerpt, 'rawFrameExcerpt') as string | null
+  if (redactionPaths.size === 0) return failure
+  return Object.freeze({
+    ...failure,
+    providerError,
+    transportError,
+    rawFrameExcerpt,
+    redactions: Object.freeze([...failure.redactions, ...[...redactionPaths]
+      .map((path) => Object.freeze({ path, reason: 'credential' as const }))]),
+  })
+}
+
+function openRouterHttpFailure(response: Response, bodyText: string, observedAtMs: number): ProviderFailureV2 {
+  return createProviderFailureV2({
+    context: {
+      origin: 'http_response',
+      phase: 'response_headers',
+      providerId: PROVIDERS.OPENROUTER,
+      contractId: 'openrouter-chat-models-v1',
+      operationId: `model-catalog:${PROVIDERS.OPENROUTER}:${observedAtMs}`,
+      requestSequence: 1,
+      starverseDiagnosticCode: 'MODEL_CATALOG_PROVIDER_HTTP_ERROR',
+    },
     httpStatus: response.status,
-    providerCode: code,
-    providerMessage: message,
-  })
-
-  return {
-    status: response.status,
-    statusText: response.statusText,
-    code,
-    message: providerNetworkFailureMessage('OpenRouter catalog', networkError),
-    retryAfter,
-    networkError,
-  }
-}
-
-function buildOpenRouterCatalogNetworkError(input: Readonly<{
-  httpStatus?: number
-  providerCode?: unknown
-  providerMessage?: unknown
-  error?: unknown
-  abortReason?: unknown
-}>): NetworkErrorEnvelope {
-  return buildNetworkErrorEnvelope({
-    requestPurpose: 'provider_catalog',
-    providerId: PROVIDERS.OPENROUTER,
-    transportKind: 'electron_session_fetch',
-    httpStatus: input.httpStatus,
-    providerCode: input.providerCode,
-    providerMessage: input.providerMessage,
-    error: input.error,
-    abortReason: input.abortReason,
+    httpStatusText: response.statusText,
+    bodyText,
+    headers: responseHeaders(response),
   })
 }
 
-function buildOpenRouterCatalogTransportError(error: unknown, abortReason?: unknown): Error & { networkError: NetworkErrorEnvelope } {
-  const networkError = buildOpenRouterCatalogNetworkError({ error, abortReason })
-  return Object.assign(new Error(providerNetworkFailureMessage('OpenRouter catalog', networkError)), {
-    networkError,
-  })
-}
-
-async function readJsonResponse(response: Response): Promise<unknown> {
+async function readJsonResponse(response: Response, observedAtMs: number, credential: string): Promise<unknown> {
   const bodyText = await response.text()
   if (!response.ok) {
-    throw parseHttpError(response, bodyText)
+    throw new ProviderFailureErrorV2(redactCredentialFromFailure(
+      openRouterHttpFailure(response, bodyText, observedAtMs),
+      credential,
+    ))
   }
   if (!bodyText.trim()) return {}
   try {
@@ -408,6 +418,47 @@ export function mapOpenRouterModelToCatalogModel(
   const vendor = deriveVendor(modelId)
   const modelKey = buildModelKey(context.providerKey, modelId)
   const updatedAtMs = context.fetchedAtMs
+  const parameterFieldPresent = Object.prototype.hasOwnProperty.call(raw, 'supported_parameters')
+  const parameterFieldValid = Array.isArray(raw.supported_parameters)
+  const architectureInputPresent = Boolean(architecture && Object.prototype.hasOwnProperty.call(architecture, 'input_modalities'))
+  const architectureInputValid = Array.isArray(architecture?.input_modalities)
+  const reported = (input: Readonly<{
+    present: boolean
+    valid: boolean
+    value: boolean
+    path: string
+    rawValue: unknown
+  }>): ProviderReportedFactV2<boolean> => Object.freeze({
+    providerPath: input.path,
+    ownProperty: input.present,
+    presence: input.valid ? 'present' : input.present ? 'invalid' : 'missing',
+    ...(input.valid ? { value: input.value, rawValue: input.value }
+      : input.present ? { rawValue: toJsonValue(input.rawValue) } : {}),
+  })
+  const observation: CatalogProviderModelObservationV2 = Object.freeze({
+    schemaVersion: 2,
+    providerKey: 'openrouter',
+    endpointId: 'openrouter-models-v1',
+    nativeModelId: modelId,
+    observedAtMs: updatedAtMs,
+    rawProviderRecord: preserveProviderRecordV2(raw),
+    facts: Object.freeze({
+      textChat: reported({ present: architectureInputPresent, valid: architectureInputValid,
+        value: modalities.inputModalities.includes('text') && modalities.outputModalities.includes('text'),
+        path: 'architecture.input_modalities', rawValue: architecture?.input_modalities }),
+      reasoning: reported({ present: parameterFieldPresent, valid: parameterFieldValid,
+        value: capabilities.reasoning, path: 'supported_parameters', rawValue: raw.supported_parameters }),
+      tools: reported({ present: parameterFieldPresent, valid: parameterFieldValid,
+        value: capabilities.tools, path: 'supported_parameters', rawValue: raw.supported_parameters }),
+      structuredOutputs: reported({ present: parameterFieldPresent, valid: parameterFieldValid,
+        value: capabilities.structuredOutputs, path: 'supported_parameters', rawValue: raw.supported_parameters }),
+      vision: reported({ present: architectureInputPresent, valid: architectureInputValid,
+        value: capabilities.vision, path: 'architecture.input_modalities', rawValue: architecture?.input_modalities }),
+    }),
+    provenance: Object.freeze({ sourceKind: 'provider_api', sourceLabel: context.source,
+      observedAtMs: updatedAtMs, parserVersion: 2 }),
+  })
+  const rawEnvelope = buildRawEnvelope(context.source, updatedAtMs, context.baseUrl, raw)
 
   const model: CatalogModel = {
     modelKey,
@@ -432,6 +483,8 @@ export function mapOpenRouterModelToCatalogModel(
     pricing,
     perRequestLimits,
     defaultParameters,
+    hasPerRequestLimits: perRequestLimits !== null,
+    hasDefaultParameters: defaultParameters !== null,
     topProviderContextLength,
     topProviderIsModerated,
     createdAtSec,
@@ -440,7 +493,10 @@ export function mapOpenRouterModelToCatalogModel(
     firstSeenAtMs: updatedAtMs,
     lastSeenAtMs: updatedAtMs,
     syncedAtMs: updatedAtMs,
-    raw: buildRawEnvelope(context.source, updatedAtMs, context.baseUrl, raw),
+    raw: Object.freeze({
+      ...rawEnvelope,
+      buckets: Object.freeze(rawEnvelope.buckets.map((bucket) => Object.freeze({ ...bucket, observation }))),
+    }),
   }
 
   return {
@@ -498,6 +554,7 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
   }
 
   private async getJson(pathname: string, ctx: OpenRouterFetchContext): Promise<unknown> {
+    const observedAtMs = Date.now()
     let response: Response
     try {
       response = await this.fetchImpl(`${ctx.baseUrl}${pathname}`, {
@@ -506,16 +563,29 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
         signal: ctx.signal ?? undefined,
       })
     } catch (error) {
-      throw buildOpenRouterCatalogTransportError(error, ctx.signal?.aborted ? ctx.signal.reason ?? 'aborted' : undefined)
+      throw new ProviderFailureErrorV2(redactCredentialFromFailure(createProviderFailureV2({
+        context: {
+          origin: 'network_transport',
+          phase: 'request_open',
+          providerId: PROVIDERS.OPENROUTER,
+          contractId: 'openrouter-chat-models-v1',
+          operationId: `model-catalog:${PROVIDERS.OPENROUTER}:${observedAtMs}`,
+          requestSequence: 1,
+          starverseDiagnosticCode: 'MODEL_CATALOG_REQUEST_OPEN_FAILED',
+        },
+        transportError: error,
+      }), ctx.apiKey))
     }
-    return readJsonResponse(response)
+    return readJsonResponse(response, observedAtMs, ctx.apiKey)
   }
 
   private async fetchModelsBySource(
     source: OpenRouterModelsSource,
     ctx: OpenRouterFetchContext
   ): Promise<Readonly<{ fetchedAtMs: number; models: OpenRouterModelObject[] }>> {
-    const endpoint = source === 'models_user' ? '/models/user' : '/models'
+    const pathname = source === 'models_user' ? '/models/user' : '/models'
+    const category = ctx.category?.trim()
+    const endpoint = category ? `${pathname}?category=${encodeURIComponent(category)}` : pathname
     const payload = await this.getJson(endpoint, ctx)
     const data = ensureDataArray(payload, endpoint)
     return {
@@ -533,6 +603,7 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
       apiKey: input.apiKey,
       baseUrl,
       signal: input.signal ?? null,
+      ...(input.category ? { category: input.category } : {}),
     }
 
     const sourceOrder: OpenRouterModelsSource[] = input.preferUserScopedModels ? ['models_user', 'models'] : ['models']

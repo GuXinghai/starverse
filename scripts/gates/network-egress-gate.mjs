@@ -57,15 +57,7 @@ const NETWORK_RULES = [
   },
 ]
 
-const CLASSIFIED_PRODUCTION_TRANSPORTS = [
-  {
-    id: 'compatible-provider-node-dual-transport',
-    reason: 'canonical compatible broker preserves the explicitly selected manual/environment/direct Node-Undici route; system remains Electron session transport',
-    path: /^electron\/net\/compatibleProviderTransport\.ts$/u,
-    rules: ['undici-import'],
-    line: /import\s+\{\s*fetch\s+as\s+undiciFetch\s*\}\s+from\s+['"]undici['"]/u,
-  },
-]
+const CLASSIFIED_PRODUCTION_TRANSPORTS = []
 
 const ALLOWLIST = [
   {
@@ -88,13 +80,6 @@ const ALLOWLIST = [
     path: /^electron\/net\/localEndpointTransport\.ts$/u,
     rules: ['global-this-fetch'],
     line: /input\?\.fetchImpl\s*\?\?\s*globalThis\.fetch/u,
-  },
-  {
-    id: 'electron-bridge-file-ingestion-fallback',
-    reason: 'file ingestion accepts injected Electron bridge fetch and keeps ambient fetch only as a non-Electron fallback',
-    path: /^infra\/files\/fileIngestionService\.ts$/u,
-    rules: ['global-this-fetch'],
-    line: /this\.deps\.fetch\s*\?\?\s*globalThis\.fetch/u,
   },
   {
     id: 'url-probe-injectable-fallback',
@@ -139,16 +124,9 @@ const ALLOWLIST = [
     line: /input\.fetchImpl\s*\?\?\s*fetch/u,
   },
   {
-    id: 'openrouter-legacy-renderer-fetch-fallback',
-    reason: 'legacy renderer OpenRouter fallback remains explicit; main Electron stream path uses the IPC/net.request bridge',
-    path: /^src\/next\/transport\/(openrouterFetch|fetchGeneration)\.ts$/u,
-    rules: ['bare-fetch-call'],
-    line: /await\s+fetch\(url/u,
-  },
-  {
     id: 'image-url-fetch-existing-boundary',
     reason: 'existing image URL fetch boundary is outside provider/catalog/download/local endpoint migration scope',
-    path: /^(electron\/ipc\/imageIpc\.ts|src\/ui-kit\/chat\/ChatMessageBubble\.vue)$/u,
+    path: /^src\/ui-kit\/chat\/ChatMessageBubble\.vue$/u,
     rules: ['bare-fetch-call'],
     line: /fetch\((imageUrl|url)\b/u,
   },
