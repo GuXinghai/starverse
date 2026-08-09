@@ -1,4 +1,4 @@
-import type { CatalogModel, CatalogPricing, CatalogRawBucket, CatalogRawEnvelope } from '../../internalSchema'
+import type { CatalogModel, CatalogRawBucket, CatalogRawEnvelope } from '../../internalSchema'
 import type {
   ProviderCatalogFetchInput,
   ProviderCatalogSnapshot,
@@ -11,6 +11,7 @@ import {
   listDeepSeekProviderModelAvailability,
   type ProviderModelAvailability,
 } from '../../../../next/provider/deepseek/deepSeekModelSource'
+import { ProviderFailureErrorV2 } from '../../../provider/providerFailureV2'
 
 export const DEEPSEEK_PROVIDER_CATALOG_DESCRIPTOR: ProviderCatalogSourceDescriptor =
   requireProviderCatalogSourceDescriptor('deepseek')
@@ -48,31 +49,19 @@ function rawEnvelopeForAvailability(
       warnings: [...model.warnings],
       providerSpecific: model.providerSpecific ?? {},
       provenance: model.provenance ?? null,
-      capabilitySeed: model.capabilitySeed ?? {},
-      pricingSeed: model.pricingSeed ?? null,
+      observation: model.observation ?? null,
     },
   }
   return { buckets: [bucket], schemaVersion: 1 }
-}
-
-function pricingFromAvailability(model: ProviderModelAvailability): CatalogPricing | null {
-  const seed = model.pricingSeed
-  if (!seed) return null
-  return {
-    prompt: seed.inputCacheMissPer1MTokens ?? null,
-    completion: seed.outputPer1MTokens ?? null,
-    inputCacheRead: seed.inputCacheHitPer1MTokens ?? null,
-  }
 }
 
 function catalogModelFromAvailability(
   model: ProviderModelAvailability,
   baseUrl: string,
   fetchedAtMs: number,
-): CatalogModel | null {
-  if (model.capabilitySeed?.textChat !== true) return null
-  const contextLength = model.capabilitySeed.contextLength ?? null
-  const maxOutputTokens = model.capabilitySeed.maxOutputTokens ?? null
+): CatalogModel {
+  const contextLength = null
+  const maxOutputTokens = null
   const alias = model.providerSpecific?.alias
   return {
     modelKey: `deepseek::${model.nativeModelId}` as const,
@@ -88,23 +77,19 @@ function catalogModelFromAvailability(
     contextLength,
     maxOutputTokens,
     architectureModality: null,
-    inputModalities: ['text'],
-    outputModalities: ['text'],
+    inputModalities: [],
+    outputModalities: [],
     tokenizer: null,
     instructType: null,
-    supportedParameters: [
-      'temperature', 'top_p', 'max_tokens', 'stop',
-      'thinking', 'reasoning_effort', 'response_format',
-      'tools', 'tool_choice',
-    ],
+    supportedParameters: [],
     capabilities: {
-      reasoning: model.capabilitySeed.thinkingMode === 'supported' || model.capabilitySeed.thinkingMode === 'thinking_only',
-      tools: model.capabilitySeed.tools === true,
-      structuredOutputs: model.capabilitySeed.jsonOutput === true,
-      vision: false,
+      reasoning: model.observation?.facts.reasoning.presence === 'present' && model.observation.facts.reasoning.value === true,
+      tools: model.observation?.facts.tools.presence === 'present' && model.observation.facts.tools.value === true,
+      structuredOutputs: model.observation?.facts.structuredOutputs.presence === 'present' && model.observation.facts.structuredOutputs.value === true,
+      vision: model.observation?.facts.vision.presence === 'present' && model.observation.facts.vision.value === true,
       longContext: typeof contextLength === 'number' && contextLength >= 128_000,
     },
-    pricing: pricingFromAvailability(model),
+    pricing: null,
     perRequestLimits: null,
     defaultParameters: null,
     topProviderContextLength: contextLength,
@@ -134,10 +119,12 @@ export function createDeepSeekCatalogSource(): ProviderCatalogSource {
         signal: input.signal ?? null,
         observedAtMs,
       })
-      if (!result.ok) throw new Error(result.message)
+      if (!result.ok) {
+        if (result.providerFailure) throw new ProviderFailureErrorV2(result.providerFailure)
+        throw new Error(result.message)
+      }
       const models = result.models
         .map((model) => catalogModelFromAvailability(model, baseUrl, result.observedAtMs))
-        .filter((model): model is CatalogModel => !!model)
       return {
         providerKey: 'deepseek',
         baseUrl,

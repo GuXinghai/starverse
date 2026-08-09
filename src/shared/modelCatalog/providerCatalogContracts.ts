@@ -4,11 +4,6 @@ import type {
   CatalogTimestampMs,
   ProviderAdapter,
 } from './internalSchema'
-import type {
-  CatalogSyncRunnerMeta,
-  CatalogSyncRunnerResult,
-  CatalogSyncRunnerSyncResult,
-} from './catalogSyncRunner'
 import type { ProviderCatalogScopeDescriptor, ProviderCatalogScopeRequest } from './providerCatalogScope'
 
 export type ProviderCatalogKnownProviderKey =
@@ -19,7 +14,7 @@ export type ProviderCatalogKnownProviderKey =
   | 'deepseek'
 
 export type ProviderCatalogKey = ProviderCatalogKnownProviderKey | (string & {})
-export type ProviderCatalogDataSource = CatalogSyncRunnerMeta['dataSource']
+export type ProviderCatalogDataSource = 'models_user_primary' | 'models_fallback' | 'mixed'
 
 export type ProviderCatalogCredentialMode = 'required' | 'optional' | 'none'
 
@@ -58,6 +53,7 @@ export type ProviderCatalogFetchInput = Readonly<{
   fetchImpl?: typeof fetch
   signal?: AbortSignal | null
   preferUserScopedModels?: boolean
+  category?: string
 }>
 
 export type ProviderCatalogSnapshot = Readonly<{
@@ -80,18 +76,15 @@ export type ProviderCatalogSource = Readonly<{
   fetchSnapshot: (input: ProviderCatalogFetchInput) => Promise<ProviderCatalogSnapshot>
 }>
 
-export type ProviderCatalogSyncIntent = Readonly<{
-  providerKey: ProviderCatalogKey
-  force: boolean
-  reason: 'startup' | 'model_picker_opened' | 'manual_refresh' | 'repair' | 'test'
-  freshnessMs: number
-}>
+export class ProviderCatalogPaginationIncompleteErrorV2 extends Error {
+  readonly code = 'PROVIDER_CATALOG_PAGINATION_INCOMPLETE' as const
 
-export type ProviderCatalogSyncCoreInput = Readonly<{
-  source: ProviderCatalogSource
-  scope: ProviderCatalogScopeDescriptor
-  intent: ProviderCatalogSyncIntent
-}>
-
-export type ProviderCatalogSyncCoreResult = CatalogSyncRunnerResult
-export type ProviderCatalogSourceSyncResult = CatalogSyncRunnerSyncResult
+  constructor(
+    readonly providerKey: ProviderCatalogKey,
+    readonly pagesFetched: number,
+    readonly nextPageCursor?: string,
+  ) {
+    super(`${providerKey} model catalog pagination is incomplete.`)
+    this.name = 'ProviderCatalogPaginationIncompleteErrorV2'
+  }
+}

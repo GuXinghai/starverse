@@ -21,7 +21,6 @@ describe('ProviderModelAvailability common envelope', () => {
       warnings: [],
     })
 
-    expect(envelope.capabilitySeed).toBeUndefined()
     expect(envelope).toMatchObject({
       providerKey: 'future_provider',
       endpointId: 'future-official',
@@ -88,11 +87,6 @@ describe('ProviderModelAvailability common envelope', () => {
       confidence: 'provider_reported',
       observedAtMs: OBSERVED_AT_MS,
       warnings: [],
-      capabilitySeed: {
-        textChat: true,
-        imageInput: 'unknown',
-        thinking: 'unknown',
-      },
       providerSpecific: {
         modelType: 'model',
         createdAt: '2026-01-15T00:00:00Z',
@@ -106,11 +100,6 @@ describe('ProviderModelAvailability common envelope', () => {
       createdAt: '2026-01-15T00:00:00Z',
       pagination: { hasMore: true, lastId: 'claude-opus-4-1' },
       capabilitiesRawKeys: ['thinking', 'tool_use'],
-    })
-    expect(envelope.capabilitySeed).toEqual({
-      textChat: true,
-      imageInput: 'unknown',
-      thinking: 'unknown',
     })
   })
 
@@ -131,7 +120,6 @@ describe('ProviderModelAvailability common envelope', () => {
       },
     })
 
-    expect(envelope.capabilitySeed).toBeUndefined()
     expect(envelope.providerSpecific).toEqual({
       thinkingMode: 'thinking_only',
       jsonOutput: true,

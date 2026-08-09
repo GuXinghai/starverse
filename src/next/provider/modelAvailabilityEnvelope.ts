@@ -7,7 +7,6 @@ export type ProviderModelAvailabilityConfidence =
 export type ProviderModelSourceKind =
   | 'provider_api'
   | 'provider_docs'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
   | 'local_probe'
 
@@ -17,33 +16,6 @@ export type ProviderModelAvailabilityProvenance = Readonly<{
   observedAtMs: number
   metadataVersion?: string
   parserVersion: number
-}>
-
-export type ProviderModelCapabilityValue =
-  | boolean
-  | 'supported'
-  | 'unsupported'
-  | 'unknown'
-
-export type ProviderModelCapabilitySeed = Readonly<{
-  textChat?: boolean
-  contextLength?: number
-  maxInputTokens?: number
-  maxOutputTokens?: number
-
-  reasoning?: 'supported' | 'unsupported' | 'unknown'
-  thinking?: 'supported' | 'unsupported' | 'unknown'
-
-  imageInput?: boolean | 'unknown'
-  fileInput?: boolean | 'unknown'
-  functionCalling?: boolean | 'unknown'
-  hostedTools?: boolean | 'unknown'
-  structuredOutput?: boolean | 'unknown'
-  toolUse?: boolean | 'unknown'
-  citations?: boolean | 'unknown'
-  audioInput?: boolean | 'unknown'
-
-  rawCapabilityKeys?: readonly string[]
 }>
 
 export type ProviderModelAvailabilityEnvelope<
@@ -66,7 +38,6 @@ export type ProviderModelAvailabilityEnvelope<
   warnings: readonly string[]
 
   provenance?: ProviderModelAvailabilityProvenance
-  capabilitySeed?: ProviderModelCapabilitySeed
 
   providerSpecific?: TProviderSpecific
 }>
@@ -98,7 +69,6 @@ export function createProviderModelAvailabilityEnvelope<
   return {
     ...input,
     warnings: [...input.warnings],
-    ...(input.capabilitySeed ? { capabilitySeed: { ...input.capabilitySeed } } : {}),
     ...(input.provenance ? { provenance: { ...input.provenance } } : {}),
     ...(input.providerSpecific !== undefined ? { providerSpecific: input.providerSpecific } : {}),
   }

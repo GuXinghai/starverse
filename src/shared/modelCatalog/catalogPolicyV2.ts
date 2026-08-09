@@ -36,6 +36,34 @@ function isFiniteNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0
 }
 
+export function decodeCatalogSyncTriggerPolicyV2(value: unknown): CatalogSyncTriggerPolicy {
+  if (!SYNC_POLICIES.includes(value as CatalogSyncTriggerPolicy)) {
+    throw new CatalogPolicyV2Error('CATALOG_POLICY_INVALID')
+  }
+  return value as CatalogSyncTriggerPolicy
+}
+
+export function decodeCatalogListApplyModeV2(value: unknown): CatalogListApplyMode {
+  if (!APPLY_MODES.includes(value as CatalogListApplyMode)) {
+    throw new CatalogPolicyV2Error('CATALOG_POLICY_INVALID')
+  }
+  return value as CatalogListApplyMode
+}
+
+export function decodeCatalogFreshnessMsV2(value: unknown): number | null {
+  if (value === null) return null
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!isFiniteNonNegativeInteger(numeric)) throw new CatalogPolicyV2Error('CATALOG_POLICY_INVALID')
+  return numeric
+}
+
+export function decodeCatalogRetentionV2(value: unknown): CatalogRetention {
+  if (value === 'never') return 'never'
+  const numeric = typeof value === 'number' ? value : Number(value)
+  if (!isFiniteNonNegativeInteger(numeric)) throw new CatalogPolicyV2Error('CATALOG_POLICY_INVALID')
+  return numeric
+}
+
 export function validateCatalogPolicyV2(value: unknown): CatalogPolicyV2 {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new CatalogPolicyV2Error('CATALOG_POLICY_INVALID')
@@ -47,28 +75,23 @@ export function validateCatalogPolicyV2(value: unknown): CatalogPolicyV2 {
   ])) {
     throw new CatalogPolicyV2Error('CATALOG_POLICY_INVALID')
   }
-  if (!SYNC_POLICIES.includes(raw.startupSyncPolicy as CatalogSyncTriggerPolicy) ||
-      !SYNC_POLICIES.includes(raw.pickerOpenSyncPolicy as CatalogSyncTriggerPolicy) ||
-      !APPLY_MODES.includes(raw.listApplyMode as CatalogListApplyMode)) {
-    throw new CatalogPolicyV2Error('CATALOG_POLICY_INVALID')
-  }
-  const freshnessMs = raw.freshnessMs
-  if (freshnessMs !== null && !isFiniteNonNegativeInteger(freshnessMs)) {
-    throw new CatalogPolicyV2Error('CATALOG_POLICY_INVALID')
-  }
+  const startupSyncPolicy = decodeCatalogSyncTriggerPolicyV2(raw.startupSyncPolicy)
+  const pickerOpenSyncPolicy = decodeCatalogSyncTriggerPolicyV2(raw.pickerOpenSyncPolicy)
+  const listApplyMode = decodeCatalogListApplyModeV2(raw.listApplyMode)
+  const freshnessMs = decodeCatalogFreshnessMsV2(raw.freshnessMs)
   if ((raw.startupSyncPolicy === 'stale_only' || raw.pickerOpenSyncPolicy === 'stale_only') && freshnessMs === null) {
     throw new CatalogPolicyV2Error('CATALOG_POLICY_FRESHNESS_REQUIRED')
   }
-  const retentionMs = raw.retentionMs
-  if (retentionMs !== 'never' && !isFiniteNonNegativeInteger(retentionMs)) {
+  if (freshnessMs === null && (startupSyncPolicy !== 'never' || pickerOpenSyncPolicy !== 'never')) {
     throw new CatalogPolicyV2Error('CATALOG_POLICY_INVALID')
   }
+  const retentionMs = decodeCatalogRetentionV2(raw.retentionMs)
   return Object.freeze({
-    startupSyncPolicy: raw.startupSyncPolicy as CatalogSyncTriggerPolicy,
-    pickerOpenSyncPolicy: raw.pickerOpenSyncPolicy as CatalogSyncTriggerPolicy,
-    listApplyMode: raw.listApplyMode as CatalogListApplyMode,
-    freshnessMs: freshnessMs as number | null,
-    retentionMs: retentionMs as CatalogRetention,
+    startupSyncPolicy,
+    pickerOpenSyncPolicy,
+    listApplyMode,
+    freshnessMs,
+    retentionMs,
   })
 }
 

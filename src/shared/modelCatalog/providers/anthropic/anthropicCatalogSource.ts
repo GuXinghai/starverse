@@ -5,12 +5,14 @@ import type {
   ProviderCatalogSource,
   ProviderCatalogSourceDescriptor,
 } from '../../providerCatalogContracts'
+import { ProviderCatalogPaginationIncompleteErrorV2 } from '../../providerCatalogContracts'
 import { requireProviderCatalogSourceDescriptor } from '../../providerCatalogRegistry'
 import {
   ANTHROPIC_MODELS_DEFAULT_BASE_URL,
   listAnthropicProviderModelAvailability,
   type AnthropicProviderModelAvailability,
 } from '../../../../next/provider/anthropic/anthropicModelSource'
+import { ProviderFailureErrorV2 } from '../../../provider/providerFailureV2'
 
 export const ANTHROPIC_PROVIDER_CATALOG_DESCRIPTOR: ProviderCatalogSourceDescriptor =
   requireProviderCatalogSourceDescriptor('anthropic_messages')
@@ -48,7 +50,7 @@ function rawEnvelopeForAvailability(
       warnings: [...model.warnings],
       providerSpecific: model.providerSpecific ?? {},
       provenance: model.provenance ?? null,
-      capabilitySeed: model.capabilitySeed ?? {},
+      observation: model.observation ?? null,
     },
   }
   return { buckets: [bucket], schemaVersion: 1 }
@@ -58,10 +60,14 @@ function catalogModelFromAvailability(
   model: AnthropicProviderModelAvailability,
   baseUrl: string,
   fetchedAtMs: number,
-): CatalogModel | null {
-  if (model.capabilitySeed?.textChat !== true) return null
-  const contextLength = model.capabilitySeed.maxInputTokens ?? model.capabilitySeed.contextLength ?? null
-  const maxOutputTokens = model.capabilitySeed.maxOutputTokens ?? null
+): CatalogModel {
+  const raw = model.observation?.rawProviderRecord
+  const contextLength = typeof raw?.max_input_tokens === 'number' &&
+    Number.isSafeInteger(raw.max_input_tokens) && raw.max_input_tokens > 0 ? raw.max_input_tokens : null
+  const maxOutputTokens = typeof raw?.max_tokens === 'number' &&
+    Number.isSafeInteger(raw.max_tokens) && raw.max_tokens > 0 ? raw.max_tokens : null
+  const vision = model.observation?.facts.vision.presence === 'present' &&
+    model.observation.facts.vision.value === true
   return {
     modelKey: `anthropic_messages::${model.nativeModelId}` as const,
     providerKey: 'anthropic_messages',
@@ -76,16 +82,16 @@ function catalogModelFromAvailability(
     contextLength,
     maxOutputTokens,
     architectureModality: null,
-    inputModalities: model.capabilitySeed.imageInput === true ? ['text', 'image'] : ['text'],
-    outputModalities: ['text'],
+    inputModalities: vision ? ['text', 'image'] : [],
+    outputModalities: [],
     tokenizer: null,
     instructType: null,
-    supportedParameters: ['max_tokens', 'temperature', 'top_p', 'top_k'],
+    supportedParameters: [],
     capabilities: {
-      reasoning: model.capabilitySeed.thinking === 'supported',
-      tools: model.capabilitySeed.toolUse === true,
-      structuredOutputs: model.capabilitySeed.structuredOutput === true,
-      vision: model.capabilitySeed.imageInput === true,
+      reasoning: model.observation?.facts.reasoning.presence === 'present' && model.observation.facts.reasoning.value === true,
+      tools: model.observation?.facts.tools.presence === 'present' && model.observation.facts.tools.value === true,
+      structuredOutputs: model.observation?.facts.structuredOutputs.presence === 'present' && model.observation.facts.structuredOutputs.value === true,
+      vision,
       longContext: typeof contextLength === 'number' && contextLength >= 128_000,
     },
     pricing: null,
@@ -118,10 +124,17 @@ export function createAnthropicCatalogSource(): ProviderCatalogSource {
         signal: input.signal ?? null,
         observedAtMs,
       })
-      if (!result.ok) throw new Error(result.message)
+      if (!result.ok) {
+        if (result.code === 'pagination_incomplete') {
+          throw new ProviderCatalogPaginationIncompleteErrorV2(
+            'anthropic_messages', result.pagesFetched ?? 0, result.nextPageCursor,
+          )
+        }
+        if (result.providerFailure) throw new ProviderFailureErrorV2(result.providerFailure)
+        throw new Error(result.message)
+      }
       const models = result.models
         .map((model) => catalogModelFromAvailability(model, baseUrl, result.observedAtMs))
-        .filter((model): model is CatalogModel => !!model)
       return {
         providerKey: 'anthropic_messages',
         baseUrl,

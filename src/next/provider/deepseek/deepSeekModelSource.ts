@@ -1,7 +1,6 @@
 import {
   createProviderModelAvailabilityProvenance,
   type ProviderModelAvailabilityEnvelope,
-  type ProviderModelCapabilitySeed,
   type ProviderModelSourceKind as CommonProviderModelSourceKind,
 } from '../modelAvailabilityEnvelope'
 import {
@@ -9,6 +8,17 @@ import {
   providerNetworkFailureMessage,
   type NetworkErrorEnvelope,
 } from '../../../shared/network/networkErrorEnvelope'
+import {
+  missingProviderBooleanFactV2,
+  preserveProviderRecordV2,
+  type CatalogProviderModelObservationV2,
+} from '../../../shared/modelCatalog/providerModelObservationV2'
+import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
+import {
+  providerModelHttpFailureV2,
+  providerModelTransportFailureV2,
+  readProviderModelResponseBodyV2,
+} from '../modelCatalogFailureV2'
 
 export const DEEPSEEK_OFFICIAL_PROVIDER_KEY = 'deepseek' as const
 export const DEEPSEEK_OFFICIAL_ENDPOINT_ID = 'deepseek-official' as const
@@ -26,7 +36,6 @@ export const DEEPSEEK_ALIAS_DEPRECATION_AT_ISO = '2026-07-24T15:59:00.000Z' as c
 export type ProviderModelSourceKind =
   | 'deepseek_models_api'
   | 'deepseek_pricing_metadata'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 export type DeepSeekProviderSpecificModelAvailability = Readonly<{
@@ -57,17 +66,7 @@ export type ProviderModelAvailability = ProviderModelAvailabilityEnvelope<
   confidence: 'provider_reported' | 'curated' | 'manual'
   displayName?: string
   ownedBy?: string
-  capabilitySeed?: Readonly<{
-    textChat?: boolean
-    thinkingMode?: 'supported' | 'non_thinking_only' | 'thinking_only' | 'unknown'
-    contextLength?: number
-    maxOutputTokens?: number
-    tools?: boolean
-    jsonOutput?: boolean
-    reasoningEffort?: readonly ('high' | 'max')[]
-    fim?: boolean
-    chatPrefixCompletion?: boolean
-  }> & ProviderModelCapabilitySeed
+  observation?: CatalogProviderModelObservationV2
   pricingSeed?: Readonly<{
     inputCacheHitPer1MTokens?: string
     inputCacheMissPer1MTokens?: string
@@ -117,6 +116,7 @@ export type DeepSeekModelAvailabilityFailure = Readonly<{
   message: string
   httpStatus?: number
   networkError?: NetworkErrorEnvelope
+  providerFailure?: ProviderFailureV2
 }>
 
 export type DeepSeekModelAvailabilityResult =
@@ -234,16 +234,6 @@ function safeHttpErrorMessage(status: number): string {
   return `DeepSeek model source returned HTTP ${status}.`
 }
 
-async function readJsonSafely(response: Response): Promise<unknown> {
-  const text = await response.text()
-  if (!text.trim()) return {}
-  try {
-    return JSON.parse(text)
-  } catch {
-    return null
-  }
-}
-
 function modelFromApiRecord(record: ModelRecord, observedAtMs: number): ProviderModelAvailability | null {
   const id = asTrimmedString(record.id)
   if (!id || !isValidDeepSeekModelId(id)) return null
@@ -252,6 +242,23 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): Provider
   if (object !== 'model') return null
 
   const ownedBy = asTrimmedString(record.owned_by) ?? undefined
+  const missingFact = (path: string) => missingProviderBooleanFactV2(path)
+  const observation: CatalogProviderModelObservationV2 = {
+    schemaVersion: 2,
+    providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+    endpointId: DEEPSEEK_OFFICIAL_ENDPOINT_ID,
+    nativeModelId: id,
+    observedAtMs,
+    rawProviderRecord: preserveProviderRecordV2(record),
+    facts: {
+      textChat: missingFact('data[].text_chat'),
+      reasoning: missingFact('data[].reasoning'),
+      tools: missingFact('data[].tools'),
+      structuredOutputs: missingFact('data[].structured_outputs'),
+      vision: missingFact('data[].vision'),
+    },
+    provenance: { sourceKind: 'provider_api', sourceLabel: 'deepseek_models_api', observedAtMs, parserVersion: 2 },
+  }
   return {
     ...availabilityBase({
       nativeModelId: id,
@@ -260,6 +267,7 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): Provider
       observedAtMs,
     }),
     ...(ownedBy ? { ownedBy } : {}),
+    observation,
     ...(ownedBy ? { providerSpecific: { ownedBy } } : {}),
   }
 }
@@ -296,180 +304,6 @@ export function parseDeepSeekModelsResponse(payload: unknown, observedAtMs: numb
   return { ok: true, models, warnings }
 }
 
-function deepSeekPricingSeed(
-  observedAtMs: number,
-  values: Readonly<{
-    inputCacheHitPer1MTokens: string
-    inputCacheMissPer1MTokens: string
-    outputPer1MTokens: string
-  }>,
-): NonNullable<ProviderModelAvailability['pricingSeed']> {
-  return {
-    inputCacheHitPer1MTokens: values.inputCacheHitPer1MTokens,
-    inputCacheMissPer1MTokens: values.inputCacheMissPer1MTokens,
-    outputPer1MTokens: values.outputPer1MTokens,
-    currency: 'USD',
-    source: 'deepseek_pricing_metadata',
-    observedAtMs,
-  }
-}
-
-function sharedDeepSeekV4CapabilitySeed(): NonNullable<ProviderModelAvailability['capabilitySeed']> {
-  return {
-    textChat: true,
-    reasoning: 'supported',
-    functionCalling: true,
-    structuredOutput: true,
-    thinkingMode: 'supported',
-    contextLength: 1_000_000,
-    maxOutputTokens: 384_000,
-    tools: true,
-    jsonOutput: true,
-    reasoningEffort: Object.freeze(['high', 'max'] as const),
-    fim: true,
-    chatPrefixCompletion: true,
-  }
-}
-
-function pricingMetadataWarning(): string {
-  return 'Model details and pricing are seeded from DeepSeek Models & Pricing docs, not from the /models API.'
-}
-
-function aliasWarning(alias: string, mode: 'non-thinking' | 'thinking'): string {
-  return `${alias} is a deprecated compatibility alias until ${DEEPSEEK_ALIAS_DEPRECATION_AT_ISO}; use deepseek-v4-flash ${mode} mode instead.`
-}
-
-export function getDeepSeekCuratedModelAvailabilitySeeds(observedAtMs: number): ProviderModelAvailability[] {
-  const flashPricing = deepSeekPricingSeed(observedAtMs, {
-    inputCacheHitPer1MTokens: '0.0028',
-    inputCacheMissPer1MTokens: '0.14',
-    outputPer1MTokens: '0.28',
-  })
-  const proPricing = deepSeekPricingSeed(observedAtMs, {
-    inputCacheHitPer1MTokens: '0.003625',
-    inputCacheMissPer1MTokens: '0.435',
-    outputPer1MTokens: '0.87',
-  })
-
-  return [
-    {
-      ...availabilityBase({
-        nativeModelId: 'deepseek-v4-flash',
-        source: 'deepseek_pricing_metadata',
-        confidence: 'curated',
-        observedAtMs,
-        warnings: [pricingMetadataWarning()],
-      }),
-      displayName: 'DeepSeek V4 Flash',
-      ownedBy: 'deepseek',
-      capabilitySeed: sharedDeepSeekV4CapabilitySeed(),
-      pricingSeed: flashPricing,
-      providerSpecific: { ownedBy: 'deepseek', pricingSeed: flashPricing },
-    },
-    {
-      ...availabilityBase({
-        nativeModelId: 'deepseek-v4-pro',
-        source: 'deepseek_pricing_metadata',
-        confidence: 'curated',
-        observedAtMs,
-        warnings: [pricingMetadataWarning()],
-      }),
-      displayName: 'DeepSeek V4 Pro',
-      ownedBy: 'deepseek',
-      capabilitySeed: sharedDeepSeekV4CapabilitySeed(),
-      pricingSeed: proPricing,
-      providerSpecific: { ownedBy: 'deepseek', pricingSeed: proPricing },
-    },
-    {
-      ...availabilityBase({
-        nativeModelId: 'deepseek-chat',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs,
-        warnings: [aliasWarning('deepseek-chat', 'non-thinking'), pricingMetadataWarning()],
-      }),
-      displayName: 'DeepSeek Chat (deprecated alias)',
-      ownedBy: 'deepseek',
-      capabilitySeed: {
-        ...sharedDeepSeekV4CapabilitySeed(),
-        thinkingMode: 'non_thinking_only',
-      },
-      pricingSeed: flashPricing,
-      providerSpecific: {
-        ownedBy: 'deepseek',
-        pricingSeed: flashPricing,
-        alias: {
-          deprecated: true,
-          deprecationAtIso: DEEPSEEK_ALIAS_DEPRECATION_AT_ISO,
-          replacementModelId: 'deepseek-v4-flash',
-          mode: 'non-thinking',
-        },
-      },
-    },
-    {
-      ...availabilityBase({
-        nativeModelId: 'deepseek-reasoner',
-        source: 'starverse_curated_metadata',
-        confidence: 'curated',
-        observedAtMs,
-        warnings: [aliasWarning('deepseek-reasoner', 'thinking'), pricingMetadataWarning()],
-      }),
-      displayName: 'DeepSeek Reasoner (deprecated alias)',
-      ownedBy: 'deepseek',
-      capabilitySeed: {
-        ...sharedDeepSeekV4CapabilitySeed(),
-        thinkingMode: 'thinking_only',
-      },
-      pricingSeed: flashPricing,
-      providerSpecific: {
-        ownedBy: 'deepseek',
-        pricingSeed: flashPricing,
-        alias: {
-          deprecated: true,
-          deprecationAtIso: DEEPSEEK_ALIAS_DEPRECATION_AT_ISO,
-          replacementModelId: 'deepseek-v4-flash',
-          mode: 'thinking',
-        },
-      },
-    },
-  ]
-}
-
-function mergeAvailability(
-  providerReported: ProviderModelAvailability[],
-  curated: ProviderModelAvailability[],
-): ProviderModelAvailability[] {
-  const curatedById = new Map(curated.map((model) => [model.nativeModelId, model]))
-  const merged = new Map<string, ProviderModelAvailability>()
-
-  for (const providerModel of providerReported) {
-    const seed = curatedById.get(providerModel.nativeModelId)
-    merged.set(providerModel.nativeModelId, {
-      ...providerModel,
-      ...(seed?.displayName ? { displayName: seed.displayName } : {}),
-      ...(seed?.ownedBy && !providerModel.ownedBy ? { ownedBy: seed.ownedBy } : {}),
-      ...(seed?.capabilitySeed ? { capabilitySeed: seed.capabilitySeed } : {}),
-      ...(seed?.pricingSeed ? { pricingSeed: seed.pricingSeed } : {}),
-      providerSpecific: {
-        ...(providerModel.providerSpecific ?? {}),
-        ...(seed?.providerSpecific ?? {}),
-        ...(seed?.ownedBy && !providerModel.ownedBy ? { ownedBy: seed.ownedBy } : {}),
-        ...(seed?.pricingSeed ? { pricingSeed: seed.pricingSeed } : {}),
-      },
-      warnings: [
-        ...providerModel.warnings,
-        ...(seed?.warnings ?? []),
-      ],
-    })
-  }
-
-  for (const seed of curated) {
-    if (!merged.has(seed.nativeModelId)) merged.set(seed.nativeModelId, seed)
-  }
-
-  return Array.from(merged.values()).sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId))
-}
-
 export function resolveDeepSeekModelAvailabilityFromModelsPayload(
   payload: unknown,
   observedAtMs: number,
@@ -487,12 +321,8 @@ export function resolveDeepSeekModelAvailabilityFromModelsPayload(
     }
   }
 
-  const curated = getDeepSeekCuratedModelAvailabilitySeeds(observedAtMs)
-  const models = mergeAvailability(parsed.models, curated)
-  const warnings = [
-    ...parsed.warnings,
-    'DeepSeek pricing/model details are curated metadata seeds and must be refreshed against official docs before long-lived claims.',
-  ]
+  const models = [...parsed.models].sort((a, b) => a.nativeModelId.localeCompare(b.nativeModelId))
+  const warnings = parsed.warnings
   return {
     ok: true,
     providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
@@ -550,10 +380,12 @@ export async function listDeepSeekProviderModelAvailability(
       code: 'network_error',
       message: providerNetworkFailureMessage('DeepSeek model source', networkError),
       networkError,
+      providerFailure: providerModelTransportFailureV2({ providerId: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+        contractId: 'deepseek-models-v1', observedAtMs, requestSequence: 1, error, credential: apiKey }),
     }
   }
 
-  const payload = await readJsonSafely(response)
+  const body = await readProviderModelResponseBodyV2(response)
   if (!response.ok) {
     const networkError = buildNetworkErrorEnvelope({
       requestPurpose: 'provider_availability',
@@ -571,8 +403,10 @@ export async function listDeepSeekProviderModelAvailability(
       message: safeHttpErrorMessage(response.status),
       httpStatus: response.status,
       networkError,
+      providerFailure: providerModelHttpFailureV2({ providerId: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+        contractId: 'deepseek-models-v1', observedAtMs, requestSequence: 1, response, body }),
     }
   }
 
-  return resolveDeepSeekModelAvailabilityFromModelsPayload(payload, observedAtMs)
+  return resolveDeepSeekModelAvailabilityFromModelsPayload(body.payload, observedAtMs)
 }

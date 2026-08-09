@@ -5,12 +5,14 @@ import type {
   ProviderCatalogSource,
   ProviderCatalogSourceDescriptor,
 } from '../../providerCatalogContracts'
+import { ProviderCatalogPaginationIncompleteErrorV2 } from '../../providerCatalogContracts'
 import { requireProviderCatalogSourceDescriptor } from '../../providerCatalogRegistry'
 import {
   GEMINI_MODELS_DEFAULT_BASE_URL,
   listGeminiProviderModelAvailability,
   type GeminiProviderModelAvailability,
 } from '../../../../next/provider/gemini/geminiModelSource'
+import { ProviderFailureErrorV2 } from '../../../provider/providerFailureV2'
 
 export const GOOGLE_AI_STUDIO_PROVIDER_CATALOG_DESCRIPTOR: ProviderCatalogSourceDescriptor =
   requireProviderCatalogSourceDescriptor('google_ai_studio')
@@ -49,7 +51,7 @@ function rawEnvelopeForAvailability(
     warnings: [...model.warnings],
     providerSpecific: model.providerSpecific ?? {},
     provenance: model.provenance ?? null,
-    capabilitySeed: model.capabilitySeed ?? {},
+    observation: model.observation ?? null,
   }
   const bucket: CatalogRawBucket = {
     source: 'models',
@@ -67,16 +69,16 @@ function catalogModelFromAvailability(
   model: GeminiProviderModelAvailability,
   baseUrl: string,
   fetchedAtMs: number,
-): CatalogModel | null {
-  if (model.capabilitySeed?.textChat !== true) return null
-  const contextLength = model.capabilitySeed.inputTokenLimit ?? model.capabilitySeed.contextLength ?? null
-  const maxOutputTokens = model.capabilitySeed.outputTokenLimit ?? model.capabilitySeed.maxOutputTokens ?? null
-  const supportedMethods = model.capabilitySeed.supportedGenerationMethods ?? model.providerSpecific?.supportedGenerationMethods ?? []
+): CatalogModel {
+  const raw = model.observation?.rawProviderRecord ?? {}
+  const contextLength = typeof raw.inputTokenLimit === 'number' ? raw.inputTokenLimit : null
+  const maxOutputTokens = typeof raw.outputTokenLimit === 'number' ? raw.outputTokenLimit : null
+  const supportedMethods = Array.isArray(raw.supportedGenerationMethods)
+    ? raw.supportedGenerationMethods.filter((method): method is string => typeof method === 'string') : []
   const supportedParameters = [
-    'temperature',
-    'topP',
-    'topK',
-    'maxOutputTokens',
+    ...(['temperature', 'topP', 'topK', 'maxTemperature'] as const)
+      .filter((key) => Object.prototype.hasOwnProperty.call(raw, key)),
+    ...(Object.prototype.hasOwnProperty.call(raw, 'outputTokenLimit') ? ['maxOutputTokens'] : []),
     ...supportedMethods.map((method) => `method:${method}`),
   ]
 
@@ -94,16 +96,16 @@ function catalogModelFromAvailability(
     contextLength,
     maxOutputTokens,
     architectureModality: null,
-    inputModalities: ['text'],
-    outputModalities: ['text'],
+    inputModalities: [],
+    outputModalities: [],
     tokenizer: null,
     instructType: null,
     supportedParameters: Array.from(new Set(supportedParameters)),
     capabilities: {
-      reasoning: model.capabilitySeed.thinking === 'supported' || model.capabilitySeed.reasoning === 'supported',
-      tools: model.capabilitySeed.functionCalling === true || model.capabilitySeed.toolUse === true,
-      structuredOutputs: model.capabilitySeed.structuredOutput === true,
-      vision: model.capabilitySeed.vision === true || model.capabilitySeed.imageInput === true,
+      reasoning: model.observation?.facts.reasoning.presence === 'present' && model.observation.facts.reasoning.value === true,
+      tools: model.observation?.facts.tools.presence === 'present' && model.observation.facts.tools.value === true,
+      structuredOutputs: model.observation?.facts.structuredOutputs.presence === 'present' && model.observation.facts.structuredOutputs.value === true,
+      vision: model.observation?.facts.vision.presence === 'present' && model.observation.facts.vision.value === true,
       longContext: typeof contextLength === 'number' && contextLength >= 128_000,
     },
     pricing: null,
@@ -137,11 +139,16 @@ export function createGoogleAIStudioCatalogSource(): ProviderCatalogSource {
         observedAtMs,
       })
       if (!result.ok) {
+        if (result.code === 'pagination_incomplete') {
+          throw new ProviderCatalogPaginationIncompleteErrorV2(
+            'google_ai_studio', result.pagesFetched ?? 0, result.nextPageCursor,
+          )
+        }
+        if (result.providerFailure) throw new ProviderFailureErrorV2(result.providerFailure)
         throw new Error(result.message)
       }
       const models = result.models
         .map((model) => catalogModelFromAvailability(model, baseUrl, result.observedAtMs))
-        .filter((model): model is CatalogModel => !!model)
       return {
         providerKey: 'google_ai_studio',
         baseUrl,
