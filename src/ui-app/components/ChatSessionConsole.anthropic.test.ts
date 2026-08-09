@@ -109,20 +109,7 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
                 source: 'anthropic_models_api',
                 confidence: 'provider_reported',
                 observedAtMs: Date.UTC(2026, 5, 25),
-                warnings: ['Anthropic Models API is the provider-reported source; Starverse curated metadata is supplemental.'],
-                capabilitySeed: {
-                  textChat: true,
-                  imageInput: true,
-                  maxInputTokens: 200000,
-                  maxOutputTokens: 64000,
-                  thinking: 'supported',
-                  adaptiveThinking: true,
-                  toolUse: true,
-                  files: 'unknown',
-                  structuredOutput: 'unknown',
-                  citations: 'unknown',
-                  capabilitiesRawKeys: ['adaptive_thinking', 'thinking', 'tool_use', 'vision'],
-                },
+                warnings: [],
               },
             ],
           },
@@ -146,17 +133,9 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
     expect(diagnostics.textContent).toContain('anthropic_models_api')
     expect(diagnostics.textContent).toContain('provider_reported')
     expect(diagnostics.textContent).toContain(tf('chat.console.common.type', { type: 'model' }))
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.imageInput', { value: 'true' }))
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.thinking', { value: 'supported' }))
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.adaptiveThinking', { value: 'true' }))
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.maxInput', { value: '200000' }))
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.maxOutput', { value: '64000' }))
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.toolUse', { value: 'true' }))
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.structuredOutput', { value: 'unknown' }))
-    expect(diagnostics.textContent).toContain(tf('chat.console.capability.rawCapabilityKeys', { value: 'adaptive_thinking, thinking, tool_use, vision' }))
+    expect(diagnostics.textContent).toContain(t('chat.console.capability.unknown'))
     expect(diagnostics.textContent).toContain('anthropic_list_models_api_docs')
     expect(diagnostics.textContent).toContain('bounded R5 page limit')
-    expect(diagnostics.textContent).toContain('Starverse curated metadata')
     expect((screen.getByTestId('anthropic-models-list') as HTMLDetailsElement).open).toBe(false)
 
     await user.click(screen.getByTestId('anthropic-models-refresh'))

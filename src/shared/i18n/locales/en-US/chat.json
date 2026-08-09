@@ -4,11 +4,16 @@
       "untitledConversation": "Untitled conversation",
       "console": "Console",
       "hideConsole": "Hide console",
+      "branch": "Branch",
       "modelSummary": "Model · {model}",
       "modelSummaryWithProvider": "Model · {provider} · {model}"
     },
     "rightRail": {
       "closePanel": "Close panel"
+    },
+    "pagination": {
+      "loadMore": "Load more",
+      "loadEarlier": "Load earlier messages"
     },
     "message": {
       "role": {
@@ -51,7 +56,9 @@
       "untitledSource": "Untitled source",
       "unknownTool": "unknown",
       "type": "type",
-      "arguments": "Arguments"
+      "arguments": "Arguments",
+      "googleSearchSuggestions": "Search suggestions",
+      "googleSearchSuggestionsFiltered": "Some search content was filtered; safe content is shown below."
     },
     "attachmentConfirm": {
       "openPanel": "Open panel",
@@ -272,6 +279,12 @@
         "thinkingBudget": "thinkingBudget",
         "thinkingLevel": "thinkingLevel",
         "includeThoughts": "include thoughts",
+        "default": "Default ({value})",
+        "dynamic": "Dynamic",
+        "off": "Off",
+        "fixedBudget": "Fixed budget",
+        "allowedRange": "Allowed range: {min}–{max} tokens",
+        "highDynamic": "High (dynamic)",
         "providerManaged": "on",
         "geminiImageProviderManaged": "Gemini image models use provider-managed thinking. Starverse can request summaries when the model supports them.",
         "geminiUnsupported": "Gemini thinking is not available for this model.",
@@ -352,6 +365,12 @@
       "emptyAssistant": "No assistant message yet.",
       "encryptedTitle": "Encrypted reasoning",
       "encryptedDescription": "This reasoning payload is encrypted by the provider and cannot be shown.",
+      "summaryTitle": "Reasoning summary",
+      "processTitle": "Reasoning process",
+      "thinkingTitle": "Thinking",
+      "opaqueEncrypted": "The provider returned encrypted reasoning for protocol continuation; its contents cannot be displayed.",
+      "opaqueOmitted": "The provider reported that thinking content was omitted.",
+      "opaqueRedacted": "The provider reported that thinking content was redacted.",
       "noPayloadShort": "(no reasoning payload)",
       "excluded": "This request asked the provider not to return reasoning (excluded).",
       "notReturned": "The model did not return reasoning, or this model does not support it."

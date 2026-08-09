@@ -378,7 +378,6 @@ describe('ui-app AppChatApp send button state', () => {
         return { messages: [], debug: { branchId: 'b1', excludedQuestionIds: [], includedMessageIds: [], chosenAnswerRootByQuestionId: {} } }
       }
       if (method === 'message.listByBranch') return persisted
-      if (method === 'branch.getCandidates') return []
       if (method === 'message.get') return null
       if (method === 'branch.head') return null
       if (method === 'sendPlan.buildCurrent') {

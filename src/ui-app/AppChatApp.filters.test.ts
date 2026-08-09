@@ -16,7 +16,7 @@ describe('ui-app AppChatApp (filters: include/exclude)', () => {
 
     readBranch = vi.fn(async () => ok({
       branchId: 'b1', conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1',
-      branchName: 'Main', headMessageId: 'a1',
+      branchName: 'Main', headMessageId: 'a1', beforeMessageId: null, hasMoreTurns: false,
       turns: [{
         questionId: 'u1', questionBody: 'Q1', questionCreatedAtMs: 1, chosenAnswerRootId: 'a1',
         contextFilter: {
@@ -39,6 +39,12 @@ describe('ui-app AppChatApp (filters: include/exclude)', () => {
 
     ;(globalThis as any).generationV2 = {
       ...originalGenerationV2,
+      runtime: {
+        subscribe: vi.fn(async () => ok([])),
+        snapshot: vi.fn(async () => ok(null)),
+        abort: vi.fn(async () => ok(false)),
+        onEvent: vi.fn(() => () => undefined),
+      },
       workspace: {
         ...originalGenerationV2.workspace,
         ensureDefault: vi.fn(async () => ok({ projectId: 'project_inbox', conversationId: 'c1', branchId: 'b1', created: false })),
@@ -51,11 +57,21 @@ describe('ui-app AppChatApp (filters: include/exclude)', () => {
           })
         }),
         listProjects: vi.fn(async () => ok([{ projectId: 'project_inbox', name: 'Inbox', createdAtMs: 1, updatedAtMs: 2 }])),
-        listConversations: vi.fn(async () => ok([{
+        listConversations: vi.fn(async () => ok({ items: [{
           conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1', updatedAtMs: 2,
           branches: [{ branchId: 'b1', name: 'Main', headMessageId: 'a1', updatedAtMs: 2 }],
-        }])),
+          branchesHasMore: false,
+        }], nextCursor: null, totalCount: 1 })),
+        listBranches: vi.fn(async () => ok({ items: [{
+          branchId: 'b1', name: 'Main', headMessageId: 'a1', updatedAtMs: 3,
+        }], nextCursor: null, totalCount: 1 })),
         readBranch,
+        getMessageCandidateNavigation: vi.fn(async (branchId: string, messageId: string) => ok({
+          conversationId: 'c1', currentBranchId: branchId, messageId,
+          parentMessageId: messageId === 'a1' ? 'u1' : null,
+          role: messageId === 'a1' ? 'assistant' : 'user',
+          currentIndex: 0, total: 1, previous: null, next: null,
+        })),
         setContextFilter,
       },
     }

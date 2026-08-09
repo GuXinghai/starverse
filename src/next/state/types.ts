@@ -86,6 +86,7 @@ export type ReasoningDisplayBlock =
       blockId: string
       ordinal: number
       type: 'opaque'
+      opaqueKind?: 'encrypted' | 'omitted' | 'redacted'
       label: string
       warning?: string
       providerKey: string
@@ -126,6 +127,7 @@ export type MessageVM = Readonly<{
   contentBlocks: ContentBlock[]
   requestedImageGeneration?: boolean
   annotations?: MessageAnnotation[]
+  googleSearchSuggestions?: readonly string[]
   toolCalls: ToolCallVM[]
   reasoningView: ReasoningView
   reasoningDurationMs?: number | null
@@ -210,6 +212,9 @@ export type DomainEvent =
 
 export type MessageState = Readonly<{
   messageId: string
+  providerId?: string
+  protocolContractId?: string
+  modelId?: string
   routeProvenanceId?: string
   choiceIndex?: number
   role: MessageRole
@@ -292,6 +297,8 @@ export type StartGenerationInput = Readonly<{
   routeProvenanceId?: string
   choiceIndex?: number
   model?: string
+  providerId?: string
+  protocolContractId?: string
   assistantMessageId?: string
   userMessageId?: string
   userMessageText?: string

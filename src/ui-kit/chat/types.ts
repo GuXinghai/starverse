@@ -64,6 +64,7 @@ export type ReasoningDisplayBlock =
       blockId: string
       ordinal: number
       type: 'opaque'
+      opaqueKind?: 'encrypted' | 'omitted' | 'redacted'
       label: string
       warning?: string
       providerKey: string
@@ -125,6 +126,7 @@ export type MessageVM = Readonly<{
   contentBlocks: ContentBlock[]
   requestedImageGeneration?: boolean
   annotations?: MessageAnnotation[]
+  googleSearchSuggestions?: readonly string[]
   toolCalls: ToolCallVM[]
   reasoningView: ReasoningView
   reasoningDurationMs?: number | null

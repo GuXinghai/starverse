@@ -77,12 +77,6 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
       return variant?.qBody ?? ''
     }
 
-    const listQuestionCandidates = () => {
-      const items = Object.values(variantsByBaseA1).map((v) => ({ questionId: v.qid, createdAt: v.createdAt, status: 'final' }))
-      // Worker returns new -> old (created_at desc).
-      return items.sort((a, b) => b.createdAt - a.createdAt)
-    }
-
     const renderPath = () => {
       const v = variantsByBaseA1[headQuestionId]
       const u2 = { id: v.qid, role: 'user', body: v.qBody, seq: v.qSeq, parentId: 'a1' as string | null }
@@ -130,23 +124,6 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
       if (method === 'branch.list') {
         const { a2 } = renderPath()
         return [{ id: branchId, convoId, headMessageId: a2.id, name: 'Main', createdAt: 1, updatedAt: 1, deletedAt: null }]
-      }
-
-      if (method === 'branch.getQuestionCandidates') {
-        return listQuestionCandidates()
-      }
-
-      if (method === 'branch.switchQuestionCandidate') {
-        const qid = String(params?.questionId ?? '')
-        headQuestionId = qid === 'u2alt' ? 'u2alt' : qid === 'u2b' ? 'u2b' : 'u2'
-        const { a2 } = renderPath()
-        return { ok: true, headMessageId: a2.id }
-      }
-
-      if (method === 'branch.getCandidates') {
-        const qid = String(params?.questionId ?? '')
-        const v = Object.values(variantsByBaseA1).find((x) => x.qid === qid) ?? variantsByBaseA1.u2
-        return [{ answerRootId: v.aid, createdAt: v.createdAt + 1, status: v.status }]
       }
 
       if (method === 'context.getRenderableTurns') {
@@ -471,21 +448,6 @@ describe('ui-app AppChatApp (question branching: pager + edit)', () => {
     ;(globalThis as any).dbBridge = originalDbBridge
     ;(globalThis as any).electronStore = originalElectronStore
     ;(globalThis as any).openRouterCredential = originalOpenRouterCredential
-  })
-
-  it('renders question pager and calls branch.switchQuestionCandidate', async () => {
-    const user = userEvent.setup()
-    render(AppChatApp)
-
-    await screen.findByText('Q2')
-    await waitFor(() => expect(screen.getByTestId('qvar-pos-u2').textContent).toBe('1/2'))
-
-    await user.click(screen.getByTestId('qvar-next-u2'))
-    await screen.findByText('Q2 alt')
-    await waitFor(() => expect(screen.getByTestId('qvar-pos-u2alt').textContent).toBe('2/2'))
-
-    const invoke = (globalThis as any).dbBridge.invoke as ReturnType<typeof vi.fn>
-    expect(invoke).toHaveBeenCalledWith('branch.switchQuestionCandidate', expect.objectContaining({ branchId: 'b1', baseMessageId: 'a1', questionId: 'u2alt' }))
   })
 
   it('disables Replace question unless editing the last question', async () => {

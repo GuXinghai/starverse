@@ -4,11 +4,16 @@
       "untitledConversation": "未命名对话",
       "console": "控制台",
       "hideConsole": "隐藏控制台",
+      "branch": "分支",
       "modelSummary": "模型 · {model}",
       "modelSummaryWithProvider": "模型 · {provider} · {model}"
     },
     "rightRail": {
       "closePanel": "关闭面板"
+    },
+    "pagination": {
+      "loadMore": "加载更多",
+      "loadEarlier": "加载更早消息"
     },
     "message": {
       "role": {
@@ -51,7 +56,9 @@
       "untitledSource": "未命名来源",
       "unknownTool": "未知",
       "type": "类型",
-      "arguments": "参数"
+      "arguments": "参数",
+      "googleSearchSuggestions": "搜索建议",
+      "googleSearchSuggestionsFiltered": "部分搜索内容已过滤，以下为安全内容。"
     },
     "attachmentConfirm": {
       "openPanel": "打开面板",
@@ -272,6 +279,12 @@
         "thinkingBudget": "thinkingBudget",
         "thinkingLevel": "thinkingLevel",
         "includeThoughts": "返回推理摘要",
+        "default": "默认（{value}）",
+        "dynamic": "动态",
+        "off": "关闭",
+        "fixedBudget": "固定预算",
+        "allowedRange": "允许范围：{min}–{max} tokens",
+        "highDynamic": "High（动态）",
         "providerManaged": "开启",
         "geminiImageProviderManaged": "Gemini 生图模型使用提供方托管的推理。模型支持时，Starverse 可以请求返回推理摘要。",
         "geminiUnsupported": "该模型不可使用 Gemini 推理控制。",
@@ -352,6 +365,12 @@
       "emptyAssistant": "还没有助手消息。",
       "encryptedTitle": "推理已加密",
       "encryptedDescription": "本次推理内容被提供方加密，无法显示。",
+      "summaryTitle": "推理摘要",
+      "processTitle": "推理过程",
+      "thinkingTitle": "思考内容",
+      "opaqueEncrypted": "提供方返回了加密推理；内容仅用于协议续接，无法显示。",
+      "opaqueOmitted": "提供方说明本次思考内容已省略。",
+      "opaqueRedacted": "提供方说明本次思考内容已脱敏。",
       "noPayloadShort": "（没有推理内容）",
       "excluded": "本次请求已要求不返回推理内容（excluded）。",
       "notReturned": "模型未返回推理内容，或该模型不支持推理内容。"

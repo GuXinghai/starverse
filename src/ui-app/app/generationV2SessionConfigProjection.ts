@@ -30,7 +30,10 @@ function omit() {
   return Object.freeze({ mode: 'omit' as const })
 }
 
-function projectGenerationParams(layer: ReturnType<typeof decodeGenerationConfigLayerV2>): GenerationParamsLayer {
+function projectGenerationParams(
+  layer: ReturnType<typeof decodeGenerationConfigLayerV2>,
+  providerId: RuntimeProviderKey | null,
+): GenerationParamsLayer {
   const result: Partial<Record<GenerationParamKey, ReturnType<typeof custom> | ReturnType<typeof omit>>> = {}
   for (const [semanticKey, paramKey] of Object.entries(GENERATION_PARAM_FIELDS) as Array<
     [keyof typeof GENERATION_PARAM_FIELDS, GenerationParamKey]
@@ -39,11 +42,12 @@ function projectGenerationParams(layer: ReturnType<typeof decodeGenerationConfig
     result[paramKey] = value === undefined ? omit() : custom(value)
   }
   const reasoning = layer.reasoning
-  result.reasoningEffort = reasoning?.mode === 'enabled' && reasoning.effort !== undefined
+  result.reasoningEffort = providerId !== 'deepseek' && reasoning?.mode === 'enabled' && reasoning.effort !== undefined
     ? custom(reasoning.effort) : omit()
   result.reasoningSummary = reasoning?.mode === 'enabled' && reasoning.summary !== undefined
     ? custom(reasoning.summary) : omit()
-  result.thinkingEnabled = reasoning === undefined ? omit() : custom(reasoning.mode === 'enabled')
+  result.thinkingEnabled = providerId === 'deepseek' || reasoning === undefined
+    ? omit() : custom(reasoning.mode === 'enabled')
   const web = layer.web
   result.googleSearch = web?.mode === 'provider_search' ? custom(web.types.includes('web')) : omit()
   result.imageSearch = web?.mode === 'provider_search' ? custom(web.types.includes('image')) : omit()
@@ -108,7 +112,7 @@ export function projectGenerationV2SemanticLayerToSessionConfig(
       reasoning: Object.freeze({ enabled: layer.reasoning?.mode === 'enabled', effort: quickEffort }),
       webSearch: projectWeb(layer),
       imageGeneration: projectImage(layer),
-      generationParams: Object.freeze({ detail: projectGenerationParams(layer) }),
+      generationParams: Object.freeze({ detail: projectGenerationParams(layer, providerId) }),
     }),
     requestedReasoningEffort,
     requestedReasoningExclude: layer.reasoning?.mode === 'enabled' && layer.reasoning.exclude === true,

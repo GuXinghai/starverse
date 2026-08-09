@@ -35,7 +35,29 @@ describe('ChatReasoningPanel', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Display reasoning')).toBeInTheDocument()
+      expect(screen.getByText(t('chat.reasoning.summaryTitle'))).toBeInTheDocument()
     })
+  })
+
+  it('renders localized opaque status without exposing the fallback payload label', () => {
+    render(ChatReasoningPanel, {
+      props: {
+        reasoningView: view({
+          visibility: 'shown',
+          displayBlocks: [{
+            blockId: 'opaque-1',
+            ordinal: 0,
+            type: 'opaque',
+            opaqueKind: 'redacted',
+            label: 'fallback-must-not-be-shown',
+            providerKey: 'anthropic',
+          }],
+        }),
+      },
+    })
+
+    expect(screen.getByText(t('chat.reasoning.opaqueRedacted'))).toBeInTheDocument()
+    expect(screen.queryByText('fallback-must-not-be-shown')).not.toBeInTheDocument()
   })
 
   it('renders content even when message panelState is collapsed', async () => {

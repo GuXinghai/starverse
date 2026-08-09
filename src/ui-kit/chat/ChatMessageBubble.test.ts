@@ -11,6 +11,7 @@ function msg(partial: Partial<MessageVM> & Pick<MessageVM, 'messageId' | 'role'>
     contentBlocks: partial.contentBlocks ?? [{ type: 'text', text: 'hello' }],
     ...(partial.requestedImageGeneration === true ? { requestedImageGeneration: true } : {}),
     ...(partial.annotations ? { annotations: partial.annotations } : {}),
+    ...(partial.googleSearchSuggestions ? { googleSearchSuggestions: partial.googleSearchSuggestions } : {}),
     toolCalls: partial.toolCalls ?? [],
     reasoningView: partial.reasoningView ?? { visibility: 'not_returned', panelState: 'expanded' },
     streaming: partial.streaming ?? { isTarget: false, isComplete: true },
@@ -145,6 +146,23 @@ describe('ChatMessageBubble', () => {
     expect(screen.getByText(/引用 \(1\)/)).toBeInTheDocument()
     expect(screen.getByRole('link', { name: 'OpenRouter Docs' })).toHaveAttribute('href', 'https://openrouter.ai/docs')
     expect(screen.getByText('OpenRouter')).toBeInTheDocument()
+  })
+
+  it('renders Google Search suggestions with a strict safe HTML policy', () => {
+    const { container } = render(ChatMessageBubble, {
+      props: {
+        message: msg({
+          messageId: 'a_search_suggestions',
+          role: 'assistant',
+          googleSearchSuggestions: ['<div>Use <a href="https://example.com">Example</a><script>alert(1)</script></div>'],
+        }),
+      },
+    })
+
+    expect(screen.getByTestId('google-search-suggestions')).toBeInTheDocument()
+    expect(container.querySelector('a[href="https://example.com"]')).toHaveAttribute('rel', 'noopener noreferrer')
+    expect(container.querySelector('script')).toBeNull()
+    expect(screen.getByText(/已过滤/)).toBeInTheDocument()
   })
 
   it('falls back to domain/url when citation title/content are missing', () => {
