@@ -1,4 +1,6 @@
 import { createHash } from 'node:crypto'
+import { assertActiveCatalogOptionalCapabilitiesV2, isActiveCatalogModelAuthorityV2,
+  projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import {
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
@@ -44,10 +46,6 @@ import {
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
-import {
-  isVerifiedAnthropicModelEvidenceV2,
-  type VerifiedAnthropicModelEvidenceV2,
-} from './anthropicModelEvidenceV2Service'
 
 export type VerifiedAnthropicProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_anthropic_provider_binding'
@@ -122,7 +120,7 @@ function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
   return Object.freeze({ path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
 }
 
-function fieldsForModel(evidence: VerifiedAnthropicModelEvidenceV2, toolsEnabled: boolean): readonly PersistedRuntimeCapabilityFieldV2[] {
+function fieldsForModel(evidence: ActiveCatalogModelAuthorityV2, toolsEnabled: boolean): readonly PersistedRuntimeCapabilityFieldV2[] {
   const rule = resolveAnthropicModelThinkingRuleV1(evidence.modelId.value)
   if (!rule) throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_MODEL_RULE_UNAVAILABLE')
   const reviewedThinkingTypes = rule.thinkingModes
@@ -191,7 +189,7 @@ function fieldsForModel(evidence: VerifiedAnthropicModelEvidenceV2, toolsEnabled
   return Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => values.get(path)!))
 }
 
-function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: VerifiedAnthropicModelEvidenceV2, toolRegistry?: ToolRegistryRepositoryFactV2 | null): void {
+function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: ActiveCatalogModelAuthorityV2, toolRegistry?: ToolRegistryRepositoryFactV2 | null): void {
   const intent = facts.semanticIntent
   const tools = intent.tools ?? { mode: 'disabled' as const }
   if (intent.attachments.length !== facts.attachmentSet.attachments.length + facts.attachmentSet.urlReferenceIntents.length ||
@@ -242,7 +240,7 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: Verif
   }
 }
 
-function composeBinding(evidence: VerifiedAnthropicModelEvidenceV2): VerifiedAnthropicProviderBindingAuthorityV2 {
+function composeBinding(evidence: ActiveCatalogModelAuthorityV2): VerifiedAnthropicProviderBindingAuthorityV2 {
   const profile = readVerifiedAnthropicEndpointProfileV2()
   const definition = readReviewedAnthropicMessagesDefinitionV2()
   if (!isVerifiedAnthropicEndpointProfileV2(profile) || !isReviewedProviderContractDefinitionV2(definition) ||
@@ -273,7 +271,7 @@ function composeBinding(evidence: VerifiedAnthropicModelEvidenceV2): VerifiedAnt
     trust: 'verified_anthropic_provider_binding', usage: 'runtime_capability_and_snapshot_input_only', executionAuthority: 'none',
     binding, contractReference, credentialRevision: evidence.credentialRevision, modelEvidenceRevision: evidence.modelResponseRevision,
     assertCurrent: () => {
-      if (!bindingAuthorities.has(authority) || !isVerifiedAnthropicModelEvidenceV2(evidence)) throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_GENERATION_AUTHORITY_INVALID')
+      if (!bindingAuthorities.has(authority) || !isActiveCatalogModelAuthorityV2(evidence, 'anthropic_messages')) throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_GENERATION_AUTHORITY_INVALID')
       evidence.assertCurrent()
     },
   })
@@ -281,12 +279,13 @@ function composeBinding(evidence: VerifiedAnthropicModelEvidenceV2): VerifiedAnt
   return authority
 }
 
-function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2, evidence: VerifiedAnthropicModelEvidenceV2,
+function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2, evidence: ActiveCatalogModelAuthorityV2,
   fields: readonly PersistedRuntimeCapabilityFieldV2[], toolRegistry: ToolRegistryRepositoryFactV2 | null): VerifiedAnthropicRuntimeCapabilityAuthorityV2 {
   binding.assertCurrent()
   const observedAt = new Date(evidence.observedAtMs).toISOString()
   const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
     schemaVersion: 2, resolvedAt: new Date(Date.now()).toISOString(), binding: projectDecodedProviderBindingRecordV2(binding.binding),
+    ...projectActiveCatalogSnapshotAuthorityV2(evidence),
     evidence: [
       { evidenceId: SUPPORTS, kind: 'official_documentation', effect: 'supports', sourceRef: 'https://platform.claude.com/docs/en/api/messages/create', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(SUPPORTS) },
       { evidenceId: REJECTS, kind: 'contract_invariant', effect: 'rejects', sourceRef: 'generation-compiler-v2-anthropic-plain-text-boundary', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(REJECTS) },
@@ -323,13 +322,13 @@ function promiseLike(value: unknown): value is PromiseLike<unknown> {
 
 export function withVerifiedAnthropicGenerationAuthoritiesV2<T>(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
-  modelEvidence: VerifiedAnthropicModelEvidenceV2
+  modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   operation: 'text' | 'tool_continue'
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
   use: (authorities: Readonly<{ binding: VerifiedAnthropicProviderBindingAuthorityV2; capability: VerifiedAnthropicRuntimeCapabilityAuthorityV2 }>) => T extends PromiseLike<unknown> ? never : T
 }>): T {
-  if (!isVerifiedAnthropicModelEvidenceV2(input.modelEvidence) || !isGenerationCommandFactsAuthorityV2(input.commandFacts) ||
+  if (!isActiveCatalogModelAuthorityV2(input.modelEvidence, 'anthropic_messages') || !isGenerationCommandFactsAuthorityV2(input.commandFacts) ||
       !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) || input.commandFacts.executionAuthority !== 'none') {
     throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_GENERATION_AUTHORITY_INVALID')
   }
@@ -340,6 +339,7 @@ export function withVerifiedAnthropicGenerationAuthoritiesV2<T>(input: Readonly<
     }
   }
   input.modelEvidence.assertCurrent()
+  assertActiveCatalogOptionalCapabilitiesV2(input.modelEvidence, input.commandFacts.semanticIntent)
   validateFacts(input.commandFacts, input.modelEvidence, input.toolRegistry)
   const fields = fieldsForModel(input.modelEvidence, input.toolRegistry !== undefined && input.toolRegistry !== null)
   let binding: VerifiedAnthropicProviderBindingAuthorityV2 | undefined

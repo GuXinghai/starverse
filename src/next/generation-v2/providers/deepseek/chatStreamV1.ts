@@ -13,6 +13,7 @@ export type DeepSeekStableUsageV1 = Readonly<{
   total_tokens: number
   prompt_cache_hit_tokens?: number
   prompt_cache_miss_tokens?: number
+  prompt_tokens_details?: Readonly<{ cached_tokens: number }>
   completion_tokens_details?: Readonly<{ reasoning_tokens: number }>
 }>
 
@@ -63,7 +64,12 @@ export class DeepSeekStableChatStreamV1Error extends Error {
     | 'GENERATION_V2_DEEPSEEK_STREAM_TERMINAL_INVALID'
     | 'GENERATION_V2_DEEPSEEK_STREAM_LIMIT_EXCEEDED'
     | 'GENERATION_V2_DEEPSEEK_SSE_INVALID'
-    | 'GENERATION_V2_DEEPSEEK_SSE_PREMATURE_EOF') {
+    | 'GENERATION_V2_DEEPSEEK_SSE_PREMATURE_EOF',
+    readonly diagnostic: Readonly<{
+      path: string
+      unknownFields: readonly string[]
+      currentValue: Readonly<Record<string, unknown>>
+    }> | null = null) {
     super(code)
     this.name = 'DeepSeekStableChatStreamV1Error'
   }
@@ -95,7 +101,12 @@ export function isDeepSeekStableStreamResultV1(value: unknown): value is DeepSee
   return Boolean(value && typeof value === 'object' && streamResults.has(value))
 }
 
-function closedObject(value: unknown, allowed: readonly string[], required: readonly string[]): ClosedObject {
+function closedObject(
+  value: unknown,
+  allowed: readonly string[],
+  required: readonly string[],
+  path = '$',
+): ClosedObject {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) {
     throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_INVALID_SHAPE')
   }
@@ -105,8 +116,13 @@ function closedObject(value: unknown, allowed: readonly string[], required: read
     throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_INVALID_SHAPE')
   }
   const keys = Object.keys(descriptors)
-  if (keys.some((key) => !allowed.includes(key))) {
-    throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_UNKNOWN_FIELD')
+  const unknownFields = keys.filter((key) => !allowed.includes(key))
+  if (unknownFields.length > 0) {
+    throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_UNKNOWN_FIELD', Object.freeze({
+      path,
+      unknownFields: Object.freeze(unknownFields),
+      currentValue: Object.freeze(Object.fromEntries(keys.map((key) => [key, descriptors[key].value]))),
+    }))
   }
   if (required.some((key) => !keys.includes(key))) {
     throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_INVALID_SHAPE')
@@ -144,12 +160,18 @@ function decodeUsage(value: unknown): DeepSeekStableUsageV1 | undefined {
   if (value === null || value === undefined) return undefined
   const input = closedObject(value, [
     'prompt_tokens', 'completion_tokens', 'total_tokens', 'prompt_cache_hit_tokens',
-    'prompt_cache_miss_tokens', 'completion_tokens_details',
-  ], ['prompt_tokens', 'completion_tokens', 'total_tokens'])
+    'prompt_cache_miss_tokens', 'prompt_tokens_details', 'completion_tokens_details',
+  ], ['prompt_tokens', 'completion_tokens', 'total_tokens'], '$.usage')
+  const promptDetails = input.prompt_tokens_details === undefined
+    ? undefined
+    : (() => {
+      const raw = closedObject(input.prompt_tokens_details, ['cached_tokens'], ['cached_tokens'], '$.usage.prompt_tokens_details')
+      return Object.freeze({ cached_tokens: nonNegativeInteger(raw.cached_tokens) })
+    })()
   const details = input.completion_tokens_details === undefined
     ? undefined
     : (() => {
-      const raw = closedObject(input.completion_tokens_details, ['reasoning_tokens'], ['reasoning_tokens'])
+      const raw = closedObject(input.completion_tokens_details, ['reasoning_tokens'], ['reasoning_tokens'], '$.usage.completion_tokens_details')
       return Object.freeze({ reasoning_tokens: nonNegativeInteger(raw.reasoning_tokens) })
     })()
   return Object.freeze({
@@ -158,6 +180,7 @@ function decodeUsage(value: unknown): DeepSeekStableUsageV1 | undefined {
     total_tokens: nonNegativeInteger(input.total_tokens),
     ...(input.prompt_cache_hit_tokens === undefined ? {} : { prompt_cache_hit_tokens: nonNegativeInteger(input.prompt_cache_hit_tokens) }),
     ...(input.prompt_cache_miss_tokens === undefined ? {} : { prompt_cache_miss_tokens: nonNegativeInteger(input.prompt_cache_miss_tokens) }),
+    ...(promptDetails ? { prompt_tokens_details: promptDetails } : {}),
     ...(details ? { completion_tokens_details: details } : {}),
   })
 }
@@ -175,7 +198,7 @@ function decodeToolCallDelta(value: unknown): Readonly<{
   name?: string
   argumentsDelta?: string
 }> {
-  const input = closedObject(value, ['index', 'id', 'type', 'function'], ['index'])
+  const input = closedObject(value, ['index', 'id', 'type', 'function'], ['index'], '$.choices[0].delta.tool_calls[]')
   const index = nonNegativeInteger(input.index)
   if (index >= 128 || (input.id !== undefined && (typeof input.id !== 'string' || input.id.length === 0)) ||
       (input.type !== undefined && input.type !== 'function')) {
@@ -183,7 +206,7 @@ function decodeToolCallDelta(value: unknown): Readonly<{
   }
   const fn = input.function === undefined
     ? undefined
-    : closedObject(input.function, ['name', 'arguments'], [])
+    : closedObject(input.function, ['name', 'arguments'], [], '$.choices[0].delta.tool_calls[].function')
   if ((fn?.name !== undefined && (typeof fn.name !== 'string' || fn.name.length === 0)) ||
       (fn?.arguments !== undefined && typeof fn.arguments !== 'string')) {
     throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_INVALID_VALUE')
@@ -243,7 +266,7 @@ export class DeepSeekStableChatStreamAssemblerV1 {
     }
     const chunk = closedObject(value, [
       'id', 'choices', 'created', 'model', 'system_fingerprint', 'object', 'usage',
-    ], ['id', 'choices', 'created', 'model', 'system_fingerprint', 'object'])
+    ], ['id', 'choices', 'created', 'model', 'system_fingerprint', 'object'], '$')
     if (chunk.object !== 'chat.completion.chunk') {
       throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_INVALID_VALUE')
     }
@@ -261,14 +284,14 @@ export class DeepSeekStableChatStreamAssemblerV1 {
     if (this.#state.finishReason !== undefined) {
       throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_SEQUENCE_INVALID')
     }
-    if (chunk.usage !== undefined && chunk.usage !== null) {
-      throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_SEQUENCE_INVALID')
-    }
-    const choice = closedObject(choices[0], ['index', 'delta', 'finish_reason', 'logprobs'], ['index', 'delta', 'finish_reason'])
+    const choice = closedObject(choices[0], ['index', 'delta', 'finish_reason', 'logprobs'], ['index', 'delta', 'finish_reason'], '$.choices[0]')
     if (choice.index !== 0 || (choice.logprobs !== undefined && choice.logprobs !== null)) {
       throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_INVALID_VALUE')
     }
-    const delta = closedObject(choice.delta, ['role', 'content', 'reasoning_content', 'tool_calls'], [])
+    if (usage && (choice.finish_reason === null || this.#state.usageSeen)) {
+      throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_SEQUENCE_INVALID')
+    }
+    const delta = closedObject(choice.delta, ['role', 'content', 'reasoning_content', 'tool_calls'], [], '$.choices[0].delta')
     if (delta.role !== undefined && delta.role !== 'assistant') {
       throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_INVALID_VALUE')
     }
@@ -313,6 +336,10 @@ export class DeepSeekStableChatStreamAssemblerV1 {
       }
       finishReason = choice.finish_reason as DeepSeekStableFinishReasonV1
       this.#state.finishReason = finishReason
+      if (usage) {
+        this.#state.usage = usage
+        this.#state.usageSeen = true
+      }
       if (finishReason === 'tool_calls' && this.#state.toolCalls.size === 0) {
         throw new DeepSeekStableChatStreamV1Error('GENERATION_V2_DEEPSEEK_STREAM_TOOL_CALL_INCOMPLETE')
       }
@@ -327,6 +354,7 @@ export class DeepSeekStableChatStreamAssemblerV1 {
         ...(item.argumentsDelta === undefined ? {} : { argumentsDelta: item.argumentsDelta }),
       }))) } : {}),
       ...(finishReason ? { finishReason } : {}),
+      ...(usage ? { usage } : {}),
     })
     return result
   }

@@ -3,6 +3,7 @@ import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
+import { GenerationRuntimeStarterV2 } from './generationRuntimeStarterV2'
 import type { GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import type { GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createOpenRouterChatPlainTextEditResendCoordinatorV2 } from './openRouterChatPlainTextEditResendCoordinatorV2'
@@ -44,7 +45,7 @@ export function createOpenRouterChatGenerationV2Runtime(input: Readonly<{
   const editResend = createOpenRouterChatPlainTextEditResendCoordinatorV2(input)
   const continuation = createOpenRouterChatToolContinuationCoordinatorV2(input)
   const runner = createOpenRouterChatStreamRunnerV2(input)
-  const controllers = new Map<string, AbortController>()
+  const starter = new GenerationRuntimeStarterV2(input.streamProjectionSink)
 
   async function credential(): Promise<CredentialExpectation> {
     const status = await input.credentialService.getStatus('openrouter')
@@ -54,11 +55,7 @@ export function createOpenRouterChatGenerationV2Runtime(input: Readonly<{
     return Object.freeze({ revision: status.revision, credentialScopeId: status.credentialScopeId })
   }
   function start(result: GenerationTextCommandResultV2): void {
-    if (result.kind !== 'created' || controllers.has(result.preparedRequest.operationId)) return
-    const controller = new AbortController()
-    controllers.set(result.preparedRequest.operationId, controller)
-    void runner.run(result, controller.signal).catch(() => undefined)
-      .finally(() => controllers.delete(result.preparedRequest.operationId))
+    starter.start(result, (signal) => runner.run(result, signal))
   }
   async function commitAndStart(promise: Promise<GenerationTextCommandResultV2>): Promise<GenerationTextCommandResultV2> {
     const result = await promise
@@ -81,11 +78,6 @@ export function createOpenRouterChatGenerationV2Runtime(input: Readonly<{
     regenerate: (command: unknown, signal?: AbortSignal) => currentConfigSubmit(regenerate.submit, command, signal),
     editResend: (command: unknown, signal?: AbortSignal) => currentConfigSubmit(editResend.submit, command, signal),
     continueTool: (command: unknown) => commitAndStart(continuation.submit(command)),
-    abort: (operationId: string) => {
-      const controller = controllers.get(operationId)
-      if (!controller || controller.signal.aborted) return false
-      controller.abort('user_cancelled')
-      return true
-    },
+    abort: (operationId: string) => starter.abort(operationId),
   })
 }

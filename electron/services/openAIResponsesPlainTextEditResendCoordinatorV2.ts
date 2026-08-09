@@ -20,7 +20,7 @@ import {
 } from '../../src/next/generation-v2/providers/openai-responses/plainTextEditResendCommandV2'
 import { projectOpenAIResponsesCommandAttachmentsV2 } from '../../src/next/generation-v2/providers/openai-responses/commandAttachmentsV2'
 import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
-import { createOpenAIResponsesModelEvidenceV2Service } from './openAIResponsesModelEvidenceV2Service'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedOpenAIResponsesGenerationAuthoritiesV2 } from './openAIResponsesGenerationAuthorityV2Service'
 import { compileOpenAIResponsesPreparedRequestV2 } from './openAIResponsesPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
@@ -52,9 +52,7 @@ export function createOpenAIResponsesPlainTextEditResendCoordinatorV2(input: Rea
   const descriptorRepo = new OpenAIResponsesFileDescriptorV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
-  const modelEvidenceService = createOpenAIResponsesModelEvidenceV2Service({
-    db: input.db, credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs,
-  })
+  const modelEvidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedOpenAIResponsesEndpointProfileV2()
 
   function replay(command: OpenAIResponsesPlainTextEditResendCommandV2): GenerationTextCommandResultV2 | null {
@@ -101,10 +99,10 @@ export function createOpenAIResponsesPlainTextEditResendCoordinatorV2(input: Rea
           expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId, signal: request.signal,
         })
-        return await modelEvidenceService.withRefreshedExactModelEvidence({
+        return await modelEvidenceService.withExactActiveModel({ providerKey: 'openai_responses',
           expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId,
-          endpointProfile, modelId: command.modelId, signal: request.signal,
+          endpointProfile, modelId: command.modelId,
           consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
             const raced = executionRepo.findOperationInTransaction(context, command.operationId.value)
             if (raced) {
@@ -125,8 +123,7 @@ export function createOpenAIResponsesPlainTextEditResendCoordinatorV2(input: Rea
               })
             }
             const pending = graphRepo.beginEditedTurn(context, {
-              operationId: command.operationId.value, mode: command.mode,
-              branchId: command.branchId.value, sourceQuestionId: command.sourceQuestionId.value,
+              operationId: command.operationId.value, sourceBranchId: command.sourceBranchId.value, sourceQuestionId: command.sourceQuestionId.value,
               sourceAnswerRootId: command.sourceAnswerRootId.value,
               expectedHeadMessageId: command.expectedHeadMessageId.value,
               questionId: createQuestionId(), answerRootId: createAnswerId(),

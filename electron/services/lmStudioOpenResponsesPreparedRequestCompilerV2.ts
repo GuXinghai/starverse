@@ -101,7 +101,7 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
     { kind: 'consumed', path: 'providerExtension.kind', disposition: 'accepted_no_wire', nativeField: null, evidence: 'lmstudio-openresponses' },
   ])
   return issuePreparedProviderRequestV2({ operationId: operation.operationId.value,
-    answerRootId: operation.resultAnswerRootId.value, requestSequence: input.history.requestSequence, providerId: 'lmstudio',
+    answerRootId: operation.targetAnswerId.value, requestSequence: input.history.requestSequence, providerId: 'lmstudio',
     endpointProfileId: input.profile.endpointProfileId, credentialScopeId: input.profile.credentialScopeId,
     contractId: 'lmstudio-openresponses', modelId: binding.modelId.value,
     effectiveEndpointId: input.profile.endpointProfileId, endpoint: readLmStudioOpenResponsesEndpointV2(input.profile),

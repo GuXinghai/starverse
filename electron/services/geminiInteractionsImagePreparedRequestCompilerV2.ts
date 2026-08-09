@@ -79,7 +79,7 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
     nativeField: entry.nativeField, evidence: 'gemini-interactions-v1beta',
   })))
   return issuePreparedProviderRequestV2({
-    operationId: operation.operationId.value, answerRootId: operation.resultAnswerRootId.value,
+    operationId: operation.operationId.value, answerRootId: operation.targetAnswerId.value,
     requestSequence: 1, providerId: binding.providerId.value, endpointProfileId: binding.endpointProfileId.value,
     credentialScopeId: binding.credentialScopeId.value, contractId: binding.protocolContractId.value,
     modelId: binding.modelId.value, effectiveEndpointId: descriptor.endpointId.value, endpoint: endpoint.url,

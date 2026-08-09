@@ -44,7 +44,7 @@ export function createLmStudioOpenResponsesToolContinuationCoordinatorV2(input: 
       if (!execution) throw new LmStudioOpenResponsesToolContinuationCoordinatorV2Error('GENERATION_V2_LMSTUDIO_TOOL_CONTINUATION_STATE_INVALID')
       if (!['streaming', 'completed', 'failed', 'cancelled'].includes(execution.operation.state) ||
           execution.operation.branchId.value !== command.branchId.value ||
-          execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+          execution.operation.targetAnswerId.value !== command.answerRootId.value ||
           command.expectedHeadMessageId.value !== command.answerRootId.value) invalid()
       const toolRegistry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
       if (!toolRegistry) throw new LmStudioOpenResponsesToolContinuationCoordinatorV2Error('GENERATION_V2_LMSTUDIO_TOOL_CONTINUATION_STATE_INVALID')
@@ -72,7 +72,7 @@ export function createLmStudioOpenResponsesToolContinuationCoordinatorV2(input: 
       if (!execution) throw new LmStudioOpenResponsesToolContinuationCoordinatorV2Error('GENERATION_V2_LMSTUDIO_TOOL_CONTINUATION_STATE_INVALID')
       if (execution.operation.state !== 'streaming' ||
           execution.operation.branchId.value !== command.branchId.value ||
-          execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+          execution.operation.targetAnswerId.value !== command.answerRootId.value ||
           execution.snapshot.providerBinding.providerId.value !== 'lmstudio' ||
           execution.snapshot.providerBinding.protocolContractId.value !== 'lmstudio-openresponses' ||
           execution.snapshot.providerBinding.operation !== 'text') invalid()

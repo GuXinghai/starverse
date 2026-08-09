@@ -95,9 +95,9 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
       branchId: command.branchId.value, expectedHeadMessageId: command.expectedHeadMessageId?.value ?? null, questionId: createQuestionId(),
       answerRootId: createAnswerId(), userBody: command.userBody, createdAtMs: at })
     if (command.kind === 'openai_chat_compatible_regenerate') return graph.beginAnswerAction(context, { operationId: command.operationId.value,
-      actionKind: 'regenerate_question', branchId: command.branchId.value, questionId: command.questionId.value, targetAnswerRootId: null,
+      actionKind: 'regenerate_question', sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
       expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: at })
-    return graph.beginEditedTurn(context, { operationId: command.operationId.value, mode: command.mode, branchId: command.branchId.value,
+    return graph.beginEditedTurn(context, { operationId: command.operationId.value, sourceBranchId: command.sourceBranchId.value,
       sourceQuestionId: command.sourceQuestionId.value, sourceAnswerRootId: command.sourceAnswerRootId.value,
       expectedHeadMessageId: command.expectedHeadMessageId.value, questionId: createQuestionId(), answerRootId: createAnswerId(), userBody: command.userBody, createdAtMs: at })
   }
@@ -144,7 +144,7 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
   async function retry(command: OpenAIChatCompatibleRetryCommandV2) {
     const existing = replay(command, command.actionKind); if (existing) return existing
     const targetRow = input.db.prepare('SELECT operation_id AS operationId FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?')
-      .get(command.targetAnswerRootId.value) as { operationId?: unknown } | undefined
+      .get(command.sourceAnswerId.value) as { operationId?: unknown } | undefined
     if (!targetRow || typeof targetRow.operationId !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RETRY_TARGET_INVALID')
     const targetBeforeCommit = execution.findOperation(targetRow.operationId)
     const provenance = targetBeforeCommit?.snapshot.providerConfiguration
@@ -154,14 +154,14 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
     await credentialFact(provenance.providerInstanceId.value, retryEndpoint)
     try {
       return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
-        const row = input.db.prepare('SELECT operation_id AS operationId FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?').get(command.targetAnswerRootId.value) as { operationId?: unknown } | undefined
+        const row = input.db.prepare('SELECT operation_id AS operationId FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?').get(command.sourceAnswerId.value) as { operationId?: unknown } | undefined
         if (!row || typeof row.operationId !== 'string') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RETRY_TARGET_INVALID')
         const target = execution.findOperationInTransaction(context, row.operationId)
         if (!target || target.operation.questionId.value !== command.questionId.value || target.snapshot.providerBinding.protocolContractId.value !== 'openai_chat_compatible') {
           throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RETRY_TARGET_INVALID')
         }
         const pending = graph.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: command.actionKind,
-          branchId: command.branchId.value, questionId: command.questionId.value, targetAnswerRootId: command.targetAnswerRootId.value,
+          sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
           expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: nowMs() })
         const persisted = commitOpenAIChatCompatibleRetrySnapshotV2({ context, executionRepo: execution, pending, command, target })
         graph.commitAnswerActionProjection(context, pending); const preparedRequest = compile(context, persisted.bundle)

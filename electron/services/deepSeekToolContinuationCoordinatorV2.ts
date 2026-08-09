@@ -48,7 +48,7 @@ export function createDeepSeekToolContinuationCoordinatorV2(input: Readonly<{
       const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
       if (!execution || !['streaming', 'completed', 'failed', 'cancelled'].includes(execution.operation.state) ||
           execution.operation.branchId.value !== command.branchId.value ||
-          execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+          execution.operation.targetAnswerId.value !== command.answerRootId.value ||
           command.expectedHeadMessageId.value !== command.answerRootId.value) {
         throw new DeepSeekToolContinuationCoordinatorV2Error(
           'GENERATION_V2_DEEPSEEK_TOOL_CONTINUATION_STATE_INVALID',
@@ -102,7 +102,7 @@ export function createDeepSeekToolContinuationCoordinatorV2(input: Readonly<{
         const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
         if (!execution ||
             execution.operation.branchId.value !== command.branchId.value ||
-            execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+            execution.operation.targetAnswerId.value !== command.answerRootId.value ||
             execution.snapshot.providerBinding.providerId.value !== 'deepseek' ||
             execution.snapshot.providerBinding.operation !== 'text' ||
             execution.snapshot.providerBinding.credentialScopeId.value !== status.credentialScopeId) {

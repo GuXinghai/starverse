@@ -3,8 +3,9 @@ import { decodeDeepSeekPlainTextRetryCommandV2 } from './plainTextRetryCommandV2
 
 function command(overrides: Record<string, unknown> = {}) {
   return {
-    actionKind: 'retry_as_new', operationId: 'operation:retry', branchId: 'branch:1',
-    questionId: 'question:1', targetAnswerRootId: 'answer:1', expectedHeadMessageId: 'answer:1',
+    actionKind: 'retry_as_new', operationId: 'operation:retry', clientActionId: 'operation:retry',
+    sourceBranchId: 'branch:1',
+    questionId: 'question:1', sourceAnswerId: 'answer:1', expectedHeadMessageId: 'answer:1',
     ...overrides,
   }
 }
@@ -18,12 +19,12 @@ describe('DeepSeek plain-text retry command V2', () => {
     expect(replace.requestFingerprint).not.toBe(first.requestFingerprint)
     expect(first).toMatchObject({
       operationId: { value: 'operation:retry' }, questionId: { value: 'question:1' },
-      targetAnswerRootId: { value: 'answer:1' }, expectedHeadMessageId: { value: 'answer:1' },
+      sourceAnswerId: { value: 'answer:1' }, expectedHeadMessageId: { value: 'answer:1' },
     })
   })
 
-  it('rejects non-chosen target shapes, unknown actions and extra fields', () => {
-    expect(() => decodeDeepSeekPlainTextRetryCommandV2(command({ expectedHeadMessageId: 'answer:2' })))
+  it('rejects unknown actions, inconsistent idempotency keys and extra fields', () => {
+    expect(() => decodeDeepSeekPlainTextRetryCommandV2(command({ clientActionId: 'operation:other' })))
       .toThrow('GENERATION_V2_DEEPSEEK_RETRY_COMMAND_INVALID')
     expect(() => decodeDeepSeekPlainTextRetryCommandV2(command({ actionKind: 'regenerate_question' })))
       .toThrow('GENERATION_V2_DEEPSEEK_RETRY_COMMAND_INVALID')

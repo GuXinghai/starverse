@@ -10,17 +10,18 @@ import { projectGenerationConfigLayerV2 } from '../../src/next/generation-v2/con
 import type { RegisterInvoke } from './types'
 import { SystemChatTemplateV2Repo } from '../../infra/db/repo/systemChatTemplateV2Repo'
 import { ConversationRoutePreferenceV2Repo } from '../../infra/db/repo/conversationRoutePreferenceV2Repo'
+import type { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
 
 export const GENERATION_V2_WORKSPACE_IPC_CHANNELS = Object.freeze([
   'generation-v2:workspace:ensure-default', 'generation-v2:workspace:list-projects',
   'generation-v2:workspace:list-conversations', 'generation-v2:workspace:read-branch',
-  'generation-v2:workspace:select-answer', 'generation-v2:config:get', 'generation-v2:config:update',
+  'generation-v2:workspace:get-message-candidate-navigation',
+  'generation-v2:config:get', 'generation-v2:config:update',
   'generation-v2:workspace:create-project', 'generation-v2:workspace:rename-project', 'generation-v2:workspace:delete-project',
   'generation-v2:workspace:create-conversation', 'generation-v2:workspace:rename-conversation',
   'generation-v2:workspace:move-conversation', 'generation-v2:workspace:delete-conversation',
   'generation-v2:workspace:fork-branch', 'generation-v2:workspace:rename-branch', 'generation-v2:workspace:delete-branch',
   'generation-v2:workspace:truncate-from-question',
-  'generation-v2:workspace:list-question-candidates', 'generation-v2:workspace:select-question-candidate',
   'generation-v2:workspace:set-context-filter', 'generation-v2:workspace:clear-context-filter',
   'generation-v2:workspace:get-system-template', 'generation-v2:workspace:update-system-template-config',
   'generation-v2:workspace:reset-system-template', 'generation-v2:workspace:set-new-chat-lifecycle',
@@ -28,6 +29,8 @@ export const GENERATION_V2_WORKSPACE_IPC_CHANNELS = Object.freeze([
   'generation-v2:workspace:get-conversation-route-preference',
   'generation-v2:workspace:update-conversation-route-preference',
   'generation-v2:workspace:clear-conversation-route-preference',
+  'generation-v2:workspace:hide-answer',
+  'generation-v2:workspace:list-branches',
 ] as const)
 
 type Raw = Readonly<Record<string, unknown>>
@@ -58,6 +61,8 @@ function boundedInteger(value: unknown, min: number, max: number): number {
 export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   registerInvoke: RegisterInvoke
   db: BetterSqlite3.Database
+  runtimeRegistry: Pick<GenerationOperationRuntimeRegistryV2,
+    'runWithConversationQuiesced' | 'runWithProjectQuiesced'>
   nowMs?: () => number
 }>): readonly string[] {
   const nowMs = input.nowMs ?? Date.now
@@ -92,23 +97,28 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[1], safe(() => read.listProjects()))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[2], safe((payload) => {
-    const raw = object(payload, ['projectId'])
-    return read.listConversations(text(raw.projectId))
+    const raw = object(payload, ['projectId', 'cursor', 'limit'])
+    const cursorRaw = raw.cursor === null ? null : object(raw.cursor, ['updatedAtMs', 'conversationId'])
+    return read.listConversationPage(
+      text(raw.projectId),
+      cursorRaw === null ? null : Object.freeze({
+        updatedAtMs: boundedInteger(cursorRaw.updatedAtMs, 0, Number.MAX_SAFE_INTEGER),
+        conversationId: text(cursorRaw.conversationId),
+      }),
+      boundedInteger(raw.limit, 1, 50),
+    )
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[3], safe((payload) => {
-    const raw = object(payload, ['branchId'])
-    return read.readBranch(text(raw.branchId))
+    const raw = object(payload, ['branchId', 'beforeMessageId', 'limit'])
+    return read.readBranch(
+      text(raw.branchId),
+      nullableText(raw.beforeMessageId),
+      boundedInteger(raw.limit, 1, 50),
+    )
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[4], safe((payload) => {
-    const raw = object(payload, ['branchId', 'questionId', 'expectedChosenAnswerRootId', 'targetAnswerRootId'])
-    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
-      const projection = graph.selectCurrentVisibleAnswer(context, { branchId: text(raw.branchId),
-        questionId: text(raw.questionId), expectedChosenAnswerRootId: text(raw.expectedChosenAnswerRootId),
-        targetAnswerRootId: text(raw.targetAnswerRootId), updatedAtMs: nowMs() })
-      return Object.freeze({ branchId: projection.branchId.value, conversationId: projection.conversationId.value,
-        questionId: projection.questionId.value, headMessageId: projection.headMessageId?.value ?? null,
-        chosenAnswerRootId: projection.chosenAnswerRootId?.value ?? null })
-    })
+    const raw = object(payload, ['branchId', 'messageId'])
+    return read.getMessageCandidateNavigation(text(raw.branchId), text(raw.messageId))
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[5], safe((payload) => {
     const raw = object(payload, ['ownerKind', 'ownerId'])
@@ -137,7 +147,12 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[9], safe((payload) => {
     const raw = object(payload, ['projectId'])
-    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => { workspace.deleteProject(context, { projectId: text(raw.projectId) }); return true })
+    const projectId = text(raw.projectId)
+    return input.runtimeRegistry.runWithProjectQuiesced(projectId, () =>
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+        workspace.deleteProject(context, { projectId })
+        return true
+      }))
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[10], safe((payload) => {
     const raw = object(payload, ['projectId', 'title'])
@@ -160,8 +175,12 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[13], safe((payload) => {
     const raw = object(payload, ['conversationId'])
-    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => { workspace.deleteConversation(context,
-      { conversationId: text(raw.conversationId) }); return true })
+    const conversationId = text(raw.conversationId)
+    return input.runtimeRegistry.runWithConversationQuiesced(conversationId, () =>
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+        workspace.deleteConversation(context, { conversationId })
+        return true
+      }))
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[14], safe((payload) => {
     const raw = object(payload, ['sourceBranchId', 'headMessageId', 'name'])
@@ -188,18 +207,6 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
     }))
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[18], safe((payload) => {
-    const raw = object(payload, ['branchId', 'baseMessageId', 'limit'])
-    return read.listQuestionCandidates(text(raw.branchId), nullableText(raw.baseMessageId), boundedInteger(raw.limit, 1, 500))
-  }))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[19], safe((payload) => {
-    const raw = object(payload, ['branchId', 'baseMessageId', 'expectedCurrentQuestionId', 'targetQuestionId', 'expectedHeadMessageId'])
-    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => workspace.selectQuestionCandidate(context, {
-      branchId: text(raw.branchId), baseMessageId: nullableText(raw.baseMessageId),
-      expectedCurrentQuestionId: text(raw.expectedCurrentQuestionId), targetQuestionId: text(raw.targetQuestionId),
-      expectedHeadMessageId: text(raw.expectedHeadMessageId), updatedAtMs: nowMs(),
-    }))
-  }))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[20], safe((payload) => {
     const raw = object(payload, ['branchId', 'targetType', 'targetId', 'mode'])
     if (raw.targetType !== 'question' && raw.targetType !== 'answer') throw new Error('invalid')
     if (raw.mode !== 'include' && raw.mode !== 'exclude') throw new Error('invalid')
@@ -211,7 +218,7 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
       return true
     })
   }))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[21], safe((payload) => {
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[19], safe((payload) => {
     const raw = object(payload, ['branchId', 'targetType', 'targetId'])
     if (raw.targetType !== 'question' && raw.targetType !== 'answer') throw new Error('invalid')
     const targetType = raw.targetType as 'question' | 'answer'
@@ -220,8 +227,8 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
       return true
     })
   }))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[22], safe(() => systemTemplate.get()))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[23], safe((payload) => {
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[20], safe(() => systemTemplate.get()))
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[21], safe((payload) => {
     const raw = object(payload, ['templateConversationId', 'expectedTemplateRevision', 'meta'])
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => systemTemplate.updateConfig(context, {
       templateConversationId: text(raw.templateConversationId),
@@ -229,7 +236,7 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
       meta: raw.meta,
     }))
   }))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[24], safe((payload) => {
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[22], safe((payload) => {
     const raw = object(payload, ['templateConversationId', 'expectedTemplateRevision', 'resetModelConfig', 'resetDraftAttachments'])
     if (typeof raw.resetModelConfig !== 'boolean' || typeof raw.resetDraftAttachments !== 'boolean') throw new Error('invalid')
     const resetModelConfig = raw.resetModelConfig
@@ -240,23 +247,23 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
       resetModelConfig, resetDraftAttachments,
     }))
   }))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[25], safe((payload) =>
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[23], safe((payload) =>
     runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => systemTemplate.setLifecycleSettings(context, payload))))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[26], safe(() => Object.freeze({
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[24], safe(() => Object.freeze({
     conversationId: systemTemplate.getLastFormalConversationId(),
   })))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[27], safe((payload) => {
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[25], safe((payload) => {
     const raw = object(payload, ['conversationId'])
     const conversationId = raw.conversationId === null ? null : text(raw.conversationId)
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       systemTemplate.setLastFormalConversationId(context, conversationId); return true
     })
   }))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[28], safe((payload) => {
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[26], safe((payload) => {
     const raw = object(payload, ['conversationId'])
     return routePreference.get(text(raw.conversationId))
   }))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[29], safe((payload) => {
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[27], safe((payload) => {
     const raw = object(payload, ['conversationId', 'expectedRevision', 'selection'])
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => routePreference.upsert(context, {
       conversationId: text(raw.conversationId),
@@ -264,12 +271,33 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
       selection: raw.selection,
     }))
   }))
-  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[30], safe((payload) => {
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[28], safe((payload) => {
     const raw = object(payload, ['conversationId', 'expectedRevision'])
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => routePreference.clear(context, {
       conversationId: text(raw.conversationId),
       expectedRevision: boundedInteger(raw.expectedRevision, 1, Number.MAX_SAFE_INTEGER - 1),
     }))
+  }))
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[29], safe((payload) => {
+    const raw = object(payload, ['branchId', 'answerId'])
+    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) =>
+      workspace.hideAnswer(context, {
+        branchId: text(raw.branchId),
+        answerId: text(raw.answerId),
+        hiddenAtMs: nowMs(),
+      }))
+  }))
+  input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[30], safe((payload) => {
+    const raw = object(payload, ['conversationId', 'cursor', 'limit'])
+    const cursorRaw = raw.cursor === null ? null : object(raw.cursor, ['updatedAtMs', 'branchId'])
+    return read.listBranchPage(
+      text(raw.conversationId),
+      cursorRaw === null ? null : Object.freeze({
+        updatedAtMs: boundedInteger(cursorRaw.updatedAtMs, 0, Number.MAX_SAFE_INTEGER),
+        branchId: text(cursorRaw.branchId),
+      }),
+      boundedInteger(raw.limit, 1, 50),
+    )
   }))
   return GENERATION_V2_WORKSPACE_IPC_CHANNELS
 }

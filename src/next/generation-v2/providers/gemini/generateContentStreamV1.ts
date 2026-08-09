@@ -1,6 +1,7 @@
 import { stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
 import {
   decodeGeminiGenerateContentNativeContentV1,
+  GeminiGenerateContentNativeHistoryV1Error,
   type GeminiGenerateContentNativeContentV1,
   type GeminiGenerateContentPartV1,
 } from './generateContentNativeHistoryV1'
@@ -28,19 +29,38 @@ export type GeminiGenerateContentStreamResultV1 = Readonly<{
   rawChunks: readonly Readonly<Record<string, unknown>>[]
 }>
 
+export type GeminiGenerateContentStreamSequenceDiagnosticV1 = Readonly<{
+  reason:
+    | 'chunk_after_finished'
+    | 'response_id_changed'
+    | 'model_version_changed'
+    | 'prompt_feedback_duplicate'
+    | 'finish_reason_duplicate'
+    | 'native_content_invalid'
+  chunkIndex: number
+  field: string | null
+  previousValue: unknown | null
+  currentValue: unknown | null
+  rawChunk: Readonly<Record<string, unknown>> | null
+}>
+
 export class GeminiGenerateContentStreamV1Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_GEMINI_SSE_INVALID'
     | 'GENERATION_V2_GEMINI_SSE_PREMATURE_EOF'
     | 'GENERATION_V2_GEMINI_STREAM_INVALID'
     | 'GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID'
-    | 'GENERATION_V2_GEMINI_STREAM_LIMIT_EXCEEDED') {
+    | 'GENERATION_V2_GEMINI_STREAM_LIMIT_EXCEEDED',
+    readonly diagnostic: GeminiGenerateContentStreamSequenceDiagnosticV1 | null = null) {
     super(code)
     this.name = 'GeminiGenerateContentStreamV1Error'
   }
 }
-function fail(code: GeminiGenerateContentStreamV1Error['code']): never {
-  throw new GeminiGenerateContentStreamV1Error(code)
+function fail(
+  code: GeminiGenerateContentStreamV1Error['code'],
+  diagnostic: GeminiGenerateContentStreamSequenceDiagnosticV1 | null = null,
+): never {
+  throw new GeminiGenerateContentStreamV1Error(code, diagnostic)
 }
 
 function cloneRecord(value: unknown): Readonly<Record<string, unknown>> {
@@ -56,6 +76,53 @@ function cloneRecord(value: unknown): Readonly<Record<string, unknown>> {
     if (error instanceof GeminiGenerateContentStreamV1Error) throw error
     return fail('GENERATION_V2_GEMINI_STREAM_INVALID')
   }
+}
+
+function describeNativeContentShape(value: unknown): Readonly<Record<string, unknown>> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return Object.freeze({ valueType: Array.isArray(value) ? 'array' : value === null ? 'null' : typeof value })
+  }
+  const content = value as Readonly<Record<string, unknown>>
+  const parts = Array.isArray(content.parts) ? content.parts : null
+  return Object.freeze({
+    contentKeys: Object.freeze(Object.keys(content).sort()),
+    role: typeof content.role === 'string' ? content.role : null,
+    roleType: typeof content.role,
+    partsType: parts ? 'array' : content.parts === null ? 'null' : typeof content.parts,
+    partCount: parts?.length ?? null,
+    parts: parts === null ? null : Object.freeze(parts.map((part, index) => {
+      if (!part || typeof part !== 'object' || Array.isArray(part)) {
+        return Object.freeze({
+          index,
+          valueType: Array.isArray(part) ? 'array' : part === null ? 'null' : typeof part,
+        })
+      }
+      const record = part as Readonly<Record<string, unknown>>
+      const text = record.text
+      const signature = record.thoughtSignature
+      const nested = (key: 'inlineData' | 'fileData' | 'functionCall' | 'functionResponse') => {
+        const child = record[key]
+        return child && typeof child === 'object' && !Array.isArray(child)
+          ? Object.freeze(Object.keys(child as Record<string, unknown>).sort())
+          : null
+      }
+      return Object.freeze({
+        index,
+        keys: Object.freeze(Object.keys(record).sort()),
+        textType: typeof text,
+        textLength: typeof text === 'string' ? text.length : null,
+        thoughtPresent: Object.prototype.hasOwnProperty.call(record, 'thought'),
+        thoughtType: typeof record.thought,
+        thoughtValue: typeof record.thought === 'boolean' ? record.thought : null,
+        thoughtSignatureType: typeof signature,
+        thoughtSignatureLength: typeof signature === 'string' ? signature.length : null,
+        inlineDataKeys: nested('inlineData'),
+        fileDataKeys: nested('fileData'),
+        functionCallKeys: nested('functionCall'),
+        functionResponseKeys: nested('functionResponse'),
+      })
+    })),
+  })
 }
 
 export class GeminiGenerateContentSseDecoderV1 {
@@ -131,19 +198,26 @@ export class GeminiGenerateContentStreamAssemblerV1 {
   #usageMetadata: Readonly<Record<string, unknown>> | undefined
   #promptFeedback: Readonly<Record<string, unknown>> | undefined
   #nativeBytes = 0
+  #chunkIndex = 0
   #finished = false
 
   push(value: unknown): readonly GeminiGenerateContentVisibleDeltaV1[] {
-    if (this.#finished) return fail('GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID')
+    if (this.#finished) return fail('GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID', Object.freeze({
+      reason: 'chunk_after_finished', chunkIndex: this.#chunkIndex + 1,
+      field: null, previousValue: true, currentValue: null, rawChunk: null,
+    }))
     const chunk = cloneRecord(value)
+    const chunkIndex = ++this.#chunkIndex
     const allowed = ['candidates', 'promptFeedback', 'usageMetadata', 'modelVersion', 'responseId']
     if (Object.keys(chunk).some((key) => !allowed.includes(key))) return fail('GENERATION_V2_GEMINI_STREAM_INVALID')
     this.#consume(chunk)
     this.#rawChunks.push(chunk)
-    this.#mergeStableString('responseId', chunk.responseId)
-    this.#mergeStableString('modelVersion', chunk.modelVersion)
-    if (chunk.usageMetadata !== undefined) this.#usageMetadata = this.#replaceSingleton(this.#usageMetadata, chunk.usageMetadata)
-    if (chunk.promptFeedback !== undefined) this.#promptFeedback = this.#replaceSingleton(this.#promptFeedback, chunk.promptFeedback)
+    this.#mergeStableString('responseId', chunk.responseId, chunkIndex, chunk)
+    this.#mergeStableString('modelVersion', chunk.modelVersion, chunkIndex, chunk)
+    if (chunk.usageMetadata !== undefined) this.#usageMetadata = this.#replaceProgressiveMetadata(chunk.usageMetadata)
+    if (chunk.promptFeedback !== undefined) this.#promptFeedback = this.#replaceSingleton(
+      'promptFeedback', this.#promptFeedback, chunk.promptFeedback, chunkIndex, chunk,
+    )
     if (chunk.candidates === undefined) return Object.freeze([])
     if (!Array.isArray(chunk.candidates) || chunk.candidates.length > 1) return fail('GENERATION_V2_GEMINI_STREAM_INVALID')
     if (chunk.candidates.length === 0) return Object.freeze([])
@@ -156,7 +230,10 @@ export class GeminiGenerateContentStreamAssemblerV1 {
     this.#candidateMetadata.push(metadata)
     if (candidate.finishReason !== undefined) {
       if (typeof candidate.finishReason !== 'string' || candidate.finishReason.length === 0 || this.#finishReason !== undefined) {
-        return fail('GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID')
+        return fail('GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID', Object.freeze({
+          reason: 'finish_reason_duplicate', chunkIndex, field: 'candidates[0].finishReason',
+          previousValue: this.#finishReason ?? null, currentValue: candidate.finishReason, rawChunk: chunk,
+        }))
       }
       this.#finishReason = candidate.finishReason
       if (candidate.finishMessage !== undefined) {
@@ -165,17 +242,32 @@ export class GeminiGenerateContentStreamAssemblerV1 {
       }
     }
     if (candidate.content === undefined) return Object.freeze([])
-    const content = decodeGeminiGenerateContentNativeContentV1(candidate.content)
+    let content: GeminiGenerateContentNativeContentV1
+    try {
+      content = decodeGeminiGenerateContentNativeContentV1(candidate.content)
+    } catch (error) {
+      if (!(error instanceof GeminiGenerateContentNativeHistoryV1Error)) throw error
+      return fail('GENERATION_V2_GEMINI_STREAM_INVALID', Object.freeze({
+        reason: 'native_content_invalid',
+        chunkIndex,
+        field: 'candidates[0].content',
+        previousValue: null,
+        currentValue: describeNativeContentShape(candidate.content),
+        rawChunk: null,
+      }))
+    }
     if (content.role !== 'model') return fail('GENERATION_V2_GEMINI_STREAM_INVALID')
     const visible: GeminiGenerateContentVisibleDeltaV1[] = []
     for (const part of content.parts) {
       this.#consume(part)
       this.#parts.push(part)
-      if ('text' in part) visible.push(Object.freeze({
-        type: part.thought ? 'thought' as const : 'text' as const,
-        text: part.text,
-        ...(part.thoughtSignature ? { thoughtSignature: part.thoughtSignature } : {}),
-      }))
+      if ('text' in part) {
+        if (part.text.length > 0) visible.push(Object.freeze({
+          type: part.thought ? 'thought' as const : 'text' as const,
+          text: part.text,
+          ...(part.thoughtSignature ? { thoughtSignature: part.thoughtSignature } : {}),
+        }))
+      }
       else if ('inlineData' in part) visible.push(Object.freeze({
         type: 'inline_image' as const,
         mimeType: part.inlineData.mimeType,
@@ -211,18 +303,36 @@ export class GeminiGenerateContentStreamAssemblerV1 {
     })
   }
 
-  #mergeStableString(field: 'responseId' | 'modelVersion', value: unknown): void {
+  #mergeStableString(
+    field: 'responseId' | 'modelVersion', value: unknown, chunkIndex: number,
+    rawChunk: Readonly<Record<string, unknown>>,
+  ): void {
     if (value === undefined) return
     if (typeof value !== 'string' || value.length === 0) return fail('GENERATION_V2_GEMINI_STREAM_INVALID')
     const current = field === 'responseId' ? this.#responseId : this.#modelVersion
-    if (current !== undefined && current !== value) return fail('GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID')
+    if (current !== undefined && current !== value) return fail('GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID', Object.freeze({
+      reason: field === 'responseId' ? 'response_id_changed' : 'model_version_changed',
+      chunkIndex, field, previousValue: current, currentValue: value, rawChunk,
+    }))
     if (field === 'responseId') this.#responseId = value
     else this.#modelVersion = value
   }
 
-  #replaceSingleton(current: Readonly<Record<string, unknown>> | undefined, value: unknown): Readonly<Record<string, unknown>> {
+  #replaceSingleton(
+    field: 'promptFeedback', current: Readonly<Record<string, unknown>> | undefined,
+    value: unknown, chunkIndex: number, rawChunk: Readonly<Record<string, unknown>>,
+  ): Readonly<Record<string, unknown>> {
     const next = cloneRecord(value)
-    if (current !== undefined) return fail('GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID')
+    if (current !== undefined) return fail('GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID', Object.freeze({
+      reason: 'prompt_feedback_duplicate',
+      chunkIndex, field, previousValue: current, currentValue: next, rawChunk,
+    }))
+    this.#consume(next)
+    return next
+  }
+
+  #replaceProgressiveMetadata(value: unknown): Readonly<Record<string, unknown>> {
+    const next = cloneRecord(value)
     this.#consume(next)
     return next
   }
@@ -248,7 +358,7 @@ export class GeminiGenerateContentChatStreamV1 {
     try { return this.#assembler.finish() } catch (error) {
       if (error instanceof GeminiGenerateContentStreamV1Error &&
           error.code === 'GENERATION_V2_GEMINI_STREAM_SEQUENCE_INVALID') {
-        return fail('GENERATION_V2_GEMINI_SSE_PREMATURE_EOF')
+        return fail('GENERATION_V2_GEMINI_SSE_PREMATURE_EOF', error.diagnostic)
       }
       throw error
     }

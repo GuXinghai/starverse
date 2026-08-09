@@ -6,6 +6,8 @@ import {
   type PersistedRuntimeCapabilityFieldV2,
   type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { assertActiveCatalogOptionalCapabilitiesV2, isActiveCatalogModelAuthorityV2,
+  projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import { listReviewedProviderContractDefinitionsV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
 import { verifyProviderContractReferenceV2 } from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import {
@@ -30,15 +32,11 @@ import {
   type ToolRegistryRepositoryFactV2,
 } from '../../infra/db/repo/toolRegistryV2Repo'
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
-import {
-  isVerifiedOpenRouterChatModelEvidenceV2,
-  type VerifiedOpenRouterChatModelEvidenceV2,
-} from './openRouterChatModelEvidenceV2Service'
 
 export type VerifiedOpenRouterChatBindingAuthorityV2 = Readonly<{
   trust: 'verified_openrouter_chat_binding_v2'
   binding: DecodedProviderBindingRecordV2
-  evidence: VerifiedOpenRouterChatModelEvidenceV2
+  evidence: ActiveCatalogModelAuthorityV2
   assertCurrent(): void
 }>
 
@@ -214,11 +212,12 @@ function validateIntent(
   facts: GenerationCommandFactsAuthorityV2,
   fields: readonly PersistedRuntimeCapabilityFieldV2[],
   toolRegistry: ToolRegistryRepositoryFactV2 | null,
-  modelEvidence: VerifiedOpenRouterChatModelEvidenceV2,
+  modelEvidence: ActiveCatalogModelAuthorityV2,
 ): void {
   const intent = facts.semanticIntent
   if (intent.attachments.length !== facts.attachmentSet.attachments.length) return fail('GENERATION_V2_OPENROUTER_CHAT_ATTACHMENT_UNAVAILABLE')
-  const inputModalities = new Set(modelEvidence.inputModalities)
+  const inputModalities = new Set<string>((modelEvidence.inputModalities as unknown[])
+    .filter((value): value is string => typeof value === 'string'))
   for (let index = 0; index < intent.attachments.length; index += 1) {
     const attachment = intent.attachments[index]
     if (attachment.kind !== 'managed_file') return fail('GENERATION_V2_OPENROUTER_CHAT_ATTACHMENT_UNAVAILABLE')
@@ -293,7 +292,7 @@ function validateIntent(
 
 export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
-  modelEvidence: VerifiedOpenRouterChatModelEvidenceV2
+  modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   toolRegistry: ToolRegistryRepositoryFactV2 | null
   use: (authorities: Readonly<{
@@ -301,12 +300,13 @@ export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Read
     capability: VerifiedOpenRouterChatCapabilityAuthorityV2
   }>) => T
 }>): T {
-  if (!isVerifiedOpenRouterChatModelEvidenceV2(input.modelEvidence) ||
+  if (!isActiveCatalogModelAuthorityV2(input.modelEvidence, 'openrouter') ||
       !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
       (input.toolRegistry !== null && !isToolRegistryRepositoryFactForContextV2(input.toolRegistry, input.context))) {
     return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
   }
   input.modelEvidence.assertCurrent()
+  assertActiveCatalogOptionalCapabilitiesV2(input.modelEvidence, input.commandFacts.semanticIntent)
   const profile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
   const definition = listReviewedProviderContractDefinitionsV2().find((candidate) =>
     candidate.protocolContractId.value === 'openrouter-chat-completions-v1')
@@ -337,16 +337,19 @@ export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Read
     },
   })
   bindings.add(binding)
-  const supportedParameters = new Set(input.modelEvidence.supportedParameters)
+  const supportedParameters = new Set<string>((input.modelEvidence.supportedParameters as unknown[])
+    .filter((value): value is string => typeof value === 'string'))
   const toolsEnabled = supportedParameters.has('tools') && input.commandFacts.semanticIntent.tools.mode === 'enabled'
   const supportEvidence = `openrouter.chat.models.${input.modelEvidence.responseDigest.value}.supports`
   const rejectEvidence = `openrouter.chat.models.${input.modelEvidence.responseDigest.value}.rejects`
-  const inputModalities = new Set(input.modelEvidence.inputModalities)
+  const inputModalities = new Set<string>((input.modelEvidence.inputModalities as unknown[])
+    .filter((value): value is string => typeof value === 'string'))
   const fields = Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) =>
     field(path, supportedParameters, toolsEnabled, inputModalities, supportEvidence, rejectEvidence)))
   validateIntent(input.commandFacts, fields, input.toolRegistry, input.modelEvidence)
   const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
     schemaVersion: 2,
+    ...projectActiveCatalogSnapshotAuthorityV2(input.modelEvidence),
     resolvedAt: new Date(input.modelEvidence.observedAtMs).toISOString(),
     binding: projectDecodedProviderBindingRecordV2(decodedBinding),
     evidence: [

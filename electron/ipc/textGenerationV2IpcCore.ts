@@ -2,6 +2,8 @@ import type { WebContents } from 'electron'
 import type { RegisterInvoke } from './types'
 import type { GenerationStreamProjectionSinkV2, GenerationStreamProjectionV2 } from '../services/generationStreamProjectionV2'
 import type { GenerationTextCommandResultV2 } from '../services/generationTextCommandResultV2'
+import type { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
+import type { GenerationStreamEventV2 } from '../../src/next/generation-v2/domain/generationStreamEventV2'
 
 export type TextGenerationV2IpcRuntime = Readonly<{
   submitInitial: (command: unknown) => Promise<GenerationTextCommandResultV2>
@@ -35,6 +37,12 @@ function safeProjection(value: GenerationStreamProjectionV2): GenerationStreamPr
   if (value.type === 'reasoning_detail') return Object.freeze({ ...value, detail: Object.freeze({ ...value.detail }) })
   return Object.freeze({ ...value })
 }
+function safeEvent(value: GenerationStreamEventV2): GenerationStreamEventV2 {
+  const payload = value.payload.type === 'reasoning_detail'
+    ? Object.freeze({ ...value.payload, detail: Object.freeze({ ...value.payload.detail }) })
+    : Object.freeze({ ...value.payload })
+  return Object.freeze({ operationId: value.operationId, sequence: value.sequence, payload })
+}
 function publicErrorCode(error: unknown, fallback: string): string {
   const value = error instanceof Error ? error.message : ''
   return /^[A-Z][A-Z0-9_]{2,255}$/u.test(value) ? value : fallback
@@ -50,14 +58,26 @@ export function registerTextGenerationV2IpcCore(input: Readonly<{
   providerErrorPrefix: string
   channels: TextGenerationV2IpcChannels
   createRuntime: (sink: GenerationStreamProjectionSinkV2) => TextGenerationV2IpcRuntime
+  runtimeRegistry?: GenerationOperationRuntimeRegistryV2
 }>): readonly string[] {
   const operationSenders = new Map<string, WebContents>()
-  const runtime = input.createRuntime(Object.freeze({ publish: (projection) => {
+  const downstream = Object.freeze({ publish: (projection: GenerationStreamProjectionV2) => {
     const sender = operationSenders.get(projection.operationId)
     if (!sender) return
     try { sender.send(input.channels.projection, safeProjection(projection)) } catch { /* renderer is downstream */ }
     if (projection.type === 'terminal') operationSenders.delete(projection.operationId)
-  } }))
+  } })
+  const runtime = input.createRuntime(input.runtimeRegistry?.projectionSink ?? downstream)
+  if (input.runtimeRegistry) {
+    input.runtimeRegistry.subscribe((event) => {
+      const sender = operationSenders.get(event.operationId)
+      if (!sender) return
+      try { sender.send(input.channels.projection, safeEvent(event)) } catch { /* renderer is downstream */ }
+      if (event.payload.type === 'terminal' && event.payload.state !== 'awaiting_tool') {
+        operationSenders.delete(event.operationId)
+      }
+    })
+  }
   const failed = `${input.providerErrorPrefix}_COMMAND_FAILED`
   const invalid = `${input.providerErrorPrefix}_INVALID_PAYLOAD`
   const invoke = (dispatch: (command: unknown) => Promise<GenerationTextCommandResultV2>) =>
@@ -68,16 +88,17 @@ export function registerTextGenerationV2IpcCore(input: Readonly<{
       operationSenders.set(operationId, sender)
       try {
         const result = await dispatch(payload)
+        if (input.runtimeRegistry) {
+          input.runtimeRegistry.register(result)
+        }
         const branch = result.projection.branchProjection
         return Object.freeze({ ok: true, kind: result.kind,
           operationId: result.execution.operation.operationId.value,
-          answerRootId: result.execution.operation.resultAnswerRootId.value,
+          answerRootId: result.execution.operation.targetAnswerId.value,
           actionKind: result.execution.operation.actionKind,
           branch: Object.freeze({ branchId: branch.branchId.value, conversationId: branch.conversationId.value,
             questionId: branch.questionId.value, headMessageId: branch.headMessageId?.value ?? null,
             chosenAnswerRootId: branch.chosenAnswerRootId?.value ?? null, deletedAtMs: branch.deletedAtMs }),
-          visibleAnswerRootIds: Object.freeze(result.projection.visibleCandidates.map((item) => item.value)),
-          visibleQuestionIds: Object.freeze(result.projection.visibleQuestionCandidates.map((item) => item.value)),
         })
       } catch (error) {
         operationSenders.delete(operationId)
@@ -96,7 +117,9 @@ export function registerTextGenerationV2IpcCore(input: Readonly<{
   input.registerInvoke(input.channels.abort, (_event: unknown, raw: unknown) => {
     const operationId = typeof raw === 'string' && raw.length > 0 && raw.length <= 512 && raw.trim() === raw ? raw : null
     return operationId
-      ? Object.freeze({ ok: true, aborted: runtime.abort(operationId) })
+      ? Object.freeze({ ok: true, aborted: input.runtimeRegistry
+        ? input.runtimeRegistry.abort(operationId)
+        : runtime.abort(operationId) })
       : Object.freeze({ ok: false, code: invalid })
   })
   return Object.freeze([input.channels.initial, input.channels.retry, input.channels.regenerate,

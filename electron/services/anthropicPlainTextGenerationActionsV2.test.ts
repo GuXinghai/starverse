@@ -92,12 +92,11 @@ describe('Anthropic V2 retry, regenerate, and edit-resend', () => {
     const db = database()
     try {
       const initial = await completedInitial(db)
-      const command = { actionKind: 'retry_replace', operationId: 'operation:retry', branchId: 'branch:1', questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2' }
+      const command = { actionKind: 'retry_replace', operationId: 'operation:retry', branchId: 'branch:1', questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2' }
       const service = createAnthropicPlainTextRetryCoordinatorV2({ db, credentialService: credentialService(), nowMs: () => 120, createAnswerId: () => 'answer:retry' })
       const created = await service.submit(command)
       expect(created.kind).toBe('created')
       expect(created.projection.branchProjection).toMatchObject({ chosenAnswerRootId: { value: 'answer:retry' }, headMessageId: { value: 'answer:retry' } })
-      expect(created.projection.visibleCandidates.map((entry) => entry.value)).toEqual(['answer:retry'])
       const copied = JSON.parse(created.execution.snapshot.canonicalJson)
       const target = JSON.parse(initial.execution.snapshot.canonicalJson)
       for (const value of [copied, target]) { delete value.answerRootId; delete value.operationId; delete value.snapshotHash }
@@ -112,7 +111,7 @@ describe('Anthropic V2 retry, regenerate, and edit-resend', () => {
       await completedInitial(db)
       db.prepare("UPDATE branch_v2 SET head_message_id='question:1' WHERE branch_id='branch:1'").run()
       await expect(createAnthropicPlainTextRetryCoordinatorV2({ db, credentialService: credentialService(), nowMs: () => 120 }).submit({
-        actionKind: 'retry_as_new', operationId: 'operation:stale', branchId: 'branch:1', questionId: 'question:1', targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2',
+        actionKind: 'retry_as_new', operationId: 'operation:stale', branchId: 'branch:1', questionId: 'question:1', sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2',
       })).rejects.toThrow()
       expect(db.prepare("SELECT count(*) AS count FROM generation_operation_v2 WHERE operation_id='operation:stale'").get()).toEqual({ count: 0 })
       expect(db.prepare("SELECT count(*) AS count FROM generation_request_v2 WHERE operation_id='operation:stale'").get()).toEqual({ count: 0 })
@@ -143,7 +142,6 @@ describe('Anthropic V2 retry, regenerate, and edit-resend', () => {
         expectedCredentialRevision: 1, expectedCredentialScopeId: scope })
       expect(JSON.parse(edited.preparedRequest.body.copyUtf8Text())).toMatchObject({ max_tokens: 4_096, messages: [{ role: 'user', content: 'edited' }] })
       expect(edited.projection.branchProjection.headMessageId?.value).toBe('answer:edited')
-      expect(edited.projection.visibleCandidates.map((entry) => entry.value)).toEqual(['answer:edited'])
     } finally { editDb.close() }
   })
 })

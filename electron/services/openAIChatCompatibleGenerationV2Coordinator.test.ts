@@ -81,7 +81,7 @@ describe('OpenAI-compatible V2 coordinator', () => {
     const coordinator = createOpenAIChatCompatibleGenerationV2Coordinator({ db, credentialService: credential, nowMs: () => 200,
       createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
     const retry = await coordinator.retry({ actionKind: 'retry_as_new', operationId: 'operation:2', branchId: 'branch:1', questionId: 'question:1',
-      targetAnswerRootId: 'answer:2', expectedHeadMessageId: 'answer:2' })
+      sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2' })
     expect(retry).toMatchObject({ kind: 'created', projection: { branchProjection: { chosenAnswerRootId: { value: 'answer:3' }, headMessageId: { value: 'answer:3' } } } })
     expect(retry.execution.snapshot.providerConfiguration).toMatchObject({ extraBody: { vendor_flag: true } })
     expect(JSON.parse(retry.preparedRequest.body.copyUtf8Text())).toMatchObject({ vendor_flag: true,

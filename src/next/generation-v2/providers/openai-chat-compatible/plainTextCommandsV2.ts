@@ -8,31 +8,37 @@ import { compatibleBoundedJsonValueSchema } from '../../../../shared/provider/op
 const MAX_COMMAND_BYTES = 21 * 1024 * 1024
 const MAX_BODY_BYTES = 20 * 1024 * 1024
 type Raw = Readonly<Record<string, unknown>>
-type CurrentBase<K extends string> = Readonly<{
+type SharedBase<K extends string> = Readonly<{
   schemaVersion: 1
   kind: K
   operationId: Id<'operation_id'>
-  branchId: GraphId<'branch_id'>
   providerInstanceId: Id<'compatible_provider_instance_id'>
   modelId: Id<'model_id'>
   canonicalJson: string
   requestFingerprint: string
 }>
+type InitialBase<K extends string> = SharedBase<K> & Readonly<{
+  branchId: GraphId<'branch_id'>
+}>
+type MutationBase<K extends string> = SharedBase<K> & Readonly<{
+  clientActionId: string
+  sourceBranchId: GraphId<'branch_id'>
+}>
 
-export type OpenAIChatCompatibleInitialCommandV2 = CurrentBase<'openai_chat_compatible_initial'> & Readonly<{
+export type OpenAIChatCompatibleInitialCommandV2 = InitialBase<'openai_chat_compatible_initial'> & Readonly<{
   expectedHeadMessageId: GraphId<'message_id'> | null
   userBody: string
   commandAttachments: readonly AttachmentIntentV2[]
   extraBody: unknown | null
 }>
-export type OpenAIChatCompatibleRegenerateCommandV2 = CurrentBase<'openai_chat_compatible_regenerate'> & Readonly<{
+export type OpenAIChatCompatibleRegenerateCommandV2 = MutationBase<'openai_chat_compatible_regenerate'> & Readonly<{
   questionId: GraphId<'question_id'>
+  sourceAnswerId: GraphId<'answer_root_id'>
   expectedHeadMessageId: GraphId<'message_id'>
   commandAttachments: readonly AttachmentIntentV2[]
   extraBody: unknown | null
 }>
-export type OpenAIChatCompatibleEditResendCommandV2 = CurrentBase<'openai_chat_compatible_edit_resend'> & Readonly<{
-  mode: 'fork' | 'replace'
+export type OpenAIChatCompatibleEditResendCommandV2 = MutationBase<'openai_chat_compatible_edit_resend'> & Readonly<{
   sourceQuestionId: GraphId<'question_id'>
   sourceAnswerRootId: GraphId<'answer_root_id'>
   expectedHeadMessageId: GraphId<'message_id'>
@@ -45,9 +51,10 @@ export type OpenAIChatCompatibleRetryCommandV2 = Readonly<{
   kind: 'openai_chat_compatible_retry'
   actionKind: 'retry_as_new' | 'retry_replace'
   operationId: Id<'operation_id'>
-  branchId: GraphId<'branch_id'>
+  clientActionId: string
+  sourceBranchId: GraphId<'branch_id'>
   questionId: GraphId<'question_id'>
-  targetAnswerRootId: GraphId<'answer_root_id'>
+  sourceAnswerId: GraphId<'answer_root_id'>
   expectedHeadMessageId: GraphId<'message_id'>
   canonicalJson: string
   requestFingerprint: string
@@ -89,12 +96,27 @@ function fingerprint(projection: object): Readonly<{ canonicalJson: string; requ
   const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_BYTES)
   return Object.freeze({ canonicalJson, requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)) })
 }
-function currentBase(raw: Raw) {
+function sharedBase(raw: Raw) {
   return Object.freeze({
     operationId: GenerationV2Identity.create('operation_id', token(raw.operationId)),
-    branchId: ConversationGraphV2Identity.create('branch_id', token(raw.branchId)),
     providerInstanceId: GenerationV2Identity.create('compatible_provider_instance_id', token(raw.providerInstanceId)),
     modelId: GenerationV2Identity.create('model_id', token(raw.modelId)),
+  })
+}
+function initialBase(raw: Raw) {
+  return Object.freeze({
+    ...sharedBase(raw),
+    branchId: ConversationGraphV2Identity.create('branch_id', token(raw.branchId)),
+  })
+}
+function mutationBase(raw: Raw) {
+  const base = sharedBase(raw)
+  const clientActionId = token(raw.clientActionId)
+  if (clientActionId !== base.operationId.value) throw new Error('invalid')
+  return Object.freeze({
+    ...base,
+    clientActionId,
+    sourceBranchId: ConversationGraphV2Identity.create('branch_id', token(raw.sourceBranchId)),
   })
 }
 function fail(kind: 'initial' | 'regenerate' | 'edit_resend' | 'retry'): never {
@@ -104,7 +126,7 @@ function fail(kind: 'initial' | 'regenerate' | 'edit_resend' | 'retry'): never {
 export function decodeOpenAIChatCompatibleInitialCommandV2(value: unknown): OpenAIChatCompatibleInitialCommandV2 {
   try {
     const raw = closed(value, ['operationId', 'branchId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'userBody', 'commandAttachments', 'extraBody'])
-    const ids = currentBase(raw); const userBody = body(raw.userBody)
+    const ids = initialBase(raw); const userBody = body(raw.userBody)
     const expectedHeadMessageId = raw.expectedHeadMessageId === null ? null : ConversationGraphV2Identity.create('message_id', token(raw.expectedHeadMessageId))
     const commandAttachments = decodeGenerationCommandAttachmentsV2(raw.commandAttachments)
     const requestExtraBody = extraBody(raw.extraBody)
@@ -118,53 +140,57 @@ export function decodeOpenAIChatCompatibleInitialCommandV2(value: unknown): Open
 
 export function decodeOpenAIChatCompatibleRegenerateCommandV2(value: unknown): OpenAIChatCompatibleRegenerateCommandV2 {
   try {
-    const raw = closed(value, ['operationId', 'branchId', 'questionId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'commandAttachments', 'extraBody'])
-    const ids = currentBase(raw); const questionId = ConversationGraphV2Identity.create('question_id', token(raw.questionId))
+    const raw = closed(value, ['operationId', 'clientActionId', 'sourceBranchId', 'questionId', 'sourceAnswerId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'commandAttachments', 'extraBody'])
+    const ids = mutationBase(raw); const questionId = ConversationGraphV2Identity.create('question_id', token(raw.questionId))
+    const sourceAnswerId = ConversationGraphV2Identity.create('answer_root_id', token(raw.sourceAnswerId))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', token(raw.expectedHeadMessageId))
     const commandAttachments = decodeGenerationCommandAttachmentsV2(raw.commandAttachments)
     const requestExtraBody = extraBody(raw.extraBody)
     const projection = { schemaVersion: 1 as const, kind: 'openai_chat_compatible_regenerate' as const,
-      operationId: ids.operationId.value, branchId: ids.branchId.value, questionId: questionId.value,
+      operationId: ids.operationId.value, clientActionId: ids.clientActionId, sourceBranchId: ids.sourceBranchId.value,
+      questionId: questionId.value, sourceAnswerId: sourceAnswerId.value,
       expectedHeadMessageId: expectedHeadMessageId.value, providerInstanceId: ids.providerInstanceId.value, modelId: ids.modelId.value,
       commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments), extraBody: requestExtraBody }
-    return Object.freeze({ ...projection, ...ids, questionId, expectedHeadMessageId, commandAttachments, extraBody: requestExtraBody, ...fingerprint(projection) })
+    return Object.freeze({ ...projection, ...ids, questionId, sourceAnswerId, expectedHeadMessageId,
+      commandAttachments, extraBody: requestExtraBody, ...fingerprint(projection) })
   } catch { return fail('regenerate') }
 }
 
 export function decodeOpenAIChatCompatibleEditResendCommandV2(value: unknown): OpenAIChatCompatibleEditResendCommandV2 {
   try {
-    const raw = closed(value, ['operationId', 'mode', 'branchId', 'sourceQuestionId', 'sourceAnswerRootId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'userBody', 'commandAttachments', 'extraBody'])
-    if (raw.mode !== 'fork' && raw.mode !== 'replace') throw new Error('invalid')
-    const ids = currentBase(raw); const userBody = body(raw.userBody)
+    const raw = closed(value, ['operationId', 'clientActionId', 'sourceBranchId', 'sourceQuestionId', 'sourceAnswerRootId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'userBody', 'commandAttachments', 'extraBody'])
+    const ids = mutationBase(raw); const userBody = body(raw.userBody)
     const sourceQuestionId = ConversationGraphV2Identity.create('question_id', token(raw.sourceQuestionId))
     const sourceAnswerRootId = ConversationGraphV2Identity.create('answer_root_id', token(raw.sourceAnswerRootId))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', token(raw.expectedHeadMessageId))
     const commandAttachments = decodeGenerationCommandAttachmentsV2(raw.commandAttachments)
     const requestExtraBody = extraBody(raw.extraBody)
-    const projection = { schemaVersion: 1 as const, kind: 'openai_chat_compatible_edit_resend' as const, mode: raw.mode,
-      operationId: ids.operationId.value, branchId: ids.branchId.value, sourceQuestionId: sourceQuestionId.value,
+    const projection = { schemaVersion: 1 as const, kind: 'openai_chat_compatible_edit_resend' as const,
+      operationId: ids.operationId.value, clientActionId: ids.clientActionId, sourceBranchId: ids.sourceBranchId.value,
+      sourceQuestionId: sourceQuestionId.value,
       sourceAnswerRootId: sourceAnswerRootId.value, expectedHeadMessageId: expectedHeadMessageId.value,
       providerInstanceId: ids.providerInstanceId.value, modelId: ids.modelId.value, userBody,
       commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments), extraBody: requestExtraBody }
-    return Object.freeze({ ...projection, ...ids, mode: raw.mode, sourceQuestionId, sourceAnswerRootId, expectedHeadMessageId,
+    return Object.freeze({ ...projection, ...ids, sourceQuestionId, sourceAnswerRootId, expectedHeadMessageId,
       userBody, commandAttachments, extraBody: requestExtraBody, ...fingerprint(projection) }) as OpenAIChatCompatibleEditResendCommandV2
   } catch { return fail('edit_resend') }
 }
 
 export function decodeOpenAIChatCompatibleRetryCommandV2(value: unknown): OpenAIChatCompatibleRetryCommandV2 {
   try {
-    const raw = closed(value, ['actionKind', 'operationId', 'branchId', 'questionId', 'targetAnswerRootId', 'expectedHeadMessageId'])
+    const raw = closed(value, ['actionKind', 'operationId', 'clientActionId', 'sourceBranchId', 'questionId', 'sourceAnswerId', 'expectedHeadMessageId'])
     if (raw.actionKind !== 'retry_as_new' && raw.actionKind !== 'retry_replace') throw new Error('invalid')
     const operationId = GenerationV2Identity.create('operation_id', token(raw.operationId))
-    const branchId = ConversationGraphV2Identity.create('branch_id', token(raw.branchId))
+    const clientActionId = token(raw.clientActionId)
+    if (clientActionId !== operationId.value) throw new Error('invalid')
+    const sourceBranchId = ConversationGraphV2Identity.create('branch_id', token(raw.sourceBranchId))
     const questionId = ConversationGraphV2Identity.create('question_id', token(raw.questionId))
-    const targetAnswerRootId = ConversationGraphV2Identity.create('answer_root_id', token(raw.targetAnswerRootId))
+    const sourceAnswerId = ConversationGraphV2Identity.create('answer_root_id', token(raw.sourceAnswerId))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', token(raw.expectedHeadMessageId))
-    if (expectedHeadMessageId.value !== targetAnswerRootId.value) throw new Error('invalid')
     const projection = { schemaVersion: 1 as const, kind: 'openai_chat_compatible_retry' as const, actionKind: raw.actionKind,
-      operationId: operationId.value, branchId: branchId.value, questionId: questionId.value,
-      targetAnswerRootId: targetAnswerRootId.value, expectedHeadMessageId: expectedHeadMessageId.value }
-    return Object.freeze({ ...projection, actionKind: raw.actionKind, operationId, branchId, questionId,
-      targetAnswerRootId, expectedHeadMessageId, ...fingerprint(projection) }) as OpenAIChatCompatibleRetryCommandV2
+      operationId: operationId.value, clientActionId, sourceBranchId: sourceBranchId.value, questionId: questionId.value,
+      sourceAnswerId: sourceAnswerId.value, expectedHeadMessageId: expectedHeadMessageId.value }
+    return Object.freeze({ ...projection, actionKind: raw.actionKind, operationId, clientActionId, sourceBranchId, questionId,
+      sourceAnswerId, expectedHeadMessageId, ...fingerprint(projection) }) as OpenAIChatCompatibleRetryCommandV2
   } catch { return fail('retry') }
 }

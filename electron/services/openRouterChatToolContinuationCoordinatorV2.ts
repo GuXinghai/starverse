@@ -47,7 +47,7 @@ export function createOpenRouterChatToolContinuationCoordinatorV2(input: Readonl
       const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
       if (!execution || !['streaming', 'completed', 'failed', 'cancelled'].includes(execution.operation.state) ||
           execution.operation.branchId.value !== command.branchId.value ||
-          execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+          execution.operation.targetAnswerId.value !== command.answerRootId.value ||
           command.expectedHeadMessageId.value !== command.answerRootId.value) throw stateError()
       const registry = loadGenerationSnapshotToolRegistryAuthorityV2(context, toolRegistryRepo, execution)
       if (!registry) throw stateError()
@@ -81,7 +81,7 @@ export function createOpenRouterChatToolContinuationCoordinatorV2(input: Readonl
         const execution = executionRepo.findOperationInTransaction(context, command.operationId.value)
         if (!execution || execution.operation.state !== 'streaming' ||
             execution.operation.branchId.value !== command.branchId.value ||
-            execution.operation.resultAnswerRootId.value !== command.answerRootId.value ||
+            execution.operation.targetAnswerId.value !== command.answerRootId.value ||
             execution.snapshot.providerBinding.providerId.value !== 'openrouter' ||
             execution.snapshot.providerBinding.operation !== 'text' ||
             execution.snapshot.providerBinding.credentialScopeId.value !== status.credentialScopeId) throw stateError()

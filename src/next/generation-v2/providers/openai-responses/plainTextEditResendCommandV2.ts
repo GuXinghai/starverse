@@ -21,8 +21,8 @@ export type OpenAIResponsesPlainTextEditResendCommandV2 = Readonly<{
   schemaVersion: 1
   kind: 'openai_responses_plain_text_edit_resend'
   operationId: Identity<'operation_id'>
-  mode: 'fork' | 'replace'
-  branchId: GraphIdentity<'branch_id'>
+  clientActionId: string
+  sourceBranchId: GraphIdentity<'branch_id'>
   sourceQuestionId: GraphIdentity<'question_id'>
   sourceAnswerRootId: GraphIdentity<'answer_root_id'>
   expectedHeadMessageId: GraphIdentity<'message_id'>
@@ -50,7 +50,7 @@ export function decodeOpenAIResponsesPlainTextEditResendCommandV2(
 ): OpenAIResponsesPlainTextEditResendCommandV2 {
   try {
     const keys = [
-      'operationId', 'mode', 'branchId', 'sourceQuestionId', 'sourceAnswerRootId',
+      'operationId', 'clientActionId', 'sourceBranchId', 'sourceQuestionId', 'sourceAnswerRootId',
       'expectedHeadMessageId', 'userBody', 'modelId', 'commandAttachments',
     ]
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) invalid()
@@ -64,14 +64,14 @@ export function decodeOpenAIResponsesPlainTextEditResendCommandV2(
       if (typeof field !== 'string') invalid()
       return field
     }
-    const mode = descriptors.mode.value
-    if (mode !== 'fork' && mode !== 'replace') invalid()
     const userBody = read('userBody')
     if (userBody.trim().length === 0 || new TextEncoder().encode(userBody).byteLength > MAX_BODY_BYTES) invalid()
     const attachments = descriptors.commandAttachments.value
     if (!Array.isArray(attachments)) invalid()
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
-    const branchId = ConversationGraphV2Identity.create('branch_id', read('branchId'))
+    const clientActionId = read('clientActionId')
+    if (clientActionId !== operationId.value) invalid()
+    const sourceBranchId = ConversationGraphV2Identity.create('branch_id', read('sourceBranchId'))
     const sourceQuestionId = ConversationGraphV2Identity.create('question_id', read('sourceQuestionId'))
     const sourceAnswerRootId = ConversationGraphV2Identity.create('answer_root_id', read('sourceAnswerRootId'))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', read('expectedHeadMessageId'))
@@ -79,7 +79,7 @@ export function decodeOpenAIResponsesPlainTextEditResendCommandV2(
     const commandAttachments = decodeOpenAIResponsesCommandAttachmentsV2(attachments)
     const projection = Object.freeze({
       schemaVersion: 1 as const, kind: 'openai_responses_plain_text_edit_resend' as const,
-      operationId: operationId.value, mode, branchId: branchId.value,
+      operationId: operationId.value, clientActionId, sourceBranchId: sourceBranchId.value,
       sourceQuestionId: sourceQuestionId.value, sourceAnswerRootId: sourceAnswerRootId.value,
       expectedHeadMessageId: expectedHeadMessageId.value, userBody,
       providerId: 'openai_responses', endpointProfileId: 'openai-api-v1', modelId: modelId.value,
@@ -87,7 +87,7 @@ export function decodeOpenAIResponsesPlainTextEditResendCommandV2(
     })
     const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_JSON_BYTES)
     const command = Object.freeze({
-      ...projection, operationId, branchId, sourceQuestionId, sourceAnswerRootId, expectedHeadMessageId,
+      ...projection, operationId, clientActionId, sourceBranchId, sourceQuestionId, sourceAnswerRootId, expectedHeadMessageId,
       providerId: GenerationV2Identity.create('provider_id', 'openai_responses'),
       endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', 'openai-api-v1'),
       modelId, commandAttachments, canonicalJson,

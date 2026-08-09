@@ -7,6 +7,7 @@ import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation
 import { sha256PreparedBytesV2, stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import {
   isPendingAnswerActionForContextV2, isPendingEditedTurnForContextV2, isPendingInitialTurnForContextV2,
+  pendingSourceAnswerIdV2, pendingSourceBranchIdV2,
   type PendingAnswerActionV2, type PendingEditedTurnV2, type PendingInitialTurnV2,
 } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationExecutionV2Repo, isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
@@ -59,9 +60,12 @@ function assertCurrentShape(context: GenerationV2AuthorityTransactionContextV2, 
       command.expectedHeadMessageId?.value === pending.expectedHeadMessageId?.value && command.userBody === pending.userBody) return 'initial_send'
   if (command.kind === 'openai_chat_compatible_regenerate' && isPendingAnswerActionForContextV2(pending, context) &&
       pending.actionKind === 'regenerate_question' && command.operationId.value === pending.operationId.value &&
-      command.branchId.value === pending.branchId.value) return 'regenerate_question'
+      command.sourceBranchId.value === pendingSourceBranchIdV2(pending).value &&
+      command.sourceAnswerId.value === pendingSourceAnswerIdV2(pending)?.value) return 'regenerate_question'
   if (command.kind === 'openai_chat_compatible_edit_resend' && isPendingEditedTurnForContextV2(pending, context) &&
-      command.operationId.value === pending.operationId.value && command.branchId.value === pending.branchId.value && command.userBody === pending.userBody) return 'edit_resend'
+      command.operationId.value === pending.operationId.value &&
+      command.sourceBranchId.value === pendingSourceBranchIdV2(pending).value &&
+      command.userBody === pending.userBody) return 'edit_resend'
   return fail('GENERATION_V2_OPENAI_COMPATIBLE_SNAPSHOT_INPUT_INVALID')
 }
 
@@ -110,8 +114,8 @@ export function commitOpenAIChatCompatibleCurrentSnapshotV2(input: Readonly<{
   }))
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
     operationId: input.pending.operationId.value, actionKind, branchId: input.pending.branchId.value,
-    conversationId: input.pending.conversationId.value, questionId: input.pending.questionId.value, targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
+    conversationId: input.pending.conversationId.value, questionId: input.pending.questionId.value, sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
   if (persistedCapability.fact.capability.canonicalJson !== input.capability.canonicalJson ||
@@ -132,8 +136,8 @@ export function commitOpenAIChatCompatibleRetrySnapshotV2(input: Readonly<{
   if (!(input.executionRepo instanceof GenerationExecutionV2Repo) || !isPendingAnswerActionForContextV2(input.pending, input.context) ||
       input.command.kind !== 'openai_chat_compatible_retry' || !isGenerationExecutionOperationBundleForContextV2(input.target, input.context) ||
       input.pending.actionKind !== input.command.actionKind || input.pending.operationId.value !== input.command.operationId.value ||
-      input.pending.targetAnswerRootId?.value !== input.command.targetAnswerRootId.value ||
-      input.target.operation.resultAnswerRootId.value !== input.command.targetAnswerRootId.value ||
+      input.pending.sourceAnswerId?.value !== input.command.sourceAnswerId.value ||
+      input.target.operation.targetAnswerId.value !== input.command.sourceAnswerId.value ||
       input.target.snapshot.providerBinding.protocolContractId.value !== 'openai_chat_compatible' ||
       input.target.snapshot.providerConfiguration.kind !== 'openai_chat_compatible') {
     return fail('GENERATION_V2_OPENAI_COMPATIBLE_SNAPSHOT_INPUT_INVALID')
@@ -146,7 +150,7 @@ export function commitOpenAIChatCompatibleRetrySnapshotV2(input: Readonly<{
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
     operationId: input.command.operationId.value, actionKind: input.command.actionKind, branchId: input.pending.branchId.value,
     conversationId: input.pending.conversationId.value, questionId: input.pending.questionId.value,
-    targetAnswerRootId: input.command.targetAnswerRootId.value, resultAnswerRootId: input.pending.answerRootId.value,
+    sourceAnswerId: input.command.sourceAnswerId.value, targetAnswerId: input.pending.answerRootId.value,
     snapshot: snapshot.canonicalJson, commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs,
   })
   return Object.freeze({ bundle: execution.bundle })

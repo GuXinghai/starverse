@@ -16,7 +16,7 @@ import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2Attachment
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
 import { decodeOpenRouterPlainTextEditResendCommandV2, type OpenRouterPlainTextEditResendCommandV2 } from '../../src/next/generation-v2/providers/openrouter/plainTextActionCommandsV2'
 import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
-import { createOpenRouterChatModelEvidenceV2Service } from './openRouterChatModelEvidenceV2Service'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedOpenRouterChatGenerationAuthoritiesV2 } from './openRouterChatGenerationAuthorityV2Service'
 import { loadGenerationSnapshotToolRegistryAuthorityV2, resolveGenerationToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
 import { compileOpenRouterChatPreparedRequestV2 } from './openRouterChatPreparedRequestCompilerV2'
@@ -35,7 +35,7 @@ export function createOpenRouterChatPlainTextEditResendCoordinatorV2(input: Read
   const historyRepo = new OpenRouterNativeHistoryV2Repo(input.db); const graphRepo = new ConversationGraphV2Repo(input.db)
   const configRepo = new GenerationConfigV2Repo(input.db); const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db); const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
-  const evidenceService = createOpenRouterChatModelEvidenceV2Service({ credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs })
+  const evidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
   function replay(command: OpenRouterPlainTextEditResendCommandV2): GenerationTextCommandResultV2 | null {
     const observed = executionRepo.findOperation(command.operationId.value); if (!observed) return null
@@ -56,8 +56,8 @@ export function createOpenRouterChatPlainTextEditResendCoordinatorV2(input: Read
     expectedCredentialScopeId: CredentialScopeIdV2; signal?: AbortSignal }>): Promise<GenerationTextCommandResultV2> => {
     const command = decodeOpenRouterPlainTextEditResendCommandV2(request.command); const existing = replay(command); if (existing) return existing
     try {
-      return await evidenceService.withExactModelEvidence({ endpointProfile, expectedCredentialRevision: request.expectedCredentialRevision,
-        expectedCredentialScopeId: request.expectedCredentialScopeId, modelId: command.modelId, signal: request.signal,
+      return await evidenceService.withExactActiveModel({ providerKey: 'openrouter', endpointProfile, expectedCredentialRevision: request.expectedCredentialRevision,
+        expectedCredentialScopeId: request.expectedCredentialScopeId, modelId: command.modelId,
         consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
           const raced = executionRepo.findOperationInTransaction(context, command.operationId.value)
           if (raced) { if (raced.operation.commandFingerprint !== command.requestFingerprint) throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
@@ -67,8 +67,7 @@ export function createOpenRouterChatPlainTextEditResendCoordinatorV2(input: Read
             return issueGenerationTextCommandResultV2({ kind: 'idempotent_replay', execution: raced,
               projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value), preparedRequest,
               request: requestRepo.replayPrepared(context, raced, preparedRequest) }) }
-          const pending = graphRepo.beginEditedTurn(context, { operationId: command.operationId.value, mode: command.mode,
-            branchId: command.branchId.value, sourceQuestionId: command.sourceQuestionId.value,
+          const pending = graphRepo.beginEditedTurn(context, { operationId: command.operationId.value, sourceBranchId: command.sourceBranchId.value, sourceQuestionId: command.sourceQuestionId.value,
             sourceAnswerRootId: command.sourceAnswerRootId.value, expectedHeadMessageId: command.expectedHeadMessageId.value,
             questionId: createQuestionId(), answerRootId: createAnswerId(), userBody: command.userBody, createdAtMs: nowMs() })
           return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value,

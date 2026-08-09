@@ -44,8 +44,8 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
   const { operation, snapshot, capability } = input.execution
   if (!['initial_send', 'retry_as_new', 'retry_replace', 'regenerate_question', 'edit_resend'].includes(operation.actionKind) ||
       operation.operationId.value !== input.history.operationId.value ||
-      operation.resultAnswerRootId.value !== input.history.answerRootId.value ||
-      snapshot.operationId.value !== operation.operationId.value || snapshot.answerRootId.value !== operation.resultAnswerRootId.value ||
+      operation.targetAnswerId.value !== input.history.answerRootId.value ||
+      snapshot.operationId.value !== operation.operationId.value || snapshot.answerRootId.value !== operation.targetAnswerId.value ||
       !Number.isSafeInteger(input.history.requestSequence) || input.history.requestSequence < 1) {
     throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
   }
@@ -134,7 +134,7 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     nativeField: value.wireKey ?? null, evidence: value.evidence,
   })))
   return issuePreparedProviderRequestV2({
-    operationId: operation.operationId.value, answerRootId: operation.resultAnswerRootId.value,
+    operationId: operation.operationId.value, answerRootId: operation.targetAnswerId.value,
     requestSequence: input.history.requestSequence, providerId: binding.providerId.value,
     endpointProfileId: binding.endpointProfileId.value, credentialScopeId: binding.credentialScopeId.value,
     contractId: binding.protocolContractId.value, modelId: binding.modelId.value,

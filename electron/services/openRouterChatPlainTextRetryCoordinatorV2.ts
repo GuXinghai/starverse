@@ -37,7 +37,7 @@ export function createOpenRouterChatPlainTextRetryCoordinatorV2(input: Readonly<
     const observed = executionRepo.findOperation(command.operationId.value)
     if (!observed) return null
     if (observed.operation.actionKind !== command.actionKind || observed.operation.commandFingerprint !== command.requestFingerprint ||
-        observed.operation.targetAnswerRootId?.value !== command.targetAnswerRootId.value || observed.snapshot.providerBinding.providerId.value !== 'openrouter') {
+        observed.operation.sourceAnswerId?.value !== command.sourceAnswerId.value || observed.snapshot.providerBinding.providerId.value !== 'openrouter') {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
     }
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
@@ -70,17 +70,17 @@ export function createOpenRouterChatPlainTextRetryCoordinatorV2(input: Readonly<
               preparedRequest, request: requestRepo.replayPrepared(context, raced, preparedRequest) })
           }
           const targetRow = input.db.prepare('SELECT operation_id AS operationId FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?')
-            .get(command.targetAnswerRootId.value) as { operationId?: unknown } | undefined
+            .get(command.sourceAnswerId.value) as { operationId?: unknown } | undefined
           if (!targetRow || typeof targetRow.operationId !== 'string') throw new Error('GENERATION_V2_OPENROUTER_RETRY_TARGET_INVALID')
           const target = executionRepo.findOperationInTransaction(context, targetRow.operationId)
-          if (!target || target.operation.resultAnswerRootId.value !== command.targetAnswerRootId.value ||
+          if (!target || target.operation.targetAnswerId.value !== command.sourceAnswerId.value ||
               target.operation.questionId.value !== command.questionId.value || target.snapshot.providerBinding.providerId.value !== 'openrouter' ||
               target.snapshot.providerBinding.operation !== 'text' || target.snapshot.providerBinding.credentialScopeId.value !== credential.credentialScopeId) {
             throw new Error('GENERATION_V2_OPENROUTER_RETRY_TARGET_INVALID')
           }
           const pending = graphRepo.beginAnswerAction(context, {
-            operationId: command.operationId.value, actionKind: command.actionKind, branchId: command.branchId.value,
-            questionId: command.questionId.value, targetAnswerRootId: command.targetAnswerRootId.value,
+            operationId: command.operationId.value, actionKind: command.actionKind, sourceBranchId: command.sourceBranchId.value,
+            questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
             expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: nowMs(),
           })
           const persisted = commitOpenRouterChatRetrySnapshotV2({ context, executionRepo, pending, command, target })

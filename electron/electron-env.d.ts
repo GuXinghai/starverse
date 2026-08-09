@@ -122,7 +122,6 @@ type OpenAIResponsesCredentialResult =
 type ProviderModelAvailabilityCommonSourceKind =
   | 'provider_api'
   | 'provider_docs'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
   | 'local_probe'
 
@@ -136,7 +135,6 @@ interface ProviderModelAvailabilityProvenance {
 
 type OpenAIModelSourceKind =
   | 'openai_models_api'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 interface OpenAIProviderModelAvailability {
@@ -148,23 +146,11 @@ interface OpenAIProviderModelAvailability {
   ownedBy?: string
   createdAtSec?: number
   source: OpenAIModelSourceKind
-  confidence: 'provider_reported' | 'curated' | 'manual'
+  confidence: 'provider_reported' | 'manual'
   observedAtMs: number
   warnings: string[]
   provenance?: ProviderModelAvailabilityProvenance
   providerSpecific?: unknown
-  capabilitySeed?: {
-    textChat?: boolean
-    responsesApi?: boolean
-    reasoning?: 'supported' | 'unsupported' | 'unknown'
-    reasoningEffort?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'>
-    imageInput?: boolean | 'unknown'
-    fileInput?: boolean | 'unknown'
-    functionCalling?: boolean | 'unknown'
-    hostedTools?: boolean | 'unknown'
-    structuredOutput?: boolean | 'unknown'
-    audioInput?: boolean | 'unknown'
-  }
 }
 
 type OpenAIModelAvailabilityResult =
@@ -237,7 +223,6 @@ type AnthropicCredentialResult =
 
 type AnthropicModelSourceKind =
   | 'anthropic_models_api'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 interface AnthropicProviderModelAvailability {
@@ -249,24 +234,11 @@ interface AnthropicProviderModelAvailability {
   createdAt?: string
   modelType?: string
   source: AnthropicModelSourceKind
-  confidence: 'provider_reported' | 'curated' | 'manual'
+  confidence: 'provider_reported' | 'manual'
   observedAtMs: number
   warnings: string[]
   provenance?: ProviderModelAvailabilityProvenance
   providerSpecific?: unknown
-  capabilitySeed?: {
-    textChat?: boolean
-    imageInput?: boolean | 'unknown'
-    maxInputTokens?: number
-    maxOutputTokens?: number
-    thinking?: 'supported' | 'unsupported' | 'unknown'
-    adaptiveThinking?: boolean | 'unknown'
-    toolUse?: boolean | 'unknown'
-    files?: boolean | 'unknown'
-    structuredOutput?: boolean | 'unknown'
-    citations?: boolean | 'unknown'
-    capabilitiesRawKeys?: string[]
-  }
 }
 
 type AnthropicModelAvailabilityResult =
@@ -319,7 +291,6 @@ type DeepSeekCredentialResult =
 type DeepSeekProviderModelSourceKind =
   | 'deepseek_models_api'
   | 'deepseek_pricing_metadata'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 interface DeepSeekProviderModelAvailability {
@@ -330,25 +301,11 @@ interface DeepSeekProviderModelAvailability {
   displayName?: string
   ownedBy?: string
   source: DeepSeekProviderModelSourceKind
-  confidence: 'provider_reported' | 'curated' | 'manual'
+  confidence: 'provider_reported' | 'manual'
   observedAtMs: number
   warnings: string[]
   provenance?: ProviderModelAvailabilityProvenance
   providerSpecific?: unknown
-  capabilitySeed?: {
-    textChat?: boolean
-    thinkingMode?: 'supported' | 'non_thinking_only' | 'thinking_only' | 'unknown'
-    contextLength?: number
-    maxOutputTokens?: number
-    tools?: boolean
-    jsonOutput?: boolean
-    reasoning?: 'supported' | 'unsupported' | 'unknown'
-    functionCalling?: boolean | 'unknown'
-    structuredOutput?: boolean | 'unknown'
-    reasoningEffort?: ReadonlyArray<'high' | 'max'>
-    fim?: boolean
-    chatPrefixCompletion?: boolean
-  }
   pricingSeed?: {
     inputCacheHitPer1MTokens?: string
     inputCacheMissPer1MTokens?: string
@@ -388,7 +345,6 @@ type DeepSeekModelAvailabilityResult =
 
 type GeminiModelSourceKind =
   | 'gemini_models_api'
-  | 'starverse_curated_metadata'
   | 'manual_user_model_id'
 
 interface GeminiProviderModelAvailability {
@@ -400,22 +356,11 @@ interface GeminiProviderModelAvailability {
   displayName?: string
   description?: string
   source: GeminiModelSourceKind
-  confidence: 'provider_reported' | 'curated' | 'manual'
+  confidence: 'provider_reported' | 'manual'
   observedAtMs: number
   warnings: string[]
   provenance?: ProviderModelAvailabilityProvenance
   providerSpecific?: unknown
-  capabilitySeed?: {
-    textChat?: boolean
-    supportedGenerationMethods?: string[]
-    inputTokenLimit?: number
-    outputTokenLimit?: number
-    thinking?: 'supported' | 'unknown'
-    functionCalling?: boolean | 'unknown'
-    builtInTools?: boolean | 'unknown'
-    vision?: boolean | 'unknown'
-    structuredOutput?: boolean | 'unknown'
-  }
 }
 
 type GeminiModelAvailabilityResult =
@@ -1089,8 +1034,6 @@ type GenerationV2IpcResult = Readonly<{
     branchId: string; conversationId: string; questionId: string
     headMessageId: string | null; chosenAnswerRootId: string | null; deletedAtMs: number | null
   }>
-  visibleAnswerRootIds?: readonly string[]
-  visibleQuestionIds?: readonly string[]
 }>
 
 type GenerationV2TextBridge = Readonly<{
@@ -1126,6 +1069,12 @@ type OpenRouterImageGenerationV2Bridge = GenerationV2TextBridge & Readonly<{
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   generationV2?: Readonly<{
+    runtime: Readonly<{
+      subscribe: () => Promise<unknown>
+      snapshot: (operationId?: string | null) => Promise<unknown>
+      abort: (operationId: string) => Promise<unknown>
+      onEvent: (listener: (event: unknown) => void) => () => void
+    }>
     credentials: Readonly<{
       openRouter: GenerationV2CredentialBridge
       openAIResponses: GenerationV2CredentialBridge
@@ -1156,13 +1105,10 @@ interface Window {
     workspace: Readonly<{
       ensureDefault: () => Promise<unknown>
       listProjects: () => Promise<unknown>
-      listConversations: (projectId: string) => Promise<unknown>
-      readBranch: (branchId: string) => Promise<unknown>
-      listQuestionCandidates: (branchId: string, baseMessageId: string | null, limit: number) => Promise<unknown>
-      selectQuestionCandidate: (payload: Readonly<{ branchId: string; baseMessageId: string | null;
-        expectedCurrentQuestionId: string; targetQuestionId: string; expectedHeadMessageId: string }>) => Promise<unknown>
-      selectAnswer: (payload: Readonly<{ branchId: string; questionId: string;
-        expectedChosenAnswerRootId: string; targetAnswerRootId: string }>) => Promise<unknown>
+      listConversations: (projectId: string, cursor?: Readonly<{ updatedAtMs: number;
+        conversationId: string }> | null, limit?: number) => Promise<unknown>
+      readBranch: (branchId: string, beforeMessageId?: string | null, limit?: number) => Promise<unknown>
+      getMessageCandidateNavigation: (branchId: string, messageId: string) => Promise<unknown>
       setContextFilter: (payload: Readonly<{branchId:string;targetType:'question'|'answer';targetId:string;mode:'include'|'exclude'}>) => Promise<unknown>
       clearContextFilter: (payload: Readonly<{branchId:string;targetType:'question'|'answer';targetId:string}>) => Promise<unknown>
       getConfig: (ownerKind: 'global' | 'project' | 'conversation', ownerId: string) => Promise<unknown>
@@ -1193,6 +1139,9 @@ interface Window {
       updateConversationRoutePreference: (payload: Readonly<{ conversationId: string; expectedRevision: number;
         selection: unknown }>) => Promise<unknown>
       clearConversationRoutePreference: (conversationId: string, expectedRevision: number) => Promise<unknown>
+      hideAnswer: (branchId: string, answerId: string) => Promise<unknown>
+      listBranches: (conversationId: string, cursor?: Readonly<{ updatedAtMs: number;
+        branchId: string }> | null, limit?: number) => Promise<unknown>
     }>
     composer: Readonly<{
       get: (conversationId: string) => Promise<unknown>
@@ -1241,6 +1190,8 @@ interface Window {
       status: (payload: unknown) => Promise<unknown>
       clearCurrent: (payload: unknown) => Promise<unknown>
       clearAll: (payload: unknown) => Promise<unknown>
+      applyPending: (payload: unknown) => Promise<unknown>
+      discardPending: (payload: unknown) => Promise<unknown>
     }>
     modelPreferences: Readonly<{
       listFavorites: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceFavoriteRecord[]>

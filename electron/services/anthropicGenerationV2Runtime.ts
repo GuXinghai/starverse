@@ -8,6 +8,7 @@ import { createAnthropicPlainTextRetryCoordinatorV2 } from './anthropicPlainText
 import { createAnthropicPlainTextRegenerateCoordinatorV2 } from './anthropicPlainTextRegenerateCoordinatorV2'
 import { createAnthropicPlainTextEditResendCoordinatorV2 } from './anthropicPlainTextEditResendCoordinatorV2'
 import { createAnthropicToolContinuationCoordinatorV2 } from './anthropicToolContinuationCoordinatorV2'
+import { GenerationRuntimeStarterV2 } from './generationRuntimeStarterV2'
 import type { GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import type { GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
@@ -81,7 +82,7 @@ export function createAnthropicGenerationV2Runtime(input: Readonly<{
   const continuation = createAnthropicToolContinuationCoordinatorV2({
     db: input.db, credentialService: input.credentialService, nowMs: input.nowMs, attachmentBlobStore: input.attachmentBlobStore,
   })
-  const activeControllers = new Map<string, AbortController>()
+  const starter = new GenerationRuntimeStarterV2(input.streamProjectionSink)
 
   async function currentCredentialExpectation(): Promise<CurrentCredentialExpectation> {
     const status = await input.credentialService.getStatus('anthropic')
@@ -92,12 +93,7 @@ export function createAnthropicGenerationV2Runtime(input: Readonly<{
   }
 
   function startCreated(result: GenerationTextCommandResultV2): void {
-    if (result.kind !== 'created' || activeControllers.has(result.preparedRequest.operationId)) return
-    const controller = new AbortController()
-    activeControllers.set(result.preparedRequest.operationId, controller)
-    void runner.run(result, controller.signal)
-      .catch(() => undefined)
-      .finally(() => activeControllers.delete(result.preparedRequest.operationId))
+    starter.start(result, (signal) => runner.run(result, signal))
   }
 
   return Object.freeze({
@@ -144,11 +140,6 @@ export function createAnthropicGenerationV2Runtime(input: Readonly<{
       startCreated(committed)
       return committed
     },
-    abort: (operationId: string): boolean => {
-      const controller = activeControllers.get(operationId)
-      if (!controller || controller.signal.aborted) return false
-      controller.abort('user_cancelled')
-      return true
-    },
+    abort: (operationId: string): boolean => starter.abort(operationId),
   })
 }

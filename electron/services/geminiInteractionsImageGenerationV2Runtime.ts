@@ -2,6 +2,7 @@ import type BetterSqlite3 from 'better-sqlite3'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
+import { GenerationRuntimeStarterV2 } from './generationRuntimeStarterV2'
 import type { GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import { createGeminiInteractionsImageActionCoordinatorV2 } from './geminiInteractionsImageActionCoordinatorV2'
 import { createGeminiInteractionsImageInitialSendCoordinatorV2, type GeminiInteractionsImageCommandResultV2 } from './geminiInteractionsImageInitialSendCoordinatorV2'
@@ -31,13 +32,12 @@ export function createGeminiInteractionsImageGenerationV2Runtime(input: Readonly
   const coordinator = createGeminiInteractionsImageInitialSendCoordinatorV2(input)
   const actions = createGeminiInteractionsImageActionCoordinatorV2(input)
   const runner = createGeminiInteractionsImageStreamRunnerV2(input)
-  const controllers = new Map<string, AbortController>()
+  const starter = new GenerationRuntimeStarterV2(input.streamProjectionSink)
   function start(result: GeminiInteractionsImageCommandResultV2): void {
-    if (result.kind !== 'created' || !result.preparedRequest || controllers.has(result.preparedRequest.operationId)) return
-    const controller = new AbortController()
-    controllers.set(result.preparedRequest.operationId, controller)
-    void runner.run(result, controller.signal).catch(() => undefined)
-      .finally(() => controllers.delete(result.preparedRequest!.operationId))
+    starter.start(
+      result as Parameters<GenerationRuntimeStarterV2['start']>[0],
+      (signal) => runner.run(result, signal),
+    )
   }
   return Object.freeze({
     submitInitial: async (command: unknown) => {
@@ -52,10 +52,6 @@ export function createGeminiInteractionsImageGenerationV2Runtime(input: Readonly
     retry: async (command: unknown) => { const result = await actions.retry(command); start(result); return result },
     regenerate: async (command: unknown) => { const result = await actions.regenerate(command); start(result); return result },
     editResend: async (command: unknown) => { const result = await actions.editResend(command); start(result); return result },
-    abort: (operationId: string) => {
-      const controller = controllers.get(operationId)
-      if (!controller || controller.signal.aborted) return false
-      controller.abort('user_cancelled'); return true
-    },
+    abort: (operationId: string) => starter.abort(operationId),
   })
 }

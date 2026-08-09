@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { sha256Hex } from '../crypto/sha256Hex'
 
 export type ProviderFailureOriginV2 =
   | 'proxy_controller'
@@ -7,6 +7,10 @@ export type ProviderFailureOriginV2 =
   | 'response_stream'
   | 'response_decoder'
   | 'provider_runtime'
+  | 'secure_storage'
+  | 'ipc_bridge'
+  | 'database'
+  | 'local_projection'
   | 'starverse_internal'
 
 export type ProviderFailurePhaseV2 =
@@ -52,6 +56,7 @@ export type ProviderFailureV2 = Readonly<{
   providerError: Readonly<{
     code: string | number | null
     type: string | null
+    status: string | null
     message: string | null
     param: string | null
     requestId: string | null
@@ -59,6 +64,7 @@ export type ProviderFailureV2 = Readonly<{
     rawJson: unknown | null
     rawText: string | null
   }> | null
+  rawFrameExcerpt: string | null
   transportError: Readonly<{
     name: string | null
     code: string | null
@@ -86,8 +92,11 @@ export class ProviderFailureErrorV2 extends Error {
   }
 }
 
-export const PROVIDER_FAILURE_RAW_LIMIT_BYTES_V2 = 1024 * 1024
-export const PROVIDER_FAILURE_UI_LIMIT_BYTES_V2 = 64 * 1024
+// A failure may carry both a response body and a stream-frame excerpt. Keep
+// each raw field below the 1 MiB total persistence envelope budget.
+export const PROVIDER_FAILURE_RAW_LIMIT_BYTES_V2 = 384 * 1024
+const PROVIDER_FAILURE_MESSAGE_LIMIT_BYTES_V2 = 64 * 1024
+const PROVIDER_FAILURE_SCALAR_LIMIT_BYTES_V2 = 4 * 1024
 
 function record(value: unknown): Record<string, unknown> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
@@ -111,9 +120,40 @@ function truncateUtf8(value: string, limit: number): string {
   return new TextDecoder().decode(bytes.slice(0, limit))
 }
 
+function boundedFactString(
+  value: unknown,
+  path: string,
+  limit: number,
+  redactions: ProviderFailureRedactionV2[],
+  truncations: ProviderFailureTruncationV2[],
+): string | null {
+  const source = safeString(value)
+  if (source === null) return null
+  const sanitized = sanitizeText(source, path, redactions)
+  if (byteLength(sanitized) <= limit) return sanitized
+  const retained = truncateUtf8(sanitized, limit)
+  truncations.push(Object.freeze({
+    path,
+    originalByteLength: byteLength(sanitized),
+    retainedByteLength: byteLength(retained),
+    sha256: sha256Hex(sanitized),
+  }))
+  redactions.push(Object.freeze({ path, reason: 'size_limit' }))
+  return retained
+}
+
 function sanitizeText(value: string, path: string, redactions: ProviderFailureRedactionV2[]): string {
-  if (!value.includes(':') && !value.includes('/') && !value.includes('\\') &&
-      !value.toLowerCase().includes('authorization') && !value.toLowerCase().includes('cookie')) return value
+  const lowerValue = value.toLowerCase()
+  const hasAuthorization = lowerValue.includes('authorization')
+  const hasCookie = lowerValue.includes('cookie')
+  const hasUrlShape = value.includes('://')
+  const hasCredentialLabel = !hasUrlShape && /(?:x-goog-api-key|x-api-key|api[_ -]?key)/iu.test(value)
+  const hasUrlCredentialShape = hasUrlShape && value.includes('@')
+  const hasSensitiveQueryShape = hasUrlShape && (value.includes('?') || value.includes('&'))
+  const hasWindowsPathShape = /(?:[A-Za-z]:\\|\\\\)/u.test(value)
+  const hasPosixPathShape = /(?:^|[\s"'=:(])\/(?!\/)[^\r\n\s"']+/u.test(value)
+  if (!hasAuthorization && !hasCredentialLabel && !hasCookie && !hasUrlCredentialShape && !hasSensitiveQueryShape &&
+      !hasWindowsPathShape && !hasPosixPathShape) return value
   let next = value
   const replace = (pattern: RegExp, replacement: string, reason: ProviderFailureRedactionReasonV2) => {
     const replaced = next.replace(pattern, replacement)
@@ -122,10 +162,27 @@ function sanitizeText(value: string, path: string, redactions: ProviderFailureRe
       redactions.push(Object.freeze({ path, reason }))
     }
   }
-  replace(/(authorization\s*:\s*bearer\s+)[^\s,;]+/giu, '$1[redacted]', 'authorization_header')
-  replace(/(cookie\s*:\s*)[^\r\n]+/giu, '$1[redacted]', 'cookie')
-  replace(/([a-z][a-z0-9+.-]*:\/\/)([^/@\s:]+)(?::([^/@\s]+))?@/giu, '$1[redacted]@', 'url_credential')
-  replace(/(?:[A-Za-z]:\\|\\\\|\/)[^\r\n\s]*/gu, '[local path redacted]', 'local_path')
+  if (hasAuthorization) {
+    replace(/(authorization\s*:\s*bearer\s+)[^\s,;]+/giu, '$1[redacted]', 'authorization_header')
+  }
+  if (hasCredentialLabel) {
+    replace(/((?:x-goog-api-key|x-api-key|api[_ -]?key)\s*(?::|=)?\s*)[^\s,;"']+/giu,
+      '$1[redacted]', 'credential')
+  }
+  if (hasCookie) replace(/(cookie\s*:\s*)[^\r\n]+/giu, '$1[redacted]', 'cookie')
+  if (hasUrlCredentialShape) {
+    replace(/([a-z][a-z0-9+.-]*:\/\/)([^/@\s:]+)(?::([^/@\s]+))?@/giu, '$1[redacted]@', 'url_credential')
+  }
+  if (hasSensitiveQueryShape) {
+    replace(/([?&](?:api[_-]?key|key|token|access[_-]?token|signature|sig)=)[^&#\s"']+/giu,
+      '$1[redacted]', 'url_credential')
+  }
+  if (hasWindowsPathShape) {
+    replace(/(?:[A-Za-z]:\\|\\\\)[^\r\n\s"']*/gu, '[local path redacted]', 'local_path')
+  }
+  if (hasPosixPathShape) {
+    replace(/(^|[\s"'=:(])(\/(?!\/)[^\r\n\s"']*)/gu, '$1[local path redacted]', 'local_path')
+  }
   return next
 }
 
@@ -175,12 +232,20 @@ function inferDiagnosticCode(input: ProviderFailureV2Context): string {
   return 'PROVIDER_RUNTIME_FAILED'
 }
 
-function boundedRaw(input: unknown, path: string, redactions: ProviderFailureRedactionV2[], truncations: ProviderFailureTruncationV2[]): Readonly<{ json: unknown | null; text: string | null }> {
+function boundedRaw(input: unknown, path: string, redactions: ProviderFailureRedactionV2[], truncations: ProviderFailureTruncationV2[]): Readonly<{
+  json: unknown | null
+  text: string | null
+  factsJson: unknown | null
+}> {
   const sourceText = typeof input === 'string' ? input : input === undefined || input === null ? null : (() => {
     try { return JSON.stringify(input) } catch { return String(input) }
   })()
-  if (!sourceText) return { json: null, text: null }
-  const sanitizedText = sanitizeText(sourceText, path, redactions)
+  if (!sourceText) return { json: null, text: null, factsJson: null }
+  const parsedSource = parseJsonText(sourceText)
+  const sanitizedJson = parsedSource === null ? null : sanitizeJsonValue(parsedSource, path, redactions)
+  const sanitizedText = sanitizedJson === null
+    ? sanitizeText(sourceText, path, redactions)
+    : JSON.stringify(sanitizedJson)
   const sourceBytes = byteLength(sanitizedText)
   const text = sourceBytes > PROVIDER_FAILURE_RAW_LIMIT_BYTES_V2
     ? truncateUtf8(sanitizedText, PROVIDER_FAILURE_RAW_LIMIT_BYTES_V2)
@@ -190,26 +255,44 @@ function boundedRaw(input: unknown, path: string, redactions: ProviderFailureRed
       path,
       originalByteLength: sourceBytes,
       retainedByteLength: byteLength(text),
-      sha256: createHash('sha256').update(sanitizedText, 'utf8').digest('hex'),
+      sha256: sha256Hex(sanitizedText),
     }))
     redactions.push(Object.freeze({ path, reason: 'size_limit' }))
   }
-  const parsed = sourceBytes > PROVIDER_FAILURE_RAW_LIMIT_BYTES_V2 ? null : parseJsonText(text)
-  const json = parsed === null ? null : sanitizeJsonValue(parsed, path, redactions)
-  return { json, text: parsed === null ? text : null }
+  if (sourceBytes > PROVIDER_FAILURE_RAW_LIMIT_BYTES_V2 || sanitizedJson === null) {
+    return { json: null, text, factsJson: sanitizedJson }
+  }
+  return { json: sanitizedJson, text: null, factsJson: sanitizedJson }
 }
 
-function providerErrorFromBody(input: Readonly<{ rawJson: unknown | null; rawText: string | null; headers?: Readonly<Record<string, string>> }>): ProviderFailureV2['providerError'] {
-  const body = record(input.rawJson) ?? (input.rawText ? record(parseJsonText(input.rawText)) : null)
+function providerErrorFromBody(input: Readonly<{
+  rawJson: unknown | null
+  rawText: string | null
+  factsJson?: unknown | null
+  headers?: Readonly<Record<string, string>>
+  redactions: ProviderFailureRedactionV2[]
+  truncations: ProviderFailureTruncationV2[]
+}>): ProviderFailureV2['providerError'] {
+  const body = record(input.factsJson) ?? record(input.rawJson) ??
+    (input.rawText ? record(parseJsonText(input.rawText)) : null)
   const error = record(body?.error) ?? body
-  const headerRetry = input.headers && Object.entries(input.headers).find(([key]) => key.toLowerCase() === 'retry-after')?.[1]
+  const header = (name: string) => input.headers && Object.entries(input.headers).find(([key]) => key.toLowerCase() === name)?.[1]
+  const headerRetry = header('retry-after')
+  const headerRequestId = header('x-request-id') ?? header('request-id') ?? header('x-goog-request-id')
   if (!error && !input.rawText) return null
   return Object.freeze({
-    code: (typeof error?.code === 'string' || typeof error?.code === 'number') ? error.code : null,
-    type: safeString(error?.type),
-    message: safeString(error?.message) ?? safeString(body?.message),
-    param: safeString(error?.param),
-    requestId: safeString(error?.request_id) ?? safeString(error?.requestId) ?? safeString(body?.request_id) ?? safeString(body?.requestId),
+    code: typeof error?.code === 'number' ? error.code : boundedFactString(error?.code,
+      'providerError.code', PROVIDER_FAILURE_SCALAR_LIMIT_BYTES_V2, input.redactions, input.truncations),
+    type: boundedFactString(error?.type, 'providerError.type', PROVIDER_FAILURE_SCALAR_LIMIT_BYTES_V2,
+      input.redactions, input.truncations),
+    status: boundedFactString(error?.status, 'providerError.status', PROVIDER_FAILURE_SCALAR_LIMIT_BYTES_V2,
+      input.redactions, input.truncations),
+    message: boundedFactString(error?.message ?? body?.message, 'providerError.message',
+      PROVIDER_FAILURE_MESSAGE_LIMIT_BYTES_V2, input.redactions, input.truncations),
+    param: boundedFactString(error?.param, 'providerError.param', PROVIDER_FAILURE_SCALAR_LIMIT_BYTES_V2,
+      input.redactions, input.truncations),
+    requestId: boundedFactString(error?.request_id ?? error?.requestId ?? body?.request_id ?? body?.requestId ?? headerRequestId,
+      'providerError.requestId', PROVIDER_FAILURE_SCALAR_LIMIT_BYTES_V2, input.redactions, input.truncations),
     retryAfterMs: retryAfterMs(error?.retry_after_ms ?? error?.retry_after ?? body?.retry_after_ms ?? body?.retry_after ?? headerRetry),
     rawJson: input.rawJson,
     rawText: input.rawText,
@@ -222,6 +305,7 @@ export function createProviderFailureV2(input: Readonly<{
   httpStatusText?: unknown
   body?: unknown
   bodyText?: string | null
+  rawFrameExcerpt?: string | null
   headers?: Readonly<Record<string, string>>
   transportError?: unknown
 }>): ProviderFailureV2 {
@@ -233,13 +317,19 @@ export function createProviderFailureV2(input: Readonly<{
   const transport = record(input.transportError)
   const transportError = transport || input.transportError instanceof Error
     ? Object.freeze({
-        name: safeString(transport?.name) ?? (input.transportError instanceof Error ? input.transportError.name : null),
-        code: safeString(transport?.code) ?? safeString((input.transportError as { code?: unknown } | null)?.code),
-        message: safeString(transport?.message) ?? (input.transportError instanceof Error ? sanitizeText(input.transportError.message, 'transportError.message', redactions) : null),
+        name: boundedFactString(transport?.name ?? (input.transportError instanceof Error ? input.transportError.name : null),
+          'transportError.name', PROVIDER_FAILURE_SCALAR_LIMIT_BYTES_V2, redactions, truncations),
+        code: boundedFactString(transport?.code ?? (input.transportError as { code?: unknown } | null)?.code,
+          'transportError.code', PROVIDER_FAILURE_SCALAR_LIMIT_BYTES_V2, redactions, truncations),
+        message: boundedFactString(transport?.message ?? (input.transportError instanceof Error ? input.transportError.message : null),
+          'transportError.message', PROVIDER_FAILURE_MESSAGE_LIMIT_BYTES_V2, redactions, truncations),
       })
     : null
   const status = typeof input.httpStatus === 'number' && Number.isSafeInteger(input.httpStatus) && input.httpStatus >= 100 && input.httpStatus <= 599
     ? input.httpStatus : null
+  const frame = input.rawFrameExcerpt === undefined || input.rawFrameExcerpt === null
+    ? null : boundedRaw(input.rawFrameExcerpt, 'rawFrameExcerpt', redactions, truncations)
+  const rawFrameExcerpt = frame === null ? null : frame.text ?? (frame.json === null ? null : JSON.stringify(frame.json))
   return Object.freeze({
     origin: input.context.origin,
     phase: input.context.phase,
@@ -248,8 +338,11 @@ export function createProviderFailureV2(input: Readonly<{
     operationId: String(input.context.operationId),
     requestSequence: boundedSequence(input.context.requestSequence),
     httpStatus: status,
-    httpStatusText: safeString(input.httpStatusText),
-    providerError: providerErrorFromBody({ rawJson: bounded.json, rawText: bounded.text, headers: input.headers }),
+    httpStatusText: boundedFactString(input.httpStatusText, 'httpStatusText', PROVIDER_FAILURE_SCALAR_LIMIT_BYTES_V2,
+      redactions, truncations),
+    providerError: providerErrorFromBody({ rawJson: bounded.json, rawText: bounded.text, factsJson: bounded.factsJson,
+      headers: input.headers, redactions, truncations }),
+    rawFrameExcerpt,
     transportError,
     starverseDiagnosticCode: inferDiagnosticCode(input.context),
     redactions: Object.freeze(redactions),

@@ -154,7 +154,7 @@ export type ProviderSemanticExtensionV2 =
     }>
   | Readonly<{
       kind: 'gemini_generate_content'
-      thinkingMode: 'provider_default'
+      thinkingMode: 'default'
       includeThoughts: 'provider_default' | 'enabled' | 'disabled'
     }>
   | Readonly<{
@@ -691,7 +691,8 @@ function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
         })
   }
   if (input.kind === 'gemini_generate_content') {
-    const thinkingMode = optionalEnum(input, 'thinkingMode', ['provider_default', 'level', 'budget'])
+    const rawThinkingMode = optionalEnum(input, 'thinkingMode', ['default', 'provider_default', 'level', 'budget'])
+    const thinkingMode = rawThinkingMode === 'provider_default' ? 'default' : rawThinkingMode
     const includeThoughts = optionalEnum(input, 'includeThoughts', ['provider_default', 'enabled', 'disabled'])
     const thinkingLevel = optionalEnum(input, 'thinkingLevel', ['minimal', 'low', 'medium', 'high'])
     const thinkingBudget = input.thinkingBudget === undefined
@@ -705,7 +706,7 @@ function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
     if (!thinkingMode || !includeThoughts) {
       throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
     }
-    if (thinkingMode === 'provider_default') {
+    if (thinkingMode === 'default') {
       if (thinkingLevel !== undefined || thinkingBudget !== undefined || Object.keys(input).length !== 3) {
         throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
       }

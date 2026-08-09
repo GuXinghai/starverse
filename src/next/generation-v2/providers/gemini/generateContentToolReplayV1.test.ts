@@ -3,6 +3,20 @@ import { compileGeminiGenerateContentRequestV1 } from './generateContentRequestV
 import { GeminiGenerateContentStreamAssemblerV1 } from './generateContentStreamV1'
 
 describe('Gemini GenerateContent native tool replay V1', () => {
+  it('keeps Gemini 3 default thinking unset and encodes an explicit level without a budget', () => {
+    const defaultRequest = compileGeminiGenerateContentRequestV1({
+      clientContents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+      reasoning: { mode: 'enabled' },
+    })
+    expect(defaultRequest.nativeRequest.generationConfig.thinkingConfig).toBeUndefined()
+
+    const explicitRequest = compileGeminiGenerateContentRequestV1({
+      clientContents: [{ role: 'user', parts: [{ text: 'hello' }] }],
+      reasoning: { mode: 'enabled', thinkingLevel: 'high' },
+    })
+    expect(explicitRequest.nativeRequest.generationConfig.thinkingConfig).toEqual({ thinkingLevel: 'high' })
+  })
+
   it('encodes inline image/PDF parts and Gemini 2.5 thinkingBudget without switching protocols', () => {
     const compiled = compileGeminiGenerateContentRequestV1({
       clientContents: [{ role: 'user', parts: [

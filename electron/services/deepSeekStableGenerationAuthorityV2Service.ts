@@ -5,6 +5,8 @@ import {
   type PersistedRuntimeCapabilityFieldV2,
   type PersistedRuntimeCapabilitySnapshotV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { assertActiveCatalogOptionalCapabilitiesV2, isActiveCatalogModelAuthorityV2,
+  projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedDeepSeekStableChatDefinitionV2,
@@ -49,10 +51,6 @@ import {
   registerGenerationV2AuthorityTransactionParticipantForContextV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
-import {
-  isVerifiedDeepSeekStableModelEvidenceV2,
-  type VerifiedDeepSeekStableModelEvidenceV2,
-} from './deepSeekStableModelEvidenceV2Service'
 
 export type VerifiedDeepSeekStableProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_deepseek_stable_provider_binding'
@@ -114,12 +112,12 @@ function sameIdentity(left: { value: string }, right: { value: string }): boolea
 }
 
 function requireCompleteBrandedInputs(
-  modelEvidence: VerifiedDeepSeekStableModelEvidenceV2,
+  modelEvidence: ActiveCatalogModelAuthorityV2,
   commandFacts: GenerationCommandFactsAuthorityV2,
   policy: VerifiedDeepSeekStableCapabilityPolicyV2,
 ): void {
   const profile = readVerifiedDeepSeekStableEndpointProfileV2()
-  if (!isVerifiedDeepSeekStableModelEvidenceV2(modelEvidence) ||
+  if (!isActiveCatalogModelAuthorityV2(modelEvidence, 'deepseek') ||
       !isGenerationCommandFactsAuthorityV2(commandFacts) ||
       !isVerifiedDeepSeekStableCapabilityPolicyV2(policy) ||
       !isVerifiedDeepSeekStableEndpointProfileV2(profile) ||
@@ -263,7 +261,7 @@ function validateIntentSubset(
 }
 
 function composeBindingAuthority(input: Readonly<{
-  modelEvidence: VerifiedDeepSeekStableModelEvidenceV2
+  modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   operation: 'text'
 }>): VerifiedDeepSeekStableProviderBindingAuthorityV2 {
@@ -319,7 +317,7 @@ function composeBindingAuthority(input: Readonly<{
     modelEvidenceRevision: input.modelEvidence.modelsResponseRevision,
     assertCurrent: () => {
       if (!bindingAuthorities.has(authority) ||
-          !isVerifiedDeepSeekStableModelEvidenceV2(input.modelEvidence)) {
+          !isActiveCatalogModelAuthorityV2(input.modelEvidence, 'deepseek')) {
         throw new DeepSeekStableGenerationAuthorityV2Error(
           'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',
         )
@@ -337,7 +335,7 @@ function evidenceId(baseId: string, effect: 'supports' | 'rejects' | 'requires_c
 
 function buildRuntimeEvidence(
   policy: VerifiedDeepSeekStableCapabilityPolicyV2,
-  modelEvidence: VerifiedDeepSeekStableModelEvidenceV2,
+  modelEvidence: ActiveCatalogModelAuthorityV2,
 ) {
   const familyEvidence = policy.evidence.flatMap((entry) => {
     const isOwnerPolicy = entry.evidenceId.startsWith('starverse.')
@@ -441,7 +439,7 @@ function buildField(
 
 function composeCapabilityAuthority(input: Readonly<{
   bindingAuthority: VerifiedDeepSeekStableProviderBindingAuthorityV2
-  modelEvidence: VerifiedDeepSeekStableModelEvidenceV2
+  modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   policy: VerifiedDeepSeekStableCapabilityPolicyV2
   fields: readonly PersistedRuntimeCapabilityFieldV2[]
@@ -456,6 +454,7 @@ function composeCapabilityAuthority(input: Readonly<{
   )
   const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
     schemaVersion: 2,
+    ...projectActiveCatalogSnapshotAuthorityV2(input.modelEvidence),
     resolvedAt: input.resolvedAt,
     binding: projectDecodedProviderBindingRecordV2(input.bindingAuthority.binding),
     evidence,
@@ -525,7 +524,7 @@ function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
 
 export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
-  modelEvidence: VerifiedDeepSeekStableModelEvidenceV2
+  modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   operation: 'text' | 'tool_continue'
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
@@ -536,6 +535,7 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
 }>): T {
   const policy = readVerifiedDeepSeekStableCapabilityPolicyV2()
   requireCompleteBrandedInputs(input.modelEvidence, input.commandFacts, policy)
+  assertActiveCatalogOptionalCapabilitiesV2(input.modelEvidence, input.commandFacts.semanticIntent)
   if (!isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context)) {
     throw new DeepSeekStableGenerationAuthorityV2Error(
       'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',

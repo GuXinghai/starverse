@@ -42,7 +42,7 @@ export function compileGenericLocalOpenAIChatPreparedRequestV2(input: Readonly<{
     ...(generation.topP === undefined ? [] : [{ kind: 'consumed' as const, path: 'generation.topP', disposition: 'encoded' as const, nativeField: 'top_p', evidence: 'generic-local-openai-chat' }]),
     ...(generation.stop === undefined ? [] : [{ kind: 'consumed' as const, path: 'generation.stop', disposition: 'encoded' as const, nativeField: 'stop', evidence: 'generic-local-openai-chat' }]),
   ]
-  return issuePreparedProviderRequestV2({ operationId: operation.operationId.value, answerRootId: operation.resultAnswerRootId.value,
+  return issuePreparedProviderRequestV2({ operationId: operation.operationId.value, answerRootId: operation.targetAnswerId.value,
     requestSequence: 1, providerId: 'generic_local', endpointProfileId: input.profile.endpointProfileId,
     credentialScopeId: input.profile.credentialScopeId, contractId: 'generic-local-openai-chat-completions',
     modelId: binding.modelId.value, effectiveEndpointId: input.profile.endpointProfileId,

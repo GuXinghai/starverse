@@ -11,6 +11,9 @@ export type GeminiModelVisibilityRecordV1 = Readonly<{
   inputTokenLimit: number
   outputTokenLimit: number
   supportedGenerationMethods: readonly string[]
+  thinkingOwnProperty: boolean
+  thinkingRawType: 'missing' | 'boolean' | 'null' | 'string' | 'number' | 'object' | 'array' | 'undefined'
+  thinkingRawValue?: unknown
   temperature?: number
   maxTemperature?: number
   topP?: number
@@ -62,11 +65,22 @@ function optionalFinite(value: unknown): number | undefined {
   return value
 }
 
+function thinkingRawType(value: unknown, ownProperty: boolean): GeminiModelVisibilityRecordV1['thinkingRawType'] {
+  if (!ownProperty) return 'missing'
+  if (value === undefined) return 'undefined'
+  if (value === null) return 'null'
+  if (Array.isArray(value)) return 'array'
+  if (typeof value === 'boolean') return 'boolean'
+  if (typeof value === 'string') return 'string'
+  if (typeof value === 'number') return 'number'
+  return 'object'
+}
+
 function decodeModel(value: unknown): GeminiModelVisibilityRecordV1 {
   const input = record(value)
   // The Google model resource is extensible. Keep the evidence projection
-  // closed, but ignore additive provider fields (for example `thinking`) that
-  // are not consumed by this revision of the capability codec.
+  // closed while retaining the raw thinking own-property fact needed by the
+  // GenerateContent capability resolver.
   if (!Array.isArray(input.supportedGenerationMethods) ||
       input.supportedGenerationMethods.some((item) => typeof item !== 'string' || item.length === 0) ||
       new Set(input.supportedGenerationMethods).size !== input.supportedGenerationMethods.length) {
@@ -75,6 +89,12 @@ function decodeModel(value: unknown): GeminiModelVisibilityRecordV1 {
   const name = text(input.name)
   const derivedBaseModelId = name.startsWith('models/') ? name.slice('models/'.length) : ''
   const baseModelId = text(input.baseModelId ?? derivedBaseModelId)
+  const hasCanonicalThinkingProjection = typeof input.thinkingOwnProperty === 'boolean' &&
+    typeof input.thinkingRawType === 'string'
+  const thinkingOwnProperty = hasCanonicalThinkingProjection
+    ? input.thinkingOwnProperty as boolean
+    : Object.prototype.hasOwnProperty.call(input, 'thinking')
+  const thinkingValue = hasCanonicalThinkingProjection ? input.thinkingRawValue : input.thinking
   if (name !== `models/${baseModelId}` || !/^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u.test(baseModelId)) {
     throw new GeminiModelsEvidenceV1Error('GENERATION_V2_GEMINI_MODELS_EVIDENCE_INVALID')
   }
@@ -87,6 +107,9 @@ function decodeModel(value: unknown): GeminiModelVisibilityRecordV1 {
     inputTokenLimit: nonnegativeInteger(input.inputTokenLimit),
     outputTokenLimit: nonnegativeInteger(input.outputTokenLimit),
     supportedGenerationMethods: Object.freeze([...input.supportedGenerationMethods] as string[]),
+    thinkingOwnProperty,
+    thinkingRawType: thinkingRawType(thinkingValue, thinkingOwnProperty),
+    ...(thinkingOwnProperty ? { thinkingRawValue: thinkingValue } : {}),
     ...(input.temperature === undefined ? {} : { temperature: optionalFinite(input.temperature)! }),
     ...(input.maxTemperature === undefined ? {} : { maxTemperature: optionalFinite(input.maxTemperature)! }),
     ...(input.topP === undefined ? {} : { topP: optionalFinite(input.topP)! }),

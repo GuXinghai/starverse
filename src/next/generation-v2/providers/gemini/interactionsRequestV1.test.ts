@@ -92,4 +92,10 @@ describe('Gemini Interactions request V1', () => {
       image: { aspectRatio: '1:1', imageSize: '1K' }, webTypes: ['image'] }).preparedBody.copyUtf8Text()))
       .toMatchObject({ tools: [{ type: 'google_search', search_types: ['image_search'] }] })
   })
+
+  it('encodes web-only search without silently adding image search', () => {
+    expect(JSON.parse(compileGeminiInteractionsRequestV1({ ...base,
+      image: { aspectRatio: '1:1', imageSize: '1K' }, webTypes: ['web'] }).preparedBody.copyUtf8Text()))
+      .toMatchObject({ tools: [{ type: 'google_search', search_types: ['web_search'] }] })
+  })
 })

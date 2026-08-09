@@ -10,15 +10,17 @@ function commandResult() {
   return {
     kind: 'created',
     preparedRequest: { operationId: 'operation:1', answerRootId: 'answer:1' },
-    execution: { operation: { actionKind: 'initial_send' } },
+    execution: { operation: {
+      operationId: { value: 'operation:1' },
+      targetAnswerId: { value: 'answer:1' },
+      actionKind: 'initial_send',
+    } },
     projection: {
       branchProjection: {
         branchId: { value: 'branch:1' }, conversationId: { value: 'conversation:1' },
         questionId: { value: 'question:1' }, headMessageId: { value: 'answer:1' },
         chosenAnswerRootId: { value: 'answer:1' }, deletedAtMs: null,
       },
-      visibleCandidates: [{ value: 'answer:0' }, { value: 'answer:1' }],
-      visibleQuestionCandidates: [{ value: 'question:1' }],
     },
   } as never
 }
@@ -48,7 +50,6 @@ describe('DeepSeek Generation V2 IPC', () => {
         branchId: 'branch:1', conversationId: 'conversation:1', questionId: 'question:1',
         headMessageId: 'answer:1', chosenAnswerRootId: 'answer:1', deletedAtMs: null,
       },
-      visibleAnswerRootIds: ['answer:0', 'answer:1'], visibleQuestionIds: ['question:1'],
     })
     sink?.publish({ type: 'assistant_body', operationId: 'operation:1', answerRootId: 'answer:1', content: 'partial' })
     sink?.publish({ type: 'terminal', operationId: 'operation:1', answerRootId: 'answer:1', state: 'completed', errorCode: null, errorMessage: null })

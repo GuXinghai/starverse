@@ -19,9 +19,10 @@ export type OpenAIResponsesPlainTextRetryCommandV2 = Readonly<{
   kind: 'openai_responses_plain_text_retry'
   actionKind: 'retry_as_new' | 'retry_replace'
   operationId: Identity<'operation_id'>
-  branchId: GraphIdentity<'branch_id'>
+  clientActionId: string
+  sourceBranchId: GraphIdentity<'branch_id'>
   questionId: GraphIdentity<'question_id'>
-  targetAnswerRootId: GraphIdentity<'answer_root_id'>
+  sourceAnswerId: GraphIdentity<'answer_root_id'>
   expectedHeadMessageId: GraphIdentity<'message_id'>
   canonicalJson: string
   requestFingerprint: string
@@ -44,7 +45,7 @@ export function decodeOpenAIResponsesPlainTextRetryCommandV2(
 ): OpenAIResponsesPlainTextRetryCommandV2 {
   try {
     const keys = [
-      'actionKind', 'operationId', 'branchId', 'questionId', 'targetAnswerRootId', 'expectedHeadMessageId',
+      'actionKind', 'operationId', 'clientActionId', 'sourceBranchId', 'questionId', 'sourceAnswerId', 'expectedHeadMessageId',
     ]
     if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) invalid()
     const descriptors = Object.getOwnPropertyDescriptors(value)
@@ -60,19 +61,21 @@ export function decodeOpenAIResponsesPlainTextRetryCommandV2(
     const actionKind = read('actionKind')
     if (actionKind !== 'retry_as_new' && actionKind !== 'retry_replace') invalid()
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
-    const branchId = ConversationGraphV2Identity.create('branch_id', read('branchId'))
+    const clientActionId = read('clientActionId')
+    if (clientActionId !== operationId.value) invalid()
+    const sourceBranchId = ConversationGraphV2Identity.create('branch_id', read('sourceBranchId'))
     const questionId = ConversationGraphV2Identity.create('question_id', read('questionId'))
-    const targetAnswerRootId = ConversationGraphV2Identity.create('answer_root_id', read('targetAnswerRootId'))
+    const sourceAnswerId = ConversationGraphV2Identity.create('answer_root_id', read('sourceAnswerId'))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', read('expectedHeadMessageId'))
-    if (expectedHeadMessageId.value !== targetAnswerRootId.value) invalid()
     const projection = Object.freeze({
       schemaVersion: 1 as const, kind: 'openai_responses_plain_text_retry' as const, actionKind,
-      operationId: operationId.value, branchId: branchId.value, questionId: questionId.value,
-      targetAnswerRootId: targetAnswerRootId.value, expectedHeadMessageId: expectedHeadMessageId.value,
+      operationId: operationId.value, clientActionId,
+      sourceBranchId: sourceBranchId.value, questionId: questionId.value,
+      sourceAnswerId: sourceAnswerId.value, expectedHeadMessageId: expectedHeadMessageId.value,
     })
     const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_JSON_BYTES)
     const command = Object.freeze({
-      ...projection, actionKind, operationId, branchId, questionId, targetAnswerRootId, expectedHeadMessageId,
+      ...projection, actionKind, operationId, clientActionId, sourceBranchId, questionId, sourceAnswerId, expectedHeadMessageId,
       canonicalJson, requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)),
     })
     commands.add(command)

@@ -4,6 +4,7 @@ import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { isPendingAnswerActionForContextV2, isPendingEditedTurnForContextV2, isPendingInitialTurnForContextV2,
+  pendingSourceAnswerIdV2, pendingSourceBranchIdV2,
   type PendingAnswerActionV2, type PendingEditedTurnV2, type PendingInitialTurnV2 } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationExecutionV2Repo, isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { isGenerationCommandFactsAuthorityForContextV2, type GenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
@@ -34,8 +35,13 @@ export function commitGenericLocalCurrentSnapshotV2(input: Readonly<{ context: G
   const initial = isGenericLocalOpenAIChatInitialCommandV2(input.command) && isPendingInitialTurnForContextV2(input.pending, input.context)
   const regenerate = isGenericLocalOpenAIChatRegenerateCommandV2(input.command) && isPendingAnswerActionForContextV2(input.pending, input.context) && input.pending.actionKind === 'regenerate_question'
   const edit = isGenericLocalOpenAIChatEditResendCommandV2(input.command) && isPendingEditedTurnForContextV2(input.pending, input.context)
+  const commandBranchId = input.command.kind === 'generic_local_openai_chat_initial'
+    ? input.command.branchId
+    : input.command.sourceBranchId
   if ((!initial && !regenerate && !edit) || !isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context) ||
-      input.command.operationId.value !== input.pending.operationId.value || input.command.endpointProfileId.value !== input.profile.endpointProfileId) {
+      input.command.operationId.value !== input.pending.operationId.value ||
+      commandBranchId.value !== pendingSourceBranchIdV2(input.pending).value ||
+      input.command.endpointProfileId.value !== input.profile.endpointProfileId) {
     throw new Error('GENERATION_V2_GENERIC_LOCAL_SNAPSHOT_INPUT_INVALID')
   }
   assertIntent(input.commandFacts)
@@ -50,8 +56,8 @@ export function commitGenericLocalCurrentSnapshotV2(input: Readonly<{ context: G
       snapshotHash: input.capability.snapshotHash.value }, attachmentProviderFileBindings: [], toolAuthority: { kind: 'none' } }))
   return Object.freeze({ bundle: input.executionRepo.insertOperationAndSnapshot(input.context, { operationId: input.pending.operationId.value,
     actionKind: initial ? 'initial_send' : regenerate ? 'regenerate_question' : 'edit_resend', branchId: input.pending.branchId.value,
-    conversationId: input.pending.conversationId.value, questionId: input.pending.questionId.value, targetAnswerRootId: null,
-    resultAnswerRootId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
+    conversationId: input.pending.conversationId.value, questionId: input.pending.questionId.value, sourceAnswerId: pendingSourceAnswerIdV2(input.pending)?.value ?? null,
+    targetAnswerId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs }).bundle })
 }
 export function commitGenericLocalRetrySnapshotV2(input: Readonly<{ context: GenerationV2AuthorityTransactionContextV2;
@@ -59,14 +65,16 @@ export function commitGenericLocalRetrySnapshotV2(input: Readonly<{ context: Gen
   target: GenerationExecutionOperationBundleV2 }>): Readonly<{ bundle: GenerationExecutionOperationBundleV2 }> {
   if (!isPendingAnswerActionForContextV2(input.pending, input.context) || !isGenericLocalOpenAIChatRetryCommandV2(input.command) ||
       !isGenerationExecutionOperationBundleForContextV2(input.target, input.context) || input.pending.actionKind !== input.command.actionKind ||
-      input.target.operation.resultAnswerRootId.value !== input.command.targetAnswerRootId.value ||
+      pendingSourceBranchIdV2(input.pending).value !== input.command.sourceBranchId.value ||
+      pendingSourceAnswerIdV2(input.pending)?.value !== input.command.sourceAnswerId.value ||
+      input.target.operation.targetAnswerId.value !== input.command.sourceAnswerId.value ||
       input.target.snapshot.providerBinding.protocolContractId.value !== 'generic-local-openai-chat-completions') throw new Error('GENERATION_V2_GENERIC_LOCAL_SNAPSHOT_INPUT_INVALID')
   const payload = JSON.parse(input.target.snapshot.canonicalJson) as Record<string, unknown>; delete payload.snapshotHash
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({ ...payload,
     answerRootId: input.pending.answerRootId.value, operationId: input.command.operationId.value }))
   return Object.freeze({ bundle: input.executionRepo.insertOperationAndSnapshot(input.context, { operationId: input.command.operationId.value,
     actionKind: input.command.actionKind, branchId: input.pending.branchId.value, conversationId: input.pending.conversationId.value,
-    questionId: input.pending.questionId.value, targetAnswerRootId: input.command.targetAnswerRootId.value,
-    resultAnswerRootId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
+    questionId: input.pending.questionId.value, sourceAnswerId: input.command.sourceAnswerId.value,
+    targetAnswerId: input.pending.answerRootId.value, snapshot: snapshot.canonicalJson,
     commandFingerprint: input.command.requestFingerprint, createdAtMs: input.pending.createdAtMs }).bundle })
 }

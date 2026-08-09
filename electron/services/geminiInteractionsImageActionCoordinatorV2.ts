@@ -21,6 +21,8 @@ import { withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2 } from './ge
 import { compileGeminiInteractionsImagePreparedRequestV2 } from './geminiInteractionsImagePreparedRequestCompilerV2'
 import { commitGeminiInteractionsImageCurrentSnapshotV2, commitGeminiInteractionsImageRetrySnapshotV2 } from './geminiInteractionsImageSnapshotCommitV2'
 import { promptForQuestion, type GeminiInteractionsImageCommandResultV2 } from './geminiInteractionsImageInitialSendCoordinatorV2'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
+import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 
 type CurrentCommand = GeminiInteractionsImageRegenerateCommandV2 | GeminiInteractionsImageEditResendCommandV2
 
@@ -40,6 +42,8 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
+  const catalogAuthorityService = createActiveCatalogModelAuthorityV2Service(input)
+  const endpointProfile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
 
   function replay(operationId: string, fingerprint: string): GeminiInteractionsImageCommandResultV2 | null {
     const observed = executionRepo.findOperation(operationId)
@@ -67,7 +71,7 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
     const credential = await input.credentialService.getStatus('google_ai_studio')
     if (!credential.configured || !credential.credentialScopeId) throw new Error('GENERATION_V2_GEMINI_INTERACTIONS_CREDENTIAL_INVALID')
     const targetRow = input.db.prepare('SELECT operation_id AS operationId FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?')
-      .get(command.targetAnswerRootId.value) as { operationId?: unknown } | undefined
+      .get(command.sourceAnswerId.value) as { operationId?: unknown } | undefined
     if (!targetRow || typeof targetRow.operationId !== 'string') throw new Error('GENERATION_V2_GEMINI_INTERACTIONS_RETRY_TARGET_INVALID')
     const targetPreflight = executionRepo.findOperation(targetRow.operationId)
     if (!targetPreflight || targetPreflight.snapshot.providerBinding.protocolContractId.value !== 'gemini-interactions-v1beta' ||
@@ -78,14 +82,14 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
     try {
       return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
         const target = executionRepo.findOperationInTransaction(context, targetRow.operationId as string)
-        if (!target || target.operation.resultAnswerRootId.value !== command.targetAnswerRootId.value ||
+        if (!target || target.operation.targetAnswerId.value !== command.sourceAnswerId.value ||
             target.operation.questionId.value !== command.questionId.value ||
             target.snapshot.providerBinding.credentialScopeId.value !== credential.credentialScopeId) {
           throw new Error('GENERATION_V2_GEMINI_INTERACTIONS_RETRY_TARGET_INVALID')
         }
         const pending = graphRepo.beginAnswerAction(context, { operationId: command.operationId.value,
-          actionKind: command.actionKind, branchId: command.branchId.value, questionId: command.questionId.value,
-          targetAnswerRootId: command.targetAnswerRootId.value, expectedHeadMessageId: command.expectedHeadMessageId.value,
+          actionKind: command.actionKind, sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value,
+          sourceAnswerId: command.sourceAnswerId.value, expectedHeadMessageId: command.expectedHeadMessageId.value,
           answerRootId: answerId(), createdAtMs: nowMs() })
         const persisted = commitGeminiInteractionsImageRetrySnapshotV2({ context, executionRepo, pending, command, target })
         graphRepo.commitAnswerActionProjection(context, pending)
@@ -108,13 +112,17 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
     const credential = await input.credentialService.getStatus('google_ai_studio')
     if (!credential.configured || !credential.credentialScopeId) throw new Error('GENERATION_V2_GEMINI_INTERACTIONS_CREDENTIAL_INVALID')
     try {
-      return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+      return catalogAuthorityService.withExactActiveModel({
+        providerKey: 'google_ai_studio', endpointProfile,
+        expectedCredentialRevision: credential.revision,
+        expectedCredentialScopeId: credential.credentialScopeId,
+        modelId: command.modelId,
+        consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
         const pending = command.kind === 'gemini_interactions_image_regenerate'
           ? graphRepo.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: 'regenerate_question',
-            branchId: command.branchId.value, questionId: command.questionId.value, targetAnswerRootId: null,
+            sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
             expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: answerId(), createdAtMs: nowMs() })
-          : graphRepo.beginEditedTurn(context, { operationId: command.operationId.value, mode: command.mode,
-            branchId: command.branchId.value, sourceQuestionId: command.sourceQuestionId.value,
+          : graphRepo.beginEditedTurn(context, { operationId: command.operationId.value, sourceBranchId: command.sourceBranchId.value, sourceQuestionId: command.sourceQuestionId.value,
             sourceAnswerRootId: command.sourceAnswerRootId.value, expectedHeadMessageId: command.expectedHeadMessageId.value,
             questionId: questionId(), answerRootId: answerId(), userBody: command.prompt, createdAtMs: nowMs() })
         const prompt = command.kind === 'gemini_interactions_image_regenerate'
@@ -123,8 +131,7 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
         return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo,
           pending.conversationId.value, attachments, undefined, (commandFacts) =>
             withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2({ context,
-              credentialScopeId: credential.credentialScopeId!, credentialRevision: credential.revision, commandFacts,
-              modelId: command.modelId.value,
+              modelEvidence, commandFacts, modelId: command.modelId.value,
               use: ({ binding, capability }) => {
                 const persisted = commitGeminiInteractionsImageCurrentSnapshotV2({ context, executionRepo, capabilityRepo,
                   pending, command, commandFacts, binding, capability })
@@ -142,6 +149,7 @@ export function createGeminiInteractionsImageActionCoordinatorV2(input: Readonly
                   preparedRequest, request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest) })
               },
             }))
+        }),
       })
     } catch (error) {
       const winner = replay(command.operationId.value, command.requestFingerprint)

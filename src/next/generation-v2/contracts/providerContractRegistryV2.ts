@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto'
+import { sha256Hex } from '../../../shared/crypto/sha256Hex'
 import { stableSerializeProviderRequestV2 } from '../compiler/stableSerialize'
 import { GenerationV2Digest, GenerationV2Identity } from '../domain/identityV2'
 import type { AnthropicMessagesRegistrySurfaceV2 } from './anthropicDeveloperApiContractV2'
@@ -421,7 +421,7 @@ const OPENAI_CHAT_COMPATIBLE_PROJECTION: DefinitionProjection = Object.freeze({
 })
 
 function digest(value: unknown): string {
-  return createHash('sha256').update(stableSerializeProviderRequestV2(value), 'utf8').digest('hex')
+  return sha256Hex(stableSerializeProviderRequestV2(value))
 }
 
 const definitionProjections = Object.freeze([
@@ -489,6 +489,9 @@ function requireReviewedDefinition(
 }
 const deepSeekStableChatDefinition = requireReviewedDefinition(definitions.find(
   (definition) => definition.protocolContractId.value === 'deepseek-stable-chat-v1',
+))
+const openRouterChatDefinition = requireReviewedDefinition(definitions.find(
+  (definition) => definition.protocolContractId.value === 'openrouter-chat-completions-v1',
 ))
 const anthropicMessagesDefinition = requireReviewedDefinition(definitions.find(
   (definition) => definition.protocolContractId.value === 'anthropic-messages-2023-06-01',
@@ -562,6 +565,10 @@ export function readProviderContractRegistryRevisionV2(): GenerationV2Identity<'
 
 export function readReviewedDeepSeekStableChatDefinitionV2(): ReviewedProviderContractDefinitionV2 {
   return deepSeekStableChatDefinition
+}
+
+export function readReviewedOpenRouterChatDefinitionV2(): ReviewedProviderContractDefinitionV2 {
+  return openRouterChatDefinition
 }
 
 export function readReviewedAnthropicMessagesDefinitionV2(): ReviewedProviderContractDefinitionV2 {

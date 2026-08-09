@@ -251,7 +251,7 @@ async function main() {
         const terminalPromise = waitTerminal(operationId)
         let committed
         if (action === 'retry') committed = await bridge.retry({ actionKind: 'retry_as_new', operationId, branchId: conversation.branchId,
-          questionId, targetAnswerRootId: targetAnswer, expectedHeadMessageId: targetAnswer })
+          questionId, sourceAnswerId: targetAnswer, expectedHeadMessageId: targetAnswer })
         else if (action === 'regenerate') committed = await bridge.regenerate({ operationId, branchId: conversation.branchId,
           questionId, expectedHeadMessageId: targetAnswer, modelId: modelIdValue, commandAttachments: [] })
         else if (action === 'edit_resend') committed = await bridge.editResend({ operationId, mode: 'replace', branchId: conversation.branchId,

@@ -17,7 +17,7 @@ describe('Gemini Interactions image commands V2', () => {
   })
   it('requires retry to name the current head answer exactly', () => {
     expect(() => decodeGeminiInteractionsImageRetryCommandV2({ actionKind: 'retry_as_new', operationId: 'operation:2',
-      branchId: 'branch:1', questionId: 'question:1', targetAnswerRootId: 'answer:1',
+      branchId: 'branch:1', questionId: 'question:1', sourceAnswerId: 'answer:1',
       expectedHeadMessageId: 'answer:2' })).toThrow()
   })
 })

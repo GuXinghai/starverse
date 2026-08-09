@@ -43,21 +43,6 @@ export const deepseekGenerationProfile: ProviderGenerationParamProfile = {
       status: 'stable',
       ui: { visibleByDefault: true, editable: true },
     },
-    thinkingEnabled: {
-      supported: true,
-      wirePath: ['thinking', 'type'],
-      valueType: 'boolean',
-      status: 'stable',
-      ui: { visibleByDefault: true, editable: true },
-    },
-    reasoningEffort: {
-      supported: true,
-      wireKey: 'reasoning_effort',
-      valueType: 'enum',
-      enumValues: ['high', 'max'],
-      status: 'stable',
-      ui: { visibleByDefault: true, editable: true },
-    },
     presencePenalty: {
       supported: true,
       wireKey: 'presence_penalty',

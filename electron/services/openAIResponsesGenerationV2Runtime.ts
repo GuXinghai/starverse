@@ -9,6 +9,7 @@ import { createOpenAIResponsesPlainTextRegenerateCoordinatorV2 } from './openAIR
 import { createOpenAIResponsesPlainTextRetryCoordinatorV2 } from './openAIResponsesPlainTextRetryCoordinatorV2'
 import { createOpenAIResponsesStreamRunnerV2 } from './openAIResponsesStreamRunnerV2'
 import { createOpenAIResponsesToolContinuationCoordinatorV2 } from './openAIResponsesToolContinuationCoordinatorV2'
+import { GenerationRuntimeStarterV2 } from './generationRuntimeStarterV2'
 import type { GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import type { GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 
@@ -71,7 +72,7 @@ export function createOpenAIResponsesGenerationV2Runtime(input: Readonly<{
     streamProjectionSink: input.streamProjectionSink,
     nowMs: input.nowMs,
   })
-  const activeControllers = new Map<string, AbortController>()
+  const starter = new GenerationRuntimeStarterV2(input.streamProjectionSink)
 
   async function currentCredentialExpectation(): Promise<CurrentCredentialExpectation> {
     const status = await input.credentialService.getStatus('openai_responses')
@@ -82,12 +83,7 @@ export function createOpenAIResponsesGenerationV2Runtime(input: Readonly<{
   }
 
   function startCreated(result: GenerationTextCommandResultV2): void {
-    if (result.kind !== 'created' || activeControllers.has(result.preparedRequest.operationId)) return
-    const controller = new AbortController()
-    activeControllers.set(result.preparedRequest.operationId, controller)
-    void runner.run(result, controller.signal)
-      .catch(() => undefined)
-      .finally(() => activeControllers.delete(result.preparedRequest.operationId))
+    starter.start(result, (signal) => runner.run(result, signal))
   }
 
   async function commitAndStart(result: Promise<GenerationTextCommandResultV2>): Promise<GenerationTextCommandResultV2> {
@@ -126,11 +122,6 @@ export function createOpenAIResponsesGenerationV2Runtime(input: Readonly<{
       }))
     },
     continueTool: (command: unknown) => commitAndStart(toolContinuation.submit(command)),
-    abort: (operationId: string): boolean => {
-      const controller = activeControllers.get(operationId)
-      if (!controller || controller.signal.aborted) return false
-      controller.abort('user_cancelled')
-      return true
-    },
+    abort: (operationId: string): boolean => starter.abort(operationId),
   })
 }

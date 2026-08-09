@@ -4,17 +4,21 @@ import { ConversationGraphV2Identity, type ConversationGraphV2Identity as GraphI
 import { GenerationV2Identity, type GenerationV2Identity as Id } from './identityV2'
 import type { AttachmentIntentV2 } from './generationIntentV2'
 
-type Base<K extends string> = Readonly<{ kind: K; operationId: Id<'operation_id'>; branchId: GraphId<'branch_id'>;
+type InitialBase<K extends string> = Readonly<{ kind: K; operationId: Id<'operation_id'>; branchId: GraphId<'branch_id'>;
   endpointProfileId: Id<'endpoint_profile_id'>; modelId: Id<'model_id'>; canonicalJson: string; requestFingerprint: string }>
-export type FixedLocalTextInitialCommandV2<K extends string> = Base<K> & Readonly<{
+type MutationBase<K extends string> = Readonly<{ kind: K; operationId: Id<'operation_id'>; clientActionId: string;
+  sourceBranchId: GraphId<'branch_id'>; endpointProfileId: Id<'endpoint_profile_id'>; modelId: Id<'model_id'>;
+  canonicalJson: string; requestFingerprint: string }>
+export type FixedLocalTextInitialCommandV2<K extends string> = InitialBase<K> & Readonly<{
   expectedHeadMessageId: GraphId<'message_id'> | null; userBody: string; commandAttachments: readonly AttachmentIntentV2[] }>
 export type FixedLocalTextRetryCommandV2<K extends string> = Readonly<{ kind: K; actionKind: 'retry_as_new' | 'retry_replace';
-  operationId: Id<'operation_id'>; branchId: GraphId<'branch_id'>; questionId: GraphId<'question_id'>;
-  targetAnswerRootId: GraphId<'answer_root_id'>; expectedHeadMessageId: GraphId<'message_id'>;
+  operationId: Id<'operation_id'>; clientActionId: string; sourceBranchId: GraphId<'branch_id'>; questionId: GraphId<'question_id'>;
+  sourceAnswerId: GraphId<'answer_root_id'>; expectedHeadMessageId: GraphId<'message_id'>;
   canonicalJson: string; requestFingerprint: string }>
-export type FixedLocalTextRegenerateCommandV2<K extends string> = Base<K> & Readonly<{
-  questionId: GraphId<'question_id'>; expectedHeadMessageId: GraphId<'message_id'>; commandAttachments: readonly AttachmentIntentV2[] }>
-export type FixedLocalTextEditResendCommandV2<K extends string> = Base<K> & Readonly<{ mode: 'fork' | 'replace';
+export type FixedLocalTextRegenerateCommandV2<K extends string> = MutationBase<K> & Readonly<{
+  questionId: GraphId<'question_id'>; sourceAnswerId: GraphId<'answer_root_id'>;
+  expectedHeadMessageId: GraphId<'message_id'>; commandAttachments: readonly AttachmentIntentV2[] }>
+export type FixedLocalTextEditResendCommandV2<K extends string> = MutationBase<K> & Readonly<{
   sourceQuestionId: GraphId<'question_id'>; sourceAnswerRootId: GraphId<'answer_root_id'>;
   expectedHeadMessageId: GraphId<'message_id'>; userBody: string; commandAttachments: readonly AttachmentIntentV2[] }>
 
@@ -42,6 +46,18 @@ function base(raw: Raw) { return Object.freeze({ operationId: GenerationV2Identi
   branchId: ConversationGraphV2Identity.create('branch_id', text(raw.branchId)),
   endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', text(raw.endpointProfileId)),
   modelId: GenerationV2Identity.create('model_id', text(raw.modelId)) }) }
+function mutationBase(raw: Raw) {
+  const operationId = GenerationV2Identity.create('operation_id', text(raw.operationId))
+  const clientActionId = text(raw.clientActionId)
+  if (clientActionId !== operationId.value) throw new Error('invalid')
+  return Object.freeze({
+    operationId,
+    clientActionId,
+    sourceBranchId: ConversationGraphV2Identity.create('branch_id', text(raw.sourceBranchId)),
+    endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', text(raw.endpointProfileId)),
+    modelId: GenerationV2Identity.create('model_id', text(raw.modelId)),
+  })
+}
 
 export function createFixedLocalTextCommandDecodersV2<const K extends Readonly<{
   initial: string; retry: string; regenerate: string; editResend: string; errorPrefix: string
@@ -59,38 +75,45 @@ export function createFixedLocalTextCommandDecodersV2<const K extends Readonly<{
     initialBrand.add(result); return result
   } catch { throw new Error(`${kinds.errorPrefix}_INITIAL_COMMAND_INVALID`) } }
   const decodeRetry = (value: unknown): FixedLocalTextRetryCommandV2<K['retry']> => { try {
-    const raw = closed(value, ['actionKind','operationId','branchId','questionId','targetAnswerRootId','expectedHeadMessageId'])
+    const raw = closed(value, ['actionKind','operationId','clientActionId','sourceBranchId','questionId','sourceAnswerId','expectedHeadMessageId'])
     if (raw.actionKind !== 'retry_as_new' && raw.actionKind !== 'retry_replace') throw new Error('invalid')
-    const operationId = GenerationV2Identity.create('operation_id', text(raw.operationId)); const branchId = ConversationGraphV2Identity.create('branch_id', text(raw.branchId))
-    const questionId = ConversationGraphV2Identity.create('question_id', text(raw.questionId)); const targetAnswerRootId = ConversationGraphV2Identity.create('answer_root_id', text(raw.targetAnswerRootId))
-    const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', text(raw.expectedHeadMessageId)); if (expectedHeadMessageId.value !== targetAnswerRootId.value) throw new Error('invalid')
+    const operationId = GenerationV2Identity.create('operation_id', text(raw.operationId)); const clientActionId = text(raw.clientActionId)
+    if (clientActionId !== operationId.value) throw new Error('invalid')
+    const sourceBranchId = ConversationGraphV2Identity.create('branch_id', text(raw.sourceBranchId))
+    const questionId = ConversationGraphV2Identity.create('question_id', text(raw.questionId)); const sourceAnswerId = ConversationGraphV2Identity.create('answer_root_id', text(raw.sourceAnswerId))
+    const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', text(raw.expectedHeadMessageId))
     const projection = { schemaVersion: 1, kind: kinds.retry, actionKind: raw.actionKind, operationId: operationId.value,
-      branchId: branchId.value, questionId: questionId.value, targetAnswerRootId: targetAnswerRootId.value,
+      clientActionId, sourceBranchId: sourceBranchId.value, questionId: questionId.value, sourceAnswerId: sourceAnswerId.value,
       expectedHeadMessageId: expectedHeadMessageId.value }
-    const result = Object.freeze({ ...projection, kind: kinds.retry, actionKind: raw.actionKind, operationId, branchId,
-      questionId, targetAnswerRootId, expectedHeadMessageId, ...fingerprint(projection) }) as FixedLocalTextRetryCommandV2<K['retry']>
+    const result = Object.freeze({ ...projection, kind: kinds.retry, actionKind: raw.actionKind, operationId, clientActionId, sourceBranchId,
+      questionId, sourceAnswerId, expectedHeadMessageId, ...fingerprint(projection) }) as FixedLocalTextRetryCommandV2<K['retry']>
     retryBrand.add(result); return result
   } catch { throw new Error(`${kinds.errorPrefix}_RETRY_COMMAND_INVALID`) } }
   const decodeRegenerate = (value: unknown): FixedLocalTextRegenerateCommandV2<K['regenerate']> => { try {
-    const raw = closed(value, ['operationId','branchId','questionId','expectedHeadMessageId','endpointProfileId','modelId','commandAttachments'])
-    const ids = base(raw); const questionId = ConversationGraphV2Identity.create('question_id', text(raw.questionId));
+    const raw = closed(value, ['operationId','clientActionId','sourceBranchId','questionId','sourceAnswerId','expectedHeadMessageId','endpointProfileId','modelId','commandAttachments'])
+    const ids = mutationBase(raw); const questionId = ConversationGraphV2Identity.create('question_id', text(raw.questionId));
+    const sourceAnswerId = ConversationGraphV2Identity.create('answer_root_id', text(raw.sourceAnswerId))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', text(raw.expectedHeadMessageId)); const commandAttachments = decodeGenerationCommandAttachmentsV2(raw.commandAttachments)
-    const projection = { schemaVersion: 1, kind: kinds.regenerate, operationId: ids.operationId.value, branchId: ids.branchId.value,
-      questionId: questionId.value, expectedHeadMessageId: expectedHeadMessageId.value, endpointProfileId: ids.endpointProfileId.value,
+    const projection = { schemaVersion: 1, kind: kinds.regenerate, operationId: ids.operationId.value,
+      clientActionId: ids.clientActionId, sourceBranchId: ids.sourceBranchId.value,
+      questionId: questionId.value, sourceAnswerId: sourceAnswerId.value,
+      expectedHeadMessageId: expectedHeadMessageId.value, endpointProfileId: ids.endpointProfileId.value,
       modelId: ids.modelId.value, commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments) }
-    const result = Object.freeze({ ...projection, kind: kinds.regenerate, ...ids, questionId, expectedHeadMessageId, commandAttachments, ...fingerprint(projection) })
+    const result = Object.freeze({ ...projection, kind: kinds.regenerate, ...ids, questionId, sourceAnswerId,
+      expectedHeadMessageId, commandAttachments, ...fingerprint(projection) })
     regenerateBrand.add(result); return result
   } catch { throw new Error(`${kinds.errorPrefix}_REGENERATE_COMMAND_INVALID`) } }
   const decodeEditResend = (value: unknown): FixedLocalTextEditResendCommandV2<K['editResend']> => { try {
-    const raw = closed(value, ['operationId','mode','branchId','sourceQuestionId','sourceAnswerRootId','expectedHeadMessageId','userBody','endpointProfileId','modelId','commandAttachments'])
-    if (raw.mode !== 'fork' && raw.mode !== 'replace') throw new Error('invalid'); const ids = base(raw); const userBody = body(raw.userBody)
+    const raw = closed(value, ['operationId','clientActionId','sourceBranchId','sourceQuestionId','sourceAnswerRootId','expectedHeadMessageId','userBody','endpointProfileId','modelId','commandAttachments'])
+    const ids = mutationBase(raw); const userBody = body(raw.userBody)
     const sourceQuestionId = ConversationGraphV2Identity.create('question_id', text(raw.sourceQuestionId)); const sourceAnswerRootId = ConversationGraphV2Identity.create('answer_root_id', text(raw.sourceAnswerRootId))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', text(raw.expectedHeadMessageId)); const commandAttachments = decodeGenerationCommandAttachmentsV2(raw.commandAttachments)
-    const projection = { schemaVersion: 1, kind: kinds.editResend, mode: raw.mode, operationId: ids.operationId.value,
-      branchId: ids.branchId.value, sourceQuestionId: sourceQuestionId.value, sourceAnswerRootId: sourceAnswerRootId.value,
+    const projection = { schemaVersion: 1, kind: kinds.editResend, operationId: ids.operationId.value,
+      clientActionId: ids.clientActionId, sourceBranchId: ids.sourceBranchId.value,
+      sourceQuestionId: sourceQuestionId.value, sourceAnswerRootId: sourceAnswerRootId.value,
       expectedHeadMessageId: expectedHeadMessageId.value, userBody, endpointProfileId: ids.endpointProfileId.value,
       modelId: ids.modelId.value, commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments) }
-    const result = Object.freeze({ ...projection, kind: kinds.editResend, mode: raw.mode, ...ids, sourceQuestionId,
+    const result = Object.freeze({ ...projection, kind: kinds.editResend, ...ids, sourceQuestionId,
       sourceAnswerRootId, expectedHeadMessageId, userBody, commandAttachments, ...fingerprint(projection) }) as FixedLocalTextEditResendCommandV2<K['editResend']>
     editBrand.add(result); return result
   } catch { throw new Error(`${kinds.errorPrefix}_EDIT_RESEND_COMMAND_INVALID`) } }

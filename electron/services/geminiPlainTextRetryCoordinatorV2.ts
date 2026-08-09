@@ -39,7 +39,7 @@ export function createGeminiPlainTextRetryCoordinatorV2(input: Readonly<{
     if (!observed) return null
     if (observed.operation.actionKind !== command.actionKind ||
         observed.operation.commandFingerprint !== command.requestFingerprint ||
-        observed.operation.targetAnswerRootId?.value !== command.targetAnswerRootId.value ||
+        observed.operation.sourceAnswerId?.value !== command.sourceAnswerId.value ||
         observed.snapshot.providerBinding.protocolContractId.value !== 'gemini-generate-content-v1beta') {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
     }
@@ -78,11 +78,11 @@ export function createGeminiPlainTextRetryCoordinatorV2(input: Readonly<{
           }
           const targetRow = input.db.prepare(`SELECT operation_id AS operationId
             FROM assistant_generation_snapshot_v2 WHERE answer_root_id=?`).get(
-            command.targetAnswerRootId.value,
+            command.sourceAnswerId.value,
           ) as { operationId?: unknown } | undefined
           if (!targetRow || typeof targetRow.operationId !== 'string') throw new Error('GENERATION_V2_GEMINI_RETRY_TARGET_INVALID')
           const target = executionRepo.findOperationInTransaction(context, targetRow.operationId)
-          if (!target || target.operation.resultAnswerRootId.value !== command.targetAnswerRootId.value ||
+          if (!target || target.operation.targetAnswerId.value !== command.sourceAnswerId.value ||
               target.operation.questionId.value !== command.questionId.value ||
               target.snapshot.providerBinding.protocolContractId.value !== 'gemini-generate-content-v1beta' ||
               target.snapshot.providerBinding.operation !== 'text' ||
@@ -92,9 +92,9 @@ export function createGeminiPlainTextRetryCoordinatorV2(input: Readonly<{
           const pending = graphRepo.beginAnswerAction(context, {
             operationId: command.operationId.value,
             actionKind: command.actionKind,
-            branchId: command.branchId.value,
+            sourceBranchId: command.sourceBranchId.value,
             questionId: command.questionId.value,
-            targetAnswerRootId: command.targetAnswerRootId.value,
+            sourceAnswerId: command.sourceAnswerId.value,
             expectedHeadMessageId: command.expectedHeadMessageId.value,
             answerRootId: createAnswerId(),
             createdAtMs: nowMs(),

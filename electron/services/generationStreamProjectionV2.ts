@@ -37,20 +37,27 @@ export type GenerationStreamProjectionSinkV2 = Readonly<{
   publish: (projection: GenerationStreamProjectionV2) => void
 }>
 
-/**
- * Renderer/IPC projection is deliberately best-effort and strictly downstream
- * of the authoritative V2 database transaction. A disconnected renderer must
- * never alter an already committed answer or terminal operation state.
- */
+export const GENERATION_OPERATION_RUNTIME_START_V2 = Symbol('generation-operation-runtime-start-v2')
+
+export type CoordinatedGenerationStreamProjectionSinkV2 = GenerationStreamProjectionSinkV2 & Readonly<{
+  [GENERATION_OPERATION_RUNTIME_START_V2]: (
+    result: unknown,
+    run: (signal: AbortSignal) => Promise<unknown>,
+  ) => boolean
+}>
+
+export function isCoordinatedGenerationStreamProjectionSinkV2(
+  value: GenerationStreamProjectionSinkV2 | undefined,
+): value is CoordinatedGenerationStreamProjectionSinkV2 {
+  return typeof (value as Partial<CoordinatedGenerationStreamProjectionSinkV2> | undefined)
+    ?.[GENERATION_OPERATION_RUNTIME_START_V2] === 'function'
+}
+
 export function publishGenerationStreamProjectionV2(
   sink: GenerationStreamProjectionSinkV2 | undefined,
   projection: GenerationStreamProjectionV2,
 ): void {
-  try {
-    sink?.publish(Object.freeze({ ...projection }) as GenerationStreamProjectionV2)
-  } catch {
-    // Projection observers are not generation authorities.
-  }
+  sink?.publish(Object.freeze({ ...projection }) as GenerationStreamProjectionV2)
 }
 
 /** Persists only the renderer projection; provider-native artifacts remain the replay/continuation authority. */

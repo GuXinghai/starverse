@@ -11,8 +11,10 @@ import type { AttachmentIntentV2 } from '../../domain/generationIntentV2'
 const MAX_COMMAND_JSON_BYTES = 64 * 1024
 const COMMAND_KEYS = Object.freeze([
   'operationId',
-  'branchId',
+  'clientActionId',
+  'sourceBranchId',
   'questionId',
+  'sourceAnswerId',
   'expectedHeadMessageId',
   'modelId',
   'commandAttachments',
@@ -29,8 +31,10 @@ export type AnthropicPlainTextRegenerateCommandV2 = Readonly<{
   schemaVersion: 1
   kind: 'anthropic_plain_text_regenerate_question'
   operationId: Identity<'operation_id'>
-  branchId: GraphIdentity<'branch_id'>
+  clientActionId: string
+  sourceBranchId: GraphIdentity<'branch_id'>
   questionId: GraphIdentity<'question_id'>
+  sourceAnswerId: GraphIdentity<'answer_root_id'>
   expectedHeadMessageId: GraphIdentity<'message_id'>
   providerId: Identity<'provider_id'>
   endpointProfileId: Identity<'endpoint_profile_id'>
@@ -75,8 +79,11 @@ export function decodeAnthropicPlainTextRegenerateCommandV2(
     const commandAttachments = decodeAnthropicCommandAttachmentsV2(attachments)
     const contract = readAnthropicDeveloperApiContractV2()
     const operationId = GenerationV2Identity.create('operation_id', read('operationId'))
-    const branchId = ConversationGraphV2Identity.create('branch_id', read('branchId'))
+    const clientActionId = read('clientActionId')
+    if (clientActionId !== operationId.value) invalid()
+    const sourceBranchId = ConversationGraphV2Identity.create('branch_id', read('sourceBranchId'))
     const questionId = ConversationGraphV2Identity.create('question_id', read('questionId'))
+    const sourceAnswerId = ConversationGraphV2Identity.create('answer_root_id', read('sourceAnswerId'))
     const expectedHeadMessageId = ConversationGraphV2Identity.create(
       'message_id',
       read('expectedHeadMessageId'),
@@ -86,8 +93,10 @@ export function decodeAnthropicPlainTextRegenerateCommandV2(
       schemaVersion: 1 as const,
       kind: 'anthropic_plain_text_regenerate_question' as const,
       operationId: operationId.value,
-      branchId: branchId.value,
+      clientActionId,
+      sourceBranchId: sourceBranchId.value,
       questionId: questionId.value,
+      sourceAnswerId: sourceAnswerId.value,
       expectedHeadMessageId: expectedHeadMessageId.value,
       providerId: contract.providerId,
       endpointProfileId: contract.contractFamilyId,
@@ -98,8 +107,10 @@ export function decodeAnthropicPlainTextRegenerateCommandV2(
     const command = Object.freeze({
       ...projection,
       operationId,
-      branchId,
+      clientActionId,
+      sourceBranchId,
       questionId,
+      sourceAnswerId,
       expectedHeadMessageId,
       providerId: GenerationV2Identity.create('provider_id', contract.providerId),
       endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', contract.contractFamilyId),

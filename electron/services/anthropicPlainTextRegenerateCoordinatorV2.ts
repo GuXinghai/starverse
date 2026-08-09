@@ -17,7 +17,7 @@ import { decodeAnthropicPlainTextRegenerateCommandV2, type AnthropicPlainTextReg
 import { readVerifiedAnthropicEndpointProfileV2 } from '../../src/next/generation-v2/providers/anthropic/verifiedEndpointProfileV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { withVerifiedAnthropicGenerationAuthoritiesV2 } from './anthropicGenerationAuthorityV2Service'
-import { createAnthropicModelEvidenceV2Service } from './anthropicModelEvidenceV2Service'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { compileAnthropicMessagesPreparedRequestV2 } from './anthropicMessagesPreparedRequestCompilerV2'
 import { preflightAnthropicMessagesAttachmentDescriptorsV2 } from './anthropicMessagesAttachmentPreflightV2'
 import { commitVerifiedAnthropicPlainTextRegenerateSnapshotV2 } from './anthropicPlainTextSnapshotCommitV2'
@@ -43,9 +43,7 @@ export function createAnthropicPlainTextRegenerateCoordinatorV2(input: Readonly<
   const descriptorRepo = new AnthropicMessagesFileDescriptorV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
-  const modelEvidenceService = createAnthropicModelEvidenceV2Service({
-    db: input.db, credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs,
-  })
+  const modelEvidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedAnthropicEndpointProfileV2()
 
   function replay(command: AnthropicPlainTextRegenerateCommandV2): GenerationTextCommandResultV2 | null {
@@ -85,10 +83,10 @@ export function createAnthropicPlainTextRegenerateCoordinatorV2(input: Readonly<
           expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId, signal: request.signal,
         })
-        return await modelEvidenceService.withRefreshedExactModelEvidence({
+        return await modelEvidenceService.withExactActiveModel({ providerKey: 'anthropic_messages',
           expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId,
-          endpointProfile, modelId: command.modelId, signal: request.signal,
+          endpointProfile, modelId: command.modelId,
           consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
             const raced = executionRepo.findOperationInTransaction(context, command.operationId.value)
             if (raced) {
@@ -103,8 +101,8 @@ export function createAnthropicPlainTextRegenerateCoordinatorV2(input: Readonly<
                 request: requestRepo.replayPrepared(context, raced, preparedRequest) })
             }
             const pending = graphRepo.beginAnswerAction(context, {
-              operationId: command.operationId.value, actionKind: 'regenerate_question', branchId: command.branchId.value,
-              questionId: command.questionId.value, targetAnswerRootId: null,
+              operationId: command.operationId.value, actionKind: 'regenerate_question', sourceBranchId: command.sourceBranchId.value,
+              questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
               expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: nowMs(),
             })
             return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value, command.commandAttachments, undefined, (commandFacts) => {

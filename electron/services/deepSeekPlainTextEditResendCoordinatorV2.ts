@@ -20,7 +20,7 @@ import {
   type DeepSeekPlainTextEditResendCommandV2,
 } from '../../src/next/generation-v2/providers/deepseek/plainTextEditResendCommandV2'
 import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
-import { createDeepSeekStableModelEvidenceV2Service } from './deepSeekStableModelEvidenceV2Service'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedDeepSeekStableGenerationAuthoritiesV2 } from './deepSeekStableGenerationAuthorityV2Service'
 import {
   loadGenerationSnapshotToolRegistryAuthorityV2,
@@ -52,9 +52,7 @@ export function createDeepSeekPlainTextEditResendCoordinatorV2(input: Readonly<{
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
-  const modelEvidenceService = createDeepSeekStableModelEvidenceV2Service({
-    db: input.db, credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs,
-  })
+  const modelEvidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedDeepSeekStableEndpointProfileV2()
 
   function replay(command: DeepSeekPlainTextEditResendCommandV2): GenerationTextCommandResultV2 | null {
@@ -95,12 +93,11 @@ export function createDeepSeekPlainTextEditResendCoordinatorV2(input: Readonly<{
       const existing = replay(command)
       if (existing) return existing
       try {
-        return await modelEvidenceService.withRefreshedExactModelEvidence({
+        return await modelEvidenceService.withExactActiveModel({ providerKey: 'deepseek',
           expectedCredentialRevision: request.expectedCredentialRevision,
           expectedCredentialScopeId: request.expectedCredentialScopeId,
           endpointProfile,
           modelId: command.modelId,
-          signal: request.signal,
           consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(
             input.db,
             (context) => {
@@ -127,8 +124,7 @@ export function createDeepSeekPlainTextEditResendCoordinatorV2(input: Readonly<{
               const createdAtMs = nowMs()
               const pending = graphRepo.beginEditedTurn(context, {
                 operationId: command.operationId.value,
-                mode: command.mode,
-                branchId: command.branchId.value,
+                sourceBranchId: command.sourceBranchId.value,
                 sourceQuestionId: command.sourceQuestionId.value,
                 sourceAnswerRootId: command.sourceAnswerRootId.value,
                 expectedHeadMessageId: command.expectedHeadMessageId.value,

@@ -18,6 +18,7 @@ import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestSto
 import { createOpenAICompatibleCredentialV2Service } from '../credentials/openAICompatibleCredentialV2Service'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
+import { createGenerationTextBodyCheckpointV2, type GenerationBodyCheckpointV2 } from './generationBodyCheckpointV2'
 // eslint-disable-next-line no-restricted-imports
 import { OpenAIChatCompatibleResponseAssemblerV2, type OpenAIChatCompatibleStreamResultV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/chatResponseAssemblerV2'
 import { createOpenAICompatibleHeadersV2 } from './openAICompatibleNetworkV2'
@@ -70,11 +71,6 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
     requestRepo.markStreaming(context, request, nowMs())
     if (execution.operation.state === 'committed') executionRepo.markOperationStreaming(context, execution, nowMs())
   }) }
-  function append(command: GenerationTextCommandResultV2, previous: string, next: string) {
-    runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => graphRepo.compareAndSetStreamingAssistantBody(context, command.preparedRequest.answerRootId, previous, next, nowMs()))
-    publishGenerationStreamProjectionV2(input.streamProjectionSink, { type: 'assistant_body', operationId: command.preparedRequest.operationId,
-      answerRootId: command.preparedRequest.answerRootId, content: next })
-  }
   function terminal(command: GenerationTextCommandResultV2, state: 'completed' | 'failed' | 'cancelled', result: OpenAIChatCompatibleStreamResultV2 | null,
     errorCode: string | null, errorMessage: string | null, phase: 'pre_stream' | 'mid_stream',
     assistantReasoning: Readonly<{ reasoning: string; hasCompleteToolChain: boolean }> | null = null,
@@ -114,13 +110,13 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
       answerRootId: command.preparedRequest.answerRootId, state, errorCode, errorMessage })
     return Object.freeze({ operationId: command.preparedRequest.operationId, answerRootId: command.preparedRequest.answerRootId, state, errorCode, errorMessage })
   }
-  function consume(events: readonly CompatibleWireEvent[], assembler: OpenAIChatCompatibleResponseAssemblerV2, reasoning: CompatibleChatResponseCoordinator | null, command: GenerationTextCommandResultV2,
-    visible: { value: string }): void {
+  function consume(events: readonly CompatibleWireEvent[], assembler: OpenAIChatCompatibleResponseAssemblerV2, reasoning: CompatibleChatResponseCoordinator | null,
+    visible: { value: string }, checkpoint: GenerationBodyCheckpointV2): void {
     for (const event of events) {
       if (event.kind === 'terminal') { reasoning?.apply(event); const code = errorFromTerminal(event); if (code) throw new Error(code); continue }
       reasoning?.apply(event)
       const delta = assembler.push(event)
-      if (delta) { const previous = visible.value; visible.value += delta; append(command, previous, visible.value) }
+      if (delta) { visible.value += delta; checkpoint.update(visible.value) }
     }
   }
   function createReasoningCoordinator(command: GenerationTextCommandResultV2): CompatibleChatResponseCoordinator | null {
@@ -154,6 +150,11 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
       throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_AUTHORITY_INVALID')
     }
     begin(command); const scope = abortScope(signal, input.timeoutMs ?? 5 * 60_000); const visible = { value: '' }; let started = false
+    const checkpoint = createGenerationTextBodyCheckpointV2({
+      db: input.db, graphRepo, command, initialBody: visible.value,
+      streamProjectionSink: input.streamProjectionSink, nowMs,
+      onFailure: () => undefined,
+    })
     try {
       try { input.rawGenerationRequestStore?.tryPersistPreparedV2({ operationId: command.preparedRequest.operationId,
         answerRootId: command.preparedRequest.answerRootId, requestSequence: 1, providerId: 'openai_compatible', modelId: command.preparedRequest.modelId,
@@ -165,24 +166,27 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
       const assembler = new OpenAIChatCompatibleResponseAssemblerV2(); const reasoning = createReasoningCoordinator(command); const contentType = response.headers.get('content-type')?.toLowerCase() ?? ''
       if (contentType.includes('text/event-stream')) {
         const parser = new CompatibleSseWireParser({ expectedChoiceCount: 1 }); const reader = response.body.getReader()
-        try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength) started = true; consume(parser.push(item.value), assembler, reasoning, command, visible) }
-          consume(parser.finish(), assembler, reasoning, command, visible)
+        try { while (true) { const item = await reader.read(); if (item.done) break; if (item.value.byteLength) started = true; consume(parser.push(item.value), assembler, reasoning, visible, checkpoint) }
+          consume(parser.finish(), assembler, reasoning, visible, checkpoint)
         } finally { try { await reader.cancel() } catch {}; reader.releaseLock() }
       } else if (contentType.includes('application/json')) {
-        const bytes = new Uint8Array(await response.arrayBuffer()); try { started = bytes.byteLength > 0; consume(decodeCompatibleNonStreamResponse({ bytes, expectedChoiceCount: 1 }), assembler, reasoning, command, visible) } finally { bytes.fill(0) }
+        const bytes = new Uint8Array(await response.arrayBuffer()); try { started = bytes.byteLength > 0; consume(decodeCompatibleNonStreamResponse({ bytes, expectedChoiceCount: 1 }), assembler, reasoning, visible, checkpoint) } finally { bytes.fill(0) }
       } else throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_CONTENT_TYPE_INVALID')
       const result = assembler.finish()
       if (result.model !== command.preparedRequest.modelId) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_MODEL_MISMATCH')
       if (result.assistantMessage.tool_calls?.length) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_TOOL_CONTINUATION_UNAVAILABLE')
+      checkpoint.flush()
       const reasoningState = reasoning?.reasoningStates()[0]?.state
       const replay = reasoningState?.value ? { reasoning: reasoningState.value, hasCompleteToolChain: false } : null
       return terminal(command, 'completed', result, null, null, 'mid_stream', replay, reasoning?.discoveryObservations() ?? [])
     } catch (error) {
+      let failure: unknown = error
+      try { checkpoint.flush() } catch (checkpointError) { failure = checkpointError }
       const cancelled = signal?.aborted === true && !scope.timedOut()
       const code = cancelled ? 'user_cancelled' : scope.timedOut() ? 'GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_TIMEOUT'
-        : error instanceof Error ? error.message : 'GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_TRANSPORT_FAILED'
+        : failure instanceof Error ? failure.message : 'GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_TRANSPORT_FAILED'
       return terminal(command, cancelled ? 'cancelled' : 'failed', null, code, cancelled ? 'Generation cancelled by user.' : code,
         started ? 'mid_stream' : 'pre_stream')
-    } finally { scope.dispose() }
+    } finally { checkpoint.dispose(); scope.dispose() }
   } })
 }

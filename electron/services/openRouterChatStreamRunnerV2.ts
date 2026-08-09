@@ -21,6 +21,7 @@ import { completeOpenRouterNativeHistoryV1, completeOpenRouterProjectedNativeHis
 import { createOpenRouterChatTerminalArtifactV1 } from '../../src/next/generation-v2/providers/openrouter/terminalArtifactV1'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
+import { createGenerationTextBodyCheckpointV2 } from './generationBodyCheckpointV2'
 import { classifyProviderHttpTransportDiagnostic, ProviderHttpTransportError } from '../net/providerHttpTransport'
 
 const DEFAULT_TIMEOUT_MS = 5 * 60_000
@@ -138,16 +139,6 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
     })
   }
 
-  function persistBody(command: GenerationTextCommandResultV2, expected: string, next: string): void {
-    runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
-      graphRepo.compareAndSetStreamingAssistantBody(context, command.preparedRequest.answerRootId, expected, next, nowMs())
-    })
-    publishGenerationStreamProjectionV2(input.streamProjectionSink, {
-      type: 'assistant_body', operationId: command.preparedRequest.operationId,
-      answerRootId: command.preparedRequest.answerRootId, content: next,
-    })
-  }
-
   function finalize(
     command: GenerationTextCommandResultV2,
     state: 'completed' | 'failed' | 'cancelled',
@@ -260,6 +251,15 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
       .get(command.preparedRequest.answerRootId) as { body?: unknown } | undefined
     if (!initial || typeof initial.body !== 'string') throw new OpenRouterChatStreamRunnerV2Error('GENERATION_V2_OPENROUTER_CHAT_RUNNER_AUTHORITY_INVALID')
     let visible = initial.body
+    const checkpoint = createGenerationTextBodyCheckpointV2({
+      db: input.db,
+      graphRepo,
+      command,
+      initialBody: visible,
+      streamProjectionSink: input.streamProjectionSink,
+      nowMs,
+      onFailure: (error) => { void reader.cancel(error).catch(() => undefined) },
+    })
     const accept = (events: readonly ReturnType<OpenRouterChatSseDecoderV1['push']>[number][]) => {
       for (const event of events) {
         if (event.type === 'done') assembler.done()
@@ -275,7 +275,7 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
             }
             throw error
           }
-          if (delta.contentDelta) { const previous = visible; visible += delta.contentDelta; persistBody(command, previous, visible) }
+          if (delta.contentDelta) { visible += delta.contentDelta; checkpoint.update(visible) }
           for (const detail of delta.reasoningDetails ?? []) publishGenerationStreamProjectionV2(input.streamProjectionSink, {
             type: 'reasoning_detail', operationId: command.preparedRequest.operationId,
             answerRootId: command.preparedRequest.answerRootId, detail,
@@ -293,8 +293,11 @@ export function createOpenRouterChatStreamRunnerV2(input: Readonly<{
       accept(decoder.finish())
       return assembler.finish()
     } finally {
-      try { await reader.cancel() } catch { /* best effort */ }
-      reader.releaseLock()
+      try { checkpoint.flush() } finally {
+        checkpoint.dispose()
+        try { await reader.cancel() } catch { /* best effort */ }
+        reader.releaseLock()
+      }
     }
   }
 

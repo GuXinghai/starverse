@@ -14,9 +14,11 @@ import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2Attachment
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { GeminiInteractionsImageResultAssemblerV1, GeminiInteractionsImageSseDecoderV1,
-  type GeminiInteractionsImageResultV1 } from '../../src/next/generation-v2/providers/gemini/interactionsStreamV1'
-import { createGeminiInteractionsImageTerminalArtifactV1 } from '../../src/next/generation-v2/providers/gemini/interactionsTerminalArtifactV1'
+  GeminiInteractionsImageStreamV1Error, type GeminiInteractionsImageResultV1 } from '../../src/next/generation-v2/providers/gemini/interactionsStreamV1'
+import { createGeminiInteractionsImageTerminalArtifactV2 } from '../../src/next/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
 import { isGeminiInteractionsImageModelIdV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
+import { createProviderFailureV2, providerFailureFromUnknownV2, providerFailurePrimaryMessageV2,
+  type ProviderFailureV2 } from '../../src/shared/provider/providerFailureV2'
 import { publishGenerationStreamProjectionV2, type GenerationStreamProjectionSinkV2 } from './generationStreamProjectionV2'
 import type { GeminiInteractionsImageCommandResultV2 } from './geminiInteractionsImageInitialSendCoordinatorV2'
 
@@ -30,7 +32,13 @@ export class GeminiInteractionsImageStreamRunnerV2Error extends Error {
     'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED' |
     'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_RESPONSE_INVALID' |
     'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_TRANSPORT_FAILED' |
-    'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_TIMEOUT') { super(code); this.name = 'GeminiInteractionsImageStreamRunnerV2Error' }
+    'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_TIMEOUT',
+    readonly details: Readonly<{
+      httpStatus?: number
+      httpStatusText?: string
+      bodyText?: string | null
+      headers?: Readonly<Record<string, string>>
+    }> = {}) { super(code); this.name = 'GeminiInteractionsImageStreamRunnerV2Error' }
 }
 
 function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
@@ -43,14 +51,31 @@ function abortScope(external: AbortSignal | undefined, timeoutMs: number) {
   return Object.freeze({ signal: controller.signal, timedOut: () => timedOut,
     dispose: () => { clearTimeout(timer); external?.removeEventListener('abort', onAbort) } })
 }
-async function readResult(response: Response, expectedModel: string): Promise<GeminiInteractionsImageResultV1> {
-  if (!response.ok || !response.body) {
-    try { await response.body?.cancel() } catch { /* best effort */ }
-    throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED')
+async function responseBodyText(response: Response): Promise<string | null> {
+  try { return await response.text() } catch { return null }
+}
+
+function responseHeaders(response: Response): Readonly<Record<string, string>> {
+  return Object.freeze(Object.fromEntries(response.headers.entries()))
+}
+
+async function readResult(response: Response, expectedModel: string, onStreamBytes: () => void): Promise<GeminiInteractionsImageResultV1> {
+  if (!response.ok) {
+    const bodyText = await responseBodyText(response)
+    throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED', {
+      httpStatus: response.status, httpStatusText: response.statusText, bodyText, headers: responseHeaders(response),
+    })
+  }
+  if (!response.body) {
+    throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_RESPONSE_INVALID', {
+      httpStatus: response.status, httpStatusText: response.statusText, headers: responseHeaders(response),
+    })
   }
   if (response.headers.get('content-type')?.split(';', 1)[0]?.trim().toLowerCase() !== 'text/event-stream') {
-    try { await response.body.cancel() } catch { /* best effort */ }
-    throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_RESPONSE_INVALID')
+    const bodyText = await responseBodyText(response)
+    throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_RESPONSE_INVALID', {
+      httpStatus: response.status, httpStatusText: response.statusText, bodyText, headers: responseHeaders(response),
+    })
   }
   const decoder = new GeminiInteractionsImageSseDecoderV1()
   const assembler = new GeminiInteractionsImageResultAssemblerV1(expectedModel)
@@ -59,6 +84,7 @@ async function readResult(response: Response, expectedModel: string): Promise<Ge
     while (true) {
       const item = await reader.read()
       if (item.done) break
+      if (item.value.byteLength > 0) onStreamBytes()
       for (const event of decoder.push(item.value)) assembler.push(event)
     }
     for (const event of decoder.finish()) assembler.push(event)
@@ -127,7 +153,7 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
   }
   function terminal(command: Required<Pick<GeminiInteractionsImageCommandResultV2, 'preparedRequest' | 'execution' | 'request'>>,
     state: 'completed' | 'failed' | 'cancelled', result: GeminiInteractionsImageResultV1 | null,
-    errorCode: string | null, errorMessage: string | null): void {
+    errorCode: string | null, errorMessage: string | null, errorFact: ProviderFailureV2 | null = null): void {
     let image: Readonly<{ assetId: string; assetRevisionId: string; mime: string }> | null = null
     if (state === 'completed') {
       if (!result) throw new GeminiInteractionsImageStreamRunnerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_RESPONSE_INVALID')
@@ -149,10 +175,28 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
         const revision = assetRepo.createGeneratedImageAssetInAuthorityTransaction(context, {
           assetId, assetRevisionId, filename: `generated.${extensionForMime(result.mime)}`, blob,
         })
-        outputRepo.insertCompletedOutput(context, execution, terminalRequest, { outputIndex: 0, partialImageIndex: 0,
+          outputRepo.insertCompletedOutput(context, execution, terminalRequest, { outputIndex: 0, partialImageIndex: 0,
           revision, providerCreatedAtMs: null, providerUsage: result.usage })
         artifactRepo.insertRequestTerminal(context, execution, terminalRequest,
-          createGeminiInteractionsImageTerminalArtifactV1(result), nowMs())
+          createGeminiInteractionsImageTerminalArtifactV2(result), nowMs())
+        for (const call of result.searchEvidence.calls) {
+          reasoningRepo.appendInAuthorityTransaction(context, command.preparedRequest.answerRootId, Object.freeze({
+            provider: 'google_ai_studio', type: 'google_search_call', id: call.id,
+            arguments: call.arguments, signature: call.signature,
+          }))
+        }
+        for (const searchResult of result.searchEvidence.results) {
+          reasoningRepo.appendInAuthorityTransaction(context, command.preparedRequest.answerRootId, Object.freeze({
+            provider: 'google_ai_studio', type: 'google_search_result', call_id: searchResult.callId,
+            result: searchResult.result, is_error: searchResult.isError,
+            search_suggestions: searchResult.searchSuggestions, signature: searchResult.signature,
+          }))
+        }
+        for (const annotation of result.searchEvidence.annotations) {
+          reasoningRepo.appendInAuthorityTransaction(context, command.preparedRequest.answerRootId, Object.freeze({
+            provider: 'google_ai_studio', type: 'url_citation', url_citation: annotation,
+          }))
+        }
         for (const detail of result.reasoningDetails) {
           reasoningRepo.appendInAuthorityTransaction(context, command.preparedRequest.answerRootId,
             reasoningProjectionDetail(detail))
@@ -162,7 +206,7 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
         image = Object.freeze({ assetId, assetRevisionId, mime: result.mime })
       } else {
         graphRepo.terminalizeAssistantMessage(context, command.preparedRequest.answerRootId, state, null, nowMs())
-        executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage }, nowMs())
+        executionRepo.terminalizeOperation(context, execution, { state, errorCode, errorMessage, errorFact }, nowMs())
       }
     })
     const committedImage = image as Readonly<{ assetId: string; assetRevisionId: string; mime: string }> | null
@@ -177,12 +221,38 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
         detail: reasoningProjectionDetail(detail), persisted: true,
       })
     }
+    if (state === 'completed' && result) {
+      for (const call of result.searchEvidence.calls) {
+        publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+          type: 'reasoning_detail', operationId: command.preparedRequest.operationId,
+          answerRootId: command.preparedRequest.answerRootId,
+          detail: { provider: 'google_ai_studio', type: 'google_search_call', id: call.id,
+            arguments: call.arguments, signature: call.signature }, persisted: true,
+        })
+      }
+      for (const searchResult of result.searchEvidence.results) {
+        publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+          type: 'reasoning_detail', operationId: command.preparedRequest.operationId,
+          answerRootId: command.preparedRequest.answerRootId,
+          detail: { provider: 'google_ai_studio', type: 'google_search_result', call_id: searchResult.callId,
+            result: searchResult.result, is_error: searchResult.isError,
+            search_suggestions: searchResult.searchSuggestions, signature: searchResult.signature }, persisted: true,
+        })
+      }
+      for (const annotation of result.searchEvidence.annotations) {
+        publishGenerationStreamProjectionV2(input.streamProjectionSink, {
+          type: 'reasoning_detail', operationId: command.preparedRequest.operationId,
+          answerRootId: command.preparedRequest.answerRootId,
+          detail: { provider: 'google_ai_studio', type: 'url_citation', url_citation: annotation }, persisted: true,
+        })
+      }
+    }
     if (committedImage) publishGenerationStreamProjectionV2(input.streamProjectionSink, { type: 'image_output',
       operationId: command.preparedRequest.operationId, answerRootId: command.preparedRequest.answerRootId,
       outputIndex: 0, ...committedImage })
     publishGenerationStreamProjectionV2(input.streamProjectionSink, { type: 'terminal',
       operationId: command.preparedRequest.operationId, answerRootId: command.preparedRequest.answerRootId,
-      state, errorCode, errorMessage })
+      state, errorCode, errorMessage, ...(errorFact ? { errorFact } : {}) })
   }
 
   return Object.freeze({ run: async (command: GeminiInteractionsImageCommandResultV2, signal?: AbortSignal) => {
@@ -195,6 +265,8 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
     const created = command as Required<Pick<GeminiInteractionsImageCommandResultV2, 'preparedRequest' | 'execution' | 'request'>>
     begin(created)
     const scope = abortScope(signal, timeoutMs)
+    let responseStarted = false
+    let providerResultCompleted = false
     try {
       const status = await input.credentialService.getStatus('google_ai_studio')
       if (!status.configured || status.credentialScopeId !== created.preparedRequest.credentialScopeId) {
@@ -215,17 +287,55 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
           const response = await fetchImpl(created.preparedRequest.endpoint, { method: 'POST', redirect: 'error',
             signal: scope.signal, headers: { 'content-type': 'application/json', accept: created.preparedRequest.headersPlan.accept,
               'x-goog-api-key': lease.credential }, body: Buffer.from(created.preparedRequest.body.copyBytes()) })
-          return readResult(response, created.preparedRequest.modelId)
+          return readResult(response, created.preparedRequest.modelId, () => { responseStarted = true })
         } })
+      providerResultCompleted = true
       terminal(created, 'completed', result, null, null)
     } catch (error) {
       const cancelled = signal?.aborted === true && !scope.timedOut()
+      const failure = cancelled ? null : error instanceof GeminiInteractionsImageStreamV1Error
+        ? createProviderFailureV2({
+          context: { origin: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
+              ? 'response_stream' : 'response_decoder',
+            phase: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
+              ? 'stream_read' : 'stream_decode', providerId: created.preparedRequest.providerId,
+            contractId: created.preparedRequest.contractId, operationId: created.preparedRequest.operationId,
+            requestSequence: created.preparedRequest.requestSequence,
+            starverseDiagnosticCode: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
+              ? error.code : 'PROVIDER_RESPONSE_DECODE_FAILED' },
+          body: error.providerError ?? error.rawEvent ?? { code: error.code, message: error.message, eventType: error.eventType, stepType: error.stepType },
+          rawFrameExcerpt: error.rawFrameExcerpt ?? (error.rawEvent ? JSON.stringify(error.rawEvent) : null),
+        })
+        : providerResultCompleted
+        ? createProviderFailureV2({
+          context: { origin: 'starverse_internal', phase: 'terminal_persistence', providerId: created.preparedRequest.providerId,
+            contractId: created.preparedRequest.contractId, operationId: created.preparedRequest.operationId,
+            requestSequence: created.preparedRequest.requestSequence, starverseDiagnosticCode: 'PROVIDER_TERMINAL_PERSIST_FAILED' },
+          transportError: error,
+        })
+        : error instanceof GeminiInteractionsImageStreamRunnerV2Error
+        ? createProviderFailureV2({
+          context: { origin: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED' ? 'http_response' : 'response_decoder',
+            phase: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED' ? 'response_headers' : 'response_headers',
+            providerId: created.preparedRequest.providerId, contractId: created.preparedRequest.contractId,
+            operationId: created.preparedRequest.operationId, requestSequence: created.preparedRequest.requestSequence,
+            starverseDiagnosticCode: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED'
+              ? 'PROVIDER_RESPONSE_HTTP_ERROR' : 'PROVIDER_RESPONSE_DECODE_FAILED' },
+          httpStatus: error.details.httpStatus, httpStatusText: error.details.httpStatusText,
+          bodyText: error.details.bodyText, headers: error.details.headers,
+        })
+        : providerFailureFromUnknownV2(error, {
+          origin: responseStarted ? 'response_stream' : 'network_transport',
+          phase: responseStarted ? 'stream_read' : 'request_open', providerId: created.preparedRequest.providerId,
+          contractId: created.preparedRequest.contractId, operationId: created.preparedRequest.operationId,
+          requestSequence: created.preparedRequest.requestSequence,
+          starverseDiagnosticCode: responseStarted ? 'PROVIDER_RESPONSE_STREAM_FAILED' : 'PROVIDER_REQUEST_OPEN_FAILED',
+        })
       const code = cancelled ? 'user_cancelled' : scope.timedOut()
         ? 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_TIMEOUT'
-        : error instanceof GeminiInteractionsImageStreamRunnerV2Error ? error.code
-          : error instanceof Error ? error.message : 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_TRANSPORT_FAILED'
+        : failure?.starverseDiagnosticCode ?? (error instanceof Error ? error.message : 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_TRANSPORT_FAILED')
       terminal(created, cancelled ? 'cancelled' : 'failed', null, code,
-        cancelled ? 'Generation cancelled by user.' : code)
+        cancelled ? 'Generation cancelled by user.' : failure ? providerFailurePrimaryMessageV2(failure) : code, failure)
     } finally { scope.dispose() }
   } })
 }

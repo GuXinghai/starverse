@@ -22,7 +22,7 @@ import { createOllamaChatGenerationV2Runtime } from '../services/ollamaChatGener
 import { registerOllamaGenerationV2Ipc } from './ollamaGenerationV2Ipc'
 import { registerGenerationV2ModelAvailabilityIpc } from './generationV2ModelAvailabilityIpc'
 import { registerGenerationV2CredentialSettingsIpc } from './generationV2CredentialSettingsIpc'
-import { createPersistentGenerationStreamProjectionSinkV2 } from '../services/generationStreamProjectionV2'
+import { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
 import { registerOpenAICompatibleV2Ipc } from './openAICompatibleV2Ipc'
 import { createOpenAIChatCompatibleGenerationV2Runtime } from '../services/openAIChatCompatibleGenerationV2Runtime'
 import { registerOpenAICompatibleGenerationV2Ipc } from './openAICompatibleGenerationV2Ipc'
@@ -31,6 +31,7 @@ import { registerLocalEndpointDiagnosticsV2Ipc } from './localEndpointDiagnostic
 import { registerLMStudioRuntimeManagementV2Ipc } from './lmStudioLocalProviderIpc'
 import { registerOllamaRuntimeManagementV2Ipc } from './ollamaLocalProviderIpc'
 import { registerGenerationV2ModelPreferencesIpc } from './generationV2ModelPreferencesIpc'
+import { registerGenerationOperationRuntimeV2Ipc } from './generationOperationRuntimeV2Ipc'
 
 /**
  * Epoch-2 registration boundary for every reviewed generation runtime.
@@ -49,10 +50,11 @@ export function registerGenerationV2Ipc(input: Readonly<{
     credentialService: input.epoch2.credentialService,
     rawGenerationRequestStore: input.rawGenerationRequestStore,
     fetchImpl: input.cloudFetch })
-  const persist = (streamProjectionSink: Parameters<typeof createPersistentGenerationStreamProjectionSinkV2>[1]) =>
-    createPersistentGenerationStreamProjectionSinkV2(input.epoch2.database, streamProjectionSink)
+  const runtimeRegistry = new GenerationOperationRuntimeRegistryV2(input.epoch2.database)
   return Object.freeze([
-    ...registerGenerationV2WorkspaceIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database }),
+    ...registerGenerationOperationRuntimeV2Ipc({ registerInvoke: input.registerInvoke, runtimeRegistry }),
+    ...registerGenerationV2WorkspaceIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
+      runtimeRegistry }),
     ...registerGenerationV2ModelPreferencesIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database }),
     ...registerGenerationV2CredentialSettingsIpc({ registerInvoke: input.registerInvoke,
       credentialService: input.epoch2.credentialService }),
@@ -69,40 +71,49 @@ export function registerGenerationV2Ipc(input: Readonly<{
       credentialService: input.epoch2.openAICompatibleCredentialService, fetchImpl: input.cloudFetch,
       proxyMode: input.proxyMode }),
     ...registerOpenAICompatibleGenerationV2Ipc({ registerInvoke: input.registerInvoke,
+      runtimeRegistry,
       createRuntime: (streamProjectionSink) => createOpenAIChatCompatibleGenerationV2Runtime({ db: input.epoch2.database,
         credentialService: input.epoch2.openAICompatibleCredentialService, rawGenerationRequestStore: input.rawGenerationRequestStore,
-        streamProjectionSink: persist(streamProjectionSink), fetchImpl: input.cloudFetch }) }),
+        streamProjectionSink, fetchImpl: input.cloudFetch }) }),
     ...registerLmStudioGenerationV2Ipc({ registerInvoke: input.registerInvoke,
+      runtimeRegistry,
       createRuntime: (streamProjectionSink) => createLmStudioOpenResponsesGenerationV2Runtime({
         db: input.epoch2.database, rawGenerationRequestStore: input.rawGenerationRequestStore,
-        streamProjectionSink: persist(streamProjectionSink), fetchImpl: input.localDirectFetch }) }),
+        streamProjectionSink, fetchImpl: input.localDirectFetch }) }),
     ...registerGenericLocalGenerationV2Ipc({ registerInvoke: input.registerInvoke,
+      runtimeRegistry,
       createRuntime: (streamProjectionSink) => createGenericLocalOpenAIChatGenerationV2Runtime({
         db: input.epoch2.database, rawGenerationRequestStore: input.rawGenerationRequestStore,
-        streamProjectionSink: persist(streamProjectionSink), fetchImpl: input.localDirectFetch }) }),
+        streamProjectionSink, fetchImpl: input.localDirectFetch }) }),
     ...registerOllamaGenerationV2Ipc({ registerInvoke: input.registerInvoke,
+      runtimeRegistry,
       createRuntime: (streamProjectionSink) => createOllamaChatGenerationV2Runtime({
         db: input.epoch2.database, rawGenerationRequestStore: input.rawGenerationRequestStore,
-        streamProjectionSink: persist(streamProjectionSink), fetchImpl: input.localDirectFetch }) }),
+        streamProjectionSink, fetchImpl: input.localDirectFetch }) }),
     ...registerOpenRouterGenerationV2Ipc({ registerInvoke: input.registerInvoke,
+      runtimeRegistry,
       createRuntime: (streamProjectionSink) => createOpenRouterFirstPartyGenerationV2Runtime({ ...common,
-        attachmentBlobStore: input.epoch2.attachmentBlobStore, streamProjectionSink: persist(streamProjectionSink) }) }),
+        attachmentBlobStore: input.epoch2.attachmentBlobStore, streamProjectionSink }) }),
     ...registerOpenAIResponsesGenerationV2Ipc({ registerInvoke: input.registerInvoke,
+      runtimeRegistry,
       createRuntime: (streamProjectionSink) => createOpenAIResponsesGenerationV2Runtime({ ...common,
-        attachmentBlobStore: input.epoch2.attachmentBlobStore, streamProjectionSink: persist(streamProjectionSink) }) }),
+        attachmentBlobStore: input.epoch2.attachmentBlobStore, streamProjectionSink }) }),
     ...registerAnthropicGenerationV2Ipc({ registerInvoke: input.registerInvoke,
+      runtimeRegistry,
       createRuntime: (streamProjectionSink) => createAnthropicGenerationV2Runtime({ ...common,
         attachmentBlobStore: input.epoch2.attachmentBlobStore,
-        streamProjectionSink: persist(streamProjectionSink) }) }),
+        streamProjectionSink }) }),
     ...registerDeepSeekGenerationV2Ipc({ registerInvoke: input.registerInvoke,
+      runtimeRegistry,
       createRuntime: (streamProjectionSink) => createDeepSeekGenerationV2Runtime({ ...common,
-        streamProjectionSink: persist(streamProjectionSink) }) }),
+        streamProjectionSink }) }),
     ...registerGeminiGenerationV2Ipc({ registerInvoke: input.registerInvoke,
+      runtimeRegistry,
       createRuntime: (streamProjectionSink) => createGeminiGenerateContentGenerationV2Runtime({ ...common,
         attachmentBlobStore: input.epoch2.attachmentBlobStore,
-        streamProjectionSink: persist(streamProjectionSink) }),
+        streamProjectionSink }),
       createInteractionsImageRuntime: (streamProjectionSink) => createGeminiInteractionsImageGenerationV2Runtime({
         ...common, attachmentBlobStore: input.epoch2.attachmentBlobStore,
-        streamProjectionSink: persist(streamProjectionSink) }) }),
+        streamProjectionSink }) }),
   ])
 }
