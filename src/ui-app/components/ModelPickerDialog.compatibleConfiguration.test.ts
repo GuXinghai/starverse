@@ -1,9 +1,14 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 import { compatibleConfigurationSelectionSchema } from '@/next/provider/openai-chat-compatible/ui'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 
 describe('ModelPickerDialog compatible configuration-only source', () => {
+  beforeEach(() => {
+    installGenerationV2TestBridge()
+  })
+
   it('emits the complete instance-scoped immutable selection without treating it as RuntimeProviderKey', async () => {
     const selection = compatibleConfigurationSelectionSchema.parse({
       kind: 'openai_chat_compatible_configuration' as const,

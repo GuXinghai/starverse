@@ -5,22 +5,38 @@ import {
   type ModelPrefsFavorite,
   type ModelPrefsRecent,
 } from './modelPrefsService'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 
 const originalDbBridge = (globalThis as any).dbBridge
+const originalGenerationV2 = (globalThis as any).generationV2
+
+function installModelPreferencesBridge(invoke: any) {
+  const bridge = (globalThis as any).generationV2 ?? installGenerationV2TestBridge()
+  bridge.modelPreferences = {
+    listFavorites: (params: unknown) => invoke('modelPrefs.listFavorites', params),
+    addFavorite: (params: unknown) => invoke('modelPrefs.addFavorite', params),
+    removeFavorite: (params: unknown) => invoke('modelPrefs.removeFavorite', params),
+    reorderFavorites: (params: unknown) => invoke('modelPrefs.reorderFavorites', params),
+    listRecents: (params: unknown) => invoke('modelPrefs.listRecents', params),
+    recordRecent: (params: unknown) => invoke('modelPrefs.recordRecent', params),
+  }
+}
 
 describe('ModelPrefsService', () => {
   beforeEach(() => {
     __resetModelPrefsServiceCacheForTests()
+    installGenerationV2TestBridge()
   })
 
   afterEach(() => {
     __resetModelPrefsServiceCacheForTests()
     ;(globalThis as any).dbBridge = originalDbBridge
+    ;(globalThis as any).generationV2 = originalGenerationV2
     vi.restoreAllMocks()
   })
 
   it('degrades safely when dbBridge is unavailable', async () => {
-    ;(globalThis as any).dbBridge = undefined
+    ;(globalThis as any).generationV2.modelPreferences = undefined
 
     await expect(ModelPrefsService.listFavorites()).resolves.toEqual([])
     await expect(ModelPrefsService.listRecents()).resolves.toEqual([])
@@ -30,7 +46,7 @@ describe('ModelPrefsService', () => {
       ok: false,
       favorited: false,
       item: null,
-      error: 'Missing dbBridge.',
+      error: 'Missing Generation V2 model preferences bridge.',
     })
     await expect(
       ModelPrefsService.reorderFavorites(['openrouter::openai/gpt-4o'])
@@ -81,7 +97,7 @@ describe('ModelPrefsService', () => {
       }
       return null
     })
-    ;(globalThis as any).dbBridge = { invoke }
+    installModelPreferencesBridge(invoke)
 
     const events: string[] = []
     const unsubscribe = ModelPrefsService.subscribe((event) => {
@@ -170,11 +186,11 @@ describe('ModelPrefsService', () => {
           reordered.push(row)
         }
         const items = reordered.map((row, index) => ({ ...row, sortRank: index }))
-        return { items }
+        return items
       }
       return null
     })
-    ;(globalThis as any).dbBridge = { invoke }
+    installModelPreferencesBridge(invoke)
 
     await ModelPrefsService.listFavorites()
     const reordered = await ModelPrefsService.reorderFavorites([
@@ -274,7 +290,7 @@ describe('ModelPrefsService', () => {
       }
       return null
     })
-    ;(globalThis as any).dbBridge = { invoke }
+    installModelPreferencesBridge(invoke)
 
     const first = await ModelPrefsService.listRecents(undefined, { limit: 20 })
     const second = await ModelPrefsService.listRecents(undefined, { limit: 20 })
@@ -315,8 +331,7 @@ describe('ModelPrefsService', () => {
         }
       }
       if (method === 'modelPrefs.reorderFavorites') {
-        return {
-          items: [
+        return [
             {
               scopeType,
               scopeId,
@@ -327,8 +342,7 @@ describe('ModelPrefsService', () => {
               createdAtMs: 1,
               updatedAtMs: 2,
             },
-          ],
-        }
+          ]
       }
       if (method === 'modelPrefs.recordRecent') {
         return {
@@ -345,7 +359,7 @@ describe('ModelPrefsService', () => {
       }
       return null
     })
-    ;(globalThis as any).dbBridge = { invoke }
+    installModelPreferencesBridge(invoke)
 
     const scope = { scopeType: 'project' as const, scopeId: 'project-123' }
     await ModelPrefsService.listFavorites(scope)

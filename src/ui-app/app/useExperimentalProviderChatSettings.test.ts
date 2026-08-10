@@ -67,7 +67,7 @@ describe('useExperimentalProviderChatSettings', () => {
       endpointUrl: 'http://127.0.0.1:1234',
       model: '',
       chatMode: 'openai_compatible',
-      openAICompatiblePreferredEndpoint: 'chat_completions',
+      openAICompatiblePreferredEndpoint: 'responses',
       config: {
         providerKey: 'lm_studio',
         endpointUrl: 'http://127.0.0.1:1234',
@@ -79,7 +79,7 @@ describe('useExperimentalProviderChatSettings', () => {
           autoUnloadAfterIdleEnabled: false,
         },
         chatMode: 'openai_compatible',
-        openAICompatible: { basePath: '/v1', preferredEndpoint: 'chat_completions' },
+        openAICompatible: { basePath: '/v1', preferredEndpoint: 'responses' },
         nativeRest: { basePath: '/api/v1' },
       },
     })

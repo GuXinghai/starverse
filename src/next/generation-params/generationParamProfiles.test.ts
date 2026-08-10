@@ -100,7 +100,8 @@ describe('generationParamProfiles', () => {
   })
 
   it('projects max from explicit capability while preserving unknown versus unsupported', () => {
-    expect(getSelectableReasoningEfforts(deepseekGenerationProfile, 'deepseek-v4-flash')).toEqual(['high', 'max'])
+    expect(getSelectableReasoningEfforts(deepseekGenerationProfile, 'deepseek-v4-flash'))
+      .toEqual(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
     expect(getSelectableReasoningEfforts(anthropicGenerationProfile, 'claude-sonnet-5')).toEqual(['low', 'medium', 'high'])
     expect(isReasoningEffortExplicitlyUnsupported(anthropicGenerationProfile, 'claude-sonnet-5', 'max')).toBe(true)
     expect(getSelectableReasoningEfforts(openaiResponsesGenerationProfile, 'future-model')).toEqual(['max'])
@@ -113,12 +114,15 @@ describe('generationParamProfiles', () => {
       params: {
         ...deepseekGenerationProfile.params,
         reasoningEffort: {
-          ...deepseekGenerationProfile.params.reasoningEffort!,
           ui: {
-            ...deepseekGenerationProfile.params.reasoningEffort!.ui,
-            visibleByDefault: deepseekGenerationProfile.params.reasoningEffort!.ui?.visibleByDefault ?? true,
+            visibleByDefault: true,
             editable: false,
           },
+          supported: true,
+          wireKey: 'reasoning_effort',
+          valueType: 'enum' as const,
+          enumValues: ['max'],
+          status: 'stable' as const,
         },
       },
       modelOverrides: [],

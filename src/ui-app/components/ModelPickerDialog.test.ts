@@ -7,6 +7,7 @@ import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestM
 import { t, tf } from '@/shared/i18n'
 import { createProviderFailureV2 } from '@/shared/provider/providerFailureV2'
 import { GLOBAL_CATALOG_POLICY_V2_STORE_KEY } from '@/shared/modelCatalog/catalogPolicyResolverV2'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 import { installGenerationV2ModelsList, successfulGenerationV2Models } from '../../../tests/helpers/generationV2ModelsBridge'
 import ModelPickerDialog from './ModelPickerDialog.vue'
 
@@ -50,6 +51,7 @@ describe('ModelPickerDialog', () => {
   const originalGenerationV2 = (globalThis as any).generationV2
 
   beforeEach(() => {
+    installGenerationV2TestBridge()
     const current = (globalThis as any).generationV2 ?? {}
     ;(globalThis as any).generationV2 = { ...current, models: { ...(current.models ?? {}),
       sync: vi.fn(async (payload: any) => {

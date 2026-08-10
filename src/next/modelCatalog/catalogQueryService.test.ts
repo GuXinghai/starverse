@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 import { CatalogQueryService } from './catalogQueryService'
 import { installGenerationV2ModelsList, successfulGenerationV2Models } from '../../../tests/helpers/generationV2ModelsBridge'
 
-function installScopedFixture(legacy: ReturnType<typeof vi.fn>) {
+function installScopedFixture(legacy: any) {
   return installGenerationV2ModelsList('openrouter', async (payload) => {
     const value = await legacy(payload) as any
     if (value?.status === 'failed') return { ok: false, code: value.failureReasonCode ?? 'provider_catalog_query_failed' }

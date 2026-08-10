@@ -339,7 +339,7 @@ const OPENAI_RESPONSES_PROJECTION: DefinitionProjection = Object.freeze({
       Object.freeze({
         id: 'openai-responses-api-contract-20260715',
         path: 'docs/architecture/generation-compiler-v2/evidence/openai-responses-api-contract-20260715.json',
-        sha256: '7b1573bccdba903ea8dd20f89550fdbbc0e08e231a887a1ee88e10fe634f9e25',
+        sha256: 'a150fe708e6beff2af8c7c82ed9d79aecd7e6f71bd13fcb9dc4e5e9338165169',
       }),
       Object.freeze({
         id: 'openai-responses-gpt-5.6-capabilities-20260717',

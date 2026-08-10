@@ -62,10 +62,18 @@ npm run dev
 | `npm run electron:dev` | 重建 Electron ABI，并启动完整桌面开发环境 |
 | `npm run dev` | 启动 Renderer/Vite 开发服务器 |
 | `npm run build` | 类型检查、构建数据库 Worker、构建 Renderer 并调用 electron-builder |
-| `npm test` | 重建 Node ABI，并运行全部 Vitest 测试 |
-| `npm run test:watch` | 监听模式运行测试 |
-| `npm run test:ui` | 启动 Vitest UI |
-| `npm run test:coverage` | 生成测试覆盖率 |
+| `npm run test:prepare` | 手动重建 Node native ABI（数据库/native 测试前按需执行） |
+| `npm test` | 仅运行 unit partition（不会自动重建 ABI） |
+| `npm run test:unit` | 显式运行 unit partition（与 `npm test` 相同范围） |
+| `npm run test:watch` | 监听模式运行 unit partition |
+| `npm run test:ui` | 运行 jsdom UI partition |
+| `npm run test:integration` | 运行 integration partition |
+| `npm run test:model-picker:smoke` | 按 unit/UI/integration 三阶段运行 model-picker mixed smoke |
+| `npm run test:ui:slow -- path/to/one.slow.test.ts` | 一次运行一个 slow UI 文件 |
+| `npm run test:integration:slow -- path/to/one.slow.test.ts` | 一次运行一个 slow integration 文件 |
+| `npm run test:coverage` | 生成 unit partition 覆盖率 |
+| `npm run test:runner-ui` | 启动 Vitest dashboard（不是 UI partition） |
+| `node scripts/check-test-partitions.mjs` | 校验测试发现、owner、override 和 slow 规则 |
 | `npm run lint` | 运行 ESLint |
 | `npm run db:verify` | 使用 Node ABI 验证数据库 |
 | `npm run test:electron-smoke` | 构建并运行 Electron shell smoke |
@@ -88,6 +96,12 @@ npm run rebuild:electron
 ```
 
 如果看到 `NODE_MODULE_VERSION` 或 `better-sqlite3` native binding 错误，请为即将运行的环境重建，然后重试原命令。不要提交 `node_modules`、native binary 或仅由重建产生的锁文件变化。
+
+测试准备是手动步骤：数据库/native Node 测试前按需执行 `npm run test:prepare`。`npm test` 保持 unit-only 且不会隐式切换 native ABI；Electron smoke 仍需在运行前明确执行 `npm run rebuild:electron`。
+
+测试分层规则、slow 单文件约束、已删除的 `infra/db/worker.filePipeline.test.ts`
+边界，以及 model-picker 的 mixed split 说明见
+[`docs/maintenance/test-strategy.md`](docs/maintenance/test-strategy.md)。
 
 ## 架构概览
 

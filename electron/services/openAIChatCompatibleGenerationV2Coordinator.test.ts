@@ -80,7 +80,7 @@ describe('OpenAI-compatible V2 coordinator', () => {
     await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'completed', answerRootId: 'answer:2' })))
     const coordinator = createOpenAIChatCompatibleGenerationV2Coordinator({ db, credentialService: credential, nowMs: () => 200,
       createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
-    const retry = await coordinator.retry({ actionKind: 'retry_as_new', operationId: 'operation:2', branchId: 'branch:1', questionId: 'question:1',
+    const retry = await coordinator.retry({ actionKind: 'retry_as_new', operationId: 'operation:2', clientActionId: 'operation:2', sourceBranchId: 'branch:1', questionId: 'question:1',
       sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2' })
     expect(retry).toMatchObject({ kind: 'created', projection: { branchProjection: { chosenAnswerRootId: { value: 'answer:3' }, headMessageId: { value: 'answer:3' } } } })
     expect(retry.execution.snapshot.providerConfiguration).toMatchObject({ extraBody: { vendor_flag: true } })

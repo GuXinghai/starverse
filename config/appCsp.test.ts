@@ -35,7 +35,7 @@ describe('csp regression guards', () => {
   })
 
   it('does not reintroduce main-process CSP header injection', () => {
-    const mainTs = readFileSync(path.join(ROOT_DIR, 'electron', 'main.ts'), 'utf8')
+    const mainTs = readFileSync(path.join(ROOT_DIR, 'electron', 'mainV2.ts'), 'utf8')
     expect(mainTs).not.toContain('onHeadersReceived(')
     expect(mainTs).not.toContain('registerDevCspHeaders(')
   })

@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installGenerationV2TestBridge } from '../../tests/helpers/generationV2Bridge'
 import AppChatApp from './AppChatApp.vue'
 
 describe('ui-app AppChatApp (candidate pager)', () => {
@@ -10,6 +11,7 @@ describe('ui-app AppChatApp (candidate pager)', () => {
   let readBranch: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
+    installGenerationV2TestBridge()
     originalGenerationV2 = (globalThis as any).generationV2
     const ok = <T>(value: T) => ({ ok: true as const, value })
     const baseTemplate = originalGenerationV2.workspace.getSystemTemplate

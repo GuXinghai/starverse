@@ -1,4 +1,5 @@
 import fs from 'node:fs'
+import os from 'node:os'
 import path from 'node:path'
 import {
   resolveStarverseProductIdentity,
@@ -11,6 +12,32 @@ type ElectronIdentityApp = Readonly<{
   getPath(name: 'appData'): string
   setPath(name: 'userData', value: string): void
 }>
+
+type ElectronAppDataApp = Readonly<{
+  setPath(name: 'appData', value: string): void
+}>
+
+/**
+ * The Electron shell smoke must never inherit the real app-data root.  This
+ * override is deliberately unavailable outside the two explicit smoke gates.
+ */
+export function applyIsolatedEpoch2SmokeAppDataRoot(input: Readonly<{
+  app: ElectronAppDataApp
+  env: Readonly<Record<string, string | undefined>>
+}>): boolean {
+  if (input.env.SV_ELECTRON_SMOKE !== '1' || input.env.SV_EPOCH2_SMOKE_FIXTURE_AUTHORITY !== '1') return false
+  const configured = String(input.env.SV_EPOCH2_SMOKE_APP_DATA_ROOT ?? '').trim()
+  if (!configured || !path.isAbsolute(configured)) throw new Error('EPOCH2_SMOKE_APP_DATA_ROOT_INVALID')
+  const temporaryRoot = path.resolve(os.tmpdir())
+  const appDataRoot = path.resolve(configured)
+  const relative = path.relative(temporaryRoot, appDataRoot)
+  if (!relative || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error('EPOCH2_SMOKE_APP_DATA_ROOT_INVALID')
+  }
+  fs.mkdirSync(appDataRoot, { recursive: true })
+  input.app.setPath('appData', appDataRoot)
+  return true
+}
 
 export function configureStarverseElectronIdentity(input: Readonly<{
   app: ElectronIdentityApp

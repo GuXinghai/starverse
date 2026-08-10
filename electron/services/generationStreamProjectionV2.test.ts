@@ -13,12 +13,12 @@ describe('generation stream projection V2', () => {
     expect(Object.isFrozen(observed)).toBe(true)
   })
 
-  it('does not let a projection observer change the generation authority', () => {
+  it('surfaces a disconnected projection observer to its caller', () => {
     expect(() => publishGenerationStreamProjectionV2({
       publish: () => { throw new Error('renderer disconnected') },
     }, {
       type: 'terminal', operationId: 'operation:1', answerRootId: 'answer:1',
       state: 'failed', errorCode: 'network_failed', errorMessage: 'Network failed.',
-    })).not.toThrow()
+    })).toThrow('renderer disconnected')
   })
 })
