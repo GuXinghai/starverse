@@ -37,8 +37,8 @@ describe('TC-11 — image block UI smoke (fixture replay)', () => {
     const messagesById = Object.fromEntries(messages.map((m) => [m.messageId, m]))
     render(ChatTranscript, { props: { messageIds, messagesById } })
 
-    expect(screen.getByText(/Here is an image/)).toBeInTheDocument()
-    expect(screen.getByAltText('image')).toHaveAttribute('src', 'https://example.com/cat.png')
+    expect(screen.getByTestId('message-image-section')).toBeInTheDocument()
+    expect(screen.getByRole('img')).toHaveAttribute('src', 'https://example.com/cat.png')
   })
 })
 

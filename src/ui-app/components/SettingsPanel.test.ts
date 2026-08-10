@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsPanel from './SettingsPanel.vue'
 import { resetI18nForTests, t, tf } from '@/shared/i18n'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 
 const CONFIGURED_API_KEY_PLACEHOLDER = '••••••'
 
@@ -345,6 +346,7 @@ describe('ui-app SettingsPanel', () => {
   const originalNetworkProxy = (globalThis as any).networkProxy
 
   beforeEach(() => {
+    installGenerationV2TestBridge()
     resetI18nForTests()
     globalThis.localStorage?.removeItem('sv_debug_openrouter_echo_upstream_body')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')

@@ -4,8 +4,8 @@ import { decodeAnthropicPlainTextEditResendCommandV2 } from './plainTextEditRese
 function command(overrides: Record<string, unknown> = {}) {
   return {
     operationId: 'operation:anthropic:edit',
-    mode: 'fork',
-    branchId: 'branch:1',
+    clientActionId: 'operation:anthropic:edit',
+    sourceBranchId: 'branch:1',
     sourceQuestionId: 'question:source',
     sourceAnswerRootId: 'answer:chosen',
     expectedHeadMessageId: 'answer:chosen',
@@ -20,7 +20,6 @@ describe('Anthropic plain-text edit-resend command V2', () => {
   it('derives Anthropic identity and fingerprints mode, source graph, head, body, and current model', () => {
     const first = decodeAnthropicPlainTextEditResendCommandV2(command())
     for (const override of [
-      { mode: 'replace' },
       { sourceQuestionId: 'question:other' },
       { sourceAnswerRootId: 'answer:other' },
       { expectedHeadMessageId: 'answer:other' },

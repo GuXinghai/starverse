@@ -11,6 +11,7 @@ import {
   STARVERSE_PRODUCT_NAME,
 } from './productIdentity'
 import {
+  applyIsolatedEpoch2SmokeAppDataRoot,
   configureStarverseElectronIdentity,
   hasExplicitUserDataOverride,
 } from './bootstrap/productIdentityBootstrap'
@@ -106,5 +107,25 @@ describe('Starverse packaged product identity', () => {
     expect(hasExplicitUserDataOverride(['electron', '--user-data-dir='])).toBe(false)
     expect(hasExplicitUserDataOverride(['electron', '--user-data-dir'])).toBe(false)
     expect(hasExplicitUserDataOverride(['electron', '--other=value'])).toBe(false)
+  })
+
+  it('accepts an app-data override only for the explicitly authorized isolated smoke', () => {
+    const smokeRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'starverse-smoke-appdata-'))
+    const appDataRoot = path.join(smokeRoot, 'app-data')
+    const calls: string[] = []
+    const app = { setPath: (name: 'appData', value: string) => calls.push(`${name}:${value}`) }
+    try {
+      expect(applyIsolatedEpoch2SmokeAppDataRoot({ app, env: {
+        SV_ELECTRON_SMOKE: '1', SV_EPOCH2_SMOKE_FIXTURE_AUTHORITY: '1', SV_EPOCH2_SMOKE_APP_DATA_ROOT: appDataRoot,
+      } })).toBe(true)
+      expect(calls).toEqual([`appData:${appDataRoot}`])
+      expect(fs.statSync(appDataRoot).isDirectory()).toBe(true)
+      expect(applyIsolatedEpoch2SmokeAppDataRoot({ app, env: {} })).toBe(false)
+      expect(() => applyIsolatedEpoch2SmokeAppDataRoot({ app, env: {
+        SV_ELECTRON_SMOKE: '1', SV_EPOCH2_SMOKE_FIXTURE_AUTHORITY: '1', SV_EPOCH2_SMOKE_APP_DATA_ROOT: path.parse(smokeRoot).root,
+      } })).toThrow('EPOCH2_SMOKE_APP_DATA_ROOT_INVALID')
+    } finally {
+      fs.rmSync(smokeRoot, { recursive: true, force: true })
+    }
   })
 })

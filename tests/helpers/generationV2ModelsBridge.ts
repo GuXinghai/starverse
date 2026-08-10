@@ -1,4 +1,5 @@
 import { vi } from 'vitest'
+import { installGenerationV2TestBridge } from './generationV2Bridge'
 
 type Provider = 'openrouter' | 'openai_responses' | 'anthropic_messages' | 'google_ai_studio' | 'deepseek'
 
@@ -11,7 +12,7 @@ const methodByProvider = {
 } as const
 
 export function installGenerationV2ModelsList(provider: Provider, implementation: (...args: any[]) => any) {
-  const current = (globalThis as any).generationV2 ?? {}
+  const current = (globalThis as any).generationV2 ?? installGenerationV2TestBridge()
   const list = vi.fn(implementation)
   ;(globalThis as any).generationV2 = {
     ...current,

@@ -1,5 +1,5 @@
 import { app, dialog } from 'electron'
-import { configureStarverseElectronIdentity, hasExplicitUserDataOverride } from './bootstrap/productIdentityBootstrap'
+import { applyIsolatedEpoch2SmokeAppDataRoot, configureStarverseElectronIdentity, hasExplicitUserDataOverride } from './bootstrap/productIdentityBootstrap'
 import {
   bootstrapEpoch2ApplicationRuntime,
   installEpoch2ApplicationRuntime,
@@ -8,6 +8,7 @@ import {
 import { recoverEpoch2DatabaseSchemaMismatch } from './data-epoch/schemaMismatchRecovery'
 import { acquireWin32EpochRootLease } from './data-epoch/win32EpochRootLease'
 
+applyIsolatedEpoch2SmokeAppDataRoot({ app, env: process.env })
 configureStarverseElectronIdentity({ app, isPackaged: app.isPackaged,
   isE2e: process.env.SV_ELECTRON_COMPATIBLE_E2E === '1', platform: process.platform,
   userDataOverrideRequested: hasExplicitUserDataOverride(process.argv) })

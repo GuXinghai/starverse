@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import { t } from '@/shared/i18n'
+import { installGenerationV2TestBridge } from '../../tests/helpers/generationV2Bridge'
 import AppChatApp from './AppChatApp.vue'
 
 type AnswerStatus = 'streaming' | 'completed' | 'failed' | 'cancelled'
@@ -130,6 +131,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
   }
 
   beforeEach(() => {
+    installGenerationV2TestBridge()
     originalGenerationV2 = (globalThis as any).generationV2
     originalRawGenerationDebug = (globalThis as any).rawGenerationDebug
     answers = [{

@@ -6,8 +6,8 @@ import {
 } from './imageActionCommandsV2'
 
 const regenerate = () => ({
-  operationId: 'operation:1', branchId: 'branch:1', questionId: 'question:1',
-  expectedHeadMessageId: 'answer:1', modelId: 'google/gemini-3.1-flash-image', requestedProviderTag: null,
+  operationId: 'operation:1', clientActionId: 'operation:1', sourceBranchId: 'branch:1', questionId: 'question:1',
+  sourceAnswerId: 'answer:1', expectedHeadMessageId: 'answer:1', modelId: 'google/gemini-3.1-flash-image', requestedProviderTag: null,
   commandAttachments: [],
 })
 

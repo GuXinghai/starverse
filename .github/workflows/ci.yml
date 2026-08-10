@@ -6,6 +6,25 @@ on:
     branches: [main]
 
 jobs:
+  changes:
+    name: resolve conditional test scope
+    runs-on: ubuntu-latest
+    outputs:
+      ui: ${{ steps.scope.outputs.ui }}
+      integration: ${{ steps.scope.outputs.integration }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - id: scope
+        name: Classify changed paths
+        env:
+          GITHUB_BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+        run: node scripts/resolve-test-ci-scope.mjs
+
   verify-ssot:
     name: verify:ssot
     runs-on: ubuntu-latest
@@ -45,6 +64,50 @@ jobs:
         with:
           name: verify-ssot-log
           path: verify.log
+
+  test-ui:
+    name: UI partition
+    runs-on: ubuntu-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.ui == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Run UI partition
+        run: bash -lc "npm run test:ui | tee test-ui.log"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-ui-log
+          path: test-ui.log
+
+  test-integration:
+    name: Integration partition
+    runs-on: windows-latest
+    needs: changes
+    if: ${{ needs.changes.outputs.integration == 'true' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+      - run: npm ci
+      - name: Prepare Node native ABI
+        shell: pwsh
+        run: npm run test:prepare
+      - name: Run integration partition
+        shell: pwsh
+        run: npm run test:integration | Tee-Object -FilePath test-integration.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-integration-log
+          path: test-integration.log
 
   live-smoke:
     name: tc14 live smoke (optional)

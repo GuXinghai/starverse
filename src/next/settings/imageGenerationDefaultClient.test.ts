@@ -5,33 +5,34 @@ import {
 } from './imageGenerationDefaultClient'
 
 describe('imageGenerationDefaultClient', () => {
-  const originalBridge = (globalThis as any).dbBridge
+  const originalStore = (globalThis as any).electronStore
 
   afterEach(() => {
-    ;(globalThis as any).dbBridge = originalBridge
+    ;(globalThis as any).electronStore = originalStore
     vi.restoreAllMocks()
   })
 
   it('reads settings.getImageGenerationDefault through contract decoder', async () => {
-    const invoke = vi.fn(async () => ({ value: { enabled: true, outputMode: 'image_only' } }))
-    ;(globalThis as any).dbBridge = { invoke }
+    const get = vi.fn(async () => ({ imageGenerationDefault: { enabled: true, outputMode: 'image_only' } }))
+    ;(globalThis as any).electronStore = { get, set: vi.fn() }
 
     await expect(getImageGenerationDefault()).resolves.toEqual({ enabled: true, outputMode: 'image_only' })
-    expect(invoke).toHaveBeenCalledWith('settings.getImageGenerationDefault')
+    expect(get).toHaveBeenCalledWith('generationV2UiPreferences')
   })
 
   it('writes settings.setImageGenerationDefault and decodes ack', async () => {
-    const invoke = vi.fn(async () => ({ ok: true }))
-    ;(globalThis as any).dbBridge = { invoke }
+    const get = vi.fn(async () => ({}))
+    const set = vi.fn(async () => undefined)
+    ;(globalThis as any).electronStore = { get, set }
 
     await expect(setImageGenerationDefault({ enabled: false, outputMode: 'auto' })).resolves.toBe(true)
-    expect(invoke).toHaveBeenCalledWith('settings.setImageGenerationDefault', {
-      value: { enabled: false, outputMode: 'auto' },
+    expect(set).toHaveBeenCalledWith('generationV2UiPreferences', {
+      imageGenerationDefault: { enabled: false, outputMode: 'auto' },
     })
   })
 
-  it('returns safe defaults when dbBridge is unavailable', async () => {
-    ;(globalThis as any).dbBridge = null
+  it('returns safe defaults when the retained preference store is unavailable', async () => {
+    ;(globalThis as any).electronStore = null
     await expect(getImageGenerationDefault()).resolves.toBeNull()
     await expect(setImageGenerationDefault({ enabled: true })).resolves.toBe(false)
   })

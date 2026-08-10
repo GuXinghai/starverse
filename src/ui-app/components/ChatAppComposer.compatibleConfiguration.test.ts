@@ -1,9 +1,15 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
+import { registerCatalogModelSelectionCommandV2 } from '@/next/modelCatalog/catalogRuntimeStoreV2'
 import ChatAppComposer from './ChatAppComposer.vue'
 
 describe('ChatAppComposer compatible configuration-only selection', () => {
   const originalGenerationV2 = window.generationV2
+
+  beforeEach(() => {
+    installGenerationV2TestBridge()
+  })
 
   afterEach(() => {
     window.generationV2 = originalGenerationV2
@@ -33,7 +39,7 @@ describe('ChatAppComposer compatible configuration-only selection', () => {
         auth: { mode: 'none', credentialVersionRef: null } }],
     }
     window.generationV2 = {
-      ...(originalGenerationV2 ?? {}),
+      ...((globalThis as any).generationV2 ?? originalGenerationV2 ?? {}),
       openAICompatible: {
         list: vi.fn(async () => ({ ok: true, value: [{ providerInstanceId: 'ocp_provider_12345678' }] })),
         get: vi.fn(async () => ({ ok: true, value: { details, activeConfiguration } })),
@@ -41,6 +47,13 @@ describe('ChatAppComposer compatible configuration-only selection', () => {
       },
     } as any
     const view = render(ChatAppComposer, {
+      global: {
+        plugins: [{
+          install(app: object) {
+            registerCatalogModelSelectionCommandV2(app, async () => undefined)
+          },
+        }],
+      },
       props: {
         draft: 'hello', disabled: false, isRunning: false, canSend: true, modelCatalog: [],
         sessionConfig: { model: { selectedProviderId: 'openrouter', selectedModelKey: 'openrouter/auto', compatibleSelection: null }, reasoning: { enabled: false, effort: 'medium' }, webSearch: { enabled: false, level: 'high', detail: null }, imageGeneration: { enabled: false, resolution: '1K', aspectRatio: '1:1', mode: 'default', detail: null }, generationParams: { detail: null } },

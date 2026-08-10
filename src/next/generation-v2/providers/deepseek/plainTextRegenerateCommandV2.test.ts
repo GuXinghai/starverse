@@ -3,8 +3,8 @@ import { decodeDeepSeekPlainTextRegenerateCommandV2 } from './plainTextRegenerat
 
 function command(overrides: Record<string, unknown> = {}) {
   return {
-    operationId: 'operation:regenerate', branchId: 'branch:1', questionId: 'question:1',
-    expectedHeadMessageId: 'answer:1', modelId: 'deepseek-chat', commandAttachments: [], ...overrides,
+    operationId: 'operation:regenerate', clientActionId: 'operation:regenerate', sourceBranchId: 'branch:1', questionId: 'question:1',
+    sourceAnswerId: 'answer:1', expectedHeadMessageId: 'answer:1', modelId: 'deepseek-chat', commandAttachments: [], ...overrides,
   }
 }
 

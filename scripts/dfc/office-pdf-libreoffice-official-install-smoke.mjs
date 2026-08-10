@@ -27,12 +27,14 @@ async function main() {
   await runNode([
     path.join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'),
     '--run',
-    'infra/files/dfcLibreOfficeOfficialInstall.real-smoke.test.ts',
+    '--config', 'vitest.integration.config.ts',
+    'infra/files/dfcLibreOfficeOfficialInstall.slow.test.ts',
     '--reporter=dot',
   ], {
     timeoutMs: 35 * 60 * 1000,
     env: {
       ...process.env,
+      SV_TEST_SLOW: '1',
       STARVERSE_DFC_LIBREOFFICE_OFFICIAL_INSTALL_SMOKE: '1',
       STARVERSE_DFC_LIBREOFFICE_OFFICIAL_INSTALL_APP_ROOT: appRoot,
       STARVERSE_DFC_LIBREOFFICE_OFFICIAL_INSTALL_SVPKG_OUT: packageOut,
@@ -43,7 +45,8 @@ async function main() {
   await runNode([
     path.join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'),
     '--run',
-    'infra/files/dfcLibreOfficePdfAdapter.real-smoke.test.ts',
+    '--config', 'vitest.integration.config.ts',
+    'infra/files/dfcLibreOfficePdfAdapter.slow.test.ts',
     '-t',
     'real managed',
     '--reporter=dot',
@@ -52,6 +55,7 @@ async function main() {
     timeoutMs: 12 * 60 * 1000,
     env: {
       ...process.env,
+      SV_TEST_SLOW: '1',
       STARVERSE_DFC_LIBREOFFICE_REAL_SMOKE: '1',
       STARVERSE_DFC_LIBREOFFICE_RUNTIME_ROOT: activeRuntimeRoot,
       FORCE_COLOR: '0',

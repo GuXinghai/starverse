@@ -1,11 +1,13 @@
 import { computed, defineComponent, ref } from 'vue'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import { __resetModelPrefsServiceCacheForTests } from '@/next/modelPrefs/modelPrefsService'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
+import { registerCatalogModelSelectionCommandV2 } from '@/next/modelCatalog/catalogRuntimeStoreV2'
 import { t } from '@/shared/i18n'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 import ChatAppComposer from './ChatAppComposer.vue'
 
 function createResult(items: CatalogQueryResult['items']): CatalogQueryResult {
@@ -87,8 +89,32 @@ async function openImageMenu() {
   return screen.getAllByTestId('capability-chip-menu').at(-1) as HTMLElement
 }
 
+function installModelPreferencesTestAdapter() {
+  const preferences = (globalThis as any).generationV2.modelPreferences
+  const invoke = (method: string, input?: unknown) => (globalThis as any).dbBridge?.invoke?.(method, input)
+  preferences.listFavorites = vi.fn((input: unknown) => invoke('modelPrefs.listFavorites', input))
+  preferences.addFavorite = vi.fn((input: unknown) => invoke('modelPrefs.addFavorite', input))
+  preferences.removeFavorite = vi.fn((input: unknown) => invoke('modelPrefs.removeFavorite', input))
+  preferences.reorderFavorites = vi.fn((input: unknown) => invoke('modelPrefs.reorderFavorites', input))
+  preferences.listRecents = vi.fn((input: unknown) => invoke('modelPrefs.listRecents', input))
+  preferences.recordRecent = vi.fn((input: unknown) => invoke('modelPrefs.recordRecent', input))
+}
+
+function modelSelectionCommandPlugin(command: (selection: Readonly<Record<string, unknown>>) => Promise<void>) {
+  return {
+    install(app: object) {
+      registerCatalogModelSelectionCommandV2(app, command)
+    },
+  }
+}
+
 describe('ChatAppComposer model picker integration', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+
+  beforeEach(() => {
+    installGenerationV2TestBridge()
+    installModelPreferencesTestAdapter()
+  })
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
@@ -169,7 +195,9 @@ describe('ChatAppComposer model picker integration', () => {
       `,
     })
 
-    render(Wrapper)
+    render(Wrapper, {
+      global: { plugins: [modelSelectionCommandPlugin(async () => undefined)] },
+    })
 
     const pillBefore = await screen.findByTestId('current-model-pill')
     expect(pillBefore.textContent).toContain(DEFAULT_OPENROUTER_TEST_MODEL)
@@ -264,7 +292,9 @@ describe('ChatAppComposer model picker integration', () => {
       `,
     })
 
-    render(Wrapper)
+    render(Wrapper, {
+      global: { plugins: [modelSelectionCommandPlugin(async () => undefined)] },
+    })
 
     await user.click(await screen.findByTestId('current-model-pill'))
     const item = await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')
@@ -848,9 +878,22 @@ describe('ChatAppComposer model picker integration', () => {
 
   it('renders current-session recents strip and switches model with single click', async () => {
     const user = userEvent.setup()
+    let recents: any[] = []
     ;(globalThis as any).dbBridge = {
-      invoke: vi.fn(async (method: string) => {
+      invoke: vi.fn(async (method: string, params?: any) => {
         if (method === 'modelPrefs.listFavorites') return []
+        if (method === 'modelPrefs.listRecents') return recents
+        if (method === 'modelPrefs.recordRecent') {
+          const modelId = String(params?.modelId ?? '')
+          const providerKey = String(params?.providerKey ?? 'openrouter')
+          const row = {
+            scopeType: 'global', scopeId: '', providerKey, modelId,
+            modelKey: String(params?.modelKey ?? `${providerKey}::${modelId}`),
+            lastUsedAtMs: 1, useCount: 1, createdAtMs: 1, updatedAtMs: 1,
+          }
+          recents = [row, ...recents.filter((item) => item.modelKey !== row.modelKey)]
+          return row
+        }
         return null
       }),
     }
@@ -925,7 +968,9 @@ describe('ChatAppComposer model picker integration', () => {
       `,
     })
 
-    render(Wrapper)
+    render(Wrapper, {
+      global: { plugins: [modelSelectionCommandPlugin(async () => undefined)] },
+    })
     await user.click(await screen.findByTestId('current-model-pill'))
     await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
 
@@ -942,10 +987,23 @@ describe('ChatAppComposer model picker integration', () => {
   it('limits current-session recents and opens picker from the model pill', async () => {
     const user = userEvent.setup()
     const modelIds = Array.from({ length: 8 }, (_value, index) => `vendor/model-${index + 1}`)
+    let recents: any[] = []
 
     ;(globalThis as any).dbBridge = {
-      invoke: vi.fn(async (method: string) => {
+      invoke: vi.fn(async (method: string, params?: any) => {
         if (method === 'modelPrefs.listFavorites') return []
+        if (method === 'modelPrefs.listRecents') return recents
+        if (method === 'modelPrefs.recordRecent') {
+          const modelId = String(params?.modelId ?? '')
+          const providerKey = String(params?.providerKey ?? 'openrouter')
+          const row = {
+            scopeType: 'global', scopeId: '', providerKey, modelId,
+            modelKey: String(params?.modelKey ?? `${providerKey}::${modelId}`),
+            lastUsedAtMs: recents.length + 1, useCount: 1, createdAtMs: 1, updatedAtMs: 1,
+          }
+          recents = [row, ...recents.filter((item) => item.modelKey !== row.modelKey)]
+          return row
+        }
         return null
       }),
     }
@@ -1022,7 +1080,9 @@ describe('ChatAppComposer model picker integration', () => {
       `,
     })
 
-    render(Wrapper)
+    render(Wrapper, {
+      global: { plugins: [modelSelectionCommandPlugin(async () => undefined)] },
+    })
 
     for (const modelId of modelIds) {
       await user.click(await screen.findByTestId('current-model-pill'))

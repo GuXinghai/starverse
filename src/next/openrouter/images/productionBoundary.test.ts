@@ -17,9 +17,9 @@ describe('OpenRouter Images V2 production boundary', () => {
   it('keeps Images on its own typed command/compiler/runner contract', () => {
     const ipc = read('electron/ipc/openRouterGenerationV2Ipc.ts')
     const coordinator = read('electron/services/openRouterImageActionCoordinatorV2.ts')
-    const runner = read('electron/services/openRouterImageStreamRunnerV2.ts')
+    const runner = read('electron/services/openRouterImageInitialStreamRunnerV2.ts')
     expect(ipc).toContain('openrouter:images')
-    expect(coordinator).toContain('OpenRouterImagePreparedRequestCompilerV2')
+    expect(coordinator).toContain('compileOpenRouterImagePreparedRequestV2')
     expect(runner).toContain('preparedRequest.body.copyBytes()')
     expect(runner).toContain('tryPersistPreparedV2')
     expect(runner).not.toMatch(/body\s*:\s*JSON\.stringify/u)
