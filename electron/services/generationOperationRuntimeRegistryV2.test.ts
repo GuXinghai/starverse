@@ -12,6 +12,7 @@ import {
 } from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import { readReviewedDeepSeekStableChatDefinitionV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
+import { ConversationWorkspaceV2Repo } from '../../infra/db/repo/conversationWorkspaceV2Repo'
 import {
   GenerationExecutionV2Repo,
   type GenerationExecutionOperationBundleV2,
@@ -335,6 +336,65 @@ describe('GenerationOperationRuntimeRegistryV2', () => {
 
       expect(order).toEqual(['aborted:delete', 'delete'])
       expect(registry.register({ kind: 'created', execution: bundle }).status).toBe('cancelled')
+    } finally {
+      db.close()
+    }
+  })
+
+  it('aborts only the target branch before running a branch-scoped action', async () => {
+    const db = createDb()
+    try {
+      const first = seedOperation(db, 'branch-one')
+      const second = seedOperation(db, 'branch-two')
+      const registry = new GenerationOperationRuntimeRegistryV2(db, () => 10)
+      const order: string[] = []
+      let finishSecond!: () => void
+      const secondDone = new Promise<void>((resolve) => { finishSecond = resolve })
+      expect(registry.start({ kind: 'created', execution: first }, (signal) => terminalizeOnAbort({
+        db, registry, signal, suffix: 'branch-one', order,
+      }))).toBe(true)
+      expect(registry.start({ kind: 'created', execution: second }, async (signal) => {
+        await terminalizeOnAbort({ db, registry, signal, suffix: 'branch-two', order })
+        finishSecond()
+      })).toBe(true)
+
+      await registry.runWithBranchQuiesced('branch:branch-one', () => {
+        order.push('mutate-branch')
+        expect(registry.getSnapshot('operation:branch-one')?.status).toBe('cancelled')
+        expect(registry.getSnapshot('operation:branch-two')?.status).toBe('generating')
+        expect(() => registry.register({ kind: 'created', execution: first }))
+          .toThrow('GENERATION_V2_RUNTIME_BRANCH_QUIESCING')
+      })
+
+      expect(order).toEqual(['aborted:branch-one', 'mutate-branch'])
+      expect(registry.abort('operation:branch-two')).toBe(true)
+      await secondDone
+    } finally {
+      db.close()
+    }
+  })
+
+  it('rejects destructive branch mutations while an active generation remains', () => {
+    const db = createDb()
+    try {
+      seedOperation(db, 'active-branch')
+      const workspace = new ConversationWorkspaceV2Repo(db)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        workspace.forkBranch(context, { sourceBranchId: 'branch:active-branch', branchId: 'branch:keep',
+          headMessageId: 'answer:active-branch', name: null, createdAtMs: 4 })
+      })
+
+      expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        workspace.deleteBranch(context, { branchId: 'branch:active-branch', deletedAtMs: 5 })
+      })).toThrow('GENERATION_V2_WORKSPACE_BRANCH_HAS_ACTIVE_GENERATION')
+      expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
+        workspace.truncateBranchFromQuestion(context, { branchId: 'branch:active-branch',
+          questionId: 'question:active-branch', expectedHeadMessageId: 'answer:active-branch', updatedAtMs: 5 })
+      })).toThrow('GENERATION_V2_WORKSPACE_BRANCH_HAS_ACTIVE_GENERATION')
+      expect(db.prepare(`SELECT head_message_id AS headMessageId,deleted_at_ms AS deletedAtMs
+        FROM branch_v2 WHERE branch_id='branch:active-branch'`).get()).toEqual({
+        headMessageId: 'answer:active-branch', deletedAtMs: null,
+      })
     } finally {
       db.close()
     }

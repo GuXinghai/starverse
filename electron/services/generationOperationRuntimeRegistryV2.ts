@@ -34,6 +34,8 @@ export class GenerationOperationRuntimeRegistryV2Error extends Error {
     | 'GENERATION_V2_RUNTIME_PROJECTION_NOT_PERSISTED'
     | 'GENERATION_V2_RUNTIME_SEQUENCE_INVALID'
     | 'GENERATION_V2_RUNTIME_START_CONFLICT'
+    | 'GENERATION_V2_RUNTIME_BRANCH_QUIESCING'
+    | 'GENERATION_V2_RUNTIME_BRANCH_ABORT_TIMEOUT'
     | 'GENERATION_V2_RUNTIME_CONVERSATION_QUIESCING'
     | 'GENERATION_V2_RUNTIME_CONVERSATION_ABORT_TIMEOUT'
     | 'GENERATION_V2_RUNTIME_PROJECT_QUIESCING'
@@ -84,6 +86,7 @@ export class GenerationOperationRuntimeRegistryV2 {
   readonly #reasoning: AnswerReasoningProjectionV2Repo
   readonly #entries = new Map<string, RuntimeEntry>()
   readonly #listeners = new Set<(event: GenerationStreamEventV2) => void>()
+  readonly #quiescingBranches = new Set<string>()
   readonly #quiescingConversations = new Set<string>()
   readonly #quiescingProjects = new Set<string>()
 
@@ -118,6 +121,9 @@ export class GenerationOperationRuntimeRegistryV2 {
 
   register(result: StartableGenerationResultV2): GenerationOperationRuntimeSnapshotV2 {
     const binding = bindingOf(result.execution)
+    if (this.#quiescingBranches.has(binding.branchId)) {
+      throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_BRANCH_QUIESCING')
+    }
     if (this.#quiescingConversations.has(binding.conversationId)) {
       throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_CONVERSATION_QUIESCING')
     }
@@ -245,6 +251,27 @@ export class GenerationOperationRuntimeRegistryV2 {
     return this.#entries.get(operationId)?.abort?.() ?? false
   }
 
+  async runWithBranchQuiesced<T>(
+    branchId: string,
+    action: () => T | Promise<T>,
+    timeoutMs = 5_000,
+  ): Promise<T> {
+    if (this.#quiescingBranches.has(branchId)) {
+      throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_BRANCH_QUIESCING')
+    }
+    this.#quiescingBranches.add(branchId)
+    try {
+      await this.#abortAndDrainScope(
+        (entry) => entry.snapshot.binding.branchId === branchId,
+        timeoutMs,
+        'GENERATION_V2_RUNTIME_BRANCH_ABORT_TIMEOUT',
+      )
+      return await action()
+    } finally {
+      this.#quiescingBranches.delete(branchId)
+    }
+  }
+
   async runWithConversationQuiesced<T>(
     conversationId: string,
     action: () => T | Promise<T>,
@@ -296,7 +323,8 @@ export class GenerationOperationRuntimeRegistryV2 {
   async #abortAndDrainScope(
     matches: (entry: RuntimeEntry) => boolean,
     timeoutMs: number,
-    timeoutCode: 'GENERATION_V2_RUNTIME_CONVERSATION_ABORT_TIMEOUT' |
+    timeoutCode: 'GENERATION_V2_RUNTIME_BRANCH_ABORT_TIMEOUT' |
+      'GENERATION_V2_RUNTIME_CONVERSATION_ABORT_TIMEOUT' |
       'GENERATION_V2_RUNTIME_PROJECT_ABORT_TIMEOUT',
   ): Promise<void> {
     const remaining = new Set([...this.#entries.entries()]

@@ -11,6 +11,12 @@ function time(value: unknown): number { if (!Number.isSafeInteger(value) || (val
 
 export class ConversationWorkspaceV2Repo {
   constructor(private readonly db: BetterSqlite3.Database) {}
+  private assertBranchHasNoActiveGeneration(branchId: string): void {
+    if (this.db.prepare(`SELECT 1 FROM generation_operation_v2
+      WHERE branch_id=? AND state IN ('committed','streaming') LIMIT 1`).get(branchId)) {
+      throw new Error('GENERATION_V2_WORKSPACE_BRANCH_HAS_ACTIVE_GENERATION')
+    }
+  }
   private assertNotSystemTemplate(conversationId: string): void {
     if (this.db.prepare('SELECT 1 FROM system_chat_template_v2 WHERE conversation_id=?').get(conversationId)) {
       throw new Error('GENERATION_V2_WORKSPACE_SYSTEM_TEMPLATE_MUTATION_FORBIDDEN')
@@ -72,6 +78,7 @@ export class ConversationWorkspaceV2Repo {
     if (!row || typeof row.conversationId !== 'string') throw new Error('GENERATION_V2_WORKSPACE_BRANCH_NOT_FOUND')
     const count = this.db.prepare('SELECT count(*) AS count FROM branch_v2 WHERE conversation_id=? AND deleted_at_ms IS NULL').get(row.conversationId) as { count?: unknown }
     if (count.count === 1) throw new Error('GENERATION_V2_WORKSPACE_LAST_BRANCH_DELETE_FORBIDDEN')
+    this.assertBranchHasNoActiveGeneration(id.value)
     if (this.db.prepare(`UPDATE branch_v2 SET deleted_at_ms=?,updated_at_ms=? WHERE branch_id=? AND deleted_at_ms IS NULL AND updated_at_ms<=?`)
       .run(input.deletedAtMs, input.deletedAtMs, id.value, input.deletedAtMs).changes !== 1) throw new Error('GENERATION_V2_WORKSPACE_BRANCH_NOT_FOUND')
   }
@@ -142,6 +149,7 @@ export class ConversationWorkspaceV2Repo {
         typeof row.conversationId !== 'string' || row.parentMessageId !== null && typeof row.parentMessageId !== 'string') {
       throw new Error('GENERATION_V2_WORKSPACE_QUESTION_TRUNCATE_STALE')
     }
+    this.assertBranchHasNoActiveGeneration(branchId.value)
     this.db.prepare(`INSERT INTO branch_question_hide_v2(branch_id,conversation_id,question_id,hidden_at_ms)
       VALUES(?,?,?,?) ON CONFLICT(branch_id,question_id) DO NOTHING`).run(branchId.value, row.conversationId, questionId.value, at)
     if (this.db.prepare(`UPDATE branch_v2 SET head_message_id=?,updated_at_ms=?

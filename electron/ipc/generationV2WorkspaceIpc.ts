@@ -62,7 +62,7 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   registerInvoke: RegisterInvoke
   db: BetterSqlite3.Database
   runtimeRegistry: Pick<GenerationOperationRuntimeRegistryV2,
-    'runWithConversationQuiesced' | 'runWithProjectQuiesced'>
+    'runWithBranchQuiesced' | 'runWithConversationQuiesced' | 'runWithProjectQuiesced'>
   nowMs?: () => number
 }>): readonly string[] {
   const nowMs = input.nowMs ?? Date.now
@@ -197,14 +197,18 @@ export function registerGenerationV2WorkspaceIpc(input: Readonly<{
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[16], safe((payload) => {
     const raw = object(payload, ['branchId'])
-    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => { workspace.deleteBranch(context,
-      { branchId: text(raw.branchId), deletedAtMs: nowMs() }); return true })
+    const branchId = text(raw.branchId)
+    return input.runtimeRegistry.runWithBranchQuiesced(branchId, () =>
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => { workspace.deleteBranch(context,
+        { branchId, deletedAtMs: nowMs() }); return true }))
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[17], safe((payload) => {
     const raw = object(payload, ['branchId', 'questionId', 'expectedHeadMessageId'])
-    return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => workspace.truncateBranchFromQuestion(context, {
-      branchId: text(raw.branchId), questionId: text(raw.questionId), expectedHeadMessageId: text(raw.expectedHeadMessageId), updatedAtMs: nowMs(),
-    }))
+    const branchId = text(raw.branchId)
+    return input.runtimeRegistry.runWithBranchQuiesced(branchId, () =>
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => workspace.truncateBranchFromQuestion(context, {
+        branchId, questionId: text(raw.questionId), expectedHeadMessageId: text(raw.expectedHeadMessageId), updatedAtMs: nowMs(),
+      })))
   }))
   input.registerInvoke(GENERATION_V2_WORKSPACE_IPC_CHANNELS[18], safe((payload) => {
     const raw = object(payload, ['branchId', 'targetType', 'targetId', 'mode'])
