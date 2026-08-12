@@ -4,6 +4,7 @@ import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import { OPENAI_COMPATIBLE_NON_STREAM_RESPONSE_MAX_BYTES_V2, OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2 } from './openAIChatCompatibleResponseBodyV2'
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }))
 vi.mock('electron', () => ({ safeStorage: {}, session: { defaultSession: { fetch: mocks.fetch } } }))
@@ -100,6 +101,20 @@ describe('OpenAI-compatible V2 coordinator', () => {
     await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'completed', answerRootId: created.preparedRequest.answerRootId })))
     expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?').get(created.preparedRequest.answerRootId)).toEqual({ status: 'completed' })
     expect(db.prepare('SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id=?').get('branch:1')).toEqual({ chosen: created.preparedRequest.answerRootId })
+  })
+
+  it('fails a non-stream JSON response before buffering a declared body over 16 MiB', async () => {
+    const db = database(); databases.push(db); let id = 0; const sink: unknown[] = []
+    const runtime = createOpenAIChatCompatibleGenerationV2Runtime({ db, credentialService: { getStatus: async () => ({ configured: false, revision: 0 }) } as never,
+      nowMs: () => 100, createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}`,
+      fetchImpl: vi.fn().mockResolvedValue(new Response('small', { status: 200, headers: {
+        'content-type': 'application/json', 'content-length': String(OPENAI_COMPATIBLE_NON_STREAM_RESPONSE_MAX_BYTES_V2 + 1),
+      } })), streamProjectionSink: { publish: (event) => sink.push(event) } })
+    const created = await runtime.submitInitial({ operationId: 'operation:json-too-large', branchId: 'branch:1', expectedHeadMessageId: null,
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [], extraBody: null })
+    await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'failed',
+      errorCode: OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2, answerRootId: created.preparedRequest.answerRootId })))
+    expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?').get(created.preparedRequest.answerRootId)).toEqual({ status: 'failed' })
   })
 
   it('replays persisted native reasoning through the pinned mapping instead of renderer text', async () => {
