@@ -2,6 +2,7 @@
 import { ref, watch, onMounted, onUnmounted } from 'vue'
 import { StreamRenderer } from './streamRenderer'
 import { renderFinal } from './finalRenderer'
+import { subscribeHighlighterReady } from './shikiLoader'
 
 const props = defineProps<{
   text: string
@@ -11,6 +12,36 @@ const props = defineProps<{
 const containerRef = ref<HTMLDivElement | null>(null)
 let renderer: StreamRenderer | null = null
 let finalized = false
+let finalHighlightPending = false
+let finalRenderVersion = 0
+let disposed = false
+let unsubscribeHighlighter: (() => void) | null = null
+
+async function applyFinalRender(text: string) {
+  const version = ++finalRenderVersion
+
+  try {
+    const snapshot = await renderFinal(text)
+    if (disposed || version !== finalRenderVersion || !containerRef.value) return
+
+    if (snapshot.sanitizerRemoved) {
+      finalHighlightPending = false
+      console.warn('[RichTextContent] Final render: sanitizer removed dangerous content')
+      containerRef.value.textContent = ''
+      const pre = document.createElement('pre')
+      pre.className = 'rt-fallback-plaintext'
+      pre.textContent = text
+      containerRef.value.appendChild(pre)
+      return
+    }
+
+    containerRef.value.innerHTML = snapshot.html
+    finalHighlightPending = snapshot.highlightPending === true
+  } catch {
+    finalHighlightPending = false
+    console.error('[RichTextContent] FINAL_RENDER_FAILED_KEEPING_STREAMED_OUTPUT')
+  }
+}
 
 onMounted(() => {
   if (containerRef.value) {
@@ -19,6 +50,9 @@ onMounted(() => {
       renderer.feed(props.text)
     }
   }
+  unsubscribeHighlighter = subscribeHighlighterReady(() => {
+    if (finalized && finalHighlightPending) void applyFinalRender(props.text)
+  })
 })
 
 // Watch text changes — feed deltas to the imperative renderer
@@ -32,29 +66,15 @@ watch(() => props.streaming, async (isStreaming) => {
   if (!isStreaming && !finalized && containerRef.value) {
     finalized = true
     renderer?.finalize()
-
-    // Run final-path render for guaranteed consistency
-    try {
-      const snapshot = await renderFinal(props.text)
-      if (containerRef.value) {
-        if (snapshot.sanitizerRemoved) {
-          console.warn('[RichTextContent] Final render: sanitizer removed dangerous content')
-          containerRef.value.textContent = ''
-          const pre = document.createElement('pre')
-          pre.className = 'rt-fallback-plaintext'
-          pre.textContent = props.text
-          containerRef.value.appendChild(pre)
-        } else {
-          containerRef.value.innerHTML = snapshot.html
-        }
-      }
-    } catch (err) {
-      console.error('[RichTextContent] FINAL_RENDER_FAILED_KEEPING_STREAMED_OUTPUT')
-    }
+    void applyFinalRender(props.text)
   }
 })
 
 onUnmounted(() => {
+  disposed = true
+  finalRenderVersion += 1
+  unsubscribeHighlighter?.()
+  unsubscribeHighlighter = null
   renderer?.dispose()
   renderer = null
 })
