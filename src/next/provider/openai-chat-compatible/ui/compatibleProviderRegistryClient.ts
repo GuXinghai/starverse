@@ -29,6 +29,11 @@ export function createCompatibleProviderRegistryClient(bridge: V2Bridge | undefi
       const status = unwrap<RecordValue>(await requireBridge().getCredentialStatus({ providerInstanceId: details.providerInstanceId, credentialVersionRef }))
       credentials.push(Object.freeze({ credentialVersionRef, providerInstanceId: details.providerInstanceId,
         version: Number(status.revision), authMode: auth.mode, configured: status.configured === true,
+        availability: status.availability === 'available' || status.availability === 'unavailable' ? status.availability : 'unknown',
+        ...(typeof status.diagnosticCode === 'string' ? { diagnosticCode: status.diagnosticCode } : {}),
+        ...(status.storageBackend === 'electron_safe_storage' || status.storageBackend === 'session' || status.storageBackend === 'plaintext'
+          ? { storageBackend: status.storageBackend } : {}),
+        sessionOverridesPersistent: status.sessionOverridesPersistent === true,
         maskState: status.configured === true ? 'configured_masked' : 'not_configured', sensitiveHeaderNames: Object.freeze([]), deletedAtMs: null }))
     }
     const responsePayload = active.responseProfile?.payload ?? {}
@@ -91,17 +96,22 @@ export function createCompatibleProviderRegistryClient(bridge: V2Bridge | undefi
     get,
     create: async (input: RecordValue) => project(unwrap(await requireBridge().create({ displayName: input.displayName,
       baseUrl: input.endpoint.baseUrl, securityPolicy: input.endpoint.securityPolicy, ordinaryHeaders: input.endpoint.ordinaryHeaders,
-      query: input.endpoint.query, credential: input.credential }))),
+      query: input.endpoint.query, credential: input.credential,
+      ...(input.storageMode === undefined ? {} : { storageMode: input.storageMode }) }))),
     update: async (input: RecordValue) => {
       const current = await get(input.providerInstanceId)
       unwrap(await requireBridge().update({ providerInstanceId: providerInstanceIdSchema.parse(input.providerInstanceId),
         displayName: input.displayName ?? current.provider.displayName, status: input.status ?? current.provider.status }))
       return get(input.providerInstanceId)
     },
-    updateEndpoint: async (input: RecordValue & { credential?: unknown | null }) => project(unwrap(await requireBridge().updateEndpoint({
-      providerInstanceId: providerInstanceIdSchema.parse(input.providerInstanceId), baseUrl: input.endpoint.baseUrl,
+    updateEndpoint: async (input: RecordValue & { credential?: unknown | null }) => {
+      const current = await get(input.providerInstanceId)
+      return project(unwrap(await requireBridge().updateEndpoint({
+      providerInstanceId: providerInstanceIdSchema.parse(input.providerInstanceId), expectedEndpointRevisionId: current.endpointRevisions[0]!.endpointRevisionId, baseUrl: input.endpoint.baseUrl,
       securityPolicy: input.endpoint.securityPolicy, ordinaryHeaders: input.endpoint.ordinaryHeaders,
-      query: input.endpoint.query, credential: input.credential ?? null }))),
+      query: input.endpoint.query, credential: input.credential ?? null,
+      ...(input.storageMode === undefined ? {} : { storageMode: input.storageMode }) })))
+    },
     reviseConfiguration: async (input: RecordValue) => {
       const providerInstanceId = providerInstanceIdSchema.parse(input.providerInstanceId)
       const next = await configuration(providerInstanceId, input)
@@ -122,6 +132,7 @@ export function createCompatibleProviderRegistryClient(bridge: V2Bridge | undefi
     rotateCredential: async (input: RecordValue) => {
       const current = await get(input.providerInstanceId); const endpoint = current.endpointRevisions[0]!
       return project(unwrap(await requireBridge().updateEndpoint({ providerInstanceId: input.providerInstanceId,
+        expectedEndpointRevisionId: endpoint.endpointRevisionId,
         baseUrl: endpoint.baseUrl, securityPolicy: endpoint.securityPolicy, ordinaryHeaders: endpoint.ordinaryHeaders,
         query: endpoint.query, credential: input.credential })))
     },

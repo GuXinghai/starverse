@@ -146,14 +146,15 @@ describe('epoch-2 database phase coordinator', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('keeps the journal behind on initialization or journal-write failure and recovers', async () => {
+  windowsIt('keeps the journal behind on journal-write failure and initializes without safeStorage', async () => {
     const unavailable = fixture('starverse-epoch-database-unavailable')
     safeStorageMock.available = false
     try {
-      await expect(ensureEpoch2DatabaseCreated(unavailable))
-        .rejects.toThrow('EPOCH2_SCOPE_KEY_STORAGE_UNAVAILABLE')
-      expect(readEpoch2ResetJournal(unavailable)?.phase).toBe('epoch_root_created')
-      expect(fs.existsSync(unavailable.layout.databasePath)).toBe(false)
+      await expect(ensureEpoch2DatabaseCreated(unavailable)).resolves.toMatchObject({
+        database: { created: true },
+        journal: { phase: 'database_created' },
+      })
+      expect(fs.existsSync(unavailable.layout.databasePath)).toBe(true)
     } finally { unavailable.lease.release() }
 
     safeStorageMock.available = true

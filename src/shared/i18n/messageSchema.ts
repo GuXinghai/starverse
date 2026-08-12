@@ -82,6 +82,12 @@ export interface SettingsMessages {
     readonly credentials: {
       readonly configured: string
       readonly notConfigured: string
+      readonly unknown: string
+      readonly add: string
+      readonly replace: string
+      readonly systemCredentialDecryptUnavailable: string
+      readonly systemCredentialRecordInvalid: string
+      readonly apply: string
     }
     readonly runtime: {
       readonly missingElectronStore: string

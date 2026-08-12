@@ -12,15 +12,21 @@ describe('OpenAI-compatible V2 IPC', () => {
     applyGenerationV2SchemaForTest(db, path.resolve(process.cwd()))
     handlers = new Map()
     expect(registerOpenAICompatibleV2Ipc({ db, registerInvoke: (channel, handler) => handlers.set(channel, handler), credentialService: {
-      getStatus: async () => ({ credentialVersionRef: 'ocp_credential_12345678', providerInstanceId: 'ocp_provider_12345678', configured: false, revision: 0 }),
+      getStatus: async () => ({ credentialVersionRef: 'ocp_credential_12345678', providerInstanceId: 'ocp_provider_12345678', configured: false, revision: 0, availability: 'unknown', sessionOverridesPersistent: false }),
       write: async () => ({ credentialVersionRef: 'ocp_credential_12345678', providerInstanceId: 'ocp_provider_12345678', configured: true, revision: 1, credentialScopeId: 'credential-scope-v2:'.concat('0'.repeat(64)) }),
       clear: async () => ({ credentialVersionRef: 'ocp_credential_12345678', providerInstanceId: 'ocp_provider_12345678', configured: false, revision: 2 }),
+      prepare: async () => ({ providerInstanceId: 'ocp_provider_12345678', credentialVersionRef: 'ocp_credential_12345678', ciphertext: Buffer.from('ciphertext'), revision: 1, credentialScopeId: 'credential-scope-v2:'.concat('0'.repeat(64)), updatedAtMs: 1 }),
+      writePrepared: () => ({ credentialVersionRef: 'ocp_credential_12345678', providerInstanceId: 'ocp_provider_12345678', configured: true, revision: 1, credentialScopeId: 'credential-scope-v2:'.concat('0'.repeat(64)) }),
+      discardPrepared: () => undefined,
+      clearPersisted: () => ({ credentialVersionRef: 'ocp_credential_12345678', providerInstanceId: 'ocp_provider_12345678', configured: false, revision: 2 }),
+      clearCurrentPersisted: () => ({ credentialVersionRef: 'ocp_credential_12345678', providerInstanceId: 'ocp_provider_12345678', configured: false, revision: 2 }),
+      commit: async (_providerInstanceId: string, work: () => unknown) => work(),
       withCredential: async () => { throw new Error('not expected') },
     } as never, fetchImpl: async () => new Response(JSON.stringify({ data: [] }), { status: 200, headers: { 'content-type': 'application/json' } }),
       proxyMode: () => 'direct' }))
       .toEqual(OPENAI_COMPATIBLE_V2_IPC_CHANNELS)
   })
-  afterEach(() => db.close())
+  afterEach(() => { if (db.open) db.close() })
 
   it('creates a closed default compatible configuration through V2-only channels', async () => {
     const create = handlers.get('generation-v2:openai-compatible:create')!
@@ -35,5 +41,18 @@ describe('OpenAI-compatible V2 IPC', () => {
     const create = handlers.get('generation-v2:openai-compatible:create')!
     await expect(create({}, { displayName: 'Endpoint', baseUrl: 'https://example.test/', securityPolicy: 'strict_ssrf', credential: { mode: 'none' }, ordinaryHeaders: [], query: [], protocol: 'responses' }))
       .resolves.toEqual({ ok: false, code: 'GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID' })
+  })
+
+  it('does not expose a standalone credential write channel', () => {
+    expect(OPENAI_COMPATIBLE_V2_IPC_CHANNELS).not.toContain('generation-v2:openai-compatible:write-credential')
+    expect(handlers.has('generation-v2:openai-compatible:write-credential')).toBe(false)
+  })
+
+  it('maps unexpected command failures to a stable code without returning the raw message', async () => {
+    db.close()
+    const list = handlers.get('generation-v2:openai-compatible:list')!
+    const result = await list({}, undefined) as any
+    expect(result).toEqual({ ok: false, code: 'GENERATION_V2_OPENAI_COMPATIBLE_COMMAND_FAILED' })
+    expect(JSON.stringify(result)).not.toContain('database connection is not open')
   })
 })

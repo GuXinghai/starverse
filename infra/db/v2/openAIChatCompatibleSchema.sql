@@ -1,5 +1,6 @@
 -- Generation Compiler V2 OpenAI-compatible user-owned Chat Completions contract. Epoch-2 only.
--- Secrets are deliberately absent: credential references resolve through the main-process secure store.
+-- Compatible credentials are workspace-scoped and committed with provider/endpoint state.
+-- `electron_safe_storage` is the default backend; `plaintext` requires an explicit Linux user choice.
 CREATE TABLE IF NOT EXISTS openai_compatible_provider_v2 (
   provider_instance_id TEXT PRIMARY KEY CHECK (length(provider_instance_id) BETWEEN 1 AND 256),
   protocol_contract_id TEXT NOT NULL CHECK (protocol_contract_id = 'openai_chat_compatible'),
@@ -44,6 +45,25 @@ CREATE TABLE IF NOT EXISTS openai_compatible_endpoint_revision_v2 (
 
 CREATE INDEX IF NOT EXISTS idx_openai_compatible_endpoint_revision_v2_latest
 ON openai_compatible_endpoint_revision_v2(provider_instance_id, revision DESC);
+
+CREATE TABLE IF NOT EXISTS openai_compatible_credential_v2 (
+  credential_version_ref TEXT PRIMARY KEY CHECK (length(credential_version_ref) BETWEEN 1 AND 256),
+  provider_instance_id TEXT NOT NULL REFERENCES openai_compatible_provider_v2(provider_instance_id),
+  backend TEXT NOT NULL CHECK (backend IN ('electron_safe_storage', 'plaintext')),
+  payload BLOB,
+  revision INTEGER NOT NULL CHECK (revision BETWEEN 1 AND 9007199254740991),
+  credential_scope_id TEXT,
+  updated_at_ms INTEGER NOT NULL CHECK (updated_at_ms >= 0),
+  configured INTEGER NOT NULL CHECK (configured IN (0, 1)),
+  CHECK (
+    (configured = 1 AND payload IS NOT NULL AND length(payload) BETWEEN 1 AND 1048576 AND credential_scope_id IS NOT NULL)
+    OR
+    (configured = 0 AND payload IS NULL AND credential_scope_id IS NULL)
+  )
+);
+
+CREATE INDEX IF NOT EXISTS idx_openai_compatible_credential_v2_provider
+ON openai_compatible_credential_v2(provider_instance_id);
 
 CREATE TABLE IF NOT EXISTS openai_compatible_model_v2 (
   provider_instance_id TEXT NOT NULL REFERENCES openai_compatible_provider_v2(provider_instance_id),

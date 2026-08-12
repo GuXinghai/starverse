@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref, watch, type Ref } from 'vue'
+import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { getOpenRouterProviderRequireParameters, setOpenRouterProviderRequireParameters } from '@/next/settings/openRouterProviderSettingsClient'
 import { getReasoningPrefs, setReasoningPrefs } from '@/next/settings/reasoningPrefsClient'
 import { getUserMessageRenderDefault, setUserMessageRenderDefault } from '@/next/settings/userMessageRenderDefaultClient'
@@ -80,12 +80,6 @@ const unsubscribeCatalogRuntimeStore = catalogRuntimeStore.subscribe(() => {
 })
 onBeforeUnmount(unsubscribeCatalogRuntimeStore)
 
-const CONFIGURED_API_KEY_PLACEHOLDER = '••••••'
-
-function apiKeyPlaceholder(configured: boolean, fallback: string): string {
-  return configured ? CONFIGURED_API_KEY_PLACEHOLDER : fallback
-}
-
 function networkProxyModeText(mode: NetworkProxyMode): string {
   switch (mode) {
     case 'environment':
@@ -115,9 +109,11 @@ type ElectronStoreLike = Readonly<{
 
 type ProviderCredentialStatusSource =
   | 'secure_store'
-  | 'plaintext_fallback'
+  | 'plaintext'
   | 'missing'
-type ProviderCredentialBackendKind = 'electron_safe_storage' | 'plaintext_fallback' | 'unavailable'
+type ProviderCredentialBackendKind = 'electron_safe_storage' | 'session' | 'plaintext' | 'unavailable'
+type CredentialAvailability = 'unknown' | 'available' | 'unavailable'
+type CredentialStorageMode = 'system_secure' | 'session' | 'plaintext'
 
 type OpenRouterEndpointMetadataBase = Readonly<{
   kind: 'openrouter_endpoint'
@@ -142,6 +138,9 @@ type OpenRouterCredentialStatus = Readonly<{
   source: ProviderCredentialStatusSource
   backend?: ProviderCredentialBackendKind
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
+  credentialAvailability?: CredentialAvailability
+  credentialDiagnosticCode?: string
   maskedApiKey?: string
   migratedFromLegacy?: boolean
   warnings?: string[]
@@ -153,24 +152,15 @@ type OpenRouterCredentialStatus = Readonly<{
 
 type OpenRouterCredentialResult = Readonly<{
   ok: boolean
+  code?: string
   status?: OpenRouterCredentialStatus
   message?: string
   providerFailure?: ProviderFailureV2
 }>
 
-type ProviderCredentialRevealResult = Readonly<
-  | { ok: true; apiKey: string }
-  | { ok: false; code?: string; message?: string; providerFailure?: ProviderFailureV2 }
->
-
-type ProviderCredentialRevealBridge = Readonly<{
-  reveal: () => Promise<ProviderCredentialRevealResult>
-}>
-
 type OpenRouterCredentialBridge = Readonly<{
   getStatus: () => Promise<OpenRouterCredentialResult>
-  reveal: () => Promise<ProviderCredentialRevealResult>
-  update: (payload: Readonly<{ apiKey?: string }>) => Promise<OpenRouterCredentialResult>
+  update: (payload: Readonly<{ apiKey?: string; storageMode?: CredentialStorageMode }>) => Promise<OpenRouterCredentialResult>
   clear: () => Promise<OpenRouterCredentialResult>
 }>
 
@@ -180,6 +170,9 @@ type OpenAIResponsesCredentialStatus = Readonly<{
   providerId: 'openai'
   profileId: 'openai-responses-v1'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
+  credentialAvailability?: CredentialAvailability
+  credentialDiagnosticCode?: string
   maskedApiKey?: string
   migratedFromLegacy?: boolean
   warnings?: string[]
@@ -189,6 +182,7 @@ type OpenAIResponsesCredentialStatus = Readonly<{
 
 type OpenAIResponsesCredentialResult = Readonly<{
   ok: boolean
+  code?: string
   status?: OpenAIResponsesCredentialStatus
   message?: string
   providerFailure?: ProviderFailureV2
@@ -196,8 +190,7 @@ type OpenAIResponsesCredentialResult = Readonly<{
 
 type OpenAIResponsesCredentialBridge = Readonly<{
   getStatus: () => Promise<OpenAIResponsesCredentialResult>
-  reveal: () => Promise<ProviderCredentialRevealResult>
-  update: (payload: Readonly<{ apiKey?: string }>) => Promise<OpenAIResponsesCredentialResult>
+  update: (payload: Readonly<{ apiKey?: string; storageMode?: CredentialStorageMode }>) => Promise<OpenAIResponsesCredentialResult>
   clear: () => Promise<OpenAIResponsesCredentialResult>
 }>
 
@@ -207,6 +200,9 @@ type GoogleAIStudioCredentialStatus = Readonly<{
   providerId: 'google-ai-studio'
   profileId: 'gemini-developer-api-v1beta'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
+  credentialAvailability?: CredentialAvailability
+  credentialDiagnosticCode?: string
   maskedApiKey?: string
   migratedFromLegacy?: boolean
   warnings?: string[]
@@ -216,6 +212,7 @@ type GoogleAIStudioCredentialStatus = Readonly<{
 
 type GoogleAIStudioCredentialResult = Readonly<{
   ok: boolean
+  code?: string
   status?: GoogleAIStudioCredentialStatus
   message?: string
   providerFailure?: ProviderFailureV2
@@ -223,8 +220,7 @@ type GoogleAIStudioCredentialResult = Readonly<{
 
 type GoogleAIStudioCredentialBridge = Readonly<{
   getStatus: () => Promise<GoogleAIStudioCredentialResult>
-  reveal: () => Promise<ProviderCredentialRevealResult>
-  update: (payload: Readonly<{ apiKey?: string }>) => Promise<GoogleAIStudioCredentialResult>
+  update: (payload: Readonly<{ apiKey?: string; storageMode?: CredentialStorageMode }>) => Promise<GoogleAIStudioCredentialResult>
   clear: () => Promise<GoogleAIStudioCredentialResult>
 }>
 
@@ -234,6 +230,9 @@ type AnthropicCredentialStatus = Readonly<{
   providerId: 'anthropic'
   profileId: 'anthropic-messages-2023-06-01'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
+  credentialAvailability?: CredentialAvailability
+  credentialDiagnosticCode?: string
   maskedApiKey?: string
   migratedFromLegacy?: boolean
   warnings?: string[]
@@ -243,6 +242,7 @@ type AnthropicCredentialStatus = Readonly<{
 
 type AnthropicCredentialResult = Readonly<{
   ok: boolean
+  code?: string
   status?: AnthropicCredentialStatus
   message?: string
   providerFailure?: ProviderFailureV2
@@ -250,8 +250,7 @@ type AnthropicCredentialResult = Readonly<{
 
 type AnthropicCredentialBridge = Readonly<{
   getStatus: () => Promise<AnthropicCredentialResult>
-  reveal: () => Promise<ProviderCredentialRevealResult>
-  update: (payload: Readonly<{ apiKey?: string }>) => Promise<AnthropicCredentialResult>
+  update: (payload: Readonly<{ apiKey?: string; storageMode?: CredentialStorageMode }>) => Promise<AnthropicCredentialResult>
   clear: () => Promise<AnthropicCredentialResult>
 }>
 
@@ -261,6 +260,9 @@ type DeepSeekCredentialStatus = Readonly<{
   providerId: 'deepseek'
   profileId: 'deepseek-stable-chat-v1'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
+  credentialAvailability?: CredentialAvailability
+  credentialDiagnosticCode?: string
   maskedApiKey?: string
   migratedFromLegacy?: boolean
   warnings?: string[]
@@ -270,6 +272,7 @@ type DeepSeekCredentialStatus = Readonly<{
 
 type DeepSeekCredentialResult = Readonly<{
   ok: boolean
+  code?: string
   status?: DeepSeekCredentialStatus
   message?: string
   providerFailure?: ProviderFailureV2
@@ -277,9 +280,15 @@ type DeepSeekCredentialResult = Readonly<{
 
 type DeepSeekCredentialBridge = Readonly<{
   getStatus: () => Promise<DeepSeekCredentialResult>
-  reveal: () => Promise<ProviderCredentialRevealResult>
-  update: (payload: Readonly<{ apiKey?: string }>) => Promise<DeepSeekCredentialResult>
+  update: (payload: Readonly<{ apiKey?: string; storageMode?: CredentialStorageMode }>) => Promise<DeepSeekCredentialResult>
   clear: () => Promise<DeepSeekCredentialResult>
+}>
+
+type CredentialPresence = 'configured' | 'unconfigured' | 'unknown'
+
+type CredentialIssue = Readonly<{
+  message: string
+  failure: ProviderFailureV2
 }>
 
 type LocalEndpointProbeResult = Readonly<
@@ -371,7 +380,6 @@ function getOpenRouterCredentialBridge(): OpenRouterCredentialBridge | null {
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
-    typeof bridge.reveal !== 'function' ||
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
@@ -383,7 +391,6 @@ function getOpenAIResponsesCredentialBridge(): OpenAIResponsesCredentialBridge |
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
-    typeof bridge.reveal !== 'function' ||
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
@@ -395,7 +402,6 @@ function getGoogleAIStudioCredentialBridge(): GoogleAIStudioCredentialBridge | n
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
-    typeof bridge.reveal !== 'function' ||
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
@@ -407,7 +413,6 @@ function getAnthropicCredentialBridge(): AnthropicCredentialBridge | null {
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
-    typeof bridge.reveal !== 'function' ||
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
@@ -419,7 +424,6 @@ function getDeepSeekCredentialBridge(): DeepSeekCredentialBridge | null {
   if (!bridge) return null
   if (
     typeof bridge.getStatus !== 'function' ||
-    typeof bridge.reveal !== 'function' ||
     typeof bridge.update !== 'function' ||
     typeof bridge.clear !== 'function'
   ) return null
@@ -530,25 +534,53 @@ const catalogProviderPendingRevisions = computed<Partial<Record<ProviderCatalogK
   })) as Partial<Record<ProviderCatalogKnownProviderKey, string>>)
 
 const apiKey = ref('')
-const apiKeyConfigured = ref(false)
+const openRouterCredentialPresence = ref<CredentialPresence>('unknown')
+const apiKeyConfigured = computed(() => openRouterCredentialPresence.value === 'configured')
 const maskedApiKey = ref('')
 const credentialWarnings = ref<string[]>([])
+const openRouterCredentialIssue = ref<CredentialIssue | null>(null)
+const openRouterCredentialEditing = ref(false)
+const openRouterCredentialBackend = ref<ProviderCredentialBackendKind | undefined>()
+const openRouterSessionOverridesPersistent = ref(false)
 const openAIResponsesApiKey = ref('')
-const openAIResponsesApiKeyConfigured = ref(false)
+const openAIResponsesCredentialPresence = ref<CredentialPresence>('unknown')
+const openAIResponsesApiKeyConfigured = computed(() => openAIResponsesCredentialPresence.value === 'configured')
 const openAIResponsesMaskedApiKey = ref('')
 const openAIResponsesCredentialWarnings = ref<string[]>([])
+const openAIResponsesCredentialIssue = ref<CredentialIssue | null>(null)
+const openAIResponsesCredentialEditing = ref(false)
+const openAIResponsesCredentialBackend = ref<ProviderCredentialBackendKind | undefined>()
+const openAIResponsesSessionOverridesPersistent = ref(false)
 const googleAIStudioApiKey = ref('')
-const googleAIStudioApiKeyConfigured = ref(false)
+const googleAIStudioCredentialPresence = ref<CredentialPresence>('unknown')
+const googleAIStudioApiKeyConfigured = computed(() => googleAIStudioCredentialPresence.value === 'configured')
 const googleAIStudioMaskedApiKey = ref('')
 const googleAIStudioCredentialWarnings = ref<string[]>([])
+const googleAIStudioCredentialIssue = ref<CredentialIssue | null>(null)
+const googleAIStudioCredentialEditing = ref(false)
+const googleAIStudioCredentialBackend = ref<ProviderCredentialBackendKind | undefined>()
+const googleAIStudioSessionOverridesPersistent = ref(false)
 const anthropicApiKey = ref('')
-const anthropicApiKeyConfigured = ref(false)
+const anthropicCredentialPresence = ref<CredentialPresence>('unknown')
+const anthropicApiKeyConfigured = computed(() => anthropicCredentialPresence.value === 'configured')
 const anthropicMaskedApiKey = ref('')
 const anthropicCredentialWarnings = ref<string[]>([])
+const anthropicCredentialIssue = ref<CredentialIssue | null>(null)
+const anthropicCredentialEditing = ref(false)
+const anthropicCredentialBackend = ref<ProviderCredentialBackendKind | undefined>()
+const anthropicSessionOverridesPersistent = ref(false)
 const deepSeekApiKey = ref('')
-const deepSeekApiKeyConfigured = ref(false)
+const deepSeekCredentialPresence = ref<CredentialPresence>('unknown')
+const deepSeekApiKeyConfigured = computed(() => deepSeekCredentialPresence.value === 'configured')
 const deepSeekMaskedApiKey = ref('')
 const deepSeekCredentialWarnings = ref<string[]>([])
+const deepSeekCredentialIssue = ref<CredentialIssue | null>(null)
+const deepSeekCredentialEditing = ref(false)
+const deepSeekCredentialBackend = ref<ProviderCredentialBackendKind | undefined>()
+const deepSeekSessionOverridesPersistent = ref(false)
+const credentialFallbackProvider = ref<ProviderCatalogKnownProviderKey | null>(null)
+const credentialFallbackApiKey = ref('')
+const plaintextCredentialPersistenceSupported = computed(() => window.electronAPI?.platform === 'linux')
 const catalogStartupSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogPickerOpenSyncPolicy = ref<CatalogAutoSyncPolicy>(DEFAULT_CATALOG_AUTO_SYNC_POLICY)
 const catalogListUpdateMode = ref<CatalogListUpdateMode>(DEFAULT_CATALOG_LIST_UPDATE_MODE)
@@ -683,13 +715,33 @@ const catalogPolicyControlsDisabled = computed(() =>
 )
 const requireParameters = ref(false)
 const debugEchoUpstreamBody = ref(false)
-const showApiKey = ref(false)
-const showOpenAIResponsesApiKey = ref(false)
-const showGoogleAIStudioApiKey = ref(false)
-const showAnthropicApiKey = ref(false)
-const showDeepSeekApiKey = ref(false)
-const credentialRevealLoading = ref<string | null>(null)
-const credentialApplyLoading = ref<ProviderCatalogKnownProviderKey | null>(null)
+type CredentialOperation = 'status' | 'update' | 'clear'
+const credentialPendingOperations = ref<Partial<Record<ProviderCatalogKnownProviderKey, CredentialOperation>>>({})
+const credentialOperationTokens = new Map<ProviderCatalogKnownProviderKey, symbol>()
+
+function credentialOperationPending(providerKey: ProviderCatalogKnownProviderKey): boolean {
+  return credentialPendingOperations.value[providerKey] !== undefined
+}
+
+function beginCredentialOperation(providerKey: ProviderCatalogKnownProviderKey, operation: CredentialOperation): symbol | null {
+  if (credentialOperationPending(providerKey)) return null
+  const token = Symbol(`${providerKey}:${operation}`)
+  credentialOperationTokens.set(providerKey, token)
+  credentialPendingOperations.value = { ...credentialPendingOperations.value, [providerKey]: operation }
+  return token
+}
+
+function credentialOperationIsCurrent(providerKey: ProviderCatalogKnownProviderKey, token: symbol): boolean {
+  return credentialOperationTokens.get(providerKey) === token
+}
+
+function finishCredentialOperation(providerKey: ProviderCatalogKnownProviderKey, token: symbol) {
+  if (!credentialOperationIsCurrent(providerKey, token)) return
+  credentialOperationTokens.delete(providerKey)
+  const next = { ...credentialPendingOperations.value }
+  delete next[providerKey]
+  credentialPendingOperations.value = next
+}
 const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
 const requestedReasoningExclude = ref(false)
 const reasoningPanelDefaultExpanded = ref(true)
@@ -738,10 +790,6 @@ const storeAvailable = computed(() => !!getElectronStore())
 const canEdit = computed(() => !props.disabled && !props.isRunning && storeAvailable.value)
 const localEndpointDiagnosticsAvailable = computed(() => !!getLocalEndpointDiagnosticsBridge())
 const canProbeLocalEndpoint = computed(() => !props.disabled && !props.isRunning && localEndpointDiagnosticsAvailable.value)
-const openAIResponsesCredentialAvailable = computed(() => !!getOpenAIResponsesCredentialBridge())
-const googleAIStudioCredentialAvailable = computed(() => !!getGoogleAIStudioCredentialBridge())
-const anthropicCredentialAvailable = computed(() => !!getAnthropicCredentialBridge())
-const deepSeekCredentialAvailable = computed(() => !!getDeepSeekCredentialBridge())
 const globalWebSearchResolved = computed(() =>
   resolveSearchSettings(
     { global: webSearchDefaults.value },
@@ -780,16 +828,6 @@ const catalogRetentionOptions: ReadonlyArray<Readonly<{ value: CatalogRetentionM
   { value: CATALOG_RETENTION_PRESETS_MS[3], labelKey: 'settings.catalog.retention180d' },
   { value: 'never', labelKey: 'settings.catalog.retentionNever' },
 ]
-
-type ApiKeyVisibilityInput = Readonly<{
-  id: string
-  value: Ref<string>
-  visible: Ref<boolean>
-  configured: Ref<boolean>
-  getBridge: () => ProviderCredentialRevealBridge | null
-  missingBridgeMessage: string
-  revealFailedMessage: string
-}>
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
   return typeof value === 'string' && (REASONING_EFFORTS as string[]).includes(value)
@@ -836,218 +874,239 @@ function parsePositiveIntegerText(value: string): number | null {
   return parsed
 }
 
-async function toggleApiKeyVisibility(input: ApiKeyVisibilityInput) {
-  error.value = null
-  savedMessage.value = null
-
-  if (input.visible.value) {
-    input.visible.value = false
-    if (input.configured.value) {
-      input.value.value = ''
-    }
-    return
-  }
-
-  if (!input.value.value.trim() && input.configured.value) {
-    const credentialBridge = input.getBridge()
-    if (!credentialBridge) {
-      error.value = input.missingBridgeMessage
-      return
-    }
-
-    credentialRevealLoading.value = input.id
-    try {
-      const result = await credentialBridge.reveal()
-      if (!result?.ok) {
-        throw new Error(result?.message || input.revealFailedMessage)
-      }
-      input.value.value = result.apiKey
-    } catch (err: any) {
-      error.value = err?.message ? String(err.message) : input.revealFailedMessage
-      return
-    } finally {
-      credentialRevealLoading.value = null
-    }
-  }
-
-  input.visible.value = true
+function credentialPresenceLabel(presence: CredentialPresence): string {
+  if (presence === 'configured') return t('settings.credentials.configured')
+  if (presence === 'unconfigured') return t('settings.credentials.notConfigured')
+  return t('settings.credentials.unknown')
 }
 
-function toggleOpenRouterApiKeyVisibility() {
-  void toggleApiKeyVisibility({
-    id: 'openrouter',
-    value: apiKey,
-    visible: showApiKey,
-    configured: apiKeyConfigured,
-    getBridge: getOpenRouterCredentialBridge,
-    missingBridgeMessage: t('settings.runtime.missingOpenRouterCredentialBridge'),
-    revealFailedMessage: t('settings.runtime.openRouterCredentialStatusUnavailable'),
+function credentialStorageLabel(backend: ProviderCredentialBackendKind | undefined, configured: boolean, sessionOverridesPersistent = false): string {
+  if (!configured) return ''
+  if (backend === 'session') return ` · ${t(sessionOverridesPersistent ? 'settings.credentials.sessionOverridesPersistent' : 'settings.credentials.sessionOnly')}`
+  if (backend === 'plaintext') return ` · ${t('settings.credentials.plaintextStored')}`
+  return ''
+}
+
+function credentialIssueSummary(issue: CredentialIssue): string {
+  const code = issue.failure.starverseDiagnosticCode
+  return issue.message.includes(code) ? issue.message : `${code}: ${issue.message}`
+}
+
+type CredentialStatusWithAvailability = Readonly<{
+  apiKeyConfigured: boolean
+  backend?: ProviderCredentialBackendKind
+  sessionOverridesPersistent?: boolean
+  credentialAvailability?: CredentialAvailability
+  credentialDiagnosticCode?: string
+}>
+
+function isCredentialStatus(value: unknown): value is CredentialStatusWithAvailability {
+  return Boolean(value && typeof value === 'object' && !Array.isArray(value) &&
+    typeof (value as { apiKeyConfigured?: unknown }).apiKeyConfigured === 'boolean')
+}
+
+function credentialAvailabilityIssue(
+  status: CredentialStatusWithAvailability,
+  providerKey: ProviderCatalogKnownProviderKey | 'anthropic',
+): CredentialIssue | null {
+  if (status.apiKeyConfigured !== true || status.credentialAvailability !== 'unavailable') return null
+  const code = status.credentialDiagnosticCode || 'OS_CREDENTIAL_DECRYPT_FAILED'
+  const fallbackMessage = code === 'EPOCH2_RUNTIME_CREDENTIAL_INVALID'
+    ? t('settings.credentials.systemCredentialRecordInvalid')
+    : t('settings.credentials.systemCredentialDecryptUnavailable')
+  return credentialIssueFromUnknown({
+    providerKey: providerKey as ProviderCatalogKnownProviderKey,
+    operation: 'status',
+    fallbackMessage,
+    result: { code, message: fallbackMessage },
   })
 }
 
-function toggleOpenAIResponsesApiKeyVisibility() {
-  void toggleApiKeyVisibility({
-    id: 'openai_responses',
-    value: openAIResponsesApiKey,
-    visible: showOpenAIResponsesApiKey,
-    configured: openAIResponsesApiKeyConfigured,
-    getBridge: getOpenAIResponsesCredentialBridge,
-    missingBridgeMessage: t('settings.runtime.missingOpenAIResponsesCredentialBridge'),
-    revealFailedMessage: t('settings.runtime.openAIResponsesCredentialStatusUnavailable'),
+function credentialIssueFromUnknown(input: Readonly<{
+  providerKey: ProviderCatalogKnownProviderKey
+  operation: 'status' | 'update' | 'clear'
+  fallbackMessage: string
+  error?: unknown
+  result?: Readonly<{ code?: string; message?: string; providerFailure?: ProviderFailureV2 }>
+}>): CredentialIssue {
+  const resultFailure = input.result?.providerFailure
+  const diagnosticCode = input.result?.code || resultFailure?.starverseDiagnosticCode ||
+    (input.operation === 'status' ? 'PROVIDER_CREDENTIAL_STATUS_FAILED' :
+      input.operation === 'update' ? 'PROVIDER_CREDENTIAL_UPDATE_FAILED' : 'PROVIDER_CREDENTIAL_CLEAR_FAILED')
+  const source = input.error ?? new Error(input.result?.message || diagnosticCode)
+  const failure = resultFailure ?? providerFailureFromUnknownV2(source, {
+    origin: 'ipc_bridge',
+    phase: 'terminal_persistence',
+    providerId: input.providerKey,
+    contractId: `credential-settings:${input.providerKey}`,
+    operationId: `credential:${input.operation}:${input.providerKey}`,
+    requestSequence: 1,
+    starverseDiagnosticCode: diagnosticCode,
   })
-}
-
-function toggleGoogleAIStudioApiKeyVisibility() {
-  void toggleApiKeyVisibility({
-    id: 'google_ai_studio',
-    value: googleAIStudioApiKey,
-    visible: showGoogleAIStudioApiKey,
-    configured: googleAIStudioApiKeyConfigured,
-    getBridge: getGoogleAIStudioCredentialBridge,
-    missingBridgeMessage: t('settings.runtime.missingGoogleAIStudioCredentialBridge'),
-    revealFailedMessage: t('settings.runtime.googleAIStudioCredentialStatusUnavailable'),
-  })
-}
-
-function toggleAnthropicApiKeyVisibility() {
-  void toggleApiKeyVisibility({
-    id: 'anthropic',
-    value: anthropicApiKey,
-    visible: showAnthropicApiKey,
-    configured: anthropicApiKeyConfigured,
-    getBridge: getAnthropicCredentialBridge,
-    missingBridgeMessage: t('settings.runtime.missingAnthropicCredentialBridge'),
-    revealFailedMessage: t('settings.runtime.anthropicCredentialStatusUnavailable'),
-  })
-}
-
-function toggleDeepSeekApiKeyVisibility() {
-  void toggleApiKeyVisibility({
-    id: 'deepseek',
-    value: deepSeekApiKey,
-    visible: showDeepSeekApiKey,
-    configured: deepSeekApiKeyConfigured,
-    getBridge: getDeepSeekCredentialBridge,
-    missingBridgeMessage: t('settings.runtime.missingDeepSeekCredentialBridge'),
-    revealFailedMessage: t('settings.runtime.deepSeekCredentialStatusUnavailable'),
+  return Object.freeze({
+    message: input.result?.message || providerFailurePrimaryMessageV2(failure) || input.fallbackMessage,
+    failure,
   })
 }
 
 function applyOpenRouterCredentialStatus(status: OpenRouterCredentialStatus) {
   apiKey.value = ''
-  showApiKey.value = false
-  apiKeyConfigured.value = status.apiKeyConfigured === true
+  openRouterCredentialPresence.value = status.apiKeyConfigured === true ? 'configured' : 'unconfigured'
   maskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  openRouterCredentialBackend.value = status.backend
+  openRouterSessionOverridesPersistent.value = status.sessionOverridesPersistent === true
   credentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
+  openRouterCredentialIssue.value = credentialAvailabilityIssue(status, 'openrouter')
 }
 
-async function loadOpenRouterCredentialStatus() {
-  const credentialBridge = getOpenRouterCredentialBridge()
-  if (!credentialBridge) {
-    throw new Error(t('settings.runtime.missingOpenRouterCredentialBridge'))
-  }
-
-  const result = await credentialBridge.getStatus()
-  if (!result?.ok || !result.status) {
-    throw new Error(result?.message || t('settings.runtime.openRouterCredentialStatusUnavailable'))
-  }
-  applyOpenRouterCredentialStatus(result.status)
+function markOpenRouterCredentialUnknown(issue: CredentialIssue) {
+  openRouterCredentialPresence.value = 'unknown'
+  maskedApiKey.value = ''
+  credentialWarnings.value = []
+  openRouterCredentialIssue.value = issue
 }
 
 function applyOpenAIResponsesCredentialStatus(status: OpenAIResponsesCredentialStatus) {
   openAIResponsesApiKey.value = ''
-  showOpenAIResponsesApiKey.value = false
-  openAIResponsesApiKeyConfigured.value = status.apiKeyConfigured === true
+  openAIResponsesCredentialPresence.value = status.apiKeyConfigured === true ? 'configured' : 'unconfigured'
   openAIResponsesMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  openAIResponsesCredentialBackend.value = status.backend
+  openAIResponsesSessionOverridesPersistent.value = status.sessionOverridesPersistent === true
   openAIResponsesCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
+  openAIResponsesCredentialIssue.value = credentialAvailabilityIssue(status, 'openai_responses')
+}
+
+function markOpenAIResponsesCredentialUnknown(issue: CredentialIssue) {
+  openAIResponsesCredentialPresence.value = 'unknown'
+  openAIResponsesMaskedApiKey.value = ''
+  openAIResponsesCredentialWarnings.value = []
+  openAIResponsesCredentialIssue.value = issue
 }
 
 function applyGoogleAIStudioCredentialStatus(status: GoogleAIStudioCredentialStatus) {
   googleAIStudioApiKey.value = ''
-  showGoogleAIStudioApiKey.value = false
-  googleAIStudioApiKeyConfigured.value = status.apiKeyConfigured === true
+  googleAIStudioCredentialPresence.value = status.apiKeyConfigured === true ? 'configured' : 'unconfigured'
   googleAIStudioMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  googleAIStudioCredentialBackend.value = status.backend
+  googleAIStudioSessionOverridesPersistent.value = status.sessionOverridesPersistent === true
   googleAIStudioCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
+  googleAIStudioCredentialIssue.value = credentialAvailabilityIssue(status, 'google_ai_studio')
+}
+
+function markGoogleAIStudioCredentialUnknown(issue: CredentialIssue) {
+  googleAIStudioCredentialPresence.value = 'unknown'
+  googleAIStudioMaskedApiKey.value = ''
+  googleAIStudioCredentialWarnings.value = []
+  googleAIStudioCredentialIssue.value = issue
 }
 
 function applyAnthropicCredentialStatus(status: AnthropicCredentialStatus) {
   anthropicApiKey.value = ''
-  showAnthropicApiKey.value = false
-  anthropicApiKeyConfigured.value = status.apiKeyConfigured === true
+  anthropicCredentialPresence.value = status.apiKeyConfigured === true ? 'configured' : 'unconfigured'
   anthropicMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  anthropicCredentialBackend.value = status.backend
+  anthropicSessionOverridesPersistent.value = status.sessionOverridesPersistent === true
   anthropicCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
+  anthropicCredentialIssue.value = credentialAvailabilityIssue(status, 'anthropic')
+}
+
+function markAnthropicCredentialUnknown(issue: CredentialIssue) {
+  anthropicCredentialPresence.value = 'unknown'
+  anthropicMaskedApiKey.value = ''
+  anthropicCredentialWarnings.value = []
+  anthropicCredentialIssue.value = issue
 }
 
 function applyDeepSeekCredentialStatus(status: DeepSeekCredentialStatus) {
   deepSeekApiKey.value = ''
-  showDeepSeekApiKey.value = false
-  deepSeekApiKeyConfigured.value = status.apiKeyConfigured === true
+  deepSeekCredentialPresence.value = status.apiKeyConfigured === true ? 'configured' : 'unconfigured'
   deepSeekMaskedApiKey.value = status.apiKeyConfigured === true ? (status.maskedApiKey || '***') : ''
+  deepSeekCredentialBackend.value = status.backend
+  deepSeekSessionOverridesPersistent.value = status.sessionOverridesPersistent === true
   deepSeekCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
+  deepSeekCredentialIssue.value = credentialAvailabilityIssue(status, 'deepseek')
 }
 
-async function loadOpenAIResponsesCredentialStatus() {
-  const credentialBridge = getOpenAIResponsesCredentialBridge()
-  if (!credentialBridge) {
-    openAIResponsesApiKeyConfigured.value = false
-    openAIResponsesMaskedApiKey.value = ''
-    openAIResponsesCredentialWarnings.value = []
-    return
-  }
-
-  const result = await credentialBridge.getStatus()
-  if (!result?.ok || !result.status) {
-    throw new Error(result?.message || t('settings.runtime.openAIResponsesCredentialStatusUnavailable'))
-  }
-  applyOpenAIResponsesCredentialStatus(result.status)
+function markDeepSeekCredentialUnknown(issue: CredentialIssue) {
+  deepSeekCredentialPresence.value = 'unknown'
+  deepSeekMaskedApiKey.value = ''
+  deepSeekCredentialWarnings.value = []
+  deepSeekCredentialIssue.value = issue
 }
 
-async function loadGoogleAIStudioCredentialStatus() {
-  const credentialBridge = getGoogleAIStudioCredentialBridge()
-  if (!credentialBridge) {
-    googleAIStudioApiKeyConfigured.value = false
-    googleAIStudioMaskedApiKey.value = ''
-    googleAIStudioCredentialWarnings.value = []
-    return
+async function loadProviderCredentialStatus<TStatus extends CredentialStatusWithAvailability>(input: Readonly<{
+  providerKey: ProviderCatalogKnownProviderKey
+  bridge: Readonly<{ getStatus: () => Promise<Readonly<{
+    ok: boolean
+    code?: string
+    status?: TStatus
+    message?: string
+    providerFailure?: ProviderFailureV2
+  }>> }> | null
+  missingBridgeMessage: string
+  statusUnavailableMessage: string
+  applyStatus: (status: TStatus) => void
+  markUnknown: (issue: CredentialIssue) => void
+}>): Promise<void> {
+  const operationToken = beginCredentialOperation(input.providerKey, 'status')
+  if (!operationToken) return
+  try {
+    if (!input.bridge) {
+      if (!credentialOperationIsCurrent(input.providerKey, operationToken)) return
+      input.markUnknown(credentialIssueFromUnknown({ providerKey: input.providerKey, operation: 'status',
+        fallbackMessage: input.missingBridgeMessage, error: new Error(input.missingBridgeMessage) }))
+      return
+    }
+    const result = await input.bridge.getStatus()
+    if (!credentialOperationIsCurrent(input.providerKey, operationToken)) return
+    if (!result?.ok || !isCredentialStatus(result.status)) {
+      input.markUnknown(credentialIssueFromUnknown({ providerKey: input.providerKey, operation: 'status',
+        fallbackMessage: input.statusUnavailableMessage, result }))
+      return
+    }
+    input.applyStatus(result.status)
+  } catch (error) {
+    if (!credentialOperationIsCurrent(input.providerKey, operationToken)) return
+    input.markUnknown(credentialIssueFromUnknown({ providerKey: input.providerKey, operation: 'status',
+      fallbackMessage: input.statusUnavailableMessage, error }))
+  } finally {
+    finishCredentialOperation(input.providerKey, operationToken)
   }
-
-  const result = await credentialBridge.getStatus()
-  if (!result?.ok || !result.status) {
-    throw new Error(result?.message || t('settings.runtime.googleAIStudioCredentialStatusUnavailable'))
-  }
-  applyGoogleAIStudioCredentialStatus(result.status)
 }
 
-async function loadAnthropicCredentialStatus() {
-  const credentialBridge = getAnthropicCredentialBridge()
-  if (!credentialBridge) {
-    anthropicApiKeyConfigured.value = false
-    anthropicMaskedApiKey.value = ''
-    anthropicCredentialWarnings.value = []
-    return
-  }
-
-  const result = await credentialBridge.getStatus()
-  if (!result?.ok || !result.status) {
-    throw new Error(result?.message || t('settings.runtime.anthropicCredentialStatusUnavailable'))
-  }
-  applyAnthropicCredentialStatus(result.status)
+function loadOpenRouterCredentialStatus() {
+  return loadProviderCredentialStatus({ providerKey: 'openrouter', bridge: getOpenRouterCredentialBridge(),
+    missingBridgeMessage: t('settings.runtime.missingOpenRouterCredentialBridge'),
+    statusUnavailableMessage: t('settings.runtime.openRouterCredentialStatusUnavailable'),
+    applyStatus: applyOpenRouterCredentialStatus, markUnknown: markOpenRouterCredentialUnknown })
 }
 
-async function loadDeepSeekCredentialStatus() {
-  const credentialBridge = getDeepSeekCredentialBridge()
-  if (!credentialBridge) {
-    deepSeekApiKeyConfigured.value = false
-    deepSeekMaskedApiKey.value = ''
-    deepSeekCredentialWarnings.value = []
-    return
-  }
+function loadOpenAIResponsesCredentialStatus() {
+  return loadProviderCredentialStatus({ providerKey: 'openai_responses', bridge: getOpenAIResponsesCredentialBridge(),
+    missingBridgeMessage: t('settings.runtime.missingOpenAIResponsesCredentialBridge'),
+    statusUnavailableMessage: t('settings.runtime.openAIResponsesCredentialStatusUnavailable'),
+    applyStatus: applyOpenAIResponsesCredentialStatus, markUnknown: markOpenAIResponsesCredentialUnknown })
+}
 
-  const result = await credentialBridge.getStatus()
-  if (!result?.ok || !result.status) {
-    throw new Error(result?.message || t('settings.runtime.deepSeekCredentialStatusUnavailable'))
-  }
-  applyDeepSeekCredentialStatus(result.status)
+function loadGoogleAIStudioCredentialStatus() {
+  return loadProviderCredentialStatus({ providerKey: 'google_ai_studio', bridge: getGoogleAIStudioCredentialBridge(),
+    missingBridgeMessage: t('settings.runtime.missingGoogleAIStudioCredentialBridge'),
+    statusUnavailableMessage: t('settings.runtime.googleAIStudioCredentialStatusUnavailable'),
+    applyStatus: applyGoogleAIStudioCredentialStatus, markUnknown: markGoogleAIStudioCredentialUnknown })
+}
+
+function loadAnthropicCredentialStatus() {
+  return loadProviderCredentialStatus({ providerKey: 'anthropic_messages', bridge: getAnthropicCredentialBridge(),
+    missingBridgeMessage: t('settings.runtime.missingAnthropicCredentialBridge'),
+    statusUnavailableMessage: t('settings.runtime.anthropicCredentialStatusUnavailable'),
+    applyStatus: applyAnthropicCredentialStatus, markUnknown: markAnthropicCredentialUnknown })
+}
+
+function loadDeepSeekCredentialStatus() {
+  return loadProviderCredentialStatus({ providerKey: 'deepseek', bridge: getDeepSeekCredentialBridge(),
+    missingBridgeMessage: t('settings.runtime.missingDeepSeekCredentialBridge'),
+    statusUnavailableMessage: t('settings.runtime.deepSeekCredentialStatusUnavailable'),
+    applyStatus: applyDeepSeekCredentialStatus, markUnknown: markDeepSeekCredentialUnknown })
 }
 
 function cleanupLegacyModelStorage() {
@@ -1200,11 +1259,13 @@ async function load() {
 
   loading.value = true
   try {
-    await loadOpenRouterCredentialStatus()
-    await loadOpenAIResponsesCredentialStatus()
-    await loadGoogleAIStudioCredentialStatus()
-    await loadAnthropicCredentialStatus()
-    await loadDeepSeekCredentialStatus()
+    await Promise.all([
+      loadOpenRouterCredentialStatus(),
+      loadOpenAIResponsesCredentialStatus(),
+      loadGoogleAIStudioCredentialStatus(),
+      loadAnthropicCredentialStatus(),
+      loadDeepSeekCredentialStatus(),
+    ])
     cleanupLegacyModelStorage()
     const storedCatalogPolicy = await store.get(GLOBAL_CATALOG_POLICY_V2_STORE_KEY)
     if (storedCatalogPolicy && typeof storedCatalogPolicy === 'object') {
@@ -1403,39 +1464,82 @@ async function copyRunReport() {
   }
 }
 
-async function clearApiKey() {
+async function clearProviderCredential<TStatus extends Readonly<{ apiKeyConfigured: boolean }>>(input: Readonly<{
+  providerKey: ProviderCatalogKnownProviderKey
+  bridge: Readonly<{ clear: () => Promise<Readonly<{
+    ok: boolean
+    code?: string
+    status?: TStatus
+    message?: string
+    providerFailure?: ProviderFailureV2
+  }>> }> | null
+  missingBridgeMessage: string
+  clearFailedMessage: string
+  clearedMessage: string
+  applyStatus: (status: TStatus) => void
+  markUnknown: (issue: CredentialIssue) => void
+  finishEditing: () => void
+  clearInput?: () => void
+  onCleared?: () => void
+}>): Promise<void> {
+  const operationToken = beginCredentialOperation(input.providerKey, 'clear')
+  if (!operationToken) return
   error.value = null
+  errorFailure.value = null
   savedMessage.value = null
-  const credentialBridge = getOpenRouterCredentialBridge()
-  if (!credentialBridge) {
-    error.value = t('settings.runtime.missingOpenRouterCredentialBridge')
-    return
-  }
-  saving.value = true
   try {
-    const result = await credentialBridge.clear()
-    if (!result?.ok || !result.status) {
-      throw new Error(result?.message || t('settings.runtime.openRouterCredentialClearFailed'))
+    if (!input.bridge) {
+      if (!credentialOperationIsCurrent(input.providerKey, operationToken)) return
+      const issue = credentialIssueFromUnknown({ providerKey: input.providerKey, operation: 'clear',
+        fallbackMessage: input.missingBridgeMessage, error: new Error(input.missingBridgeMessage) })
+      input.markUnknown(issue)
+      error.value = issue.message
+      errorFailure.value = issue.failure
+      return
     }
-    applyOpenRouterCredentialStatus(result.status)
-    savedMessage.value = t('settings.openrouter.apiKeyCleared')
-    notifyProviderCredentialUpdated('openrouter')
-    try {
-      window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
-        detail: {
-          hasApiKey: false,
-          baseUrlChanged: false,
-          reason: 'api_key_cleared',
-        },
-      }))
-    } catch {
-      // no-op
+    const result = await input.bridge.clear()
+    if (!credentialOperationIsCurrent(input.providerKey, operationToken)) return
+    if (!result?.ok || !isCredentialStatus(result.status)) {
+      const issue = credentialIssueFromUnknown({ providerKey: input.providerKey, operation: 'clear',
+        fallbackMessage: input.clearFailedMessage, result })
+      input.markUnknown(issue)
+      error.value = issue.message
+      errorFailure.value = issue.failure
+      return
     }
-  } catch (err: any) {
-    error.value = err?.message ? String(err.message) : String(err)
+    input.applyStatus(result.status)
+    input.clearInput?.()
+    input.finishEditing()
+    savedMessage.value = input.clearedMessage
+    notifyProviderCredentialUpdated(input.providerKey)
+    input.onCleared?.()
+  } catch (cause) {
+    if (!credentialOperationIsCurrent(input.providerKey, operationToken)) return
+    const issue = credentialIssueFromUnknown({ providerKey: input.providerKey, operation: 'clear',
+      fallbackMessage: input.clearFailedMessage, error: cause })
+    input.markUnknown(issue)
+    error.value = issue.message
+    errorFailure.value = issue.failure
   } finally {
-    saving.value = false
+    finishCredentialOperation(input.providerKey, operationToken)
   }
+}
+
+function clearApiKey() {
+  return clearProviderCredential({ providerKey: 'openrouter', bridge: getOpenRouterCredentialBridge(),
+    missingBridgeMessage: t('settings.runtime.missingOpenRouterCredentialBridge'),
+    clearFailedMessage: t('settings.runtime.openRouterCredentialClearFailed'),
+    clearedMessage: t('settings.openrouter.apiKeyCleared'), applyStatus: applyOpenRouterCredentialStatus,
+    markUnknown: markOpenRouterCredentialUnknown, finishEditing: () => { openRouterCredentialEditing.value = false },
+    onCleared: () => {
+      try {
+        window.dispatchEvent(new CustomEvent('settings:openRouterConnectionUpdated', {
+          detail: { hasApiKey: false, baseUrlChanged: false, reason: 'api_key_cleared' },
+        }))
+      } catch {
+        // no-op
+      }
+    } })
 }
 
 async function testNetworkProxyConnection() {
@@ -1462,107 +1566,44 @@ async function testNetworkProxyConnection() {
   }
 }
 
-async function clearOpenAIResponsesApiKey() {
-  error.value = null
-  savedMessage.value = null
-  const credentialBridge = getOpenAIResponsesCredentialBridge()
-  if (!credentialBridge) {
-    error.value = t('settings.runtime.missingOpenAIResponsesCredentialBridge')
-    return
-  }
-  saving.value = true
-  try {
-    const result = await credentialBridge.clear()
-    if (!result?.ok || !result.status) {
-      throw new Error(result?.message || t('settings.runtime.openAIResponsesCredentialClearFailed'))
-    }
-    applyOpenAIResponsesCredentialStatus(result.status)
-    savedMessage.value = t('settings.runtime.openAIResponsesApiKeyCleared')
-    notifyProviderCredentialUpdated('openai_responses')
-  } catch (err: any) {
-    error.value = err?.message ? String(err.message) : String(err)
-  } finally {
-    saving.value = false
-  }
+function clearOpenAIResponsesApiKey() {
+  return clearProviderCredential({ providerKey: 'openai_responses', bridge: getOpenAIResponsesCredentialBridge(),
+    missingBridgeMessage: t('settings.runtime.missingOpenAIResponsesCredentialBridge'),
+    clearFailedMessage: t('settings.runtime.openAIResponsesCredentialClearFailed'),
+    clearedMessage: t('settings.runtime.openAIResponsesApiKeyCleared'), applyStatus: applyOpenAIResponsesCredentialStatus,
+    markUnknown: markOpenAIResponsesCredentialUnknown, finishEditing: () => { openAIResponsesCredentialEditing.value = false } })
 }
 
-async function clearGoogleAIStudioApiKey() {
-  error.value = null
-  savedMessage.value = null
-  const credentialBridge = getGoogleAIStudioCredentialBridge()
-  if (!credentialBridge) {
-    error.value = t('settings.runtime.missingGoogleAIStudioCredentialBridge')
-    return
-  }
-  saving.value = true
-  try {
-    const result = await credentialBridge.clear()
-    if (!result?.ok || !result.status) {
-      throw new Error(result?.message || t('settings.runtime.googleAIStudioCredentialClearFailed'))
-    }
-    applyGoogleAIStudioCredentialStatus(result.status)
-    savedMessage.value = t('settings.runtime.googleAIStudioApiKeyCleared')
-    notifyProviderCredentialUpdated('google_ai_studio')
-  } catch (err: any) {
-    error.value = err?.message ? String(err.message) : String(err)
-  } finally {
-    saving.value = false
-  }
+function clearGoogleAIStudioApiKey() {
+  return clearProviderCredential({ providerKey: 'google_ai_studio', bridge: getGoogleAIStudioCredentialBridge(),
+    missingBridgeMessage: t('settings.runtime.missingGoogleAIStudioCredentialBridge'),
+    clearFailedMessage: t('settings.runtime.googleAIStudioCredentialClearFailed'),
+    clearedMessage: t('settings.runtime.googleAIStudioApiKeyCleared'), applyStatus: applyGoogleAIStudioCredentialStatus,
+    markUnknown: markGoogleAIStudioCredentialUnknown, finishEditing: () => { googleAIStudioCredentialEditing.value = false } })
 }
 
-async function clearAnthropicApiKey() {
-  error.value = null
-  savedMessage.value = null
-  const credentialBridge = getAnthropicCredentialBridge()
-  if (!credentialBridge) {
-    error.value = t('settings.runtime.missingAnthropicCredentialBridge')
-    return
-  }
-  saving.value = true
-  try {
-    const result = await credentialBridge.clear()
-    if (!result?.ok || !result.status) {
-      throw new Error(result?.message || t('settings.runtime.anthropicCredentialClearFailed'))
-    }
-    applyAnthropicCredentialStatus(result.status)
-    savedMessage.value = t('settings.runtime.anthropicApiKeyCleared')
-    notifyProviderCredentialUpdated('anthropic_messages')
-  } catch (err: any) {
-    error.value = err?.message ? String(err.message) : String(err)
-  } finally {
-    saving.value = false
-  }
+function clearAnthropicApiKey() {
+  return clearProviderCredential({ providerKey: 'anthropic_messages', bridge: getAnthropicCredentialBridge(),
+    missingBridgeMessage: t('settings.runtime.missingAnthropicCredentialBridge'),
+    clearFailedMessage: t('settings.runtime.anthropicCredentialClearFailed'),
+    clearedMessage: t('settings.runtime.anthropicApiKeyCleared'), applyStatus: applyAnthropicCredentialStatus,
+    markUnknown: markAnthropicCredentialUnknown, finishEditing: () => { anthropicCredentialEditing.value = false } })
 }
 
-async function clearDeepSeekApiKey() {
-  error.value = null
-  savedMessage.value = null
-  const credentialBridge = getDeepSeekCredentialBridge()
-  if (!credentialBridge) {
-    error.value = t('settings.runtime.missingDeepSeekCredentialBridge')
-    return
-  }
-  saving.value = true
-  try {
-    const result = await credentialBridge.clear()
-    if (!result?.ok || !result.status) {
-      throw new Error(result?.message || t('settings.runtime.deepSeekCredentialClearFailed'))
-    }
-    applyDeepSeekCredentialStatus(result.status)
-    savedMessage.value = t('settings.runtime.deepSeekApiKeyCleared')
-    notifyProviderCredentialUpdated('deepseek')
-  } catch (err: any) {
-    error.value = err?.message ? String(err.message) : String(err)
-  } finally {
-    saving.value = false
-  }
+function clearDeepSeekApiKey() {
+  return clearProviderCredential({ providerKey: 'deepseek', bridge: getDeepSeekCredentialBridge(),
+    missingBridgeMessage: t('settings.runtime.missingDeepSeekCredentialBridge'),
+    clearFailedMessage: t('settings.runtime.deepSeekCredentialClearFailed'),
+    clearedMessage: t('settings.runtime.deepSeekApiKeyCleared'), applyStatus: applyDeepSeekCredentialStatus,
+    markUnknown: markDeepSeekCredentialUnknown, finishEditing: () => { deepSeekCredentialEditing.value = false } })
 }
 
-async function applyProviderCredential<TStatus>(input: Readonly<{
+async function applyProviderCredential<TStatus extends Readonly<{ apiKeyConfigured: boolean }>>(input: Readonly<{
   providerKey: ProviderCatalogKnownProviderKey
   apiKey: string
-  bridge: Readonly<{ update: (payload: Readonly<{ apiKey?: string }>) => Promise<Readonly<{
+  bridge: Readonly<{ update: (payload: Readonly<{ apiKey?: string; storageMode?: CredentialStorageMode }>) => Promise<Readonly<{
     ok: boolean
+    code?: string
     status?: TStatus
     message?: string
     providerFailure?: ProviderFailureV2
@@ -1570,61 +1611,122 @@ async function applyProviderCredential<TStatus>(input: Readonly<{
   missingBridgeMessage: string
   updateFailedMessage: string
   applyStatus: (status: TStatus) => void
+  markUnknown: (issue: CredentialIssue) => void
+  finishEditing: () => void
+  clearInput: () => void
+  storageMode?: CredentialStorageMode
 }>): Promise<void> {
   error.value = null
   errorFailure.value = null
   savedMessage.value = null
   const apiKeyValue = input.apiKey.trim()
   if (!apiKeyValue) return
-  if (!input.bridge) {
-    error.value = input.missingBridgeMessage
-    return
-  }
-  credentialApplyLoading.value = input.providerKey
+  const operationToken = beginCredentialOperation(input.providerKey, 'update')
+  if (!operationToken) return
   try {
-    const result = await input.bridge.update({ apiKey: apiKeyValue })
-    if (!result.ok || !result.status) {
-      if (result.providerFailure) errorFailure.value = result.providerFailure
-      throw new Error(result.message || input.updateFailedMessage)
+    if (!input.bridge) {
+      const issue = credentialIssueFromUnknown({ providerKey: input.providerKey, operation: 'update',
+        fallbackMessage: input.missingBridgeMessage, error: new Error(input.missingBridgeMessage) })
+      input.markUnknown(issue)
+      error.value = issue.message
+      errorFailure.value = issue.failure
+      return
+    }
+    const result = await input.bridge.update(input.storageMode === undefined
+      ? { apiKey: apiKeyValue }
+      : { apiKey: apiKeyValue, storageMode: input.storageMode })
+    if (!credentialOperationIsCurrent(input.providerKey, operationToken)) return
+    if (!result.ok && (result.code === 'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED' ||
+        result.code === 'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE') && input.storageMode === undefined) {
+      credentialFallbackProvider.value = input.providerKey
+      credentialFallbackApiKey.value = apiKeyValue
+      return
+    }
+    if (!result.ok || !isCredentialStatus(result.status)) {
+      const issue = credentialIssueFromUnknown({ providerKey: input.providerKey, operation: 'update',
+        fallbackMessage: input.updateFailedMessage, result })
+      input.markUnknown(issue)
+      error.value = issue.message
+      errorFailure.value = issue.failure
+      return
     }
     input.applyStatus(result.status)
+    input.clearInput()
+    input.finishEditing()
     notifyProviderCredentialUpdated(input.providerKey)
     savedMessage.value = t('common.saved')
-  } catch (err) {
-    error.value = err instanceof Error ? err.message : String(err)
+  } catch (cause) {
+    if (!credentialOperationIsCurrent(input.providerKey, operationToken)) return
+    const issue = credentialIssueFromUnknown({ providerKey: input.providerKey, operation: 'update',
+      fallbackMessage: input.updateFailedMessage, error: cause })
+    input.markUnknown(issue)
+    error.value = issue.message
+    errorFailure.value = issue.failure
   } finally {
-    credentialApplyLoading.value = null
+    finishCredentialOperation(input.providerKey, operationToken)
   }
 }
 
-function applyOpenRouterCredential() {
+function beginOpenRouterCredentialEdit() { apiKey.value = ''; openRouterCredentialEditing.value = true }
+function cancelOpenRouterCredentialEdit() { apiKey.value = ''; openRouterCredentialEditing.value = false }
+function beginOpenAIResponsesCredentialEdit() { openAIResponsesApiKey.value = ''; openAIResponsesCredentialEditing.value = true }
+function cancelOpenAIResponsesCredentialEdit() { openAIResponsesApiKey.value = ''; openAIResponsesCredentialEditing.value = false }
+function beginGoogleAIStudioCredentialEdit() { googleAIStudioApiKey.value = ''; googleAIStudioCredentialEditing.value = true }
+function cancelGoogleAIStudioCredentialEdit() { googleAIStudioApiKey.value = ''; googleAIStudioCredentialEditing.value = false }
+function beginAnthropicCredentialEdit() { anthropicApiKey.value = ''; anthropicCredentialEditing.value = true }
+function cancelAnthropicCredentialEdit() { anthropicApiKey.value = ''; anthropicCredentialEditing.value = false }
+function beginDeepSeekCredentialEdit() { deepSeekApiKey.value = ''; deepSeekCredentialEditing.value = true }
+function cancelDeepSeekCredentialEdit() { deepSeekApiKey.value = ''; deepSeekCredentialEditing.value = false }
+
+function applyOpenRouterCredential(storageMode?: CredentialStorageMode) {
   return applyProviderCredential({ providerKey: 'openrouter', apiKey: apiKey.value,
     bridge: getOpenRouterCredentialBridge(), missingBridgeMessage: t('settings.runtime.missingOpenRouterCredentialBridge'),
-    updateFailedMessage: t('settings.runtime.openRouterCredentialUpdateFailed'), applyStatus: applyOpenRouterCredentialStatus })
+    updateFailedMessage: t('settings.runtime.openRouterCredentialUpdateFailed'), applyStatus: applyOpenRouterCredentialStatus,
+    markUnknown: markOpenRouterCredentialUnknown, finishEditing: () => { openRouterCredentialEditing.value = false }, clearInput: () => { apiKey.value = '' }, storageMode })
 }
 
-function applyOpenAIResponsesCredential() {
+function applyOpenAIResponsesCredential(storageMode?: CredentialStorageMode) {
   return applyProviderCredential({ providerKey: 'openai_responses', apiKey: openAIResponsesApiKey.value,
     bridge: getOpenAIResponsesCredentialBridge(), missingBridgeMessage: t('settings.runtime.missingOpenAIResponsesCredentialBridge'),
-    updateFailedMessage: t('settings.runtime.openAIResponsesCredentialUpdateFailed'), applyStatus: applyOpenAIResponsesCredentialStatus })
+    updateFailedMessage: t('settings.runtime.openAIResponsesCredentialUpdateFailed'), applyStatus: applyOpenAIResponsesCredentialStatus,
+    markUnknown: markOpenAIResponsesCredentialUnknown, finishEditing: () => { openAIResponsesCredentialEditing.value = false }, clearInput: () => { openAIResponsesApiKey.value = '' }, storageMode })
 }
 
-function applyGoogleAIStudioCredential() {
+function applyGoogleAIStudioCredential(storageMode?: CredentialStorageMode) {
   return applyProviderCredential({ providerKey: 'google_ai_studio', apiKey: googleAIStudioApiKey.value,
     bridge: getGoogleAIStudioCredentialBridge(), missingBridgeMessage: t('settings.runtime.missingGoogleAIStudioCredentialBridge'),
-    updateFailedMessage: t('settings.runtime.googleAIStudioCredentialUpdateFailed'), applyStatus: applyGoogleAIStudioCredentialStatus })
+    updateFailedMessage: t('settings.runtime.googleAIStudioCredentialUpdateFailed'), applyStatus: applyGoogleAIStudioCredentialStatus,
+    markUnknown: markGoogleAIStudioCredentialUnknown, finishEditing: () => { googleAIStudioCredentialEditing.value = false }, clearInput: () => { googleAIStudioApiKey.value = '' }, storageMode })
 }
 
-function applyAnthropicCredential() {
+function applyAnthropicCredential(storageMode?: CredentialStorageMode) {
   return applyProviderCredential({ providerKey: 'anthropic_messages', apiKey: anthropicApiKey.value,
     bridge: getAnthropicCredentialBridge(), missingBridgeMessage: t('settings.runtime.missingAnthropicCredentialBridge'),
-    updateFailedMessage: t('settings.runtime.anthropicCredentialUpdateFailed'), applyStatus: applyAnthropicCredentialStatus })
+    updateFailedMessage: t('settings.runtime.anthropicCredentialUpdateFailed'), applyStatus: applyAnthropicCredentialStatus,
+    markUnknown: markAnthropicCredentialUnknown, finishEditing: () => { anthropicCredentialEditing.value = false }, clearInput: () => { anthropicApiKey.value = '' }, storageMode })
 }
 
-function applyDeepSeekCredential() {
+function applyDeepSeekCredential(storageMode?: CredentialStorageMode) {
   return applyProviderCredential({ providerKey: 'deepseek', apiKey: deepSeekApiKey.value,
     bridge: getDeepSeekCredentialBridge(), missingBridgeMessage: t('settings.runtime.missingDeepSeekCredentialBridge'),
-    updateFailedMessage: t('settings.runtime.deepSeekCredentialUpdateFailed'), applyStatus: applyDeepSeekCredentialStatus })
+    updateFailedMessage: t('settings.runtime.deepSeekCredentialUpdateFailed'), applyStatus: applyDeepSeekCredentialStatus,
+    markUnknown: markDeepSeekCredentialUnknown, finishEditing: () => { deepSeekCredentialEditing.value = false }, clearInput: () => { deepSeekApiKey.value = '' }, storageMode })
+}
+
+function dismissCredentialFallback() {
+  credentialFallbackProvider.value = null
+  credentialFallbackApiKey.value = ''
+}
+
+function applyCredentialFallback(storageMode: Extract<CredentialStorageMode, 'session' | 'plaintext'>) {
+  const providerKey = credentialFallbackProvider.value
+  const apiKeyValue = credentialFallbackApiKey.value
+  if (!providerKey || !apiKeyValue) return dismissCredentialFallback()
+  if (providerKey === 'openrouter') { apiKey.value = apiKeyValue; dismissCredentialFallback(); return applyOpenRouterCredential(storageMode) }
+  if (providerKey === 'openai_responses') { openAIResponsesApiKey.value = apiKeyValue; dismissCredentialFallback(); return applyOpenAIResponsesCredential(storageMode) }
+  if (providerKey === 'google_ai_studio') { googleAIStudioApiKey.value = apiKeyValue; dismissCredentialFallback(); return applyGoogleAIStudioCredential(storageMode) }
+  if (providerKey === 'anthropic_messages') { anthropicApiKey.value = apiKeyValue; dismissCredentialFallback(); return applyAnthropicCredential(storageMode) }
+  deepSeekApiKey.value = apiKeyValue; dismissCredentialFallback(); return applyDeepSeekCredential(storageMode)
 }
 
 async function refreshCatalogProvider(providerKey: ProviderCatalogKnownProviderKey) {
@@ -1972,6 +2074,18 @@ onMounted(() => {
 
 <template>
   <div class="flex h-full min-h-0 flex-col">
+    <div v-if="credentialFallbackProvider" class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4" role="dialog" aria-modal="true">
+      <div class="w-full max-w-lg rounded-lg bg-white p-5 shadow-xl">
+        <div class="text-sm font-semibold text-gray-900">{{ t('settings.credentials.secureStorageUnavailableTitle') }}</div>
+        <p class="mt-2 text-sm text-gray-700">{{ t('settings.credentials.secureStorageUnavailableBody') }}</p>
+        <p v-if="plaintextCredentialPersistenceSupported" class="mt-2 text-sm font-medium text-red-700">{{ t('settings.credentials.plaintextWarning') }}</p>
+        <div class="mt-5 flex flex-wrap justify-end gap-2">
+          <button type="button" class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="applyCredentialFallback('session')">{{ t('settings.credentials.sessionOnly') }}</button>
+          <button v-if="plaintextCredentialPersistenceSupported" data-testid="settings-save-plaintext-credential" type="button" class="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-900 hover:bg-amber-100" @click="applyCredentialFallback('plaintext')">{{ t('settings.credentials.savePlaintext') }}</button>
+          <button type="button" class="rounded-md border border-gray-200 bg-white px-3 py-2 text-sm text-gray-700 hover:bg-gray-50" @click="dismissCredentialFallback">{{ t('common.cancel') }}</button>
+        </div>
+      </div>
+    </div>
     <div class="px-4 pt-4 text-sm font-semibold text-gray-900">{{ t('settings.title') }}</div>
 
     <div class="mt-3 space-y-3 px-4">
@@ -2095,44 +2209,80 @@ onMounted(() => {
         </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.openrouter.apiKey') }}</label>
-        <div class="mt-1 flex items-center gap-2">
+        <div class="mt-1 flex items-center justify-between gap-3">
+          <span
+            class="text-[11px] font-semibold"
+            :class="openRouterCredentialPresence === 'unknown' ? 'text-red-700' : 'text-gray-700'"
+            data-testid="settings-openrouter-key-status"
+          >
+            {{ credentialPresenceLabel(openRouterCredentialPresence) }}{{ credentialStorageLabel(openRouterCredentialBackend, openRouterCredentialPresence === 'configured', openRouterSessionOverridesPersistent) }}
+          </span>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="openRouterCredentialPresence === 'configured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
+              data-testid="settings-openrouter-edit-key"
+              @click="beginOpenRouterCredentialEdit"
+            >{{ t('settings.credentials.replace') }}</button>
+            <button
+              v-else-if="openRouterCredentialPresence === 'unconfigured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
+              data-testid="settings-openrouter-edit-key"
+              @click="beginOpenRouterCredentialEdit"
+            >{{ t('settings.credentials.add') }}</button>
+            <button
+              v-else
+              type="button"
+              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
+              :disabled="loading || saving || credentialOperationPending('openrouter')"
+              data-testid="settings-openrouter-retry-status"
+              @click="loadOpenRouterCredentialStatus"
+            >{{ t('common.retry') }}</button>
+            <button
+              v-if="openRouterCredentialPresence === 'configured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
+              data-testid="settings-openrouter-clear-key"
+              @click="clearApiKey"
+            >{{ t('common.clear') }}</button>
+          </div>
+        </div>
+        <div v-if="openRouterCredentialEditing" class="mt-2 flex items-center gap-2">
           <input
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
-            :type="showApiKey ? 'text' : 'password'"
-            :placeholder="apiKeyPlaceholder(apiKeyConfigured, t('settings.openrouter.apiKeyPlaceholder'))"
-            :disabled="!canEdit || loading || saving"
+            type="password"
+            :placeholder="t('settings.openrouter.apiKeyPlaceholder')"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
             data-testid="settings-openrouter-api-key"
             v-model="apiKey"
           />
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialRevealLoading !== null || (!showApiKey && !apiKey.trim() && !apiKeyConfigured)"
-            data-testid="settings-openrouter-toggle-key-visibility"
-            @click="toggleOpenRouterApiKeyVisibility"
-          >
-            {{ showApiKey ? t('common.hide') : t('common.show') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialApplyLoading !== null || !apiKey.trim()"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter') || !apiKey.trim()"
             data-testid="settings-openrouter-apply-key"
-            @click="applyOpenRouterCredential"
+            @click="() => applyOpenRouterCredential()"
           >
-            {{ t('settings.credentials.apply') }}
+            {{ t('common.save') }}
           </button>
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving"
-            @click="clearApiKey"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('openrouter')"
+            data-testid="settings-openrouter-cancel-key"
+            @click="cancelOpenRouterCredentialEdit"
           >
-            {{ t('common.clear') }}
+            {{ t('common.cancel') }}
           </button>
         </div>
-        <div v-if="!apiKeyConfigured" class="mt-1 text-[11px] text-gray-500" data-testid="settings-openrouter-key-status">
-          {{ t('settings.credentials.notConfigured') }}
+        <div v-if="openRouterCredentialIssue" class="mt-2 text-[11px] text-red-700" data-testid="settings-openrouter-credential-error">
+          {{ credentialIssueSummary(openRouterCredentialIssue) }}
+          <ProviderFailureDetailsV2 :failure="openRouterCredentialIssue.failure" test-id-prefix="settings-openrouter-credential-failure" />
         </div>
         <div v-if="credentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openrouter-credential-warnings">
           <div v-for="warning in credentialWarnings" :key="warning">{{ warning }}</div>
@@ -2186,45 +2336,78 @@ onMounted(() => {
         </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.openAIResponses.apiKeyLabel') }}</label>
-        <div class="mt-1 flex items-center gap-2">
+        <div class="mt-1 flex items-center justify-between gap-3">
+          <span
+            class="text-[11px] font-semibold"
+            :class="openAIResponsesCredentialPresence === 'unknown' ? 'text-red-700' : 'text-gray-700'"
+            data-testid="settings-openai-responses-key-status"
+          >{{ credentialPresenceLabel(openAIResponsesCredentialPresence) }}{{ credentialStorageLabel(openAIResponsesCredentialBackend, openAIResponsesCredentialPresence === 'configured', openAIResponsesSessionOverridesPersistent) }}</span>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="openAIResponsesCredentialPresence === 'configured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
+              data-testid="settings-openai-responses-edit-key"
+              @click="beginOpenAIResponsesCredentialEdit"
+            >{{ t('settings.credentials.replace') }}</button>
+            <button
+              v-else-if="openAIResponsesCredentialPresence === 'unconfigured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
+              data-testid="settings-openai-responses-edit-key"
+              @click="beginOpenAIResponsesCredentialEdit"
+            >{{ t('settings.credentials.add') }}</button>
+            <button
+              v-else
+              type="button"
+              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
+              :disabled="loading || saving || credentialOperationPending('openai_responses')"
+              data-testid="settings-openai-responses-retry-status"
+              @click="loadOpenAIResponsesCredentialStatus"
+            >{{ t('common.retry') }}</button>
+            <button
+              v-if="openAIResponsesCredentialPresence === 'configured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
+              data-testid="settings-openai-responses-clear-key"
+              @click="clearOpenAIResponsesApiKey"
+            >{{ t('common.clear') }}</button>
+          </div>
+        </div>
+        <div v-if="openAIResponsesCredentialEditing" class="mt-2 flex items-center gap-2">
           <input
             v-model="openAIResponsesApiKey"
-            :type="showOpenAIResponsesApiKey ? 'text' : 'password'"
-            :placeholder="apiKeyPlaceholder(openAIResponsesApiKeyConfigured, t('settings.experimentalChat.placeholder.openAIKey'))"
+            type="password"
+            :placeholder="t('settings.experimentalChat.placeholder.openAIKey')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-200 disabled:bg-gray-50"
-            :disabled="!canEdit || loading || saving || !openAIResponsesCredentialAvailable"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
             data-testid="settings-openai-responses-api-key"
           />
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || !openAIResponsesCredentialAvailable || credentialRevealLoading !== null || (!showOpenAIResponsesApiKey && !openAIResponsesApiKey.trim() && !openAIResponsesApiKeyConfigured)"
-            data-testid="settings-openai-responses-toggle-key-visibility"
-            @click="toggleOpenAIResponsesApiKeyVisibility"
-          >
-            {{ showOpenAIResponsesApiKey ? t('common.hide') : t('common.show') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialApplyLoading !== null || !openAIResponsesCredentialAvailable || !openAIResponsesApiKey.trim()"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses') || !openAIResponsesApiKey.trim()"
             data-testid="settings-openai-responses-apply-key"
-            @click="applyOpenAIResponsesCredential"
+            @click="() => applyOpenAIResponsesCredential()"
           >
-            {{ t('settings.credentials.apply') }}
+            {{ t('common.save') }}
           </button>
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || !openAIResponsesCredentialAvailable || !openAIResponsesApiKeyConfigured"
-            data-testid="settings-openai-responses-clear-key"
-            @click="clearOpenAIResponsesApiKey"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('openai_responses')"
+            data-testid="settings-openai-responses-cancel-key"
+            @click="cancelOpenAIResponsesCredentialEdit"
           >
-            {{ t('settings.experimentalChat.clearKey') }}
+            {{ t('common.cancel') }}
           </button>
         </div>
-        <div v-if="!openAIResponsesApiKeyConfigured" class="mt-1 text-[11px] text-gray-500" data-testid="settings-openai-responses-key-status">
-          {{ t('settings.credentials.notConfigured') }}
+        <div v-if="openAIResponsesCredentialIssue" class="mt-2 text-[11px] text-red-700" data-testid="settings-openai-responses-credential-error">
+          {{ credentialIssueSummary(openAIResponsesCredentialIssue) }}
+          <ProviderFailureDetailsV2 :failure="openAIResponsesCredentialIssue.failure" test-id-prefix="settings-openai-responses-credential-failure" />
         </div>
         <div v-if="openAIResponsesCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-openai-responses-credential-warnings">
           <div v-for="warning in openAIResponsesCredentialWarnings" :key="warning">{{ warning }}</div>
@@ -2246,45 +2429,78 @@ onMounted(() => {
         </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.googleAIStudio.apiKeyLabel') }}</label>
-        <div class="mt-1 flex items-center gap-2">
+        <div class="mt-1 flex items-center justify-between gap-3">
+          <span
+            class="text-[11px] font-semibold"
+            :class="googleAIStudioCredentialPresence === 'unknown' ? 'text-red-700' : 'text-gray-700'"
+            data-testid="settings-google-ai-studio-key-status"
+          >{{ credentialPresenceLabel(googleAIStudioCredentialPresence) }}{{ credentialStorageLabel(googleAIStudioCredentialBackend, googleAIStudioCredentialPresence === 'configured', googleAIStudioSessionOverridesPersistent) }}</span>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="googleAIStudioCredentialPresence === 'configured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
+              data-testid="settings-google-ai-studio-edit-key"
+              @click="beginGoogleAIStudioCredentialEdit"
+            >{{ t('settings.credentials.replace') }}</button>
+            <button
+              v-else-if="googleAIStudioCredentialPresence === 'unconfigured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
+              data-testid="settings-google-ai-studio-edit-key"
+              @click="beginGoogleAIStudioCredentialEdit"
+            >{{ t('settings.credentials.add') }}</button>
+            <button
+              v-else
+              type="button"
+              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
+              :disabled="loading || saving || credentialOperationPending('google_ai_studio')"
+              data-testid="settings-google-ai-studio-retry-status"
+              @click="loadGoogleAIStudioCredentialStatus"
+            >{{ t('common.retry') }}</button>
+            <button
+              v-if="googleAIStudioCredentialPresence === 'configured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
+              data-testid="settings-google-ai-studio-clear-key"
+              @click="clearGoogleAIStudioApiKey"
+            >{{ t('common.clear') }}</button>
+          </div>
+        </div>
+        <div v-if="googleAIStudioCredentialEditing" class="mt-2 flex items-center gap-2">
           <input
             v-model="googleAIStudioApiKey"
-            :type="showGoogleAIStudioApiKey ? 'text' : 'password'"
-            :placeholder="apiKeyPlaceholder(googleAIStudioApiKeyConfigured, t('settings.experimentalChat.placeholder.geminiKey'))"
+            type="password"
+            :placeholder="t('settings.experimentalChat.placeholder.geminiKey')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-emerald-200 disabled:bg-gray-50"
-            :disabled="!canEdit || loading || saving || !googleAIStudioCredentialAvailable"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
             data-testid="settings-google-ai-studio-api-key"
           />
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || !googleAIStudioCredentialAvailable || credentialRevealLoading !== null || (!showGoogleAIStudioApiKey && !googleAIStudioApiKey.trim() && !googleAIStudioApiKeyConfigured)"
-            data-testid="settings-google-ai-studio-toggle-key-visibility"
-            @click="toggleGoogleAIStudioApiKeyVisibility"
-          >
-            {{ showGoogleAIStudioApiKey ? t('common.hide') : t('common.show') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialApplyLoading !== null || !googleAIStudioCredentialAvailable || !googleAIStudioApiKey.trim()"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio') || !googleAIStudioApiKey.trim()"
             data-testid="settings-google-ai-studio-apply-key"
-            @click="applyGoogleAIStudioCredential"
+            @click="() => applyGoogleAIStudioCredential()"
           >
-            {{ t('settings.credentials.apply') }}
+            {{ t('common.save') }}
           </button>
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || !googleAIStudioCredentialAvailable || !googleAIStudioApiKeyConfigured"
-            data-testid="settings-google-ai-studio-clear-key"
-            @click="clearGoogleAIStudioApiKey"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('google_ai_studio')"
+            data-testid="settings-google-ai-studio-cancel-key"
+            @click="cancelGoogleAIStudioCredentialEdit"
           >
-            {{ t('settings.experimentalChat.clearKey') }}
+            {{ t('common.cancel') }}
           </button>
         </div>
-        <div v-if="!googleAIStudioApiKeyConfigured" class="mt-1 text-[11px] text-gray-500" data-testid="settings-google-ai-studio-key-status">
-          {{ t('settings.credentials.notConfigured') }}
+        <div v-if="googleAIStudioCredentialIssue" class="mt-2 text-[11px] text-red-700" data-testid="settings-google-ai-studio-credential-error">
+          {{ credentialIssueSummary(googleAIStudioCredentialIssue) }}
+          <ProviderFailureDetailsV2 :failure="googleAIStudioCredentialIssue.failure" test-id-prefix="settings-google-ai-studio-credential-failure" />
         </div>
         <div v-if="googleAIStudioCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-google-ai-studio-credential-warnings">
           <div v-for="warning in googleAIStudioCredentialWarnings" :key="warning">{{ warning }}</div>
@@ -2306,45 +2522,78 @@ onMounted(() => {
         </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.anthropic.apiKeyLabel') }}</label>
-        <div class="mt-1 flex items-center gap-2">
+        <div class="mt-1 flex items-center justify-between gap-3">
+          <span
+            class="text-[11px] font-semibold"
+            :class="anthropicCredentialPresence === 'unknown' ? 'text-red-700' : 'text-gray-700'"
+            data-testid="settings-anthropic-key-status"
+          >{{ credentialPresenceLabel(anthropicCredentialPresence) }}{{ credentialStorageLabel(anthropicCredentialBackend, anthropicCredentialPresence === 'configured', anthropicSessionOverridesPersistent) }}</span>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="anthropicCredentialPresence === 'configured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
+              data-testid="settings-anthropic-edit-key"
+              @click="beginAnthropicCredentialEdit"
+            >{{ t('settings.credentials.replace') }}</button>
+            <button
+              v-else-if="anthropicCredentialPresence === 'unconfigured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
+              data-testid="settings-anthropic-edit-key"
+              @click="beginAnthropicCredentialEdit"
+            >{{ t('settings.credentials.add') }}</button>
+            <button
+              v-else
+              type="button"
+              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
+              :disabled="loading || saving || credentialOperationPending('anthropic_messages')"
+              data-testid="settings-anthropic-retry-status"
+              @click="loadAnthropicCredentialStatus"
+            >{{ t('common.retry') }}</button>
+            <button
+              v-if="anthropicCredentialPresence === 'configured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
+              data-testid="settings-anthropic-clear-key"
+              @click="clearAnthropicApiKey"
+            >{{ t('common.clear') }}</button>
+          </div>
+        </div>
+        <div v-if="anthropicCredentialEditing" class="mt-2 flex items-center gap-2">
           <input
             v-model="anthropicApiKey"
-            :type="showAnthropicApiKey ? 'text' : 'password'"
-            :placeholder="apiKeyPlaceholder(anthropicApiKeyConfigured, t('settings.experimentalChat.placeholder.anthropicKey'))"
+            type="password"
+            :placeholder="t('settings.experimentalChat.placeholder.anthropicKey')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-rose-200 disabled:bg-gray-50"
-            :disabled="!canEdit || loading || saving || !anthropicCredentialAvailable"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
             data-testid="settings-anthropic-api-key"
           />
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || !anthropicCredentialAvailable || credentialRevealLoading !== null || (!showAnthropicApiKey && !anthropicApiKey.trim() && !anthropicApiKeyConfigured)"
-            data-testid="settings-anthropic-toggle-key-visibility"
-            @click="toggleAnthropicApiKeyVisibility"
-          >
-            {{ showAnthropicApiKey ? t('common.hide') : t('common.show') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialApplyLoading !== null || !anthropicCredentialAvailable || !anthropicApiKey.trim()"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages') || !anthropicApiKey.trim()"
             data-testid="settings-anthropic-apply-key"
-            @click="applyAnthropicCredential"
+            @click="() => applyAnthropicCredential()"
           >
-            {{ t('settings.credentials.apply') }}
+            {{ t('common.save') }}
           </button>
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || !anthropicCredentialAvailable || !anthropicApiKeyConfigured"
-            data-testid="settings-anthropic-clear-key"
-            @click="clearAnthropicApiKey"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('anthropic_messages')"
+            data-testid="settings-anthropic-cancel-key"
+            @click="cancelAnthropicCredentialEdit"
           >
-            {{ t('settings.experimentalChat.clearKey') }}
+            {{ t('common.cancel') }}
           </button>
         </div>
-        <div v-if="!anthropicApiKeyConfigured" class="mt-1 text-[11px] text-gray-500" data-testid="settings-anthropic-key-status">
-          {{ t('settings.credentials.notConfigured') }}
+        <div v-if="anthropicCredentialIssue" class="mt-2 text-[11px] text-red-700" data-testid="settings-anthropic-credential-error">
+          {{ credentialIssueSummary(anthropicCredentialIssue) }}
+          <ProviderFailureDetailsV2 :failure="anthropicCredentialIssue.failure" test-id-prefix="settings-anthropic-credential-failure" />
         </div>
         <div v-if="anthropicCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-anthropic-credential-warnings">
           <div v-for="warning in anthropicCredentialWarnings" :key="warning">{{ warning }}</div>
@@ -2366,45 +2615,78 @@ onMounted(() => {
         </div>
 
         <label class="mt-3 block text-[11px] font-semibold text-gray-700">{{ t('settings.experimentalChat.deepSeek.apiKeyLabel') }}</label>
-        <div class="mt-1 flex items-center gap-2">
+        <div class="mt-1 flex items-center justify-between gap-3">
+          <span
+            class="text-[11px] font-semibold"
+            :class="deepSeekCredentialPresence === 'unknown' ? 'text-red-700' : 'text-gray-700'"
+            data-testid="settings-deepseek-key-status"
+          >{{ credentialPresenceLabel(deepSeekCredentialPresence) }}{{ credentialStorageLabel(deepSeekCredentialBackend, deepSeekCredentialPresence === 'configured', deepSeekSessionOverridesPersistent) }}</span>
+          <div class="flex items-center gap-2">
+            <button
+              v-if="deepSeekCredentialPresence === 'configured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
+              data-testid="settings-deepseek-edit-key"
+              @click="beginDeepSeekCredentialEdit"
+            >{{ t('settings.credentials.replace') }}</button>
+            <button
+              v-else-if="deepSeekCredentialPresence === 'unconfigured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
+              data-testid="settings-deepseek-edit-key"
+              @click="beginDeepSeekCredentialEdit"
+            >{{ t('settings.credentials.add') }}</button>
+            <button
+              v-else
+              type="button"
+              class="rounded-md border border-red-200 bg-white px-2 py-1 text-[11px] text-red-700 hover:bg-red-50 disabled:opacity-50"
+              :disabled="loading || saving || credentialOperationPending('deepseek')"
+              data-testid="settings-deepseek-retry-status"
+              @click="loadDeepSeekCredentialStatus"
+            >{{ t('common.retry') }}</button>
+            <button
+              v-if="deepSeekCredentialPresence === 'configured'"
+              type="button"
+              class="rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+              :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
+              data-testid="settings-deepseek-clear-key"
+              @click="clearDeepSeekApiKey"
+            >{{ t('common.clear') }}</button>
+          </div>
+        </div>
+        <div v-if="deepSeekCredentialEditing" class="mt-2 flex items-center gap-2">
           <input
             v-model="deepSeekApiKey"
-            :type="showDeepSeekApiKey ? 'text' : 'password'"
-            :placeholder="apiKeyPlaceholder(deepSeekApiKeyConfigured, t('settings.experimentalChat.placeholder.deepSeekKey'))"
+            type="password"
+            :placeholder="t('settings.experimentalChat.placeholder.deepSeekKey')"
             class="min-w-0 flex-1 rounded-md border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-cyan-200 disabled:bg-gray-50"
-            :disabled="!canEdit || loading || saving || !deepSeekCredentialAvailable"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
             data-testid="settings-deepseek-api-key"
           />
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || !deepSeekCredentialAvailable || credentialRevealLoading !== null || (!showDeepSeekApiKey && !deepSeekApiKey.trim() && !deepSeekApiKeyConfigured)"
-            data-testid="settings-deepseek-toggle-key-visibility"
-            @click="toggleDeepSeekApiKeyVisibility"
-          >
-            {{ showDeepSeekApiKey ? t('common.hide') : t('common.show') }}
-          </button>
-          <button
-            type="button"
-            class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || credentialApplyLoading !== null || !deepSeekCredentialAvailable || !deepSeekApiKey.trim()"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek') || !deepSeekApiKey.trim()"
             data-testid="settings-deepseek-apply-key"
-            @click="applyDeepSeekCredential"
+            @click="() => applyDeepSeekCredential()"
           >
-            {{ t('settings.credentials.apply') }}
+            {{ t('common.save') }}
           </button>
           <button
             type="button"
             class="rounded-md border border-gray-200 bg-white px-2 py-2 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-            :disabled="!canEdit || loading || saving || !deepSeekCredentialAvailable || !deepSeekApiKeyConfigured"
-            data-testid="settings-deepseek-clear-key"
-            @click="clearDeepSeekApiKey"
+            :disabled="!canEdit || loading || saving || credentialOperationPending('deepseek')"
+            data-testid="settings-deepseek-cancel-key"
+            @click="cancelDeepSeekCredentialEdit"
           >
-            {{ t('settings.experimentalChat.clearKey') }}
+            {{ t('common.cancel') }}
           </button>
         </div>
-        <div v-if="!deepSeekApiKeyConfigured" class="mt-1 text-[11px] text-gray-500" data-testid="settings-deepseek-key-status">
-          {{ t('settings.credentials.notConfigured') }}
+        <div v-if="deepSeekCredentialIssue" class="mt-2 text-[11px] text-red-700" data-testid="settings-deepseek-credential-error">
+          {{ credentialIssueSummary(deepSeekCredentialIssue) }}
+          <ProviderFailureDetailsV2 :failure="deepSeekCredentialIssue.failure" test-id-prefix="settings-deepseek-credential-failure" />
         </div>
         <div v-if="deepSeekCredentialWarnings.length" class="mt-1 space-y-1 text-[11px] text-amber-700" data-testid="settings-deepseek-credential-warnings">
           <div v-for="warning in deepSeekCredentialWarnings" :key="warning">{{ warning }}</div>

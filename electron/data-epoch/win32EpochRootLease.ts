@@ -8,10 +8,8 @@ import {
   STARVERSE_PRODUCT_DIRECTORY,
   type Epoch2WorkspaceLayout,
 } from './rootManifest'
-import {
-  projectEpoch2Config,
-  type Epoch2CredentialDecryptValidator,
-} from './configProjection'
+import { projectEpoch2Config } from './configProjection'
+import { createPosixEpochNativeLease } from './posixEpochFilesystemBackend'
 import {
   assertEpoch2ResetJournalInventory,
   decodeEpoch2ResetJournal,
@@ -62,6 +60,7 @@ export interface Win32EpochRootLease {
   writeTransitionFile(key: Win32EpochTransitionFileKey, bytes: Uint8Array): 'written' | 'exists'
   release(): void
 }
+export type EpochRootLease = Win32EpochRootLease
 
 export type Win32EpochLeaseRequest = Readonly<{
   mutexName: string
@@ -331,6 +330,7 @@ function translateNativeError(error: unknown): never {
   if (typeof code === 'string' && NATIVE_ERROR_CODES.has(code as Win32EpochRootLeaseError['code'])) {
     throw new Win32EpochRootLeaseError(code as Win32EpochRootLeaseError['code'])
   }
+  if (typeof code === 'string' && /^EPOCH2_POSIX_[A-Z0-9_]+$/u.test(code)) throw error
   throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
 }
 
@@ -414,6 +414,13 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
     if (error instanceof Win32EpochRootLeaseError) throw error
     return translateNativeError(error)
   }
+  return issueEpochRootLease(layout, nativeLease)
+}
+
+function issueEpochRootLease(
+  layout: Epoch2WorkspaceLayout,
+  nativeLease: NativeLease,
+): Win32EpochRootLease {
   let released = false
   const lease: Win32EpochRootLease = Object.freeze({
     rootIdentity(): Win32EpochRootIdentity {
@@ -485,6 +492,27 @@ export function acquireWin32EpochRootLease(layout: Epoch2WorkspaceLayout): Win32
   ISSUED_WIN32_EPOCH_LEASES.set(lease, layout)
   NATIVE_WIN32_EPOCH_LEASES.set(lease, nativeLease)
   return lease
+}
+
+export function acquireEpochRootLease(
+  layout: Epoch2WorkspaceLayout,
+  platform: NodeJS.Platform = process.platform,
+): EpochRootLease {
+  if (platform === 'win32') return acquireWin32EpochRootLease(layout)
+  if (platform !== 'linux') throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_REQUIRED')
+  assertExpectedLayout(layout)
+  const candidate = createPosixEpochNativeLease(layout) as Partial<NativeLease>
+  if (typeof candidate.rootIdentity !== 'function' || typeof candidate.readTransitionFile !== 'function' ||
+      typeof candidate.writeTransitionFile !== 'function' || typeof candidate.readLegacyConfig !== 'function' ||
+      typeof candidate.replaceLegacyConfig !== 'function' || typeof candidate.inspectLegacyConfigBackups !== 'function' ||
+      typeof candidate.deleteLegacyConfigBackups !== 'function' || typeof candidate.ensureEpochRootMarker !== 'function' ||
+      typeof candidate.verifyEpochRootMarker !== 'function' || typeof candidate.acquireEpochDatabaseFile !== 'function' ||
+      typeof candidate.putEpochAttachmentBlob !== 'function' || typeof candidate.readEpochAttachmentBlob !== 'function' ||
+      typeof candidate.inspectOwnedTarget !== 'function' || typeof candidate.deleteOwnedTarget !== 'function' ||
+      typeof candidate.cleanupTransitionTemps !== 'function' || typeof candidate.release !== 'function') {
+    throw new Win32EpochRootLeaseError('EPOCH2_WIN32_NATIVE_CONTRACT_INVALID')
+  }
+  return issueEpochRootLease(layout, candidate as NativeLease)
 }
 
 function nativeLeaseForOwnedOperation(lease: Win32EpochRootLease): NativeLease {
@@ -698,7 +726,6 @@ function decodeLegacyConfig(bytes: Uint8Array | null): unknown {
 export async function prepareEpoch2ConfigReplacement(input: Readonly<{
   layout: Epoch2WorkspaceLayout
   lease: Win32EpochRootLease
-  validateDecrypt: Epoch2CredentialDecryptValidator
 }>): Promise<Epoch2ConfigReplacementAuthority> {
   assertWin32EpochRootLeaseAuthority(input.lease, input.layout)
   const journal = readPersistedConfigJournal(input, CONFIG_PREPARE_PHASES)
@@ -709,10 +736,7 @@ export async function prepareEpoch2ConfigReplacement(input: Readonly<{
   } finally {
     snapshot.bytes?.fill(0)
   }
-  const projected = await projectEpoch2Config({
-    rawConfig,
-    validateDecrypt: input.validateDecrypt,
-  })
+  const projected = await projectEpoch2Config({ rawConfig })
   const bytes = projectedConfigEncoder.encode(`${JSON.stringify(projected, null, 2)}\n`)
   if (bytes.byteLength === 0 || bytes.byteLength > 1024 * 1024) {
     throw new Error('EPOCH2_CONFIG_INVALID')
@@ -902,6 +926,7 @@ export interface Win32EpochDatabaseFileAuthority {
   verifyPathIdentity(): Win32EpochDatabaseFileIdentity
   release(): void
 }
+export type EpochDatabaseFileAuthority = Win32EpochDatabaseFileAuthority
 
 const NATIVE_EPOCH_DATABASE_AUTHORITIES = new WeakMap<object, NativeEpochDatabaseFileAuthority>()
 const EPOCH_DATABASE_AUTHORITY_BINDINGS = new WeakMap<object, Readonly<{
@@ -1017,6 +1042,9 @@ export function acquireWin32EpochDatabaseFileAuthority(input: Readonly<{
   }
   return authority
 }
+
+/** Platform-neutral entrypoint; the active root lease owns the native or POSIX implementation. */
+export const acquireEpochDatabaseFileAuthority = acquireWin32EpochDatabaseFileAuthority
 
 export function assertWin32EpochDatabaseFileAuthority(
   authority: unknown,

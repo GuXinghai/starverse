@@ -19,6 +19,7 @@ import { createInAppBrowserManager } from './services/inappBrowser'
 import { createEpoch2EnginePluginLifecycleService } from './services/epoch2EnginePluginLifecycleService'
 import { createMainProcessElectronConversionService } from './services/electronConversionService'
 import { createMainWindowLifecycle } from './windows/mainWindowLifecycle'
+import { clearMainWindowActivator, registerMainWindowActivator } from './windows/mainWindowActivation'
 import { requireEpoch2ApplicationRuntime } from './bootstrap/epoch2ApplicationRuntime'
 import { createProductNetworkProxyV2Controller } from './net/productNetworkProxyV2'
 import { createElectronSessionProviderFetch } from './net/providerHttpTransport'
@@ -154,6 +155,7 @@ export async function startMainV2(): Promise<void> {
 })
   mainWindowLifecycle.registerAppLifecycleHandlers()
   mainWindowLifecycle.createWindow()
+  registerMainWindowActivator(() => mainWindowLifecycle.focusWindow())
   packagedTestDocxFixtureAuthority?.register(() => mainWindowLifecycle.getWindow()?.webContents.id ?? null)
   const packagedFixtureWindow = mainWindowLifecycle.getWindow()
   if (packagedTestDocxFixtureAuthority && packagedFixtureWindow) {
@@ -166,6 +168,7 @@ export async function startMainV2(): Promise<void> {
   event.preventDefault()
   closing = true
   mainWindowLifecycle.clearWindowListeners()
+  clearMainWindowActivator()
   void (async () => {
     rawGenerationRequestStore.close()
     await packagedTestDocxFixtureAuthority?.dispose()

@@ -28,4 +28,31 @@ describe('createCompatibleProviderRegistryClient', () => {
     const client = createCompatibleProviderRegistryClient({ list: vi.fn(async () => ({ ok: false, code: 'registry_unavailable' })) } as never)
     await expect(client.list()).rejects.toThrow('registry_unavailable')
   })
+
+  it('forwards an explicitly selected credential storage mode without adding a read path', async () => {
+    const create = vi.fn(async () => ({ ok: true, value: { details: rawDetails, activeConfiguration: active } }))
+    const bridge = {
+      create,
+      getCredentialStatus: vi.fn(async () => ({ ok: true, value: { configured: false, revision: 0 } })),
+    } as never
+    const client = createCompatibleProviderRegistryClient(bridge)
+    await client.create({ displayName: 'Endpoint', endpoint: { baseUrl: 'https://example.test', securityPolicy: 'compatibility_first', ordinaryHeaders: [], query: [] },
+      credential: { mode: 'none' }, storageMode: 'plaintext' })
+    expect(create).toHaveBeenCalledWith(expect.objectContaining({ storageMode: 'plaintext' }))
+  })
+
+  it('binds endpoint updates to the revision projected immediately before the command', async () => {
+    const updateEndpoint = vi.fn(async () => ({ ok: true, value: { details: rawDetails, activeConfiguration: active } }))
+    const bridge = {
+      get: vi.fn(async () => ({ ok: true, value: { details: rawDetails, activeConfiguration: active } })),
+      updateEndpoint,
+    } as never
+    const client = createCompatibleProviderRegistryClient(bridge)
+    await client.updateEndpoint({ providerInstanceId: rawDetails.providerInstanceId,
+      endpoint: { baseUrl: 'https://next.example.test', securityPolicy: 'strict_ssrf', ordinaryHeaders: [], query: [] },
+      credential: null })
+    expect(updateEndpoint).toHaveBeenCalledWith(expect.objectContaining({
+      expectedEndpointRevisionId: 'ocp_endpoint_12345678',
+    }))
+  })
 })

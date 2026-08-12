@@ -31,8 +31,8 @@ afterEach(() => {
 })
 
 describe('epoch-2 reset coordinator core through config replacement', () => {
-  windowsIt('awaits asynchronous credential validation before any destructive reset step', async () => {
-    const { layout, lease } = fixture('starverse-coordinator-async-credential-preflight')
+  windowsIt('deletes legacy credentials without decrypting before completing the reset', async () => {
+    const { layout, lease } = fixture('starverse-coordinator-legacy-credential-delete')
     const legacyDb = path.join(layout.productRoot, 'chat.db')
     fs.writeFileSync(legacyDb, 'must-survive-until-decrypt')
     fs.writeFileSync(configPath(layout), JSON.stringify({
@@ -44,33 +44,15 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
         updatedAtMs: 1,
       } } },
     }))
-    let releaseDecrypt!: () => void
-    const decryptGate = new Promise<void>((resolve) => { releaseDecrypt = resolve })
-    let enteredDecrypt!: () => void
-    const decryptEntered = new Promise<void>((resolve) => { enteredDecrypt = resolve })
-    let observedCiphertext: Buffer | undefined
     const clearDefaultSessionData = vi.fn(async () => {})
     try {
-      const reset = runEpoch2ResetThroughConfigReplacement({
+      await expect(runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async (_providerKey, ciphertext) => {
-          observedCiphertext = ciphertext
-          enteredDecrypt()
-          await decryptGate
-          return { credential: 'credential' }
-        },
         clearDefaultSessionData,
-      })
-      await decryptEntered
-      expect(fs.readFileSync(legacyDb, 'utf8')).toBe('must-survive-until-decrypt')
-      expect(clearDefaultSessionData).not.toHaveBeenCalled()
-      expect(readEpoch2ResetJournal({ layout, lease })?.phase).toBe('prepared')
-      releaseDecrypt()
-      await expect(reset).resolves.toMatchObject({ journal: { phase: 'config_replaced' } })
+      })).resolves.toMatchObject({ journal: { phase: 'config_replaced' } })
       expect(fs.existsSync(legacyDb)).toBe(false)
-      expect(observedCiphertext).toBeDefined()
-      expect([...observedCiphertext!]).toEqual(new Array(observedCiphertext!.byteLength).fill(0))
+      expect(JSON.parse(fs.readFileSync(configPath(layout), 'utf8'))).not.toHaveProperty('providerCredentials')
     } finally { lease.release() }
   })
 
@@ -84,7 +66,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       await expect(runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData,
       })).rejects.toThrow('EPOCH2_CONFIG_INVALID')
       expect(fs.readFileSync(legacyDb, 'utf8')).toBe('must-survive')
@@ -116,7 +97,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       const result = await runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData,
       })
       expect(result.journal.phase).toBe('config_replaced')
@@ -132,7 +112,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       const replay = await runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData,
       })
       expect(replay.journal.phase).toBe('config_replaced')
@@ -153,7 +132,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       const nextStartup = await runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData,
       })
       expect(nextStartup.journal.phase).toBe('config_replaced')
@@ -182,7 +160,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       await expect(runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData,
       })).rejects.toThrow('EPOCH2_WIN32_DELETE_REPARSE_POINT')
       expect(fs.readFileSync(legacyDb, 'utf8')).toBe('must-survive')
@@ -206,7 +183,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       await expect(runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData,
       })).rejects.toThrow('EPOCH2_WIN32_CONFIG_BACKUP_NAME_INVALID')
       expect(fs.readFileSync(legacyDb, 'utf8')).toBe('must-survive')
@@ -231,7 +207,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       await expect(runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData,
       })).rejects.toThrow('SESSION_CLEAR_FAILED')
       expect(fs.existsSync(legacyDb)).toBe(false)
@@ -241,7 +216,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       const recovered = await runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData,
       })
       expect(recovered.journal.phase).toBe('config_replaced')
@@ -265,7 +239,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       const result = await runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData,
       })
       expect(result.journal.phase).toBe('config_replaced')
@@ -289,7 +262,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       await expect(runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData,
       })).rejects.toThrow('EPOCH2_WIN32_CONFIG_CHANGED')
       expect(readEpoch2ResetJournal({ layout, lease })?.phase).toBe('legacy_files_deleted')
@@ -301,7 +273,6 @@ describe('epoch-2 reset coordinator core through config replacement', () => {
       const recovered = await runEpoch2ResetThroughConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
         clearDefaultSessionData: recoverySessionReset,
       })
       expect(recovered.journal.phase).toBe('config_replaced')
