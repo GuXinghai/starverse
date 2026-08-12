@@ -1,4 +1,4 @@
-import { createHighlighter, type Highlighter } from 'shiki'
+import type { Highlighter } from 'shiki'
 
 /**
  * Lazy singleton loader for Shiki highlighter.
@@ -9,6 +9,8 @@ import { createHighlighter, type Highlighter } from 'shiki'
 
 let instance: Highlighter | null = null
 let loading: Promise<Highlighter> | null = null
+const readyListeners = new Set<() => void>()
+let lifecycle = 0
 
 const INITIAL_LANGS = [
     'javascript', 'typescript', 'python', 'json', 'html', 'css',
@@ -19,18 +21,53 @@ const INITIAL_LANGS = [
 
 const THEMES = ['github-dark', 'github-light'] as const
 
-export async function getHighlighter(): Promise<Highlighter> {
-    if (instance) return instance
+export function getHighlighter(): Promise<Highlighter> {
+    if (instance) return Promise.resolve(instance)
     if (loading) return loading
 
-    loading = createHighlighter({
-        themes: [...THEMES],
-        langs: [...INITIAL_LANGS],
-    })
+    const loadLifecycle = lifecycle
+    loading = import('shiki')
+        .then(({ createHighlighter }) => createHighlighter({
+            themes: [...THEMES],
+            langs: [...INITIAL_LANGS],
+        }))
+        .then((highlighter) => {
+            if (loadLifecycle !== lifecycle) {
+                highlighter.dispose()
+                throw new Error('shiki_loader_disposed')
+            }
+            instance = highlighter
+            for (const listener of readyListeners) {
+                try {
+                    listener()
+                } catch {
+                    // A view notification must not invalidate the shared highlighter.
+                }
+            }
+            return highlighter
+        })
+        .finally(() => {
+            if (loadLifecycle === lifecycle) loading = null
+        })
+    return loading
+}
 
-    instance = await loading
-    loading = null
-    return instance
+/** Start the singleton load without blocking the renderer's plaintext fallback. */
+export function requestHighlighter(): void {
+    void getHighlighter().catch(() => {
+        // Keep the safe monospace fallback when Shiki or its WASM runtime is unavailable.
+    })
+}
+
+/** Internal subscription used by rich-text views to upgrade a fallback after a successful load. */
+export function subscribeHighlighterReady(listener: () => void): () => void {
+    readyListeners.add(listener)
+    if (instance) queueMicrotask(listener)
+    return () => readyListeners.delete(listener)
+}
+
+export function isHighlighterReady(): boolean {
+    return instance !== null
 }
 
 /**
@@ -71,6 +108,7 @@ export async function highlightAsync(code: string, lang: string): Promise<string
  * Dispose the cached highlighter instance (for cleanup/testing).
  */
 export function disposeHighlighter(): void {
+    lifecycle += 1
     if (instance) {
         instance.dispose()
         instance = null
