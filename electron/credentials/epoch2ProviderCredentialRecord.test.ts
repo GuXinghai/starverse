@@ -4,10 +4,12 @@ import { decodeAndValidateEpoch2ProviderCredentialRecord } from './epoch2Provide
 
 function record(providerKey: (typeof PROVIDER_CREDENTIAL_KEYS)[number]) {
   return {
-    version: 1,
+    version: 3,
     providerKey,
     backend: 'electron_safe_storage',
     ciphertextBase64: Buffer.from(`secret-${providerKey}`).toString('base64'),
+    credentialScopeId: `credential-scope-v2:${'a'.repeat(64)}`,
+    revision: 1,
     updatedAtMs: 123,
   }
 }
@@ -31,7 +33,7 @@ describe('epoch-2 provider credential record', () => {
     }
   })
 
-  it('rejects extra, plaintext, wrong-provider, malformed-base64 and timestamp shapes', async () => {
+  it('rejects mixed payloads, wrong-provider, malformed-base64 and timestamp shapes', async () => {
     const valid = record('openrouter')
     for (const value of [
       { ...valid, extra: true },
@@ -40,6 +42,8 @@ describe('epoch-2 provider credential record', () => {
       { ...valid, providerKey: 'anthropic' },
       { ...valid, ciphertextBase64: 'not canonical==' },
       { ...valid, ciphertextBase64: '' },
+      { ...valid, credentialScopeId: 'not-a-scope' },
+      { ...valid, revision: 0 },
       { ...valid, updatedAtMs: -1 },
       { ...valid, updatedAtMs: 1.5 },
     ]) {
@@ -51,6 +55,23 @@ describe('epoch-2 provider credential record', () => {
     }
   })
 
+  it('accepts a plaintext record only as its own exact discriminated shape', async () => {
+    const plaintext = {
+      version: 3,
+      providerKey: 'openrouter',
+      backend: 'plaintext',
+      plaintext: 'secret',
+      credentialScopeId: `credential-scope-v2:${'b'.repeat(64)}`,
+      revision: 1,
+      updatedAtMs: 123,
+    }
+    await expect(decodeAndValidateEpoch2ProviderCredentialRecord({
+      value: plaintext, providerKey: 'openrouter', validateDecrypt: async () => {
+        throw new Error('plaintext must not decrypt')
+      },
+    })).resolves.toEqual(plaintext)
+  })
+
   it('projects and zeroes replacement ciphertext before config persistence', async () => {
     const rewrapped = Buffer.from('rotated-ciphertext')
     const decoded = await decodeAndValidateEpoch2ProviderCredentialRecord({
@@ -58,7 +79,10 @@ describe('epoch-2 provider credential record', () => {
       providerKey: 'openrouter',
       validateDecrypt: async () => ({ credential: 'secret', rewrappedCiphertext: rewrapped }),
     })
-    expect(decoded.ciphertextBase64).toBe(Buffer.from('rotated-ciphertext').toString('base64'))
+    expect(decoded.backend).toBe('electron_safe_storage')
+    if (decoded.backend === 'electron_safe_storage') {
+      expect(decoded.ciphertextBase64).toBe(Buffer.from('rotated-ciphertext').toString('base64'))
+    }
     expect([...rewrapped]).toEqual(new Array(rewrapped.byteLength).fill(0))
   })
 

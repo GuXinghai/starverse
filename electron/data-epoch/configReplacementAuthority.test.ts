@@ -53,10 +53,12 @@ function fixture(
 
 function secureRecord(providerKey: string, value = `secret-${providerKey}`) {
   return {
-    version: 1,
+    version: 3,
     providerKey,
     backend: 'electron_safe_storage',
     ciphertextBase64: Buffer.from(value).toString('base64'),
+    credentialScopeId: `credential-scope-v2:${'a'.repeat(64)}`,
+    revision: 1,
     updatedAtMs: 123,
   }
 }
@@ -77,7 +79,6 @@ describe('epoch-2 config replacement authority', () => {
       await expect(prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })).rejects.toThrow('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
       expect(() => deleteEpoch2LegacyConfigBackups({ layout, lease }))
         .toThrow('EPOCH2_CONFIG_REPLACEMENT_PHASE_INVALID')
@@ -92,7 +93,6 @@ describe('epoch-2 config replacement authority', () => {
       const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       expect(authority.sha256).toMatch(/^[a-f0-9]{64}$/u)
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority }))
@@ -123,7 +123,6 @@ describe('epoch-2 config replacement authority', () => {
       const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async (_providerKey, ciphertext) => ({ credential: ciphertext.toString('utf8') }),
       })
       expect(authority.sha256).toMatch(/^[a-f0-9]{64}$/u)
       expect(authority.byteLength).toBeGreaterThan(2)
@@ -161,7 +160,6 @@ describe('epoch-2 config replacement authority', () => {
       const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       fs.writeFileSync(configPath, JSON.stringify({ language: 'en-US', changed: true }))
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority }))
@@ -184,7 +182,6 @@ describe('epoch-2 config replacement authority', () => {
       const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       const current = readEpoch2ResetJournal({ layout, lease })
       expect(current?.phase).toBe('legacy_files_deleted')
@@ -212,12 +209,10 @@ describe('epoch-2 config replacement authority', () => {
       const first = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       const second = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority: first }))
         .toThrow('EPOCH2_WIN32_CONFIG_CHANGED')
@@ -234,7 +229,6 @@ describe('epoch-2 config replacement authority', () => {
       const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       commitEpoch2ConfigReplacement({ layout, lease, authority })
       expect(fs.readFileSync(path.join(layout.productRoot, 'config.json'), 'utf8')).toBe('{}\n')
@@ -250,7 +244,6 @@ describe('epoch-2 config replacement authority', () => {
       const authority = await prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       fs.writeFileSync(configPath, '{"created":"after-snapshot"}\n')
       expect(() => commitEpoch2ConfigReplacement({ layout, lease, authority }))
@@ -275,7 +268,6 @@ describe('epoch-2 config replacement authority', () => {
       const authority = await prepareEpoch2ConfigReplacement({
         layout: first.layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       commitEpoch2ConfigReplacement({ layout: first.layout, lease, authority })
       expect(JSON.parse(fs.readFileSync(configPath, 'utf8'))).toEqual({ language: 'zh-CN' })
@@ -300,7 +292,6 @@ describe('epoch-2 config replacement authority', () => {
       const authority = await prepareEpoch2ConfigReplacement({
         layout: first.layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       commitEpoch2ConfigReplacement({ layout: first.layout, lease, authority })
       expect(fs.existsSync(rollbackPath)).toBe(false)
@@ -316,7 +307,6 @@ describe('epoch-2 config replacement authority', () => {
       const authority = await prepareEpoch2ConfigReplacement({
         layout: first.layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })
       expect(() => commitEpoch2ConfigReplacement({ layout: first.layout, lease, authority }))
         .toThrow('EPOCH2_WIN32_CONFIG_CHANGED')
@@ -328,7 +318,7 @@ describe('epoch-2 config replacement authority', () => {
     }
   })
 
-  windowsIt('blocks malformed JSON, invalid credential records and config reparse points', async () => {
+  windowsIt('blocks malformed JSON and config reparse points while quarantining malformed v2 credentials', async () => {
     const { layout, lease } = fixture('starverse-config-invalid')
     const configPath = path.join(layout.productRoot, 'config.json')
     try {
@@ -336,7 +326,6 @@ describe('epoch-2 config replacement authority', () => {
       await expect(prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })).rejects.toThrow('EPOCH2_CONFIG_INVALID')
       fs.writeFileSync(configPath, JSON.stringify({
         providerCredentials: { v1: {
@@ -346,8 +335,7 @@ describe('epoch-2 config replacement authority', () => {
       await expect(prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
-      })).rejects.toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
+      })).resolves.toMatchObject({ schemaVersion: 1 })
       fs.unlinkSync(configPath)
       const outside = path.join(layout.appDataRoot, 'outside-config.json')
       fs.writeFileSync(outside, '{"outside":true}')
@@ -355,7 +343,6 @@ describe('epoch-2 config replacement authority', () => {
       await expect(prepareEpoch2ConfigReplacement({
         layout,
         lease,
-        validateDecrypt: async () => ({ credential: 'unused' }),
       })).rejects.toThrow('EPOCH2_WIN32_CONFIG_REPARSE_POINT')
       expect(fs.readFileSync(outside, 'utf8')).toBe('{"outside":true}')
     } finally {

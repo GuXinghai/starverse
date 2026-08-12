@@ -1,9 +1,10 @@
-import { createHash } from 'node:crypto'
+import { createHash, randomBytes } from 'node:crypto'
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { safeStorage } from 'electron'
+import { enforceLinuxCredentialStoragePermissions } from './linuxCredentialStoragePermissions'
 import type Store from 'electron-store'
 import {
-  deriveCredentialScopeIdWithVerifiedEpoch2Key,
+  assertFreshEpoch2DatabaseFileCurrent,
   type FreshEpochDatabaseInitializerInput,
 } from '../data-epoch/freshEpochDatabaseInitializer'
 import {
@@ -12,6 +13,7 @@ import {
 } from '../../infra/security/credentialScopeV2Primitive'
 import {
   decodeEpoch2ProviderCredentialRecordStructure,
+  isLegacyEpoch2ProviderCredentialRecord,
   withEpoch2ProviderCredentialCiphertext,
   type Epoch2ProviderCredentialRecord,
 } from './epoch2ProviderCredentialRecord'
@@ -20,6 +22,16 @@ import {
   PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
   type ProviderCredentialKey,
 } from './providerCredentialContract'
+import {
+  createCredentialMutationQueue,
+  CredentialMutationQueueError,
+  type CredentialMutationQueue,
+} from './credentialMutationQueue'
+import {
+  CredentialSafeStorageBackendError,
+  requireTrustedCredentialSafeStorage,
+} from './credentialSafeStorageBackend'
+import type { CredentialStorageBackend, CredentialStorageMode } from './credentialStorageMode'
 
 const MAX_CREDENTIAL_LENGTH = 16_384
 const MAX_CIPHERTEXT_BYTES = 1024 * 1024
@@ -33,10 +45,20 @@ type RuntimeSlot = Readonly<{
   credentialScopeId: CredentialScopeIdV2
 }>
 
+type SessionSlot = Readonly<{
+  credential: string
+  revision: number
+  credentialScopeId: CredentialScopeIdV2
+}>
+
 export class Epoch2RuntimeCredentialError extends Error {
   constructor(readonly code:
     | 'EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED'
     | 'EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE'
+    | 'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE'
+    | 'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED'
+    | 'EPOCH2_RUNTIME_CREDENTIAL_PLAINTEXT_UNSUPPORTED'
+    | 'EPOCH2_RUNTIME_CREDENTIAL_DECRYPT_FAILED'
     | 'EPOCH2_RUNTIME_CREDENTIAL_INVALID'
     | 'EPOCH2_RUNTIME_CREDENTIAL_MISSING'
     | 'EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION'
@@ -55,6 +77,10 @@ export type Epoch2RuntimeCredentialStatus = Readonly<{
   configured: boolean
   revision: number
   credentialScopeId?: CredentialScopeIdV2
+  availability: 'unknown' | 'available' | 'unavailable'
+  storageBackend?: CredentialStorageBackend
+  sessionOverridesPersistent: boolean
+  diagnosticCode?: Epoch2RuntimeCredentialError['code']
 }>
 
 export type Epoch2RuntimeCredentialLease = Readonly<{
@@ -99,6 +125,7 @@ export type Epoch2RuntimeCredentialService = Readonly<{
     providerKey: ProviderCredentialKey
     credential: string
     expectedRevision: number
+    storageMode?: CredentialStorageMode
   }>) => Promise<Epoch2RuntimeCredentialStatus>
   clearCredential: (input: Readonly<{
     providerKey: ProviderCredentialKey
@@ -131,8 +158,12 @@ function assertProviderKey(value: unknown): asserts value is ProviderCredentialK
 function fingerprint(record: Epoch2ProviderCredentialRecord): string {
   return createHash('sha256').update(JSON.stringify({
     backend: record.backend,
-    ciphertextBase64: record.ciphertextBase64,
+    ...(record.backend === 'electron_safe_storage'
+      ? { ciphertextBase64: record.ciphertextBase64 }
+      : { plaintext: record.plaintext }),
+    credentialScopeId: record.credentialScopeId,
     providerKey: record.providerKey,
+    revision: record.revision,
     updatedAtMs: record.updatedAtMs,
     version: record.version,
   }), 'utf8').digest('hex')
@@ -140,6 +171,14 @@ function fingerprint(record: Epoch2ProviderCredentialRecord): string {
 
 function exactRecordEqual(left: Epoch2ProviderCredentialRecord, right: Epoch2ProviderCredentialRecord): boolean {
   return fingerprint(left) === fingerprint(right)
+}
+
+function rawRecordFingerprint(value: unknown): string {
+  try {
+    return createHash('sha256').update(JSON.stringify(value), 'utf8').digest('hex')
+  } catch {
+    return 'unserializable'
+  }
 }
 
 function normalizedCredential(value: unknown): string {
@@ -158,13 +197,19 @@ function encryptedBuffer(value: unknown): Buffer {
   return value
 }
 
-async function requireSafeStorage(): Promise<void> {
+async function requireSafeStorage(platform = process.platform): Promise<void> {
   try {
-    if (!await safeStorage.isAsyncEncryptionAvailable()) {
-      throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE')
-    }
+    await requireTrustedCredentialSafeStorage({ platform })
   } catch (error) {
     if (error instanceof Epoch2RuntimeCredentialError) throw error
+    if (error instanceof CredentialSafeStorageBackendError &&
+        error.code === 'CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED') {
+      throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED')
+    }
+    if (platform === 'linux' && error instanceof CredentialSafeStorageBackendError &&
+        error.code === 'CREDENTIAL_SAFE_STORAGE_UNAVAILABLE') {
+      throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE')
+    }
     throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE')
   }
 }
@@ -173,6 +218,7 @@ async function decryptRecord(record: Epoch2ProviderCredentialRecord): Promise<Re
   credential: string
   rewrappedCiphertext?: Buffer
 }>> {
+  if (record.backend === 'plaintext') return Object.freeze({ credential: record.plaintext })
   return withEpoch2ProviderCredentialCiphertext({
     record,
     consume: async (ciphertext) => {
@@ -180,7 +226,7 @@ async function decryptRecord(record: Epoch2ProviderCredentialRecord): Promise<Re
       try {
         decrypted = await safeStorage.decryptStringAsync(ciphertext)
       } catch {
-        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_INVALID')
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DECRYPT_FAILED')
       }
       if (!decrypted || typeof decrypted !== 'object' ||
           typeof decrypted.shouldReEncrypt !== 'boolean' || typeof decrypted.result !== 'string') {
@@ -216,10 +262,22 @@ function nextRevision(current: number): number {
   return current + 1
 }
 
+function createCredentialScopeId(): CredentialScopeIdV2 {
+  const random = randomBytes(32)
+  try {
+    return `credential-scope-v2:${random.toString('hex')}` as CredentialScopeIdV2
+  } finally {
+    random.fill(0)
+  }
+}
+
 export async function createEpoch2RuntimeCredentialService(input: Readonly<{
   store: CredentialConfigStore
   epochDatabase: FreshEpochDatabaseInitializerInput
+  mutationQueue?: CredentialMutationQueue
   nowMs?: () => number
+  platform?: NodeJS.Platform
+  credentialStoragePaths?: Readonly<{ directories: readonly string[]; files: readonly string[]; optionalFiles?: readonly string[] }>
 }>): Promise<Epoch2RuntimeCredentialService> {
   const leaseIdentity = input.epochDatabase.lease as object
   if (activeCredentialServiceLeases.has(leaseIdentity)) {
@@ -228,39 +286,78 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
   activeCredentialServiceLeases.add(leaseIdentity)
   let serviceReturned = false
   try {
-  await requireSafeStorage()
   const nowMs = input.nowMs ?? Date.now
   const slots = new Map<ProviderCredentialKey, RuntimeSlot>()
+  const sessions = new Map<ProviderCredentialKey, SessionSlot>()
   const revisions = new Map<ProviderCredentialKey, number>()
-  const tails = new Map<ProviderCredentialKey, Promise<void>>()
-  const activeProvider = new AsyncLocalStorage<ProviderCredentialKey>()
+  const availability = new Map<ProviderCredentialKey, Epoch2RuntimeCredentialStatus['availability']>()
+  const diagnostics = new Map<ProviderCredentialKey, Epoch2RuntimeCredentialError['code']>()
+  const faultedRecordFingerprints = new Map<ProviderCredentialKey, string>()
+  const mutationQueue = input.mutationQueue ?? createCredentialMutationQueue()
+  const ownsMutationQueue = input.mutationQueue === undefined
+  const activeCredentialOperation = new AsyncLocalStorage<ProviderCredentialKey>()
+  const activeLeaseCompletions = new Set<Promise<void>>()
   let closed = false
+  let closePromise: Promise<void> | undefined
 
-  async function exclusive<T>(providerKey: ProviderCredentialKey, work: () => Promise<T>): Promise<T> {
-    assertProviderKey(providerKey)
+  function assertPlaintextStoragePermissions(): void {
+    if (!input.credentialStoragePaths) return
+    enforceLinuxCredentialStoragePermissions({ platform: input.platform ?? process.platform, ...input.credentialStoragePaths })
+  }
+
+  function assertOpenAndNonReentrant(providerKey?: ProviderCredentialKey): void {
+    if (providerKey) assertProviderKey(providerKey)
     if (closed) {
       throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
     }
-    if (activeProvider.getStore() !== undefined) {
+    if (activeCredentialOperation.getStore() !== undefined) {
       throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_REENTRANT')
     }
-    const previous = tails.get(providerKey) ?? Promise.resolve()
-    let release!: () => void
-    const gate = new Promise<void>((resolve) => { release = resolve })
-    const tail = previous.then(() => gate)
-    tails.set(providerKey, tail)
-    await previous
+  }
+
+  async function mutate<T>(providerKey: ProviderCredentialKey, work: () => Promise<T>): Promise<T> {
+    assertOpenAndNonReentrant(providerKey)
     try {
-      return await activeProvider.run(providerKey, work)
+      return await mutationQueue.run(`standard:${providerKey}`, work)
+    } catch (error) {
+      if (error instanceof CredentialMutationQueueError) {
+        throw new Epoch2RuntimeCredentialError(error.code === 'CREDENTIAL_MUTATION_QUEUE_REENTRANT'
+          ? 'EPOCH2_RUNTIME_CREDENTIAL_REENTRANT'
+          : 'EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
+      }
+      throw error
+    }
+  }
+
+  async function leaseOperation<T>(providerKey: ProviderCredentialKey, work: () => Promise<T>): Promise<T> {
+    assertProviderKey(providerKey)
+    assertOpenAndNonReentrant()
+    let resolveCompletion!: () => void
+    const completion = new Promise<void>((resolve) => { resolveCompletion = resolve })
+    activeLeaseCompletions.add(completion)
+    try {
+      return await work()
     } finally {
-      release()
-      if (tails.get(providerKey) === tail) tails.delete(providerKey)
+      resolveCompletion()
+      activeLeaseCompletions.delete(completion)
     }
   }
 
   function readPersisted(providerKey: ProviderCredentialKey): Epoch2ProviderCredentialRecord | undefined {
     const value = input.store.get(storeKey(providerKey))
     if (value === undefined) return undefined
+    if (isLegacyEpoch2ProviderCredentialRecord(value)) {
+      try {
+        input.store.delete(storeKey(providerKey))
+        if (input.store.get(storeKey(providerKey)) !== undefined) {
+          throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_PERSIST_FAILED')
+        }
+        return undefined
+      } catch (error) {
+        if (error instanceof Epoch2RuntimeCredentialError) throw error
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_PERSIST_FAILED')
+      }
+    }
     try {
       return decodeEpoch2ProviderCredentialRecordStructure({ value, providerKey })
     } catch {
@@ -270,6 +367,13 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
 
   function assertPersistedSlot(providerKey: ProviderCredentialKey): RuntimeSlot | undefined {
     const slot = slots.get(providerKey)
+    const faultedFingerprint = faultedRecordFingerprints.get(providerKey)
+    if (faultedFingerprint !== undefined) {
+      if (rawRecordFingerprint(input.store.get(storeKey(providerKey))) !== faultedFingerprint) {
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
+      }
+      return undefined
+    }
     const persisted = readPersisted(providerKey)
     if ((!slot && persisted) || (slot && !persisted) ||
         (slot && persisted && !exactRecordEqual(slot.record, persisted))) {
@@ -291,16 +395,9 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
     }
   }
 
-  async function deriveScope(
-    providerKey: ProviderCredentialKey,
-    credential: string,
-  ): Promise<CredentialScopeIdV2> {
+  function assertEpochDatabaseCurrent(): void {
     try {
-      return await deriveCredentialScopeIdWithVerifiedEpoch2Key({
-        initializer: input.epochDatabase,
-        providerId: providerKey,
-        credential,
-      })
+      assertFreshEpoch2DatabaseFileCurrent(input.epochDatabase)
     } catch {
       throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE')
     }
@@ -314,17 +411,20 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
     let current = slot
     if (decrypted.rewrappedCiphertext) {
       try {
-        const latest = assertPersistedSlot(providerKey)
-        if (latest !== slot) {
-          throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
-        }
-        const maintained = Object.freeze({
-          ...slot.record,
-          ciphertextBase64: decrypted.rewrappedCiphertext.toString('base64'),
+        current = await mutate(providerKey, async () => {
+          const latest = assertPersistedSlot(providerKey)
+          if (latest !== slot) {
+            throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
+          }
+          const maintained = Object.freeze({
+            ...slot.record,
+            ciphertextBase64: decrypted.rewrappedCiphertext!.toString('base64'),
+          })
+          persistRecord(maintained)
+          const next = Object.freeze({ ...slot, record: maintained, fingerprint: fingerprint(maintained) })
+          slots.set(providerKey, next)
+          return next
         })
-        persistRecord(maintained)
-        current = Object.freeze({ ...slot, record: maintained, fingerprint: fingerprint(maintained) })
-        slots.set(providerKey, current)
       } finally {
         decrypted.rewrappedCiphertext.fill(0)
       }
@@ -332,100 +432,147 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
     return Object.freeze({ slot: current, credential: decrypted.credential })
   }
 
+  async function decryptAvailableRecord(
+    providerKey: ProviderCredentialKey,
+    slot: RuntimeSlot,
+  ): Promise<Readonly<{ slot: RuntimeSlot; credential: string }>> {
+    try {
+      const decrypted = await decryptAndMaintainRecord(providerKey, slot)
+      availability.set(providerKey, 'available')
+      diagnostics.delete(providerKey)
+      return decrypted
+    } catch (error) {
+      availability.set(providerKey, 'unavailable')
+      if (error instanceof Epoch2RuntimeCredentialError) diagnostics.set(providerKey, error.code)
+      throw error
+    }
+  }
+
+  async function requireAvailableForProvider(providerKey: ProviderCredentialKey): Promise<void> {
+    try {
+      await requireSafeStorage(input.platform)
+    } catch (error) {
+      availability.set(providerKey, 'unavailable')
+      if (error instanceof Epoch2RuntimeCredentialError) diagnostics.set(providerKey, error.code)
+      throw error
+    }
+  }
+
   for (const providerKey of PROVIDER_CREDENTIAL_KEYS) {
     revisions.set(providerKey, 0)
-    const record = readPersisted(providerKey)
-    if (!record) continue
-    const decrypted = await decryptRecord(record)
-    let maintained = record
+    availability.set(providerKey, 'unknown')
+    let record: Epoch2ProviderCredentialRecord | undefined
     try {
-      if (decrypted.rewrappedCiphertext) {
-        const persistedBeforeMaintenance = readPersisted(providerKey)
-        if (!persistedBeforeMaintenance || !exactRecordEqual(record, persistedBeforeMaintenance)) {
-          throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
-        }
-        maintained = Object.freeze({
-          ...record,
-          ciphertextBase64: decrypted.rewrappedCiphertext.toString('base64'),
-        })
-        persistRecord(maintained)
-      }
-      const credentialScopeId = await deriveScope(providerKey, decrypted.credential)
-      const persisted = readPersisted(providerKey)
-      if (!persisted || !exactRecordEqual(maintained, persisted)) {
-        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
-      }
-      const slot = Object.freeze({
-        record: maintained,
-        fingerprint: fingerprint(maintained),
-        revision: 1,
-        credentialScopeId,
-      })
-      slots.set(providerKey, slot)
-      revisions.set(providerKey, 1)
-    } finally {
-      decrypted.rewrappedCiphertext?.fill(0)
+      record = readPersisted(providerKey)
+    } catch (error) {
+      if (!(error instanceof Epoch2RuntimeCredentialError)) throw error
+      faultedRecordFingerprints.set(providerKey, rawRecordFingerprint(input.store.get(storeKey(providerKey))))
+      availability.set(providerKey, 'unavailable')
+      diagnostics.set(providerKey, error.code)
+      continue
     }
+    if (!record) continue
+    const slot = Object.freeze({
+      record,
+      fingerprint: fingerprint(record),
+      revision: record.revision,
+      credentialScopeId: record.credentialScopeId,
+    })
+    slots.set(providerKey, slot)
+    revisions.set(providerKey, record.revision)
   }
 
   function status(providerKey: ProviderCredentialKey): Epoch2RuntimeCredentialStatus {
     const slot = slots.get(providerKey)
+    const session = sessions.get(providerKey)
     const revision = revisions.get(providerKey)
     if (revision === undefined) {
       throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
     }
     return Object.freeze({
       providerKey,
-      configured: Boolean(slot),
+      configured: Boolean(session || slot) || faultedRecordFingerprints.has(providerKey),
       revision,
-      ...(slot ? { credentialScopeId: slot.credentialScopeId } : {}),
+      ...(session ? { credentialScopeId: session.credentialScopeId } : slot ? { credentialScopeId: slot.credentialScopeId } : {}),
+      storageBackend: session ? 'session' : slot?.record.backend,
+      sessionOverridesPersistent: Boolean(session && slot),
+      availability: session || slot?.record.backend === 'plaintext' ? 'available' : availability.get(providerKey) ?? 'unknown',
+      ...(diagnostics.has(providerKey) ? { diagnosticCode: diagnostics.get(providerKey)! } : {}),
     })
   }
 
   const service: Epoch2RuntimeCredentialService = Object.freeze({
     close: async () => {
-      if (activeProvider.getStore() !== undefined) {
+      if (activeCredentialOperation.getStore() !== undefined) {
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_REENTRANT')
       }
-      if (closed) return
+      if (closePromise) return closePromise
       closed = true
-      try {
-        await Promise.all([...tails.values()])
+      closePromise = (async () => {
+        await Promise.all([...activeLeaseCompletions])
+        if (ownsMutationQueue) await mutationQueue.close()
         slots.clear()
+        sessions.clear()
         revisions.clear()
-      } finally {
+        availability.clear()
+        diagnostics.clear()
+        faultedRecordFingerprints.clear()
+      })().finally(() => {
         activeCredentialServiceLeases.delete(leaseIdentity)
-      }
+      })
+      return closePromise
     },
-    getStatus: (providerKey) => exclusive(providerKey, async () => {
+    getStatus: async (providerKey) => {
+      assertOpenAndNonReentrant(providerKey)
       assertPersistedSlot(providerKey)
       return status(providerKey)
-    }),
-    updateCredential: (request) => exclusive(request.providerKey, async () => {
+    },
+    updateCredential: (request) => mutate(request.providerKey, async () => {
       const current = assertPersistedSlot(request.providerKey)
       const currentRevision = revisions.get(request.providerKey)
       if (currentRevision === undefined || request.expectedRevision !== currentRevision) {
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION')
       }
       const credential = normalizedCredential(request.credential)
-      const credentialScopeId = await deriveScope(request.providerKey, credential)
+      const storageMode = request.storageMode ?? 'system_secure'
+      if (storageMode !== 'system_secure' && storageMode !== 'session' && storageMode !== 'plaintext') {
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_INVALID')
+      }
+      if (storageMode === 'plaintext' && (input.platform ?? process.platform) !== 'linux') {
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_PLAINTEXT_UNSUPPORTED')
+      }
+      const credentialScopeId = createCredentialScopeId()
       const revision = nextRevision(currentRevision)
+      if (storageMode === 'session') {
+        sessions.set(request.providerKey, Object.freeze({ credential, revision, credentialScopeId }))
+        revisions.set(request.providerKey, revision)
+        availability.set(request.providerKey, 'available')
+        diagnostics.delete(request.providerKey)
+        return status(request.providerKey)
+      }
+      if (storageMode === 'system_secure') await requireAvailableForProvider(request.providerKey)
+      if (storageMode === 'plaintext') assertPlaintextStoragePermissions()
       let ciphertext: Buffer | undefined
       try {
-        ciphertext = encryptedBuffer(await safeStorage.encryptStringAsync(credential))
-        const record = Object.freeze({
-          version: 1 as const,
-          providerKey: request.providerKey,
-          backend: 'electron_safe_storage' as const,
-          ciphertextBase64: ciphertext.toString('base64'),
-          updatedAtMs: nextUpdatedAt(nowMs, current?.record.updatedAtMs ?? -1),
-        })
+        if (storageMode === 'system_secure') ciphertext = encryptedBuffer(await safeStorage.encryptStringAsync(credential))
+        const record: Epoch2ProviderCredentialRecord = storageMode === 'system_secure'
+          ? Object.freeze({ version: 3 as const, providerKey: request.providerKey, backend: 'electron_safe_storage' as const,
+            ciphertextBase64: ciphertext!.toString('base64'), credentialScopeId, revision,
+            updatedAtMs: nextUpdatedAt(nowMs, current?.record.updatedAtMs ?? -1) })
+          : Object.freeze({ version: 3 as const, providerKey: request.providerKey, backend: 'plaintext' as const,
+            plaintext: credential, credentialScopeId, revision,
+            updatedAtMs: nextUpdatedAt(nowMs, current?.record.updatedAtMs ?? -1) })
         const latest = assertPersistedSlot(request.providerKey)
         if (latest !== current) {
           throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
         }
         persistRecord(record)
+        if (storageMode === 'plaintext') assertPlaintextStoragePermissions()
+        sessions.delete(request.providerKey)
+        faultedRecordFingerprints.delete(request.providerKey)
         revisions.set(request.providerKey, revision)
+        availability.set(request.providerKey, 'unknown')
+        diagnostics.delete(request.providerKey)
         slots.set(request.providerKey, Object.freeze({
           record,
           fingerprint: fingerprint(record),
@@ -437,13 +584,15 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
         ciphertext?.fill(0)
       }
     }),
-    clearCredential: (request) => exclusive(request.providerKey, async () => {
+    clearCredential: (request) => mutate(request.providerKey, async () => {
       const current = assertPersistedSlot(request.providerKey)
       const currentRevision = revisions.get(request.providerKey)
       if (currentRevision === undefined || request.expectedRevision !== currentRevision) {
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION')
       }
-      if (!current) return status(request.providerKey)
+      const faulted = faultedRecordFingerprints.has(request.providerKey)
+      const session = sessions.get(request.providerKey)
+      if (!current && !faulted && !session) return status(request.providerKey)
       const revision = nextRevision(currentRevision)
       try {
         input.store.delete(storeKey(request.providerKey))
@@ -456,25 +605,50 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
       }
       revisions.set(request.providerKey, revision)
       slots.delete(request.providerKey)
+      sessions.delete(request.providerKey)
+      faultedRecordFingerprints.delete(request.providerKey)
+      availability.set(request.providerKey, 'unknown')
+      diagnostics.delete(request.providerKey)
       return status(request.providerKey)
     }),
-    withCredential: (request) => exclusive(request.providerKey, async () => {
+    withCredential: (request) => leaseOperation(request.providerKey, async () => {
       if (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision < 1 ||
           !isCredentialScopeIdV2(request.expectedCredentialScopeId) || typeof request.consume !== 'function') {
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_INVALID')
       }
+      const session = sessions.get(request.providerKey)
+      if (session) {
+        if (request.expectedRevision !== session.revision || request.expectedCredentialScopeId !== session.credentialScopeId) {
+          throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION')
+        }
+        const lease = Object.freeze({ trust: 'epoch2_runtime_credential_lease' as const, usage: 'provider_transport_only' as const,
+          providerKey: request.providerKey, credential: session.credential, revision: session.revision,
+          credentialScopeId: session.credentialScopeId, assertCurrent: () => {
+            if (!runtimeCredentialLeases.has(lease) || sessions.get(request.providerKey) !== session || revisions.get(request.providerKey) !== session.revision) {
+              throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
+            }
+          } })
+        runtimeCredentialLeases.add(lease)
+        try { return await activeCredentialOperation.run(request.providerKey, () => request.consume(lease)) }
+        finally { runtimeCredentialLeases.delete(lease) }
+      }
       const slot = assertPersistedSlot(request.providerKey)
-      if (!slot) throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_MISSING')
-      const maintained = await decryptAndMaintainRecord(request.providerKey, slot)
-      const derivedScope = await deriveScope(request.providerKey, maintained.credential)
+      if (!slot) {
+        if (faultedRecordFingerprints.has(request.providerKey)) {
+          throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_INVALID')
+        }
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_MISSING')
+      }
+      if (slot?.record.backend === 'electron_safe_storage') await requireAvailableForProvider(request.providerKey)
+      const maintained = await decryptAvailableRecord(request.providerKey, slot)
       const currentRevision = revisions.get(request.providerKey)
       if (currentRevision !== request.expectedRevision || maintained.slot.revision !== currentRevision) {
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION')
       }
-      if (derivedScope !== maintained.slot.credentialScopeId ||
-          request.expectedCredentialScopeId !== maintained.slot.credentialScopeId) {
+      if (request.expectedCredentialScopeId !== maintained.slot.credentialScopeId) {
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SCOPE_MISMATCH')
       }
+      assertEpochDatabaseCurrent()
       assertPersistedSlot(request.providerKey)
       const lease = Object.freeze({
         trust: 'epoch2_runtime_credential_lease' as const,
@@ -487,6 +661,7 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
           if (!runtimeCredentialLeases.has(lease)) {
             throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
           }
+          assertEpochDatabaseCurrent()
           const latest = assertPersistedSlot(request.providerKey)
           if (latest !== maintained.slot || revisions.get(request.providerKey) !== currentRevision ||
               latest?.credentialScopeId !== maintained.slot.credentialScopeId) {
@@ -496,30 +671,50 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
       })
       runtimeCredentialLeases.add(lease)
       try {
-        const result = await request.consume(lease)
-        lease.assertCurrent()
-        return result
+        return await activeCredentialOperation.run(request.providerKey, () => request.consume(lease))
       } finally {
         runtimeCredentialLeases.delete(lease)
       }
     }),
-    withCredentialScopeBindingAuthority: (request) => exclusive(request.providerKey, async () => {
+    withCredentialScopeBindingAuthority: (request) => leaseOperation(request.providerKey, async () => {
       if (!Number.isSafeInteger(request.expectedRevision) || request.expectedRevision < 1 ||
           !isCredentialScopeIdV2(request.expectedCredentialScopeId) || typeof request.consume !== 'function') {
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_INVALID')
       }
+      const session = sessions.get(request.providerKey)
+      if (session) {
+        if (request.expectedRevision !== session.revision || request.expectedCredentialScopeId !== session.credentialScopeId) {
+          throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION')
+        }
+        const authority = Object.freeze({ trust: 'epoch2_credential_scope_binding_authority' as const,
+          usage: 'provider_binding_snapshot_only' as const, providerKey: request.providerKey,
+          revision: session.revision, credentialScopeId: session.credentialScopeId, assertCurrent: () => {
+            if (!credentialScopeBindingAuthorities.has(authority) || sessions.get(request.providerKey) !== session ||
+                revisions.get(request.providerKey) !== session.revision) {
+              throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
+            }
+          } })
+        credentialScopeBindingAuthorities.add(authority)
+        try { return await activeCredentialOperation.run(request.providerKey, () => request.consume(authority)) }
+        finally { credentialScopeBindingAuthorities.delete(authority) }
+      }
       const slot = assertPersistedSlot(request.providerKey)
-      if (!slot) throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_MISSING')
-      const maintained = await decryptAndMaintainRecord(request.providerKey, slot)
-      const derivedScope = await deriveScope(request.providerKey, maintained.credential)
+      if (!slot) {
+        if (faultedRecordFingerprints.has(request.providerKey)) {
+          throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_INVALID')
+        }
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_MISSING')
+      }
+      if (slot?.record.backend === 'electron_safe_storage') await requireAvailableForProvider(request.providerKey)
+      const maintained = await decryptAvailableRecord(request.providerKey, slot)
       const currentRevision = revisions.get(request.providerKey)
       if (currentRevision !== request.expectedRevision || maintained.slot.revision !== currentRevision) {
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION')
       }
-      if (derivedScope !== maintained.slot.credentialScopeId ||
-          request.expectedCredentialScopeId !== maintained.slot.credentialScopeId) {
+      if (request.expectedCredentialScopeId !== maintained.slot.credentialScopeId) {
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SCOPE_MISMATCH')
       }
+      assertEpochDatabaseCurrent()
       assertPersistedSlot(request.providerKey)
       const authority = Object.freeze({
         trust: 'epoch2_credential_scope_binding_authority' as const,
@@ -531,6 +726,7 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
           if (!credentialScopeBindingAuthorities.has(authority)) {
             throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
           }
+          assertEpochDatabaseCurrent()
           const latest = assertPersistedSlot(request.providerKey)
           if (latest !== maintained.slot || revisions.get(request.providerKey) !== currentRevision ||
               latest?.credentialScopeId !== maintained.slot.credentialScopeId) {
@@ -540,9 +736,7 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
       })
       credentialScopeBindingAuthorities.add(authority)
       try {
-        const result = await request.consume(authority)
-        authority.assertCurrent()
-        return result
+        return await activeCredentialOperation.run(request.providerKey, () => request.consume(authority))
       } finally {
         credentialScopeBindingAuthorities.delete(authority)
       }

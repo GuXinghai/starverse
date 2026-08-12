@@ -1,4 +1,3 @@
-import type { Epoch2CredentialDecryptValidator } from './configProjection'
 import {
   cleanupEpoch2TransitionTemps,
   deleteEpoch2OwnedTarget,
@@ -78,7 +77,6 @@ function sweepLegacyOwnedTargets(input: Readonly<{
 export async function runEpoch2ResetThroughConfigReplacement(input: Readonly<{
   layout: Epoch2WorkspaceLayout
   lease: Win32EpochRootLease
-  validateDecrypt: Epoch2CredentialDecryptValidator
   clearDefaultSessionData: Epoch2DefaultSessionReset
 }>): Promise<Epoch2ResetThroughConfigResult> {
   cleanupEpoch2TransitionTemps(input)
@@ -109,7 +107,6 @@ export async function runEpoch2ResetThroughConfigReplacement(input: Readonly<{
     replacementAuthority = await prepareEpoch2ConfigReplacement({
       layout: input.layout,
       lease: input.lease,
-      validateDecrypt: input.validateDecrypt,
     })
     inspectEpoch2LegacyConfigBackups(input)
 

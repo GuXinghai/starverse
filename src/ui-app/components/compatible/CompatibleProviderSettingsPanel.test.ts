@@ -48,7 +48,8 @@ describe('CompatibleProviderSettingsPanel', () => {
   let catalog: Record<string, ReturnType<typeof vi.fn>>
 
   beforeEach(() => {
-    vi.clearAllMocks()
+    vi.resetAllMocks()
+    ;(window as Window & { electronAPI?: { platform?: NodeJS.Platform } }).electronAPI = { platform: 'win32' }
     const rows = [details(firstId, 'First', 'https://first.example/v1'), details(secondId, 'Second', 'https://second.example/v1')]
     registry = clients.registry
     registry.list.mockResolvedValue(rows)
@@ -100,6 +101,36 @@ describe('CompatibleProviderSettingsPanel', () => {
     expect(registry.create.mock.calls[0]![0].credential.token).toBe('do-not-render-again')
     expect((screen.getByTestId('compatible-secret-input') as HTMLInputElement).value).toBe('')
     expect(document.body.textContent).not.toContain('do-not-render-again')
+  })
+
+  it('keeps a new credential only long enough for the user to choose session or plaintext storage', async () => {
+    registry.list.mockResolvedValueOnce([])
+    registry.create.mockRejectedValueOnce(new Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED'))
+      .mockResolvedValueOnce(details(firstId, 'First', 'https://first.example/v1'))
+    render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+    await fireEvent.update(await screen.findByTestId('compatible-display-name'), 'First')
+    await fireEvent.update(screen.getByTestId('compatible-secret-input'), 'choice-only-secret')
+    await fireEvent.click(screen.getByTestId('compatible-save'))
+    await screen.findByTestId('compatible-credential-storage-choice')
+    expect((screen.getByTestId('compatible-secret-input') as HTMLInputElement).value).toBe('choice-only-secret')
+    expect(screen.queryByTestId('compatible-save-plaintext')).toBeNull()
+    await fireEvent.click(screen.getByText(/This run only|仅本次运行/))
+    await waitFor(() => expect(registry.create).toHaveBeenCalledTimes(2))
+    expect(registry.create.mock.calls[1]![0]).toMatchObject({ storageMode: 'session', credential: { token: 'choice-only-secret' } })
+    expect((screen.getByTestId('compatible-secret-input') as HTMLInputElement).value).toBe('')
+    expect(document.body.textContent).not.toContain('choice-only-secret')
+  })
+
+  it('offers explicit plaintext persistence only on Linux', async () => {
+    ;(window as Window & { electronAPI?: { platform?: NodeJS.Platform } }).electronAPI = { platform: 'linux' }
+    registry.list.mockResolvedValueOnce([])
+    registry.create.mockRejectedValueOnce(new Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED'))
+    render(CompatibleProviderSettingsPanel, { props: { disabled: false } })
+    await fireEvent.update(await screen.findByTestId('compatible-display-name'), 'First')
+    await fireEvent.update(screen.getByTestId('compatible-secret-input'), 'linux-choice-secret')
+    await fireEvent.click(screen.getByTestId('compatible-save'))
+    await screen.findByTestId('compatible-credential-storage-choice')
+    expect(screen.getByTestId('compatible-save-plaintext')).toBeTruthy()
   })
 
   it('warns explicitly for insecure HTTP without changing the selected security policy', async () => {

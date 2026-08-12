@@ -4,7 +4,6 @@ import {
   type CredentialConfigStore,
   type Epoch2RuntimeCredentialService,
 } from '../credentials/epoch2RuntimeCredentialService'
-import { validateEpoch2SafeStorageCredentialDecrypt } from '../credentials/epoch2SafeStorageCredentialValidator'
 import { runEpoch2ResetThroughConfigReplacement, type Epoch2DefaultSessionReset } from './dataEpochCoordinatorCore'
 import { ensureEpoch2DatabaseCreated } from './epochDatabaseCoordinatorCore'
 import { advanceEpoch2ResetJournal, EPOCH2_RESET_PHASES, type Epoch2ResetJournal } from './resetJournal'
@@ -12,11 +11,12 @@ import { readEpoch2ResetJournal, writeEpoch2ResetJournalAtomic } from './resetJo
 import type { Epoch2WorkspaceLayout } from './rootManifest'
 import { Epoch2AttachmentBlobStoreV2 } from './epoch2AttachmentBlobStoreV2'
 import { createOpenAICompatibleCredentialV2Service } from '../credentials/openAICompatibleCredentialV2Service'
-import { deriveCredentialScopeIdWithVerifiedEpoch2Key } from './freshEpochDatabaseInitializer'
+import { createCredentialMutationQueue } from '../credentials/credentialMutationQueue'
+import { enforceLinuxCredentialStoragePermissions } from '../credentials/linuxCredentialStoragePermissions'
 import {
-  acquireWin32EpochDatabaseFileAuthority,
-  acquireWin32EpochRootLease,
-  type Win32EpochDatabaseFileAuthority,
+  acquireEpochDatabaseFileAuthority,
+  acquireEpochRootLease,
+  type EpochDatabaseFileAuthority,
 } from './win32EpochRootLease'
 
 export type Epoch2CommittedRuntime = Readonly<{
@@ -44,21 +44,26 @@ export async function bootstrapEpoch2ToCommitted(input: Readonly<{
   layout: Epoch2WorkspaceLayout
   clearDefaultSessionData: Epoch2DefaultSessionReset
   openCredentialStore: () => CredentialConfigStore
+  platform?: NodeJS.Platform
+  enforceCredentialStoragePermissions?: typeof enforceLinuxCredentialStoragePermissions
 }>): Promise<Epoch2CommittedRuntime> {
+  const platform = input.platform ?? process.platform
+  const enforceCredentialStoragePermissions = input.enforceCredentialStoragePermissions ?? enforceLinuxCredentialStoragePermissions
   startupMilestone('lease_acquire_start')
-  const lease = acquireWin32EpochRootLease(input.layout)
+  const lease = acquireEpochRootLease(input.layout, platform)
   startupMilestone('lease_acquired')
   let returned = false
   let credentialService: Epoch2RuntimeCredentialService | undefined
-  let databaseFileAuthority: Win32EpochDatabaseFileAuthority | undefined
+  let openAICompatibleCredentialService: ReturnType<typeof createOpenAICompatibleCredentialV2Service> | undefined
+  let databaseFileAuthority: EpochDatabaseFileAuthority | undefined
   let liveDatabase: BetterSqlite3.Database | undefined
+  const credentialMutationQueue = createCredentialMutationQueue()
   try {
     if (beforeOrAtConfigReplacement(readEpoch2ResetJournal({ layout: input.layout, lease }))) {
       startupMilestone('reset_resume_start')
       await runEpoch2ResetThroughConfigReplacement({
         layout: input.layout,
         lease,
-        validateDecrypt: validateEpoch2SafeStorageCredentialDecrypt,
         clearDefaultSessionData: input.clearDefaultSessionData,
       })
       startupMilestone('reset_resume_complete')
@@ -69,22 +74,29 @@ export async function bootstrapEpoch2ToCommitted(input: Readonly<{
     startupMilestone('database_initialize_complete')
     const credentialStore = input.openCredentialStore()
     startupMilestone('credential_store_opened')
+    const credentialStorePath = (credentialStore as { path?: unknown }).path
+    const credentialStoragePaths = Object.freeze({
+      directories: [input.layout.productRoot, input.layout.workspaceRoot, input.layout.epochRoot],
+      files: [input.layout.databasePath, ...(typeof credentialStorePath === 'string' ? [credentialStorePath] : [])],
+      optionalFiles: [`${input.layout.databasePath}-wal`, `${input.layout.databasePath}-shm`, `${input.layout.databasePath}-journal`],
+    })
+    enforceCredentialStoragePermissions({
+      platform,
+      ...credentialStoragePaths,
+    })
     credentialService = await createEpoch2RuntimeCredentialService({
       store: credentialStore,
+      mutationQueue: credentialMutationQueue,
       epochDatabase: {
         layout: input.layout,
         lease,
         rootAuthority: database.rootAuthority,
       },
+      credentialStoragePaths,
+      platform,
     })
     startupMilestone('credential_service_ready')
     const activeCredentialService = credentialService
-    const openAICompatibleCredentialService = createOpenAICompatibleCredentialV2Service({
-      store: credentialStore,
-      deriveScope: (providerInstanceId, credential) => deriveCredentialScopeIdWithVerifiedEpoch2Key({
-        initializer: { layout: input.layout, lease, rootAuthority: database.rootAuthority }, providerId: providerInstanceId, credential,
-      }),
-    })
     let journal = database.journal
     if (journal.phase === 'database_created') {
       journal = advanceEpoch2ResetJournal(journal, 'committed')
@@ -93,7 +105,7 @@ export async function bootstrapEpoch2ToCommitted(input: Readonly<{
     if (journal.phase !== 'committed') throw new Error('EPOCH2_BOOTSTRAP_PHASE_INVALID')
     startupMilestone('journal_committed')
 
-    databaseFileAuthority = acquireWin32EpochDatabaseFileAuthority({
+    databaseFileAuthority = acquireEpochDatabaseFileAuthority({
       layout: input.layout,
       lease,
       rootAuthority: database.rootAuthority,
@@ -109,31 +121,44 @@ export async function bootstrapEpoch2ToCommitted(input: Readonly<{
       throw new Error('EPOCH2_BOOTSTRAP_DATABASE_PRAGMA_INVALID')
     }
     databaseFileAuthority.verifyPathIdentity()
+    enforceCredentialStoragePermissions({
+      platform,
+      ...credentialStoragePaths,
+    })
     startupMilestone('live_database_ready')
     const activeDatabase = liveDatabase
     const activeDatabaseFileAuthority = databaseFileAuthority
     const attachmentBlobStore = new Epoch2AttachmentBlobStoreV2({
       layout: input.layout, lease, rootAuthority: database.rootAuthority,
     })
+    openAICompatibleCredentialService = createOpenAICompatibleCredentialV2Service({
+      db: activeDatabase,
+      mutationQueue: credentialMutationQueue,
+      credentialStoragePaths,
+      platform,
+    })
 
     let closed = false
+    let closePromise: Promise<void> | undefined
     const assertCurrent = () => {
       if (closed || !activeDatabase.open) throw new Error('EPOCH2_BOOTSTRAP_RUNTIME_CLOSED')
       activeDatabaseFileAuthority.verifyPathIdentity()
     }
     const close = async () => {
-      if (closed) return
+      if (closePromise) return closePromise
       closed = true
-      try {
+      closePromise = (async () => {
+        await openAICompatibleCredentialService!.close()
+        await activeCredentialService.close()
+        await credentialMutationQueue.close()
         if (activeDatabase.open) activeDatabase.close()
-      } finally {
+      })().finally(async () => {
         activeDatabaseFileAuthority.release()
         try {
-          await activeCredentialService.close()
-        } finally {
           lease.release()
-        }
-      }
+        } catch { /* lease release is best effort during terminal close */ }
+      })
+      return closePromise
     }
     const runtime = Object.freeze({
       journal,
@@ -149,14 +174,13 @@ export async function bootstrapEpoch2ToCommitted(input: Readonly<{
   } finally {
     if (!returned) {
       try {
+        await openAICompatibleCredentialService?.close()
+        await credentialService?.close()
+        await credentialMutationQueue.close()
         if (liveDatabase?.open) liveDatabase.close()
       } finally {
         databaseFileAuthority?.release()
-        try {
-          await credentialService?.close()
-        } finally {
-          lease.release()
-        }
+        lease.release()
       }
     }
   }

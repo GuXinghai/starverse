@@ -23,8 +23,10 @@ declare namespace NodeJS {
 
 type ProviderCredentialStatusSource =
   | 'secure_store'
+  | 'plaintext'
   | 'missing'
-type ProviderCredentialBackendKind = 'electron_safe_storage' | 'unavailable'
+type ProviderCredentialBackendKind = 'electron_safe_storage' | 'session' | 'plaintext' | 'unavailable'
+type ProviderCredentialStorageMode = 'system_secure' | 'session' | 'plaintext'
 type OpenRouterCredentialSource = ProviderCredentialStatusSource
 
 type GenerationV2ModelPreferenceScopeType = 'global' | 'project' | 'conversation'
@@ -77,6 +79,7 @@ interface OpenRouterCredentialStatus {
   source: OpenRouterCredentialSource
   backend: ProviderCredentialBackendKind
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
@@ -88,15 +91,12 @@ interface OpenRouterCredentialStatus {
 
 interface OpenRouterCredentialUpdatePayload {
   apiKey?: string
+  storageMode?: ProviderCredentialStorageMode
 }
 
 type OpenRouterCredentialResult =
   | { ok: true; status: OpenRouterCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
-
-type ProviderCredentialRevealResult =
-  | { ok: true; apiKey: string }
-  | { ok: false; code: 'credential_missing' | 'store_unavailable'; message: string }
 
 interface OpenAIResponsesCredentialStatus {
   source: ProviderCredentialStatusSource
@@ -104,6 +104,7 @@ interface OpenAIResponsesCredentialStatus {
   providerId: 'openai'
   profileId: 'openai_responses_v1'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
@@ -113,6 +114,7 @@ interface OpenAIResponsesCredentialStatus {
 
 interface OpenAIResponsesCredentialUpdatePayload {
   apiKey?: string
+  storageMode?: ProviderCredentialStorageMode
 }
 
 type OpenAIResponsesCredentialResult =
@@ -185,6 +187,7 @@ interface GoogleAIStudioCredentialStatus {
   providerId: 'google-ai-studio'
   profileId: 'gemini_api_v1'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
@@ -194,6 +197,7 @@ interface GoogleAIStudioCredentialStatus {
 
 interface GoogleAIStudioCredentialUpdatePayload {
   apiKey?: string
+  storageMode?: ProviderCredentialStorageMode
 }
 
 type GoogleAIStudioCredentialResult =
@@ -206,6 +210,7 @@ interface AnthropicCredentialStatus {
   providerId: 'anthropic'
   profileId: 'anthropic_messages_v1'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
@@ -215,6 +220,7 @@ interface AnthropicCredentialStatus {
 
 interface AnthropicCredentialUpdatePayload {
   apiKey?: string
+  storageMode?: ProviderCredentialStorageMode
 }
 
 type AnthropicCredentialResult =
@@ -273,6 +279,7 @@ interface DeepSeekCredentialStatus {
   providerId: 'deepseek'
   profileId: 'deepseek_official_openai_compat'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
@@ -282,6 +289,7 @@ interface DeepSeekCredentialStatus {
 
 interface DeepSeekCredentialUpdatePayload {
   apiKey?: string
+  storageMode?: ProviderCredentialStorageMode
 }
 
 type DeepSeekCredentialResult =
@@ -865,6 +873,10 @@ type CompatibleRendererCredentialDescriptor = Readonly<{
   version: number
   authMode: 'none' | 'bearer' | 'basic' | 'custom_headers'
   configured: boolean
+  availability: 'unknown' | 'available' | 'unavailable'
+  diagnosticCode?: string
+  storageBackend?: 'electron_safe_storage' | 'session' | 'plaintext'
+  sessionOverridesPersistent: boolean
   maskState: 'not_applicable' | 'not_configured' | 'configured_masked'
   sensitiveHeaderNames: readonly string[]
   deletedAtMs: number | null
@@ -1048,7 +1060,6 @@ type GenerationV2TextBridge = Readonly<{
 
 type GenerationV2CredentialBridge = Readonly<{
   getStatus: () => Promise<unknown>
-  reveal: () => Promise<unknown>
   update: (payload: unknown) => Promise<unknown>
   clear: () => Promise<unknown>
 }>
@@ -1215,7 +1226,6 @@ interface Window {
       get: (providerInstanceId: string) => Promise<unknown>
       create: (payload: unknown) => Promise<unknown>
       reviseConfiguration: (payload: unknown) => Promise<unknown>
-      writeCredential: (payload: unknown) => Promise<unknown>
       getCredentialStatus: (payload: unknown) => Promise<unknown>
       update: (payload: unknown) => Promise<unknown>
       updateEndpoint: (payload: unknown) => Promise<unknown>
@@ -1268,6 +1278,7 @@ interface Window {
     resolveProxy?: (payload: string | { url?: string }) => Promise<NetworkProxyResolveResult>
   }
   electronAPI?: {
+    platform?: NodeJS.Platform
     selectLocalFiles?: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) => Promise<{
       filePaths: string[]
       fileGrants?: Array<{ filePath: string; token: string; expiresAtMs: number }>

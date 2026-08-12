@@ -10,6 +10,10 @@ export type CompatibleRendererCredentialDescriptor = Readonly<{
   version: number
   authMode: CompatibleCredentialDescriptor['authMode']
   configured: boolean
+  availability: 'unknown' | 'available' | 'unavailable'
+  diagnosticCode?: string
+  storageBackend?: 'electron_safe_storage' | 'session' | 'plaintext'
+  sessionOverridesPersistent: boolean
   maskState: CompatibleCredentialDescriptor['maskedSummary']['maskState']
   sensitiveHeaderNames: readonly string[]
   deletedAtMs: number | null
@@ -38,6 +42,8 @@ export function toCompatibleRendererCredentialDescriptor(
     version: descriptor.version,
     authMode: descriptor.authMode,
     configured,
+    availability: configured ? 'unknown' : 'unknown',
+    sessionOverridesPersistent: false,
     maskState: descriptor.authMode === 'none' ? 'not_applicable' : configured ? 'configured_masked' : 'not_configured',
     sensitiveHeaderNames: Object.freeze([...descriptor.maskedSummary.sensitiveHeaderNames]),
     deletedAtMs: descriptor.deletedAtMs,

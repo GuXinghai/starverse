@@ -59,7 +59,6 @@ function createGenerationV2CredentialBridge(provider: 'openrouter' | 'openai-res
   const prefix = `generation-v2:credentials:${provider}`
   return Object.freeze({
     getStatus: () => ipcRenderer.invoke(`${prefix}:get-status`),
-    reveal: () => ipcRenderer.invoke(`${prefix}:reveal`),
     update: (payload: unknown) => ipcRenderer.invoke(`${prefix}:update`, payload),
     clear: () => ipcRenderer.invoke(`${prefix}:clear`),
   })
@@ -112,7 +111,6 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     get: (providerInstanceId: string) => ipcRenderer.invoke('generation-v2:openai-compatible:get', { providerInstanceId }),
     create: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:create', payload),
     reviseConfiguration: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:revise-configuration', payload),
-    writeCredential: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:write-credential', payload),
     getCredentialStatus: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:get-credential-status', payload),
     update: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:update', payload),
     updateEndpoint: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:update-endpoint', payload),
@@ -334,6 +332,7 @@ if (packagedTestDocxFixtureAuthorityEnabled) {
 
 // Expose file dialog API for image selection
 contextBridge.exposeInMainWorld('electronAPI', {
+  platform: process.platform,
   /**
    * 选择图片文件并返回 base64 data URI
    * @returns {Promise<string | null>} base64 data URI 或 null（如果用户取消）

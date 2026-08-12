@@ -5,6 +5,7 @@ import { createMainWindow } from './mainWindow'
 type MainWindowLifecycle = Readonly<{
   createWindow: () => BrowserWindow | null
   getWindow: () => BrowserWindow | null
+  focusWindow: () => boolean
   clearWindowListeners: () => void
   registerAppLifecycleHandlers: () => void
 }>
@@ -21,6 +22,15 @@ export function createMainWindowLifecycle(input: CreateMainWindowInput): MainWin
     const created = createMainWindow(input)
     win = created
     return created
+  }
+
+  const focusWindow = (): boolean => {
+    const window = getWindow()
+    if (!window) return false
+    if (window.isMinimized()) window.restore()
+    window.show()
+    window.focus()
+    return true
   }
 
   const clearWindowListeners = () => {
@@ -48,6 +58,7 @@ export function createMainWindowLifecycle(input: CreateMainWindowInput): MainWin
   return {
     createWindow,
     getWindow,
+    focusWindow,
     clearWindowListeners,
     registerAppLifecycleHandlers,
   }

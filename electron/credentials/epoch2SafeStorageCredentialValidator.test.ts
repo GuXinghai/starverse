@@ -2,8 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const safeStorageMock = vi.hoisted(() => ({
   available: true,
+  backend: 'gnome_libsecret' as const,
   decryptResult: { shouldReEncrypt: false, result: 'credential' } as unknown,
   isAsyncEncryptionAvailable: vi.fn(async () => safeStorageMock.available),
+  getSelectedStorageBackend: vi.fn(() => safeStorageMock.backend),
   decryptStringAsync: vi.fn(async () => safeStorageMock.decryptResult),
   encryptStringAsync: vi.fn(async (value: string) => Buffer.from(`rewrapped:${value}`)),
 }))
@@ -14,6 +16,7 @@ import { validateEpoch2SafeStorageCredentialDecrypt } from './epoch2SafeStorageC
 
 beforeEach(() => {
   safeStorageMock.available = true
+  safeStorageMock.backend = 'gnome_libsecret'
   safeStorageMock.decryptResult = { shouldReEncrypt: false, result: 'credential' }
   safeStorageMock.isAsyncEncryptionAvailable.mockClear()
   safeStorageMock.decryptStringAsync.mockClear()

@@ -26,6 +26,8 @@ describe('Starverse packaged product identity', () => {
     const entrySource = fs.readFileSync(path.resolve('electron/epoch2MainEntry.ts'), 'utf8')
     expect(entrySource.indexOf('configureStarverseElectronIdentity({'))
       .toBeLessThan(entrySource.indexOf("await import('./mainV2')"))
+    expect(entrySource.indexOf('app.requestSingleInstanceLock()'))
+      .toBeLessThan(entrySource.indexOf('app.whenReady()'))
   })
 
   it('is the effective electron-builder configuration without a secondary config file', async () => {

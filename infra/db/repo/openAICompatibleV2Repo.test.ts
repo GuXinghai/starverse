@@ -85,6 +85,20 @@ describe('OpenAI-compatible V2 configuration repository', () => {
     expect(repo.getEndpointRevision('ocp_provider_12345678', 'ocp_endpoint_12345678').revision).toBe(1)
   })
 
+  it('rejects an endpoint update based on a stale endpoint revision id', () => {
+    repo.create({ providerInstanceId: 'ocp_provider_12345678', displayName: 'Compatible endpoint',
+      endpointRevisionId: 'ocp_endpoint_12345678', baseUrl: 'https://example.test/', securityPolicy: 'strict_ssrf',
+      auth: { mode: 'none' }, ordinaryHeaders: [], query: [], configuration: configuration() })
+    repo.updateEndpointWithCredential({ providerInstanceId: 'ocp_provider_12345678', endpointRevisionId: 'ocp_endpoint_23456789',
+      expectedEndpointRevisionId: 'ocp_endpoint_12345678', baseUrl: 'https://first.example.test/', securityPolicy: 'strict_ssrf',
+      auth: { mode: 'none' }, ordinaryHeaders: [], query: [] })
+    expect(() => repo.updateEndpointWithCredential({ providerInstanceId: 'ocp_provider_12345678', endpointRevisionId: 'ocp_endpoint_34567890',
+      expectedEndpointRevisionId: 'ocp_endpoint_12345678', baseUrl: 'https://stale.example.test/', securityPolicy: 'strict_ssrf',
+      auth: { mode: 'none' }, ordinaryHeaders: [], query: [] }))
+      .toThrow('GENERATION_V2_OPENAI_COMPATIBLE_STATE_INVALID')
+    expect(repo.get('ocp_provider_12345678').endpointRevisions).toHaveLength(2)
+  })
+
   it('persists remote/manual model parity and observation-only discovery in epoch-2', () => {
     repo.create({ providerInstanceId: 'ocp_provider_12345678', displayName: 'Compatible endpoint',
       endpointRevisionId: 'ocp_endpoint_12345678', baseUrl: 'https://example.test/', securityPolicy: 'compatibility_first',
