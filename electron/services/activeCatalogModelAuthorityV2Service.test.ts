@@ -25,7 +25,8 @@ describe('ActiveCatalogModelAuthorityV2Service', () => {
     const repo = new ModelCatalogV2Repo(db, () => 100)
     repo.beginSync(scope, 'attempt:1')
     repo.commitSync({ scope, attemptId: 'attempt:1', responseDigest: '1'.repeat(64), observedAtMs: 100,
-      applyMode: 'automatic', items: [{ nativeModelId: 'gpt-test', modelId: 'gpt-test', displayName: 'GPT Test',
+      applyMode: 'automatic', items: [{ providerKey: 'openai_responses', nativeModelId: 'gpt-test',
+        modelId: 'gpt-test', modelKey: 'openai_responses::gpt-test', displayName: 'GPT Test',
         raw: { schemaVersion: 1, buckets: [{ source: 'models', fetchedAtMs: 100,
           baseUrl: 'https://api.openai.com/v1', payload: { observation } }] } }] })
 

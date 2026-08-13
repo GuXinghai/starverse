@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } from 'vue'
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, ref, watch, type CSSProperties } from 'vue'
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import type { ModelCatalogItem } from '@/next/modelCatalog/modelCatalogTypes'
 import { ModelPrefsService, type ModelPrefsFavorite, type ModelPrefsRecent, type ModelPrefsScopeInput } from '@/next/modelPrefs/modelPrefsService'
@@ -12,8 +12,10 @@ import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
   buildProviderModelKey,
-  type ChatModelSelection,
 } from '@/next/provider/modelSelection'
+import type { RuntimeProviderId } from '@/next/provider/runtimeProviderId'
+import { createProviderModelRouteSelection, type ConversationRouteSelection } from '@/next/provider/conversationRouteSelection'
+import { catalogModelSelectionCommandV2ForApp } from '@/next/modelCatalog/catalogRuntimeStoreV2'
 import { GOOGLE_AI_STUDIO_PROVIDER_KEY, type GeminiModelAvailabilityResult } from '@/next/provider/gemini/geminiModelSource'
 import {
   isGeminiThinkingBudgetValid,
@@ -39,14 +41,13 @@ import ModelPickerDialog from './ModelPickerDialog.vue'
 import { formatModelIndicatorName } from './modelIndicatorName'
 import { t, tf } from '@/shared/i18n'
 import { createCompatibleCatalogClient } from '@/next/modelCatalog/compatibleCatalogClient'
-import { compatibleConfigurationSelectionSchema, createCompatibleProviderRegistryClient, type CompatibleConfigurationPickerSource, type CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
+import { compatibleConfigurationSelectionSchema, createCompatibleProviderRegistryClient, type CompatibleConfigurationPickerSource } from '@/next/provider/openai-chat-compatible/ui'
 import { DEEPSEEK_SELECTABLE_REASONING_EFFORTS } from '@/next/provider/deepseek/deepSeekReasoningPolicy'
 
 const props = defineProps<{
   draft: string
   disabled: boolean
   isRunning: boolean
-  model?: string | null
   sessionConfig?: ChatSessionConfig | null
   modelCatalog: readonly ModelCatalogItem[]
   providerModelSources?: readonly ProviderModelPickerSource[]
@@ -74,13 +75,11 @@ const props = defineProps<{
   generationParamsResolved?: ResolvedGenerationParams | null
   googleAIStudioModelAvailability?: Readonly<{ result: GeminiModelAvailabilityResult | null }> | null
 }>()
+const appIdentity = getCurrentInstance()?.appContext.app ?? null
+type ProviderModelRef = Readonly<{ providerId: RuntimeProviderId; modelId: string }>
 
 const defaultSessionConfig: ChatSessionConfig = {
-  model: {
-    selectedProviderId: null,
-    selectedModelKey: null,
-    compatibleSelection: null,
-  },
+  routeSelection: null,
   reasoning: {
     enabled: false,
     effort: 'medium',
@@ -104,8 +103,6 @@ const defaultSessionConfig: ChatSessionConfig = {
 
 const emit = defineEmits<{
   (e: 'update:draft', value: string): void
-  (e: 'updateModel', value: ChatModelSelection | CompatibleConfigurationSelection): void
-  (e: 'update:model', value: string): void
   (e: 'updateReasoningEnabled', value: boolean): void
   (e: 'updateReasoningEffort', value: ChatSessionConfigReasoningEffort): void
   (e: 'updateGenerationParamsLayer', value: GenerationParamsLayer | null): void
@@ -131,6 +128,7 @@ const recentModels = ref<ModelPrefsRecent[]>([])
 const maxRecentModels = ref(8)
 const modelDisplayNameOverrides = ref<Record<string, string>>({})
 const modelQuickMode = ref<'favorites' | 'recents' | null>(null)
+const modelQuickSelectionError = ref<string | null>(null)
 const modelPickerOpen = ref(false)
 const attachmentMenuOpen = ref(false)
 const attachmentMenuReady = ref(false)
@@ -140,7 +138,7 @@ const attachmentMenuRef = ref<HTMLElement | null>(null)
 const attachmentMenuStyle = ref<CSSProperties>({})
 let unsubscribeModelPrefs: (() => void) | null = null
 let recentPersistTimer: ReturnType<typeof setTimeout> | null = null
-let pendingRecentModelSelection: ChatModelSelection | null = null
+let pendingRecentModelSelection: ProviderModelRef | null = null
 let attachmentMenuOpenToken = 0
 let attachmentMenuFrameId: number | null = null
 
@@ -354,25 +352,28 @@ const resolvedSendButtonMode = computed(() => {
 })
 const isSendButtonStop = computed(() => resolvedSendButtonMode.value === 'stop_square')
 const isSendButtonBusy = computed(() => resolvedSendButtonMode.value === 'busy_spinner')
-const compatibleConfigurationSelection = computed(() => props.sessionConfig?.model.compatibleSelection ?? null)
+const compatibleConfigurationSelection = computed(() => props.sessionConfig?.routeSelection?.kind === 'openai_chat_compatible'
+  ? props.sessionConfig.routeSelection.selection : null)
 const compatibleConfigurationSources = ref<CompatibleConfigurationPickerSource[]>([])
 const isSendButtonEnabled = computed(() => resolvedSendButtonMode.value === 'enabled_arrow')
 const historyIncompatibleSummary = computed(() => props.historyIncompatibleSummary ?? null)
 const selectedModel = computed(() => {
-  const normalized = normalizeModelKey(resolvedSessionConfig.value.model.selectedModelKey)
+  const route = resolvedSessionConfig.value.routeSelection
+  const normalized = normalizeModelKey(route?.kind === 'provider_model' ? route.modelId : route?.selection.modelId)
   return normalized
 })
-const selectedProviderId = computed(() => resolvedSessionConfig.value.model.selectedProviderId ?? null)
-const selectedModelSelection = computed<ChatModelSelection | null>(() => selectedProviderId.value && selectedModel.value
-  ? { providerId: selectedProviderId.value, modelId: selectedModel.value }
+const selectedProvider = computed(() => resolvedSessionConfig.value.routeSelection?.kind === 'provider_model'
+  ? resolvedSessionConfig.value.routeSelection.providerId : null)
+const selectedModelSelection = computed<ProviderModelRef | null>(() => selectedProvider.value && selectedModel.value
+  ? { providerId: selectedProvider.value, modelId: selectedModel.value }
   : null)
-const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === GOOGLE_AI_STUDIO_PROVIDER_KEY)
-const isOpenAIResponsesSelected = computed(() => selectedProviderId.value === OPENAI_RESPONSES_PROVIDER_KEY)
+const isGoogleAIStudioSelected = computed(() => selectedProvider.value === GOOGLE_AI_STUDIO_PROVIDER_KEY)
+const isOpenAIResponsesSelected = computed(() => selectedProvider.value === OPENAI_RESPONSES_PROVIDER_KEY)
 const genericReasoningEffortOptions = computed<readonly ChatSessionConfigReasoningEffort[]>(() => {
-  if (!selectedProviderId.value) return Object.freeze([])
-  if (selectedProviderId.value === 'deepseek') return DEEPSEEK_SELECTABLE_REASONING_EFFORTS
-  const profile = getDefaultGenerationParamProfile(selectedProviderId.value, {
-    requestKind: selectedProviderId.value === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+  if (!selectedProvider.value) return Object.freeze([])
+  if (selectedProvider.value === 'deepseek') return DEEPSEEK_SELECTABLE_REASONING_EFFORTS
+  const profile = getDefaultGenerationParamProfile(selectedProvider.value, {
+    requestKind: selectedProvider.value === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
       isKnownGeminiImageGenerationModel(selectedModel.value) ? 'image_generation' : 'text',
   })
   return getSelectableReasoningEfforts(profile, selectedModel.value, {
@@ -612,7 +613,7 @@ const providerNameById = computed(() => {
 const favoriteModelKeySet = computed(() => new Set(favoriteModels.value.map((item) => item.modelKey)))
 const currentModelKey = computed(() => {
   const normalized = normalizeModelKey(selectedModel.value)
-  return selectedProviderId.value && normalized.length > 0 ? `${selectedProviderId.value}::${normalized}` : ''
+  return selectedProvider.value && normalized.length > 0 ? `${selectedProvider.value}::${normalized}` : ''
 })
 const attachmentFeedbackClass = computed(() => {
   if (props.attachmentFeedbackTone === 'error') return 'border-red-200 bg-red-50 text-red-800'
@@ -626,6 +627,7 @@ const favoriteModelKeys = computed(() => favoriteModels.value.map((item) => item
 const recentModelKeys = computed(() => recentModels.value.map((item) => item.modelKey).slice(0, maxRecentModels.value))
 const favoriteDisplayItems = computed(() =>
   favoriteModels.value.map((item) => ({
+    providerId: item.providerKey as RuntimeProviderId,
     modelId: normalizeModelKey(item.modelId),
     name: modelNameById.value.get(normalizeModelKey(item.modelId)) ?? item.modelId,
   })),
@@ -634,6 +636,7 @@ const recentDisplayItems = computed(() =>
   recentModels.value
     .slice(0, maxRecentModels.value)
     .map((item) => ({
+      providerId: item.providerKey as RuntimeProviderId,
       modelId: normalizeModelKey(item.modelId),
       name: modelNameById.value.get(normalizeModelKey(item.modelId)) ?? item.modelId,
     })),
@@ -734,7 +737,7 @@ function clearRecentPersistTimer() {
   recentPersistTimer = null
 }
 
-function buildRecentRecord(selection: ChatModelSelection): ModelPrefsRecent {
+function buildRecentRecord(selection: ProviderModelRef): ModelPrefsRecent {
   const nowMs = Date.now()
   const providerId = selection.providerId
   const modelId = normalizeModelKey(selection.modelId)
@@ -751,7 +754,7 @@ function buildRecentRecord(selection: ChatModelSelection): ModelPrefsRecent {
   }
 }
 
-function scheduleRecentPersistence(selection: ChatModelSelection) {
+function scheduleRecentPersistence(selection: ProviderModelRef) {
   pendingRecentModelSelection = selection
   clearRecentPersistTimer()
   recentPersistTimer = setTimeout(() => {
@@ -763,14 +766,13 @@ function scheduleRecentPersistence(selection: ChatModelSelection) {
       {
         providerKey: pending.providerId,
         modelId: pending.modelId,
-        modelKey: buildProviderModelKey(pending),
       },
       activePrefsScope(),
     )
   }, RECENT_MODEL_PERSIST_DEBOUNCE_MS)
 }
 
-function recordRecentModelSelection(selection: ChatModelSelection) {
+function recordRecentModelSelection(selection: ProviderModelRef) {
   const providerId = selection.providerId
   const normalized = normalizeModelKey(selection.modelId)
   if (!normalized || (providerId === OPENROUTER_PROVIDER_ID && normalized === DEFAULT_OPENROUTER_MODEL_ID)) return
@@ -1000,6 +1002,7 @@ async function loadCompatibleConfigurationSources() {
 function openModelPicker() {
   if (props.disabled) return
   modelQuickMode.value = null
+  modelQuickSelectionError.value = null
   modelPickerOpen.value = true
   void loadCompatibleConfigurationSources()
 }
@@ -1011,6 +1014,7 @@ function closeModelPicker() {
 function setModelQuickMode(mode: 'favorites' | 'recents') {
   if (props.disabled) return
   modelPickerOpen.value = false
+  modelQuickSelectionError.value = null
   modelQuickMode.value = modelQuickMode.value === mode ? null : mode
   void hydrateModelPickerPrefs()
 }
@@ -1052,35 +1056,21 @@ function onOpenAIResponsesReasoningToggle() {
   onOpenAIResponsesReasoningSelect('auto')
 }
 
-function onSelectModelFromPicker(selection: ChatModelSelection | CompatibleConfigurationSelection, displayName?: string) {
-  if ('kind' in selection && selection.kind === 'openai_chat_compatible_configuration') {
-    emit('updateModel', selection)
-    modelPickerOpen.value = false
-    return
+function onSelectModelFromPicker(selection: ConversationRouteSelection, displayName?: string) {
+  if (selection.kind === 'provider_model') {
+    rememberModelDisplayName(selection.modelId, displayName)
+    recordRecentModelSelection({ providerId: selection.providerId, modelId: selection.modelId })
   }
-  const nativeSelection = selection as ChatModelSelection
-  rememberModelDisplayName(nativeSelection.modelId, displayName)
-  emit('updateModel', nativeSelection)
-  emit('update:model', nativeSelection.modelId)
-  recordRecentModelSelection(nativeSelection)
   modelPickerOpen.value = false
-}
-
-function onUpdateModel(modelId: string) {
-  const selection = { providerId: OPENROUTER_PROVIDER_ID, modelId }
-  emit('updateModel', selection)
-  emit('update:model', modelId)
-  recordRecentModelSelection(selection)
 }
 
 async function onToggleCurrentModelFavorite() {
   const modelId = normalizeModelKey(selectedModel.value)
-  if (!modelId || modelId === DEFAULT_OPENROUTER_MODEL_ID || selectedProviderId.value !== OPENROUTER_PROVIDER_ID) return
+  if (!modelId || modelId === DEFAULT_OPENROUTER_MODEL_ID || selectedProvider.value !== OPENROUTER_PROVIDER_ID) return
   await ModelPrefsService.toggleFavorite(
     {
       providerKey: OPENROUTER_PROVIDER_ID,
       modelId,
-      modelKey: `${OPENROUTER_PROVIDER_ID}::${modelId}`,
     },
     activePrefsScope(),
   )
@@ -1094,7 +1084,6 @@ async function onToggleModelPickerFavorite(modelId: string) {
     {
       providerKey: OPENROUTER_PROVIDER_ID,
       modelId: normalized,
-      modelKey: `${OPENROUTER_PROVIDER_ID}::${normalized}`,
     },
     activePrefsScope(),
   )
@@ -1107,12 +1096,33 @@ async function onReorderModelPickerFavorites(orderedModelKeys: string[]) {
   const orderedSet = new Set(orderedModelKeys)
   const removed = currentKeys.filter((key) => !orderedSet.has(key))
   await Promise.all(
-    removed.map((modelKey) => ModelPrefsService.removeFavorite({ modelKey }, scope)),
+    removed.map((modelKey) => {
+      const item = favoriteModels.value.find((candidate) => candidate.modelKey === modelKey)
+      return item
+        ? ModelPrefsService.removeFavorite({ providerKey: item.providerKey, modelId: item.modelId }, scope)
+        : Promise.resolve({ ok: false, removed: 0, error: 'favorite_not_found' })
+    }),
   )
   if (orderedModelKeys.length > 0) {
     await ModelPrefsService.reorderFavorites(orderedModelKeys, scope)
   }
   await refreshQuickModels()
+}
+
+async function onSelectQuickModel(providerId: RuntimeProviderId, modelId: string) {
+  const command = appIdentity ? catalogModelSelectionCommandV2ForApp(appIdentity) : null
+  if (!command) {
+    modelQuickSelectionError.value = 'CATALOG_MODEL_SELECTION_COMMAND_UNAVAILABLE'
+    return
+  }
+  const selection = createProviderModelRouteSelection({ providerId, modelId })
+  modelQuickSelectionError.value = null
+  try {
+    await command(selection)
+    recordRecentModelSelection({ providerId, modelId })
+  } catch (error) {
+    modelQuickSelectionError.value = error instanceof Error ? error.message : String(error)
+  }
 }
 
 function shouldRefreshForModelPrefsEvent(event: Readonly<{ scopeType: string; scopeId: string }>): boolean {
@@ -1536,7 +1546,7 @@ onBeforeUnmount(() => {
               ? 'border-amber-300 bg-amber-50 text-amber-700 hover:bg-amber-100'
               : 'border-gray-200 bg-white text-gray-600 hover:bg-gray-50'
           "
-          :disabled="props.disabled || props.isRunning || selectedModel === DEFAULT_OPENROUTER_MODEL_ID || selectedProviderId !== OPENROUTER_PROVIDER_ID"
+          :disabled="props.disabled || props.isRunning || selectedModel === DEFAULT_OPENROUTER_MODEL_ID || selectedProvider !== OPENROUTER_PROVIDER_ID"
           data-testid="current-model-favorite-toggle"
           @click="onToggleCurrentModelFavorite"
         >
@@ -1592,11 +1602,18 @@ onBeforeUnmount(() => {
             :disabled="disabled"
             :data-testid="`${modelQuickMode === 'favorites' ? 'favorite' : 'recent'}-model-${item.modelId}`"
             :aria-pressed="isSelectedModel(item.modelId)"
-            @click="onUpdateModel(item.modelId)"
+            @click="onSelectQuickModel(item.providerId, item.modelId)"
           >
             {{ item.name }}
           </button>
         </template>
+      </div>
+      <div
+        v-if="modelQuickSelectionError"
+        class="ml-[3.25rem] mt-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[11px] text-red-700"
+        data-testid="model-quick-selection-error"
+      >
+        {{ modelQuickSelectionError }}
       </div>
     </div>
   </div>
@@ -1645,8 +1662,7 @@ onBeforeUnmount(() => {
     :open="modelPickerOpen"
     :disabled="props.disabled"
     :isRunning="props.isRunning"
-    :selectedProviderId="selectedProviderId ?? undefined"
-    :selectedModelId="selectedModel"
+    :routeSelection="resolvedSessionConfig.routeSelection"
     :providerSources="props.providerModelSources ?? []"
     :compatibleConfigurationSources="compatibleConfigurationSources"
     :favoriteModelKeys="favoriteModelKeys"

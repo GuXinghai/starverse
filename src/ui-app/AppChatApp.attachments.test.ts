@@ -100,12 +100,12 @@ describe('ui-app AppChatApp attachments (Generation V2 composer contract)', () =
     g.workspace.ensureDefault = vi.fn(async () => ok({ projectId: 'project:test', conversationId: 'c1', branchId: 'b1', created: false }))
     g.workspace.getSystemTemplate = vi.fn(async () => ok({
       conversation: { id: 'c1', projectId: 'project:test', branchId: 'b1', title: 'New Chat', createdAt: 1, updatedAt: 1,
-        meta: { selectedProviderId: 'openrouter', selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL }, systemKey: 'new_template', templateRevision: 0 },
+        meta: {}, systemKey: 'new_template', templateRevision: 0 },
       draft,
       settings: { startupNavigation: 'open_new', startupTemplateReset: { modelConfig: false, draftAttachments: false }, postSendTemplateReset: 'reset_all' },
     }))
     g.workspace.listConversations = vi.fn(async () => ok({ items: [{ conversationId: 'c1', projectId: 'project:test', title: 'Chat 1', updatedAtMs: 1,
-      meta: { selectedProviderId: 'openrouter', selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL }, branches: [{ branchId: 'b1', name: 'Main', headMessageId: null, updatedAtMs: 1 }], branchesHasMore: false }], nextCursor: null, totalCount: 1 }))
+      meta: {}, branches: [{ branchId: 'b1', name: 'Main', headMessageId: null, updatedAtMs: 1 }], branchesHasMore: false }], nextCursor: null, totalCount: 1 }))
     g.workspace.getConversationRoutePreference = vi.fn(async () => ok({ conversationId: 'c1', revision: 1,
       selection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL } }))
     g.workspace.readBranch = vi.fn(async () => ok({ branchId: 'b1', conversationId: 'c1', projectId: 'project:test', title: 'Chat 1', branchName: 'Main',

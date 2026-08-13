@@ -14,9 +14,8 @@ export type ModelPrefsScopeInput = Readonly<{
 }>
 
 export type ModelPrefsModelRefInput = Readonly<{
-  modelKey?: string
-  providerKey?: string
-  modelId?: string
+  providerKey: string
+  modelId: string
 }>
 
 export type ModelPrefsFavorite = Readonly<{
@@ -95,16 +94,6 @@ function getModelPreferencesBridge(): ModelPreferencesBridge | null {
   return window.generationV2?.modelPreferences ?? null
 }
 
-function parseModelKey(modelKey: string): Readonly<{ providerKey: string; modelId: string }> | null {
-  const normalized = String(modelKey ?? '').trim()
-  const separatorIndex = normalized.indexOf(MODEL_KEY_DELIMITER)
-  if (separatorIndex <= 0 || separatorIndex + MODEL_KEY_DELIMITER.length >= normalized.length) return null
-  const providerKey = normalized.slice(0, separatorIndex).trim()
-  const modelId = normalized.slice(separatorIndex + MODEL_KEY_DELIMITER.length).trim()
-  if (!providerKey || !modelId) return null
-  return { providerKey, modelId }
-}
-
 function normalizeScope(scope?: ModelPrefsScopeInput): NormalizedScope {
   const scopeType = scope?.scopeType ?? 'global'
   if (scopeType !== 'global' && scopeType !== 'project' && scopeType !== 'conversation') {
@@ -121,18 +110,9 @@ function normalizeScope(scope?: ModelPrefsScopeInput): NormalizedScope {
 }
 
 function normalizeModelRef(ref: ModelPrefsModelRefInput): NormalizedModelRef {
-  const parsed = parseModelKey(String(ref.modelKey ?? '').trim())
-  const providerKey = String(ref.providerKey ?? '').trim() || parsed?.providerKey || ''
-  const modelId = String(ref.modelId ?? '').trim() || parsed?.modelId || ''
-  if (!providerKey || !modelId) {
-    throw new Error('model refs require modelKey or providerKey+modelId')
-  }
-  if (
-    parsed &&
-    (parsed.providerKey !== providerKey || parsed.modelId !== modelId)
-  ) {
-    throw new Error('modelKey mismatch with providerKey/modelId')
-  }
+  const providerKey = String(ref.providerKey ?? '').trim()
+  const modelId = String(ref.modelId ?? '').trim()
+  if (!providerKey || !modelId) throw new Error('model refs require providerKey+modelId')
   return {
     providerKey,
     modelId,
@@ -188,6 +168,7 @@ function decodeFavorite(row: unknown): ModelPrefsFavorite | null {
   const providerKey = String(raw.providerKey ?? '').trim()
   const modelId = String(raw.modelId ?? '').trim()
   if (!modelKey || !providerKey || !modelId) return null
+  if (modelKey !== `${providerKey}${MODEL_KEY_DELIMITER}${modelId}`) return null
   const sortRank =
     typeof raw.sortRank === 'number' && Number.isFinite(raw.sortRank)
       ? Math.floor(raw.sortRank)
@@ -224,6 +205,7 @@ function decodeRecent(row: unknown): ModelPrefsRecent | null {
   const providerKey = String(raw.providerKey ?? '').trim()
   const modelId = String(raw.modelId ?? '').trim()
   if (!modelKey || !providerKey || !modelId) return null
+  if (modelKey !== `${providerKey}${MODEL_KEY_DELIMITER}${modelId}`) return null
   const lastUsedAtMs =
     typeof raw.lastUsedAtMs === 'number' && Number.isFinite(raw.lastUsedAtMs)
       ? Math.floor(raw.lastUsedAtMs)

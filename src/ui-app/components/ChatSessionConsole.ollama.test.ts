@@ -7,7 +7,7 @@ import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
   return {
-    model: { selectedModelKey: null },
+    routeSelection: null,
     reasoning: { enabled: false, effort: 'medium' as const },
     webSearch: { enabled: false, level: 'high' as const, detail: null },
     imageGeneration: {
@@ -24,7 +24,7 @@ function defaultSessionConfig() {
 function ollamaSessionConfig() {
   return {
     ...defaultSessionConfig(),
-    model: { selectedProviderId: 'ollama_local' as const, selectedModelKey: 'llama3.2:latest' },
+    routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'ollama_local' as const, modelId: 'llama3.2:latest'  },
   }
 }
 
@@ -203,7 +203,9 @@ describe('ChatSessionConsole Ollama controls', () => {
     ])
     expect(view.emitted('updateOllamaEndpointUrl')?.length).toBeGreaterThan(0)
     expect(view.emitted('updateOllamaModel')).toBeUndefined()
-    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'ollama_local', modelId: 'llama3.2:latest' }])
+    expect(view.emitted('updateRouteSelection')?.[0]).toEqual([{
+      schemaVersion: 1, kind: 'provider_model', providerId: 'ollama_local', modelId: 'llama3.2:latest',
+    }])
     const chatEnabledEvents = view.emitted('updateOllamaChatEnabled') ?? []
     expect(chatEnabledEvents[chatEnabledEvents.length - 1]).toEqual([false])
     expect(view.emitted('clearOllamaChat')).toHaveLength(1)

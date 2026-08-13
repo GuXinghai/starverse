@@ -1,4 +1,4 @@
-import { PROVIDERS } from '../../../../constants/providers'
+import { OPENROUTER_CATALOG_PROVIDER_KEY } from '../../catalogIdentity'
 import {
   buildModelKey,
   type AdapterGetModelEndpointsInput,
@@ -295,9 +295,9 @@ function openRouterHttpFailure(response: Response, bodyText: string, observedAtM
     context: {
       origin: 'http_response',
       phase: 'response_headers',
-      providerId: PROVIDERS.OPENROUTER,
+      providerId: OPENROUTER_CATALOG_PROVIDER_KEY,
       contractId: 'openrouter-chat-models-v1',
-      operationId: `model-catalog:${PROVIDERS.OPENROUTER}:${observedAtMs}`,
+      operationId: `model-catalog:${OPENROUTER_CATALOG_PROVIDER_KEY}:${observedAtMs}`,
       requestSequence: 1,
       starverseDiagnosticCode: 'MODEL_CATALOG_PROVIDER_HTTP_ERROR',
     },
@@ -533,7 +533,7 @@ export function mapOpenRouterProviderToCatalogProvider(
 }
 
 export class OpenRouterCatalogClient implements ProviderAdapter {
-  readonly providerKey = PROVIDERS.OPENROUTER
+  readonly providerKey = OPENROUTER_CATALOG_PROVIDER_KEY
   readonly displayName = 'OpenRouter'
   private fetchImpl: typeof fetch
   private httpReferer: string
@@ -567,9 +567,9 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
         context: {
           origin: 'network_transport',
           phase: 'request_open',
-          providerId: PROVIDERS.OPENROUTER,
+          providerId: OPENROUTER_CATALOG_PROVIDER_KEY,
           contractId: 'openrouter-chat-models-v1',
-          operationId: `model-catalog:${PROVIDERS.OPENROUTER}:${observedAtMs}`,
+          operationId: `model-catalog:${OPENROUTER_CATALOG_PROVIDER_KEY}:${observedAtMs}`,
           requestSequence: 1,
           starverseDiagnosticCode: 'MODEL_CATALOG_REQUEST_OPEN_FAILED',
         },

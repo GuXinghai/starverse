@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { ref } from 'vue'
-import { DEFAULT_OPENROUTER_MODEL_ID } from '@/next/provider/modelSelection'
 import { useExperimentalProviderChatSettings } from './useExperimentalProviderChatSettings'
 
 const keys = {
   openRouterEnabled: 'starverse.openRouterTextChat.enabled',
   lmStudioEnabled: 'starverse.lmStudioTextChat.enabled',
   lmStudioEndpointUrl: 'starverse.lmStudio.endpointUrl',
-  lmStudioModel: 'starverse.lmStudio.model',
   lmStudioChatMode: 'starverse.lmStudio.chatMode',
   lmStudioOpenAIEndpoint: 'starverse.lmStudio.openAICompatible.preferredEndpoint',
   lmStudioDiagnosticsEnabled: 'starverse.lmStudio.nativeRest.diagnosticsEnabled',
@@ -17,7 +15,6 @@ const keys = {
   lmStudioAutoUnloadAfterIdleEnabled: 'starverse.lmStudio.nativeRest.autoUnloadAfterIdleEnabled',
   ollamaEnabled: 'starverse.ollamaTextChat.enabled',
   ollamaEndpointUrl: 'starverse.ollama.endpointUrl',
-  ollamaModel: 'starverse.ollama.model',
   ollamaChatMode: 'starverse.ollama.chatMode',
   ollamaNativeEndpoint: 'starverse.ollama.nativeRest.preferredEndpoint',
   ollamaOpenAIEndpoint: 'starverse.ollama.openAICompatible.preferredEndpoint',
@@ -28,21 +25,17 @@ const keys = {
   ollamaAutoUnloadAfterIdleEnabled: 'starverse.ollama.nativeRest.autoUnloadAfterIdleEnabled',
   localEndpointEnabled: 'starverse.localEndpointTextChat.enabled',
   openAIResponsesEnabled: 'starverse.openAIResponsesTextChat.enabled',
-  openAIResponsesModel: 'starverse.openAIResponsesTextChat.model',
   deepSeekEnabled: 'starverse.deepSeekTextChat.enabled',
 } as const
 
 function createSettings() {
-  const model = ref(' openrouter/auto ')
   const isRunning = ref(false)
   const isDraftInteractionLocked = ref(false)
   const settings = useExperimentalProviderChatSettings({
-    model,
     isRunning,
     isDraftInteractionLocked,
-    normalizeModelKey: (value) => String(value ?? '').trim() || DEFAULT_OPENROUTER_MODEL_ID,
   })
-  return { settings, model, isRunning, isDraftInteractionLocked }
+  return { settings, isRunning, isDraftInteractionLocked }
 }
 
 describe('useExperimentalProviderChatSettings', () => {
@@ -54,18 +47,16 @@ describe('useExperimentalProviderChatSettings', () => {
     localStorage.clear()
   })
 
-  it('builds default provider configs and runtime status without changing public shapes', () => {
+  it('builds default provider settings without deriving a runtime selection', () => {
     const { settings } = createSettings()
 
     expect(settings.openRouterChatConfig.value).toMatchObject({
       enabled: false,
-      model: DEFAULT_OPENROUTER_MODEL_ID,
       providerLabel: 'OpenRouter · first-class provider',
     })
     expect(settings.lmStudioChatConfig.value).toMatchObject({
       enabled: false,
       endpointUrl: 'http://127.0.0.1:1234',
-      model: '',
       chatMode: 'openai_compatible',
       openAICompatiblePreferredEndpoint: 'responses',
       config: {
@@ -86,7 +77,6 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(settings.ollamaChatConfig.value).toMatchObject({
       enabled: false,
       endpointUrl: 'http://127.0.0.1:11434',
-      model: '',
       chatMode: 'native_rest',
       nativeRestPreferredEndpoint: 'chat',
       openAICompatiblePreferredEndpoint: 'chat_completions',
@@ -108,16 +98,12 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(settings.localEndpointChatConfig.value).toMatchObject({
       enabled: false,
       endpointUrl: 'http://localhost:1234/v1',
-      model: '',
     })
-    expect(settings.currentRuntimeSelection.value).toMatchObject({ state: 'unset' })
-    expect(settings.currentRuntimeStatus.value.selectionLabel).toBeTruthy()
   })
 
-  it('reads, persists, and clears LM Studio storage values without legacy model state', () => {
+  it('reads, persists, and clears LM Studio provider settings', () => {
     localStorage.setItem(keys.lmStudioEnabled, '1')
     localStorage.setItem(keys.lmStudioEndpointUrl, 'http://localhost:4321')
-    localStorage.setItem(keys.lmStudioModel, 'openai/gpt-oss-20b')
     localStorage.setItem(keys.lmStudioChatMode, 'native_rest')
     localStorage.setItem(keys.lmStudioOpenAIEndpoint, 'responses')
     localStorage.setItem(keys.lmStudioDiagnosticsEnabled, '0')
@@ -132,7 +118,6 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(settings.lmStudioChatConfig.value).toMatchObject({
       enabled: true,
       endpointUrl: 'http://localhost:4321',
-      model: '',
       chatMode: 'native_rest',
       openAICompatiblePreferredEndpoint: 'responses',
       config: {
@@ -145,23 +130,19 @@ describe('useExperimentalProviderChatSettings', () => {
         },
       },
     })
-    expect(localStorage.getItem(keys.lmStudioModel)).toBeNull()
 
     settings.onClearLMStudioChat()
     expect(settings.lmStudioChatConfig.value).toMatchObject({
       enabled: false,
       endpointUrl: 'http://127.0.0.1:1234',
-      model: '',
       chatMode: 'openai_compatible',
     })
-    expect(localStorage.getItem(keys.lmStudioModel)).toBeNull()
     expect(localStorage.getItem(keys.lmStudioEndpointUrl)).toBeNull()
   })
 
-  it('reads, persists, and clears Ollama storage values without legacy model state', () => {
+  it('reads, persists, and clears Ollama provider settings', () => {
     localStorage.setItem(keys.ollamaEnabled, '1')
     localStorage.setItem(keys.ollamaEndpointUrl, 'http://localhost:11434')
-    localStorage.setItem(keys.ollamaModel, 'llama3.2:latest')
     localStorage.setItem(keys.ollamaChatMode, 'openai_compatible')
     localStorage.setItem(keys.ollamaNativeEndpoint, 'generate')
     localStorage.setItem(keys.ollamaOpenAIEndpoint, 'responses')
@@ -177,7 +158,6 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(settings.ollamaChatConfig.value).toMatchObject({
       enabled: true,
       endpointUrl: 'http://localhost:11434',
-      model: '',
       chatMode: 'openai_compatible',
       nativeRestPreferredEndpoint: 'generate',
       openAICompatiblePreferredEndpoint: 'responses',
@@ -193,22 +173,18 @@ describe('useExperimentalProviderChatSettings', () => {
         nativeRest: { preferredEndpoint: 'generate' },
       },
     })
-    expect(localStorage.getItem(keys.ollamaModel)).toBeNull()
 
     settings.onUpdateOllamaNativeControl('autoLoadBeforeSendEnabled', false)
-    expect(localStorage.getItem(keys.ollamaModel)).toBeNull()
     expect(localStorage.getItem(keys.ollamaAutoLoadBeforeSendEnabled)).toBe('0')
 
     settings.onClearOllamaChat()
     expect(settings.ollamaChatConfig.value).toMatchObject({
       enabled: false,
       endpointUrl: 'http://127.0.0.1:11434',
-      model: '',
       chatMode: 'native_rest',
       nativeRestPreferredEndpoint: 'chat',
       openAICompatiblePreferredEndpoint: 'chat_completions',
     })
-    expect(localStorage.getItem(keys.ollamaModel)).toBeNull()
     expect(localStorage.getItem(keys.ollamaEndpointUrl)).toBeNull()
     expect(localStorage.getItem(keys.ollamaAutoUnloadAfterIdleEnabled)).toBeNull()
   })
@@ -224,7 +200,6 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(settings.lmStudioChatConfig.value.enabled).toBe(false)
     expect(settings.ollamaChatConfig.value).toMatchObject({
       enabled: true,
-      model: '',
     })
     expect(localStorage.getItem(keys.lmStudioEnabled)).toBe('0')
     expect(localStorage.getItem(keys.ollamaEnabled)).toBe('1')
@@ -234,12 +209,10 @@ describe('useExperimentalProviderChatSettings', () => {
     expect(settings.ollamaChatConfig.value.enabled).toBe(false)
     expect(settings.openAIResponsesChatConfig.value).toMatchObject({
       enabled: true,
-      model: '',
     })
     expect(localStorage.getItem(keys.lmStudioEnabled)).toBe('0')
     expect(localStorage.getItem(keys.ollamaEnabled)).toBe('0')
     expect(localStorage.getItem(keys.openAIResponsesEnabled)).toBe('1')
-    expect(localStorage.getItem(keys.openAIResponsesModel)).toBeNull()
   })
 
   it('does not update or clear provider selection while running or locked', () => {
@@ -275,14 +248,12 @@ describe('useExperimentalProviderChatSettings', () => {
       window.dispatchEvent(new CustomEvent('settings:lmStudioLocalProviderUpdated', {
         detail: {
           endpointUrl: 'http://localhost:5678',
-          model: 'event-model',
           chatMode: 'native_rest',
           autoLoadBeforeSendEnabled: true,
         },
       }))
       expect(settings.lmStudioChatConfig.value).toMatchObject({
         endpointUrl: 'http://localhost:5678',
-        model: '',
         chatMode: 'native_rest',
         config: {
           nativeRestControls: {
@@ -294,7 +265,6 @@ describe('useExperimentalProviderChatSettings', () => {
       window.dispatchEvent(new CustomEvent('settings:ollamaLocalProviderUpdated', {
         detail: {
           endpointUrl: 'http://localhost:11434',
-          model: 'llama3.2:latest',
           chatMode: 'openai_compatible',
           nativeRestPreferredEndpoint: 'generate',
           openAICompatiblePreferredEndpoint: 'responses',
@@ -303,7 +273,6 @@ describe('useExperimentalProviderChatSettings', () => {
       }))
       expect(settings.ollamaChatConfig.value).toMatchObject({
         endpointUrl: 'http://localhost:11434',
-        model: '',
         chatMode: 'openai_compatible',
         nativeRestPreferredEndpoint: 'generate',
         openAICompatiblePreferredEndpoint: 'responses',

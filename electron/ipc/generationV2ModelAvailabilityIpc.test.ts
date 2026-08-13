@@ -229,7 +229,7 @@ describe('generationV2ModelAvailabilityIpc', () => {
       }) as any
       const listed = await handlers.get(GENERATION_V2_MODEL_AVAILABILITY_IPC_CHANNELS[2])?.({}, {}) as any
       expect(sync).toMatchObject({ ok: true, status: 'synced' })
-      const byId = new Map<string, any>(listed.models.map((model: any) => [model.modelId, model] as const))
+      const byId = new Map<string, any>(listed.items.map((model: any) => [model.modelId, model] as const))
       expect(Array.from(byId.keys())).toEqual(expect.arrayContaining([
         'gemini-2.5-flash-image', 'gemini-3.1-flash-lite-image',
         'gemini-3.1-flash-image', 'gemini-3.1-flash-image-preview',

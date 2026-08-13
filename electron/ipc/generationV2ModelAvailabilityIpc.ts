@@ -173,13 +173,13 @@ function snapshotResult(state: CatalogScopeStateV2, config?: ProviderConfig, sel
   const errorMessage = providerFailure ? providerFailurePrimaryMessageV2(providerFailure) : null
   const providerFields = config ? { providerKey: config.sourceProviderKey, endpointId: config.endpointId,
     profileId: config.profileId } : {}
-  if (!active) return Object.freeze({ ok: true, ...providerFields, items: Object.freeze([]), models: Object.freeze([]), status: status?.syncState === 'syncing' ? 'syncing' :
+  if (!active) return Object.freeze({ ok: true, ...providerFields, items: Object.freeze([]), status: status?.syncState === 'syncing' ? 'syncing' :
     status?.syncState === 'error' ? 'failed' : 'not_synced', responseDigest: null, observedAtMs: null,
     modelCount: 0, visibleModelCount: 0, hiddenModelCount: 0, errorCode: status?.errorCode ?? null,
     errorMessage, providerFailure, scopeId: status?.scopeId ?? null,
     authorityRevision: status?.authorityRevision ?? 0,
     pendingSnapshotDigest: pending?.snapshotDigest ?? status?.pendingSnapshotDigest ?? null })
-  return Object.freeze({ ok: true, ...providerFields, items: active.items, models: active.items,
+  return Object.freeze({ ok: true, ...providerFields, items: active.items,
     status: status?.syncState === 'syncing' ? 'syncing' : status?.syncState === 'error' ? 'failed' : 'synced',
     responseDigest: active.status.activeSnapshotDigest, observedAtMs: active.observedAtMs,
     modelCount: active.status.modelCount, visibleModelCount: active.status.visibleModelCount,

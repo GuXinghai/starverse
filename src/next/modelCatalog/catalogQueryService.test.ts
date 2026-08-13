@@ -220,34 +220,69 @@ describe('CatalogQueryService.query', () => {
       errorCode: 'catalog_snapshot_digest_mismatch', items: [] })
   })
 
-  it('degrades identity-only provider rows to capability-unknown catalog items without capability claims', async () => {
-    installGenerationV2ModelsList('deepseek', async () => successfulGenerationV2Models([
+  it('fails closed on identity-only provider rows and does not cache the invalid digest', async () => {
+    const list = vi.fn(async () => successfulGenerationV2Models([
       { nativeModelId: 'deepseek-chat', name: 'DeepSeek Chat', inputModalities: ['text'], outputModalities: ['text'] },
     ], { responseDigest: 'd'.repeat(64), observedAtMs: 456 }))
+    installGenerationV2ModelsList('deepseek', list)
 
-    const result = await CatalogQueryService.query({ sourceProviderKey: 'deepseek' })
+    const input = { sourceProviderKey: 'deepseek', snapshotDigest: 'd'.repeat(64) }
+    const first = await CatalogQueryService.query(input)
+    const second = await CatalogQueryService.query(input)
 
-    expect(result).toMatchObject({ authorityReadSucceeded: true, status: 'synced' })
-    expect(result.items).toHaveLength(1)
-    const item = result.items[0]
-    expect(item).toMatchObject({
-      providerKey: 'deepseek',
-      modelId: 'deepseek-chat',
-      modelKey: 'deepseek::deepseek-chat',
-      displayName: 'DeepSeek Chat',
-    })
-    expect(item?.capabilityResolution).toBeNull()
-    expect(item?.observation).toBeNull()
-    expect(item?.capabilities).toEqual({
-      reasoning: false,
-      tools: false,
-      structuredOutputs: false,
-      vision: false,
-      longContext: false,
-    })
+    expect(first).toMatchObject({ authorityReadSucceeded: false, status: 'failed', items: [],
+      errorCode: 'catalog_snapshot_identity_invalid' })
+    expect(second).toMatchObject({ authorityReadSucceeded: false, status: 'failed', items: [],
+      errorCode: 'catalog_snapshot_identity_invalid' })
+    expect(list).toHaveBeenCalledTimes(2)
   })
 
-  it('drops malformed rows and malformed cursor safely', async () => {
+  it.each([
+    ['wrong raw provider key', {
+      providerKey: 'deepseek',
+      modelId: 'openai/gpt-4o',
+      modelKey: 'openrouter::openai/gpt-4o',
+      displayName: 'GPT-4o',
+    }],
+    ['mismatched top-level observation', {
+      providerKey: 'openrouter',
+      modelId: 'openai/gpt-4o',
+      modelKey: 'openrouter::openai/gpt-4o',
+      displayName: 'GPT-4o',
+      observation: { providerKey: 'openrouter', nativeModelId: 'openai/gpt-4.1' },
+    }],
+    ['mismatched later observation bucket', {
+      providerKey: 'openrouter',
+      modelId: 'openai/gpt-4o',
+      modelKey: 'openrouter::openai/gpt-4o',
+      displayName: 'GPT-4o',
+      raw: { buckets: [
+        { observation: { providerKey: 'openrouter', nativeModelId: 'openai/gpt-4o' } },
+        { payload: { observation: { providerKey: 'openrouter', nativeModelId: 'openai/gpt-4.1' } } },
+      ] },
+    }],
+  ])('fails closed on %s and does not cache it', async (_label, row) => {
+    const digest = 'e'.repeat(64)
+    const list = vi.fn(async () => successfulGenerationV2Models([row], { responseDigest: digest }))
+    installGenerationV2ModelsList('openrouter', list)
+
+    const input = { sourceProviderKey: 'openrouter', snapshotDigest: digest }
+    await expect(CatalogQueryService.query(input)).resolves.toMatchObject({
+      authorityReadSucceeded: false,
+      status: 'failed',
+      items: [],
+      errorCode: 'catalog_snapshot_identity_invalid',
+    })
+    await expect(CatalogQueryService.query(input)).resolves.toMatchObject({
+      authorityReadSucceeded: false,
+      status: 'failed',
+      items: [],
+      errorCode: 'catalog_snapshot_identity_invalid',
+    })
+    expect(list).toHaveBeenCalledTimes(2)
+  })
+
+  it('fails closed when a catalog snapshot mixes malformed and valid rows', async () => {
     const modelCatalogQueryScopedCurrent = vi.fn(async () => ({
       items: [
         { modelId: 'missing-required-fields' },
@@ -281,9 +316,13 @@ describe('CatalogQueryService.query', () => {
     })
 
     expect(modelCatalogQueryScopedCurrent).toHaveBeenCalledWith({ timeoutMs: 30_000 })
-    expect(result.items).toHaveLength(1)
-    expect(result.items[0].modelId).toBe('anthropic/claude-3')
-    expect(result.nextCursor).toBeNull()
+    expect(result).toMatchObject({
+      items: [],
+      nextCursor: null,
+      authorityReadSucceeded: false,
+      status: 'failed',
+      errorCode: 'catalog_snapshot_identity_invalid',
+    })
   })
 
   it('routes category filters through scoped current query without renderer fetch or legacy queryCore', async () => {

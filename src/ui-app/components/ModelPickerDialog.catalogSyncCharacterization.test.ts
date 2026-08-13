@@ -116,8 +116,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedProviderId: 'openrouter',
-        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
         queryFn,
         debounceMs: 0,
       },
@@ -167,8 +166,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedProviderId: 'openrouter',
-        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
         queryFn,
         debounceMs: 0,
       },
@@ -212,8 +210,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedProviderId: 'openrouter',
-        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
         queryFn: vi.fn(async () => createResult([], null, {
           catalogRevision: 'rev-stale',
           modelCount: 100,
@@ -265,8 +262,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedProviderId: 'openrouter',
-        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
         queryFn,
         debounceMs: 0,
       },
@@ -375,8 +371,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedProviderId: 'openrouter',
-        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
         queryFn,
         debounceMs: 0,
         providerSources: [
@@ -503,8 +498,7 @@ describe('ModelPickerDialog OpenRouter catalog sync characterization', () => {
     render(ModelPickerDialog, {
       props: {
         open: true,
-        selectedProviderId: 'openrouter',
-        selectedModelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
         queryFn,
         debounceMs: 0,
         providerSources: [

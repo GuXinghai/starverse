@@ -160,9 +160,6 @@ const {
   googleAIStudioModelAvailabilityStatus,
   anthropicModelAvailabilityStatus,
   deepSeekModelAvailabilityStatus,
-  currentRuntimeSelection,
-  currentRuntimeCapability,
-  currentRuntimeStatus,
   modelCatalogForPicker,
   providerModelPickerSources,
   modelCatalogNotice,
@@ -175,7 +172,7 @@ const {
   refreshOpenRouterImageEndpointSelection,
   chooseOpenRouterImageEndpoint,
   updateOpenRouterImageEndpointFreshness,
-  onUpdateModel,
+  onUpdateRouteSelection,
   onUpdateReasoningEnabled,
   onUpdateReasoningEffortLevel,
   onUpdateReasoningPanelDefaultExpanded,
@@ -291,15 +288,16 @@ const runSummary = computed(() => {
 })
 
 const modelSummary = computed(() => {
-  const compatible = activeSessionConfig.value.model.compatibleSelection
-  if (compatible) {
+  const route = activeSessionConfig.value.routeSelection
+  if (route?.kind === 'openai_chat_compatible') {
+    const compatible = route.selection
     return tf('chat.topBar.modelSummaryWithProvider', {
       provider: compatible.providerName,
       model: formatModelIndicatorName(compatible.modelId),
     })
   }
-  const selectedProvider = activeSessionConfig.value.model.selectedProviderId
-  const selected = activeSessionConfig.value.model.selectedModelKey
+  const selectedProvider = route?.providerId
+  const selected = route?.modelId
   if (!selectedProvider || !selected) return t('chat.console.runtime.noProviderSelected')
   const match = modelCatalogForPicker.value.find((item) => item.modelId === selected)
   const modelLabel = formatModelIndicatorName(match?.name ?? selected)
@@ -929,7 +927,6 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             :historyIncompatibleSummary="historyIncompatibleAttachmentSummary"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
             :googleAIStudioModelAvailability="googleAIStudioModelAvailabilityStatus"
-            @updateModel="onUpdateModel"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
             @updateGenerationParamsLayer="onComposerUpdateGenerationParamsLayer"
@@ -983,9 +980,6 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             :googleAIStudioModelAvailability="googleAIStudioModelAvailabilityStatus"
             :anthropicModelAvailability="anthropicModelAvailabilityStatus"
             :deepSeekModelAvailability="deepSeekModelAvailabilityStatus"
-            :currentRuntimeSelection="currentRuntimeSelection"
-            :currentRuntimeCapability="currentRuntimeCapability"
-            :currentRuntimeStatus="currentRuntimeStatus"
             :reasoningDisplayMode="reasoningDisplayMode"
             :reasoningPanelDefaultExpanded="reasoningPanelDefaultExpanded"
             :reasoningPanelAutoCollapseAfterReasoning="reasoningPanelAutoCollapseAfterReasoning"
@@ -995,7 +989,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             :openRouterImageEndpointSelection="openRouterImageEndpointSelection"
             :openRouterImageEndpointSelectionLoading="openRouterImageEndpointSelectionLoading"
             :openRouterImageEndpointSelectionError="openRouterImageEndpointSelectionError"
-            @updateModel="onUpdateModel"
+            @updateRouteSelection="onUpdateRouteSelection"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"

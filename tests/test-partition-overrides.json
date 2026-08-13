@@ -3,7 +3,6 @@
   "src/ui-app/app/sendButtonMode.test.ts": "unit",
   "src/ui-app/app/reasoningArtifactLifecycle.test.ts": "unit",
   "src/ui-app/app/reasoningArtifactCollector.test.ts": "unit",
-  "src/ui-app/app/providerRuntimeSendCoordinator.test.ts": "unit",
   "src/ui-app/app/providerCatalogStartupSyncV2.test.ts": "unit",
   "src/ui-app/app/networkErrorDisplay.test.ts": "unit",
   "src/ui-app/app/generationV2SessionConfigProjection.test.ts": "unit",

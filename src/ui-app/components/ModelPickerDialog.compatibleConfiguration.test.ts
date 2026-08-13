@@ -9,7 +9,7 @@ describe('ModelPickerDialog compatible configuration-only source', () => {
     installGenerationV2TestBridge()
   })
 
-  it('emits the complete instance-scoped immutable selection without treating it as RuntimeProviderKey', async () => {
+  it('emits the complete instance-scoped immutable compatible route selection', async () => {
     const selection = compatibleConfigurationSelectionSchema.parse({
       kind: 'openai_chat_compatible_configuration' as const,
       providerInstanceId: 'ocp_provider_12345678', providerName: 'First', modelId: 'same-model',
@@ -23,14 +23,15 @@ describe('ModelPickerDialog compatible configuration-only source', () => {
     const selectionCommand = vi.fn(async () => undefined)
     render(ModelPickerDialog, {
       props: {
-        open: true, selectedModelId: '',
+        open: true, routeSelection: null,
         compatibleConfigurationSources: [{ providerInstanceId: selection.providerInstanceId, providerName: 'First', models: [{ modelId: 'same-model', displayName: 'Same model', sourceLabel: 'manual', selection }] }],
         selectionCommand,
         onSelect,
       },
     })
     await fireEvent.click(screen.getByTestId('compatible-model-ocp_provider_12345678-same-model'))
-    await waitFor(() => expect(selectionCommand).toHaveBeenCalledWith(selection))
-    expect(onSelect).toHaveBeenCalledWith(selection, 'Same model')
+    const routeSelection = { schemaVersion: 1, kind: 'openai_chat_compatible', selection }
+    await waitFor(() => expect(selectionCommand).toHaveBeenCalledWith(routeSelection))
+    expect(onSelect).toHaveBeenCalledWith(routeSelection, 'Same model')
   })
 })

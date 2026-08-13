@@ -5,7 +5,7 @@ import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
   return {
-    model: { selectedModelKey: null },
+    routeSelection: null,
     reasoning: { enabled: false, effort: 'medium' as const },
     webSearch: { enabled: false, level: 'high' as const, detail: null },
     imageGeneration: {
@@ -22,7 +22,7 @@ function defaultSessionConfig() {
 function localEndpointSessionConfig() {
   return {
     ...defaultSessionConfig(),
-    model: { selectedProviderId: 'local_endpoint' as const, selectedModelKey: 'local-model-a' },
+    routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'local_endpoint' as const, modelId: 'local-model-a'  },
   }
 }
 
@@ -37,7 +37,6 @@ describe('ChatSessionConsole LocalEndpoint chat controls', () => {
         localEndpointChat: {
           enabled: true,
           endpointUrl: 'http://localhost:1234/v1',
-          model: 'local-model-a',
           experimentalLabel: 'Experimental · LocalEndpoint text-only · not OpenRouter',
         },
         reasoningDisplayMode: 'inline',

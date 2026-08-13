@@ -9,7 +9,7 @@ import ChatAppComposer from './ChatAppComposer.vue'
 
 describe('ChatAppComposer web search send guard', () => {
   type HarnessSessionConfig = {
-    model: { selectedModelKey: string }
+    routeSelection: { schemaVersion: 1; kind: 'provider_model'; providerId: 'openrouter'; modelId: string }
     reasoning: { enabled: boolean; effort: 'medium' }
     webSearch: { enabled: boolean; level: 'low' | 'high'; detail: null }
     imageGeneration: {
@@ -37,7 +37,7 @@ describe('ChatAppComposer web search send guard', () => {
 
   function createSessionConfig(): HarnessSessionConfig {
     return {
-      model: { selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
+      routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
       reasoning: { enabled: true, effort: 'medium' as const },
       webSearch: { enabled: true, level: 'low' as const, detail: null },
       imageGeneration: {
@@ -104,7 +104,6 @@ describe('ChatAppComposer web search send guard', () => {
         <div>
           <ChatAppComposer
             v-model:draft="draft"
-            v-model:model="model"
             :sessionConfig="sessionConfig"
             :disabled="disabled"
             :isRunning="false"

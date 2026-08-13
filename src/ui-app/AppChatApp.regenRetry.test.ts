@@ -200,10 +200,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
             conversation: {
               ...result.value.conversation,
               id: 'template:c1', projectId: 'project_inbox', branchId: 'template:b1', title: 'New Chat',
-              meta: {
-                selectedProviderId: 'openrouter',
-                selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
-              },
+              meta: {},
             },
             draft: { ...result.value.draft, conversationId: 'template:c1' },
           })
@@ -214,10 +211,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
         getLastFormalConversation: vi.fn(async () => ok({ conversationId: 'c1' })),
         listConversations: vi.fn(async () => ok({ items: [{
           conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1', updatedAtMs: 3,
-          meta: {
-            selectedProviderId: 'openrouter',
-            selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
-          },
+          meta: {},
           branches: [{ branchId: 'b1', name: 'Main', headMessageId, updatedAtMs: 3 }],
           branchesHasMore: false,
         }], nextCursor: null, totalCount: 1 })),
@@ -453,7 +447,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
           ? {
               items: [{
                 conversationId: 'c2', projectId: 'project_inbox', title: 'Chat 2', updatedAtMs: 2,
-                meta: { selectedProviderId: null, selectedModelKey: null },
+                meta: {},
                 branches: [], branchesHasMore: false,
               }],
               nextCursor: null,
@@ -462,10 +456,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
           : {
               items: [{
                 conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1', updatedAtMs: 3,
-                meta: {
-                  selectedProviderId: 'openrouter',
-                  selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
-                },
+                meta: {},
                 branches: [{ branchId: 'b1', name: 'Main', headMessageId, updatedAtMs: 3 }],
                 branchesHasMore: true,
               }],

@@ -1,47 +1,16 @@
 import type BetterSqlite3 from 'better-sqlite3'
-import { z } from 'zod'
-import type { RuntimeProviderKey } from '../../../src/next/provider/runtimeSelection'
 import {
-  compatibleConfigurationSelectionSchema,
-  type CompatibleConfigurationSelection,
-} from '../../../src/next/provider/openai-chat-compatible/ui/compatibleConfigurationSelection'
+  conversationRouteSelectionSchema,
+  type ConversationRouteSelection,
+} from '../../../src/next/provider/conversationRouteSelection'
 import {
   assertGenerationV2AuthorityTransactionContextV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
 
-const runtimeProviderKeySchema = z.enum([
-  'openrouter',
-  'openai_responses',
-  'google_ai_studio',
-  'anthropic_messages',
-  'deepseek',
-  'lm_studio',
-  'ollama_local',
-  'local_endpoint',
-]) satisfies z.ZodType<RuntimeProviderKey>
+export const conversationRoutePreferenceSelectionV2Schema = conversationRouteSelectionSchema
 
-const nativeConversationRoutePreferenceSchema = z.object({
-  schemaVersion: z.literal(1),
-  kind: z.literal('provider_model'),
-  providerId: runtimeProviderKeySchema,
-  modelId: z.string().trim().min(1).max(512),
-}).strict()
-
-const compatibleConversationRoutePreferenceSchema = z.object({
-  schemaVersion: z.literal(1),
-  kind: z.literal('openai_chat_compatible'),
-  selection: compatibleConfigurationSelectionSchema,
-}).strict()
-
-export const conversationRoutePreferenceSelectionV2Schema = z.discriminatedUnion('kind', [
-  nativeConversationRoutePreferenceSchema,
-  compatibleConversationRoutePreferenceSchema,
-])
-
-export type ConversationRoutePreferenceSelectionV2 =
-  | Readonly<{ schemaVersion: 1; kind: 'provider_model'; providerId: RuntimeProviderKey; modelId: string }>
-  | Readonly<{ schemaVersion: 1; kind: 'openai_chat_compatible'; selection: CompatibleConfigurationSelection }>
+export type ConversationRoutePreferenceSelectionV2 = ConversationRouteSelection
 
 export type ConversationRoutePreferenceSnapshotV2 = Readonly<{
   conversationId: string

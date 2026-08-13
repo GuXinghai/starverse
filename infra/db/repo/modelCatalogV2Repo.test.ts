@@ -22,6 +22,15 @@ function createDb() {
   return db
 }
 
+function catalogItem(modelId: string, extra: Record<string, unknown> = {}) {
+  return {
+    providerKey: scope.providerKey,
+    modelId,
+    modelKey: `${scope.providerKey}::${modelId}`,
+    ...extra,
+  }
+}
+
 describe('ModelCatalogV2Repo', () => {
   it('persists immutable rich snapshots and keeps the active snapshot after a failed refresh', () => {
     const db = createDb()
@@ -32,11 +41,11 @@ describe('ModelCatalogV2Repo', () => {
       expect(repo.readStatus(scope)?.authorityRevision).toBe(1)
       const active = repo.commitSync({ scope, attemptId: 'attempt:1', responseDigest: '1'.repeat(64), observedAtMs: 90,
         applyMode: 'automatic',
-        items: [{ providerKey: 'google_ai_studio', nativeModelId: 'gemini-3.1-flash-image',
+        items: [catalogItem('gemini-3.1-flash-image', { nativeModelId: 'gemini-3.1-flash-image',
           reportedFacts: { supportedGenerationMethods: { presence: 'present',
             value: ['generateContent'], rawPath: '$.supportedGenerationMethods' } },
           rawProviderRecord: { name: 'models/gemini-3.1-flash-image',
-            supportedGenerationMethods: ['generateContent'] } }] })
+            supportedGenerationMethods: ['generateContent'] } })] })
       expect(active.items[0]).toMatchObject({ nativeModelId: 'gemini-3.1-flash-image',
         reportedFacts: { supportedGenerationMethods: { presence: 'present', value: ['generateContent'] } },
         rawProviderRecord: { name: 'models/gemini-3.1-flash-image' } })
@@ -59,7 +68,7 @@ describe('ModelCatalogV2Repo', () => {
     try {
       repo.beginSync(scope, 'attempt:raw')
       repo.commitSync({ scope, attemptId: 'attempt:raw', responseDigest: 'e'.repeat(64), observedAtMs: 100,
-        applyMode: 'automatic', items: [{ id: 'known-good' }] })
+        applyMode: 'automatic', items: [catalogItem('known-good')] })
       repo.beginSync(scope, 'attempt:failure')
       const failure = createProviderFailureV2({
         context: { origin: 'http_response', phase: 'response_body', providerId: scope.providerKey, contractId: scope.operationContractId, operationId: 'attempt:failure', requestSequence: 1 },
@@ -67,7 +76,7 @@ describe('ModelCatalogV2Repo', () => {
       })
       const status = repo.failSync(scope, 'attempt:failure', failure)
       expect(status).toMatchObject({ errorCode: 'PROVIDER_RESPONSE_HTTP_ERROR', lastFailure: { httpStatus: 401, providerError: { code: 'invalid_api_key' } } })
-      expect(repo.readActive(scope)?.items).toEqual([{ id: 'known-good' }])
+      expect(repo.readActive(scope)?.items).toEqual([catalogItem('known-good')])
     } finally { db.close() }
   })
 
@@ -102,7 +111,7 @@ describe('ModelCatalogV2Repo', () => {
         responseDigest: '1'.repeat(64),
         observedAtMs: 90,
         applyMode: 'automatic',
-        items: [{ id: 'last-known-good' }],
+        items: [catalogItem('last-known-good')],
       })
 
       now = 200
@@ -112,20 +121,20 @@ describe('ModelCatalogV2Repo', () => {
         attemptId: 'attempt:pending',
         responseDigest: '2'.repeat(64),
         observedAtMs: 190,
-        items: [{ id: 'pending' }],
+        items: [catalogItem('pending')],
         applyMode: 'manual',
       })
 
-      expect(pending).toMatchObject({ snapshotDigest: '2'.repeat(64), items: [{ id: 'pending' }] })
+      expect(pending).toMatchObject({ snapshotDigest: '2'.repeat(64), items: [catalogItem('pending')] })
       expect(repo.readActive(scope)).toMatchObject({
         status: { activeSnapshotDigest: '1'.repeat(64) },
-        items: [{ id: 'last-known-good' }],
+        items: [catalogItem('last-known-good')],
       })
       expect(repo.readPending(scope)?.snapshotDigest).toBe('2'.repeat(64))
 
       expect(repo.applyPendingSnapshot(scope, '2'.repeat(64))).toMatchObject({
         status: { authorityRevision: 5, activeSnapshotDigest: '2'.repeat(64), lastSucceededAtMs: 190 },
-        items: [{ id: 'pending' }],
+        items: [catalogItem('pending')],
       })
       expect(repo.readPending(scope)).toBeNull()
     } finally { db.close() }
@@ -141,13 +150,13 @@ describe('ModelCatalogV2Repo', () => {
       repo.failSync(scope, 'attempt:old', failure('attempt:old'))
       repo.beginSync(scope, 'attempt:new')
       repo.commitSync({ scope, attemptId: 'attempt:new', responseDigest: 'b'.repeat(64), observedAtMs: 100,
-        applyMode: 'automatic', items: [{ id: 'first' }] })
+        applyMode: 'automatic', items: [catalogItem('first')] })
       now = 1_000
       repo.beginSync(scope, 'attempt:next')
       repo.commitSync({ scope, attemptId: 'attempt:next', responseDigest: 'c'.repeat(64), observedAtMs: 1_000,
-        applyMode: 'automatic', items: [{ id: 'second' }] })
+        applyMode: 'automatic', items: [catalogItem('second')] })
       expect(repo.cleanupInactiveSnapshots(scope, 500)).toBe(1)
-      expect(repo.readActive(scope)?.items).toEqual([{ id: 'second' }])
+      expect(repo.readActive(scope)?.items).toEqual([catalogItem('second')])
       expect(repo.clearCurrent(scope)).toBe(1)
       expect(repo.readActive(scope)).toBeNull()
       expect(repo.readStatus(scope)).toMatchObject({ authorityRevision: 7, syncState: 'idle',
@@ -155,7 +164,7 @@ describe('ModelCatalogV2Repo', () => {
 
       repo.beginSync(scope, 'attempt:third')
       repo.commitSync({ scope, attemptId: 'attempt:third', responseDigest: 'd'.repeat(64), observedAtMs: 1_000,
-        applyMode: 'automatic', items: [{ id: 'third' }] })
+        applyMode: 'automatic', items: [catalogItem('third')] })
       expect(repo.clearAllScopes('google_ai_studio')).toBe(1)
       expect(repo.readStatus(scope)).toMatchObject({ authorityRevision: 10, syncState: 'idle' })
     } finally { db.close() }
@@ -168,13 +177,13 @@ describe('ModelCatalogV2Repo', () => {
       const digest = 'f'.repeat(64)
       repo.beginSync(scope, 'attempt:first')
       repo.commitSync({ scope, attemptId: 'attempt:first', responseDigest: digest, observedAtMs: 90,
-        applyMode: 'automatic', items: [{ id: 'first' }] })
+        applyMode: 'automatic', items: [catalogItem('first')] })
 
       repo.beginSync(scope, 'attempt:collision')
       expect(() => repo.commitSync({ scope, attemptId: 'attempt:collision', responseDigest: digest,
-        observedAtMs: 100, applyMode: 'automatic', items: [{ id: 'different' }] }))
+        observedAtMs: 100, applyMode: 'automatic', items: [catalogItem('different')] }))
         .toThrow('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
-      expect(repo.readActive(scope)?.items).toEqual([{ id: 'first' }])
+      expect(repo.readActive(scope)?.items).toEqual([catalogItem('first')])
     } finally { db.close() }
   })
 
@@ -184,7 +193,7 @@ describe('ModelCatalogV2Repo', () => {
     try {
       repo.beginSync(scope, 'attempt:incomplete')
       expect(() => repo.commitSync({ scope, attemptId: 'attempt:incomplete', responseDigest: '9'.repeat(64),
-        observedAtMs: 100, applyMode: 'automatic', completeness: 'incomplete', items: [{ id: 'partial' }] }))
+        observedAtMs: 100, applyMode: 'automatic', completeness: 'incomplete', items: [catalogItem('partial')] }))
         .toThrow('GENERATION_V2_MODEL_CATALOG_INPUT_INVALID')
       expect(db.prepare('SELECT count(*) AS count FROM model_catalog_snapshot_v2').get()).toEqual({ count: 0 })
       expect(repo.readStatus(scope)).toMatchObject({ authorityRevision: 1, syncState: 'syncing' })

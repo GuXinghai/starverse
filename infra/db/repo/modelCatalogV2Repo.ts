@@ -112,7 +112,35 @@ function safeCount(value: unknown): number {
   return value as number
 }
 
-function decodeItems(value: string): readonly Readonly<Record<string, unknown>>[] {
+function record(value: unknown): Record<string, unknown> | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : null
+}
+
+function validateItemIdentity(item: Record<string, unknown>, expectedProviderKey: string): void {
+  const providerKey = String(item.providerKey ?? '').trim()
+  const modelId = String(item.modelId ?? '').trim()
+  const modelKey = String(item.modelKey ?? '').trim()
+  if (providerKey !== expectedProviderKey || !modelId || modelKey !== `${providerKey}::${modelId}`) {
+    throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
+  }
+  const candidates: Record<string, unknown>[] = []
+  const direct = record(item.observation)
+  if (direct) candidates.push(direct)
+  const buckets = record(item.raw)?.buckets
+  if (Array.isArray(buckets)) {
+    for (const bucketValue of buckets) {
+      const bucket = record(bucketValue)
+      const candidate = record(bucket?.observation) ?? record(record(bucket?.payload)?.observation)
+      if (candidate) candidates.push(candidate)
+    }
+  }
+  if (candidates.some((observation) => String(observation.providerKey ?? '').trim() !== providerKey ||
+      String(observation.nativeModelId ?? '').trim() !== modelId)) {
+    throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
+  }
+}
+
+function decodeItems(value: string, expectedProviderKey: string): readonly Readonly<Record<string, unknown>>[] {
   let parsed: unknown
   try { parsed = JSON.parse(value) } catch {
     throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
@@ -120,7 +148,11 @@ function decodeItems(value: string): readonly Readonly<Record<string, unknown>>[
   if (!Array.isArray(parsed) || parsed.some((item) => !item || typeof item !== 'object' || Array.isArray(item))) {
     throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
   }
-  return Object.freeze(parsed.map((item) => Object.freeze({ ...(item as Record<string, unknown>) })))
+  return Object.freeze(parsed.map((item) => {
+    const decoded = { ...(item as Record<string, unknown>) }
+    validateItemIdentity(decoded, expectedProviderKey)
+    return Object.freeze(decoded)
+  }))
 }
 
 function itemsDigest(itemsJson: string): string {
@@ -229,6 +261,7 @@ export class ModelCatalogV2Repo {
     if (visibleModelCount + hiddenModelCount !== modelCount) {
       throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_INPUT_INVALID')
     }
+    for (const item of input.items) validateItemIdentity({ ...item }, scope.providerKey)
     const itemsJson = stableSerializeProviderRequestBoundedV2(input.items, MAX_ITEMS_JSON_BYTES)
     const codecVersion = safeCount(input.codecVersion ?? SNAPSHOT_CODEC_VERSION)
     if (codecVersion < 1 || codecVersion > 2_147_483_647 || input.completeness === 'incomplete') {
@@ -297,7 +330,7 @@ export class ModelCatalogV2Repo {
         modelCount,
         visibleModelCount,
         hiddenModelCount,
-        items: decodeItems(itemsJson),
+        items: decodeItems(itemsJson, scope.providerKey),
       })
     }
     const active = this.readActive(input.scope)
@@ -396,7 +429,7 @@ export class ModelCatalogV2Repo {
       WHERE scope_id=? AND category_key=? AND snapshot_digest=?`).get(scope.scopeId, scope.category,
         status.activeSnapshotDigest) as Record<string, unknown> | undefined
     if (!row) throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
-    const snapshot = this.#decodeStoredSnapshot(row)
+    const snapshot = this.#decodeStoredSnapshot(row, scope.providerKey)
     return Object.freeze({ status, ...snapshot })
   }
 
@@ -409,15 +442,15 @@ export class ModelCatalogV2Repo {
       WHERE scope_id=? AND category_key=? AND snapshot_digest=?`)
       .get(scope.scopeId, scope.category, status.pendingSnapshotDigest) as Record<string, unknown> | undefined
     if (!row) throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
-    return this.#decodeStoredSnapshot(row)
+    return this.#decodeStoredSnapshot(row, scope.providerKey)
   }
 
-  #decodeStoredSnapshot(row: Record<string, unknown>): ModelCatalogStoredSnapshotV2 {
+  #decodeStoredSnapshot(row: Record<string, unknown>, expectedProviderKey: string): ModelCatalogStoredSnapshotV2 {
     const modelCount = safeCount(row.model_count)
     const visibleModelCount = safeCount(row.visible_model_count)
     const hiddenModelCount = safeCount(row.hidden_model_count)
     const itemsJson = String(row.items_json)
-    const items = decodeItems(itemsJson)
+    const items = decodeItems(itemsJson, expectedProviderKey)
     if (items.length !== modelCount || visibleModelCount + hiddenModelCount !== modelCount ||
         safeCount(row.codec_version) !== SNAPSHOT_CODEC_VERSION || row.completeness !== 'complete') {
       throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
@@ -448,7 +481,7 @@ export class ModelCatalogV2Repo {
       WHERE scope_id=? AND category_key=? AND snapshot_digest=?`)
       .get(scope.scopeId, scope.category, snapshotDigest) as Record<string, unknown> | undefined
     if (!row) return null
-    return this.#decodeStoredSnapshot(row)
+    return this.#decodeStoredSnapshot(row, scope.providerKey)
   }
 
   clearCurrent(scopeValue: ModelCatalogScopeIdentityV2): number {

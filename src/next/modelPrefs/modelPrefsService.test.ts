@@ -41,7 +41,7 @@ describe('ModelPrefsService', () => {
     await expect(ModelPrefsService.listFavorites()).resolves.toEqual([])
     await expect(ModelPrefsService.listRecents()).resolves.toEqual([])
     await expect(
-      ModelPrefsService.toggleFavorite({ modelKey: 'openrouter::openai/gpt-4o' })
+      ModelPrefsService.toggleFavorite({ providerKey: 'openrouter', modelId: 'openai/gpt-4o' })
     ).resolves.toEqual({
       ok: false,
       favorited: false,
@@ -52,7 +52,7 @@ describe('ModelPrefsService', () => {
       ModelPrefsService.reorderFavorites(['openrouter::openai/gpt-4o'])
     ).resolves.toEqual([])
     await expect(
-      ModelPrefsService.recordRecent({ modelKey: 'openrouter::openai/gpt-4o' })
+      ModelPrefsService.recordRecent({ providerKey: 'openrouter', modelId: 'openai/gpt-4o' })
     ).resolves.toBeNull()
   })
 
@@ -110,7 +110,7 @@ describe('ModelPrefsService', () => {
     expect(second).toEqual([])
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelPrefs.listFavorites')).toHaveLength(1)
 
-    const added = await ModelPrefsService.toggleFavorite({ modelKey: 'openrouter::openai/gpt-4o' })
+    const added = await ModelPrefsService.toggleFavorite({ providerKey: 'openrouter', modelId: 'openai/gpt-4o' })
     expect(added.ok).toBe(true)
     expect(added.favorited).toBe(true)
     expect(added.item?.modelKey).toBe('openrouter::openai/gpt-4o')
@@ -127,7 +127,7 @@ describe('ModelPrefsService', () => {
     expect(afterAdd.map((row) => row.modelKey)).toEqual(['openrouter::openai/gpt-4o'])
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelPrefs.listFavorites')).toHaveLength(1)
 
-    const removed = await ModelPrefsService.toggleFavorite({ modelKey: 'openrouter::openai/gpt-4o' })
+    const removed = await ModelPrefsService.toggleFavorite({ providerKey: 'openrouter', modelId: 'openai/gpt-4o' })
     expect(removed.ok).toBe(true)
     expect(removed.favorited).toBe(false)
 
@@ -298,7 +298,7 @@ describe('ModelPrefsService', () => {
     expect(second).toHaveLength(1)
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelPrefs.listRecents')).toHaveLength(1)
 
-    const recorded = await ModelPrefsService.recordRecent({ modelKey: 'openrouter::anthropic/claude-3' })
+    const recorded = await ModelPrefsService.recordRecent({ providerKey: 'openrouter', modelId: 'anthropic/claude-3' })
     expect(recorded?.modelKey).toBe('openrouter::anthropic/claude-3')
 
     const third = await ModelPrefsService.listRecents(undefined, { limit: 20 })
@@ -308,7 +308,7 @@ describe('ModelPrefsService', () => {
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelPrefs.listRecents')).toHaveLength(2)
 
     failRecord = true
-    const failed = await ModelPrefsService.recordRecent({ modelKey: 'openrouter::google/gemini-2.0' })
+    const failed = await ModelPrefsService.recordRecent({ providerKey: 'openrouter', modelId: 'google/gemini-2.0' })
     expect(failed).toBeNull()
   })
 
@@ -364,9 +364,9 @@ describe('ModelPrefsService', () => {
     const scope = { scopeType: 'project' as const, scopeId: 'project-123' }
     await ModelPrefsService.listFavorites(scope)
     await ModelPrefsService.listRecents(scope, { limit: 5 })
-    await ModelPrefsService.toggleFavorite({ modelKey: 'openrouter::openai/gpt-4o' }, scope)
+    await ModelPrefsService.toggleFavorite({ providerKey: 'openrouter', modelId: 'openai/gpt-4o' }, scope)
     await ModelPrefsService.reorderFavorites(['openrouter::openai/gpt-4o'], scope)
-    await ModelPrefsService.recordRecent({ modelKey: 'openrouter::openai/gpt-4o' }, scope)
+    await ModelPrefsService.recordRecent({ providerKey: 'openrouter', modelId: 'openai/gpt-4o' }, scope)
 
     expect(invoke).toHaveBeenCalledWith(
       'modelPrefs.listFavorites',

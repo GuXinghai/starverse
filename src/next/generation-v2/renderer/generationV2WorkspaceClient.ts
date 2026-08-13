@@ -1,6 +1,5 @@
 import type { CatalogQueryItem } from '../../modelCatalog/catalogQueryService'
-import type { RuntimeProviderKey } from '../../provider/runtimeSelection'
-import type { CompatibleConfigurationSelection } from '../../provider/openai-chat-compatible/ui/compatibleConfigurationSelection'
+import type { ConversationRouteSelection } from '../../provider/conversationRouteSelection'
 import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
 
 type Result<T> = Readonly<{ ok: true; value: T }> | Readonly<{ ok: false; code: string }>
@@ -130,9 +129,7 @@ export async function deleteGenerationV2LocalProfile(endpointProfileId:string) {
   if (!value) throw new Error('GENERATION_V2_LOCAL_PROFILE_BRIDGE_UNAVAILABLE')
   return unwrap<Readonly<{deleted:boolean}>>(await value.delete(endpointProfileId))
 }
-export type GenerationV2ConversationRoutePreferenceSelection =
-  | Readonly<{ schemaVersion:1;kind:'provider_model';providerId:RuntimeProviderKey;modelId:string }>
-  | Readonly<{ schemaVersion:1;kind:'openai_chat_compatible';selection:CompatibleConfigurationSelection }>
+export type GenerationV2ConversationRoutePreferenceSelection = ConversationRouteSelection
 export type GenerationV2ConversationRoutePreferenceSnapshot = Readonly<{
   conversationId:string;revision:number;selection:GenerationV2ConversationRoutePreferenceSelection
 }>

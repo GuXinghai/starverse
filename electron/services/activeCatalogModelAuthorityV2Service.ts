@@ -157,8 +157,7 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
         consume: async (credentialAuthority) => {
           const active = repo.readActive(scope)
           if (!active) throw new ActiveCatalogModelAuthorityV2Error('GENERATION_V2_ACTIVE_CATALOG_MISSING')
-          const item = active.items.find((candidate) => candidate.nativeModelId === request.modelId.value ||
-            candidate.modelId === request.modelId.value) ?? null
+          const item = active.items.find((candidate) => candidate.modelId === request.modelId.value) ?? null
           const suppliedObservation = observationFromCatalogItem(item)
           const observation = item === null
             ? missingObservation(request.providerKey, request.modelId.value, active.observedAtMs)

@@ -7,7 +7,7 @@ import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
   return {
-    model: { selectedModelKey: null },
+    routeSelection: null,
     reasoning: { enabled: false, effort: 'medium' as const },
     webSearch: { enabled: false, level: 'high' as const, detail: null },
     imageGeneration: {
@@ -24,7 +24,7 @@ function defaultSessionConfig() {
 function lmStudioSessionConfig() {
   return {
     ...defaultSessionConfig(),
-    model: { selectedProviderId: 'lm_studio' as const, selectedModelKey: 'openai/gpt-oss-20b' },
+    routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'lm_studio' as const, modelId: 'openai/gpt-oss-20b'  },
   }
 }
 
@@ -167,7 +167,9 @@ describe('ChatSessionConsole LM Studio controls', () => {
     ])
     expect(view.emitted('updateLMStudioEndpointUrl')?.length).toBeGreaterThan(0)
     expect(view.emitted('updateLMStudioModel')).toBeUndefined()
-    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'lm_studio', modelId: 'openai/gpt-oss-20b' }])
+    expect(view.emitted('updateRouteSelection')?.[0]).toEqual([{
+      schemaVersion: 1, kind: 'provider_model', providerId: 'lm_studio', modelId: 'openai/gpt-oss-20b',
+    }])
     const chatEnabledEvents = view.emitted('updateLMStudioChatEnabled') ?? []
     expect(chatEnabledEvents[chatEnabledEvents.length - 1]).toEqual([false])
     expect(view.emitted('clearLMStudioChat')).toHaveLength(1)
