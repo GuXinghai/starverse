@@ -8,7 +8,7 @@ function loadSchema(db: BetterSqlite3.Database) {
   applyGenerationV2SchemaForTest(db, path.resolve(process.cwd()))
 }
 
-const modelRef = (modelId: string) => ({ providerKey: 'openrouter', modelId })
+const modelRef = (modelId: string) => ({ providerKey: 'openrouter' as const, modelId })
 
 describe('ModelPreferencesRepo', () => {
   it('supports global/project/conversation scopes for favorites and recents', () => {

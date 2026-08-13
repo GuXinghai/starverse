@@ -13,6 +13,7 @@ import type {
   ModelPrefsScopeParams,
   ModelPrefsScopeType,
 } from '../../db/types'
+import { isRuntimeProviderId, type RuntimeProviderId } from '../../../src/next/provider/runtimeProviderId'
 
 type SqlDatabase = BetterSqlite3.Database
 
@@ -27,7 +28,7 @@ type NormalizedScope = Readonly<{
 }>
 
 type NormalizedModelRef = Readonly<{
-  providerKey: string
+  providerKey: RuntimeProviderId
   modelId: string
   modelKey: string
 }>
@@ -57,7 +58,7 @@ function normalizeScope(input?: ModelPrefsScopeParams): NormalizedScope {
 function normalizeModelRef(input: ModelPrefsModelRefParams): NormalizedModelRef {
   const providerKey = input.providerKey.trim()
   const modelId = input.modelId.trim()
-  if (!providerKey || !modelId) throw new Error('model refs require providerKey+modelId')
+  if (!isRuntimeProviderId(providerKey) || !modelId) throw new Error('model refs require RuntimeProviderId+modelId')
 
   return {
     providerKey,

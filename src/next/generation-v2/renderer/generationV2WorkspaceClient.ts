@@ -1,6 +1,11 @@
 import type { CatalogQueryItem } from '../../modelCatalog/catalogQueryService'
 import type { ConversationRouteSelection } from '../../provider/conversationRouteSelection'
 import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
+import type { GenerationExecutionProviderId } from '../domain/generationExecutionProviderId'
+import type {
+  LocalEndpointExecutionProviderId,
+  LocalEndpointProtocolV2,
+} from '../../../shared/provider/localProviderRouteDescriptor'
 
 type Result<T> = Readonly<{ ok: true; value: T }> | Readonly<{ ok: false; code: string }>
 function bridge() {
@@ -25,7 +30,7 @@ export type GenerationV2BranchView = Readonly<{ branchId: string; conversationId
   turns: readonly Readonly<{ questionId: string; questionBody: string; questionCreatedAtMs:number;
     chosenAnswerRootId: string; contextFilter:Readonly<{questionMode:'include'|'exclude';answerMode:'include'|'exclude';effectiveMode:'include'|'exclude';lockedByQuestionExclude:boolean}>; answers: readonly Readonly<{ answerRootId: string; status: 'streaming'|'completed'|'failed'|'cancelled';
       body: string; createdAtMs: number; updatedAtMs: number; chosen: boolean; operationId: string; actionKind: string;
-      providerId: string; modelId: string; errorCode: string|null; errorMessage: string|null;
+      providerId: GenerationExecutionProviderId; modelId: string; errorCode: string|null; errorMessage: string|null;
       errorFact?: ProviderFailureV2 | null;
       endpointProfileId:string; protocolContractId:string;
       reasoningDetails:readonly Readonly<Record<string,unknown>>[];
@@ -36,8 +41,8 @@ export type GenerationV2BranchView = Readonly<{ branchId: string; conversationId
           mediaKind:'image'|'document'|'audio'|'video'|'other';capturedAtMs:number;provenance:'user_supplied';
           include:boolean;sendAs:'url_reference';conversion:'none'}>)[];
       images: readonly Readonly<{assetId:string;assetRevisionId:string;sha256:string;mime:string;storageRef:string}>[] }>[] }>[] }>
-export type GenerationV2LocalEndpointProfile = Readonly<{ endpointProfileId:string; providerId:'lmstudio'|'ollama'|'generic_local';
-  protocolContractId:'lmstudio-openresponses'|'lmstudio-openai-chat-completions'|'ollama-chat-v1'|'generic-local-openai-chat-completions';
+export type GenerationV2LocalEndpointProfile = Readonly<{ endpointProfileId:string; providerId:LocalEndpointExecutionProviderId;
+  protocolContractId:LocalEndpointProtocolV2;
   baseUrl:string; credentialMode:'none'; credentialScopeId:string; protocolConfig:Readonly<Record<string,unknown>>;
   revisionGeneration:number; profileRevision:string; profileDigest:string; createdAtMs:number; updatedAtMs:number }>
 export type GenerationV2ConfigLayerView = Readonly<{ ownerKind:'global'|'project'|'conversation'; ownerId:string;
@@ -118,7 +123,7 @@ export async function listGenerationV2OpenRouterModels():Promise<GenerationV2Ope
   if (!value) throw new Error('GENERATION_V2_MODEL_BRIDGE_UNAVAILABLE')
   return await value.listOpenRouter() as GenerationV2OpenRouterModelCatalogResult
 }
-export async function createGenerationV2LocalProfile(payload:Readonly<{providerId:'lmstudio'|'ollama'|'generic_local';
+export async function createGenerationV2LocalProfile(payload:Readonly<{providerId:LocalEndpointExecutionProviderId;
   protocolContractId:GenerationV2LocalEndpointProfile['protocolContractId'];baseUrl:string;protocolConfig?:Readonly<Record<string,unknown>>}>) {
   const value = window.generationV2?.localProfiles
   if (!value) throw new Error('GENERATION_V2_LOCAL_PROFILE_BRIDGE_UNAVAILABLE')

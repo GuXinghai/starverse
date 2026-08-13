@@ -295,7 +295,7 @@ function openRouterHttpFailure(response: Response, bodyText: string, observedAtM
     context: {
       origin: 'http_response',
       phase: 'response_headers',
-      providerId: OPENROUTER_CATALOG_PROVIDER_KEY,
+      provider: { namespace: 'catalog_source', id: OPENROUTER_CATALOG_PROVIDER_KEY },
       contractId: 'openrouter-chat-models-v1',
       operationId: `model-catalog:${OPENROUTER_CATALOG_PROVIDER_KEY}:${observedAtMs}`,
       requestSequence: 1,
@@ -567,7 +567,7 @@ export class OpenRouterCatalogClient implements ProviderAdapter {
         context: {
           origin: 'network_transport',
           phase: 'request_open',
-          providerId: OPENROUTER_CATALOG_PROVIDER_KEY,
+          provider: { namespace: 'catalog_source', id: OPENROUTER_CATALOG_PROVIDER_KEY },
           contractId: 'openrouter-chat-models-v1',
           operationId: `model-catalog:${OPENROUTER_CATALOG_PROVIDER_KEY}:${observedAtMs}`,
           requestSequence: 1,

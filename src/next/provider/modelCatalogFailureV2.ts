@@ -2,6 +2,7 @@ import {
   createProviderFailureV2,
   type ProviderFailureV2,
 } from '../../shared/provider/providerFailureV2'
+import type { ProviderCatalogKnownProviderKey } from '../../shared/modelCatalog/providerCatalogContracts'
 
 export type ProviderModelResponseBodyV2 = Readonly<{
   text: string
@@ -25,7 +26,7 @@ function responseHeaders(response: Response): Readonly<Record<string, string>> {
 }
 
 export function providerModelHttpFailureV2(input: Readonly<{
-  providerId: string
+  providerId: ProviderCatalogKnownProviderKey
   contractId: string
   observedAtMs: number
   requestSequence: number
@@ -36,7 +37,7 @@ export function providerModelHttpFailureV2(input: Readonly<{
     context: {
       origin: 'http_response',
       phase: 'response_headers',
-      providerId: input.providerId,
+      provider: { namespace: 'catalog_source', id: input.providerId },
       contractId: input.contractId,
       operationId: `model-catalog:${input.providerId}:${input.observedAtMs}`,
       requestSequence: input.requestSequence,
@@ -50,7 +51,7 @@ export function providerModelHttpFailureV2(input: Readonly<{
 }
 
 export function providerModelTransportFailureV2(input: Readonly<{
-  providerId: string
+  providerId: ProviderCatalogKnownProviderKey
   contractId: string
   observedAtMs: number
   requestSequence: number
@@ -61,7 +62,7 @@ export function providerModelTransportFailureV2(input: Readonly<{
     context: {
       origin: 'network_transport',
       phase: 'request_open',
-      providerId: input.providerId,
+      provider: { namespace: 'catalog_source', id: input.providerId },
       contractId: input.contractId,
       operationId: `model-catalog:${input.providerId}:${input.observedAtMs}`,
       requestSequence: input.requestSequence,

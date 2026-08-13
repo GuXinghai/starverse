@@ -35,7 +35,7 @@ import {
   registerGenerationV2AuthorityTransactionParticipantV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
-import type { ProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
+import { decodeProviderFailureV2, type ProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
 import { GenerationContextProjectionV2Repo } from './generationContextProjectionV2Repo'
 
 const MAX_JSON_BYTES = 1024 * 1024
@@ -200,7 +200,7 @@ export function decodeProviderFailureFact(value: unknown): ProviderFailureV2 | n
     if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
       throw new Error('invalid error fact')
     }
-    return Object.freeze(parsed as ProviderFailureV2)
+    return decodeProviderFailureV2(parsed)
   } catch {
     throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_STATE_INVALID')
   }
@@ -434,7 +434,20 @@ export class GenerationExecutionV2Repo {
     atMs: number = this.#nowMs(),
   ): GenerationExecutionOperationBundleV2 {
     assertGenerationV2AuthorityTransactionContextV2(context, this.#db)
-    const errorFactJson = encodeProviderFailureFact(terminal.errorFact)
+    const errorFact = terminal.errorFact === undefined || terminal.errorFact === null
+      ? null : decodeProviderFailureV2(terminal.errorFact)
+    if (errorFact !== null) {
+      const request = this.#db.prepare(`SELECT provider_id AS providerId, contract_id AS contractId
+        FROM generation_request_v2 WHERE operation_id=? AND request_sequence=?`).get(
+        bundle.operation.operationId.value, errorFact.requestSequence,
+      ) as Readonly<{ providerId?: unknown; contractId?: unknown }> | undefined
+      if (errorFact.provider.namespace !== 'generation_execution' ||
+          errorFact.operationId !== bundle.operation.operationId.value ||
+          request?.providerId !== errorFact.provider.id || request.contractId !== errorFact.contractId) {
+        throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
+      }
+    }
+    const errorFactJson = encodeProviderFailureFact(errorFact)
     if (!isGenerationExecutionOperationBundleForContextV2(bundle, context) ||
         ((terminal.state === 'completed') !==
           (terminal.errorCode === null && terminal.errorMessage === null && errorFactJson === null)) ||

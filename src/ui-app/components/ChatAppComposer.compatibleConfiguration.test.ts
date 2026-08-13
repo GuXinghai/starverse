@@ -4,7 +4,7 @@ import { installGenerationV2TestBridge } from '../../../tests/helpers/generation
 import { registerCatalogModelSelectionCommandV2 } from '@/next/modelCatalog/catalogRuntimeStoreV2'
 import ChatAppComposer from './ChatAppComposer.vue'
 
-describe('ChatAppComposer compatible configuration-only selection', () => {
+describe('ChatAppComposer compatible current-intent selection', () => {
   const originalGenerationV2 = window.generationV2
 
   beforeEach(() => {
@@ -15,7 +15,7 @@ describe('ChatAppComposer compatible configuration-only selection', () => {
     window.generationV2 = originalGenerationV2
   })
 
-  it('carries the pinned route identities and enables the TP15 canonical send', async () => {
+  it('persists only current intent and derives the current provider display name', async () => {
     const queryModels = vi.fn(async () => ({ ok: true, value: {
       protocolKey: 'openai_chat_compatible', providerInstanceId: 'ocp_provider_12345678', providerName: 'First', providerStatus: 'active', syncState: null, total: 1,
       items: [{ providerInstanceId: 'ocp_provider_12345678', modelId: 'same-model', metadata: { schemaVersion: 1, displayName: 'Same model', contextLength: null, maxOutputTokens: null, capabilities: { text: null, vision: null, tools: null, structuredOutputs: null, reasoning: null }, pricing: { prompt: null, completion: null, request: null, image: null } }, fieldProvenance: {}, sourcePresence: { remote: false, manual: true }, conflictFields: [], staleRemote: false }],
@@ -74,9 +74,8 @@ describe('ChatAppComposer compatible configuration-only selection', () => {
     })
     expect(await screen.findByTestId('compatible-send-selection')).toHaveTextContent('First · same-model')
     expect(screen.getByTestId('composer-send')).toBeEnabled()
-    expect(routeSelection).toMatchObject({ kind: 'openai_chat_compatible', selection: {
-      providerInstanceId: 'ocp_provider_12345678', modelId: 'same-model', endpointRevisionId: 'ocp_endpoint_12345678',
-    } })
+    expect(routeSelection).toEqual({ schemaVersion: 2, kind: 'openai_chat_compatible',
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'same-model' })
     await waitFor(() => expect(queryModels).toHaveBeenCalledWith(expect.objectContaining({ providerInstanceId: 'ocp_provider_12345678' })))
   })
 })

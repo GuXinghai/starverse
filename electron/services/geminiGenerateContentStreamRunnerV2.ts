@@ -267,7 +267,7 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
           ? createProviderFailureV2({
             context: {
               origin: 'response_decoder', phase: 'stream_decode',
-              providerId: command.preparedRequest.providerId,
+              provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
               contractId: command.preparedRequest.contractId,
               operationId: command.preparedRequest.operationId,
               requestSequence: command.preparedRequest.requestSequence,
@@ -289,7 +289,7 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
               : started ? 'response_stream' : 'network_transport',
             phase: error instanceof GeminiGenerateContentStreamV1Error ? 'stream_decode'
               : started ? 'stream_read' : 'request_open',
-            providerId: command.preparedRequest.providerId,
+            provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
             contractId: command.preparedRequest.contractId,
             operationId: command.preparedRequest.operationId,
             requestSequence: command.preparedRequest.requestSequence,

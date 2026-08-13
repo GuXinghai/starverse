@@ -1877,6 +1877,8 @@ describe('DFC renderer DTO sanitization', () => {
       version: 1,
       authMode: 'bearer',
       configured: true,
+      availability: 'available',
+      sessionOverridesPersistent: false,
       maskState: 'configured_masked',
       sensitiveHeaderNames: [],
       deletedAtMs: null,

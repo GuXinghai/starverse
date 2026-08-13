@@ -9,7 +9,10 @@ CREATE TABLE IF NOT EXISTS conversation_route_preference_v2 (
   selection_json TEXT NOT NULL CHECK (
     length(CAST(selection_json AS BLOB)) BETWEEN 1 AND 65536
     AND json_valid(selection_json)
-    AND json_extract(selection_json, '$.schemaVersion') = 1
+    AND (
+      (selection_kind = 'provider_model' AND json_extract(selection_json, '$.schemaVersion') = 1)
+      OR (selection_kind = 'openai_chat_compatible' AND json_extract(selection_json, '$.schemaVersion') = 2)
+    )
     AND json_extract(selection_json, '$.kind') = selection_kind
   ),
   created_at_ms INTEGER NOT NULL CHECK (created_at_ms >= 0),

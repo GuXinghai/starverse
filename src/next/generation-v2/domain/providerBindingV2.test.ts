@@ -39,7 +39,7 @@ describe('ProviderBindingV2 codec', () => {
         { endpointId: 'zeta', descriptorRevision: 'r2' },
         { endpointId: 'alpha', descriptorRevision: 'r1' },
       ],
-    }, 'text'), providerId: 'openai', protocolContractId: 'openai-responses-v1',
+    }, 'text'), providerId: 'openai_responses', protocolContractId: 'openai-responses-v1',
     contractRevision: `openai-responses-v1:${contractDigest}` })
     expect(binding.trust).toBe('decoded_unverified')
     expect(binding.endpointBinding.kind === 'provider_managed_set' &&

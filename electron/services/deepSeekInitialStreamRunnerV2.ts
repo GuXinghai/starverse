@@ -267,7 +267,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         context: {
           origin: 'http_response',
           phase: response.status === 200 ? 'response_body' : 'response_headers',
-          providerId: command.preparedRequest.providerId,
+          provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
           contractId: command.preparedRequest.contractId,
           operationId: command.preparedRequest.operationId,
           requestSequence: command.preparedRequest.requestSequence,
@@ -405,7 +405,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
               context: {
                 origin: 'response_decoder',
                 phase: 'stream_decode',
-                providerId: command.preparedRequest.providerId,
+                provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
                 contractId: command.preparedRequest.contractId,
                 operationId: command.preparedRequest.operationId,
                 requestSequence: command.preparedRequest.requestSequence,
@@ -419,7 +419,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
           : providerFailureFromUnknownV2(error, {
             origin: responseStarted ? 'response_stream' : 'network_transport',
             phase: responseStarted ? 'stream_read' : 'request_open',
-            providerId: command.preparedRequest.providerId,
+            provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
             contractId: command.preparedRequest.contractId,
             operationId: command.preparedRequest.operationId,
             requestSequence: command.preparedRequest.requestSequence,

@@ -241,7 +241,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
         context: {
           origin: response.status === 200 ? 'response_decoder' : 'http_response',
           phase: response.status === 200 ? 'response_headers' : 'response_body',
-          providerId: command.preparedRequest.providerId,
+          provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
           contractId: command.preparedRequest.contractId,
           operationId: command.preparedRequest.operationId,
           requestSequence: command.preparedRequest.requestSequence,
@@ -390,7 +390,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
         const providerFailure = createProviderFailureV2({
           context: {
             origin: 'provider_runtime', phase: 'response_body',
-            providerId: command.preparedRequest.providerId,
+            provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
             contractId: command.preparedRequest.contractId,
             operationId: command.preparedRequest.operationId,
             requestSequence: command.preparedRequest.requestSequence,
@@ -407,7 +407,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
             : responseStarted ? 'response_stream' : 'network_transport',
           phase: error instanceof OpenAIResponsesStreamV1Error ? 'stream_decode'
             : responseStarted ? 'stream_read' : 'request_open',
-          providerId: command.preparedRequest.providerId,
+          provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
           contractId: command.preparedRequest.contractId,
           operationId: command.preparedRequest.operationId,
           requestSequence: command.preparedRequest.requestSequence,

@@ -1,4 +1,5 @@
 import { z, type ZodType } from 'zod'
+import { RUNTIME_PROVIDER_IDS } from '../../src/next/provider/runtimeProviderId'
 import type {
   AppendMessageInput,
   AppendMessageDeltaInput,
@@ -1121,7 +1122,7 @@ const modelPrefsScopeSchema = z.object({
 })
 
 const modelPrefsModelRefObjectSchema = z.object({
-  providerKey: z.string().trim().min(1).max(128),
+  providerKey: z.enum(RUNTIME_PROVIDER_IDS),
   modelId: z.string().trim().min(1).max(512),
 })
 

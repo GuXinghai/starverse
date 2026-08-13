@@ -18,6 +18,7 @@ import type { DecodedRuntimeCapabilitySnapshotV2 } from '../../src/next/generati
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { OpenAICompatibleActiveConfigurationV2, OpenAICompatibleEndpointRevisionV2, OpenAICompatibleProviderDetailsV2 } from '../../infra/db/repo/openAICompatibleV2Repo'
 import { createOpenAIChatCompatibleProviderBindingV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
+import { compatibleRequestProfileConfigSchema } from '../../src/shared/provider/openai-chat-compatible/schemas'
 import {
   type OpenAIChatCompatibleEditResendCommandV2, type OpenAIChatCompatibleInitialCommandV2,
   type OpenAIChatCompatibleRegenerateCommandV2, type OpenAIChatCompatibleRetryCommandV2,
@@ -43,8 +44,10 @@ function digest(value: unknown): string {
   return sha256PreparedBytesV2(new TextEncoder().encode(stableSerializeProviderRequestV2(value)))
 }
 function provenance(configuration: OpenAICompatibleActiveConfigurationV2, endpoint: OpenAICompatibleEndpointRevisionV2,
-  providerInstanceId: string, credentialRevision: number, extraBody: unknown | null) {
+  providerInstanceId: string, credentialRevision: number) {
   if (!Number.isSafeInteger(credentialRevision) || credentialRevision < 0) fail('GENERATION_V2_OPENAI_COMPATIBLE_SNAPSHOT_INPUT_INVALID')
+  const requestProfile = compatibleRequestProfileConfigSchema.parse(configuration.requestProfile.payload)
+  const extraBody = requestProfile.defaultExtraBody ?? null
   const config = (entry: { configId: string; version: number; payloadDigest: string }) => Object.freeze({
     id: entry.configId, version: entry.version, digest: entry.payloadDigest,
   })
@@ -110,7 +113,7 @@ export function commitOpenAIChatCompatibleCurrentSnapshotV2(input: Readonly<{
       semanticFieldsDigest: input.capability.semanticFieldsDigest.value, snapshotHash: input.capability.snapshotHash.value },
     attachmentProviderFileBindings: [], toolAuthority: { kind: 'none' },
     providerConfiguration: provenance(input.configuration, input.endpoint, input.provider.providerInstanceId,
-      input.credentialRevision, input.command.extraBody),
+      input.credentialRevision),
   }))
   const execution = input.executionRepo.insertOperationAndSnapshot(input.context, {
     operationId: input.pending.operationId.value, actionKind, branchId: input.pending.branchId.value,

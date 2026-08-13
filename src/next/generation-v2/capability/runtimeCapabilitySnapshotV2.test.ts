@@ -15,7 +15,7 @@ const evidenceContentDigest = 'c'.repeat(64)
 function binding() {
   return {
     credentialScopeId: 'credential-scope:1',
-    providerId: 'openai',
+    providerId: 'openai_responses',
     endpointProfileId: 'profile:first-party',
     endpointBinding: {
       kind: 'provider_managed_set',
@@ -111,7 +111,7 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
     const decoded = decodeRuntimeCapabilitySnapshotV2(first)
     expect(decoded.trust).toBe('decoded_unverified')
     expect(decoded.executionAuthority).toBe('none')
-    expect(decoded.binding.providerId.value).toBe('openai')
+    expect(decoded.binding.providerId.value).toBe('openai_responses')
     expect(decoded.evidence[0].entryDigest.value).toBe(first.evidence[0].entryDigest)
     expect(decoded.tools).toEqual([])
     expect(decoded.continuation).toEqual({

@@ -15,6 +15,8 @@ import {
   resolveGeminiImageGenerationPolicy,
   type GeminiImageGenerationPolicy,
 } from '../provider/gemini/geminiImageGenerationPolicy'
+import type { GenerationExecutionProviderId } from '../generation-v2/domain/generationExecutionProviderId'
+import type { ProviderCredentialKey } from '../../shared/provider/providerCredentialKey'
 
 export type ReviewedProviderSpecificCapabilityV2 = Readonly<{
   kind: 'gemini_image_generation'
@@ -27,7 +29,8 @@ export type ReviewedProviderSpecificCapabilityV2 = Readonly<{
 
 export type ProviderCatalogAuthorityEntryV2 = Readonly<{
   providerKey: ProviderCatalogKnownProviderKey
-  credentialKey: 'openrouter' | 'openai_responses' | 'google_ai_studio' | 'anthropic' | 'deepseek'
+  credentialKey: ProviderCredentialKey
+  executionProviderId: GenerationExecutionProviderId
   endpointProfileId: string
   modelsContractId: string
   source: () => ProviderCatalogSource
@@ -41,19 +44,20 @@ export type ProviderCatalogAuthorityEntryV2 = Readonly<{
 function entry(
   providerKey: ProviderCatalogKnownProviderKey,
   credentialKey: ProviderCatalogAuthorityEntryV2['credentialKey'],
+  executionProviderId: GenerationExecutionProviderId,
   endpointProfileId: string,
   modelsContractId: string,
   reviewedContract: ReviewedProviderContractDefinitionV2,
   wireImplementation: ProviderCatalogAuthorityEntryV2['wireImplementation'],
   resolveProviderSpecificCapability: ProviderCatalogAuthorityEntryV2['resolveProviderSpecificCapability'] = () => null,
 ): ProviderCatalogAuthorityEntryV2 {
-  if (reviewedContract.providerId.value !== providerKey.replace('_messages', '')) {
-    const accepted = providerKey === 'google_ai_studio' && reviewedContract.providerId.value === 'gemini'
-    if (!accepted) throw new Error(`MODEL_CATALOG_AUTHORITY_PROVIDER_MISMATCH:${providerKey}`)
+  if (reviewedContract.providerId.value !== executionProviderId) {
+    throw new Error(`MODEL_CATALOG_AUTHORITY_PROVIDER_MISMATCH:${providerKey}`)
   }
   return Object.freeze({
     providerKey,
     credentialKey,
+    executionProviderId,
     endpointProfileId,
     modelsContractId,
     source: () => requireProviderCatalogSource(providerKey),
@@ -88,16 +92,16 @@ const BOOLEAN_WIRE_IMPLEMENTED = Object.freeze({
 })
 
 const entries = Object.freeze([
-  entry('openrouter', 'openrouter', 'openrouter-first-party-v1', 'openrouter-chat-models-v1',
+  entry('openrouter', 'openrouter', 'openrouter', 'openrouter-first-party-v1', 'openrouter-chat-models-v1',
     readReviewedOpenRouterChatDefinitionV2(), BOOLEAN_WIRE_IMPLEMENTED),
-  entry('openai_responses', 'openai_responses', 'openai-api-v1', 'openai-models-v1',
+  entry('openai_responses', 'openai_responses', 'openai_responses', 'openai-api-v1', 'openai-models-v1',
     readReviewedOpenAIResponsesDefinitionV2(), BOOLEAN_WIRE_IMPLEMENTED),
-  entry('google_ai_studio', 'google_ai_studio', 'gemini-developer-api-v1beta', 'gemini-models-v1beta',
+  entry('google_ai_studio', 'google_ai_studio', 'google_ai_studio', 'gemini-developer-api-v1beta', 'gemini-models-v1beta',
     readReviewedGeminiGenerateContentDefinitionV2(), BOOLEAN_WIRE_IMPLEMENTED,
     resolveGeminiProviderSpecificCapability),
-  entry('anthropic_messages', 'anthropic', 'anthropic-developer-api-2023-06-01', 'anthropic-models-2023-06-01',
+  entry('anthropic_messages', 'anthropic', 'anthropic', 'anthropic-developer-api-2023-06-01', 'anthropic-models-2023-06-01',
     readReviewedAnthropicMessagesDefinitionV2(), BOOLEAN_WIRE_IMPLEMENTED),
-  entry('deepseek', 'deepseek', 'deepseek-stable-api-v1', 'deepseek-stable-models-v1',
+  entry('deepseek', 'deepseek', 'deepseek', 'deepseek-stable-api-v1', 'deepseek-stable-models-v1',
     readReviewedDeepSeekStableChatDefinitionV2(), Object.freeze({
     ...BOOLEAN_WIRE_IMPLEMENTED,
     vision: false,

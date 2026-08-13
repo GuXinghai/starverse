@@ -465,7 +465,7 @@ describe('ui-app SettingsPanel', () => {
     const providerFailure = {
       origin: 'http_response',
       phase: 'response_body',
-      providerId: 'deepseek',
+      provider: { namespace: 'catalog_source', id: 'deepseek' },
       contractId: 'deepseek.models.v2',
       operationId: 'catalog-sync-deepseek',
       requestSequence: 1,
@@ -794,7 +794,7 @@ describe('ui-app SettingsPanel', () => {
     const failure = {
       origin: 'secure_storage',
       phase: 'terminal_persistence',
-      providerId: 'openrouter',
+      provider: { namespace: 'credential_slot', id: 'openrouter' },
       contractId: 'credential-settings:openrouter-first-party-v1',
       operationId: 'credential:status:openrouter',
       requestSequence: 1,

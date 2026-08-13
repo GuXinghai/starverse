@@ -44,13 +44,13 @@ import {
   DEFAULT_OPENROUTER_MODEL_ID,
   buildProviderModelKey,
 } from '@/next/provider/modelSelection'
-import type { RuntimeProviderId } from '@/next/provider/runtimeProviderId'
+import { isRuntimeProviderId, type RuntimeProviderId } from '@/next/provider/runtimeProviderId'
 import {
   createProviderModelRouteSelection,
   type ConversationRouteSelection,
 } from '@/next/provider/conversationRouteSelection'
 import type { ProviderModelPickerItem, ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
-import type { CompatibleConfigurationPickerSource, CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
+import type { CompatibleRouteIntent, CompatibleRoutePickerSource } from '@/next/provider/openai-chat-compatible/ui'
 import type { ProviderFailureV2 } from '@/shared/provider/providerFailureV2'
 import {
   CatalogRuntimeStoreV2,
@@ -93,8 +93,9 @@ const props = withDefaults(
     isRunning?: boolean
     routeSelection?: ConversationRouteSelection | null
     providerSources?: readonly ProviderModelPickerSource[]
-    compatibleConfigurationSources?: readonly CompatibleConfigurationPickerSource[]
+    compatibleRouteSources?: readonly CompatibleRoutePickerSource[]
     favoriteModelKeys?: readonly string[]
+    favoriteEditableModelKeys?: readonly string[] | null
     recentModelKeys?: readonly string[]
     notice?: string | null
     debounceMs?: number
@@ -110,7 +111,7 @@ const props = withDefaults(
     favoriteModelKeys: () => [],
     recentModelKeys: () => [],
     providerSources: () => [],
-    compatibleConfigurationSources: () => [],
+    compatibleRouteSources: () => [],
     notice: null,
     debounceMs: 250,
     queryFn: undefined,
@@ -125,7 +126,7 @@ const props = withDefaults(
 const emit = defineEmits<{
   close: []
   select: [selection: ConversationRouteSelection, displayName: string]
-  toggleFavorite: [modelId: string]
+  toggleFavorite: [providerId: RuntimeProviderId, modelId: string]
   reorderFavorites: [orderedModelKeys: string[]]
 }>()
 
@@ -348,10 +349,16 @@ const lastKnownModelLabels = new Map<string, string>()
 const selectedProvider = computed(() => props.routeSelection?.kind === 'provider_model'
   ? props.routeSelection.providerId : null)
 const selectedModelIdentity = computed(() => normalizeModelId(props.routeSelection?.kind === 'provider_model'
-  ? props.routeSelection.modelId : props.routeSelection?.selection.modelId))
+  ? props.routeSelection.modelId : props.routeSelection?.modelId))
 
 const selectedModelLabel = computed(() => {
   const selected = selectedModelIdentity.value
+  const route = props.routeSelection
+  if (route?.kind === 'openai_chat_compatible') {
+    const source = props.compatibleRouteSources.find((item) => item.providerInstanceId === route.providerInstanceId)
+    const model = source?.models.find((item) => item.modelId === selected)
+    return `${source?.providerName ?? route.providerInstanceId} · ${model?.displayName ?? selected}`
+  }
   if (!selectedProvider.value) return t('chat.console.runtime.noProviderSelected')
   const inResults = unfilteredPickerItems.value.find((item) =>
     item.providerId === selectedProvider.value && normalizeModelId(item.modelId) === selected
@@ -379,6 +386,9 @@ const endpointFetchedAtMs = computed(() => endpointDetails.value?.fetchedAtMs ??
 const endpointError = computed(() => endpointDetails.value?.error ?? null)
 const favoriteModelKeySet = computed(() => new Set(props.favoriteModelKeys.map((value) => String(value ?? '').trim()).filter(Boolean)))
 const normalizedFavoriteModelKeys = computed(() => normalizeFavoriteModelKeys(props.favoriteModelKeys))
+const normalizedEditableFavoriteModelKeys = computed(() => normalizeFavoriteModelKeys(
+  props.favoriteEditableModelKeys ?? props.favoriteModelKeys,
+))
 const normalizedRecentModelKeys = computed(() => normalizeFavoriteModelKeys(props.recentModelKeys))
 const favoriteShortcutItems = computed(() => buildShortcutItems(normalizedFavoriteModelKeys.value))
 const recentShortcutItems = computed(() => buildShortcutItems(normalizedRecentModelKeys.value))
@@ -400,7 +410,7 @@ const activeDetailItem = computed(() => {
 })
 const favoriteOrderDirty = computed(() => {
   const next = editableFavoriteModelKeys.value
-  const base = normalizedFavoriteModelKeys.value
+  const base = normalizedEditableFavoriteModelKeys.value
   if (next.length !== base.length) return true
   for (let index = 0; index < next.length; index += 1) {
     if (next[index] !== base[index]) return true
@@ -872,7 +882,7 @@ function rendererCatalogFailure(
   return Object.freeze({
     origin: 'starverse_internal',
     phase: 'response_body',
-    providerId: providerKey,
+    provider: Object.freeze({ namespace: 'catalog_source', id: providerKey }),
     contractId: 'model-catalog-renderer-v2',
     operationId: `catalog-renderer:${providerKey}`,
     requestSequence: 1,
@@ -1024,8 +1034,8 @@ function parseProviderIdFromModelKey(modelKey: string): RuntimeProviderId | null
   const delimiterIndex = normalized.indexOf(delimiter)
   if (delimiterIndex <= 0) return null
   const providerId = normalized.slice(0, delimiterIndex).trim()
-  return providerOptions.value.some((option) => option.providerId === providerId)
-    ? providerId as RuntimeProviderId
+  return isRuntimeProviderId(providerId) && providerOptions.value.some((option) => option.providerId === providerId)
+    ? providerId
     : null
 }
 
@@ -1055,7 +1065,7 @@ function normalizeFavoriteModelKeys(input: readonly string[]): string[] {
 
 function resetFavoriteEditorState() {
   favoriteEditMode.value = false
-  editableFavoriteModelKeys.value = normalizeFavoriteModelKeys(props.favoriteModelKeys)
+  editableFavoriteModelKeys.value = normalizedEditableFavoriteModelKeys.value
   draggingFavoriteIndex.value = null
 }
 
@@ -1088,13 +1098,13 @@ function buildShortcutItems(modelKeys: readonly string[]): ShortcutItem[] {
 function openFavoriteEditMode() {
   if (props.disabled || props.isRunning) return
   favoriteEditMode.value = true
-  editableFavoriteModelKeys.value = normalizeFavoriteModelKeys(props.favoriteModelKeys)
+  editableFavoriteModelKeys.value = normalizedEditableFavoriteModelKeys.value
   draggingFavoriteIndex.value = null
 }
 
 function cancelFavoriteEditMode() {
   favoriteEditMode.value = false
-  editableFavoriteModelKeys.value = normalizeFavoriteModelKeys(props.favoriteModelKeys)
+  editableFavoriteModelKeys.value = normalizedEditableFavoriteModelKeys.value
   draggingFavoriteIndex.value = null
 }
 
@@ -2086,12 +2096,12 @@ function onSelectItem(item: PickerModelItem | null | undefined) {
   void commitSelection(createProviderModelRouteSelection({ providerId: item.providerId, modelId: item.modelId }), item.displayName)
 }
 
-function onSelectCompatibleConfiguration(
-  selection: CompatibleConfigurationSelection,
+function onSelectCompatibleRoute(
+  routeIntent: CompatibleRouteIntent,
   displayName: string,
 ) {
   if (props.disabled || props.isRunning || selectionPending.value) return
-  void commitSelection({ schemaVersion: 1, kind: 'openai_chat_compatible', selection }, displayName)
+  void commitSelection(routeIntent, displayName)
 }
 
 function onSelectModel(modelId: string, providerId: RuntimeProviderId) {
@@ -2102,10 +2112,9 @@ function onSelectModel(modelId: string, providerId: RuntimeProviderId) {
 
 function onToggleFavorite(item: PickerModelItem) {
   if (props.disabled || props.isRunning) return
-  if (item.providerId !== OPENROUTER_PROVIDER_ID) return
   const normalized = String(item.modelId ?? '').trim()
   if (!normalized) return
-  emit('toggleFavorite', normalized)
+  emit('toggleFavorite', item.providerId, normalized)
 }
 
 function findPickerItem(providerId: RuntimeProviderId, modelId: string): PickerModelItem | null {
@@ -2265,10 +2274,10 @@ watch(
 )
 
 watch(
-  () => props.favoriteModelKeys,
+  () => normalizedEditableFavoriteModelKeys.value,
   () => {
     if (favoriteEditMode.value) return
-    editableFavoriteModelKeys.value = normalizeFavoriteModelKeys(props.favoriteModelKeys)
+    editableFavoriteModelKeys.value = normalizedEditableFavoriteModelKeys.value
     if (props.open && activePickerMode.value === 'favorites') ensureActiveCandidate()
   },
   { deep: true },
@@ -2407,11 +2416,11 @@ const selectedModelFilteredOut = computed(() =>
         </button>
       </div>
 
-      <div v-if="props.compatibleConfigurationSources.length" class="border-b border-gray-200 bg-blue-50 px-4 py-3" data-testid="compatible-configuration-picker">
-        <div class="text-xs font-semibold text-blue-900">OpenAI Chat Completions-compatible · configuration only</div>
+      <div v-if="props.compatibleRouteSources.length" class="border-b border-gray-200 bg-blue-50 px-4 py-3" data-testid="compatible-route-picker">
+        <div class="text-xs font-semibold text-blue-900">OpenAI Chat Completions-compatible</div>
         <div class="mt-2 flex flex-wrap gap-2">
-          <template v-for="source in props.compatibleConfigurationSources" :key="source.providerInstanceId">
-            <button v-for="model in source.models" :key="`${source.providerInstanceId}:${model.modelId}`" type="button" class="rounded border border-blue-200 bg-white px-2 py-1 text-left text-xs" :disabled="props.disabled || props.isRunning || selectionPending" :data-testid="`compatible-model-${source.providerInstanceId}-${model.modelId}`" @click="onSelectCompatibleConfiguration(model.selection, model.displayName)">
+          <template v-for="source in props.compatibleRouteSources" :key="source.providerInstanceId">
+            <button v-for="model in source.models" :key="`${source.providerInstanceId}:${model.modelId}`" type="button" class="rounded border border-blue-200 bg-white px-2 py-1 text-left text-xs" :disabled="props.disabled || props.isRunning || selectionPending" :data-testid="`compatible-model-${source.providerInstanceId}-${model.modelId}`" @click="onSelectCompatibleRoute(model.routeIntent, model.displayName)">
               <span class="font-medium">{{ source.providerName }} · {{ model.displayName }}</span>
               <span class="ml-1 text-blue-700">{{ model.sourceLabel }}</span>
             </button>
@@ -2856,7 +2865,7 @@ const selectedModelFilteredOut = computed(() =>
                   v-if="!favoriteEditMode"
                   type="button"
                   class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  :disabled="props.disabled || props.isRunning || normalizedFavoriteModelKeys.length === 0"
+                  :disabled="props.disabled || props.isRunning || normalizedEditableFavoriteModelKeys.length === 0"
                   data-testid="model-picker-favorites-edit"
                   @click="openFavoriteEditMode"
                 >

@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { stableSerializeProviderRequestBoundedV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
-import type { ProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
+import { decodeProviderFailureV2, type ProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
 
 const MAX_ITEMS_JSON_BYTES = 32 * 1024 * 1024
 const ID_PATTERN = /^[A-Za-z0-9._:/-]{1,512}$/u
@@ -196,8 +196,12 @@ function decodeAggregateEvidence(value: unknown, expected: Readonly<{
 
 function encodeErrorFact(value: ProviderFailureV2 | null | undefined): string | null {
   if (!value) return null
+  let decoded: ProviderFailureV2
+  try { decoded = decodeProviderFailureV2(value) } catch {
+    throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_INPUT_INVALID')
+  }
   let encoded: string
-  try { encoded = JSON.stringify(value) } catch {
+  try { encoded = JSON.stringify(decoded) } catch {
     throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_INPUT_INVALID')
   }
   if (!encoded || Buffer.byteLength(encoded, 'utf8') > 1024 * 1024) {
@@ -210,7 +214,7 @@ function decodeErrorFact(value: unknown): ProviderFailureV2 | null {
   if (value === null || value === undefined) return null
   try {
     const parsed = JSON.parse(String(value))
-    return parsed && typeof parsed === 'object' ? parsed as ProviderFailureV2 : null
+    return decodeProviderFailureV2(parsed)
   } catch {
     throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_STATE_INVALID')
   }
@@ -392,6 +396,9 @@ export class ModelCatalogV2Repo {
     const scope = identity(scopeValue)
     const attemptId = text(attemptIdValue)
     text(error.starverseDiagnosticCode)
+    if (error.provider.namespace !== 'catalog_source' || error.provider.id !== scope.providerKey) {
+      throw new ModelCatalogV2RepoError('GENERATION_V2_MODEL_CATALOG_INPUT_INVALID')
+    }
     const errorFact = encodeErrorFact(error)
     const now = safeTime(this.nowMs())
     const changes = this.db.prepare(`UPDATE model_catalog_scope_v2 SET sync_state='error',active_attempt_id=NULL,

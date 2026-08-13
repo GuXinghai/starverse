@@ -10,7 +10,7 @@ const scope = Object.freeze({ providerKey: 'google_ai_studio', credentialScopeId
 
 function failure(operationId: string, message = 'network error') {
   return createProviderFailureV2({
-    context: { origin: 'network_transport', phase: 'request_open', providerId: scope.providerKey,
+    context: { origin: 'network_transport', phase: 'request_open', provider: { namespace: 'catalog_source', id: scope.providerKey },
       contractId: scope.operationContractId, operationId, requestSequence: 1 },
     transportError: new Error(message),
   })
@@ -71,7 +71,7 @@ describe('ModelCatalogV2Repo', () => {
         applyMode: 'automatic', items: [catalogItem('known-good')] })
       repo.beginSync(scope, 'attempt:failure')
       const failure = createProviderFailureV2({
-        context: { origin: 'http_response', phase: 'response_body', providerId: scope.providerKey, contractId: scope.operationContractId, operationId: 'attempt:failure', requestSequence: 1 },
+        context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'catalog_source', id: scope.providerKey }, contractId: scope.operationContractId, operationId: 'attempt:failure', requestSequence: 1 },
         httpStatus: 401, httpStatusText: 'Unauthorized', body: { error: { code: 'invalid_api_key', message: 'Invalid API key' } },
       })
       const status = repo.failSync(scope, 'attempt:failure', failure)
@@ -86,7 +86,7 @@ describe('ModelCatalogV2Repo', () => {
     try {
       repo.beginSync(scope, 'attempt:large-failure')
       const largeFailure = createProviderFailureV2({
-        context: { origin: 'http_response', phase: 'response_body', providerId: scope.providerKey,
+        context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'catalog_source', id: scope.providerKey },
           contractId: scope.operationContractId, operationId: 'attempt:large-failure', requestSequence: 1 },
         httpStatus: 400,
         bodyText: JSON.stringify({ error: { code: 'INVALID_ARGUMENT', message: 'x'.repeat(500_000) } }),

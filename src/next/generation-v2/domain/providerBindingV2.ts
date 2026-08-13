@@ -4,6 +4,10 @@ import {
   readGenerationV2Digest,
   readGenerationV2Identity,
 } from './identityV2'
+import {
+  createGenerationExecutionProviderIdentityV2,
+  type GenerationExecutionProviderIdentityV2,
+} from './generationExecutionProviderId'
 
 export type GenerationOperationV2 = 'text' | 'image_generate' | 'image_edit' | 'tool_continue'
 
@@ -31,7 +35,7 @@ export type EndpointBindingV2 =
 export type DecodedProviderBindingRecordV2 = Readonly<{
   trust: 'decoded_unverified'
   credentialScopeId: GenerationV2Identity<'credential_scope_id'>
-  providerId: GenerationV2Identity<'provider_id'>
+  providerId: GenerationExecutionProviderIdentityV2
   endpointProfileId: GenerationV2Identity<'endpoint_profile_id'>
   endpointBinding: EndpointBindingV2
   protocolContractId: GenerationV2Identity<'protocol_contract_id'>
@@ -197,7 +201,7 @@ export function decodeProviderBindingRecordV2(value: unknown): DecodedProviderBi
   return deepFreeze({
     trust: 'decoded_unverified',
     credentialScopeId: GenerationV2Identity.create('credential_scope_id', requiredString(input, 'credentialScopeId')),
-    providerId: GenerationV2Identity.create('provider_id', providerId),
+    providerId: createGenerationExecutionProviderIdentityV2(providerId),
     endpointProfileId: GenerationV2Identity.create('endpoint_profile_id', requiredString(input, 'endpointProfileId')),
     endpointBinding,
     protocolContractId: GenerationV2Identity.create('protocol_contract_id', protocolContractId),

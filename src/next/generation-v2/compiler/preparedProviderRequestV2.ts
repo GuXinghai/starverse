@@ -4,6 +4,10 @@ import {
   type SemanticConsumptionLedgerV2,
 } from './semanticConsumptionLedgerV2'
 import type { AttachmentIntentV2 } from '../domain/generationIntentV2'
+import {
+  decodeGenerationExecutionProviderId,
+  type GenerationExecutionProviderId,
+} from '../domain/generationExecutionProviderId'
 
 export type NonSecretHeaderPlanV2 = Readonly<{
   contentType: 'application/json'
@@ -34,7 +38,7 @@ export type PreparedProviderRequestV2 = Readonly<{
   answerRootId: string
   requestSequence: number
   plannedAttempt: 1
-  providerId: string
+  providerId: GenerationExecutionProviderId
   endpointProfileId: string
   credentialScopeId: string
   contractId: string
@@ -164,7 +168,7 @@ export function issuePreparedProviderRequestV2(input: Readonly<{
     answerRootId: identifier(input.answerRootId),
     requestSequence: input.requestSequence,
     plannedAttempt: 1 as const,
-    providerId: identifier(input.providerId),
+    providerId: decodeGenerationExecutionProviderId(input.providerId),
     endpointProfileId: identifier(input.endpointProfileId),
     credentialScopeId: identifier(input.credentialScopeId),
     contractId: identifier(input.contractId),

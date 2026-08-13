@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, ref, watch } from 'vue'
 import ChatTranscript from '@/ui-kit/chat/ChatTranscript.vue'
 import ChatMessageBubble from '@/ui-kit/chat/ChatMessageBubble.vue'
 import ChatAppReasoningPanel from './components/ChatAppReasoningPanel.vue'
@@ -23,6 +23,7 @@ import { useAppChatAppLogic } from './app/appChatApp.logic'
 import { formatModelIndicatorName } from './components/modelIndicatorName'
 import { OPENROUTER_PROVIDER_ID } from '@/next/provider/modelSelection'
 import { t, tf } from '@/shared/i18n'
+import { createCompatibleProviderRegistryClient } from '@/next/provider/openai-chat-compatible/ui'
 
 const {
   isReady,
@@ -287,13 +288,27 @@ const runSummary = computed(() => {
   return 'Idle'
 })
 
+const compatibleProviderName = ref<string | null>(null)
+let compatibleProviderNameRequest = 0
+watch(() => activeSessionConfig.value.routeSelection?.kind === 'openai_chat_compatible'
+  ? activeSessionConfig.value.routeSelection.providerInstanceId : null, async (providerInstanceId) => {
+  const request = ++compatibleProviderNameRequest
+  compatibleProviderName.value = null
+  if (!providerInstanceId) return
+  try {
+    const details = await createCompatibleProviderRegistryClient().get(providerInstanceId)
+    if (request === compatibleProviderNameRequest) compatibleProviderName.value = details.provider.displayName
+  } catch {
+    if (request === compatibleProviderNameRequest) compatibleProviderName.value = null
+  }
+}, { immediate: true })
+
 const modelSummary = computed(() => {
   const route = activeSessionConfig.value.routeSelection
   if (route?.kind === 'openai_chat_compatible') {
-    const compatible = route.selection
     return tf('chat.topBar.modelSummaryWithProvider', {
-      provider: compatible.providerName,
-      model: formatModelIndicatorName(compatible.modelId),
+      provider: compatibleProviderName.value ?? route.providerInstanceId,
+      model: formatModelIndicatorName(route.modelId),
     })
   }
   const selectedProvider = route?.providerId

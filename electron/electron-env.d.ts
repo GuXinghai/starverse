@@ -30,10 +30,13 @@ type ProviderCredentialStorageMode = 'system_secure' | 'session' | 'plaintext'
 type OpenRouterCredentialSource = ProviderCredentialStatusSource
 
 type GenerationV2ModelPreferenceScopeType = 'global' | 'project' | 'conversation'
+type GenerationV2ModelPreferenceProviderId = import('../src/next/provider/runtimeProviderId').RuntimeProviderId
+type GenerationV2LocalEndpointExecutionProviderId = import('../src/shared/provider/localProviderRouteDescriptor').LocalEndpointExecutionProviderId
+type GenerationV2LocalEndpointProtocol = import('../src/shared/provider/localProviderRouteDescriptor').LocalEndpointProtocolV2
 type GenerationV2ModelPreferenceFavoriteRecord = Readonly<{
   scopeType: GenerationV2ModelPreferenceScopeType
   scopeId: string
-  providerKey: string
+  providerKey: GenerationV2ModelPreferenceProviderId
   modelId: string
   modelKey: string
   sortRank: number
@@ -43,7 +46,7 @@ type GenerationV2ModelPreferenceFavoriteRecord = Readonly<{
 type GenerationV2ModelPreferenceRecentRecord = Readonly<{
   scopeType: GenerationV2ModelPreferenceScopeType
   scopeId: string
-  providerKey: string
+  providerKey: GenerationV2ModelPreferenceProviderId
   modelId: string
   modelKey: string
   lastUsedAtMs: number
@@ -1118,8 +1121,8 @@ interface Window {
     }>
     localProfiles: Readonly<{
       list: () => Promise<unknown>
-      create: (payload: Readonly<{ providerId: 'lmstudio' | 'ollama' | 'generic_local';
-        protocolContractId: string; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => Promise<unknown>
+      create: (payload: Readonly<{ providerId: GenerationV2LocalEndpointExecutionProviderId;
+        protocolContractId: GenerationV2LocalEndpointProtocol; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => Promise<unknown>
       delete: (endpointProfileId: string) => Promise<unknown>
     }>
     lmStudio: Readonly<{ openResponses: GenerationV2TextBridge }>

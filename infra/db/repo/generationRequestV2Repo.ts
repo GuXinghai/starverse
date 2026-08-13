@@ -13,6 +13,10 @@ import {
   registerGenerationV2AuthorityTransactionParticipantV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from './generationV2AuthorityTransactionInternal'
+import {
+  decodeGenerationExecutionProviderId,
+  type GenerationExecutionProviderId,
+} from '../../../src/next/generation-v2/domain/generationExecutionProviderId'
 
 type GenerationRequestStateInternalV2 = 'prepared' | 'streaming' | 'completed' | 'failed' | 'cancelled'
 
@@ -22,7 +26,7 @@ export type GenerationRequestRepositoryFactV2 = Readonly<{
   requestSequence: number
   answerRootId: string
   snapshotHash: string
-  providerId: string
+  providerId: GenerationExecutionProviderId
   endpointProfileId: string
   credentialScopeId: string
   contractId: string
@@ -101,7 +105,7 @@ function decodeRow(row: RequestRow): GenerationRequestRepositoryFactV2 {
     requestSequence: row.request_sequence as number,
     answerRootId: row.answer_root_id as string,
     snapshotHash: row.snapshot_hash as string,
-    providerId: row.provider_id as string,
+    providerId: decodeGenerationExecutionProviderId(row.provider_id),
     endpointProfileId: row.endpoint_profile_id as string,
     credentialScopeId: row.credential_scope_id as string,
     contractId: row.contract_id as string,
