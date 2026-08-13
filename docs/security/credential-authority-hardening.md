@@ -171,7 +171,7 @@ credential-scope-v2:<hex>
 
 safeStorage/DPAPI 解密失败
 → configured = true, availability = unavailable
-→ diagnostic = `EPOCH2_RUNTIME_CREDENTIAL_DECRYPT_FAILED`、`EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE` 或 `EPOCH2_RUNTIME_CREDENTIAL_INVALID`
+→ diagnostic = `EPOCH2_RUNTIME_CREDENTIAL_DECRYPT_FAILED`、`EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE`、`EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE` 或 `EPOCH2_RUNTIME_CREDENTIAL_INVALID`
 → 保留原密文，不自动清除
 ```
 
@@ -283,7 +283,7 @@ expectedRevision
 drift detection
 ```
 
-这已经构成一套严格的单进程 concurrency control（并发控制）。但当前 `withCredential()` 会在整个 `consume()` 生命周期内持有 provider 独占队列；如果 `consume()` 包含网络请求，同一 provider 的并行发送也会被串行化。
+这已经构成一套严格的单进程 credential mutation concurrency control（凭据变更并发控制）。`withCredential()` 不在整个 `consume()` 生命周期内持有 provider 写队列；它签发短期 lease，允许已开始的 provider 请求与后续凭据变更并行，并由 revision、scope 与 `assertCurrent()` 检测漂移。
 
 问题在于另一套：
 

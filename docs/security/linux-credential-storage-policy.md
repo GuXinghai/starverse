@@ -287,7 +287,7 @@ Starverse 启动仍然正常，因为 Phase 2A 已经要求启动不解密所有
 OpenAI
 已配置 · 系统安全存储不可用
 
-EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE
+EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE
 或具体 DECRYPT_FAILED
 
 [替换] [清除]
@@ -786,10 +786,10 @@ at-rest storage protection
 新增一个明确错误即可：
 
 ```text
-EPOCH2_RUNTIME_CREDENTIAL_SECURE_STORAGE_UNAVAILABLE
+EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE
 ```
 
-如果更具体的 Electron decrypt error 已经存在，则继续保留：
+其他更具体或非 safeStorage 的故障继续保留：
 
 ```text
 EPOCH2_RUNTIME_CREDENTIAL_DECRYPT_FAILED

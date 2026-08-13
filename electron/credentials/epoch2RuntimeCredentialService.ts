@@ -197,6 +197,15 @@ function encryptedBuffer(value: unknown): Buffer {
   return value
 }
 
+async function encryptCredential(credential: string): Promise<Buffer> {
+  try {
+    return encryptedBuffer(await safeStorage.encryptStringAsync(credential))
+  } catch (error) {
+    if (error instanceof Epoch2RuntimeCredentialError) throw error
+    throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE')
+  }
+}
+
 async function requireSafeStorage(platform = process.platform): Promise<void> {
   try {
     await requireTrustedCredentialSafeStorage({ platform })
@@ -206,7 +215,7 @@ async function requireSafeStorage(platform = process.platform): Promise<void> {
         error.code === 'CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED') {
       throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED')
     }
-    if (platform === 'linux' && error instanceof CredentialSafeStorageBackendError &&
+    if (error instanceof CredentialSafeStorageBackendError &&
         error.code === 'CREDENTIAL_SAFE_STORAGE_UNAVAILABLE') {
       throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE')
     }
@@ -234,15 +243,7 @@ async function decryptRecord(record: Epoch2ProviderCredentialRecord): Promise<Re
       }
       const credential = normalizedCredential(decrypted.result)
       if (!decrypted.shouldReEncrypt) return Object.freeze({ credential })
-      try {
-        return Object.freeze({
-          credential,
-          rewrappedCiphertext: encryptedBuffer(await safeStorage.encryptStringAsync(credential)),
-        })
-      } catch (error) {
-        if (error instanceof Epoch2RuntimeCredentialError) throw error
-        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE')
-      }
+      return Object.freeze({ credential, rewrappedCiphertext: await encryptCredential(credential) })
     },
   })
 }
@@ -438,22 +439,34 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
   ): Promise<Readonly<{ slot: RuntimeSlot; credential: string }>> {
     try {
       const decrypted = await decryptAndMaintainRecord(providerKey, slot)
-      availability.set(providerKey, 'available')
-      diagnostics.delete(providerKey)
+      if (!sessions.has(providerKey) && slots.get(providerKey) === slot &&
+          revisions.get(providerKey) === slot.revision) {
+        availability.set(providerKey, 'available')
+        diagnostics.delete(providerKey)
+      }
       return decrypted
     } catch (error) {
-      availability.set(providerKey, 'unavailable')
-      if (error instanceof Epoch2RuntimeCredentialError) diagnostics.set(providerKey, error.code)
+      if (!sessions.has(providerKey) && slots.get(providerKey) === slot &&
+          revisions.get(providerKey) === slot.revision) {
+        availability.set(providerKey, 'unavailable')
+        if (error instanceof Epoch2RuntimeCredentialError) diagnostics.set(providerKey, error.code)
+      }
       throw error
     }
   }
 
-  async function requireAvailableForProvider(providerKey: ProviderCredentialKey): Promise<void> {
+  async function requireAvailableForProvider(
+    providerKey: ProviderCredentialKey,
+    originatingSlot?: RuntimeSlot,
+  ): Promise<void> {
     try {
       await requireSafeStorage(input.platform)
     } catch (error) {
-      availability.set(providerKey, 'unavailable')
-      if (error instanceof Epoch2RuntimeCredentialError) diagnostics.set(providerKey, error.code)
+      if (!originatingSlot || (!sessions.has(providerKey) && slots.get(providerKey) === originatingSlot &&
+          revisions.get(providerKey) === originatingSlot.revision)) {
+        availability.set(providerKey, 'unavailable')
+        if (error instanceof Epoch2RuntimeCredentialError) diagnostics.set(providerKey, error.code)
+      }
       throw error
     }
   }
@@ -554,7 +567,7 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
       if (storageMode === 'plaintext') assertPlaintextStoragePermissions()
       let ciphertext: Buffer | undefined
       try {
-        if (storageMode === 'system_secure') ciphertext = encryptedBuffer(await safeStorage.encryptStringAsync(credential))
+        if (storageMode === 'system_secure') ciphertext = await encryptCredential(credential)
         const record: Epoch2ProviderCredentialRecord = storageMode === 'system_secure'
           ? Object.freeze({ version: 3 as const, providerKey: request.providerKey, backend: 'electron_safe_storage' as const,
             ciphertextBase64: ciphertext!.toString('base64'), credentialScopeId, revision,
@@ -639,7 +652,7 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
         }
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_MISSING')
       }
-      if (slot?.record.backend === 'electron_safe_storage') await requireAvailableForProvider(request.providerKey)
+      if (slot?.record.backend === 'electron_safe_storage') await requireAvailableForProvider(request.providerKey, slot)
       const maintained = await decryptAvailableRecord(request.providerKey, slot)
       const currentRevision = revisions.get(request.providerKey)
       if (currentRevision !== request.expectedRevision || maintained.slot.revision !== currentRevision) {
@@ -705,7 +718,7 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
         }
         throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_MISSING')
       }
-      if (slot?.record.backend === 'electron_safe_storage') await requireAvailableForProvider(request.providerKey)
+      if (slot?.record.backend === 'electron_safe_storage') await requireAvailableForProvider(request.providerKey, slot)
       const maintained = await decryptAvailableRecord(request.providerKey, slot)
       const currentRevision = revisions.get(request.providerKey)
       if (currentRevision !== request.expectedRevision || maintained.slot.revision !== currentRevision) {
