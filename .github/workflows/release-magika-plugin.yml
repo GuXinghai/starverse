@@ -29,7 +29,8 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
-      - run: npm ci
+      - name: Install release tooling dependencies
+        run: npm ci --ignore-scripts
       - name: Validate release input
         shell: bash
         run: test "${{ inputs.version }}" = "0.2.0" || (echo "This workflow packages only Magika v0.2.0." && exit 1)
@@ -37,11 +38,12 @@ jobs:
         run: node scripts/dev/package-official-magika-v020.mjs
       - name: Node classification smoke
         run: node scripts/dev/smoke-magika-package-v020.mjs
+      - name: Install Electron binary for utility-process smoke
+        run: node node_modules/electron/install.js
       - name: Configure Electron sandbox helper
         if: ${{ runner.os == 'Linux' }}
         shell: bash
         run: |
-          node node_modules/electron/install.js
           sudo chown root:root node_modules/electron/dist/chrome-sandbox
           sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       - name: Electron utility-process classification smoke (Linux)
