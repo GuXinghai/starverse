@@ -3,7 +3,7 @@
 **Purpose**: Fast entrypoint for coding agents. Reduces redundant scanning and misdirection.
 
 **Status**: active
-**Last updated**: 2026-05-22
+**Last updated**: 2026-08-14
 **Governance**: DGR-1 dual-dimension status model
 
 ---
@@ -60,6 +60,7 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | **Send Plan** | `docs/governance/app-chat-app-logic-boundary.md` | `infra/files/sendPlanService.ts`, `src/next/openrouter/openRouterSendPlanSerializer.ts` | Keep preflight + serializer path intact; run related tests if modified |
 | **OpenRouter request builder** | `docs/architecture/OPENROUTER_INTEGRATION_SUMMARY.md` | `src/next/openrouter/buildRequest.ts`, `src/next/openrouter/sse/decoder.ts` | Use only after Send Plan and serializer boundaries are confirmed; validate request payload and SSE parsing tests when touched |
 | **Provider architecture** | `docs/architecture/provider-architecture/README.md` → `docs/architecture/provider-architecture/STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md` | Docs-only unless Owner explicitly starts a phase | Owner-confirmed multi-provider architecture SSOT; do not create placeholder abstractions or provider runtime code from docs organization tasks |
+| **Provider/model identity audit** | `docs/architecture/provider-architecture/README.md` → `docs/analysis/model-provider-identity/README.md` | `src/shared/modelCatalog/`, `src/next/provider/`, `src/next/generation-v2/`, `infra/db/` | The analysis bundle is point-in-time evidence, not SSOT; verify every implementation claim against the current checkout |
 | **Historical message attachments** | `docs/governance/app-chat-app-logic-boundary.md` | `src/ui-app/app/appChatApp.logic.ts`, `infra/db/repo/messageRepo.ts` | Prioritize targeted checks in these two files for attachment/history handling before edits |
 | **Electron IPC** | `docs/architecture/OVERVIEW.md` | `electron/ipc/`, `electron/db/worker.ts`, `src/shared/ipc/openRouterStreamWire.ts` | Confirm IPC handler names and bridge wiring remain consistent |
 | **DB & settings** | `docs/maintenance/maintainer-entry.md` (see "活跃代码") | `infra/db/`, `electron-store` config in `electron/main.ts` | Run db/repo and settings-related tests if database/settings paths change |
@@ -116,6 +117,7 @@ After modifying docs or code paths, prefer the narrowest checks for the touched 
 - [maintenance/maintainer-entry.md](maintenance/maintainer-entry.md) — Code boundaries & high-risk zones
 - [architecture/OVERVIEW.md](architecture/OVERVIEW.md) — Architecture layers & naming conventions
 - [architecture/provider-architecture/README.md](architecture/provider-architecture/README.md) — Owner-confirmed multi-provider architecture SSOT
+- [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) — Post-hard-cut identity closeout and point-in-time semantic review evidence
 - [maintenance/document-status-taxonomy.md](maintenance/document-status-taxonomy.md) — Dual-dimension status model
 - [maintenance/document-governance.md](maintenance/document-governance.md) — Documentation governance rules
 - [maintenance/document-redirect-map.md](maintenance/document-redirect-map.md) — Redirect map for moved/renamed docs
