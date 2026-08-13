@@ -10,11 +10,13 @@ describe('Generation V2 Composer attachment projection', () => {
         kind: 'managed_file', assetId: 'asset:source', assetRevisionId: 'revision:source', assetSha256: 'a'.repeat(64),
         include: true, sendAs: 'provider_file', conversion: 'none', attachmentOrder: 0, filename: 'source.txt',
         assetKind: 'file', mime: 'text/plain', sizeBytes: 12, sourceKind: 'user_import', originalUrl: null,
+        fileTypeDetection: null,
         dfcSelection: null,
       }, {
         kind: 'managed_file', assetId: 'asset:raw', assetRevisionId: 'revision:raw', assetSha256: 'b'.repeat(64),
         include: true, sendAs: 'provider_file', conversion: 'none', attachmentOrder: 1, filename: 'report.pdf',
         assetKind: 'file', mime: 'application/pdf', sizeBytes: 20, sourceKind: 'user_import', originalUrl: null,
+        fileTypeDetection: null,
         dfcSelection: { optionId: 'dfc:plain_text', targetKind: 'plain_text', sendStrategy: 'text_in_prompt',
           effectiveAssetId: 'asset:derived', effectiveAssetRevisionId: 'revision:derived', effectiveAssetSha256: 'c'.repeat(64) },
       }, {

@@ -53,6 +53,12 @@ function createAttachment(
   })
   const sourceRevisionId = value.conversion === 'pdf' ? `${value.revisionId}:source` : value.revisionId
   repo.appendSourceRevision({ assetId: sourceAssetId, assetRevisionId: sourceRevisionId, blob })
+  if (db) db.prepare(`INSERT INTO file_type_detection_v2 (
+    asset_revision_id,asset_sha256,attempt_id,revision,status,detector_contract_revision,
+    verdict_json,static_policy_json,warning_json,error_code,error_detail,requested_at_ms,completed_at_ms
+  ) VALUES (?, ?, ?, 1, 'ready', 'test', '{}', '{"blocked":false}', '[]', NULL, NULL, 1, 1)`).run(
+    sourceRevisionId, blob.sha256.value, `attempt:${sourceRevisionId}`,
+  )
   const effectiveBlob = value.conversion === 'pdf'
     ? repo.recordBlobFromBytes(new Uint8Array([...bytes, 0]), 'application/pdf')
     : blob
@@ -197,13 +203,13 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
       const repo = new AttachmentAssetV2Repo(db)
       const first = createAttachment(repo, {
         assetId: 'asset:b', revisionId: 'revision:b', bytes: [2], include: true, sendAs: 'provider_file',
-      })
+      }, db)
       const second = createAttachment(repo, {
         assetId: 'asset:a', revisionId: 'revision:a', bytes: [1], include: true, sendAs: 'inline_text',
-      })
+      }, db)
       const third = createAttachment(repo, {
         assetId: 'asset:c', revisionId: 'revision:c', bytes: [3], include: false, sendAs: 'provider_file',
-      })
+      }, db)
       const convertedPdf = createAttachment(repo, {
         assetId: 'asset:d', revisionId: 'revision:d', bytes: [4], include: true,
         sendAs: 'converted_document', conversion: 'pdf',
@@ -242,7 +248,7 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
       const repo = new AttachmentAssetV2Repo(db)
       const attachment = createAttachment(repo, {
         assetId: 'asset:1', revisionId: 'revision:1', bytes: [1], include: true, sendAs: 'inline_text',
-      })
+      }, db)
       const duplicateRevision = decodeGenerationIntentLayerV2({
         schemaVersion: 2,
         attachments: [{
@@ -278,13 +284,13 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
       const repo = new AttachmentAssetV2Repo(db, () => 20)
       const valid = createAttachment(repo, {
         assetId: 'asset:valid', revisionId: 'revision:valid', bytes: [1], include: true, sendAs: 'inline_text',
-      })
+      }, db)
       const other = createAttachment(repo, {
         assetId: 'asset:other', revisionId: 'revision:other', bytes: [3], include: true, sendAs: 'inline_text',
-      })
+      }, db)
       const retired = createAttachment(repo, {
         assetId: 'asset:retired', revisionId: 'revision:retired', bytes: [2], include: true, sendAs: 'inline_text',
-      })
+      }, db)
       repo.retireAsset('asset:retired')
       const missing = decodeGenerationIntentLayerV2({
         schemaVersion: 2,
@@ -323,7 +329,7 @@ describe('ResolvedAttachmentSetAuthorityV2', () => {
       const repo = new AttachmentAssetV2Repo(db, () => now)
       const attachment = createAttachment(repo, {
         assetId: 'asset:1', revisionId: 'revision:1', bytes: [1], include: true, sendAs: 'inline_text',
-      })
+      }, db)
       let lease: VerifiedAttachmentSendBytesLeaseV2 | undefined
       expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
         repo.withSynchronousResolvedIntentAttachmentSetAuthority(

@@ -31,6 +31,14 @@ describe('ui-app AppChatApp attachments (Generation V2 composer contract)', () =
   let removeAttachment: ReturnType<typeof vi.fn>
   let selectLocalFiles: ReturnType<typeof vi.fn>
 
+  const readyDetection = () => ({
+    contractRevision: 'file-type-detection-v2.1', revision: 2, status: 'ready' as const,
+    formatId: 'txt', kind: 'text', confidence: 'high', blocked: false, warning: true,
+    blockingReasonCodes: [], warningReasonCodes: [], magikaState: 'not_installed',
+    magikaModelVersion: null, warnings: [{ code: 'MAGIKA_NOT_INSTALLED', detail: null }],
+    errorCode: null, errorDetail: null,
+  })
+
   function managedFile(assetId: string, overrides: Record<string, unknown> = {}) {
     const image = assetId.includes('image')
     return {
@@ -48,6 +56,7 @@ describe('ui-app AppChatApp attachments (Generation V2 composer contract)', () =
       sizeBytes: 12,
       sourceKind: 'user_import' as const,
       originalUrl: null,
+      fileTypeDetection: readyDetection(),
       dfcSelection: null,
       ...overrides,
     }
@@ -184,5 +193,23 @@ describe('ui-app AppChatApp attachments (Generation V2 composer contract)', () =
     await user.click(await screen.findByTestId('draft-attachment-details-remove'))
     await waitFor(() => expect(removeAttachment).toHaveBeenCalledWith(expect.objectContaining({ assetRevisionId: 'revision:asset-text' })))
     expect(screen.queryByTestId('draft-attachment-card-asset-text')).toBeNull()
+  })
+
+  it('blocks send while detection is pending and refreshes immediately after the completion event', async () => {
+    const listeners: Array<(event: unknown) => void> = []
+    const g: any = (globalThis as any).generationV2
+    g.composer.onFileTypeDetectionUpdated = vi.fn((value: (event: unknown) => void) => {
+      listeners.push(value)
+      return () => undefined
+    })
+    draft = nextDraft({
+      draftText: 'send this',
+      attachments: [managedFile('asset-text', { fileTypeDetection: { ...readyDetection(), status: 'pending', revision: 1 } })],
+    })
+    render(AppChatApp)
+    await waitFor(() => expect(screen.getByTestId('composer-send')).toBeDisabled())
+    draft = nextDraft({ attachments: [managedFile('asset-text')] })
+    listeners[0]?.({ conversationId: 'c1', assetRevisionId: 'revision:asset-text', status: 'ready', revision: 2 })
+    await waitFor(() => expect(screen.getByTestId('composer-send')).not.toBeDisabled())
   })
 })

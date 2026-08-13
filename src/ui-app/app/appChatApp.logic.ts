@@ -213,8 +213,11 @@ import {
   getGenerationV2ComposerDfcOptions,
   getGenerationV2ComposerDfcPreview,
   selectGenerationV2ComposerDfcOption,
+  onGenerationV2ComposerFileTypeDetectionUpdated,
+  retryGenerationV2ComposerFileTypeDetection,
   updateGenerationV2ComposerText,
   type GenerationV2ComposerDraft,
+  type GenerationV2ComposerManagedFileAttachment,
 } from '@/next/generation-v2/renderer/generationV2ComposerClient'
 import { normalizeExtension } from '@/shared/files/fileRules'
 import { syncProviderCatalogsOnStartupV2 } from './providerCatalogStartupSyncV2'
@@ -387,6 +390,7 @@ export function useAppChatAppLogic() {
   const draftAttachmentParsingPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const draftFlushPromise = ref<Promise<void> | null>(null)
   const generationV2ComposerDraft = ref<GenerationV2ComposerDraft | null>(null)
+  let unsubscribeFileTypeDetectionUpdated: (()=>void)|null=null
   const lastDraftScopeKey = ref<string | null>(null)
   const attachmentFeedbackTone = ref<'info' | 'warning' | 'error' | 'success' | null>(null)
   const attachmentFeedbackMessage = ref<string | null>(null)
@@ -673,7 +677,17 @@ export function useAppChatAppLogic() {
       navigationActive: historyIncompatibleNavigationActive.value,
     }
   })
-  const composerSendGateBlockedReason = computed(() => composerSendPlanBlockingSummary.value)
+  const fileDetectionBlockingReason = computed(() => {
+    const attachment = generationV2ComposerDraft.value?.attachments.find((item) => item.kind === 'managed_file' && item.include &&
+      (item.fileTypeDetection?.status !== 'ready' || item.fileTypeDetection.blocked))
+    if (!attachment || attachment.kind !== 'managed_file') return null
+    const detection = attachment.fileTypeDetection
+    if (!detection) return 'GENERATION_V2_FILE_DETECTION_REQUIRED'
+    if (detection.status === 'pending') return 'GENERATION_V2_FILE_DETECTION_PENDING'
+    if (detection.status === 'failed') return [detection.errorCode, detection.errorDetail].filter(Boolean).join(': ') || 'GENERATION_V2_FILE_DETECTION_FAILED'
+    return detection.blockingReasonCodes.join(', ') || 'GENERATION_V2_FILE_DETECTION_BLOCKED'
+  })
+  const composerSendGateBlockedReason = computed(() => fileDetectionBlockingReason.value ?? composerSendPlanBlockingSummary.value)
   const composerSendGateWarningReason = computed(() => composerSendPlanWarningSummary.value)
   const attachmentConfirmationSession = ref<AttachmentConfirmationSession | null>(null)
   const attachmentConfirmationResolver = ref<((result: AttachmentConfirmationResult) => void) | null>(null)
@@ -688,6 +702,7 @@ export function useAppChatAppLogic() {
     if (isQuestionEditMode.value) return false
     if (composerSendPlanLoading.value) return false
     if (draft.value.trim().length === 0 && !hasSendableDraftAttachment.value) return false
+    if (fileDetectionBlockingReason.value !== null) return false
     return composerSendPlanCanProceed.value
   })
 
@@ -4436,10 +4451,11 @@ export function useAppChatAppLogic() {
     const sendModeOptions = buildSendModeOptions(attachment, asset, plan)
     const urlRetentionOptions = buildUrlRetentionOptions(isUrlAttachment(asset, attachment))
     const retrySnapshotAvailable = isUrlSnapshotRetryAvailable(asset, attachment) && base.displayStatus !== 'parsing'
-    const retryPreviewAvailable = retrySnapshotAvailable ||
+    const detectionRetryAvailable = base.displayStatus === 'detection_failed' || base.displayStatus === 'detection_required'
+    const retryPreviewAvailable = detectionRetryAvailable || retrySnapshotAvailable ||
       (isImageAssetLike(asset, attachment) && base.previewDataUrl == null && base.displayStatus !== 'parsing')
     const retryPreviewReason = retryPreviewAvailable ? null : t('filePipeline.attachment.details.retryUnavailable')
-    const retryPreviewLabel = retrySnapshotAvailable
+    const retryPreviewLabel = detectionRetryAvailable ? 'Retry file detection' : retrySnapshotAvailable
       ? t('filePipeline.attachment.details.retrySnapshot')
       : t('filePipeline.attachment.details.retryPreview')
     return {
@@ -4574,7 +4590,8 @@ export function useAppChatAppLogic() {
         attachmentOrder: attachment.attachmentOrder,
         aiPayloadKind: attachment.kind === 'managed_file' ? (attachment.assetKind === 'image' ? 'image' : 'file') :
           (attachment.mediaKind === 'image' ? 'image' : 'file'),
-        processingStatus: 'ready',
+        processingStatus: attachment.kind === 'managed_file' && attachment.fileTypeDetection?.status === 'pending' ? 'probing'
+          : attachment.kind === 'managed_file' && (!attachment.fileTypeDetection || attachment.fileTypeDetection.status === 'failed') ? 'failed' : 'ready',
         includeInNextRequest: attachment.include,
         excludedReason: attachment.include ? null : 'user_excluded',
         preferredSendMode: attachment.kind === 'managed_file' && attachment.sendAs === 'inline_text' ? 'inline_base64' : 'default',
@@ -4606,7 +4623,9 @@ export function useAppChatAppLogic() {
     } satisfies DecodedFileAsset)]))
     draftAttachmentRecords.value = records
     draftAttachmentAssetsById.value = assets
-    draftAttachmentPlansByAssetId.value = {}
+    const detectionPlans = Object.fromEntries(current.attachments.filter((attachment):attachment is GenerationV2ComposerManagedFileAttachment=>
+      attachment.kind==='managed_file').map((attachment)=>[attachment.assetId,buildFileTypeDetectionPlan(attachment)]))
+    draftAttachmentPlansByAssetId.value = detectionPlans
     draftAttachmentSendPlanStatus.value = records.length > 0 ? 'sendable' : null
     const previewByRevision = new Map((await Promise.all(current.attachments.map(async (attachment) => {
       if (attachment.kind !== 'managed_file' || attachment.assetKind !== 'image') {
@@ -4620,7 +4639,7 @@ export function useAppChatAppLogic() {
     })) as readonly (readonly [string,string|null])[]))
     if (seq !== draftAttachmentRefreshSeq) return
     draftAttachmentViewModels.value = records.map((record) => buildDraftAttachmentViewModel(
-      record, assets[record.assetId] ?? null, null, previewByRevision.get(record.id) ?? null,
+      record, assets[record.assetId] ?? null, detectionPlans[record.assetId] ?? null, previewByRevision.get(record.id) ?? null,
     ))
     resetComposerSendPlanGateState()
     selectedDraftAttachmentAssetId.value = selectedDraftAttachmentAssetId.value &&
@@ -4629,6 +4648,37 @@ export function useAppChatAppLogic() {
     composerSendPlanLoading.value = false
     resetHistoryIncompatibleAttachmentSummary()
     return
+  }
+
+  function buildFileTypeDetectionPlan(attachment:GenerationV2ComposerManagedFileAttachment):SendPlanAttachment {
+    const detection=attachment.fileTypeDetection
+    const status = !detection?'detection_required':detection.status==='pending'?'detection_pending':
+      detection.status==='failed'?'detection_failed':detection.blocked?'failed':detection.warning||detection.warnings.length>0?'ready_with_warnings':'ready'
+    const blocked=status==='detection_required'||status==='detection_pending'||status==='detection_failed'||detection?.blocked===true
+    const preciseError=detection?.status==='failed'?[detection.errorCode,detection.errorDetail].filter(Boolean).join(': '):''
+    const warningDetails=detection?.warnings.map((value)=>[value.code,value.detail].filter(Boolean).join(': '))??[]
+    const notes=blocked
+      ? [preciseError||detection?.blockingReasonCodes.join(', ')||status]
+      : [...warningDetails,...(detection?.warningReasonCodes??[])]
+    const magikaState:SendPlanAttachmentDetectionSummary['magikaState'] = detection?.magikaState==='not_installed'||detection?.magikaState==='disabled'||detection?.magikaState==='unavailable'||
+      detection?.magikaState==='available'||detection?.magikaState==='failed'||detection?.magikaState==='not_requested'
+      ? detection.magikaState:'not_requested'
+    return Object.freeze({assetId:attachment.assetId,attachmentId:attachment.assetRevisionId,source:'draft',messageId:null,
+      aiPayloadKind:attachment.assetKind==='image'?'image':'binary',semantic:{targetKind:'original_file' as const,sendStrategy:'file_attachment' as const,mappedFromLegacy:false},
+      sendAssetRefs:[],selectedSendMode:null,fallbackSendModes:[],eligibility:blocked?'blocked':notes.length>0?'warning':'included',
+      exclusionReason:blocked?(notes[0]??status):null,displayStatus:status,needsUserAttention:blocked||notes.length>0,notes,
+      lineage:{state:'ok' as const,stale:false,staleReason:null,sourceHash:attachment.assetSha256,previewContentHash:null,sendContentHash:attachment.assetSha256,conversionSettingsHash:null},
+      fileType:detection?.formatId&&detection.kind&&detection.confidence?{formatId:detection.formatId,kind:detection.kind,
+        confidenceLevel:detection.confidence,recommendedRoute:null,recommendedRouteLabelCode:null,
+        compatibility:detection.blocked?'blocked' as const:detection.warning?'warning' as const:'compatible' as const,blocked:detection.blocked,requiresJob:false,
+        engineUnavailable:magikaState!=='available',hasConflicts:detection.blockingReasonCodes.some((code)=>code.includes('polyglot')),
+        hasExtensionMimeConflict:[...detection.blockingReasonCodes,...detection.warningReasonCodes].some((code)=>code.includes('mismatch')),
+        warningLabelCodes:[...detection.warningReasonCodes],blockedLabelCodes:[...detection.blockingReasonCodes],blockedBy:[...detection.blockingReasonCodes]}:null,
+      detection:{routeEligibility:(!detection?'detection_required':detection.status==='pending'?'detection_pending':
+        detection.status==='failed'?'detection_failed':'verdict_ready') as SendPlanAttachmentDetectionSummary['routeEligibility'],detectionLevel:detection?.status==='ready'?(magikaState==='available'?'advanced' as const:'basic' as const):null,
+        engineMode:detection?.status==='ready'?(magikaState==='available'?'core_plus_magika' as const:'core_only' as const):null,usedMagika:magikaState==='available',
+        magikaState,evidenceSources:[],decisiveEvidenceSource:null,detectionTrigger:'upload',magikaModelVersion:detection?.magikaModelVersion??null,
+        advancedAttempted:magikaState==='available'||magikaState==='failed'||magikaState==='unavailable',advancedFailureReason:warningDetails[0]??null}})
   }
 
   async function onUpdateAnthropicThinkingDisplay(value: 'provider_default' | 'summarized' | 'omitted') {
@@ -5133,6 +5183,15 @@ export function useAppChatAppLogic() {
     if (!assetId) return
     const attachment = draftAttachmentRecords.value.find((item) => item.assetId === assetId) ?? null
     const asset = draftAttachmentAssetsById.value[assetId] ?? null
+    const composerAttachment=generationV2ComposerDraft.value?.attachments.find((item)=>item.kind==='managed_file'&&item.assetId===assetId)
+    if(composerAttachment?.kind==='managed_file'&&(!composerAttachment.fileTypeDetection||composerAttachment.fileTypeDetection.status==='failed')){
+      const conversationId=generationV2ComposerDraft.value?.conversationId
+      if(!conversationId)return
+      generationV2ComposerDraft.value=await retryGenerationV2ComposerFileTypeDetection({conversationId,assetRevisionId:composerAttachment.assetRevisionId})
+      await refreshDraftAttachmentViewModels()
+      selectedDraftAttachmentAssetId.value=assetId
+      return
+    }
     if (attachment && isUrlSnapshotRetryAvailable(asset, attachment)) {
       await retrySelectedDraftAttachmentUrlSnapshot(assetId, attachment, asset)
       return
@@ -7481,6 +7540,21 @@ export function useAppChatAppLogic() {
   })
 
   onMounted(() => {
+    unsubscribeFileTypeDetectionUpdated=onGenerationV2ComposerFileTypeDetectionUpdated((event)=>{
+      const active=activeConvoId.value
+      if(!active)return
+      const draftValue=generationV2ComposerDraft.value
+      const belongs=event.conversationId===active||draftValue?.attachments.some((attachment)=>
+        attachment.kind==='managed_file'&&attachment.assetRevisionId===event.assetRevisionId)===true
+      if(!belongs)return
+      void refreshDraftAttachmentViewModels().catch((error)=>{
+        composerSendPlanCanProceed.value=false
+        composerSendPlanBlockingSummary.value=`GENERATION_V2_FILE_DETECTION_REFRESH_FAILED: ${error instanceof Error?error.message:String(error)}`
+      })
+    })
+  })
+
+  onMounted(() => {
     window.addEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
     window.addEventListener('settings:reasoningPanelDefaultExpandedUpdated', handleGlobalReasoningPanelDefaultExpandedUpdated)
     window.addEventListener('settings:reasoningPanelAutoCollapseAfterReasoningUpdated', handleGlobalReasoningPanelAutoCollapseAfterReasoningUpdated)
@@ -7656,6 +7730,8 @@ export function useAppChatAppLogic() {
   })
 
   onUnmounted(() => {
+    unsubscribeFileTypeDetectionUpdated?.()
+    unsubscribeFileTypeDetectionUpdated=null
     unregisterCatalogSelectionCommand()
     unsubscribeCatalogRuntimeStore()
     branchProjectionRefreshCoordinator.invalidate()

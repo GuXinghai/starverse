@@ -49,13 +49,13 @@ export type MagikaClassifyRunnerErrorCode =
 
 export type MagikaClassifyRunnerResult = MagikaClassifyRunnerSuccess | MagikaClassifyRunnerFailure
 
-type ProcessRunnerFn = (input: RunExternalProcessInput) => Promise<ExternalProcessRunResult>
+export type MagikaProcessRunner = (input: RunExternalProcessInput) => Promise<ExternalProcessRunResult>
 
 export async function runMagikaClassify(
   input: MagikaClassifyRunnerInput,
   deps: Readonly<{
     now?: () => number
-    processRunner?: ProcessRunnerFn
+    processRunner?: MagikaProcessRunner
     tempDirPrefix?: string
   }> = {}
 ): Promise<MagikaClassifyRunnerResult> {
@@ -81,7 +81,7 @@ export async function runMagikaClassify(
     const maxOutputBytes = input.maxOutputBytes ?? CLASSIFY_MAX_OUTPUT_BYTES
 
     const result = await processRunner({
-      command: 'node',
+      command: process.execPath,
       args: [
         input.runtimeEntryPath,
         '--model-dir', input.modelDirPath,

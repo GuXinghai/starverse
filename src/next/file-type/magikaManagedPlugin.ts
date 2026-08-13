@@ -4,7 +4,7 @@ import path from 'node:path'
 import { runEngineHealthCheck } from './externalEngineHealth'
 import { parseManagedEnginePluginManifest } from './externalEngineManifest'
 import { createExternalEngineRegistry, sanitizeEngineDetailForDiagnostics } from './externalEngineRegistry'
-import { runMagikaClassify, type MagikaClassifyRunnerResult } from './magikaClassifyRunner'
+import { runMagikaClassify, type MagikaClassifyRunnerResult, type MagikaProcessRunner } from './magikaClassifyRunner'
 import { runExternalProcess } from './externalProcessRunner'
 import { MagikaRuntimeClassificationError } from './magikaRuntimeLoader'
 import type {
@@ -191,6 +191,7 @@ export type BuildMagikaManagedRuntimeLoaderInput = Readonly<{
     }>
   ) => Promise<MagikaRuntimeClassifyOutput | null> | MagikaRuntimeClassifyOutput | null
   healthRunner?: EngineHealthRunner
+  processRunner?: MagikaProcessRunner
 }>
 
 export type EvaluateMagikaManagedPluginAvailabilityInput = Readonly<{
@@ -365,6 +366,7 @@ export function createManagedPluginMagikaRuntimeLoader(
       const health = await runManagedMagikaPluginHealthCheck({
         descriptor: discovery.descriptor,
         healthRunner: input.healthRunner,
+        processRunner: input.processRunner,
       })
       if (!health.healthy) {
         return {
@@ -449,6 +451,7 @@ export async function evaluateMagikaManagedPluginAvailability(
 export async function runManagedMagikaPluginHealthCheck(input: Readonly<{
   descriptor: MagikaManagedPluginDescriptor
   healthRunner?: EngineHealthRunner
+  processRunner?: MagikaProcessRunner
 }>): Promise<MagikaManagedPluginHealthResult> {
   const registry = createExternalEngineRegistry()
   registry.registerBuiltInEngineDefinitions()
@@ -457,7 +460,7 @@ export async function runManagedMagikaPluginHealthCheck(input: Readonly<{
   const stage: MagikaManagedHealthCheckStage = input.healthRunner ? 'custom_healthcheck' : 'runtime_self_test'
   const baseRunner = input.healthRunner
     ? wrapGenericMagikaHealthRunner(input.healthRunner, stage)
-    : createManagedMagikaRuntimeHealthRunner(input.descriptor)
+    : createManagedMagikaRuntimeHealthRunner(input.descriptor, input.processRunner)
   let healthDiagnostic: MagikaManagedHealthDiagnostic | null = null
 
   const checked = await runEngineHealthCheck({
@@ -519,7 +522,8 @@ export function toManagedEnginePluginManifest(
 }
 
 export function createMagikaClassifyCallback(
-  descriptor: MagikaManagedPluginDescriptor
+  descriptor: MagikaManagedPluginDescriptor,
+  processRunner?: MagikaProcessRunner,
 ): (
   input: Readonly<{
     probe: MagikaRuntimeDetectionInput
@@ -534,7 +538,7 @@ export function createMagikaClassifyCallback(
       runtimeEntryPath: descriptor.runtimeEntryPath,
       modelDirPath,
       configDirPath,
-    })
+    }, { processRunner })
     if (!result.ok) {
       const reason = mapRunnerFailureToRuntimeReason(result)
       throw new MagikaRuntimeClassificationError(reason, reason, result.detail)
@@ -544,11 +548,12 @@ export function createMagikaClassifyCallback(
 }
 
 function createManagedMagikaRuntimeHealthRunner(
-  descriptor: MagikaManagedPluginDescriptor
+  descriptor: MagikaManagedPluginDescriptor,
+  processRunner?: MagikaProcessRunner,
 ): MagikaManagedHealthRunner {
   return async () => {
     const healthcheck = descriptor.manifest.healthcheck
-    if (!healthcheck) return runDefaultMagikaRuntimeSelfTest(descriptor)
+    if (!healthcheck) return runDefaultMagikaRuntimeSelfTest(descriptor, processRunner)
 
     const result = await runExternalProcess({
       command: healthcheck.command,
@@ -570,7 +575,7 @@ function createManagedMagikaRuntimeHealthRunner(
         healthCheckStage: 'custom_healthcheck',
       }
     }
-    if (result.exitCode === 0 && !result.errorCode && !result.outputLimited) return runDefaultMagikaRuntimeSelfTest(descriptor)
+    if (result.exitCode === 0 && !result.errorCode && !result.outputLimited) return runDefaultMagikaRuntimeSelfTest(descriptor, processRunner)
     const detail = formatHealthFailureDetail(result.stderr, result.exitCode, result.errorCode)
     const diagnostic = inferHealthDiagnosticFromDetail('engine_failed', detail, 'custom_healthcheck')
     return {
@@ -596,7 +601,8 @@ type MagikaManagedHealthRunner = (
 ) => Promise<MagikaManagedHealthProbeResult>
 
 async function runDefaultMagikaRuntimeSelfTest(
-  descriptor: MagikaManagedPluginDescriptor
+  descriptor: MagikaManagedPluginDescriptor,
+  processRunner?: MagikaProcessRunner,
 ): ReturnType<MagikaManagedHealthRunner> {
   const result = await runMagikaClassify({
     inputBytes: new Uint8Array([0x7b, 0x7d]),
@@ -605,7 +611,7 @@ async function runDefaultMagikaRuntimeSelfTest(
     configDirPath: configDirPathOf(descriptor),
     timeoutMs: 3000,
     maxOutputBytes: 16 * 1024,
-  })
+  }, { processRunner })
   if (result.ok) {
     return { status: 'healthy', reason: null, detail: null }
   }

@@ -2,8 +2,19 @@
 
 Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 6 user-level lifecycle scaffold + diagnostics surface + Magika pilot integration completed; real Magika Node smoke blocked (tfjs-node ERR_DLOPEN_FAILED); pure JS Magika smoke passed; lifecycle integration (register→enable→health→diagnostics) completed; remaining phase boundaries proposed for Owner review (Phase 7: File Content Identification v1.0); real runtime distribution, production plugin lifecycle, conversion engines remain open
-Next phase: Owner review of remaining phase plan; P7-A real Magika detectFull end-to-end pending approval
+Current phase: Epoch 2 file detection authority and cross-platform Magika `0.2.0` implementation are locally validated. The old DB worker `detectBasic/detectFull` route is removed; immutable source revisions now receive a transactional `pending` projection, single-concurrency processing, CAS completion, startup recovery, explicit retry, renderer refresh events, and main-process send enforcement. Magika failure produces a ready basic verdict with exact warning/provenance; only basic read or detection-authority failure produces `failed`.
+Next phase: run the hosted six-runner dry run; production signing and catalog cutover remain environment-blocked and must not be marked released.
+
+## 2026-08-13 Epoch 2 authority acceptance status
+
+- implemented: `file_type_detection_v2` schema/repository, attempt/revision CAS, pending recovery/de-duplication, basic extension/MIME/magic/container/text detection, static policy, and source-revision DFC validation;
+- implemented: import-time pending creation in the same SQLite authority transaction, post-commit scheduling, read-only completion event, retry IPC, UI pending/failed/blocked send disable, and common generation authority error codes;
+- implemented: installed/enabled/healthy/verified registry gate; not-installed/disabled does not spawn; verified package discovery precedes classification;
+- removed: obsolete worker registrations `fileType.detectBasic`, `fileType.detectFull`, and `fileType.markStale`; no old table/repository was restored;
+- validated locally: schema/repository/CAS, stale writeback, basic policy, DFC, shared attachment authority, composer IPC, service no-spawn/de-duplication, attachment UI refresh, deterministic package hash, Node classification, and Electron utility-process classification;
+- not yet production evidence: six hosted OS/architecture runs, production signature, published asset, and catalog metadata cutover.
+- controlled-development reset boundary: adding the 17th Epoch 2 schema fragment intentionally invalidates older development databases and relies on the already-approved reset/backup recovery path; no online 16→17 migration is added in this unpublished environment.
+- legacy catalog boundary: the production-signed catalog still advertises `0.1.1`; Epoch 2 therefore reports `MAGIKA_VERSION_UNSUPPORTED` and continues basic detection. It does not claim that `0.2.0` can be installed until the protected release/cutover is complete.
 
 ## 目录用途
 
