@@ -1,0 +1,80 @@
+name: macOS preliminary probe
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: macos-preliminary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  compile-and-platform-neutral-tests:
+    name: macOS arm64 compile and platform-neutral tests
+    runs-on: macos-15
+    timeout-minutes: 45
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Record runner environment
+        run: |
+          sw_vers
+          uname -a
+          node --version
+          npm --version
+
+      - name: Install dependencies and prepare Node native ABI
+        run: npm ci
+
+      - name: Verify better-sqlite3 macOS arm64 binary
+        run: |
+          file node_modules/better-sqlite3/build/Release/better_sqlite3.node
+          node --input-type=module -e "import Database from 'better-sqlite3'; const db = new Database(':memory:'); db.prepare('SELECT 1').get(); db.close()"
+
+      - name: Check TypeScript
+        run: npx tsc --noEmit --pretty false
+
+      - name: Check Vue TypeScript
+        run: npx vue-tsc --noEmit --pretty false
+
+      - name: Check test partition ownership
+        run: node scripts/check-test-partitions.mjs
+
+      - name: Run unit partition
+        run: npm run test:unit
+
+      - name: Run UI partition
+        run: npm run test:ui
+
+      - name: Run platform-neutral credential and native-boundary tests
+        run: >-
+          npx vitest --run --config vitest.integration.config.ts
+          electron/credentials/credentialSafeStorageBackend.test.ts
+          electron/credentials/openAICompatibleCredentialV2Service.test.ts
+          electron/data-epoch/epochNativeBoundary.test.ts
+
+      - name: Build renderer artifacts
+        run: npx vite build
+
+      - name: Record probe scope
+        if: always()
+        run: |
+          cat >> "$GITHUB_STEP_SUMMARY" <<'EOF'
+          ## macOS preliminary probe scope
+
+          This manually triggered probe checks dependency installation, the Node native ABI,
+          TypeScript, Vue TypeScript, unit tests, platform-neutral credential boundaries, and
+          renderer compilation on a standard macOS arm64 runner.
+
+          It does not claim macOS runtime or release support. Electron startup, Epoch2 startup,
+          safeStorage/Keychain persistence, signing, notarization, and DMG packaging are outside
+          this probe because the Epoch2 runtime platform dispatcher does not yet support darwin.
+          EOF
