@@ -44,7 +44,11 @@ jobs:
           node node_modules/electron/install.js
           sudo chown root:root node_modules/electron/dist/chrome-sandbox
           sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+      - name: Electron utility-process classification smoke (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        run: xvfb-run -a node scripts/dev/smoke-magika-utility-process-v020.mjs
       - name: Electron utility-process classification smoke
+        if: ${{ runner.os != 'Linux' }}
         run: node scripts/dev/smoke-magika-utility-process-v020.mjs
       - name: Record package hash
         shell: bash
