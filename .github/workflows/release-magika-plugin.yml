@@ -37,6 +37,12 @@ jobs:
         run: node scripts/dev/package-official-magika-v020.mjs
       - name: Node classification smoke
         run: node scripts/dev/smoke-magika-package-v020.mjs
+      - name: Configure Electron sandbox helper
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
+        run: |
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
       - name: Electron utility-process classification smoke
         run: node scripts/dev/smoke-magika-utility-process-v020.mjs
       - name: Record package hash
