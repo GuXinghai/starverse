@@ -102,6 +102,7 @@ export default defineConfig({
       ignored: [
         ...generatedRuntimeWatchIgnores,
         '**/.artifacts/netlog/**',
+        '**/.artifacts/plugin-packages/**',
       ],
     },
   },

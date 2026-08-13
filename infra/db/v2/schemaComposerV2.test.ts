@@ -86,7 +86,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
     const second = inspectGenerationV2SchemaBundle(root)
     expect(first).toEqual(second)
     expect(first.fragmentIds).toEqual([
-      'core_conversation_v1', 'generation_config_v1', 'tool_registry_v1', 'attachment_asset_v1', 'openrouter_images_v1',
+      'core_conversation_v1', 'generation_config_v1', 'tool_registry_v1', 'attachment_asset_v1', 'file_type_detection_v2', 'openrouter_images_v1',
       'local_endpoint_profile_v1', 'reasoning_projection_v1', 'composer_draft_v1',
       'generation_execution_v1',
       'generation_v2_search_v1',
@@ -106,7 +106,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       expect(applyGenerationV2Schema(db, root)).toEqual(applied)
       expect(db.prepare('SELECT * FROM generation_v2_schema_manifest').get()).toEqual({
         manifest_id: 'generation_compiler_v2', schema_version: 1,
-        schema_digest: first.schemaDigest, fragment_count: 16,
+        schema_digest: first.schemaDigest, fragment_count: 17,
         object_projection_digest: applied.objectProjectionDigest,
       })
       expect(db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='openrouter_image_endpoint_bindings'").get())

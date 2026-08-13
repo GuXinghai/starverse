@@ -32,7 +32,7 @@ const MANIFEST_TABLE_SQL = `
     schema_digest TEXT NOT NULL CHECK (
       length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
     ),
-    fragment_count INTEGER NOT NULL CHECK (fragment_count = 16),
+    fragment_count INTEGER NOT NULL CHECK (fragment_count = 17),
     object_projection_digest TEXT NOT NULL CHECK (
       length(object_projection_digest) = 64
       AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
@@ -44,6 +44,7 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'generation_config_v1', fileName: 'generationConfigSchema.sql' }),
   Object.freeze({ id: 'tool_registry_v1', fileName: 'toolRegistrySchema.sql' }),
   Object.freeze({ id: 'attachment_asset_v1', fileName: 'attachmentAssetSchema.sql' }),
+  Object.freeze({ id: 'file_type_detection_v2', fileName: 'fileTypeDetectionSchema.sql' }),
   Object.freeze({ id: 'openrouter_images_v1', fileName: 'openRouterImagesSchema.sql' }),
   Object.freeze({ id: 'local_endpoint_profile_v1', fileName: 'localEndpointProfileSchema.sql' }),
   Object.freeze({ id: 'reasoning_projection_v1', fileName: 'reasoningProjectionSchema.sql' }),

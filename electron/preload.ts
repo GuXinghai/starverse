@@ -209,6 +209,13 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     dfcOptions: (payload: Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => ipcRenderer.invoke('generation-v2:composer:dfc-options', payload),
     dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => ipcRenderer.invoke('generation-v2:composer:dfc-select', payload),
     dfcPreview: (payload: Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) => ipcRenderer.invoke('generation-v2:composer:dfc-preview', payload),
+    retryFileTypeDetection: (payload: Readonly<{conversationId:string;assetRevisionId:string}>) =>
+      ipcRenderer.invoke('generation-v2:composer:retry-file-type-detection', payload),
+    onFileTypeDetectionUpdated: (listener: (event: unknown) => void) => {
+      const handler = (_event: unknown, value: unknown) => listener(value)
+      ipcRenderer.on('generation-v2:file-type-detection:updated', handler)
+      return () => ipcRenderer.removeListener('generation-v2:file-type-detection:updated', handler)
+    },
   }),
   search: Object.freeze({
     query: (payload: unknown) => ipcRenderer.invoke('generation-v2:search:query', payload),

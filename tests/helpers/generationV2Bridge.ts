@@ -190,6 +190,8 @@ export function createGenerationV2TestBridge() {
       dfcOptions: vi.fn(async () => ok({ status: 'ready', options: [] })),
       dfcSelect: vi.fn(async () => ok(draft)),
       dfcPreview: vi.fn(async () => ok({ status: 'unavailable', preview: null })),
+      retryFileTypeDetection: vi.fn(async () => ok(draft)),
+      onFileTypeDetectionUpdated: vi.fn(() => () => undefined),
     },
   }
 }

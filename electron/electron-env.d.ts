@@ -1170,6 +1170,8 @@ interface Window {
       dfcOptions: (payload: Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => Promise<unknown>
       dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => Promise<unknown>
       dfcPreview: (payload: Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) => Promise<unknown>
+      retryFileTypeDetection: (payload: Readonly<{conversationId:string;assetRevisionId:string}>) => Promise<unknown>
+      onFileTypeDetectionUpdated: (listener: (event: unknown) => void) => () => void
     }>
     search: Readonly<{
       query: (payload: unknown) => Promise<unknown>

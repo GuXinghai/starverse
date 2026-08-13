@@ -7,6 +7,8 @@ import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { GenerationV2DfcService } from './generationV2DfcService'
+import { FileTypeDetectionV2Repo } from '../../infra/db/repo/fileTypeDetectionV2Repo'
+import { detectBasicFileTypeV2 } from '../../infra/files/fileTypeRuntimeBoundary'
 
 function database(): BetterSqlite3.Database {
   const db = new BetterSqlite3(':memory:')
@@ -38,7 +40,13 @@ function setupTextDraft(db: BetterSqlite3.Database) {
         assetSha256: revision.blob.sha256.value, include: true, sendAs: 'provider_file', conversion: 'none',
       },
     })
+    const detections=new FileTypeDetectionV2Repo(db,()=>10)
+    detections.createPendingInAuthorityTransaction(context,{assetRevisionId:revision.assetRevisionId.value,
+      assetSha256:revision.blob.sha256.value,attemptId:'attempt:source'})
   })
+  const detected=detectBasicFileTypeV2({bytes,filename:'source.md',declaredMime:'text/markdown',detectionTrigger:'upload'})
+  new FileTypeDetectionV2Repo(db,()=>11).completeReady({assetRevisionId:revision.assetRevisionId.value,
+    attemptId:'attempt:source',revision:1,verdict:detected.verdict,staticPolicy:detected.staticPolicy})
   return bytes
 }
 
