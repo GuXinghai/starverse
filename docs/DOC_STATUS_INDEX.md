@@ -3,7 +3,7 @@
 **Purpose**: Help agents judge document timeliness and reading priority.
 
 **Status**: active
-**Last updated**: 2026-05-22
+**Last updated**: 2026-08-14
 **Governance**: DGR-1 dual-dimension status model
 
 ---
@@ -132,6 +132,7 @@ Examples in archive:
 | [bugfix/](bugfix/) | reference | implementation-note | Fixes | Complex historical fixes (not archived) |
 | [refactor/](refactor/) | reference | implementation-note | Refactor | SSOT v2 refactor plans (OpenRouter) |
 | [ui-refactoring/](ui-refactoring/) | reference | implementation-note | Refactor | UI component refactoring (ChatView, ConversationList) |
+| [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) | reference | entry | Provider/model identity | Trace the post-hard-cut evidence bundle; verify implementation claims against the current checkout |
 
 > **Note on dual entries**: `refactor/`, `ui-refactoring/`, and `bugfix/` appear in both "Governance & Development" (directory-level role) and "Pending-Classification Directories" (individual files awaiting DGR-3 classification). This is intentional: the directory has a known role, but individual files within it have not yet received per-file lifecycle status.
 
@@ -171,13 +172,25 @@ The following directories contain documents that have not yet been classified wi
 
 ## Sync Notes
 
-Last sync: 2026-05-22 (DGR-1)
+Last sync: 2026-08-14
 
 When adding new docs to docs/ or updating existing status:
 1. Update this index
 2. Link from guides/INDEX.md or AGENT_INDEX.md
 3. Check docs/guides/INDEX.md for any cross-links
 4. Run: `rg -n "docs/AGENT_INDEX.md|DOC_STATUS_INDEX" README.md docs`
+
+### Analysis bundle import (2026-08-14)
+
+**Created**:
+- `analysis/model-provider-identity/README.md`
+- Seven split closeout, independent-review, synthesis, and frozen-decision/implementation documents under `analysis/model-provider-identity/`
+
+**Classification**:
+- The directory README is a `reference` / `entry` document.
+- The purge closeout and point-in-time reviews are `historical` evidence.
+- The cross-review synthesis is `reference` / `candidate-action-list`, not an SSOT or approved implementation plan.
+- `07-frozen-decisions-and-implementation-plan.md` is `active` / `owner-decision-and-implementation-plan` and owns the implementation progress ledger.
 
 ### DGR-1 Changes (2026-05-22)
 
