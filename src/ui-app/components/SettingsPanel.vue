@@ -358,15 +358,6 @@ type LocalEndpointDiagnosticsBridge = Readonly<{
 
 const LOCAL_ENDPOINT_CHAT_URL_KEY = 'starverse.localEndpointTextChat.url'
 const LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT = 'settings:localEndpointTextChatUpdated'
-const LEGACY_MODEL_STORAGE_KEYS = [
-  'starverse.lmStudio.model',
-  'starverse.ollama.model',
-  'starverse.localEndpointTextChat.model',
-  'starverse.openAIResponsesTextChat.model',
-  'starverse.googleAIStudioTextChat.model',
-  'starverse.anthropicMessagesTextChat.model',
-  'starverse.deepSeekTextChat.model',
-] as const
 
 function getElectronStore(): ElectronStoreLike | null {
   const store = (globalThis as any).electronStore as ElectronStoreLike | undefined
@@ -1109,16 +1100,6 @@ function loadDeepSeekCredentialStatus() {
     applyStatus: applyDeepSeekCredentialStatus, markUnknown: markDeepSeekCredentialUnknown })
 }
 
-function cleanupLegacyModelStorage() {
-  try {
-    for (const key of LEGACY_MODEL_STORAGE_KEYS) {
-      globalThis.localStorage?.removeItem(key)
-    }
-  } catch {
-    // Legacy model cleanup is best-effort; Settings no longer reads these keys.
-  }
-}
-
 function notifyProviderCredentialUpdated(providerKey: ProviderCatalogKnownProviderKey) {
   window.dispatchEvent(new CustomEvent('settings:providerCredentialUpdated', {
     detail: Object.freeze({ providerKey }),
@@ -1266,7 +1247,6 @@ async function load() {
       loadAnthropicCredentialStatus(),
       loadDeepSeekCredentialStatus(),
     ])
-    cleanupLegacyModelStorage()
     const storedCatalogPolicy = await store.get(GLOBAL_CATALOG_POLICY_V2_STORE_KEY)
     if (storedCatalogPolicy && typeof storedCatalogPolicy === 'object') {
       try {
@@ -1954,7 +1934,6 @@ function applyLocalEndpointChatSettings() {
 
   try {
     globalThis.localStorage?.setItem(LOCAL_ENDPOINT_CHAT_URL_KEY, endpointUrl)
-    cleanupLegacyModelStorage()
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent(LOCAL_ENDPOINT_CHAT_SETTINGS_EVENT, {
         detail: { endpointUrl },

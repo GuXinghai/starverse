@@ -8,23 +8,25 @@ function loadSchema(db: BetterSqlite3.Database) {
   applyGenerationV2SchemaForTest(db, path.resolve(process.cwd()))
 }
 
+const modelRef = (modelId: string) => ({ providerKey: 'openrouter', modelId })
+
 describe('ModelPreferencesRepo', () => {
   it('supports global/project/conversation scopes for favorites and recents', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     const repo = new ModelPreferencesRepo(db)
 
-    repo.addFavorite({ scopeType: 'global', scopeId: '', modelKey: 'openrouter::openai/gpt-4o' })
-    repo.addFavorite({ scopeType: 'project', scopeId: 'project-1', modelKey: 'openrouter::openai/gpt-4.1' })
-    repo.addFavorite({ scopeType: 'conversation', scopeId: 'convo-1', modelKey: 'openrouter::anthropic/claude-3' })
+    repo.addFavorite({ scopeType: 'global', scopeId: '', ...modelRef('openai/gpt-4o') })
+    repo.addFavorite({ scopeType: 'project', scopeId: 'project-1', ...modelRef('openai/gpt-4.1') })
+    repo.addFavorite({ scopeType: 'conversation', scopeId: 'convo-1', ...modelRef('anthropic/claude-3') })
 
     expect(repo.listFavorites({})).toHaveLength(1)
     expect(repo.listFavorites({ scopeType: 'project', scopeId: 'project-1' })).toHaveLength(1)
     expect(repo.listFavorites({ scopeType: 'conversation', scopeId: 'convo-1' })).toHaveLength(1)
 
-    repo.recordRecent({ scopeType: 'global', scopeId: '', modelKey: 'openrouter::openai/gpt-4o' })
-    repo.recordRecent({ scopeType: 'project', scopeId: 'project-1', modelKey: 'openrouter::openai/gpt-4.1' })
-    repo.recordRecent({ scopeType: 'conversation', scopeId: 'convo-1', modelKey: 'openrouter::anthropic/claude-3' })
+    repo.recordRecent({ scopeType: 'global', scopeId: '', ...modelRef('openai/gpt-4o') })
+    repo.recordRecent({ scopeType: 'project', scopeId: 'project-1', ...modelRef('openai/gpt-4.1') })
+    repo.recordRecent({ scopeType: 'conversation', scopeId: 'convo-1', ...modelRef('anthropic/claude-3') })
 
     expect(repo.listRecents({})).toHaveLength(1)
     expect(repo.listRecents({ scopeType: 'project', scopeId: 'project-1' })).toHaveLength(1)
@@ -39,7 +41,7 @@ describe('ModelPreferencesRepo', () => {
     repo.addFavorite({
       scopeType: 'global',
       scopeId: '',
-      modelKey: 'openrouter::openai/gpt-4o',
+      ...modelRef('openai/gpt-4o'),
       sortRank: 8,
     })
     repo.addFavorite({
@@ -59,13 +61,13 @@ describe('ModelPreferencesRepo', () => {
     repo.recordRecent({
       scopeType: 'global',
       scopeId: '',
-      modelKey: 'openrouter::openai/gpt-4o',
+      ...modelRef('openai/gpt-4o'),
       usedAtMs: t0,
     })
     repo.recordRecent({
       scopeType: 'global',
       scopeId: '',
-      modelKey: 'openrouter::openai/gpt-4o',
+      ...modelRef('openai/gpt-4o'),
       usedAtMs: t1,
     })
 
@@ -80,9 +82,9 @@ describe('ModelPreferencesRepo', () => {
     loadSchema(db)
     const repo = new ModelPreferencesRepo(db)
 
-    repo.addFavorite({ modelKey: 'openrouter::openai/a', sortRank: 10 })
-    repo.addFavorite({ modelKey: 'openrouter::openai/b', sortRank: 10 })
-    repo.addFavorite({ modelKey: 'openrouter::openai/c', sortRank: 10 })
+    repo.addFavorite({ ...modelRef('openai/a'), sortRank: 10 })
+    repo.addFavorite({ ...modelRef('openai/b'), sortRank: 10 })
+    repo.addFavorite({ ...modelRef('openai/c'), sortRank: 10 })
 
     const initial = repo.listFavorites()
     expect(initial.map((row) => row.modelKey)).toEqual([
@@ -107,9 +109,9 @@ describe('ModelPreferencesRepo', () => {
     loadSchema(db)
     const repo = new ModelPreferencesRepo(db)
 
-    repo.addFavorite({ modelKey: 'openrouter::openai/a', sortRank: 0 })
-    repo.addFavorite({ modelKey: 'openrouter::openai/b', sortRank: 1 })
-    repo.addFavorite({ modelKey: 'openrouter::openai/c', sortRank: 2 })
+    repo.addFavorite({ ...modelRef('openai/a'), sortRank: 0 })
+    repo.addFavorite({ ...modelRef('openai/b'), sortRank: 1 })
+    repo.addFavorite({ ...modelRef('openai/c'), sortRank: 2 })
 
     const before = repo.listFavorites()
 
@@ -137,7 +139,7 @@ describe('ModelPreferencesRepo', () => {
       repo.recordRecent({
         scopeType: 'global',
         scopeId: '',
-        modelKey: `openrouter::openai/model-${i}`,
+        ...modelRef(`openai/model-${i}`),
         usedAtMs: base + i,
       })
     }

@@ -6,7 +6,7 @@ import { t, tf } from '@/shared/i18n'
 
 function defaultSessionConfig() {
   return {
-    model: { selectedModelKey: null },
+    routeSelection: null,
     reasoning: { enabled: false, effort: 'medium' as const },
     webSearch: { enabled: false, level: 'high' as const, detail: null },
     imageGeneration: {
@@ -23,7 +23,7 @@ function defaultSessionConfig() {
 function googleAIStudioSessionConfig() {
   return {
     ...defaultSessionConfig(),
-    model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash' },
+    routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-2.5-flash'  },
   }
 }
 
@@ -68,7 +68,6 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         sessionConfig: googleAIStudioSessionConfig(),
         googleAIStudioChat: {
           enabled: true,
-          model: 'gemini-2.5-flash',
           experimentalLabel: 'Experimental · Google AI Studio Gemini text-only · not OpenRouter',
         },
         reasoningDisplayMode: 'inline',
@@ -107,7 +106,6 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         sessionConfig: defaultSessionConfig(),
         googleAIStudioChat: {
           enabled: true,
-          model: 'gemini-2.5-flash',
           experimentalLabel: 'Experimental · Google AI Studio Gemini text-only · not OpenRouter',
         },
         googleAIStudioModelAvailability: {
@@ -169,7 +167,9 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
     await user.click(screen.getByTestId('google-ai-studio-model-use'))
 
     expect(view.emitted('refreshGoogleAIStudioModels')).toHaveLength(1)
-    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'google_ai_studio', modelId: 'gemini-2.5-flash' }])
+    expect(view.emitted('updateRouteSelection')?.[0]).toEqual([{
+      schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio', modelId: 'gemini-2.5-flash',
+    }])
 
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()
@@ -225,7 +225,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         isRunning: false,
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-pro-preview' },
+          routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-3.1-pro-preview'  },
           generationParams: {
             detail: {
               thinkingLevel: { mode: 'custom', value: 'high' },
@@ -262,7 +262,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         isRunning: false,
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.6-flash' },
+          routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-3.6-flash'  },
         },
         googleAIStudioModelAvailability: googleAvailability('gemini-3.6-flash'),
         reasoningDisplayMode: 'inline',
@@ -284,7 +284,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         isRunning: false,
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-pro' },
+          routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-2.5-pro'  },
         },
         googleAIStudioModelAvailability: googleAvailability('gemini-2.5-pro'),
         reasoningDisplayMode: 'inline',
@@ -305,7 +305,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         isRunning: false,
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-lite-image' },
+          routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-3.1-flash-lite-image'  },
           generationParams: {
             detail: {
               thinkingLevel: { mode: 'custom', value: 'minimal' },
@@ -353,7 +353,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         isRunning: false,
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash-image' },
+          routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-2.5-flash-image'  },
           imageGeneration: {
             enabled: false,
             resolution: '4K' as const,
@@ -391,7 +391,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
         isRunning: false,
         sessionConfig: {
           ...googleAIStudioSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-image' },
+          routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-3.1-flash-image'  },
           generationParams: {
             detail: {
               thinkingLevel: { mode: 'custom', value: 'minimal' },

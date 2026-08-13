@@ -33,13 +33,13 @@ describe('convoClient IPC sanitize', () => {
         id: 'c1',
         title: 'Chat 1',
         projectId: null,
-        meta: { ...meta, selectedModelKey: 'google/gemini-2.5-flash-image' },
+        meta: { ...meta, customMarker: 'preserved' },
       })
     ).resolves.toBe(true)
 
     const payload = invoke.mock.calls[0]?.[1] as any
     expect(payload.id).toBe('c1')
-    expect(payload.meta.selectedModelKey).toBe('google/gemini-2.5-flash-image')
+    expect(payload.meta.customMarker).toBe('preserved')
     expect(isProxy(payload.meta)).toBe(false)
     expect(isProxy(payload.meta.reasoningPrefs)).toBe(false)
     expect(isProxy(payload.meta.webSearchOverride)).toBe(false)

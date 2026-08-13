@@ -1,7 +1,7 @@
-import type { RuntimeProviderKey } from '../provider/runtimeSelection'
+import type { RuntimeProviderId } from '../provider/runtimeProviderId'
 import type { GeminiThinkingCapability } from '../provider/gemini/geminiThinkingPolicy'
 
-export type GenerationProviderId = RuntimeProviderKey | 'unset'
+export type GenerationProviderId = RuntimeProviderId | 'unset'
 
 export type GenerationParamKey =
   | 'temperature'

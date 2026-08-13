@@ -1,5 +1,6 @@
 import type { ProviderFailureV2 } from '../../shared/provider/providerFailureV2'
 import type { CatalogPolicySourceV2, CatalogPolicyV2 } from '../../shared/modelCatalog/catalogPolicyV2'
+import type { ConversationRouteSelection } from '../provider/conversationRouteSelection'
 
 export type CatalogRuntimeSyncStateV2 = 'idle' | 'syncing' | 'failed'
 export type CatalogRuntimeHydrationStateV2 = 'idle' | 'loading' | 'ready'
@@ -30,7 +31,7 @@ export type CatalogRuntimeStateV2<TItem extends Readonly<Record<string, unknown>
 }>
 
 export type CatalogModelSelectionCommandV2 = (
-  selection: Readonly<Record<string, unknown>>,
+  selection: ConversationRouteSelection,
 ) => Promise<void>
 
 const appRuntimeStores = new WeakMap<object, CatalogRuntimeStoreV2<any>>()

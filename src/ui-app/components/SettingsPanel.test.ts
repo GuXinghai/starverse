@@ -898,43 +898,6 @@ describe('ui-app SettingsPanel', () => {
     expect(screen.getByTestId('settings-openrouter-clear-key')).not.toBeDisabled()
   })
 
-  it('removes cloud experimental manual model inputs and cleans legacy model keys while preserving credentials', async () => {
-    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
-    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
-    globalThis.localStorage?.setItem('starverse.anthropicMessagesTextChat.model', 'claude-sonnet-4-5')
-    globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
-
-    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
-
-    await screen.findByText('设置')
-    expect(screen.queryByTestId('settings-openai-responses-api-key')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-google-ai-studio-api-key')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-anthropic-api-key')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-deepseek-api-key')).not.toBeInTheDocument()
-    expect(await screen.findByTestId('settings-openai-responses-edit-key')).toBeInTheDocument()
-    expect(await screen.findByTestId('settings-google-ai-studio-edit-key')).toBeInTheDocument()
-    expect(await screen.findByTestId('settings-anthropic-edit-key')).toBeInTheDocument()
-    expect(await screen.findByTestId('settings-deepseek-edit-key')).toBeInTheDocument()
-
-    expect(screen.queryByTestId('settings-openai-responses-model')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-google-ai-studio-model')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-anthropic-model')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-deepseek-model')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-openai-responses-apply-chat')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-google-ai-studio-apply-chat')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-anthropic-apply-chat')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-deepseek-apply-chat')).not.toBeInTheDocument()
-
-    await waitFor(() => {
-      expect(globalThis.localStorage?.getItem('starverse.openAIResponsesTextChat.model')).toBeNull()
-      expect(globalThis.localStorage?.getItem('starverse.googleAIStudioTextChat.model')).toBeNull()
-      expect(globalThis.localStorage?.getItem('starverse.anthropicMessagesTextChat.model')).toBeNull()
-      expect(globalThis.localStorage?.getItem('starverse.deepSeekTextChat.model')).toBeNull()
-    })
-    expect(document.body.textContent).not.toContain('endpoint picker')
-  })
-
-
   it('loads catalog sync settings defaults', async () => {
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 

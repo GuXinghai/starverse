@@ -2071,9 +2071,8 @@ export type ModelPrefsScopeParams = Readonly<{
 }>
 
 export type ModelPrefsModelRefParams = Readonly<{
-  providerKey?: string
-  modelId?: string
-  modelKey?: string
+  providerKey: string
+  modelId: string
 }>
 
 export type ModelPrefsFavoriteRecord = Readonly<{

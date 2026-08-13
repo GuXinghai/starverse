@@ -6,7 +6,7 @@ import { t, tf } from '@/shared/i18n'
 
 function defaultSessionConfig() {
   return {
-    model: { selectedModelKey: null },
+    routeSelection: null,
     reasoning: { enabled: false, effort: 'medium' as const },
     webSearch: { enabled: false, level: 'high' as const, detail: null },
     imageGeneration: {
@@ -23,7 +23,7 @@ function defaultSessionConfig() {
 function anthropicSessionConfig() {
   return {
     ...defaultSessionConfig(),
-    model: { selectedProviderId: 'anthropic_messages' as const, selectedModelKey: 'claude-sonnet-4-5' },
+    routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'anthropic_messages' as const, modelId: 'claude-sonnet-4-5'  },
   }
 }
 
@@ -37,7 +37,6 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
         sessionConfig: anthropicSessionConfig(),
         anthropicChat: {
           enabled: true,
-          model: 'claude-sonnet-4-5',
           thinkingDisplay: 'summarized',
           experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
         },
@@ -77,7 +76,6 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
         sessionConfig: defaultSessionConfig(),
         anthropicChat: {
           enabled: true,
-          model: 'claude-sonnet-4-5',
           thinkingDisplay: 'summarized',
           experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
         },
@@ -143,7 +141,9 @@ describe('ChatSessionConsole Anthropic Messages chat controls', () => {
     await user.click(screen.getByTestId('anthropic-model-use'))
 
     expect(view.emitted('refreshAnthropicModels')).toHaveLength(1)
-    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'anthropic_messages', modelId: 'claude-sonnet-4-5' }])
+    expect(view.emitted('updateRouteSelection')?.[0]).toEqual([{
+      schemaVersion: 1, kind: 'provider_model', providerId: 'anthropic_messages', modelId: 'claude-sonnet-4-5',
+    }])
 
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()

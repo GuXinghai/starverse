@@ -46,26 +46,27 @@ describe('ChatAppComposer compatible configuration-only selection', () => {
         queryModels,
       },
     } as any
+    let committedSelection: unknown = null
     const view = render(ChatAppComposer, {
       global: {
         plugins: [{
           install(app: object) {
-            registerCatalogModelSelectionCommandV2(app, async () => undefined)
+            registerCatalogModelSelectionCommandV2(app, async (selection) => { committedSelection = selection })
           },
         }],
       },
       props: {
         draft: 'hello', disabled: false, isRunning: false, canSend: true, modelCatalog: [],
-        sessionConfig: { model: { selectedProviderId: 'openrouter', selectedModelKey: 'openrouter/auto', compatibleSelection: null }, reasoning: { enabled: false, effort: 'medium' }, webSearch: { enabled: false, level: 'high', detail: null }, imageGeneration: { enabled: false, resolution: '1K', aspectRatio: '1:1', mode: 'default', detail: null }, generationParams: { detail: null } },
+        sessionConfig: { routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: 'openrouter/auto' }, reasoning: { enabled: false, effort: 'medium' }, webSearch: { enabled: false, level: 'high', detail: null }, imageGeneration: { enabled: false, resolution: '1K', aspectRatio: '1:1', mode: 'default', detail: null }, generationParams: { detail: null } },
       },
     })
     await fireEvent.click(screen.getByTestId('current-model-pill'))
     const compatible = await screen.findByTestId('compatible-model-ocp_provider_12345678-same-model')
     await fireEvent.click(compatible)
-    const emittedSelection = (view.emitted() as any).updateModel?.[0]?.[0]
+    const routeSelection = committedSelection as any
     await view.rerender({
       sessionConfig: {
-        model: { selectedProviderId: null, selectedModelKey: emittedSelection.modelId, compatibleSelection: emittedSelection },
+        routeSelection,
         reasoning: { enabled: false, effort: 'medium' }, webSearch: { enabled: false, level: 'high', detail: null },
         imageGeneration: { enabled: false, resolution: '1K', aspectRatio: '1:1', mode: 'default', detail: null },
         generationParams: { detail: null },
@@ -73,7 +74,9 @@ describe('ChatAppComposer compatible configuration-only selection', () => {
     })
     expect(await screen.findByTestId('compatible-send-selection')).toHaveTextContent('First · same-model')
     expect(screen.getByTestId('composer-send')).toBeEnabled()
-    expect(emittedSelection).toMatchObject({ providerInstanceId: 'ocp_provider_12345678', modelId: 'same-model', endpointRevisionId: 'ocp_endpoint_12345678' })
+    expect(routeSelection).toMatchObject({ kind: 'openai_chat_compatible', selection: {
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'same-model', endpointRevisionId: 'ocp_endpoint_12345678',
+    } })
     await waitFor(() => expect(queryModels).toHaveBeenCalledWith(expect.objectContaining({ providerInstanceId: 'ocp_provider_12345678' })))
   })
 })

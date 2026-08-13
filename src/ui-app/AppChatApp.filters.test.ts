@@ -54,7 +54,7 @@ describe('ui-app AppChatApp (filters: include/exclude)', () => {
           const result = await baseTemplate()
           return ok({ ...result.value,
             conversation: { ...result.value.conversation, id: 'c1', projectId: 'project_inbox', branchId: 'b1',
-              title: 'Chat 1', meta: { selectedProviderId: 'openrouter', selectedModelKey: 'openai/gpt-4.1-nano' } },
+              title: 'Chat 1', meta: {} },
             draft: { ...result.value.draft, conversationId: 'c1' },
           })
         }),

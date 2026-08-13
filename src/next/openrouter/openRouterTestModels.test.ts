@@ -16,8 +16,7 @@ const OPENROUTER_LITERAL_PATTERN = /["'`]openrouter\/(?:auto|[^"'`]+)["'`]/
 const OPENROUTER_AUTO_SENTINEL_CONTEXTS = new Map<string, RegExp[]>([
   ['next/state/reducer.test.ts', [/"model": "openrouter\/auto",/]],
   ['ui-app/AppChatApp.modelSelectionRegression.test.ts', [/not\.toContain\('openrouter\/auto'\)/]],
-  ['ui-app/app/chatSessionConfig.test.ts', [/defaultModelKey: 'openrouter\/auto'/]],
-  ['ui-app/components/ChatAppComposer.compatibleConfiguration.test.ts', [/selectedModelKey: 'openrouter\/auto'/]],
+  ['ui-app/components/ChatAppComposer.compatibleConfiguration.test.ts', [/modelId: 'openrouter\/auto'/]],
 ])
 
 function collectTestFiles(rootDir: string): string[] {

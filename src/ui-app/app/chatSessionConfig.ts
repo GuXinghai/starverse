@@ -20,12 +20,7 @@ import {
   buildReasoningPrefsSavePlan,
   resolveReasoningPrefsFromStoredLayers,
 } from '@/next/settings/reasoningPrefsScope'
-import {
-  normalizeRuntimeProviderId,
-  type ChatModelSelection,
-} from '@/next/provider/modelSelection'
-import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
-import { compatibleConfigurationSelectionSchema, type CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
+import type { ConversationRouteSelection } from '@/next/provider/conversationRouteSelection'
 
 export type ChatSessionConfigReasoningEffort = Exclude<ReasoningEffort, 'none'>
 export type ChatSessionConfigWebSearchLevel = 'low' | 'high'
@@ -48,11 +43,7 @@ export type ChatSessionConfigAspectRatio =
   | '1:8'
 
 export type ChatSessionConfig = Readonly<{
-  model: Readonly<{
-    selectedProviderId?: RuntimeProviderKey | null
-    selectedModelKey: string | null
-    compatibleSelection?: CompatibleConfigurationSelection | null
-  }>
+  routeSelection: ConversationRouteSelection | null
   reasoning: Readonly<{
     enabled: boolean
     effort: ChatSessionConfigReasoningEffort
@@ -81,20 +72,16 @@ export type ChatSessionConfigSources = Readonly<{
   globalWebSearchDefaults?: unknown
   globalGenerationParamsDefaults?: unknown
   globalImageGenerationDefault?: unknown
-  defaultModelKey: string
 }>
 
 export type ChatSessionConfigPatch = Readonly<Partial<{
-  model: Partial<ChatSessionConfig['model']>
+  routeSelection: ConversationRouteSelection | null
   reasoning: Partial<ChatSessionConfig['reasoning']>
   webSearch: Partial<ChatSessionConfig['webSearch']>
   imageGeneration: Partial<ChatSessionConfig['imageGeneration']>
   generationParams: Partial<ChatSessionConfig['generationParams']>
 }>>
 
-const MODEL_META_KEY = 'selectedModelKey'
-const PROVIDER_META_KEY = 'selectedProviderId'
-const COMPATIBLE_SELECTION_META_KEY = 'compatibleConfigurationSelection'
 const IMAGE_ASPECT_RATIO_OPTIONS: readonly ChatSessionConfigAspectRatio[] = [
   'auto',
   '1:1',
@@ -117,40 +104,6 @@ const IMAGE_RESOLUTION_OPTIONS: readonly ChatSessionConfigImageResolution[] = ['
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== 'object' || Array.isArray(value)) return null
   return value as Record<string, unknown>
-}
-
-function normalizeModelKey(value: unknown, fallback: string): string {
-  const normalized = String(value ?? '').trim()
-  return normalized.length > 0 ? normalized : fallback
-}
-
-function extractSelectedModelKey(meta: unknown): string | null {
-  const root = asRecord(meta)
-  if (!root) return null
-  const normalized = String(root[MODEL_META_KEY] ?? '').trim()
-  return normalized.length > 0 ? normalized : null
-}
-
-function extractSelectedProviderId(meta: unknown): RuntimeProviderKey | null {
-  const root = asRecord(meta)
-  if (!root) return null
-  return normalizeRuntimeProviderId(root[PROVIDER_META_KEY])
-}
-
-function mergeSelectedModelSelectionIntoMeta(
-  meta: unknown,
-  selection: ChatModelSelection | null,
-): Record<string, unknown> | null {
-  const root = asRecord(meta)
-  const next = root ? { ...root } : {}
-  if (!selection) {
-    delete next[PROVIDER_META_KEY]
-    delete next[MODEL_META_KEY]
-  } else {
-    next[PROVIDER_META_KEY] = selection.providerId
-    next[MODEL_META_KEY] = selection.modelId
-  }
-  return Object.keys(next).length > 0 ? next : null
 }
 
 function normalizeReasoningEffortForQuickControls(prefs: ReasoningPrefs): ChatSessionConfigReasoningEffort {
@@ -211,10 +164,6 @@ function buildImageGenerationDetail(input: Readonly<{
 }
 
 export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConfigSources): ChatSessionConfig {
-  const selectedModelKey = extractSelectedModelKey(input.convoMeta) ?? null
-  const selectedProviderId = extractSelectedProviderId(input.convoMeta)
-  const hasCompleteSelection = Boolean(selectedProviderId && selectedModelKey)
-
   const reasoningResolved = resolveReasoningPrefsFromStoredLayers({
     convoMeta: input.convoMeta,
     projectMeta: input.projectMeta,
@@ -235,20 +184,12 @@ export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConf
   })
 
   const rawConvoRecord = asRecord(input.convoMeta)
-  const compatibleSelection = (() => {
-    const parsed = compatibleConfigurationSelectionSchema.safeParse(rawConvoRecord?.[COMPATIBLE_SELECTION_META_KEY])
-    return parsed.success ? parsed.data : null
-  })()
   const webSearchDetail = asRecord(rawConvoRecord?.webSearchOverride)
   const generationDetail = extractConvoGenerationParamsOverride(input.convoMeta)
   const imageDetail = imageResolved.mode === 'custom' ? imageResolved.effective : null
 
   return {
-    model: {
-      selectedModelKey: compatibleSelection ? compatibleSelection.modelId : hasCompleteSelection ? selectedModelKey : null,
-      selectedProviderId: compatibleSelection ? null : hasCompleteSelection ? selectedProviderId : null,
-      compatibleSelection,
-    },
+    routeSelection: null,
     reasoning: {
       enabled: reasoningResolved.mode === 'effort' && reasoningResolved.effort !== 'none',
       effort: normalizeReasoningEffortForQuickControls(reasoningResolved),
@@ -273,10 +214,7 @@ export function deserializeChatSessionConfigFromConvoMeta(input: ChatSessionConf
 
 export function mergeChatSessionConfig(current: ChatSessionConfig, patch: ChatSessionConfigPatch): ChatSessionConfig {
   return {
-    model: {
-      ...current.model,
-      ...(patch.model ?? {}),
-    },
+    routeSelection: patch.routeSelection === undefined ? current.routeSelection : patch.routeSelection,
     reasoning: {
       ...current.reasoning,
       ...(patch.reasoning ?? {}),
@@ -300,7 +238,6 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
   baseMeta?: unknown
   config: ChatSessionConfig
   convoProjectId?: string | null
-  defaultModelKey: string
 }>): Record<string, unknown> | null {
   const reasoningPrefs = toReasoningPrefs(input.config.reasoning)
   const reasoningPlan = buildReasoningPrefsSavePlan({
@@ -309,25 +246,8 @@ export function serializeChatSessionConfigToConvoMeta(input: Readonly<{
     prefs: reasoningPrefs,
   })
 
-  const selectedProviderId = input.config.model.selectedProviderId
-  const selectedModelKey = normalizeModelKey(input.config.model.selectedModelKey, '')
-  const selectedSelection: ChatModelSelection | null = selectedProviderId && selectedModelKey
-    ? { providerId: selectedProviderId, modelId: selectedModelKey }
-    : null
-  const withModel = mergeSelectedModelSelectionIntoMeta(reasoningPlan.nextConvoMeta, selectedSelection)
-  const withCompatibleSelection = (() => {
-    const next = withModel ? { ...withModel } : {}
-    if (input.config.model.compatibleSelection) {
-      next[COMPATIBLE_SELECTION_META_KEY] = compatibleConfigurationSelectionSchema.parse(input.config.model.compatibleSelection)
-      delete next.selectedProviderId
-      delete next.selectedModelKey
-    } else {
-      delete next[COMPATIBLE_SELECTION_META_KEY]
-    }
-    return Object.keys(next).length > 0 ? next : null
-  })()
   const withoutLegacyGoogleThinking = (() => {
-    const next = withCompatibleSelection ? { ...withCompatibleSelection } : {}
+    const next = reasoningPlan.nextConvoMeta ? { ...reasoningPlan.nextConvoMeta } : {}
     delete next.googleAIStudioThinking
     return Object.keys(next).length > 0 ? next : null
   })()

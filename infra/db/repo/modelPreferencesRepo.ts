@@ -32,15 +32,6 @@ type NormalizedModelRef = Readonly<{
   modelKey: string
 }>
 
-function parseModelKey(modelKey: string): Readonly<{ providerKey: string; modelId: string }> | null {
-  const index = modelKey.indexOf(MODEL_KEY_DELIMITER)
-  if (index <= 0) return null
-  const providerKey = modelKey.slice(0, index).trim()
-  const modelId = modelKey.slice(index + MODEL_KEY_DELIMITER.length).trim()
-  if (!providerKey || !modelId) return null
-  return { providerKey, modelId }
-}
-
 function normalizeScope(input?: ModelPrefsScopeParams): NormalizedScope {
   const scopeType = (input?.scopeType ?? 'global') as ModelPrefsScopeType
   const rawScopeId = input?.scopeId == null ? '' : String(input.scopeId).trim()
@@ -64,22 +55,9 @@ function normalizeScope(input?: ModelPrefsScopeParams): NormalizedScope {
 }
 
 function normalizeModelRef(input: ModelPrefsModelRefParams): NormalizedModelRef {
-  const providerKeyRaw = typeof input.providerKey === 'string' ? input.providerKey.trim() : ''
-  const modelIdRaw = typeof input.modelId === 'string' ? input.modelId.trim() : ''
-  const modelKeyRaw = typeof input.modelKey === 'string' ? input.modelKey.trim() : ''
-  const parsedFromModelKey = modelKeyRaw ? parseModelKey(modelKeyRaw) : null
-
-  const providerKey = providerKeyRaw || parsedFromModelKey?.providerKey || ''
-  const modelId = modelIdRaw || parsedFromModelKey?.modelId || ''
-
-  if (!providerKey || !modelId) {
-    throw new Error('model refs require modelKey or providerKey+modelId')
-  }
-  if (parsedFromModelKey) {
-    if (parsedFromModelKey.providerKey !== providerKey || parsedFromModelKey.modelId !== modelId) {
-      throw new Error('modelKey mismatch with providerKey/modelId')
-    }
-  }
+  const providerKey = input.providerKey.trim()
+  const modelId = input.modelId.trim()
+  if (!providerKey || !modelId) throw new Error('model refs require providerKey+modelId')
 
   return {
     providerKey,

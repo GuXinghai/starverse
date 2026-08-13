@@ -211,7 +211,6 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
       revision: 1,
       selection: { schemaVersion: 1, kind: 'provider_model', providerId: route.providerId, modelId },
     }
-    sessionMeta = { selectedProviderId: route.providerId, selectedModelKey: modelId }
   }
 
   function selectRuntimeProvider(providerId: string, modelId: string, opts: {
