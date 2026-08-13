@@ -128,5 +128,5 @@ jobs:
           if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
             gh release upload "$tag" "$zip" "$sig" --repo "$GITHUB_REPOSITORY" --clobber
           else
-            gh release create "$tag" "$zip" "$sig" --repo "$GITHUB_REPOSITORY" --title "Starverse Magika official plugin v${{ inputs.version }}" --notes "Portable pure-JavaScript any/any Magika plugin."
+            gh release create "$tag" "$zip" "$sig" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Starverse Magika official plugin v${{ inputs.version }}" --notes "Portable pure-JavaScript any/any Magika plugin."
           fi
