@@ -8,7 +8,7 @@ import {
 describe('ProviderFailure UI projection V2', () => {
   it('limits the complete UI envelope and records the original raw body digest', () => {
     const failure = createProviderFailureV2({
-      context: { origin: 'http_response', phase: 'response_body', providerId: 'google_ai_studio',
+      context: { origin: 'http_response', phase: 'response_body', provider: { namespace: 'generation_execution', id: 'google_ai_studio' },
         contractId: 'gemini-models-v1beta', operationId: 'catalog:test', requestSequence: 1 },
       httpStatus: 400,
       bodyText: JSON.stringify({ error: { code: 400, status: 'INVALID_ARGUMENT', message: 'x'.repeat(200_000) } }),

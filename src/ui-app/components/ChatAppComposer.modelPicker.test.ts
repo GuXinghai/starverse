@@ -560,7 +560,7 @@ describe('ChatAppComposer model picker integration', () => {
         if (method === 'modelPrefs.addFavorite') {
           const modelId = String(params?.modelId ?? '')
           const providerKey = String(params?.providerKey ?? 'openrouter')
-          const modelKey = String(params?.modelKey ?? `${providerKey}::${modelId}`)
+          const modelKey = `${providerKey}::${modelId}`
           const row = {
             scopeType: 'global',
             scopeId: '',
@@ -575,7 +575,7 @@ describe('ChatAppComposer model picker integration', () => {
           return row
         }
         if (method === 'modelPrefs.removeFavorite') {
-          const modelKey = String(params?.modelKey ?? '')
+          const modelKey = `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`
           const before = favorites.length
           favorites = favorites.filter((item) => item.modelKey !== modelKey)
           return { removed: before - favorites.length }
@@ -783,7 +783,7 @@ describe('ChatAppComposer model picker integration', () => {
         if (method === 'modelPrefs.addFavorite') {
           const providerKey = String(params?.providerKey ?? 'openrouter')
           const modelId = String(params?.modelId ?? '')
-          const modelKey = String(params?.modelKey ?? `${providerKey}::${modelId}`)
+          const modelKey = `${providerKey}::${modelId}`
           const row = {
             scopeType: 'global',
             scopeId: '',
@@ -798,7 +798,7 @@ describe('ChatAppComposer model picker integration', () => {
           return row
         }
         if (method === 'modelPrefs.removeFavorite') {
-          const modelKey = String(params?.modelKey ?? '')
+          const modelKey = `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`
           const before = favorites.length
           favorites = favorites.filter((item) => item.modelKey !== modelKey)
           return { removed: before - favorites.length }
@@ -892,24 +892,24 @@ describe('ChatAppComposer model picker integration', () => {
   it('renders current-session recents strip and switches model with single click', async () => {
     const user = userEvent.setup()
     const selectedModel = ref<string>(DEFAULT_OPENROUTER_TEST_MODEL)
-    let recents: any[] = []
+    const recents: any[] = [{
+      scopeType: 'global',
+      scopeId: '',
+      providerKey: 'openrouter',
+      modelId: 'anthropic/claude-3',
+      modelKey: 'openrouter::anthropic/claude-3',
+      lastUsedAtMs: 1,
+      useCount: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    }]
+    const invoke = vi.fn(async (method: string) => {
+      if (method === 'modelPrefs.listFavorites') return []
+      if (method === 'modelPrefs.listRecents') return recents
+      return null
+    })
     ;(globalThis as any).dbBridge = {
-      invoke: vi.fn(async (method: string, params?: any) => {
-        if (method === 'modelPrefs.listFavorites') return []
-        if (method === 'modelPrefs.listRecents') return recents
-        if (method === 'modelPrefs.recordRecent') {
-          const modelId = String(params?.modelId ?? '')
-          const providerKey = String(params?.providerKey ?? 'openrouter')
-          const row = {
-            scopeType: 'global', scopeId: '', providerKey, modelId,
-            modelKey: String(params?.modelKey ?? `${providerKey}::${modelId}`),
-            lastUsedAtMs: 1, useCount: 1, createdAtMs: 1, updatedAtMs: 1,
-          }
-          recents = [row, ...recents.filter((item) => item.modelKey !== row.modelKey)]
-          return row
-        }
-        return null
-      }),
+      invoke,
     }
     const queryFn = vi.fn(async (_input: CatalogQueryInput): Promise<CatalogQueryResult> =>
       createResult([
@@ -988,6 +988,7 @@ describe('ChatAppComposer model picker integration', () => {
     })
     await user.click(await screen.findByTestId('current-model-pill'))
     await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
+    expect(invoke.mock.calls.some((call) => call[0] === 'modelPrefs.recordRecent')).toBe(false)
 
     await openRecentsStrip(user)
     await screen.findByTestId('recent-model-anthropic/claude-3')
@@ -1002,23 +1003,22 @@ describe('ChatAppComposer model picker integration', () => {
   it('limits current-session recents and opens picker from the model pill', async () => {
     const user = userEvent.setup()
     const modelIds = Array.from({ length: 8 }, (_value, index) => `vendor/model-${index + 1}`)
-    let recents: any[] = []
+    const recents = modelIds.map((modelId, index) => ({
+      scopeType: 'global',
+      scopeId: '',
+      providerKey: 'openrouter',
+      modelId,
+      modelKey: `openrouter::${modelId}`,
+      lastUsedAtMs: modelIds.length - index,
+      useCount: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    }))
 
     ;(globalThis as any).dbBridge = {
-      invoke: vi.fn(async (method: string, params?: any) => {
+      invoke: vi.fn(async (method: string) => {
         if (method === 'modelPrefs.listFavorites') return []
         if (method === 'modelPrefs.listRecents') return recents
-        if (method === 'modelPrefs.recordRecent') {
-          const modelId = String(params?.modelId ?? '')
-          const providerKey = String(params?.providerKey ?? 'openrouter')
-          const row = {
-            scopeType: 'global', scopeId: '', providerKey, modelId,
-            modelKey: String(params?.modelKey ?? `${providerKey}::${modelId}`),
-            lastUsedAtMs: recents.length + 1, useCount: 1, createdAtMs: 1, updatedAtMs: 1,
-          }
-          recents = [row, ...recents.filter((item) => item.modelKey !== row.modelKey)]
-          return row
-        }
         return null
       }),
     }
@@ -1098,14 +1098,10 @@ describe('ChatAppComposer model picker integration', () => {
       global: { plugins: [modelSelectionCommandPlugin(async () => undefined)] },
     })
 
-    for (const modelId of modelIds) {
-      await user.click(await screen.findByTestId('current-model-pill'))
-      await user.click(await screen.findByTestId(`model-picker-item-${modelId}`))
-    }
     await openRecentsStrip(user)
-    await screen.findByTestId('recent-model-vendor/model-8')
-    expect(screen.queryByTestId('recent-model-vendor/model-1')).toBeNull()
-    expect(screen.queryByTestId('recent-model-vendor/model-2')).toBeNull()
+    await screen.findByTestId('recent-model-vendor/model-1')
+    expect(screen.queryByTestId('recent-model-vendor/model-7')).toBeNull()
+    expect(screen.queryByTestId('recent-model-vendor/model-8')).toBeNull()
 
     await user.click(screen.getByTestId('current-model-pill'))
     await screen.findByTestId('model-picker-dialog')
@@ -1116,8 +1112,8 @@ describe('ChatAppComposer model picker integration', () => {
     const now = 1_700_000_000_000
     let favorites = [
       {
-        scopeType: 'global',
-        scopeId: '',
+        scopeType: 'conversation',
+        scopeId: 'convo-42',
         providerKey: 'openrouter',
         modelId: 'openai/gpt-4o',
         modelKey: 'openrouter::openai/gpt-4o',
@@ -1126,8 +1122,8 @@ describe('ChatAppComposer model picker integration', () => {
         updatedAtMs: now,
       },
       {
-        scopeType: 'global',
-        scopeId: '',
+        scopeType: 'conversation',
+        scopeId: 'convo-42',
         providerKey: 'openrouter',
         modelId: 'anthropic/claude-3',
         modelKey: 'openrouter::anthropic/claude-3',
@@ -1138,7 +1134,9 @@ describe('ChatAppComposer model picker integration', () => {
     ]
 
     const invoke = vi.fn(async (method: string, params?: any) => {
-      if (method === 'modelPrefs.listFavorites') return favorites
+      if (method === 'modelPrefs.listFavorites') {
+        return params?.scopeType === 'conversation' && params?.scopeId === 'convo-42' ? favorites : []
+      }
       if (method === 'modelPrefs.listRecents') return []
       if (method === 'modelPrefs.reorderFavorites') {
         const ordered = Array.isArray(params?.orderedModelKeys) ? params.orderedModelKeys.map((value: unknown) => String(value)) : []
@@ -1304,8 +1302,8 @@ describe('ChatAppComposer model picker integration', () => {
     const now = 1_700_000_000_000
     let favorites = [
       {
-        scopeType: 'global',
-        scopeId: '',
+        scopeType: 'conversation',
+        scopeId: 'convo-42',
         providerKey: 'openrouter',
         modelId: 'openai/gpt-4o',
         modelKey: 'openrouter::openai/gpt-4o',
@@ -1314,8 +1312,8 @@ describe('ChatAppComposer model picker integration', () => {
         updatedAtMs: now,
       },
       {
-        scopeType: 'global',
-        scopeId: '',
+        scopeType: 'conversation',
+        scopeId: 'convo-42',
         providerKey: 'openrouter',
         modelId: 'anthropic/claude-3',
         modelKey: 'openrouter::anthropic/claude-3',
@@ -1326,10 +1324,13 @@ describe('ChatAppComposer model picker integration', () => {
     ]
 
     const invoke = vi.fn(async (method: string, params?: any) => {
-      if (method === 'modelPrefs.listFavorites') return favorites
+      if (method === 'modelPrefs.listFavorites') {
+        return params?.scopeType === 'conversation' && params?.scopeId === 'convo-42' ? favorites : []
+      }
       if (method === 'modelPrefs.listRecents') return []
       if (method === 'modelPrefs.removeFavorite') {
-        favorites = favorites.filter((row) => row.modelKey !== String(params?.modelKey ?? ''))
+        const modelKey = `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`
+        favorites = favorites.filter((row) => row.modelKey !== modelKey)
         return { removed: 1 }
       }
       if (method === 'modelPrefs.reorderFavorites') {
@@ -1467,7 +1468,8 @@ describe('ChatAppComposer model picker integration', () => {
         expect.objectContaining({
           scopeType: 'conversation',
           scopeId: 'convo-42',
-          modelKey: 'openrouter::anthropic/claude-3',
+          providerKey: 'openrouter',
+          modelId: 'anthropic/claude-3',
         }),
       )
     })
@@ -1491,7 +1493,7 @@ describe('ChatAppComposer model picker integration', () => {
           scopeId: String(params?.scopeId ?? ''),
           providerKey: String(params?.providerKey ?? 'openrouter'),
           modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
+          modelKey: `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`,
           sortRank: 0,
           createdAtMs: 1_700_000_000_000,
           updatedAtMs: 1_700_000_000_000,
@@ -1566,8 +1568,8 @@ describe('ChatAppComposer model picker integration', () => {
         expect.objectContaining({
           scopeType: 'project',
           scopeId: 'project-77',
+          providerKey: 'openrouter',
           modelId: 'openai/gpt-4o',
-          modelKey: 'openrouter::openai/gpt-4o',
         }),
       )
     })

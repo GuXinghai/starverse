@@ -1,4 +1,8 @@
 import { ipcRenderer, contextBridge } from 'electron'
+import type {
+  LocalEndpointExecutionProviderId,
+  LocalEndpointProtocolV2,
+} from '../src/shared/provider/localProviderRouteDescriptor'
 
 const epoch2SmokeFixtureAuthorityEnabled = process.env.SV_EPOCH2_SMOKE_FIXTURE_AUTHORITY === '1' &&
   process.argv.some((argument) => argument.startsWith('--user-data-dir='))
@@ -260,8 +264,8 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
   }),
   localProfiles: Object.freeze({
     list: () => ipcRenderer.invoke('generation-v2:local-profile:list'),
-    create: (payload: Readonly<{ providerId: 'lmstudio' | 'ollama' | 'generic_local';
-      protocolContractId: string; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => ipcRenderer.invoke('generation-v2:local-profile:create', payload),
+    create: (payload: Readonly<{ providerId: LocalEndpointExecutionProviderId;
+      protocolContractId: LocalEndpointProtocolV2; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => ipcRenderer.invoke('generation-v2:local-profile:create', payload),
     delete: (endpointProfileId: string) => ipcRenderer.invoke('generation-v2:local-profile:delete', { endpointProfileId }),
   }),
   lmStudio: Object.freeze({ openResponses: createGenerationV2TextBridge({

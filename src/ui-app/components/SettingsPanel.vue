@@ -64,6 +64,7 @@ import {
   type ProviderFailureV2,
 } from '@/shared/provider/providerFailureV2'
 import { catalogRuntimeStoreV2ForApp } from '@/next/modelCatalog/catalogRuntimeStoreV2'
+import { ProviderCatalogAuthorityRegistryV2 } from '@/next/modelCatalog/providerCatalogAuthorityRegistryV2'
 import type { CatalogQueryItem } from '@/next/modelCatalog/catalogQueryService'
 
 const props = defineProps<{
@@ -898,7 +899,7 @@ function isCredentialStatus(value: unknown): value is CredentialStatusWithAvaila
 
 function credentialAvailabilityIssue(
   status: CredentialStatusWithAvailability,
-  providerKey: ProviderCatalogKnownProviderKey | 'anthropic',
+  providerKey: ProviderCatalogKnownProviderKey,
 ): CredentialIssue | null {
   if (status.apiKeyConfigured !== true || status.credentialAvailability !== 'unavailable') return null
   const code = status.credentialDiagnosticCode || 'OS_CREDENTIAL_DECRYPT_FAILED'
@@ -906,7 +907,7 @@ function credentialAvailabilityIssue(
     ? t('settings.credentials.systemCredentialRecordInvalid')
     : t('settings.credentials.systemCredentialDecryptUnavailable')
   return credentialIssueFromUnknown({
-    providerKey: providerKey as ProviderCatalogKnownProviderKey,
+    providerKey,
     operation: 'status',
     fallbackMessage,
     result: { code, message: fallbackMessage },
@@ -925,10 +926,12 @@ function credentialIssueFromUnknown(input: Readonly<{
     (input.operation === 'status' ? 'PROVIDER_CREDENTIAL_STATUS_FAILED' :
       input.operation === 'update' ? 'PROVIDER_CREDENTIAL_UPDATE_FAILED' : 'PROVIDER_CREDENTIAL_CLEAR_FAILED')
   const source = input.error ?? new Error(input.result?.message || diagnosticCode)
+  const credentialKey = ProviderCatalogAuthorityRegistryV2.get(input.providerKey)?.credentialKey
+  if (!credentialKey) throw new Error('PROVIDER_CREDENTIAL_KEY_MAPPING_MISSING')
   const failure = resultFailure ?? providerFailureFromUnknownV2(source, {
     origin: 'ipc_bridge',
     phase: 'terminal_persistence',
-    providerId: input.providerKey,
+    provider: { namespace: 'credential_slot', id: credentialKey },
     contractId: `credential-settings:${input.providerKey}`,
     operationId: `credential:${input.operation}:${input.providerKey}`,
     requestSequence: 1,
@@ -998,7 +1001,7 @@ function applyAnthropicCredentialStatus(status: AnthropicCredentialStatus) {
   anthropicCredentialBackend.value = status.backend
   anthropicSessionOverridesPersistent.value = status.sessionOverridesPersistent === true
   anthropicCredentialWarnings.value = Array.isArray(status.warnings) ? status.warnings : []
-  anthropicCredentialIssue.value = credentialAvailabilityIssue(status, 'anthropic')
+  anthropicCredentialIssue.value = credentialAvailabilityIssue(status, 'anthropic_messages')
 }
 
 function markAnthropicCredentialUnknown(issue: CredentialIssue) {
@@ -1183,7 +1186,7 @@ async function loadCatalogProviderStatus(providerKey: ProviderCatalogKnownProvid
       if (page.authorityReadSucceeded === false || page.status === 'failed') {
         const failure = page.providerFailure ?? providerFailureFromUnknownV2(
           new Error(page.errorMessage ?? page.errorCode ?? 'MODEL_CATALOG_AUTHORITY_READ_FAILED'), {
-            origin: 'starverse_internal', phase: 'response_body', providerId: providerKey,
+            origin: 'starverse_internal', phase: 'response_body', provider: { namespace: 'catalog_source', id: providerKey },
             contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`, requestSequence: 1,
             starverseDiagnosticCode: 'MODEL_CATALOG_SETTINGS_HYDRATION_FAILED',
           })
@@ -1202,7 +1205,7 @@ async function loadCatalogProviderStatus(providerKey: ProviderCatalogKnownProvid
       stale: first?.status === 'not_synced', failure: first?.providerFailure ?? null })
   } catch (cause) {
     catalogRuntimeStore.acceptFailure({ token, failure: providerFailureFromUnknownV2(cause, {
-      origin: 'starverse_internal', phase: 'response_body', providerId: providerKey,
+      origin: 'starverse_internal', phase: 'response_body', provider: { namespace: 'catalog_source', id: providerKey },
       contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`, requestSequence: 1,
       starverseDiagnosticCode: 'MODEL_CATALOG_SETTINGS_HYDRATION_FAILED',
     }) })
@@ -1726,7 +1729,7 @@ async function refreshCatalogProvider(providerKey: ProviderCatalogKnownProviderK
       const failure = result.providerFailure && typeof result.providerFailure === 'object'
         ? result.providerFailure as ProviderFailureV2
         : providerFailureFromUnknownV2(new Error(String(result.message ?? result.code ?? 'MODEL_CATALOG_SYNC_FAILED')), {
-            origin: 'starverse_internal', phase: 'response_body', providerId: providerKey,
+            origin: 'starverse_internal', phase: 'response_body', provider: { namespace: 'catalog_source', id: providerKey },
             contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`, requestSequence: 1,
             starverseDiagnosticCode: 'MODEL_CATALOG_SYNC_FAILED',
           })
@@ -1752,7 +1755,7 @@ async function refreshCatalogProvider(providerKey: ProviderCatalogKnownProviderK
     await loadCatalogProviderStatus(providerKey)
   } catch (cause) {
     const failure = providerFailureFromUnknownV2(cause, { origin: 'starverse_internal', phase: 'response_body',
-      providerId: providerKey, contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`,
+      provider: { namespace: 'catalog_source', id: providerKey }, contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`,
       requestSequence: 1, starverseDiagnosticCode: 'MODEL_CATALOG_SYNC_FAILED' })
     catalogRuntimeStore.acceptFailure({ token, failure })
     errorFailure.value = failure
@@ -1775,7 +1778,7 @@ async function applyPendingCatalogProvider(providerKey: ProviderCatalogKnownProv
       const failure = result.providerFailure && typeof result.providerFailure === 'object'
         ? result.providerFailure as ProviderFailureV2
         : providerFailureFromUnknownV2(new Error(String(result.message ?? result.code ?? 'MODEL_CATALOG_APPLY_FAILED')), {
-            origin: 'starverse_internal', phase: 'response_body', providerId: providerKey,
+            origin: 'starverse_internal', phase: 'response_body', provider: { namespace: 'catalog_source', id: providerKey },
             contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`, requestSequence: 1,
             starverseDiagnosticCode: 'MODEL_CATALOG_APPLY_FAILED',
           })
@@ -1798,7 +1801,7 @@ async function applyPendingCatalogProvider(providerKey: ProviderCatalogKnownProv
     await loadCatalogProviderStatus(providerKey)
   } catch (cause) {
     const failure = providerFailureFromUnknownV2(cause, { origin: 'starverse_internal', phase: 'response_body',
-      providerId: providerKey, contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`,
+      provider: { namespace: 'catalog_source', id: providerKey }, contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`,
       requestSequence: 1, starverseDiagnosticCode: 'MODEL_CATALOG_APPLY_FAILED' })
     catalogRuntimeStore.acceptFailure({ token, failure })
     errorFailure.value = failure
@@ -1821,7 +1824,7 @@ async function discardPendingCatalogProvider(providerKey: ProviderCatalogKnownPr
       const failure = result.providerFailure && typeof result.providerFailure === 'object'
         ? result.providerFailure as ProviderFailureV2
         : providerFailureFromUnknownV2(new Error(String(result.message ?? result.code ?? 'MODEL_CATALOG_DISCARD_FAILED')), {
-            origin: 'starverse_internal', phase: 'response_body', providerId: providerKey,
+            origin: 'starverse_internal', phase: 'response_body', provider: { namespace: 'catalog_source', id: providerKey },
             contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`, requestSequence: 1,
             starverseDiagnosticCode: 'MODEL_CATALOG_DISCARD_FAILED',
           })
@@ -1844,7 +1847,7 @@ async function discardPendingCatalogProvider(providerKey: ProviderCatalogKnownPr
     await loadCatalogProviderStatus(providerKey)
   } catch (cause) {
     const failure = providerFailureFromUnknownV2(cause, { origin: 'starverse_internal', phase: 'response_body',
-      providerId: providerKey, contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`,
+      provider: { namespace: 'catalog_source', id: providerKey }, contractId: 'model-catalog-v2', operationId: `catalog-settings:${providerKey}`,
       requestSequence: 1, starverseDiagnosticCode: 'MODEL_CATALOG_DISCARD_FAILED' })
     catalogRuntimeStore.acceptFailure({ token, failure })
     errorFailure.value = failure

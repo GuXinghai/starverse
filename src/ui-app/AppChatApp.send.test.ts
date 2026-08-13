@@ -286,6 +286,7 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     }
 
     const g = bridge()
+    g.modelPreferences.recordRecent = vi.fn(async () => null)
     const openRouterItems = [
       {
         providerKey: 'openrouter',
@@ -492,6 +493,11 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     expect(layer?.image).toEqual({ mode: 'disabled' })
     expect(layer?.web).toEqual({ mode: 'disabled' })
     expect(layer?.tools).toEqual({ mode: 'disabled' })
+    expect(bridge().modelPreferences.recordRecent).toHaveBeenCalledTimes(1)
+    expect(bridge().modelPreferences.recordRecent).toHaveBeenCalledWith(expect.objectContaining({
+      providerKey: 'openrouter',
+      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+    }))
   })
 
   it('uses selected model for next send and persists the conversation route preference', async () => {
@@ -509,6 +515,7 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     await screen.findByText('hi')
 
     await vi.runAllTimersAsync()
+    expect(bridge().modelPreferences.recordRecent).toHaveBeenCalledTimes(1)
     await user.click(await screen.findByTestId('current-model-pill'))
     const imageCapableModelItems = await screen.findAllByTestId(`model-picker-item-${imageCapableModel}`)
     await user.click(imageCapableModelItems[0]!)
@@ -521,6 +528,7 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
         selection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: imageCapableModel },
       })
     })
+    expect(bridge().modelPreferences.recordRecent).toHaveBeenCalledTimes(1)
 
     const box = draftBox()
     await user.click(box)
@@ -532,6 +540,12 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
       const lastCall = commandInitialCalls.filter((call) => call.path === 'openRouter.chat').pop()
       expect(lastCall?.command).toMatchObject({ modelId: imageCapableModel })
     })
+    await vi.runAllTimersAsync()
+    expect(bridge().modelPreferences.recordRecent).toHaveBeenCalledTimes(2)
+    expect(bridge().modelPreferences.recordRecent).toHaveBeenLastCalledWith(expect.objectContaining({
+      providerKey: 'openrouter',
+      modelId: imageCapableModel,
+    }))
   })
 
 })

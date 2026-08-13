@@ -215,7 +215,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
       return { ok: false, failure: providerFailureFromUnknownV2(error, {
         origin: 'secure_storage',
         phase: 'request_open',
-        providerId: config.sourceProviderKey,
+        provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
         contractId: config.operationContractId,
         operationId: `catalog-credential-status:${config.sourceProviderKey}`,
         requestSequence: 1,
@@ -244,7 +244,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
     const providerFailure = providerFailureFromUnknownV2(error, {
       origin: 'database',
       phase: 'terminal_persistence',
-      providerId: config.sourceProviderKey,
+      provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
       contractId: config.operationContractId,
       operationId,
       requestSequence: 1,
@@ -279,7 +279,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
           context: {
             origin: 'database',
             phase: 'response_body',
-            providerId: config.sourceProviderKey,
+            provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
             contractId: config.operationContractId,
             operationId: `catalog-read-snapshot:${request.snapshotDigest}`,
             requestSequence: 1,
@@ -297,7 +297,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
         const providerFailure = providerFailureFromUnknownV2(error, {
           origin: 'database',
           phase: 'response_body',
-          providerId: config.sourceProviderKey,
+          provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
           contractId: config.operationContractId,
           operationId: 'catalog-read-snapshot',
           requestSequence: 1,
@@ -330,7 +330,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
       retentionMs: request.retentionMs ?? 'never',
       timeoutMs: request.timeoutMs,
       failureContext: {
-        origin: 'provider_runtime', phase: 'response_body', providerId: config.sourceProviderKey,
+        origin: 'provider_runtime', phase: 'response_body', provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
         contractId: config.operationContractId, operationId, requestSequence: 1,
       },
       execute: async (signal) => {
@@ -339,7 +339,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
         consume: (lease) => config.list(lease.credential, signal, request.category) }) as ProviderResult
         if (providerResult.ok !== true) {
           const providerFailure = providerResult.providerFailure ?? providerFailureFromUnknownV2(providerResult, {
-          origin: 'provider_runtime', phase: 'response_body', providerId: config.sourceProviderKey,
+          origin: 'provider_runtime', phase: 'response_body', provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
           contractId: config.operationContractId, operationId, requestSequence: 1,
         })
           return Object.freeze({ ok: false as const, providerFailure })
@@ -348,7 +348,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
           : Array.isArray(providerResult.models) ? providerResult.models : null
         if (!items || items.some((item) => !item || typeof item !== 'object' || Array.isArray(item))) {
           return Object.freeze({ ok: false as const, providerFailure: createProviderFailureV2({
-          context: { origin: 'response_decoder', phase: 'stream_decode', providerId: config.sourceProviderKey,
+          context: { origin: 'response_decoder', phase: 'stream_decode', provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
             contractId: config.operationContractId, operationId, requestSequence: 1 },
           body: { diagnostic: 'catalog response shape invalid' },
           }) })

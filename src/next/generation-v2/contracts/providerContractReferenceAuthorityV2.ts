@@ -4,6 +4,7 @@ import {
   type GenerationV2Digest,
   type GenerationV2Identity,
 } from '../domain/identityV2'
+import type { GenerationExecutionProviderIdentityV2 } from '../domain/generationExecutionProviderId'
 import {
   decodeProviderBindingRecordV2,
   type GenerationOperationV2,
@@ -20,7 +21,7 @@ export type VerifiedProviderContractReferenceV2 = Readonly<{
   trust: 'verified_provider_contract_reference'
   usage: 'snapshot_contract_provenance_only'
   executionAuthority: 'none'
-  providerId: GenerationV2Identity<'provider_id'>
+  providerId: GenerationExecutionProviderIdentityV2
   protocolContractId: GenerationV2Identity<'protocol_contract_id'>
   contractRevision: GenerationV2Identity<'contract_revision'>
   contractDefinitionDigest: GenerationV2Digest<'contract_digest'>

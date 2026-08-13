@@ -64,7 +64,7 @@ function credentialStoreFailure(provider: ProviderSettings, operation: string, e
   const providerFailure = providerFailureFromUnknownV2(error, {
     origin: 'secure_storage',
     phase: 'terminal_persistence',
-    providerId: provider.providerId,
+    provider: { namespace: 'credential_slot', id: provider.providerKey },
     contractId: `credential-settings:${provider.profileId}`,
     operationId: `credential:${operation}:${provider.providerKey}`,
     requestSequence: 1,

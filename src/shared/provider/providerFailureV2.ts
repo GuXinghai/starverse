@@ -1,4 +1,13 @@
 import { sha256Hex } from '../crypto/sha256Hex'
+import {
+  decodeGenerationExecutionProviderId,
+  type GenerationExecutionProviderId,
+} from './generationExecutionProviderId'
+import type { ProviderCatalogKnownProviderKey } from '../modelCatalog/providerCatalogContracts'
+import {
+  decodeProviderCredentialKey,
+  type ProviderCredentialKey,
+} from './providerCredentialKey'
 
 export type ProviderFailureOriginV2 =
   | 'proxy_controller'
@@ -44,10 +53,15 @@ export type ProviderFailureTruncationV2 = Readonly<{
   sha256: string
 }>
 
+export type ProviderFailureProviderRefV2 =
+  | Readonly<{ namespace: 'generation_execution'; id: GenerationExecutionProviderId }>
+  | Readonly<{ namespace: 'catalog_source'; id: ProviderCatalogKnownProviderKey }>
+  | Readonly<{ namespace: 'credential_slot'; id: ProviderCredentialKey }>
+
 export type ProviderFailureV2 = Readonly<{
   origin: ProviderFailureOriginV2
   phase: ProviderFailurePhaseV2
-  providerId: string
+  provider: ProviderFailureProviderRefV2
   contractId: string
   operationId: string
   requestSequence: number
@@ -78,12 +92,24 @@ export type ProviderFailureV2 = Readonly<{
 export type ProviderFailureV2Context = Readonly<{
   origin: ProviderFailureOriginV2
   phase: ProviderFailurePhaseV2
-  providerId: string
+  provider: ProviderFailureProviderRefV2
   contractId: string
   operationId: string
   requestSequence: number
   starverseDiagnosticCode?: string
 }>
+
+const PROVIDER_FAILURE_ORIGINS_V2 = Object.freeze([
+  'proxy_controller', 'network_transport', 'http_response', 'response_stream', 'response_decoder',
+  'provider_runtime', 'secure_storage', 'ipc_bridge', 'database', 'local_projection', 'starverse_internal',
+] as const satisfies readonly ProviderFailureOriginV2[])
+const PROVIDER_FAILURE_PHASES_V2 = Object.freeze([
+  'proxy_preflight', 'request_open', 'request_upload', 'response_headers', 'response_body',
+  'stream_read', 'stream_decode', 'terminal_persistence',
+] as const satisfies readonly ProviderFailurePhaseV2[])
+const PROVIDER_FAILURE_REDACTION_REASONS_V2 = Object.freeze([
+  'credential', 'authorization_header', 'cookie', 'local_path', 'proxy_credential', 'url_credential', 'size_limit',
+] as const satisfies readonly ProviderFailureRedactionReasonV2[])
 
 export class ProviderFailureErrorV2 extends Error {
   constructor(readonly failure: ProviderFailureV2) {
@@ -108,6 +134,135 @@ function safeString(value: unknown): string | null {
 
 function boundedSequence(value: unknown): number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 1 ? value : 1
+}
+
+function closedRecord(value: unknown, keys: readonly string[]): Record<string, unknown> {
+  const result = record(value)
+  if (!result || Object.keys(result).length !== keys.length ||
+      keys.some((key) => !Object.prototype.hasOwnProperty.call(result, key)) ||
+      Object.keys(result).some((key) => !keys.includes(key))) throw new Error('PROVIDER_FAILURE_INVALID')
+  return result
+}
+
+function requiredFactString(value: unknown, maxBytes = PROVIDER_FAILURE_SCALAR_LIMIT_BYTES_V2): string {
+  if (typeof value !== 'string' || value.length === 0 || value.trim() !== value ||
+      /[\u0000-\u001f\u007f]/u.test(value) || byteLength(value) > maxBytes) throw new Error('PROVIDER_FAILURE_INVALID')
+  return value
+}
+
+function nullableString(value: unknown): string | null {
+  if (value === null) return null
+  if (typeof value !== 'string') throw new Error('PROVIDER_FAILURE_INVALID')
+  return value
+}
+
+function finiteNullableNumber(value: unknown): number | null {
+  if (value === null) return null
+  if (typeof value !== 'number' || !Number.isFinite(value)) throw new Error('PROVIDER_FAILURE_INVALID')
+  return value
+}
+
+function deepFreezeFact<T>(value: T): T {
+  if (value && typeof value === 'object' && !Object.isFrozen(value)) {
+    for (const child of Object.values(value as Record<string, unknown>)) deepFreezeFact(child)
+    Object.freeze(value)
+  }
+  return value
+}
+
+function decodeCatalogProviderKey(value: unknown): ProviderCatalogKnownProviderKey {
+  if (value !== 'openrouter' && value !== 'google_ai_studio' && value !== 'anthropic_messages' &&
+      value !== 'openai_responses' && value !== 'deepseek') {
+    throw new Error('PROVIDER_FAILURE_PROVIDER_INVALID')
+  }
+  return value
+}
+
+function providerRef(value: ProviderFailureProviderRefV2): ProviderFailureProviderRefV2 {
+  if (value?.namespace === 'generation_execution') {
+    return Object.freeze({ namespace: value.namespace, id: decodeGenerationExecutionProviderId(value.id) })
+  }
+  if (value?.namespace === 'catalog_source') {
+    return Object.freeze({ namespace: value.namespace, id: decodeCatalogProviderKey(value.id) })
+  }
+  if (value?.namespace === 'credential_slot') {
+    return Object.freeze({ namespace: value.namespace, id: decodeProviderCredentialKey(value.id) })
+  }
+  throw new Error('PROVIDER_FAILURE_PROVIDER_INVALID')
+}
+
+function decodeProviderRef(value: unknown): ProviderFailureProviderRefV2 {
+  const input = closedRecord(value, ['namespace', 'id'])
+  return providerRef(input as ProviderFailureProviderRefV2)
+}
+
+export function decodeProviderFailureV2(value: unknown): ProviderFailureV2 {
+  const input = closedRecord(value, [
+    'origin', 'phase', 'provider', 'contractId', 'operationId', 'requestSequence', 'httpStatus', 'httpStatusText',
+    'providerError', 'rawFrameExcerpt', 'transportError', 'starverseDiagnosticCode', 'redactions', 'truncations',
+  ])
+  if (!PROVIDER_FAILURE_ORIGINS_V2.includes(input.origin as ProviderFailureOriginV2) ||
+      !PROVIDER_FAILURE_PHASES_V2.includes(input.phase as ProviderFailurePhaseV2) ||
+      !Number.isSafeInteger(input.requestSequence) || (input.requestSequence as number) < 1 ||
+      (input.httpStatus !== null && (!Number.isSafeInteger(input.httpStatus) || (input.httpStatus as number) < 100 || (input.httpStatus as number) > 599)) ||
+      !Array.isArray(input.redactions) || !Array.isArray(input.truncations)) throw new Error('PROVIDER_FAILURE_INVALID')
+
+  const providerError = input.providerError === null ? null : (() => {
+    const error = closedRecord(input.providerError, [
+      'code', 'type', 'status', 'message', 'param', 'requestId', 'retryAfterMs', 'rawJson', 'rawText',
+    ])
+    if (error.code !== null && typeof error.code !== 'string' && typeof error.code !== 'number' ||
+        typeof error.code === 'number' && !Number.isFinite(error.code)) throw new Error('PROVIDER_FAILURE_INVALID')
+    return {
+      code: error.code as string | number | null,
+      type: nullableString(error.type),
+      status: nullableString(error.status),
+      message: nullableString(error.message),
+      param: nullableString(error.param),
+      requestId: nullableString(error.requestId),
+      retryAfterMs: finiteNullableNumber(error.retryAfterMs),
+      rawJson: error.rawJson ?? null,
+      rawText: nullableString(error.rawText),
+    }
+  })()
+  const transportError = input.transportError === null ? null : (() => {
+    const transport = closedRecord(input.transportError, ['name', 'code', 'message'])
+    return { name: nullableString(transport.name), code: nullableString(transport.code), message: nullableString(transport.message) }
+  })()
+  const redactions = input.redactions.map((value) => {
+    const redaction = closedRecord(value, ['path', 'reason'])
+    if (!PROVIDER_FAILURE_REDACTION_REASONS_V2.includes(redaction.reason as ProviderFailureRedactionReasonV2)) {
+      throw new Error('PROVIDER_FAILURE_INVALID')
+    }
+    return { path: requiredFactString(redaction.path), reason: redaction.reason as ProviderFailureRedactionReasonV2 }
+  })
+  const truncations = input.truncations.map((value) => {
+    const truncation = closedRecord(value, ['path', 'originalByteLength', 'retainedByteLength', 'sha256'])
+    if (!Number.isSafeInteger(truncation.originalByteLength) || (truncation.originalByteLength as number) < 0 ||
+        !Number.isSafeInteger(truncation.retainedByteLength) || (truncation.retainedByteLength as number) < 0 ||
+        (truncation.retainedByteLength as number) > (truncation.originalByteLength as number) ||
+        typeof truncation.sha256 !== 'string' || !/^[0-9a-f]{64}$/u.test(truncation.sha256)) {
+      throw new Error('PROVIDER_FAILURE_INVALID')
+    }
+    return { path: requiredFactString(truncation.path), originalByteLength: truncation.originalByteLength as number,
+      retainedByteLength: truncation.retainedByteLength as number, sha256: truncation.sha256 }
+  })
+  return deepFreezeFact({
+    origin: input.origin as ProviderFailureOriginV2,
+    phase: input.phase as ProviderFailurePhaseV2,
+    provider: decodeProviderRef(input.provider),
+    contractId: requiredFactString(input.contractId),
+    operationId: requiredFactString(input.operationId),
+    requestSequence: input.requestSequence as number,
+    httpStatus: input.httpStatus as number | null,
+    httpStatusText: nullableString(input.httpStatusText),
+    providerError,
+    rawFrameExcerpt: nullableString(input.rawFrameExcerpt),
+    transportError,
+    starverseDiagnosticCode: requiredFactString(input.starverseDiagnosticCode),
+    redactions,
+    truncations,
+  })
 }
 
 function byteLength(value: string): number {
@@ -330,10 +485,10 @@ export function createProviderFailureV2(input: Readonly<{
   const frame = input.rawFrameExcerpt === undefined || input.rawFrameExcerpt === null
     ? null : boundedRaw(input.rawFrameExcerpt, 'rawFrameExcerpt', redactions, truncations)
   const rawFrameExcerpt = frame === null ? null : frame.text ?? (frame.json === null ? null : JSON.stringify(frame.json))
-  return Object.freeze({
+  return decodeProviderFailureV2(Object.freeze({
     origin: input.context.origin,
     phase: input.context.phase,
-    providerId: String(input.context.providerId),
+    provider: providerRef(input.context.provider),
     contractId: String(input.context.contractId),
     operationId: String(input.context.operationId),
     requestSequence: boundedSequence(input.context.requestSequence),
@@ -347,11 +502,22 @@ export function createProviderFailureV2(input: Readonly<{
     starverseDiagnosticCode: inferDiagnosticCode(input.context),
     redactions: Object.freeze(redactions),
     truncations: Object.freeze(truncations),
-  })
+  }))
 }
 
 export function providerFailureFromUnknownV2(error: unknown, context: ProviderFailureV2Context): ProviderFailureV2 {
-  if (error instanceof ProviderFailureErrorV2) return error.failure
+  if (error instanceof ProviderFailureErrorV2 &&
+      error.failure.provider.namespace === context.provider.namespace &&
+      error.failure.provider.id === context.provider.id &&
+      error.failure.contractId === context.contractId) {
+    if (error.failure.operationId === context.operationId &&
+        error.failure.requestSequence === context.requestSequence) return error.failure
+    return decodeProviderFailureV2({
+      ...error.failure,
+      operationId: context.operationId,
+      requestSequence: context.requestSequence,
+    })
+  }
   const value = record(error)
   return createProviderFailureV2({
     context,

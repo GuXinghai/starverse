@@ -90,6 +90,7 @@ function createBrokenSchemaRoot(): string {
     'coreConversationSchema.sql',
     'generationConfigSchema.sql',
     'attachmentAssetSchema.sql',
+    'fileTypeDetectionSchema.sql',
     'openRouterImagesSchema.sql',
     'deepSeekStableModelEvidenceSchema.sql',
   ]) fs.copyFileSync(path.join(repositoryRoot, 'infra', 'db', 'v2', file), path.join(target, file))
@@ -111,6 +112,7 @@ function createDivergentSchemaRoot(): string {
     'generationConfigSchema.sql',
     'toolRegistrySchema.sql',
     'attachmentAssetSchema.sql',
+    'fileTypeDetectionSchema.sql',
     'openRouterImagesSchema.sql',
     'localEndpointProfileSchema.sql',
     'reasoningProjectionSchema.sql',

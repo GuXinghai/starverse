@@ -37,7 +37,7 @@ describe('Generation V2 branch projection', () => {
 
   it('projects the persisted ProviderFailureV2 facts without replacing the Provider message', () => {
     const failure = createProviderFailureV2({
-      context: { origin: 'http_response', phase: 'response_headers', providerId: 'google_ai_studio',
+      context: { origin: 'http_response', phase: 'response_headers', provider: { namespace: 'generation_execution', id: 'google_ai_studio' },
         contractId: 'gemini-interactions-v1beta', operationId: 'operation:2', requestSequence: 1,
         starverseDiagnosticCode: 'PROVIDER_RESPONSE_HTTP_ERROR' },
       httpStatus: 400, httpStatusText: 'Bad Request',

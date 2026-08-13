@@ -1,7 +1,7 @@
 import { z } from 'zod'
 import {
-  compatibleConfigurationSelectionSchema,
-  type CompatibleConfigurationSelection,
+  compatibleRouteIntentSchema,
+  type CompatibleRouteIntent,
 } from './openai-chat-compatible/ui'
 import { RUNTIME_PROVIDER_IDS, type RuntimeProviderId } from './runtimeProviderId'
 
@@ -14,11 +14,7 @@ export const providerModelRouteSelectionSchema = z.object({
   modelId: z.string().trim().min(1).max(512),
 }).strict()
 
-export const compatibleRouteSelectionSchema = z.object({
-  schemaVersion: z.literal(1),
-  kind: z.literal('openai_chat_compatible'),
-  selection: compatibleConfigurationSelectionSchema,
-}).strict()
+export const compatibleRouteSelectionSchema = compatibleRouteIntentSchema
 
 export const conversationRouteSelectionSchema = z.discriminatedUnion('kind', [
   providerModelRouteSelectionSchema,
@@ -32,11 +28,7 @@ export type ProviderModelRouteSelection = Readonly<{
   modelId: string
 }>
 
-export type CompatibleRouteSelection = Readonly<{
-  schemaVersion: 1
-  kind: 'openai_chat_compatible'
-  selection: CompatibleConfigurationSelection
-}>
+export type CompatibleRouteSelection = CompatibleRouteIntent
 
 export type ConversationRouteSelection = ProviderModelRouteSelection | CompatibleRouteSelection
 

@@ -170,8 +170,6 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
           const raw = observation.rawProviderRecord
           const revision = `catalog-v2:${active.snapshotDigest}:${active.status.authorityRevision}`
           const evidenceDigest = GenerationV2Digest.create('evidence_digest', active.snapshotDigest)
-          const providerIdValue = request.providerKey === 'anthropic_messages' ? 'anthropic' :
-            request.providerKey === 'google_ai_studio' ? 'gemini' : request.providerKey
           const anthropicCapabilities = request.providerKey === 'anthropic_messages' ? object(raw.capabilities) : null
           const anthropicThinking = object(anthropicCapabilities?.thinking)
           const anthropicThinkingTypes = object(anthropicThinking?.types)
@@ -216,7 +214,7 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
             observationDigest: GenerationV2Digest.create('evidence_digest', digest(observation)), resolutions,
             resolutionDigest: GenerationV2Digest.create('evidence_digest', resolutionHash),
             contractRevision: registry.reviewedContract.contractRevision,
-            providerId: GenerationV2Identity.create('provider_id', providerIdValue),
+            providerId: GenerationV2Identity.create('provider_id', registry.executionProviderId),
             credentialScopeId: request.providerKey === 'openrouter' ? request.expectedCredentialScopeId :
               GenerationV2Identity.create('credential_scope_id', request.expectedCredentialScopeId),
             credentialRevision: request.expectedCredentialRevision,

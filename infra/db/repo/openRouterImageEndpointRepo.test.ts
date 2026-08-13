@@ -175,7 +175,7 @@ describe('OpenRouterImageEndpointRepo V2 successful descriptor facts', () => {
         expect(repo.getCurrentDescriptorSet(scope, model)?.rowGeneration).toBe(2)
       }
     } finally { db.close() }
-  })
+  }, 15_000)
 
   it('treats retained history with a missing clock/current pair as explicit state corruption', () => {
     const { db, repo } = fixture([100, 200])

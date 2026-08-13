@@ -3,7 +3,6 @@ import { decodeGenerationCommandAttachmentsV2, projectGenerationCommandAttachmen
 import { ConversationGraphV2Identity, type ConversationGraphV2Identity as GraphId } from '../../domain/conversationGraphV2'
 import { GenerationV2Identity, type GenerationV2Identity as Id } from '../../domain/identityV2'
 import type { AttachmentIntentV2 } from '../../domain/generationIntentV2'
-import { compatibleBoundedJsonValueSchema } from '../../../../shared/provider/openai-chat-compatible/schemas'
 
 const MAX_COMMAND_BYTES = 21 * 1024 * 1024
 const MAX_BODY_BYTES = 20 * 1024 * 1024
@@ -29,14 +28,12 @@ export type OpenAIChatCompatibleInitialCommandV2 = InitialBase<'openai_chat_comp
   expectedHeadMessageId: GraphId<'message_id'> | null
   userBody: string
   commandAttachments: readonly AttachmentIntentV2[]
-  extraBody: unknown | null
 }>
 export type OpenAIChatCompatibleRegenerateCommandV2 = MutationBase<'openai_chat_compatible_regenerate'> & Readonly<{
   questionId: GraphId<'question_id'>
   sourceAnswerId: GraphId<'answer_root_id'>
   expectedHeadMessageId: GraphId<'message_id'>
   commandAttachments: readonly AttachmentIntentV2[]
-  extraBody: unknown | null
 }>
 export type OpenAIChatCompatibleEditResendCommandV2 = MutationBase<'openai_chat_compatible_edit_resend'> & Readonly<{
   sourceQuestionId: GraphId<'question_id'>
@@ -44,7 +41,6 @@ export type OpenAIChatCompatibleEditResendCommandV2 = MutationBase<'openai_chat_
   expectedHeadMessageId: GraphId<'message_id'>
   userBody: string
   commandAttachments: readonly AttachmentIntentV2[]
-  extraBody: unknown | null
 }>
 export type OpenAIChatCompatibleRetryCommandV2 = Readonly<{
   schemaVersion: 1
@@ -86,12 +82,6 @@ function body(value: unknown): string {
   if (typeof value !== 'string' || value.trim().length === 0 || new TextEncoder().encode(value).byteLength > MAX_BODY_BYTES) throw new Error('invalid')
   return value
 }
-function extraBody(value: unknown): unknown | null {
-  if (value === null) return null
-  const parsed = compatibleBoundedJsonValueSchema.parse(value)
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) throw new Error('invalid')
-  return parsed
-}
 function fingerprint(projection: object): Readonly<{ canonicalJson: string; requestFingerprint: string }> {
   const canonicalJson = stableSerializeProviderRequestBoundedV2(projection, MAX_COMMAND_BYTES)
   return Object.freeze({ canonicalJson, requestFingerprint: sha256PreparedBytesV2(new TextEncoder().encode(canonicalJson)) })
@@ -125,54 +115,51 @@ function fail(kind: 'initial' | 'regenerate' | 'edit_resend' | 'retry'): never {
 
 export function decodeOpenAIChatCompatibleInitialCommandV2(value: unknown): OpenAIChatCompatibleInitialCommandV2 {
   try {
-    const raw = closed(value, ['operationId', 'branchId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'userBody', 'commandAttachments', 'extraBody'])
+    const raw = closed(value, ['operationId', 'branchId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'userBody', 'commandAttachments'])
     const ids = initialBase(raw); const userBody = body(raw.userBody)
     const expectedHeadMessageId = raw.expectedHeadMessageId === null ? null : ConversationGraphV2Identity.create('message_id', token(raw.expectedHeadMessageId))
     const commandAttachments = decodeGenerationCommandAttachmentsV2(raw.commandAttachments)
-    const requestExtraBody = extraBody(raw.extraBody)
     const projection = { schemaVersion: 1 as const, kind: 'openai_chat_compatible_initial' as const,
       operationId: ids.operationId.value, branchId: ids.branchId.value, expectedHeadMessageId: expectedHeadMessageId?.value ?? null,
       providerInstanceId: ids.providerInstanceId.value, modelId: ids.modelId.value, userBody,
-      commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments), extraBody: requestExtraBody }
-    return Object.freeze({ ...projection, ...ids, expectedHeadMessageId, userBody, commandAttachments, extraBody: requestExtraBody, ...fingerprint(projection) })
+      commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments) }
+    return Object.freeze({ ...projection, ...ids, expectedHeadMessageId, userBody, commandAttachments, ...fingerprint(projection) })
   } catch { return fail('initial') }
 }
 
 export function decodeOpenAIChatCompatibleRegenerateCommandV2(value: unknown): OpenAIChatCompatibleRegenerateCommandV2 {
   try {
-    const raw = closed(value, ['operationId', 'clientActionId', 'sourceBranchId', 'questionId', 'sourceAnswerId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'commandAttachments', 'extraBody'])
+    const raw = closed(value, ['operationId', 'clientActionId', 'sourceBranchId', 'questionId', 'sourceAnswerId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'commandAttachments'])
     const ids = mutationBase(raw); const questionId = ConversationGraphV2Identity.create('question_id', token(raw.questionId))
     const sourceAnswerId = ConversationGraphV2Identity.create('answer_root_id', token(raw.sourceAnswerId))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', token(raw.expectedHeadMessageId))
     const commandAttachments = decodeGenerationCommandAttachmentsV2(raw.commandAttachments)
-    const requestExtraBody = extraBody(raw.extraBody)
     const projection = { schemaVersion: 1 as const, kind: 'openai_chat_compatible_regenerate' as const,
       operationId: ids.operationId.value, clientActionId: ids.clientActionId, sourceBranchId: ids.sourceBranchId.value,
       questionId: questionId.value, sourceAnswerId: sourceAnswerId.value,
       expectedHeadMessageId: expectedHeadMessageId.value, providerInstanceId: ids.providerInstanceId.value, modelId: ids.modelId.value,
-      commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments), extraBody: requestExtraBody }
+      commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments) }
     return Object.freeze({ ...projection, ...ids, questionId, sourceAnswerId, expectedHeadMessageId,
-      commandAttachments, extraBody: requestExtraBody, ...fingerprint(projection) })
+      commandAttachments, ...fingerprint(projection) })
   } catch { return fail('regenerate') }
 }
 
 export function decodeOpenAIChatCompatibleEditResendCommandV2(value: unknown): OpenAIChatCompatibleEditResendCommandV2 {
   try {
-    const raw = closed(value, ['operationId', 'clientActionId', 'sourceBranchId', 'sourceQuestionId', 'sourceAnswerRootId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'userBody', 'commandAttachments', 'extraBody'])
+    const raw = closed(value, ['operationId', 'clientActionId', 'sourceBranchId', 'sourceQuestionId', 'sourceAnswerRootId', 'expectedHeadMessageId', 'providerInstanceId', 'modelId', 'userBody', 'commandAttachments'])
     const ids = mutationBase(raw); const userBody = body(raw.userBody)
     const sourceQuestionId = ConversationGraphV2Identity.create('question_id', token(raw.sourceQuestionId))
     const sourceAnswerRootId = ConversationGraphV2Identity.create('answer_root_id', token(raw.sourceAnswerRootId))
     const expectedHeadMessageId = ConversationGraphV2Identity.create('message_id', token(raw.expectedHeadMessageId))
     const commandAttachments = decodeGenerationCommandAttachmentsV2(raw.commandAttachments)
-    const requestExtraBody = extraBody(raw.extraBody)
     const projection = { schemaVersion: 1 as const, kind: 'openai_chat_compatible_edit_resend' as const,
       operationId: ids.operationId.value, clientActionId: ids.clientActionId, sourceBranchId: ids.sourceBranchId.value,
       sourceQuestionId: sourceQuestionId.value,
       sourceAnswerRootId: sourceAnswerRootId.value, expectedHeadMessageId: expectedHeadMessageId.value,
       providerInstanceId: ids.providerInstanceId.value, modelId: ids.modelId.value, userBody,
-      commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments), extraBody: requestExtraBody }
+      commandAttachments: projectGenerationCommandAttachmentsV2(commandAttachments) }
     return Object.freeze({ ...projection, ...ids, sourceQuestionId, sourceAnswerRootId, expectedHeadMessageId,
-      userBody, commandAttachments, extraBody: requestExtraBody, ...fingerprint(projection) }) as OpenAIChatCompatibleEditResendCommandV2
+      userBody, commandAttachments, ...fingerprint(projection) }) as OpenAIChatCompatibleEditResendCommandV2
   } catch { return fail('edit_resend') }
 }
 

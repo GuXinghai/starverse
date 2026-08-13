@@ -415,7 +415,7 @@ describe('OpenRouterCatalogClient', () => {
       failure: {
         origin: 'http_response',
         phase: 'response_headers',
-        providerId: 'openrouter',
+        provider: { namespace: 'catalog_source', id: 'openrouter' },
         httpStatus: 429,
         providerError: {
           code: 429,
@@ -454,7 +454,7 @@ describe('OpenRouterCatalogClient', () => {
       failure: {
         origin: 'network_transport',
         phase: 'request_open',
-        providerId: 'openrouter',
+        provider: { namespace: 'catalog_source', id: 'openrouter' },
         starverseDiagnosticCode: 'MODEL_CATALOG_REQUEST_OPEN_FAILED',
         transportError: {
           code: 'UND_ERR_CONNECT_TIMEOUT',

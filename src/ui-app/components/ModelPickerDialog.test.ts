@@ -631,7 +631,7 @@ describe('ModelPickerDialog', () => {
 
     const events = view.emitted()
     expect(events.toggleFavorite).toBeTruthy()
-    expect(events.toggleFavorite?.[0]).toEqual(['openai/gpt-4o'])
+    expect(events.toggleFavorite?.[0]).toEqual(['openrouter', 'openai/gpt-4o'])
     expect(events.select).toBeFalsy()
   })
 
@@ -716,6 +716,28 @@ describe('ModelPickerDialog', () => {
     expect(events.reorderFavorites?.[0]).toEqual([
       ['openrouter::anthropic/claude-3', 'openrouter::openai/gpt-4o'],
     ])
+  })
+
+  it('shows inherited favorites but keeps them read-only when no row belongs to the active scope', async () => {
+    const user = userEvent.setup()
+    const queryFn = vi.fn(async () => createResult([]))
+    const view = render(ModelPickerDialog, {
+      props: {
+        open: true,
+        routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
+        favoriteModelKeys: ['openrouter::openai/gpt-4o'],
+        favoriteEditableModelKeys: [],
+        queryFn,
+        debounceMs: 0,
+      },
+    })
+
+    await screen.findByText('openai/gpt-4o')
+    const edit = screen.getByTestId('model-picker-favorites-edit')
+    expect(edit).toBeDisabled()
+    await user.click(edit)
+    expect(view.emitted().reorderFavorites).toBeFalsy()
+    expect(view.emitted().removeFavorite).toBeFalsy()
   })
 
   it('does not populate scoped picker details from an obsolete fallback list', async () => {
@@ -1593,7 +1615,7 @@ describe('ModelPickerDialog', () => {
       context: {
         origin: 'http_response',
         phase: 'response_body',
-        providerId: 'openrouter',
+        provider: { namespace: 'catalog_source', id: 'openrouter' },
         contractId: 'openrouter-chat-models-v1',
         operationId: 'catalog:test',
         requestSequence: 1,

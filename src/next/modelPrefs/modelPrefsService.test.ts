@@ -6,6 +6,7 @@ import {
   type ModelPrefsRecent,
 } from './modelPrefsService'
 import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
+import type { RuntimeProviderId } from '../provider/runtimeProviderId'
 
 const originalDbBridge = (globalThis as any).dbBridge
 const originalGenerationV2 = (globalThis as any).generationV2
@@ -70,12 +71,12 @@ describe('ModelPrefsService', () => {
       if (method === 'modelPrefs.addFavorite') {
         const providerKey = String(params?.providerKey ?? '')
         const modelId = String(params?.modelId ?? '')
-        const modelKey = String(params?.modelKey ?? `${providerKey}::${modelId}`)
+        const modelKey = `${providerKey}::${modelId}`
         const existingIndex = rows.findIndex((row) => row.modelKey === modelKey)
         const nextRow: ModelPrefsFavorite = {
           scopeType: scopeType as any,
           scopeId,
-          providerKey,
+          providerKey: providerKey as RuntimeProviderId,
           modelId,
           modelKey,
           sortRank: existingIndex >= 0 ? rows[existingIndex].sortRank : rows.length,
@@ -90,7 +91,7 @@ describe('ModelPrefsService', () => {
         return nextRow
       }
       if (method === 'modelPrefs.removeFavorite') {
-        const modelKey = String(params?.modelKey ?? '')
+        const modelKey = `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`
         const nextRows = rows.filter((row) => row.modelKey !== modelKey)
         favorites.set(scopeKey, nextRows)
         return { removed: rows.length - nextRows.length }
@@ -119,7 +120,8 @@ describe('ModelPrefsService', () => {
       expect.objectContaining({
         scopeType: 'global',
         scopeId: '',
-        modelKey: 'openrouter::openai/gpt-4o',
+        providerKey: 'openrouter',
+        modelId: 'openai/gpt-4o',
       }),
     )
 
@@ -255,7 +257,7 @@ describe('ModelPrefsService', () => {
         if (failRecord) throw new Error('disk busy')
         const providerKey = String(params?.providerKey ?? '')
         const modelId = String(params?.modelId ?? '')
-        const modelKey = String(params?.modelKey ?? `${providerKey}::${modelId}`)
+        const modelKey = `${providerKey}::${modelId}`
         const usedAtMs =
           typeof params?.usedAtMs === 'number' && Number.isFinite(params.usedAtMs)
             ? params.usedAtMs
@@ -276,7 +278,7 @@ describe('ModelPrefsService', () => {
         const next: ModelPrefsRecent = {
           scopeType: scopeType as any,
           scopeId,
-          providerKey,
+          providerKey: providerKey as RuntimeProviderId,
           modelId,
           modelKey,
           lastUsedAtMs: usedAtMs,
@@ -291,6 +293,10 @@ describe('ModelPrefsService', () => {
       return null
     })
     installModelPreferencesBridge(invoke)
+    const events: string[] = []
+    const unsubscribe = ModelPrefsService.subscribe((event) => {
+      events.push(`${event.kind}:${event.reason}:${event.scopeType}:${event.scopeId}`)
+    })
 
     const first = await ModelPrefsService.listRecents(undefined, { limit: 20 })
     const second = await ModelPrefsService.listRecents(undefined, { limit: 20 })
@@ -300,6 +306,7 @@ describe('ModelPrefsService', () => {
 
     const recorded = await ModelPrefsService.recordRecent({ providerKey: 'openrouter', modelId: 'anthropic/claude-3' })
     expect(recorded?.modelKey).toBe('openrouter::anthropic/claude-3')
+    expect(events.filter((event) => event.startsWith('recents:mutation:global:'))).toHaveLength(1)
 
     const third = await ModelPrefsService.listRecents(undefined, { limit: 20 })
     expect(third.map((row) => row.modelKey)).toEqual(
@@ -310,6 +317,8 @@ describe('ModelPrefsService', () => {
     failRecord = true
     const failed = await ModelPrefsService.recordRecent({ providerKey: 'openrouter', modelId: 'google/gemini-2.0' })
     expect(failed).toBeNull()
+    expect(events.filter((event) => event.startsWith('recents:mutation:global:'))).toHaveLength(1)
+    unsubscribe()
   })
 
   it('passes project scope through favorites/recents IPC methods', async () => {
@@ -324,7 +333,7 @@ describe('ModelPrefsService', () => {
           scopeId,
           providerKey: String(params?.providerKey ?? 'openrouter'),
           modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
+          modelKey: `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`,
           sortRank: 0,
           createdAtMs: 1,
           updatedAtMs: 1,
@@ -350,7 +359,7 @@ describe('ModelPrefsService', () => {
           scopeId,
           providerKey: String(params?.providerKey ?? 'openrouter'),
           modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
+          modelKey: `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`,
           lastUsedAtMs: 10,
           useCount: 1,
           createdAtMs: 10,
