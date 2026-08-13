@@ -711,17 +711,21 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).not.toHaveBeenCalledWith('deepSeekApiKey', expect.anything())
   })
 
-  it('does not offer plaintext credential persistence outside Linux', async () => {
+  it.each([
+    'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED',
+    'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE',
+  ] as const)('offers a non-plaintext fallback outside Linux for exact safe-storage failure %s', async (code) => {
     const user = userEvent.setup()
     ;(globalThis as any).openAIResponsesCredential.update.mockResolvedValueOnce({
       ok: false,
-      code: 'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED',
+      code,
     })
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
     await user.click(await screen.findByTestId('settings-openai-responses-edit-key'))
     await user.type(screen.getByTestId('settings-openai-responses-api-key'), 'write-only-choice')
     await user.click(screen.getByTestId('settings-openai-responses-apply-key'))
-    await screen.findByRole('dialog')
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent(t('settings.credentials.sessionOnly'))
     expect(screen.queryByTestId('settings-save-plaintext-credential')).toBeNull()
     expect(screen.queryByText(t('settings.credentials.plaintextWarning'))).toBeNull()
   })

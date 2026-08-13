@@ -7,11 +7,14 @@ import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2
 import { registerGenerationV2CredentialSettingsIpc } from './generationV2CredentialSettingsIpc'
 import type { IpcInvokeHandler } from './types'
 
-function registerWith(getStatus: Epoch2RuntimeCredentialService['getStatus']) {
+function registerWith(
+  getStatus: Epoch2RuntimeCredentialService['getStatus'],
+  updateCredential: Epoch2RuntimeCredentialService['updateCredential'] = vi.fn(),
+) {
   const handlers = new Map<string, IpcInvokeHandler>()
   const credentialService = {
     getStatus,
-    updateCredential: vi.fn(),
+    updateCredential,
     clearCredential: vi.fn(),
   } as unknown as Epoch2RuntimeCredentialService
   registerGenerationV2CredentialSettingsIpc({
@@ -41,27 +44,60 @@ describe('generationV2CredentialSettingsIpc', () => {
     expect(result.status).not.toHaveProperty('credential')
   })
 
-  it('preserves known Epoch2 credential diagnostics instead of collapsing them to a generic store error', async () => {
+  it.each([
+    'EPOCH2_RUNTIME_CREDENTIAL_DRIFT',
+    'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE',
+  ] as const)('preserves known Epoch2 credential diagnostic %s instead of collapsing it', async (code) => {
     const handlers = registerWith(vi.fn(async () => {
-      throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
+      throw new Epoch2RuntimeCredentialError(code)
     }))
 
     const result = await handlers.get('generation-v2:credentials:openrouter:get-status')?.(undefined) as any
 
     expect(result).toMatchObject({
       ok: false,
-      code: 'EPOCH2_RUNTIME_CREDENTIAL_DRIFT',
-      message: 'EPOCH2_RUNTIME_CREDENTIAL_DRIFT',
+      code,
+      message: code,
       providerFailure: {
         origin: 'secure_storage',
         operationId: 'credential:status:openrouter',
-        starverseDiagnosticCode: 'EPOCH2_RUNTIME_CREDENTIAL_DRIFT',
+        starverseDiagnosticCode: code,
         transportError: {
           name: 'Epoch2RuntimeCredentialError',
-          message: 'EPOCH2_RUNTIME_CREDENTIAL_DRIFT',
+          message: code,
         },
       },
     })
+  })
+
+  it('preserves an exact safe-storage diagnostic from the update path', async () => {
+    const status = Object.freeze({
+      providerKey: 'openrouter' as const,
+      configured: false,
+      revision: 0,
+      availability: 'unknown' as const,
+      sessionOverridesPersistent: false,
+    })
+    const handlers = registerWith(
+      vi.fn(async () => status),
+      vi.fn(async () => {
+        throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE')
+      }),
+    )
+
+    const result = await handlers.get('generation-v2:credentials:openrouter:update')?.(
+      undefined,
+      { apiKey: 'sk-write-only' },
+    ) as any
+
+    expect(result).toMatchObject({
+      ok: false,
+      code: 'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE',
+      providerFailure: {
+        starverseDiagnosticCode: 'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE',
+      },
+    })
+    expect(JSON.stringify(result)).not.toContain('sk-write-only')
   })
 
   it('retains useful unknown-error context while redacting credentials and local paths', async () => {

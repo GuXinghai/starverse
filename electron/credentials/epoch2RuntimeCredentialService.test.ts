@@ -8,7 +8,7 @@ import { writeEpoch2ResetJournalAtomic } from '../data-epoch/resetJournalStore'
 import { createEpoch2RootManifest, resolveEpoch2WorkspaceLayout } from '../data-epoch/rootManifest'
 import { writeEpoch2TransitionOwnershipManifestAtomic } from '../data-epoch/rootManifestStore'
 import {
-  acquireWin32EpochRootLease,
+  acquireEpochRootLease,
   ensureEpoch2RootAuthority,
 } from '../data-epoch/win32EpochRootLease'
 
@@ -48,7 +48,6 @@ import {
 } from './epoch2RuntimeCredentialService'
 import type { ProviderCredentialKey } from './providerCredentialContract'
 
-const windowsIt = process.platform === 'win32' ? it : it.skip
 const roots: string[] = []
 
 class MemoryStore {
@@ -94,7 +93,7 @@ async function fixture(name: string, records: Partial<Record<ProviderCredentialK
     repositoryRoot: process.cwd(),
   })
   fs.mkdirSync(layout.productRoot, { recursive: true })
-  const lease = acquireWin32EpochRootLease(layout)
+  const lease = acquireEpochRootLease(layout)
   writeEpoch2TransitionOwnershipManifestAtomic({
     layout,
     lease,
@@ -134,7 +133,7 @@ afterEach(() => {
 })
 
 describe('epoch-2 runtime credential slot/revision authority', () => {
-  windowsIt('loads v2 metadata without decrypting and decrypts only during credential consumption', async () => {
+  it('loads v2 metadata without decrypting and decrypts only during credential consumption', async () => {
     const value = await fixture('starverse-runtime-credential-load', {
       openrouter: storedRecord('openrouter', 'sk-openrouter'),
     })
@@ -173,7 +172,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('uses monotonic CAS revisions across update, clear and recreate without scope ABA', async () => {
+  it('uses monotonic CAS revisions across update, clear and recreate without scope ABA', async () => {
     const value = await fixture('starverse-runtime-credential-cas')
     try {
       const service = await createEpoch2RuntimeCredentialService({
@@ -203,7 +202,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('persists a random scope without decrypting when the service restarts', async () => {
+  it('persists a random scope without decrypting when the service restarts', async () => {
     const value = await fixture('starverse-runtime-credential-persisted-random-scope')
     try {
       const first = await createEpoch2RuntimeCredentialService({
@@ -233,7 +232,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('retains configured metadata and reports a precise unavailable state after decrypt failure', async () => {
+  it('retains configured metadata and reports a precise unavailable state after decrypt failure', async () => {
     const value = await fixture('starverse-runtime-credential-decrypt-failure', {
       anthropic: storedRecord('anthropic', 'sk-anthropic'),
     })
@@ -259,7 +258,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('isolates malformed v2 ciphertext and preserves an exact diagnostic for replacement', async () => {
+  it('isolates malformed v2 ciphertext and preserves an exact diagnostic for replacement', async () => {
     const malformed = {
       ...storedRecord('google_ai_studio', 'sk-google'),
       ciphertextBase64: 'not-canonical-base64',
@@ -284,7 +283,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('holds the provider mutation lease through controlled credential consumption', async () => {
+  it('allows replacement during credential consumption and makes the active lease detect drift', async () => {
     const value = await fixture('starverse-runtime-credential-lease', {
       anthropic: storedRecord('anthropic', 'sk-old'),
     })
@@ -294,10 +293,8 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
         epochDatabase: value.epochDatabase,
       })
       const initial = await service.getStatus('anthropic')
-      let release!: () => void
-      const gate = new Promise<void>((resolve) => { release = resolve })
-      let markEntered!: () => void
-      const entered = new Promise<void>((resolve) => { markEntered = resolve })
+      const entered = deferred()
+      const replacementCommitted = deferred()
       let capturedLease: Epoch2RuntimeCredentialLease | undefined
       const active = service.withCredential({
         providerKey: 'anthropic',
@@ -309,27 +306,24 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
           expect(lease.usage).toBe('provider_transport_only')
           lease.assertCurrent()
           capturedLease = lease
-          markEntered()
-          await gate
+          entered.resolve()
+          await replacementCommitted.promise
+          expect(() => lease.assertCurrent()).toThrow('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
           return 'done'
         },
       })
-      await entered
-      let updateFinished = false
-      const update = service.updateCredential({
+      await entered.promise
+      await expect(service.updateCredential({
         providerKey: 'anthropic', credential: 'sk-new', expectedRevision: 1,
-      }).then((result) => { updateFinished = true; return result })
-      await Promise.resolve()
-      expect(updateFinished).toBe(false)
-      release()
+      })).resolves.toMatchObject({ revision: 2 })
+      replacementCommitted.resolve()
       await expect(active).resolves.toBe('done')
       expect(isEpoch2RuntimeCredentialLease(capturedLease)).toBe(false)
       expect(() => capturedLease?.assertCurrent()).toThrow('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
-      await expect(update).resolves.toMatchObject({ revision: 2 })
     } finally { value.lease.release() }
   })
 
-  windowsIt('issues a short-lived non-plaintext scope authority while holding the provider mutation lease', async () => {
+  it('allows replacement during scope binding and makes the active authority detect drift', async () => {
     const value = await fixture('starverse-runtime-credential-scope-authority', {
       deepseek: storedRecord('deepseek', 'sk-private'),
     })
@@ -340,10 +334,8 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
       })
       const status = await service.getStatus('deepseek')
       let escaped: Epoch2CredentialScopeBindingAuthority | undefined
-      let release!: () => void
-      const gate = new Promise<void>((resolve) => { release = resolve })
-      let entered!: () => void
-      const activeEntered = new Promise<void>((resolve) => { entered = resolve })
+      const entered = deferred()
+      const replacementCommitted = deferred()
       const active = service.withCredentialScopeBindingAuthority({
         providerKey: 'deepseek',
         expectedRevision: status.revision,
@@ -357,28 +349,25 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
             credentialScopeId: status.credentialScopeId,
           })
           expect(JSON.stringify(authority)).not.toContain('sk-private')
-          entered()
-          await gate
+          entered.resolve()
+          await replacementCommitted.promise
+          expect(() => authority.assertCurrent()).toThrow('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
           return authority.credentialScopeId
         },
       })
-      await activeEntered
-      let updateFinished = false
-      const update = service.updateCredential({
+      await entered.promise
+      await expect(service.updateCredential({
         providerKey: 'deepseek', credential: 'sk-new', expectedRevision: 1,
-      }).then((result) => { updateFinished = true; return result })
-      await Promise.resolve()
-      expect(updateFinished).toBe(false)
-      release()
+      })).resolves.toMatchObject({ revision: 2 })
+      replacementCommitted.resolve()
       await expect(active).resolves.toBe(status.credentialScopeId)
       expect(isEpoch2CredentialScopeBindingAuthority(escaped)).toBe(false)
       expect(isEpoch2CredentialScopeBindingAuthority({ ...escaped })).toBe(false)
       expect(() => escaped?.assertCurrent()).toThrow('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
-      await expect(update).resolves.toMatchObject({ revision: 2 })
     } finally { value.lease.release() }
   })
 
-  windowsIt('rejects a second service for the held epoch lease and permits recreation only after close', async () => {
+  it('rejects a second service for the held epoch lease and permits recreation only after close', async () => {
     const value = await fixture('starverse-runtime-credential-single-service', {
       deepseek: storedRecord('deepseek', 'sk-private'),
     })
@@ -403,7 +392,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     }
   })
 
-  windowsIt('fences external drift and forbids all service re-entry while a scope authority is active', async () => {
+  it('fences external drift and forbids all service re-entry while a scope authority is active', async () => {
     const value = await fixture('starverse-runtime-credential-scope-authority-fence', {
       deepseek: storedRecord('deepseek', 'sk-private'),
       anthropic: storedRecord('anthropic', 'sk-anthropic'),
@@ -429,7 +418,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('rejects stale or mismatched scope-authority requests before issuing authority', async () => {
+  it('rejects stale or mismatched scope-authority requests before issuing authority', async () => {
     const value = await fixture('starverse-runtime-credential-scope-authority-stale', {
       deepseek: storedRecord('deepseek', 'sk-private'),
     })
@@ -462,11 +451,11 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
       await expect(service.withCredentialScopeBindingAuthority({
         providerKey: 'deepseek', expectedRevision: 1,
         expectedCredentialScopeId: status.credentialScopeId!, consume: () => undefined,
-      })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE')
+      })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE')
     } finally { value.lease.release() }
   })
 
-  windowsIt('rejects same-provider authority re-entry instead of self-deadlocking', async () => {
+  it('rejects same-provider authority re-entry instead of self-deadlocking', async () => {
     const value = await fixture('starverse-runtime-credential-reentry', {
       anthropic: storedRecord('anthropic', 'sk-old'),
     })
@@ -492,7 +481,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('deletes legacy records without decrypting and isolates unavailable async storage to credential use', async () => {
+  it('deletes legacy records without decrypting and isolates unavailable async storage to credential use', async () => {
     const value = await fixture('starverse-runtime-credential-drift', {
       openai_responses: storedRecord('openai_responses', 'sk-openai'),
     })
@@ -532,16 +521,16 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
       await expect(service.withCredential({
         providerKey: 'deepseek', expectedRevision: status.revision,
         expectedCredentialScopeId: status.credentialScopeId!, consume: () => undefined,
-      })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE')
+      })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE')
       await expect(service.getStatus('deepseek')).resolves.toMatchObject({
         configured: true,
         availability: 'unavailable',
-        diagnosticCode: 'EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE',
+        diagnosticCode: 'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE',
       })
     } finally { unavailable.lease.release() }
   })
 
-  windowsIt('does not make credential replacement wait for an already issued provider lease', async () => {
+  it('does not make credential replacement wait for an already issued provider lease', async () => {
     const value = await fixture('starverse-runtime-credential-concurrent-lease', {
       openrouter: storedRecord('openrouter', 'sk-original'),
     })
@@ -551,13 +540,18 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
         epochDatabase: value.epochDatabase,
       })
       const status = await service.getStatus('openrouter')
+      const entered = deferred()
       const gate = deferred()
       const consumption = service.withCredential({
         providerKey: 'openrouter', expectedRevision: status.revision,
         expectedCredentialScopeId: status.credentialScopeId!,
-        consume: async (lease) => { await gate.promise; return lease.credential },
+        consume: async (lease) => {
+          entered.resolve()
+          await gate.promise
+          return lease.credential
+        },
       })
-      await vi.waitFor(() => expect(safeStorageMock.decryptStringAsync).toHaveBeenCalled())
+      await entered.promise
       await expect(service.updateCredential({
         providerKey: 'openrouter', expectedRevision: status.revision, credential: 'sk-replacement',
       })).resolves.toMatchObject({ revision: status.revision + 1 })
@@ -566,7 +560,91 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('keeps session credentials main-side, restores persistent records after restart, and clears both layers', async () => {
+  it.each(['resolved', 'rejected'] as const)(
+    'does not let a stale %s decrypt contaminate a newer session credential status',
+    async (decryptOutcome) => {
+      const value = await fixture(`starverse-runtime-credential-stale-decrypt-${decryptOutcome}`, {
+        openrouter: storedRecord('openrouter', 'sk-original'),
+      })
+      const decryptStarted = deferred()
+      const finishDecrypt = deferred()
+      safeStorageMock.decryptStringAsync.mockImplementationOnce(async () => {
+        decryptStarted.resolve()
+        await finishDecrypt.promise
+        if (decryptOutcome === 'rejected') throw new Error('old decrypt failed')
+        return { shouldReEncrypt: false, result: 'sk-original' }
+      })
+      try {
+        const service = await createEpoch2RuntimeCredentialService({
+          store: value.store as never,
+          epochDatabase: value.epochDatabase,
+        })
+        const status = await service.getStatus('openrouter')
+        const staleConsumption = service.withCredential({
+          providerKey: 'openrouter', expectedRevision: status.revision,
+          expectedCredentialScopeId: status.credentialScopeId!, consume: () => undefined,
+        })
+        await decryptStarted.promise
+        await expect(service.updateCredential({
+          providerKey: 'openrouter', expectedRevision: status.revision,
+          credential: 'sk-session', storageMode: 'session',
+        })).resolves.toMatchObject({ revision: status.revision + 1, storageBackend: 'session' })
+        finishDecrypt.resolve()
+        await expect(staleConsumption).rejects.toThrow(decryptOutcome === 'rejected'
+          ? 'EPOCH2_RUNTIME_CREDENTIAL_DECRYPT_FAILED'
+          : 'EPOCH2_RUNTIME_CREDENTIAL_STALE_REVISION')
+        const current = await service.getStatus('openrouter')
+        expect(current).toMatchObject({
+          configured: true,
+          revision: status.revision + 1,
+          storageBackend: 'session',
+          availability: 'available',
+        })
+        expect(current.diagnosticCode).toBeUndefined()
+      } finally { value.lease.release() }
+    },
+  )
+
+  it('does not let a stale safe-storage preflight contaminate a newer session credential status', async () => {
+    const value = await fixture('starverse-runtime-credential-stale-preflight', {
+      openrouter: storedRecord('openrouter', 'sk-original'),
+    })
+    const preflightStarted = deferred()
+    const finishPreflight = deferred()
+    safeStorageMock.isAsyncEncryptionAvailable.mockImplementationOnce(async () => {
+      preflightStarted.resolve()
+      await finishPreflight.promise
+      return false
+    })
+    try {
+      const service = await createEpoch2RuntimeCredentialService({
+        store: value.store as never,
+        epochDatabase: value.epochDatabase,
+      })
+      const status = await service.getStatus('openrouter')
+      const staleConsumption = service.withCredential({
+        providerKey: 'openrouter', expectedRevision: status.revision,
+        expectedCredentialScopeId: status.credentialScopeId!, consume: () => undefined,
+      })
+      await preflightStarted.promise
+      await expect(service.updateCredential({
+        providerKey: 'openrouter', expectedRevision: status.revision,
+        credential: 'sk-session', storageMode: 'session',
+      })).resolves.toMatchObject({ revision: status.revision + 1, storageBackend: 'session' })
+      finishPreflight.resolve()
+      await expect(staleConsumption).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE')
+      const current = await service.getStatus('openrouter')
+      expect(current).toMatchObject({
+        configured: true,
+        revision: status.revision + 1,
+        storageBackend: 'session',
+        availability: 'available',
+      })
+      expect(current.diagnosticCode).toBeUndefined()
+    } finally { value.lease.release() }
+  })
+
+  it('keeps session credentials main-side, restores persistent records after restart, and clears both layers', async () => {
     const value = await fixture('starverse-runtime-credential-session', {
       openrouter: storedRecord('openrouter', 'persisted-key'),
     })
@@ -595,7 +673,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('persists plaintext only when explicitly selected and does not use safeStorage for its lease', async () => {
+  it('persists plaintext only when explicitly selected and does not use safeStorage for its lease', async () => {
     const value = await fixture('starverse-runtime-credential-plaintext')
     try {
       const service = await createEpoch2RuntimeCredentialService({ store: value.store as never, epochDatabase: value.epochDatabase,
@@ -612,7 +690,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('fails closed for basic_text and unknown Linux backends before encrypting', async () => {
+  it('fails closed for basic_text and unknown Linux backends before encrypting', async () => {
     const value = await fixture('starverse-runtime-credential-linux-backend')
     try {
       for (const backend of ['basic_text', 'unknown'] as const) {
@@ -627,7 +705,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('rejects explicit plaintext persistence outside Linux in the main authority', async () => {
+  it('rejects explicit plaintext persistence outside Linux in the main authority', async () => {
     const value = await fixture('starverse-runtime-credential-non-linux-plaintext')
     try {
       const service = await createEpoch2RuntimeCredentialService({ store: value.store as never, epochDatabase: value.epochDatabase,
@@ -639,7 +717,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('fails closed when the Linux safeStorage backend query fails', async () => {
+  it('fails closed when the Linux safeStorage backend query fails', async () => {
     const value = await fixture('starverse-runtime-credential-linux-backend-query')
     try {
       const service = await createEpoch2RuntimeCredentialService({ store: value.store as never, epochDatabase: value.epochDatabase,
@@ -652,7 +730,25 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('commits exactly one of one hundred concurrent writes from the same revision', async () => {
+  it.each(['linux', 'win32', 'darwin'] as const)(
+    'preserves an exact safe-storage error when %s encryption fails after preflight',
+    async (platform) => {
+      const value = await fixture(`starverse-runtime-credential-encrypt-failure-${platform}`)
+      safeStorageMock.encryptStringAsync.mockRejectedValueOnce(new Error('encrypt failed'))
+      try {
+        const service = await createEpoch2RuntimeCredentialService({
+          store: value.store as never,
+          epochDatabase: value.epochDatabase,
+          platform,
+        })
+        await expect(service.updateCredential({
+          providerKey: 'deepseek', credential: 'sk-new', expectedRevision: 0,
+        })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE')
+      } finally { value.lease.release() }
+    },
+  )
+
+  it('commits exactly one of one hundred concurrent writes from the same revision', async () => {
     const value = await fixture('starverse-runtime-credential-one-hundred-writers', {
       openrouter: storedRecord('openrouter', 'sk-original'),
     })
@@ -678,7 +774,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('does not overwrite an external credential change that races an async mutation', async () => {
+  it('does not overwrite an external credential change that races an async mutation', async () => {
     const value = await fixture('starverse-runtime-credential-racing-drift', {
       deepseek: storedRecord('deepseek', 'sk-original'),
     })
@@ -702,7 +798,7 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('rewraps provider ciphertext only during use without changing revision or scope', async () => {
+  it('rewraps provider ciphertext only during use without changing revision or scope', async () => {
     const value = await fixture('starverse-runtime-credential-rewrap', {
       openrouter: storedRecord('openrouter', 'sk-openrouter'),
     })
@@ -724,6 +820,30 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
       })).resolves.toBe('sk-openrouter')
       expect((value.store.get('providerCredentials.v1.openrouter') as { ciphertextBase64: string }).ciphertextBase64)
         .not.toBe(storedRecord('openrouter', 'sk-openrouter').ciphertextBase64)
+    } finally { value.lease.release() }
+  })
+
+  it('reports safe-storage unavailability precisely when ciphertext rewrap fails', async () => {
+    const value = await fixture('starverse-runtime-credential-rewrap-failure', {
+      openrouter: storedRecord('openrouter', 'sk-openrouter'),
+    })
+    safeStorageMock.rotateNext = true
+    safeStorageMock.encryptStringAsync.mockRejectedValueOnce(new Error('rewrap failed'))
+    try {
+      const service = await createEpoch2RuntimeCredentialService({
+        store: value.store as never,
+        epochDatabase: value.epochDatabase,
+      })
+      const status = await service.getStatus('openrouter')
+      await expect(service.withCredential({
+        providerKey: 'openrouter', expectedRevision: status.revision,
+        expectedCredentialScopeId: status.credentialScopeId!, consume: () => undefined,
+      })).rejects.toThrow('EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE')
+      await expect(service.getStatus('openrouter')).resolves.toMatchObject({
+        configured: true,
+        availability: 'unavailable',
+        diagnosticCode: 'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE',
+      })
     } finally { value.lease.release() }
   })
 
