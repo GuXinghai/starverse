@@ -1,6 +1,6 @@
 # Magika Production Release Closeout
 
-> Historical scope notice (2026-08-13): this closeout applies only to the published Windows-only `0.1.x` artifact described below. It is not evidence that the cross-platform `0.2.0` `any/any` package has been signed, published, or enabled in the catalog. Version `0.2.0` requires explicit uninstall/reset of `0.1.x`; no online or in-place migration is implemented. Its catalog cutover remains blocked until the protected release workflow produces six identical runner artifacts and production signing metadata.
+> Historical scope notice (2026-08-13): the closeout below applies to the older Windows-only `0.1.x` artifact. Cross-platform `0.2.0` has since passed GitHub Actions run `31685488267` on six runners, produced byte-identical packages, been production-signed and published, and replaced `0.1.x` in the built-in catalog. Existing `0.1.x` installations still require explicit uninstall/reset; no online or in-place migration is implemented.
 
 Date: 2026-05-14
 
