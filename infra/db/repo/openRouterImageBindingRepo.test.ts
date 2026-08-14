@@ -77,6 +77,19 @@ function fixture(times: number[]) {
   return { db, repo, endpointRepo, descriptorSet }
 }
 
+function bindingState(db: BetterSqlite3.Database) {
+  return {
+    bindings: db.prepare(`
+      SELECT * FROM openrouter_image_endpoint_bindings
+      ORDER BY credential_scope_id, model_id, operation
+    `).all(),
+    generationClocks: db.prepare(`
+      SELECT * FROM openrouter_image_endpoint_binding_generation_clock
+      ORDER BY credential_scope_id, model_id, operation
+    `).all(),
+  }
+}
+
 describe('OpenRouter Images V2 binding repository', () => {
   it('persists a structurally decoded-unverified binding against the exact current descriptor fact', () => {
     const { db, repo, descriptorSet } = fixture([1_752_537_600_000])
@@ -174,13 +187,13 @@ describe('OpenRouter Images V2 binding repository', () => {
         UPDATE openrouter_image_endpoint_binding_generation_clock SET last_generation = 2
         WHERE credential_scope_id = ? AND model_id = ? AND operation = 'image_generate'
       `).run(scope.value, model.value)
-      const before = db.serialize()
+      const before = bindingState(db)
       expect(() => repo.getBinding({ credentialScopeId: scope, modelId: model }))
         .toThrow('GENERATION_V2_OPENROUTER_BINDING_STATE_INVALID')
       expect(() => repo.deleteBinding({
         key: { credentialScopeId: scope, modelId: model }, expectedBindingGeneration: fact.bindingGeneration,
       })).toThrow('GENERATION_V2_OPENROUTER_BINDING_STATE_INVALID')
-      expect(db.serialize()).toEqual(before)
+      expect(bindingState(db)).toEqual(before)
 
       db.prepare(`
         UPDATE openrouter_image_endpoint_binding_generation_clock SET last_generation = ?
@@ -188,11 +201,11 @@ describe('OpenRouter Images V2 binding repository', () => {
       `).run(Number.MAX_SAFE_INTEGER, scope.value, model.value)
       db.prepare(`UPDATE openrouter_image_endpoint_bindings SET binding_generation = ?`)
         .run(Number.MAX_SAFE_INTEGER)
-      const exhausted = db.serialize()
+      const exhausted = bindingState(db)
       expect(() => repo.deleteBinding({
         key: { credentialScopeId: scope, modelId: model }, expectedBindingGeneration: Number.MAX_SAFE_INTEGER,
       })).toThrow('GENERATION_V2_OPENROUTER_BINDING_GENERATION_EXHAUSTED')
-      expect(db.serialize()).toEqual(exhausted)
+      expect(bindingState(db)).toEqual(exhausted)
     } finally { db.close() }
   })
 
