@@ -48,6 +48,8 @@ const reasoningMappingJson = ref("");
 const reasoningMode = ref<"custom_preferred_with_builtin_fallback" | "custom_only">("custom_preferred_with_builtin_fallback");
 const inlinePolicyJson = ref("");
 const discovery = ref<CompatibleDiscoveredResponseField[]>([]);
+const credentialStorageFallback = ref(false);
+const plaintextPersistenceSupported = computed(() => window.electronAPI?.platform === "linux");
 
 const selected = computed(
   () =>
@@ -195,7 +197,14 @@ function beginCreate() {
   clearSecrets();
 }
 
-async function save() {
+function needsCredentialStorageChoice(cause: unknown) {
+  return cause instanceof Error && (
+    cause.message === "GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED" ||
+    cause.message === "GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE"
+  );
+}
+
+async function save(storageMode?: "session" | "plaintext") {
   busy.value = true;
   error.value = "";
   notice.value = "";
@@ -235,6 +244,7 @@ async function save() {
         displayName: displayName.value,
         endpoint,
         credential: credential(),
+        ...(storageMode === undefined ? {} : { storageMode }),
         requestMappings: [],
       });
     else {
@@ -250,15 +260,18 @@ async function save() {
           : (secret.value || customSecretHeaders.value)
             ? credential()
             : null,
+        ...(storageMode === undefined ? {} : { storageMode }),
       });
     }
     clearSecrets();
+    credentialStorageFallback.value = false;
     selectedId.value = details.provider.providerInstanceId;
     await load();
     choose(details);
     notice.value = t("settings.openAICompatible.saved");
   } catch (cause) {
-    clearSecrets();
+    credentialStorageFallback.value = needsCredentialStorageChoice(cause) &&
+      authMode.value !== "none" && Boolean(secret.value || customSecretHeaders.value);
     error.value =
       cause instanceof Error ? cause.message : "invalid_configuration";
   } finally {
@@ -661,7 +674,7 @@ onMounted(load);
             data-testid="compatible-save"
             class="rounded bg-blue-600 px-3 py-1 text-xs text-white"
             :disabled="props.disabled || busy"
-            @click="save"
+            @click="() => save()"
           >
             {{ t("common.save") }}</button
           ><button
@@ -682,6 +695,19 @@ onMounted(load);
             {{ t("common.delete") }}
           </button>
         </div>
+        <div
+          v-if="credentialStorageFallback"
+          class="rounded border border-amber-300 bg-amber-50 p-2 text-xs text-amber-950"
+          data-testid="compatible-credential-storage-choice"
+        >
+          <p>{{ t("settings.credentials.secureStorageUnavailableBody") }}</p>
+          <p v-if="plaintextPersistenceSupported" class="mt-1 font-medium">{{ t("settings.credentials.plaintextWarning") }}</p>
+          <div class="mt-2 flex flex-wrap gap-2">
+            <button type="button" class="rounded border px-2 py-1" :disabled="busy" @click="save('session')">{{ t("settings.credentials.sessionOnly") }}</button>
+            <button v-if="plaintextPersistenceSupported" data-testid="compatible-save-plaintext" type="button" class="rounded border border-amber-700 px-2 py-1" :disabled="busy" @click="save('plaintext')">{{ t("settings.credentials.savePlaintext") }}</button>
+            <button type="button" class="rounded border px-2 py-1" :disabled="busy" @click="credentialStorageFallback = false">{{ t("common.cancel") }}</button>
+          </div>
+        </div>
         <pre
           v-if="diagnostics"
           class="max-h-32 overflow-auto rounded bg-gray-50 p-2 text-[10px]"
@@ -689,7 +715,12 @@ onMounted(load);
         <div v-if="selected?.credentials.length" class="rounded border p-2 text-xs" data-testid="compatible-credential-list">
           <div class="font-semibold">Credential versions</div>
           <div v-for="credentialItem in selected.credentials" :key="credentialItem.credentialVersionRef" class="mt-1 flex items-center gap-2">
-            <code>{{ credentialItem.credentialVersionRef }}</code><span>{{ credentialItem.maskState }}</span>
+            <code>{{ credentialItem.credentialVersionRef }}</code>
+            <span>{{ credentialItem.maskState }}</span>
+            <span data-testid="compatible-credential-availability">{{ credentialItem.availability }}</span>
+            <span v-if="credentialItem.storageBackend" data-testid="compatible-credential-backend">{{ credentialItem.storageBackend }}</span>
+            <span v-if="credentialItem.sessionOverridesPersistent" data-testid="compatible-credential-session-override">session_override</span>
+            <code v-if="credentialItem.diagnosticCode" data-testid="compatible-credential-diagnostic">{{ credentialItem.diagnosticCode }}</code>
             <button type="button" class="rounded border px-2 py-1" :disabled="selected.endpointRevisions[0]?.credentialVersionRef === credentialItem.credentialVersionRef || credentialItem.deletedAtMs !== null" @click="removeCredential(credentialItem.credentialVersionRef)">{{ t("common.delete") }}</button>
           </div>
         </div>

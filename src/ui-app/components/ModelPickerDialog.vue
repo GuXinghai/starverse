@@ -34,6 +34,10 @@ import {
   listProviderCatalogSourceDescriptors,
 } from '@/shared/modelCatalog/providerCatalogRegistry'
 import type { ProviderCatalogKnownProviderKey } from '@/shared/modelCatalog/providerCatalogContracts'
+import {
+  catalogProviderKeyForRuntimeProvider,
+  runtimeProviderIdForCatalogProvider,
+} from '@/shared/provider/catalogRuntimeProviderAuthority'
 import { GLOBAL_CATALOG_POLICY_V2_STORE_KEY, providerCatalogPolicyV2StoreKey } from '@/shared/modelCatalog/catalogPolicyResolverV2'
 import {
   resolveCatalogPolicyV2,
@@ -43,11 +47,14 @@ import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
   buildProviderModelKey,
-  type ChatModelSelection,
 } from '@/next/provider/modelSelection'
-import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
+import { isRuntimeProviderId, type RuntimeProviderId } from '@/next/provider/runtimeProviderId'
+import {
+  createProviderModelRouteSelection,
+  type ConversationRouteSelection,
+} from '@/next/provider/conversationRouteSelection'
 import type { ProviderModelPickerItem, ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
-import type { CompatibleConfigurationPickerSource, CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
+import type { CompatibleRouteIntent, CompatibleRoutePickerSource } from '@/next/provider/openai-chat-compatible/ui'
 import type { ProviderFailureV2 } from '@/shared/provider/providerFailureV2'
 import {
   CatalogRuntimeStoreV2,
@@ -60,15 +67,15 @@ type TriState = 'any' | 'yes' | 'no'
 type DetailTab = 'model' | 'endpoints'
 type PickerMode = 'all' | 'favorites' | 'recents'
 type ProviderFilterOption = Readonly<{
-  providerId: RuntimeProviderKey
+  providerId: RuntimeProviderId
   providerName: string
   statusLabel: string
   loading: boolean
   count: number
 }>
-type SyncProviderOption = ProviderFilterOption & Readonly<{ providerId: ProviderCatalogKnownProviderKey }>
+type SyncProviderOption = ProviderFilterOption & Readonly<{ catalogProviderKey: ProviderCatalogKnownProviderKey }>
 type PickerModelItem = CatalogQueryItem & Readonly<{
-  providerId: RuntimeProviderKey
+  providerId: RuntimeProviderId
   providerName: string
   itemKey: string
   capabilitySummary?: string
@@ -77,7 +84,7 @@ type PickerModelItem = CatalogQueryItem & Readonly<{
   selectable: boolean
   detailSource: 'openrouter_catalog' | 'provider_catalog' | 'provider_source'
 }>
-type ShortcutItem = Readonly<{ modelKey: string; providerId: RuntimeProviderKey; modelId: string; name: string; available: boolean }>
+type ShortcutItem = Readonly<{ modelKey: string; providerId: RuntimeProviderId; modelId: string; name: string; available: boolean }>
 
 type QueryFn = (input: CatalogQueryInput) => Promise<CatalogQueryResult>
 type EndpointDetailFn = (input: GetModelEndpointDetailsInput) => Promise<ModelEndpointDetailsResult>
@@ -88,11 +95,11 @@ const props = withDefaults(
     open: boolean
     disabled?: boolean
     isRunning?: boolean
-    selectedProviderId?: RuntimeProviderKey
-    selectedModelId: string
+    routeSelection?: ConversationRouteSelection | null
     providerSources?: readonly ProviderModelPickerSource[]
-    compatibleConfigurationSources?: readonly CompatibleConfigurationPickerSource[]
+    compatibleRouteSources?: readonly CompatibleRoutePickerSource[]
     favoriteModelKeys?: readonly string[]
+    favoriteEditableModelKeys?: readonly string[] | null
     recentModelKeys?: readonly string[]
     notice?: string | null
     debounceMs?: number
@@ -108,7 +115,7 @@ const props = withDefaults(
     favoriteModelKeys: () => [],
     recentModelKeys: () => [],
     providerSources: () => [],
-    compatibleConfigurationSources: () => [],
+    compatibleRouteSources: () => [],
     notice: null,
     debounceMs: 250,
     queryFn: undefined,
@@ -116,13 +123,14 @@ const props = withDefaults(
     modelDetailFn: undefined,
     selectionCommand: undefined,
     forceOutputImageOnly: false,
+    routeSelection: null,
   },
 )
 
 const emit = defineEmits<{
   close: []
-  select: [selection: ChatModelSelection | CompatibleConfigurationSelection, displayName: string]
-  toggleFavorite: [modelId: string]
+  select: [selection: ConversationRouteSelection, displayName: string]
+  toggleFavorite: [providerId: RuntimeProviderId, modelId: string]
   reorderFavorites: [orderedModelKeys: string[]]
 }>()
 
@@ -130,7 +138,7 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 const listScrollRef = ref<HTMLElement | null>(null)
 const searchText = ref('')
 const includeDescriptionInSearch = ref(false)
-const selectedProviderFilters = ref<RuntimeProviderKey[]>([])
+const selectedProviderFilters = ref<RuntimeProviderId[]>([])
 const selectedVendors = ref<string[]>([])
 const selectedCategory = ref<OpenRouterModelCategory | 'all'>('all')
 const contextLengthMin = ref('')
@@ -193,7 +201,9 @@ const unsubscribeCatalogRuntimeStore = catalogRuntimeStore.subscribe(() => {
   catalogRuntimeStates.value = catalogRuntimeStore.snapshot()
 })
 const providerSyncSnapshots = ref<Partial<Record<string, ProviderSyncSnapshot>>>({})
-const selectedSyncProviderKey = ref<ProviderCatalogKnownProviderKey>(OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey)
+const OPENROUTER_CATALOG_PROVIDER_KEY = catalogProviderKeyForRuntimeProvider(OPENROUTER_PROVIDER_ID)
+if (OPENROUTER_CATALOG_PROVIDER_KEY === null) throw new Error('OPENROUTER_CATALOG_PROVIDER_AUTHORITY_MISSING')
+const selectedSyncProviderKey = ref<ProviderCatalogKnownProviderKey>(OPENROUTER_CATALOG_PROVIDER_KEY)
 const lastAutoSyncAtMsByScope = new Map<string, number>()
 const lastManualRefreshAtMsByScope = new Map<string, number>()
 const AUTO_SYNC_COOLDOWN_MS = 10_000
@@ -248,12 +258,11 @@ let dialogWasOpen = false
 
 const catalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() => {
   const keys = new Set<ProviderCatalogKnownProviderKey>([
-    OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey,
+    OPENROUTER_CATALOG_PROVIDER_KEY,
   ])
   for (const source of props.providerSources) {
-    if (isProviderCatalogSourceKey(source.providerId)) {
-      keys.add(source.providerId as ProviderCatalogKnownProviderKey)
-    }
+    const providerKey = catalogProviderKeyForRuntimeProvider(source.providerId)
+    if (providerKey !== null) keys.add(providerKey)
   }
   return [...keys]
 })
@@ -273,7 +282,10 @@ const catalogPickerItems = computed(() => items.value
 const providerPickerItems = computed(() => props.providerSources.flatMap((source) => source.items.map((item) => toProviderPickerItem(item))))
 const unfilteredPickerItems = computed(() => {
   const catalogProvidersWithItems = new Set(
-    items.value.map((item) => catalogProviderIdFromItem(item)),
+    items.value.map((item) => {
+      const providerKey = catalogProviderKeyFromItem(item)
+      return providerKey === null ? null : runtimeProviderIdForCatalogProvider(providerKey)
+    }),
   )
   return [
     ...catalogPickerItems.value,
@@ -282,7 +294,8 @@ const unfilteredPickerItems = computed(() => {
 })
 const selectedProviderSet = computed(() => new Set(selectedProviderFilters.value))
 const selectedCatalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() =>
-  catalogProviderKeys.value.filter((providerId) => selectedProviderSet.value.has(providerId))
+  catalogProviderKeys.value.filter((providerKey) =>
+    selectedProviderSet.value.has(runtimeProviderIdForCatalogProvider(providerKey)))
 )
 const pickerItems = computed(() => {
   const providerFilter = selectedProviderSet.value
@@ -302,7 +315,7 @@ const pickerItems = computed(() => {
   })
 })
 const shownCountByProvider = computed(() => {
-  const counts = new Map<RuntimeProviderKey, number>()
+  const counts = new Map<RuntimeProviderId, number>()
   for (const item of pickerItems.value) {
     counts.set(item.providerId, (counts.get(item.providerId) ?? 0) + 1)
   }
@@ -342,24 +355,32 @@ const activeItem = computed(() => {
 })
 const lastKnownModelLabels = new Map<string, string>()
 
-const selectedProviderId = computed(() => props.selectedProviderId ?? null)
-const selectedModelId = computed(() => normalizeModelId(props.selectedModelId))
+const selectedProvider = computed(() => props.routeSelection?.kind === 'provider_model'
+  ? props.routeSelection.providerId : null)
+const selectedModelIdentity = computed(() => normalizeModelId(props.routeSelection?.kind === 'provider_model'
+  ? props.routeSelection.modelId : props.routeSelection?.modelId))
 
 const selectedModelLabel = computed(() => {
-  const selected = selectedModelId.value
-  if (!selectedProviderId.value) return t('chat.console.runtime.noProviderSelected')
+  const selected = selectedModelIdentity.value
+  const route = props.routeSelection
+  if (route?.kind === 'openai_chat_compatible') {
+    const source = props.compatibleRouteSources.find((item) => item.providerInstanceId === route.providerInstanceId)
+    const model = source?.models.find((item) => item.modelId === selected)
+    return `${source?.providerName ?? route.providerInstanceId} · ${model?.displayName ?? selected}`
+  }
+  if (!selectedProvider.value) return t('chat.console.runtime.noProviderSelected')
   const inResults = unfilteredPickerItems.value.find((item) =>
-    item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
+    item.providerId === selectedProvider.value && normalizeModelId(item.modelId) === selected
   )
-  const selectedKey = selectedProviderId.value && selected
-    ? pickerItemKey(selectedProviderId.value, selected)
+  const selectedKey = selectedProvider.value && selected
+    ? pickerItemKey(selectedProvider.value, selected)
     : ''
   const label = inResults?.displayName
     ?? (selectedKey ? lastKnownModelLabels.get(selectedKey) : null)
     ?? (selected || DEFAULT_OPENROUTER_MODEL_ID)
-  return selectedProviderId.value === OPENROUTER_PROVIDER_ID
+  return selectedProvider.value === OPENROUTER_PROVIDER_ID
     ? label
-    : `${providerNameForId(selectedProviderId.value)} · ${label}`
+    : `${providerNameForId(selectedProvider.value)} · ${label}`
 })
 
 const effectiveNotice = computed(() => {
@@ -374,6 +395,9 @@ const endpointFetchedAtMs = computed(() => endpointDetails.value?.fetchedAtMs ??
 const endpointError = computed(() => endpointDetails.value?.error ?? null)
 const favoriteModelKeySet = computed(() => new Set(props.favoriteModelKeys.map((value) => String(value ?? '').trim()).filter(Boolean)))
 const normalizedFavoriteModelKeys = computed(() => normalizeFavoriteModelKeys(props.favoriteModelKeys))
+const normalizedEditableFavoriteModelKeys = computed(() => normalizeFavoriteModelKeys(
+  props.favoriteEditableModelKeys ?? props.favoriteModelKeys,
+))
 const normalizedRecentModelKeys = computed(() => normalizeFavoriteModelKeys(props.recentModelKeys))
 const favoriteShortcutItems = computed(() => buildShortcutItems(normalizedFavoriteModelKeys.value))
 const recentShortcutItems = computed(() => buildShortcutItems(normalizedRecentModelKeys.value))
@@ -387,15 +411,15 @@ const activeDetailModelId = computed(() => {
 })
 const activeDetailItem = computed(() => {
   if (activeItem.value) return activeItem.value
-  const selected = selectedModelId.value
+  const selected = selectedModelIdentity.value
   if (!selected) return null
   return pickerItems.value.find((item) =>
-    item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
+    item.providerId === selectedProvider.value && normalizeModelId(item.modelId) === selected
   ) ?? null
 })
 const favoriteOrderDirty = computed(() => {
   const next = editableFavoriteModelKeys.value
-  const base = normalizedFavoriteModelKeys.value
+  const base = normalizedEditableFavoriteModelKeys.value
   if (next.length !== base.length) return true
   for (let index = 0; index < next.length; index += 1) {
     if (next[index] !== base[index]) return true
@@ -436,15 +460,16 @@ const pendingCatalogUpdateAvailable = computed(() =>
 )
 
 const providerOptions = computed<ProviderFilterOption[]>(() => {
-  const options = new Map<RuntimeProviderKey, ProviderFilterOption>()
+  const options = new Map<RuntimeProviderId, ProviderFilterOption>()
   for (const descriptor of catalogSourceDescriptors.filter((candidate) =>
     isProviderCatalogSourceKey(candidate.providerKey) &&
     catalogProviderKeys.value.includes(candidate.providerKey)
   )) {
     if (!isProviderCatalogSourceKey(descriptor.providerKey)) continue
-    const providerId = descriptor.providerKey
-    const snapshot = getProviderSyncSnapshot(providerId)
-    const catalogItemCount = items.value.filter((item) => catalogProviderIdFromItem(item) === providerId).length
+    const providerKey = descriptor.providerKey
+    const providerId = runtimeProviderIdForCatalogProvider(providerKey)
+    const snapshot = getProviderSyncSnapshot(providerKey)
+    const catalogItemCount = items.value.filter((item) => catalogProviderKeyFromItem(item) === providerKey).length
     const knownCount = snapshot?.visibleModelCount ?? snapshot?.totalModelCount ?? 0
     options.set(providerId, {
       providerId,
@@ -455,18 +480,21 @@ const providerOptions = computed<ProviderFilterOption[]>(() => {
         fallbackItemCount: catalogItemCount,
         sourceItemCount: 0,
       }),
-      loading: hydratingProviderKeys.value.has(providerId) || snapshot?.status === 'syncing',
+      loading: hydratingProviderKeys.value.has(providerKey) || snapshot?.status === 'syncing',
       count: knownCount > 0 ? knownCount : catalogItemCount,
     })
   }
   for (const source of props.providerSources) {
-    const snapshot = isProviderCatalogSourceKey(source.providerId)
-      ? getProviderSyncSnapshot(source.providerId as ProviderCatalogKnownProviderKey)
+    const catalogProviderKey = catalogProviderKeyForRuntimeProvider(source.providerId)
+    const snapshot = catalogProviderKey !== null
+      ? getProviderSyncSnapshot(catalogProviderKey)
       : null
     const catalogCount = snapshot?.status === 'synced'
       ? snapshot.visibleModelCount ?? snapshot.totalModelCount
       : 0
-    const catalogItemCount = items.value.filter((item) => catalogProviderIdFromItem(item) === source.providerId).length
+    const catalogItemCount = catalogProviderKey === null
+      ? 0
+      : items.value.filter((item) => catalogProviderKeyFromItem(item) === catalogProviderKey).length
     options.set(source.providerId, {
       providerId: source.providerId,
       providerName: source.providerName,
@@ -483,7 +511,10 @@ const providerOptions = computed<ProviderFilterOption[]>(() => {
   return Array.from(options.values())
 })
 const syncProviderOptions = computed<SyncProviderOption[]>(() =>
-  providerOptions.value.filter((provider): provider is SyncProviderOption => isProviderCatalogSourceKey(provider.providerId)),
+  providerOptions.value.flatMap((provider) => {
+    const catalogProviderKey = catalogProviderKeyForRuntimeProvider(provider.providerId)
+    return catalogProviderKey === null ? [] : [{ ...provider, catalogProviderKey }]
+  }),
 )
 const providerFilterIds = computed(() => providerOptions.value.map((provider) => provider.providerId))
 const selectedProviderFilterCount = computed(() =>
@@ -493,12 +524,13 @@ const allProviderFiltersSelected = computed(() =>
   providerFilterIds.value.length > 0 && selectedProviderFilterCount.value === providerFilterIds.value.length
 )
 
-function providerNameForId(providerId: RuntimeProviderKey): string {
-  if (isProviderCatalogSourceKey(providerId)) return catalogProviderNames[providerId]
+function providerNameForId(providerId: RuntimeProviderId): string {
+  const catalogProviderKey = catalogProviderKeyForRuntimeProvider(providerId)
+  if (catalogProviderKey !== null) return catalogProviderNames[catalogProviderKey]
   return providerOptions.value.find((option) => option.providerId === providerId)?.providerName ?? providerId
 }
 
-function pickerItemKey(providerId: RuntimeProviderKey, modelId: string): string {
+function pickerItemKey(providerId: RuntimeProviderId, modelId: string): string {
   return buildProviderModelKey({ providerId, modelId })
 }
 
@@ -517,14 +549,15 @@ function catalogRuntimeScopeKey(
   return category ? `${providerKey}::${category}` : providerKey
 }
 
-function catalogProviderIdFromItem(item: CatalogQueryItem): RuntimeProviderKey | null {
+function catalogProviderKeyFromItem(item: CatalogQueryItem): ProviderCatalogKnownProviderKey | null {
   const providerKey = String(item.providerKey ?? '').trim()
   return isProviderCatalogSourceKey(providerKey) ? providerKey : null
 }
 
 function toCatalogPickerItem(item: CatalogQueryItem): PickerModelItem | null {
-  const providerId = catalogProviderIdFromItem(item)
-  if (!providerId) return null
+  const providerKey = catalogProviderKeyFromItem(item)
+  if (!providerKey) return null
+  const providerId = runtimeProviderIdForCatalogProvider(providerKey)
   return {
     ...item,
     providerId,
@@ -788,7 +821,7 @@ function publishCatalogRuntimeStore() {
 function onProviderCredentialUpdated(event: Event) {
   const providerKey = (event as CustomEvent<{ providerKey?: unknown }>).detail?.providerKey
   if (!isProviderCatalogSourceKey(providerKey)) return
-  const typedProviderKey = providerKey as ProviderCatalogKnownProviderKey
+  const typedProviderKey = providerKey
   CatalogQueryService.invalidateProviderRuntimeCache(typedProviderKey)
   const affectedScopeKeys = Object.keys(catalogRuntimeStore.snapshot()).filter((key) =>
     key === typedProviderKey || key.startsWith(`${typedProviderKey}::`))
@@ -800,9 +833,9 @@ function onProviderCredentialUpdated(event: Event) {
   const nextSnapshots = { ...providerSyncSnapshots.value }
   for (const scopeKey of affectedScopeKeys) delete nextSnapshots[scopeKey]
   providerSyncSnapshots.value = nextSnapshots
-  items.value = items.value.filter((item) => catalogProviderIdFromItem(item) !== typedProviderKey)
+  items.value = items.value.filter((item) => catalogProviderKeyFromItem(item) !== typedProviderKey)
   publishCatalogRuntimeStore()
-  if (!props.open || !selectedProviderSet.value.has(typedProviderKey)) return
+  if (!props.open || !selectedProviderSet.value.has(runtimeProviderIdForCatalogProvider(typedProviderKey))) return
   void fetchPage({ preserveUiState: true, providerKeys: [typedProviderKey] })
 }
 
@@ -830,13 +863,14 @@ function getProviderSyncSnapshot(
 }
 
 function formatProviderOptionStatus(input: Readonly<{
-  providerId: RuntimeProviderKey
+  providerId: RuntimeProviderId
   fallbackStatusLabel: string
   fallbackItemCount: number
   sourceItemCount: number
 }>): string {
-  if (!isProviderCatalogSourceKey(input.providerId)) return formatCatalogStatusLabel(input.fallbackStatusLabel)
-  const snapshot = providerSyncSnapshots.value[catalogRuntimeScopeKey(input.providerId as ProviderCatalogKnownProviderKey)]
+  const providerKey = catalogProviderKeyForRuntimeProvider(input.providerId)
+  if (providerKey === null) return formatCatalogStatusLabel(input.fallbackStatusLabel)
+  const snapshot = providerSyncSnapshots.value[catalogRuntimeScopeKey(providerKey)]
   if (!snapshot) return formatCatalogStatusLabel(input.fallbackStatusLabel)
   if (snapshot.status !== 'synced') return formatCatalogStatusLabel(snapshot.status)
   const totalCount = snapshot.visibleModelCount ?? snapshot.totalModelCount
@@ -867,7 +901,7 @@ function rendererCatalogFailure(
   return Object.freeze({
     origin: 'starverse_internal',
     phase: 'response_body',
-    providerId: providerKey,
+    provider: Object.freeze({ namespace: 'catalog_source', id: providerKey }),
     contractId: 'model-catalog-renderer-v2',
     operationId: `catalog-renderer:${providerKey}`,
     requestSequence: 1,
@@ -920,7 +954,7 @@ function clearProviderFilters() {
 }
 
 function clearFiltersToRevealSelectedModel() {
-  const providerId = selectedProviderId.value
+  const providerId = selectedProvider.value
   skipAutoQuery = true
   searchText.value = ''
   if (providerId) {
@@ -955,7 +989,7 @@ function clearFiltersToRevealSelectedModel() {
   })
 }
 
-function toggleProviderFilter(providerId: RuntimeProviderKey, checked: boolean) {
+function toggleProviderFilter(providerId: RuntimeProviderId, checked: boolean) {
   const next = new Set(selectedProviderFilters.value)
   if (checked) {
     next.add(providerId)
@@ -968,7 +1002,7 @@ function toggleProviderFilter(providerId: RuntimeProviderKey, checked: boolean) 
 function ensureSelectedSyncProviderKey() {
   const keys = catalogProviderKeys.value
   if (keys.includes(selectedSyncProviderKey.value)) return
-  selectedSyncProviderKey.value = keys[0] ?? (OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey)
+  selectedSyncProviderKey.value = keys[0] ?? OPENROUTER_CATALOG_PROVIDER_KEY
 }
 
 function shouldSyncOnPickerOpen(
@@ -1009,18 +1043,18 @@ function parseModelIdFromModelKey(modelKey: string): string {
   const normalized = String(modelKey ?? '').trim()
   const delimiter = '::'
   const delimiterIndex = normalized.indexOf(delimiter)
-  if (delimiterIndex < 0 || delimiterIndex + delimiter.length >= normalized.length) return normalized
+  if (delimiterIndex <= 0 || delimiterIndex + delimiter.length >= normalized.length) return ''
   return normalized.slice(delimiterIndex + delimiter.length).trim()
 }
 
-function parseProviderIdFromModelKey(modelKey: string): RuntimeProviderKey | null {
+function parseProviderIdFromModelKey(modelKey: string): RuntimeProviderId | null {
   const normalized = String(modelKey ?? '').trim()
   const delimiter = '::'
   const delimiterIndex = normalized.indexOf(delimiter)
   if (delimiterIndex <= 0) return null
   const providerId = normalized.slice(0, delimiterIndex).trim()
-  return providerOptions.value.some((option) => option.providerId === providerId)
-    ? providerId as RuntimeProviderKey
+  return isRuntimeProviderId(providerId) && providerOptions.value.some((option) => option.providerId === providerId)
+    ? providerId
     : null
 }
 
@@ -1028,8 +1062,8 @@ function normalizeModelId(value: unknown): string {
   return String(value ?? '').trim()
 }
 
-function isSelectedModel(modelId: string, providerId: RuntimeProviderKey): boolean {
-  return providerId === selectedProviderId.value && normalizeModelId(modelId) === selectedModelId.value
+function isSelectedModel(modelId: string, providerId: RuntimeProviderId): boolean {
+  return providerId === selectedProvider.value && normalizeModelId(modelId) === selectedModelIdentity.value
 }
 
 function isSelectedItem(item: PickerModelItem): boolean {
@@ -1050,7 +1084,7 @@ function normalizeFavoriteModelKeys(input: readonly string[]): string[] {
 
 function resetFavoriteEditorState() {
   favoriteEditMode.value = false
-  editableFavoriteModelKeys.value = normalizeFavoriteModelKeys(props.favoriteModelKeys)
+  editableFavoriteModelKeys.value = normalizedEditableFavoriteModelKeys.value
   draggingFavoriteIndex.value = null
 }
 
@@ -1083,13 +1117,13 @@ function buildShortcutItems(modelKeys: readonly string[]): ShortcutItem[] {
 function openFavoriteEditMode() {
   if (props.disabled || props.isRunning) return
   favoriteEditMode.value = true
-  editableFavoriteModelKeys.value = normalizeFavoriteModelKeys(props.favoriteModelKeys)
+  editableFavoriteModelKeys.value = normalizedEditableFavoriteModelKeys.value
   draggingFavoriteIndex.value = null
 }
 
 function cancelFavoriteEditMode() {
   favoriteEditMode.value = false
-  editableFavoriteModelKeys.value = normalizeFavoriteModelKeys(props.favoriteModelKeys)
+  editableFavoriteModelKeys.value = normalizedEditableFavoriteModelKeys.value
   draggingFavoriteIndex.value = null
 }
 
@@ -1266,10 +1300,10 @@ function ensureActiveCandidate() {
       return
     }
     if (activeModelKey.value && availableShortcutItems.some((item) => item.modelKey === activeModelKey.value)) return
-    const selected = selectedModelId.value
-    const selectedKey = selectedProviderId.value && selected ? pickerItemKey(selectedProviderId.value, selected) : ''
+    const selected = selectedModelIdentity.value
+    const selectedKey = selectedProvider.value && selected ? pickerItemKey(selectedProvider.value, selected) : ''
     const selectedExists = selected && availableShortcutItems.some((item) =>
-      item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
+      item.providerId === selectedProvider.value && normalizeModelId(item.modelId) === selected
     )
     activeModelKey.value = selectedExists ? selectedKey : availableShortcutItems[0].modelKey
     return
@@ -1279,10 +1313,10 @@ function ensureActiveCandidate() {
     return
   }
   if (activeModelKey.value && pickerItems.value.some((item) => item.itemKey === activeModelKey.value)) return
-  const selected = selectedModelId.value
-  const selectedKey = selectedProviderId.value && selected ? pickerItemKey(selectedProviderId.value, selected) : ''
+  const selected = selectedModelIdentity.value
+  const selectedKey = selectedProvider.value && selected ? pickerItemKey(selectedProvider.value, selected) : ''
   const selectedExists = selected && pickerItems.value.some((item) =>
-    item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selected
+    item.providerId === selectedProvider.value && normalizeModelId(item.modelId) === selected
   )
   activeModelKey.value = selectedExists ? selectedKey : ''
 }
@@ -1305,7 +1339,7 @@ function ensureActiveVisible(index: number) {
 type PickerUiSnapshot = Readonly<{
   searchText: string
   includeDescriptionInSearch: boolean
-  selectedProviderFilters: readonly RuntimeProviderKey[]
+  selectedProviderFilters: readonly RuntimeProviderId[]
   selectedVendors: readonly string[]
   selectedCategory: OpenRouterModelCategory | 'all'
   contextLengthMin: string
@@ -1329,7 +1363,7 @@ type PickerUiSnapshot = Readonly<{
   activePickerMode: PickerMode
   selectedSyncProviderKey: ProviderCatalogKnownProviderKey
   activeModelKey: string
-  selectedModel: Readonly<{ providerId: RuntimeProviderKey; modelId: string }> | null
+  selectedModel: Readonly<{ providerId: RuntimeProviderId; modelId: string }> | null
   orderedModelKeys: readonly string[]
   listAnchor: Readonly<{ modelKey: string; offsetPx: number }> | null
   scrollTop: number
@@ -1371,8 +1405,8 @@ function capturePickerUiSnapshot(): PickerUiSnapshot {
     activePickerMode: activePickerMode.value,
     selectedSyncProviderKey: selectedSyncProviderKey.value,
     activeModelKey: activeModelKey.value,
-    selectedModel: selectedProviderId.value && selectedModelId.value
-      ? { providerId: selectedProviderId.value, modelId: selectedModelId.value }
+    selectedModel: selectedProvider.value && selectedModelIdentity.value
+      ? { providerId: selectedProvider.value, modelId: selectedModelIdentity.value }
       : null,
     orderedModelKeys: pickerItems.value.map((item) => item.itemKey),
     listAnchor: anchorItem
@@ -1434,10 +1468,10 @@ async function restorePickerUiSnapshot(snapshot: PickerUiSnapshot) {
   const active = String(snapshot.activeModelKey ?? '').trim()
   if (active && pickerItems.value.some((item) => item.itemKey === active)) {
     activeModelKey.value = active
-  } else if (selectedProviderId.value && selectedModelId.value && pickerItems.value.some((item) =>
-    item.providerId === selectedProviderId.value && normalizeModelId(item.modelId) === selectedModelId.value
+  } else if (selectedProvider.value && selectedModelIdentity.value && pickerItems.value.some((item) =>
+    item.providerId === selectedProvider.value && normalizeModelId(item.modelId) === selectedModelIdentity.value
   )) {
-    activeModelKey.value = pickerItemKey(selectedProviderId.value, selectedModelId.value)
+    activeModelKey.value = pickerItemKey(selectedProvider.value, selectedModelIdentity.value)
   } else {
     activeModelKey.value = ''
   }
@@ -1618,8 +1652,8 @@ async function fetchPage(options: Readonly<{
     const refreshedProviders = new Set(providerKeys)
     items.value = [
       ...items.value.filter((item) => {
-        const providerKey = catalogProviderIdFromItem(item)
-        return providerKey === null || !refreshedProviders.has(providerKey as ProviderCatalogKnownProviderKey)
+        const providerKey = catalogProviderKeyFromItem(item)
+        return providerKey === null || !refreshedProviders.has(providerKey)
       }),
       ...providerKeys.flatMap((providerKey) => {
         const runtimeRequest = runtimeRequests.get(providerKey)
@@ -1734,7 +1768,7 @@ function openDialogState() {
     setOutputModalitiesFilter(['image'])
   }
   activeModelKey.value = restoreSnapshot?.activeModelKey
-    ?? (selectedProviderId.value && selectedModelId.value ? pickerItemKey(selectedProviderId.value, selectedModelId.value) : '')
+    ?? (selectedProvider.value && selectedModelIdentity.value ? pickerItemKey(selectedProvider.value, selectedModelIdentity.value) : '')
   modelDetail.value = null
   modelDetailLoading.value = false
   modelDetailError.value = null
@@ -1891,7 +1925,8 @@ async function runSyncProvider(
         freshnessMs: policy.policy?.freshnessMs,
       })
       setProviderSyncSnapshot(providerKey, snapshot, category)
-      if (policy.policy?.listApplyMode === 'automatic' && props.open && selectedProviderSet.value.has(providerKey)) {
+      if (policy.policy?.listApplyMode === 'automatic' && props.open &&
+          selectedProviderSet.value.has(runtimeProviderIdForCatalogProvider(providerKey))) {
         await fetchPage({ preserveUiState: true, providerKeys: [providerKey] })
       }
     } else {
@@ -2024,9 +2059,10 @@ function onManualRefreshProvider(providerKey: ProviderCatalogKnownProviderKey = 
   void runSyncProvider(providerKey, true, 'manual_refresh')
 }
 
-function onProviderRowRefresh(providerId: RuntimeProviderKey) {
-  if (!isProviderCatalogSourceKey(providerId)) return
-  onManualRefreshProvider(providerId)
+function onProviderRowRefresh(providerId: RuntimeProviderId) {
+  const providerKey = catalogProviderKeyForRuntimeProvider(providerId)
+  if (providerKey === null) return
+  onManualRefreshProvider(providerKey)
 }
 
 function onApplyCatalogUpdate() {
@@ -2052,7 +2088,7 @@ function onModelListScroll() {
 }
 
 async function commitSelection(
-  selection: ChatModelSelection | CompatibleConfigurationSelection,
+  selection: ConversationRouteSelection,
   displayName: string,
 ): Promise<void> {
   if (selectionPending.value) return
@@ -2064,7 +2100,7 @@ async function commitSelection(
   selectionPending.value = true
   error.value = null
   try {
-    await command(selection as unknown as Readonly<Record<string, unknown>>)
+    await command(selection)
     emit('select', selection, displayName)
     emit('close')
   } catch (selectionFailure) {
@@ -2078,18 +2114,18 @@ function onSelectItem(item: PickerModelItem | null | undefined) {
   if (props.disabled || props.isRunning || selectionPending.value) return
   if (!item?.selectable) return
   rememberPickerUiSnapshot()
-  void commitSelection({ providerId: item.providerId, modelId: item.modelId }, item.displayName)
+  void commitSelection(createProviderModelRouteSelection({ providerId: item.providerId, modelId: item.modelId }), item.displayName)
 }
 
-function onSelectCompatibleConfiguration(
-  selection: CompatibleConfigurationSelection,
+function onSelectCompatibleRoute(
+  routeIntent: CompatibleRouteIntent,
   displayName: string,
 ) {
   if (props.disabled || props.isRunning || selectionPending.value) return
-  void commitSelection(selection, displayName)
+  void commitSelection(routeIntent, displayName)
 }
 
-function onSelectModel(modelId: string, providerId: RuntimeProviderKey) {
+function onSelectModel(modelId: string, providerId: RuntimeProviderId) {
   const normalized = String(modelId ?? '').trim()
   if (!normalized) return
   onSelectItem(pickerItems.value.find((item) => item.providerId === providerId && item.modelId === normalized))
@@ -2097,13 +2133,12 @@ function onSelectModel(modelId: string, providerId: RuntimeProviderKey) {
 
 function onToggleFavorite(item: PickerModelItem) {
   if (props.disabled || props.isRunning) return
-  if (item.providerId !== OPENROUTER_PROVIDER_ID) return
   const normalized = String(item.modelId ?? '').trim()
   if (!normalized) return
-  emit('toggleFavorite', normalized)
+  emit('toggleFavorite', item.providerId, normalized)
 }
 
-function findPickerItem(providerId: RuntimeProviderKey, modelId: string): PickerModelItem | null {
+function findPickerItem(providerId: RuntimeProviderId, modelId: string): PickerModelItem | null {
   const normalized = normalizeModelId(modelId)
   return pickerItems.value.find((candidate) => candidate.providerId === providerId && candidate.modelId === normalized) ?? null
 }
@@ -2113,7 +2148,7 @@ function onToggleShortcutFavorite(item: ShortcutItem) {
   if (pickerItem) onToggleFavorite(pickerItem)
 }
 
-function isFavoriteModel(modelId: string, providerId: RuntimeProviderKey): boolean {
+function isFavoriteModel(modelId: string, providerId: RuntimeProviderId): boolean {
   const normalized = String(modelId ?? '').trim()
   if (!normalized) return false
   return favoriteModelKeySet.value.has(buildProviderModelKey({ providerId, modelId: normalized }))
@@ -2245,10 +2280,12 @@ watch(
 )
 
 watch(
-  () => [props.selectedProviderId, props.selectedModelId] as const,
-  ([providerId, next]) => {
+  () => props.routeSelection,
+  (nextRoute) => {
     if (!props.open) return
-    const normalized = normalizeModelId(next)
+    if (nextRoute?.kind !== 'provider_model') return
+    const providerId = nextRoute.providerId
+    const normalized = normalizeModelId(nextRoute.modelId)
     if (!providerId || !normalized) return
     const selectedKey = pickerItemKey(providerId, normalized)
     if (pickerItems.value.some((item) => item.itemKey === selectedKey)) {
@@ -2258,10 +2295,10 @@ watch(
 )
 
 watch(
-  () => props.favoriteModelKeys,
+  () => normalizedEditableFavoriteModelKeys.value,
   () => {
     if (favoriteEditMode.value) return
-    editableFavoriteModelKeys.value = normalizeFavoriteModelKeys(props.favoriteModelKeys)
+    editableFavoriteModelKeys.value = normalizedEditableFavoriteModelKeys.value
     if (props.open && activePickerMode.value === 'favorites') ensureActiveCandidate()
   },
   { deep: true },
@@ -2330,16 +2367,16 @@ onBeforeUnmount(() => {
   endpointSeq += 1
 })
 const selectedModelInCatalog = computed(() => {
-  const providerId = selectedProviderId.value
-  const modelId = selectedModelId.value
+  const providerId = selectedProvider.value
+  const modelId = selectedModelIdentity.value
   if (!providerId || !modelId) return false
   return unfilteredPickerItems.value.some((item) =>
     item.providerId === providerId && normalizeModelId(item.modelId) === modelId
   )
 })
 const selectedModelVisible = computed(() => {
-  const providerId = selectedProviderId.value
-  const modelId = selectedModelId.value
+  const providerId = selectedProvider.value
+  const modelId = selectedModelIdentity.value
   if (!providerId || !modelId) return false
   return pickerItems.value.some((item) =>
     item.providerId === providerId && normalizeModelId(item.modelId) === modelId
@@ -2347,7 +2384,7 @@ const selectedModelVisible = computed(() => {
 })
 const catalogHydratedOnce = ref(false)
 const selectedModelUnlisted = computed(() =>
-  catalogHydratedOnce.value && Boolean(selectedProviderId.value && selectedModelId.value) && !selectedModelInCatalog.value
+  catalogHydratedOnce.value && Boolean(selectedProvider.value && selectedModelIdentity.value) && !selectedModelInCatalog.value
 )
 
 watch(
@@ -2364,10 +2401,10 @@ watch(
   selectedCategory,
   () => {
     if (!props.open || skipAutoQuery) return
-    const providerKey = OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey
+    const providerKey = OPENROUTER_CATALOG_PROVIDER_KEY
     lastAutoSyncAtMsByScope.delete(catalogRuntimeScopeKey(providerKey))
     void fetchPage({ preserveUiState: true, providerKeys: [providerKey] }).then(() => {
-      if (!props.open || !selectedProviderSet.value.has(providerKey)) return
+      if (!props.open || !selectedProviderSet.value.has(runtimeProviderIdForCatalogProvider(providerKey))) return
       return triggerPickerOpenSync()
     })
   },
@@ -2400,11 +2437,11 @@ const selectedModelFilteredOut = computed(() =>
         </button>
       </div>
 
-      <div v-if="props.compatibleConfigurationSources.length" class="border-b border-gray-200 bg-blue-50 px-4 py-3" data-testid="compatible-configuration-picker">
-        <div class="text-xs font-semibold text-blue-900">OpenAI Chat Completions-compatible · configuration only</div>
+      <div v-if="props.compatibleRouteSources.length" class="border-b border-gray-200 bg-blue-50 px-4 py-3" data-testid="compatible-route-picker">
+        <div class="text-xs font-semibold text-blue-900">OpenAI Chat Completions-compatible</div>
         <div class="mt-2 flex flex-wrap gap-2">
-          <template v-for="source in props.compatibleConfigurationSources" :key="source.providerInstanceId">
-            <button v-for="model in source.models" :key="`${source.providerInstanceId}:${model.modelId}`" type="button" class="rounded border border-blue-200 bg-white px-2 py-1 text-left text-xs" :disabled="props.disabled || props.isRunning || selectionPending" :data-testid="`compatible-model-${source.providerInstanceId}-${model.modelId}`" @click="onSelectCompatibleConfiguration(model.selection, model.displayName)">
+          <template v-for="source in props.compatibleRouteSources" :key="source.providerInstanceId">
+            <button v-for="model in source.models" :key="`${source.providerInstanceId}:${model.modelId}`" type="button" class="rounded border border-blue-200 bg-white px-2 py-1 text-left text-xs" :disabled="props.disabled || props.isRunning || selectionPending" :data-testid="`compatible-model-${source.providerInstanceId}-${model.modelId}`" @click="onSelectCompatibleRoute(model.routeIntent, model.displayName)">
               <span class="font-medium">{{ source.providerName }} · {{ model.displayName }}</span>
               <span class="ml-1 text-blue-700">{{ model.sourceLabel }}</span>
             </button>
@@ -2476,7 +2513,7 @@ const selectedModelFilteredOut = computed(() =>
                     <button
                       type="button"
                       class="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-600 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                      :disabled="props.disabled || provider.loading || !isProviderCatalogSourceKey(provider.providerId)"
+                      :disabled="props.disabled || provider.loading || catalogProviderKeyForRuntimeProvider(provider.providerId) === null"
                       :data-testid="`model-picker-provider-refresh-${provider.providerId}`"
                       @click="onProviderRowRefresh(provider.providerId)"
                     >
@@ -2849,7 +2886,7 @@ const selectedModelFilteredOut = computed(() =>
                   v-if="!favoriteEditMode"
                   type="button"
                   class="rounded border border-gray-200 bg-white px-2 py-0.5 text-[11px] text-gray-700 hover:bg-gray-50 disabled:opacity-50"
-                  :disabled="props.disabled || props.isRunning || normalizedFavoriteModelKeys.length === 0"
+                  :disabled="props.disabled || props.isRunning || normalizedEditableFavoriteModelKeys.length === 0"
                   data-testid="model-picker-favorites-edit"
                   @click="openFavoriteEditMode"
                 >
@@ -3154,8 +3191,8 @@ const selectedModelFilteredOut = computed(() =>
           >
             <option
               v-for="provider in syncProviderOptions"
-              :key="`sync-provider-${provider.providerId}`"
-              :value="provider.providerId"
+              :key="`sync-provider-${provider.catalogProviderKey}`"
+              :value="provider.catalogProviderKey"
             >
               {{ provider.providerName }}
             </option>

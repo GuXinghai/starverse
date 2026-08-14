@@ -5,8 +5,12 @@ import {
   type OpenAIResponsesFileDescriptorV2,
 } from '../../infra/db/repo/openAIResponsesFileDescriptorV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
-import type { AttachmentIntentV2, ManagedFileAttachmentIntentV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
-import { isOpenAIResponsesEncodedAttachmentIntentV1 } from '../../src/next/generation-v2/providers/openai-responses/responsesIntentProjectionV1'
+// eslint-disable-next-line no-restricted-imports -- Main-process attachment preflight validates Generation V2 attachment intent.
+import {
+  requiresProviderFileBindingV2,
+  type AttachmentIntentV2,
+  type ManagedFileAttachmentIntentV2,
+} from '../../src/next/generation-v2/domain/generationIntentV2'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
@@ -29,7 +33,7 @@ type IncludedOpenAIFileIntentV2 = ManagedFileAttachmentIntentV2 & Readonly<{
 export function isIncludedOpenAIResponsesFileIntentV2(
   attachment: AttachmentIntentV2,
 ): attachment is IncludedOpenAIFileIntentV2 {
-  return isOpenAIResponsesEncodedAttachmentIntentV1(attachment)
+  return requiresProviderFileBindingV2(attachment)
 }
 
 /**
@@ -51,7 +55,8 @@ export async function preflightOpenAIResponsesAttachmentDescriptorsV2(input: Rea
   signal?: AbortSignal
 }>): Promise<readonly OpenAIResponsesFileDescriptorV2[]> {
   const includedProviderFiles = input.commandAttachments.filter(isIncludedOpenAIResponsesFileIntentV2)
-  if (input.commandAttachments.some((attachment) => attachment.include && !isIncludedOpenAIResponsesFileIntentV2(attachment))) {
+  if (input.commandAttachments.some((attachment) =>
+    attachment.kind === 'managed_file' && attachment.include && !isIncludedOpenAIResponsesFileIntentV2(attachment))) {
     throw new OpenAIResponsesAttachmentPreflightV2Error('GENERATION_V2_OPENAI_ATTACHMENT_SHAPE_UNSUPPORTED')
   }
   if (includedProviderFiles.length === 0) return Object.freeze([])

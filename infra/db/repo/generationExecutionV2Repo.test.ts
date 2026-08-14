@@ -304,7 +304,7 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
       const operationId = 'operation:openai'
       const contract = readReviewedOpenAIResponsesDefinitionV2()
       const binding = {
-        ...providerBinding(), providerId: 'openai', endpointProfileId: 'openai-responses-v1',
+        ...providerBinding(), providerId: 'openai_responses', endpointProfileId: 'openai-responses-v1',
         protocolContractId: contract.protocolContractId.value,
         contractRevision: contract.contractRevision.value,
         contractDefinitionDigest: contract.definitionDigest.value,
@@ -328,7 +328,7 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
       expect(result.bundle.operation).toMatchObject({
         actionKind: 'initial_send', commandFingerprint: '1'.repeat(64),
       })
-      expect(result.bundle.snapshot.providerBinding.providerId.value).toBe('openai')
+      expect(result.bundle.snapshot.providerBinding.providerId.value).toBe('openai_responses')
     } finally { db.close() }
   })
 
@@ -445,9 +445,10 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
       const input = commandInput(graph)
       runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
         repo.insertOperationAndSnapshot(context, input))
+      insertRequest(db, input.operationId, graph.resultId)
       const failure = createProviderFailureV2({
         context: {
-          origin: 'http_response', phase: 'response_headers', providerId: 'deepseek',
+          origin: 'http_response', phase: 'response_headers', provider: { namespace: 'generation_execution', id: 'deepseek' },
           contractId: 'deepseek-stable-chat-v1', operationId: input.operationId,
           requestSequence: 1,
         },
@@ -455,6 +456,9 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
         httpStatusText: 'Unauthorized',
         body: { error: { code: 'invalid_api_key', message: 'Invalid API key' } },
       })
+      db.prepare(`UPDATE generation_request_v2
+        SET state='failed', updated_at_ms=199, terminal_at_ms=199
+        WHERE operation_id=? AND request_sequence=1`).run(input.operationId)
       const terminal = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
         repo.terminalizeOperation(context, repo.findOperationInTransaction(context, input.operationId)!, {
           state: 'failed', errorCode: failure.starverseDiagnosticCode,
@@ -474,6 +478,35 @@ describe('GenerationExecutionV2Repo strict dormant persistence', () => {
           errorMessage: failure.providerError?.message ?? 'Provider request failed.', errorFact: failure,
         }, 999))
       expect(replay.operation.errorFact?.providerError?.requestId).toBeNull()
+    } finally { db.close() }
+  })
+
+  it.each([
+    ['operation', { operationId: 'operation:other' }],
+    ['provider', { provider: { namespace: 'generation_execution', id: 'openrouter' } }],
+    ['contract', { contractId: 'contract:other' }],
+  ] as const)('rejects a terminal failure whose %s identity does not match the request', (_field, override) => {
+    const db = createDb()
+    try {
+      const graph = seedGraph(db)
+      const repo = new GenerationExecutionV2Repo(db)
+      const input = commandInput(graph)
+      runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        repo.insertOperationAndSnapshot(context, input))
+      insertRequest(db, input.operationId, graph.resultId)
+      const failure = createProviderFailureV2({
+        context: {
+          origin: 'provider_runtime', phase: 'response_body',
+          provider: { namespace: 'generation_execution', id: 'deepseek' },
+          contractId: 'deepseek-stable-chat-v1', operationId: input.operationId,
+          requestSequence: 1, ...override,
+        },
+      })
+      expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) =>
+        repo.terminalizeOperation(context, repo.findOperationInTransaction(context, input.operationId)!, {
+          state: 'failed', errorCode: failure.starverseDiagnosticCode,
+          errorMessage: 'Provider request failed.', errorFact: failure,
+        }, 200))).toThrow('GENERATION_V2_EXECUTION_INPUT_INVALID')
     } finally { db.close() }
   })
 

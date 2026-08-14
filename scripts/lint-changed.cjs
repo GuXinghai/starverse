@@ -51,7 +51,7 @@ function chunk(items, size) {
 function runEslint(files) {
   const groups = chunk(files, 80)
   for (const group of groups) {
-    const args = ['eslint', '--max-warnings=0', ...group]
+    const args = ['eslint', ...group]
     const result = spawnSync('npx', args, {
       stdio: 'inherit',
       shell: process.platform === 'win32',

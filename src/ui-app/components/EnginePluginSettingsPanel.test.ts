@@ -1,6 +1,7 @@
 import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 import EnginePluginSettingsPanel from './EnginePluginSettingsPanel.vue'
 
 function officialPlugin(overrides?: Record<string, unknown>) {
@@ -93,12 +94,35 @@ function createDbBridgeMock(outputs?: {
     }
     return { ok: true }
   })
+  const generationV2 = (globalThis as any).generationV2 ?? {}
+  ;(globalThis as any).generationV2 = {
+    ...generationV2,
+    plugins: {
+      ...(generationV2.plugins ?? {}),
+      listOfficial: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.listOfficialPlugins', params)),
+      listInstalled: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.listInstalledPlugins', params)),
+      registerLocalOfficial: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.registerLocalOfficialPlugin', params)),
+      installOfficial: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.installOfficialPlugin', params)),
+      installStatus: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.getInstallOperationStatus', params)),
+      cancelInstall: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.cancelInstallOperation', params)),
+      enable: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.enablePlugin', params)),
+      disable: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.disablePlugin', params)),
+      uninstall: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.uninstallPlugin', params)),
+      health: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.runHealthCheck', params)),
+      registerLocalPackage: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.registerLocalPackage', params)),
+      diagnostics: vi.fn((params?: unknown) => invoke('enginePluginLifecycle.getDiagnosticsSummary', params)),
+    },
+  }
   return { invoke }
 }
 
 // eslint-disable-next-line max-lines-per-function
 describe('EnginePluginSettingsPanel', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+
+  beforeEach(() => {
+    installGenerationV2TestBridge()
+  })
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge

@@ -2,9 +2,14 @@ import { createHash } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
+// Approved main-process active-Catalog Generation V2 composition boundary.
+// eslint-disable-next-line no-restricted-imports
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+// eslint-disable-next-line no-restricted-imports
 import { GenerationV2Digest, GenerationV2Identity, type GenerationV2Identity as Identity } from '../../src/next/generation-v2/domain/identityV2'
+// eslint-disable-next-line no-restricted-imports
 import { resolveModelCapabilitiesV2 } from '../../src/next/modelCatalog/modelCapabilityResolverV2'
+// eslint-disable-next-line no-restricted-imports
 import { ProviderCatalogAuthorityRegistryV2 } from '../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2'
 import type { ProviderCatalogKnownProviderKey } from '../../src/shared/modelCatalog/providerCatalogContracts'
 import { missingProviderBooleanFactV2, type CatalogProviderModelObservationV2 } from '../../src/shared/modelCatalog/providerModelObservationV2'
@@ -157,8 +162,7 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
         consume: async (credentialAuthority) => {
           const active = repo.readActive(scope)
           if (!active) throw new ActiveCatalogModelAuthorityV2Error('GENERATION_V2_ACTIVE_CATALOG_MISSING')
-          const item = active.items.find((candidate) => candidate.nativeModelId === request.modelId.value ||
-            candidate.modelId === request.modelId.value) ?? null
+          const item = active.items.find((candidate) => candidate.modelId === request.modelId.value) ?? null
           const suppliedObservation = observationFromCatalogItem(item)
           const observation = item === null
             ? missingObservation(request.providerKey, request.modelId.value, active.observedAtMs)
@@ -171,8 +175,6 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
           const raw = observation.rawProviderRecord
           const revision = `catalog-v2:${active.snapshotDigest}:${active.status.authorityRevision}`
           const evidenceDigest = GenerationV2Digest.create('evidence_digest', active.snapshotDigest)
-          const providerIdValue = request.providerKey === 'anthropic_messages' ? 'anthropic' :
-            request.providerKey === 'google_ai_studio' ? 'gemini' : request.providerKey
           const anthropicCapabilities = request.providerKey === 'anthropic_messages' ? object(raw.capabilities) : null
           const anthropicThinking = object(anthropicCapabilities?.thinking)
           const anthropicThinkingTypes = object(anthropicThinking?.types)
@@ -217,7 +219,7 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
             observationDigest: GenerationV2Digest.create('evidence_digest', digest(observation)), resolutions,
             resolutionDigest: GenerationV2Digest.create('evidence_digest', resolutionHash),
             contractRevision: registry.reviewedContract.contractRevision,
-            providerId: GenerationV2Identity.create('provider_id', providerIdValue),
+            providerId: GenerationV2Identity.create('provider_id', registry.executionProviderId),
             credentialScopeId: request.providerKey === 'openrouter' ? request.expectedCredentialScopeId :
               GenerationV2Identity.create('credential_scope_id', request.expectedCredentialScopeId),
             credentialRevision: request.expectedCredentialRevision,

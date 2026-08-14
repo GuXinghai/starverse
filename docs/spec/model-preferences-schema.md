@@ -1,5 +1,9 @@
 # Model Preferences Schema（阶段 3.1）
 
+Status: pending-classification
+Document Role: spec
+Last updated: 2026-08-14
+
 更新日期：2026-02-17  
 适用范围：收藏与最近使用持久化（支持多 scope，阶段 3.1 仅启用 global）
 

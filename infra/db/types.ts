@@ -1,4 +1,5 @@
 import type { DbMethod } from './dbMethodsRegistry'
+import type { RuntimeProviderId } from '../../src/next/provider/runtimeProviderId'
 import type {
   AiPayloadKind,
   AssetKind,
@@ -2071,15 +2072,14 @@ export type ModelPrefsScopeParams = Readonly<{
 }>
 
 export type ModelPrefsModelRefParams = Readonly<{
-  providerKey?: string
-  modelId?: string
-  modelKey?: string
+  providerKey: RuntimeProviderId
+  modelId: string
 }>
 
 export type ModelPrefsFavoriteRecord = Readonly<{
   scopeType: ModelPrefsScopeType
   scopeId: string
-  providerKey: string
+  providerKey: RuntimeProviderId
   modelId: string
   modelKey: string
   sortRank: number
@@ -2090,7 +2090,7 @@ export type ModelPrefsFavoriteRecord = Readonly<{
 export type ModelPrefsRecentRecord = Readonly<{
   scopeType: ModelPrefsScopeType
   scopeId: string
-  providerKey: string
+  providerKey: RuntimeProviderId
   modelId: string
   modelKey: string
   lastUsedAtMs: number
@@ -2123,13 +2123,6 @@ export type ModelPrefsListRecentsParams = Readonly<
   ModelPrefsScopeParams & {
     limit?: number
   }
->
-
-export type ModelPrefsRecordRecentParams = Readonly<
-  ModelPrefsScopeParams &
-    ModelPrefsModelRefParams & {
-      usedAtMs?: number
-    }
 >
 
 export type ModelPrefsRemoveFavoriteResult = Readonly<{

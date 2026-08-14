@@ -108,7 +108,7 @@ export function projectProviderFailureEnvelopeForUiV2(failure: ProviderFailureV2
     const bounded = (value: string | null): string | null => value === null ? null : utf8Prefix(value, 4_096)
     projected = Object.freeze({
       ...projected,
-      providerId: utf8Prefix(projected.providerId, 1_024),
+      provider: projected.provider,
       contractId: utf8Prefix(projected.contractId, 1_024),
       operationId: utf8Prefix(projected.operationId, 1_024),
       starverseDiagnosticCode: utf8Prefix(projected.starverseDiagnosticCode, 1_024),
@@ -152,7 +152,7 @@ export function projectProviderFailureEnvelopeForUiV2(failure: ProviderFailureV2
     const bounded = (value: string | null): string | null => value === null ? null : utf8Prefix(value, 512)
     projected = Object.freeze({
       ...projected,
-      providerId: utf8Prefix(projected.providerId, 512),
+      provider: projected.provider,
       contractId: utf8Prefix(projected.contractId, 512),
       operationId: utf8Prefix(projected.operationId, 512),
       starverseDiagnosticCode: utf8Prefix(projected.starverseDiagnosticCode, 512),

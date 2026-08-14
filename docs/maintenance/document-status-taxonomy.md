@@ -3,7 +3,8 @@
 **Purpose**: Define the dual-dimension status model for Starverse documentation governance.
 
 **Status**: active
-**Last updated**: 2026-05-22
+**Document Role**: maintenance
+**Last updated**: 2026-08-14
 **Owner**: DGR-1
 
 ---
@@ -25,7 +26,7 @@ Lifecycle Status indicates the document's current lifecycle state.
 
 | Status | Meaning | When to Use | Example |
 |--------|---------|-------------|---------|
-| **active** | Current fact or maintained entry point | Always read first; regularly updated | `docs/architecture/OVERVIEW.md` |
+| **active** | Current fact or maintained entry point | Always read first; regularly updated | `docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md` |
 | **reference** | Stable background, principles, or design patterns | Read for context; rarely changes | ADR decisions, design principles |
 | **planned** | Document describes planned work, not yet implemented | Read only for planning context | Future phase specs |
 | **scaffold** | Document structure exists but content is incomplete | Read with caution; gaps expected | Draft specs |
@@ -94,7 +95,7 @@ Document Role indicates what responsibility the document carries. A document may
 | `docs/file-pipeline/progress-ledger.md` | File pipeline decisions & frozen items | All file pipeline decisions |
 | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | Format conversion design / DFC | Document conversion, preview, Send Plan, compatibility, and safety boundaries |
 | `docs/governance/app-chat-app-logic-boundary.md` | appChatApp boundaries | Core app logic boundaries |
-| `docs/architecture/OVERVIEW.md` | System architecture | High-level architecture |
+| `docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md` | System architecture | Current high-level architecture |
 | `docs/openrouter-streaming-reasoning-ssot-v2.md` | OpenRouter streaming & reasoning | SSOT v2 implementation |
 
 ---
@@ -142,4 +143,4 @@ When a document appears to have conflicting roles:
 
 - [document-governance.md](document-governance.md) — Overall governance rules
 - [document-redirect-map.md](document-redirect-map.md) — Redirect map for moved/renamed docs
-- [DOC_STATUS_INDEX.md](../../DOC_STATUS_INDEX.md) — Current status index
+- [DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) — Current status index

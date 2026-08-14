@@ -6,75 +6,127 @@ on:
       version:
         description: Magika official plugin version to release.
         required: true
-        default: 0.1.1
+        default: 0.2.0
       dryRun:
-        description: Build and sign without creating or updating the GitHub Release.
+        description: Build, compare, and sign without publishing the GitHub Release.
         required: true
-        default: 'false'
+        default: 'true'
 
 permissions:
   contents: write
 
 jobs:
-  release:
-    name: Build, sign, and publish Magika plugin
-    runs-on: windows-latest
-    environment: plugin-release-production
+  portable-build:
+    name: Build and smoke (${{ matrix.runner }})
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-latest, windows-11-arm, ubuntu-24.04, ubuntu-24.04-arm, macos-15-intel, macos-15]
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
-
       - uses: actions/setup-node@v4
         with:
           node-version-file: .nvmrc
           cache: npm
-
-      - run: npm ci
-
+      - name: Install release tooling dependencies
+        run: npm ci --ignore-scripts
       - name: Validate release input
-        shell: pwsh
+        shell: bash
+        run: test "${{ inputs.version }}" = "0.2.0" || (echo "This workflow packages only Magika v0.2.0." && exit 1)
+      - name: Build deterministic any/any package
+        run: node scripts/dev/package-official-magika-v020.mjs
+      - name: Node classification smoke
+        run: node scripts/dev/smoke-magika-package-v020.mjs
+      - name: Install Electron binary for utility-process smoke
+        run: node node_modules/electron/install.js
+      - name: Configure Electron sandbox helper
+        if: ${{ runner.os == 'Linux' }}
+        shell: bash
         run: |
-          if ("${{ inputs.version }}" -ne "0.1.1") {
-            throw "This workflow currently packages only Magika v0.1.1."
-          }
+          sudo chown root:root node_modules/electron/dist/chrome-sandbox
+          sudo chmod 4755 node_modules/electron/dist/chrome-sandbox
+      - name: Electron utility-process classification smoke (Linux)
+        if: ${{ runner.os == 'Linux' }}
+        run: xvfb-run -a node scripts/dev/smoke-magika-utility-process-v020.mjs
+      - name: Electron utility-process classification smoke
+        if: ${{ runner.os != 'Linux' }}
+        run: node scripts/dev/smoke-magika-utility-process-v020.mjs
+      - name: Record package hash
+        shell: bash
+        run: node -e "const fs=require('fs'),c=require('crypto');const p='.artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.zip';fs.writeFileSync('.artifacts/magika-sha256.txt',c.createHash('sha256').update(fs.readFileSync(p)).digest('hex')+'\n')"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magika-${{ inputs.version }}-${{ matrix.runner }}
+          path: |
+            .artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.zip
+            .artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.summary.json
+            .artifacts/magika-sha256.txt
 
-      - name: Build official Magika package
-        shell: pwsh
-        run: node scripts/dev/package-official-magika-v011.mjs
+  compare-portable-artifacts:
+    name: Compare portable packages
+    needs: portable-build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: magika-${{ inputs.version }}-*
+          path: .artifacts/matrix
+      - name: Require all six packages to be identical
+        shell: bash
+        run: node scripts/dev/verify-magika-matrix-v020.mjs .artifacts/matrix .artifacts/plugin-packages
+      - uses: actions/upload-artifact@v4
+        with:
+          name: magika-plugin-${{ inputs.version }}-canonical-dry-run
+          path: |
+            .artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.zip
+            .artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.summary.json
 
-      - name: Sign official Magika package
-        shell: pwsh
+  sign-and-publish:
+    name: Sign and publish canonical package
+    needs: compare-portable-artifacts
+    if: ${{ inputs.dryRun != 'true' }}
+    runs-on: ubuntu-24.04
+    environment: plugin-release-production
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/download-artifact@v4
+        with:
+          name: magika-plugin-${{ inputs.version }}-canonical-dry-run
+          path: .artifacts/plugin-packages
+      - name: Sign canonical package and generate release metadata
         env:
           STARVERSE_PLUGIN_SIGNING_PRIVATE_KEY: ${{ secrets.STARVERSE_PLUGIN_SIGNING_PRIVATE_KEY }}
           STARVERSE_PLUGIN_SIGNING_KEY_ID: ${{ secrets.STARVERSE_PLUGIN_SIGNING_KEY_ID }}
-        run: |
-          $zip = ".artifacts/plugin-packages/starverse-plugin-magika-${{ inputs.version }}-win32-x64.zip"
-          $sig = ".artifacts/plugin-packages/signatures/starverse-plugin-magika-${{ inputs.version }}-win32-x64.sig.json"
-          $summary = ".artifacts/plugin-packages/starverse-plugin-magika-${{ inputs.version }}-win32-x64.release-summary.json"
-          node scripts/plugin-signing/sign-official-plugin-release.mjs --zip $zip --out $sig --summary-out $summary
-
+        run: >-
+          node scripts/plugin-signing/sign-official-plugin-release.mjs
+          --zip .artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.zip
+          --out .artifacts/plugin-packages/signatures/starverse-plugin-magika-0.2.0-any-any.sig.json
+          --summary-out .artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.release-summary.json
       - uses: actions/upload-artifact@v4
         with:
           name: magika-plugin-${{ inputs.version }}-release-metadata
           path: |
-            .artifacts/plugin-packages/starverse-plugin-magika-${{ inputs.version }}-win32-x64.summary.json
-            .artifacts/plugin-packages/starverse-plugin-magika-${{ inputs.version }}-win32-x64.release-summary.json
-            .artifacts/plugin-packages/signatures/starverse-plugin-magika-${{ inputs.version }}-win32-x64.sig.json
-
-      - name: Publish GitHub Release
-        if: ${{ inputs.dryRun != 'true' }}
-        shell: pwsh
+            .artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.summary.json
+            .artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.release-summary.json
+            .artifacts/plugin-packages/signatures/starverse-plugin-magika-0.2.0-any-any.sig.json
+      - name: Publish GitHub Release asset
         env:
           GH_TOKEN: ${{ github.token }}
+        shell: bash
         run: |
-          $version = "${{ inputs.version }}"
-          $tag = "starverse-plugin-magika-v$version"
-          $zip = ".artifacts/plugin-packages/starverse-plugin-magika-$version-win32-x64.zip"
-          $sig = ".artifacts/plugin-packages/signatures/starverse-plugin-magika-$version-win32-x64.sig.json"
-          $title = "Starverse Magika official plugin v$version"
-          $notes = "Self-contained Magika managed runtime package for Starverse."
-          gh release view $tag --repo $env:GITHUB_REPOSITORY *> $null
-          if ($LASTEXITCODE -eq 0) {
-            gh release upload $tag $zip $sig --repo $env:GITHUB_REPOSITORY --clobber
-          } else {
-            gh release create $tag $zip $sig --repo $env:GITHUB_REPOSITORY --title $title --notes $notes
-          }
+          tag="starverse-plugin-magika-v${{ inputs.version }}"
+          zip=".artifacts/plugin-packages/starverse-plugin-magika-0.2.0-any-any.zip"
+          sig=".artifacts/plugin-packages/signatures/starverse-plugin-magika-0.2.0-any-any.sig.json"
+          if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$tag" "$zip" "$sig" --repo "$GITHUB_REPOSITORY" --clobber
+          else
+            gh release create "$tag" "$zip" "$sig" --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "Starverse Magika official plugin v${{ inputs.version }}" --notes "Portable pure-JavaScript any/any Magika plugin."
+          fi

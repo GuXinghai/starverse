@@ -22,10 +22,12 @@ const windowsIt = process.platform === 'win32' ? it : it.skip
 
 function secureRecord(providerKey: string, apiKey = `key-${providerKey}`) {
   return {
-    version: 1,
+    version: 3,
     providerKey,
     backend: 'electron_safe_storage',
     ciphertextBase64: Buffer.from(apiKey).toString('base64'),
+    credentialScopeId: `credential-scope-v2:${'a'.repeat(64)}`,
+    revision: 1,
     updatedAtMs: 123,
   }
 }
@@ -156,7 +158,7 @@ describe('Generation Compiler V2 epoch foundation', () => {
     }
   })
 
-  it('projects only approved preferences and the five decryptable safe-storage leaves', async () => {
+  it('projects only approved preferences and the five metadata-only safe-storage leaves', async () => {
     const providerCredentials = {
       openrouter: secureRecord('openrouter'),
       openai_responses: secureRecord('openai_responses'),
@@ -174,7 +176,6 @@ describe('Generation Compiler V2 epoch foundation', () => {
         compatibleCredentials: { v1: { custom: secureRecord('custom') } },
         providerCredentials: { v1: providerCredentials },
       },
-      validateDecrypt: async (_providerKey, ciphertext) => ({ credential: ciphertext.toString('utf8') }),
     })
     expect(projected).toEqual({
       language: 'zh-CN', languageManual: 'en-US', theme: 'dark', fontSize: 15,
@@ -192,31 +193,31 @@ describe('Generation Compiler V2 epoch foundation', () => {
     expect(JSON.stringify(projected)).not.toContain('compatibleCredentials')
   })
 
-  it('fails closed on malformed, plaintext, mismatched or undecryptable approved credentials', async () => {
+  it('quarantines malformed current credentials without copying plaintext and deletes legacy credentials', async () => {
     const invalidRecords = [
       { ...secureRecord('openrouter'), backend: 'plaintext_fallback', plaintext: 'secret' },
       { ...secureRecord('openrouter'), providerKey: 'anthropic' },
       { ...secureRecord('openrouter'), ciphertextBase64: 'not base64' },
     ]
     for (const invalid of invalidRecords) {
-      await expect(projectEpoch2Config({
+      const projected = await projectEpoch2Config({
         rawConfig: { providerCredentials: { v1: { openrouter: invalid } } },
-        validateDecrypt: async () => ({ credential: 'key' }),
-      })).rejects.toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
+      })
+      expect(projected).toMatchObject({ providerCredentials: { v1: { openrouter: { version: 3 } } } })
+      expect(JSON.stringify(projected)).not.toContain('secret')
+      expect(JSON.stringify(projected)).not.toContain('"plaintext":')
     }
     await expect(projectEpoch2Config({
-      rawConfig: { providerCredentials: { v1: { openrouter: secureRecord('openrouter') } } },
-      validateDecrypt: async () => ({ credential: '' }),
-    })).rejects.toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
-    await expect(projectEpoch2Config({
-      rawConfig: { providerCredentials: { v1: { openrouter: {
-        ...secureRecord('openrouter'), plaintext: 'must-not-coexist',
-      } } } },
-      validateDecrypt: async () => ({ credential: 'key' }),
-    })).rejects.toThrow('EPOCH2_CREDENTIAL_INVALID:openrouter')
-    await expect(projectEpoch2Config({
       rawConfig: { providerCredentials: { v1: 'corrupt' } },
-      validateDecrypt: async () => ({ credential: 'key' }),
     })).rejects.toThrow('EPOCH2_CONFIG_INVALID:providerCredentials')
+    for (const legacy of [
+      { version: 1, providerKey: 'openrouter', backend: 'electron_safe_storage' },
+      { version: 2, providerKey: 'openrouter', backend: 'electron_safe_storage', ciphertextBase64: Buffer.from('old').toString('base64') },
+      { version: 1, providerKey: 'mismatched', backend: 'plaintext_fallback', plaintext: 'old-secret' },
+    ]) {
+      await expect(projectEpoch2Config({
+        rawConfig: { providerCredentials: { v1: { openrouter: legacy } } },
+      })).resolves.toEqual({})
+    }
   })
 })

@@ -26,6 +26,19 @@ function fixture(times: number[]) {
   return { db, repo }
 }
 
+function settingsState(db: BetterSqlite3.Database) {
+  return {
+    settings: db.prepare(`
+      SELECT * FROM openrouter_image_endpoint_settings
+      ORDER BY setting_id
+    `).all(),
+    revisionClocks: db.prepare(`
+      SELECT * FROM openrouter_image_endpoint_settings_revision_clock
+      ORDER BY setting_id
+    `).all(),
+  }
+}
+
 function sqlPresetValues(schema: string, column: 'refresh_after_ms' | 'hard_expire_after_ms'): number[] {
   const match = schema.match(new RegExp(`${column} INTEGER NOT NULL CHECK \\(${column} IN \\(([^)]+)\\)\\)`))
   if (!match) throw new Error(`missing SQL preset constraint for ${column}`)
@@ -160,9 +173,9 @@ describe('OpenRouter Images V2 descriptor freshness settings', () => {
       db.prepare('UPDATE openrouter_image_endpoint_settings SET refresh_after_ms = 123, revision = ?')
         .run(Number.MAX_SAFE_INTEGER)
       db.pragma('ignore_check_constraints = OFF')
-      const before = db.serialize()
+      const before = settingsState(db)
       expect(() => repo.readOrRestore()).toThrow('GENERATION_V2_OPENROUTER_SETTINGS_REVISION_EXHAUSTED')
-      expect(db.serialize()).toEqual(before)
+      expect(settingsState(db)).toEqual(before)
     } finally { db.close() }
   })
 
@@ -171,9 +184,9 @@ describe('OpenRouter Images V2 descriptor freshness settings', () => {
     try {
       repo.readOrRestore()
       db.prepare('DELETE FROM openrouter_image_endpoint_settings_revision_clock').run()
-      const missingState = db.serialize()
+      const missingState = settingsState(db)
       expect(() => repo.readOrRestore()).toThrow('GENERATION_V2_OPENROUTER_SETTINGS_STATE_INVALID')
-      expect(db.serialize()).toEqual(missingState)
+      expect(settingsState(db)).toEqual(missingState)
 
       db.pragma('ignore_check_constraints = ON')
       db.prepare(`
@@ -181,9 +194,9 @@ describe('OpenRouter Images V2 descriptor freshness settings', () => {
         VALUES ('endpoint_descriptor_freshness', 1), ('rogue', 2)
       `).run()
       db.pragma('ignore_check_constraints = OFF')
-      const multipleState = db.serialize()
+      const multipleState = settingsState(db)
       expect(() => repo.readOrRestore()).toThrow('GENERATION_V2_OPENROUTER_SETTINGS_STATE_INVALID')
-      expect(db.serialize()).toEqual(multipleState)
+      expect(settingsState(db)).toEqual(multipleState)
     } finally { db.close() }
   })
 

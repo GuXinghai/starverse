@@ -1,19 +1,9 @@
 import { computed, ref, type Ref } from 'vue'
 import { t } from '@/shared/i18n'
-import type { LMStudioTextChatConfig } from '@/next/live/lmStudioTextChat'
-import type { OllamaTextChatConfig } from '@/next/live/ollamaTextChat'
-import {
-  deriveCurrentRuntimeSelection,
-  formatRuntimeCapabilitySummaryLite,
-  formatRuntimeSelectionLabel,
-  getRuntimeCapabilitySummaryLite,
-} from '@/next/provider/runtimeSelection'
 
 export type ExperimentalProviderChatSettingsInput = Readonly<{
-  model: Readonly<Ref<string>>
   isRunning: Readonly<Ref<boolean>>
   isDraftInteractionLocked: Readonly<Ref<boolean>>
-  normalizeModelKey: (value: unknown) => string
 }>
 
 const OPENROUTER_CHAT_ENABLED_KEY = 'starverse.openRouterTextChat.enabled'
@@ -52,16 +42,6 @@ const ANTHROPIC_CHAT_ENABLED_KEY = 'starverse.anthropicMessagesTextChat.enabled'
 const ANTHROPIC_THINKING_DISPLAY_KEY = 'starverse.anthropicMessagesTextChat.thinkingDisplay'
 const DEEPSEEK_CHAT_ENABLED_KEY = 'starverse.deepSeekTextChat.enabled'
 
-const LEGACY_MODEL_STORAGE_KEYS = [
-  'starverse.lmStudio.model',
-  'starverse.ollama.model',
-  'starverse.localEndpointTextChat.model',
-  'starverse.openAIResponsesTextChat.model',
-  'starverse.googleAIStudioTextChat.model',
-  'starverse.anthropicMessagesTextChat.model',
-  'starverse.deepSeekTextChat.model',
-] as const
-
 export function useExperimentalProviderChatSettings(input: ExperimentalProviderChatSettingsInput) {
   const openRouterChatEnabled = ref(false)
   const lmStudioChatEnabled = ref(false)
@@ -95,11 +75,10 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
 
   const openRouterChatConfig = computed(() => ({
     enabled: openRouterChatEnabled.value,
-    model: input.normalizeModelKey(input.model.value),
     providerLabel: 'OpenRouter · first-class provider',
   }))
-  const lmStudioProviderConfig = computed<LMStudioTextChatConfig>(() => ({
-    providerKey: 'lm_studio',
+  const lmStudioProviderConfig = computed(() => ({
+    providerKey: 'lm_studio' as const,
     endpointUrl: lmStudioEndpointUrl.value,
     nativeRestControls: {
       diagnosticsEnabled: lmStudioDiagnosticsEnabled.value,
@@ -110,25 +89,24 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     },
     chatMode: lmStudioChatMode.value,
     openAICompatible: {
-      basePath: '/v1',
+      basePath: '/v1' as const,
       preferredEndpoint: lmStudioOpenAICompatiblePreferredEndpoint.value,
     },
     nativeRest: {
-      basePath: '/api/v1',
+      basePath: '/api/v1' as const,
     },
   }))
   const lmStudioChatConfig = computed(() => ({
     enabled: lmStudioChatEnabled.value,
     endpointUrl: lmStudioEndpointUrl.value,
-    model: '',
     chatMode: lmStudioChatMode.value,
     openAICompatiblePreferredEndpoint: lmStudioOpenAICompatiblePreferredEndpoint.value,
     nativeRestControls: lmStudioProviderConfig.value.nativeRestControls,
     config: lmStudioProviderConfig.value,
     experimentalLabel: t('settings.lmStudio.experimentalLabel'),
   }))
-  const ollamaProviderConfig = computed<OllamaTextChatConfig>(() => ({
-    providerKey: 'ollama_local',
+  const ollamaProviderConfig = computed(() => ({
+    providerKey: 'ollama_local' as const,
     endpointUrl: ollamaEndpointUrl.value,
     nativeControls: {
       diagnosticsEnabled: ollamaDiagnosticsEnabled.value,
@@ -139,18 +117,17 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     },
     chatMode: ollamaChatMode.value,
     nativeRest: {
-      basePath: '/api',
+      basePath: '/api' as const,
       preferredEndpoint: ollamaNativeRestPreferredEndpoint.value,
     },
     openAICompatible: {
-      basePath: '/v1',
+      basePath: '/v1' as const,
       preferredEndpoint: ollamaOpenAICompatiblePreferredEndpoint.value,
     },
   }))
   const ollamaChatConfig = computed(() => ({
     enabled: ollamaChatEnabled.value,
     endpointUrl: ollamaEndpointUrl.value,
-    model: '',
     chatMode: ollamaChatMode.value,
     nativeRestPreferredEndpoint: ollamaNativeRestPreferredEndpoint.value,
     openAICompatiblePreferredEndpoint: ollamaOpenAICompatiblePreferredEndpoint.value,
@@ -163,97 +140,25 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
   const localEndpointChatConfig = computed(() => ({
     enabled: localEndpointChatEnabled.value,
     endpointUrl: localEndpointChatUrl.value,
-    model: '',
     experimentalLabel: 'Experimental · LocalEndpoint text-only · not OpenRouter',
   }))
   const openAIResponsesChatConfig = computed(() => ({
     enabled: openAIResponsesChatEnabled.value,
-    model: '',
     experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
   }))
   const googleAIStudioChatConfig = computed(() => ({
     enabled: googleAIStudioChatEnabled.value,
-    model: '',
     experimentalLabel: 'Experimental · Google AI Studio Gemini text-only · not OpenRouter',
   }))
   const anthropicChatConfig = computed(() => ({
     enabled: anthropicChatEnabled.value,
-    model: '',
     thinkingDisplay: anthropicThinkingDisplay.value,
     experimentalLabel: 'Experimental · Anthropic Messages text-only · not OpenRouter',
   }))
   const deepSeekChatConfig = computed(() => ({
     enabled: deepSeekChatEnabled.value,
-    model: '',
     experimentalLabel: 'Experimental · DeepSeek official text-only · not OpenRouter',
   }))
-  const currentRuntimeSelection = computed(() => deriveCurrentRuntimeSelection({
-    openrouter: {
-      selected: openRouterChatEnabled.value,
-      modelKey: input.normalizeModelKey(input.model.value),
-      credentialStatus: 'unknown',
-    },
-    lmStudio: {
-      selected: lmStudioChatEnabled.value,
-      endpointId: lmStudioEndpointUrl.value.trim(),
-      profileId: lmStudioChatMode.value === 'native_rest'
-        ? 'lm_studio_native_rest_chat_v1'
-        : lmStudioOpenAICompatiblePreferredEndpoint.value === 'responses'
-          ? 'lm_studio_openai_responses_v1'
-          : 'lm_studio_openai_chat_completions_v1',
-      credentialStatus: 'not_required',
-    },
-    ollama: {
-      selected: ollamaChatEnabled.value,
-      endpointId: ollamaEndpointUrl.value.trim(),
-      profileId: ollamaChatMode.value === 'native_rest'
-        ? ollamaNativeRestPreferredEndpoint.value === 'generate'
-          ? 'ollama_native_rest_generate_v1'
-          : 'ollama_native_rest_chat_v1'
-        : ollamaOpenAICompatiblePreferredEndpoint.value === 'responses'
-          ? 'ollama_openai_responses_v1'
-          : 'ollama_openai_chat_completions_v1',
-      credentialStatus: 'not_required',
-    },
-    localEndpoint: {
-      selected: localEndpointChatEnabled.value,
-      endpointId: localEndpointChatUrl.value.trim(),
-      credentialStatus: 'not_required',
-    },
-    openAIResponses: {
-      selected: openAIResponsesChatEnabled.value,
-      credentialStatus: 'unknown',
-    },
-    googleAIStudio: {
-      selected: googleAIStudioChatEnabled.value,
-      credentialStatus: 'unknown',
-    },
-    anthropic: {
-      selected: anthropicChatEnabled.value,
-      credentialStatus: 'unknown',
-    },
-    deepSeek: {
-      selected: deepSeekChatEnabled.value,
-      credentialStatus: 'unknown',
-    },
-  }))
-  const currentRuntimeCapability = computed(() => getRuntimeCapabilitySummaryLite(currentRuntimeSelection.value))
-  const currentRuntimeStatus = computed(() => ({
-    selectionLabel: formatRuntimeSelectionLabel(currentRuntimeSelection.value),
-    capabilitySummary: formatRuntimeCapabilitySummaryLite(currentRuntimeCapability.value),
-    warnings: currentRuntimeCapability.value.warnings,
-  }))
-
-  function cleanupLegacyModelStorage() {
-    try {
-      for (const key of LEGACY_MODEL_STORAGE_KEYS) {
-        globalThis.localStorage?.removeItem(key)
-      }
-    } catch {
-      // Legacy model cleanup is best-effort; current session selection is unaffected.
-    }
-  }
-
   function applyLocalEndpointChatStorageValues(payload: Readonly<{ endpointUrl?: unknown }>) {
     const endpointUrl = String(payload.endpointUrl ?? '').trim()
     if (endpointUrl) localEndpointChatUrl.value = endpointUrl
@@ -426,7 +331,6 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
   }
 
   function readExperimentalProviderChatStorage() {
-    cleanupLegacyModelStorage()
     readOpenRouterChatStorage()
     readLMStudioChatStorage()
     readOllamaChatStorage()
@@ -881,7 +785,6 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
       globalThis.localStorage?.removeItem(LM_STUDIO_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY)
       globalThis.localStorage?.removeItem(LM_STUDIO_AUTO_UNLOAD_AFTER_SEND_ENABLED_KEY)
       globalThis.localStorage?.removeItem(LM_STUDIO_AUTO_UNLOAD_AFTER_IDLE_ENABLED_KEY)
-      cleanupLegacyModelStorage()
     } catch {
       // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
@@ -977,7 +880,6 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
       globalThis.localStorage?.removeItem(OLLAMA_AUTO_LOAD_BEFORE_SEND_ENABLED_KEY)
       globalThis.localStorage?.removeItem(OLLAMA_AUTO_UNLOAD_AFTER_SEND_ENABLED_KEY)
       globalThis.localStorage?.removeItem(OLLAMA_AUTO_UNLOAD_AFTER_IDLE_ENABLED_KEY)
-      cleanupLegacyModelStorage()
     } catch {
       // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
@@ -1017,7 +919,6 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     try {
       globalThis.localStorage?.removeItem(LOCAL_ENDPOINT_CHAT_ENABLED_KEY)
       globalThis.localStorage?.removeItem(LOCAL_ENDPOINT_CHAT_URL_KEY)
-      cleanupLegacyModelStorage()
     } catch {
       // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
@@ -1050,7 +951,6 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     openAIResponsesChatEnabled.value = false
     try {
       globalThis.localStorage?.removeItem(OPENAI_RESPONSES_CHAT_ENABLED_KEY)
-      cleanupLegacyModelStorage()
     } catch {
       // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
@@ -1083,7 +983,6 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     googleAIStudioChatEnabled.value = false
     try {
       globalThis.localStorage?.removeItem(GOOGLE_AI_STUDIO_CHAT_ENABLED_KEY)
-      cleanupLegacyModelStorage()
     } catch {
       // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
@@ -1127,7 +1026,6 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     try {
       globalThis.localStorage?.removeItem(ANTHROPIC_CHAT_ENABLED_KEY)
       globalThis.localStorage?.removeItem(ANTHROPIC_THINKING_DISPLAY_KEY)
-      cleanupLegacyModelStorage()
     } catch {
       // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
@@ -1160,7 +1058,6 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     deepSeekChatEnabled.value = false
     try {
       globalThis.localStorage?.removeItem(DEEPSEEK_CHAT_ENABLED_KEY)
-      cleanupLegacyModelStorage()
     } catch {
       // Non-fatal: in-memory state still leaves the runtime selection unset unless another provider is selected.
     }
@@ -1177,9 +1074,6 @@ export function useExperimentalProviderChatSettings(input: ExperimentalProviderC
     googleAIStudioChatConfig,
     anthropicChatConfig,
     deepSeekChatConfig,
-    currentRuntimeSelection,
-    currentRuntimeCapability,
-    currentRuntimeStatus,
     localEndpointChatUrl,
     readExperimentalProviderChatStorage,
     addExperimentalProviderChatEventListeners,

@@ -35,4 +35,6 @@ export type RenderOp =
 export interface FinalSnapshot {
     html: string
     sanitizerRemoved: boolean
+    /** True while fenced-code fallback is visible and Shiki loads in the background. */
+    highlightPending?: boolean
 }

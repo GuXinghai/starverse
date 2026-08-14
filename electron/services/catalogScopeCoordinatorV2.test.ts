@@ -9,12 +9,17 @@ import { CatalogScopeCoordinatorV2 } from './catalogScopeCoordinatorV2'
 const scope = Object.freeze({ providerKey: 'openai_responses', credentialScopeId: 'scope:openai:1',
   endpointProfileId: 'openai-api-v1', operationContractId: 'openai-models-v1', category: '' })
 const context = Object.freeze({ origin: 'provider_runtime' as const, phase: 'response_body' as const,
-  providerId: 'openai_responses', contractId: 'openai-models-v1', operationId: 'catalog:test', requestSequence: 1 })
+  provider: Object.freeze({ namespace: 'catalog_source' as const, id: 'openai_responses' as const }),
+  contractId: 'openai-models-v1', operationId: 'catalog:test', requestSequence: 1 })
 
 function database() {
   const db = new BetterSqlite3(':memory:')
   applyGenerationV2SchemaForTest(db, path.resolve(process.cwd()))
   return db
+}
+
+function catalogItem(id: string) {
+  return { id, providerKey: 'openai_responses', modelId: id, modelKey: `openai_responses::${id}` }
 }
 
 describe('CatalogScopeCoordinatorV2', () => {
@@ -25,13 +30,13 @@ describe('CatalogScopeCoordinatorV2', () => {
     try {
       const active = await coordinator.sync({ scope, applyMode: 'automatic', retentionMs: 'never',
         failureContext: context, timeoutMs: 1_000,
-        execute: async () => ({ ok: true, responseDigest: 'a'.repeat(64), observedAtMs: 90, items: [{ id: 'active' }] }) })
+        execute: async () => ({ ok: true, responseDigest: 'a'.repeat(64), observedAtMs: 90, items: [catalogItem('active')] }) })
       expect(active).toMatchObject({ ok: true, publication: 'active', state: { active: { items: [{ id: 'active' }] }, pending: null } })
 
       now = 200
       const pending = await coordinator.sync({ scope, applyMode: 'manual', retentionMs: 'never',
         failureContext: context, timeoutMs: 1_000,
-        execute: async () => ({ ok: true, responseDigest: 'b'.repeat(64), observedAtMs: 190, items: [{ id: 'pending' }] }) })
+        execute: async () => ({ ok: true, responseDigest: 'b'.repeat(64), observedAtMs: 190, items: [catalogItem('pending')] }) })
       expect(pending).toMatchObject({ ok: true, publication: 'pending', state: {
         active: { items: [{ id: 'active' }] }, pending: { items: [{ id: 'pending' }] },
       } })
@@ -39,7 +44,7 @@ describe('CatalogScopeCoordinatorV2', () => {
 
       now = 300
       await coordinator.sync({ scope, applyMode: 'manual', retentionMs: 'never', failureContext: context, timeoutMs: 1_000,
-        execute: async () => ({ ok: true, responseDigest: 'c'.repeat(64), observedAtMs: 290, items: [{ id: 'next' }] }) })
+        execute: async () => ({ ok: true, responseDigest: 'c'.repeat(64), observedAtMs: 290, items: [catalogItem('next')] }) })
       expect(coordinator.applyPending({ scope, expectedSnapshotDigest: 'c'.repeat(64) })).toMatchObject({
         active: { items: [{ id: 'next' }] }, pending: null,
       })
@@ -51,9 +56,9 @@ describe('CatalogScopeCoordinatorV2', () => {
     const coordinator = new CatalogScopeCoordinatorV2(new ModelCatalogV2Repo(db, () => 500), () => 500)
     try {
       await coordinator.sync({ scope, applyMode: 'automatic', retentionMs: 'never', failureContext: context, timeoutMs: 1_000,
-        execute: async () => ({ ok: true, responseDigest: 'd'.repeat(64), observedAtMs: 400, items: [{ id: 'active' }] }) })
+        execute: async () => ({ ok: true, responseDigest: 'd'.repeat(64), observedAtMs: 400, items: [catalogItem('active')] }) })
       await coordinator.sync({ scope, applyMode: 'manual', retentionMs: 'never', failureContext: context, timeoutMs: 1_000,
-        execute: async () => ({ ok: true, responseDigest: 'e'.repeat(64), observedAtMs: 450, items: [{ id: 'pending' }] }) })
+        execute: async () => ({ ok: true, responseDigest: 'e'.repeat(64), observedAtMs: 450, items: [catalogItem('pending')] }) })
 
       const execute = vi.fn(async () => ({ ok: false as const, providerFailure: createProviderFailureV2({
         context: { ...context, origin: 'http_response', phase: 'response_body' },
@@ -84,12 +89,12 @@ describe('CatalogScopeCoordinatorV2', () => {
           order.push('first:start')
           await firstGate
           order.push('first:end')
-          return { ok: true, responseDigest: '1'.repeat(64), items: [{ id: 'first' }] }
+          return { ok: true, responseDigest: '1'.repeat(64), items: [catalogItem('first')] }
         } })
       const second = coordinator.sync({ scope, applyMode: 'manual', retentionMs: 100, adapterRevision: 'adapter:2',
         failureContext: context, timeoutMs: 2_000, execute: async () => {
           order.push('second:start')
-          return { ok: true, responseDigest: '2'.repeat(64), items: [{ id: 'second' }] }
+          return { ok: true, responseDigest: '2'.repeat(64), items: [catalogItem('second')] }
         } })
       await vi.waitFor(() => expect(order).toEqual(['first:start']))
       releaseFirst()

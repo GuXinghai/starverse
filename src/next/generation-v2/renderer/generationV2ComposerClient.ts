@@ -4,6 +4,10 @@ type Result<T> = Readonly<{ok:true;value:T}>|Readonly<{ok:false;code:string}>
 export type GenerationV2ComposerManagedFileAttachment=Readonly<{kind:'managed_file';assetId:string;assetRevisionId:string;assetSha256:string;include:boolean;
   sendAs:'provider_file'|'inline_text'|'image_reference'|'converted_document';conversion:'none'|'pdf'|'plain_text'|'images';
   attachmentOrder:number;filename:string;assetKind:'file'|'image';mime:string;sizeBytes:number;sourceKind:'user_import'|'url_import'|'generated'|'derived';originalUrl:string|null;
+  fileTypeDetection:Readonly<{contractRevision:string;revision:number;status:'pending'|'ready'|'failed';formatId:string|null;kind:string|null;
+    confidence:string|null;blocked:boolean;warning:boolean;blockingReasonCodes:readonly string[];warningReasonCodes:readonly string[];
+    magikaState:string|null;magikaModelVersion:string|null;warnings:readonly Readonly<{code:string;detail:string|null}>[];
+    errorCode:string|null;errorDetail:string|null}>|null;
   dfcSelection:Readonly<{optionId:string;targetKind:'original_file'|'plain_text'|'markdown'|'code'|'table_markdown'|'pdf_attachment';sendStrategy:'text_in_prompt'|'file_attachment';
     effectiveAssetId:string;effectiveAssetRevisionId:string;effectiveAssetSha256:string}>|null}>
 export type GenerationV2ComposerUrlReferenceAttachment=Readonly<{kind:'url_reference';referenceId:string;referenceRevision:string;originalUrl:string;
@@ -57,3 +61,16 @@ export function projectGenerationV2ComposerAttachments(draft:GenerationV2Compose
 export async function getGenerationV2ComposerDfcOptions(payload:Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>){return unwrap<DfcDraftAttachmentOptionsDto>(await bridge().dfcOptions(payload))}
 export async function selectGenerationV2ComposerDfcOption(payload:Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>){return unwrap<GenerationV2ComposerDraft>(await bridge().dfcSelect(payload))}
 export async function getGenerationV2ComposerDfcPreview(payload:Readonly<{conversationId:string;assetId:string;maxCharacters:number}>){return unwrap<DfcDraftAttachmentPreviewDto>(await bridge().dfcPreview(payload))}
+export async function retryGenerationV2ComposerFileTypeDetection(payload:Readonly<{conversationId:string;assetRevisionId:string}>){
+  return unwrap<GenerationV2ComposerDraft>(await bridge().retryFileTypeDetection(payload))
+}
+export function onGenerationV2ComposerFileTypeDetectionUpdated(listener:(event:Readonly<{conversationId:string|null;assetRevisionId:string;
+  status:'ready'|'failed';revision:number}>)=>void):()=>void {
+  return bridge().onFileTypeDetectionUpdated((raw:unknown)=>{
+    if(!raw||typeof raw!=='object')return
+    const value=raw as Record<string,unknown>
+    if((value.conversationId!==null&&typeof value.conversationId!=='string')||typeof value.assetRevisionId!=='string'||
+      (value.status!=='ready'&&value.status!=='failed')||!Number.isSafeInteger(value.revision))return
+    listener(value as {conversationId:string|null;assetRevisionId:string;status:'ready'|'failed';revision:number})
+  })
+}

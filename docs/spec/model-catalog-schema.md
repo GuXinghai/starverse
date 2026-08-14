@@ -1,5 +1,9 @@
 # Model Catalog Schema（可执行 DDL）
 
+Status: pending-classification
+Document Role: spec
+Last updated: 2026-08-14
+
 更新日期：2026-02-17  
 适用范围：Catalog 阶段 2（开发态删库重建）
 

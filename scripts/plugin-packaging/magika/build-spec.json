@@ -1,0 +1,22 @@
+{
+  "pluginVersion": "0.2.0",
+  "magikaPackageVersion": "1.0.0",
+  "modelVersion": "standard_v3_3",
+  "modelFiles": [
+    {
+      "name": "model.json",
+      "url": "https://google.github.io/magika/models/standard_v3_3/model.json",
+      "sha256": "d6d04589239670e2fd0dc3f9ccd5f5a4b1b3b7bea7ee72298cbbb1eee52181f2"
+    },
+    {
+      "name": "group1-shard1of1.bin",
+      "url": "https://google.github.io/magika/models/standard_v3_3/group1-shard1of1.bin",
+      "sha256": "6845b20533c637e1235dadca576dfa12b6dbf91bb81db64f34b78394be661a0e"
+    },
+    {
+      "name": "config.min.json",
+      "url": "https://google.github.io/magika/models/standard_v3_3/config.min.json",
+      "sha256": "ae24c742205358f6ff6dfd5facb6743fb69743dbba8373e73da58ff0cbd695db"
+    }
+  ]
+}

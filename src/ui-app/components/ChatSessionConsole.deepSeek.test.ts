@@ -6,7 +6,7 @@ import { t, tf } from '@/shared/i18n'
 
 function defaultSessionConfig() {
   return {
-    model: { selectedModelKey: null },
+    routeSelection: null,
     reasoning: { enabled: false, effort: 'medium' as const },
     webSearch: { enabled: false, level: 'high' as const, detail: null },
     imageGeneration: {
@@ -23,7 +23,7 @@ function defaultSessionConfig() {
 function deepSeekSessionConfig() {
   return {
     ...defaultSessionConfig(),
-    model: { selectedProviderId: 'deepseek' as const, selectedModelKey: 'deepseek-chat' },
+    routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'deepseek' as const, modelId: 'deepseek-chat'  },
   }
 }
 
@@ -37,7 +37,6 @@ describe('ChatSessionConsole DeepSeek official chat controls', () => {
         sessionConfig: deepSeekSessionConfig(),
         deepSeekChat: {
           enabled: true,
-          model: 'deepseek-chat',
           experimentalLabel: 'Experimental · DeepSeek official text-only · not OpenRouter',
         },
         reasoningDisplayMode: 'inline',
@@ -76,7 +75,6 @@ describe('ChatSessionConsole DeepSeek official chat controls', () => {
         sessionConfig: defaultSessionConfig(),
         deepSeekChat: {
           enabled: true,
-          model: 'deepseek-v4-flash',
           experimentalLabel: 'Experimental · DeepSeek official text-only · not OpenRouter',
         },
         deepSeekModelAvailability: {
@@ -145,7 +143,9 @@ describe('ChatSessionConsole DeepSeek official chat controls', () => {
     await user.click(screen.getAllByTestId('deepseek-model-use')[0])
 
     expect(view.emitted('refreshDeepSeekModels')).toHaveLength(1)
-    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'deepseek', modelId: 'deepseek-v4-flash' }])
+    expect(view.emitted('updateRouteSelection')?.[0]).toEqual([{
+      schemaVersion: 1, kind: 'provider_model', providerId: 'deepseek', modelId: 'deepseek-v4-flash',
+    }])
 
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()

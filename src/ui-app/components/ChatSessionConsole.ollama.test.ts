@@ -2,11 +2,12 @@ import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetI18nForTests, t, tf } from '@/shared/i18n'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
   return {
-    model: { selectedModelKey: null },
+    routeSelection: null,
     reasoning: { enabled: false, effort: 'medium' as const },
     webSearch: { enabled: false, level: 'high' as const, detail: null },
     imageGeneration: {
@@ -23,7 +24,7 @@ function defaultSessionConfig() {
 function ollamaSessionConfig() {
   return {
     ...defaultSessionConfig(),
-    model: { selectedProviderId: 'ollama_local' as const, selectedModelKey: 'llama3.2:latest' },
+    routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'ollama_local' as const, modelId: 'llama3.2:latest'  },
   }
 }
 
@@ -65,10 +66,19 @@ function ollamaChat(overrides: Partial<{
   }
 }
 
+function installOllamaRuntimeBridge(bridge: Record<string, unknown>) {
+  const generationV2 = (globalThis as any).generationV2 ?? {}
+  ;(globalThis as any).generationV2 = {
+    ...generationV2,
+    localRuntime: { ...(generationV2.localRuntime ?? {}), ollama: bridge },
+  }
+}
+
 describe('ChatSessionConsole Ollama controls', () => {
   const originalOllamaProvider = (globalThis as any).ollamaProvider
 
   beforeEach(() => {
+    installGenerationV2TestBridge()
     resetI18nForTests()
   })
 
@@ -118,7 +128,7 @@ describe('ChatSessionConsole Ollama controls', () => {
       status: 'unloaded',
       warnings: [],
     }))
-    ;(globalThis as any).ollamaProvider = { probe, loadModel, unloadModel }
+    installOllamaRuntimeBridge({ probe, loadModel, unloadModel })
 
     const view = render(ChatSessionConsole, {
       props: {
@@ -193,7 +203,9 @@ describe('ChatSessionConsole Ollama controls', () => {
     ])
     expect(view.emitted('updateOllamaEndpointUrl')?.length).toBeGreaterThan(0)
     expect(view.emitted('updateOllamaModel')).toBeUndefined()
-    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'ollama_local', modelId: 'llama3.2:latest' }])
+    expect(view.emitted('updateRouteSelection')?.[0]).toEqual([{
+      schemaVersion: 1, kind: 'provider_model', providerId: 'ollama_local', modelId: 'llama3.2:latest',
+    }])
     const chatEnabledEvents = view.emitted('updateOllamaChatEnabled') ?? []
     expect(chatEnabledEvents[chatEnabledEvents.length - 1]).toEqual([false])
     expect(view.emitted('clearOllamaChat')).toHaveLength(1)
@@ -216,11 +228,11 @@ describe('ChatSessionConsole Ollama controls', () => {
   it('disables diagnostics actions when the diagnostics control is off', async () => {
     const user = userEvent.setup()
     const probe = vi.fn(async () => ({ ok: true }))
-    ;(globalThis as any).ollamaProvider = {
+    installOllamaRuntimeBridge({
       probe,
       loadModel: vi.fn(),
       unloadModel: vi.fn(),
-    }
+    })
 
     render(ChatSessionConsole, {
       props: {
@@ -243,7 +255,7 @@ describe('ChatSessionConsole Ollama controls', () => {
 
   it('shows a specific embedded credential rejection for Ollama probe failures', async () => {
     const user = userEvent.setup()
-    ;(globalThis as any).ollamaProvider = {
+    installOllamaRuntimeBridge({
       probe: vi.fn(async () => ({
         ok: false,
         code: 'embedded_credentials_rejected',
@@ -251,7 +263,7 @@ describe('ChatSessionConsole Ollama controls', () => {
       })),
       loadModel: vi.fn(),
       unloadModel: vi.fn(),
-    }
+    })
 
     render(ChatSessionConsole, {
       props: {
@@ -277,11 +289,11 @@ describe('ChatSessionConsole Ollama controls', () => {
 
   it('emits the deferred auto-unload-after-idle toggle separately from implemented after-send unload', async () => {
     const user = userEvent.setup()
-    ;(globalThis as any).ollamaProvider = {
+    installOllamaRuntimeBridge({
       probe: vi.fn(),
       loadModel: vi.fn(),
       unloadModel: vi.fn(),
-    }
+    })
 
     const view = render(ChatSessionConsole, {
       props: {

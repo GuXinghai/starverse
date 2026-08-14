@@ -81,9 +81,21 @@
       "englishUS": "English (US)"
     },
     "credentials": {
-      "configured": "Configured: {value}",
+      "configured": "Configured",
       "notConfigured": "Not configured",
-      "apply": "Apply credential"
+      "unknown": "Status unknown",
+      "add": "Add",
+      "replace": "Replace",
+      "systemCredentialDecryptUnavailable": "The API key is saved, but the system secure store cannot currently decrypt it. Re-enter the API key or repair the system secure store and retry.",
+      "systemCredentialRecordInvalid": "The saved API key record is invalid. Re-enter the API key.",
+      "apply": "Apply credential",
+      "secureStorageUnavailableTitle": "Linux system secure storage is unavailable",
+      "secureStorageUnavailableBody": "Starverse cannot safely persist this API key through the system keyring. You may use it only for this run, or explicitly save it as plaintext in local data.",
+      "plaintextWarning": "Plaintext storage means any program able to read Starverse data as the current Linux user may obtain this API key. Do not use it on shared, untrusted, or potentially compromised systems.",
+      "sessionOnly": "This run only",
+      "sessionOverridesPersistent": "This run only (temporarily overrides saved credential)",
+      "savePlaintext": "Save plaintext",
+      "plaintextStored": "Plaintext storage"
     },
     "runtime": {
       "missingElectronStore": "Missing electronStore (run in Electron).",

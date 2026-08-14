@@ -3,7 +3,8 @@
 **Purpose**: Define governance rules for Starverse documentation lifecycle management.
 
 **Status**: active
-**Last updated**: 2026-05-22
+**Document Role**: maintenance
+**Last updated**: 2026-08-14
 **Owner**: DGR-1
 
 ---
@@ -168,7 +169,7 @@ When two documents claim SSOT for the same domain:
 | File pipeline decisions | `docs/file-pipeline/progress-ledger.md` | active |
 | Format conversion design / DFC | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | active |
 | appChatApp boundaries | `docs/governance/app-chat-app-logic-boundary.md` | active |
-| System architecture | `docs/architecture/OVERVIEW.md` | active |
+| System architecture | `docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md` | active |
 | OpenRouter streaming | `docs/openrouter-streaming-reasoning-ssot-v2.md` | active SSOT |
 
 ---
@@ -275,5 +276,5 @@ Monthly documentation review should:
 
 - [document-status-taxonomy.md](document-status-taxonomy.md) — Status model definition
 - [document-redirect-map.md](document-redirect-map.md) — Redirect map
-- [DOC_STATUS_INDEX.md](../../DOC_STATUS_INDEX.md) — Current status index
-- [AGENT_INDEX.md](../../AGENT_INDEX.md) — Agent entry point
+- [DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) — Current status index
+- [AGENT_INDEX.md](../AGENT_INDEX.md) — Agent entry point

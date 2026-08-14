@@ -6,6 +6,10 @@ import { decodeAssistantAnswerGenerationSnapshotJsonV2 } from '../../../src/next
 import { decodeProviderFailureFact } from './generationExecutionV2Repo'
 import type { ProviderFailureV2 } from '../../../src/shared/provider/providerFailureV2'
 import { BranchRouteResolverV2 } from './branchRouteResolverV2'
+import {
+  decodeGenerationExecutionProviderId,
+  type GenerationExecutionProviderId,
+} from '../../../src/next/generation-v2/domain/generationExecutionProviderId'
 
 export class ConversationReadV2RepoError extends Error {
   constructor(readonly code:
@@ -51,7 +55,7 @@ export type ConversationBranchViewV2 = Readonly<{
       chosen: boolean
       operationId: string
       actionKind: 'initial_send' | 'edit_resend' | 'regenerate_question' | 'retry_as_new' | 'retry_replace'
-      providerId: string
+      providerId: GenerationExecutionProviderId
       modelId: string
       endpointProfileId: string
       protocolContractId: string
@@ -456,7 +460,7 @@ export class ConversationReadV2Repo {
           return Object.freeze({ answerRootId, status: answer.status as 'streaming' | 'completed' | 'failed' | 'cancelled',
             body: string(answer.body), createdAtMs: time(answer.createdAtMs), updatedAtMs: time(answer.updatedAtMs),
             chosen: answerRootId === chosen, operationId: answer.operationId, actionKind: answer.actionKind as 'initial_send' | 'edit_resend' | 'regenerate_question' | 'retry_as_new' | 'retry_replace',
-            providerId: answer.providerId, modelId: answer.modelId, endpointProfileId: answer.endpointProfileId,
+            providerId: decodeGenerationExecutionProviderId(answer.providerId), modelId: answer.modelId, endpointProfileId: answer.endpointProfileId,
             protocolContractId: answer.protocolContractId, errorCode: answer.errorCode as string | null,
             errorMessage: answer.errorMessage as string | null, errorFact, reasoningDetails, attachments, images: Object.freeze(images) })
         })

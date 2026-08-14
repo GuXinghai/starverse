@@ -1,4 +1,4 @@
-import { app, ipcMain, session } from 'electron'
+import { app, BrowserWindow, ipcMain, session } from 'electron'
 import { fileURLToPath } from 'node:url'
 import path from 'node:path'
 import { checkConfigIntegrity, checkTotalSize, CURRENT_CONFIG_VERSION, migrateConfig, validateAndCleanConfig } from './config/configSchema'
@@ -19,12 +19,15 @@ import { createInAppBrowserManager } from './services/inappBrowser'
 import { createEpoch2EnginePluginLifecycleService } from './services/epoch2EnginePluginLifecycleService'
 import { createMainProcessElectronConversionService } from './services/electronConversionService'
 import { createMainWindowLifecycle } from './windows/mainWindowLifecycle'
+import { clearMainWindowActivator, registerMainWindowActivator } from './windows/mainWindowActivation'
 import { requireEpoch2ApplicationRuntime } from './bootstrap/epoch2ApplicationRuntime'
 import { createProductNetworkProxyV2Controller } from './net/productNetworkProxyV2'
 import { createElectronSessionProviderFetch } from './net/providerHttpTransport'
 import { registerNetworkProxyIpc } from './ipc/networkProxyIpc'
 import { isEpoch2SmokeFixtureAuthorityEnabled, registerEpoch2SmokeFixtureIpc } from './ipc/epoch2SmokeFixtureIpc'
 import { bindPackagedTestDocxFixtureGrantInvalidationV1, createPackagedTestDocxFixtureAuthorityV1 } from './ipc/packagedTestDocxFixtureAuthorityV1'
+import { createMagikaUtilityProcessRunner } from './services/magikaUtilityProcessRunner'
+import { Epoch2FileTypeDetectionService, GENERATION_V2_FILE_TYPE_DETECTION_UPDATED_CHANNEL } from './services/epoch2FileTypeDetectionService'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged
@@ -101,6 +104,7 @@ export async function startMainV2(): Promise<void> {
   const localDirectFetch = createElectronSessionProviderFetch({ session: localDirectSession })
   const electronConversionBridge = createMainProcessElectronConversionService({ providerFetch: cloudFetch,
     beforeGovernedRequest: () => networkProxyController.assertGovernedRequestAvailable() })
+  const magikaProcessRunner = createMagikaUtilityProcessRunner()
   const enginePluginLifecycle = createEpoch2EnginePluginLifecycleService({
   db: runtime.epoch2.database,
   layout: runtime.layout,
@@ -109,6 +113,18 @@ export async function startMainV2(): Promise<void> {
   providerFetch: cloudFetch,
   beforeGovernedRequest: () => networkProxyController.assertGovernedRequestAvailable(),
   electronConversionBridge,
+  magikaProcessRunner,
+})
+  const fileTypeDetectionService = new Epoch2FileTypeDetectionService({
+  db: runtime.epoch2.database,
+  attachmentBlobStore: runtime.epoch2.attachmentBlobStore,
+  layout: runtime.layout,
+  magikaProcessRunner,
+  notify: (event) => {
+    for (const window of BrowserWindow.getAllWindows()) {
+      if (!window.isDestroyed()) window.webContents.send(GENERATION_V2_FILE_TYPE_DETECTION_UPDATED_CHANNEL, event)
+    }
+  },
 })
 
   recoverGenerationOrphansV2(runtime.epoch2.database)
@@ -117,7 +133,9 @@ export async function startMainV2(): Promise<void> {
   registerNetworkProxyIpc({ registerInvoke, controller: networkProxyController })
   registerGenerationV2ComposerIpc({ registerInvoke, db: runtime.epoch2.database,
   attachmentBlobStore: runtime.epoch2.attachmentBlobStore, fileSelectionGrants, cloudFetch,
-  electronConversionBridge, tempRoot: runtime.layout.tempRoot, runtimesRoot: runtime.layout.runtimesRoot })
+  electronConversionBridge, tempRoot: runtime.layout.tempRoot, runtimesRoot: runtime.layout.runtimesRoot,
+  fileTypeDetectionService })
+  fileTypeDetectionService.recoverPending()
   registerEpoch2SmokeFixtureIpc({
   enabled: isEpoch2SmokeFixtureAuthorityEnabled({ isPackaged: app.isPackaged, env: process.env, argv: process.argv }),
   fixtureRoot: process.env.SV_EPOCH2_SMOKE_FIXTURE_ROOT ?? null,
@@ -154,6 +172,7 @@ export async function startMainV2(): Promise<void> {
 })
   mainWindowLifecycle.registerAppLifecycleHandlers()
   mainWindowLifecycle.createWindow()
+  registerMainWindowActivator(() => mainWindowLifecycle.focusWindow())
   packagedTestDocxFixtureAuthority?.register(() => mainWindowLifecycle.getWindow()?.webContents.id ?? null)
   const packagedFixtureWindow = mainWindowLifecycle.getWindow()
   if (packagedTestDocxFixtureAuthority && packagedFixtureWindow) {
@@ -166,6 +185,7 @@ export async function startMainV2(): Promise<void> {
   event.preventDefault()
   closing = true
   mainWindowLifecycle.clearWindowListeners()
+  clearMainWindowActivator()
   void (async () => {
     rawGenerationRequestStore.close()
     await packagedTestDocxFixtureAuthority?.dispose()

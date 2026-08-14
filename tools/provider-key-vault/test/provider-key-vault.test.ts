@@ -5,7 +5,7 @@ import { Writable } from 'node:stream'
 
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
-import { runCli } from '../index.mjs'
+import { runCli } from '../src/cli.mjs'
 import { readVaultPayload } from '../src/vault.mjs'
 
 const windowsDescribe = process.platform === 'win32' ? describe : describe.skip

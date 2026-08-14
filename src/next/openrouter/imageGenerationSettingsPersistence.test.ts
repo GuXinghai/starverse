@@ -52,9 +52,9 @@ describe('imageGenerationSettingsPersistence', () => {
       aspectRatio: '1:1',
       imageSize: '',
     } satisfies ImageGenerationUserConfig
-    const merged = mergeConvoImageGenerationMeta({ selectedModelKey: 'x' }, { mode: 'custom', custom })
+    const merged = mergeConvoImageGenerationMeta({ customMarker: 'x' }, { mode: 'custom', custom })
     expect(merged).toEqual({
-      selectedModelKey: 'x',
+      customMarker: 'x',
       imageGenerationMode: 'custom',
       imageGenerationCustom: custom,
     })
@@ -62,7 +62,7 @@ describe('imageGenerationSettingsPersistence', () => {
     expect(extractConvoImageGenerationCustom(merged)).toEqual(custom)
 
     const backToDefault = mergeConvoImageGenerationMeta(merged, { mode: 'default', custom: null })
-    expect(backToDefault).toEqual({ selectedModelKey: 'x' })
+    expect(backToDefault).toEqual({ customMarker: 'x' })
     expect(extractConvoImageGenerationMode(backToDefault)).toBe('default')
   })
 

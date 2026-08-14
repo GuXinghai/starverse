@@ -28,6 +28,7 @@ function createDb() {
 }
 
 function createAttachment(
+  db: BetterSqlite3.Database,
   repo: AttachmentAssetV2Repo,
   assetId: string,
   revisionId: string,
@@ -39,6 +40,12 @@ function createAttachment(
   const blob = repo.recordBlobFromBytes(bytes, 'application/octet-stream')
   repo.createAsset({ assetId, assetKind: 'file', filename: `${assetId}.bin`, sourceKind: 'user_import' })
   repo.appendSourceRevision({ assetId, assetRevisionId: revisionId, blob })
+  db.prepare(`INSERT INTO file_type_detection_v2 (
+    asset_revision_id,asset_sha256,attempt_id,revision,status,detector_contract_revision,
+    verdict_json,static_policy_json,warning_json,error_code,error_detail,requested_at_ms,completed_at_ms
+  ) VALUES (?, ?, ?, 1, 'ready', 'test', '{}', '{"blocked":false}', '[]', NULL, NULL, 1, 1)`).run(
+    revisionId, blob.sha256.value, `attempt:${revisionId}`,
+  )
   return Object.freeze({
     bytes,
     input: Object.freeze({
@@ -105,8 +112,8 @@ describe('GenerationCommandFactsAuthorityV2', () => {
         generation: { temperature: 0.4 },
         reasoning: { mode: 'enabled', effort: 'high' },
       })
-      const first = createAttachment(attachmentRepo, 'asset:b', 'revision:b', [2], true, 'provider_file')
-      const second = createAttachment(attachmentRepo, 'asset:a', 'revision:a', [1], false, 'inline_text')
+      const first = createAttachment(db, attachmentRepo, 'asset:b', 'revision:b', [2], true, 'provider_file')
+      const second = createAttachment(db, attachmentRepo, 'asset:a', 'revision:a', [1], false, 'inline_text')
       issue(db, configRepo, attachmentRepo, [first.input, second.input], (authority) => {
         expect(authority.conversationId).toMatchObject({
           kind: 'conversation_id', value: 'conversation:1',
@@ -160,8 +167,8 @@ describe('GenerationCommandFactsAuthorityV2', () => {
       let now = 10
       const configRepo = new GenerationConfigV2Repo(db)
       const attachmentRepo = new AttachmentAssetV2Repo(db, () => now)
-      const valid = createAttachment(attachmentRepo, 'asset:1', 'revision:1', [1], true, 'inline_text')
-      const retired = createAttachment(attachmentRepo, 'asset:2', 'revision:2', [2], true, 'inline_text')
+      const valid = createAttachment(db, attachmentRepo, 'asset:1', 'revision:1', [1], true, 'inline_text')
+      const retired = createAttachment(db, attachmentRepo, 'asset:2', 'revision:2', [2], true, 'inline_text')
       now = 20
       attachmentRepo.retireAsset('asset:2')
       let calls = 0
@@ -202,7 +209,7 @@ describe('GenerationCommandFactsAuthorityV2', () => {
       let now = 10
       const configRepo = new GenerationConfigV2Repo(db)
       const attachmentRepo = new AttachmentAssetV2Repo(db, () => now)
-      const attachment = createAttachment(attachmentRepo, 'asset:1', 'revision:1', [1], true, 'inline_text')
+      const attachment = createAttachment(db, attachmentRepo, 'asset:1', 'revision:1', [1], true, 'inline_text')
       let lease: VerifiedAttachmentSendBytesLeaseV2 | undefined
       expect(() => issue(db, configRepo, attachmentRepo, [attachment.input], (authority) => {
         lease = attachmentRepo.verifyAttachmentSendBytes(authority.attachmentSet.attachments[0], attachment.bytes)

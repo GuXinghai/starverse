@@ -5,12 +5,22 @@ import { createElectronSystemAwareOfficialPackageTransport } from '../../infra/f
 import { getDfcLibreOfficeManagedRuntimeRoot } from '../../infra/files/dfcManagedLibreOfficeRuntime'
 import { EnginePluginRegistryRepo } from '../../infra/db/repo/enginePluginRegistryRepo'
 import type { Epoch2WorkspaceLayout } from '../data-epoch/rootManifest'
-import { getActiveTrustedRoots } from '../../src/next/file-type/officialPluginTrustedRoots'
+import { getActiveTrustedRoots, type MagikaProcessRunner } from '../../infra/files/fileTypeRuntimeBoundary'
 import type BetterSqlite3 from 'better-sqlite3'
 import { createMainProcessElectronConversionService } from './electronConversionService'
 import type { ProviderFetch } from '../net/providerHttpTransport'
 import type { ElectronConversionBridge } from '../../infra/files/electronConversionBridge'
 import { NETWORK_PROXY_SETTINGS_V2_STORE_KEY } from '../net/productNetworkProxyV2'
+import { createMagikaUtilityProcessRunner } from './magikaUtilityProcessRunner'
+
+export function resolveEpoch2EnginePluginInstallDir(
+  layout: Epoch2WorkspaceLayout,
+  installRootKind: string,
+  installRef: string,
+): string {
+  const safeRef = installRef.replace(/[^a-zA-Z0-9._-]+/g, '_')
+  return path.join(layout.pluginsRoot, installRootKind, safeRef)
+}
 
 /**
  * One epoch-2 owned lifecycle authority.  Its mutable install-operation maps
@@ -24,6 +34,7 @@ export function createEpoch2EnginePluginLifecycleService(input: Readonly<{
   electronConversionBridge?: ElectronConversionBridge
   providerFetch: ProviderFetch
   beforeGovernedRequest?: () => void
+  magikaProcessRunner?: MagikaProcessRunner
 }>): EnginePluginLifecycleService {
   const trustedRoots = getActiveTrustedRoots(undefined, {
     isProduction: input.isProduction,
@@ -38,10 +49,8 @@ export function createEpoch2EnginePluginLifecycleService(input: Readonly<{
     registryRepo: new EnginePluginRegistryRepo(input.db),
     trustedRoots: trustedRoots.ok ? trustedRoots.trustedRoots : {},
     trustedRootSource: trustedRoots.ok ? trustedRoots.source : null,
-    resolveInstallPluginDir: ({ installRootKind, installRef }) => {
-      const safeRef = installRef.replace(/[^a-zA-Z0-9._-]+/g, '_')
-      return path.join(input.layout.pluginsRoot, installRootKind, safeRef)
-    },
+    resolveInstallPluginDir: ({ installRootKind, installRef }) =>
+      resolveEpoch2EnginePluginInstallDir(input.layout, installRootKind, installRef),
     // Keep the legacy runtime's expected internal managed-runtimes layout,
     // but make it a child of the one epoch-owned runtimes root.
     dfcLibreOfficeAppManagedRootDir: runtimeAppRoot,
@@ -49,5 +58,6 @@ export function createEpoch2EnginePluginLifecycleService(input: Readonly<{
     officialPackageTransport: createElectronSystemAwareOfficialPackageTransport(electronConversionBridge),
     networkProxySettingsProvider: () => input.configStore.get(NETWORK_PROXY_SETTINGS_V2_STORE_KEY),
     officialDownloadProbeFetch: input.providerFetch,
+    magikaProcessRunner: input.magikaProcessRunner ?? createMagikaUtilityProcessRunner(),
   })
 }

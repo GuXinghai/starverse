@@ -20,6 +20,23 @@ export type ComposerDraftManagedFileAttachmentV2 = Readonly<{
   sizeBytes: number
   sourceKind: 'user_import' | 'url_import' | 'generated' | 'derived'
   originalUrl: string | null
+  fileTypeDetection: Readonly<{
+    contractRevision: string
+    revision: number
+    status: 'pending' | 'ready' | 'failed'
+    formatId: string | null
+    kind: string | null
+    confidence: string | null
+    blocked: boolean
+    warning: boolean
+    blockingReasonCodes: readonly string[]
+    warningReasonCodes: readonly string[]
+    magikaState: string | null
+    magikaModelVersion: string | null
+    warnings: readonly Readonly<{code:string;detail:string|null}>[]
+    errorCode: string | null
+    errorDetail: string | null
+  }> | null
   dfcSelection: Readonly<{
     optionId: string
     targetKind: 'original_file'|'plain_text'|'markdown'|'code'|'table_markdown'|'pdf_attachment'
@@ -78,6 +95,9 @@ type AttachmentRow = { attachment_kind:unknown;asset_id:unknown;asset_revision_i
   filename:unknown;asset_kind:unknown;mime:unknown;size_bytes:unknown;source_kind:unknown;
   dfc_option_id:unknown;dfc_target_kind:unknown;dfc_send_strategy:unknown;dfc_effective_asset_id:unknown;
   dfc_effective_asset_revision_id:unknown;dfc_effective_asset_sha256:unknown }
+  & { detection_revision:unknown;detection_status:unknown;detector_contract_revision:unknown;
+    detection_verdict_json:unknown;detection_static_policy_json:unknown;detection_warning_json:unknown;
+    detection_error_code:unknown;detection_error_detail:unknown }
 
 function id(value: unknown): string {
   if (typeof value !== 'string' || value.length < 1 || value.length > 512 || value.trim() !== value) {
@@ -155,7 +175,11 @@ export class ComposerDraftV2Repo {
       selection.selected_option_id AS dfc_option_id,selection.target_kind AS dfc_target_kind,
       selection.send_strategy AS dfc_send_strategy,selection.effective_asset_id AS dfc_effective_asset_id,
       selection.effective_asset_revision_id AS dfc_effective_asset_revision_id,
-      selection.effective_asset_sha256 AS dfc_effective_asset_sha256
+      selection.effective_asset_sha256 AS dfc_effective_asset_sha256,
+      detection.revision AS detection_revision,detection.status AS detection_status,
+      detection.detector_contract_revision,detection.verdict_json AS detection_verdict_json,
+      detection.static_policy_json AS detection_static_policy_json,detection.warning_json AS detection_warning_json,
+      detection.error_code AS detection_error_code,detection.error_detail AS detection_error_detail
       FROM composer_draft_attachment_v2 AS draft
       LEFT JOIN asset_revision_v2 AS asset_revision ON asset_revision.asset_revision_id=draft.asset_revision_id
       LEFT JOIN file_asset_v2 AS asset ON asset.asset_id=asset_revision.asset_id
@@ -166,6 +190,7 @@ export class ComposerDraftV2Repo {
         ON managed_provenance.asset_revision_id=draft.asset_revision_id
       LEFT JOIN composer_draft_dfc_selection_v2 AS selection
         ON selection.conversation_id=draft.conversation_id AND selection.source_asset_revision_id=draft.asset_revision_id
+      LEFT JOIN file_type_detection_v2 AS detection ON detection.asset_revision_id=draft.asset_revision_id
       WHERE draft.conversation_id=? ORDER BY draft.attachment_order,draft.asset_revision_id,draft.url_reference_revision`).all(conversationId) as AttachmentRow[]
     return Object.freeze({conversationId,draftText:row.draft_text,draftMode:row.draft_mode,
       editingSourceQuestionId:row.editing_source_question_id as string|null,revision:row.revision as number,
@@ -409,7 +434,39 @@ export class ComposerDraftV2Repo {
       assetKind:row.asset_kind,mime:row.mime,sizeBytes:row.size_bytes as number,
       sourceKind:row.source_kind as ComposerDraftManagedFileAttachmentV2['sourceKind'],
       originalUrl:row.managed_original_url===null?null:typeof row.managed_original_url==='string'?row.managed_original_url:
-        (()=>{throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')})(),dfcSelection})
+        (()=>{throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')})(),
+      fileTypeDetection:this.decodeFileTypeDetection(row),dfcSelection})
+  }
+  private decodeFileTypeDetection(row:AttachmentRow):ComposerDraftManagedFileAttachmentV2['fileTypeDetection'] {
+    if(row.detection_status===null)return null
+    if((row.detection_status!=='pending'&&row.detection_status!=='ready'&&row.detection_status!=='failed')||
+      !Number.isSafeInteger(row.detection_revision)||typeof row.detector_contract_revision!=='string'||
+      (row.detection_error_code!==null&&typeof row.detection_error_code!=='string')||
+      (row.detection_error_detail!==null&&typeof row.detection_error_detail!=='string'))
+      throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')
+    try {
+      const verdict=row.detection_verdict_json===null?null:JSON.parse(String(row.detection_verdict_json)) as Record<string,unknown>
+      const policy=row.detection_static_policy_json===null?null:JSON.parse(String(row.detection_static_policy_json)) as Record<string,unknown>
+      const warnings=JSON.parse(String(row.detection_warning_json)) as unknown
+      if(!Array.isArray(warnings))throw new Error('warnings invalid')
+      const primary=verdict?.primary as Record<string,unknown>|undefined
+      const provenance=verdict?.provenance as Record<string,unknown>|undefined
+      const blocking=policy?.blockingReasonCodes
+      const warning=policy?.warningReasonCodes
+      if(row.detection_status==='ready'&&(!verdict||!policy||typeof policy.blocked!=='boolean'||typeof policy.warning!=='boolean'||
+        !Array.isArray(blocking)||!Array.isArray(warning)))throw new Error('ready projection invalid')
+      return Object.freeze({contractRevision:row.detector_contract_revision,revision:row.detection_revision as number,
+        status:row.detection_status,formatId:typeof primary?.formatId==='string'?primary.formatId:null,
+        kind:typeof primary?.kind==='string'?primary.kind:null,confidence:typeof primary?.confidence==='string'?primary.confidence:null,
+        blocked:policy?.blocked===true,warning:policy?.warning===true,
+        blockingReasonCodes:Object.freeze(Array.isArray(blocking)?blocking.filter((value):value is string=>typeof value==='string'):[]),
+        warningReasonCodes:Object.freeze(Array.isArray(warning)?warning.filter((value):value is string=>typeof value==='string'):[]),
+        magikaState:typeof provenance?.magikaState==='string'?provenance.magikaState:null,
+        magikaModelVersion:typeof provenance?.magikaModelVersion==='string'?provenance.magikaModelVersion:null,
+        warnings:Object.freeze(warnings.filter((value):value is {code:string;detail:string|null}=>Boolean(value)&&typeof value==='object'&&
+          typeof (value as {code?:unknown}).code==='string'&&((value as {detail?:unknown}).detail===null||typeof (value as {detail?:unknown}).detail==='string'))),
+        errorCode:row.detection_error_code as string|null,errorDetail:row.detection_error_detail as string|null})
+    } catch {throw new ComposerDraftV2RepoError('GENERATION_V2_DRAFT_STATE_INVALID')}
   }
   private decodeDfcSelection(row:AttachmentRow):NonNullable<ComposerDraftManagedFileAttachmentV2['dfcSelection']> {
     if(typeof row.dfc_option_id!=='string'||!['original_file','plain_text','markdown','code','table_markdown','pdf_attachment'].includes(String(row.dfc_target_kind))||

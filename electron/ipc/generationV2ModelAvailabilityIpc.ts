@@ -3,7 +3,10 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import type { ProviderCredentialKey } from '../credentials/providerCredentialContract'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import type { RegisterInvoke } from './types'
+// Approved main-process Catalog composition boundary.
+// eslint-disable-next-line no-restricted-imports
 import { OPENROUTER_MODEL_CATEGORIES, type OpenRouterModelCategory } from '../../src/next/modelCatalog/openRouterCategoryCache'
+// eslint-disable-next-line no-restricted-imports
 import { ProviderCatalogAuthorityRegistryV2 } from '../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2'
 import {
   ModelCatalogV2Repo,
@@ -173,13 +176,13 @@ function snapshotResult(state: CatalogScopeStateV2, config?: ProviderConfig, sel
   const errorMessage = providerFailure ? providerFailurePrimaryMessageV2(providerFailure) : null
   const providerFields = config ? { providerKey: config.sourceProviderKey, endpointId: config.endpointId,
     profileId: config.profileId } : {}
-  if (!active) return Object.freeze({ ok: true, ...providerFields, items: Object.freeze([]), models: Object.freeze([]), status: status?.syncState === 'syncing' ? 'syncing' :
+  if (!active) return Object.freeze({ ok: true, ...providerFields, items: Object.freeze([]), status: status?.syncState === 'syncing' ? 'syncing' :
     status?.syncState === 'error' ? 'failed' : 'not_synced', responseDigest: null, observedAtMs: null,
     modelCount: 0, visibleModelCount: 0, hiddenModelCount: 0, errorCode: status?.errorCode ?? null,
     errorMessage, providerFailure, scopeId: status?.scopeId ?? null,
     authorityRevision: status?.authorityRevision ?? 0,
     pendingSnapshotDigest: pending?.snapshotDigest ?? status?.pendingSnapshotDigest ?? null })
-  return Object.freeze({ ok: true, ...providerFields, items: active.items, models: active.items,
+  return Object.freeze({ ok: true, ...providerFields, items: active.items,
     status: status?.syncState === 'syncing' ? 'syncing' : status?.syncState === 'error' ? 'failed' : 'synced',
     responseDigest: active.status.activeSnapshotDigest, observedAtMs: active.observedAtMs,
     modelCount: active.status.modelCount, visibleModelCount: active.status.visibleModelCount,
@@ -215,7 +218,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
       return { ok: false, failure: providerFailureFromUnknownV2(error, {
         origin: 'secure_storage',
         phase: 'request_open',
-        providerId: config.sourceProviderKey,
+        provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
         contractId: config.operationContractId,
         operationId: `catalog-credential-status:${config.sourceProviderKey}`,
         requestSequence: 1,
@@ -244,7 +247,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
     const providerFailure = providerFailureFromUnknownV2(error, {
       origin: 'database',
       phase: 'terminal_persistence',
-      providerId: config.sourceProviderKey,
+      provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
       contractId: config.operationContractId,
       operationId,
       requestSequence: 1,
@@ -279,7 +282,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
           context: {
             origin: 'database',
             phase: 'response_body',
-            providerId: config.sourceProviderKey,
+            provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
             contractId: config.operationContractId,
             operationId: `catalog-read-snapshot:${request.snapshotDigest}`,
             requestSequence: 1,
@@ -297,7 +300,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
         const providerFailure = providerFailureFromUnknownV2(error, {
           origin: 'database',
           phase: 'response_body',
-          providerId: config.sourceProviderKey,
+          provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
           contractId: config.operationContractId,
           operationId: 'catalog-read-snapshot',
           requestSequence: 1,
@@ -330,7 +333,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
       retentionMs: request.retentionMs ?? 'never',
       timeoutMs: request.timeoutMs,
       failureContext: {
-        origin: 'provider_runtime', phase: 'response_body', providerId: config.sourceProviderKey,
+        origin: 'provider_runtime', phase: 'response_body', provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
         contractId: config.operationContractId, operationId, requestSequence: 1,
       },
       execute: async (signal) => {
@@ -339,7 +342,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
         consume: (lease) => config.list(lease.credential, signal, request.category) }) as ProviderResult
         if (providerResult.ok !== true) {
           const providerFailure = providerResult.providerFailure ?? providerFailureFromUnknownV2(providerResult, {
-          origin: 'provider_runtime', phase: 'response_body', providerId: config.sourceProviderKey,
+          origin: 'provider_runtime', phase: 'response_body', provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
           contractId: config.operationContractId, operationId, requestSequence: 1,
         })
           return Object.freeze({ ok: false as const, providerFailure })
@@ -348,7 +351,7 @@ export function registerGenerationV2ModelAvailabilityIpc(input: Readonly<{
           : Array.isArray(providerResult.models) ? providerResult.models : null
         if (!items || items.some((item) => !item || typeof item !== 'object' || Array.isArray(item))) {
           return Object.freeze({ ok: false as const, providerFailure: createProviderFailureV2({
-          context: { origin: 'response_decoder', phase: 'stream_decode', providerId: config.sourceProviderKey,
+          context: { origin: 'response_decoder', phase: 'stream_decode', provider: { namespace: 'catalog_source', id: config.sourceProviderKey },
             contractId: config.operationContractId, operationId, requestSequence: 1 },
           body: { diagnostic: 'catalog response shape invalid' },
           }) })

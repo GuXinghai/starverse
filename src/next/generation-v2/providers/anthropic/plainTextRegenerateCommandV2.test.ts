@@ -4,8 +4,10 @@ import { decodeAnthropicPlainTextRegenerateCommandV2 } from './plainTextRegenera
 function command(overrides: Record<string, unknown> = {}) {
   return {
     operationId: 'operation:anthropic:regenerate',
-    branchId: 'branch:1',
+    clientActionId: 'operation:anthropic:regenerate',
+    sourceBranchId: 'branch:1',
     questionId: 'question:1',
+    sourceAnswerId: 'answer:chosen',
     expectedHeadMessageId: 'answer:chosen',
     modelId: 'claude-sonnet-4-5',
     commandAttachments: [],

@@ -58,17 +58,22 @@ import {
   type GenerationV2ConfigLayerView,
   type GenerationV2ConversationCursor,
   type GenerationV2ConversationRoutePreferenceSnapshot,
-  type GenerationV2ConversationRoutePreferenceSelection,
   type GenerationV2MessageCandidateNavigation,
 } from '@/next/generation-v2/renderer/generationV2WorkspaceClient'
 import { projectGenerationV2BranchForExistingUi } from '@/next/generation-v2/renderer/generationV2BranchProjection'
 import { abortGenerationV2, submitGenerationV2EditResend, submitGenerationV2Initial, submitGenerationV2Regenerate, submitGenerationV2Retry, subscribeGenerationV2Runtime,
   type GenerationV2Route, type GenerationV2RuntimeUpdate } from '@/next/generation-v2/renderer/generationV2CommandClient'
 import {
+  isLocalRuntimeProviderId,
+  requireLocalProviderRouteDescriptorForRouteKind,
+  requireLocalProviderRouteDescriptorForRuntimeProvider,
+} from '@/shared/provider/localProviderRouteDescriptor'
+import {
   BranchRuntimeCacheV2,
   type BranchRuntimeCacheEntryV2,
 } from '@/next/generation-v2/renderer/branchRuntimeCacheV2'
 import { projectProviderFailureForUiV2 } from '@/shared/provider/providerFailureUiProjectionV2'
+import type { ProviderCatalogKnownProviderKey } from '@/shared/modelCatalog/providerCatalogContracts'
 import {
   providerFailureFromUnknownV2,
   providerFailurePrimaryMessageV2,
@@ -113,7 +118,13 @@ import {
 import { ModelPrefsService } from '@/next/modelPrefs/modelPrefsService'
 import { applyEventsBatch, createInitialState, toggleReasoningPanelState } from '@/next/state/reducer'
 import { selectMessage, selectRun } from '@/next/state/selectors'
-import type { CompatibleConfigurationSelection } from '@/next/provider/openai-chat-compatible/ui'
+import type { CompatibleRouteIntent } from '@/next/provider/openai-chat-compatible/ui'
+import {
+  createProviderModelRouteSelection,
+  type ConversationRouteSelection,
+  type ProviderModelRouteSelection,
+} from '@/next/provider/conversationRouteSelection'
+import type { RuntimeProviderId } from '@/next/provider/runtimeProviderId'
 import {
   DEEPSEEK_OFFICIAL_ENDPOINT_ID,
   DEEPSEEK_OFFICIAL_PROFILE_ID,
@@ -124,15 +135,7 @@ import { isDeepSeekSelectableReasoningEffort } from '@/next/provider/deepseek/de
 import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
-  buildProviderModelKey,
-  normalizeChatModelSelection,
-  normalizeRuntimeProviderId,
-  type ChatModelSelection,
 } from '@/next/provider/modelSelection'
-import {
-  type CurrentRuntimeSelection,
-  type RuntimeProviderKey,
-} from '@/next/provider/runtimeSelection'
 import {
   OPENAI_RESPONSES_ENDPOINT_ID,
   OPENAI_RESPONSES_PROFILE_ID,
@@ -213,8 +216,11 @@ import {
   getGenerationV2ComposerDfcOptions,
   getGenerationV2ComposerDfcPreview,
   selectGenerationV2ComposerDfcOption,
+  onGenerationV2ComposerFileTypeDetectionUpdated,
+  retryGenerationV2ComposerFileTypeDetection,
   updateGenerationV2ComposerText,
   type GenerationV2ComposerDraft,
+  type GenerationV2ComposerManagedFileAttachment,
 } from '@/next/generation-v2/renderer/generationV2ComposerClient'
 import { normalizeExtension } from '@/shared/files/fileRules'
 import { syncProviderCatalogsOnStartupV2 } from './providerCatalogStartupSyncV2'
@@ -300,14 +306,7 @@ export function useAppChatAppLogic() {
     catalogRuntimeSnapshot.value = catalogRuntimeStore.snapshot()
   })
   const unregisterCatalogSelectionCommand = registerCatalogModelSelectionCommandV2(appIdentity, async (selection) => {
-    const previousModel = model.value
-    try {
-      await onUpdateModel(selection as unknown as ChatModelSelection | CompatibleConfigurationSelection)
-    } catch (error) {
-      model.value = previousModel
-      applySelectedModelOverrideForActiveConvo()
-      throw error
-    }
+    await onUpdateRouteSelection(selection)
   })
 
   const isReady = ref(false)
@@ -337,7 +336,6 @@ export function useAppChatAppLogic() {
   const rightRailOpen = ref(false)
   const rightRailView = ref<'reasoning' | 'console'>('console')
   const pendingDeleteQuestionId = ref<string | null>(null)
-  const model = ref(DEFAULT_OPENROUTER_MODEL_ID)
   const requestedReasoningEffort = ref<'auto' | ReasoningEffort>('auto')
   const requestedReasoningExclude = ref(false)
   type ImageGenerationUiState = ImageGenerationUserConfig
@@ -387,6 +385,7 @@ export function useAppChatAppLogic() {
   const draftAttachmentParsingPollTimer = ref<ReturnType<typeof setTimeout> | null>(null)
   const draftFlushPromise = ref<Promise<void> | null>(null)
   const generationV2ComposerDraft = ref<GenerationV2ComposerDraft | null>(null)
+  let unsubscribeFileTypeDetectionUpdated: (()=>void)|null=null
   const lastDraftScopeKey = ref<string | null>(null)
   const attachmentFeedbackTone = ref<'info' | 'warning' | 'error' | 'success' | null>(null)
   const attachmentFeedbackMessage = ref<string | null>(null)
@@ -673,7 +672,17 @@ export function useAppChatAppLogic() {
       navigationActive: historyIncompatibleNavigationActive.value,
     }
   })
-  const composerSendGateBlockedReason = computed(() => composerSendPlanBlockingSummary.value)
+  const fileDetectionBlockingReason = computed(() => {
+    const attachment = generationV2ComposerDraft.value?.attachments.find((item) => item.kind === 'managed_file' && item.include &&
+      (item.fileTypeDetection?.status !== 'ready' || item.fileTypeDetection.blocked))
+    if (!attachment || attachment.kind !== 'managed_file') return null
+    const detection = attachment.fileTypeDetection
+    if (!detection) return 'GENERATION_V2_FILE_DETECTION_REQUIRED'
+    if (detection.status === 'pending') return 'GENERATION_V2_FILE_DETECTION_PENDING'
+    if (detection.status === 'failed') return [detection.errorCode, detection.errorDetail].filter(Boolean).join(': ') || 'GENERATION_V2_FILE_DETECTION_FAILED'
+    return detection.blockingReasonCodes.join(', ') || 'GENERATION_V2_FILE_DETECTION_BLOCKED'
+  })
+  const composerSendGateBlockedReason = computed(() => fileDetectionBlockingReason.value ?? composerSendPlanBlockingSummary.value)
   const composerSendGateWarningReason = computed(() => composerSendPlanWarningSummary.value)
   const attachmentConfirmationSession = ref<AttachmentConfirmationSession | null>(null)
   const attachmentConfirmationResolver = ref<((result: AttachmentConfirmationResult) => void) | null>(null)
@@ -688,6 +697,7 @@ export function useAppChatAppLogic() {
     if (isQuestionEditMode.value) return false
     if (composerSendPlanLoading.value) return false
     if (draft.value.trim().length === 0 && !hasSendableDraftAttachment.value) return false
+    if (fileDetectionBlockingReason.value !== null) return false
     return composerSendPlanCanProceed.value
   })
 
@@ -724,7 +734,6 @@ export function useAppChatAppLogic() {
     answerRootId: string | null
     role: string
     status: string
-    providerId: ChatModelSelection['providerId'] | null
     modelId: string | null
     completionOutcome?: CompletionOutcome
   }
@@ -981,7 +990,7 @@ export function useAppChatAppLogic() {
   watch([activeBranchId, transcriptMessageIds], () => ensureCursorForActiveBranch(), { immediate: true })
 
   watch(
-    [transcriptMessageIds, activeConvoId, activeBranchId, model],
+    [transcriptMessageIds, activeConvoId, activeBranchId],
     () => {
       scheduleHistoryAttachmentRefresh()
     },
@@ -1068,22 +1077,6 @@ export function useAppChatAppLogic() {
     { immediate: false, flush: 'sync' }
   )
 
-  watch(
-    () => model.value,
-    (next, prev) => {
-      openRouterImageEndpointSelection.value = null
-      openRouterImageEndpointSelectionError.value = null
-      void refreshSelectedModelImageCapability()
-      if (prev === undefined || next === prev) return
-      if (draftAttachmentRecords.value.length > 0) {
-        scheduleDraftSendPlanRefresh()
-      }
-      scheduleHistoryIncompatibleRefresh()
-      scheduleHistoryAttachmentRefresh()
-    },
-    { immediate: true },
-  )
-
   const activeCursorMessageId = computed(() => {
     // During streaming, prefer highlighting the active assistant message (UI only).
     const streamingId = activeAssistantMessageId.value
@@ -1139,8 +1132,6 @@ export function useAppChatAppLogic() {
     runVM.value?.status === 'requesting' || runVM.value?.status === 'streaming' || runVM.value?.status === 'tool_waiting')
 
   const {
-    lmStudioProviderConfig,
-    ollamaProviderConfig,
     openRouterChatConfig,
     lmStudioChatConfig,
     ollamaChatConfig,
@@ -1149,9 +1140,6 @@ export function useAppChatAppLogic() {
     googleAIStudioChatConfig,
     anthropicChatConfig,
     deepSeekChatConfig,
-    currentRuntimeSelection,
-    currentRuntimeCapability,
-    currentRuntimeStatus,
     localEndpointChatUrl,
     readExperimentalProviderChatStorage,
     addExperimentalProviderChatEventListeners,
@@ -1185,10 +1173,8 @@ export function useAppChatAppLogic() {
     onUpdateDeepSeekChatEnabled,
     onClearDeepSeekChat,
   } = useExperimentalProviderChatSettings({
-    model,
     isRunning,
     isDraftInteractionLocked,
-    normalizeModelKey,
   })
 
   const thinkingNowMs = ref(Date.now())
@@ -1526,7 +1512,6 @@ export function useAppChatAppLogic() {
           answerRootId: null,
           role: msg.role ?? 'assistant',
           status: metaStatus ?? 'final',
-          providerId: null,
           modelId: null,
         })
         metaChanged = true
@@ -1682,18 +1667,18 @@ export function useAppChatAppLogic() {
   }
 
   const FIRST_PARTY_CATALOG_PROVIDER_KEYS = Object.freeze([
-    OPENROUTER_PROVIDER_ID,
-    OPENAI_RESPONSES_PROVIDER_KEY,
-    GOOGLE_AI_STUDIO_PROVIDER_KEY,
-    ANTHROPIC_MESSAGES_PROVIDER_KEY,
-    DEEPSEEK_OFFICIAL_PROVIDER_KEY,
-  ] as const)
+    'openrouter',
+    'openai_responses',
+    'google_ai_studio',
+    'anthropic_messages',
+    'deepseek',
+  ] as const satisfies readonly ProviderCatalogKnownProviderKey[])
 
-  function localCatalogFailure(providerKey: string, error: unknown): ProviderFailureV2 {
+  function localCatalogFailure(providerKey: ProviderCatalogKnownProviderKey, error: unknown): ProviderFailureV2 {
     return providerFailureFromUnknownV2(error, {
       origin: 'starverse_internal',
       phase: 'response_body',
-      providerId: providerKey,
+      provider: { namespace: 'catalog_source', id: providerKey },
       contractId: 'model-catalog-v2',
       operationId: `catalog-renderer:${providerKey}`,
       requestSequence: 1,
@@ -1701,7 +1686,7 @@ export function useAppChatAppLogic() {
     })
   }
 
-  async function hydrateCatalogProvider(providerKey: string): Promise<void> {
+  async function hydrateCatalogProvider(providerKey: ProviderCatalogKnownProviderKey): Promise<void> {
     const token = catalogRuntimeStore.beginQuery(providerKey)
     const items: CatalogQueryItem[] = []
     let cursor: import('@/next/modelCatalog/catalogQueryService').CatalogQueryCursor | null = null
@@ -1792,7 +1777,8 @@ export function useAppChatAppLogic() {
       phase,
       code: failure.starverseDiagnosticCode,
       message,
-      provider: failure.providerId,
+      provider: failure.provider.id,
+      providerNamespace: failure.provider.namespace,
       source,
       raw: projectProviderFailureForUiV2(failure),
     })
@@ -2293,15 +2279,13 @@ export function useAppChatAppLogic() {
     for (const m of rows) {
       const v2Meta = v2Projection.messageMetaById.get(m.id)
       const completionOutcome = v2Meta?.completionOutcome ?? extractCompletionOutcomeFromMeta(m.meta ?? null)
-      const runtimeMeta = v2Meta ?? extractRuntimeSelectionFromMessageMeta(m.meta ?? null)
       metaMap.set(m.id, {
         parentId: m.parentId ?? null,
         questionId: m.questionId ?? null,
         answerRootId: m.answerRootId ?? null,
         role: String(m.role ?? '').trim(),
         status: v2Meta?.status === 'cancelled' ? 'aborted' : v2Meta?.status === 'failed' ? 'error' : String(v2Meta?.status ?? m.status ?? 'final'),
-        providerId: runtimeMeta.providerId as MessageMetaEntry['providerId'],
-        modelId: runtimeMeta.modelId,
+        modelId: v2Meta?.modelId ?? null,
         completionOutcome,
       })
     }
@@ -2434,6 +2418,13 @@ export function useAppChatAppLogic() {
 
   async function loadGenerationV2SemanticConfig(conversationId: string): Promise<void> {
     cacheGenerationV2Config(conversationId, await getGenerationV2Config('conversation', conversationId))
+  }
+
+  async function reloadGenerationV2ConversationAuthorities(conversationId: string): Promise<void> {
+    await Promise.all([
+      loadGenerationV2RoutePreference(conversationId),
+      loadGenerationV2SemanticConfig(conversationId),
+    ])
   }
 
       async function loadTranscriptForActiveConvo() {
@@ -3042,6 +3033,7 @@ export function useAppChatAppLogic() {
       resetDraftAttachments: input.resetDraftAttachments,
     })
     systemTemplateSnapshot.value = updated
+    await reloadGenerationV2ConversationAuthorities(updated.conversation.id)
     if (input.resetDraftAttachments) {
       draft.value = ''
       await restoreDraftForActiveScope()
@@ -3231,25 +3223,17 @@ export function useAppChatAppLogic() {
       globalWebSearchDefaults: globalWebSearchDefaults.value,
       globalGenerationParamsDefaults: globalGenerationParamsDefaults.value,
       globalImageGenerationDefault: globalImageGenerationDefault.value,
-      defaultModelKey: DEFAULT_OPENROUTER_MODEL_ID,
     })
     if (!convo || !generationV2RoutePreferenceByConversationId.value.has(convo.id)) return base
     const preference = generationV2RoutePreferenceByConversationId.value.get(convo.id) ?? null
-    const withRoute = preference === null ? Object.freeze({ ...base, model: Object.freeze({
-      selectedProviderId: null, selectedModelKey: null, compatibleSelection: null,
-    }) }) : (() => {
-      const selection = preference.selection
-      return Object.freeze({ ...base, model: selection.kind === 'provider_model'
-        ? Object.freeze({ selectedProviderId: selection.providerId,
-            selectedModelKey: selection.modelId, compatibleSelection: null })
-        : Object.freeze({ selectedProviderId: null, selectedModelKey: selection.selection.modelId,
-            compatibleSelection: selection.selection }) })
-    })()
+    const withRoute = Object.freeze({ ...base, routeSelection: preference?.selection ?? null })
     const persistedConfig = generationV2ConfigByConversationId.value.get(convo.id)
     if (!persistedConfig || isEmptyGenerationV2SemanticLayer(persistedConfig.semanticLayer)) return withRoute
     const projection = projectGenerationV2SemanticLayerToSessionConfig(
       persistedConfig.semanticLayer,
-      withRoute.model.compatibleSelection ? 'local_endpoint' : withRoute.model.selectedProviderId ?? null,
+      withRoute.routeSelection?.kind === 'openai_chat_compatible'
+        ? 'local_endpoint'
+        : withRoute.routeSelection?.providerId ?? null,
     )
     return mergeChatSessionConfig(withRoute, projection.patch)
   }
@@ -3259,12 +3243,23 @@ export function useAppChatAppLogic() {
   }
 
   const activeSessionConfig = computed(() => getActiveSessionConfigSnapshot())
+  function providerModelRoute(config: ChatSessionConfig = activeSessionConfig.value): ProviderModelRouteSelection | null {
+    return config.routeSelection?.kind === 'provider_model' ? config.routeSelection : null
+  }
+  function routeModelId(config: ChatSessionConfig = activeSessionConfig.value): string {
+    const route = config.routeSelection
+    return normalizeRuntimeModelId(route?.modelId)
+  }
+  function executionProviderId(config: ChatSessionConfig = activeSessionConfig.value): RuntimeProviderId | null {
+    const route = config.routeSelection
+    return route?.kind === 'openai_chat_compatible' ? 'local_endpoint' : route?.providerId ?? null
+  }
   const workspaceMode = computed<'none' | 'template' | 'conversation'>(() => {
     if (!activeConvoId.value) return 'none'
     return activeConvoId.value === systemTemplateSnapshot.value?.conversation.id ? 'template' : 'conversation'
   })
 
-  function legacyCatalogModels(providerKey: string, source: string): readonly Record<string, unknown>[] {
+  function providerAvailabilityModels(providerKey: string, source: string): readonly Record<string, unknown>[] {
     const state = catalogRuntimeSnapshot.value[providerKey] ?? catalogRuntimeStore.read(providerKey)
     return state.items.map((item) => {
       const raw = item.observation?.rawProviderRecord ?? {}
@@ -3295,7 +3290,7 @@ export function useAppChatAppLogic() {
     })
   }
 
-  function legacyCatalogAvailability<T>(input: Readonly<{
+  function providerCatalogAvailability<T>(input: Readonly<{
     providerKey: string
     endpointId: string
     profileId: string
@@ -3313,7 +3308,7 @@ export function useAppChatAppLogic() {
       message: providerFailurePrimaryMessageV2(state.failure),
       providerFailure: state.failure,
     }) as T
-    const models = legacyCatalogModels(input.providerKey, input.source)
+    const models = providerAvailabilityModels(input.providerKey, input.source)
     const observedAtMs = models.reduce((latest, model) => Math.max(latest,
       typeof model.observedAtMs === 'number' ? model.observedAtMs : 0), 0)
     return Object.freeze({
@@ -3335,22 +3330,22 @@ export function useAppChatAppLogic() {
 
   const openAIResponsesModelAvailabilityStatus = computed(() => ({
     loading: catalogProviderLoading(OPENAI_RESPONSES_PROVIDER_KEY),
-    result: legacyCatalogAvailability<OpenAIModelAvailabilityResult>({ providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
+    result: providerCatalogAvailability<OpenAIModelAvailabilityResult>({ providerKey: OPENAI_RESPONSES_PROVIDER_KEY,
       endpointId: OPENAI_RESPONSES_ENDPOINT_ID, profileId: OPENAI_RESPONSES_PROFILE_ID, source: 'openai_models_api' }),
   }))
   const googleAIStudioModelAvailabilityStatus = computed(() => ({
     loading: catalogProviderLoading(GOOGLE_AI_STUDIO_PROVIDER_KEY),
-    result: legacyCatalogAvailability<GeminiModelAvailabilityResult>({ providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
+    result: providerCatalogAvailability<GeminiModelAvailabilityResult>({ providerKey: GOOGLE_AI_STUDIO_PROVIDER_KEY,
       endpointId: GOOGLE_AI_STUDIO_ENDPOINT_ID, profileId: GOOGLE_AI_STUDIO_PROFILE_ID, source: 'gemini_models_api' }),
   }))
   const anthropicModelAvailabilityStatus = computed(() => ({
     loading: catalogProviderLoading(ANTHROPIC_MESSAGES_PROVIDER_KEY),
-    result: legacyCatalogAvailability<AnthropicModelAvailabilityResult>({ providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
+    result: providerCatalogAvailability<AnthropicModelAvailabilityResult>({ providerKey: ANTHROPIC_MESSAGES_PROVIDER_KEY,
       endpointId: ANTHROPIC_MESSAGES_ENDPOINT_ID, profileId: ANTHROPIC_MESSAGES_PROFILE_ID, source: 'anthropic_models_api' }),
   }))
   const deepSeekModelAvailabilityStatus = computed(() => ({
     loading: catalogProviderLoading(DEEPSEEK_OFFICIAL_PROVIDER_KEY),
-    result: legacyCatalogAvailability<DeepSeekModelAvailabilityResult>({ providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
+    result: providerCatalogAvailability<DeepSeekModelAvailabilityResult>({ providerKey: DEEPSEEK_OFFICIAL_PROVIDER_KEY,
       endpointId: DEEPSEEK_OFFICIAL_ENDPOINT_ID, profileId: DEEPSEEK_OFFICIAL_PROFILE_ID, source: 'deepseek_models_api' }),
   }))
 
@@ -3402,7 +3397,7 @@ export function useAppChatAppLogic() {
     }
   }))
 
-  async function refreshCatalogProvider(providerKey: string): Promise<void> {
+  async function refreshCatalogProvider(providerKey: ProviderCatalogKnownProviderKey): Promise<void> {
     const current = catalogRuntimeSnapshot.value[providerKey] ?? catalogRuntimeStore.read(providerKey)
     if (current.syncState === 'syncing') return
     const token = catalogRuntimeStore.beginMutation(providerKey)
@@ -3430,19 +3425,12 @@ export function useAppChatAppLogic() {
 
   async function persistGenerationV2RoutePreference(
     conversationId: string,
-    modelConfig: ChatSessionConfig['model'],
+    selection: ConversationRouteSelection | null,
   ): Promise<void> {
     if (!generationV2RoutePreferenceByConversationId.value.has(conversationId)) {
       await loadGenerationV2RoutePreference(conversationId)
     }
     const current = generationV2RoutePreferenceByConversationId.value.get(conversationId) ?? null
-    let selection: GenerationV2ConversationRoutePreferenceSelection | null = null
-    if (modelConfig.compatibleSelection) {
-      selection = { schemaVersion: 1, kind: 'openai_chat_compatible', selection: modelConfig.compatibleSelection }
-    } else if (modelConfig.selectedProviderId && modelConfig.selectedModelKey) {
-      selection = { schemaVersion: 1, kind: 'provider_model',
-        providerId: modelConfig.selectedProviderId, modelId: modelConfig.selectedModelKey }
-    }
     if (selection === null) {
       if (current !== null) await clearGenerationV2ConversationRoutePreference(conversationId, current.revision)
       cacheGenerationV2RoutePreference(conversationId, null)
@@ -3462,22 +3450,23 @@ export function useAppChatAppLogic() {
       if (!convo || convo.id !== conversationId) return null
       const current = getChatSessionConfigForConvo(convo)
       const nextConfig = mergeChatSessionConfig(current, patch)
-      if (patch.model) await persistGenerationV2RoutePreference(convo.id, nextConfig.model)
+      if (patch.routeSelection !== undefined) {
+        await persistGenerationV2RoutePreference(convo.id, nextConfig.routeSelection)
+      }
+      const hasConfigPatch = patch.reasoning !== undefined || patch.webSearch !== undefined ||
+        patch.imageGeneration !== undefined || patch.generationParams !== undefined
+      if (!hasConfigPatch) return nextConfig
       const nextMeta = serializeChatSessionConfigToConvoMeta({
         baseMeta: convo.meta ?? null,
-        config: { ...nextConfig, model: {
-          selectedProviderId: null, selectedModelKey: null, compatibleSelection: null,
-        } },
+        config: nextConfig,
         convoProjectId: convo.projectId ?? null,
-        defaultModelKey: DEFAULT_OPENROUTER_MODEL_ID,
       })
       if (convo.id === systemTemplateSnapshot.value?.conversation.id) {
         await persistConvoMetaUpdate(convo, nextMeta)
       } else {
-        const providerId: RuntimeProviderKey | null = nextConfig.model.compatibleSelection
-          ? 'local_endpoint' : nextConfig.model.selectedProviderId ?? null
-        if (!providerId) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
-        await persistCurrentGenerationV2SemanticLayer(providerId, convo.id, true, nextConfig)
+        const providerId: RuntimeProviderId | null = nextConfig.routeSelection?.kind === 'openai_chat_compatible'
+          ? 'local_endpoint' : nextConfig.routeSelection?.providerId ?? null
+        if (providerId) await persistCurrentGenerationV2SemanticLayer(providerId, convo.id, true, nextConfig)
       }
       updateLocalConvoMeta(convo.id, nextMeta)
       return nextConfig
@@ -3487,7 +3476,8 @@ export function useAppChatAppLogic() {
   async function onUpdateReasoningEnabled(nextEnabled: boolean) {
     if (isDraftInteractionLocked.value) return
     const current = activeSessionConfig.value
-    const isDeepSeek = current.model.selectedProviderId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
+    const isDeepSeek = current.routeSelection?.kind === 'provider_model' &&
+      current.routeSelection.providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
     await updateActiveConvoSessionConfig({
       reasoning: {
         enabled: nextEnabled,
@@ -3501,7 +3491,8 @@ export function useAppChatAppLogic() {
   async function onUpdateReasoningEffortLevel(nextEffort: ChatSessionConfig['reasoning']['effort']) {
     if (isDraftInteractionLocked.value) return
     const current = activeSessionConfig.value
-    const isDeepSeek = current.model.selectedProviderId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
+    const isDeepSeek = current.routeSelection?.kind === 'provider_model' &&
+      current.routeSelection.providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
     if (isDeepSeek && !isDeepSeekSelectableReasoningEffort(nextEffort)) {
       throw new Error('GENERATION_V2_DEEPSEEK_REASONING_EFFORT_UNSUPPORTED')
     }
@@ -3641,16 +3632,12 @@ export function useAppChatAppLogic() {
 
   function applySessionConfigToUi(config: ChatSessionConfig) {
     skipReasoningPrefSave.value = true
-    const selectedProviderId = config.model.selectedProviderId
-    model.value = selectedProviderId === OPENROUTER_PROVIDER_ID
-      ? normalizeModelKey(config.model.selectedModelKey)
-      : DEFAULT_OPENROUTER_MODEL_ID
     const persistedConfig = activeConvoId.value
       ? generationV2ConfigByConversationId.value.get(activeConvoId.value) : undefined
     const semanticProjection = persistedConfig && !isEmptyGenerationV2SemanticLayer(persistedConfig.semanticLayer)
       ? projectGenerationV2SemanticLayerToSessionConfig(
           persistedConfig.semanticLayer,
-          config.model.compatibleSelection ? 'local_endpoint' : config.model.selectedProviderId ?? null,
+          executionProviderId(config),
         ) : null
     requestedReasoningEffort.value = semanticProjection?.requestedReasoningEffort ??
       (config.reasoning.enabled ? config.reasoning.effort : 'auto')
@@ -4436,10 +4423,11 @@ export function useAppChatAppLogic() {
     const sendModeOptions = buildSendModeOptions(attachment, asset, plan)
     const urlRetentionOptions = buildUrlRetentionOptions(isUrlAttachment(asset, attachment))
     const retrySnapshotAvailable = isUrlSnapshotRetryAvailable(asset, attachment) && base.displayStatus !== 'parsing'
-    const retryPreviewAvailable = retrySnapshotAvailable ||
+    const detectionRetryAvailable = base.displayStatus === 'detection_failed' || base.displayStatus === 'detection_required'
+    const retryPreviewAvailable = detectionRetryAvailable || retrySnapshotAvailable ||
       (isImageAssetLike(asset, attachment) && base.previewDataUrl == null && base.displayStatus !== 'parsing')
     const retryPreviewReason = retryPreviewAvailable ? null : t('filePipeline.attachment.details.retryUnavailable')
-    const retryPreviewLabel = retrySnapshotAvailable
+    const retryPreviewLabel = detectionRetryAvailable ? 'Retry file detection' : retrySnapshotAvailable
       ? t('filePipeline.attachment.details.retrySnapshot')
       : t('filePipeline.attachment.details.retryPreview')
     return {
@@ -4574,7 +4562,8 @@ export function useAppChatAppLogic() {
         attachmentOrder: attachment.attachmentOrder,
         aiPayloadKind: attachment.kind === 'managed_file' ? (attachment.assetKind === 'image' ? 'image' : 'file') :
           (attachment.mediaKind === 'image' ? 'image' : 'file'),
-        processingStatus: 'ready',
+        processingStatus: attachment.kind === 'managed_file' && attachment.fileTypeDetection?.status === 'pending' ? 'probing'
+          : attachment.kind === 'managed_file' && (!attachment.fileTypeDetection || attachment.fileTypeDetection.status === 'failed') ? 'failed' : 'ready',
         includeInNextRequest: attachment.include,
         excludedReason: attachment.include ? null : 'user_excluded',
         preferredSendMode: attachment.kind === 'managed_file' && attachment.sendAs === 'inline_text' ? 'inline_base64' : 'default',
@@ -4606,7 +4595,9 @@ export function useAppChatAppLogic() {
     } satisfies DecodedFileAsset)]))
     draftAttachmentRecords.value = records
     draftAttachmentAssetsById.value = assets
-    draftAttachmentPlansByAssetId.value = {}
+    const detectionPlans = Object.fromEntries(current.attachments.filter((attachment):attachment is GenerationV2ComposerManagedFileAttachment=>
+      attachment.kind==='managed_file').map((attachment)=>[attachment.assetId,buildFileTypeDetectionPlan(attachment)]))
+    draftAttachmentPlansByAssetId.value = detectionPlans
     draftAttachmentSendPlanStatus.value = records.length > 0 ? 'sendable' : null
     const previewByRevision = new Map((await Promise.all(current.attachments.map(async (attachment) => {
       if (attachment.kind !== 'managed_file' || attachment.assetKind !== 'image') {
@@ -4620,7 +4611,7 @@ export function useAppChatAppLogic() {
     })) as readonly (readonly [string,string|null])[]))
     if (seq !== draftAttachmentRefreshSeq) return
     draftAttachmentViewModels.value = records.map((record) => buildDraftAttachmentViewModel(
-      record, assets[record.assetId] ?? null, null, previewByRevision.get(record.id) ?? null,
+      record, assets[record.assetId] ?? null, detectionPlans[record.assetId] ?? null, previewByRevision.get(record.id) ?? null,
     ))
     resetComposerSendPlanGateState()
     selectedDraftAttachmentAssetId.value = selectedDraftAttachmentAssetId.value &&
@@ -4629,6 +4620,37 @@ export function useAppChatAppLogic() {
     composerSendPlanLoading.value = false
     resetHistoryIncompatibleAttachmentSummary()
     return
+  }
+
+  function buildFileTypeDetectionPlan(attachment:GenerationV2ComposerManagedFileAttachment):SendPlanAttachment {
+    const detection=attachment.fileTypeDetection
+    const status = !detection?'detection_required':detection.status==='pending'?'detection_pending':
+      detection.status==='failed'?'detection_failed':detection.blocked?'failed':detection.warning||detection.warnings.length>0?'ready_with_warnings':'ready'
+    const blocked=status==='detection_required'||status==='detection_pending'||status==='detection_failed'||detection?.blocked===true
+    const preciseError=detection?.status==='failed'?[detection.errorCode,detection.errorDetail].filter(Boolean).join(': '):''
+    const warningDetails=detection?.warnings.map((value)=>[value.code,value.detail].filter(Boolean).join(': '))??[]
+    const notes=blocked
+      ? [preciseError||detection?.blockingReasonCodes.join(', ')||status]
+      : [...warningDetails,...(detection?.warningReasonCodes??[])]
+    const magikaState:SendPlanAttachmentDetectionSummary['magikaState'] = detection?.magikaState==='not_installed'||detection?.magikaState==='disabled'||detection?.magikaState==='unavailable'||
+      detection?.magikaState==='available'||detection?.magikaState==='failed'||detection?.magikaState==='not_requested'
+      ? detection.magikaState:'not_requested'
+    return Object.freeze({assetId:attachment.assetId,attachmentId:attachment.assetRevisionId,source:'draft',messageId:null,
+      aiPayloadKind:attachment.assetKind==='image'?'image':'binary',semantic:{targetKind:'original_file' as const,sendStrategy:'file_attachment' as const,mappedFromLegacy:false},
+      sendAssetRefs:[],selectedSendMode:null,fallbackSendModes:[],eligibility:blocked?'blocked':notes.length>0?'warning':'included',
+      exclusionReason:blocked?(notes[0]??status):null,displayStatus:status,needsUserAttention:blocked||notes.length>0,notes,
+      lineage:{state:'ok' as const,stale:false,staleReason:null,sourceHash:attachment.assetSha256,previewContentHash:null,sendContentHash:attachment.assetSha256,conversionSettingsHash:null},
+      fileType:detection?.formatId&&detection.kind&&detection.confidence?{formatId:detection.formatId,kind:detection.kind,
+        confidenceLevel:detection.confidence,recommendedRoute:null,recommendedRouteLabelCode:null,
+        compatibility:detection.blocked?'blocked' as const:detection.warning?'warning' as const:'compatible' as const,blocked:detection.blocked,requiresJob:false,
+        engineUnavailable:magikaState!=='available',hasConflicts:detection.blockingReasonCodes.some((code)=>code.includes('polyglot')),
+        hasExtensionMimeConflict:[...detection.blockingReasonCodes,...detection.warningReasonCodes].some((code)=>code.includes('mismatch')),
+        warningLabelCodes:[...detection.warningReasonCodes],blockedLabelCodes:[...detection.blockingReasonCodes],blockedBy:[...detection.blockingReasonCodes]}:null,
+      detection:{routeEligibility:(!detection?'detection_required':detection.status==='pending'?'detection_pending':
+        detection.status==='failed'?'detection_failed':'verdict_ready') as SendPlanAttachmentDetectionSummary['routeEligibility'],detectionLevel:detection?.status==='ready'?(magikaState==='available'?'advanced' as const:'basic' as const):null,
+        engineMode:detection?.status==='ready'?(magikaState==='available'?'core_plus_magika' as const:'core_only' as const):null,usedMagika:magikaState==='available',
+        magikaState,evidenceSources:[],decisiveEvidenceSource:null,detectionTrigger:'upload',magikaModelVersion:detection?.magikaModelVersion??null,
+        advancedAttempted:magikaState==='available'||magikaState==='failed'||magikaState==='unavailable',advancedFailureReason:warningDetails[0]??null}})
   }
 
   async function onUpdateAnthropicThinkingDisplay(value: 'provider_default' | 'summarized' | 'omitted') {
@@ -4926,8 +4948,8 @@ export function useAppChatAppLogic() {
       const input = {
         conversationId: scope.convoId,
         assetId: id,
-        providerId: activeSessionConfig.value.model.selectedProviderId ?? 'unset',
-        operation: activeSessionConfig.value.model.selectedProviderId === 'openai_responses' ? 'responses' as const
+        providerId: executionProviderId() ?? 'unset',
+        operation: executionProviderId() === 'openai_responses' ? 'responses' as const
           : activeSessionConfig.value.imageGeneration.enabled ? 'images' as const : 'chat_completions' as const,
       }
       const dto = await getGenerationV2ComposerDfcOptions(input)
@@ -5015,8 +5037,8 @@ export function useAppChatAppLogic() {
           }
           generationV2ComposerDraft.value = await selectGenerationV2ComposerDfcOption({
             conversationId: convoId, expectedRevision: current.revision, assetId, optionId: input.selectedOptionId,
-            providerId: activeSessionConfig.value.model.selectedProviderId ?? 'unset',
-            operation: activeSessionConfig.value.model.selectedProviderId === 'openai_responses' ? 'responses' as const
+            providerId: executionProviderId() ?? 'unset',
+            operation: executionProviderId() === 'openai_responses' ? 'responses' as const
               : activeSessionConfig.value.imageGeneration.enabled ? 'images' as const : 'chat_completions' as const,
           })
           await refreshDraftAttachmentViewModels()
@@ -5133,6 +5155,15 @@ export function useAppChatAppLogic() {
     if (!assetId) return
     const attachment = draftAttachmentRecords.value.find((item) => item.assetId === assetId) ?? null
     const asset = draftAttachmentAssetsById.value[assetId] ?? null
+    const composerAttachment=generationV2ComposerDraft.value?.attachments.find((item)=>item.kind==='managed_file'&&item.assetId===assetId)
+    if(composerAttachment?.kind==='managed_file'&&(!composerAttachment.fileTypeDetection||composerAttachment.fileTypeDetection.status==='failed')){
+      const conversationId=generationV2ComposerDraft.value?.conversationId
+      if(!conversationId)return
+      generationV2ComposerDraft.value=await retryGenerationV2ComposerFileTypeDetection({conversationId,assetRevisionId:composerAttachment.assetRevisionId})
+      await refreshDraftAttachmentViewModels()
+      selectedDraftAttachmentAssetId.value=assetId
+      return
+    }
     if (attachment && isUrlSnapshotRetryAvailable(asset, attachment)) {
       await retrySelectedDraftAttachmentUrlSnapshot(assetId, attachment, asset)
       return
@@ -5340,7 +5371,7 @@ export function useAppChatAppLogic() {
   )
 
   function generationParamProfileForProvider(
-    providerId: RuntimeProviderKey | null | undefined,
+    providerId: RuntimeProviderId | null | undefined,
     modelId?: string | null,
   ): ProviderGenerationParamProfile {
     if (!providerId) return unsetGenerationProfile
@@ -5373,20 +5404,20 @@ export function useAppChatAppLogic() {
 
   const activeSessionGenerationParamsProfile = computed(() =>
     generationParamProfileForProvider(
-      activeSessionConfig.value.model.selectedProviderId,
-      activeSessionConfig.value.model.selectedModelKey,
+      executionProviderId(),
+      routeModelId(),
     )
   )
 
   const activeSessionGenerationParamsModelId = computed(() =>
-    activeSessionConfig.value.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
+    routeModelId() || DEFAULT_OPENROUTER_MODEL_ID
   )
 
   const activeSessionGenerationParamsResolved = computed<ResolvedGenerationParams>(() =>
     resolveGenerationParamsFromLayers({
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
-      geminiThinkingCapability: activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+      geminiThinkingCapability: executionProviderId() === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
         !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
         ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
@@ -5437,7 +5468,7 @@ export function useAppChatAppLogic() {
     resolveGenerationParamsFromLayers({
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
-      geminiThinkingCapability: activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+      geminiThinkingCapability: executionProviderId() === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
         !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
         ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
@@ -5452,7 +5483,7 @@ export function useAppChatAppLogic() {
     resolveGenerationParamsFromLayers({
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
-      geminiThinkingCapability: activeSessionConfig.value.model.selectedProviderId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+      geminiThinkingCapability: executionProviderId() === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
         !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
         ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
@@ -5677,104 +5708,6 @@ export function useAppChatAppLogic() {
     return String(value ?? '').trim()
   }
 
-  function extractRuntimeSelectionFromMessageMeta(meta: unknown): Readonly<{
-    providerId: ChatModelSelection['providerId'] | null
-    modelId: string | null
-  }> {
-    const record = asRecord(meta)
-    const request = asRecord(record?.request)
-    const providerId = normalizeRuntimeProviderId(record?.providerId ?? record?.providerKey)
-    const modelId = normalizeRuntimeModelId(record?.modelId ?? record?.model ?? request?.model)
-    return {
-      providerId,
-      modelId: modelId.length > 0 ? modelId : null,
-    }
-  }
-
-  function normalizeSelectionInput(value: unknown): ChatModelSelection | null {
-    if (value && typeof value === 'object' && !Array.isArray(value)) {
-      const record = value as Record<string, unknown>
-      return normalizeChatModelSelection({
-        providerId: normalizeRuntimeProviderId(record.providerId) ?? undefined,
-        modelId: normalizeRuntimeModelId(record.modelId),
-      })
-    }
-    return null
-  }
-
-  function runtimeEndpointIdForProvider(providerId: ChatModelSelection['providerId']): string {
-    const current = currentRuntimeSelection.value
-    if (current.state === 'selected' && current.providerKey === providerId) return current.endpointId
-    if (providerId === OPENROUTER_PROVIDER_ID) return 'openrouter-official'
-    if (providerId === OPENAI_RESPONSES_PROVIDER_KEY) return OPENAI_RESPONSES_ENDPOINT_ID
-    if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY) return GOOGLE_AI_STUDIO_ENDPOINT_ID
-    if (providerId === ANTHROPIC_MESSAGES_PROVIDER_KEY) return ANTHROPIC_MESSAGES_ENDPOINT_ID
-    if (providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY) return DEEPSEEK_OFFICIAL_ENDPOINT_ID
-    if (providerId === 'lm_studio') return lmStudioProviderConfig.value.endpointUrl.trim() || 'lm-studio-loopback-local-storage'
-    if (providerId === 'ollama_local') return ollamaProviderConfig.value.endpointUrl.trim() || 'ollama-loopback-local-storage'
-    return localEndpointChatUrl.value.trim() || 'local-endpoint-loopback-local-storage'
-  }
-
-  function runtimeProfileIdForProvider(providerId: ChatModelSelection['providerId']): string {
-    const current = currentRuntimeSelection.value
-    if (current.state === 'selected' && current.providerKey === providerId) return current.profileId
-    if (providerId === OPENROUTER_PROVIDER_ID) return 'openrouter_v1_chat'
-    if (providerId === OPENAI_RESPONSES_PROVIDER_KEY) return OPENAI_RESPONSES_PROFILE_ID
-    if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY) return GOOGLE_AI_STUDIO_PROFILE_ID
-    if (providerId === ANTHROPIC_MESSAGES_PROVIDER_KEY) return ANTHROPIC_MESSAGES_PROFILE_ID
-    if (providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY) return DEEPSEEK_OFFICIAL_PROFILE_ID
-    if (providerId === 'lm_studio') {
-      return lmStudioChatConfig.value.chatMode === 'native_rest'
-        ? 'lm_studio_native_rest_chat_v1'
-        : lmStudioChatConfig.value.openAICompatiblePreferredEndpoint === 'responses'
-          ? 'lm_studio_openai_responses_v1'
-          : 'lm_studio_openai_chat_completions_v1'
-    }
-    if (providerId === 'ollama_local') {
-      return ollamaChatConfig.value.chatMode === 'native_rest'
-        ? ollamaChatConfig.value.nativeRestPreferredEndpoint === 'generate'
-          ? 'ollama_native_rest_generate_v1'
-          : 'ollama_native_rest_chat_v1'
-        : ollamaChatConfig.value.openAICompatiblePreferredEndpoint === 'responses'
-          ? 'ollama_openai_responses_v1'
-          : 'ollama_openai_chat_completions_v1'
-    }
-    return 'local_endpoint_openai_compat_text_v1'
-  }
-
-  function buildCurrentRuntimeSelectionForChatModel(selection: ChatModelSelection): CurrentRuntimeSelection {
-    const providerId = selection.providerId
-    const modelId = providerId === OPENROUTER_PROVIDER_ID
-      ? normalizeModelKey(selection.modelId)
-      : normalizeRuntimeModelId(selection.modelId)
-    return {
-      state: 'selected',
-      providerKey: providerId,
-      providerId,
-      endpointId: runtimeEndpointIdForProvider(providerId),
-      profileId: runtimeProfileIdForProvider(providerId),
-      modelId,
-      modelKey: modelId,
-      nativeModelId: modelId,
-      source: 'explicit_user_selection',
-      mode: providerId === OPENROUTER_PROVIDER_ID ? 'production' : 'experimental',
-      credentialStatus: providerId === 'local_endpoint' || providerId === 'lm_studio' || providerId === 'ollama_local'
-        ? 'not_required'
-        : 'unknown',
-    }
-  }
-
-  function resolveCurrentRuntimeSelectionForSend(): CurrentRuntimeSelection {
-    const sessionSelection = activeSessionConfig.value.model
-    const providerId = sessionSelection.selectedProviderId
-    if (!providerId) return { state: 'unset', source: 'unset' }
-    const selectedModel = normalizeRuntimeModelId(
-      sessionSelection.selectedModelKey,
-    )
-    if (!selectedModel) return { state: 'unset', source: 'unset' }
-    return buildCurrentRuntimeSelectionForChatModel({ providerId, modelId: selectedModel })
-  }
-
               function normalizeImageGenerationState(value: unknown): ImageGenerationUiState {
     return normalizeImageGenerationUserConfig(value)
   }
@@ -5804,15 +5737,15 @@ export function useAppChatAppLogic() {
   async function refreshSelectedModelImageCapability() {
     const seq = ++imageCapabilityQuerySeq.value
     const currentSessionConfig = getActiveSessionConfigSnapshot()
-    const selectedProviderId = currentSessionConfig.model.selectedProviderId
-    const modelId = selectedProviderId === OPENROUTER_PROVIDER_ID
-      ? normalizeModelKey(currentSessionConfig.model.selectedModelKey)
+    const selectedProvider = providerModelRoute(currentSessionConfig)?.providerId ?? null
+    const modelId = selectedProvider === OPENROUTER_PROVIDER_ID
+      ? normalizeModelKey(routeModelId(currentSessionConfig))
       : DEFAULT_OPENROUTER_MODEL_ID
     selectedModelImageCapabilityLoading.value = true
 
-    if (selectedProviderId !== OPENROUTER_PROVIDER_ID || modelId === DEFAULT_OPENROUTER_MODEL_ID) {
+    if (selectedProvider !== OPENROUTER_PROVIDER_ID || modelId === DEFAULT_OPENROUTER_MODEL_ID) {
       selectedModelImageCapabilityClass.value = null
-      selectedModelImageCapabilityReason.value = selectedProviderId === OPENROUTER_PROVIDER_ID
+      selectedModelImageCapabilityReason.value = selectedProvider === OPENROUTER_PROVIDER_ID
         ? 'select a concrete model to enable image generation.'
         : 'OpenRouter catalog image generation checks are unavailable for the selected provider.'
       composerImageInputSupported.value = null
@@ -5867,6 +5800,24 @@ export function useAppChatAppLogic() {
       }
     }
   }
+
+  const activeRouteIdentity = computed(() => {
+    const route = activeSessionConfig.value.routeSelection
+    if (!route) return ''
+    return route.kind === 'provider_model'
+      ? `${route.kind}\0${route.providerId}\0${route.modelId}`
+      : `${route.kind}\0${route.providerInstanceId}\0${route.modelId}`
+  })
+  watch(activeRouteIdentity, (next, previous) => {
+    openRouterImageEndpointSelection.value = null
+    openRouterImageEndpointSelectionError.value = null
+    void refreshSelectedModelImageCapability()
+    if (previous !== undefined && next !== previous && draftAttachmentRecords.value.length > 0) {
+      scheduleDraftSendPlanRefresh()
+    }
+    scheduleHistoryIncompatibleRefresh()
+    scheduleHistoryAttachmentRefresh()
+  }, { immediate: true })
 
   const imageGenerationFollowDefault = computed(() => imageGenerationConvoMode.value === 'default')
 
@@ -5982,7 +5933,7 @@ export function useAppChatAppLogic() {
   }
 
   function resolveImageGenerationConfigForRequest(
-    providerKey: RuntimeProviderKey,
+    providerKey: RuntimeProviderId,
     sessionConfig: ChatSessionConfig = activeSessionConfig.value,
   ): Readonly<{
     capabilityClass?: ImageCapabilityClass
@@ -5998,7 +5949,7 @@ export function useAppChatAppLogic() {
       imageSize: sessionConfig.imageGeneration.resolution,
       aspectRatio: sessionConfig.imageGeneration.aspectRatio,
     })
-    const selectedModelId = normalizeRuntimeModelId(sessionConfig.model.selectedModelKey ?? '')
+    const selectedModelId = routeModelId(sessionConfig)
     const isGeminiImageModel = providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(selectedModelId)
     if (!ui.enabled && !isGeminiImageModel) return null
 
@@ -6085,56 +6036,41 @@ export function useAppChatAppLogic() {
 
   function applySelectedModelOverrideForActiveConvo() {
     const currentSessionConfig = getActiveSessionConfigSnapshot()
-    const selectedProviderId = currentSessionConfig.model.selectedProviderId
-    const normalized = selectedProviderId === OPENROUTER_PROVIDER_ID
-      ? normalizeModelKey(currentSessionConfig.model.selectedModelKey)
+    const selectedProvider = providerModelRoute(currentSessionConfig)?.providerId ?? null
+    const normalized = selectedProvider === OPENROUTER_PROVIDER_ID
+      ? normalizeModelKey(routeModelId(currentSessionConfig))
       : DEFAULT_OPENROUTER_MODEL_ID
-    model.value = normalized
 
     const availability = resolveSelectedModelAvailability(normalized)
     if ((availability === 'hidden' || availability === 'missing') && shouldLogDebug()) {
       console.warn('[ui-app] selected route model is not currently visible in local catalog; keep using the persisted session selection', {
         convoId: getActiveConvoRecord()?.id,
-        selectedModelKey: normalized,
+          modelId: normalized,
         availability,
       })
     }
   }
 
-  async function persistSelectedModelForActiveConvo(nextModelKey: ChatModelSelection | string) {
+  async function persistProviderModelRouteForActiveConvo(selection: ProviderModelRouteSelection) {
     const convo = getActiveConvoRecord()
     if (!convo) throw new Error('ACTIVE_CONVERSATION_UNAVAILABLE')
 
-    const selection = normalizeSelectionInput(nextModelKey)
-    if (!selection) {
-      const failure = new Error('A provider and model must be selected together.')
-      loadError.value = failure.message
-      throw failure
-    }
-    const normalized = selection.modelId
-    const currentModel = getActiveSessionConfigSnapshot().model
-    const currentPersisted = currentModel.selectedModelKey
-    const currentProvider = currentModel.selectedProviderId ?? null
-    if (currentPersisted === normalized && currentProvider === selection.providerId) return
+    const normalized = normalizeRuntimeModelId(selection.modelId)
+    if (!normalized) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
+    const currentRoute = providerModelRoute(getActiveSessionConfigSnapshot())
+    if (currentRoute?.modelId === normalized && currentRoute.providerId === selection.providerId) return
 
-    try {
-      const current = getActiveSessionConfigSnapshot()
-      const patch: {
-        model: NonNullable<ChatSessionConfigPatch['model']>
-        imageGeneration?: NonNullable<ChatSessionConfigPatch['imageGeneration']>
-        reasoning?: NonNullable<ChatSessionConfigPatch['reasoning']>
-        generationParams?: NonNullable<ChatSessionConfigPatch['generationParams']>
-      } = {
-        model: {
-          selectedProviderId: selection.providerId,
-          selectedModelKey: normalized,
-          compatibleSelection: null,
-        },
-      }
+    const current = getActiveSessionConfigSnapshot()
+    const routeSelection = createProviderModelRouteSelection({ providerId: selection.providerId, modelId: normalized })
+    const auxiliaryPatch: {
+      imageGeneration?: NonNullable<ChatSessionConfigPatch['imageGeneration']>
+      reasoning?: NonNullable<ChatSessionConfigPatch['reasoning']>
+      generationParams?: NonNullable<ChatSessionConfigPatch['generationParams']>
+    } = {}
       if (selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(normalized)) {
         const policy = resolveGeminiImageGenerationPolicy(normalized)
         const imageSize = policy.imageSizeMode === 'hidden' ? '' : policy.defaultImageSize
-        patch.imageGeneration = {
+        auxiliaryPatch.imageGeneration = {
           enabled: true,
           resolution: policy.defaultImageSize,
           aspectRatio: policy.defaultAspectRatio,
@@ -6176,11 +6112,11 @@ export function useAppChatAppLogic() {
           delete detail.thinkingEnabled
           delete detail.reasoningEffort
         }
-        patch.generationParams = { detail: Object.freeze(detail) }
+        auxiliaryPatch.generationParams = { detail: Object.freeze(detail) }
       }
       if (selection.providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY) {
         if (current.reasoning.enabled && !isDeepSeekSelectableReasoningEffort(current.reasoning.effort)) {
-          patch.reasoning = { enabled: true, effort: 'high' }
+          auxiliaryPatch.reasoning = { enabled: true, effort: 'high' }
         }
       }
       const persistedEffort = current.generationParams.detail?.reasoningEffort
@@ -6191,73 +6127,39 @@ export function useAppChatAppLogic() {
         geminiThinkingCapability: selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !isKnownGeminiImageGenerationModel(normalized)
           ? geminiThinkingCapabilityForModel(normalized) : undefined,
       })) {
-        patch.reasoning = { enabled: false, effort: 'medium' }
-        patch.generationParams = { detail: Object.freeze({
+        auxiliaryPatch.reasoning = { enabled: false, effort: 'medium' }
+        auxiliaryPatch.generationParams = { detail: Object.freeze({
           ...(current.generationParams.detail ?? {}),
           reasoningEffort: Object.freeze({ mode: 'omit' as const }),
         }) }
         requestedReasoningEffort.value = 'auto'
         requestedReasoningExclude.value = false
       }
-      await updateActiveConvoSessionConfig(patch)
-    } catch (err) {
-      if (shouldLogDebug()) {
-        console.warn('[ui-app] PERSIST_SELECTED_MODEL_FOR_ACTIVE_CONVO_FAILED', {
-          convoId: convo.id,
-          selectedModelKey: normalized,
-        })
+    const updated = await updateActiveConvoSessionConfig({ routeSelection })
+    if (!updated) throw new Error('ACTIVE_CONVERSATION_UNAVAILABLE')
+    if (Object.keys(auxiliaryPatch).length > 0) {
+      try {
+        await updateActiveConvoSessionConfig(auxiliaryPatch)
+      } catch {
+        if (shouldLogDebug()) console.warn('[ui-app] MODEL_SELECTION_AUXILIARY_CONFIG_UPDATE_FAILED')
       }
     }
   }
 
-  async function onUpdateModel(nextModelKey: ChatModelSelection | CompatibleConfigurationSelection | string) {
-    if (isDraftInteractionLocked.value) return
-    if (typeof nextModelKey === 'object' && 'kind' in nextModelKey && nextModelKey.kind === 'openai_chat_compatible_configuration') {
-      await updateActiveConvoSessionConfig({
-        model: {
-          selectedProviderId: null,
-          selectedModelKey: nextModelKey.modelId,
-          compatibleSelection: nextModelKey,
-        },
+  async function onUpdateRouteSelection(nextRouteSelection: ConversationRouteSelection) {
+    if (isDraftInteractionLocked.value) throw new Error('MODEL_SELECTION_LOCKED')
+    if (nextRouteSelection.kind === 'openai_chat_compatible') {
+      const updated = await updateActiveConvoSessionConfig({
+        routeSelection: nextRouteSelection,
       })
+      if (!updated) throw new Error('ACTIVE_CONVERSATION_UNAVAILABLE')
+      void refreshDraftAttachmentViewModels()
+      scheduleHistoryIncompatibleRefresh()
       return
     }
-    const selection = normalizeSelectionInput(nextModelKey)
-    if (!selection) {
-      loadError.value = 'A provider and model must be selected together.'
-      return
-    }
-    const normalized = selection.modelId
-    if (selection.providerId === OPENROUTER_PROVIDER_ID) {
-      model.value = normalized
-    }
-    await persistSelectedModelForActiveConvo(selection)
-    // Contract: this is the commit path for a manual model selection.
-    // Do not rehydrate from active session state here; that would overwrite
-    // the just-submitted model with stale convo meta and can snap back to auto.
+    await persistProviderModelRouteForActiveConvo(nextRouteSelection)
     void refreshDraftAttachmentViewModels()
     scheduleHistoryIncompatibleRefresh()
-  }
-
-  async function recordRecentModelUsage(modelId: string, providerId: ChatModelSelection['providerId']) {
-    const normalized = normalizeModelKey(modelId)
-    if (!normalized) return
-    const result = await ModelPrefsService.recordRecent(
-      {
-        providerKey: providerId,
-        modelId: normalized,
-        modelKey: buildProviderModelKey({ providerId, modelId: normalized }),
-      },
-      {
-        scopeType: 'global',
-        scopeId: '',
-      },
-    )
-    if (!result && shouldLogDebug()) {
-      console.warn('[ui-app] recordRecentModelUsage failed (non-fatal)', {
-        modelId: normalized,
-      })
-    }
   }
 
   function extractUserMessageRenderOverride(meta: unknown): boolean | undefined {
@@ -6531,10 +6433,10 @@ export function useAppChatAppLogic() {
   }
 
   function buildCurrentGenerationV2SemanticLayer(
-    providerId: RuntimeProviderKey,
+    providerId: RuntimeProviderId,
     sessionConfig: ChatSessionConfig = activeSessionConfig.value,
   ): Readonly<Record<string, unknown>> {
-    const modelId = sessionConfig.model.selectedModelKey ?? DEFAULT_OPENROUTER_MODEL_ID
+    const modelId = routeModelId(sessionConfig) || DEFAULT_OPENROUTER_MODEL_ID
     const resolved = resolveGenerationParamsFromLayers({
       profile: generationParamProfileForProvider(providerId, modelId),
       modelId,
@@ -6550,7 +6452,7 @@ export function useAppChatAppLogic() {
     const params = resolved.requestParams
     const imageConfig = resolveImageGenerationConfigForRequest(providerId, sessionConfig)
     const geminiInteractionsImage = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
-      isGeminiInteractionsImageModelIdV1(normalizeGeminiImageGenerationModelId(sessionConfig.model.selectedModelKey)) && imageConfig !== null
+      isGeminiInteractionsImageModelIdV1(normalizeGeminiImageGenerationModelId(routeModelId(sessionConfig))) && imageConfig !== null
     const geminiGenerateThinkingCapability = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !geminiInteractionsImage
       ? geminiThinkingCapabilityForModel(modelId) : null
     if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !geminiInteractionsImage) {
@@ -6693,7 +6595,7 @@ export function useAppChatAppLogic() {
   }
 
   async function persistCurrentGenerationV2SemanticLayer(
-    providerId: RuntimeProviderKey,
+    providerId: RuntimeProviderId,
     conversationId: string,
     force = false,
     sessionConfig: ChatSessionConfig = activeSessionConfig.value,
@@ -6710,10 +6612,10 @@ export function useAppChatAppLogic() {
 
   function currentOpenRouterImageEndpointSelectionInput(): Readonly<{ modelId: string; semanticIntent: unknown }> {
     const config = activeSessionConfig.value
-    if (config.model.selectedProviderId !== OPENROUTER_PROVIDER_ID || !config.imageGeneration.enabled) {
+    if (providerModelRoute(config)?.providerId !== OPENROUTER_PROVIDER_ID || !config.imageGeneration.enabled) {
       throw new Error('GENERATION_V2_OPENROUTER_IMAGE_ENDPOINT_NOT_ACTIVE')
     }
-    const modelId = normalizeRuntimeModelId(config.model.selectedModelKey)
+    const modelId = routeModelId(config)
     if (!modelId) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
     const draftSnapshot = generationV2ComposerDraft.value?.conversationId === activeConvoId.value
       ? generationV2ComposerDraft.value : null
@@ -6788,16 +6690,17 @@ export function useAppChatAppLogic() {
   function ensureGenerationV2GenericLocalProfileFromSavedSettings(): Promise<string> {
     if (genericLocalProfileSync) return genericLocalProfileSync
     const work = (async () => {
+      const descriptor = requireLocalProviderRouteDescriptorForRuntimeProvider('local_endpoint')
       const baseUrl = canonicalEndpointBase(new URL(localEndpointChatUrl.value.trim()).origin)
       const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
-        profile.providerId === 'generic_local' &&
-        profile.protocolContractId === 'generic-local-openai-chat-completions' &&
+        profile.providerId === descriptor.executionProviderId &&
+        profile.protocolContractId === descriptor.protocolContractId &&
         canonicalEndpointBase(profile.baseUrl) === baseUrl)
       if (matches.length === 1) return matches[0].endpointProfileId
       if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
       const created = await createGenerationV2LocalProfile({
-        providerId: 'generic_local',
-        protocolContractId: 'generic-local-openai-chat-completions',
+        providerId: descriptor.executionProviderId,
+        protocolContractId: descriptor.protocolContractId,
         baseUrl,
       })
       return created.endpointProfileId
@@ -6822,14 +6725,15 @@ export function useAppChatAppLogic() {
         lmStudioChatConfig.value.openAICompatiblePreferredEndpoint !== 'responses') {
       throw new Error('GENERATION_V2_LMSTUDIO_OPENRESPONSES_NOT_SELECTED')
     }
+    const descriptor = requireLocalProviderRouteDescriptorForRuntimeProvider('lm_studio')
     const baseUrl = canonicalEndpointBase(lmStudioChatConfig.value.endpointUrl.trim())
     const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
-      profile.providerId === 'lmstudio' && profile.protocolContractId === 'lmstudio-openresponses' &&
+      profile.providerId === descriptor.executionProviderId && profile.protocolContractId === descriptor.protocolContractId &&
       canonicalEndpointBase(profile.baseUrl) === baseUrl)
     if (matches.length === 1) return matches[0].endpointProfileId
     if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
     return (await createGenerationV2LocalProfile({
-      providerId: 'lmstudio', protocolContractId: 'lmstudio-openresponses', baseUrl,
+      providerId: descriptor.executionProviderId, protocolContractId: descriptor.protocolContractId, baseUrl,
     })).endpointProfileId
   }
 
@@ -6841,16 +6745,17 @@ export function useAppChatAppLogic() {
     if (ollamaChatConfig.value.thinkingControl === null || ollamaChatConfig.value.toolsSupported === null) {
       throw new Error('GENERATION_V2_OLLAMA_PROFILE_CAPABILITY_REQUIRED')
     }
+    const descriptor = requireLocalProviderRouteDescriptorForRuntimeProvider('ollama_local')
     const baseUrl = canonicalEndpointBase(ollamaChatConfig.value.endpointUrl.trim())
     const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
-      profile.providerId === 'ollama' && profile.protocolContractId === 'ollama-chat-v1' &&
+      profile.providerId === descriptor.executionProviderId && profile.protocolContractId === descriptor.protocolContractId &&
       canonicalEndpointBase(profile.baseUrl) === baseUrl && profile.protocolConfig.modelId === modelId &&
       profile.protocolConfig.thinkingControl === ollamaChatConfig.value.thinkingControl &&
       profile.protocolConfig.tools === ollamaChatConfig.value.toolsSupported)
     if (matches.length === 1) return matches[0].endpointProfileId
     if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
     return (await createGenerationV2LocalProfile({
-      providerId: 'ollama', protocolContractId: 'ollama-chat-v1', baseUrl,
+      providerId: descriptor.executionProviderId, protocolContractId: descriptor.protocolContractId, baseUrl,
       protocolConfig: { modelId, thinkingControl: ollamaChatConfig.value.thinkingControl, tools: ollamaChatConfig.value.toolsSupported },
     })).endpointProfileId
   }
@@ -6862,13 +6767,34 @@ export function useAppChatAppLogic() {
     })
   }
 
+  function notifyRecentModelsChangedForAcceptedOperation(includeOrdinaryModel: boolean): void {
+    if (!includeOrdinaryModel) return
+    ModelPrefsService.notifyRecentsChanged({ scopeType: 'global', scopeId: '' })
+  }
+
+  function canonicalSendSelection(): Readonly<{
+    routeSelection: ConversationRouteSelection
+    providerId: RuntimeProviderId
+    modelId: string
+    compatibleIntent: CompatibleRouteIntent | null
+  }> | null {
+    const routeSelection = activeSessionConfig.value.routeSelection
+    if (!routeSelection) return null
+    const compatibleIntent = routeSelection.kind === 'openai_chat_compatible'
+      ? routeSelection : null
+    const providerId = routeSelection.kind === 'provider_model'
+      ? routeSelection.providerId : 'local_endpoint'
+    const modelId = routeSelection.kind === 'provider_model'
+      ? normalizeRuntimeModelId(routeSelection.modelId)
+      : normalizeRuntimeModelId(routeSelection.modelId)
+    return modelId ? Object.freeze({ routeSelection, providerId, modelId, compatibleIntent }) : null
+  }
+
   function handleGenerationV2OllamaSettingsUpdated(): void {
-    const selection = resolveCurrentRuntimeSelectionForSend()
-    if (!window.generationV2 || selection.state !== 'selected' ||
-        selection.providerKey !== 'ollama_local') return
-    const modelId = normalizeRuntimeModelId(selection.modelId ?? selection.modelKey ?? selection.nativeModelId)
-    if (!modelId) return
-    void ensureGenerationV2OllamaProfileFromSavedSettings(modelId).catch(() => {
+    const selection = canonicalSendSelection()
+    if (!window.generationV2 || selection?.routeSelection.kind !== 'provider_model' ||
+        selection.providerId !== 'ollama_local') return
+    void ensureGenerationV2OllamaProfileFromSavedSettings(selection.modelId).catch(() => {
       if (shouldLogDebug()) console.warn('[ui-app] V2_OLLAMA_PROFILE_SYNC_FAILED')
     })
   }
@@ -6887,14 +6813,17 @@ export function useAppChatAppLogic() {
         (ollamaChatConfig.value.thinkingControl === null || ollamaChatConfig.value.toolsSupported === null)) {
       throw new Error('GENERATION_V2_OLLAMA_PROFILE_CAPABILITY_REQUIRED')
     }
-    const expectation = route.kind === 'lmstudio_openresponses'
-      ? { providerId: 'lmstudio', protocol: 'lmstudio-openresponses', baseUrl: lmStudioChatConfig.value.endpointUrl }
-      : route.kind === 'generic_local_openai_chat'
-        ? { providerId: 'generic_local', protocol: 'generic-local-openai-chat-completions', baseUrl: new URL(localEndpointChatUrl.value).origin }
-        : route.kind === 'ollama_chat'
-          ? { providerId: 'ollama', protocol: 'ollama-chat-v1', baseUrl: ollamaChatConfig.value.endpointUrl }
-          : null
-    if (!expectation) throw new Error('GENERATION_V2_LOCAL_PROFILE_ROUTE_INVALID')
+    const localRouteKind = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
+      ? route.kind : null
+    if (!localRouteKind) throw new Error('GENERATION_V2_LOCAL_PROFILE_ROUTE_INVALID')
+    const descriptor = requireLocalProviderRouteDescriptorForRouteKind(localRouteKind)
+    const expectation = {
+      providerId: descriptor.executionProviderId,
+      protocol: descriptor.protocolContractId,
+      baseUrl: route.kind === 'lmstudio_openresponses' ? lmStudioChatConfig.value.endpointUrl
+        : route.kind === 'generic_local_openai_chat' ? new URL(localEndpointChatUrl.value).origin
+          : ollamaChatConfig.value.endpointUrl,
+    }
     const baseUrl = canonicalEndpointBase(String(expectation.baseUrl ?? '').trim())
     const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
       profile.providerId === expectation.providerId && profile.protocolContractId === expectation.protocol &&
@@ -6915,13 +6844,9 @@ export function useAppChatAppLogic() {
     if (isRunning.value || isDraftInteractionLocked.value) return
     const text = draft.value.trim()
     if (!text && draftAttachmentRecords.value.length === 0) return
-    const compatibleSelection = activeSessionConfig.value.model.compatibleSelection
-    const selection = compatibleSelection ? null : resolveCurrentRuntimeSelectionForSend()
-    const selectedRuntime = selection?.state === 'selected' ? selection : null
-    if (!compatibleSelection && !selectedRuntime) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
-    const providerId: RuntimeProviderKey = compatibleSelection ? 'local_endpoint' : selectedRuntime!.providerId
-    const modelId = normalizeRuntimeModelId(compatibleSelection?.modelId ?? selectedRuntime?.modelId ?? selectedRuntime?.modelKey ?? selectedRuntime?.nativeModelId)
-    if (!modelId) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
+    const selection = canonicalSendSelection()
+    if (!selection) throw new Error('GENERATION_V2_MODEL_SELECTION_REQUIRED')
+    const { compatibleIntent, providerId, modelId } = selection
     const view = generationV2BranchView.value
     if (!view || view.branchId !== activeBranchId.value || view.conversationId !== activeConvoId.value) {
       throw new Error('GENERATION_V2_BRANCH_PROJECTION_STALE')
@@ -6930,7 +6855,7 @@ export function useAppChatAppLogic() {
     const composerDraft = generationV2ComposerDraft.value?.conversationId === view.conversationId
       ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId)
     const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
-    const route: GenerationV2Route = compatibleSelection ? { kind: 'openai_chat_compatible' }
+    const route: GenerationV2Route = compatibleIntent ? { kind: 'openai_chat_compatible' }
       : providerId === OPENROUTER_PROVIDER_ID && resolveImageGenerationConfigForRequest(providerId)
         ? { kind: 'openrouter_images' }
         : generationV2RouteForProvider(providerId, modelId)
@@ -6952,11 +6877,12 @@ export function useAppChatAppLogic() {
             prompt: text, modelId: commandModelId, commandAttachments }
       : { operationId, branchId: view.branchId, expectedHeadMessageId: view.headMessageId,
           userBody: text, modelId: commandModelId, commandAttachments,
-          ...(compatibleSelection ? { providerInstanceId: compatibleSelection.providerInstanceId, extraBody: compatibleSelection.extraBody } : {}),
+          ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
           ...(endpointProfileId === null ? {} : { endpointProfileId }) })
     if (!result.ok) throw new Error(result.code)
     if (sendingFromTemplate) {
       systemTemplateSnapshot.value = await getSystemChatTemplate()
+      await reloadGenerationV2ConversationAuthorities(systemTemplateSnapshot.value.conversation.id)
       activeConvoId.value = view.conversationId
       activeBranchId.value = view.branchId
       projectsOnlyWorkspace.value = false
@@ -6973,7 +6899,7 @@ export function useAppChatAppLogic() {
       if (shouldLogDebug()) console.warn('[ui-app] COMMITTED_V2_SEND_DRAFT_CLEAR_FAILED')
     }
     await refreshRenderableBranchView(view.branchId)
-    if (!compatibleSelection) void recordRecentModelUsage(modelId, providerId)
+    notifyRecentModelsChangedForAcceptedOperation(compatibleIntent === null)
   }
 
   async function onForkFromHead() {
@@ -7044,12 +6970,9 @@ export function useAppChatAppLogic() {
     const qid = String(questionId ?? '').trim()
     const chosen = turnFiltersByQuestionId.value.get(qid)?.chosenAnswerRootId
     if (!branch?.id || !qid || !chosen) return
-    const compatibleSelection = activeSessionConfig.value.model.compatibleSelection
-    const currentSelection = compatibleSelection ? null : resolveCurrentRuntimeSelectionForSend()
-    const selectedRuntime = currentSelection?.state === 'selected' ? currentSelection : null
-    if (!compatibleSelection && !selectedRuntime) return
-    const modelId = normalizeRuntimeModelId(compatibleSelection?.modelId ?? selectedRuntime?.modelId ?? selectedRuntime?.modelKey ?? selectedRuntime?.nativeModelId)
-    if (!modelId) return
+    const selection = canonicalSendSelection()
+    if (!selection) return
+    const { compatibleIntent, modelId } = selection
     loadError.value = null
     try {
       const view = generationV2BranchView.value
@@ -7059,8 +6982,8 @@ export function useAppChatAppLogic() {
       const sourceNavigationRevision = navigationRevision.value
       const sourceConversationId = view.conversationId
       const sourceBranchId = view.branchId
-      const nativeProviderId: RuntimeProviderKey = compatibleSelection ? 'local_endpoint' : selectedRuntime!.providerId
-      const route: GenerationV2Route = compatibleSelection ? { kind: 'openai_chat_compatible' }
+      const nativeProviderId = selection.providerId
+      const route: GenerationV2Route = compatibleIntent ? { kind: 'openai_chat_compatible' }
         : nativeProviderId === OPENROUTER_PROVIDER_ID && resolveImageGenerationConfigForRequest(nativeProviderId)
           ? { kind: 'openrouter_images' } : generationV2RouteForProvider(nativeProviderId, modelId)
       await persistCurrentGenerationV2SemanticLayer(nativeProviderId, view.conversationId)
@@ -7077,9 +7000,10 @@ export function useAppChatAppLogic() {
         ? { ...common, requestedProviderTag: null, commandAttachments }
         : route.kind === 'gemini_interactions_image'
           ? { ...common, commandAttachments }
-        : { ...common, commandAttachments, ...(compatibleSelection ? { providerInstanceId: compatibleSelection.providerInstanceId, extraBody: compatibleSelection.extraBody } : {}),
+        : { ...common, commandAttachments, ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
           ...(endpointProfileId === null ? {} : { endpointProfileId }) })
       if (!result.ok) throw new Error(result.code)
+      notifyRecentModelsChangedForAcceptedOperation(compatibleIntent === null)
       invalidateMessageCandidateNavigation()
       if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
       const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
@@ -7169,14 +7093,10 @@ export function useAppChatAppLogic() {
       loadError.value = 'GENERATION_V2_EDIT_TARGET_STALE'
       return
     }
-    const compatibleSelection = activeSessionConfig.value.model.compatibleSelection
-    const currentSelection = compatibleSelection ? null : resolveCurrentRuntimeSelectionForSend()
-    const selectedRuntime = currentSelection?.state === 'selected' ? currentSelection : null
-    if (!compatibleSelection && !selectedRuntime) { loadError.value = 'GENERATION_V2_MODEL_SELECTION_REQUIRED'; return }
-    const v2ProviderId: RuntimeProviderKey = compatibleSelection ? 'local_endpoint' : selectedRuntime!.providerId
-    const v2ModelId = normalizeRuntimeModelId(compatibleSelection?.modelId ?? selectedRuntime?.modelId ?? selectedRuntime?.modelKey ?? selectedRuntime?.nativeModelId)
-    if (!v2ModelId) { loadError.value = 'GENERATION_V2_MODEL_SELECTION_REQUIRED'; return }
-    const v2Route: GenerationV2Route = compatibleSelection ? { kind: 'openai_chat_compatible' }
+    const selection = canonicalSendSelection()
+    if (!selection) { loadError.value = 'GENERATION_V2_MODEL_SELECTION_REQUIRED'; return }
+    const { compatibleIntent, providerId: v2ProviderId, modelId: v2ModelId } = selection
+    const v2Route: GenerationV2Route = compatibleIntent ? { kind: 'openai_chat_compatible' }
       : v2ProviderId === OPENROUTER_PROVIDER_ID && resolveImageGenerationConfigForRequest(v2ProviderId)
         ? { kind: 'openrouter_images' } : generationV2RouteForProvider(v2ProviderId, v2ModelId)
     try {
@@ -7200,7 +7120,7 @@ export function useAppChatAppLogic() {
         : v2Route.kind === 'gemini_interactions_image'
           ? { ...common, prompt: newText }
         : { ...common, userBody: newText,
-            ...(compatibleSelection ? { providerInstanceId: compatibleSelection.providerInstanceId, extraBody: compatibleSelection.extraBody } : {}),
+            ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
             ...(endpointProfileId === null ? {} : { endpointProfileId }) })
       if (!result.ok) throw new Error(result.code)
       questionEditSession.value = null
@@ -7220,7 +7140,7 @@ export function useAppChatAppLogic() {
         resetCandidatesCache()
         await refreshRenderableBranchView(result.branch.branchId)
       }
-      if (!compatibleSelection) void recordRecentModelUsage(v2ModelId, v2ProviderId)
+      notifyRecentModelsChangedForAcceptedOperation(compatibleIntent === null)
     } catch (error) {
       loadError.value = error instanceof Error ? error.message : 'GENERATION_V2_EDIT_RESEND_FAILED'
     }
@@ -7271,11 +7191,13 @@ export function useAppChatAppLogic() {
     return true
   }
 
-  function generationV2RouteForProvider(providerId: string, modelId?: string): GenerationV2Route {
+  function generationV2RouteForProvider(providerId: RuntimeProviderId, modelId?: string): GenerationV2Route {
+    if (isLocalRuntimeProviderId(providerId)) {
+      return { kind: requireLocalProviderRouteDescriptorForRuntimeProvider(providerId).routeKind }
+    }
     switch (providerId) {
       case 'openrouter': return { kind: 'openrouter_chat' }
       case 'openai_responses': return { kind: 'openai_responses' }
-      case 'anthropic':
       case 'anthropic_messages': return { kind: 'anthropic' }
       case 'deepseek': return { kind: 'deepseek' }
       case 'google_ai_studio': {
@@ -7286,31 +7208,32 @@ export function useAppChatAppLogic() {
         if (isKnownGeminiImageGenerationModel(normalizedModelId)) throw new Error('GENERATION_V2_GEMINI_INTERACTIONS_MODEL_UNVERIFIED')
         return { kind: 'gemini_generate_content' }
       }
-      case 'lmstudio':
-      case 'lm_studio': return { kind: 'lmstudio_openresponses' }
-      case 'generic_local':
-      case 'local_endpoint': return { kind: 'generic_local_openai_chat' }
-      case 'ollama':
-      case 'ollama_local': return { kind: 'ollama_chat' }
       default: throw new Error('GENERATION_V2_PROVIDER_ROUTE_UNAVAILABLE')
     }
   }
 
-  function generationV2RouteForPersistedAnswer(answer: Readonly<{ protocolContractId: string }>): GenerationV2Route {
+  function generationV2RetryDescriptorForPersistedAnswer(answer: Readonly<{ protocolContractId: string }>): Readonly<{
+    route: GenerationV2Route
+    recentProviderId: RuntimeProviderId | null
+  }> {
     switch (answer.protocolContractId) {
-      case 'openrouter-chat-completions-v1': return { kind: 'openrouter_chat' }
-      case 'openrouter-images-v1': return { kind: 'openrouter_images' }
-      case 'openai-responses-v1': return { kind: 'openai_responses' }
-      case 'anthropic-messages-2023-06-01': return { kind: 'anthropic' }
-      case 'deepseek-stable-chat-v1': return { kind: 'deepseek' }
-      case 'gemini-generate-content-v1beta': return { kind: 'gemini_generate_content' }
-      case 'gemini-interactions-v1beta': return { kind: 'gemini_interactions_image' }
-      case 'openai_chat_compatible': return { kind: 'openai_chat_compatible' }
-      case 'lmstudio-openresponses': return { kind: 'lmstudio_openresponses' }
-      case 'generic-local-openai-chat-completions': return { kind: 'generic_local_openai_chat' }
-      case 'ollama-chat-v1': return { kind: 'ollama_chat' }
+      case 'openrouter-chat-completions-v1': return { route: { kind: 'openrouter_chat' }, recentProviderId: 'openrouter' }
+      case 'openrouter-images-v1': return { route: { kind: 'openrouter_images' }, recentProviderId: 'openrouter' }
+      case 'openai-responses-v1': return { route: { kind: 'openai_responses' }, recentProviderId: 'openai_responses' }
+      case 'anthropic-messages-2023-06-01': return { route: { kind: 'anthropic' }, recentProviderId: 'anthropic_messages' }
+      case 'deepseek-stable-chat-v1': return { route: { kind: 'deepseek' }, recentProviderId: 'deepseek' }
+      case 'gemini-generate-content-v1beta': return { route: { kind: 'gemini_generate_content' }, recentProviderId: 'google_ai_studio' }
+      case 'gemini-interactions-v1beta': return { route: { kind: 'gemini_interactions_image' }, recentProviderId: 'google_ai_studio' }
+      case 'openai_chat_compatible': return { route: { kind: 'openai_chat_compatible' }, recentProviderId: null }
+      case 'lmstudio-openresponses': return { route: { kind: 'lmstudio_openresponses' }, recentProviderId: 'lm_studio' }
+      case 'generic-local-openai-chat-completions': return { route: { kind: 'generic_local_openai_chat' }, recentProviderId: 'local_endpoint' }
+      case 'ollama-chat-v1': return { route: { kind: 'ollama_chat' }, recentProviderId: 'ollama_local' }
       default: throw new Error('GENERATION_V2_PERSISTED_OPERATION_ROUTE_UNAVAILABLE')
     }
+  }
+
+  function generationV2RouteForPersistedAnswer(answer: Readonly<{ protocolContractId: string }>): GenerationV2Route {
+    return generationV2RetryDescriptorForPersistedAnswer(answer).route
   }
 
   async function onRetryAnswer(questionId: string, currentAnswerRootId: string, mode: 'replace' | 'as_new') {
@@ -7330,7 +7253,8 @@ export function useAppChatAppLogic() {
       const sourceNavigationRevision = navigationRevision.value
       const sourceConversationId = view.conversationId
       const sourceBranchId = view.branchId
-      const result = await submitGenerationV2Retry(generationV2RouteForPersistedAnswer(answer), {
+      const retryDescriptor = generationV2RetryDescriptorForPersistedAnswer(answer)
+      const result = await submitGenerationV2Retry(retryDescriptor.route, {
         actionKind: mode === 'replace' ? 'retry_replace' : 'retry_as_new',
         operationId,
         clientActionId: operationId,
@@ -7340,6 +7264,7 @@ export function useAppChatAppLogic() {
         expectedHeadMessageId: view.headMessageId,
       })
       if (!result.ok) throw new Error(result.code)
+      notifyRecentModelsChangedForAcceptedOperation(retryDescriptor.recentProviderId !== null)
       invalidateMessageCandidateNavigation()
       if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
       const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
@@ -7413,6 +7338,7 @@ export function useAppChatAppLogic() {
         })
       }
       systemTemplateSnapshot.value = template
+      await reloadGenerationV2ConversationAuthorities(template.conversation.id)
       await refreshProjects()
       await refreshConvos()
       const startupNavigation = template.settings.startupNavigation
@@ -7481,6 +7407,21 @@ export function useAppChatAppLogic() {
   })
 
   onMounted(() => {
+    unsubscribeFileTypeDetectionUpdated=onGenerationV2ComposerFileTypeDetectionUpdated((event)=>{
+      const active=activeConvoId.value
+      if(!active)return
+      const draftValue=generationV2ComposerDraft.value
+      const belongs=event.conversationId===active||draftValue?.attachments.some((attachment)=>
+        attachment.kind==='managed_file'&&attachment.assetRevisionId===event.assetRevisionId)===true
+      if(!belongs)return
+      void refreshDraftAttachmentViewModels().catch((error)=>{
+        composerSendPlanCanProceed.value=false
+        composerSendPlanBlockingSummary.value=`GENERATION_V2_FILE_DETECTION_REFRESH_FAILED: ${error instanceof Error?error.message:String(error)}`
+      })
+    })
+  })
+
+  onMounted(() => {
     window.addEventListener('settings:reasoningPrefsUpdated', handleGlobalReasoningPrefsUpdated)
     window.addEventListener('settings:reasoningPanelDefaultExpandedUpdated', handleGlobalReasoningPanelDefaultExpandedUpdated)
     window.addEventListener('settings:reasoningPanelAutoCollapseAfterReasoningUpdated', handleGlobalReasoningPanelAutoCollapseAfterReasoningUpdated)
@@ -7498,10 +7439,9 @@ export function useAppChatAppLogic() {
 
   watch(
     () => {
-      const selection = resolveCurrentRuntimeSelectionForSend()
-      return selection.state === 'selected' && selection.providerKey === 'ollama_local'
-        ? normalizeRuntimeModelId(selection.modelId ?? selection.modelKey ?? selection.nativeModelId)
-        : null
+      const selection = canonicalSendSelection()
+      return selection?.routeSelection.kind === 'provider_model' && selection.providerId === 'ollama_local'
+        ? selection.modelId : null
     },
     (modelId) => {
       if (modelId) handleGenerationV2OllamaSettingsUpdated()
@@ -7656,6 +7596,8 @@ export function useAppChatAppLogic() {
   })
 
   onUnmounted(() => {
+    unsubscribeFileTypeDetectionUpdated?.()
+    unsubscribeFileTypeDetectionUpdated=null
     unregisterCatalogSelectionCommand()
     unsubscribeCatalogRuntimeStore()
     branchProjectionRefreshCoordinator.invalidate()
@@ -7899,10 +7841,6 @@ export function useAppChatAppLogic() {
     googleAIStudioModelAvailabilityStatus,
     anthropicModelAvailabilityStatus,
     deepSeekModelAvailabilityStatus,
-    currentRuntimeSelection,
-    currentRuntimeCapability,
-    currentRuntimeStatus,
-    model,
     requestedReasoningEffort,
     requestedReasoningExclude,
     modelCatalogForPicker,
@@ -7928,7 +7866,7 @@ export function useAppChatAppLogic() {
     refreshOpenRouterImageEndpointSelection,
     chooseOpenRouterImageEndpoint,
     updateOpenRouterImageEndpointFreshness,
-    onUpdateModel,
+    onUpdateRouteSelection,
     onUpdateReasoningEnabled,
     onUpdateReasoningEffortLevel,
     onUpdateReasoningPanelDefaultExpanded,

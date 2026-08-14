@@ -2,6 +2,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 import { resetI18nForTests, t } from '@/shared/i18n'
 import PluginManagementPanel from './PluginManagementPanel.vue'
 
@@ -226,6 +227,7 @@ describe('PluginManagementPanel', () => {
   let legacyTestBridge: { invoke: (method: string, params?: unknown) => Promise<unknown> } | undefined
 
   beforeEach(() => {
+    installGenerationV2TestBridge()
     resetI18nForTests()
     Object.defineProperty(globalThis, 'dbBridge', {
       configurable: true,

@@ -358,6 +358,7 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
   const modelKey = String(row.modelKey ?? '').trim()
   const displayName = String(row.displayName ?? '').trim()
   if (!providerKey || !modelId || !modelKey || !displayName) return null
+  if (modelKey !== `${providerKey}::${modelId}`) return null
   const numberOrNull = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
   const pricing = readRecord(row.pricing)
   const capabilities = readRecord(row.capabilities)
@@ -438,52 +439,36 @@ function readCatalogObservation(rawValue: unknown): CatalogProviderModelObservat
   return null
 }
 
-function v2AvailabilityItemToCatalogItem(sourceProviderKey: string, input: unknown, observedAtMs: number | null): CatalogQueryItem | null {
-  const row = readRecord(input)
-  if (!row) return null
-  // A provider authority may return the complete reviewed catalog projection;
-  // retain it instead of collapsing it to the smaller availability seed. The
-  // availability projection below remains valid for providers whose official
-  // model-list contract exposes only identity/capability fields.
-  const complete = normalizeItem({ ...row, providerKey: sourceProviderKey })
-  if (complete) return complete
-  // The first-party OpenRouter authority owns the complete catalog projection.
-  // Accepting an identity-only row here would silently erase the rich model
-  // picker/detail capabilities that this contract promises.
-  if (sourceProviderKey === 'openrouter') return null
-  const modelId = String(row.modelId ?? row.nativeModelId ?? '').trim()
-  if (!modelId) return null
-  const inputModalities = normalizeDirectStringArray(row.inputModalities)
-  const outputModalities = normalizeDirectStringArray(row.outputModalities)
-  const observation = readCatalogObservation(row.raw) ?? readRecord(row.observation) as CatalogProviderModelObservationV2 | null
-  const capabilityResolution = observation ? resolveModelCapabilitiesV2(observation) : null
-  const reasoning = capabilityResolution?.reasoning.enabled === true
-  const tools = capabilityResolution?.tools.enabled === true
-  const structuredOutputs = capabilityResolution?.structuredOutputs.enabled === true
-  const vision = capabilityResolution?.vision.enabled === true
-  return {
-    providerKey: sourceProviderKey,
-    modelId,
-    modelKey: `${sourceProviderKey}::${modelId}`,
-    canonicalSlug: sourceProviderKey === 'openrouter' ? modelId : null,
-    displayName: String(row.name ?? row.displayName ?? modelId).trim() || modelId,
-    description: typeof row.description === 'string' ? row.description : null,
-    vendor: typeof row.vendor === 'string' ? row.vendor : null,
-    status: typeof row.status === 'string' ? row.status : 'visible',
-    contextLength: readFiniteNumber(row.contextLength),
-    maxOutputTokens: readFiniteNumber(row.maxOutputTokens),
-    createdAtSec: null,
-    inputModalities,
-    outputModalities,
-    supportedParameters: normalizeDirectStringArray(row.supportedParameters),
-    pricing: { prompt: null, completion: null, request: null, image: null },
-    capabilities: { reasoning, tools, structuredOutputs, vision, longContext: false },
-    observation,
-    capabilityResolution,
-    firstSeenAtMs: null,
-    lastSeenAtMs: observedAtMs,
-    syncedAtMs: observedAtMs,
+function hasValidCatalogItemIdentity(sourceProviderKey: string, row: Record<string, unknown>): boolean {
+  const providerKey = String(row.providerKey ?? '').trim()
+  const modelId = String(row.modelId ?? '').trim()
+  const modelKey = String(row.modelKey ?? '').trim()
+  if (providerKey !== sourceProviderKey || !modelId || modelKey !== `${providerKey}::${modelId}`) return false
+
+  const observations: Record<string, unknown>[] = []
+  const direct = readRecord(row.observation)
+  if (direct) observations.push(direct)
+  const buckets = readRecord(row.raw)?.buckets
+  if (Array.isArray(buckets)) {
+    for (const bucketValue of buckets) {
+      const bucket = readRecord(bucketValue)
+      const bucketObservation = readRecord(bucket?.observation)
+      const payloadObservation = readRecord(readRecord(bucket?.payload)?.observation)
+      if (bucketObservation) observations.push(bucketObservation)
+      if (payloadObservation) observations.push(payloadObservation)
+    }
   }
+  return observations.every((observation) =>
+    String(observation.providerKey ?? '').trim() === providerKey &&
+    String(observation.nativeModelId ?? '').trim() === modelId)
+}
+
+function v2AvailabilityItemToCatalogItem(sourceProviderKey: string, input: unknown): CatalogQueryItem | null {
+  const row = readRecord(input)
+  if (!row || !hasValidCatalogItemIdentity(sourceProviderKey, row)) return null
+  const complete = normalizeItem(row)
+  if (!complete) return null
+  return complete
 }
 
 function matchesStringSet(available: readonly string[], requested: readonly string[] | undefined): boolean {
@@ -593,13 +578,24 @@ async function queryGenerationV2Catalog(input: Readonly<{
       errorCode: 'catalog_snapshot_digest_mismatch',
       errorMessage: `Requested ${input.snapshotDigest}; authority returned ${responseDigest || '(missing)'}.` }
   }
-  rememberImmutableSnapshotResponse(input.sourceProviderKey, input.category, response)
   const observedAtMs = readFiniteNumber(response.observedAtMs)
-  const candidates = Array.isArray(response.items) ? response.items : Array.isArray(response.models) ? response.models : []
+  const candidates = Array.isArray(response.items) ? response.items : []
+  const decodedCandidates = candidates.map((row) => v2AvailabilityItemToCatalogItem(input.sourceProviderKey, row))
+  const authorityModelCount = readFiniteNumber(response.modelCount)
+  const authorityVisibleCount = readFiniteNumber(response.visibleModelCount)
+  const authorityHiddenCount = readFiniteNumber(response.hiddenModelCount)
+  if (decodedCandidates.some((row) => row === null) ||
+      (authorityModelCount !== null && authorityModelCount !== candidates.length) ||
+      (authorityModelCount !== null && authorityVisibleCount !== null && authorityHiddenCount !== null &&
+        authorityVisibleCount + authorityHiddenCount !== authorityModelCount)) {
+    return { items: [], nextCursor: null, authorityReadSucceeded: false,
+      notice: 'The model catalog authority returned an invalid identity snapshot.', status: 'failed',
+      errorCode: 'catalog_snapshot_identity_invalid', errorMessage: null }
+  }
+  rememberImmutableSnapshotResponse(input.sourceProviderKey, input.category, response)
   const searchTokens = input.searchText?.trim().toLocaleLowerCase().split(/\s+/u)
     .filter((token) => token.length > 0).slice(0, 8) ?? []
-  const all = candidates.map((row) => v2AvailabilityItemToCatalogItem(input.sourceProviderKey, row, observedAtMs))
-    .filter((row): row is CatalogQueryItem => row !== null)
+  const all = (decodedCandidates as CatalogQueryItem[])
     .filter((item) => {
       const haystack = `${item.displayName} ${item.modelId} ${input.includeDescriptionInSearch ? item.description ?? '' : ''}`.toLocaleLowerCase()
       if (searchTokens.length > 0 && !searchTokens.every((token) => haystack.includes(token))) return false
@@ -637,9 +633,9 @@ async function queryGenerationV2Catalog(input: Readonly<{
     scopeId: typeof response.scopeId === 'string' ? response.scopeId : null,
     authorityRevision: readFiniteNumber(response.authorityRevision) ?? 0,
     pendingSnapshotDigest: typeof response.pendingSnapshotDigest === 'string' ? response.pendingSnapshotDigest : null,
-    modelCount: readFiniteNumber(response.modelCount) ?? all.length,
-    visibleModelCount: readFiniteNumber(response.visibleModelCount) ?? all.length,
-    hiddenModelCount: readFiniteNumber(response.hiddenModelCount) ?? 0,
+    modelCount: authorityModelCount ?? all.length,
+    visibleModelCount: authorityVisibleCount ?? all.length,
+    hiddenModelCount: authorityHiddenCount ?? 0,
     errorCode: typeof response.errorCode === 'string' ? response.errorCode : null,
     errorMessage: typeof response.errorMessage === 'string' ? response.errorMessage : null,
     providerFailure: response.providerFailure && typeof response.providerFailure === 'object'

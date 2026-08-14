@@ -2,11 +2,12 @@ import { render, screen, waitFor } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { resetI18nForTests, t, tf } from '@/shared/i18n'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
   return {
-    model: { selectedModelKey: null },
+    routeSelection: null,
     reasoning: { enabled: false, effort: 'medium' as const },
     webSearch: { enabled: false, level: 'high' as const, detail: null },
     imageGeneration: {
@@ -23,7 +24,7 @@ function defaultSessionConfig() {
 function lmStudioSessionConfig() {
   return {
     ...defaultSessionConfig(),
-    model: { selectedProviderId: 'lm_studio' as const, selectedModelKey: 'openai/gpt-oss-20b' },
+    routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'lm_studio' as const, modelId: 'openai/gpt-oss-20b'  },
   }
 }
 
@@ -62,10 +63,19 @@ function lmStudioChat(overrides: Partial<{
   }
 }
 
+function installLMStudioRuntimeBridge(bridge: Record<string, unknown>) {
+  const generationV2 = (globalThis as any).generationV2 ?? {}
+  ;(globalThis as any).generationV2 = {
+    ...generationV2,
+    localRuntime: { ...(generationV2.localRuntime ?? {}), lmStudio: bridge },
+  }
+}
+
 describe('ChatSessionConsole LM Studio controls', () => {
   const originalLMStudioProvider = (globalThis as any).lmStudioProvider
 
   beforeEach(() => {
+    installGenerationV2TestBridge()
     resetI18nForTests()
   })
 
@@ -104,7 +114,7 @@ describe('ChatSessionConsole LM Studio controls', () => {
       instanceId: 'inst-loaded',
       warnings: [],
     }))
-    ;(globalThis as any).lmStudioProvider = { probe, loadModel, unloadModel }
+    installLMStudioRuntimeBridge({ probe, loadModel, unloadModel })
 
     const view = render(ChatSessionConsole, {
       props: {
@@ -157,7 +167,9 @@ describe('ChatSessionConsole LM Studio controls', () => {
     ])
     expect(view.emitted('updateLMStudioEndpointUrl')?.length).toBeGreaterThan(0)
     expect(view.emitted('updateLMStudioModel')).toBeUndefined()
-    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'lm_studio', modelId: 'openai/gpt-oss-20b' }])
+    expect(view.emitted('updateRouteSelection')?.[0]).toEqual([{
+      schemaVersion: 1, kind: 'provider_model', providerId: 'lm_studio', modelId: 'openai/gpt-oss-20b',
+    }])
     const chatEnabledEvents = view.emitted('updateLMStudioChatEnabled') ?? []
     expect(chatEnabledEvents[chatEnabledEvents.length - 1]).toEqual([false])
     expect(view.emitted('clearLMStudioChat')).toHaveLength(1)
@@ -180,11 +192,11 @@ describe('ChatSessionConsole LM Studio controls', () => {
   it('disables diagnostics actions when the diagnostics control is off', async () => {
     const user = userEvent.setup()
     const probe = vi.fn(async () => ({ ok: true }))
-    ;(globalThis as any).lmStudioProvider = {
+    installLMStudioRuntimeBridge({
       probe,
       loadModel: vi.fn(),
       unloadModel: vi.fn(),
-    }
+    })
 
     render(ChatSessionConsole, {
       props: {
@@ -207,7 +219,7 @@ describe('ChatSessionConsole LM Studio controls', () => {
 
   it('shows a specific local policy rejection for LM Studio probe failures', async () => {
     const user = userEvent.setup()
-    ;(globalThis as any).lmStudioProvider = {
+    installLMStudioRuntimeBridge({
       probe: vi.fn(async () => ({
         ok: false,
         code: 'remote_host_rejected',
@@ -215,7 +227,7 @@ describe('ChatSessionConsole LM Studio controls', () => {
       })),
       loadModel: vi.fn(),
       unloadModel: vi.fn(),
-    }
+    })
 
     render(ChatSessionConsole, {
       props: {
@@ -241,11 +253,11 @@ describe('ChatSessionConsole LM Studio controls', () => {
 
   it('emits the auto-unload-after-idle toggle separately from implemented after-send unload', async () => {
     const user = userEvent.setup()
-    ;(globalThis as any).lmStudioProvider = {
+    installLMStudioRuntimeBridge({
       probe: vi.fn(),
       loadModel: vi.fn(),
       unloadModel: vi.fn(),
-    }
+    })
 
     const view = render(ChatSessionConsole, {
       props: {

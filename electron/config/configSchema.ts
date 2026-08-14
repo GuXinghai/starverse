@@ -1,8 +1,4 @@
 import { isProviderCredentialSecureStoreKey } from '../credentials/providerCredentialContract'
-import {
-  isOpenAICompatibleCredentialV2StoreKey,
-  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
-} from '../credentials/openAICompatibleCredentialV2Service'
 
 /**
  * configSchema.ts - 应用配置 Schema 定义
@@ -144,9 +140,7 @@ export const ALLOWED_CONFIG_KEYS = new Set([
 function isAllowedConfigKey(key: string): boolean {
   return ALLOWED_CONFIG_KEYS.has(key) ||
     key === 'providerCredentials' ||
-    isProviderCredentialSecureStoreKey(key) ||
-    key === OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT ||
-    isOpenAICompatibleCredentialV2StoreKey(key)
+    isProviderCredentialSecureStoreKey(key)
 }
 
 /**

@@ -1,8 +1,9 @@
 import { render, waitFor } from '@testing-library/vue'
 import { nextTick } from 'vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { installGenerationV2TestBridge } from '../../tests/helpers/generationV2Bridge'
 
-type LogSpy = ReturnType<typeof vi.spyOn>
+type LogSpy = { mock: { calls: unknown[][] } }
 
 function stringifyLogArg(arg: unknown): string {
   if (typeof arg === 'string') return arg
@@ -35,6 +36,7 @@ describe('AppChatApp imageCapabilityQuerySeq early access regression', () => {
   let invoke: ReturnType<typeof vi.fn>
 
   beforeEach(() => {
+    installGenerationV2TestBridge()
     invoke = vi.fn(async (method: string) => {
       if (method === 'project.getInbox') {
         return { id: 'p_inbox', name: 'Inbox', createdAt: 1, updatedAt: 1, meta: null, isSystemProject: true }

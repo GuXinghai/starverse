@@ -126,7 +126,7 @@ describe('Generation V2 OpenAI Responses API provider-family contract', () => {
     const bytes = readFileSync(artifactPath)
     const audit = JSON.parse(bytes.toString('utf8'))
     expect(createHash('sha256').update(bytes).digest('hex'))
-      .toBe('7b1573bccdba903ea8dd20f89550fdbbc0e08e231a887a1ee88e10fe634f9e25')
+      .toBe('a150fe708e6beff2af8c7c82ed9d79aecd7e6f71bd13fcb9dc4e5e9338165169')
     expect(audit.capturedAt).toBe(contract.evidence.verifiedAt)
     expect(audit.provider).toBe(contract.providerId)
     expect(audit.reviewedWireFacts).toMatchObject({

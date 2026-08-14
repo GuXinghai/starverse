@@ -1,5 +1,9 @@
 # Model Preferences Contract（阶段 3）
 
+Status: pending-classification
+Document Role: spec
+Last updated: 2026-08-14
+
 更新日期：2026-02-17  
 适用范围：收藏（favorites）与最近使用（recents）的行为契约、scope 语义、失败降级与数据保留策略。
 

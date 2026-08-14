@@ -8,7 +8,10 @@ import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { isEpoch2RuntimeCredentialLease, type Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
+// Approved main-process Gemini GenerateContent Generation V2 execution boundary.
+// eslint-disable-next-line no-restricted-imports
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+// eslint-disable-next-line no-restricted-imports
 import {
   GeminiGenerateContentChatStreamV1,
   GeminiGenerateContentStreamV1Error,
@@ -267,7 +270,7 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
           ? createProviderFailureV2({
             context: {
               origin: 'response_decoder', phase: 'stream_decode',
-              providerId: command.preparedRequest.providerId,
+              provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
               contractId: command.preparedRequest.contractId,
               operationId: command.preparedRequest.operationId,
               requestSequence: command.preparedRequest.requestSequence,
@@ -289,7 +292,7 @@ export function createGeminiGenerateContentStreamRunnerV2(input: Readonly<{
               : started ? 'response_stream' : 'network_transport',
             phase: error instanceof GeminiGenerateContentStreamV1Error ? 'stream_decode'
               : started ? 'stream_read' : 'request_open',
-            providerId: command.preparedRequest.providerId,
+            provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
             contractId: command.preparedRequest.contractId,
             operationId: command.preparedRequest.operationId,
             requestSequence: command.preparedRequest.requestSequence,

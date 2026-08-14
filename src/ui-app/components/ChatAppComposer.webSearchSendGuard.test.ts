@@ -4,13 +4,12 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { __resetModelPrefsServiceCacheForTests } from '@/next/modelPrefs/modelPrefsService'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 import ChatAppComposer from './ChatAppComposer.vue'
 
 describe('ChatAppComposer web search send guard', () => {
-  const originalDbBridge = (globalThis as any).dbBridge
-
   type HarnessSessionConfig = {
-    model: { selectedModelKey: string }
+    routeSelection: { schemaVersion: 1; kind: 'provider_model'; providerId: 'openrouter'; modelId: string }
     reasoning: { enabled: boolean; effort: 'medium' }
     webSearch: { enabled: boolean; level: 'low' | 'high'; detail: null }
     imageGeneration: {
@@ -24,7 +23,6 @@ describe('ChatAppComposer web search send guard', () => {
   }
 
   afterEach(() => {
-    ;(globalThis as any).dbBridge = originalDbBridge
     __resetModelPrefsServiceCacheForTests()
     vi.restoreAllMocks()
   })
@@ -32,18 +30,14 @@ describe('ChatAppComposer web search send guard', () => {
   function installDbBridgeStub(input?: Readonly<{ favorites?: unknown[]; recents?: unknown[] }>) {
     const favorites = Array.isArray(input?.favorites) ? input.favorites : []
     const recents = Array.isArray(input?.recents) ? input.recents : []
-    ;(globalThis as any).dbBridge = {
-      invoke: vi.fn(async (method: string) => {
-        if (method === 'modelPrefs.listFavorites') return favorites
-        if (method === 'modelPrefs.listRecents') return recents
-        return null
-      }),
-    }
+    const bridge = installGenerationV2TestBridge()
+    ;(bridge.modelPreferences as any).listFavorites = vi.fn(async () => favorites)
+    ;(bridge.modelPreferences as any).listRecents = vi.fn(async () => recents)
   }
 
   function createSessionConfig(): HarnessSessionConfig {
     return {
-      model: { selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
+      routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
       reasoning: { enabled: true, effort: 'medium' as const },
       webSearch: { enabled: true, level: 'low' as const, detail: null },
       imageGeneration: {
@@ -110,7 +104,6 @@ describe('ChatAppComposer web search send guard', () => {
         <div>
           <ChatAppComposer
             v-model:draft="draft"
-            v-model:model="model"
             :sessionConfig="sessionConfig"
             :disabled="disabled"
             :isRunning="false"

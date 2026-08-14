@@ -289,20 +289,20 @@ function readDatabaseCandidates(dbPath) {
       }
     }
 
-    if (tableExists(db, 'convo')) {
+    if (tableExists(db, 'convo') && tableExists(db, 'conversation_route_preference_v2')) {
       const rows = db.prepare(`
-        SELECT id, project_id, meta, updated_at
-        FROM convo
-        WHERE meta IS NOT NULL
-        ORDER BY updated_at DESC
+        SELECT c.id, c.project_id, c.meta, c.updated_at, route.selection_json
+        FROM convo AS c
+        JOIN conversation_route_preference_v2 AS route ON route.conversation_id = c.id
+        ORDER BY c.updated_at DESC
       `).all()
       for (const row of rows) {
         const meta = parseJsonMaybe(row.meta)
-        const modelId = extractSelectedOpenAIResponsesModel(meta)
+        const modelId = extractSelectedOpenAIResponsesModel(row.selection_json)
         if (!modelId) continue
         candidates.push({
           modelId,
-          source: 'conversation_meta',
+          source: 'conversation_route_preference_v2',
           convoId: row.id,
           projectId: row.project_id,
           updatedAt: row.updated_at,
@@ -333,13 +333,12 @@ function readDatabaseCandidates(dbPath) {
   return { candidates: uniqueByModel(candidates), replayContexts, globalLayer, notes }
 }
 
-function extractSelectedOpenAIResponsesModel(meta) {
-  if (!meta || typeof meta !== 'object' || Array.isArray(meta)) return null
-  const providerId = meta.selectedProviderId || meta.providerId || meta.runtimeProviderId
-  const modelKey = meta.selectedModelKey || meta.modelId || meta.runtimeModelId
-  if (providerId !== PROVIDER_KEY) return null
-  if (typeof modelKey !== 'string' || !modelKey.trim()) return null
-  return modelKey.includes('::') ? modelKey.split('::').pop() : modelKey.trim()
+function extractSelectedOpenAIResponsesModel(selectionJson) {
+  const selection = parseJsonMaybe(selectionJson)
+  if (!selection || typeof selection !== 'object' || Array.isArray(selection)) return null
+  if (selection.schemaVersion !== 1 || selection.kind !== 'provider_model') return null
+  if (selection.providerId !== PROVIDER_KEY) return null
+  return typeof selection.modelId === 'string' && selection.modelId.trim() ? selection.modelId.trim() : null
 }
 
 function extractGenerationParamsLayer(meta) {

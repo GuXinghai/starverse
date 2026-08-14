@@ -14,6 +14,8 @@ import {
   isEpoch2RuntimeCredentialLease,
   type Epoch2RuntimeCredentialService,
 } from '../credentials/epoch2RuntimeCredentialService'
+// Approved main-process DeepSeek Generation V2 execution boundary.
+// eslint-disable-next-line no-restricted-imports
 import {
   DeepSeekStableChatStreamAssemblerV1,
   DeepSeekStableChatStreamV1Error,
@@ -22,8 +24,11 @@ import {
   type DeepSeekStableStreamDeltaV1,
   type DeepSeekStableStreamResultV1,
 } from '../../src/next/generation-v2/providers/deepseek/chatStreamV1'
+// eslint-disable-next-line no-restricted-imports
 import { completeDeepSeekProjectedNativeRequestV2, completeDeepSeekNativeRequestV2 } from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
+// eslint-disable-next-line no-restricted-imports
 import { createDeepSeekStableTerminalArtifactV1 } from '../../src/next/generation-v2/providers/deepseek/terminalArtifactV1'
+// eslint-disable-next-line no-restricted-imports
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import {
   isGenerationTextCommandResultV2,
@@ -267,7 +272,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
         context: {
           origin: 'http_response',
           phase: response.status === 200 ? 'response_body' : 'response_headers',
-          providerId: command.preparedRequest.providerId,
+          provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
           contractId: command.preparedRequest.contractId,
           operationId: command.preparedRequest.operationId,
           requestSequence: command.preparedRequest.requestSequence,
@@ -405,7 +410,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
               context: {
                 origin: 'response_decoder',
                 phase: 'stream_decode',
-                providerId: command.preparedRequest.providerId,
+                provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
                 contractId: command.preparedRequest.contractId,
                 operationId: command.preparedRequest.operationId,
                 requestSequence: command.preparedRequest.requestSequence,
@@ -419,7 +424,7 @@ export function createDeepSeekInitialStreamRunnerV2(input: Readonly<{
           : providerFailureFromUnknownV2(error, {
             origin: responseStarted ? 'response_stream' : 'network_transport',
             phase: responseStarted ? 'stream_read' : 'request_open',
-            providerId: command.preparedRequest.providerId,
+            provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
             contractId: command.preparedRequest.contractId,
             operationId: command.preparedRequest.operationId,
             requestSequence: command.preparedRequest.requestSequence,

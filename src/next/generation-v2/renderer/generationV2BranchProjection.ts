@@ -1,6 +1,7 @@
 import { projectProviderFailureForUiV2 } from '../../../shared/provider/providerFailureUiProjectionV2'
 import type { ProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
 import type { GenerationV2BranchView } from './generationV2WorkspaceClient'
+import type { GenerationExecutionProviderId } from '../domain/generationExecutionProviderId'
 
 export type GenerationV2UiContextMessage = Readonly<{
   id:string;convoId:string;role:string;seq:number;createdAt:number;parentId:string|null;status:string;
@@ -13,7 +14,7 @@ export type GenerationV2UiRenderableTurns = Readonly<{
 }>
 
 export type GenerationV2MessageMetaProjection = Readonly<{ parentId:string|null;questionId:string|null;answerRootId:string|null;
-  role:string;status:string;providerId:string|null;modelId:string|null;protocolContractId:string|null;
+  role:string;status:string;providerId:GenerationExecutionProviderId|null;modelId:string|null;protocolContractId:string|null;
   completionOutcome?:'complete'|'unknown' }>
 
 function projectProviderAnnotations(answer: GenerationV2BranchView['turns'][number]['answers'][number]):

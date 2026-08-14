@@ -81,9 +81,21 @@
       "englishUS": "English (US)"
     },
     "credentials": {
-      "configured": "已配置：{value}",
+      "configured": "已配置",
       "notConfigured": "未配置",
-      "apply": "应用凭据"
+      "unknown": "状态未知",
+      "add": "添加",
+      "replace": "替换",
+      "systemCredentialDecryptUnavailable": "API Key 已保存，但当前无法由系统安全存储解密。请重新输入 API Key，或修复系统安全存储后重试。",
+      "systemCredentialRecordInvalid": "保存的 API Key 记录格式无效。请重新输入 API Key。",
+      "apply": "应用凭据",
+      "secureStorageUnavailableTitle": "Linux 系统安全存储不可用",
+      "secureStorageUnavailableBody": "Starverse 当前无法使用系统密钥环安全保存此 API Key。你可以仅在本次运行中使用它，或明确选择将其以明文形式保存到本地数据中。",
+      "plaintextWarning": "明文保存意味着任何能够以当前 Linux 用户权限读取 Starverse 数据文件的程序，都可能取得此 API Key。请勿在共享账户、不受信任的系统或可能已被恶意软件控制的环境中使用。",
+      "sessionOnly": "仅本次运行",
+      "sessionOverridesPersistent": "仅本次运行（临时覆盖已保存凭据）",
+      "savePlaintext": "明文保存",
+      "plaintextStored": "明文存储"
     },
     "runtime": {
       "missingElectronStore": "缺少 electronStore（请在 Electron 中运行）。",

@@ -46,6 +46,7 @@ async function main() {
   await run(process.execPath, [
     path.join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'),
     '--run',
+    '--config', 'vitest.integration.config.ts',
     'infra/files/dfcLibreOfficePackagedSmokeConfidence.test.ts',
     '--reporter=dot',
   ], {
@@ -57,7 +58,8 @@ async function main() {
   await run(process.execPath, [
     path.join(repoRoot, 'node_modules', 'vitest', 'vitest.mjs'),
     '--run',
-    'infra/files/dfcLibreOfficePdfAdapter.real-smoke.test.ts',
+    '--config', 'vitest.integration.config.ts',
+    'infra/files/dfcLibreOfficePdfAdapter.slow.test.ts',
     '-t',
     'real managed',
     '--reporter=dot',
@@ -67,6 +69,7 @@ async function main() {
     timeoutMs: 10 * 60 * 1000,
     env: {
       ...process.env,
+      SV_TEST_SLOW: '1',
       STARVERSE_DFC_LIBREOFFICE_REAL_SMOKE: '1',
       STARVERSE_DFC_LIBREOFFICE_RUNTIME_ROOT: activeRuntimeRoot,
     },

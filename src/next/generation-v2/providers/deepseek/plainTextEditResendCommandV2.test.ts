@@ -3,7 +3,7 @@ import { decodeDeepSeekPlainTextEditResendCommandV2 } from './plainTextEditResen
 
 function command(overrides: Record<string, unknown> = {}) {
   return {
-    operationId: 'operation:edit', mode: 'fork', branchId: 'branch:1',
+    operationId: 'operation:edit', clientActionId: 'operation:edit', sourceBranchId: 'branch:1',
     sourceQuestionId: 'question:1', sourceAnswerRootId: 'answer:1',
     expectedHeadMessageId: 'answer:1', userBody: 'edited', modelId: 'deepseek-chat',
     commandAttachments: [], ...overrides,
@@ -16,7 +16,7 @@ describe('DeepSeek plain-text edit-resend command V2', () => {
     expect(decodeDeepSeekPlainTextEditResendCommandV2(command()).requestFingerprint)
       .toBe(first.requestFingerprint)
     for (const override of [
-      { mode: 'replace' }, { sourceQuestionId: 'question:2' },
+      { sourceQuestionId: 'question:2' },
       { sourceAnswerRootId: 'answer:2' }, { expectedHeadMessageId: 'answer:2' },
       { userBody: 'changed' }, { modelId: 'deepseek-v4-pro' },
     ]) {

@@ -1,6 +1,11 @@
 import { sha256Hex } from '../../../shared/crypto/sha256Hex'
 import { stableSerializeProviderRequestV2 } from '../compiler/stableSerialize'
 import { GenerationV2Digest, GenerationV2Identity } from '../domain/identityV2'
+import {
+  createGenerationExecutionProviderIdentityV2,
+  type GenerationExecutionProviderId,
+  type GenerationExecutionProviderIdentityV2,
+} from '../domain/generationExecutionProviderId'
 import type { AnthropicMessagesRegistrySurfaceV2 } from './anthropicDeveloperApiContractV2'
 import {
   readAnthropicDeveloperApiContractV2,
@@ -88,7 +93,7 @@ export type ReviewedProviderContractDefinitionV2 = Readonly<{
   protocolContractId: GenerationV2Identity<'protocol_contract_id'>
   contractRevision: GenerationV2Identity<'contract_revision'>
   definitionDigest: GenerationV2Digest<'contract_digest'>
-  providerId: GenerationV2Identity<'provider_id'>
+  providerId: GenerationExecutionProviderIdentityV2
   operations: readonly ProviderContractOperationV2[]
   apiSurface: ProviderContractApiSurfaceV2
   modelBindingPolicy: ModelBindingPolicyV2
@@ -123,7 +128,7 @@ export class ProviderContractRegistryV2Error extends Error {
 
 type DefinitionProjection = Readonly<{
   protocolContractId: string
-  providerId: string
+  providerId: GenerationExecutionProviderId
   operations: readonly ProviderContractOperationV2[]
   apiSurface: ProviderContractApiSurfaceV2
   modelBindingPolicy: ModelBindingPolicyV2
@@ -339,7 +344,7 @@ const OPENAI_RESPONSES_PROJECTION: DefinitionProjection = Object.freeze({
       Object.freeze({
         id: 'openai-responses-api-contract-20260715',
         path: 'docs/architecture/generation-compiler-v2/evidence/openai-responses-api-contract-20260715.json',
-        sha256: '7b1573bccdba903ea8dd20f89550fdbbc0e08e231a887a1ee88e10fe634f9e25',
+        sha256: 'a150fe708e6beff2af8c7c82ed9d79aecd7e6f71bd13fcb9dc4e5e9338165169',
       }),
       Object.freeze({
         id: 'openai-responses-gpt-5.6-capabilities-20260717',
@@ -459,7 +464,7 @@ function createDefinition(projection: DefinitionProjection): ReviewedProviderCon
       `${projection.protocolContractId}:${definitionDigestValue}`,
     ),
     definitionDigest: GenerationV2Digest.create('contract_digest', definitionDigestValue),
-    providerId: GenerationV2Identity.create('provider_id', projection.providerId),
+    providerId: createGenerationExecutionProviderIdentityV2(projection.providerId),
     operations: projection.operations,
     apiSurface: projection.apiSurface,
     modelBindingPolicy: projection.modelBindingPolicy,

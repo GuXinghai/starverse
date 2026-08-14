@@ -11,7 +11,9 @@ import {
   isEpoch2RuntimeCredentialLease,
   type Epoch2RuntimeCredentialService,
 } from '../credentials/epoch2RuntimeCredentialService'
+// eslint-disable-next-line no-restricted-imports -- Main-process runner composes the OpenAI Responses Generation V2 execution contract.
 import { completeOpenAIResponsesProjectedRequestV2, completeOpenAIResponsesRequestV2 } from '../../src/next/generation-v2/providers/openai-responses/continuationArtifactV2'
+// eslint-disable-next-line no-restricted-imports -- Main-process runner consumes the OpenAI Responses Generation V2 stream contract.
 import {
   OpenAIResponsesStreamAssemblerV1,
   OpenAIResponsesStreamV1Error,
@@ -19,7 +21,9 @@ import {
   isOpenAIResponsesTerminalResultV1,
   type OpenAIResponsesTerminalResultV1,
 } from '../../src/next/generation-v2/providers/openai-responses/responsesStreamV1'
+// eslint-disable-next-line no-restricted-imports -- Main-process runner records the OpenAI Responses terminal artifact.
 import { createOpenAIResponsesTerminalArtifactV1 } from '../../src/next/generation-v2/providers/openai-responses/terminalArtifactV1'
+// eslint-disable-next-line no-restricted-imports -- Main-process runner verifies prepared Generation V2 requests before dispatch.
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { isGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import {
@@ -241,7 +245,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
         context: {
           origin: response.status === 200 ? 'response_decoder' : 'http_response',
           phase: response.status === 200 ? 'response_headers' : 'response_body',
-          providerId: command.preparedRequest.providerId,
+          provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
           contractId: command.preparedRequest.contractId,
           operationId: command.preparedRequest.operationId,
           requestSequence: command.preparedRequest.requestSequence,
@@ -390,7 +394,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
         const providerFailure = createProviderFailureV2({
           context: {
             origin: 'provider_runtime', phase: 'response_body',
-            providerId: command.preparedRequest.providerId,
+            provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
             contractId: command.preparedRequest.contractId,
             operationId: command.preparedRequest.operationId,
             requestSequence: command.preparedRequest.requestSequence,
@@ -407,7 +411,7 @@ export function createOpenAIResponsesStreamRunnerV2(input: Readonly<{
             : responseStarted ? 'response_stream' : 'network_transport',
           phase: error instanceof OpenAIResponsesStreamV1Error ? 'stream_decode'
             : responseStarted ? 'stream_read' : 'request_open',
-          providerId: command.preparedRequest.providerId,
+          provider: { namespace: 'generation_execution', id: command.preparedRequest.providerId },
           contractId: command.preparedRequest.contractId,
           operationId: command.preparedRequest.operationId,
           requestSequence: command.preparedRequest.requestSequence,

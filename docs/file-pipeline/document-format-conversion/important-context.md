@@ -1,5 +1,9 @@
 # Document Format Conversion Important Context
 
+> **Status**: active
+> **Document Role**: entry
+> **Last updated**: 2026-08-14
+
 This file is the recovery entry point after context compression. The source of truth for the document format conversion and preview contract remains `starverse_format_conversion_preview_v1_2.md` in this directory. Do not split the source contract into derived contract files unless the Owner explicitly changes that decision.
 
 ## Current status

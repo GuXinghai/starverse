@@ -1,6 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import katex from 'katex'
-import { highlightAsync } from './shikiLoader'
+import { highlightSync, isHighlighterReady, requestHighlighter } from './shikiLoader'
 import { sanitizeHtml } from './sanitizer'
 import type { FinalSnapshot } from './types'
 
@@ -43,11 +43,11 @@ md.renderer.rules.fence = (tokens, idx, _options, env) => {
 
 /**
  * Render a complete message text to a sanitized HTML snapshot.
- * Async because Shiki highlighting is async.
+ * Async so callers retain a stable render contract while Shiki loads independently.
  */
 export async function renderFinal(text: string): Promise<FinalSnapshot> {
     if (!text || text.trim().length === 0) {
-        return { html: '', sanitizerRemoved: false }
+        return { html: '', sanitizerRemoved: false, highlightPending: false }
     }
 
     // Pass 1: Pre-process math blocks before markdown-it
@@ -62,12 +62,21 @@ export async function renderFinal(text: string): Promise<FinalSnapshot> {
     html = restoreMathBlocks(html, mathBlocks)
 
     // Pass 4: Replace Shiki placeholders with highlighted code
+    let highlightPending = false
     if (env._codeBlocks) {
         for (const block of env._codeBlocks) {
-            const highlighted = await highlightAsync(block.code, block.lang)
-            html = html.replace(block.placeholder, highlighted)
+            const highlighted = highlightSync(block.code, block.lang)
+            if (highlighted) {
+                html = html.replace(block.placeholder, highlighted)
+                continue
+            }
+
+            html = html.replace(block.placeholder, renderCodeFallback(block.code))
+            if (!isHighlighterReady()) highlightPending = true
         }
     }
+
+    if (highlightPending) requestHighlighter()
 
     // Pass 5: Sanitize
     const result = sanitizeHtml(html)
@@ -75,6 +84,7 @@ export async function renderFinal(text: string): Promise<FinalSnapshot> {
     return {
         html: result.html,
         sanitizerRemoved: result.removed,
+        highlightPending: !result.removed && highlightPending,
     }
 }
 
@@ -144,6 +154,11 @@ function renderMath(content: string, display: boolean): string {
 
 function escapeAttr(s: string): string {
     return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+}
+
+function renderCodeFallback(code: string): string {
+    const escaped = code.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    return `<pre class="rt-pre-fallback"><code>${escaped}</code></pre>`
 }
 
 function restoreMathBlocks(html: string, mathBlocks: ReadonlyArray<MathBlock>): string {

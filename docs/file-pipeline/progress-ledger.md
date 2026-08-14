@@ -1,5 +1,9 @@
 # File Pipeline Progress Ledger
 
+> **Status**: active
+> **Document Role**: ssot
+> **Last updated**: 2026-08-14
+
 ## Completed In Phase 1
 
 - Created the file pipeline documentation entry point under `docs/file-pipeline`.

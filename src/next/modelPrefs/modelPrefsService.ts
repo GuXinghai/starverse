@@ -1,3 +1,5 @@
+import { decodeRuntimeProviderId, isRuntimeProviderId, type RuntimeProviderId } from '../provider/runtimeProviderId'
+
 const MODEL_KEY_DELIMITER = '::'
 const FAVORITES_CACHE_TTL_MS = 15 * 1000
 const RECENTS_CACHE_TTL_MS = 15 * 1000
@@ -14,15 +16,14 @@ export type ModelPrefsScopeInput = Readonly<{
 }>
 
 export type ModelPrefsModelRefInput = Readonly<{
-  modelKey?: string
-  providerKey?: string
-  modelId?: string
+  providerKey: RuntimeProviderId
+  modelId: string
 }>
 
 export type ModelPrefsFavorite = Readonly<{
   scopeType: ModelPrefsScopeType
   scopeId: string
-  providerKey: string
+  providerKey: RuntimeProviderId
   modelId: string
   modelKey: string
   sortRank: number
@@ -33,7 +34,7 @@ export type ModelPrefsFavorite = Readonly<{
 export type ModelPrefsRecent = Readonly<{
   scopeType: ModelPrefsScopeType
   scopeId: string
-  providerKey: string
+  providerKey: RuntimeProviderId
   modelId: string
   modelKey: string
   lastUsedAtMs: number
@@ -68,7 +69,7 @@ type NormalizedScope = Readonly<{
 }>
 
 type NormalizedModelRef = Readonly<{
-  providerKey: string
+  providerKey: RuntimeProviderId
   modelId: string
   modelKey: string
 }>
@@ -95,16 +96,6 @@ function getModelPreferencesBridge(): ModelPreferencesBridge | null {
   return window.generationV2?.modelPreferences ?? null
 }
 
-function parseModelKey(modelKey: string): Readonly<{ providerKey: string; modelId: string }> | null {
-  const normalized = String(modelKey ?? '').trim()
-  const separatorIndex = normalized.indexOf(MODEL_KEY_DELIMITER)
-  if (separatorIndex <= 0 || separatorIndex + MODEL_KEY_DELIMITER.length >= normalized.length) return null
-  const providerKey = normalized.slice(0, separatorIndex).trim()
-  const modelId = normalized.slice(separatorIndex + MODEL_KEY_DELIMITER.length).trim()
-  if (!providerKey || !modelId) return null
-  return { providerKey, modelId }
-}
-
 function normalizeScope(scope?: ModelPrefsScopeInput): NormalizedScope {
   const scopeType = scope?.scopeType ?? 'global'
   if (scopeType !== 'global' && scopeType !== 'project' && scopeType !== 'conversation') {
@@ -121,18 +112,9 @@ function normalizeScope(scope?: ModelPrefsScopeInput): NormalizedScope {
 }
 
 function normalizeModelRef(ref: ModelPrefsModelRefInput): NormalizedModelRef {
-  const parsed = parseModelKey(String(ref.modelKey ?? '').trim())
-  const providerKey = String(ref.providerKey ?? '').trim() || parsed?.providerKey || ''
-  const modelId = String(ref.modelId ?? '').trim() || parsed?.modelId || ''
-  if (!providerKey || !modelId) {
-    throw new Error('model refs require modelKey or providerKey+modelId')
-  }
-  if (
-    parsed &&
-    (parsed.providerKey !== providerKey || parsed.modelId !== modelId)
-  ) {
-    throw new Error('modelKey mismatch with providerKey/modelId')
-  }
+  const providerKey = decodeRuntimeProviderId(ref.providerKey)
+  const modelId = String(ref.modelId ?? '').trim()
+  if (!modelId) throw new Error('model refs require RuntimeProviderId+modelId')
   return {
     providerKey,
     modelId,
@@ -187,7 +169,8 @@ function decodeFavorite(row: unknown): ModelPrefsFavorite | null {
   const modelKey = String(raw.modelKey ?? '').trim()
   const providerKey = String(raw.providerKey ?? '').trim()
   const modelId = String(raw.modelId ?? '').trim()
-  if (!modelKey || !providerKey || !modelId) return null
+  if (!modelKey || !isRuntimeProviderId(providerKey) || !modelId) return null
+  if (modelKey !== `${providerKey}${MODEL_KEY_DELIMITER}${modelId}`) return null
   const sortRank =
     typeof raw.sortRank === 'number' && Number.isFinite(raw.sortRank)
       ? Math.floor(raw.sortRank)
@@ -223,7 +206,8 @@ function decodeRecent(row: unknown): ModelPrefsRecent | null {
   const modelKey = String(raw.modelKey ?? '').trim()
   const providerKey = String(raw.providerKey ?? '').trim()
   const modelId = String(raw.modelId ?? '').trim()
-  if (!modelKey || !providerKey || !modelId) return null
+  if (!modelKey || !isRuntimeProviderId(providerKey) || !modelId) return null
+  if (modelKey !== `${providerKey}${MODEL_KEY_DELIMITER}${modelId}`) return null
   const lastUsedAtMs =
     typeof raw.lastUsedAtMs === 'number' && Number.isFinite(raw.lastUsedAtMs)
       ? Math.floor(raw.lastUsedAtMs)
@@ -266,7 +250,6 @@ function decodeRecentList(raw: unknown): ModelPrefsRecent[] {
 function invalidateFavoritesScope(scope: NormalizedScope) {
   favoriteCache.delete(favoriteCacheKey(scope))
   favoritesInFlight.delete(favoriteCacheKey(scope))
-  emitEvent({ kind: 'favorites', scopeType: scope.scopeType, scopeId: scope.scopeId, reason: 'invalidate' })
 }
 
 function invalidateRecentsScope(scope: NormalizedScope) {
@@ -276,7 +259,6 @@ function invalidateRecentsScope(scope: NormalizedScope) {
     recentsCache.delete(key)
     recentsInFlight.delete(key)
   }
-  emitEvent({ kind: 'recents', scopeType: scope.scopeType, scopeId: scope.scopeId, reason: 'invalidate' })
 }
 
 function normalizeOrderedModelKeys(input: readonly string[]): string[] {
@@ -384,7 +366,6 @@ export class ModelPrefsService {
           scopeId: scope.scopeId,
           providerKey: modelRef.providerKey,
           modelId: modelRef.modelId,
-          modelKey: modelRef.modelKey,
         })
         const removed =
           typeof removeRaw?.removed === 'number' && Number.isFinite(removeRaw.removed)
@@ -418,7 +399,6 @@ export class ModelPrefsService {
         scopeId: scope.scopeId,
         providerKey: modelRef.providerKey,
         modelId: modelRef.modelId,
-        modelKey: modelRef.modelKey,
       })
       const added = decodeFavorite(addRaw)
       if (!added) {
@@ -525,7 +505,6 @@ export class ModelPrefsService {
         scopeId: scope.scopeId,
         providerKey: modelRef.providerKey,
         modelId: modelRef.modelId,
-        modelKey: modelRef.modelKey,
       })
       const removed =
         typeof raw?.removed === 'number' && Number.isFinite(raw.removed)
@@ -611,36 +590,13 @@ export class ModelPrefsService {
     return promise
   }
 
-  static async recordRecent(
-    modelInput: ModelPrefsModelRefInput,
-    scopeInput?: ModelPrefsScopeInput
-  ): Promise<ModelPrefsRecent | null> {
-    let scope: NormalizedScope
-    let modelRef: NormalizedModelRef
+  static notifyRecentsChanged(scopeInput?: ModelPrefsScopeInput): void {
     try {
-      scope = normalizeScope(scopeInput)
-      modelRef = normalizeModelRef(modelInput)
-    } catch {
-      return null
-    }
-    const bridge = getModelPreferencesBridge()
-    if (!bridge) return null
-
-    try {
-      const raw = await bridge.recordRecent({
-        scopeType: scope.scopeType,
-        scopeId: scope.scopeId,
-        providerKey: modelRef.providerKey,
-        modelId: modelRef.modelId,
-        modelKey: modelRef.modelKey,
-        usedAtMs: Date.now(),
-      })
-      const row = decodeRecent(raw)
+      const scope = normalizeScope(scopeInput)
       invalidateRecentsScope(scope)
       emitEvent({ kind: 'recents', scopeType: scope.scopeType, scopeId: scope.scopeId, reason: 'mutation' })
-      return row
     } catch {
-      return null
+      // no-op
     }
   }
 
@@ -649,6 +605,8 @@ export class ModelPrefsService {
       const scope = normalizeScope(scopeInput)
       invalidateFavoritesScope(scope)
       invalidateRecentsScope(scope)
+      emitEvent({ kind: 'favorites', scopeType: scope.scopeType, scopeId: scope.scopeId, reason: 'invalidate' })
+      emitEvent({ kind: 'recents', scopeType: scope.scopeType, scopeId: scope.scopeId, reason: 'invalidate' })
     } catch {
       // no-op
     }

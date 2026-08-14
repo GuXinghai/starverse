@@ -4,6 +4,7 @@ import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import { OPENAI_COMPATIBLE_NON_STREAM_RESPONSE_MAX_BYTES_V2, OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2 } from './openAIChatCompatibleResponseBodyV2'
 
 const mocks = vi.hoisted(() => ({ fetch: vi.fn() }))
 vi.mock('electron', () => ({ safeStorage: {}, session: { defaultSession: { fetch: mocks.fetch } } }))
@@ -12,7 +13,8 @@ import { createOpenAIChatCompatibleGenerationV2Coordinator } from './openAIChatC
 import { createOpenAIChatCompatibleGenerationV2Runtime } from './openAIChatCompatibleGenerationV2Runtime'
 
 const requestProfile = { schemaVersion: 1 as const, standardFieldOwnership: 'builder' as const, unsupportedFieldPolicy: 'error_before_fetch' as const,
-  defaults: {}, extraBody: { enabled: true, maxDepth: 8, maxKeys: 128, maxBytes: 32768 } }
+  defaults: {}, defaultExtraBody: { vendor_flag: true },
+  extraBody: { enabled: true, maxDepth: 8, maxKeys: 128, maxBytes: 32768 } }
 const reasoningMapping = { schemaVersion: 1 as const, mode: 'custom_only' as const, rules: [], replay: { format: 'disabled' as const, scope: 'never' as const } }
 const reasoningMappingWithNativeReplay = { schemaVersion: 1 as const, mode: 'custom_only' as const,
   rules: [{ stream: { path: 'choices.*.delta.reasoning_content', mode: 'append' as const }, final: { path: 'choices.*.message.reasoning_content', mode: 'snapshot' as const }, semantic: 'text' as const }],
@@ -20,16 +22,20 @@ const reasoningMappingWithNativeReplay = { schemaVersion: 1 as const, mode: 'cus
 const inlinePolicy = { schemaVersion: 1 as const, canonicalThinkTags: true, customTags: [] }
 const responseProfile = { schemaVersion: 1 as const, choicePolicy: 'preserve_all' as const, unknownFieldPolicy: 'bounded_diagnostics' as const,
   reasoningMapping: { mappingId: 'ocp_reasoning_mapping_12345678', version: 1 }, inlinePolicy: { inlinePolicyId: 'ocp_inline_policy_12345678', version: 1 } }
-function configuration(input: Readonly<{ nativeReasoningReplay?: boolean }> = {}) { const selectedReasoningMapping = input.nativeReasoningReplay ? reasoningMappingWithNativeReplay : reasoningMapping; return {
-  requestProfile: { id: 'ocp_request_profile_12345678', version: 1, config: requestProfile },
-  requestMappings: [{ id: 'ocp_request_mapping_12345678', version: 1, config: {
-    schemaVersion: 1 as const, mappingId: 'ocp_request_mapping_12345678', requestProfileId: 'ocp_request_profile_12345678', requestProfileVersion: 1,
+function configuration(input: Readonly<{ nativeReasoningReplay?: boolean; vendorFlag?: boolean; version?: number }> = {}) { const selectedReasoningMapping = input.nativeReasoningReplay ? reasoningMappingWithNativeReplay : reasoningMapping; const version = 1; const suffix = input.version === 2 ? '87654321' : '12345678'; const requestProfileId = `ocp_request_profile_${suffix}`; const requestMappingId = `ocp_request_mapping_${suffix}`; const reasoningMappingId = `ocp_reasoning_mapping_${suffix}`; const inlinePolicyId = `ocp_inline_policy_${suffix}`; const responseProfileId = `ocp_response_profile_${suffix}`; return {
+  requestProfile: { id: requestProfileId, version,
+    config: { ...requestProfile, defaultExtraBody: { vendor_flag: input.vendorFlag ?? true } } },
+  requestMappings: [{ id: requestMappingId, version, config: {
+    schemaVersion: 1 as const, mappingId: requestMappingId, requestProfileId, requestProfileVersion: version,
     sourceField: 'reasoning_enabled' as const, targetPath: ['reasoning', 'enabled'], valueKind: 'boolean' as const,
     valueMapping: { true: true, false: false }, omission: 'required' as const,
   } }],
-  reasoningMapping: { id: 'ocp_reasoning_mapping_12345678', version: 1, config: selectedReasoningMapping },
-  inlinePolicy: { id: 'ocp_inline_policy_12345678', version: 1, config: inlinePolicy },
-  responseProfile: { id: 'ocp_response_profile_12345678', version: 1, config: responseProfile },
+  reasoningMapping: { id: reasoningMappingId, version, config: selectedReasoningMapping },
+  inlinePolicy: { id: inlinePolicyId, version, config: inlinePolicy },
+  responseProfile: { id: responseProfileId, version, config: { ...responseProfile,
+    reasoningMapping: { mappingId: reasoningMappingId, version },
+    inlinePolicy: { inlinePolicyId, version },
+  } },
 } }
 function database(input: Readonly<{ nativeReasoningReplay?: boolean }> = {}) {
   const db = new BetterSqlite3(':memory:'); applyGenerationV2SchemaForTest(db, process.cwd())
@@ -54,13 +60,42 @@ describe('OpenAI-compatible V2 coordinator', () => {
       credentialService: { getStatus: async () => ({ configured: false, revision: 0 }) } as never,
       createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
     const result = await coordinator.submitInitial({ operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,
-      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [], extraBody: { vendor_flag: true } })
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [] })
     expect(result).toMatchObject({ kind: 'created', projection: { branchProjection: { chosenAnswerRootId: { value: 'answer:2' }, headMessageId: { value: 'answer:2' } } } })
     expect(result.execution.snapshot.providerConfiguration).toMatchObject({ kind: 'openai_chat_compatible', extraBody: { vendor_flag: true } })
     expect(result.preparedRequest.endpoint).toBe('https://example.test/v1/chat/completions?tenant=alpha')
     expect(result.preparedRequest.headersPlan.ordinaryHeaders).toEqual([{ name: 'X-Tenant', value: 'public' }])
     expect(JSON.parse(result.preparedRequest.body.copyUtf8Text())).toMatchObject({ model: 'model-x', stream: true,
       messages: [{ role: 'user', content: 'hello' }], reasoning: { enabled: false }, vendor_flag: true })
+  })
+
+  it('resolves the active endpoint and profile default at action time and rejects a disabled instance', async () => {
+    const db = database(); databases.push(db); let id = 0
+    new OpenAICompatibleV2Repo(db, () => 20).reviseConfiguration({
+      providerInstanceId: 'ocp_provider_12345678', endpointRevisionId: 'ocp_endpoint_87654321',
+      configuration: configuration({ vendorFlag: false, version: 2 }),
+    })
+    const coordinator = createOpenAIChatCompatibleGenerationV2Coordinator({ db, nowMs: () => 100,
+      credentialService: { getStatus: async () => ({ configured: false, revision: 0 }) } as never,
+      createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
+    const current = await coordinator.submitInitial({ operationId: 'operation:current', branchId: 'branch:1',
+      expectedHeadMessageId: null, providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x',
+      userBody: 'hello', commandAttachments: [] })
+    expect(current.execution.snapshot.providerConfiguration).toMatchObject({
+      endpointRevisionId: { value: 'ocp_endpoint_87654321' }, extraBody: { vendor_flag: false },
+    })
+
+    const disabledDb = database(); databases.push(disabledDb)
+    new OpenAICompatibleV2Repo(disabledDb, () => 30).updateProvider({
+      providerInstanceId: 'ocp_provider_12345678', status: 'disabled',
+    })
+    const disabled = createOpenAIChatCompatibleGenerationV2Coordinator({ db: disabledDb,
+      credentialService: { getStatus: async () => ({ configured: false, revision: 0 }) } as never,
+    })
+    await expect(disabled.submitInitial({ operationId: 'operation:disabled', branchId: 'branch:1',
+      expectedHeadMessageId: null, providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x',
+      userBody: 'hello', commandAttachments: [] }))
+      .rejects.toThrow('GENERATION_V2_OPENAI_COMPATIBLE_PROVIDER_UNAVAILABLE')
   })
 
   it('retries the target answer from its exact persisted snapshot after terminal streaming', async () => {
@@ -75,12 +110,16 @@ describe('OpenAI-compatible V2 coordinator', () => {
       fetchImpl: vi.fn().mockResolvedValue(new Response(stream, { status: 200, headers: { 'content-type': 'text/event-stream' } })),
       streamProjectionSink: { publish: (event) => sink.push(event) }, createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
     await expect(runtime.submitInitial({ operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,
-      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [], extraBody: { vendor_flag: true } }))
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [] }))
       .resolves.toMatchObject({ kind: 'created' })
     await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'completed', answerRootId: 'answer:2' })))
+    new OpenAICompatibleV2Repo(db, () => 150).reviseConfiguration({
+      providerInstanceId: 'ocp_provider_12345678', endpointRevisionId: 'ocp_endpoint_87654321',
+      configuration: configuration({ vendorFlag: false, version: 2 }),
+    })
     const coordinator = createOpenAIChatCompatibleGenerationV2Coordinator({ db, credentialService: credential, nowMs: () => 200,
       createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
-    const retry = await coordinator.retry({ actionKind: 'retry_as_new', operationId: 'operation:2', branchId: 'branch:1', questionId: 'question:1',
+    const retry = await coordinator.retry({ actionKind: 'retry_as_new', operationId: 'operation:2', clientActionId: 'operation:2', sourceBranchId: 'branch:1', questionId: 'question:1',
       sourceAnswerId: 'answer:2', expectedHeadMessageId: 'answer:2' })
     expect(retry).toMatchObject({ kind: 'created', projection: { branchProjection: { chosenAnswerRootId: { value: 'answer:3' }, headMessageId: { value: 'answer:3' } } } })
     expect(retry.execution.snapshot.providerConfiguration).toMatchObject({ extraBody: { vendor_flag: true } })
@@ -96,10 +135,24 @@ describe('OpenAI-compatible V2 coordinator', () => {
         index: 0, message: { role: 'assistant', content: 'json answer' }, finish_reason: 'stop',
       }] }), { status: 200, headers: { 'content-type': 'application/json' } })), streamProjectionSink: { publish: (event) => sink.push(event) } })
     const created = await runtime.submitInitial({ operationId: 'operation:json', branchId: 'branch:1', expectedHeadMessageId: null,
-      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [], extraBody: null })
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [] })
     await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'completed', answerRootId: created.preparedRequest.answerRootId })))
     expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?').get(created.preparedRequest.answerRootId)).toEqual({ status: 'completed' })
     expect(db.prepare('SELECT chosen_answer_root_id AS chosen FROM branch_choice_v2 WHERE branch_id=?').get('branch:1')).toEqual({ chosen: created.preparedRequest.answerRootId })
+  })
+
+  it('fails a non-stream JSON response before buffering a declared body over 16 MiB', async () => {
+    const db = database(); databases.push(db); let id = 0; const sink: unknown[] = []
+    const runtime = createOpenAIChatCompatibleGenerationV2Runtime({ db, credentialService: { getStatus: async () => ({ configured: false, revision: 0 }) } as never,
+      nowMs: () => 100, createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}`,
+      fetchImpl: vi.fn().mockResolvedValue(new Response('small', { status: 200, headers: {
+        'content-type': 'application/json', 'content-length': String(OPENAI_COMPATIBLE_NON_STREAM_RESPONSE_MAX_BYTES_V2 + 1),
+      } })), streamProjectionSink: { publish: (event) => sink.push(event) } })
+    const created = await runtime.submitInitial({ operationId: 'operation:json-too-large', branchId: 'branch:1', expectedHeadMessageId: null,
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'hello', commandAttachments: [] })
+    await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'failed',
+      errorCode: OPENAI_COMPATIBLE_RESPONSE_TOO_LARGE_ERROR_V2, answerRootId: created.preparedRequest.answerRootId })))
+    expect(db.prepare('SELECT status FROM message_v2 WHERE message_id=?').get(created.preparedRequest.answerRootId)).toEqual({ status: 'failed' })
   })
 
   it('replays persisted native reasoning through the pinned mapping instead of renderer text', async () => {
@@ -116,10 +169,10 @@ describe('OpenAI-compatible V2 coordinator', () => {
       nowMs: () => 100, fetchImpl, streamProjectionSink: { publish: (event) => sink.push(event) },
       createQuestionId: () => `question:${++id}`, createAnswerId: () => `answer:${++id}` })
     const first = await runtime.submitInitial({ operationId: 'operation:reasoning-1', branchId: 'branch:1', expectedHeadMessageId: null,
-      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'first question', commandAttachments: [], extraBody: null })
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'first question', commandAttachments: [] })
     await vi.waitFor(() => expect(sink).toContainEqual(expect.objectContaining({ type: 'terminal', state: 'completed', answerRootId: first.preparedRequest.answerRootId })))
     const second = await runtime.submitInitial({ operationId: 'operation:reasoning-2', branchId: 'branch:1', expectedHeadMessageId: first.preparedRequest.answerRootId,
-      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'second question', commandAttachments: [], extraBody: null })
+      providerInstanceId: 'ocp_provider_12345678', modelId: 'model-x', userBody: 'second question', commandAttachments: [] })
     expect(JSON.parse(second.preparedRequest.body.copyUtf8Text()).messages).toEqual([
       { role: 'user', content: 'first question' },
       { role: 'assistant', content: 'first', reasoning_content: 'native reasoning' },
