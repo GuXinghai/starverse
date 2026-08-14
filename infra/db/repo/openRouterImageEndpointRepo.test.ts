@@ -32,6 +32,23 @@ function fixture(times: number[]) {
   return { db, repo }
 }
 
+function descriptorState(db: BetterSqlite3.Database) {
+  return {
+    current: db.prepare(`
+      SELECT * FROM openrouter_image_endpoint_descriptor_sets
+      ORDER BY credential_scope_id, model_id, operation
+    `).all(),
+    history: db.prepare(`
+      SELECT * FROM openrouter_image_endpoint_descriptor_history
+      ORDER BY credential_scope_id, model_id, operation, row_generation
+    `).all(),
+    generationClocks: db.prepare(`
+      SELECT * FROM openrouter_image_endpoint_descriptor_generation_clock
+      ORDER BY credential_scope_id, model_id, operation
+    `).all(),
+  }
+}
+
 describe('OpenRouterImageEndpointRepo V2 successful descriptor facts', () => {
   it('derives revision/time/generation and re-decodes the complete official envelope on read', () => {
     const { db, repo } = fixture([100])
@@ -131,11 +148,11 @@ describe('OpenRouterImageEndpointRepo V2 successful descriptor facts', () => {
         WHERE credential_scope_id = ? AND model_id = ? AND operation = 'image_generate'
       `).run(Number.MAX_SAFE_INTEGER, scope.value, model.value)
       db.pragma('ignore_check_constraints = OFF')
-      const before = db.serialize()
+      const before = descriptorState(db)
       expect(() => repo.commitSuccessfulDescriptorResponse({
         credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
       })).toThrow('GENERATION_V2_OPENROUTER_CACHE_GENERATION_EXHAUSTED')
-      expect(db.serialize()).toEqual(before)
+      expect(descriptorState(db)).toEqual(before)
     } finally { db.close() }
   })
 
@@ -167,11 +184,11 @@ describe('OpenRouterImageEndpointRepo V2 successful descriptor facts', () => {
           ON CONFLICT(credential_scope_id, model_id, operation) DO UPDATE SET last_generation = 2
         `).run(scope.value, model.value)
         mutate()
-        const before = db.serialize()
+        const before = descriptorState(db)
         expect(() => repo.invalidateCurrentDescriptorSet({
           credentialScopeId: scope, modelId: model, expectedGeneration: 2,
         })).toThrow('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
-        expect(db.serialize()).toEqual(before)
+        expect(descriptorState(db)).toEqual(before)
         expect(repo.getCurrentDescriptorSet(scope, model)?.rowGeneration).toBe(2)
       }
     } finally { db.close() }
@@ -185,11 +202,11 @@ describe('OpenRouterImageEndpointRepo V2 successful descriptor facts', () => {
       })
       repo.invalidateCurrentDescriptorSet({ credentialScopeId: scope, modelId: model, expectedGeneration: 1 })
       db.prepare('DELETE FROM openrouter_image_endpoint_descriptor_generation_clock').run()
-      const before = db.serialize()
+      const before = descriptorState(db)
       expect(() => repo.commitSuccessfulDescriptorResponse({
         credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
       })).toThrow('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
-      expect(db.serialize()).toEqual(before)
+      expect(descriptorState(db)).toEqual(before)
     } finally { db.close() }
   })
 
@@ -211,11 +228,11 @@ describe('OpenRouterImageEndpointRepo V2 successful descriptor facts', () => {
       `).run(scope.value, model.value)
 
       insertFutureHistory()
-      const beforeInvalidation = db.serialize()
+      const beforeInvalidation = descriptorState(db)
       expect(() => repo.invalidateCurrentDescriptorSet({
         credentialScopeId: scope, modelId: model, expectedGeneration: 1,
       })).toThrow('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
-      expect(db.serialize()).toEqual(beforeInvalidation)
+      expect(descriptorState(db)).toEqual(beforeInvalidation)
 
       db.prepare(`
         DELETE FROM openrouter_image_endpoint_descriptor_history
@@ -223,11 +240,11 @@ describe('OpenRouterImageEndpointRepo V2 successful descriptor facts', () => {
       `).run(scope.value, model.value)
       repo.invalidateCurrentDescriptorSet({ credentialScopeId: scope, modelId: model, expectedGeneration: 1 })
       insertFutureHistory()
-      const beforeCommit = db.serialize()
+      const beforeCommit = descriptorState(db)
       expect(() => repo.commitSuccessfulDescriptorResponse({
         credentialScopeId: scope, requestedModelId: model, response: response(), expectedGeneration: null,
       })).toThrow('GENERATION_V2_OPENROUTER_CACHE_STATE_INVALID')
-      expect(db.serialize()).toEqual(beforeCommit)
+      expect(descriptorState(db)).toEqual(beforeCommit)
     } finally { db.close() }
   })
 
