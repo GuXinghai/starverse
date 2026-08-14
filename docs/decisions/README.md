@@ -100,7 +100,7 @@ ADR（Architecture Decision Record）是一种轻量级文档格式，用于记�
 
 ## 相关资源
 
-- [架构总览](../architecture/OVERVIEW.md) - 了解当前架构设计
+- [当前系统架构](../architecture/CURRENT_SYSTEM_ARCHITECTURE.md) - 了解当前架构设计
 - [文档导航中心](../guides/INDEX.md) - 返回文档导航中心
 - [ADR 方法论](https://adr.github.io/) - ADR 官方网站
 

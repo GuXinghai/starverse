@@ -187,7 +187,7 @@ npm run build
 - [Agent 与任务入口](docs/AGENT_INDEX.md)
 - [文档状态索引](docs/DOC_STATUS_INDEX.md)
 - [开发指南总入口](docs/guides/INDEX.md)
-- [架构总览](docs/architecture/OVERVIEW.md)
+- [当前系统架构](docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md)
 - [Provider 架构](docs/architecture/provider-architecture/README.md)
 - [OpenAI-compatible 重建决策与验收](docs/architecture/provider-architecture/openai-chat-compatible/REBUILD_MASTER_PLAN.md)
 - [文件管道](docs/file-pipeline/README.md)

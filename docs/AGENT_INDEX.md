@@ -17,7 +17,7 @@ Agent should read in this sequence:
 2. **[docs/AGENT_INDEX.md](AGENT_INDEX.md)** — This file (1 min)
 3. **[docs/guides/INDEX.md](guides/INDEX.md)** — Documentation hub by scenario (3 min)
 4. **[docs/maintenance/maintainer-entry.md](maintenance/maintainer-entry.md)** — Key directories & boundaries (3 min)
-5. **[docs/architecture/OVERVIEW.md](architecture/OVERVIEW.md)** — System architecture (5 min)
+5. **[docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md](architecture/CURRENT_SYSTEM_ARCHITECTURE.md)** — Current system architecture (5 min)
 6. **Task-specific docs** — Based on task area (see routing table below)
 
 **Do not start with**: docs/archive/, docs/ui-refactoring/ (historical only)
@@ -32,7 +32,7 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 
 | Status | Meaning | When to read | Example |
 |--------|---------|--------------|---------|
-| **active** | Current implementation or maintained entry point | Always first | `docs/architecture/OVERVIEW.md` |
+| **active** | Current implementation or maintained entry point | Always first | `docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md` |
 | **reference** | Stable background or principle docs | For context | Design patterns, ADR decisions |
 | **historical** | Process records, migration traces, phase logs | Only for history tracing or regression check | `docs/file-pipeline/phase-5-*.md` |
 | **archived** | Read-only record; not current implementation | Never as default | `docs/archive/*` |
@@ -64,8 +64,8 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | **Provider/model identity audit** | `docs/architecture/provider-architecture/README.md` → `docs/analysis/model-provider-identity/README.md` | `src/shared/modelCatalog/`, `src/next/provider/`, `src/next/generation-v2/`, `infra/db/` | The analysis bundle is point-in-time evidence, not SSOT; verify every implementation claim against the current checkout |
 | **Model catalog / preferences** | `docs/spec/` → `docs/notes/` | `src/next/modelCatalog/`, `src/next/modelPrefs/`, `infra/db/repo/modelCatalogV2Repo.ts`, `infra/db/repo/modelPreferencesRepo.ts` | Treat `modelKey` as a derived Catalog/Preferences value; confirm current code before changing contracts |
 | **Historical message attachments** | `docs/governance/app-chat-app-logic-boundary.md` | `src/ui-app/app/appChatApp.logic.ts`, `infra/db/repo/messageRepo.ts` | Prioritize targeted checks in these two files for attachment/history handling before edits |
-| **Electron IPC** | `docs/architecture/OVERVIEW.md` | `electron/ipc/`, `electron/db/worker.ts`, `src/shared/ipc/openRouterStreamWire.ts` | Confirm IPC handler names and bridge wiring remain consistent |
-| **DB & settings** | `docs/maintenance/maintainer-entry.md` (see "活跃代码") | `infra/db/`, `electron-store` config in `electron/main.ts` | Run db/repo and settings-related tests if database/settings paths change |
+| **Electron IPC** | `docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md` | `electron/epoch2MainEntry.ts`, `electron/mainV2.ts`, `electron/ipc/`, `electron/preload.ts` | Confirm IPC handler names and preload wiring remain consistent |
+| **DB & settings** | `docs/maintenance/maintainer-entry.md` (see "活跃代码") | `electron/data-epoch/`, `infra/db/`, `electron/bootstrap/epoch2ApplicationRuntime.ts` | Run db/repo and settings-related tests if database/settings paths change |
 | **Governance & maintainer rules** | `docs/maintenance/maintainer-entry.md`, `docs/governance/` | `scripts/gates/`, `docs/adr/`, `docs/decisions/` | Re-check gate docs before changing protected boundaries |
 | **Documentation organization** | `docs/guides/INDEX.md` → `docs/DOC_STATUS_INDEX.md` | `docs/maintenance/document-governance.md`, `docs/maintenance/document-redirect-map.md` | Keep active/reference/history/archive distinctions; do not bulk-move without redirect entries |
 
@@ -118,7 +118,8 @@ After modifying docs or code paths, prefer the narrowest checks for the touched 
 - [DOC_STATUS_INDEX.md](DOC_STATUS_INDEX.md) — Detailed status of all key docs
 - [guides/INDEX.md](guides/INDEX.md) — Full doc navigation hub
 - [maintenance/maintainer-entry.md](maintenance/maintainer-entry.md) — Code boundaries & high-risk zones
-- [architecture/OVERVIEW.md](architecture/OVERVIEW.md) — Architecture layers & naming conventions
+- [architecture/CURRENT_SYSTEM_ARCHITECTURE.md](architecture/CURRENT_SYSTEM_ARCHITECTURE.md) — Current architecture layers and ownership
+- [architecture/OVERVIEW.md](architecture/OVERVIEW.md) — Historical Worker/dbBridge architecture record
 - [architecture/provider-architecture/README.md](architecture/provider-architecture/README.md) — Owner-confirmed multi-provider architecture SSOT
 - [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) — Post-hard-cut identity closeout and point-in-time semantic review evidence
 - [archive/README.md](archive/README.md) — Historical documentation index; skip by default

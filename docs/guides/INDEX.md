@@ -12,13 +12,13 @@
 2. [Agent Index](../AGENT_INDEX.md) — 任务路由和维护护栏。
 3. [Documentation Status Index](../DOC_STATUS_INDEX.md) — 当前 SSOT、状态和目录清单。
 4. [维护者入口](../maintenance/maintainer-entry.md) — 代码边界和高风险区域。
-5. [架构总览](../architecture/OVERVIEW.md) — 系统层次和职责边界。
+5. [当前系统架构](../architecture/CURRENT_SYSTEM_ARCHITECTURE.md) — 当前系统层次和职责边界。
 
 ## 按任务查找
 
 | 任务 | 首选入口 | 说明 |
 |---|---|---|
-| 系统架构 / 生成链 | [architecture/](../architecture/) → [OVERVIEW.md](../architecture/OVERVIEW.md) | 当前架构、协议和边界；主题目录内的 evidence 只表示证据，不自动成为 SSOT。 |
+| 系统架构 / 生成链 | [当前系统架构](../architecture/CURRENT_SYSTEM_ARCHITECTURE.md) → [architecture/](../architecture/) | 当前进程、数据与模块边界；主题目录内的 evidence 只表示证据，不自动成为 SSOT。 |
 | Provider / model identity | [provider-architecture/](../architecture/provider-architecture/README.md) → [identity analysis](../analysis/model-provider-identity/README.md) | Provider 架构 SSOT 与时间限定的审计证据分开。 |
 | File pipeline | [file-pipeline/README.md](../file-pipeline/README.md) → [progress-ledger.md](../file-pipeline/progress-ledger.md) | 领域入口和当前决策 ledger。 |
 | DFC | [DFC context](../file-pipeline/document-format-conversion/important-context.md) → [v1.2 contract](../file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md) | DFC 当前支持矩阵和边界。 |

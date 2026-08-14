@@ -1,10 +1,12 @@
-# Starverse 架构总览
+# Starverse 历史架构总览（2025）
 
-> **Status**: active
-> **Document Role**: ssot
+> **Status**: historical
+> **Document Role**: implementation-note
 > **Last updated**: 2026-08-14
-> **Agent use**: read for layer boundaries, ownership, and canonical entry paths
-> **Do not use as**: exhaustive file inventory or a substitute for implementation-specific docs
+> **Agent use**: 仅在追溯 2025 年数据库 Worker/dbBridge 架构时阅读
+> **Do not use as**: 当前层级、所有权、入口或实现依据
+
+> **Current architecture**: 请使用 [CURRENT_SYSTEM_ARCHITECTURE.md](CURRENT_SYSTEM_ARCHITECTURE.md)。本文保留已退出生产主链路的 Worker/dbBridge 设计记录，正文中的路径和架构图不代表当前 checkout。
 
 > **最后更新**: 2025年12月3日  
 > **架构版本**: 1.0.0

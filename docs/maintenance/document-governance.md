@@ -169,7 +169,7 @@ When two documents claim SSOT for the same domain:
 | File pipeline decisions | `docs/file-pipeline/progress-ledger.md` | active |
 | Format conversion design / DFC | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | active |
 | appChatApp boundaries | `docs/governance/app-chat-app-logic-boundary.md` | active |
-| System architecture | `docs/architecture/OVERVIEW.md` | active |
+| System architecture | `docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md` | active |
 | OpenRouter streaming | `docs/openrouter-streaming-reasoning-ssot-v2.md` | active SSOT |
 
 ---
