@@ -137,23 +137,23 @@ Counts include Markdown, JSON, HTML, CSV, and other tracked files under each dir
 | `archive/` | 158 | archived | `archive/README.md` |
 | `bugfix/` | 1 | 2026-08-14 已整体归档至 `archive/bugfixes/`；仅重定向 README | `bugfix/README.md` |
 | `decisions/` | 6 | reference / historical decisions | `decisions/README.md` |
-| `diagnostics/` | 3 | pending-classification | — |
+| `diagnostics/` | 4 | 已分类（2026-08-14）：historical 诊断调查 | `diagnostics/README.md` |
 | `features/` | 1 | 2026-08-14 已整体归档至 `archive/completed-features/` 等；仅重定向 README | `features/README.md` |
 | `file-pipeline/` | 166 | mixed; active ledgers plus historical phases | `file-pipeline/README.md` |
 | `governance/` | 1 | reference / maintenance | — |
 | `guides/` | 11 | active guides（2026-08-14 历史报告已归档） | `guides/INDEX.md` |
-| `i18n/` | 5 | pending-classification | `i18n/README.md` |
+| `i18n/` | 5 | 已分类（2026-08-14）：active 入口 + reference/historical | `i18n/README.md` |
 | `maintenance/` | 33 | active maintenance and audit records | `maintenance/maintainer-entry.md` |
-| `notes/` | 4 | pending-classification | — |
-| `refactor/` | 10 | reference / implementation notes | — |
+| `notes/` | 5 | 已分类（2026-08-14）：reference/historical 验证记录 | `notes/README.md` |
+| `refactor/` | 11 | 已分类（2026-08-14）：historical 重构记录 | `refactor/README.md` |
 | `refactoring/` | 1 | redirect only | `refactoring/README.md` |
-| `requirements/` | 3 | pending-classification / requirements | — |
-| `rfc/` | 1 | pending-classification / proposal | — |
-| `security/` | 3 | active or planned security work | — |
-| `spec/` | 17 | pending-classification / contracts | — |
+| `requirements/` | 4 | 已分类（2026-08-14）：historical / planned 需求 | `requirements/README.md` |
+| `rfc/` | 2 | 已分类（2026-08-14）：historical 未批准提案 | `rfc/README.md` |
+| `security/` | 4 | active or planned security work | — |
+| `spec/` | 18 | 已分类（2026-08-14）：reference/historical 契约背景 | `spec/README.md` |
 | `tailwind/` | 3 | active styling entry and references | `tailwind/TAILWIND_V4_README.md` |
 | `todo/` | 2 | reference / pending work | `todo/README.md` |
-| `ui-refactoring/` | 9 | reference / implementation notes | — |
+| `ui-refactoring/` | 10 | 已分类（2026-08-14）：historical UI 重构过程记录 | `ui-refactoring/README.md` |
 
 Root-level entries are limited to `AGENT_INDEX.md`, `DOC_STATUS_INDEX.md`, and `openrouter-streaming-reasoning-ssot-v2.md`.
 
@@ -166,12 +166,118 @@ Root-level entries are limited to `AGENT_INDEX.md`, `DOC_STATUS_INDEX.md`, and `
 | [decisions/](decisions/) | reference | decision | Decisions | Project foundation decisions (001-005) |
 | [bugfix/](bugfix/) | archived | implementation-note | Fixes | 2026-08-14 已整体归档至 archive/bugfixes/；仅重定向 README |
 | [refactor/](refactor/) | reference | implementation-note | Refactor | OpenRouter refactor records |
-| [ui-refactoring/](ui-refactoring/) | reference | implementation-note | Refactor | UI component refactor records |
+| [ui-refactoring/](ui-refactoring/) | historical | implementation-note | Refactor | UI 重构过程记录（2026-08-14 分类；与 AGENT_INDEX "historical only" 一致） |
 | [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) | reference | entry | Provider/model identity | Trace evidence; verify claims against current checkout |
 
 ## Pending Classification Policy
 
 The inventory above intentionally does not claim that every file in a mixed directory has the same lifecycle. First classify entry points, SSOTs, and documents referenced by current code or tests. Leave low-frequency files as `pending-classification` until an owner reviews them; do not bulk-relabel or move them solely to make counts look clean.
+
+### DGR-3 续：待分类目录逐文件分类（2026-08-14）
+
+判定依据：内容性质 + 全仓库引用扫描 + 源码落点存在性 + 首次提交日期。落点/机制已不存在且有取代证据 → `historical`；落点或现行脚本仍在 → `reference`；两者皆无 → 保留 `pending-classification`（不猜测）。
+
+**spec/（模型目录与偏好契约背景）**
+
+| 文件 | Lifecycle | Role | 判定依据 |
+|---|---|---|---|
+| [spec/README.md](spec/README.md) | active | entry | 目录入口 |
+| [spec/db-rebuild-strategy-dev.md](spec/db-rebuild-strategy-dev.md) | historical | implementation-note | 开发态重建策略；`SV_DB_REBUILD_ON_SCHEMA_MISMATCH` 已无引用，被 epoch-2 `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH`（electron/epoch2MainEntry.ts）取代 |
+| [spec/model-catalog-category-cache.md](spec/model-catalog-category-cache.md) | pending-classification | spec | 2026-02 阶段 2.8 设计；无引用、无落点声明、无取代证据 |
+| [spec/model-catalog-endpoints-cache-contract.md](spec/model-catalog-endpoints-cache-contract.md) | reference | spec | endpoints 详情功能现行（src/next/modelCatalog/modelEndpointDetailService.ts + test:model-picker:smoke） |
+| [spec/model-catalog-internal-schema.md](spec/model-catalog-internal-schema.md) | reference | spec | 落点 src/shared/modelCatalog/internalSchema.ts 存在 |
+| [spec/model-catalog-model-fields-plan.md](spec/model-catalog-model-fields-plan.md) | historical | implementation-note | 阶段 4 冻结计划；DDL 落点 infra/db/schema.sql 已不存在 |
+| [spec/model-catalog-query-contract.md](spec/model-catalog-query-contract.md) | reference | spec | queryCore 现行（src/next/modelCatalog/catalogQueryService.ts + 测试脚本） |
+| [spec/model-catalog-schema.md](spec/model-catalog-schema.md) | historical | spec | DDL 落点 infra/db/schema.sql 已不存在（epoch-2 v2/*.sql 取代） |
+| [spec/model-catalog-sync-runner.md](spec/model-catalog-sync-runner.md) | pending-classification | spec | 落点 catalogSyncRunner.ts 不存在（src/shared 与 electron/modelCatalog 均无）且无取代证据 |
+| [spec/model-endpoint-cache.md](spec/model-endpoint-cache.md) | archived | implementation-note | 自述 Deprecated alias，指向 endpoints-cache-contract |
+| [spec/model-preferences-contract.md](spec/model-preferences-contract.md) | reference | spec | 偏好功能现行（src/next/modelPrefs/modelPrefsService.ts、infra/db/repo/modelPreferencesRepo.ts） |
+| [spec/model-preferences-schema.md](spec/model-preferences-schema.md) | historical | spec | DDL 落点 infra/db/schema.sql 已不存在 |
+| [spec/model-preferences-scope.md](spec/model-preferences-scope.md) | reference | spec | scope/key 语义契约；projectRepo/convoRepo 落点存在 |
+| [spec/model-selector-stage4-gap-matrix.md](spec/model-selector-stage4-gap-matrix.md) | historical | implementation-note | 阶段 4 差距矩阵（任务过程产物） |
+| [spec/model-selector-ui.md](spec/model-selector-ui.md) | reference | implementation-note | 描述的 ChatAppComposer/ChatLayout 结构现行；ModelPickerDialog 已实现 |
+| [spec/model-tagging-rules.md](spec/model-tagging-rules.md) | reference | spec | 落点 src/shared/modelCatalog/modelTagger.ts 存在 |
+| [spec/openrouter-catalog-field-dictionary.md](spec/openrouter-catalog-field-dictionary.md) | reference | spec | 字段字典；openRouterCatalogClient.ts 存在 |
+| [spec/openrouter-image-generation-task0-contract.md](spec/openrouter-image-generation-task0-contract.md) | historical | spec | 自述"实现索引与摘要"；图片生成已实现（openRouterImage*Repo；2026-07-14 live-qualified） |
+
+**refactor/（OpenRouter SSOT v2 重构记录，2025-12）**
+
+| 文件 | Lifecycle | Role | 判定依据 |
+|---|---|---|---|
+| [refactor/README.md](refactor/README.md) | active | entry | 目录入口 |
+| [refactor/plan.md](refactor/plan.md) | historical | implementation-note | Gate 0-5 任务树计划；已执行完毕（CLEANUP_COMPLETION_REPORT 验收） |
+| [refactor/CLEANUP_COMPLETION_REPORT.md](refactor/CLEANUP_COMPLETION_REPORT.md) | historical | closeout | SSOT v2 重构验收报告（2025-12-13） |
+| [refactor/compliance-checklist.md](refactor/compliance-checklist.md) | historical | implementation-note | 已勾选完成的 SSOT 审查清单（过程产物） |
+| [refactor/gate-0-2-quickcheck.md](refactor/gate-0-2-quickcheck.md) | reference | implementation-note | 描述的 scripts/gates/tc00-tc02.mjs 仍存在，运行说明有效 |
+| [refactor/HANDOFF_PHASE3_UI_APP.md](refactor/HANDOFF_PHASE3_UI_APP.md) | historical | closeout | phase3/ui-app 分支交接记录（2026-01-24） |
+| [refactor/observability.md](refactor/observability.md) | historical | implementation-note | 重构期日志字段建议（过程产物） |
+| [refactor/risk-log.md](refactor/risk-log.md) | historical | implementation-note | 风险日志（全部已缓解） |
+| [refactor/tc03-quickcheck.md](refactor/tc03-quickcheck.md) | reference | implementation-note | 描述 src/next/openrouter/buildRequest.ts 与 debug-echo-dryrun.mjs 均存在 |
+| [refactor/tc12-deletion-checklist.md](refactor/tc12-deletion-checklist.md) | historical | implementation-note | 已执行删除清单记录 |
+| [refactor/ui-legacy-inventory.md](refactor/ui-legacy-inventory.md) | historical | implementation-note | 基于 legacy snapshot f779128 的盘点；自述 HEAD 已无 legacy UI |
+
+**ui-refactoring/（UI 组件重构过程记录，2025-11~12；2026-06 完成）**
+
+| 文件 | Lifecycle | Role |
+|---|---|---|
+| [ui-refactoring/README.md](ui-refactoring/README.md) | historical | entry |
+| [ui-refactoring/B_COMPLETION_REPORT.md](ui-refactoring/B_COMPLETION_REPORT.md) | historical | closeout |
+| [ui-refactoring/B_REFACTOR_BASELINE.md](ui-refactoring/B_REFACTOR_BASELINE.md) | historical | implementation-note |
+| [ui-refactoring/CHATVIEW_REFACTOR_PLAN.md](ui-refactoring/CHATVIEW_REFACTOR_PLAN.md) | historical | implementation-note |
+| [ui-refactoring/CLEANUP_SUMMARY.md](ui-refactoring/CLEANUP_SUMMARY.md) | historical | closeout |
+| [ui-refactoring/CONVERSATIONLIST_REFACTOR_CHECKLIST.md](ui-refactoring/CONVERSATIONLIST_REFACTOR_CHECKLIST.md) | historical | implementation-note |
+| [ui-refactoring/PLAN_1.3_USECONVERSATIONSEARCH.md](ui-refactoring/PLAN_1.3_USECONVERSATIONSEARCH.md) | historical | implementation-note |
+| [ui-refactoring/PLAN_2_PROJECTMANAGER.md](ui-refactoring/PLAN_2_PROJECTMANAGER.md) | historical | implementation-note |
+| [ui-refactoring/REFACTOR_PROGRESS.md](ui-refactoring/REFACTOR_PROGRESS.md) | historical | implementation-note |
+| [ui-refactoring/REFACTOR_TODO_OVERVIEW.md](ui-refactoring/REFACTOR_TODO_OVERVIEW.md) | historical | implementation-note |
+
+**i18n/（本地化；门禁脚本现行）**
+
+| 文件 | Lifecycle | Role | 判定依据 |
+|---|---|---|---|
+| [i18n/README.md](i18n/README.md) | active | entry | 目录入口；i18n:check / i18n:scan-hardcoded 脚本存在 |
+| [i18n/00-i18n-integration-survey.md](i18n/00-i18n-integration-survey.md) | historical | implementation-note | 只读勘察报告（task pack 0 过程记录） |
+| [i18n/01-key-lookup-rules.md](i18n/01-key-lookup-rules.md) | reference | implementation-note | 自称 canonical；t() 实现（src/shared/i18n）现行 |
+| [i18n/02-i18n-coverage-and-hardcoded-scan.md](i18n/02-i18n-coverage-and-hardcoded-scan.md) | reference | implementation-note | 描述的 i18n:check / i18n:scan-hardcoded 脚本存在 |
+| [i18n/03-i18n-final-closeout.md](i18n/03-i18n-final-closeout.md) | historical | closeout | 收尾记录 |
+
+**notes/（模型目录验证记录）**
+
+| 文件 | Lifecycle | Role | 判定依据 |
+|---|---|---|---|
+| [notes/README.md](notes/README.md) | active | entry | 目录入口 |
+| [notes/model-catalog-codebase-map.md](notes/model-catalog-codebase-map.md) | historical | implementation-note | 2026-02 侦察快照；引用路径大量已删除（schema.sql、src/next/live/） |
+| [notes/model-catalog-smoke-test.md](notes/model-catalog-smoke-test.md) | reference | implementation-note | test:model-catalog:smoke 脚本仍存在 |
+| [notes/model-catalog-validation-baseline.md](notes/model-catalog-validation-baseline.md) | historical | implementation-note | 前提"全仓 tsc 存在历史错误"已不成立（vue-tsc 全仓通过），基线理由过时 |
+| [notes/model-picker-smoke.md](notes/model-picker-smoke.md) | reference | implementation-note | test:model-picker:smoke 脚本仍存在；被 model-preferences-contract 引用 |
+
+**requirements/（需求与任务卡）**
+
+| 文件 | Lifecycle | Role | 判定依据 |
+|---|---|---|---|
+| [requirements/README.md](requirements/README.md) | active | entry | 目录入口 |
+| [requirements/OPENROUTER_IMAGE_GENERATION_TASK_CARDS.md](requirements/OPENROUTER_IMAGE_GENERATION_TASK_CARDS.md) | historical | implementation-note | 任务卡已执行：OpenRouter Images 已实现（openRouterImage*Repo 存在；2026-07-14 live-qualified） |
+| [requirements/PROJECT_HOME_AS_TAB_ENHANCEMENT.md](requirements/PROJECT_HOME_AS_TAB_ENHANCEMENT.md) | planned | roadmap | 自述"待实现（Phase 4）"；src/ui-app 无 projectHome 实现痕迹 |
+| [requirements/USAGE_STATISTICS_IMPLEMENTATION_PLAN.md](requirements/USAGE_STATISTICS_IMPLEMENTATION_PLAN.md) | historical | implementation-note | 计划缺失项已补齐（infra/db/repo/usageRepo.ts 存在） |
+
+**rfc/（提案记录）**
+
+| 文件 | Lifecycle | Role | 判定依据 |
+|---|---|---|---|
+| [rfc/README.md](rfc/README.md) | active | entry | 目录入口 |
+| [rfc/model-selector.md](rfc/model-selector.md) | historical | decision | RFC Draft（2026-02-17）未批准；主题已实现（ModelPickerDialog、spec/model-selector-ui 阶段 2+） |
+
+**diagnostics/（诊断调查记录）**
+
+| 文件 | Lifecycle | Role | 判定依据 |
+|---|---|---|---|
+| [diagnostics/README.md](diagnostics/README.md) | active | entry | 目录入口 |
+| [diagnostics/openai-responses-reasoning-summary-investigation.md](diagnostics/openai-responses-reasoning-summary-investigation.md) | historical | debug-record | 调查报告（2026-07-08，investigation only 快照） |
+| [diagnostics/openai-responses-reasoning-effort-probe/latest/report.md](diagnostics/openai-responses-reasoning-effort-probe/latest/report.md) | historical | debug-record | 机器生成的 probe 报告（2026-07-07 快照） |
+
+> `diagnostics/openai-responses-reasoning-effort-probe/latest/results.json` 为非 Markdown 数据文件，计入目录计数但不参与生命周期分类。
+
+保留 `pending-classification`：`spec/model-catalog-category-cache.md`、`spec/model-catalog-sync-runner.md`（无引用、无现行落点、无取代证据，待 owner 或后续实现确认）。
 
 ---
 
@@ -189,6 +295,11 @@ The inventory above intentionally does not claim that every file in a mixed dire
 ## Sync Notes
 
 Last sync: 2026-08-14
+
+### DGR-3 续（2026-08-14）
+
+- 完成 `spec/`、`refactor/`、`ui-refactoring/`、`i18n/`、`notes/`、`requirements/`、`diagnostics/`、`rfc/` 共 8 个 pending 目录的逐文件分类（58 行清单 = 50 个内容文件 + 8 个目录 README）：historical 33、reference 14、active 7（目录 README）、planned 1、archived 1、pending-classification 2；i18n/README 由 pending 改 active，ui-refactoring/README 由 active 改 historical。
+- 判定依据：内容性质 + 全仓库引用扫描 + 源码落点存在性 + 首次提交日期；未确定项不猜测。非 md 文件（`diagnostics/latest/results.json`）计入目录计数但不参与生命周期分类。
 
 When adding new docs to docs/ or updating existing status:
 1. Update this index

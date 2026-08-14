@@ -1,6 +1,6 @@
 # ui-refactoring（UI 组件重构记录）
 
-> **Status**: active
+> **Status**: historical
 > **Document Role**: entry
 > **Last updated**: 2026-08-14
 

@@ -106,14 +106,9 @@ The following directories contain documents that have not yet been classified:
 
 | Directory | File Count | Likely Role | Next Step |
 |-----------|------------|-------------|-----------|
-| `docs/spec/` | 17 | spec | DGR-3: classify each file |
-| `docs/architecture/` | 185 | various | DGR-3: classify each file（计数含非 md） |
-| `docs/i18n/` | 5 | spec/guide | DGR-3: classify each file |
-| `docs/rfc/` | 1 | spec | DGR-3: classify each file |
-| `docs/notes/` | 4 | implementation-note | DGR-3: classify each file |
-| `docs/requirements/` | 3 | spec | DGR-3: classify each file |
-| `docs/refactor/` | 10 | implementation-note | DGR-3: classify each file |
-| `docs/ui-refactoring/` | 9 | implementation-note | DGR-3: classify each file |
+| `docs/architecture/` | 185 | various | 按主题继续分类（mixed，计数含非 md） |
+
+> 2026-08-14 DGR-3 续：`spec/`、`refactor/`、`ui-refactoring/`、`i18n/`、`notes/`、`requirements/`、`diagnostics/`、`rfc/` 已完成逐文件分类（58 行清单：historical 33、reference 14、active 7、planned 1、archived 1、2 保留 pending-classification），逐文件清单见 [DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md)。
 
 ---
 
