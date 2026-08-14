@@ -1,5 +1,9 @@
 # Starverse Credential Authority 加固方案
 
+Status: active
+Document Role: maintenance
+Last updated: 2026-08-14
+
 对于 Starverse 这种“个人 + AI Agent”维护模式，我建议把安全等级控制在一个工程上可长期维护的位置：**现阶段不要引入 Rust broker、Windows Service、macOS XPC、Linux daemon。先把 Electron main process 做成严格的 credential authority（凭据权威边界）**。
 
 从当前 `main` 看，标准 provider 的 `Epoch2RuntimeCredentialService` 已经有按 provider 的串行队列、reentrancy（重入）禁止、`expectedRevision`、drift（漂移）检测和限定作用域的 `withCredential()` lease；这些边界可以复用。Phase 2A 已移除了把异步 `safeStorage` 和全局 scope-key envelope 当作唯一持久化根及启动依赖的耦合。

@@ -1,5 +1,9 @@
 # Model Catalog Query Contract (Phase 1)
 
+Status: pending-classification
+Document Role: spec
+Last updated: 2026-08-14
+
 ## Scope
 - Provide a unified catalog query API for UI/debug tooling.
 - Stage 4 baseline uses catalog core tables (`models`, `model_tags`, `models_fts`) + category membership pre-filter.

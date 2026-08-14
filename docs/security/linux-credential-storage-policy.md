@@ -1,5 +1,9 @@
 # Linux Credential Storage Policy
 
+Status: active
+Document Role: spec
+Last updated: 2026-08-14
+
 > 状态：已实施（Linux packaged smoke 待具备 Linux 环境后核验）。具体顺序与验收见 [Linux Credential Storage Implementation Plan](./linux-credential-storage-implementation-plan.md)；全局安全边界见 [Credential Authority 加固方案](./credential-authority-hardening.md)。
 
 Starverse 的 Linux 凭据方案不做额外故障排查、不做高级选项、不自动降级，但允许开发者明确选择仅本次运行或明文持久化。

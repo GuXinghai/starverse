@@ -1,6 +1,8 @@
 # Starverse 架构总览
 
 > **Status**: active
+> **Document Role**: ssot
+> **Last updated**: 2026-08-14
 > **Agent use**: read for layer boundaries, ownership, and canonical entry paths
 > **Do not use as**: exhaustive file inventory or a substitute for implementation-specific docs
 

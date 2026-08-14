@@ -3,7 +3,8 @@
 **Purpose**: Track all document moves, renames, and archives for traceability.
 
 **Status**: active
-**Last updated**: 2026-05-22
+**Document Role**: maintenance
+**Last updated**: 2026-08-14
 **Owner**: DGR-2
 
 ---
@@ -16,6 +17,10 @@
 4. **Agent entry must be updated**: `AGENT_INDEX.md` and `DOC_STATUS_INDEX.md` must reflect new paths.
 
 ---
+
+## 2026-08-14 Navigation Refresh
+
+No document paths were moved or renamed in this refresh. The navigation indexes were synchronized with the current checkout, and `docs/guides/DOCUMENT_REORGANIZATION_PLAN.md` was marked as a historical process record. Existing redirects remain authoritative for the earlier DGR-1/DGR-2 moves.
 
 ## DGR-1 Redirect Map
 
@@ -207,4 +212,4 @@ to verify no stale references remain.
 
 - [document-governance.md](document-governance.md) — Governance rules
 - [document-status-taxonomy.md](document-status-taxonomy.md) — Status model
-- [DOC_STATUS_INDEX.md](../../DOC_STATUS_INDEX.md) — Current status index
+- [DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) — Current status index

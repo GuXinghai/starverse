@@ -1,5 +1,9 @@
 # Test strategy and partition ownership
 
+Status: active
+Document Role: maintenance
+Last updated: 2026-08-14
+
 Starverse keeps the default test command small and predictable. The partition
 gate (`node scripts/check-test-partitions.mjs`) discovers every unignored
 `*.test.*`/`*.spec.*` file with one of `ts`, `tsx`, `js`, `jsx`, `mjs`, or `cjs`

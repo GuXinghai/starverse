@@ -1,11 +1,12 @@
 # Model and Provider Identity Frozen Decisions and Implementation Plan
 
-- **Lifecycle Status**: completed
-- **Document Role**: owner-decision-and-implementation-plan
+- **Lifecycle Status**: historical
+- **Document Role**: closeout
 - **Decision frozen**: 2026-08-14
+- **Last updated**: 2026-08-14
 - **Current-code baseline**: `5f2d7433001133430f183590ac7a4432124c6925`
 - **Implementation status**: completed
-- **Progress authority**: this file; update the ledger and phase status here as implementation proceeds
+- **Progress authority**: historical implementation ledger; current source and tests are authoritative after closeout
 
 ---
 

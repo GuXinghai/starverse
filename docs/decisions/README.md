@@ -1,5 +1,9 @@
 # 架构决策记录 (Architecture Decision Records)
 
+Status: reference
+Document Role: decision
+Last updated: 2026-08-14
+
 本目录记录 Starverse 项目的重大技术决策，帮助团队理解"为什么这样做"。
 
 ## 什么是 ADR？
