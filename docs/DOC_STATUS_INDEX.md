@@ -52,7 +52,8 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [DOC_STATUS_INDEX.md](DOC_STATUS_INDEX.md) | active | entry | Status | Check before reading unfamiliar doc | This file |
 | [guides/INDEX.md](guides/INDEX.md) | active | entry | Navigation | After AGENT_INDEX | Main doc hub by scenario |
 | [maintenance/maintainer-entry.md](maintenance/maintainer-entry.md) | active | maintenance | Boundaries | Team onboarding | Key directories, code boundaries, high-risk zones |
-| [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | active | ssot | Architecture | Understand system | Layers, naming, module responsibilities |
+| [architecture/CURRENT_SYSTEM_ARCHITECTURE.md](architecture/CURRENT_SYSTEM_ARCHITECTURE.md) | active | ssot | Architecture | Understand current system | Current process, data and module boundaries |
+| [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | historical | implementation-note | Historical architecture | Trace retired Worker/dbBridge design | Not current implementation authority |
 | [architecture/provider-architecture/README.md](architecture/provider-architecture/README.md) | active | ssot | Provider Architecture | Multi-provider architecture work | Owner-confirmed multi-provider architecture SSOT |
 | [file-pipeline/README.md](file-pipeline/README.md) | active | entry | Feature track | File/conversion tasks | **Entry point**: routes to progress-ledger as SSOT |
 | [file-pipeline/progress-ledger.md](file-pipeline/progress-ledger.md) | active | ssot | File Pipeline | Current decisions & blockers | SSOT for file pipeline status |
@@ -132,7 +133,7 @@ Counts include Markdown, JSON, HTML, CSV, and other tracked files under each dir
 |---|---:|---|---|
 | `adr/` | 6 | reference / decision | `adr/README.md` |
 | `analysis/` | 10 | reference / historical evidence | `analysis/model-provider-identity/README.md` |
-| `architecture/` | 184 | mixed; classify by topic | `architecture/OVERVIEW.md` |
+| `architecture/` | 185 | mixed; classify by topic | `architecture/CURRENT_SYSTEM_ARCHITECTURE.md` |
 | `archive/` | 76 | archived | `archive/README.md` |
 | `bugfix/` | 25 | pending-classification; mostly historical notes | — |
 | `decisions/` | 6 | reference / historical decisions | `decisions/README.md` |
