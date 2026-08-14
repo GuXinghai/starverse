@@ -36,6 +36,16 @@ function testOwner(file, overrides) {
   return 'unit'
 }
 
+function sourceOwners(file, overrides) {
+  const owners = new Set()
+  for (const [testFile, owner] of Object.entries(overrides)) {
+    if (!testSuffix.test(testFile)) continue
+    const sourceFile = testFile.replace(/\.(?:test|spec)(\.[cm]?[jt]sx?)$/iu, '$1')
+    if (sourceFile === file) owners.add(owner)
+  }
+  return owners
+}
+
 /**
  * Resolve optional test partitions for a changed-file set. Unit is deliberately
  * always handled by CI; only UI and integration are conditional.
@@ -59,12 +69,17 @@ export function resolveTestCiScope(changedFiles, { baseAvailable = true, overrid
         file.startsWith('tests/helpers/electronBridge') || file.startsWith('tests/helpers/generationV2Bridge') ||
         file === 'vitest.ui.config.ts') ui = true
     if (file.startsWith('electron/') || file.startsWith('infra/') || file.startsWith('native/') ||
+        file.startsWith('tools/provider-key-vault/') ||
         file.startsWith('tests/integration/') ||
         (file.startsWith('tests/e2e/') && !/ui/i.test(file)) ||
         file === 'tests/setup-node.ts' || file === 'vitest.integration.config.ts' ||
         file.startsWith('scripts/dfc/')) integration = true
     if (testSuffix.test(file)) {
       const owner = testOwner(file, overrides)
+      if (owner === 'ui') ui = true
+      if (owner === 'integration') integration = true
+    }
+    for (const owner of sourceOwners(file, overrides)) {
       if (owner === 'ui') ui = true
       if (owner === 'integration') integration = true
     }

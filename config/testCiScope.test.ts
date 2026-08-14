@@ -39,6 +39,21 @@ describe('test CI scope classifier', () => {
     })
   })
 
+  it('uses partition overrides for the production source owned by an overridden test', () => {
+    expect(resolveTestCiScope(['src/next/modelPrefs/modelPrefsService.ts'])).toMatchObject({
+      ui: true, integration: false,
+    })
+    expect(resolveTestCiScope(['src/next/file-type/magikaManagedPlugin.ts'])).toMatchObject({
+      ui: false, integration: true,
+    })
+    expect(resolveTestCiScope(['tools/provider-key-vault/index.mjs'])).toMatchObject({
+      ui: false, integration: true,
+    })
+    expect(resolveTestCiScope(['tools/provider-key-vault/src/cli.mjs'])).toMatchObject({
+      ui: false, integration: true,
+    })
+  })
+
   it('fails closed when the comparison base is unavailable', () => {
     expect(resolveTestCiScope([], { baseAvailable: false })).toMatchObject({
       ui: true, integration: true, reason: 'base-unavailable',
