@@ -1,5 +1,7 @@
 # Model Preferences Scope 与 Key 体系（任务卡 3.0）
 
+> **2026-08-14 修正**: 本文正文中的 `infra/db/schema.sql` 引用为 2026-02 旧 DDL 落点；epoch-2 后 schema 位于 `infra/db/v2/*.sql`。scope/key 语义本身未变。
+
 ## 1. 目标
 - 固化收藏（favorite）与最近使用（recent）的 scope 体系与 key 体系。
 - 产出可直接指导后续 DDL 与 API 的统一语义，避免 UI/DB 各自解释。

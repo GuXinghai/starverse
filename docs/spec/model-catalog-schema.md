@@ -1,6 +1,6 @@
 # Model Catalog Schema（可执行 DDL）
 
-Status: pending-classification
+Status: historical
 Document Role: spec
 Last updated: 2026-08-14
 
