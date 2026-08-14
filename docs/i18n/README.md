@@ -1,6 +1,6 @@
 # i18n Documentation Index
 
-Status: pending-classification
+Status: active
 Document Role: entry
 Last updated: 2026-08-14
 
