@@ -43,7 +43,7 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | Role | Meaning | Example |
 |------|---------|---------|
 | **entry** | Entry point for a domain or feature | `docs/file-pipeline/README.md` |
-| **ssot** | Single Source of Truth for a specific domain | `docs/file-pipeline/progress-ledger.md` |
+| **ssot** | Single Source of Truth for a specific domain | `docs/file-pipeline/document-format-conversion/progress-ledger.md` |
 | **decision** | Architecture Decision Record | `docs/adr/001-*.md`, `docs/decisions/001-*.md` |
 | **closeout** | Phase or feature completion record | `docs/file-pipeline/phase-9-frontend-ui-mvp.md` |
 
@@ -55,19 +55,21 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 
 | Task Area | Read First | Key Code Paths | Validation hint |
 |-----------|------------|-----------------|-----------------|
-| **Composer UI** | `docs/guides/INDEX.md` → `docs/architecture/UNIFIED_GENERATION_ARCHITECTURE.md` | `src/ui-app/components/ChatAppComposer.vue`, `src/ui-app/app/appChatApp.logic.ts` | Validate composer UI behavior and app orchestration changes in related `src/ui-app/*.test.ts` when touched |
-| **File upload & attachment lifecycle** | `docs/file-pipeline/README.md` → `docs/governance/app-chat-app-logic-boundary.md` | `src/shared/files/sendPlanTypes.ts`, `infra/files/sendPlanService.ts`, `src/ui-app/app/appChatApp.logic.ts` | Run attachment/send-plan related tests when changing these paths |
-| **File conversion & preview / DFC** | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` → `docs/file-pipeline/document-format-conversion/important-context.md` → `docs/file-pipeline/document-format-conversion/dfc-libreoffice-plugin-management-closeout.md` → `docs/file-pipeline/document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md` | `src/shared/files/`, `infra/files/`, check DFC topic ledger before coding | v1.2 is authoritative. LibreOffice Office-to-PDF remains owner-gated/experimental; do not follow archived v1.0 Hybrid / mixed send strategy or old file-card modal UI docs |
-| **Send Plan** | `docs/governance/app-chat-app-logic-boundary.md` | `infra/files/sendPlanService.ts`, `src/next/openrouter/openRouterSendPlanSerializer.ts` | Keep preflight + serializer path intact; run related tests if modified |
+| **Composer UI** | `docs/guides/INDEX.md` → `docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md`（Generation V2 高层入口；UNIFIED_GENERATION_ARCHITECTURE.md 为 2025-12 历史基线） | `src/ui-app/components/ChatAppComposer.vue`, `src/ui-app/app/appChatApp.logic.ts`, `src/next/generation-v2/` | Validate composer UI behavior and app orchestration changes in related `src/ui-app/*.test.ts` when touched |
+| **File upload & attachment lifecycle** | `docs/file-pipeline/README.md` → `docs/governance/app-chat-app-logic-boundary.md` | `src/shared/files/sendPlanTypes.ts`, `src/next/files/sendPlanClient.ts`, `src/ui-app/app/appChatApp.logic.ts` | Run attachment/send-plan related tests when changing these paths |
+| **File conversion & preview / DFC** | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` → `docs/file-pipeline/document-format-conversion/important-context.md` | `src/shared/files/`, `infra/files/`, check DFC topic ledger before coding | v1.2 is authoritative. LibreOffice Office-to-PDF (Windows x64 DOCX→PDF) is owner-approved production scope per M46/M63; macOS/Linux packages pending. Archived DFC history (tracing only): `dfc-libreoffice-plugin-management-closeout.md`, `dfc-m32-deadline-closeout-demo-readiness.md`. Do not follow archived v1.0 Hybrid / mixed send strategy or old file-card modal UI docs |
+| **Send Plan** | `docs/governance/app-chat-app-logic-boundary.md` | `src/next/files/sendPlanClient.ts`, `src/next/openrouter/openRouterSendPlanSerializer.ts` | Keep preflight + serializer path intact; run related tests if modified |
 | **OpenRouter request builder** | `docs/architecture/OPENROUTER_INTEGRATION_SUMMARY.md` | `src/next/openrouter/buildRequest.ts`, `src/next/openrouter/sse/decoder.ts` | Use only after Send Plan and serializer boundaries are confirmed; validate request payload and SSE parsing tests when touched |
 | **Provider architecture** | `docs/architecture/provider-architecture/README.md` → `docs/architecture/provider-architecture/STARVERSE_PROVIDER_ARCHITECTURE_CONTRACT.md` | Docs-only unless Owner explicitly starts a phase | Owner-confirmed multi-provider architecture SSOT; do not create placeholder abstractions or provider runtime code from docs organization tasks |
 | **Provider/model identity audit** | `docs/architecture/provider-architecture/README.md` → `docs/analysis/model-provider-identity/README.md` | `src/shared/modelCatalog/`, `src/next/provider/`, `src/next/generation-v2/`, `infra/db/` | The analysis bundle is point-in-time evidence, not SSOT; verify every implementation claim against the current checkout |
 | **Model catalog / preferences** | `docs/spec/` → `docs/notes/` | `src/next/modelCatalog/`, `src/next/modelPrefs/`, `infra/db/repo/modelCatalogV2Repo.ts`, `infra/db/repo/modelPreferencesRepo.ts` | Treat `modelKey` as a derived Catalog/Preferences value; confirm current code before changing contracts |
-| **Historical message attachments** | `docs/governance/app-chat-app-logic-boundary.md` | `src/ui-app/app/appChatApp.logic.ts`, `infra/db/repo/messageRepo.ts` | Prioritize targeted checks in these two files for attachment/history handling before edits |
+| **Historical message attachments** | `docs/governance/app-chat-app-logic-boundary.md` | `src/ui-app/app/appChatApp.logic.ts`, `src/next/message/messageClient.ts`, `infra/db/repo/messageAttachmentRepo.ts`, `infra/db/repo/conversationReadV2Repo.ts` | Prioritize targeted checks for attachment/history handling before edits |
 | **Electron IPC** | `docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md` | `electron/epoch2MainEntry.ts`, `electron/mainV2.ts`, `electron/ipc/`, `electron/preload.ts` | Confirm IPC handler names and preload wiring remain consistent |
 | **DB & settings** | `docs/maintenance/maintainer-entry.md` (see "活跃代码") | `electron/data-epoch/`, `infra/db/`, `electron/bootstrap/epoch2ApplicationRuntime.ts` | Run db/repo and settings-related tests if database/settings paths change |
 | **Governance & maintainer rules** | `docs/maintenance/maintainer-entry.md`, `docs/governance/` | `scripts/gates/`, `docs/adr/`, `docs/decisions/` | Re-check gate docs before changing protected boundaries |
 | **Documentation organization** | `docs/guides/INDEX.md` → `docs/DOC_STATUS_INDEX.md` | `docs/maintenance/document-governance.md`, `docs/maintenance/document-redirect-map.md` | Keep active/reference/history/archive distinctions; do not bulk-move without redirect entries |
+
+<!-- 2026-08-14 修正（DFC 路由行）：原路由链含 dfc-libreoffice-plugin-management-closeout.md 与 dfc-m32-deadline-closeout-demo-readiness.md，并称 LibreOffice "owner-gated/experimental"。两者已按 Owner 决定标记 archived（被 DFC-M46/M63 取代），路由链改为 v1.2 → important-context；Windows x64 DOCX→PDF 为已批准生产范围。 -->
 
 ---
 
@@ -76,7 +78,7 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 **Do not**:
 
 - Default-scan `docs/archive/`. Enter only when explicitly asked for history.
-- Assume Phase-N docs describe current code. Check `docs/file-pipeline/progress-ledger.md` first.
+- Assume Phase-N docs describe current code. Check `docs/file-pipeline/README.md` first.
 - Treat "preview_optimized" fields as send source unless docs + code explicitly support it.
 - Bypass Send Plan or preflight gate logic. All messages must go through `openRouterSendPlanSerializer.ts`.
 - Add local absolute paths (e.g., `D:\Starverse\...`) to logs, errors, or new docs.

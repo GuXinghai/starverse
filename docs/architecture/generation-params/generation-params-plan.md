@@ -851,7 +851,7 @@ reasoningEffort + DeepSeek -> { reasoning_effort: 'high' }
 3. DeepSeek `deepseek-v4-flash` 的 Starverse 模型 ID 与官方 thinking/non-thinking mode 对应关系需要从当前 provider source 和真实请求验证。
 4. Generic OpenAI-compatible protocol mode 的 UI/配置入口需要 Owner 确认是否放在 endpoint descriptor。
 5. Gemini image-generation policy 与文本 generation params 的边界需要保持清晰，避免 image thinking/image size 参数混入本轮文本参数 core。
-6. 旧 `docs/features/SAMPLING_PARAMETERS_FEATURE.md` 等文档是否在同一实施提交更新，还是另做 docs cleanup，需要 Owner 决策。
+6. 旧 `docs/features/SAMPLING_PARAMETERS_FEATURE.md` 等文档是否在同一实施提交更新，还是另做 docs cleanup，需要 Owner 决策。（2026-08-14 已归档至 `docs/archive/completed-features/SAMPLING_PARAMETERS_FEATURE.md`）
 
 ## 下一步动作
 

@@ -25,7 +25,7 @@ permission:
     "npm test*": ask
     "npm run test*": ask
     "npm run build*": ask
-    "npm run typecheck*": ask
+    # "npm run typecheck*" 脚本不存在（2026-08-14 修正）；类型检查请用 npx vue-tsc --noEmit / npx tsc --noEmit
     "npm run lint*": ask
     "npx vitest*": ask
     "npx vue-tsc*": ask
@@ -33,7 +33,7 @@ permission:
     "pnpm test*": ask
     "pnpm run test*": ask
     "pnpm run build*": ask
-    "pnpm run typecheck*": ask
+    # "pnpm run typecheck*" 脚本不存在（2026-08-14 修正）
     "pnpm run lint*": ask
     "Get-Content *": allow
     "Select-String *": allow

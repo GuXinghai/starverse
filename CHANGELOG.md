@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+> **维护说明（2026-08-14）**：本文件自 2025-12 起未持续维护，2026-01~08 的工作（epoch-2 数据库、generation-v2、Provider 架构、DFC v1.2、i18n 等）未逐条记录。现行项目状态以 [README.md](README.md) 与 [docs/DOC_STATUS_INDEX.md](docs/DOC_STATUS_INDEX.md) 为准；本文中引用文档路径已批量修正至现行/归档位置。
+
 ## [Unreleased] - 2025-12-11
 
 ### Added
@@ -16,7 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - SQLite 数据库层新增 `usage` 和 `dashboard_prefs` 表
   - 支持按模型、时间范围分析成本和令牌使用
   - 提供使用趋势图表和统计卡片
-  - 参考文档：`docs/USAGE_STATISTICS_IMPLEMENTATION_PLAN.md`, `docs/USAGE_STATISTICS_PHASE2_COMPLETE.md`
+  - 参考文档：`docs/requirements/USAGE_STATISTICS_IMPLEMENTATION_PLAN.md`, `docs/archive/completed-features/USAGE_STATISTICS_PHASE2_COMPLETE.md`
 
 - **推理功能标准化（Reasoning）**
   - 完整支持 OpenRouter Reasoning API（4 个推理级别）
@@ -24,7 +26,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 推理级别：minimal, low, medium, high
   - 可视化推理过程显示（支持的模型）
   - 智能成本预估和延迟提示
-  - 参考文档：`docs/REASONING_IMPLEMENTATION_SUMMARY.md`, `docs/REASONING_TIERS_4_LEVELS.md`
+  - 参考文档：`docs/archive/completed-features/REASONING_IMPLEMENTATION_SUMMARY.md`, `docs/archive/completed-features/REASONING_TIERS_4_LEVELS.md`
 
 - **现代化聊天输入组件（ModernChatInput）**
   - 胶囊式浮动设计，类似 Perplexity/ChatGPT
@@ -32,18 +34,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 自适应多行输入（1-10 行自动扩展）
   - 智能发送按钮状态切换（发送/停止/撤回）
   - 完整的附件预览系统
-  - 参考文档：`docs/MODERN_CHAT_INPUT_IMPLEMENTATION.md`, `src/components/chat/input/README.md`
+  - 参考文档：`docs/archive/completed-features/MODERN_CHAT_INPUT_IMPLEMENTATION.md`（原 `src/components/chat/input/README.md` 已不存在）
 
 - **统一生成参数架构（Unified Generation Architecture）**
   - 标准化所有 AI 参数处理（采样、推理、长度控制）
   - 新增 `generationAdapter.ts` 统一适配器
   - 模型能力自动检测系统（`modelCapability.ts`）
   - 4 层配置覆盖系统（默认值 → 全局 → 对话 → 消息级）
-  - 参考文档：`docs/GENERATION_ARCHITECTURE_INDEX.md`, `docs/GENERATION_ARCHITECTURE_SUMMARY.md`
+  - 参考文档：`docs/architecture/UNIFIED_GENERATION_ARCHITECTURE.md`, `docs/archive/architecture/GENERATION_ARCHITECTURE_SUMMARY.md`
 
 - **文档重组与归档系统**
   - 四象限文档分类体系（架构/特性/指南/决策）
-  - 新增文档导航中心 `docs/INDEX.md`
+  - 新增文档导航中心 `docs/guides/INDEX.md`
   - 自动归档脚本 `scripts/archive-documents.ps1`
   - 90+ 个文档重新分类和组织
   - 过时文档归档到 `docs/archive/`
@@ -55,7 +57,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 废弃 `tailwind.config.js` 的 theme 配置
   - 新增 `@tailwindcss/postcss` 引擎
   - 更新所有透明度语法（`bg-black/50` 替代 `bg-opacity-50`）
-  - 参考文档：`docs/tailwind/TAILWIND_V4_MIGRATION_COMPLETE.md`
+  - 参考文档：`docs/tailwind/TAILWIND_V4_README.md`
 
 - **OpenRouter 服务完全重构**
   - 从 `.js` 迁移到 `.ts`（完整类型安全）
@@ -88,18 +90,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     4. finally 块强化状态清理
   - 新增 `forceResetSendingState()` 紧急恢复方法
   - 详细日志追踪（错误、警告、信息）
-  - 参考文档：`docs/bugfix/FIX_GHOST_TASK_BUG.md`, `docs/bugfix/FIX_GHOST_TASK_COMPLETE.md`
+  - 参考文档：`docs/archive/bugfixes/FIX_GHOST_TASK_COMPLETE.md`（原 `FIX_GHOST_TASK_BUG.md` 不存在）
 
 - **修复模型数据字段不匹配问题**
   - 统一 `model_data` 和 `pricing` 字段命名
   - 修复 IPC 序列化错误
   - 优化采样参数导入逻辑
-  - 参考文档：`docs/bugfix/BUGFIX_MODEL_DATA_FIELD_MISMATCH.md`
+  - 参考文档：`docs/archive/bugfixes/BUGFIX_MODEL_DATA_FIELD_MISMATCH.md`
 
 - **修复流式响应超时泄漏**
   - 修复定时器未正确清理导致的内存泄漏
   - 优化首个 Token 超时竞态条件
-  - 参考文档：`docs/bugfix/BUGFIX_STREAM_IDLE_TIMEOUT_TIMER_LEAK.md`
+  - 参考文档：`docs/archive/bugfixes/BUGFIX_STREAM_IDLE_TIMEOUT_TIMER_LEAK.md`
 
 
 ### Documentation
@@ -109,20 +111,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - 新增导航中心 `docs/INDEX.md`
   - 新增 Tailwind v4 迁移指南
   - 新增 Config Governance 治理文档
-  - 详细参考：`docs/DOCUMENT_CLEANUP_AUDIT.md`
+  - 详细参考：`docs/archive/documentation/DOCUMENT_CLEANUP_AUDIT.md`
 
 - **新增技术文档**
-  - `docs/HYBRID_SAFETY_IMPLEMENTATION.md` - 混合安全机制
-  - `docs/IMAGE_GENERATION_DEBUG_GUIDE.md` - 图像生成调试指南
-  - `docs/MODEL_PERSISTENCE_MIGRATION.md` - 模型持久化迁移
-  - `docs/NAMING_CONVENTION.md` - 命名规范
-  - `docs/SNAPSHOT_PATTERN_IMPLEMENTATION.md` - 快照模式实现
+  - `docs/architecture/HYBRID_SAFETY_IMPLEMENTATION.md` - 混合安全机制
+  - `docs/archive/debug/IMAGE_GENERATION_DEBUG_GUIDE.md` - 图像生成调试指南
+  - `docs/archive/completed-features/MODEL_PERSISTENCE_MIGRATION.md` - 模型持久化迁移
+  - `docs/guides/NAMING_CONVENTION.md` - 命名规范
+  - `docs/architecture/SNAPSHOT_PATTERN_IMPLEMENTATION.md` - 快照模式实现
 
 - **新增 Bug 修复文档**
-  - 幽灵任务修复技术文档 (`docs/bugfix/FIX_GHOST_TASK_BUG.md`)
-  - 修复完成报告 (`docs/bugfix/FIX_GHOST_TASK_COMPLETE.md`)
-  - 更新诊断指南 (`docs/DEBUG_MESSAGE_SENDING_STALL.md`)
-  - 流式超时泄漏修复 (`docs/bugfix/BUGFIX_STREAM_IDLE_TIMEOUT_TIMER_LEAK.md`)
+  - 幽灵任务修复完成报告 (`docs/archive/bugfixes/FIX_GHOST_TASK_COMPLETE.md`)
+  - 更新诊断指南 (`docs/archive/bugfixes/DEBUG_MESSAGE_SENDING_STALL.md`)
+  - 流式超时泄漏修复 (`docs/archive/bugfixes/BUGFIX_STREAM_IDLE_TIMEOUT_TIMER_LEAK.md`)
 
 ### Tests
 - **新增测试套件**
@@ -181,7 +182,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - 四象限文档分类体系，优化文档组织结构
-- 文档导航中心 `docs/INDEX.md`
+- 文档导航中心 `docs/guides/INDEX.md`
 - 环境变量模板 `.env.example`
 
 ### Changed

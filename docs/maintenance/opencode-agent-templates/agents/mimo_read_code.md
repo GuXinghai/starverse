@@ -74,8 +74,8 @@ Investigation style:
 
 Starverse-specific orientation:
 - UI entry areas often include src/ui-app/AppChatApp.vue, src/ui-app/app/appChatApp.logic.ts, and src/ui-app/components.
-- File pipeline areas often include infra/files, infra/db/worker/handlers, src/next/files, and src/next/openrouter.
-- Documentation entry points often include docs/guides/INDEX.md, docs/file-pipeline/README.md, docs/file-pipeline/progress-ledger.md, docs/AGENT_INDEX.md, and docs/DOC_STATUS_INDEX.md.
+- File pipeline areas often include infra/files, infra/db, src/next/files, and src/next/openrouter.
+- Documentation entry points often include docs/guides/INDEX.md, docs/file-pipeline/README.md, docs/file-pipeline/document-format-conversion/progress-ledger.md, docs/AGENT_INDEX.md, and docs/DOC_STATUS_INDEX.md.
 - Avoid broad scans of appChatApp.logic.ts unless the task requires it; use targeted rg first.
 
 Return format:

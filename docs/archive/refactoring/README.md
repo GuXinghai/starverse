@@ -28,3 +28,8 @@
 - **文档数量**: 9 个
 - **时间范围**: 2024年
 - **归档原因**: 重构项目已完成，作为历史参考保留
+
+## 2026-08-14 DGR-3 批次归档
+
+- [UI_REFACTOR_PAUSED_STATE.md](UI_REFACTOR_PAUSED_STATE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [UI_REFACTOR_STRATEGY_ADJUSTED.md](UI_REFACTOR_STRATEGY_ADJUSTED.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）

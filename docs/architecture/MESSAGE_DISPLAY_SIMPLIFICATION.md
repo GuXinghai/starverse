@@ -330,5 +330,5 @@ const displayMessages = computed(() => {
 
 **相关文档**:
 - [架构审查报告](./ARCHITECTURE_REVIEW.md)
-- [分支树实现文档](./BRANCH_TREE_IMPLEMENTATION.md)
-- [测试执行报告](../TEST_EXECUTION_REPORT.md)
+- [分支树实现文档](../archive/completed-features/BRANCH_TREE_IMPLEMENTATION.md)
+- [测试执行报告](../archive/testing/TEST_EXECUTION_REPORT.md)

@@ -34,3 +34,14 @@
 - **归档日期**: 2025年12月6日
 - **文档数量**: 1 个
 - **归档原因**: 测试已完成，修复已验证稳定
+
+## 2026-08-14 DGR-3 批次归档
+
+- [BRANCH_DELETE_TEST_GUIDE.md](BRANCH_DELETE_TEST_GUIDE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [INTEGRATION_TEST_CHECKLIST.md](INTEGRATION_TEST_CHECKLIST.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PARAMETER_PANEL_TESTING_GUIDE.md](PARAMETER_PANEL_TESTING_GUIDE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [REASONING_TESTING_STRATEGY.md](REASONING_TESTING_STRATEGY.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [REFACTOR_TEST_GUIDE.md](REFACTOR_TEST_GUIDE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [STORYBOOK_VALIDATION_CHECKLIST.md](STORYBOOK_VALIDATION_CHECKLIST.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [TEST_2.2_REASONING_CONTROL.md](TEST_2.2_REASONING_CONTROL.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [TEST_EXECUTION_REPORT.md](TEST_EXECUTION_REPORT.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）

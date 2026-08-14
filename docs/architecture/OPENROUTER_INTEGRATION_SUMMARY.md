@@ -297,8 +297,8 @@ for await (const token of aiChatService.streamChatResponse(
 
 - [OpenRouter API 文档](https://openrouter.ai/docs)
 - [Google Gemini API 文档](https://ai.google.dev/docs)
-- [项目 README](../README.md)
-- [Chat Store API 使用指南](./src/stores/CHAT_STORE_GUIDE.md)
+- [项目 README](../../README.md)
+- Chat Store API 使用指南（原 `./src/stores/CHAT_STORE_GUIDE.md` 不存在，2026-08-14 修正）
 
 ---
 

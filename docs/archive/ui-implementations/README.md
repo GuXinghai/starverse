@@ -54,3 +54,7 @@
 - **归档日期**: 2025年12月6日
 - **文档数量**: 10 个
 - **归档原因**: UI 实现已完成并集成到主分支
+
+## 2026-08-14 DGR-3 批次归档
+
+- [CHAT_TOOLBAR_BUTTON_DESIGN.md](CHAT_TOOLBAR_BUTTON_DESIGN.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）

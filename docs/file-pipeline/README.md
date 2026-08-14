@@ -3,7 +3,7 @@
 > **Status**: active
 > **Document Role**: entry
 > **Last updated**: 2026-08-14
-> **Lifecycle note**: Phases 1-9 completed. Read [../progress-ledger.md](../progress-ledger.md) for current decisions and blockers.
+> **Lifecycle note**: Phases 1-9 completed. 当前状态见本文档与 [document-format-conversion/progress-ledger.md](document-format-conversion/progress-ledger.md)（DFC 实施 ledger）；[./progress-ledger.md](./progress-ledger.md) 已于 2026-08-14 归档（Worker 架构记录，仅历史追溯）。
 > **For agents**: Phase docs are historical process records. Check [../DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) for each doc's status (active/reference/historical).
 
 This directory is the documentation entry point for the Starverse complete file pipeline. It defines the shared vocabulary, phase boundaries, and decision ledger used by later persistence, import, attachment, provider adaptation, conversion, transcription, and embeddings work.
@@ -102,7 +102,7 @@ Phase 9 Step 8 is also complete and adds only closeout work:
 - `phase-7-derived-tasks-and-embeddings.md`: derivative job framework, extracted text, transcript, embedding-vector generation, PDF annotation capture, and task/error boundaries.
 - `phase-8-preview-derivatives.md`: `preview_optimized` derivative responsibilities, generation boundaries, error semantics, and reserved conversion interfaces.
 - `phase-9-frontend-ui-mvp.md`: frontend MVP scope and Step 0-Step 8 status.
-- `progress-ledger.md`: completed work, frozen decisions, explicit non-goals, and phase dependencies.
+- `progress-ledger.md`: completed work, frozen decisions, explicit non-goals, and phase dependencies（2026-08-14 归档：Worker 架构记录，仅历史追溯；当前以 README 与 DFC ledger 为准）。
 
 ## Document Format Conversion / DFC
 
@@ -111,12 +111,14 @@ Current DFC implementation and planning must use the v1.2 topic directory:
 - `document-format-conversion/starverse_format_conversion_preview_v1_2.md`: current DFC SSOT for document format conversion, preview, Send Plan, compatibility, and safety boundaries.
 - `document-format-conversion/progress-ledger.md`: append-only DFC implementation ledger.
 - `document-format-conversion/important-context.md`: context recovery entry point for current DFC work.
-- `document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md`: latest supported/pilot/unsupported matrix at the DFC-M32 closeout.
-- `document-format-conversion/dfc-libreoffice-plugin-management-closeout.md`: Task 10 closeout for the LibreOffice Plugin Management integration route, acquisition/download pipeline, release/upload blockers, Owner gate, verification matrix, and production-claim boundary.
+- `document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md`: supported/pilot/unsupported matrix at the DFC-M32 closeout (archived 2026-08-14, superseded by M46/M63).
+- `document-format-conversion/dfc-libreoffice-plugin-management-closeout.md`: Task 10 closeout for the LibreOffice Plugin Management integration route, acquisition/download pipeline, release/upload blockers, Owner gate, verification matrix, and production-claim boundary (archived 2026-08-14, superseded by M46/M63).
 
 Current DFC work must not follow the superseded v1.0 Hybrid / mixed send strategy route. `original_file` is a first-class target, `SendAssetRef` distinguishes `raw_file` and `derived_asset`, and Attachment Shelf + Attachment Detail Inspector is the current UI direction.
 
-LibreOffice Office-to-PDF is currently owner-gated and experimental. The current product path is DOCX-only `pdf_attachment` through the managed runtime handle; imported dev artifacts and fake seams are not production package authority, no LibreOffice binary is committed, no GitHub release asset has been uploaded, and system LibreOffice/PATH fallback remains disallowed.
+<!-- 2026-08-14 修正：原句（"currently owner-gated and experimental ... no GitHub release asset has been uploaded"）基于 2026-06-11 之前的状态。DFC-M46（2026-06-23）已由 Owner 批准 Windows x64 DOCX-to-PDF 生产范围（productionApproved=true），M63（2026-06-24）完成生产收尾；GitHub Release asset（starverse-runtime-libreoffice-v0.1.0-26.2.4-win32-x64）已存在并作为固定 first-party 下载源。修正理由详见 dfc-m46-libreoffice-windows-x64-production-approval-and-cross-platform-deferral.md 与 LIBREOFFICE_PRODUCTION_APPROVAL_CHECKLIST.md。 -->
+
+LibreOffice Office-to-PDF (Windows x64, DOCX → `pdf_attachment`) is owner-approved production scope per DFC-M46/M63: manual GitHub Release install or verified offline import only, automatic/postinstall/conversion-time download disabled, macOS/Linux packages pending. The approved scope is DOCX-only; `.doc`/`.rtf`/`.docm` and Excel-to-PDF remain unsupported. No LibreOffice binary is committed to the repo, and system LibreOffice/PATH fallback remains disallowed.
 
 ### Historical Reference
 

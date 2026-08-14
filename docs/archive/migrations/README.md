@@ -51,3 +51,9 @@
 **归档日期**: 2025年12月6日  
 **文档数量**: 4 个  
 **维护者**: @GuXinghai
+
+## 2026-08-14 DGR-3 批次归档
+
+- [GENERATION_MIGRATION_GUIDE.md](GENERATION_MIGRATION_GUIDE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PHASE_3_MIGRATION_GUIDE.md](PHASE_3_MIGRATION_GUIDE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [REASONING_UI_MIGRATION_GUIDE.md](REASONING_UI_MIGRATION_GUIDE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）

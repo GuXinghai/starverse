@@ -1,6 +1,12 @@
 # Unified Generation & Reasoning Architecture
 
-**Status**: ✅ **Core Implementation Complete** (Phase 1 & 2)  
+> **Status**: reference
+> **Document Role**: implementation-note
+> **Last updated**: 2026-08-14
+>
+> **2026-08-14 降级修正**: 本文为 2025-12-02 的统一生成参数架构设计记录（基于 OpenRouter v1 语义，含 4 层配置覆盖与 reasoning 排他规则）。当前代码已演进为 Generation V2（`src/next/generation-v2/`、`infra/db/repo/generationConfigV2Repo.ts`、per-provider native history V2 repos；高层入口见 [CURRENT_SYSTEM_ARCHITECTURE.md](CURRENT_SYSTEM_ARCHITECTURE.md)），本文不再作为当前生成/流式架构 SSOT，仅作设计基线参考。
+
+**Status（原，2025-12-02 历史基线）**: ✅ **Core Implementation Complete** (Phase 1 & 2)
 **Date**: 2025-12-02  
 **Author**: Starverse Generation & Reasoning Architect
 

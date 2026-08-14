@@ -2,7 +2,7 @@
 
 ## 概述
 
-`src/constants/providers.ts` 提供了类型安全的 Provider ID 管理系统，用于避免字符串拼写错误（如 `Openrouter` vs `openrouter`）。
+`src/shared/provider/runtimeProviderId.ts`（原 `src/constants/providers.ts` 已移除，2026-08-14 修正）提供了类型安全的 Provider ID 管理系统，用于避免字符串拼写错误（如 `Openrouter` vs `openrouter`）。
 
 ## 设计原则
 
@@ -257,7 +257,7 @@ function sendMessage(provider: ProviderId) { }
 
 ## 扩展新 Provider
 
-添加新 Provider（如 Cohere）只需修改 `src/constants/providers.ts`：
+添加新 Provider（如 Cohere）只需修改 Provider 常量定义（原 `src/constants/providers.ts` 已移除，2026-08-14 修正；现见 `src/shared/provider/runtimeProviderId.ts`）：
 
 ```typescript
 export const PROVIDERS = {

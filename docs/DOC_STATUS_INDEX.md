@@ -55,15 +55,15 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [architecture/CURRENT_SYSTEM_ARCHITECTURE.md](architecture/CURRENT_SYSTEM_ARCHITECTURE.md) | active | ssot | Architecture | Understand current system | Current process, data and module boundaries |
 | [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | historical | implementation-note | Historical architecture | Trace retired Worker/dbBridge design | Not current implementation authority |
 | [architecture/provider-architecture/README.md](architecture/provider-architecture/README.md) | active | ssot | Provider Architecture | Multi-provider architecture work | Owner-confirmed multi-provider architecture SSOT |
-| [file-pipeline/README.md](file-pipeline/README.md) | active | entry | Feature track | File/conversion tasks | **Entry point**: routes to progress-ledger as SSOT |
-| [file-pipeline/progress-ledger.md](file-pipeline/progress-ledger.md) | active | ssot | File Pipeline | Current decisions & blockers | SSOT for file pipeline status |
+| [file-pipeline/README.md](file-pipeline/README.md) | active | entry | Feature track | File/conversion tasks | **Entry point**: 当前状态见 README 与 DFC ledger（progress-ledger 已归档） |
+| [file-pipeline/progress-ledger.md](file-pipeline/progress-ledger.md) | archived | closeout | File Pipeline | History only | Worker 架构（2025-11~2026-01）记录；2026-08-14 归档，被 README + DFC ledger 取代 |
 | [governance/app-chat-app-logic-boundary.md](governance/app-chat-app-logic-boundary.md) | active | ssot | Boundary | Send Plan, attachment tasks | Core app logic boundaries & code paths |
 | [adr/README.md](adr/README.md) | reference | decision | Decisions | Trace design decisions | **新 ADR 入口**: ADR 规则、模板、工程决策 (000-003) |
 | [decisions/README.md](decisions/README.md) | reference | decision | Decisions | Trace decisions | **仅历史参考**: 项目基础决策 (001-005)，新 ADR 不要放这里 |
-| [architecture/UNIFIED_GENERATION_ARCHITECTURE.md](architecture/UNIFIED_GENERATION_ARCHITECTURE.md) | active | ssot | Architecture | Generation/streaming tasks | Current generation config architecture |
+| [architecture/UNIFIED_GENERATION_ARCHITECTURE.md](architecture/UNIFIED_GENERATION_ARCHITECTURE.md) | reference | implementation-note | Architecture | Generation design baseline | 2025-12-02 统一参数设计记录；已被 Generation V2（src/next/generation-v2/）取代 |
 | [architecture/OPENROUTER_INTEGRATION_SUMMARY.md](architecture/OPENROUTER_INTEGRATION_SUMMARY.md) | reference | implementation-note | Integration | OpenRouter tasks; legacy integration context | Multi-provider AI integration; current implementation may differ |
 | [tailwind/TAILWIND_V4_README.md](tailwind/TAILWIND_V4_README.md) | active | entry | Styling | UI/style tasks | Tailwind v4 migration & rules |
-| [archive/README.md](archive/README.md) | archived | archive-index | Catalog | History trace only | 76 files including the archive index; read only for history |
+| [archive/README.md](archive/README.md) | archived | archive-index | Catalog | History trace only | 158 files including the archive index; read only for history |
 | [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) | reference | entry | Provider/model identity | Identity audit or closeout tracing | Point-in-time evidence; current source remains authoritative |
 
 ### DGR-1 Governance Documents
@@ -80,8 +80,8 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 
 | Path | Lifecycle Status | Document Role | Focus | Read When |
 |------|------------------|---------------|-------|-----------|
-| [file-pipeline/README.md](file-pipeline/README.md) | active | entry | Overview | **Entry point**: routes to progress-ledger as SSOT |
-| [file-pipeline/progress-ledger.md](file-pipeline/progress-ledger.md) | active | ssot | Ledger | Frozen decisions & blockers — **SSOT for pipeline status** |
+| [file-pipeline/README.md](file-pipeline/README.md) | active | entry | Overview | **Entry point**: 当前状态见 README 与 DFC ledger（progress-ledger 已归档） |
+| [file-pipeline/progress-ledger.md](file-pipeline/progress-ledger.md) | archived | closeout | Ledger | Worker 架构历史记录 — 2026-08-14 已归档 |
 | [file-pipeline/phase-1-domain-model.md](file-pipeline/phase-1-domain-model.md) | historical | closeout | Design | Phase 1 process record |
 | [file-pipeline/phase-2-persistence-and-storage.md](file-pipeline/phase-2-persistence-and-storage.md) | historical | closeout | Design | Phase 2 process record |
 | [file-pipeline/phase-3-ingestion-and-import.md](file-pipeline/phase-3-ingestion-and-import.md) | historical | closeout | Design | Phase 3 process record |
@@ -93,8 +93,8 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md](file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md) | active | ssot | DFC Design | Current document format conversion / preview SSOT |
 | [file-pipeline/document-format-conversion/progress-ledger.md](file-pipeline/document-format-conversion/progress-ledger.md) | active | ssot | DFC Progress | Append-only DFC implementation ledger |
 | [file-pipeline/document-format-conversion/important-context.md](file-pipeline/document-format-conversion/important-context.md) | active | entry | DFC Context | Recovery entry point for current DFC work |
-| [file-pipeline/document-format-conversion/dfc-libreoffice-plugin-management-closeout.md](file-pipeline/document-format-conversion/dfc-libreoffice-plugin-management-closeout.md) | reference | closeout | DFC LibreOffice | Task 10 closeout for Plugin Management integration, acquisition/download, release/upload blockers, Owner gate, and production-claim boundary |
-| [file-pipeline/document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md](file-pipeline/document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md) | reference | closeout | DFC Readiness | Latest supported/pilot/unsupported matrix |
+| [file-pipeline/document-format-conversion/dfc-libreoffice-plugin-management-closeout.md](file-pipeline/document-format-conversion/dfc-libreoffice-plugin-management-closeout.md) | archived | closeout | DFC LibreOffice | Task 10 closeout for Plugin Management integration, acquisition/download, release/upload blockers, Owner gate, and production-claim boundary. **Archived 2026-08-14**: superseded by DFC-M46/M63 |
+| [file-pipeline/document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md](file-pipeline/document-format-conversion/dfc-m32-deadline-closeout-demo-readiness.md) | archived | closeout | DFC Readiness | Supported/pilot/unsupported matrix at the DFC-M32 closeout. **Archived 2026-08-14**: superseded by DFC-M46/M63 |
 | [file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-progress.md](file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-progress.md) | archived | closeout | DFC History | Superseded v1.0 progress log; do not use as current implementation guidance |
 | [file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-implementation-plan.md](file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-implementation-plan.md) | archived | closeout | DFC History | Superseded v1.0 execution plan; contains old Hybrid route |
 | [file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-final.md](file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-final.md) | archived | spec | DFC History | Superseded v1.0 design; v1.2 is current SSOT |
@@ -132,16 +132,16 @@ Counts include Markdown, JSON, HTML, CSV, and other tracked files under each dir
 | Directory | Files | Default interpretation | Entry / SSOT |
 |---|---:|---|---|
 | `adr/` | 6 | reference / decision | `adr/README.md` |
-| `analysis/` | 10 | reference / historical evidence | `analysis/model-provider-identity/README.md` |
+| `analysis/` | 11 | reference / historical evidence | `analysis/model-provider-identity/README.md` |
 | `architecture/` | 185 | mixed; classify by topic | `architecture/CURRENT_SYSTEM_ARCHITECTURE.md` |
-| `archive/` | 76 | archived | `archive/README.md` |
-| `bugfix/` | 25 | pending-classification; mostly historical notes | — |
+| `archive/` | 158 | archived | `archive/README.md` |
+| `bugfix/` | 1 | 2026-08-14 已整体归档至 `archive/bugfixes/`；仅重定向 README | `bugfix/README.md` |
 | `decisions/` | 6 | reference / historical decisions | `decisions/README.md` |
 | `diagnostics/` | 3 | pending-classification | — |
-| `features/` | 31 | pending-classification; implementation notes | — |
+| `features/` | 1 | 2026-08-14 已整体归档至 `archive/completed-features/` 等；仅重定向 README | `features/README.md` |
 | `file-pipeline/` | 166 | mixed; active ledgers plus historical phases | `file-pipeline/README.md` |
 | `governance/` | 1 | reference / maintenance | — |
-| `guides/` | 33 | active guides plus historical reports | `guides/INDEX.md` |
+| `guides/` | 11 | active guides（2026-08-14 历史报告已归档） | `guides/INDEX.md` |
 | `i18n/` | 5 | pending-classification | `i18n/README.md` |
 | `maintenance/` | 33 | active maintenance and audit records | `maintenance/maintainer-entry.md` |
 | `notes/` | 4 | pending-classification | — |
@@ -164,7 +164,7 @@ Root-level entries are limited to `AGENT_INDEX.md`, `DOC_STATUS_INDEX.md`, and `
 | [governance/](governance/) | reference | maintenance | Domain index | Directory scope reference; read concrete governance docs for current rules |
 | [adr/](adr/) | reference | decision | Decisions | ADR process rules, templates, engineering decisions (000-003) |
 | [decisions/](decisions/) | reference | decision | Decisions | Project foundation decisions (001-005) |
-| [bugfix/](bugfix/) | reference | implementation-note | Fixes | Complex historical fixes not yet moved to archive |
+| [bugfix/](bugfix/) | archived | implementation-note | Fixes | 2026-08-14 已整体归档至 archive/bugfixes/；仅重定向 README |
 | [refactor/](refactor/) | reference | implementation-note | Refactor | OpenRouter refactor records |
 | [ui-refactoring/](ui-refactoring/) | reference | implementation-note | Refactor | UI component refactor records |
 | [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) | reference | entry | Provider/model identity | Trace evidence; verify claims against current checkout |

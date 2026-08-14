@@ -157,7 +157,7 @@ node scripts/gates/tc19-reasoning-stress.mjs
 ## 6. 相关文档
 
 - [REASONING_IDEMPOTENCY_CONTRACT.md](./REASONING_IDEMPOTENCY_CONTRACT.md) - 幂等策略
-- [mapChunkToEvents.ts](../../src/next/openrouter/sse/mapChunkToEvents.ts) - 事件映射
+- [mapChunkToEvents.ts](../../src/next/openrouter/mapChunkToEvents.ts) - 事件映射
 - [reasoningDetailStreamMerger.ts](../../src/shared/reasoningDetailStreamMerger.ts) - Merger 实现
 
 ---

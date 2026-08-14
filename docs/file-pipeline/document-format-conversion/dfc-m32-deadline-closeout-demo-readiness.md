@@ -4,6 +4,10 @@ Date: 2026-06-03
 Branch: docs/dfc-0-format-conversion-foundation
 Baseline: 7040dc5
 
+> **Status**: archived
+> **Archived**: 2026-08-14 (owner decision)
+> **Reason**: Superseded by DFC-M46 (Windows x64 DOCX-to-PDF production approval, 2026-06-23) and DFC-M63 (production closeout, 2026-06-24). The M32 supported/pilot matrix is no longer the current readiness statement.
+
 ## 1. Purpose
 
 M32 closes the current deadline-oriented DFC push by summarizing what can be demonstrated, what remains unsupported, and what should be owner-gated in the next phase. This package is documentation-only and does not change code, tests, dependencies, DB schema, renderer IPC, Send Plan flow, asset model, DFC vocabulary, runtime behavior, smoke harnesses, packaged installer behavior, or CI.

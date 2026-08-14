@@ -1,3 +1,5 @@
+> **状态说明（2026-08-14）**：本文是 v0.9 界面改版的设计稿/发布说明草稿，**尚未正式发布**。当前 package.json 版本为 `0.0.2`（开发中）；正式发行前仍需完成平台图标、代码签名、公证与安装验证（见 README）。文中部分链接指向的文件不存在，已在相关资源一节修正。
+
 # Starverse v0.9 Release Notes
 
 ## 🎨 全新现代化聊天 UI
@@ -262,9 +264,9 @@ npm run dev
 
 ## 🔗 相关资源
 
-- 📚 [完整文档](./docs/README.md)
-- 🎨 [设计系统](./docs/DESIGN_SYSTEM.md)
-- 🏗️ [架构指南](./docs/ARCHITECTURE_REVIEW.md)
+- 📚 [项目 README](./README.md)（原 `docs/README.md` 不存在，2026-08-14 修正）
+- 🎨 [文档导航中心](./docs/guides/INDEX.md)（原 `docs/DESIGN_SYSTEM.md` 不存在，2026-08-14 修正）
+- 🏗️ [当前系统架构](./docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md)（原 `docs/ARCHITECTURE_REVIEW.md` 路径修正）
 - 🐛 [问题反馈](https://github.com/GuXinghai/starverse/issues)
 - 💬 [社区讨论](https://github.com/GuXinghai/starverse/discussions)
 

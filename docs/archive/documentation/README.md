@@ -59,3 +59,15 @@ These documents were archived because:
 |----------|---------------|
 | ACCEPTANCE_REPORT.md | `docs/ACCEPTANCE_REPORT.md` |
 | CLEANUP_REPORT_2025_12.md | `docs/CLEANUP_REPORT_2025_12.md` |
+## 2026-08-14 DGR-3 批次归档
+
+- [CHAT_SEND_DELAY_UNDO_ABORT_TASK.md](CHAT_SEND_DELAY_UNDO_ABORT_TASK.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [DATA_CLEANUP_GUIDE.md](DATA_CLEANUP_GUIDE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [DOCUMENT_CLEANUP_AUDIT.md](DOCUMENT_CLEANUP_AUDIT.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [DOCUMENT_CLEANUP_EXECUTION_GUIDE.md](DOCUMENT_CLEANUP_EXECUTION_GUIDE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [DOCUMENT_REORGANIZATION_PLAN.md](DOCUMENT_REORGANIZATION_PLAN.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PARAMETER_PANEL_COMPLETION_CARD.md](PARAMETER_PANEL_COMPLETION_CARD.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PHASE3_AUDIT_REPORT.md](PHASE3_AUDIT_REPORT.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PROVIDER_CONSTANTS_CHECKLIST.md](PROVIDER_CONSTANTS_CHECKLIST.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PROVIDER_CONSTANTS_QUICK_REF.md](PROVIDER_CONSTANTS_QUICK_REF.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [STORAGE_VERIFICATION_REPORT.md](STORAGE_VERIFICATION_REPORT.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）

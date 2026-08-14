@@ -50,3 +50,9 @@
 - **归档日期**: 2025年12月6日
 - **文档数量**: 7 个
 - **归档原因**: 优化已实施并验证有效
+
+## 2026-08-14 DGR-3 批次归档
+
+- [ADDITIONAL_OPTIMIZATION_SUGGESTIONS.md](ADDITIONAL_OPTIMIZATION_SUGGESTIONS.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [CHAT_MULTITHREADING_PERFORMANCE_GUIDE.md](CHAT_MULTITHREADING_PERFORMANCE_GUIDE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md](PERFORMANCE_OPTIMIZATION_OPPORTUNITIES.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）

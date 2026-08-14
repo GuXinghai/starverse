@@ -64,3 +64,7 @@ These documents were archived because:
 | DEBUG_OPENROUTER_REQUEST_LOG_IMPL.md | `docs/DEBUG_OPENROUTER_REQUEST_LOG_IMPL.md` |
 | DEBUG_OPENROUTER_REQUEST_QUICK_REF.md | `docs/DEBUG_OPENROUTER_REQUEST_QUICK_REF.md` |
 | DEBUG_OPENROUTER_REQUEST_COMPLETION.md | `docs/DEBUG_OPENROUTER_REQUEST_COMPLETION.md` |
+
+## 2026-08-14 DGR-3 批次归档
+
+- [IMAGE_GENERATION_DEBUG_GUIDE.md](IMAGE_GENERATION_DEBUG_GUIDE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）

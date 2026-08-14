@@ -52,7 +52,7 @@ Namespace status means locale resource coverage across zh-CN and en-US. It does 
 ### Gates & Scans
 - `npm run i18n:check` — locale key coverage gate
 - `npm run i18n:scan-hardcoded` — hardcoded UI text guardrail, including Vue template text and common static attributes
-- `npm run i18n:sendplan-map` — SendPlan production/test issue code mapping validation
+- SendPlan production/test issue code mapping validation（原 `npm run i18n:sendplan-map` 脚本已移除，2026-08-14 修正；见 02 文档 SendPlan Code Map 节）
 
 ## Deferred Scope
 
@@ -135,7 +135,7 @@ npx vitest run src/next/settings/languagePrefs
 # Coverage and scan gates
 npm run i18n:check
 npm run i18n:scan-hardcoded
-npm run i18n:sendplan-map
+# npm run i18n:sendplan-map（脚本已移除，2026-08-14 修正）
 
 # Full typecheck
 npx vue-tsc --noEmit

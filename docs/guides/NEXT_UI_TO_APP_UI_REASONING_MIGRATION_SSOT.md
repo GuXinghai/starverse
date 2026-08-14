@@ -1,7 +1,11 @@
 # Starverse · next-ui → app-ui 推理组件移植 SSOT
 
-> 本文档是“next-ui 推理相关组件移植到 app-ui”的唯一真相源（SSOT）。
-> 适用版本：2026-01-27 当前代码基线。
+> **Status**: reference
+> **Document Role**: implementation-note
+> **Last updated**: 2026-08-14
+>
+> 本文档是“next-ui 推理相关组件移植到 app-ui”的迁移记录（原自称 SSOT；迁移已完成，2026-08-14 降级为 reference，未注册进 DOC_STATUS_INDEX 的 SSOT 表）。
+> 适用版本：2026-01-27 当前代码基线；文中代码路径已按 2026-08-14 现状修正，实际实现以当前源码为准。
 
 ---
 
@@ -69,14 +73,14 @@
 - 运行调度： src/ui-next/useChatRun.ts
 
 ### 3.4 推理模型索引与模型目录
-- Reasoning Model Index DB/Repo： [infra/db/repo/reasoningModelIndexRepo.ts](../../infra/db/repo/reasoningModelIndexRepo.ts)
-- Reasoning Index Client： [src/next/modelIndex/reasoningModelIndexClient.ts](../../src/next/modelIndex/reasoningModelIndexClient.ts)
+- Reasoning Model Index Selectors/Types： [src/next/modelIndex/reasoningModelIndexSelectors.ts](../../src/next/modelIndex/reasoningModelIndexSelectors.ts)、[src/next/modelIndex/reasoningModelIndexTypes.ts](../../src/next/modelIndex/reasoningModelIndexTypes.ts)（原 `infra/db/repo/reasoningModelIndexRepo.ts` 已不存在，2026-08-14 修正）
+- Reasoning Index Client： 已随重构移除（原 `src/next/modelIndex/reasoningModelIndexClient.ts` 不存在，2026-08-14 修正；selectors 见上）
 - Reasoning Index Selectors： [src/next/modelIndex/reasoningModelIndexSelectors.ts](../../src/next/modelIndex/reasoningModelIndexSelectors.ts)
 - Model Catalog Client： [src/next/modelCatalog/modelCatalogClient.ts](../../src/next/modelCatalog/modelCatalogClient.ts)
 - Model Catalog Selectors： [src/next/modelCatalog/modelCatalogSelectors.ts](../../src/next/modelCatalog/modelCatalogSelectors.ts)
 
 ### 3.5 推理请求构建路径（OpenRouter）
-- 统一入口： [src/next/live/openRouterLiveStream.ts](../../src/next/live/openRouterLiveStream.ts)
+- 统一入口： [src/ui-app/app/useLiveStreamController.ts](../../src/ui-app/app/useLiveStreamController.ts)（原 `src/next/live/openRouterLiveStream.ts` 已移除，2026-08-14 修正）
 
 ---
 
@@ -153,7 +157,7 @@
 
 ### 6.4 Reasoning Model Index 与 Model Catalog（可选但推荐）
 - [x] app-ui 增加 Reasoning Model Index 加载
-  - client： [src/next/modelIndex/reasoningModelIndexClient.ts](../../src/next/modelIndex/reasoningModelIndexClient.ts)
+  - client： 已移除（2026-08-14 修正；selectors 见 §3.4）
 - [x] app-ui 增加 Model Catalog 加载
   - client： [src/next/modelCatalog/modelCatalogClient.ts](../../src/next/modelCatalog/modelCatalogClient.ts)
 - [x] UI 增加 pickers 并处理 hidden/visible 过滤
@@ -238,8 +242,8 @@
 ## 11. 参考实现清单（迁移期禁止变更）
 
 - ReasoningView 派生： [src/next/state/selectors.ts](../../src/next/state/selectors.ts)
-- OpenRouter 请求拼装： [src/next/live/openRouterLiveStream.ts](../../src/next/live/openRouterLiveStream.ts)
-- Reasoning Index 同步规则： [infra/db/repo/reasoningModelIndexRepo.ts](../../infra/db/repo/reasoningModelIndexRepo.ts)
+- OpenRouter 请求拼装： [src/ui-app/app/useLiveStreamController.ts](../../src/ui-app/app/useLiveStreamController.ts)（原 `src/next/live/openRouterLiveStream.ts` 已移除，2026-08-14 修正）
+- Reasoning Index 同步规则： [src/next/modelIndex/reasoningModelIndexSelectors.ts](../../src/next/modelIndex/reasoningModelIndexSelectors.ts)（原 `infra/db/repo/reasoningModelIndexRepo.ts` 已移除，2026-08-14 修正）
 
 ---
 

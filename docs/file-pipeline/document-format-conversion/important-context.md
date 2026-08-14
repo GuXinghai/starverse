@@ -6,6 +6,8 @@
 
 This file is the recovery entry point after context compression. The source of truth for the document format conversion and preview contract remains `starverse_format_conversion_preview_v1_2.md` in this directory. Do not split the source contract into derived contract files unless the Owner explicitly changes that decision.
 
+> **2026-08-14 时效提示**: 本文按轮次追加，早期 recovery notes（DFC-0~M32 段）描述已退役实现：`infra/files/sendPlanService.ts`（现为 `src/next/files/sendPlanClient.ts` + `src/next/openrouter/openRouterSendPlanSerializer.ts`）、`infra/db/worker/*` 与 `npm run build:worker`（Worker 架构已退役，`infra/db/worker` 目录为空）、`ConversationAttachmentService`（已删除）。引用其中路径/命令前，请先以当前源码与 [README.md](../README.md) 为准。
+
 ## Current status
 
 - Current branch at latest documented DFC closeout: `main`
@@ -223,6 +225,8 @@ Recommended DFC-8 scope:
 Do not wire broad Send Plan replacement, UI consumption, conversion runtime, dependencies, external engines, or legacy migration bridge without separate Owner approval.
 
 ## DFC-8R0 read-only mapping recovery notes
+
+> 2026-08-14 修正：本节为 2026-05 映射记录，其中 `infra/files/sendPlanService.ts` 已退役（现为 `src/next/files/sendPlanClient.ts` + `src/next/openrouter/openRouterSendPlanSerializer.ts`）；请勿按本节路径直接编码。
 
 - Current HEAD during this mapping round: `6eacf67` (`feat(file-conversion): persist DFC attachment bindings`).
 - Worktree was clean before this round appended ledger/context notes.
@@ -1293,6 +1297,8 @@ If M11 validation is stable, DFC-M12 can add one DFC attachment smoke seam on to
 DFC-M13 should only attempt a real backend-owned DFC attachment smoke if it can remain low-intrusion without app bootstrap, DB schema, Send Plan, asset model, IPC/preload, OS file picker, packaged installer, or CI changes. Otherwise stop smoke expansion and move to the heavy runtime owner-decision package.
 
 ## DFC-M13 backend-owned attachment smoke recovery notes
+
+> 2026-08-14 修正：本节描述的 `npm run build:worker` 与 DB worker smoke 步骤已随 Worker 架构退役（`infra/db/worker` 为空，`test:electron-smoke` 已不含 build:worker）；当前 LibreOffice 安装/转换 smoke 见 M46-M63 证据文档。
 
 - DFC-M13 promotes the M12 controlled Electron smoke seam into a backend-owned DFC attachment smoke while keeping the same low-intrusion boundary.
 - The smoke runner creates a temporary markdown fixture under the smoke temp directory and calls a DEV/query-gated page seeder. The seeder uses existing backend APIs through `dbBridge`: `fileIngestion.ingestLocalFile`, `conversationDraft.addAttachment`, `conversationDraft.ensureDfcOptions`, `conversationDraft.updateAttachmentSettings`, and `conversationDraft.getDfcPreview`.

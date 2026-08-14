@@ -20,7 +20,7 @@
 |---|---|---|
 | 系统架构 / 生成链 | [当前系统架构](../architecture/CURRENT_SYSTEM_ARCHITECTURE.md) → [architecture/](../architecture/) | 当前进程、数据与模块边界；主题目录内的 evidence 只表示证据，不自动成为 SSOT。 |
 | Provider / model identity | [provider-architecture/](../architecture/provider-architecture/README.md) → [identity analysis](../analysis/model-provider-identity/README.md) | Provider 架构 SSOT 与时间限定的审计证据分开。 |
-| File pipeline | [file-pipeline/README.md](../file-pipeline/README.md) → [progress-ledger.md](../file-pipeline/progress-ledger.md) | 领域入口和当前决策 ledger。 |
+| File pipeline | [file-pipeline/README.md](../file-pipeline/README.md) → [DFC ledger](../file-pipeline/document-format-conversion/progress-ledger.md) | 领域入口；旧 progress-ledger（Worker 架构）已归档。 |
 | DFC | [DFC context](../file-pipeline/document-format-conversion/important-context.md) → [v1.2 contract](../file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md) | DFC 当前支持矩阵和边界。 |
 | File type detection / plugins | [detection README](../file-pipeline/file-type-detection-implementation/README.md) → [plugin distribution](../file-pipeline/plugin-distribution/) | Epoch 2 与插件发行记录。 |
 | Model catalog / preferences | [spec/](../spec/) → [notes/](../notes/) | 契约、schema、查询和验证记录；以当前源码为最终事实。 |

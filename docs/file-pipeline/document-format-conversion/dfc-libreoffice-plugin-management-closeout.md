@@ -1,6 +1,10 @@
 # DFC LibreOffice Plugin Management Closeout
 
-Status: LibreOffice Plugin Management closeout plus post-closeout package preparation, prerelease asset, and redownload verification evidence. Production approval remains blocked until Owner approves legal/license/provenance, signing, distribution, and product support gates.
+**Status: archived (2026-08-14, owner decision)** — this record reflects the 2026-06-11 state and is superseded by DFC-M46 (2026-06-23, Windows x64 DOCX-to-PDF production approval) and DFC-M63 (2026-06-24, production closeout). Current status: see `dfc-m46-libreoffice-windows-x64-production-approval-and-cross-platform-deferral.md` and `LIBREOFFICE_PRODUCTION_APPROVAL_CHECKLIST.md`.
+
+> 2026-08-14 修正（标注原文）：下一行为归档前原文的状态句（2026-06-11 时点），其中 "Production approval remains blocked" 与正文中 "productionApproved=false is still the correct state" 均已被 DFC-M46/M63 取代（Windows x64 DOCX→PDF 已批准生产）；保留仅作历史。
+
+Status (original, 2026-06-11): LibreOffice Plugin Management closeout plus post-closeout package preparation, prerelease asset, and redownload verification evidence. Production approval remains blocked until Owner approves legal/license/provenance, signing, distribution, and product support gates.
 
 Date: 2026-06-11
 
@@ -13,6 +17,8 @@ LibreOffice Office-to-PDF is wired as a first-party managed runtime plugin path 
 Task 10 performed the GitHub/release readiness audit and stopped before upload. Task 10R added the `.svpkg` archive import bridge and dry-run preparation script. The follow-up official-source preparation round downloaded LibreOffice 26.2.4 Windows x86_64 from The Document Foundation infrastructure, prepared a real Starverse `.svpkg` package candidate outside the repo, verified it with the archive/import bridge, and ran the real managed DOCX-to-PDF worker smoke from the imported runtime. The draft release verification round uploaded that package candidate to a GitHub draft release, redownloaded the release asset, verified hash/size, re-ran archive/import verification, and re-ran the real managed worker smoke from the redownloaded package import. The prerelease promotion round published the same asset as an owner-gated prerelease, pointed the LibreOffice catalog acquisition source at the prerelease asset with downloads still disabled by default, redownloaded the prerelease asset, and re-ran archive/import/runtime/smoke verification.
 
 The current product status remains owner-gated and experimental. `productionApproved=false` is still the correct state. No LibreOffice binary is committed to git, the GitHub asset is a prerelease candidate only, catalog acquisition points to the asset but download remains disabled unless an owner-gated policy explicitly permits it, and no system LibreOffice or PATH fallback is allowed.
+
+**2026-08-14 修正**: 本段为 2026-06-11 状态结论。DFC-M46/M63 之后，Windows x64 DOCX→PDF（manual_github_release / offline_import）已批准生产，`productionApproved=false` 不再成立；`.doc`/`.rtf`/`.docm` 等仍不支持，自动下载仍禁用，系统 LibreOffice/PATH fallback 仍不允许。
 
 ## Task 0-10 Commit List
 

@@ -14,13 +14,13 @@ Last updated: 2026-08-14
 ## 当前项目状态
 
 - **版本**: 0.0.2（开发中）
-- **主线工作**: File Pipeline Phase 1-9 已完成代码实现；格式转换与预览方案已通过治理，代码尚未开始
+- **主线工作**: File Pipeline Phase 1-9 已完成代码实现；DFC 已实现至 M63 生产收尾——Windows x64 DOCX→PDF 为已批准生产范围（手动安装/离线导入，自动下载禁用），macOS/Linux 待定（2026-08-14 修正）
 - **活跃代码目录**: `src/ui-app/`, `src/next/`, `src/shared/files/`, `infra/files/`, `infra/db/`
 - **治理体系**: ADR (`docs/adr/`)、边界护栏 (`docs/governance/`)、门禁脚本 (`scripts/gates/`)、文档治理 (`docs/maintenance/document-governance.md`)
 - **文档状态模型**: 双维度模型（Lifecycle Status + Document Role），详见 [document-status-taxonomy.md](document-status-taxonomy.md)
 - **开发启动**: `npm run electron:dev`（完整 Electron 应用）
 - **测试运行**: 按需运行与修改路径最相关的单元测试
-- **关键维护边界**: `appChatApp.logic.ts`（~6.7k 行, 不追加业务规则）、`openRouterSendPlanSerializer.ts`（唯一 payload 合成入口）
+- **关键维护边界**: `appChatApp.logic.ts`（~8.0k 行, 7,966 行, 2026-08-14；不追加业务规则）、`openRouterSendPlanSerializer.ts`（唯一 payload 合成入口）
 
 ---
 
@@ -28,9 +28,9 @@ Last updated: 2026-08-14
 
 1. **[README.md](../../README.md)** — 项目定位与功能总览
 2. **[docs/guides/INDEX.md](../guides/INDEX.md)** — 文档导航中心，按场景查找文档
-3. **[docs/architecture/OVERVIEW.md](../architecture/OVERVIEW.md)** — 系统架构设计
+3. **[docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md](../architecture/CURRENT_SYSTEM_ARCHITECTURE.md)** — 当前系统架构（OVERVIEW.md 为历史文档）
 4. **[docs/file-pipeline/README.md](../file-pipeline/README.md)** — 文件管道主线工作状态
-5. **[docs/file-pipeline/progress-ledger.md](../file-pipeline/progress-ledger.md)** — 冻结决策与未做事项
+5. **[docs/file-pipeline/document-format-conversion/progress-ledger.md](../file-pipeline/document-format-conversion/progress-ledger.md)** — DFC 实施 ledger（append-only；旧 progress-ledger 已归档）
 6. **[docs/governance/app-chat-app-logic-boundary.md](../governance/app-chat-app-logic-boundary.md)** — 核心编排模块职责边界
 7. **[docs/adr/README.md](../adr/README.md)** — ADR 决策记录规则（**新 ADR 使用此目录**）
 8. **[docs/decisions/README.md](../decisions/README.md)** — 基础架构决策列表（**仅历史参考**）
@@ -46,7 +46,7 @@ Last updated: 2026-08-14
 | `src/ui-kit/chat/` | 可复用聊天基础组件（Composer, Transcript, MessageBubble, richtext 渲染） |
 | `src/next/` | DDD 领域模块：convo, branch, message, openrouter, streaming, persistence 等 |
 | `src/shared/` | 跨层共享：IPC 封装、文件资产类型（sendPlanTypes, fileTypes）、安全工具 |
-| `infra/db/` | SQLite Worker + Repository 层（convoRepo, messageRepo 等） |
+| `infra/db/` | epoch-2 SQLite：schema manifest（v2/*.sql）、repositories，由主进程持有（Worker 已退役） |
 | `infra/files/` | Send Plan 服务、衍生任务服务 |
 | `electron/` | 主进程：窗口管理、IPC 多模块、模型目录、后台任务 |
 | `scripts/gates/` | 治理门禁脚本（b_gate.mjs, tc 系列） |
@@ -95,7 +95,6 @@ Last updated: 2026-08-14
 | `npm run lint` | ESLint 检查 |
 | `npm run rebuild:node` | 重建 better-sqlite3（测试/脚本用） |
 | `npm run rebuild:electron` | 重建 better-sqlite3（Electron 用） |
-| `npm run db:reset` | 重置数据库 |
 
 ---
 

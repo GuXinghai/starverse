@@ -171,8 +171,8 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_reasoning_segment_fingerprint
 ## 7. 相关文档
 
 - [REASONING_SEMANTIC_CONTRACT.md](./REASONING_SEMANTIC_CONTRACT.md) - 语义契约
-- [schema.sql](../../infra/db/schema.sql) - 数据库 Schema
-- [messageRepo.ts](../../infra/db/repo/messageRepo.ts) - 存储实现
+- `infra/db/schema.sql`（已移除；schema 现位于 `infra/db/v2/*.sql`，2026-08-14 修正） - 数据库 Schema
+- `infra/db/repo/messageRepo.ts`（已不存在，2026-08-14 修正） - 存储实现
 
 ---
 

@@ -237,7 +237,7 @@ Credential settings 返回的 `providerId='openai'`、`providerId='google-ai-stu
 - inline policy ID/version
 - `extraBody`
 
-见 [compatibleConfigurationSelection.ts (line 5)](../../../src/next/provider/openai-chat-compatible/ui/compatibleConfigurationSelection.ts#L5)。
+见 compatibleConfigurationSelection.ts（line 5；原链接路径已不存在，2026-08-14 修正）。
 
 但 initial/regenerate/edit command 只传 `providerInstanceId + modelId + extraBody`。Coordinator 随后读取当前 `endpointRevisions[0]` 和当前 configuration，而不是 selection 中持久化的 revision。[openAIChatCompatibleGenerationV2Coordinator.ts (line 104)](../../../electron/services/openAIChatCompatibleGenerationV2Coordinator.ts#L104)
 

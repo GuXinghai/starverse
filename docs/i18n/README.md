@@ -35,8 +35,7 @@ npm run i18n:check
 # Scan for hardcoded UI text
 npm run i18n:scan-hardcoded
 
-# Validate SendPlan issue code → i18n mapping
-npm run i18n:sendplan-map
+# SendPlan issue code → i18n mapping validation（原 `npm run i18n:sendplan-map` 脚本已移除，2026-08-14 修正；见 02-i18n-coverage-and-hardcoded-scan.md）
 ```
 
 ## Namespaces

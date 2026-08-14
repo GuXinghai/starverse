@@ -247,7 +247,7 @@ const cleanHistorySnapshot = branchStore.getDisplayMessages(conversationId)
 
 - [消息重复发送问题修复](../archive/bugfixes/FIX_MESSAGE_DUPLICATION.md)
 - 调试日志记录
-- [分支树实现](../features/BRANCH_TREE_IMPLEMENTATION.md)
+- [分支树实现](../archive/completed-features/BRANCH_TREE_IMPLEMENTATION.md)
 
 ---
 
