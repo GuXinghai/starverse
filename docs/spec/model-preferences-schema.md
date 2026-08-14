@@ -1,6 +1,6 @@
 # Model Preferences Schema（阶段 3.1）
 
-Status: pending-classification
+Status: historical
 Document Role: spec
 Last updated: 2026-08-14
 

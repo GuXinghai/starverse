@@ -1,8 +1,10 @@
 # Model Preferences Contract（阶段 3）
 
-Status: pending-classification
+Status: reference
 Document Role: spec
 Last updated: 2026-08-14
+
+> **2026-08-14 修正**: 本文档冻结于 2026-02-17（阶段 3）。现行实现将 recents 写入改为 generation 操作驱动：`recordRecent` 已更名为 `recordRecentForGenerationOperation`（`infra/db/repo/modelPreferencesRepo.ts`，以 `operationId` 幂等；`src/ui-app/AppChatApp.send.test.ts:495` 断言不存在 `recordRecent`）；DDL 落点由 `infra/db/schema.sql` 迁至 `infra/db/v2/*.sql`。收藏语义、scope 语义与容量策略未变。
 
 更新日期：2026-02-17  
 适用范围：收藏（favorites）与最近使用（recents）的行为契约、scope 语义、失败降级与数据保留策略。
@@ -36,7 +38,7 @@ Last updated: 2026-08-14
 ### 3.2 Recents
 - 唯一性：同一 `(scopeType, scopeId, modelKey)` 只保留一条最近记录。
 - 记录语义：
-  - `recordRecent` 命中已存在模型时，更新 `lastUsedAtMs`（取较大值）并递增 `useCount`。
+  - `recordRecentForGenerationOperation` 由 generation 操作驱动：同一 `operationId` 幂等（重复返回 `applied:false`），新操作 upsert recent（`lastUsedAtMs` 置为操作时间，不再递增 `useCount`）。
   - 不存在时插入新记录。
 - 排序语义：
   - 主排序 `lastUsedAtMs DESC`
@@ -64,7 +66,7 @@ Last updated: 2026-08-14
 - `dbBridge` 不可用：
   - `listFavorites/listRecents` 返回空列表；
   - `toggleFavorite` 返回失败结果；
-  - `recordRecent` 返回 `null`；
+  - `recordRecentForGenerationOperation` 返回 `{ applied: false }`/`null`；
   - 不阻断聊天主流程。
 - 偏好写入失败：
   - 仅影响偏好状态更新，不阻断模型选择与发送。
@@ -90,7 +92,7 @@ Last updated: 2026-08-14
 - `infra/db/repo/modelPreferencesRepo.ts`
 - `src/next/modelPrefs/modelPrefsService.ts`
 - `src/ui-app/AppChatApp.vue`
-- `infra/db/schema.sql`
+- `infra/db/v2/*.sql`
 - `docs/spec/model-preferences-scope.md`
 - `docs/spec/model-preferences-schema.md`
 - `docs/notes/model-picker-smoke.md`

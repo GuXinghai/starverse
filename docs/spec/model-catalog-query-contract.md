@@ -1,8 +1,10 @@
 # Model Catalog Query Contract (Phase 1)
 
-Status: pending-classification
+Status: reference
 Document Role: spec
 Last updated: 2026-08-14
+
+> **2026-08-14 修正**: 原 "DB method: `modelCatalog.queryCore`" 已过时——`modelCatalog.queryCore` 不在当前 DB 方法集合（`infra/db/dbMethodsRegistry.test.ts:33` 断言其不存在）。查询契约经 `CatalogQueryService.query` → Generation V2 models API（`getGenerationV2ModelsApi()`）执行；下文 Request Contract 与 filter/sort/page 语义仍为现行契约。
 
 ## Scope
 - Provide a unified catalog query API for UI/debug tooling.
@@ -10,8 +12,8 @@ Last updated: 2026-08-14
 - No endpoints metrics sorting in this phase.
 
 ## Entry Point
-- DB method: `modelCatalog.queryCore`
-- Renderer service: `src/next/modelCatalog/catalogQueryService.ts` (`CatalogQueryService.query`)
+- 执行入口: `src/next/modelCatalog/catalogQueryService.ts` (`CatalogQueryService.query`) → Generation V2 models API（`getGenerationV2ModelsApi()`）
+- 旧 DB 方法 `modelCatalog.queryCore` 已移除（见头部修正注记）
 
 ## Request Contract
 ```ts
@@ -83,7 +85,7 @@ type CatalogQueryInput = {
   - Examples: `openrouter`, `openai-direct`, `anthropic-direct`
   - Phase 1 usually uses `openrouter`
 - `providerKey` is deprecated at the UI/service contract level and maps to `sourceProviderKey`.
-- DB method `modelCatalog.queryCore` still executes with `providerKey` (worker normalizes `sourceProviderKey -> providerKey`).
+- 查询契约统一以 `sourceProviderKey` 为源维度；旧 worker 侧 `providerKey` 规范化路径（`modelCatalog.queryCore`）已移除。
 - `filter.vendors` is the model vendor/author dimension:
   - Examples: `openai`, `anthropic`
   - Stored and filtered in `models.vendor`
