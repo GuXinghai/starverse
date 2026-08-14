@@ -3,7 +3,10 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import type { ProviderCredentialKey } from '../credentials/providerCredentialContract'
 import { createElectronSessionProviderFetch, type ProviderFetch } from '../net/providerHttpTransport'
 import type { RegisterInvoke } from './types'
+// Approved main-process Catalog composition boundary.
+// eslint-disable-next-line no-restricted-imports
 import { OPENROUTER_MODEL_CATEGORIES, type OpenRouterModelCategory } from '../../src/next/modelCatalog/openRouterCategoryCache'
+// eslint-disable-next-line no-restricted-imports
 import { ProviderCatalogAuthorityRegistryV2 } from '../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2'
 import {
   ModelCatalogV2Repo,

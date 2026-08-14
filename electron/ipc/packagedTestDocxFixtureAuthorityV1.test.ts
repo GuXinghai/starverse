@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { mkdtemp, readFile, realpath, rm, writeFile } from 'node:fs/promises'
 import { EventEmitter } from 'node:events'
 import { tmpdir } from 'node:os'
 import path from 'node:path'
@@ -23,11 +23,12 @@ describe('packaged test DOCX fixture authority v1', () => {
 
   it('returns only opaque grant metadata and stages the exact fixed fixture for the main frame', async () => {
     const root = await mkdtemp(path.join(tmpdir(), 'starverse-packaged-authority-')); roots.push(root)
+    const canonicalRoot = await realpath(root)
     const tempRoot = await mkdtemp(path.join(tmpdir(), 'starverse-packaged-stage-')); roots.push(tempRoot)
-    await writeFile(path.join(root, 'starverse-packaged-docx-pdf-v1.docx'), await fixtureBytes())
-    await writeFile(path.join(root, '.starverse-packaged-test-authority-v1.json'), JSON.stringify(marker(root)))
+    await writeFile(path.join(canonicalRoot, 'starverse-packaged-docx-pdf-v1.docx'), await fixtureBytes())
+    await writeFile(path.join(canonicalRoot, '.starverse-packaged-test-authority-v1.json'), JSON.stringify(marker(canonicalRoot)))
     const registerInvoke = vi.fn(), grants = createFileSelectionGrantStore({ now: () => 2000, tokenFactory: () => 'opaque-grant' })
-    const authority = await createPackagedTestDocxFixtureAuthorityV1({ isPackaged: true, env: environment(), argv: [`--user-data-dir=${root}`, `--sv-packaged-test-authority-nonce=${NONCE}`], userDataRoot: root, tempRoot, repositoryRoot: process.cwd(), registerInvoke, fileSelectionGrants: grants, nowMs: () => 2000 })
+    const authority = await createPackagedTestDocxFixtureAuthorityV1({ isPackaged: true, env: environment(), argv: [`--user-data-dir=${canonicalRoot}`, `--sv-packaged-test-authority-nonce=${NONCE}`], userDataRoot: canonicalRoot, tempRoot, repositoryRoot: process.cwd(), registerInvoke, fileSelectionGrants: grants, nowMs: () => 2000 })
     expect(authority).not.toBeNull(); authority!.register(() => 7)
     expect(registerInvoke).toHaveBeenCalledWith(PACKAGED_TEST_DOCX_FIXTURE_CHANNEL_V1, expect.any(Function))
     const result = await (registerInvoke.mock.calls[0][1] as Function)({ sender: { id: 7 }, senderFrame: { isMainFrame: true, url: 'file:///app/index.html' } }, {})

@@ -3,7 +3,10 @@ import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
+// Approved main-process active-Catalog authority fixture imports.
+// eslint-disable-next-line no-restricted-imports
 import { GenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
+// eslint-disable-next-line no-restricted-imports
 import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createActiveCatalogModelAuthorityV2Service, readActiveCatalogSnapshotAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 

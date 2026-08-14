@@ -73,7 +73,7 @@ module.exports = {
     {
       files: ['**/*.{ts,tsx,vue}'],
       rules: {
-        // Complexity guardrails (Phase 1.2): start as warnings for gradual rollout.
+        // Complexity guardrails remain visible for review without blocking unrelated changes.
         'max-lines-per-function': ['warn', { max: 80, skipBlankLines: true, skipComments: true }],
         complexity: ['warn', 20],
         'max-depth': ['warn', 4],

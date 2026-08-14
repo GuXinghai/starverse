@@ -6,6 +6,8 @@ import { ConversationWorkspaceV2Repo } from '../../infra/db/repo/conversationWor
 import { BranchContextFilterV2Repo } from '../../infra/db/repo/branchContextFilterV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+// Approved main-process Generation V2 config projection boundary.
+// eslint-disable-next-line no-restricted-imports
 import { projectGenerationConfigLayerV2 } from '../../src/next/generation-v2/config/generationConfigLayerV2'
 import type { RegisterInvoke } from './types'
 import { SystemChatTemplateV2Repo } from '../../infra/db/repo/systemChatTemplateV2Repo'

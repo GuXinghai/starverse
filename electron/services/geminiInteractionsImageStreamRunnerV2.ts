@@ -12,10 +12,15 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
+// Approved main-process Gemini Interactions Generation V2 execution boundary.
+// eslint-disable-next-line no-restricted-imports
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+// eslint-disable-next-line no-restricted-imports
 import { GeminiInteractionsImageResultAssemblerV1, GeminiInteractionsImageSseDecoderV1,
   GeminiInteractionsImageStreamV1Error, type GeminiInteractionsImageResultV1 } from '../../src/next/generation-v2/providers/gemini/interactionsStreamV1'
+// eslint-disable-next-line no-restricted-imports
 import { createGeminiInteractionsImageTerminalArtifactV2 } from '../../src/next/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
+// eslint-disable-next-line no-restricted-imports
 import { isGeminiInteractionsImageModelIdV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
 import { createProviderFailureV2, providerFailureFromUnknownV2, providerFailurePrimaryMessageV2,
   type ProviderFailureV2 } from '../../src/shared/provider/providerFailureV2'
