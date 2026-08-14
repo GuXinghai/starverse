@@ -101,7 +101,6 @@ import type {
   ModelPrefsRemoveFavoriteParams,
   ModelPrefsReorderFavoritesParams,
   ModelPrefsListRecentsParams,
-  ModelPrefsRecordRecentParams,
   ModelPrefsScopeType,
 } from './types'
 
@@ -1145,9 +1144,3 @@ export const ModelPrefsReorderFavoritesSchema: ZodType<ModelPrefsReorderFavorite
 export const ModelPrefsListRecentsSchema: ZodType<ModelPrefsListRecentsParams> = modelPrefsScopeSchema.extend({
   limit: z.number().int().positive().max(500).optional(),
 })
-
-export const ModelPrefsRecordRecentSchema: ZodType<ModelPrefsRecordRecentParams> = modelPrefsScopeSchema
-  .merge(modelPrefsModelRefObjectSchema)
-  .extend({
-    usedAtMs: z.number().int().nonnegative().optional(),
-  })

@@ -9,9 +9,14 @@ function loadSchema(db: BetterSqlite3.Database) {
 }
 
 const modelRef = (modelId: string) => ({ providerKey: 'openrouter' as const, modelId })
+const recent = (operationId: string, modelId: string, usedAtMs = Date.now()) => ({
+  operationId,
+  ...modelRef(modelId),
+  usedAtMs,
+})
 
 describe('ModelPreferencesRepo', () => {
-  it('supports global/project/conversation scopes for favorites and recents', () => {
+  it('supports scoped favorites and production-global recents', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     const repo = new ModelPreferencesRepo(db)
@@ -24,13 +29,11 @@ describe('ModelPreferencesRepo', () => {
     expect(repo.listFavorites({ scopeType: 'project', scopeId: 'project-1' })).toHaveLength(1)
     expect(repo.listFavorites({ scopeType: 'conversation', scopeId: 'convo-1' })).toHaveLength(1)
 
-    repo.recordRecent({ scopeType: 'global', scopeId: '', ...modelRef('openai/gpt-4o') })
-    repo.recordRecent({ scopeType: 'project', scopeId: 'project-1', ...modelRef('openai/gpt-4.1') })
-    repo.recordRecent({ scopeType: 'conversation', scopeId: 'convo-1', ...modelRef('anthropic/claude-3') })
+    repo.recordRecentForGenerationOperation(recent('operation:1', 'openai/gpt-4o'))
 
     expect(repo.listRecents({})).toHaveLength(1)
-    expect(repo.listRecents({ scopeType: 'project', scopeId: 'project-1' })).toHaveLength(1)
-    expect(repo.listRecents({ scopeType: 'conversation', scopeId: 'convo-1' })).toHaveLength(1)
+    expect(repo.listRecents({ scopeType: 'project', scopeId: 'project-1' })).toHaveLength(0)
+    expect(repo.listRecents({ scopeType: 'conversation', scopeId: 'convo-1' })).toHaveLength(0)
   })
 
   it('deduplicates favorites by scope+model and increments recents useCount', () => {
@@ -58,23 +61,27 @@ describe('ModelPreferencesRepo', () => {
 
     const t0 = Date.now() - 1000
     const t1 = Date.now()
-    repo.recordRecent({
-      scopeType: 'global',
-      scopeId: '',
-      ...modelRef('openai/gpt-4o'),
-      usedAtMs: t0,
-    })
-    repo.recordRecent({
-      scopeType: 'global',
-      scopeId: '',
-      ...modelRef('openai/gpt-4o'),
-      usedAtMs: t1,
-    })
+    repo.recordRecentForGenerationOperation(recent('operation:1', 'openai/gpt-4o', t0))
+    repo.recordRecentForGenerationOperation(recent('operation:2', 'openai/gpt-4o', t1))
 
     const recents = repo.listRecents({ scopeType: 'global', scopeId: '', limit: 10 })
     expect(recents).toHaveLength(1)
     expect(recents[0].useCount).toBe(2)
     expect(recents[0].lastUsedAtMs).toBe(t1)
+  })
+
+  it('consumes each Generation operation exactly once and rejects identity reuse', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelPreferencesRepo(db)
+
+    expect(repo.recordRecentForGenerationOperation(recent('operation:1', 'openai/gpt-4o')).applied).toBe(true)
+    expect(repo.recordRecentForGenerationOperation(recent('operation:1', 'openai/gpt-4o')).applied).toBe(false)
+    expect(repo.listRecents()[0]?.useCount).toBe(1)
+    expect(() => repo.recordRecentForGenerationOperation(recent('operation:1', 'openai/gpt-4.1')))
+      .toThrow('MODEL_PREFS_RECENT_OPERATION_IDENTITY_CONFLICT')
+    expect(() => repo.recordRecentForGenerationOperation(recent('operation:1', 'openai/gpt-4o', 1)))
+      .toThrow('MODEL_PREFS_RECENT_OPERATION_IDENTITY_CONFLICT')
   })
 
   it('keeps deterministic ordering and stable tie-breaker when reordering favorites', () => {
@@ -136,12 +143,7 @@ describe('ModelPreferencesRepo', () => {
 
     const base = Date.now()
     for (let i = 0; i < 55; i += 1) {
-      repo.recordRecent({
-        scopeType: 'global',
-        scopeId: '',
-        ...modelRef(`openai/model-${i}`),
-        usedAtMs: base + i,
-      })
+      repo.recordRecentForGenerationOperation(recent(`operation:${i}`, `openai/model-${i}`, base + i))
     }
 
     const recents = repo.listRecents({ scopeType: 'global', scopeId: '', limit: 1000 })

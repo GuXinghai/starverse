@@ -98,7 +98,6 @@ function installModelPreferencesTestAdapter() {
   preferences.removeFavorite = vi.fn((input: unknown) => invoke('modelPrefs.removeFavorite', input))
   preferences.reorderFavorites = vi.fn((input: unknown) => invoke('modelPrefs.reorderFavorites', input))
   preferences.listRecents = vi.fn((input: unknown) => invoke('modelPrefs.listRecents', input))
-  preferences.recordRecent = vi.fn((input: unknown) => invoke('modelPrefs.recordRecent', input))
 }
 
 function modelSelectionCommandPlugin(command: (selection: ConversationRouteSelection) => Promise<void>) {

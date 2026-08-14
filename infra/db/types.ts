@@ -2125,13 +2125,6 @@ export type ModelPrefsListRecentsParams = Readonly<
   }
 >
 
-export type ModelPrefsRecordRecentParams = Readonly<
-  ModelPrefsScopeParams &
-    ModelPrefsModelRefParams & {
-      usedAtMs?: number
-    }
->
-
 export type ModelPrefsRemoveFavoriteResult = Readonly<{
   removed: number
 }>

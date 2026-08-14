@@ -1,10 +1,10 @@
 # Model and Provider Identity Frozen Decisions and Implementation Plan
 
-- **Lifecycle Status**: completed
+- **Lifecycle Status**: implementation-closeout-in-progress
 - **Document Role**: owner-decision-and-implementation-plan
 - **Decision frozen**: 2026-08-14
 - **Current-code baseline**: `5f2d7433001133430f183590ac7a4432124c6925`
-- **Implementation status**: completed
+- **Implementation status**: closeout patch in progress
 - **Progress authority**: this file; update the ledger and phase status here as implementation proceeds
 
 ---
@@ -47,6 +47,12 @@ Do not reopen or modify these contracts in this implementation:
 | Generation execution provider | `openrouter`, `google_ai_studio`, `anthropic`, `deepseek`, `openai_responses`, `generic_local`, `ollama`, `lmstudio`, `openai_compatible` | Closed shared execution identity validated against reviewed contracts |
 
 The differences above are domain differences, not legacy aliases. Conversion is allowed only at an explicit inter-domain authority.
+
+### Owner clarification: explicit conversion authority
+
+The Phase 1 prohibition on implicit cross-domain assignment is an architectural boundary rule, not a requirement to brand every protocol string. The underlying wire values may remain structurally compatible string literal unions. Production code must nevertheless route every cross-domain flow through a named, total, exhaustively tested conversion authority. Direct assignment, assertion, normalization, spelling inference, and arbitrary-string conversion across Runtime, Catalog, Credential, and Generation execution domains are forbidden.
+
+This clarification selects explicit conversion authorities instead of repository-wide branded strings. It does not merge identity domains or create a global identity registry.
 
 ## 4. Frozen decisions
 
@@ -239,14 +245,16 @@ Update this table in the same commit as each phase transition. Do not mark a pha
 
 | Phase | Status | Started | Completed | Commit | Evidence / blockers |
 |---|---|---|---|---|---|
-| 1. Execution identity domain | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` | Added nine-value codec and applied it to reviewed contracts, provider bindings, prepared/request facts, and history DTOs; `tsc` green; 30 targeted tests passed |
-| 2. Ghost and mapping authorities | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` | Explicit Catalog execution mapping; Google ghost removed; strict three-row local descriptor adopted across renderer, IPC, preload, and repo types |
+| 1. Execution identity domain | in progress | 2026-08-14 | — | `0f0cad08` + closeout patch | Runtime codecs are complete; owner clarified that all structurally compatible cross-domain values must pass through explicit total conversion authorities. Model Picker Catalog-to-Runtime flow remains to be closed. |
+| 2. Ghost and mapping authorities | in progress | 2026-08-14 | — | `0f0cad08` + closeout patch | Google ghost and descriptor are correct; three current local profile lookup/create helpers must still consume the descriptor instead of parallel provider/protocol literals. |
 | 3. History and failure namespace | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` | Removed history-to-Runtime projection; introduced three-way provider refs, strict full-shape codec, and Generation/Catalog persistence correlation checks; 32 targeted tests and `tsc` passed |
 | 4. Compatible current intent | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` | Route intent is provider-instance plus model only; action-time coordinator rereads current configuration and snapshots current endpoint/profile defaults; retry remains frozen-snapshot replay; 24 targeted tests passed |
-| 5. Preferences semantics | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` | Selection-time writes removed; persisted global recents hydrate on mount; created-operation recording centralized across initial/regenerate/edit/retry; scoped inherited favorites are read-only; 84 targeted tests passed plus `tsc`/`vue-tsc` green |
-| 6. Reset and acceptance | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` + closeout commit | Full Node/UI/integration suites, static checks and both identity gates passed; lease-bound normal-profile DB backup/recreate and two-launch Electron identity acceptance passed; final ABI is Electron |
+| 5. Preferences semantics | in progress | 2026-08-14 | — | `0f0cad08` + closeout patch | Happy-path counting is correct, but renderer best-effort writes do not satisfy durable exactly-once. Replace them with a main-process authority keyed by Generation `operationId`. |
+| 6. Reset and acceptance | in progress | 2026-08-14 | — | `0f0cad08` + closeout patch | Prior reset evidence remains valid; add a committed, temporary-profile identity smoke and rerun acceptance for the closeout schema. |
 
 ### Progress notes
+
+- 2026-08-14: Post-implementation reconciliation found no P0/P1 and no compatibility regression, but reopened Phases 1, 2, 5, and 6 for a bounded closeout patch. The owner selected explicit, exhaustive conversion authorities rather than branded strings. No frozen architecture decision was reopened.
 
 - 2026-08-14: Decisions frozen against HEAD `5f2d7433001133430f183590ac7a4432124c6925`; implementation not yet started.
 - 2026-08-14: Phase 1 completed. `npx tsc --noEmit --pretty false` passed. Domain/contract tests: 19 passed. Active Catalog, conversation read, and branch projection tests: 11 passed. `npm run rebuild:node` completed successfully; current ABI target is Node.

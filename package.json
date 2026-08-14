@@ -90,6 +90,7 @@
     "test:epoch-database:electron": "npm run rebuild:electron && node scripts/smoke/fresh-epoch-database-electron-smoke.mjs",
     "test:epoch-database-crash:electron": "npm run rebuild:electron && node scripts/smoke/fresh-epoch-database-crash-smoke.mjs",
     "test:epoch2-normal-profile-initialization": "node scripts/smoke/epoch2-normal-profile-initialization.mjs",
+    "test:model-provider-identity:fresh-profile": "node scripts/smoke/model-provider-identity-fresh-profile.mjs",
     "test:schema-mismatch-recovery": "node scripts/smoke/schema-mismatch-recovery-smoke.mjs",
     "diagnose:openai-responses-o-reasoning": "electron scripts/diagnostics/probe-openai-responses-o-reasoning-effort.cjs",
     "audit:provider-model-catalog": "node scripts/audit/provider-model-catalog-live-audit.mjs",

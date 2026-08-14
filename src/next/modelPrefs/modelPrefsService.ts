@@ -590,35 +590,13 @@ export class ModelPrefsService {
     return promise
   }
 
-  static async recordRecent(
-    modelInput: ModelPrefsModelRefInput,
-    scopeInput?: ModelPrefsScopeInput
-  ): Promise<ModelPrefsRecent | null> {
-    let scope: NormalizedScope
-    let modelRef: NormalizedModelRef
+  static notifyRecentsChanged(scopeInput?: ModelPrefsScopeInput): void {
     try {
-      scope = normalizeScope(scopeInput)
-      modelRef = normalizeModelRef(modelInput)
-    } catch {
-      return null
-    }
-    const bridge = getModelPreferencesBridge()
-    if (!bridge) return null
-
-    try {
-      const raw = await bridge.recordRecent({
-        scopeType: scope.scopeType,
-        scopeId: scope.scopeId,
-        providerKey: modelRef.providerKey,
-        modelId: modelRef.modelId,
-        usedAtMs: Date.now(),
-      })
-      const row = decodeRecent(raw)
+      const scope = normalizeScope(scopeInput)
       invalidateRecentsScope(scope)
       emitEvent({ kind: 'recents', scopeType: scope.scopeType, scopeId: scope.scopeId, reason: 'mutation' })
-      return row
     } catch {
-      return null
+      // no-op
     }
   }
 

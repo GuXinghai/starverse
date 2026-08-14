@@ -29,6 +29,7 @@ describe('model preferences schema', () => {
 
     expect(tables.has('model_favorites')).toBe(true)
     expect(tables.has('model_recents')).toBe(true)
+    expect(tables.has('model_recent_operation_v2')).toBe(true)
 
     expect(indexes.has('idx_model_favorites_scope_sort')).toBe(true)
     expect(indexes.has('idx_model_favorites_scope_updated')).toBe(true)
@@ -36,6 +37,7 @@ describe('model preferences schema', () => {
     expect(indexes.has('idx_model_recents_scope_last_used')).toBe(true)
     expect(indexes.has('idx_model_recents_scope_use_count')).toBe(true)
     expect(indexes.has('idx_model_recents_global_last_used')).toBe(true)
+    expect(indexes.has('idx_model_recent_operation_provider_model')).toBe(true)
   })
 
   it('uses scope indexes for favorites and recents list queries', () => {

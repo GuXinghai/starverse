@@ -80,6 +80,31 @@ describe('ModelCatalogV2Repo', () => {
     } finally { db.close() }
   })
 
+  it('rejects failure provider namespaces and Catalog identities that do not match the sync scope', () => {
+    const db = createDb()
+    const repo = new ModelCatalogV2Repo(db, () => 200)
+    try {
+      repo.beginSync(scope, 'attempt:namespace')
+      const credentialFailure = createProviderFailureV2({
+        context: { origin: 'secure_storage', phase: 'request_open',
+          provider: { namespace: 'credential_slot', id: 'google_ai_studio' },
+          contractId: scope.operationContractId, operationId: 'attempt:namespace', requestSequence: 1 },
+        transportError: new Error('credential unavailable'),
+      })
+      expect(() => repo.failSync(scope, 'attempt:namespace', credentialFailure))
+        .toThrow('GENERATION_V2_MODEL_CATALOG_INPUT_INVALID')
+
+      const wrongCatalogFailure = createProviderFailureV2({
+        context: { origin: 'network_transport', phase: 'request_open',
+          provider: { namespace: 'catalog_source', id: 'openrouter' },
+          contractId: scope.operationContractId, operationId: 'attempt:namespace', requestSequence: 1 },
+        transportError: new Error('network unavailable'),
+      })
+      expect(() => repo.failSync(scope, 'attempt:namespace', wrongCatalogFailure))
+        .toThrow('GENERATION_V2_MODEL_CATALOG_INPUT_INVALID')
+    } finally { db.close() }
+  })
+
   it('persists a bounded near-limit raw ProviderFailure without replacing its provider facts', () => {
     const db = createDb()
     const repo = new ModelCatalogV2Repo(db, () => 200)

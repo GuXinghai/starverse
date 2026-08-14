@@ -53,7 +53,7 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'generation_v2_search_v1', fileName: 'searchSchema.sql' }),
   Object.freeze({ id: 'engine_plugin_registry_v1', fileName: 'enginePluginRegistrySchema.sql' }),
   Object.freeze({ id: 'openai_chat_compatible_v1', fileName: 'openAIChatCompatibleSchema.sql' }),
-  Object.freeze({ id: 'model_preferences_v1', fileName: 'modelPreferencesSchema.sql' }),
+  Object.freeze({ id: 'model_preferences_v2', fileName: 'modelPreferencesSchema.sql' }),
   Object.freeze({ id: 'model_catalog_v2', fileName: 'modelCatalogSchemaV2.sql' }),
   Object.freeze({ id: 'dfc_attachment_v1', fileName: 'dfcAttachmentSchema.sql' }),
   Object.freeze({ id: 'conversation_route_preference_v1', fileName: 'conversationRoutePreferenceSchema.sql' }),

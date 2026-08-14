@@ -1117,7 +1117,6 @@ interface Window {
       removeFavorite: (payload: unknown) => Promise<GenerationV2ModelPreferenceRemoveResult>
       reorderFavorites: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceFavoriteRecord[]>
       listRecents: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceRecentRecord[]>
-      recordRecent: (payload: unknown) => Promise<GenerationV2ModelPreferenceRecentRecord>
     }>
     localProfiles: Readonly<{
       list: () => Promise<unknown>

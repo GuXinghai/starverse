@@ -33,6 +33,19 @@ CREATE TABLE IF NOT EXISTS model_recents (
   CHECK (model_key = provider_key || '::' || model_id)
 );
 
+-- Consumption ledger for the main-process Generation recent authority.
+-- One immutable Generation operation may increment ordinary recents at most once.
+CREATE TABLE IF NOT EXISTS model_recent_operation_v2 (
+  operation_id TEXT PRIMARY KEY CHECK (length(operation_id) BETWEEN 1 AND 512),
+  provider_key TEXT NOT NULL CHECK (length(provider_key) > 0),
+  model_id TEXT NOT NULL CHECK (length(model_id) > 0),
+  used_at_ms INTEGER NOT NULL CHECK (used_at_ms >= 0),
+  recorded_at_ms INTEGER NOT NULL CHECK (recorded_at_ms >= 0)
+);
+
+CREATE INDEX IF NOT EXISTS idx_model_recent_operation_provider_model
+  ON model_recent_operation_v2(provider_key, model_id, used_at_ms DESC);
+
 CREATE INDEX IF NOT EXISTS idx_model_favorites_scope_sort
   ON model_favorites(scope_type, scope_id, sort_rank ASC, model_key ASC);
 CREATE INDEX IF NOT EXISTS idx_model_favorites_scope_updated
