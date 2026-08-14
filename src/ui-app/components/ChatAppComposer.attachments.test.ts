@@ -33,7 +33,7 @@ describe('ChatAppComposer attachments entry', () => {
         const imageInputSupported = ref(input?.imageInputSupported ?? null)
         const imageInputDisabledReason = ref(input?.imageInputDisabledReason ?? null)
         const sessionConfig = ref({
-          model: { selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter', modelId: DEFAULT_OPENROUTER_TEST_MODEL },
           reasoning: { enabled: false, effort: 'medium' as const },
           webSearch: { enabled: false, level: 'low' as const },
           imageGeneration: {

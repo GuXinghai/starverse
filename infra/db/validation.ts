@@ -1,4 +1,5 @@
 import { z, type ZodType } from 'zod'
+import { RUNTIME_PROVIDER_IDS } from '../../src/next/provider/runtimeProviderId'
 import type {
   AppendMessageInput,
   AppendMessageDeltaInput,
@@ -100,7 +101,6 @@ import type {
   ModelPrefsRemoveFavoriteParams,
   ModelPrefsReorderFavoritesParams,
   ModelPrefsListRecentsParams,
-  ModelPrefsRecordRecentParams,
   ModelPrefsScopeType,
 } from './types'
 
@@ -1121,33 +1121,9 @@ const modelPrefsScopeSchema = z.object({
 })
 
 const modelPrefsModelRefObjectSchema = z.object({
-  providerKey: z.string().min(1).max(128).optional(),
-  modelId: z.string().min(1).max(512).optional(),
-  modelKey: z.string().min(1).max(768).optional(),
+  providerKey: z.enum(RUNTIME_PROVIDER_IDS),
+  modelId: z.string().trim().min(1).max(512),
 })
-
-const validateModelPrefsModelRef = (
-  row: {
-    providerKey?: string
-    modelId?: string
-    modelKey?: string
-  },
-  ctx: z.RefinementCtx,
-) => {
-  const hasModelKey = typeof row.modelKey === 'string' && row.modelKey.trim().length > 0
-  const hasProviderModel =
-    typeof row.providerKey === 'string' &&
-    row.providerKey.trim().length > 0 &&
-    typeof row.modelId === 'string' &&
-    row.modelId.trim().length > 0
-
-  if (!hasModelKey && !hasProviderModel) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: 'model refs require modelKey or providerKey+modelId',
-    })
-  }
-}
 
 export const ModelPrefsListFavoritesSchema: ZodType<ModelPrefsListFavoritesParams> = modelPrefsScopeSchema
 
@@ -1156,11 +1132,9 @@ export const ModelPrefsAddFavoriteSchema: ZodType<ModelPrefsAddFavoriteParams> =
   .extend({
     sortRank: z.number().int().nonnegative().optional(),
   })
-  .superRefine(validateModelPrefsModelRef)
 
 export const ModelPrefsRemoveFavoriteSchema: ZodType<ModelPrefsRemoveFavoriteParams> = modelPrefsScopeSchema
   .merge(modelPrefsModelRefObjectSchema)
-  .superRefine(validateModelPrefsModelRef)
 
 export const ModelPrefsReorderFavoritesSchema: ZodType<ModelPrefsReorderFavoritesParams> = modelPrefsScopeSchema
   .extend({
@@ -1170,10 +1144,3 @@ export const ModelPrefsReorderFavoritesSchema: ZodType<ModelPrefsReorderFavorite
 export const ModelPrefsListRecentsSchema: ZodType<ModelPrefsListRecentsParams> = modelPrefsScopeSchema.extend({
   limit: z.number().int().positive().max(500).optional(),
 })
-
-export const ModelPrefsRecordRecentSchema: ZodType<ModelPrefsRecordRecentParams> = modelPrefsScopeSchema
-  .merge(modelPrefsModelRefObjectSchema)
-  .extend({
-    usedAtMs: z.number().int().nonnegative().optional(),
-  })
-  .superRefine(validateModelPrefsModelRef)

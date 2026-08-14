@@ -90,6 +90,7 @@ function createBrokenSchemaRoot(): string {
     'coreConversationSchema.sql',
     'generationConfigSchema.sql',
     'attachmentAssetSchema.sql',
+    'fileTypeDetectionSchema.sql',
     'openRouterImagesSchema.sql',
     'deepSeekStableModelEvidenceSchema.sql',
   ]) fs.copyFileSync(path.join(repositoryRoot, 'infra', 'db', 'v2', file), path.join(target, file))
@@ -111,6 +112,7 @@ function createDivergentSchemaRoot(): string {
     'generationConfigSchema.sql',
     'toolRegistrySchema.sql',
     'attachmentAssetSchema.sql',
+    'fileTypeDetectionSchema.sql',
     'openRouterImagesSchema.sql',
     'localEndpointProfileSchema.sql',
     'reasoningProjectionSchema.sql',
@@ -165,13 +167,13 @@ describe('fresh epoch-2 database initializer', () => {
       expect(created.databaseFileId).toMatch(/^[0-9a-f]{32}$/u)
       expect(created.schemaDigest).toMatch(/^[0-9a-f]{64}$/u)
       expect(created.objectProjectionDigest).toMatch(/^[0-9a-f]{64}$/u)
-      expect(safeStorageMock.encryptStringAsync).toHaveBeenCalledTimes(1)
-      expect(safeStorageMock.decryptStringAsync).toHaveBeenCalledTimes(1)
+      expect(safeStorageMock.encryptStringAsync).not.toHaveBeenCalled()
+      expect(safeStorageMock.decryptStringAsync).not.toHaveBeenCalled()
 
       const reopened = await initializeOrVerifyFreshEpoch2Database(value)
       expect(reopened).toEqual({ ...created, created: false })
-      expect(safeStorageMock.encryptStringAsync).toHaveBeenCalledTimes(1)
-      expect(safeStorageMock.decryptStringAsync).toHaveBeenCalledTimes(2)
+      expect(safeStorageMock.encryptStringAsync).not.toHaveBeenCalled()
+      expect(safeStorageMock.decryptStringAsync).not.toHaveBeenCalled()
 
       const db = new BetterSqlite3(value.layout.databasePath, { readonly: true })
       try {
@@ -188,13 +190,12 @@ describe('fresh epoch-2 database initializer', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('fails before database creation when async safeStorage is unavailable', async () => {
+  windowsIt('initializes without async safeStorage', async () => {
     const value = fixture('starverse-fresh-db-storage-unavailable')
     safeStorageMock.available = false
     try {
-      await expect(initializeOrVerifyFreshEpoch2Database(value))
-        .rejects.toThrow('EPOCH2_SCOPE_KEY_STORAGE_UNAVAILABLE')
-      expect(fs.existsSync(value.layout.databasePath)).toBe(false)
+      await expect(initializeOrVerifyFreshEpoch2Database(value)).resolves.toMatchObject({ created: true })
+      expect(fs.existsSync(value.layout.databasePath)).toBe(true)
       expect(safeStorageMock.encryptStringAsync).not.toHaveBeenCalled()
     } finally { value.lease.release() }
   })
@@ -240,7 +241,7 @@ describe('fresh epoch-2 database initializer', () => {
     } finally { value.lease.release() }
   })
 
-  windowsIt('atomically rewraps a valid key when safeStorage requests rotation', async () => {
+  windowsIt('does not touch the retired scope-envelope marker when safeStorage requests rotation', async () => {
     const value = fixture('starverse-fresh-db-rewrap')
     try {
       await initializeOrVerifyFreshEpoch2Database(value)
@@ -255,20 +256,18 @@ describe('fresh epoch-2 database initializer', () => {
       try {
         const current = after.prepare(`SELECT envelope_revision, hex(ciphertext) AS ciphertext
           FROM epoch_scope_key_envelope_v2`).get() as { envelope_revision: number; ciphertext: string }
-        expect(current.envelope_revision).toBe(original.envelope_revision + 1)
-        expect(current.ciphertext).not.toBe(original.ciphertext)
+        expect(current).toEqual(original)
       } finally { after.close() }
     } finally { value.lease.release() }
   })
 
-  windowsIt('keeps a complete database fail-closed when decrypted key material is invalid', async () => {
+  windowsIt('keeps a complete database available when retired scope-envelope ciphertext cannot decrypt', async () => {
     const value = fixture('starverse-fresh-db-decrypt-invalid')
     try {
       await initializeOrVerifyFreshEpoch2Database(value)
       for (const mode of ['invalid', 'throw'] as const) {
         safeStorageMock.decryptMode = mode
-        await expect(initializeOrVerifyFreshEpoch2Database(value))
-          .rejects.toThrow('EPOCH2_SCOPE_KEY_DECRYPT_FAILED')
+        await expect(initializeOrVerifyFreshEpoch2Database(value)).resolves.toMatchObject({ created: false })
       }
       const db = new BetterSqlite3(value.layout.databasePath, { readonly: true })
       try {

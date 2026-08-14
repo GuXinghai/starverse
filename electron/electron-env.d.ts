@@ -23,15 +23,20 @@ declare namespace NodeJS {
 
 type ProviderCredentialStatusSource =
   | 'secure_store'
+  | 'plaintext'
   | 'missing'
-type ProviderCredentialBackendKind = 'electron_safe_storage' | 'unavailable'
+type ProviderCredentialBackendKind = 'electron_safe_storage' | 'session' | 'plaintext' | 'unavailable'
+type ProviderCredentialStorageMode = 'system_secure' | 'session' | 'plaintext'
 type OpenRouterCredentialSource = ProviderCredentialStatusSource
 
 type GenerationV2ModelPreferenceScopeType = 'global' | 'project' | 'conversation'
+type GenerationV2ModelPreferenceProviderId = import('../src/next/provider/runtimeProviderId').RuntimeProviderId
+type GenerationV2LocalEndpointExecutionProviderId = import('../src/shared/provider/localProviderRouteDescriptor').LocalEndpointExecutionProviderId
+type GenerationV2LocalEndpointProtocol = import('../src/shared/provider/localProviderRouteDescriptor').LocalEndpointProtocolV2
 type GenerationV2ModelPreferenceFavoriteRecord = Readonly<{
   scopeType: GenerationV2ModelPreferenceScopeType
   scopeId: string
-  providerKey: string
+  providerKey: GenerationV2ModelPreferenceProviderId
   modelId: string
   modelKey: string
   sortRank: number
@@ -41,7 +46,7 @@ type GenerationV2ModelPreferenceFavoriteRecord = Readonly<{
 type GenerationV2ModelPreferenceRecentRecord = Readonly<{
   scopeType: GenerationV2ModelPreferenceScopeType
   scopeId: string
-  providerKey: string
+  providerKey: GenerationV2ModelPreferenceProviderId
   modelId: string
   modelKey: string
   lastUsedAtMs: number
@@ -77,6 +82,7 @@ interface OpenRouterCredentialStatus {
   source: OpenRouterCredentialSource
   backend: ProviderCredentialBackendKind
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
@@ -88,15 +94,12 @@ interface OpenRouterCredentialStatus {
 
 interface OpenRouterCredentialUpdatePayload {
   apiKey?: string
+  storageMode?: ProviderCredentialStorageMode
 }
 
 type OpenRouterCredentialResult =
   | { ok: true; status: OpenRouterCredentialStatus }
   | { ok: false; code: 'invalid_payload' | 'store_unavailable'; message: string }
-
-type ProviderCredentialRevealResult =
-  | { ok: true; apiKey: string }
-  | { ok: false; code: 'credential_missing' | 'store_unavailable'; message: string }
 
 interface OpenAIResponsesCredentialStatus {
   source: ProviderCredentialStatusSource
@@ -104,6 +107,7 @@ interface OpenAIResponsesCredentialStatus {
   providerId: 'openai'
   profileId: 'openai_responses_v1'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
@@ -113,6 +117,7 @@ interface OpenAIResponsesCredentialStatus {
 
 interface OpenAIResponsesCredentialUpdatePayload {
   apiKey?: string
+  storageMode?: ProviderCredentialStorageMode
 }
 
 type OpenAIResponsesCredentialResult =
@@ -185,6 +190,7 @@ interface GoogleAIStudioCredentialStatus {
   providerId: 'google-ai-studio'
   profileId: 'gemini_api_v1'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
@@ -194,6 +200,7 @@ interface GoogleAIStudioCredentialStatus {
 
 interface GoogleAIStudioCredentialUpdatePayload {
   apiKey?: string
+  storageMode?: ProviderCredentialStorageMode
 }
 
 type GoogleAIStudioCredentialResult =
@@ -206,6 +213,7 @@ interface AnthropicCredentialStatus {
   providerId: 'anthropic'
   profileId: 'anthropic_messages_v1'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
@@ -215,6 +223,7 @@ interface AnthropicCredentialStatus {
 
 interface AnthropicCredentialUpdatePayload {
   apiKey?: string
+  storageMode?: ProviderCredentialStorageMode
 }
 
 type AnthropicCredentialResult =
@@ -273,6 +282,7 @@ interface DeepSeekCredentialStatus {
   providerId: 'deepseek'
   profileId: 'deepseek_official_openai_compat'
   apiKeyConfigured: boolean
+  sessionOverridesPersistent?: boolean
   maskedApiKey?: '***'
   migratedFromLegacy?: boolean
   warnings: string[]
@@ -282,6 +292,7 @@ interface DeepSeekCredentialStatus {
 
 interface DeepSeekCredentialUpdatePayload {
   apiKey?: string
+  storageMode?: ProviderCredentialStorageMode
 }
 
 type DeepSeekCredentialResult =
@@ -712,104 +723,6 @@ type OllamaControlResult =
     safeUrl?: string
   }
 
-type OpenAICompatibleImageContentPart =
-  | { type: 'text'; text: string }
-  | { type: 'image_url'; image_url: { url: string } }
-
-type LocalEndpointTextChatMessage = {
-  role: 'user' | 'assistant'
-  content: string | OpenAICompatibleImageContentPart[]
-}
-
-type LocalEndpointTextChatStartResult =
-  | { ok: true }
-  | {
-    ok: false
-    code: 'invalid_payload' | 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected'
-    error: string
-    safeUrl?: string
-  }
-
-type LMStudioTextChatMessage = {
-  role: 'user' | 'assistant'
-  content: string | OpenAICompatibleImageContentPart[]
-}
-
-type LMStudioTextChatStartResult =
-  | { ok: true }
-  | {
-    ok: false
-    code: 'invalid_payload' | 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected'
-    error: string
-    safeUrl?: string
-  }
-
-type OllamaTextChatMessage = {
-  role: 'user' | 'assistant'
-  content: string | OpenAICompatibleImageContentPart[]
-}
-
-type OllamaTextChatStartResult =
-  | { ok: true }
-  | {
-    ok: false
-    code: 'invalid_payload' | 'invalid_url' | 'remote_host_rejected' | 'embedded_credentials_rejected'
-    error: string
-    safeUrl?: string
-  }
-
-type OpenAIResponsesTextChatMessage = {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-type OpenAIResponsesTextChatStartResult =
-  | { ok: true }
-  | {
-    ok: false
-    code: 'invalid_payload' | 'credential_missing' | 'store_unavailable'
-    error: string
-  }
-
-type GoogleAIStudioTextChatMessage = {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-type GoogleAIStudioTextChatStartResult =
-  | { ok: true }
-  | {
-    ok: false
-    code: 'invalid_payload' | 'credential_missing' | 'store_unavailable'
-    error: string
-  }
-
-type AnthropicTextChatMessage = {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-type AnthropicTextChatStartResult =
-  | { ok: true }
-  | {
-    ok: false
-    code: 'invalid_payload' | 'credential_missing' | 'store_unavailable'
-    error: string
-  }
-
-type DeepSeekTextChatMessage = {
-  role: 'user' | 'assistant'
-  content: string
-}
-
-type DeepSeekTextChatStartResult =
-  | { ok: true }
-  | {
-    ok: false
-    code: 'invalid_payload' | 'credential_missing' | 'store_unavailable'
-      error: string
-    }
-
 type CompatibleProviderInstanceId = string
 type CompatibleCredentialVersionRef = string
 
@@ -865,6 +778,10 @@ type CompatibleRendererCredentialDescriptor = Readonly<{
   version: number
   authMode: 'none' | 'bearer' | 'basic' | 'custom_headers'
   configured: boolean
+  availability: 'unknown' | 'available' | 'unavailable'
+  diagnosticCode?: string
+  storageBackend?: 'electron_safe_storage' | 'session' | 'plaintext'
+  sessionOverridesPersistent: boolean
   maskState: 'not_applicable' | 'not_configured' | 'configured_masked'
   sensitiveHeaderNames: readonly string[]
   deletedAtMs: number | null
@@ -1048,7 +965,6 @@ type GenerationV2TextBridge = Readonly<{
 
 type GenerationV2CredentialBridge = Readonly<{
   getStatus: () => Promise<unknown>
-  reveal: () => Promise<unknown>
   update: (payload: unknown) => Promise<unknown>
   clear: () => Promise<unknown>
 }>
@@ -1159,6 +1075,8 @@ interface Window {
       dfcOptions: (payload: Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => Promise<unknown>
       dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => Promise<unknown>
       dfcPreview: (payload: Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) => Promise<unknown>
+      retryFileTypeDetection: (payload: Readonly<{conversationId:string;assetRevisionId:string}>) => Promise<unknown>
+      onFileTypeDetectionUpdated: (listener: (event: unknown) => void) => () => void
     }>
     search: Readonly<{
       query: (payload: unknown) => Promise<unknown>
@@ -1199,12 +1117,11 @@ interface Window {
       removeFavorite: (payload: unknown) => Promise<GenerationV2ModelPreferenceRemoveResult>
       reorderFavorites: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceFavoriteRecord[]>
       listRecents: (payload: unknown) => Promise<readonly GenerationV2ModelPreferenceRecentRecord[]>
-      recordRecent: (payload: unknown) => Promise<GenerationV2ModelPreferenceRecentRecord>
     }>
     localProfiles: Readonly<{
       list: () => Promise<unknown>
-      create: (payload: Readonly<{ providerId: 'lmstudio' | 'ollama' | 'generic_local';
-        protocolContractId: string; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => Promise<unknown>
+      create: (payload: Readonly<{ providerId: GenerationV2LocalEndpointExecutionProviderId;
+        protocolContractId: GenerationV2LocalEndpointProtocol; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => Promise<unknown>
       delete: (endpointProfileId: string) => Promise<unknown>
     }>
     lmStudio: Readonly<{ openResponses: GenerationV2TextBridge }>
@@ -1215,7 +1132,6 @@ interface Window {
       get: (providerInstanceId: string) => Promise<unknown>
       create: (payload: unknown) => Promise<unknown>
       reviseConfiguration: (payload: unknown) => Promise<unknown>
-      writeCredential: (payload: unknown) => Promise<unknown>
       getCredentialStatus: (payload: unknown) => Promise<unknown>
       update: (payload: unknown) => Promise<unknown>
       updateEndpoint: (payload: unknown) => Promise<unknown>
@@ -1268,6 +1184,7 @@ interface Window {
     resolveProxy?: (payload: string | { url?: string }) => Promise<NetworkProxyResolveResult>
   }
   electronAPI?: {
+    platform?: NodeJS.Platform
     selectLocalFiles?: (options?: { context?: 'file' | 'image'; allowMultiple?: boolean }) => Promise<{
       filePaths: string[]
       fileGrants?: Array<{ filePath: string; token: string; expiresAtMs: number }>

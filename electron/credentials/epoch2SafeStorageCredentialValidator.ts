@@ -1,5 +1,6 @@
 import { safeStorage } from 'electron'
 import type { Epoch2ProviderCredentialDecryptValidator } from './epoch2ProviderCredentialRecord'
+import { requireTrustedCredentialSafeStorage } from './credentialSafeStorageBackend'
 
 export class Epoch2SafeStorageCredentialValidatorError extends Error {
   constructor(readonly code:
@@ -13,9 +14,7 @@ export class Epoch2SafeStorageCredentialValidatorError extends Error {
 export const validateEpoch2SafeStorageCredentialDecrypt: Epoch2ProviderCredentialDecryptValidator =
   async (_providerKey, ciphertext) => {
     try {
-      if (!await safeStorage.isAsyncEncryptionAvailable()) {
-        throw new Epoch2SafeStorageCredentialValidatorError('EPOCH2_CREDENTIAL_STORAGE_UNAVAILABLE')
-      }
+      await requireTrustedCredentialSafeStorage()
     } catch (error) {
       if (error instanceof Epoch2SafeStorageCredentialValidatorError) throw error
       throw new Epoch2SafeStorageCredentialValidatorError('EPOCH2_CREDENTIAL_STORAGE_UNAVAILABLE')

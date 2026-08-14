@@ -1,5 +1,6 @@
 import { BrowserWindow, app, dialog, shell } from 'electron'
 import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { CHAT_WORKSPACE_MIN_WINDOW_WIDTH_PX } from '../../src/shared/ui/chatWorkspaceLayout'
 import { t } from '../i18n/mainI18n'
 import { urlOriginForLog } from '../ipc/logSanitizer'
@@ -12,6 +13,51 @@ export type CreateMainWindowInput = Readonly<{
   preloadPath: string
   onMainProcessMessage?: (window: BrowserWindow) => void
 }>
+
+export type MainWindowNavigationPolicy = Readonly<{
+  isTrustedAppUrl: (targetUrl: string) => boolean
+  externalHttpUrl: (targetUrl: string) => string | null
+}>
+
+export function createMainWindowNavigationPolicy(
+  input: Pick<CreateMainWindowInput, 'isDev' | 'viteDevServerUrl' | 'rendererDist'>,
+): MainWindowNavigationPolicy {
+  const trustedDevOrigin = (() => {
+    if (!input.isDev || !input.viteDevServerUrl) return null
+    try {
+      const parsed = new URL(input.viteDevServerUrl)
+      return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.origin : null
+    } catch {
+      return null
+    }
+  })()
+  const trustedPackagedPath = input.isDev
+    ? null
+    : new URL(pathToFileURL(path.join(input.rendererDist, 'index.html')).href).pathname
+
+  const isTrustedAppUrl = (targetUrl: string) => {
+    try {
+      const parsed = new URL(targetUrl)
+      if (parsed.username || parsed.password) return false
+      if (trustedDevOrigin) return parsed.origin === trustedDevOrigin
+      return parsed.protocol === 'file:' && parsed.host === '' && parsed.pathname === trustedPackagedPath
+    } catch {
+      return false
+    }
+  }
+
+  const externalHttpUrl = (targetUrl: string) => {
+    try {
+      const parsed = new URL(targetUrl)
+      if ((parsed.protocol !== 'http:' && parsed.protocol !== 'https:') || isTrustedAppUrl(targetUrl)) return null
+      return parsed.toString()
+    } catch {
+      return null
+    }
+  }
+
+  return Object.freeze({ isTrustedAppUrl, externalHttpUrl })
+}
 
 export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | null {
   const win = new BrowserWindow({
@@ -42,31 +88,20 @@ export function createMainWindow(input: CreateMainWindowInput): BrowserWindow | 
     })
   }
 
-  const isExternalHttpUrl = (targetUrl: string) => {
-    if (!targetUrl || (typeof targetUrl === 'string' && targetUrl.trim() === '')) {
-      return false
-    }
-    if (!targetUrl.startsWith('http://') && !targetUrl.startsWith('https://')) {
-      return false
-    }
-    if (input.viteDevServerUrl && targetUrl.startsWith(input.viteDevServerUrl)) {
-      return false
-    }
-    return true
-  }
+  const navigationPolicy = createMainWindowNavigationPolicy(input)
 
   win.webContents.setWindowOpenHandler(({ url }) => {
-    if (isExternalHttpUrl(url)) {
-      shell.openExternal(url)
-      return { action: 'deny' }
-    }
-    return { action: 'allow' }
+    const externalUrl = navigationPolicy.externalHttpUrl(url)
+    if (externalUrl) shell.openExternal(externalUrl)
+    return { action: 'deny' }
   })
 
   win.webContents.on('will-navigate', (event, url) => {
-    if (isExternalHttpUrl(url)) {
-      event.preventDefault()
-      shell.openExternal(url)
+    if (navigationPolicy.isTrustedAppUrl(url)) return
+    event.preventDefault()
+    const externalUrl = navigationPolicy.externalHttpUrl(url)
+    if (externalUrl) {
+      shell.openExternal(externalUrl)
     }
   })
 

@@ -4,7 +4,10 @@ import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2
 import { GenerationExecutionV2Repo, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+// Approved Generation V2 main-process runtime boundary: this registry owns the persisted operation lifecycle.
+// eslint-disable-next-line no-restricted-imports
 import type { GenerationOperationBindingV2 } from '../../src/next/generation-v2/domain/generationOperationBindingV2'
+// eslint-disable-next-line no-restricted-imports
 import type {
   GenerationOperationRuntimeSnapshotV2,
   GenerationStreamEventV2,
@@ -15,6 +18,7 @@ import {
   type CoordinatedGenerationStreamProjectionSinkV2,
   type GenerationStreamProjectionV2,
 } from './generationStreamProjectionV2'
+import { GenerationRecentUsageAuthorityV2 } from './generationRecentUsageAuthorityV2'
 
 type RuntimeEntry = {
   snapshot: GenerationOperationRuntimeSnapshotV2
@@ -34,6 +38,8 @@ export class GenerationOperationRuntimeRegistryV2Error extends Error {
     | 'GENERATION_V2_RUNTIME_PROJECTION_NOT_PERSISTED'
     | 'GENERATION_V2_RUNTIME_SEQUENCE_INVALID'
     | 'GENERATION_V2_RUNTIME_START_CONFLICT'
+    | 'GENERATION_V2_RUNTIME_BRANCH_QUIESCING'
+    | 'GENERATION_V2_RUNTIME_BRANCH_ABORT_TIMEOUT'
     | 'GENERATION_V2_RUNTIME_CONVERSATION_QUIESCING'
     | 'GENERATION_V2_RUNTIME_CONVERSATION_ABORT_TIMEOUT'
     | 'GENERATION_V2_RUNTIME_PROJECT_QUIESCING'
@@ -84,8 +90,10 @@ export class GenerationOperationRuntimeRegistryV2 {
   readonly #reasoning: AnswerReasoningProjectionV2Repo
   readonly #entries = new Map<string, RuntimeEntry>()
   readonly #listeners = new Set<(event: GenerationStreamEventV2) => void>()
+  readonly #quiescingBranches = new Set<string>()
   readonly #quiescingConversations = new Set<string>()
   readonly #quiescingProjects = new Set<string>()
+  readonly #recentUsage: GenerationRecentUsageAuthorityV2
 
   constructor(
     private readonly db: BetterSqlite3.Database,
@@ -93,6 +101,8 @@ export class GenerationOperationRuntimeRegistryV2 {
   ) {
     this.#execution = new GenerationExecutionV2Repo(db, nowMs)
     this.#reasoning = new AnswerReasoningProjectionV2Repo(db, nowMs)
+    this.#recentUsage = new GenerationRecentUsageAuthorityV2(db)
+    this.#recentUsage.reconcile()
   }
 
   readonly projectionSink: CoordinatedGenerationStreamProjectionSinkV2 = Object.freeze({
@@ -118,6 +128,9 @@ export class GenerationOperationRuntimeRegistryV2 {
 
   register(result: StartableGenerationResultV2): GenerationOperationRuntimeSnapshotV2 {
     const binding = bindingOf(result.execution)
+    if (this.#quiescingBranches.has(binding.branchId)) {
+      throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_BRANCH_QUIESCING')
+    }
     if (this.#quiescingConversations.has(binding.conversationId)) {
       throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_CONVERSATION_QUIESCING')
     }
@@ -132,11 +145,22 @@ export class GenerationOperationRuntimeRegistryV2 {
       if (!sameBinding(existing.snapshot.binding, binding)) {
         throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_BINDING_CONFLICT')
       }
+      this.#recordRecentUsage(result.execution)
       return existing.snapshot
     }
+    this.#recordRecentUsage(result.execution)
     const snapshot = this.#hydrate(result.execution, 0)
     this.#entries.set(binding.operationId, { snapshot, abort: null })
     return snapshot
+  }
+
+  #recordRecentUsage(bundle: GenerationExecutionOperationBundleV2): void {
+    try {
+      this.#recentUsage.record(bundle)
+    } catch {
+      // The immutable Generation operation remains authoritative. A replay or
+      // the next startup reconciliation retries the idempotent recent write.
+    }
   }
 
   start(
@@ -245,6 +269,27 @@ export class GenerationOperationRuntimeRegistryV2 {
     return this.#entries.get(operationId)?.abort?.() ?? false
   }
 
+  async runWithBranchQuiesced<T>(
+    branchId: string,
+    action: () => T | Promise<T>,
+    timeoutMs = 5_000,
+  ): Promise<T> {
+    if (this.#quiescingBranches.has(branchId)) {
+      throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_BRANCH_QUIESCING')
+    }
+    this.#quiescingBranches.add(branchId)
+    try {
+      await this.#abortAndDrainScope(
+        (entry) => entry.snapshot.binding.branchId === branchId,
+        timeoutMs,
+        'GENERATION_V2_RUNTIME_BRANCH_ABORT_TIMEOUT',
+      )
+      return await action()
+    } finally {
+      this.#quiescingBranches.delete(branchId)
+    }
+  }
+
   async runWithConversationQuiesced<T>(
     conversationId: string,
     action: () => T | Promise<T>,
@@ -296,7 +341,8 @@ export class GenerationOperationRuntimeRegistryV2 {
   async #abortAndDrainScope(
     matches: (entry: RuntimeEntry) => boolean,
     timeoutMs: number,
-    timeoutCode: 'GENERATION_V2_RUNTIME_CONVERSATION_ABORT_TIMEOUT' |
+    timeoutCode: 'GENERATION_V2_RUNTIME_BRANCH_ABORT_TIMEOUT' |
+      'GENERATION_V2_RUNTIME_CONVERSATION_ABORT_TIMEOUT' |
       'GENERATION_V2_RUNTIME_PROJECT_ABORT_TIMEOUT',
   ): Promise<void> {
     const remaining = new Set([...this.#entries.entries()]

@@ -4,6 +4,8 @@ import BetterSqlite3 from 'better-sqlite3'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { GENERATION_V2_MODEL_AVAILABILITY_IPC_CHANNELS, GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS,
   registerGenerationV2ModelAvailabilityIpc } from './generationV2ModelAvailabilityIpc'
+// Approved main-process Catalog boundary fixture import.
+// eslint-disable-next-line no-restricted-imports
 import { resolveModelCapabilitiesV2 } from '../../src/next/modelCatalog/modelCapabilityResolverV2'
 import type { CatalogProviderModelObservationV2 } from '../../src/shared/modelCatalog/providerModelObservationV2'
 
@@ -229,7 +231,7 @@ describe('generationV2ModelAvailabilityIpc', () => {
       }) as any
       const listed = await handlers.get(GENERATION_V2_MODEL_AVAILABILITY_IPC_CHANNELS[2])?.({}, {}) as any
       expect(sync).toMatchObject({ ok: true, status: 'synced' })
-      const byId = new Map<string, any>(listed.models.map((model: any) => [model.modelId, model] as const))
+      const byId = new Map<string, any>(listed.items.map((model: any) => [model.modelId, model] as const))
       expect(Array.from(byId.keys())).toEqual(expect.arrayContaining([
         'gemini-2.5-flash-image', 'gemini-3.1-flash-lite-image',
         'gemini-3.1-flash-image', 'gemini-3.1-flash-image-preview',

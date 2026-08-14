@@ -1,9 +1,24 @@
 # Starverse 文件类型检测工程实现目录
 
-Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
+Status: active
+Document Role: entry
+Last updated: 2026-08-14
+
+Lifecycle note: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
-Current phase: Phase 6 user-level lifecycle scaffold + diagnostics surface + Magika pilot integration completed; real Magika Node smoke blocked (tfjs-node ERR_DLOPEN_FAILED); pure JS Magika smoke passed; lifecycle integration (register→enable→health→diagnostics) completed; remaining phase boundaries proposed for Owner review (Phase 7: File Content Identification v1.0); real runtime distribution, production plugin lifecycle, conversion engines remain open
-Next phase: Owner review of remaining phase plan; P7-A real Magika detectFull end-to-end pending approval
+Current phase: Epoch 2 file detection authority and cross-platform Magika `0.2.0` implementation are locally validated and released. The old DB worker `detectBasic/detectFull` route is removed; immutable source revisions now receive a transactional `pending` projection, single-concurrency processing, CAS completion, startup recovery, explicit retry, renderer refresh events, and main-process send enforcement. Magika failure produces a ready basic verdict with exact warning/provenance; only basic read or detection-authority failure produces `failed`.
+Next phase: validate packaged Starverse installation against the published `0.2.0` asset when cross-platform application packaging is available.
+
+## 2026-08-13 Epoch 2 authority acceptance status
+
+- implemented: `file_type_detection_v2` schema/repository, attempt/revision CAS, pending recovery/de-duplication, basic extension/MIME/magic/container/text detection, static policy, and source-revision DFC validation;
+- implemented: import-time pending creation in the same SQLite authority transaction, post-commit scheduling, read-only completion event, retry IPC, UI pending/failed/blocked send disable, and common generation authority error codes;
+- implemented: installed/enabled/healthy/verified registry gate; not-installed/disabled does not spawn; verified package discovery precedes classification;
+- removed: obsolete worker registrations `fileType.detectBasic`, `fileType.detectFull`, and `fileType.markStale`; no old table/repository was restored;
+- validated locally: schema/repository/CAS, stale writeback, basic policy, DFC, shared attachment authority, composer IPC, service no-spawn/de-duplication, attachment UI refresh, deterministic package hash, Node classification, and Electron utility-process classification;
+- production evidence: GitHub Actions run `31685488267` passed all six OS/architecture builds, Node and Electron utility-process classification smokes, byte-identical ZIP comparison, protected Ed25519 signing, and GitHub Release publication; catalog metadata is cut over to the exact published asset.
+- controlled-development reset boundary: adding the 17th Epoch 2 schema fragment intentionally invalidates older development databases and relies on the already-approved reset/backup recovery path; no online 16→17 migration is added in this unpublished environment.
+- legacy boundary: installed `0.1.1` remains unsupported and must be explicitly removed before installing the catalog-authoritative `0.2.0`; no online upgrade path is provided in this controlled development phase.
 
 ## 目录用途
 

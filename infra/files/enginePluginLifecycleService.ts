@@ -19,6 +19,7 @@ import {
   parseMagikaManagedPluginManifest,
   runManagedMagikaPluginHealthCheck,
 } from '../../src/next/file-type/magikaManagedPlugin'
+import type { MagikaProcessRunner } from '../../src/next/file-type/magikaClassifyRunner'
 import {
   buildMagikaOfficialCatalogReadModel,
   MAGIKA_OFFICIAL_PLUGIN_ID,
@@ -375,6 +376,7 @@ export type EnginePluginLifecycleServiceDeps = Readonly<{
   readBytes?: ReadBytes
   now?: () => number
   healthRunner?: EngineHealthRunner
+  magikaProcessRunner?: MagikaProcessRunner
   officialPackageTransport?: PackageDownloadTransport
   magikaOfficialRelease?: OfficialPackageReleaseMetadata
   dfcLibreOfficeOfficialRuntimeCatalogEntry?: DfcLibreOfficeFirstPartyRuntimeCatalogEntry
@@ -1514,6 +1516,7 @@ export class EnginePluginLifecycleService {
     const health = await runManagedMagikaPluginHealthCheck({
       descriptor: input.descriptor,
       healthRunner: this.deps.healthRunner,
+      processRunner: this.deps.magikaProcessRunner,
     })
     if (!health.healthy) {
       const errorChain = buildMagikaHealthErrorChain(health, 'health_check_failed')
@@ -2237,6 +2240,7 @@ export class EnginePluginLifecycleService {
     const health = await runManagedMagikaPluginHealthCheck({
       descriptor: discovered.descriptor,
       healthRunner: this.deps.healthRunner,
+      processRunner: this.deps.magikaProcessRunner,
     })
     if (!health.healthy) {
       const errorChain = buildMagikaHealthErrorChain(health, 'health_check_failed')

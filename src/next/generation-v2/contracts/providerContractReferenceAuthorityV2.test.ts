@@ -86,7 +86,7 @@ describe('Verified provider contract reference V2', () => {
   it('rejects provider, operation and registry mismatches without selecting a fallback contract', () => {
     const definition = listReviewedProviderContractDefinitionsV2()
       .find((item) => item.protocolContractId.value === 'deepseek-stable-chat-v1')!
-    expect(() => verifyProviderContractReferenceV2(record(definition, { providerId: 'openai' })))
+    expect(() => verifyProviderContractReferenceV2(record(definition, { providerId: 'openai_responses' })))
       .toThrow('GENERATION_V2_CONTRACT_REFERENCE_MISMATCH')
     expect(() => verifyProviderContractReferenceV2(record(definition, { operation: 'image_generate' })))
       .toThrow('GENERATION_V2_CONTRACT_REFERENCE_MISMATCH')

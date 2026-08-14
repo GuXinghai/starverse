@@ -1,11 +1,14 @@
 import { computed, defineComponent, ref } from 'vue'
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/vue'
 import userEvent from '@testing-library/user-event'
-import { afterEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { CatalogQueryInput, CatalogQueryResult } from '@/next/modelCatalog/catalogQueryService'
 import { __resetModelPrefsServiceCacheForTests } from '@/next/modelPrefs/modelPrefsService'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
+import { registerCatalogModelSelectionCommandV2 } from '@/next/modelCatalog/catalogRuntimeStoreV2'
+import type { ConversationRouteSelection } from '@/next/provider/conversationRouteSelection'
 import { t } from '@/shared/i18n'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 import ChatAppComposer from './ChatAppComposer.vue'
 
 function createResult(items: CatalogQueryResult['items']): CatalogQueryResult {
@@ -18,7 +21,7 @@ function createResult(items: CatalogQueryResult['items']): CatalogQueryResult {
 
 function createSessionConfig() {
   return {
-    model: { selectedProviderId: 'openrouter' as const, selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL },
+    routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter' as const, modelId: DEFAULT_OPENROUTER_TEST_MODEL  },
     reasoning: { enabled: true, effort: 'medium' as const },
     webSearch: { enabled: true, level: 'low' as const, detail: null },
     imageGeneration: {
@@ -35,7 +38,7 @@ function createSessionConfig() {
 function createBoundSessionConfig(model: { value: string }) {
   return computed(() => ({
     ...createSessionConfig(),
-    model: { selectedProviderId: 'openrouter' as const, selectedModelKey: model.value },
+    routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openrouter' as const, modelId: model.value  },
   }))
 }
 
@@ -87,8 +90,31 @@ async function openImageMenu() {
   return screen.getAllByTestId('capability-chip-menu').at(-1) as HTMLElement
 }
 
+function installModelPreferencesTestAdapter() {
+  const preferences = (globalThis as any).generationV2.modelPreferences
+  const invoke = (method: string, input?: unknown) => (globalThis as any).dbBridge?.invoke?.(method, input)
+  preferences.listFavorites = vi.fn((input: unknown) => invoke('modelPrefs.listFavorites', input))
+  preferences.addFavorite = vi.fn((input: unknown) => invoke('modelPrefs.addFavorite', input))
+  preferences.removeFavorite = vi.fn((input: unknown) => invoke('modelPrefs.removeFavorite', input))
+  preferences.reorderFavorites = vi.fn((input: unknown) => invoke('modelPrefs.reorderFavorites', input))
+  preferences.listRecents = vi.fn((input: unknown) => invoke('modelPrefs.listRecents', input))
+}
+
+function modelSelectionCommandPlugin(command: (selection: ConversationRouteSelection) => Promise<void>) {
+  return {
+    install(app: object) {
+      registerCatalogModelSelectionCommandV2(app, command)
+    },
+  }
+}
+
 describe('ChatAppComposer model picker integration', () => {
   const originalDbBridge = (globalThis as any).dbBridge
+
+  beforeEach(() => {
+    installGenerationV2TestBridge()
+    installModelPreferencesTestAdapter()
+  })
 
   afterEach(() => {
     ;(globalThis as any).dbBridge = originalDbBridge
@@ -98,6 +124,7 @@ describe('ChatAppComposer model picker integration', () => {
 
   it('closes dialog and updates current model pill after single-click selection', async () => {
     const user = userEvent.setup()
+    const selectedModel = ref<string>(DEFAULT_OPENROUTER_TEST_MODEL)
     const queryFn = vi.fn(async (_input: CatalogQueryInput): Promise<CatalogQueryResult> =>
       createResult([
         {
@@ -127,7 +154,7 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
+        const model = selectedModel
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
         const sessionConfig = createBoundSessionConfig(model)
@@ -155,7 +182,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -169,7 +195,11 @@ describe('ChatAppComposer model picker integration', () => {
       `,
     })
 
-    render(Wrapper)
+    render(Wrapper, {
+      global: { plugins: [modelSelectionCommandPlugin(async (selection) => {
+        if (selection.kind === 'provider_model') selectedModel.value = selection.modelId
+      })] },
+    })
 
     const pillBefore = await screen.findByTestId('current-model-pill')
     expect(pillBefore.textContent).toContain(DEFAULT_OPENROUTER_TEST_MODEL)
@@ -186,19 +216,20 @@ describe('ChatAppComposer model picker integration', () => {
   it('selects non-OpenRouter provider models from picker sources', async () => {
     const user = userEvent.setup()
     const queryFn = vi.fn(async (_input: CatalogQueryInput): Promise<CatalogQueryResult> => createResult([]))
-    const updateModel = vi.fn((selection: { providerId: string; modelId: string }) => selection)
+    const updateRouteSelection = vi.fn((selection: ConversationRouteSelection) => selection)
+    const selectedModel = ref<string>(DEFAULT_OPENROUTER_TEST_MODEL)
+    const selectedProvider = ref('openrouter')
 
     const Wrapper = defineComponent({
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref<string>(DEFAULT_OPENROUTER_TEST_MODEL)
-        const selectedProviderId = ref('openrouter')
+        const model = selectedModel
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
         const sessionConfig = computed(() => ({
           ...createSessionConfig(),
-          model: { selectedProviderId: selectedProviderId.value, selectedModelKey: model.value },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: selectedProvider.value, modelId: model.value  },
         }))
         const modelCatalog = ref([])
         const providerModelSources = ref([
@@ -228,11 +259,6 @@ describe('ChatAppComposer model picker integration', () => {
             ],
           },
         ])
-        const handleUpdateModel = (selection: { providerId: string; modelId: string }) => {
-          updateModel(selection)
-          selectedProviderId.value = selection.providerId
-          model.value = selection.modelId
-        }
         return {
           draft,
           model,
@@ -242,13 +268,11 @@ describe('ChatAppComposer model picker integration', () => {
           modelCatalog,
           providerModelSources,
           queryFn,
-          handleUpdateModel,
         }
       },
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -259,18 +283,30 @@ describe('ChatAppComposer model picker integration', () => {
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
           :modelPickerQueryFn="queryFn"
-          @updateModel="handleUpdateModel"
         />
       `,
     })
 
-    render(Wrapper)
+    render(Wrapper, {
+      global: { plugins: [modelSelectionCommandPlugin(async (selection) => {
+        updateRouteSelection(selection)
+        if (selection.kind === 'provider_model') {
+          selectedProvider.value = selection.providerId
+          selectedModel.value = selection.modelId
+        }
+      })] },
+    })
 
     await user.click(await screen.findByTestId('current-model-pill'))
     const item = await screen.findByTestId('model-picker-item-openai_responses-gpt-4.1-mini')
     await user.click(item)
 
-    expect(updateModel).toHaveBeenCalledWith({ providerId: 'openai_responses', modelId: 'gpt-4.1-mini' })
+    expect(updateRouteSelection).toHaveBeenCalledWith({
+      schemaVersion: 1,
+      kind: 'provider_model',
+      providerId: 'openai_responses',
+      modelId: 'gpt-4.1-mini',
+    })
     await waitFor(() => {
       expect(screen.getByTestId('current-model-pill').textContent).toContain('OpenAI Responses')
       expect(screen.getByTestId('current-model-pill').textContent).toContain('GPT-4.1 mini')
@@ -290,7 +326,7 @@ describe('ChatAppComposer model picker integration', () => {
         const requestedReasoningExclude = ref(false)
         const sessionConfig = computed(() => ({
           ...createSessionConfig(),
-          model: { selectedProviderId: 'openai_responses' as const, selectedModelKey: model.value },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openai_responses' as const, modelId: model.value  },
           reasoning: { enabled: false, effort: 'medium' as const },
           generationParams: {
             detail: {
@@ -310,7 +346,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -349,7 +384,7 @@ describe('ChatAppComposer model picker integration', () => {
         draft: '', disabled: false, isRunning: false, modelCatalog: [],
         sessionConfig: {
           ...createSessionConfig(),
-          model: { selectedProviderId: 'deepseek' as const, selectedModelKey: 'deepseek-v4-flash' },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'deepseek' as const, modelId: 'deepseek-v4-flash'  },
           reasoning: { enabled: true, effort: 'high' as const },
         },
         'onUpdateReasoningEffort': updateReasoningEffort,
@@ -377,7 +412,7 @@ describe('ChatAppComposer model picker integration', () => {
         const requestedReasoningExclude = ref(false)
         const sessionConfig = computed(() => ({
           ...createSessionConfig(),
-          model: { selectedProviderId: 'openai_responses' as const, selectedModelKey: model.value },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openai_responses' as const, modelId: model.value  },
           generationParams: {
             detail: {
               reasoningEffort: { mode: 'custom' as const, value: 'auto' },
@@ -397,7 +432,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -482,7 +516,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -526,7 +559,7 @@ describe('ChatAppComposer model picker integration', () => {
         if (method === 'modelPrefs.addFavorite') {
           const modelId = String(params?.modelId ?? '')
           const providerKey = String(params?.providerKey ?? 'openrouter')
-          const modelKey = String(params?.modelKey ?? `${providerKey}::${modelId}`)
+          const modelKey = `${providerKey}::${modelId}`
           const row = {
             scopeType: 'global',
             scopeId: '',
@@ -541,7 +574,7 @@ describe('ChatAppComposer model picker integration', () => {
           return row
         }
         if (method === 'modelPrefs.removeFavorite') {
-          const modelKey = String(params?.modelKey ?? '')
+          const modelKey = `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`
           const before = favorites.length
           favorites = favorites.filter((item) => item.modelKey !== modelKey)
           return { removed: before - favorites.length }
@@ -581,7 +614,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -610,6 +642,8 @@ describe('ChatAppComposer model picker integration', () => {
 
   it('switches current model from favorites strip without opening picker', async () => {
     const user = userEvent.setup()
+    const selectedModel = ref<string>(DEFAULT_OPENROUTER_TEST_MODEL)
+    let rejectSelection = false
     ;(globalThis as any).dbBridge = {
       invoke: vi.fn(async (method: string) => {
         if (method === 'modelPrefs.listFavorites') {
@@ -635,7 +669,7 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
+        const model = selectedModel
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
         const sessionConfig = createBoundSessionConfig(model)
@@ -662,7 +696,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -675,7 +708,12 @@ describe('ChatAppComposer model picker integration', () => {
       `,
     })
 
-    render(Wrapper)
+    render(Wrapper, {
+      global: { plugins: [modelSelectionCommandPlugin(async (selection) => {
+        if (rejectSelection) throw new Error('ROUTE_PREFERENCE_WRITE_FAILED')
+        if (selection.kind === 'provider_model') selectedModel.value = selection.modelId
+      })] },
+    })
     await openFavoritesStrip(user)
     await screen.findByTestId('favorite-model-openai/gpt-4o')
 
@@ -685,6 +723,12 @@ describe('ChatAppComposer model picker integration', () => {
       expect(screen.getByTestId('current-model-pill').textContent).toContain('GPT-4o')
     })
     expect(screen.queryByTestId('model-picker-dialog')).toBeNull()
+
+    selectedModel.value = DEFAULT_OPENROUTER_TEST_MODEL
+    rejectSelection = true
+    await user.click(screen.getByTestId('favorite-model-openai/gpt-4o'))
+    expect(await screen.findByTestId('model-quick-selection-error')).toHaveTextContent('ROUTE_PREFERENCE_WRITE_FAILED')
+    expect(screen.getByTestId('current-model-pill')).toHaveTextContent(DEFAULT_OPENROUTER_TEST_MODEL)
   })
 
   it('opens model picker dialog from current model pill while running', async () => {
@@ -710,7 +754,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -739,7 +782,7 @@ describe('ChatAppComposer model picker integration', () => {
         if (method === 'modelPrefs.addFavorite') {
           const providerKey = String(params?.providerKey ?? 'openrouter')
           const modelId = String(params?.modelId ?? '')
-          const modelKey = String(params?.modelKey ?? `${providerKey}::${modelId}`)
+          const modelKey = `${providerKey}::${modelId}`
           const row = {
             scopeType: 'global',
             scopeId: '',
@@ -754,7 +797,7 @@ describe('ChatAppComposer model picker integration', () => {
           return row
         }
         if (method === 'modelPrefs.removeFavorite') {
-          const modelKey = String(params?.modelKey ?? '')
+          const modelKey = `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`
           const before = favorites.length
           favorites = favorites.filter((item) => item.modelKey !== modelKey)
           return { removed: before - favorites.length }
@@ -820,7 +863,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -848,11 +890,25 @@ describe('ChatAppComposer model picker integration', () => {
 
   it('renders current-session recents strip and switches model with single click', async () => {
     const user = userEvent.setup()
+    const selectedModel = ref<string>(DEFAULT_OPENROUTER_TEST_MODEL)
+    const recents: any[] = [{
+      scopeType: 'global',
+      scopeId: '',
+      providerKey: 'openrouter',
+      modelId: 'anthropic/claude-3',
+      modelKey: 'openrouter::anthropic/claude-3',
+      lastUsedAtMs: 1,
+      useCount: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    }]
+    const invoke = vi.fn(async (method: string) => {
+      if (method === 'modelPrefs.listFavorites') return []
+      if (method === 'modelPrefs.listRecents') return recents
+      return null
+    })
     ;(globalThis as any).dbBridge = {
-      invoke: vi.fn(async (method: string) => {
-        if (method === 'modelPrefs.listFavorites') return []
-        return null
-      }),
+      invoke,
     }
     const queryFn = vi.fn(async (_input: CatalogQueryInput): Promise<CatalogQueryResult> =>
       createResult([
@@ -883,7 +939,7 @@ describe('ChatAppComposer model picker integration', () => {
       components: { ChatAppComposer },
       setup() {
         const draft = ref('')
-        const model = ref(DEFAULT_OPENROUTER_TEST_MODEL)
+        const model = selectedModel
         const requestedReasoningEffort = ref<'auto'>('auto')
         const requestedReasoningExclude = ref(false)
         const sessionConfig = createBoundSessionConfig(model)
@@ -911,7 +967,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -925,9 +980,14 @@ describe('ChatAppComposer model picker integration', () => {
       `,
     })
 
-    render(Wrapper)
+    render(Wrapper, {
+      global: { plugins: [modelSelectionCommandPlugin(async (selection) => {
+        if (selection.kind === 'provider_model') selectedModel.value = selection.modelId
+      })] },
+    })
     await user.click(await screen.findByTestId('current-model-pill'))
     await user.click(await screen.findByTestId('model-picker-item-anthropic/claude-3'))
+    expect(invoke.mock.calls.some((call) => call[0] === 'modelPrefs.recordRecent')).toBe(false)
 
     await openRecentsStrip(user)
     await screen.findByTestId('recent-model-anthropic/claude-3')
@@ -942,10 +1002,22 @@ describe('ChatAppComposer model picker integration', () => {
   it('limits current-session recents and opens picker from the model pill', async () => {
     const user = userEvent.setup()
     const modelIds = Array.from({ length: 8 }, (_value, index) => `vendor/model-${index + 1}`)
+    const recents = modelIds.map((modelId, index) => ({
+      scopeType: 'global',
+      scopeId: '',
+      providerKey: 'openrouter',
+      modelId,
+      modelKey: `openrouter::${modelId}`,
+      lastUsedAtMs: modelIds.length - index,
+      useCount: 1,
+      createdAtMs: 1,
+      updatedAtMs: 1,
+    }))
 
     ;(globalThis as any).dbBridge = {
       invoke: vi.fn(async (method: string) => {
         if (method === 'modelPrefs.listFavorites') return []
+        if (method === 'modelPrefs.listRecents') return recents
         return null
       }),
     }
@@ -1007,7 +1079,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -1022,16 +1093,14 @@ describe('ChatAppComposer model picker integration', () => {
       `,
     })
 
-    render(Wrapper)
+    render(Wrapper, {
+      global: { plugins: [modelSelectionCommandPlugin(async () => undefined)] },
+    })
 
-    for (const modelId of modelIds) {
-      await user.click(await screen.findByTestId('current-model-pill'))
-      await user.click(await screen.findByTestId(`model-picker-item-${modelId}`))
-    }
     await openRecentsStrip(user)
-    await screen.findByTestId('recent-model-vendor/model-8')
-    expect(screen.queryByTestId('recent-model-vendor/model-1')).toBeNull()
-    expect(screen.queryByTestId('recent-model-vendor/model-2')).toBeNull()
+    await screen.findByTestId('recent-model-vendor/model-1')
+    expect(screen.queryByTestId('recent-model-vendor/model-7')).toBeNull()
+    expect(screen.queryByTestId('recent-model-vendor/model-8')).toBeNull()
 
     await user.click(screen.getByTestId('current-model-pill'))
     await screen.findByTestId('model-picker-dialog')
@@ -1042,8 +1111,8 @@ describe('ChatAppComposer model picker integration', () => {
     const now = 1_700_000_000_000
     let favorites = [
       {
-        scopeType: 'global',
-        scopeId: '',
+        scopeType: 'conversation',
+        scopeId: 'convo-42',
         providerKey: 'openrouter',
         modelId: 'openai/gpt-4o',
         modelKey: 'openrouter::openai/gpt-4o',
@@ -1052,8 +1121,8 @@ describe('ChatAppComposer model picker integration', () => {
         updatedAtMs: now,
       },
       {
-        scopeType: 'global',
-        scopeId: '',
+        scopeType: 'conversation',
+        scopeId: 'convo-42',
         providerKey: 'openrouter',
         modelId: 'anthropic/claude-3',
         modelKey: 'openrouter::anthropic/claude-3',
@@ -1064,7 +1133,9 @@ describe('ChatAppComposer model picker integration', () => {
     ]
 
     const invoke = vi.fn(async (method: string, params?: any) => {
-      if (method === 'modelPrefs.listFavorites') return favorites
+      if (method === 'modelPrefs.listFavorites') {
+        return params?.scopeType === 'conversation' && params?.scopeId === 'convo-42' ? favorites : []
+      }
       if (method === 'modelPrefs.listRecents') return []
       if (method === 'modelPrefs.reorderFavorites') {
         const ordered = Array.isArray(params?.orderedModelKeys) ? params.orderedModelKeys.map((value: unknown) => String(value)) : []
@@ -1174,7 +1245,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -1231,8 +1301,8 @@ describe('ChatAppComposer model picker integration', () => {
     const now = 1_700_000_000_000
     let favorites = [
       {
-        scopeType: 'global',
-        scopeId: '',
+        scopeType: 'conversation',
+        scopeId: 'convo-42',
         providerKey: 'openrouter',
         modelId: 'openai/gpt-4o',
         modelKey: 'openrouter::openai/gpt-4o',
@@ -1241,8 +1311,8 @@ describe('ChatAppComposer model picker integration', () => {
         updatedAtMs: now,
       },
       {
-        scopeType: 'global',
-        scopeId: '',
+        scopeType: 'conversation',
+        scopeId: 'convo-42',
         providerKey: 'openrouter',
         modelId: 'anthropic/claude-3',
         modelKey: 'openrouter::anthropic/claude-3',
@@ -1253,10 +1323,13 @@ describe('ChatAppComposer model picker integration', () => {
     ]
 
     const invoke = vi.fn(async (method: string, params?: any) => {
-      if (method === 'modelPrefs.listFavorites') return favorites
+      if (method === 'modelPrefs.listFavorites') {
+        return params?.scopeType === 'conversation' && params?.scopeId === 'convo-42' ? favorites : []
+      }
       if (method === 'modelPrefs.listRecents') return []
       if (method === 'modelPrefs.removeFavorite') {
-        favorites = favorites.filter((row) => row.modelKey !== String(params?.modelKey ?? ''))
+        const modelKey = `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`
+        favorites = favorites.filter((row) => row.modelKey !== modelKey)
         return { removed: 1 }
       }
       if (method === 'modelPrefs.reorderFavorites') {
@@ -1367,7 +1440,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -1395,7 +1467,8 @@ describe('ChatAppComposer model picker integration', () => {
         expect.objectContaining({
           scopeType: 'conversation',
           scopeId: 'convo-42',
-          modelKey: 'openrouter::anthropic/claude-3',
+          providerKey: 'openrouter',
+          modelId: 'anthropic/claude-3',
         }),
       )
     })
@@ -1419,7 +1492,7 @@ describe('ChatAppComposer model picker integration', () => {
           scopeId: String(params?.scopeId ?? ''),
           providerKey: String(params?.providerKey ?? 'openrouter'),
           modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
+          modelKey: `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`,
           sortRank: 0,
           createdAtMs: 1_700_000_000_000,
           updatedAtMs: 1_700_000_000_000,
@@ -1462,7 +1535,6 @@ describe('ChatAppComposer model picker integration', () => {
       template: `
         <ChatAppComposer
           v-model:draft="draft"
-          v-model:model="model"
           v-model:requestedReasoningEffort="requestedReasoningEffort"
           v-model:requestedReasoningExclude="requestedReasoningExclude"
           :disabled="false"
@@ -1495,8 +1567,8 @@ describe('ChatAppComposer model picker integration', () => {
         expect.objectContaining({
           scopeType: 'project',
           scopeId: 'project-77',
+          providerKey: 'openrouter',
           modelId: 'openai/gpt-4o',
-          modelKey: 'openrouter::openai/gpt-4o',
         }),
       )
     })
@@ -1510,7 +1582,7 @@ describe('ChatAppComposer model picker integration', () => {
         isRunning: false,
         sessionConfig: {
           ...createSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash' },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio' as const, modelId: 'gemini-2.5-flash'  },
           generationParams: { detail: {
             thinkingBudget: { mode: 'custom', value: 2048 },
             includeThoughts: { mode: 'custom', value: false },
@@ -1544,7 +1616,7 @@ describe('ChatAppComposer model picker integration', () => {
         isRunning: false,
         sessionConfig: {
           ...createSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-pro-preview' },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio' as const, modelId: 'gemini-3.1-pro-preview'  },
           generationParams: { detail: {
             thinkingLevel: { mode: 'custom', value: 'high' },
             includeThoughts: { mode: 'custom', value: true },
@@ -1577,7 +1649,7 @@ describe('ChatAppComposer model picker integration', () => {
         isRunning: false,
         sessionConfig: {
           ...createSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-image' },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio' as const, modelId: 'gemini-3.1-flash-image'  },
           generationParams: { detail: {
             thinkingLevel: { mode: 'custom', value: 'high' },
             thoughtSummaryMode: { mode: 'custom', value: 'none' },
@@ -1619,7 +1691,7 @@ describe('ChatAppComposer model picker integration', () => {
         isRunning: false,
         sessionConfig: {
           ...createSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-2.5-flash-image' },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio' as const, modelId: 'gemini-2.5-flash-image'  },
           imageGeneration: {
             enabled: false,
             resolution: '4K' as const,
@@ -1649,7 +1721,7 @@ describe('ChatAppComposer model picker integration', () => {
         isRunning: false,
         sessionConfig: {
           ...createSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-image' },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio' as const, modelId: 'gemini-3.1-flash-image'  },
           generationParams: { detail: {
             thinkingLevel: { mode: 'custom', value: 'minimal' },
             thoughtSummaryMode: { mode: 'custom', value: 'none' },
@@ -1678,7 +1750,7 @@ describe('ChatAppComposer model picker integration', () => {
         isRunning: false,
         sessionConfig: {
           ...createSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-3.1-flash-lite-image' },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio' as const, modelId: 'gemini-3.1-flash-lite-image'  },
         },
         modelCatalog: [],
       },
@@ -1699,7 +1771,7 @@ describe('ChatAppComposer model picker integration', () => {
         isRunning: false,
         sessionConfig: {
           ...createSessionConfig(),
-          model: { selectedProviderId: 'google_ai_studio' as const, selectedModelKey: 'gemini-1.5-pro' },
+          routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio' as const, modelId: 'gemini-1.5-pro'  },
         },
         modelCatalog: [],
       },

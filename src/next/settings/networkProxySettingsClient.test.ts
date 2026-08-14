@@ -1,55 +1,41 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { probeLibreOfficeOfficialDownloadNetwork } from './networkProxySettingsClient'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 
-const originalDbBridge = (globalThis as any).dbBridge
-const originalElectronApi = (globalThis as any).electronAPI
+const originalGenerationV2 = (globalThis as any).generationV2
+const originalNetworkProxy = (globalThis as any).networkProxy
 
 afterEach(() => {
-  ;(globalThis as any).dbBridge = originalDbBridge
-  ;(globalThis as any).electronAPI = originalElectronApi
+  ;(globalThis as any).generationV2 = originalGenerationV2
+  ;(globalThis as any).networkProxy = originalNetworkProxy
   vi.restoreAllMocks()
 })
 
 describe('networkProxySettingsClient', () => {
-  it('uses the DB worker diagnostic for manual proxy mode', async () => {
-    const invoke = vi.fn(async (method: string) => {
-      if (method === 'settings.getNetworkProxySettings') {
-        return { value: { proxyMode: 'manual', manualProxyUrl: 'http://127.0.0.1:7890', noProxy: '', strictSSL: true } }
-      }
-      if (method === 'enginePluginLifecycle.probeLibreOfficeOfficialDownloadNetwork') {
-        return {
-          ok: true,
-          proxyMode: 'manual',
-          metadataReachable: true,
-          assetFound: true,
-          headPassed: true,
-          contentLength: 'match',
-          redirectHostAllowed: true,
-          rangePassed: true,
-          terminalDiagnostic: 'proxy_probe_passed',
-        }
-      }
-      throw new Error(`unexpected method ${method}`)
-    })
-    const systemProbe = vi.fn()
-    ;(globalThis as any).dbBridge = { invoke }
-    ;(globalThis as any).electronAPI = { probeLibreOfficeSystemProxyDownloadNetwork: systemProbe }
+  it('uses the Generation V2 plugin diagnostic for manual proxy mode', async () => {
+    const bridge = installGenerationV2TestBridge()
+    const probe = vi.fn(async () => ({
+      ok: true,
+      proxyMode: 'manual',
+      metadataReachable: true,
+      assetFound: true,
+      headPassed: true,
+      contentLength: 'match',
+      redirectHostAllowed: true,
+      rangePassed: true,
+      terminalDiagnostic: 'proxy_probe_passed',
+    }))
+    ;(bridge.plugins as any).probeLibreOfficeDownload = probe
 
     const result = await probeLibreOfficeOfficialDownloadNetwork()
 
     expect(result).toMatchObject({ ok: true, proxyMode: 'manual', terminalDiagnostic: 'proxy_probe_passed' })
-    expect(invoke).toHaveBeenCalledWith('enginePluginLifecycle.probeLibreOfficeOfficialDownloadNetwork')
-    expect(systemProbe).not.toHaveBeenCalled()
+    expect(probe).toHaveBeenCalledTimes(1)
   })
 
-  it('uses Electron-net diagnostic for system proxy mode', async () => {
-    const invoke = vi.fn(async (method: string) => {
-      if (method === 'settings.getNetworkProxySettings') {
-        return { value: { proxyMode: 'system', manualProxyUrl: '', noProxy: '', strictSSL: true } }
-      }
-      throw new Error(`unexpected method ${method}`)
-    })
-    const systemProbe = vi.fn(async () => ({
+  it('uses Generation V2 plugin diagnostic for system proxy mode', async () => {
+    const bridge = installGenerationV2TestBridge()
+    const probe = vi.fn(async () => ({
       ok: true,
       proxyMode: 'system',
       metadataReachable: true,
@@ -60,22 +46,21 @@ describe('networkProxySettingsClient', () => {
       rangePassed: true,
       terminalDiagnostic: 'proxy_probe_passed',
     }))
-    ;(globalThis as any).dbBridge = { invoke }
-    ;(globalThis as any).electronAPI = { probeLibreOfficeSystemProxyDownloadNetwork: systemProbe }
+    ;(bridge.plugins as any).probeLibreOfficeDownload = probe
 
     const result = await probeLibreOfficeOfficialDownloadNetwork()
 
     expect(result).toMatchObject({ ok: true, proxyMode: 'system', terminalDiagnostic: 'proxy_probe_passed' })
-    expect(systemProbe).toHaveBeenCalledTimes(1)
-    expect(invoke).not.toHaveBeenCalledWith('enginePluginLifecycle.probeLibreOfficeOfficialDownloadNetwork')
+    expect(probe).toHaveBeenCalledTimes(1)
   })
 
   it('fails closed when system proxy mode lacks Electron-net transport', async () => {
-    const invoke = vi.fn(async () => ({
-      value: { proxyMode: 'system', manualProxyUrl: '', noProxy: '', strictSSL: true },
-    }))
-    ;(globalThis as any).dbBridge = { invoke }
-    ;(globalThis as any).electronAPI = {}
+    const bridge = installGenerationV2TestBridge()
+    ;(bridge.plugins as any).probeLibreOfficeDownload = vi.fn(async () => { throw new Error('electron_net_transport_blocked') })
+    ;(globalThis as any).networkProxy = {
+      getSettings: vi.fn(async () => ({ ok: true, settings: { proxyMode: 'system', manualProxyUrl: '', noProxy: '', strictSSL: true } })),
+      updateSettings: vi.fn(),
+    }
 
     const result = await probeLibreOfficeOfficialDownloadNetwork()
 

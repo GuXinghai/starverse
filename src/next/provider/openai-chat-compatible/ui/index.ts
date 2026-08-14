@@ -1,2 +1,2 @@
 export * from './compatibleProviderRegistryClient'
-export * from './compatibleConfigurationSelection'
+export * from './compatibleRouteIntent'

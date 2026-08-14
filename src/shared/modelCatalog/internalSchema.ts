@@ -1,6 +1,6 @@
-import type { ProviderId } from '../../constants/providers'
+import type { CatalogProviderKey } from './catalogIdentity'
 
-export type CatalogProviderKey = ProviderId | (string & {})
+export type { CatalogProviderKey } from './catalogIdentity'
 export type CatalogTimestampMs = number
 export type CatalogModelId = string
 export type CatalogCanonicalSlug = string

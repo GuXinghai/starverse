@@ -3,7 +3,8 @@
 **Purpose**: Help agents judge document timeliness and reading priority.
 
 **Status**: active
-**Last updated**: 2026-05-22
+**Document Role**: entry
+**Last updated**: 2026-08-14
 **Governance**: DGR-1 dual-dimension status model
 
 ---
@@ -51,7 +52,8 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [DOC_STATUS_INDEX.md](DOC_STATUS_INDEX.md) | active | entry | Status | Check before reading unfamiliar doc | This file |
 | [guides/INDEX.md](guides/INDEX.md) | active | entry | Navigation | After AGENT_INDEX | Main doc hub by scenario |
 | [maintenance/maintainer-entry.md](maintenance/maintainer-entry.md) | active | maintenance | Boundaries | Team onboarding | Key directories, code boundaries, high-risk zones |
-| [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | active | ssot | Architecture | Understand system | Layers, naming, module responsibilities |
+| [architecture/CURRENT_SYSTEM_ARCHITECTURE.md](architecture/CURRENT_SYSTEM_ARCHITECTURE.md) | active | ssot | Architecture | Understand current system | Current process, data and module boundaries |
+| [architecture/OVERVIEW.md](architecture/OVERVIEW.md) | historical | implementation-note | Historical architecture | Trace retired Worker/dbBridge design | Not current implementation authority |
 | [architecture/provider-architecture/README.md](architecture/provider-architecture/README.md) | active | ssot | Provider Architecture | Multi-provider architecture work | Owner-confirmed multi-provider architecture SSOT |
 | [file-pipeline/README.md](file-pipeline/README.md) | active | entry | Feature track | File/conversion tasks | **Entry point**: routes to progress-ledger as SSOT |
 | [file-pipeline/progress-ledger.md](file-pipeline/progress-ledger.md) | active | ssot | File Pipeline | Current decisions & blockers | SSOT for file pipeline status |
@@ -61,7 +63,8 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [architecture/UNIFIED_GENERATION_ARCHITECTURE.md](architecture/UNIFIED_GENERATION_ARCHITECTURE.md) | active | ssot | Architecture | Generation/streaming tasks | Current generation config architecture |
 | [architecture/OPENROUTER_INTEGRATION_SUMMARY.md](architecture/OPENROUTER_INTEGRATION_SUMMARY.md) | reference | implementation-note | Integration | OpenRouter tasks; legacy integration context | Multi-provider AI integration; current implementation may differ |
 | [tailwind/TAILWIND_V4_README.md](tailwind/TAILWIND_V4_README.md) | active | entry | Styling | UI/style tasks | Tailwind v4 migration & rules |
-| [archive/README.md](archive/README.md) | archived | archive-index | Catalog | History trace only | 46+ archived docs (completed-features, bugfixes, analysis, etc.) |
+| [archive/README.md](archive/README.md) | archived | archive-index | Catalog | History trace only | 76 files including the archive index; read only for history |
+| [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) | reference | entry | Provider/model identity | Identity audit or closeout tracing | Point-in-time evidence; current source remains authoritative |
 
 ### DGR-1 Governance Documents
 
@@ -122,6 +125,38 @@ Examples in archive:
 
 ---
 
+## Directory Inventory (2026-08-14)
+
+Counts include Markdown, JSON, HTML, CSV, and other tracked files under each directory. They are navigation hints, not lifecycle claims for every file.
+
+| Directory | Files | Default interpretation | Entry / SSOT |
+|---|---:|---|---|
+| `adr/` | 6 | reference / decision | `adr/README.md` |
+| `analysis/` | 10 | reference / historical evidence | `analysis/model-provider-identity/README.md` |
+| `architecture/` | 185 | mixed; classify by topic | `architecture/CURRENT_SYSTEM_ARCHITECTURE.md` |
+| `archive/` | 76 | archived | `archive/README.md` |
+| `bugfix/` | 25 | pending-classification; mostly historical notes | — |
+| `decisions/` | 6 | reference / historical decisions | `decisions/README.md` |
+| `diagnostics/` | 3 | pending-classification | — |
+| `features/` | 31 | pending-classification; implementation notes | — |
+| `file-pipeline/` | 166 | mixed; active ledgers plus historical phases | `file-pipeline/README.md` |
+| `governance/` | 1 | reference / maintenance | — |
+| `guides/` | 33 | active guides plus historical reports | `guides/INDEX.md` |
+| `i18n/` | 5 | pending-classification | `i18n/README.md` |
+| `maintenance/` | 33 | active maintenance and audit records | `maintenance/maintainer-entry.md` |
+| `notes/` | 4 | pending-classification | — |
+| `refactor/` | 10 | reference / implementation notes | — |
+| `refactoring/` | 1 | redirect only | `refactoring/README.md` |
+| `requirements/` | 3 | pending-classification / requirements | — |
+| `rfc/` | 1 | pending-classification / proposal | — |
+| `security/` | 3 | active or planned security work | — |
+| `spec/` | 17 | pending-classification / contracts | — |
+| `tailwind/` | 3 | active styling entry and references | `tailwind/TAILWIND_V4_README.md` |
+| `todo/` | 2 | reference / pending work | `todo/README.md` |
+| `ui-refactoring/` | 9 | reference / implementation notes | — |
+
+Root-level entries are limited to `AGENT_INDEX.md`, `DOC_STATUS_INDEX.md`, and `openrouter-streaming-reasoning-ssot-v2.md`.
+
 ## Governance & Development
 
 | Path | Lifecycle Status | Document Role | Domain | Read When |
@@ -129,32 +164,14 @@ Examples in archive:
 | [governance/](governance/) | reference | maintenance | Domain index | Directory scope reference; read concrete governance docs for current rules |
 | [adr/](adr/) | reference | decision | Decisions | ADR process rules, templates, engineering decisions (000-003) |
 | [decisions/](decisions/) | reference | decision | Decisions | Project foundation decisions (001-005) |
-| [bugfix/](bugfix/) | reference | implementation-note | Fixes | Complex historical fixes (not archived) |
-| [refactor/](refactor/) | reference | implementation-note | Refactor | SSOT v2 refactor plans (OpenRouter) |
-| [ui-refactoring/](ui-refactoring/) | reference | implementation-note | Refactor | UI component refactoring (ChatView, ConversationList) |
+| [bugfix/](bugfix/) | reference | implementation-note | Fixes | Complex historical fixes not yet moved to archive |
+| [refactor/](refactor/) | reference | implementation-note | Refactor | OpenRouter refactor records |
+| [ui-refactoring/](ui-refactoring/) | reference | implementation-note | Refactor | UI component refactor records |
+| [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) | reference | entry | Provider/model identity | Trace evidence; verify claims against current checkout |
 
-> **Note on dual entries**: `refactor/`, `ui-refactoring/`, and `bugfix/` appear in both "Governance & Development" (directory-level role) and "Pending-Classification Directories" (individual files awaiting DGR-3 classification). This is intentional: the directory has a known role, but individual files within it have not yet received per-file lifecycle status.
+## Pending Classification Policy
 
----
-
-## Pending-Classification Directories
-
-The following directories contain documents that have not yet been classified with dual-dimension status. They are registered as `pending-classification` and will be classified in DGR-3.
-
-| Directory | File Count | Likely Role | Status | Next Step |
-|-----------|------------|-------------|--------|-----------|
-| [features/](features/) | 31 | implementation-note | pending-classification | DGR-3: classify each file |
-| [spec/](spec/) | 17 | spec | pending-classification | DGR-3: classify each file |
-| [architecture/](architecture/) | 22 | various | pending-classification | DGR-3: classify each file |
-| [bugfix/](bugfix/) | 18+ | implementation-note | pending-classification | DGR-3: classify each file |
-| [i18n/](i18n/) | 5 | spec/guide | pending-classification | DGR-3: classify each file |
-| [rfc/](rfc/) | 1 | spec | pending-classification | DGR-3: classify each file |
-| [notes/](notes/) | 4 | implementation-note | pending-classification | DGR-3: classify each file |
-| [requirements/](requirements/) | 3 | spec | pending-classification | DGR-3: classify each file |
-| [refactor/](refactor/) | 10 | implementation-note | pending-classification | DGR-3: classify each file |
-| [ui-refactoring/](ui-refactoring/) | 9 | implementation-note | pending-classification | DGR-3: classify each file |
-
-**Note**: These directories are NOT individually modified in DGR-1. They are only registered here for tracking.
+The inventory above intentionally does not claim that every file in a mixed directory has the same lifecycle. First classify entry points, SSOTs, and documents referenced by current code or tests. Leave low-frequency files as `pending-classification` until an owner reviews them; do not bulk-relabel or move them solely to make counts look clean.
 
 ---
 
@@ -171,13 +188,25 @@ The following directories contain documents that have not yet been classified wi
 
 ## Sync Notes
 
-Last sync: 2026-05-22 (DGR-1)
+Last sync: 2026-08-14
 
 When adding new docs to docs/ or updating existing status:
 1. Update this index
 2. Link from guides/INDEX.md or AGENT_INDEX.md
 3. Check docs/guides/INDEX.md for any cross-links
 4. Run: `rg -n "docs/AGENT_INDEX.md|DOC_STATUS_INDEX" README.md docs`
+
+### Analysis bundle import (2026-08-14)
+
+**Created**:
+- `analysis/model-provider-identity/README.md`
+- Seven split closeout, independent-review, synthesis, and frozen-decision/implementation documents under `analysis/model-provider-identity/`
+
+**Classification**:
+- The directory README is a `reference` / `entry` document.
+- The purge closeout and point-in-time reviews are `historical` evidence.
+- The cross-review synthesis is `reference` / `candidate-action-list`, not an SSOT or approved implementation plan.
+- `07-frozen-decisions-and-implementation-plan.md` is `historical` / closeout evidence after the identity implementation; it no longer owns an active implementation ledger.
 
 ### DGR-1 Changes (2026-05-22)
 

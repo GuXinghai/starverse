@@ -23,6 +23,7 @@ import { createGenerationTextBodyCheckpointV2, type GenerationBodyCheckpointV2 }
 import { OpenAIChatCompatibleResponseAssemblerV2, type OpenAIChatCompatibleStreamResultV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/chatResponseAssemblerV2'
 import { createOpenAICompatibleHeadersV2 } from './openAICompatibleNetworkV2'
 import { isCredentialScopeIdV2, type CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
+import { readOpenAICompatibleJsonResponseBytesV2 } from './openAIChatCompatibleResponseBodyV2'
 
 type CredentialService = ReturnType<typeof createOpenAICompatibleCredentialV2Service>
 
@@ -170,7 +171,7 @@ export function createOpenAIChatCompatibleStreamRunnerV2(input: Readonly<{
           consume(parser.finish(), assembler, reasoning, visible, checkpoint)
         } finally { try { await reader.cancel() } catch {}; reader.releaseLock() }
       } else if (contentType.includes('application/json')) {
-        const bytes = new Uint8Array(await response.arrayBuffer()); try { started = bytes.byteLength > 0; consume(decodeCompatibleNonStreamResponse({ bytes, expectedChoiceCount: 1 }), assembler, reasoning, visible, checkpoint) } finally { bytes.fill(0) }
+        const bytes = await readOpenAICompatibleJsonResponseBytesV2(response); try { started = bytes.byteLength > 0; consume(decodeCompatibleNonStreamResponse({ bytes, expectedChoiceCount: 1 }), assembler, reasoning, visible, checkpoint) } finally { bytes.fill(0) }
       } else throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_CONTENT_TYPE_INVALID')
       const result = assembler.finish()
       if (result.model !== command.preparedRequest.modelId) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RUNNER_MODEL_MISMATCH')

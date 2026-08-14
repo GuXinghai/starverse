@@ -5,7 +5,7 @@ import ChatSessionConsole from './ChatSessionConsole.vue'
 
 function defaultSessionConfig() {
   return {
-    model: { selectedModelKey: null },
+    routeSelection: null,
     reasoning: { enabled: false, effort: 'medium' as const },
     webSearch: { enabled: false, level: 'high' as const, detail: null },
     imageGeneration: {
@@ -55,22 +55,22 @@ describe('ChatSessionConsole network error display', () => {
         disabled: false,
         isRunning: false,
         sessionConfig: defaultSessionConfig(),
-        openAIResponsesChat: { enabled: true, model: 'gpt-4.1-mini', experimentalLabel: 'OpenAI Responses' },
+        openAIResponsesChat: { enabled: true, experimentalLabel: 'OpenAI Responses' },
         openAIResponsesModelAvailability: {
           loading: false,
           result: availabilityFailure('openai_responses', 'http_401_auth', 'errors.network.reason.http401Auth') as any,
         },
-        anthropicChat: { enabled: true, model: 'claude-sonnet-4-5', thinkingDisplay: 'summarized', experimentalLabel: 'Anthropic' },
+        anthropicChat: { enabled: true, thinkingDisplay: 'summarized', experimentalLabel: 'Anthropic' },
         anthropicModelAvailability: {
           loading: false,
           result: availabilityFailure('anthropic', 'http_403_forbidden', 'errors.network.reason.http403Forbidden') as any,
         },
-        googleAIStudioChat: { enabled: true, model: 'gemini-2.5-flash', experimentalLabel: 'Google AI Studio' },
+        googleAIStudioChat: { enabled: true, experimentalLabel: 'Google AI Studio' },
         googleAIStudioModelAvailability: {
           loading: false,
           result: availabilityFailure('google_ai_studio', 'http_404_not_found_or_model_missing', 'errors.network.reason.http404NotFoundOrModelMissing') as any,
         },
-        deepSeekChat: { enabled: true, model: 'deepseek-chat', experimentalLabel: 'DeepSeek' },
+        deepSeekChat: { enabled: true, experimentalLabel: 'DeepSeek' },
         deepSeekModelAvailability: {
           loading: false,
           result: availabilityFailure('deepseek', 'http_429_rate_limited', 'errors.network.reason.http429RateLimited') as any,

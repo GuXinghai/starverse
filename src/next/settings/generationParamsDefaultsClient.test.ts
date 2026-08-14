@@ -5,35 +5,36 @@ import {
 } from './generationParamsDefaultsClient'
 
 describe('generationParamsDefaultsClient', () => {
-  const originalBridge = (globalThis as any).dbBridge
+  const originalStore = (globalThis as any).electronStore
 
   afterEach(() => {
-    ;(globalThis as any).dbBridge = originalBridge
+    ;(globalThis as any).electronStore = originalStore
     vi.restoreAllMocks()
   })
 
   it('reads settings.getGenerationParamsDefaults through contract decoder', async () => {
-    const invoke = vi.fn().mockResolvedValue({ value: { version: 1, params: { topP: { mode: 'custom', value: 0.9 } } } })
-    ;(globalThis as any).dbBridge = { invoke }
+    const get = vi.fn().mockResolvedValue({ generationParamsDefaults: { version: 1, params: { topP: { mode: 'custom', value: 0.9 } } } })
+    ;(globalThis as any).electronStore = { get, set: vi.fn() }
 
     await expect(getGenerationParamsDefaults()).resolves.toEqual({
       version: 1,
       params: { topP: { mode: 'custom', value: 0.9 } },
     })
-    expect(invoke).toHaveBeenCalledWith('settings.getGenerationParamsDefaults')
+    expect(get).toHaveBeenCalledWith('generationV2UiPreferences')
   })
 
   it('writes settings.setGenerationParamsDefaults and decodes ack', async () => {
-    const invoke = vi.fn().mockResolvedValue({ ok: true })
-    ;(globalThis as any).dbBridge = { invoke }
+    const get = vi.fn().mockResolvedValue({})
+    const set = vi.fn().mockResolvedValue(undefined)
+    ;(globalThis as any).electronStore = { get, set }
 
     const value = { version: 1, params: { temperature: { mode: 'custom', value: 0.7 } } }
     await expect(setGenerationParamsDefaults(value)).resolves.toBe(true)
-    expect(invoke).toHaveBeenCalledWith('settings.setGenerationParamsDefaults', { value })
+    expect(set).toHaveBeenCalledWith('generationV2UiPreferences', { generationParamsDefaults: value })
   })
 
-  it('returns safe defaults when db bridge is unavailable', async () => {
-    ;(globalThis as any).dbBridge = null
+  it('returns safe defaults when the retained preference store is unavailable', async () => {
+    ;(globalThis as any).electronStore = null
     await expect(getGenerationParamsDefaults()).resolves.toBeNull()
     await expect(setGenerationParamsDefaults({ version: 1, params: {} })).resolves.toBe(false)
   })

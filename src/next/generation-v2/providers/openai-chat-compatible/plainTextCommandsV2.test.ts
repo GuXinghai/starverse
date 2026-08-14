@@ -8,18 +8,18 @@ describe('OpenAI-compatible V2 text commands', () => {
   it('pins the user-selected provider instance in a canonical current-config command', () => {
     const command = decodeOpenAIChatCompatibleInitialCommandV2({
       operationId: 'operation:1', branchId: 'branch:1', expectedHeadMessageId: null,
-      providerInstanceId: 'provider:1', modelId: 'model:1', userBody: 'hello', commandAttachments: [], extraBody: null,
+      providerInstanceId: 'provider:1', modelId: 'model:1', userBody: 'hello', commandAttachments: [],
     })
     expect(command.providerInstanceId.value).toBe('provider:1')
     expect(JSON.parse(command.canonicalJson)).toMatchObject({ providerInstanceId: 'provider:1', modelId: 'model:1' })
   })
 
-  it('makes explicit extraBody part of the immutable command identity', () => {
+  it('rejects profile-owned extraBody at the renderer command boundary', () => {
     const base = { operationId: 'operation:3', branchId: 'branch:1', expectedHeadMessageId: null,
       providerInstanceId: 'provider:1', modelId: 'model:1', userBody: 'hello', commandAttachments: [] }
-    const left = decodeOpenAIChatCompatibleInitialCommandV2({ ...base, extraBody: { chat_template_kwargs: { enable_thinking: true } } })
-    const right = decodeOpenAIChatCompatibleInitialCommandV2({ ...base, extraBody: { chat_template_kwargs: { enable_thinking: false } } })
-    expect(left.requestFingerprint).not.toBe(right.requestFingerprint)
+    expect(() => decodeOpenAIChatCompatibleInitialCommandV2({ ...base,
+      extraBody: { chat_template_kwargs: { enable_thinking: true } } }))
+      .toThrow('GENERATION_V2_OPENAI_COMPATIBLE_INITIAL_COMMAND_INVALID')
   })
 
   it('never lets retry replace or retry-as-new infer a different target', () => {

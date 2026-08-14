@@ -51,8 +51,9 @@ function database() {
   })
   catalog.beginSync(catalogScope, 'attempt:image')
   catalog.commitSync({ scope: catalogScope, attemptId: 'attempt:image', responseDigest: 'a'.repeat(64),
-    observedAtMs: 10, applyMode: 'automatic', items: [{ nativeModelId: 'gemini-3.1-flash-image',
-      modelId: 'gemini-3.1-flash-image', displayName: 'Gemini 3.1 Flash Image', raw: { schemaVersion: 1,
+    observedAtMs: 10, applyMode: 'automatic', items: [{ providerKey: 'google_ai_studio',
+      nativeModelId: 'gemini-3.1-flash-image', modelId: 'gemini-3.1-flash-image',
+      modelKey: 'google_ai_studio::gemini-3.1-flash-image', displayName: 'Gemini 3.1 Flash Image', raw: { schemaVersion: 1,
         buckets: [{ source: 'models', fetchedAtMs: 10, baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
           payload: { observation } }] } }] })
   return db

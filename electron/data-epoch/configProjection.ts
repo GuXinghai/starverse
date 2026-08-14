@@ -1,8 +1,7 @@
 import type { ProviderCredentialKey } from '../credentials/providerCredentialContract'
 import {
-  decodeAndValidateEpoch2ProviderCredentialRecord,
-  type Epoch2ProviderCredentialDecryptValidator,
-  type Epoch2ProviderCredentialRecord,
+  isLegacyEpoch2ProviderCredentialRecord,
+  quarantineEpoch2ProviderCredentialRecordV2,
 } from '../credentials/epoch2ProviderCredentialRecord'
 import { parseNetworkProxySettingsStrict, type NetworkProxySettings } from '../../src/shared/plugin-distribution/networkProxyShared'
 import {
@@ -23,8 +22,6 @@ const EPOCH2_CATALOG_PROVIDER_KEYS = Object.freeze([
   'openrouter', 'openai_responses', 'google_ai_studio', 'anthropic', 'deepseek',
 ] as const)
 
-export type Epoch2CredentialDecryptValidator = Epoch2ProviderCredentialDecryptValidator
-
 export class Epoch2ConfigProjectionError extends Error {
   constructor(
     readonly code: 'EPOCH2_CONFIG_INVALID' | 'EPOCH2_CREDENTIAL_INVALID',
@@ -41,20 +38,14 @@ function record(value: unknown): Record<string, unknown> | null {
     : null
 }
 
-async function projectCredential(input: Readonly<{
+function projectCredential(input: Readonly<{
   providerKey: ProviderCredentialKey
   value: unknown
-  validateDecrypt: Epoch2CredentialDecryptValidator
-}>): Promise<Epoch2ProviderCredentialRecord> {
-  try {
-    return await decodeAndValidateEpoch2ProviderCredentialRecord({
-      value: input.value,
-      providerKey: input.providerKey,
-      validateDecrypt: input.validateDecrypt,
-    })
-  } catch {
-    throw new Epoch2ConfigProjectionError('EPOCH2_CREDENTIAL_INVALID', input.providerKey)
-  }
+}>): Readonly<Record<string, unknown>> | undefined {
+  if (isLegacyEpoch2ProviderCredentialRecord(input.value)) return undefined
+  const quarantined = quarantineEpoch2ProviderCredentialRecordV2(input.value)
+  if (quarantined) return quarantined
+  throw new Epoch2ConfigProjectionError('EPOCH2_CREDENTIAL_INVALID', input.providerKey)
 }
 
 function copyPreferences(raw: Record<string, unknown>): Record<string, unknown> {
@@ -146,7 +137,6 @@ function projectCatalogPolicy(raw: Record<string, unknown>, projected: Record<st
 
 export async function projectEpoch2Config(input: Readonly<{
   rawConfig: unknown
-  validateDecrypt: Epoch2CredentialDecryptValidator
 }>): Promise<Readonly<Record<string, unknown>>> {
   const raw = record(input.rawConfig)
   if (!raw) throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID')
@@ -159,14 +149,14 @@ export async function projectEpoch2Config(input: Readonly<{
       (credentialRoot?.v1 !== undefined && !credentialV1)) {
     throw new Epoch2ConfigProjectionError('EPOCH2_CONFIG_INVALID', 'providerCredentials')
   }
-  const preserved: Partial<Record<ProviderCredentialKey, Epoch2ProviderCredentialRecord>> = {}
+  const preserved: Partial<Record<ProviderCredentialKey, Readonly<Record<string, unknown>>>> = {}
   for (const providerKey of EPOCH2_PRESERVED_PROVIDER_KEYS) {
     if (!Object.prototype.hasOwnProperty.call(credentialV1 ?? {}, providerKey)) continue
-    preserved[providerKey] = await projectCredential({
+    const projectedCredential = projectCredential({
       providerKey,
       value: credentialV1?.[providerKey],
-      validateDecrypt: input.validateDecrypt,
     })
+    if (projectedCredential) preserved[providerKey] = projectedCredential
   }
   if (Object.keys(preserved).length > 0) projected.providerCredentials = { v1: preserved }
   return Object.freeze(projected)

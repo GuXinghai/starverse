@@ -1,0 +1,9 @@
+{
+  "name": "starverse-magika-runtime-build",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "magika": "1.0.0"
+  }
+}

@@ -9,10 +9,6 @@ import type {
 } from '@/next/generation-params/generationParamTypes'
 import type { ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
 import type {
-  CurrentRuntimeSelection,
-  RuntimeCapabilitySummaryLite,
-} from '@/next/provider/runtimeSelection'
-import type {
   OpenAIModelAvailabilityResult,
   OpenAIProviderModelAvailability,
 } from '@/next/provider/openai-responses/openAIResponsesModelSource'
@@ -56,8 +52,9 @@ import { t, tf } from '@/shared/i18n'
 import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
-  type ChatModelSelection,
 } from '@/next/provider/modelSelection'
+import type { RuntimeProviderId } from '@/next/provider/runtimeProviderId'
+import { createProviderModelRouteSelection, type ConversationRouteSelection } from '@/next/provider/conversationRouteSelection'
 import { resolveNetworkFailureDisplayMessage } from '../app/networkErrorDisplay'
 
 const props = defineProps<{
@@ -66,13 +63,11 @@ const props = defineProps<{
   sessionConfig: ChatSessionConfig
   openRouterChat?: Readonly<{
     enabled: boolean
-    model: string
     providerLabel: string
   }> | null
   lmStudioChat?: Readonly<{
     enabled: boolean
     endpointUrl: string
-    model: string
     chatMode: 'openai_compatible' | 'native_rest'
     openAICompatiblePreferredEndpoint: 'chat_completions' | 'responses'
     nativeRestControls: Readonly<{
@@ -104,7 +99,6 @@ const props = defineProps<{
   ollamaChat?: Readonly<{
     enabled: boolean
     endpointUrl: string
-    model: string
     chatMode: 'native_rest' | 'openai_compatible'
     nativeRestPreferredEndpoint: 'chat' | 'generate'
     openAICompatiblePreferredEndpoint: 'chat_completions' | 'responses'
@@ -142,12 +136,10 @@ const props = defineProps<{
   localEndpointChat?: Readonly<{
     enabled: boolean
     endpointUrl: string
-    model: string
     experimentalLabel: string
   }> | null
   openAIResponsesChat?: Readonly<{
     enabled: boolean
-    model: string
     experimentalLabel: string
   }> | null
   openAIResponsesModelAvailability?: Readonly<{
@@ -156,7 +148,6 @@ const props = defineProps<{
   }> | null
   googleAIStudioChat?: Readonly<{
     enabled: boolean
-    model: string
     experimentalLabel: string
   }> | null
   googleAIStudioModelAvailability?: Readonly<{
@@ -165,7 +156,6 @@ const props = defineProps<{
   }> | null
   anthropicChat?: Readonly<{
     enabled: boolean
-    model: string
     thinkingDisplay: 'provider_default' | 'summarized' | 'omitted'
     experimentalLabel: string
   }> | null
@@ -175,19 +165,11 @@ const props = defineProps<{
   }> | null
   deepSeekChat?: Readonly<{
     enabled: boolean
-    model: string
     experimentalLabel: string
   }> | null
   deepSeekModelAvailability?: Readonly<{
     loading: boolean
     result: DeepSeekModelAvailabilityResult | null
-  }> | null
-  currentRuntimeSelection?: CurrentRuntimeSelection | null
-  currentRuntimeCapability?: RuntimeCapabilitySummaryLite | null
-  currentRuntimeStatus?: Readonly<{
-    selectionLabel: string
-    capabilitySummary: string
-    warnings: readonly string[]
   }> | null
   reasoningDisplayMode: 'inline' | 'rail'
   reasoningPanelDefaultExpanded?: boolean
@@ -201,7 +183,7 @@ const props = defineProps<{
 }>()
 
 const emit = defineEmits<{
-  (e: 'updateModel', modelKey: ChatModelSelection | string): void
+  (e: 'updateRouteSelection', selection: ConversationRouteSelection): void
   (e: 'updateReasoningEnabled', enabled: boolean): void
   (e: 'updateReasoningEffort', effort: 'low' | 'medium' | 'high'): void
   (e: 'updateWebSearchEnabled', enabled: boolean): void
@@ -263,27 +245,29 @@ const emit = defineEmits<{
 }>()
 
 const disabled = computed(() => props.disabled || props.isRunning)
+const providerModelSelection = computed(() => props.sessionConfig.routeSelection?.kind === 'provider_model'
+  ? props.sessionConfig.routeSelection : null)
 const generationParamsProfile = computed(() =>
-  props.sessionConfig.model.selectedProviderId
-    ? getDefaultGenerationParamProfile(props.sessionConfig.model.selectedProviderId, {
+  providerModelSelection.value
+    ? getDefaultGenerationParamProfile(providerModelSelection.value.providerId, {
       requestKind: isGoogleImageGenerationModel.value ? 'image_generation' : 'text',
     }) ?? unsetGenerationProfile
     : unsetGenerationProfile
 )
 const generationParamsModelId = computed(() =>
-  props.sessionConfig.model.selectedModelKey ?? ''
+  providerModelSelection.value?.modelId ?? ''
 )
-const selectedProviderId = computed<ChatModelSelection['providerId'] | null>(() => props.sessionConfig.model.selectedProviderId ?? null)
-const selectedModelId = computed(() => props.sessionConfig.model.selectedModelKey ?? '')
+const selectedProvider = computed<RuntimeProviderId | null>(() => providerModelSelection.value?.providerId ?? null)
+const selectedModelIdentity = computed(() => providerModelSelection.value?.modelId ?? '')
 const openRouterModelValue = computed(() => (
-  selectedProviderId.value === OPENROUTER_PROVIDER_ID ? selectedModelId.value : DEFAULT_OPENROUTER_MODEL_ID
+  selectedProvider.value === OPENROUTER_PROVIDER_ID ? selectedModelIdentity.value : DEFAULT_OPENROUTER_MODEL_ID
 ))
-const isGoogleAIStudioSelected = computed(() => selectedProviderId.value === 'google_ai_studio')
-const isOpenAIResponsesSelected = computed(() => selectedProviderId.value === OPENAI_RESPONSES_PROVIDER_KEY)
+const isGoogleAIStudioSelected = computed(() => selectedProvider.value === 'google_ai_studio')
+const isOpenAIResponsesSelected = computed(() => selectedProvider.value === OPENAI_RESPONSES_PROVIDER_KEY)
 const showOpenRouterImageEndpointControls = computed(() =>
-  selectedProviderId.value === OPENROUTER_PROVIDER_ID && props.sessionConfig.imageGeneration.enabled)
+  selectedProvider.value === OPENROUTER_PROVIDER_ID && props.sessionConfig.imageGeneration.enabled)
 const openRouterImageEndpointState = computed(() =>
-  props.openRouterImageEndpointSelection?.modelId === selectedModelId.value
+  props.openRouterImageEndpointSelection?.modelId === selectedModelIdentity.value
     ? props.openRouterImageEndpointSelection : null)
 const openRouterImageRefreshPresets = Object.freeze([900000, 3600000, 21600000, 86400000, 604800000])
 const openRouterImageHardExpiryPresets = Object.freeze([3600000, 21600000, 86400000, 604800000, 2592000000])
@@ -304,13 +288,13 @@ function updateOpenRouterImageFreshness(key: 'refreshAfterMs' | 'hardExpireAfter
     expectedRevision: state.settings.revision,
   })
 }
-const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModelId.value))
-const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModelId.value))
+const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModelIdentity.value))
+const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModelIdentity.value))
 const googleThinkingCapability = computed(() => {
   const result = props.googleAIStudioModelAvailability?.result
-  const model = result?.ok ? result.models.find((candidate) => normalizeGeminiThinkingModelId(candidate.nativeModelId) === normalizeGeminiThinkingModelId(selectedModelId.value)) : undefined
+  const model = result?.ok ? result.models.find((candidate) => normalizeGeminiThinkingModelId(candidate.nativeModelId) === normalizeGeminiThinkingModelId(selectedModelIdentity.value)) : undefined
   return resolveGeminiThinkingCapability({
-    model: selectedModelId.value,
+    model: selectedModelIdentity.value,
     thinking: model?.providerSpecific?.thinkingRawValue,
     thinkingOwnProperty: model?.providerSpecific?.thinkingOwnProperty ?? false,
     supportedGenerationMethods: model?.providerSpecific?.supportedGenerationMethods,
@@ -397,10 +381,10 @@ const effectiveImageGenerationAspectRatio = computed(() =>
 const reasoningPanelDefaultExpanded = computed(() => props.reasoningPanelDefaultExpanded !== false)
 const reasoningPanelAutoCollapseAfterReasoning = computed(() => props.reasoningPanelAutoCollapseAfterReasoning === true)
 const openAIResponsesReasoningSupported = computed(() =>
-  isOpenAIResponsesSelected.value && hasExplicitOpenAIResponsesReasoningEffort(selectedModelId.value)
+  isOpenAIResponsesSelected.value && hasExplicitOpenAIResponsesReasoningEffort(selectedModelIdentity.value)
 )
 const openAIResponsesReasoningOptions = computed<readonly OpenAIResponsesReasoningEffortSetting[]>(() =>
-  getOpenAIResponsesReasoningEffortOptions(selectedModelId.value)
+  getOpenAIResponsesReasoningEffortOptions(selectedModelIdentity.value)
 )
 const openAIResponsesReasoningValue = computed<OpenAIResponsesReasoningEffortSetting>(() => {
   const layerValue = props.sessionConfig.generationParams.detail?.reasoningEffort
@@ -436,24 +420,22 @@ const openAIResponsesReasoningSummaryValue = computed<OpenAIResponsesReasoningSu
     ? candidate as OpenAIResponsesReasoningSummarySetting
     : 'off'
 })
-function selectedModelFor(providerId: ChatModelSelection['providerId']): string {
-  return selectedProviderId.value === providerId ? selectedModelId.value : ''
+function selectedModelFor(providerId: RuntimeProviderId): string {
+  return selectedProvider.value === providerId ? selectedModelIdentity.value : ''
 }
-function selectProviderModel(providerId: ChatModelSelection['providerId'], modelId: unknown) {
+function selectProviderModel(providerId: RuntimeProviderId, modelId: unknown) {
   const normalized = String(modelId ?? '').trim()
   if (!normalized) return
-  emit('updateModel', { providerId, modelId: normalized })
+  emit('updateRouteSelection', createProviderModelRouteSelection({ providerId, modelId: normalized }))
 }
 const openRouterChat = computed(() => props.openRouterChat ?? {
   enabled: false,
-  model: openRouterModelValue.value,
   providerLabel: t('chat.console.provider.openRouter.providerLabelDefault'),
 })
 const openRouterChatStatusLabel = computed(() => openRouterChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
 const lmStudioChat = computed(() => props.lmStudioChat ?? {
   enabled: false,
   endpointUrl: 'http://127.0.0.1:1234',
-  model: '',
   chatMode: 'openai_compatible' as const,
   openAICompatiblePreferredEndpoint: 'chat_completions' as const,
   nativeRestControls: {
@@ -489,12 +471,12 @@ const lmStudioNativeModels = computed(() => {
   return result?.ok && result.diagnostics?.nativeRest?.ok ? result.diagnostics.nativeRest.models as any[] : []
 })
 const lmStudioSelectedNativeModel = computed(() => {
-  const selected = lmStudioChat.value.model.trim()
+  const selected = selectedModelFor('lm_studio').trim()
   return lmStudioNativeModels.value.find((model) => model.key === selected || model.loadedInstances?.includes(selected)) ?? null
 })
 const lmStudioSelectedInstanceId = computed(() => {
   const model = lmStudioSelectedNativeModel.value
-  return Array.isArray(model?.loadedInstances) && model.loadedInstances[0] ? String(model.loadedInstances[0]) : lmStudioChat.value.model.trim()
+  return Array.isArray(model?.loadedInstances) && model.loadedInstances[0] ? String(model.loadedInstances[0]) : selectedModelFor('lm_studio').trim()
 })
 const lmStudioBridgeAvailable = computed(() => {
   const bridge = (globalThis as any).generationV2?.localRuntime?.lmStudio
@@ -506,7 +488,6 @@ function formatLMStudioAvailability(available: boolean): string {
 const ollamaChat = computed(() => props.ollamaChat ?? {
   enabled: false,
   endpointUrl: 'http://127.0.0.1:11434',
-  model: '',
   chatMode: 'native_rest' as const,
   nativeRestPreferredEndpoint: 'chat' as const,
   openAICompatiblePreferredEndpoint: 'chat_completions' as const,
@@ -555,23 +536,14 @@ const ollamaBridgeAvailable = computed(() => {
 function formatOllamaAvailability(available: boolean): string {
   return available ? t('settings.ollama.available') : t('settings.ollama.unavailable')
 }
-const runtimeStatus = computed(() => props.currentRuntimeStatus ?? {
-  selectionLabel: t('chat.console.runtime.noProviderSelected'),
-  capabilitySummary: t('chat.console.runtime.textChatBlocked'),
-  warnings: [t('chat.console.runtime.selectProviderAndModel')],
-})
-const runtimeSelectionStateLabel = computed(() => props.currentRuntimeSelection?.state === 'selected' ? t('chat.console.status.selected') : t('chat.console.status.unset'))
-const runtimeCapabilitySourceLabel = computed(() => props.currentRuntimeCapability?.source ?? t('chat.console.status.unset'))
 const localEndpointChat = computed(() => props.localEndpointChat ?? {
   enabled: false,
   endpointUrl: 'http://localhost:1234/v1',
-  model: '',
   experimentalLabel: t('chat.console.provider.localEndpoint.experimentalLabel'),
 })
 const localEndpointChatStatusLabel = computed(() => localEndpointChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
 const openAIResponsesChat = computed(() => props.openAIResponsesChat ?? {
   enabled: false,
-  model: '',
   experimentalLabel: t('chat.console.provider.openAIResponses.experimentalLabel'),
 })
 const openAIResponsesChatStatusLabel = computed(() => openAIResponsesChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
@@ -605,7 +577,6 @@ const openAIResponsesAvailabilitySummary = computed(() => {
 })
 const googleAIStudioChat = computed(() => props.googleAIStudioChat ?? {
   enabled: false,
-  model: '',
   experimentalLabel: t('chat.console.provider.googleAIStudio.experimentalLabel'),
 })
 const googleAIStudioChatStatusLabel = computed(() => googleAIStudioChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
@@ -639,7 +610,6 @@ const googleAIStudioAvailabilitySummary = computed(() => {
 })
 const anthropicChat = computed(() => props.anthropicChat ?? {
   enabled: false,
-  model: '',
   thinkingDisplay: 'summarized' as const,
   experimentalLabel: t('chat.console.provider.anthropic.experimentalLabel'),
 })
@@ -699,7 +669,6 @@ const anthropicAvailabilitySummary = computed(() => {
 })
 const deepSeekChat = computed(() => props.deepSeekChat ?? {
   enabled: false,
-  model: '',
   experimentalLabel: t('chat.console.provider.deepSeek.experimentalLabel'),
 })
 const deepSeekChatStatusLabel = computed(() => deepSeekChat.value.enabled ? t('chat.console.status.active') : t('chat.console.status.inactive'))
@@ -1056,7 +1025,7 @@ function formatReasoningEffort(effort: string): string {
 
 function formatOpenAIResponsesReasoningOption(option: OpenAIResponsesReasoningEffortSetting): string {
   if (option === 'auto') {
-    return formatOpenAIResponsesAutoReasoningLabel(selectedModelId.value, t('chat.generationParams.reasoning.auto'))
+    return formatOpenAIResponsesAutoReasoningLabel(selectedModelIdentity.value, t('chat.generationParams.reasoning.auto'))
   }
   return option
 }
@@ -1143,27 +1112,6 @@ function chipClass(active: boolean): string {
         </label>
       </section>
 
-      <section class="space-y-2 rounded-lg border border-gray-200 bg-gray-50/70 p-3" data-testid="runtime-selection-status">
-        <div class="flex items-start justify-between gap-2">
-          <div class="min-w-0">
-            <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.runtime') }}</div>
-            <div class="mt-1 text-[11px] text-gray-700" data-testid="runtime-selection-label">
-              {{ runtimeStatus.selectionLabel }}
-            </div>
-          </div>
-          <span class="shrink-0 rounded-md border border-gray-200 bg-white px-2 py-1 text-[11px] font-semibold text-gray-700" data-testid="runtime-selection-state">
-            {{ runtimeSelectionStateLabel }}
-          </span>
-        </div>
-        <div class="rounded border border-gray-100 bg-white px-2 py-1.5 text-[11px] text-gray-700" data-testid="runtime-capability-summary">
-          {{ runtimeStatus.capabilitySummary }}
-          <span> · {{ tf('chat.console.status.source', { source: runtimeCapabilitySourceLabel }) }}</span>
-        </div>
-        <ul v-if="runtimeStatus.warnings.length" class="space-y-1 text-[11px] text-gray-600" data-testid="runtime-capability-warnings">
-          <li v-for="warning in runtimeStatus.warnings" :key="warning">{{ warning }}</li>
-        </ul>
-      </section>
-
       <section class="space-y-2 rounded-lg border border-gray-200 bg-gray-50/70 p-3">
         <div class="text-xs font-semibold uppercase tracking-wide text-gray-500">{{ t('chat.console.section.model') }}</div>
         <select
@@ -1202,7 +1150,7 @@ function chipClass(active: boolean): string {
         </div>
         <div class="rounded border border-gray-100 bg-white px-2 py-1.5 text-[11px] text-gray-800" data-testid="openrouter-chat-selected-status">
           <div>{{ tf('chat.console.provider.openRouter.status', { status: openRouterChatStatusLabel }) }}</div>
-          <div>{{ tf('chat.console.provider.openRouter.selectedModel', { model: openRouterChat.model || t('chat.console.status.none') }) }}</div>
+          <div>{{ tf('chat.console.provider.openRouter.selectedModel', { model: selectedModelFor(OPENROUTER_PROVIDER_ID) || t('chat.console.status.none') }) }}</div>
           <div>{{ t('chat.console.provider.openRouter.notFallback') }}</div>
         </div>
       </section>

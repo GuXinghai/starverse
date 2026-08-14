@@ -1,3 +1,5 @@
+import type { GenerationExecutionProviderId } from './generationExecutionProviderId'
+
 export type GenerationOperationBindingV2 = Readonly<{
   operationId: string
   conversationId: string
@@ -5,6 +7,6 @@ export type GenerationOperationBindingV2 = Readonly<{
   targetAnswerId: string
   sourceAnswerId: string | null
   snapshotHash: string
-  providerId: string
+  providerId: GenerationExecutionProviderId
   contractId: string
 }>

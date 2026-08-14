@@ -6,7 +6,7 @@ import { t, tf } from '@/shared/i18n'
 
 function defaultSessionConfig() {
   return {
-    model: { selectedModelKey: null },
+    routeSelection: null,
     reasoning: { enabled: false, effort: 'medium' as const },
     webSearch: { enabled: false, level: 'high' as const, detail: null },
     imageGeneration: {
@@ -23,7 +23,7 @@ function defaultSessionConfig() {
 function openAIResponsesSessionConfig() {
   return {
     ...defaultSessionConfig(),
-    model: { selectedProviderId: 'openai_responses' as const, selectedModelKey: 'gpt-4.1-mini' },
+    routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'openai_responses' as const, modelId: 'gpt-4.1-mini'  },
   }
 }
 
@@ -37,7 +37,6 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
         sessionConfig: openAIResponsesSessionConfig(),
         openAIResponsesChat: {
           enabled: true,
-          model: 'gpt-4.1-mini',
           experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
         },
         reasoningDisplayMode: 'inline',
@@ -76,7 +75,6 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
         sessionConfig: defaultSessionConfig(),
         openAIResponsesChat: {
           enabled: true,
-          model: 'gpt-4.1-mini',
           experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
         },
         openAIResponsesModelAvailability: {
@@ -161,7 +159,9 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
     await user.click(screen.getByTestId('openai-responses-model-use'))
 
     expect(view.emitted('refreshOpenAIResponsesModels')).toHaveLength(1)
-    expect(view.emitted('updateModel')?.[0]).toEqual([{ providerId: 'openai_responses', modelId: 'gpt-4.1-mini' }])
+    expect(view.emitted('updateRouteSelection')?.[0]).toEqual([{
+      schemaVersion: 1, kind: 'provider_model', providerId: 'openai_responses', modelId: 'gpt-4.1-mini',
+    }])
 
     const mainModelSelect = screen.getAllByRole('combobox')[0]
     expect(within(mainModelSelect).getByText('OpenRouter Claude 3')).toBeInTheDocument()
@@ -176,7 +176,7 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
         isRunning: false,
         sessionConfig: {
           ...defaultSessionConfig(),
-          model: { selectedProviderId: 'openai_responses' as const, selectedModelKey: 'gpt-5.4-nano' },
+          routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'openai_responses' as const, modelId: 'gpt-5.4-nano'  },
           reasoning: { enabled: false, effort: 'medium' as const },
           generationParams: {
             detail: {
@@ -186,7 +186,6 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
         },
         openAIResponsesChat: {
           enabled: true,
-          model: 'gpt-5.4-nano',
           experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
         },
         reasoningDisplayMode: 'inline',
@@ -233,7 +232,6 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
         sessionConfig: openAIResponsesSessionConfig(),
         openAIResponsesChat: {
           enabled: true,
-          model: 'gpt-4.1-mini',
           experimentalLabel: 'Experimental · OpenAI Responses text-only · not OpenRouter',
         },
         reasoningDisplayMode: 'inline',

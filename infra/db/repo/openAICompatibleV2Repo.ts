@@ -232,6 +232,12 @@ export class OpenAICompatibleV2Repo {
   create(input: Readonly<{ providerInstanceId: string; displayName: string; endpointRevisionId: string; baseUrl: string;
     securityPolicy: 'compatibility_first' | 'strict_ssrf'; auth: unknown; ordinaryHeaders: unknown; query: unknown;
     configuration: ConfigurationInput }>): OpenAICompatibleProviderDetailsV2 {
+    return this.createWithCredential(input)
+  }
+
+  createWithCredential(input: Readonly<{ providerInstanceId: string; displayName: string; endpointRevisionId: string; baseUrl: string;
+    securityPolicy: 'compatibility_first' | 'strict_ssrf'; auth: unknown; ordinaryHeaders: unknown; query: unknown;
+    configuration: ConfigurationInput }>, commitCredential?: () => void): OpenAICompatibleProviderDetailsV2 {
     const at = this.nowMs(); const providerInstanceId = id(input.providerInstanceId)
     if (typeof input.displayName !== 'string' || input.displayName.trim() !== input.displayName || input.displayName.length < 1 || input.displayName.length > 256) {
       throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_INPUT_INVALID')
@@ -240,6 +246,7 @@ export class OpenAICompatibleV2Repo {
       try { this.db.prepare(`INSERT INTO openai_compatible_provider_v2 VALUES (?, 'openai_chat_compatible', ?, 'active', ?, ?, NULL)`)
         .run(providerInstanceId, input.displayName, at, at) } catch { throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_CONFLICT') }
       this.writeConfiguration(input.configuration, at)
+      commitCredential?.()
       this.writeEndpoint({ providerInstanceId, endpointRevisionId: input.endpointRevisionId, revision: 1, baseUrl: input.baseUrl,
         securityPolicy: input.securityPolicy, auth: input.auth, ordinaryHeaders: input.ordinaryHeaders, query: input.query,
         requestProfileId: input.configuration.requestProfile.id, requestProfileVersion: input.configuration.requestProfile.version,
@@ -292,9 +299,17 @@ export class OpenAICompatibleV2Repo {
   }
 
   updateEndpoint(input: Readonly<{ providerInstanceId: string; endpointRevisionId: string; baseUrl: string; securityPolicy: 'compatibility_first' | 'strict_ssrf'; auth: unknown; ordinaryHeaders: unknown; query: unknown }>): OpenAICompatibleProviderDetailsV2 {
+    return this.updateEndpointWithCredential(input)
+  }
+
+  updateEndpointWithCredential(input: Readonly<{ providerInstanceId: string; endpointRevisionId: string; expectedEndpointRevisionId?: string; baseUrl: string; securityPolicy: 'compatibility_first' | 'strict_ssrf'; auth: unknown; ordinaryHeaders: unknown; query: unknown }>, mutateCredential?: (latest: OpenAICompatibleEndpointRevisionV2) => void): OpenAICompatibleProviderDetailsV2 {
     const providerInstanceId = id(input.providerInstanceId); const at = this.nowMs()
     return this.db.transaction(() => {
       const latest = this.latestEndpoint(providerInstanceId)
+      if (input.expectedEndpointRevisionId !== undefined && latest.endpointRevisionId !== id(input.expectedEndpointRevisionId)) {
+        throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_STATE_INVALID')
+      }
+      mutateCredential?.(latest)
       this.writeEndpoint({ providerInstanceId, endpointRevisionId: input.endpointRevisionId, revision: latest.revision + 1,
         baseUrl: input.baseUrl, securityPolicy: input.securityPolicy, auth: input.auth, ordinaryHeaders: input.ordinaryHeaders, query: input.query,
         requestProfileId: latest.requestProfileId, requestProfileVersion: latest.requestProfileVersion,
@@ -304,11 +319,36 @@ export class OpenAICompatibleV2Repo {
   }
 
   deleteProvider(providerInstanceId: string): void {
+    this.deleteProviderWithCredentials(providerInstanceId)
+  }
+
+  deleteProviderWithCredentials(providerInstanceId: string): void {
     const identifier = id(providerInstanceId); const at = this.nowMs()
-    if (this.db.prepare(`UPDATE openai_compatible_provider_v2 SET status='deleted', deleted_at_ms=?, updated_at_ms=?
-      WHERE provider_instance_id=? AND status <> 'deleted'`).run(at, at, identifier).changes !== 1) {
-      throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_NOT_FOUND')
-    }
+    this.db.transaction(() => {
+      if (this.db.prepare(`UPDATE openai_compatible_provider_v2 SET status='deleted', deleted_at_ms=?, updated_at_ms=?
+        WHERE provider_instance_id=? AND status <> 'deleted'`).run(at, at, identifier).changes !== 1) {
+        throw new OpenAICompatibleV2RepoError('GENERATION_V2_OPENAI_COMPATIBLE_NOT_FOUND')
+      }
+      this.db.prepare('DELETE FROM openai_compatible_credential_v2 WHERE provider_instance_id=?').run(identifier)
+    })()
+  }
+
+  clearCredential(input: Readonly<{ providerInstanceId: string; credentialVersionRef: string; endpointRevisionId: string; clearPersisted: () => void }>): OpenAICompatibleProviderDetailsV2 {
+    const providerInstanceId = id(input.providerInstanceId)
+    return this.db.transaction(() => {
+      const latest = this.latestEndpoint(providerInstanceId)
+      const activeRef = (latest.auth as { credentialVersionRef?: unknown }).credentialVersionRef
+      input.clearPersisted()
+      if (activeRef === input.credentialVersionRef) {
+        this.writeEndpoint({ providerInstanceId, endpointRevisionId: input.endpointRevisionId,
+          revision: latest.revision + 1, baseUrl: latest.baseUrl, securityPolicy: latest.securityPolicy, auth: { mode: 'none' },
+          ordinaryHeaders: latest.ordinaryHeaders, query: latest.query, requestProfileId: latest.requestProfileId,
+          requestProfileVersion: latest.requestProfileVersion, responseProfileId: latest.responseProfileId,
+          responseProfileVersion: latest.responseProfileVersion, createdAtMs: this.nowMs() })
+        this.touch(providerInstanceId, this.nowMs())
+      }
+      return this.get(providerInstanceId)
+    })()
   }
 
   listMergedModels(providerInstanceId: string, includeStale = true): readonly CompatibleMergedModel[] {

@@ -5,39 +5,53 @@ import {
   type ModelPrefsFavorite,
   type ModelPrefsRecent,
 } from './modelPrefsService'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
+import type { RuntimeProviderId } from '../provider/runtimeProviderId'
 
 const originalDbBridge = (globalThis as any).dbBridge
+const originalGenerationV2 = (globalThis as any).generationV2
+
+function installModelPreferencesBridge(invoke: any) {
+  const bridge = (globalThis as any).generationV2 ?? installGenerationV2TestBridge()
+  bridge.modelPreferences = {
+    listFavorites: (params: unknown) => invoke('modelPrefs.listFavorites', params),
+    addFavorite: (params: unknown) => invoke('modelPrefs.addFavorite', params),
+    removeFavorite: (params: unknown) => invoke('modelPrefs.removeFavorite', params),
+    reorderFavorites: (params: unknown) => invoke('modelPrefs.reorderFavorites', params),
+    listRecents: (params: unknown) => invoke('modelPrefs.listRecents', params),
+  }
+}
 
 describe('ModelPrefsService', () => {
   beforeEach(() => {
     __resetModelPrefsServiceCacheForTests()
+    installGenerationV2TestBridge()
   })
 
   afterEach(() => {
     __resetModelPrefsServiceCacheForTests()
     ;(globalThis as any).dbBridge = originalDbBridge
+    ;(globalThis as any).generationV2 = originalGenerationV2
     vi.restoreAllMocks()
   })
 
   it('degrades safely when dbBridge is unavailable', async () => {
-    ;(globalThis as any).dbBridge = undefined
+    ;(globalThis as any).generationV2.modelPreferences = undefined
 
     await expect(ModelPrefsService.listFavorites()).resolves.toEqual([])
     await expect(ModelPrefsService.listRecents()).resolves.toEqual([])
     await expect(
-      ModelPrefsService.toggleFavorite({ modelKey: 'openrouter::openai/gpt-4o' })
+      ModelPrefsService.toggleFavorite({ providerKey: 'openrouter', modelId: 'openai/gpt-4o' })
     ).resolves.toEqual({
       ok: false,
       favorited: false,
       item: null,
-      error: 'Missing dbBridge.',
+      error: 'Missing Generation V2 model preferences bridge.',
     })
     await expect(
       ModelPrefsService.reorderFavorites(['openrouter::openai/gpt-4o'])
     ).resolves.toEqual([])
-    await expect(
-      ModelPrefsService.recordRecent({ modelKey: 'openrouter::openai/gpt-4o' })
-    ).resolves.toBeNull()
+    expect(() => ModelPrefsService.notifyRecentsChanged()).not.toThrow()
   })
 
   it('uses favorites cache and supports toggleFavorite with mutation events', async () => {
@@ -54,12 +68,12 @@ describe('ModelPrefsService', () => {
       if (method === 'modelPrefs.addFavorite') {
         const providerKey = String(params?.providerKey ?? '')
         const modelId = String(params?.modelId ?? '')
-        const modelKey = String(params?.modelKey ?? `${providerKey}::${modelId}`)
+        const modelKey = `${providerKey}::${modelId}`
         const existingIndex = rows.findIndex((row) => row.modelKey === modelKey)
         const nextRow: ModelPrefsFavorite = {
           scopeType: scopeType as any,
           scopeId,
-          providerKey,
+          providerKey: providerKey as RuntimeProviderId,
           modelId,
           modelKey,
           sortRank: existingIndex >= 0 ? rows[existingIndex].sortRank : rows.length,
@@ -74,14 +88,14 @@ describe('ModelPrefsService', () => {
         return nextRow
       }
       if (method === 'modelPrefs.removeFavorite') {
-        const modelKey = String(params?.modelKey ?? '')
+        const modelKey = `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`
         const nextRows = rows.filter((row) => row.modelKey !== modelKey)
         favorites.set(scopeKey, nextRows)
         return { removed: rows.length - nextRows.length }
       }
       return null
     })
-    ;(globalThis as any).dbBridge = { invoke }
+    installModelPreferencesBridge(invoke)
 
     const events: string[] = []
     const unsubscribe = ModelPrefsService.subscribe((event) => {
@@ -94,7 +108,7 @@ describe('ModelPrefsService', () => {
     expect(second).toEqual([])
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelPrefs.listFavorites')).toHaveLength(1)
 
-    const added = await ModelPrefsService.toggleFavorite({ modelKey: 'openrouter::openai/gpt-4o' })
+    const added = await ModelPrefsService.toggleFavorite({ providerKey: 'openrouter', modelId: 'openai/gpt-4o' })
     expect(added.ok).toBe(true)
     expect(added.favorited).toBe(true)
     expect(added.item?.modelKey).toBe('openrouter::openai/gpt-4o')
@@ -103,7 +117,8 @@ describe('ModelPrefsService', () => {
       expect.objectContaining({
         scopeType: 'global',
         scopeId: '',
-        modelKey: 'openrouter::openai/gpt-4o',
+        providerKey: 'openrouter',
+        modelId: 'openai/gpt-4o',
       }),
     )
 
@@ -111,7 +126,7 @@ describe('ModelPrefsService', () => {
     expect(afterAdd.map((row) => row.modelKey)).toEqual(['openrouter::openai/gpt-4o'])
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelPrefs.listFavorites')).toHaveLength(1)
 
-    const removed = await ModelPrefsService.toggleFavorite({ modelKey: 'openrouter::openai/gpt-4o' })
+    const removed = await ModelPrefsService.toggleFavorite({ providerKey: 'openrouter', modelId: 'openai/gpt-4o' })
     expect(removed.ok).toBe(true)
     expect(removed.favorited).toBe(false)
 
@@ -170,11 +185,11 @@ describe('ModelPrefsService', () => {
           reordered.push(row)
         }
         const items = reordered.map((row, index) => ({ ...row, sortRank: index }))
-        return { items }
+        return items
       }
       return null
     })
-    ;(globalThis as any).dbBridge = { invoke }
+    installModelPreferencesBridge(invoke)
 
     await ModelPrefsService.listFavorites()
     const reordered = await ModelPrefsService.reorderFavorites([
@@ -204,8 +219,7 @@ describe('ModelPrefsService', () => {
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelPrefs.listFavorites')).toHaveLength(1)
   })
 
-  it('invalidates recents cache after recordRecent and handles record failure gracefully', async () => {
-    let failRecord = false
+  it('invalidates recents cache after the main-process authority reports a mutation', async () => {
     const recents = new Map<string, ModelPrefsRecent[]>()
     recents.set('global|', [
       {
@@ -235,46 +249,13 @@ describe('ModelPrefsService', () => {
           )
           .slice(0, limit)
       }
-      if (method === 'modelPrefs.recordRecent') {
-        if (failRecord) throw new Error('disk busy')
-        const providerKey = String(params?.providerKey ?? '')
-        const modelId = String(params?.modelId ?? '')
-        const modelKey = String(params?.modelKey ?? `${providerKey}::${modelId}`)
-        const usedAtMs =
-          typeof params?.usedAtMs === 'number' && Number.isFinite(params.usedAtMs)
-            ? params.usedAtMs
-            : Date.now()
-        const existingIndex = rows.findIndex((row) => row.modelKey === modelKey)
-        if (existingIndex >= 0) {
-          const current = rows[existingIndex]
-          const next: ModelPrefsRecent = {
-            ...current,
-            lastUsedAtMs: Math.max(current.lastUsedAtMs, usedAtMs),
-            useCount: current.useCount + 1,
-            updatedAtMs: usedAtMs,
-          }
-          rows[existingIndex] = next
-          recents.set(scopeKey, rows)
-          return next
-        }
-        const next: ModelPrefsRecent = {
-          scopeType: scopeType as any,
-          scopeId,
-          providerKey,
-          modelId,
-          modelKey,
-          lastUsedAtMs: usedAtMs,
-          useCount: 1,
-          createdAtMs: usedAtMs,
-          updatedAtMs: usedAtMs,
-        }
-        rows.push(next)
-        recents.set(scopeKey, rows)
-        return next
-      }
       return null
     })
-    ;(globalThis as any).dbBridge = { invoke }
+    installModelPreferencesBridge(invoke)
+    const events: string[] = []
+    const unsubscribe = ModelPrefsService.subscribe((event) => {
+      events.push(`${event.kind}:${event.reason}:${event.scopeType}:${event.scopeId}`)
+    })
 
     const first = await ModelPrefsService.listRecents(undefined, { limit: 20 })
     const second = await ModelPrefsService.listRecents(undefined, { limit: 20 })
@@ -282,8 +263,13 @@ describe('ModelPrefsService', () => {
     expect(second).toHaveLength(1)
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelPrefs.listRecents')).toHaveLength(1)
 
-    const recorded = await ModelPrefsService.recordRecent({ modelKey: 'openrouter::anthropic/claude-3' })
-    expect(recorded?.modelKey).toBe('openrouter::anthropic/claude-3')
+    recents.get('global|')?.push({
+      scopeType: 'global', scopeId: '', providerKey: 'openrouter', modelId: 'anthropic/claude-3',
+      modelKey: 'openrouter::anthropic/claude-3', lastUsedAtMs: 200, useCount: 1,
+      createdAtMs: 200, updatedAtMs: 200,
+    })
+    ModelPrefsService.notifyRecentsChanged()
+    expect(events.filter((event) => event.startsWith('recents:mutation:global:'))).toHaveLength(1)
 
     const third = await ModelPrefsService.listRecents(undefined, { limit: 20 })
     expect(third.map((row) => row.modelKey)).toEqual(
@@ -291,9 +277,7 @@ describe('ModelPrefsService', () => {
     )
     expect(invoke.mock.calls.filter((call) => call[0] === 'modelPrefs.listRecents')).toHaveLength(2)
 
-    failRecord = true
-    const failed = await ModelPrefsService.recordRecent({ modelKey: 'openrouter::google/gemini-2.0' })
-    expect(failed).toBeNull()
+    unsubscribe()
   })
 
   it('passes project scope through favorites/recents IPC methods', async () => {
@@ -308,15 +292,14 @@ describe('ModelPrefsService', () => {
           scopeId,
           providerKey: String(params?.providerKey ?? 'openrouter'),
           modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
+          modelKey: `${String(params?.providerKey ?? '')}::${String(params?.modelId ?? '')}`,
           sortRank: 0,
           createdAtMs: 1,
           updatedAtMs: 1,
         }
       }
       if (method === 'modelPrefs.reorderFavorites') {
-        return {
-          items: [
+        return [
             {
               scopeType,
               scopeId,
@@ -327,32 +310,18 @@ describe('ModelPrefsService', () => {
               createdAtMs: 1,
               updatedAtMs: 2,
             },
-          ],
-        }
-      }
-      if (method === 'modelPrefs.recordRecent') {
-        return {
-          scopeType,
-          scopeId,
-          providerKey: String(params?.providerKey ?? 'openrouter'),
-          modelId: String(params?.modelId ?? ''),
-          modelKey: String(params?.modelKey ?? ''),
-          lastUsedAtMs: 10,
-          useCount: 1,
-          createdAtMs: 10,
-          updatedAtMs: 10,
-        }
+          ]
       }
       return null
     })
-    ;(globalThis as any).dbBridge = { invoke }
+    installModelPreferencesBridge(invoke)
 
     const scope = { scopeType: 'project' as const, scopeId: 'project-123' }
     await ModelPrefsService.listFavorites(scope)
     await ModelPrefsService.listRecents(scope, { limit: 5 })
-    await ModelPrefsService.toggleFavorite({ modelKey: 'openrouter::openai/gpt-4o' }, scope)
+    await ModelPrefsService.toggleFavorite({ providerKey: 'openrouter', modelId: 'openai/gpt-4o' }, scope)
     await ModelPrefsService.reorderFavorites(['openrouter::openai/gpt-4o'], scope)
-    await ModelPrefsService.recordRecent({ modelKey: 'openrouter::openai/gpt-4o' }, scope)
+    ModelPrefsService.notifyRecentsChanged(scope)
 
     expect(invoke).toHaveBeenCalledWith(
       'modelPrefs.listFavorites',
@@ -370,9 +339,6 @@ describe('ModelPrefsService', () => {
       'modelPrefs.reorderFavorites',
       expect.objectContaining({ scopeType: 'project', scopeId: 'project-123' }),
     )
-    expect(invoke).toHaveBeenCalledWith(
-      'modelPrefs.recordRecent',
-      expect.objectContaining({ scopeType: 'project', scopeId: 'project-123' }),
-    )
+    expect(invoke.mock.calls.some((call) => call[0] === 'modelPrefs.recordRecent')).toBe(false)
   })
 })

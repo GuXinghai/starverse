@@ -1,4 +1,8 @@
 import { ipcRenderer, contextBridge } from 'electron'
+import type {
+  LocalEndpointExecutionProviderId,
+  LocalEndpointProtocolV2,
+} from '../src/shared/provider/localProviderRouteDescriptor'
 
 const epoch2SmokeFixtureAuthorityEnabled = process.env.SV_EPOCH2_SMOKE_FIXTURE_AUTHORITY === '1' &&
   process.argv.some((argument) => argument.startsWith('--user-data-dir='))
@@ -59,7 +63,6 @@ function createGenerationV2CredentialBridge(provider: 'openrouter' | 'openai-res
   const prefix = `generation-v2:credentials:${provider}`
   return Object.freeze({
     getStatus: () => ipcRenderer.invoke(`${prefix}:get-status`),
-    reveal: () => ipcRenderer.invoke(`${prefix}:reveal`),
     update: (payload: unknown) => ipcRenderer.invoke(`${prefix}:update`, payload),
     clear: () => ipcRenderer.invoke(`${prefix}:clear`),
   })
@@ -112,7 +115,6 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     get: (providerInstanceId: string) => ipcRenderer.invoke('generation-v2:openai-compatible:get', { providerInstanceId }),
     create: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:create', payload),
     reviseConfiguration: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:revise-configuration', payload),
-    writeCredential: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:write-credential', payload),
     getCredentialStatus: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:get-credential-status', payload),
     update: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:update', payload),
     updateEndpoint: (payload: unknown) => ipcRenderer.invoke('generation-v2:openai-compatible:update-endpoint', payload),
@@ -211,6 +213,13 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     dfcOptions: (payload: Readonly<{conversationId:string;assetId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => ipcRenderer.invoke('generation-v2:composer:dfc-options', payload),
     dfcSelect: (payload: Readonly<{conversationId:string;expectedRevision:number;assetId:string;optionId:string;providerId:string;operation:'chat_completions'|'images'|'responses'}>) => ipcRenderer.invoke('generation-v2:composer:dfc-select', payload),
     dfcPreview: (payload: Readonly<{conversationId:string;assetId:string;maxCharacters:number}>) => ipcRenderer.invoke('generation-v2:composer:dfc-preview', payload),
+    retryFileTypeDetection: (payload: Readonly<{conversationId:string;assetRevisionId:string}>) =>
+      ipcRenderer.invoke('generation-v2:composer:retry-file-type-detection', payload),
+    onFileTypeDetectionUpdated: (listener: (event: unknown) => void) => {
+      const handler = (_event: unknown, value: unknown) => listener(value)
+      ipcRenderer.on('generation-v2:file-type-detection:updated', handler)
+      return () => ipcRenderer.removeListener('generation-v2:file-type-detection:updated', handler)
+    },
   }),
   search: Object.freeze({
     query: (payload: unknown) => ipcRenderer.invoke('generation-v2:search:query', payload),
@@ -251,12 +260,11 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     removeFavorite: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:remove-favorite', payload),
     reorderFavorites: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:reorder-favorites', payload),
     listRecents: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:list-recents', payload),
-    recordRecent: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:record-recent', payload),
   }),
   localProfiles: Object.freeze({
     list: () => ipcRenderer.invoke('generation-v2:local-profile:list'),
-    create: (payload: Readonly<{ providerId: 'lmstudio' | 'ollama' | 'generic_local';
-      protocolContractId: string; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => ipcRenderer.invoke('generation-v2:local-profile:create', payload),
+    create: (payload: Readonly<{ providerId: LocalEndpointExecutionProviderId;
+      protocolContractId: LocalEndpointProtocolV2; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => ipcRenderer.invoke('generation-v2:local-profile:create', payload),
     delete: (endpointProfileId: string) => ipcRenderer.invoke('generation-v2:local-profile:delete', { endpointProfileId }),
   }),
   lmStudio: Object.freeze({ openResponses: createGenerationV2TextBridge({
@@ -334,6 +342,7 @@ if (packagedTestDocxFixtureAuthorityEnabled) {
 
 // Expose file dialog API for image selection
 contextBridge.exposeInMainWorld('electronAPI', {
+  platform: process.platform,
   /**
    * 选择图片文件并返回 base64 data URI
    * @returns {Promise<string | null>} base64 data URI 或 null（如果用户取消）

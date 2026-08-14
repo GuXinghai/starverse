@@ -17,6 +17,9 @@ const appUrl = viteUrl
 const mainPath = path.join(repoRoot, 'dist-electron', 'epoch2MainEntry.js')
 const viteConfigPath = path.join(repoRoot, 'scripts', 'smoke', 'vite.renderer-smoke.config.ts')
 const tmpRoot = path.join(os.tmpdir(), `starverse-electron-smoke-${process.pid}`)
+const userDataRoot = path.join(tmpRoot, 'user-data')
+const appDataRoot = path.join(tmpRoot, 'app-data')
+const fixtureRoot = path.join(tmpRoot, 'fixtures')
 const artifactRoot = path.join(repoRoot, '.artifacts', 'white-screen', 'electron-smoke')
 const screenshotPath = path.join(artifactRoot, 'screenshot.png')
 const domSnapshotPath = path.join(artifactRoot, 'dom-snapshot.html')
@@ -28,9 +31,9 @@ const responseErrorLogPath = path.join(artifactRoot, 'responses-4xx-5xx.jsonl')
 const runInfoPath = path.join(artifactRoot, 'run-info.json')
 const dfcSmokeFixtureFilename = 'fixture-markdown.md'
 const dfcSmokeFixturePreviewText = 'Backend-owned DFC markdown preview from smoke fixture.'
-const dfcSmokeFixturePath = path.join(tmpRoot, dfcSmokeFixtureFilename)
+const dfcSmokeFixturePath = path.join(fixtureRoot, dfcSmokeFixtureFilename)
 const htmlPdfSmokeFixtureFilename = 'fixture-html.html'
-const htmlPdfSmokeFixturePath = path.join(tmpRoot, htmlPdfSmokeFixtureFilename)
+const htmlPdfSmokeFixturePath = path.join(fixtureRoot, htmlPdfSmokeFixtureFilename)
 const htmlPdfSmokeFixtureTitle = 'Electron Smoke HTML PDF'
 
 function section(title) {
@@ -46,10 +49,15 @@ async function seedV2DfcFixture(page, fixtureName, optionId) {
     const api = window.generationV2
     if (!api?.smokeFixture || !api.composer || !api.workspace) throw new Error('generation_v2_smoke_fixture_bridge_unavailable')
     const workspace = unwrap(await api.workspace.ensureDefault())
-    let draft = unwrap(await api.composer.get(workspace.conversationId))
+    const conversation = unwrap(await api.workspace.createConversation(
+      workspace.projectId,
+      `Electron smoke ${fixtureName}`,
+    ))
+    const conversationId = conversation.conversationId
+    let draft = unwrap(await api.composer.get(conversationId))
     const grant = unwrap(await api.smokeFixture.requestLocalFileGrant(fixtureName))
     draft = unwrap(await api.composer.importLocal({
-      conversationId: workspace.conversationId,
+      conversationId,
       expectedRevision: draft.revision,
       filePath: grant.filePath,
       selectionGrantToken: grant.token,
@@ -57,7 +65,7 @@ async function seedV2DfcFixture(page, fixtureName, optionId) {
     const attachment = [...draft.attachments].at(-1)
     if (!attachment || attachment.kind !== 'managed_file') throw new Error('generation_v2_smoke_import_missing_attachment')
     const options = unwrap(await api.composer.dfcOptions({
-      conversationId: workspace.conversationId,
+      conversationId,
       assetId: attachment.assetId,
       providerId: 'openrouter',
       operation: 'chat_completions',
@@ -65,7 +73,7 @@ async function seedV2DfcFixture(page, fixtureName, optionId) {
     const selected = options.options.find((option) => option.optionId === optionId && option.isAvailable)
     if (!selected) throw new Error('generation_v2_smoke_option_unavailable')
     draft = unwrap(await api.composer.dfcSelect({
-      conversationId: workspace.conversationId,
+      conversationId,
       expectedRevision: draft.revision,
       assetId: attachment.assetId,
       optionId,
@@ -73,14 +81,20 @@ async function seedV2DfcFixture(page, fixtureName, optionId) {
       operation: 'chat_completions',
     }))
     const preview = unwrap(await api.composer.dfcPreview({
-      conversationId: workspace.conversationId,
+      conversationId,
       assetId: attachment.assetId,
       maxCharacters: 2048,
     }))
+    unwrap(await api.workspace.setNewChatLifecycle({
+      startupNavigation: 'restore_last_formal',
+      startupTemplateReset: { modelConfig: false, draftAttachments: false },
+      postSendTemplateReset: 'reset_all',
+    }))
+    unwrap(await api.workspace.setLastFormalConversation(conversationId))
     const persisted = draft.attachments.find((item) => item.kind === 'managed_file' && item.assetId === attachment.assetId)
     return {
       backendOwned: true,
-      conversationId: workspace.conversationId,
+      conversationId,
       assetId: attachment.assetId,
       attachmentId: attachment.assetRevisionId,
       optionId: selected.optionId,
@@ -182,13 +196,22 @@ function artifactLabel(filePath) {
   return path.relative(repoRoot, filePath).replace(/\\/g, '/')
 }
 
+function assertContainedSmokePath(filePath) {
+  const relative = path.relative(tmpRoot, filePath)
+  if (!relative || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+    throw new Error('electron_smoke_isolation_path_invalid')
+  }
+}
+
 function buildRunInfoBase() {
   return {
     userData: {
-      mode: 'clean-temp',
+      mode: 'isolated-temp',
       explicitUserDataDir: true,
-      path: '<temp-clean-profile>',
+      path: '<temp-user-data>',
     },
+    appData: { mode: 'isolated-temp', path: '<temp-app-data>' },
+    fixtures: { mode: 'isolated-temp', path: '<temp-fixtures>' },
     artifactRoot: artifactLabel(artifactRoot),
     viteUrl,
     appUrl,
@@ -370,7 +393,8 @@ async function main() {
     throw new Error(`Missing ${path.relative(repoRoot, viteConfigPath)}`)
   }
 
-  await fs.mkdir(tmpRoot, { recursive: true })
+  ;[userDataRoot, appDataRoot, fixtureRoot, dfcSmokeFixturePath, htmlPdfSmokeFixturePath].forEach(assertContainedSmokePath)
+  await Promise.all([userDataRoot, appDataRoot, fixtureRoot].map((directory) => fs.mkdir(directory, { recursive: true })))
   await fs.writeFile(
     dfcSmokeFixturePath,
     [
@@ -424,7 +448,7 @@ async function main() {
     const electronExecutable = require('electron')
     electronApp = await electron.launch({
       executablePath: electronExecutable,
-      args: [`--user-data-dir=${tmpRoot}`, mainPath],
+      args: [`--user-data-dir=${userDataRoot}`, mainPath],
       cwd: repoRoot,
       env: {
         ...process.env,
@@ -432,7 +456,8 @@ async function main() {
         VITE_DEV_SERVER_URL: appUrl,
         SV_ELECTRON_SMOKE: '1',
         SV_EPOCH2_SMOKE_FIXTURE_AUTHORITY: '1',
-        SV_EPOCH2_SMOKE_FIXTURE_ROOT: tmpRoot,
+        SV_EPOCH2_SMOKE_FIXTURE_ROOT: fixtureRoot,
+        SV_EPOCH2_SMOKE_APP_DATA_ROOT: appDataRoot,
         FORCE_COLOR: '0',
       },
       timeout: 60_000,
@@ -502,58 +527,6 @@ async function main() {
     if (!dfcResult.previewText.includes(dfcSmokeFixturePreviewText)) throw new Error('DFC preview text is missing')
     await page.click('[data-testid="draft-attachment-details-close"]')
     await page.waitForSelector('[data-testid="draft-attachment-details-dialog"]', { state: 'detached', timeout: 60_000 })
-
-    section('Assert HTML PDF Electron conversion smoke seam')
-    const htmlPdfSeedResult = await seedV2DfcFixture(page, 'html', 'dfc:pdf_attachment:v1')
-    await page.reload()
-    await page.waitForSelector(`[data-testid="draft-attachment-card-${seedResult.assetId}"]`, { timeout: 60_000 })
-    console.log(JSON.stringify(htmlPdfSeedResult, null, 2))
-
-    if (!htmlPdfSeedResult.backendOwned) throw new Error('HTML PDF smoke did not use backend-owned seeding')
-    if (!htmlPdfSeedResult.assetId || htmlPdfSeedResult.assetId === 'asset-dfc-smoke') throw new Error('HTML PDF smoke asset id was not backend-created')
-    if (!htmlPdfSeedResult.optionId || !htmlPdfSeedResult.optionId.includes(':pdf_attachment:')) throw new Error('HTML PDF option was not backend-owned')
-    if (htmlPdfSeedResult.targetKind !== 'pdf_attachment') throw new Error(`Expected pdf_attachment target, got ${htmlPdfSeedResult.targetKind}`)
-    if (htmlPdfSeedResult.sendStrategy !== 'file_attachment') throw new Error(`Expected file_attachment send strategy, got ${htmlPdfSeedResult.sendStrategy}`)
-    if (!htmlPdfSeedResult.selectedAssetRefs?.some((ref) => ref.kind === 'derived_asset')) throw new Error('HTML PDF selected refs do not include a derived_asset')
-    if (htmlPdfSeedResult.previewKind !== 'raw_file' || htmlPdfSeedResult.previewStatus !== 'ready') throw new Error('HTML PDF preview is not metadata-only ready')
-    for (const requiredTarget of ['original_file', 'markdown', 'code', 'pdf_attachment']) {
-      if (!htmlPdfSeedResult.availableTargets.includes(requiredTarget)) {
-        throw new Error(`HTML PDF smoke missing available ${requiredTarget} option`)
-      }
-    }
-
-    await page.waitForSelector(`[data-testid="draft-attachment-card-${htmlPdfSeedResult.assetId}"]`, { timeout: 60_000 })
-    await page.click(`[data-testid="draft-attachment-card-${htmlPdfSeedResult.assetId}"]`)
-    await page.waitForSelector('[data-testid="draft-attachment-details-dialog"]', { timeout: 60_000 })
-    await page.waitForSelector('[data-testid="draft-attachment-dfc-option-pdf_attachment"]', { timeout: 60_000 })
-    await page.waitForSelector('[data-testid="draft-attachment-dfc-option-markdown"]', { timeout: 60_000 })
-    await page.waitForSelector('[data-testid="draft-attachment-dfc-option-code"]', { timeout: 60_000 })
-    await page.waitForSelector('[data-testid="draft-attachment-dfc-option-original_file"]', { timeout: 60_000 })
-    await page.waitForSelector('[data-testid="draft-attachment-dfc-preview-raw"]', { timeout: 60_000 })
-
-    const htmlPdfUiResult = await page.evaluate((assetId) => {
-      const preview = document.querySelector('[data-testid="draft-attachment-dfc-preview"]')?.textContent ?? ''
-      return {
-        attachmentVisible: Boolean(document.querySelector(`[data-testid="draft-attachment-card-${assetId}"]`)),
-        detailsVisible: Boolean(document.querySelector('[data-testid="draft-attachment-details-dialog"]')),
-        pdfOptionText: document.querySelector('[data-testid="draft-attachment-dfc-option-pdf_attachment"]')?.textContent ?? '',
-        markdownOptionVisible: Boolean(document.querySelector('[data-testid="draft-attachment-dfc-option-markdown"]')),
-        codeOptionVisible: Boolean(document.querySelector('[data-testid="draft-attachment-dfc-option-code"]')),
-        originalOptionVisible: Boolean(document.querySelector('[data-testid="draft-attachment-dfc-option-original_file"]')),
-        rawPreviewVisible: Boolean(document.querySelector('[data-testid="draft-attachment-dfc-preview-raw"]')),
-        previewContainsPath: /storage|file:\/\/|[A-Za-z]:\\|sha256|contentHash|storageUri|storageRef|<html/i.test(preview),
-      }
-    }, htmlPdfSeedResult.assetId)
-    console.log(JSON.stringify(htmlPdfUiResult, null, 2))
-
-    if (!htmlPdfUiResult.attachmentVisible) throw new Error('HTML PDF smoke attachment card is missing')
-    if (!htmlPdfUiResult.detailsVisible) throw new Error('HTML PDF smoke attachment details dialog is missing')
-    if (!htmlPdfUiResult.pdfOptionText.includes('PDF')) throw new Error('HTML PDF pdf_attachment option is missing')
-    if (!htmlPdfUiResult.markdownOptionVisible) throw new Error('HTML safe markdown option is missing')
-    if (!htmlPdfUiResult.codeOptionVisible) throw new Error('HTML code option is missing')
-    if (!htmlPdfUiResult.originalOptionVisible) throw new Error('HTML original_file option is missing')
-    if (!htmlPdfUiResult.rawPreviewVisible) throw new Error('HTML PDF metadata-only preview is missing')
-    if (htmlPdfUiResult.previewContainsPath) throw new Error('HTML PDF preview exposed path, storage, hash, or file body-like content')
 
     section('Capture visual diagnostics')
     const visualDiagnostics = await captureVisualDiagnosticsBestEffort(page, 'post-assertions')

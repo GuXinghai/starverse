@@ -106,13 +106,16 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
     const details = providers.get(command.providerInstanceId.value); const endpoint = details.endpointRevisions[0]
     if (!endpoint || details.status !== 'active') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_PROVIDER_UNAVAILABLE')
     assertOpenAICompatibleTransportPolicyV2(endpoint)
-    const configuration = providers.getConfigurationForEndpointRevision(details.providerInstanceId, endpoint.endpointRevisionId)
     const credential = await credentialFact(details.providerInstanceId, endpoint)
     try {
       return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
         const currentDetails = providers.get(command.providerInstanceId.value); const currentEndpoint = currentDetails.endpointRevisions[0]
         if (!currentEndpoint || currentDetails.status !== 'active' || currentEndpoint.endpointRevisionId !== endpoint.endpointRevisionId ||
             currentEndpoint.endpointDigest !== endpoint.endpointDigest) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_PREFLIGHT_STALE')
+        const currentConfiguration = providers.getConfigurationForEndpointRevision(
+          currentDetails.providerInstanceId,
+          currentEndpoint.endpointRevisionId,
+        )
         const raced = execution.findOperationInTransaction(context, command.operationId.value)
         if (raced) { if (raced.operation.commandFingerprint !== command.requestFingerprint) throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
           const preparedRequest = compile(context, raced); const projection = action === 'initial_send'
@@ -123,11 +126,13 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
         const pending = pendingForCurrent(context, command, nowMs())
         return withSynchronousGenerationCommandFactsAuthorityV2(context, config, attachments, pending.conversationId.value,
           projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined, (facts) => {
-            const binding = createOpenAIChatCompatibleProviderBindingV2({ provider: details, endpoint, credentialScopeId: credential.credentialScopeId, modelId: command.modelId.value })
+            const binding = createOpenAIChatCompatibleProviderBindingV2({ provider: currentDetails, endpoint: currentEndpoint,
+              credentialScopeId: credential.credentialScopeId, modelId: command.modelId.value })
             const capability = composeOpenAIChatCompatibleBaselineCapabilityV2({ binding, resolvedAt: new Date(pending.createdAtMs).toISOString(),
-              mappedReasoningSourceFields: mappedReasoningSources(configuration) })
+              mappedReasoningSourceFields: mappedReasoningSources(currentConfiguration) })
             const persisted = commitOpenAIChatCompatibleCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,
-              pending, command, commandFacts: facts, provider: details, endpoint, configuration, credentialScopeId: credential.credentialScopeId,
+              pending, command, commandFacts: facts, provider: currentDetails, endpoint: currentEndpoint,
+              configuration: currentConfiguration, credentialScopeId: credential.credentialScopeId,
               credentialRevision: credential.credentialRevision, capability })
             if (command.kind === 'openai_chat_compatible_initial') graph.commitInitialTurnProjection(context, pending as PendingInitialTurnV2)
             else if (command.kind === 'openai_chat_compatible_regenerate') graph.commitAnswerActionProjection(context, pending as PendingAnswerActionV2)

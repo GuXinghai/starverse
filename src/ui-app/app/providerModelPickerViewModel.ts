@@ -1,4 +1,4 @@
-import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
+import type { RuntimeProviderId } from '@/next/provider/runtimeProviderId'
 import type { CatalogQueryItem } from '@/next/modelCatalog/catalogQueryService'
 
 export type ProviderModelPickerStatusKind =
@@ -9,7 +9,7 @@ export type ProviderModelPickerStatusKind =
   | 'unavailable'
 
 export type ProviderModelPickerItem = Readonly<{
-  providerId: RuntimeProviderKey
+  providerId: RuntimeProviderId
   providerName: string
   modelId: string
   modelKey: string
@@ -28,7 +28,7 @@ export type ProviderModelPickerItem = Readonly<{
 }>
 
 export type ProviderModelPickerSource = Readonly<{
-  providerId: RuntimeProviderKey
+  providerId: RuntimeProviderId
   providerName: string
   statusKind: ProviderModelPickerStatusKind
   statusLabel: string

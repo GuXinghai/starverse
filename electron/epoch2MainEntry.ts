@@ -1,22 +1,32 @@
 import { app, dialog } from 'electron'
-import { configureStarverseElectronIdentity, hasExplicitUserDataOverride } from './bootstrap/productIdentityBootstrap'
+import { applyIsolatedEpoch2SmokeAppDataRoot, configureStarverseElectronIdentity, hasExplicitUserDataOverride } from './bootstrap/productIdentityBootstrap'
 import {
   bootstrapEpoch2ApplicationRuntime,
   installEpoch2ApplicationRuntime,
   resolveEpoch2BootstrapLayout,
 } from './bootstrap/epoch2ApplicationRuntime'
 import { recoverEpoch2DatabaseSchemaMismatch } from './data-epoch/schemaMismatchRecovery'
-import { acquireWin32EpochRootLease } from './data-epoch/win32EpochRootLease'
+import { formatEpoch2SchemaRecoverySuccess } from './data-epoch/epoch2StartupDiagnostics'
+import { acquireEpochRootLease } from './data-epoch/win32EpochRootLease'
+import { requestMainWindowActivation } from './windows/mainWindowActivation'
 
+applyIsolatedEpoch2SmokeAppDataRoot({ app, env: process.env })
 configureStarverseElectronIdentity({ app, isPackaged: app.isPackaged,
   isE2e: process.env.SV_ELECTRON_COMPATIBLE_E2E === '1', platform: process.platform,
   userDataOverrideRequested: hasExplicitUserDataOverride(process.argv) })
+
+const isPrimaryInstance = app.requestSingleInstanceLock()
+if (!isPrimaryInstance) {
+  app.quit()
+} else {
+  app.on('second-instance', () => requestMainWindowActivation())
+}
 
 function startupFailureCode(error: unknown): string {
   const candidate = error && typeof error === 'object' && 'code' in error
     ? (error as { code?: unknown }).code
     : error instanceof Error ? error.message : null
-  return typeof candidate === 'string' && /^EPOCH2_[A-Z0-9_]+$/u.test(candidate)
+  return typeof candidate === 'string' && /^(?:EPOCH2_|LINUX_CREDENTIAL_STORAGE_)[A-Z0-9_]+$/u.test(candidate)
     ? candidate
     : 'EPOCH2_STARTUP_UNCLASSIFIED'
 }
@@ -47,11 +57,10 @@ async function startWithSchemaMismatchRecovery(): Promise<void> {
   }
   try {
     const layout = resolveEpoch2BootstrapLayout()
-    const lease = acquireWin32EpochRootLease(layout)
+    const lease = acquireEpochRootLease(layout)
     try {
       const recovered = recoverEpoch2DatabaseSchemaMismatch({ layout, lease })
-      process.stderr.write(`[epoch2-startup] EPOCH2_DATABASE_SCHEMA_MISMATCH_RECOVERED ` +
-        `backup=${recovered.backupDirectory} files=${recovered.backedUpFiles.length}\n`)
+      process.stderr.write(formatEpoch2SchemaRecoverySuccess(recovered.backedUpFiles.length))
     } finally {
       lease.release()
     }
@@ -72,7 +81,7 @@ async function startWithSchemaMismatchRecovery(): Promise<void> {
   }
 }
 
-void app.whenReady().then(async () => {
+if (isPrimaryInstance) void app.whenReady().then(async () => {
   try {
     await startup()
   } catch (error) {

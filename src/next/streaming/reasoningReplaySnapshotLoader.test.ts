@@ -40,7 +40,7 @@ describe('loadReasoningReplaySnapshotRecord', () => {
       segmentsCount: undefined,
     })
 
-    expect(warn).toHaveBeenCalledWith('[reasoning-verify] failed to load db replay snapshot:', expect.any(Error))
+    expect(warn).toHaveBeenCalledWith('[reasoning-verify] REPLAY_SNAPSHOT_LOAD_FAILED')
     warn.mockRestore()
   })
 })

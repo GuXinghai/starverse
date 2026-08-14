@@ -1,6 +1,10 @@
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
-import { LocalEndpointProfileV2Repo, type LocalEndpointProtocolV2 } from '../../infra/db/repo/localEndpointProfileV2Repo'
+import { LocalEndpointProfileV2Repo } from '../../infra/db/repo/localEndpointProfileV2Repo'
+import {
+  decodeLocalEndpointExecutionProviderId,
+  decodeLocalEndpointProtocolV2,
+} from '../../src/shared/provider/localProviderRouteDescriptor'
 import type { RegisterInvoke } from './types'
 
 export const LOCAL_ENDPOINT_PROFILE_V2_IPC_CHANNELS = Object.freeze([
@@ -23,12 +27,20 @@ export function registerLocalEndpointProfileV2Ipc(input: Readonly<{
   input.registerInvoke(LOCAL_ENDPOINT_PROFILE_V2_IPC_CHANNELS[1], safe((payload) => {
     const value = raw(payload); const keys = Object.keys(value).sort()
     const expectedKeys = value.providerId === 'ollama' ? ['baseUrl', 'protocolConfig', 'protocolContractId', 'providerId'] : ['baseUrl', 'protocolContractId', 'providerId']
-    if (keys.join('\0') !== expectedKeys.sort().join('\0') ||
-        (value.providerId !== 'lmstudio' && value.providerId !== 'ollama' && value.providerId !== 'generic_local') ||
-        typeof value.protocolContractId !== 'string' || typeof value.baseUrl !== 'string') throw new Error('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
-    return repo.create({ endpointProfileId: `local-profile:${randomUUID()}`, providerId: value.providerId,
-      protocolContractId: value.protocolContractId as LocalEndpointProtocolV2, baseUrl: value.baseUrl,
-      ...(value.providerId === 'ollama' ? { protocolConfig: value.protocolConfig as Readonly<Record<string, unknown>> } : {}) })
+    if (keys.join('\0') !== expectedKeys.sort().join('\0') || typeof value.baseUrl !== 'string') {
+      throw new Error('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
+    }
+    let providerId
+    let protocolContractId
+    try {
+      providerId = decodeLocalEndpointExecutionProviderId(value.providerId)
+      protocolContractId = decodeLocalEndpointProtocolV2(value.protocolContractId)
+    } catch {
+      throw new Error('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
+    }
+    return repo.create({ endpointProfileId: `local-profile:${randomUUID()}`, providerId,
+      protocolContractId, baseUrl: value.baseUrl,
+      ...(providerId === 'ollama' ? { protocolConfig: value.protocolConfig as Readonly<Record<string, unknown>> } : {}) })
   }))
   input.registerInvoke(LOCAL_ENDPOINT_PROFILE_V2_IPC_CHANNELS[2], safe((payload) => {
     const value = raw(payload)

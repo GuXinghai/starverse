@@ -3,8 +3,17 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import SettingsPanel from './SettingsPanel.vue'
 import { resetI18nForTests, t, tf } from '@/shared/i18n'
+import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 
-const CONFIGURED_API_KEY_PLACEHOLDER = '••••••'
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  let reject!: (reason?: unknown) => void
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
+    resolve = resolvePromise
+    reject = rejectPromise
+  })
+  return { promise, resolve, reject }
+}
 
 function createElectronStoreMock() {
   const values: Record<string, unknown> = {}
@@ -32,11 +41,9 @@ function createElectronStoreMockWith(values: Record<string, unknown>) {
 
 function createOpenRouterCredentialMock(input?: {
   apiKeyConfigured?: boolean
-  apiKey?: string
 }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
-    apiKey: input?.apiKey ?? 'sk-openrouter-saved',
   }
   const buildEndpoint = () => ({
       kind: 'openrouter_endpoint',
@@ -64,15 +71,9 @@ function createOpenRouterCredentialMock(input?: {
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
-    reveal: vi.fn(async () => (
-      state.apiKeyConfigured
-        ? { ok: true, apiKey: state.apiKey }
-        : { ok: false, code: 'credential_missing', message: 'OpenRouter API key is not configured.' }
-    )),
     update: vi.fn(async (payload: { apiKey?: string }) => {
       if (payload.apiKey && payload.apiKey.trim()) {
         state.apiKeyConfigured = true
-        state.apiKey = payload.apiKey.trim()
       }
       return { ok: true, status: buildStatus() }
     }),
@@ -86,7 +87,6 @@ function createOpenRouterCredentialMock(input?: {
 function createOpenAIResponsesCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
-    apiKey: 'sk-openai-responses-saved',
   }
   const buildStatus = () => ({
     source: 'legacy_store',
@@ -99,15 +99,9 @@ function createOpenAIResponsesCredentialMock(input?: { apiKeyConfigured?: boolea
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
-    reveal: vi.fn(async () => (
-      state.apiKeyConfigured
-        ? { ok: true, apiKey: state.apiKey }
-        : { ok: false, code: 'credential_missing', message: 'OpenAI Responses API key is not configured.' }
-    )),
     update: vi.fn(async (payload: { apiKey?: string }) => {
       if (payload.apiKey && payload.apiKey.trim()) {
         state.apiKeyConfigured = true
-        state.apiKey = payload.apiKey.trim()
       }
       return { ok: true, status: buildStatus() }
     }),
@@ -121,7 +115,6 @@ function createOpenAIResponsesCredentialMock(input?: { apiKeyConfigured?: boolea
 function createGoogleAIStudioCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
-    apiKey: 'AIza-google-saved',
   }
   const buildStatus = () => ({
     source: 'legacy_store',
@@ -134,15 +127,9 @@ function createGoogleAIStudioCredentialMock(input?: { apiKeyConfigured?: boolean
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
-    reveal: vi.fn(async () => (
-      state.apiKeyConfigured
-        ? { ok: true, apiKey: state.apiKey }
-        : { ok: false, code: 'credential_missing', message: 'Google AI Studio API key is not configured.' }
-    )),
     update: vi.fn(async (payload: { apiKey?: string }) => {
       if (payload.apiKey && payload.apiKey.trim()) {
         state.apiKeyConfigured = true
-        state.apiKey = payload.apiKey.trim()
       }
       return { ok: true, status: buildStatus() }
     }),
@@ -156,7 +143,6 @@ function createGoogleAIStudioCredentialMock(input?: { apiKeyConfigured?: boolean
 function createAnthropicCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
-    apiKey: 'sk-ant-saved',
   }
   const buildStatus = () => ({
     source: 'legacy_store',
@@ -169,15 +155,9 @@ function createAnthropicCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
-    reveal: vi.fn(async () => (
-      state.apiKeyConfigured
-        ? { ok: true, apiKey: state.apiKey }
-        : { ok: false, code: 'credential_missing', message: 'Anthropic API key is not configured.' }
-    )),
     update: vi.fn(async (payload: { apiKey?: string }) => {
       if (payload.apiKey && payload.apiKey.trim()) {
         state.apiKeyConfigured = true
-        state.apiKey = payload.apiKey.trim()
       }
       return { ok: true, status: buildStatus() }
     }),
@@ -191,7 +171,6 @@ function createAnthropicCredentialMock(input?: { apiKeyConfigured?: boolean }) {
 function createDeepSeekCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   const state = {
     apiKeyConfigured: input?.apiKeyConfigured ?? true,
-    apiKey: 'sk-deepseek-saved',
   }
   const buildStatus = () => ({
     source: 'legacy_store',
@@ -204,15 +183,9 @@ function createDeepSeekCredentialMock(input?: { apiKeyConfigured?: boolean }) {
   })
   return {
     getStatus: vi.fn(async () => ({ ok: true, status: buildStatus() })),
-    reveal: vi.fn(async () => (
-      state.apiKeyConfigured
-        ? { ok: true, apiKey: state.apiKey }
-        : { ok: false, code: 'credential_missing', message: 'DeepSeek API key is not configured.' }
-    )),
     update: vi.fn(async (payload: { apiKey?: string }) => {
       if (payload.apiKey && payload.apiKey.trim()) {
         state.apiKeyConfigured = true
-        state.apiKey = payload.apiKey.trim()
       }
       return { ok: true, status: buildStatus() }
     }),
@@ -244,6 +217,7 @@ function createDbBridgeMock() {
 
 function createElectronAPIMock() {
   return {
+    platform: 'win32',
     modelCatalogSyncNow: vi.fn(async () => ({
       ok: true,
       syncAttempted: true,
@@ -345,6 +319,7 @@ describe('ui-app SettingsPanel', () => {
   const originalNetworkProxy = (globalThis as any).networkProxy
 
   beforeEach(() => {
+    installGenerationV2TestBridge()
     resetI18nForTests()
     globalThis.localStorage?.removeItem('sv_debug_openrouter_echo_upstream_body')
     globalThis.localStorage?.removeItem('starverse.localEndpointTextChat.enabled')
@@ -490,7 +465,7 @@ describe('ui-app SettingsPanel', () => {
     const providerFailure = {
       origin: 'http_response',
       phase: 'response_body',
-      providerId: 'deepseek',
+      provider: { namespace: 'catalog_source', id: 'deepseek' },
       contractId: 'deepseek.models.v2',
       operationId: 'catalog-sync-deepseek',
       requestSequence: 1,
@@ -539,11 +514,12 @@ describe('ui-app SettingsPanel', () => {
     await screen.findByText('设置')
     await waitFor(() => expect((globalThis as any).electronStore.get).toHaveBeenCalled())
 
+    expect(screen.getByTestId('settings-openrouter-key-status')).toHaveTextContent(t('settings.credentials.configured'))
+    expect(screen.queryByTestId('settings-openrouter-api-key')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('settings-openrouter-edit-key'))
     const keyInput = screen.getByTestId('settings-openrouter-api-key') as HTMLInputElement
     await waitFor(() => expect(keyInput).not.toBeDisabled())
     expect(keyInput.value).toBe('')
-    expect(keyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
-    expect(screen.queryByTestId('settings-openrouter-key-status')).not.toBeInTheDocument()
 
     await user.clear(keyInput)
     await user.type(keyInput, 'sk-new')
@@ -586,12 +562,13 @@ describe('ui-app SettingsPanel', () => {
     })
     expect(storeGet).not.toHaveBeenCalledWith('openRouterApiKey')
 
+    expect(screen.getByTestId('settings-openrouter-key-status')).toHaveTextContent(t('settings.credentials.configured'))
+    expect(screen.queryByTestId('settings-openrouter-api-key')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('settings-openrouter-edit-key'))
     const keyInput = screen.getByTestId('settings-openrouter-api-key') as HTMLInputElement
     await waitFor(() => expect(keyInput).not.toBeDisabled())
     expect(keyInput).toHaveValue('')
     expect(screen.queryByDisplayValue('sk-old')).toBeNull()
-    expect(keyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
-    expect(screen.queryByTestId('settings-openrouter-key-status')).not.toBeInTheDocument()
 
     await user.clear(keyInput)
     await user.type(keyInput, 'sk-c4c-replacement-key')
@@ -619,20 +596,24 @@ describe('ui-app SettingsPanel', () => {
     expect(storeGet).not.toHaveBeenCalledWith('openAIResponsesApiKey')
 
     const panel = await screen.findByTestId('settings-openai-responses-experimental')
+    expect(screen.getByTestId('settings-openai-responses-key-status')).toHaveTextContent(t('settings.credentials.configured'))
+    expect(screen.queryByTestId('settings-openai-responses-api-key')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('settings-openai-responses-edit-key'))
     const openAIKeyInput = screen.getByTestId('settings-openai-responses-api-key') as HTMLInputElement
     await waitFor(() => expect(openAIKeyInput).not.toBeDisabled())
     expect(panel.textContent).toContain(t('settings.experimentalChat.openAIResponses.desc'))
     expect(openAIKeyInput).toHaveValue('')
-    expect(openAIKeyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
-    expect(screen.queryByTestId('settings-openai-responses-key-status')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('sk-openai-old')).toBeNull()
 
     await user.type(openAIKeyInput, 'sk-openai-replacement')
     await user.click(screen.getByTestId('settings-openai-responses-apply-key'))
 
-    expect((globalThis as any).openAIResponsesCredential.update).toHaveBeenCalledWith({
+    await waitFor(() => expect((globalThis as any).openAIResponsesCredential.update).toHaveBeenCalledWith({
       apiKey: 'sk-openai-replacement',
-    })
+    }))
+    await screen.findByTestId('settings-openai-responses-edit-key')
+    await user.click(screen.getByTestId('settings-openai-responses-edit-key'))
+    expect((screen.getByTestId('settings-openai-responses-api-key') as HTMLInputElement).value).toBe('')
     const storeSet = (globalThis as any).electronStore.set as ReturnType<typeof vi.fn>
     expect(storeSet).not.toHaveBeenCalledWith('openAIResponsesApiKey', expect.anything())
   })
@@ -649,13 +630,14 @@ describe('ui-app SettingsPanel', () => {
     expect(storeGet).not.toHaveBeenCalledWith('geminiApiKey')
 
     const panel = await screen.findByTestId('settings-google-ai-studio-experimental')
+    expect(screen.getByTestId('settings-google-ai-studio-key-status')).toHaveTextContent(t('settings.credentials.configured'))
+    expect(screen.queryByTestId('settings-google-ai-studio-api-key')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('settings-google-ai-studio-edit-key'))
     const googleKeyInput = screen.getByTestId('settings-google-ai-studio-api-key') as HTMLInputElement
     await waitFor(() => expect(googleKeyInput).not.toBeDisabled())
     expect(panel.textContent).toContain(t('settings.experimentalChat.googleAIStudio.desc'))
     expect(screen.queryByTestId('settings-google-ai-studio-model')).not.toBeInTheDocument()
     expect(googleKeyInput).toHaveValue('')
-    expect(googleKeyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
-    expect(screen.queryByTestId('settings-google-ai-studio-key-status')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('AIza-old-google-key')).toBeNull()
 
     await user.type(googleKeyInput, 'AIza-google-replacement')
@@ -680,12 +662,13 @@ describe('ui-app SettingsPanel', () => {
     expect(storeGet).not.toHaveBeenCalledWith('anthropicApiKey')
 
     const panel = await screen.findByTestId('settings-anthropic-experimental')
+    expect(screen.getByTestId('settings-anthropic-key-status')).toHaveTextContent(t('settings.credentials.configured'))
+    expect(screen.queryByTestId('settings-anthropic-api-key')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('settings-anthropic-edit-key'))
     const anthropicKeyInput = screen.getByTestId('settings-anthropic-api-key') as HTMLInputElement
     await waitFor(() => expect(anthropicKeyInput).not.toBeDisabled())
     expect(panel.textContent).toContain(t('settings.experimentalChat.anthropic.desc'))
     expect(anthropicKeyInput).toHaveValue('')
-    expect(anthropicKeyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
-    expect(screen.queryByTestId('settings-anthropic-key-status')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('sk-ant-old-key')).toBeNull()
 
     await user.type(anthropicKeyInput, 'sk-ant-replacement')
@@ -709,12 +692,13 @@ describe('ui-app SettingsPanel', () => {
     expect(storeGet).not.toHaveBeenCalledWith('deepSeekApiKey')
 
     const panel = await screen.findByTestId('settings-deepseek-experimental')
+    expect(screen.getByTestId('settings-deepseek-key-status')).toHaveTextContent(t('settings.credentials.configured'))
+    expect(screen.queryByTestId('settings-deepseek-api-key')).not.toBeInTheDocument()
+    await user.click(screen.getByTestId('settings-deepseek-edit-key'))
     const deepSeekKeyInput = screen.getByTestId('settings-deepseek-api-key') as HTMLInputElement
     await waitFor(() => expect(deepSeekKeyInput).not.toBeDisabled())
     expect(panel.textContent).toContain(t('settings.experimentalChat.deepSeek.desc'))
     expect(deepSeekKeyInput).toHaveValue('')
-    expect(deepSeekKeyInput.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
-    expect(screen.queryByTestId('settings-deepseek-key-status')).not.toBeInTheDocument()
     expect(screen.queryByDisplayValue('sk-deepseek-old-key')).toBeNull()
 
     await user.type(deepSeekKeyInput, 'sk-deepseek-replacement')
@@ -727,7 +711,26 @@ describe('ui-app SettingsPanel', () => {
     expect(storeSet).not.toHaveBeenCalledWith('deepSeekApiKey', expect.anything())
   })
 
-  it('reveals saved API keys on show and hides them again without using generic store reads', async () => {
+  it.each([
+    'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_BACKEND_UNTRUSTED',
+    'EPOCH2_RUNTIME_CREDENTIAL_SAFE_STORAGE_UNAVAILABLE',
+  ] as const)('offers a non-plaintext fallback outside Linux for exact safe-storage failure %s', async (code) => {
+    const user = userEvent.setup()
+    ;(globalThis as any).openAIResponsesCredential.update.mockResolvedValueOnce({
+      ok: false,
+      code,
+    })
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+    await user.click(await screen.findByTestId('settings-openai-responses-edit-key'))
+    await user.type(screen.getByTestId('settings-openai-responses-api-key'), 'write-only-choice')
+    await user.click(screen.getByTestId('settings-openai-responses-apply-key'))
+    const dialog = await screen.findByRole('dialog')
+    expect(dialog).toHaveTextContent(t('settings.credentials.sessionOnly'))
+    expect(screen.queryByTestId('settings-save-plaintext-credential')).toBeNull()
+    expect(screen.queryByText(t('settings.credentials.plaintextWarning'))).toBeNull()
+  })
+
+  it('keeps saved API keys write-only and exposes only replacement and clear actions', async () => {
     const user = userEvent.setup()
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
@@ -735,55 +738,46 @@ describe('ui-app SettingsPanel', () => {
 
     const cases = [
       {
-        input: screen.getByTestId('settings-openrouter-api-key') as HTMLInputElement,
-        toggle: screen.getByTestId('settings-openrouter-toggle-key-visibility'),
+        inputTestId: 'settings-openrouter-api-key',
+        editTestId: 'settings-openrouter-edit-key',
+        toggleTestId: 'settings-openrouter-toggle-key-visibility',
         bridge: (globalThis as any).openRouterCredential,
-        value: 'sk-openrouter-saved',
       },
       {
-        input: screen.getByTestId('settings-openai-responses-api-key') as HTMLInputElement,
-        toggle: screen.getByTestId('settings-openai-responses-toggle-key-visibility'),
+        inputTestId: 'settings-openai-responses-api-key',
+        editTestId: 'settings-openai-responses-edit-key',
+        toggleTestId: 'settings-openai-responses-toggle-key-visibility',
         bridge: (globalThis as any).openAIResponsesCredential,
-        value: 'sk-openai-responses-saved',
       },
       {
-        input: screen.getByTestId('settings-google-ai-studio-api-key') as HTMLInputElement,
-        toggle: screen.getByTestId('settings-google-ai-studio-toggle-key-visibility'),
+        inputTestId: 'settings-google-ai-studio-api-key',
+        editTestId: 'settings-google-ai-studio-edit-key',
+        toggleTestId: 'settings-google-ai-studio-toggle-key-visibility',
         bridge: (globalThis as any).googleAIStudioCredential,
-        value: 'AIza-google-saved',
       },
       {
-        input: screen.getByTestId('settings-anthropic-api-key') as HTMLInputElement,
-        toggle: screen.getByTestId('settings-anthropic-toggle-key-visibility'),
+        inputTestId: 'settings-anthropic-api-key',
+        editTestId: 'settings-anthropic-edit-key',
+        toggleTestId: 'settings-anthropic-toggle-key-visibility',
         bridge: (globalThis as any).anthropicCredential,
-        value: 'sk-ant-saved',
       },
       {
-        input: screen.getByTestId('settings-deepseek-api-key') as HTMLInputElement,
-        toggle: screen.getByTestId('settings-deepseek-toggle-key-visibility'),
+        inputTestId: 'settings-deepseek-api-key',
+        editTestId: 'settings-deepseek-edit-key',
+        toggleTestId: 'settings-deepseek-toggle-key-visibility',
         bridge: (globalThis as any).deepSeekCredential,
-        value: 'sk-deepseek-saved',
       },
     ] as const
 
     for (const item of cases) {
-      await waitFor(() => expect(item.input).not.toBeDisabled())
-      expect(item.input.type).toBe('password')
-      expect(item.input).toHaveValue('')
-
-      await user.click(item.toggle)
-
-      await waitFor(() => expect(item.input).toHaveValue(item.value))
-      expect(item.input.type).toBe('text')
-      expect(item.toggle.textContent).toContain(t('common.hide'))
-      expect(item.bridge.reveal).toHaveBeenCalledTimes(1)
-
-      await user.click(item.toggle)
-
-      expect(item.input.type).toBe('password')
-      expect(item.input).toHaveValue('')
-      expect(item.input.placeholder).toBe(CONFIGURED_API_KEY_PLACEHOLDER)
-      expect(item.toggle.textContent).toContain(t('common.show'))
+      expect(screen.queryByTestId(item.inputTestId)).not.toBeInTheDocument()
+      await user.click(await screen.findByTestId(item.editTestId))
+      const input = screen.getByTestId(item.inputTestId) as HTMLInputElement
+      await waitFor(() => expect(input).not.toBeDisabled())
+      expect(input.type).toBe('password')
+      expect(input).toHaveValue('')
+      expect(screen.queryByTestId(item.toggleTestId)).not.toBeInTheDocument()
+      expect(item.bridge).not.toHaveProperty('reveal')
     }
 
     const storeGet = (globalThis as any).electronStore.get as ReturnType<typeof vi.fn>
@@ -794,38 +788,119 @@ describe('ui-app SettingsPanel', () => {
     expect(storeGet).not.toHaveBeenCalledWith('deepSeekApiKey')
   })
 
-  it('removes cloud experimental manual model inputs and cleans legacy model keys while preserving credentials', async () => {
-    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.model', 'gpt-4.1-mini')
-    globalThis.localStorage?.setItem('starverse.googleAIStudioTextChat.model', 'gemini-2.5-flash')
-    globalThis.localStorage?.setItem('starverse.anthropicMessagesTextChat.model', 'claude-sonnet-4-5')
-    globalThis.localStorage?.setItem('starverse.deepSeekTextChat.model', 'deepseek-chat')
+  it('keeps credential status failures unknown, exposes the diagnostic, and continues loading other providers', async () => {
+    const user = userEvent.setup()
+    const openRouterCredential = createOpenRouterCredentialMock()
+    const failure = {
+      origin: 'secure_storage',
+      phase: 'terminal_persistence',
+      provider: { namespace: 'credential_slot', id: 'openrouter' },
+      contractId: 'credential-settings:openrouter-first-party-v1',
+      operationId: 'credential:status:openrouter',
+      requestSequence: 1,
+      httpStatus: null,
+      httpStatusText: null,
+      providerError: null,
+      rawFrameExcerpt: null,
+      transportError: {
+        name: 'Epoch2RuntimeCredentialError',
+        code: null,
+        message: 'EPOCH2_RUNTIME_CREDENTIAL_DRIFT',
+      },
+      starverseDiagnosticCode: 'EPOCH2_RUNTIME_CREDENTIAL_DRIFT',
+      redactions: [],
+      truncations: [],
+    } as const
+    const successfulStatus = await openRouterCredential.getStatus()
+    const pendingRetry = deferred<any>()
+    const getStatus = vi.fn<() => Promise<any>>()
+    getStatus.mockResolvedValueOnce({
+        ok: false,
+        code: 'EPOCH2_RUNTIME_CREDENTIAL_DRIFT',
+        message: 'EPOCH2_RUNTIME_CREDENTIAL_DRIFT',
+        providerFailure: failure,
+      }).mockImplementationOnce(() => pendingRetry.promise)
+    ;(openRouterCredential as any).getStatus = getStatus
+    ;(globalThis as any).openRouterCredential = openRouterCredential
 
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })
 
-    await screen.findByText('设置')
-    expect(screen.getByTestId('settings-openai-responses-api-key')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-google-ai-studio-api-key')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-anthropic-api-key')).toBeInTheDocument()
-    expect(screen.getByTestId('settings-deepseek-api-key')).toBeInTheDocument()
+    const status = await screen.findByTestId('settings-openrouter-key-status')
+    await waitFor(() => expect(status).toHaveTextContent(t('settings.credentials.unknown')))
+    expect(screen.getByTestId('settings-openrouter-credential-error')).toHaveTextContent('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
+    expect(screen.queryByTestId('settings-openrouter-edit-key')).not.toBeInTheDocument()
+    expect(screen.queryByTestId('settings-openrouter-clear-key')).not.toBeInTheDocument()
+    await waitFor(() => expect((globalThis as any).deepSeekCredential.getStatus).toHaveBeenCalledTimes(1))
 
-    expect(screen.queryByTestId('settings-openai-responses-model')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-google-ai-studio-model')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-anthropic-model')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-deepseek-model')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-openai-responses-apply-chat')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-google-ai-studio-apply-chat')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-anthropic-apply-chat')).not.toBeInTheDocument()
-    expect(screen.queryByTestId('settings-deepseek-apply-chat')).not.toBeInTheDocument()
+    const retry = screen.getByTestId('settings-openrouter-retry-status')
+    await user.click(retry)
+    await waitFor(() => expect(getStatus).toHaveBeenCalledTimes(2))
+    expect(retry).toBeDisabled()
+    await user.click(retry)
+    expect(getStatus).toHaveBeenCalledTimes(2)
 
-    await waitFor(() => {
-      expect(globalThis.localStorage?.getItem('starverse.openAIResponsesTextChat.model')).toBeNull()
-      expect(globalThis.localStorage?.getItem('starverse.googleAIStudioTextChat.model')).toBeNull()
-      expect(globalThis.localStorage?.getItem('starverse.anthropicMessagesTextChat.model')).toBeNull()
-      expect(globalThis.localStorage?.getItem('starverse.deepSeekTextChat.model')).toBeNull()
-    })
-    expect(document.body.textContent).not.toContain('endpoint picker')
+    pendingRetry.resolve(successfulStatus)
+
+    await waitFor(() => expect(status).toHaveTextContent(t('settings.credentials.configured')))
+    expect(screen.queryByTestId('settings-openrouter-credential-error')).not.toBeInTheDocument()
+    expect(screen.getByTestId('settings-openrouter-edit-key')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-openrouter-clear-key')).toBeInTheDocument()
   })
 
+  it('keeps an undecryptable saved credential configured and exposes its exact diagnostic', async () => {
+    const openRouterCredential = createOpenRouterCredentialMock()
+    ;(openRouterCredential as any).getStatus = vi.fn(async () => ({
+      ok: true,
+      status: {
+        source: 'secure_store',
+        apiKeyConfigured: true,
+        maskedApiKey: '***',
+        credentialAvailability: 'unavailable',
+        credentialDiagnosticCode: 'EPOCH2_RUNTIME_CREDENTIAL_DECRYPT_FAILED',
+        baseUrlConfigured: false,
+        displayBaseUrl: 'https://openrouter.ai/api/v1',
+        defaultBaseUrl: 'https://openrouter.ai/api/v1',
+      },
+    }))
+    ;(globalThis as any).openRouterCredential = openRouterCredential
+
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await waitFor(() => expect(screen.getByTestId('settings-openrouter-key-status'))
+      .toHaveTextContent(t('settings.credentials.configured')))
+    expect(screen.getByTestId('settings-openrouter-credential-error'))
+      .toHaveTextContent('EPOCH2_RUNTIME_CREDENTIAL_DECRYPT_FAILED')
+    expect(screen.getByTestId('settings-openrouter-credential-error'))
+      .toHaveTextContent(t('settings.credentials.systemCredentialDecryptUnavailable'))
+    expect(screen.getByTestId('settings-openrouter-edit-key')).toBeInTheDocument()
+    expect(screen.getByTestId('settings-openrouter-clear-key')).toBeInTheDocument()
+  })
+
+  it('locks one provider while replacing its key so clear, cancel, and input changes cannot race the update', async () => {
+    const user = userEvent.setup()
+    const openRouterCredential = createOpenRouterCredentialMock()
+    const initial = await openRouterCredential.getStatus()
+    const pendingUpdate = deferred<any>()
+    openRouterCredential.update = vi.fn(() => pendingUpdate.promise)
+    ;(globalThis as any).openRouterCredential = openRouterCredential
+
+    render(SettingsPanel, { props: { disabled: false, isRunning: false } })
+
+    await user.click(await screen.findByTestId('settings-openrouter-edit-key'))
+    const input = screen.getByTestId('settings-openrouter-api-key') as HTMLInputElement
+    await user.type(input, 'sk-replacement')
+    await user.click(screen.getByTestId('settings-openrouter-apply-key'))
+
+    await waitFor(() => expect(openRouterCredential.update).toHaveBeenCalledWith({ apiKey: 'sk-replacement' }))
+    expect(input).toBeDisabled()
+    expect(screen.getByTestId('settings-openrouter-cancel-key')).toBeDisabled()
+    expect(screen.getByTestId('settings-openrouter-clear-key')).toBeDisabled()
+
+    pendingUpdate.resolve(initial)
+
+    await waitFor(() => expect(screen.queryByTestId('settings-openrouter-api-key')).not.toBeInTheDocument())
+    expect(screen.getByTestId('settings-openrouter-clear-key')).not.toBeDisabled()
+  })
 
   it('loads catalog sync settings defaults', async () => {
     render(SettingsPanel, { props: { disabled: false, isRunning: false } })

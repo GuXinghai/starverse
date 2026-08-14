@@ -6,7 +6,7 @@ describe('sanitizeForIpc', () => {
   it('deeply strips Vue reactive proxies and keeps payload cloneable', () => {
     const payload = reactive({
       meta: {
-        selectedModelKey: 'google/gemini-2.5-flash-image',
+        customMarker: 'preserved',
         webSearchOverride: reactive({
           searchMode: 'default',
           maxResults: 5,

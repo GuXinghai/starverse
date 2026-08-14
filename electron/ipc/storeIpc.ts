@@ -9,11 +9,6 @@ import {
   isProviderCredentialSecureStoreKey,
   PROVIDER_CREDENTIAL_SECURE_STORE_KEY_PREFIX,
 } from '../credentials/providerCredentialContract'
-import {
-  isOpenAICompatibleCredentialV2StoreKey,
-  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_NAMESPACE,
-  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
-} from '../credentials/openAICompatibleCredentialV2Service'
 import type { RegisterInvoke } from './types'
 
 export const STORE_IPC_CHANNELS = [
@@ -67,11 +62,9 @@ function isRendererBlockedCredentialStoreKey(key: string): boolean {
     ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
     ...RENDERER_MAIN_AUTHORITY_STORE_KEYS,
     PROVIDER_CREDENTIAL_SECURE_STORE_NAMESPACE,
-    OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_NAMESPACE,
   ]
   return protectedPaths.some((protectedPath) => pathsOverlap(key, protectedPath)) ||
-    isProviderCredentialSecureStoreKey(key) ||
-    isOpenAICompatibleCredentialV2StoreKey(key)
+    isProviderCredentialSecureStoreKey(key)
 }
 
 function isRendererAccessibleConfigKey(key: string): boolean {
@@ -83,7 +76,7 @@ function buildRendererSafeClearKeepKeys(keepKeys: unknown): string[] {
     ? keepKeys.map((item) => String(item)).filter((key) => isRendererAccessibleConfigKey(key))
     : []
   const providerCredentialRoot = PROVIDER_CREDENTIAL_SECURE_STORE_NAMESPACE.split('.')[0]!
-  for (const key of [...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, providerCredentialRoot, OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT]) {
+  for (const key of [...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, providerCredentialRoot]) {
     if (!safeKeepKeys.includes(key)) {
       safeKeepKeys.push(key)
     }

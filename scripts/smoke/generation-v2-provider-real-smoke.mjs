@@ -269,11 +269,10 @@ async function main() {
           providerErrorFacts: await readProviderErrorFacts(finalState.answer?.answerRootId ?? null) }
       }
       const credentialStatus = await credential.getStatus()
-      const credentialReveal = await credential.reveal()
       const observed = { credential: { ok: credentialStatus?.ok === true, configured: credentialStatus?.status?.apiKeyConfigured === true,
-        revision: credentialStatus?.status?.revision ?? null, leaseAvailable: credentialReveal?.ok === true },
+        revision: credentialStatus?.status?.revision ?? null },
         proxy: await window.networkProxy?.getSettings?.(), actions: [] }
-      if (observed.credential?.ok !== true || observed.credential?.configured !== true || observed.credential?.leaseAvailable !== true) throw new Error('GENERATION_V2_REAL_SMOKE_CREDENTIAL_MISSING')
+      if (observed.credential?.ok !== true || observed.credential?.configured !== true) throw new Error('GENERATION_V2_REAL_SMOKE_CREDENTIAL_MISSING')
       const workspace = unwrapRenderer(await api.workspace.ensureDefault())
       const conversation = unwrapRenderer(await api.workspace.createConversation(workspace.projectId, `Generation V2 ${providerKey} real smoke`))
       let current = { headMessageId: null, turn: null, answer: null }

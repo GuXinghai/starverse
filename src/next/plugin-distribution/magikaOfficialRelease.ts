@@ -18,28 +18,28 @@ import type {
 import type { TrustedCatalogPublicKeyMap } from '../file-type/pluginCatalogSignature'
 
 export const MAGIKA_OFFICIAL_PLUGIN_ID = 'magika'
-export const MAGIKA_OFFICIAL_PLUGIN_VERSION = '0.1.1'
+export const MAGIKA_OFFICIAL_PLUGIN_VERSION = '0.2.0'
 export const MAGIKA_OFFICIAL_MODEL_VERSION = 'standard_v3_3'
-export const MAGIKA_OFFICIAL_RELEASE_TAG = 'starverse-plugin-magika-v0.1.1'
-export const MAGIKA_OFFICIAL_RELEASE_ASSET_NAME = 'starverse-plugin-magika-0.1.1-win32-x64.zip'
+export const MAGIKA_OFFICIAL_RELEASE_TAG = 'starverse-plugin-magika-v0.2.0'
+export const MAGIKA_OFFICIAL_RELEASE_ASSET_NAME = 'starverse-plugin-magika-0.2.0-any-any.zip'
 export const MAGIKA_OFFICIAL_RELEASE_URL =
-  'https://github.com/GuXinghai/starverse/releases/download/starverse-plugin-magika-v0.1.1/starverse-plugin-magika-0.1.1-win32-x64.zip'
+  'https://github.com/GuXinghai/starverse/releases/download/starverse-plugin-magika-v0.2.0/starverse-plugin-magika-0.2.0-any-any.zip'
 
 export const MAGIKA_OFFICIAL_PACKAGE_SHA256 =
-  'a85bb45b12186263443e17d0c4992d461fd42d948c826c14e66a885bfd9abb89'
-export const MAGIKA_OFFICIAL_PACKAGE_SIZE_BYTES = 67393627
+  '08307d2eead8019ea51d6b1205e6a1b56da678fa215048f471e0091b4cbaeb18'
+export const MAGIKA_OFFICIAL_PACKAGE_SIZE_BYTES = 64085105
 export const MAGIKA_OFFICIAL_MANIFEST_SHA256 =
-  '0ac56b53ca85fc0691bc84ab2c2a85671692d4da97d7950b19648aabc428a6d9'
+  '53037ab956545dc59b58d0a40d6dc93958bfd1ea2bce08a45795ef510fe951a2'
 export const MAGIKA_OFFICIAL_INVENTORY_SHA256 =
-  '5740c59afe0454053184631a0b5c4c14474b2a5886154587ed059a5382329502'
+  'b3218d6944ebb4c73dd285ba7f5edca9dc3b0b419f0d1cb2bc5e8275ded1f063'
 
 export const MAGIKA_OFFICIAL_SIGNATURE_KEY_ID = 'starverse-official-plugin-ed25519-2026-05'
-export const MAGIKA_OFFICIAL_SIGNATURE_REF = 'signatures/starverse-plugin-magika-0.1.1-win32-x64.sig.json'
+export const MAGIKA_OFFICIAL_SIGNATURE_REF = 'signatures/starverse-plugin-magika-0.2.0-any-any.sig.json'
 export const MAGIKA_OFFICIAL_PUBLIC_KEY_REF = 'keys/starverse-official-plugin-ed25519-2026-05.public.pem'
 export const MAGIKA_OFFICIAL_PUBLIC_KEY_FINGERPRINT_SHA256 =
   '726297001d097a0e1c348f9012dcbc356a70b4cc823310e09cfe7faee6c7a2c9'
-export const MAGIKA_OFFICIAL_SIGNATURE_SIGNED_AT = '2026-05-22T00:00:00.000Z'
-export const MAGIKA_OFFICIAL_SIGNATURE_EXPIRES_AT = '2027-05-22T00:00:00.000Z'
+export const MAGIKA_OFFICIAL_SIGNATURE_SIGNED_AT = '2026-08-13T09:19:14.780Z'
+export const MAGIKA_OFFICIAL_SIGNATURE_EXPIRES_AT = '2027-08-13T09:19:14.780Z'
 
 export const MAGIKA_OFFICIAL_PUBLIC_KEY_PEM = `-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEA2JUh2pJsKuiIHxWl41yFXPF8GCPfkN34Y2VMbppsz0I=
@@ -51,7 +51,7 @@ export const MAGIKA_OFFICIAL_SIGNATURE_ENVELOPE = {
   algorithm: 'ed25519',
   signedAt: MAGIKA_OFFICIAL_SIGNATURE_SIGNED_AT,
   expiresAt: MAGIKA_OFFICIAL_SIGNATURE_EXPIRES_AT,
-  value: 'eHeW6A0FKPqFQhmrjaxLm+NMtc79thw+nE/o83JSrfyClhRmage//78PltKswCSpG1JMwiJO3GpF0aR1Myd0Dg==',
+  value: '96pqT6eI2Be1Tupe5OD07TifBAdYchXFb4rC2Gt8dz0l5V3Z/S9k0osEchFo0wY+22zCqBe9YvGUqLJXMPuNBQ==',
   coveredManifestSha256: MAGIKA_OFFICIAL_MANIFEST_SHA256,
   coveredInventorySha256: MAGIKA_OFFICIAL_INVENTORY_SHA256,
 } as const satisfies PluginSignatureEnvelope
@@ -78,8 +78,8 @@ export const MAGIKA_OFFICIAL_CATALOG_ENTRY = {
   pluginId: MAGIKA_OFFICIAL_PLUGIN_ID,
   pluginVersion: MAGIKA_OFFICIAL_PLUGIN_VERSION,
   runtimeKind: 'managed',
-  platform: 'win32',
-  arch: 'x64',
+  platform: 'any',
+  arch: 'any',
   packageRef: `${MAGIKA_OFFICIAL_RELEASE_TAG}/${MAGIKA_OFFICIAL_RELEASE_ASSET_NAME}`,
   packageSha256: MAGIKA_OFFICIAL_PACKAGE_SHA256,
   packageSizeBytes: MAGIKA_OFFICIAL_PACKAGE_SIZE_BYTES,
@@ -87,8 +87,8 @@ export const MAGIKA_OFFICIAL_CATALOG_ENTRY = {
   inventorySha256: MAGIKA_OFFICIAL_INVENTORY_SHA256,
   signatureRef: MAGIKA_OFFICIAL_SIGNATURE_REF,
   compatibility: {
-    platforms: ['win32'],
-    architectures: ['x64'],
+    platforms: ['any'],
+    architectures: ['any'],
     starverseVersionRange: '>=0.0.0',
   },
   channel: 'stable',
@@ -96,7 +96,7 @@ export const MAGIKA_OFFICIAL_CATALOG_ENTRY = {
 
 export const MAGIKA_OFFICIAL_CATALOG_METADATA = {
   catalogSchemaVersion: '1',
-  catalogVersion: 2,
+  catalogVersion: 3,
   generatedAt: MAGIKA_OFFICIAL_SIGNATURE_SIGNED_AT,
   expiresAt: MAGIKA_OFFICIAL_SIGNATURE_EXPIRES_AT,
   sourceKind: 'official',

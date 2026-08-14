@@ -59,7 +59,7 @@ async function copySafeProjectedJson() {
 
     <dl class="mt-2 grid gap-x-3 gap-y-1 sm:grid-cols-[max-content_minmax(0,1fr)]">
       <dt class="font-semibold">{{ t('errors.providerFailureDetails.provider') }}</dt>
-      <dd :data-testid="`${props.testIdPrefix}-provider`">{{ failure.providerId }}</dd>
+      <dd :data-testid="`${props.testIdPrefix}-provider`">{{ failure.provider.namespace }}:{{ failure.provider.id }}</dd>
       <dt class="font-semibold">{{ t('errors.providerFailureDetails.origin') }}</dt>
       <dd :data-testid="`${props.testIdPrefix}-origin`">{{ failure.origin }}</dd>
       <dt class="font-semibold">{{ t('errors.providerFailureDetails.phase') }}</dt>

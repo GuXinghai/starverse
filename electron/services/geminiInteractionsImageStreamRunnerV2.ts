@@ -12,10 +12,15 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
+// Approved main-process Gemini Interactions Generation V2 execution boundary.
+// eslint-disable-next-line no-restricted-imports
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+// eslint-disable-next-line no-restricted-imports
 import { GeminiInteractionsImageResultAssemblerV1, GeminiInteractionsImageSseDecoderV1,
   GeminiInteractionsImageStreamV1Error, type GeminiInteractionsImageResultV1 } from '../../src/next/generation-v2/providers/gemini/interactionsStreamV1'
+// eslint-disable-next-line no-restricted-imports
 import { createGeminiInteractionsImageTerminalArtifactV2 } from '../../src/next/generation-v2/providers/gemini/interactionsTerminalArtifactV2'
+// eslint-disable-next-line no-restricted-imports
 import { isGeminiInteractionsImageModelIdV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
 import { createProviderFailureV2, providerFailureFromUnknownV2, providerFailurePrimaryMessageV2,
   type ProviderFailureV2 } from '../../src/shared/provider/providerFailureV2'
@@ -298,7 +303,7 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
           context: { origin: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
               ? 'response_stream' : 'response_decoder',
             phase: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
-              ? 'stream_read' : 'stream_decode', providerId: created.preparedRequest.providerId,
+              ? 'stream_read' : 'stream_decode', provider: { namespace: 'generation_execution', id: created.preparedRequest.providerId },
             contractId: created.preparedRequest.contractId, operationId: created.preparedRequest.operationId,
             requestSequence: created.preparedRequest.requestSequence,
             starverseDiagnosticCode: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_PROVIDER_FAILED'
@@ -308,7 +313,7 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
         })
         : providerResultCompleted
         ? createProviderFailureV2({
-          context: { origin: 'starverse_internal', phase: 'terminal_persistence', providerId: created.preparedRequest.providerId,
+          context: { origin: 'starverse_internal', phase: 'terminal_persistence', provider: { namespace: 'generation_execution', id: created.preparedRequest.providerId },
             contractId: created.preparedRequest.contractId, operationId: created.preparedRequest.operationId,
             requestSequence: created.preparedRequest.requestSequence, starverseDiagnosticCode: 'PROVIDER_TERMINAL_PERSIST_FAILED' },
           transportError: error,
@@ -317,7 +322,7 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
         ? createProviderFailureV2({
           context: { origin: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED' ? 'http_response' : 'response_decoder',
             phase: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED' ? 'response_headers' : 'response_headers',
-            providerId: created.preparedRequest.providerId, contractId: created.preparedRequest.contractId,
+            provider: { namespace: 'generation_execution', id: created.preparedRequest.providerId }, contractId: created.preparedRequest.contractId,
             operationId: created.preparedRequest.operationId, requestSequence: created.preparedRequest.requestSequence,
             starverseDiagnosticCode: error.code === 'GENERATION_V2_GEMINI_INTERACTIONS_RUNNER_HTTP_FAILED'
               ? 'PROVIDER_RESPONSE_HTTP_ERROR' : 'PROVIDER_RESPONSE_DECODE_FAILED' },
@@ -326,7 +331,7 @@ export function createGeminiInteractionsImageStreamRunnerV2(input: Readonly<{
         })
         : providerFailureFromUnknownV2(error, {
           origin: responseStarted ? 'response_stream' : 'network_transport',
-          phase: responseStarted ? 'stream_read' : 'request_open', providerId: created.preparedRequest.providerId,
+          phase: responseStarted ? 'stream_read' : 'request_open', provider: { namespace: 'generation_execution', id: created.preparedRequest.providerId },
           contractId: created.preparedRequest.contractId, operationId: created.preparedRequest.operationId,
           requestSequence: created.preparedRequest.requestSequence,
           starverseDiagnosticCode: responseStarted ? 'PROVIDER_RESPONSE_STREAM_FAILED' : 'PROVIDER_REQUEST_OPEN_FAILED',

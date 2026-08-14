@@ -4,11 +4,6 @@ import { fileURLToPath } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 import { safeClearConfig } from '../config/configSchema'
 import { providerCredentialSecureStoreKeys } from '../credentials/providerCredentialContract'
-import {
-  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX,
-  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_NAMESPACE,
-  OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
-} from '../credentials/openAICompatibleCredentialV2Service'
 import { registerStoreIpc, RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS } from './storeIpc'
 
 vi.mock('../config/configSchema', async (importOriginal) => {
@@ -140,7 +135,7 @@ describe('registerStoreIpc', () => {
       'geminiApiKey',
       'apiKey',
       ...providerCredentialSecureStoreKeys(),
-      `${OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX}ocp_credential_12345678`,
+      'openaiCompatibleCredentials.v2.ocp_credential_12345678',
     ] as const
     const { handlers, store } = registerHandlers({
       initialStore: Object.fromEntries(blockedKeys.map((key) => [key, `legacy-${key}`])),
@@ -163,10 +158,10 @@ describe('registerStoreIpc', () => {
   it('blocks credential namespace ancestors and descendants under electron-store dot notation', async () => {
     const { handlers, store } = registerHandlers()
     const blockedPaths = [
-      OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
-      OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_NAMESPACE,
-      `${OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX}ocp_credential_12345678`,
-      `${OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX}ocp_credential_12345678.ciphertextBase64`,
+      'openaiCompatibleCredentials',
+      'openaiCompatibleCredentials.v2',
+      'openaiCompatibleCredentials.v2.ocp_credential_12345678',
+      'openaiCompatibleCredentials.v2.ocp_credential_12345678.ciphertextBase64',
       'providerCredentials',
       'providerCredentials.v1',
       'providerCredentials.v1.future-provider',
@@ -258,16 +253,14 @@ describe('registerStoreIpc', () => {
     expect(preloadSource).not.toContain("contextBridge.exposeInMainWorld('openRouterCredential'")
   })
 
-  it('preserves credential-bearing keys during renderer safe clear by default', async () => {
-    const compatibleKey = `${OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_PREFIX}ocp_credential_12345678`
-    const { handlers } = registerHandlers({ initialStore: { [compatibleKey]: { ciphertextBase64: 'encrypted' } } })
+  it('does not preserve the obsolete compatible credential namespace during renderer safe clear', async () => {
+    const { handlers } = registerHandlers({ initialStore: { openaiCompatibleCredentials: { v2: { obsolete: true } } } })
 
     await handlers.get('store-clear-safe')?.({}, [])
 
-    expect(vi.mocked(safeClearConfig)).toHaveBeenCalledWith(
-      expect.anything(),
-      expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, 'providerCredentials', OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT])
-    )
+    const keepKeys = vi.mocked(safeClearConfig).mock.calls.at(-1)?.[1] ?? []
+    expect(keepKeys).toEqual(expect.arrayContaining([...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS, 'providerCredentials']))
+    expect(keepKeys).not.toContain('openaiCompatibleCredentials')
   })
 
   it('preserves credential-bearing keys during renderer safe clear with a narrow keep list', async () => {
@@ -281,7 +274,6 @@ describe('registerStoreIpc', () => {
       'language',
       ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
       'providerCredentials',
-      OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
     ]))
     expect(keepKeys).not.toContain('theme')
     expect(keepKeys).not.toContain('activeProvider')
@@ -297,7 +289,6 @@ describe('registerStoreIpc', () => {
     expect(keepKeys).toEqual(expect.arrayContaining([
       ...RENDERER_BLOCKED_CREDENTIAL_STORE_KEYS,
       'providerCredentials',
-      OPENAI_COMPATIBLE_CREDENTIAL_V2_STORE_ROOT,
     ]))
     expect(keepKeys.filter((key) => key === 'openRouterApiKey')).toHaveLength(1)
   })

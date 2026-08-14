@@ -8,27 +8,32 @@ function loadSchema(db: BetterSqlite3.Database) {
   applyGenerationV2SchemaForTest(db, path.resolve(process.cwd()))
 }
 
+const modelRef = (modelId: string) => ({ providerKey: 'openrouter' as const, modelId })
+const recent = (operationId: string, modelId: string, usedAtMs = Date.now()) => ({
+  operationId,
+  ...modelRef(modelId),
+  usedAtMs,
+})
+
 describe('ModelPreferencesRepo', () => {
-  it('supports global/project/conversation scopes for favorites and recents', () => {
+  it('supports scoped favorites and production-global recents', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     const repo = new ModelPreferencesRepo(db)
 
-    repo.addFavorite({ scopeType: 'global', scopeId: '', modelKey: 'openrouter::openai/gpt-4o' })
-    repo.addFavorite({ scopeType: 'project', scopeId: 'project-1', modelKey: 'openrouter::openai/gpt-4.1' })
-    repo.addFavorite({ scopeType: 'conversation', scopeId: 'convo-1', modelKey: 'openrouter::anthropic/claude-3' })
+    repo.addFavorite({ scopeType: 'global', scopeId: '', ...modelRef('openai/gpt-4o') })
+    repo.addFavorite({ scopeType: 'project', scopeId: 'project-1', ...modelRef('openai/gpt-4.1') })
+    repo.addFavorite({ scopeType: 'conversation', scopeId: 'convo-1', ...modelRef('anthropic/claude-3') })
 
     expect(repo.listFavorites({})).toHaveLength(1)
     expect(repo.listFavorites({ scopeType: 'project', scopeId: 'project-1' })).toHaveLength(1)
     expect(repo.listFavorites({ scopeType: 'conversation', scopeId: 'convo-1' })).toHaveLength(1)
 
-    repo.recordRecent({ scopeType: 'global', scopeId: '', modelKey: 'openrouter::openai/gpt-4o' })
-    repo.recordRecent({ scopeType: 'project', scopeId: 'project-1', modelKey: 'openrouter::openai/gpt-4.1' })
-    repo.recordRecent({ scopeType: 'conversation', scopeId: 'convo-1', modelKey: 'openrouter::anthropic/claude-3' })
+    repo.recordRecentForGenerationOperation(recent('operation:1', 'openai/gpt-4o'))
 
     expect(repo.listRecents({})).toHaveLength(1)
-    expect(repo.listRecents({ scopeType: 'project', scopeId: 'project-1' })).toHaveLength(1)
-    expect(repo.listRecents({ scopeType: 'conversation', scopeId: 'convo-1' })).toHaveLength(1)
+    expect(repo.listRecents({ scopeType: 'project', scopeId: 'project-1' })).toHaveLength(0)
+    expect(repo.listRecents({ scopeType: 'conversation', scopeId: 'convo-1' })).toHaveLength(0)
   })
 
   it('deduplicates favorites by scope+model and increments recents useCount', () => {
@@ -39,7 +44,7 @@ describe('ModelPreferencesRepo', () => {
     repo.addFavorite({
       scopeType: 'global',
       scopeId: '',
-      modelKey: 'openrouter::openai/gpt-4o',
+      ...modelRef('openai/gpt-4o'),
       sortRank: 8,
     })
     repo.addFavorite({
@@ -56,18 +61,8 @@ describe('ModelPreferencesRepo', () => {
 
     const t0 = Date.now() - 1000
     const t1 = Date.now()
-    repo.recordRecent({
-      scopeType: 'global',
-      scopeId: '',
-      modelKey: 'openrouter::openai/gpt-4o',
-      usedAtMs: t0,
-    })
-    repo.recordRecent({
-      scopeType: 'global',
-      scopeId: '',
-      modelKey: 'openrouter::openai/gpt-4o',
-      usedAtMs: t1,
-    })
+    repo.recordRecentForGenerationOperation(recent('operation:1', 'openai/gpt-4o', t0))
+    repo.recordRecentForGenerationOperation(recent('operation:2', 'openai/gpt-4o', t1))
 
     const recents = repo.listRecents({ scopeType: 'global', scopeId: '', limit: 10 })
     expect(recents).toHaveLength(1)
@@ -75,14 +70,29 @@ describe('ModelPreferencesRepo', () => {
     expect(recents[0].lastUsedAtMs).toBe(t1)
   })
 
+  it('consumes each Generation operation exactly once and rejects identity reuse', () => {
+    const db = new BetterSqlite3(':memory:')
+    loadSchema(db)
+    const repo = new ModelPreferencesRepo(db)
+    const usage = recent('operation:1', 'openai/gpt-4o', 100)
+
+    expect(repo.recordRecentForGenerationOperation(usage).applied).toBe(true)
+    expect(repo.recordRecentForGenerationOperation(usage).applied).toBe(false)
+    expect(repo.listRecents()[0]?.useCount).toBe(1)
+    expect(() => repo.recordRecentForGenerationOperation(recent('operation:1', 'openai/gpt-4.1', 100)))
+      .toThrow('MODEL_PREFS_RECENT_OPERATION_IDENTITY_CONFLICT')
+    expect(() => repo.recordRecentForGenerationOperation(recent('operation:1', 'openai/gpt-4o', 1)))
+      .toThrow('MODEL_PREFS_RECENT_OPERATION_IDENTITY_CONFLICT')
+  })
+
   it('keeps deterministic ordering and stable tie-breaker when reordering favorites', () => {
     const db = new BetterSqlite3(':memory:')
     loadSchema(db)
     const repo = new ModelPreferencesRepo(db)
 
-    repo.addFavorite({ modelKey: 'openrouter::openai/a', sortRank: 10 })
-    repo.addFavorite({ modelKey: 'openrouter::openai/b', sortRank: 10 })
-    repo.addFavorite({ modelKey: 'openrouter::openai/c', sortRank: 10 })
+    repo.addFavorite({ ...modelRef('openai/a'), sortRank: 10 })
+    repo.addFavorite({ ...modelRef('openai/b'), sortRank: 10 })
+    repo.addFavorite({ ...modelRef('openai/c'), sortRank: 10 })
 
     const initial = repo.listFavorites()
     expect(initial.map((row) => row.modelKey)).toEqual([
@@ -107,9 +117,9 @@ describe('ModelPreferencesRepo', () => {
     loadSchema(db)
     const repo = new ModelPreferencesRepo(db)
 
-    repo.addFavorite({ modelKey: 'openrouter::openai/a', sortRank: 0 })
-    repo.addFavorite({ modelKey: 'openrouter::openai/b', sortRank: 1 })
-    repo.addFavorite({ modelKey: 'openrouter::openai/c', sortRank: 2 })
+    repo.addFavorite({ ...modelRef('openai/a'), sortRank: 0 })
+    repo.addFavorite({ ...modelRef('openai/b'), sortRank: 1 })
+    repo.addFavorite({ ...modelRef('openai/c'), sortRank: 2 })
 
     const before = repo.listFavorites()
 
@@ -134,12 +144,7 @@ describe('ModelPreferencesRepo', () => {
 
     const base = Date.now()
     for (let i = 0; i < 55; i += 1) {
-      repo.recordRecent({
-        scopeType: 'global',
-        scopeId: '',
-        modelKey: `openrouter::openai/model-${i}`,
-        usedAtMs: base + i,
-      })
+      repo.recordRecentForGenerationOperation(recent(`operation:${i}`, `openai/model-${i}`, base + i))
     }
 
     const recents = repo.listRecents({ scopeType: 'global', scopeId: '', limit: 1000 })

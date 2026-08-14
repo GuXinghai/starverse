@@ -10,15 +10,17 @@ import type { FileSelectionGrantStore } from './fileSelectionGrants'
 import { frameUrlFromIpcEvent, isMainFrameIpcEvent, senderIdFromIpcEvent } from './fileSelectionGrants'
 import type { RegisterInvoke } from './types'
 import { fetchPublicHttpUrl } from '../../infra/files/urlProbe'
-import { sha256PreparedBytesV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { sha256PreparedBytesV2 } from '../../infra/db/generationV2DomainBoundary'
 import {
   decodeAssistantAnswerGenerationSnapshotJsonV2,
   type DecodedAssistantAnswerGenerationSnapshotV2,
-} from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
+  projectGenerationIntentLayerV2,
+} from '../../infra/db/generationV2DomainBoundary'
 import type { ProviderFetch } from '../net/providerHttpTransport'
 import { GenerationV2DfcService } from '../services/generationV2DfcService'
 import type { ElectronConversionBridge } from '../../infra/files/electronConversionBridge'
+import { FileTypeDetectionV2Repo } from '../../infra/db/repo/fileTypeDetectionV2Repo'
+import type { Epoch2FileTypeDetectionService } from '../services/epoch2FileTypeDetectionService'
 
 export const GENERATION_V2_COMPOSER_CHANNELS = Object.freeze([
   'generation-v2:composer:get',
@@ -34,6 +36,7 @@ export const GENERATION_V2_COMPOSER_CHANNELS = Object.freeze([
   'generation-v2:composer:dfc-options',
   'generation-v2:composer:dfc-select',
   'generation-v2:composer:dfc-preview',
+  'generation-v2:composer:retry-file-type-detection',
 ] as const)
 
 export function projectAnswerSnapshotAttachmentIntentsV2(
@@ -94,10 +97,12 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
   tempRoot?: string
   runtimesRoot?: string
   nowMs?:()=>number
+  fileTypeDetectionService: Epoch2FileTypeDetectionService
 }>):readonly string[] {
   const nowMs=input.nowMs??Date.now
   const drafts=new ComposerDraftV2Repo(input.db,nowMs)
   const assets=new AttachmentAssetV2Repo(input.db,nowMs)
+  const detections=new FileTypeDetectionV2Repo(input.db,nowMs)
   const dfc=new GenerationV2DfcService(input.db,input.attachmentBlobStore,nowMs,input.electronConversionBridge??null,input.tempRoot??null,input.runtimesRoot??null)
   const safe=(fn:(event:unknown,payload:unknown)=>unknown|Promise<unknown>)=>async(event:unknown,payload?:unknown)=>{
     try{return Object.freeze({ok:true,value:await fn(event,payload)})}catch(error){return Object.freeze({ok:false,
@@ -136,15 +141,19 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
       const filename=path.basename(filePath),mime=mimeForFilename(filename),persisted=input.attachmentBlobStore.persist(bytes)
       if(persisted.sha256.length!==64||persisted.sizeBytes!==bytes.byteLength)throw new Error('GENERATION_V2_ATTACHMENT_BLOB_MISMATCH')
       const assetId=`asset:${randomUUID()}`,assetRevisionId=`asset-revision:${randomUUID()}`
-      return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db,context=>{
+      const draft = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db,context=>{
         const blob=assets.recordBlobFromBytesInAuthorityTransaction(context,bytes,mime)
         const asset=assets.createImportedAssetRevisionInAuthorityTransaction(context,{assetId,assetRevisionId,
           assetKind:mime.startsWith('image/')?'image':'file',filename,blob})
+        detections.createPendingInAuthorityTransaction(context,{assetRevisionId:asset.assetRevisionId.value,
+          assetSha256:asset.blob.sha256.value,attemptId:`file-detection-attempt:${randomUUID()}`})
         return drafts.addAttachmentInAuthorityTransaction(context,{conversationId,expectedRevision,attachment:{
           kind:'managed_file',assetId:asset.assetId.value,assetRevisionId:asset.assetRevisionId.value,assetSha256:asset.blob.sha256.value,
           include:true,sendAs:asset.assetKind==='image'?'image_reference':'provider_file',conversion:'none',
         }})
       })
+      input.fileTypeDetectionService.schedule(detections.get(assetRevisionId),conversationId)
+      return draft
     } finally { bytes.fill(0); if (opaque) await rm(path.dirname(filePath), { recursive: true, force: true }) }
   }))
   input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[3],safe((_event,payload)=>{
@@ -175,7 +184,7 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
       if(persisted.sha256.length!==64||persisted.sizeBytes!==bytes.byteLength)throw new Error('GENERATION_V2_ATTACHMENT_BLOB_MISMATCH')
       const assetId=`asset:${randomUUID()}`,assetRevisionId=`asset-revision:${randomUUID()}`
       const capturedAt=nowMs()
-      return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db,context=>{
+      const draft = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db,context=>{
         const blob=assets.recordBlobFromBytesInAuthorityTransaction(context,bytes,mime)
         const asset=assets.createImportedAssetRevisionInAuthorityTransaction(context,{assetId,assetRevisionId,
           assetKind:mime.startsWith('image/')?'image':'file',filename,blob,sourceKind:'url_import'})
@@ -183,11 +192,15 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
           (asset_revision_id,original_url,url_digest,captured_at_ms,provenance,created_at_ms)
           VALUES (?,?,?,?, 'user_supplied',?)`).run(asset.assetRevisionId.value,originalUrl,
           sha256PreparedBytesV2(new TextEncoder().encode(originalUrl)),capturedAt,capturedAt)
+        detections.createPendingInAuthorityTransaction(context,{assetRevisionId:asset.assetRevisionId.value,
+          assetSha256:asset.blob.sha256.value,attemptId:`file-detection-attempt:${randomUUID()}`})
         return drafts.addAttachmentInAuthorityTransaction(context,{conversationId,expectedRevision,attachment:{
           kind:'managed_file',assetId:asset.assetId.value,assetRevisionId:asset.assetRevisionId.value,assetSha256:asset.blob.sha256.value,
           include:true,sendAs:asset.assetKind==='image'?'image_reference':'provider_file',conversion:'none',
         }})
       })
+      input.fileTypeDetectionService.schedule(detections.get(assetRevisionId),conversationId)
+      return draft
     } finally { bytes.fill(0) }
   }))
   input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[5],safe((_event,payload)=>{
@@ -243,6 +256,11 @@ export function registerGenerationV2ComposerIpc(input:Readonly<{
   input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[12],safe((_event,payload)=>{
     const raw=object(payload,['conversationId','assetId','maxCharacters'])
     return dfc.preview({conversationId:text(raw.conversationId),assetId:text(raw.assetId),maxCharacters:revision(raw.maxCharacters)})
+  }))
+  input.registerInvoke(GENERATION_V2_COMPOSER_CHANNELS[13],safe((_event,payload)=>{
+    const raw=object(payload,['conversationId','assetRevisionId'])
+    input.fileTypeDetectionService.retry(text(raw.conversationId),text(raw.assetRevisionId))
+    return drafts.read(text(raw.conversationId))
   }))
   return GENERATION_V2_COMPOSER_CHANNELS
 }

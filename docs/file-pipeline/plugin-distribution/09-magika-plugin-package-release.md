@@ -1,5 +1,17 @@
 # Magika Plugin Package Release Preparation
 
+> 2026-08-13 update: the document below is the historical Windows-only `0.1.x` release record. Magika `0.2.0` is now a released reproducible pure-JavaScript `any/any` package built only from `scripts/plugin-packaging/magika/package-lock.json`, pinned upstream model hashes, the checked-in runtime wrapper, and checked-in license/attribution files. The builder rejects native `.node` payloads and known native TensorFlow packages and emits a complete inventory.
+
+Current `0.2.0` acceptance state:
+
+- implemented: deterministic builder, Node classification smoke, Electron `utilityProcess` executor/smoke harness, six-runner manual release matrix, identical-hash comparison, and protected signing/metadata stage;
+- implemented runtime boundary: no system `node`, no `ELECTRON_RUN_AS_NODE`, no renderer/IPC-provided executable, path, environment, or raw stderr;
+- network statement: the runtime loads the local model through a TensorFlow.js in-memory IO handler and makes no runtime network request; this is an external-network-free design, not an OS-level network sandbox;
+- legacy handling: active `0.1.x` is not upgraded in place; uninstall/reset and a fresh catalog install of `0.2.0` are required;
+- production evidence: GitHub Actions run `31685488267` passed the six hosted runners, byte-identical package comparison, protected Ed25519 signing, and release publication. The built-in catalog now references the exact published `0.2.0` asset.
+
+Canonical `0.2.0` evidence: SHA-256 `08307d2eead8019ea51d6b1205e6a1b56da678fa215048f471e0091b4cbaeb18`, size `64,085,105` bytes, manifest SHA-256 `53037ab956545dc59b58d0a40d6dc93958bfd1ea2bce08a45795ef510fe951a2`, and inventory SHA-256 `b3218d6944ebb4c73dd285ba7f5edca9dc3b0b419f0d1cb2bc5e8275ded1f063`. Node and Electron utility-process classification smokes returned a valid `txt` result with model `standard_v3_3` on Windows/macOS/Linux x64 and arm64.
+
 Date: 2026-05-14
 
 This record covers the release preparation of the official Starverse Magika plugin package artifact for Windows x64. It is a packaging record only; it does not enable remote install, marketplace behavior, auto-update, third-party plugin sources, document conversion, or provider file references.

@@ -5,31 +5,32 @@ import {
 } from './webSearchDefaultsClient'
 
 describe('webSearchDefaultsClient', () => {
-  const originalBridge = (globalThis as any).dbBridge
+  const originalStore = (globalThis as any).electronStore
 
   afterEach(() => {
-    ;(globalThis as any).dbBridge = originalBridge
+    ;(globalThis as any).electronStore = originalStore
     vi.restoreAllMocks()
   })
 
   it('reads settings.getWebSearchDefaults through contract decoder', async () => {
-    const invoke = vi.fn(async () => ({ value: { searchMode: 'enable' } }))
-    ;(globalThis as any).dbBridge = { invoke }
+    const get = vi.fn(async () => ({ webSearchDefaults: { searchMode: 'enable' } }))
+    ;(globalThis as any).electronStore = { get, set: vi.fn() }
 
     await expect(getWebSearchDefaults()).resolves.toEqual({ searchMode: 'enable' })
-    expect(invoke).toHaveBeenCalledWith('settings.getWebSearchDefaults')
+    expect(get).toHaveBeenCalledWith('generationV2UiPreferences')
   })
 
   it('writes settings.setWebSearchDefaults and decodes ack', async () => {
-    const invoke = vi.fn(async () => ({ ok: true }))
-    ;(globalThis as any).dbBridge = { invoke }
+    const get = vi.fn(async () => ({}))
+    const set = vi.fn(async () => undefined)
+    ;(globalThis as any).electronStore = { get, set }
 
     await expect(setWebSearchDefaults({ searchMode: 'default' })).resolves.toBe(true)
-    expect(invoke).toHaveBeenCalledWith('settings.setWebSearchDefaults', { value: { searchMode: 'default' } })
+    expect(set).toHaveBeenCalledWith('generationV2UiPreferences', { webSearchDefaults: { searchMode: 'default' } })
   })
 
-  it('returns safe defaults when dbBridge is unavailable', async () => {
-    ;(globalThis as any).dbBridge = null
+  it('returns safe defaults when the retained preference store is unavailable', async () => {
+    ;(globalThis as any).electronStore = null
     await expect(getWebSearchDefaults()).resolves.toBeNull()
     await expect(setWebSearchDefaults({ searchMode: 'enable' })).resolves.toBe(false)
   })

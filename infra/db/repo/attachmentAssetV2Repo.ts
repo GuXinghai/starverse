@@ -110,8 +110,12 @@ export class AttachmentAssetV2RepoError extends Error {
     | 'GENERATION_V2_ASSET_BYTES_MISMATCH'
     | 'GENERATION_V2_ASSET_BYTES_DISPOSED'
     | 'GENERATION_V2_ASSET_BYTES_LEASE_IN_USE'
-    | 'GENERATION_V2_ASSET_LOCK_CONFLICT') {
-    super(code)
+    | 'GENERATION_V2_ASSET_LOCK_CONFLICT'
+    | 'GENERATION_V2_FILE_DETECTION_REQUIRED'
+    | 'GENERATION_V2_FILE_DETECTION_PENDING'
+    | 'GENERATION_V2_FILE_DETECTION_FAILED'
+    | 'GENERATION_V2_FILE_DETECTION_BLOCKED', readonly detail: string | null = null) {
+    super(detail ? `${code}:${detail}` : code)
     this.name = 'AttachmentAssetV2RepoError'
   }
 }
@@ -822,7 +826,7 @@ export class AttachmentAssetV2Repo {
     if (new Set(revisionKeys).size !== revisionKeys.length) {
       throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_DUPLICATE_REFERENCE')
     }
-    const facts = references.map((reference) => this.resolveReferenceFact(reference))
+    const facts = references.map((reference, index) => this.resolveReferenceFact(reference, managedIntents[index]?.include === true))
     const verifiedUrlReferenceIntents = urlReferenceIntents.map((intent) =>
       this.resolveUrlReferenceIntent(intent),
     )
@@ -874,7 +878,7 @@ export class AttachmentAssetV2Repo {
       preCommit: () => {
         if (!completed) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
         references.forEach((reference, index) => {
-          const finalFact = this.resolveReferenceFact(reference)
+          const finalFact = this.resolveReferenceFact(reference, managedIntents[index]?.include === true)
           const initialFact = facts[index]
           if (finalFact.assetId.value !== initialFact.assetId.value ||
               finalFact.assetRevisionId.value !== initialFact.assetRevisionId.value ||
@@ -946,7 +950,11 @@ export class AttachmentAssetV2Repo {
       conversion: intent.conversion,
     })
     const pendingSendBytes: VerifiedAttachmentSendBytesLeaseV2[] = []
-    const fact = this.resolveReferenceFact(reference)
+    // The command-facts attachment-set authority has already enforced file
+    // detection for included attachments. This narrower byte lease rechecks
+    // immutable asset identity only, so excluded/internal verification paths
+    // do not accidentally acquire a second policy gate.
+    const fact = this.resolveReferenceFact(reference, false)
     const authority = Object.freeze({
       trust: 'resolved_attachment_asset_authority' as const,
       usage: 'snapshot_reference_verified' as const,
@@ -967,7 +975,7 @@ export class AttachmentAssetV2Repo {
     registerGenerationV2AuthorityTransactionParticipantV2(context, this.#db, {
       preCommit: () => {
         if (!completed) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_STATE_INVALID')
-        const finalFact = this.resolveReferenceFact(reference)
+        const finalFact = this.resolveReferenceFact(reference, false)
         if (finalFact.assetId.value !== fact.assetId.value ||
             finalFact.assetRevisionId.value !== fact.assetRevisionId.value ||
             finalFact.blob.blobId.value !== fact.blob.blobId.value ||
@@ -1051,7 +1059,7 @@ export class AttachmentAssetV2Repo {
     return fact
   }
 
-  private resolveReferenceFact(reference: AttachmentReferenceV2): AttachmentAssetRevisionRepositoryFactV2 {
+  private resolveReferenceFact(reference: AttachmentReferenceV2, requireDetection = false): AttachmentAssetRevisionRepositoryFactV2 {
     const fact = this.getRevision(reference.assetId, reference.assetRevisionId)
     if (fact.retiredAtMs !== null) throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_RETIRED')
     if (reference.assetSha256 !== fact.blob.sha256.value || reference.conversion !== fact.conversionKind) {
@@ -1077,7 +1085,50 @@ export class AttachmentAssetV2Repo {
         throw new AttachmentAssetV2RepoError('GENERATION_V2_ASSET_DFC_PROVENANCE_INVALID')
       }
     }
+    if (requireDetection) this.assertFileDetectionAuthority(fact)
     return fact
+  }
+
+  private assertFileDetectionAuthority(fact: AttachmentAssetRevisionRepositoryFactV2): void {
+    const sourceRevisionId = fact.revisionKind === 'derived'
+      ? fact.parentAssetRevisionId?.value
+      : fact.assetRevisionId.value
+    if (!sourceRevisionId) throw new AttachmentAssetV2RepoError('GENERATION_V2_FILE_DETECTION_REQUIRED')
+    const row = this.#db.prepare(`SELECT detection.status, detection.asset_sha256,
+      detection.static_policy_json, detection.error_code, detection.error_detail, blob.sha256 AS source_sha256
+      FROM asset_revision_v2 AS revision
+      JOIN file_blob_v2 AS blob ON blob.blob_id=revision.blob_id
+      LEFT JOIN file_type_detection_v2 AS detection ON detection.asset_revision_id=revision.asset_revision_id
+      WHERE revision.asset_revision_id=?`).get(sourceRevisionId) as Record<string, unknown> | undefined
+    if (!row || row.status === null || row.status === undefined) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_FILE_DETECTION_REQUIRED')
+    }
+    if (row.asset_sha256 !== row.source_sha256) {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_FILE_DETECTION_FAILED', 'DETECTION_ASSET_FACT_MISMATCH')
+    }
+    if (row.status === 'pending') throw new AttachmentAssetV2RepoError('GENERATION_V2_FILE_DETECTION_PENDING')
+    if (row.status === 'failed') {
+      const code = typeof row.error_code === 'string' ? row.error_code : 'DETECTION_FAILURE_UNCLASSIFIED'
+      const detail = typeof row.error_detail === 'string' && row.error_detail.length > 0
+        ? `${code}:${row.error_detail}` : code
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_FILE_DETECTION_FAILED', detail)
+    }
+    if (row.status !== 'ready' || typeof row.static_policy_json !== 'string') {
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_FILE_DETECTION_FAILED', 'DETECTION_PROJECTION_INVALID')
+    }
+    try {
+      const policy = JSON.parse(row.static_policy_json) as Record<string, unknown>
+      if (policy.blocked !== false && policy.blocked !== true) throw new Error('invalid blocked state')
+      if (policy.blocked) {
+        const reasons = Array.isArray(policy.blockingReasonCodes)
+          ? policy.blockingReasonCodes.filter((value): value is string => typeof value === 'string').join(',')
+          : ''
+        throw new AttachmentAssetV2RepoError('GENERATION_V2_FILE_DETECTION_BLOCKED', reasons || 'STATIC_POLICY_BLOCKED')
+      }
+    } catch (error) {
+      if (error instanceof AttachmentAssetV2RepoError) throw error
+      throw new AttachmentAssetV2RepoError('GENERATION_V2_FILE_DETECTION_FAILED', 'DETECTION_POLICY_INVALID')
+    }
   }
 
   private findBlob(blobId: string): AttachmentBlobRepositoryFactV2 | null {

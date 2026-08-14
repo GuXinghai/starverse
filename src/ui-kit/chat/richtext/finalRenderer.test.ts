@@ -1,5 +1,10 @@
-import { describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect } from 'vitest'
 import { renderFinal, renderBlockSync } from './finalRenderer'
+import { disposeHighlighter, getHighlighter } from './shikiLoader'
+
+afterEach(() => {
+    disposeHighlighter()
+})
 
 describe('finalRenderer', () => {
     describe('renderFinal', () => {
@@ -116,6 +121,29 @@ describe('finalRenderer', () => {
             const result = await renderFinal('```javascript\nconst x = 1;\n```')
             expect(result.html).toContain('rt-code-block')
             expect(result.sanitizerRemoved).toBe(false)
+        })
+
+        it('returns a safe code fallback before Shiki is ready, then upgrades on the next render', async () => {
+            const text = '```javascript\nconst x = 1;\n```'
+            const initial = await renderFinal(text)
+
+            expect(initial.highlightPending).toBe(true)
+            expect(initial.html).toContain('rt-pre-fallback')
+            expect(initial.html).toContain('const x = 1;')
+
+            await getHighlighter()
+            const upgraded = await renderFinal(text)
+            expect(upgraded.highlightPending).toBe(false)
+            expect(upgraded.html).toContain('shiki')
+        })
+
+        it('keeps a safe fallback for an unknown language after Shiki is ready', async () => {
+            await getHighlighter()
+            const result = await renderFinal('```not-a-real-language\nconst x = 1;\n```')
+
+            expect(result.highlightPending).toBe(false)
+            expect(result.html).toContain('rt-pre-fallback')
+            expect(result.html).toContain('const x = 1;')
         })
 
         it('renders code blocks without language', async () => {

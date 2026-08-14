@@ -1,5 +1,9 @@
 # i18n Documentation Index
 
+Status: pending-classification
+Document Role: entry
+Last updated: 2026-08-14
+
 Starverse supports bilingual localization: **zh-CN** (Simplified Chinese) and **en-US** (American English).
 
 ## Quick Reference

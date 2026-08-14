@@ -24,7 +24,7 @@ describe('AppChatApp Generation V2 credential exposure boundary', () => {
   it('routes all renderer generation through fixed V2 commands without raw credential arguments', () => {
     const source = app()
     expect(source).toContain('submitGenerationV2Initial')
-    expect(source).toContain('subscribeGenerationV2Projections')
+    expect(source).toContain('subscribeGenerationV2Runtime')
     expect(source).not.toMatch(/\bapiKey\s*:/)
     expect(source).not.toContain('LegacyStoreCredentialSource')
   })
@@ -57,7 +57,7 @@ describe('AppChatApp Generation V2 credential exposure boundary', () => {
 
   it('keeps OpenAI Responses model availability on the shared main-process authority', () => {
     expect(preload()).toContain("listOpenAIResponses: (payload?: unknown) => ipcRenderer.invoke('openai-responses-models:list-availability'")
-    expect(availability()).toContain("providerKey: 'openai_responses'")
+    expect(availability()).toContain('ProviderCatalogAuthorityRegistryV2')
     expect(availability()).toContain('withCredential')
     expect(availability()).not.toContain('contextBridge')
   })
@@ -90,8 +90,8 @@ describe('AppChatApp Generation V2 credential exposure boundary', () => {
 
   it('keeps Anthropic model availability behind the same main-process credential authority', () => {
     expect(preload()).toContain("listAnthropic: (payload?: unknown) => ipcRenderer.invoke('anthropic-models:list-availability'")
-    expect(availability()).toContain("providerKey: 'anthropic'")
-    expect(availability()).toContain('listAnthropicProviderModelAvailability')
+    expect(availability()).toContain('ProviderCatalogAuthorityRegistryV2')
+    expect(availability()).toContain('withCredential')
   })
 
   it('keeps DeepSeek on its official stable V2 contract and main-owned credential lease', () => {
@@ -104,13 +104,13 @@ describe('AppChatApp Generation V2 credential exposure boundary', () => {
 
   it('keeps DeepSeek model availability behind the same main-process credential authority', () => {
     expect(preload()).toContain("listDeepSeek: (payload?: unknown) => ipcRenderer.invoke('deepseek-models:list-availability'")
-    expect(availability()).toContain("providerKey: 'deepseek'")
-    expect(availability()).toContain('listDeepSeekProviderModelAvailability')
+    expect(availability()).toContain('ProviderCatalogAuthorityRegistryV2')
+    expect(availability()).toContain('withCredential')
   })
 
   it('keeps Google AI Studio model availability separate from legacy Gemini keys', () => {
     expect(preload()).toContain("listGoogleAIStudio: (payload?: unknown) => ipcRenderer.invoke('google-ai-studio-models:list-availability'")
-    expect(availability()).toContain("providerKey: 'google_ai_studio'")
+    expect(availability()).toContain('ProviderCatalogAuthorityRegistryV2')
     expect(availability()).not.toContain("store.get('geminiApiKey')")
   })
 
@@ -124,7 +124,7 @@ describe('AppChatApp Generation V2 credential exposure boundary', () => {
 
   it('keeps OpenRouter catalog on the V2 model authority and runtime credential resolver', () => {
     expect(preload()).toContain("listOpenRouter: (payload?: unknown) => ipcRenderer.invoke('generation-v2:openrouter-models:list'")
-    expect(availability()).toContain("providerKey: 'openrouter'")
+    expect(availability()).toContain('ProviderCatalogAuthorityRegistryV2')
     expect(availability()).toContain('withCredential')
     expect(availability()).not.toContain("store.get('openRouterApiKey')")
   })

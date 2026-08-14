@@ -3,7 +3,7 @@ import { readImageAspectRatioV2 } from '@/next/generation-v2/domain/generationIn
 import type { GenerationParamsLayer, GenerationParamKey, GenerationParamValue } from '@/next/generation-params/generationParamTypes'
 import type { SearchSettingsLayer } from '@/next/openrouter/searchSettingsResolver'
 import type { ImageGenerationUserConfig } from '@/next/openrouter/imageGenerationSettingsPersistence'
-import type { RuntimeProviderKey } from '@/next/provider/runtimeSelection'
+import type { RuntimeProviderId } from '@/next/provider/runtimeProviderId'
 import type { ReasoningEffort } from '@/next/state/types'
 import type { ChatSessionConfig, ChatSessionConfigPatch } from './chatSessionConfig'
 
@@ -32,7 +32,7 @@ function omit() {
 
 function projectGenerationParams(
   layer: ReturnType<typeof decodeGenerationConfigLayerV2>,
-  providerId: RuntimeProviderKey | null,
+  providerId: RuntimeProviderId | null,
 ): GenerationParamsLayer {
   const result: Partial<Record<GenerationParamKey, ReturnType<typeof custom> | ReturnType<typeof omit>>> = {}
   for (const [semanticKey, paramKey] of Object.entries(GENERATION_PARAM_FIELDS) as Array<
@@ -99,7 +99,7 @@ function projectImage(layer: ReturnType<typeof decodeGenerationConfigLayerV2>): 
 
 export function projectGenerationV2SemanticLayerToSessionConfig(
   semanticLayer: unknown,
-  providerId: RuntimeProviderKey | null,
+  providerId: RuntimeProviderId | null,
 ): GenerationV2SessionConfigProjection {
   const layer = decodeGenerationConfigLayerV2(semanticLayer)
   const effort = layer.reasoning?.mode === 'enabled' ? layer.reasoning.effort : undefined

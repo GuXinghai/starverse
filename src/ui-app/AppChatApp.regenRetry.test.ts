@@ -3,6 +3,7 @@ import userEvent from '@testing-library/user-event'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestModels'
 import { t } from '@/shared/i18n'
+import { installGenerationV2TestBridge } from '../../tests/helpers/generationV2Bridge'
 import AppChatApp from './AppChatApp.vue'
 
 type AnswerStatus = 'streaming' | 'completed' | 'failed' | 'cancelled'
@@ -130,6 +131,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
   }
 
   beforeEach(() => {
+    installGenerationV2TestBridge()
     originalGenerationV2 = (globalThis as any).generationV2
     originalRawGenerationDebug = (globalThis as any).rawGenerationDebug
     answers = [{
@@ -159,6 +161,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
 
     ;(globalThis as any).generationV2 = {
       ...originalGenerationV2,
+      modelPreferences: { ...originalGenerationV2.modelPreferences },
       runtime: {
         subscribe: vi.fn(async () => ok(answers
           .filter((answer) => answer.status === 'streaming')
@@ -198,10 +201,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
             conversation: {
               ...result.value.conversation,
               id: 'template:c1', projectId: 'project_inbox', branchId: 'template:b1', title: 'New Chat',
-              meta: {
-                selectedProviderId: 'openrouter',
-                selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
-              },
+              meta: {},
             },
             draft: { ...result.value.draft, conversationId: 'template:c1' },
           })
@@ -212,10 +212,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
         getLastFormalConversation: vi.fn(async () => ok({ conversationId: 'c1' })),
         listConversations: vi.fn(async () => ok({ items: [{
           conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1', updatedAtMs: 3,
-          meta: {
-            selectedProviderId: 'openrouter',
-            selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
-          },
+          meta: {},
           branches: [{ branchId: 'b1', name: 'Main', headMessageId, updatedAtMs: 3 }],
           branchesHasMore: false,
         }], nextCursor: null, totalCount: 1 })),
@@ -267,6 +264,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     expect(childAnswer?.answerRootId).toBe('a2')
     expect(chosenAnswerRootId).toBe('a1')
     expect(headMessageId).toBe('a1')
+    expect('recordRecent' in (globalThis as any).generationV2.modelPreferences).toBe(false)
   })
 
   it('applies a live reasoning projection to the branch-keyed runtime without a refresh', async () => {
@@ -308,6 +306,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     expect(childAnswer?.answerRootId).toBe('a2')
     expect(chosenAnswerRootId).toBe('a1')
     expect(headMessageId).toBe('a1')
+    expect('recordRecent' in (globalThis as any).generationV2.modelPreferences).toBe(false)
   })
 
   it('retry replace binds the rendered chosen answer and removes it from visible candidates', async () => {
@@ -326,6 +325,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     expect(answers.map((answer) => answer.answerRootId)).toEqual(['a2'])
     expect(chosenAnswerRootId).toBe('a2')
     expect(headMessageId).toBe('a2')
+    expect('recordRecent' in (globalThis as any).generationV2.modelPreferences).toBe(false)
   })
 
   it.each(['failed', 'cancelled'] as const)(
@@ -451,7 +451,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
           ? {
               items: [{
                 conversationId: 'c2', projectId: 'project_inbox', title: 'Chat 2', updatedAtMs: 2,
-                meta: { selectedProviderId: null, selectedModelKey: null },
+                meta: {},
                 branches: [], branchesHasMore: false,
               }],
               nextCursor: null,
@@ -460,10 +460,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
           : {
               items: [{
                 conversationId: 'c1', projectId: 'project_inbox', title: 'Chat 1', updatedAtMs: 3,
-                meta: {
-                  selectedProviderId: 'openrouter',
-                  selectedModelKey: DEFAULT_OPENROUTER_TEST_MODEL,
-                },
+                meta: {},
                 branches: [{ branchId: 'b1', name: 'Main', headMessageId, updatedAtMs: 3 }],
                 branchesHasMore: true,
               }],

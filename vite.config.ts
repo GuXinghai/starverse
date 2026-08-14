@@ -102,6 +102,7 @@ export default defineConfig({
       ignored: [
         ...generatedRuntimeWatchIgnores,
         '**/.artifacts/netlog/**',
+        '**/.artifacts/plugin-packages/**',
       ],
     },
   },
@@ -129,11 +130,15 @@ export default defineConfig({
         /archived-components\/.*/
       ],
       output: {
+        // Keep Vite's dynamic-import preload helper in the entry chunk. Without this,
+        // Rollup pulls that helper into the manual Shiki chunk and makes Shiki eager again.
+        onlyExplicitManualChunks: true,
         manualChunks(id) {
           if (id.includes('node_modules')) {
             // Updated chunks for new dependencies
             if (id.includes('katex')) return 'katex'
-            if (id.includes('markdown-it') || id.includes('dompurify') || id.includes('shiki') || id.includes('vscode-oniguruma')) return 'markdown'
+            if (id.includes('shiki') || id.includes('vscode-oniguruma')) return 'shiki'
+            if (id.includes('markdown-it') || id.includes('dompurify')) return 'markdown'
             if (id.includes('vue') || id.includes('pinia')) return 'vue'
             return 'vendor'
           }

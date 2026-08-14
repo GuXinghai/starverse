@@ -1,5 +1,7 @@
 # Magika disabled runtime gate P1 修复记录
 
+> 2026-08-13 supersession note: the worker path described below is historical. Epoch 2 now gates Magika in `electron/services/epoch2FileTypeDetectionService.ts`, and the old `fileType.detectBasic/detectFull/markStale` worker registrations have been removed. The current service requires an installed, enabled, healthy, package-verified `0.2.0` registry record; disabled and unavailable states produce a basic ready verdict with precise warning provenance and never invoke the Magika executor.
+
 日期：2026-05-17
 
 基线 HEAD：`de38098`

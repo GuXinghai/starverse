@@ -19,26 +19,15 @@ function createDb() {
   return db
 }
 
-const compatibleSelection = Object.freeze({
-  kind: 'openai_chat_compatible_configuration' as const,
+const compatibleIntent = Object.freeze({
+  schemaVersion: 2 as const,
+  kind: 'openai_chat_compatible' as const,
   providerInstanceId: 'ocp_provider_12345678',
-  providerName: 'Restart-safe provider',
   modelId: 'vendor/model',
-  endpointRevisionId: 'ocp_endpoint_12345678',
-  credentialVersionRef: 'ocp_credential_12345678',
-  requestProfileId: 'ocp_request_profile_12345678',
-  requestProfileVersion: 2,
-  responseProfileId: 'ocp_response_profile_12345678',
-  responseProfileVersion: 3,
-  reasoningMappingId: 'ocp_reasoning_mapping_12345678',
-  reasoningMappingVersion: 4,
-  inlinePolicyId: 'ocp_inline_policy_12345678',
-  inlinePolicyVersion: 5,
-  extraBody: { vendor_option: { enabled: true } },
 })
 
 describe('ConversationRoutePreferenceV2Repo', () => {
-  it('round-trips native and complete compatible provenance with monotonic CAS', () => {
+  it('round-trips native selection and compatible current intent with monotonic CAS', () => {
     const db = createDb()
     try {
       const repo = new ConversationRoutePreferenceV2Repo(db, () => 10)
@@ -52,10 +41,10 @@ describe('ConversationRoutePreferenceV2Repo', () => {
 
       const compatible = runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => repo.upsert(context, {
         conversationId: 'conversation:1', expectedRevision: 1,
-        selection: { schemaVersion: 1, kind: 'openai_chat_compatible', selection: compatibleSelection },
+        selection: compatibleIntent,
       }))
       expect(compatible).toEqual({ conversationId: 'conversation:1', revision: 2,
-        selection: { schemaVersion: 1, kind: 'openai_chat_compatible', selection: compatibleSelection } })
+        selection: compatibleIntent })
       expect(repo.get('conversation:1')).toEqual(compatible)
       expect(() => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => repo.upsert(context, {
         conversationId: 'conversation:1', expectedRevision: 1, selection: native.selection,
@@ -82,14 +71,14 @@ describe('ConversationRoutePreferenceV2Repo', () => {
       expect(conversationRoutePreferenceSelectionV2Schema.safeParse({
         schemaVersion: 1, kind: 'provider_model', providerId: 'deepseek', modelId: 'model', credential: 'secret',
       }).success).toBe(false)
-      expect(conversationRoutePreferenceSelectionV2Schema.safeParse({
-        schemaVersion: 1, kind: 'openai_chat_compatible', selection: {
-          ...compatibleSelection, extraBody: { authorization: 'Bearer plaintext' },
-        },
-      }).success).toBe(false)
-      expect(conversationRoutePreferenceSelectionV2Schema.safeParse({
-        schemaVersion: 1, kind: 'openai_chat_compatible', selection: { ...compatibleSelection, auth: 'secret' },
-      }).success).toBe(false)
+      expect(conversationRoutePreferenceSelectionV2Schema.safeParse({ ...compatibleIntent,
+        endpointRevisionId: 'ocp_endpoint_12345678' }).success).toBe(false)
+      expect(conversationRoutePreferenceSelectionV2Schema.safeParse({ ...compatibleIntent,
+        providerName: 'Historical display name' }).success).toBe(false)
+      expect(conversationRoutePreferenceSelectionV2Schema.safeParse({ ...compatibleIntent,
+        extraBody: { authorization: 'Bearer plaintext' } }).success).toBe(false)
+      expect(conversationRoutePreferenceSelectionV2Schema.safeParse({ ...compatibleIntent,
+        auth: 'secret' }).success).toBe(false)
     } finally { db.close() }
   })
 

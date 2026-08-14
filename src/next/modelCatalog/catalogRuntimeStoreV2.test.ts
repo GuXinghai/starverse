@@ -12,7 +12,7 @@ const policy = Object.freeze({
 
 function failure() {
   return createProviderFailureV2({
-    context: { origin: 'ipc_bridge', phase: 'response_body', providerId: 'deepseek',
+    context: { origin: 'ipc_bridge', phase: 'response_body', provider: { namespace: 'catalog_source', id: 'deepseek' },
       contractId: 'deepseek-models-v1', operationId: 'catalog:test', requestSequence: 1 },
     transportError: new Error('bridge failed'),
   })

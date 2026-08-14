@@ -2,16 +2,19 @@ import { createHash } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { stableSerializeProviderRequestV2 } from '../../../src/next/generation-v2/compiler/stableSerialize'
 import { GenerationV2Identity } from '../../../src/next/generation-v2/domain/identityV2'
+import {
+  decodeLocalEndpointExecutionProviderId,
+  decodeLocalEndpointProtocolV2,
+  isLocalEndpointProtocolCompatible,
+  type LocalEndpointExecutionProviderId,
+  type LocalEndpointProtocolV2,
+} from '../../../src/shared/provider/localProviderRouteDescriptor'
 
-export type LocalEndpointProtocolV2 =
-  | 'lmstudio-openresponses'
-  | 'lmstudio-openai-chat-completions'
-  | 'ollama-chat-v1'
-  | 'generic-local-openai-chat-completions'
+export type { LocalEndpointProtocolV2 } from '../../../src/shared/provider/localProviderRouteDescriptor'
 
 export type LocalEndpointProfileV2 = Readonly<{
   endpointProfileId: string
-  providerId: 'lmstudio' | 'ollama' | 'generic_local'
+  providerId: LocalEndpointExecutionProviderId
   protocolContractId: LocalEndpointProtocolV2
   baseUrl: string
   credentialMode: 'none'
@@ -48,11 +51,6 @@ function baseUrl(value: unknown, providerId: string): string {
   }
   return url.origin
 }
-function compatible(providerId: string, protocol: string): boolean {
-  return providerId === 'lmstudio' && (protocol === 'lmstudio-openresponses' || protocol === 'lmstudio-openai-chat-completions') ||
-    providerId === 'ollama' && protocol === 'ollama-chat-v1' ||
-    providerId === 'generic_local' && protocol === 'generic-local-openai-chat-completions'
-}
 function protocolConfig(providerId: string, value: unknown): Readonly<Record<string, unknown>> {
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) throw new LocalEndpointProfileV2RepoError('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
   const input = value as Record<string, unknown>
@@ -72,11 +70,16 @@ function digestProjection(providerId: string, protocolContractId: string, baseUr
     baseUrl: baseUrlValue, credentialMode: 'none', protocolConfig: config }))
 }
 function decode(row: Row): LocalEndpointProfileV2 {
-  const providerId = row.provider_id
-  const protocolContractId = row.protocol_contract_id
+  let providerId: LocalEndpointExecutionProviderId
+  let protocolContractId: LocalEndpointProtocolV2
+  try {
+    providerId = decodeLocalEndpointExecutionProviderId(row.provider_id)
+    protocolContractId = decodeLocalEndpointProtocolV2(row.protocol_contract_id)
+  } catch {
+    throw new LocalEndpointProfileV2RepoError('GENERATION_V2_LOCAL_PROFILE_STATE_INVALID')
+  }
   if (typeof row.endpoint_profile_id !== 'string' ||
-      (providerId !== 'lmstudio' && providerId !== 'ollama' && providerId !== 'generic_local') ||
-      typeof protocolContractId !== 'string' || !compatible(providerId, protocolContractId) || row.credential_mode !== 'none' ||
+      !isLocalEndpointProtocolCompatible(providerId, protocolContractId) || row.credential_mode !== 'none' ||
       typeof row.base_url !== 'string' || typeof row.protocol_config_json !== 'string' || !Number.isSafeInteger(row.revision_generation) || (row.revision_generation as number) < 1 ||
       typeof row.profile_digest !== 'string' || !/^[0-9a-f]{64}$/u.test(row.profile_digest) ||
       typeof row.profile_revision !== 'string' || !Number.isSafeInteger(row.created_at_ms) || !Number.isSafeInteger(row.updated_at_ms)) {
@@ -95,7 +98,7 @@ function decode(row: Row): LocalEndpointProfileV2 {
     throw new LocalEndpointProfileV2RepoError('GENERATION_V2_LOCAL_PROFILE_STATE_INVALID')
   }
   return Object.freeze({ endpointProfileId: row.endpoint_profile_id, providerId,
-    protocolContractId: protocolContractId as LocalEndpointProtocolV2, baseUrl: canonicalBaseUrl,
+    protocolContractId, baseUrl: canonicalBaseUrl,
     credentialMode: 'none', credentialScopeId: `local-none:${hash(`${row.endpoint_profile_id}\0${digest}`)}`, protocolConfig: config,
     revisionGeneration: generation, profileRevision: row.profile_revision, profileDigest: digest,
     createdAtMs: row.created_at_ms as number, updatedAtMs: row.updated_at_ms as number })
@@ -103,10 +106,10 @@ function decode(row: Row): LocalEndpointProfileV2 {
 
 export class LocalEndpointProfileV2Repo {
   constructor(private readonly db: BetterSqlite3.Database, private readonly nowMs: () => number = Date.now) {}
-  create(input: Readonly<{ endpointProfileId: string; providerId: 'lmstudio' | 'ollama' | 'generic_local';
+  create(input: Readonly<{ endpointProfileId: string; providerId: LocalEndpointExecutionProviderId;
     protocolContractId: LocalEndpointProtocolV2; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>): LocalEndpointProfileV2 {
     GenerationV2Identity.create('endpoint_profile_id', input.endpointProfileId)
-    if (!compatible(input.providerId, input.protocolContractId)) throw new LocalEndpointProfileV2RepoError('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
+    if (!isLocalEndpointProtocolCompatible(input.providerId, input.protocolContractId)) throw new LocalEndpointProfileV2RepoError('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
     const url = baseUrl(input.baseUrl, input.providerId)
     const config = protocolConfig(input.providerId, input.protocolConfig ?? {})
     const configJson = stableSerializeProviderRequestV2(config)
