@@ -1,10 +1,10 @@
 # Model and Provider Identity Frozen Decisions and Implementation Plan
 
-- **Lifecycle Status**: implementation-closeout-in-progress
+- **Lifecycle Status**: completed
 - **Document Role**: owner-decision-and-implementation-plan
 - **Decision frozen**: 2026-08-14
 - **Current-code baseline**: `5f2d7433001133430f183590ac7a4432124c6925`
-- **Implementation status**: closeout patch in progress
+- **Implementation status**: completed
 - **Progress authority**: this file; update the ledger and phase status here as implementation proceeds
 
 ---
@@ -245,15 +245,19 @@ Update this table in the same commit as each phase transition. Do not mark a pha
 
 | Phase | Status | Started | Completed | Commit | Evidence / blockers |
 |---|---|---|---|---|---|
-| 1. Execution identity domain | in progress | 2026-08-14 | — | `0f0cad08` + closeout patch | Runtime codecs are complete; owner clarified that all structurally compatible cross-domain values must pass through explicit total conversion authorities. Model Picker Catalog-to-Runtime flow remains to be closed. |
-| 2. Ghost and mapping authorities | in progress | 2026-08-14 | — | `0f0cad08` + closeout patch | Google ghost and descriptor are correct; three current local profile lookup/create helpers must still consume the descriptor instead of parallel provider/protocol literals. |
+| 1. Execution identity domain | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` + `92de0f88` | Closed codecs remain authoritative; structurally compatible values cross domains only through total Catalog/Runtime and Generation-execution/Runtime authorities. Model Picker no longer relies on casts or direct structural assignment. |
+| 2. Ghost and mapping authorities | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` + `92de0f88` | Google ghost remains absent. All three current local profile lookup/create helpers consume the strict descriptor for execution provider and protocol; retry mapping remains independent. |
 | 3. History and failure namespace | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` | Removed history-to-Runtime projection; introduced three-way provider refs, strict full-shape codec, and Generation/Catalog persistence correlation checks; 32 targeted tests and `tsc` passed |
 | 4. Compatible current intent | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` | Route intent is provider-instance plus model only; action-time coordinator rereads current configuration and snapshots current endpoint/profile defaults; retry remains frozen-snapshot replay; 24 targeted tests passed |
-| 5. Preferences semantics | in progress | 2026-08-14 | — | `0f0cad08` + closeout patch | Happy-path counting is correct, but renderer best-effort writes do not satisfy durable exactly-once. Replace them with a main-process authority keyed by Generation `operationId`. |
-| 6. Reset and acceptance | in progress | 2026-08-14 | — | `0f0cad08` + closeout patch | Prior reset evidence remains valid; add a committed, temporary-profile identity smoke and rerun acceptance for the closeout schema. |
+| 5. Preferences semantics | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` + `92de0f88` | Renderer mutation IPC was removed. Main-process registration and startup reconciliation derive ordinary recents from strict persisted snapshots; the operation ledger provides idempotent exactly-once increments and rejects identity/time reuse. Compatible operations remain excluded. |
+| 6. Reset and acceptance | completed | 2026-08-14 | 2026-08-14 | `0f0cad08` + `92de0f88` | Committed temporary-profile identity smoke passes across two launches. The closeout schema used the existing lease-bound backup/recreate authority against the verified normal DB path, then all targeted/static/Electron gates passed with final Electron ABI. |
 
 ### Progress notes
 
+- 2026-08-14: Closeout implementation committed as `92de0f88`. Added total Catalog/Runtime and Generation-execution/Runtime conversion authorities, adopted the local descriptor in every current profile lookup/create helper, removed the renderer recent mutation surface, and added a main-process operation-keyed recent authority with startup reconciliation. No branded strings, alias decoder, fallback spelling, compatibility normalizer, global provider registry, or retry remapping was introduced.
+- 2026-08-14: Closeout validation passed: unit 5 files / 22 tests, integration 5 files / 43 tests, UI 5 files / 76 tests, `tsc`, `vue-tsc`, identity purge gate (`files=851 deleted=12`), Generation V2 zero-residual gate (`runners=11 deleted=17`), test-partition gate (`518` files), ESLint error-only, and `git diff --check`. Diagnostic `lint:changed` has zero errors and 69 pre-existing size/complexity warnings, so it still exits nonzero under the repository's zero-warning changed-file policy and remains outside the frozen acceptance gate.
+- 2026-08-14: The closeout schema reset used explicit authority and the verified target `C:\Users\m1389\AppData\Roaming\Starverse\workspace\epoch-2\starverse.db`. It created the recoverable backup `C:\Users\m1389\AppData\Roaming\Starverse\epoch-2-recovery-backups\epoch-2-1786678421992`, verified the backup main DB and `epoch_root_created` journal before recreation, and finished with journal phase `committed`. The runner used isolated Electron user data and was deleted; config and browser storage were not reset.
+- 2026-08-14: `npm run test:model-provider-identity:fresh-profile` passed both write and verify launches, and `npm run test:electron-smoke` passed shell/preload, DFC, and diagnostics capture after the final Electron rebuild. Final ABI is Electron. Submission review found no P0/P1, no compatibility-layer regression, no Magika/DFC source change, and no generated/native artifact in Git status.
 - 2026-08-14: Post-implementation reconciliation found no P0/P1 and no compatibility regression, but reopened Phases 1, 2, 5, and 6 for a bounded closeout patch. The owner selected explicit, exhaustive conversion authorities rather than branded strings. No frozen architecture decision was reopened.
 
 - 2026-08-14: Decisions frozen against HEAD `5f2d7433001133430f183590ac7a4432124c6925`; implementation not yet started.
