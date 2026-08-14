@@ -1,5 +1,9 @@
 # Linux Credential Storage Implementation Plan
 
+Status: historical
+Document Role: closeout
+Last updated: 2026-08-14
+
 > 状态：代码、自动化验收与 Windows 真实开发启动已完成；Linux packaged smoke 因当前无 Linux 环境而待核验。目标行为以 [Linux Credential Storage Policy](./linux-credential-storage-policy.md) 为准；全局秘密边界以 [Credential Authority 加固方案](./credential-authority-hardening.md) 为准。
 
 本计划只安排实现顺序，不引入新框架、密码保险箱、外部 helper、自动迁移或新的 CI 门禁。

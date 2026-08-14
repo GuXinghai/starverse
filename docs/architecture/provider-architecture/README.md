@@ -1,5 +1,9 @@
 # Starverse Provider Architecture
 
+Status: active
+Document Role: ssot
+Last updated: 2026-08-14
+
 版本：v1.0.0
 状态：Owner-confirmed architecture SSOT
 

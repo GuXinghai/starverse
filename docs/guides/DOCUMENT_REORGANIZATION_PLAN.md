@@ -1,5 +1,11 @@
 # 文档分类与移动方案
 
+> **Status**: historical
+> **Document Role**: closeout
+> **Last updated**: 2026-08-14
+>
+> 本文是早期整理过程记录，不是当前执行计划。当前入口和整理规则以 [guides/INDEX.md](INDEX.md)、[DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) 和 [document-governance.md](../maintenance/document-governance.md) 为准。
+
 > **目的**: 将 90+ 个现有文档重组为四象限分类体系  
 > **原则**: 避免僵尸文档，保持实用性，优先归档过时文档
 

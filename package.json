@@ -116,6 +116,7 @@
     "gate:tc20": "node scripts/gates/tc20-katex-css-artifact.mjs",
     "gate:vite-renderer-resolution": "node scripts/gates/vite-renderer-resolution-smoke.mjs",
     "gate:privacy": "node scripts/gates/privacy-scan.mjs",
+    "gate:docs": "node scripts/gates/docs-index.mjs",
     "gate:network-egress": "node scripts/gates/network-egress-gate.mjs",
     "gate:generation-v2-zero-residual": "node scripts/gates/generation-v2-zero-residual.mjs",
     "gate:model-identity-purge": "node scripts/gates/model-identity-compatibility-purge.mjs",

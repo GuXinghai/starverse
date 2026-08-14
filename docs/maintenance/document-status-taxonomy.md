@@ -3,7 +3,8 @@
 **Purpose**: Define the dual-dimension status model for Starverse documentation governance.
 
 **Status**: active
-**Last updated**: 2026-05-22
+**Document Role**: maintenance
+**Last updated**: 2026-08-14
 **Owner**: DGR-1
 
 ---
@@ -142,4 +143,4 @@ When a document appears to have conflicting roles:
 
 - [document-governance.md](document-governance.md) — Overall governance rules
 - [document-redirect-map.md](document-redirect-map.md) — Redirect map for moved/renamed docs
-- [DOC_STATUS_INDEX.md](../../DOC_STATUS_INDEX.md) — Current status index
+- [DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) — Current status index

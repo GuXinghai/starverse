@@ -1,5 +1,9 @@
 # ADR（Architecture Decision Records）
 
+Status: active
+Document Role: entry
+Last updated: 2026-08-14
+
 本目录用于记录影响架构/边界/契约的关键决策，目标是把“临场脑补”变成“可审计决策”，并让后续重构有可追溯依据。
 
 ## 文件命名与编号规则

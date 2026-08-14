@@ -1,4 +1,8 @@
 # Todo 目录
+Status: reference
+Document Role: entry
+Last updated: 2026-08-14
+
 本目录路径为 `/docs/todo`，用于记录待办事项（Backlog→Done）且不承载设计决策正文。
 
 ## 用途

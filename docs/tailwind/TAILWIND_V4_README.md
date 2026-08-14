@@ -1,5 +1,9 @@
 # Tailwind CSS v4 配置文档索引
 
+Status: active
+Document Role: entry
+Last updated: 2026-08-14
+
 > **项目**: Starverse  
 > **Tailwind 版本**: v4.1.16  
 > **最后更新**: 2025-11-29

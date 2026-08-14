@@ -1,6 +1,10 @@
 # Starverse 文件类型检测工程实现目录
 
-Status: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
+Status: active
+Document Role: entry
+Last updated: 2026-08-14
+
+Lifecycle note: Step 0 completed/frozen; Step 1 completed; Owner decisions before Step 2 completed; Step 2 completed; Stage A~K completed (Phase 1 MVP main loop)
 Owner confirmation: confirmed
 Current phase: Epoch 2 file detection authority and cross-platform Magika `0.2.0` implementation are locally validated and released. The old DB worker `detectBasic/detectFull` route is removed; immutable source revisions now receive a transactional `pending` projection, single-concurrency processing, CAS completion, startup recovery, explicit retry, renderer refresh events, and main-process send enforcement. Magika failure produces a ready basic verdict with exact warning/provenance; only basic read or detection-authority failure produces `failed`.
 Next phase: validate packaged Starverse installation against the published `0.2.0` asset when cross-platform application packaging is available.

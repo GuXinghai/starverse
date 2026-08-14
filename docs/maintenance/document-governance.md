@@ -3,7 +3,8 @@
 **Purpose**: Define governance rules for Starverse documentation lifecycle management.
 
 **Status**: active
-**Last updated**: 2026-05-22
+**Document Role**: maintenance
+**Last updated**: 2026-08-14
 **Owner**: DGR-1
 
 ---
@@ -275,5 +276,5 @@ Monthly documentation review should:
 
 - [document-status-taxonomy.md](document-status-taxonomy.md) — Status model definition
 - [document-redirect-map.md](document-redirect-map.md) — Redirect map
-- [DOC_STATUS_INDEX.md](../../DOC_STATUS_INDEX.md) — Current status index
-- [AGENT_INDEX.md](../../AGENT_INDEX.md) — Agent entry point
+- [DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) — Current status index
+- [AGENT_INDEX.md](../AGENT_INDEX.md) — Agent entry point
