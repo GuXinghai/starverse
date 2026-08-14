@@ -223,11 +223,16 @@ async function requireSafeStorage(platform = process.platform): Promise<void> {
   }
 }
 
-async function decryptRecord(record: Epoch2ProviderCredentialRecord): Promise<Readonly<{
+async function decryptRecord(record: Epoch2ProviderCredentialRecord, platform: NodeJS.Platform): Promise<Readonly<{
   credential: string
   rewrappedCiphertext?: Buffer
 }>> {
-  if (record.backend === 'plaintext') return Object.freeze({ credential: record.plaintext })
+  if (record.backend === 'plaintext') {
+    if (platform !== 'linux') {
+      throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_PLAINTEXT_UNSUPPORTED')
+    }
+    return Object.freeze({ credential: record.plaintext })
+  }
   return withEpoch2ProviderCredentialCiphertext({
     record,
     consume: async (ciphertext) => {
@@ -304,6 +309,31 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
   function assertPlaintextStoragePermissions(): void {
     if (!input.credentialStoragePaths) return
     enforceLinuxCredentialStoragePermissions({ platform: input.platform ?? process.platform, ...input.credentialStoragePaths })
+  }
+
+  function assertPlaintextRecordUsable(record: Epoch2ProviderCredentialRecord): void {
+    if (record.backend !== 'plaintext') return
+    if ((input.platform ?? process.platform) !== 'linux') {
+      throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_PLAINTEXT_UNSUPPORTED')
+    }
+    try {
+      assertPlaintextStoragePermissions()
+    } catch (error) {
+      if (error instanceof Epoch2RuntimeCredentialError) throw error
+      throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE')
+    }
+  }
+
+  function plaintextRecordDiagnostic(record: Epoch2ProviderCredentialRecord | undefined): Epoch2RuntimeCredentialError['code'] | undefined {
+    if (record?.backend !== 'plaintext') return undefined
+    try {
+      assertPlaintextRecordUsable(record)
+      return undefined
+    } catch (error) {
+      return error instanceof Epoch2RuntimeCredentialError
+        ? error.code
+        : 'EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE'
+    }
   }
 
   function assertOpenAndNonReentrant(providerKey?: ProviderCredentialKey): void {
@@ -408,7 +438,8 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
     providerKey: ProviderCredentialKey,
     slot: RuntimeSlot,
   ): Promise<Readonly<{ slot: RuntimeSlot; credential: string }>> {
-    const decrypted = await decryptRecord(slot.record)
+    assertPlaintextRecordUsable(slot.record)
+    const decrypted = await decryptRecord(slot.record, input.platform ?? process.platform)
     let current = slot
     if (decrypted.rewrappedCiphertext) {
       try {
@@ -502,6 +533,8 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
     if (revision === undefined) {
       throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_NOT_INITIALIZED')
     }
+    const plaintextDiagnostic = plaintextRecordDiagnostic(slot?.record)
+    const diagnosticCode = plaintextDiagnostic ?? diagnostics.get(providerKey)
     return Object.freeze({
       providerKey,
       configured: Boolean(session || slot) || faultedRecordFingerprints.has(providerKey),
@@ -509,8 +542,10 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
       ...(session ? { credentialScopeId: session.credentialScopeId } : slot ? { credentialScopeId: slot.credentialScopeId } : {}),
       storageBackend: session ? 'session' : slot?.record.backend,
       sessionOverridesPersistent: Boolean(session && slot),
-      availability: session || slot?.record.backend === 'plaintext' ? 'available' : availability.get(providerKey) ?? 'unknown',
-      ...(diagnostics.has(providerKey) ? { diagnosticCode: diagnostics.get(providerKey)! } : {}),
+      availability: session || (slot?.record.backend === 'plaintext' && !plaintextDiagnostic)
+        ? 'available'
+        : plaintextDiagnostic ? 'unavailable' : availability.get(providerKey) ?? 'unknown',
+      ...(diagnosticCode ? { diagnosticCode } : {}),
     })
   }
 
@@ -676,6 +711,7 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
           }
           assertEpochDatabaseCurrent()
           const latest = assertPersistedSlot(request.providerKey)
+          if (latest) assertPlaintextRecordUsable(latest.record)
           if (latest !== maintained.slot || revisions.get(request.providerKey) !== currentRevision ||
               latest?.credentialScopeId !== maintained.slot.credentialScopeId) {
             throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')
@@ -741,6 +777,7 @@ export async function createEpoch2RuntimeCredentialService(input: Readonly<{
           }
           assertEpochDatabaseCurrent()
           const latest = assertPersistedSlot(request.providerKey)
+          if (latest) assertPlaintextRecordUsable(latest.record)
           if (latest !== maintained.slot || revisions.get(request.providerKey) !== currentRevision ||
               latest?.credentialScopeId !== maintained.slot.credentialScopeId) {
             throw new Epoch2RuntimeCredentialError('EPOCH2_RUNTIME_CREDENTIAL_DRIFT')

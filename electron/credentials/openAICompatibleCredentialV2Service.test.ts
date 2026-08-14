@@ -132,6 +132,51 @@ describe('OpenAI-compatible V2 credential service', () => {
     expect(db.prepare('SELECT COUNT(*) AS count FROM openai_compatible_credential_v2').get()).toEqual({ count: 0 })
   })
 
+  it.each(['win32', 'darwin'] as const)(
+    'marks persisted Linux plaintext unavailable and refuses to lease it on %s', async (platform) => {
+    const linuxService = createOpenAICompatibleCredentialV2Service({ db, platform: 'linux' })
+    const written = await linuxService.write({ providerInstanceId, credentialVersionRef, expectedRevision: 0,
+      storageMode: 'plaintext', credential: { mode: 'bearer', token: 'linux-only-plaintext' } })
+    await linuxService.close()
+
+    const otherPlatformService = createOpenAICompatibleCredentialV2Service({ db, platform })
+    await expect(otherPlatformService.getStatus(providerInstanceId, credentialVersionRef)).resolves.toMatchObject({
+      configured: true,
+      storageBackend: 'plaintext',
+      availability: 'unavailable',
+      diagnosticCode: 'GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_PLAINTEXT_UNSUPPORTED',
+    })
+    const consume = vi.fn()
+    await expect(otherPlatformService.withCredential({ providerInstanceId, credentialVersionRef,
+      expectedRevision: written.revision, expectedCredentialScopeId: written.credentialScopeId!, consume }))
+      .rejects.toMatchObject({ code: 'GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_PLAINTEXT_UNSUPPORTED' })
+    expect(consume).not.toHaveBeenCalled()
+    await expect(otherPlatformService.clear(providerInstanceId, credentialVersionRef, written.revision))
+      .resolves.toMatchObject({ configured: false })
+    await otherPlatformService.close()
+  })
+
+  it('revalidates Linux plaintext storage permissions before reporting or leasing a persisted credential', async () => {
+    const linuxService = createOpenAICompatibleCredentialV2Service({ db, platform: 'linux' })
+    const written = await linuxService.write({ providerInstanceId, credentialVersionRef, expectedRevision: 0,
+      storageMode: 'plaintext', credential: { mode: 'bearer', token: 'permission-bound-plaintext' } })
+    await linuxService.close()
+
+    const service = createOpenAICompatibleCredentialV2Service({ db, platform: 'linux',
+      credentialStoragePaths: { directories: [path.join(process.cwd(), 'missing-credential-store')], files: [] } })
+    await expect(service.getStatus(providerInstanceId, credentialVersionRef)).resolves.toMatchObject({
+      configured: true,
+      availability: 'unavailable',
+      diagnosticCode: 'GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_STORAGE_UNAVAILABLE',
+    })
+    const consume = vi.fn()
+    await expect(service.withCredential({ providerInstanceId, credentialVersionRef,
+      expectedRevision: written.revision, expectedCredentialScopeId: written.credentialScopeId!, consume }))
+      .rejects.toMatchObject({ code: 'GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_STORAGE_UNAVAILABLE' })
+    expect(consume).not.toHaveBeenCalled()
+    await service.close()
+  })
+
   it('preserves decrypt and record diagnostics in configured status', async () => {
     const service = createOpenAICompatibleCredentialV2Service({ db })
     const written = await service.write({ providerInstanceId, credentialVersionRef, expectedRevision: 0,
