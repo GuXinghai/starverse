@@ -44,3 +44,35 @@
 - **归档日期**: 2025年12月6日
 - **文档数量**: 16 个
 - **归档原因**: 功能实现已完成并稳定运行
+
+## 2026-08-14 DGR-3 批次归档
+
+- [BRANCH_TREE_IMPLEMENTATION.md](BRANCH_TREE_IMPLEMENTATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [CHAT_INPUT_CUTOVER_AUDIT.md](CHAT_INPUT_CUTOVER_AUDIT.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [CHAT_TOOLBAR_BUTTON_IMPLEMENTATION.md](CHAT_TOOLBAR_BUTTON_IMPLEMENTATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [CONVERSATION_PARAMETER_PANEL_INTEGRATION.md](CONVERSATION_PARAMETER_PANEL_INTEGRATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [HIGH_PRIORITY_CHANGES_COMPLETE.md](HIGH_PRIORITY_CHANGES_COMPLETE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [MODEL_PERSISTENCE_MIGRATION.md](MODEL_PERSISTENCE_MIGRATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [MODERN_CHAT_INPUT_IMPLEMENTATION.md](MODERN_CHAT_INPUT_IMPLEMENTATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PARAMETER_PANEL_POSITION_ALIGNMENT.md](PARAMETER_PANEL_POSITION_ALIGNMENT.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PHASE_3_UI_CONFIG_INTEGRATION.md](PHASE_3_UI_CONFIG_INTEGRATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PHASE3_COMPLETE_SUMMARY.md](PHASE3_COMPLETE_SUMMARY.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PROPS_ANALYSIS_ModernChatInput.md](PROPS_ANALYSIS_ModernChatInput.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PROPS_OPTIMIZATION_EXECUTION_SUMMARY.md](PROPS_OPTIMIZATION_EXECUTION_SUMMARY.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [REASONING_IMPLEMENTATION_SUMMARY.md](REASONING_IMPLEMENTATION_SUMMARY.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [REASONING_PERSISTENCE_ANALYTICS.md](REASONING_PERSISTENCE_ANALYTICS.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [REASONING_TIERS_4_LEVELS.md](REASONING_TIERS_4_LEVELS.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [REASONING_TOGGLE_UX_IMPROVEMENT.md](REASONING_TOGGLE_UX_IMPROVEMENT.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [SAMPLING_PARAMETERS_FEATURE.md](SAMPLING_PARAMETERS_FEATURE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [SAVE_OPTIMIZATION_SUMMARY.md](SAVE_OPTIMIZATION_SUMMARY.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [SCROLL_SYSTEM_REFACTOR_COMPLETE.md](SCROLL_SYSTEM_REFACTOR_COMPLETE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [SCROLLBAR_AUTO_HIDE_IMPLEMENTATION.md](SCROLLBAR_AUTO_HIDE_IMPLEMENTATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [SEARCH_FTS5_IMPROVEMENT.md](SEARCH_FTS5_IMPROVEMENT.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [SEND_BUTTON_STATE_OPTIMIZATION.md](SEND_BUTTON_STATE_OPTIMIZATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [SEND_TIMEOUT_CONFIGURATION.md](SEND_TIMEOUT_CONFIGURATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [SQLITE_ENHANCEMENT_IMPLEMENTATION.md](SQLITE_ENHANCEMENT_IMPLEMENTATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [STORYBOOK_DOCUMENTATION_ACCURACY_UPDATE.md](STORYBOOK_DOCUMENTATION_ACCURACY_UPDATE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [STORYBOOK_PHASE2_COMPLETE.md](STORYBOOK_PHASE2_COMPLETE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [TASK_SEND_DELAY_ABORT_IMPLEMENTATION_ANALYSIS.md](TASK_SEND_DELAY_ABORT_IMPLEMENTATION_ANALYSIS.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [USAGE_STATISTICS_PHASE2_COMPLETE.md](USAGE_STATISTICS_PHASE2_COMPLETE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [WEB_WORKER_IMPLEMENTATION.md](WEB_WORKER_IMPLEMENTATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）

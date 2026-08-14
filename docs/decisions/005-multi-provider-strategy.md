@@ -84,7 +84,7 @@ const aiChatService = {
 
 - [策略模式详解](https://refactoring.guru/design-patterns/strategy)
 - [OpenRouter集成文档](../architecture/OPENROUTER_INTEGRATION_SUMMARY.md)
-- [AI服务实现](../../src/services/aiChatService.js)
+- AI 服务实现（原 `src/services/aiChatService.js` 已不存在，2026-08-14 修正）
 
 ---
 

@@ -76,7 +76,7 @@ Worker线程 (数据库操作)
 - [SQLite FTS5文档](https://www.sqlite.org/fts5.html)
 - [better-sqlite3文档](https://github.com/WiseLibs/better-sqlite3)
 - [Worker Threads架构](../architecture/overview.md#worker-threads)
-- [数据库Schema](../../infra/db/schema.sql)
+- 数据库 Schema（原 `infra/db/schema.sql` 已移除；现为 `infra/db/v2/*.sql`，2026-08-14 修正）
 
 ---
 

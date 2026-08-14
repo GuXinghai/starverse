@@ -14,15 +14,17 @@
 |---|---:|---|
 | [analysis/](analysis/) | 11 | 历史问题分析 |
 | [architecture/](architecture/) | 2 | 已被当前架构文档替代的架构记录 |
-| [bugfixes/](bugfixes/) | 9 | 已解决的缺陷记录 |
-| [completed-features/](completed-features/) | 11 | 已完成的功能记录 |
-| [debug/](debug/) | 5 | 已结束的 Debug 调查 |
-| [documentation/](documentation/) | 3 | 文档治理过程记录 |
-| [migrations/](migrations/) | 5 | 已完成的迁移记录 |
-| [optimizations/](optimizations/) | 8 | 已完成的性能优化记录 |
-| [refactoring/](refactoring/) | 8 | 已完成的非 UI 重构记录 |
-| [testing/](testing/) | 2 | 历史测试验证记录 |
-| [ui-implementations/](ui-implementations/) | 11 | 已完成的 UI 实现记录 |
+| [bugfixes/](bugfixes/) | 34 | 已解决的缺陷记录（含 2026-08-14 DGR-3 批次） |
+| [completed-features/](completed-features/) | 40 | 已完成的功能记录（含 2026-08-14 DGR-3 批次） |
+| [debug/](debug/) | 6 | 已结束的 Debug 调查 |
+| [documentation/](documentation/) | 13 | 文档治理过程记录（含 2026-08-14 DGR-3 批次） |
+| [migrations/](migrations/) | 8 | 已完成的迁移记录（含 2026-08-14 DGR-3 批次） |
+| [optimizations/](optimizations/) | 11 | 已完成的性能优化记录（含 2026-08-14 DGR-3 批次） |
+| [refactoring/](refactoring/) | 10 | 已完成的非 UI 重构记录（含 2026-08-14 DGR-3 批次） |
+| [testing/](testing/) | 10 | 历史测试验证记录（含 2026-08-14 DGR-3 批次） |
+| [ui-implementations/](ui-implementations/) | 12 | 已完成的 UI 实现记录（含 2026-08-14 DGR-3 批次） |
+
+> 2026-08-14 DGR-3：`features/`、`bugfix/` 及 `guides/` 历史记录、仓库根目录散落文档共 82 个已归档并入各子目录；`features/`、`bugfix/` 现仅保留重定向 README。移动登记见 [document-redirect-map.md](../maintenance/document-redirect-map.md)。
 
 ## 使用规则
 
@@ -37,4 +39,4 @@
 - [文档状态索引](../DOC_STATUS_INDEX.md)
 - [文档治理规则](../maintenance/document-governance.md)
 - [重定向映射](../maintenance/document-redirect-map.md)
-- [当前 UI 重构记录](../ui-refactoring/REFACTOR_PROGRESS.md)
+- [UI 重构记录（历史）](../ui-refactoring/REFACTOR_PROGRESS.md)

@@ -45,3 +45,33 @@
 - **归档日期**: 2025年12月6日
 - **文档数量**: 8 个
 - **归档原因**: Bug 已修复且验证稳定
+
+> 2026-08-14 修正（计数更新）: 2026-08-14 DGR-3 批次并入 25 个文档后，本目录现有 34 个 Markdown 文件（33 个非索引文档）。上方 "8 个主要 Bug" / "文档数量: 8 个" 为 2025-12 归档时的原始统计。
+
+## 2026-08-14 DGR-3 批次归档
+
+- [ALL_FIXES_COMPLETE.md](ALL_FIXES_COMPLETE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [ASSISTANT_MESSAGE_TIMING_FIX.md](ASSISTANT_MESSAGE_TIMING_FIX.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [BUGFIX_ASSISTANT_MESSAGE_EMPTY_DISPLAY.md](BUGFIX_ASSISTANT_MESSAGE_EMPTY_DISPLAY.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [BUGFIX_FIRST_TOKEN_TIMEOUT_RACE_CONDITION.md](BUGFIX_FIRST_TOKEN_TIMEOUT_RACE_CONDITION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [BUGFIX_MODEL_DATA_FIELD_MISMATCH.md](BUGFIX_MODEL_DATA_FIELD_MISMATCH.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [BUGFIX_MODEL_DATA_TYPE_INCONSISTENCY.md](BUGFIX_MODEL_DATA_TYPE_INCONSISTENCY.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [BUGFIX_MODEL_IPC_SERIALIZATION.md](BUGFIX_MODEL_IPC_SERIALIZATION.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [BUGFIX_SAMPLING_PARAMETERS_IMPORT.md](BUGFIX_SAMPLING_PARAMETERS_IMPORT.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [BUGFIX_STREAM_IDLE_TIMEOUT_TIMER_LEAK.md](BUGFIX_STREAM_IDLE_TIMEOUT_TIMER_LEAK.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [CLONE_ERROR_FIX.md](CLONE_ERROR_FIX.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [CONVERSATION_PERSISTENCE_FIX.md](CONVERSATION_PERSISTENCE_FIX.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [DEBUG_MESSAGE_SENDING_STALL.md](DEBUG_MESSAGE_SENDING_STALL.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [DEBUG_SEND_DELAY_BUTTON_SWITCH.md](DEBUG_SEND_DELAY_BUTTON_SWITCH.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [FIX_GHOST_TASK_COMPLETE.md](FIX_GHOST_TASK_COMPLETE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [FIX_STATE_MUTEX_FAILURE.md](FIX_STATE_MUTEX_FAILURE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PROJECT_CREATION_DEADLOCK_FIX.md](PROJECT_CREATION_DEADLOCK_FIX.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [PROJECT_MANAGEMENT_FIXES.md](PROJECT_MANAGEMENT_FIXES.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [REASONING_STREAMTEXT_LOSS_RCA.md](REASONING_STREAMTEXT_LOSS_RCA.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [RECENT_FIXES_2025_11.md](RECENT_FIXES_2025_11.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [SUBMENU_TELEPORT_FIX.md](SUBMENU_TELEPORT_FIX.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [TAB_MANAGEMENT_REACTIVE_UPDATE_FIX.md](TAB_MANAGEMENT_REACTIVE_UPDATE_FIX.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [TOOLBAR_BUTTON_HEIGHT_DIAGNOSIS.md](TOOLBAR_BUTTON_HEIGHT_DIAGNOSIS.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [TOOLBAR_BUTTON_HEIGHT_FIX.md](TOOLBAR_BUTTON_HEIGHT_FIX.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [VUE_PROXY_CLONE_FIX.md](VUE_PROXY_CLONE_FIX.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）
+- [WORKER_BUILD_ISSUE.md](WORKER_BUILD_ISSUE.md) - 2026-08-14 DGR-3 归档（原路径见 [document-redirect-map.md](../../maintenance/document-redirect-map.md)）

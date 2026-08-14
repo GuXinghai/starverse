@@ -1,8 +1,12 @@
 # AppChatApp Logic Boundary
 
+> **Status**: active
+> **Document Role**: ssot
+> **Last updated**: 2026-08-14
+
 ## Current State
 
-- [src/ui-app/app/appChatApp.logic.ts](../../src/ui-app/app/appChatApp.logic.ts) is a high-density app-layer orchestration module (about 6.7k lines) coordinating conversation/project/session flow, draft attachments, send preflight, streaming lifecycle, and UI-derived state.
+- [src/ui-app/app/appChatApp.logic.ts](../../src/ui-app/app/appChatApp.logic.ts) is a high-density app-layer orchestration module (about 8.0k lines, 7,966 lines, as of 2026-08-14) coordinating conversation/project/session flow, draft attachments, send preflight, streaming lifecycle, and UI-derived state.
 - The file currently mixes orchestration with several rule-like helper clusters, which increases onboarding and regression risk.
 - This document is a containment guardrail for the current phase. It is not a refactor spec.
 
@@ -26,7 +30,7 @@
 ## Preferred Migration Targets
 
 - Domain service:
-  - send-plan and attachment compatibility policies into infra service/helper layer near [infra/files/sendPlanService.ts](../../infra/files/sendPlanService.ts).
+  - send-plan and attachment compatibility policies into infra service/helper layer near [src/next/files/sendPlanClient.ts](../../src/next/files/sendPlanClient.ts) and [src/next/openrouter/openRouterSendPlanSerializer.ts](../../src/next/openrouter/openRouterSendPlanSerializer.ts).
 - Client adapter:
   - bridge invocation normalization in [src/next/files/sendPlanClient.ts](../../src/next/files/sendPlanClient.ts), [src/next/files/conversationDraftClient.ts](../../src/next/files/conversationDraftClient.ts), [src/next/openrouter/openRouterSendPreparation.ts](../../src/next/openrouter/openRouterSendPreparation.ts).
 - Pure helper/selectors:
@@ -53,11 +57,11 @@
 
 - [src/ui-app/AppChatApp.attachments.test.ts](../../src/ui-app/AppChatApp.attachments.test.ts)
 - [src/ui-app/AppChatApp.send.test.ts](../../src/ui-app/AppChatApp.send.test.ts)
-- [src/ui-app/AppChatApp.test.ts](../../src/ui-app/AppChatApp.test.ts)
 - [src/ui-app/components/ChatAppComposer.attachments.test.ts](../../src/ui-app/components/ChatAppComposer.attachments.test.ts)
 - [src/next/openrouter/openRouterSendPreparation.test.ts](../../src/next/openrouter/openRouterSendPreparation.test.ts)
 - [src/next/openrouter/openRouterSendPlanSerializer.test.ts](../../src/next/openrouter/openRouterSendPlanSerializer.test.ts)
-- [infra/files/sendPlanService.test.ts](../../infra/files/sendPlanService.test.ts)
+- [src/next/files/sendPlanClient.test.ts](../../src/next/files/sendPlanClient.test.ts)
+- [src/next/openrouter/openRouterSendPlanSerializer.test.ts](../../src/next/openrouter/openRouterSendPlanSerializer.test.ts)
 
 ## Reviewer Checklist (Lightweight Guardrail)
 

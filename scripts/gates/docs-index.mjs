@@ -7,6 +7,8 @@ const relative = (file) => path.relative(root, file).replaceAll('\\', '/')
 const failures = []
 
 const entryDocs = [
+  'README.md',
+  'CHANGELOG.md',
   'docs/AGENT_INDEX.md',
   'docs/DOC_STATUS_INDEX.md',
   'docs/guides/INDEX.md',

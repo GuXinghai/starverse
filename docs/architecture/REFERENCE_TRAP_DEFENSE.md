@@ -370,8 +370,8 @@ const snapshot = Object.freeze(
 ## 📚 相关文档
 
 - [快照模式实施总结](./SNAPSHOT_PATTERN_IMPLEMENTATION.md)
-- [消息重复发送问题修复](./FIX_MESSAGE_DUPLICATION.md)
-- [调试日志记录](./DEBUG_MESSAGE_DUPLICATION.md)
+- [消息重复发送问题修复](../archive/bugfixes/FIX_MESSAGE_DUPLICATION.md)
+- 调试日志记录（原 DEBUG_MESSAGE_DUPLICATION.md 不存在，2026-08-14 修正）
 
 ---
 

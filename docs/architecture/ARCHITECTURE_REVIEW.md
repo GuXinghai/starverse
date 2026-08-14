@@ -494,7 +494,7 @@ export * from './search'
 
 4. **整理文档目录**
    - 创建分类目录
-   - 编写 `docs/README.md` 索引
+   - 编写 `docs/guides/INDEX.md` 索引（原 `docs/README.md` 未创建，2026-08-14 修正）
    - 归档过时文档
 
 ### 低优先级（可长期优化）
@@ -545,5 +545,5 @@ Starverse 的整体架构设计合理，分层清晰，安全机制完善。主�
 
 ## 🔗 相关文档
 
-- [BRANCH_TREE_IMPLEMENTATION.md](../features/BRANCH_TREE_IMPLEMENTATION.md) - 分支树实现
-- [CHAT_MULTITHREADING_PERFORMANCE_GUIDE.md](../guides/CHAT_MULTITHREADING_PERFORMANCE_GUIDE.md) - 性能优化指南
+- [BRANCH_TREE_IMPLEMENTATION.md](../archive/completed-features/BRANCH_TREE_IMPLEMENTATION.md) - 分支树实现
+- [CHAT_MULTITHREADING_PERFORMANCE_GUIDE.md](../archive/optimizations/CHAT_MULTITHREADING_PERFORMANCE_GUIDE.md) - 性能优化指南

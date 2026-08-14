@@ -166,7 +166,8 @@ When two documents claim SSOT for the same domain:
 
 | Domain | SSOT Document | Status |
 |--------|---------------|--------|
-| File pipeline decisions | `docs/file-pipeline/progress-ledger.md` | active |
+| File pipeline decisions (Worker 架构, 2025-11~2026-01) | `docs/file-pipeline/progress-ledger.md` | archived (2026-08-14, 架构已退役) |
+| DFC 实施 ledger | `docs/file-pipeline/document-format-conversion/progress-ledger.md` | active |
 | Format conversion design / DFC | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | active |
 | appChatApp boundaries | `docs/governance/app-chat-app-logic-boundary.md` | active |
 | System architecture | `docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md` | active |
@@ -241,10 +242,10 @@ Directories with unclassified documents must be:
 
 | Priority | Directory | Reason |
 |----------|-----------|--------|
-| High | `docs/features/` | 31 files, likely implementation notes |
+| Done | `docs/features/` | 2026-08-14 已归档至 `archive/completed-features/` 等 |
 | High | `docs/spec/` | 17 files, likely specifications |
-| Medium | `docs/architecture/` | 22 files, mixed roles |
-| Medium | `docs/bugfix/` | 18+ files, likely implementation notes |
+| Medium | `docs/architecture/` | 185 files (103 md), mixed roles |
+| Done | `docs/bugfix/` | 2026-08-14 已归档至 `archive/bugfixes/` |
 | Low | `docs/i18n/`, `docs/rfc/`, `docs/notes/`, `docs/requirements/` | Small count |
 
 ---

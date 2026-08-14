@@ -306,7 +306,7 @@ token/增量拼接在 `useMessageSending.processStreamChunk()`，通过 `branchS
 | `src/components/chat/ChatScrollContainer.vue` | presentational 可复用 | 无 store/service 依赖，仅封装滚动状态机并 expose API；证据片段：仅 `useChatStickToBottom`（见 A-12） |
 | `src/components/chat/input/ModernChatInput.vue` | presentational 可复用 | 不直接 import store/service，主要是 props/emits 事件路由与组合 UI；证据片段：imports 仅包含子组件与类型（见该文件顶部 imports） |
 | `src/components/chat/input/IntegratedPromptBox.vue` | presentational 可复用 | 纯 UI + emits（发送按钮等），无 store/service；证据片段：发送按钮 `emit('send')`（见 A-4） |
-| `archived-components/ChatInputArea.vue` | 可删除 | 已归档且不在 `src/` 活跃代码树中；证据关键词：`ChatInputArea`（`docs/features/MODERN_CHAT_INPUT_IMPLEMENTATION.md`、`docs/architecture/UNIFIED_GENERATION_ARCHITECTURE.md` 提示已归档） |
+| `archived-components/ChatInputArea.vue` | 可删除 | 已归档且不在 `src/` 活跃代码树中；证据关键词：`ChatInputArea`（`docs/archive/completed-features/MODERN_CHAT_INPUT_IMPLEMENTATION.md`、`docs/architecture/UNIFIED_GENERATION_ARCHITECTURE.md` 提示已归档） |
 
 ---
 

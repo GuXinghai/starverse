@@ -1,8 +1,10 @@
 # File Pipeline Progress Ledger
 
-> **Status**: active
-> **Document Role**: ssot
+> **Status**: archived
+> **Document Role**: closeout
 > **Last updated**: 2026-08-14
+>
+> **2026-08-14 归档（由 active/ssot 降级）**: 本文档描述 2025-11~2026-01 的 Worker/桥接架构实现（`infra/db/worker`、worker methods、bridge contracts 等），该架构已于 2026 年中随 epoch-2 迁移退役（`infra/db/worker` 目录现为空，`infra/db/worker.filePipeline.test.ts` 已删除）。下方"Explicitly Not Done"中关于 conversion/Office pipeline 的条目已被 DFC 实现取代（见 [document-format-conversion/progress-ledger.md](document-format-conversion/progress-ledger.md)）。当前文件管道现状以 [README.md](README.md) 与 DFC ledger 为准；本文仅作历史追溯。
 
 ## Completed In Phase 1
 
@@ -278,7 +280,7 @@
   - `src/ui-app/components/ChatAppComposer.webSearchSendGuard.test.ts`
   - Both currently fail from stale test fixtures that no longer match the composer interface, not from a Phase 9 send-chain regression.
 
-## Explicitly Not Done
+## Explicitly Not Done（2025-11~2026-01 基线；conversion/Office 相关条目已被 DFC 实现取代，见 2026-08-14 时效声明）
 
 - No full file manager UI.
 - No provider file reference implementation.

@@ -119,7 +119,7 @@ PASS: ui-next has no legacy imports and no JSON.parse usage.
 **SSOT 原文（第 2 章）**:
 > 必须记录 generation id，并支持按 id 查询 `/generation`（即便当前 UI 不展示）。
 
-**实现位置**: [src/next/transport/fetchGeneration.ts](../../src/next/transport/fetchGeneration.ts)
+**实现位置**: `src/next/transport/fetchGeneration.ts`（原文件已不存在，2026-08-14 修正）
 
 ```typescript
 export async function fetchGenerationInfo(
@@ -136,7 +136,7 @@ export async function fetchGenerationInfo(
 - ✅ AbortSignal 支持：`opts.signal`
 - ✅ 自定义 baseUrl 支持：`opts.baseUrl`
 
-**测试覆盖**: [fetchGeneration.test.ts](../../src/next/transport/fetchGeneration.test.ts) (6 tests)
+**测试覆盖**: `fetchGeneration.test.ts` (6 tests)（原文件已不存在，2026-08-14 修正）
 - `fetches generation info with correct URL and headers`
 - `uses custom baseUrl when provided`
 - `encodes generationId in URL`

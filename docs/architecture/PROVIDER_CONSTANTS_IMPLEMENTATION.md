@@ -6,7 +6,7 @@
 
 ## 实现方案
 
-### 1. 核心常量定义 (`src/constants/providers.ts`)
+### 1. 核心常量定义（原 `src/constants/providers.ts`，已移除，2026-08-14 修正；现见 `src/shared/provider/runtimeProviderId.ts`）
 
 ```typescript
 export const PROVIDERS = {
@@ -240,7 +240,7 @@ TypeScript 会自动更新 `ProviderId` 类型，所有相关代码立即获得�
 ## 文件清单
 
 ### 核心实现
-- ✅ `src/constants/providers.ts` - Provider 常量和类型定义
+- ✅ `src/constants/providers.ts`（已移除，2026-08-14 修正；现 `src/shared/provider/runtimeProviderId.ts`）- Provider 常量和类型定义
 - ✅ `src/types/generation.ts` - 添加 `providerId?: ProviderId` 字段
 - ✅ `src/services/providers/modelCapability.ts` - 实现 `extractProviderId()` 函数
 - ✅ `src/stores/index.ts` - 添加 `toProviderId()` / `toAIProvider()` 转换函数

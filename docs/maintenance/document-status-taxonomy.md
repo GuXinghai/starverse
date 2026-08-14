@@ -53,7 +53,7 @@ Document Role indicates what responsibility the document carries. A document may
 | Role | Meaning | Example |
 |------|---------|---------|
 | **entry** | Entry point for a domain or feature | `docs/file-pipeline/README.md` |
-| **ssot** | Single Source of Truth for a specific domain | `docs/file-pipeline/progress-ledger.md` |
+| **ssot** | Single Source of Truth for a specific domain | `docs/file-pipeline/document-format-conversion/progress-ledger.md` |
 | **roadmap** | Plans, milestones, future directions | README.md roadmap section |
 | **closeout** | Phase or feature completion record | `docs/file-pipeline/phase-9-frontend-ui-mvp.md` |
 | **implementation-note** | Implementation details, technical notes | `docs/features/*.md` |
@@ -73,10 +73,10 @@ Document Role indicates what responsibility the document carries. A document may
 | Document | Lifecycle Status | Document Role | Rationale |
 |----------|------------------|---------------|-----------|
 | `docs/file-pipeline/README.md` | active | entry | Active entry point; routes to SSOT |
-| `docs/file-pipeline/progress-ledger.md` | active | ssot | Single source of truth for pipeline status |
+| `docs/file-pipeline/progress-ledger.md` | archived | closeout | Archived 2026-08-14: retired Worker pipeline record |
 | `docs/adr/000-record-architecture-decisions.md` | reference | decision | Stable decision record |
 | `docs/file-pipeline/phase-9-frontend-ui-mvp.md` | historical | closeout | Historical phase record |
-| `docs/features/BRANCH_TREE_IMPLEMENTATION.md` | pending-classification | implementation-note | Not yet classified |
+| `docs/archive/completed-features/BRANCH_TREE_IMPLEMENTATION.md` | archived | implementation-note | Archived 2026-08-14 (DGR-3 move) |
 | `docs/DEBUG_OPENROUTER_REQUEST_LOG.md` | archived | debug-record | Archived debug record |
 
 ---
@@ -92,7 +92,7 @@ Document Role indicates what responsibility the document carries. A document may
 
 | Document | Domain | Coverage |
 |----------|--------|----------|
-| `docs/file-pipeline/progress-ledger.md` | File pipeline decisions & frozen items | All file pipeline decisions |
+| `docs/file-pipeline/document-format-conversion/progress-ledger.md` | DFC implementation ledger | Append-only DFC milestones & evidence |
 | `docs/file-pipeline/document-format-conversion/starverse_format_conversion_preview_v1_2.md` | Format conversion design / DFC | Document conversion, preview, Send Plan, compatibility, and safety boundaries |
 | `docs/governance/app-chat-app-logic-boundary.md` | appChatApp boundaries | Core app logic boundaries |
 | `docs/architecture/CURRENT_SYSTEM_ARCHITECTURE.md` | System architecture | Current high-level architecture |
@@ -106,10 +106,8 @@ The following directories contain documents that have not yet been classified:
 
 | Directory | File Count | Likely Role | Next Step |
 |-----------|------------|-------------|-----------|
-| `docs/features/` | 31 | implementation-note | DGR-3: classify each file |
 | `docs/spec/` | 17 | spec | DGR-3: classify each file |
-| `docs/architecture/` | 22 | various | DGR-3: classify each file |
-| `docs/bugfix/` | 18+ | implementation-note | DGR-3: classify each file |
+| `docs/architecture/` | 185 | various | DGR-3: classify each file（计数含非 md） |
 | `docs/i18n/` | 5 | spec/guide | DGR-3: classify each file |
 | `docs/rfc/` | 1 | spec | DGR-3: classify each file |
 | `docs/notes/` | 4 | implementation-note | DGR-3: classify each file |

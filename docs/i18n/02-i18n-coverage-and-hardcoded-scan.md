@@ -27,16 +27,18 @@ Excludes:
 
 This scanner is a guardrail. A passing scan means the current heuristics and allowlist did not find new high-signal hardcoded UI text; it is not a guarantee that the full repository has zero hardcoded strings.
 
-## SendPlan Code Map: `npm run i18n:sendplan-map`
+## SendPlan Code Map
 
 Validates `ISSUE_CODE_TO_I18N` mapping in `appChatApp.logic.ts`:
 
-1. Validates the maintained production issue-code list against `infra/files/sendPlanService.ts`
-2. Extracts secondary known issue codes from `sendPlanService.test.ts`
+1. Validates the maintained production issue-code list against the send-plan modules (`src/next/files/sendPlanClient.ts`, `src/next/openrouter/openRouterSendPlanSerializer.ts`)
+2. Extracts secondary known issue codes from their test files
 3. Verifies each known production/test code is in the mapping unless explicitly documented as non-mapped internal flow
 4. Verifies each mapped i18n key exists in locale JSON
 
-The production list is intentionally explicit because SendPlan issue codes are emitted from object literals, helper returns, and derived warning flows. The script also scans production snake-case literals and fails on newly introduced unclassified values. When adding a production issue code in `sendPlanService.ts`, update the list in `scripts/i18n/check-sendplan-code-map.mjs` and map it unless it is explicitly handled outside `ISSUE_CODE_TO_I18N`.
+The production list is intentionally explicit because SendPlan issue codes are emitted from object literals, helper returns, and derived warning flows. When adding a production issue code in the send-plan modules, add it to the mapping unless it is explicitly handled outside `ISSUE_CODE_TO_I18N`.
+
+> 2026-08-14 修正：原节描述 `npm run i18n:sendplan-map` 与 `scripts/i18n/check-sendplan-code-map.mjs`，二者均已不存在；映射校验现由 `src/shared/i18n/locales/localeKeyConsistency.test.ts` 与 `npm run i18n:check` 覆盖。
 
 ## Current Allowlist (`hardcoded-allowlist.txt`)
 
@@ -51,7 +53,7 @@ Items deferred to future task packs:
 
 ## SendPlan Issue Codes
 
-Known mapped production codes are validated from `sendPlanService.ts` by `scripts/i18n/check-sendplan-code-map.mjs`. The table below lists representative mapped codes and historical test coverage anchors; the script output is the source of truth for the current full set.
+Known mapped production codes are validated from the send-plan modules by `npm run i18n:check` and the locale-key consistency tests. The table below lists representative mapped codes and historical test coverage anchors; the script output is the source of truth for the current full set.
 
 | Code | i18n Key | Status |
 |---|---|---|

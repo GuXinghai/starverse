@@ -20,4 +20,4 @@
 - 任何新的约定都应同步更新本页，保持文档的“单一真相”
 
 ## 参考实现（TypeScript）
-- 见 `src/constants/providers.ts`，用 `as const` + 字面量联合生成“单一真相”，让 TypeScript 替我们锁住 ID 值
+- 见 `src/shared/provider/runtimeProviderId.ts`（ProviderId 类型与运行时 provider id 定义；原 `src/constants/providers.ts` 已移除，2026-08-14 修正），用 `as const` + 字面量联合生成“单一真相”，让 TypeScript 替我们锁住 ID 值
