@@ -8,7 +8,10 @@ import { ToolRegistryV2Repo } from '../../infra/db/repo/toolRegistryV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import type { RawGenerationRequestStore } from '../debug/rawGenerationRequestStore'
 import { isEpoch2RuntimeCredentialLease, type Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
+// Approved main-process Gemini GenerateContent Generation V2 execution boundary.
+// eslint-disable-next-line no-restricted-imports
 import { isPreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
+// eslint-disable-next-line no-restricted-imports
 import {
   GeminiGenerateContentChatStreamV1,
   GeminiGenerateContentStreamV1Error,

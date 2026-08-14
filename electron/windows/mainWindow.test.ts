@@ -1,3 +1,5 @@
+import path from 'node:path'
+import { pathToFileURL } from 'node:url'
 import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('electron', () => ({
@@ -38,13 +40,14 @@ describe('main window navigation policy', () => {
   })
 
   it('allows only the packaged renderer entry file in production', () => {
+    const rendererDist = path.resolve('dist')
     const policy = createMainWindowNavigationPolicy({
       isDev: false,
-      rendererDist: 'dist',
+      rendererDist,
     })
 
-    expect(policy.isTrustedAppUrl('file:///D:/Starverse/dist/index.html')).toBe(true)
-    expect(policy.isTrustedAppUrl('file:///D:/Starverse/dist/other.html')).toBe(false)
+    expect(policy.isTrustedAppUrl(pathToFileURL(path.join(rendererDist, 'index.html')).href)).toBe(true)
+    expect(policy.isTrustedAppUrl(pathToFileURL(path.join(rendererDist, 'other.html')).href)).toBe(false)
     expect(policy.externalHttpUrl('https://example.com/path')).toBe('https://example.com/path')
   })
 })

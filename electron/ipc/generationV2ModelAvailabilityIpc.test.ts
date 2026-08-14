@@ -4,6 +4,8 @@ import BetterSqlite3 from 'better-sqlite3'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { GENERATION_V2_MODEL_AVAILABILITY_IPC_CHANNELS, GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS,
   registerGenerationV2ModelAvailabilityIpc } from './generationV2ModelAvailabilityIpc'
+// Approved main-process Catalog boundary fixture import.
+// eslint-disable-next-line no-restricted-imports
 import { resolveModelCapabilitiesV2 } from '../../src/next/modelCatalog/modelCapabilityResolverV2'
 import type { CatalogProviderModelObservationV2 } from '../../src/shared/modelCatalog/providerModelObservationV2'
 

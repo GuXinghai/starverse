@@ -5,6 +5,7 @@ import {
   type OpenAIResponsesFileDescriptorV2,
 } from '../../infra/db/repo/openAIResponsesFileDescriptorV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
+// eslint-disable-next-line no-restricted-imports -- Main-process attachment preflight validates Generation V2 attachment intent.
 import {
   requiresProviderFileBindingV2,
   type AttachmentIntentV2,
