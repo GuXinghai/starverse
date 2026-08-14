@@ -116,7 +116,6 @@ import {
   type ImageGenerationUserConfig,
 } from '@/next/openrouter/imageGenerationSettingsPersistence'
 import { ModelPrefsService } from '@/next/modelPrefs/modelPrefsService'
-import { modelRecentUsageForCreatedOperation, type ModelRecentUsageRef } from '@/next/modelPrefs/modelRecentUsage'
 import { applyEventsBatch, createInitialState, toggleReasoningPanelState } from '@/next/state/reducer'
 import { selectMessage, selectRun } from '@/next/state/selectors'
 import type { CompatibleRouteIntent } from '@/next/provider/openai-chat-compatible/ui'
@@ -6163,26 +6162,6 @@ export function useAppChatAppLogic() {
     scheduleHistoryIncompatibleRefresh()
   }
 
-  async function recordRecentModelUsage(modelId: string, providerId: RuntimeProviderId) {
-    const normalized = normalizeModelKey(modelId)
-    if (!normalized) return
-    const result = await ModelPrefsService.recordRecent(
-      {
-        providerKey: providerId,
-        modelId: normalized,
-      },
-      {
-        scopeType: 'global',
-        scopeId: '',
-      },
-    )
-    if (!result && shouldLogDebug()) {
-      console.warn('[ui-app] recordRecentModelUsage failed (non-fatal)', {
-        modelId: normalized,
-      })
-    }
-  }
-
   function extractUserMessageRenderOverride(meta: unknown): boolean | undefined {
     if (!meta || typeof meta !== 'object') return undefined
     const raw = (meta as Record<string, unknown>).renderUserMessageRichText
@@ -6711,16 +6690,17 @@ export function useAppChatAppLogic() {
   function ensureGenerationV2GenericLocalProfileFromSavedSettings(): Promise<string> {
     if (genericLocalProfileSync) return genericLocalProfileSync
     const work = (async () => {
+      const descriptor = requireLocalProviderRouteDescriptorForRuntimeProvider('local_endpoint')
       const baseUrl = canonicalEndpointBase(new URL(localEndpointChatUrl.value.trim()).origin)
       const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
-        profile.providerId === 'generic_local' &&
-        profile.protocolContractId === 'generic-local-openai-chat-completions' &&
+        profile.providerId === descriptor.executionProviderId &&
+        profile.protocolContractId === descriptor.protocolContractId &&
         canonicalEndpointBase(profile.baseUrl) === baseUrl)
       if (matches.length === 1) return matches[0].endpointProfileId
       if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
       const created = await createGenerationV2LocalProfile({
-        providerId: 'generic_local',
-        protocolContractId: 'generic-local-openai-chat-completions',
+        providerId: descriptor.executionProviderId,
+        protocolContractId: descriptor.protocolContractId,
         baseUrl,
       })
       return created.endpointProfileId
@@ -6745,14 +6725,15 @@ export function useAppChatAppLogic() {
         lmStudioChatConfig.value.openAICompatiblePreferredEndpoint !== 'responses') {
       throw new Error('GENERATION_V2_LMSTUDIO_OPENRESPONSES_NOT_SELECTED')
     }
+    const descriptor = requireLocalProviderRouteDescriptorForRuntimeProvider('lm_studio')
     const baseUrl = canonicalEndpointBase(lmStudioChatConfig.value.endpointUrl.trim())
     const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
-      profile.providerId === 'lmstudio' && profile.protocolContractId === 'lmstudio-openresponses' &&
+      profile.providerId === descriptor.executionProviderId && profile.protocolContractId === descriptor.protocolContractId &&
       canonicalEndpointBase(profile.baseUrl) === baseUrl)
     if (matches.length === 1) return matches[0].endpointProfileId
     if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
     return (await createGenerationV2LocalProfile({
-      providerId: 'lmstudio', protocolContractId: 'lmstudio-openresponses', baseUrl,
+      providerId: descriptor.executionProviderId, protocolContractId: descriptor.protocolContractId, baseUrl,
     })).endpointProfileId
   }
 
@@ -6764,16 +6745,17 @@ export function useAppChatAppLogic() {
     if (ollamaChatConfig.value.thinkingControl === null || ollamaChatConfig.value.toolsSupported === null) {
       throw new Error('GENERATION_V2_OLLAMA_PROFILE_CAPABILITY_REQUIRED')
     }
+    const descriptor = requireLocalProviderRouteDescriptorForRuntimeProvider('ollama_local')
     const baseUrl = canonicalEndpointBase(ollamaChatConfig.value.endpointUrl.trim())
     const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
-      profile.providerId === 'ollama' && profile.protocolContractId === 'ollama-chat-v1' &&
+      profile.providerId === descriptor.executionProviderId && profile.protocolContractId === descriptor.protocolContractId &&
       canonicalEndpointBase(profile.baseUrl) === baseUrl && profile.protocolConfig.modelId === modelId &&
       profile.protocolConfig.thinkingControl === ollamaChatConfig.value.thinkingControl &&
       profile.protocolConfig.tools === ollamaChatConfig.value.toolsSupported)
     if (matches.length === 1) return matches[0].endpointProfileId
     if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
     return (await createGenerationV2LocalProfile({
-      providerId: 'ollama', protocolContractId: 'ollama-chat-v1', baseUrl,
+      providerId: descriptor.executionProviderId, protocolContractId: descriptor.protocolContractId, baseUrl,
       protocolConfig: { modelId, thinkingControl: ollamaChatConfig.value.thinkingControl, tools: ollamaChatConfig.value.toolsSupported },
     })).endpointProfileId
   }
@@ -6785,12 +6767,9 @@ export function useAppChatAppLogic() {
     })
   }
 
-  async function recordRecentModelUsageForResult(
-    result: Readonly<{ ok: boolean; kind?: string }>,
-    ref: ModelRecentUsageRef | null,
-  ) {
-    const usage = modelRecentUsageForCreatedOperation(result, ref)
-    if (usage) await recordRecentModelUsage(usage.modelId, usage.providerId)
+  function notifyRecentModelsChangedForAcceptedOperation(includeOrdinaryModel: boolean): void {
+    if (!includeOrdinaryModel) return
+    ModelPrefsService.notifyRecentsChanged({ scopeType: 'global', scopeId: '' })
   }
 
   function canonicalSendSelection(): Readonly<{
@@ -6920,7 +6899,7 @@ export function useAppChatAppLogic() {
       if (shouldLogDebug()) console.warn('[ui-app] COMMITTED_V2_SEND_DRAFT_CLEAR_FAILED')
     }
     await refreshRenderableBranchView(view.branchId)
-    await recordRecentModelUsageForResult(result, compatibleIntent ? null : { modelId, providerId })
+    notifyRecentModelsChangedForAcceptedOperation(compatibleIntent === null)
   }
 
   async function onForkFromHead() {
@@ -7024,7 +7003,7 @@ export function useAppChatAppLogic() {
         : { ...common, commandAttachments, ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
           ...(endpointProfileId === null ? {} : { endpointProfileId }) })
       if (!result.ok) throw new Error(result.code)
-      await recordRecentModelUsageForResult(result, compatibleIntent ? null : { modelId, providerId: nativeProviderId })
+      notifyRecentModelsChangedForAcceptedOperation(compatibleIntent === null)
       invalidateMessageCandidateNavigation()
       if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
       const shouldFollow = navigationRevision.value === sourceNavigationRevision &&
@@ -7161,7 +7140,7 @@ export function useAppChatAppLogic() {
         resetCandidatesCache()
         await refreshRenderableBranchView(result.branch.branchId)
       }
-      await recordRecentModelUsageForResult(result, compatibleIntent ? null : { modelId: v2ModelId, providerId: v2ProviderId })
+      notifyRecentModelsChangedForAcceptedOperation(compatibleIntent === null)
     } catch (error) {
       loadError.value = error instanceof Error ? error.message : 'GENERATION_V2_EDIT_RESEND_FAILED'
     }
@@ -7285,9 +7264,7 @@ export function useAppChatAppLogic() {
         expectedHeadMessageId: view.headMessageId,
       })
       if (!result.ok) throw new Error(result.code)
-      await recordRecentModelUsageForResult(result, retryDescriptor.recentProviderId
-        ? { modelId: answer.modelId, providerId: retryDescriptor.recentProviderId }
-        : null)
+      notifyRecentModelsChangedForAcceptedOperation(retryDescriptor.recentProviderId !== null)
       invalidateMessageCandidateNavigation()
       if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
       const shouldFollow = navigationRevision.value === sourceNavigationRevision &&

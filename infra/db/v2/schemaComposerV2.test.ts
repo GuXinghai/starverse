@@ -92,7 +92,7 @@ describe('Generation V2 schema composer and core conversation graph', () => {
       'generation_v2_search_v1',
       'engine_plugin_registry_v1',
       'openai_chat_compatible_v1',
-      'model_preferences_v1',
+      'model_preferences_v2',
       'model_catalog_v2',
       'dfc_attachment_v1',
       'conversation_route_preference_v1',

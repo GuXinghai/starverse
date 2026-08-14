@@ -137,7 +137,6 @@ export function createGenerationV2TestBridge() {
       removeFavorite: vi.fn(async () => ({ removed: 0 })),
       reorderFavorites: vi.fn(async () => []),
       listRecents: vi.fn(async () => []),
-      recordRecent: vi.fn(async () => null),
     },
     workspace: {
       ensureDefault: vi.fn(async () => ok({ projectId, conversationId, branchId, created: false })),

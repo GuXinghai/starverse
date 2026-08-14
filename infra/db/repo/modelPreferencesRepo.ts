@@ -6,7 +6,6 @@ import type {
   ModelPrefsListRecentsParams,
   ModelPrefsModelRefParams,
   ModelPrefsRecentRecord,
-  ModelPrefsRecordRecentParams,
   ModelPrefsRemoveFavoriteParams,
   ModelPrefsRemoveFavoriteResult,
   ModelPrefsReorderFavoritesParams,
@@ -119,6 +118,8 @@ export class ModelPreferencesRepo {
   private getRecentStmt: BetterSqlite3.Statement
   private upsertRecentStmt: BetterSqlite3.Statement
   private pruneRecentsOverflowStmt: BetterSqlite3.Statement
+  private insertRecentOperationStmt: BetterSqlite3.Statement
+  private getRecentOperationStmt: BetterSqlite3.Statement
 
   constructor(private db: SqlDatabase) {
     this.listFavoritesStmt = this.db.prepare(`
@@ -290,6 +291,35 @@ export class ModelPreferencesRepo {
           LIMIT @retainLimit
         )
     `)
+
+    this.insertRecentOperationStmt = this.db.prepare(`
+      INSERT INTO model_recent_operation_v2(
+        operation_id,
+        provider_key,
+        model_id,
+        used_at_ms,
+        recorded_at_ms
+      ) VALUES (
+        @operationId,
+        @providerKey,
+        @modelId,
+        @usedAtMs,
+        @recordedAtMs
+      )
+      ON CONFLICT(operation_id) DO NOTHING
+    `)
+
+    this.getRecentOperationStmt = this.db.prepare(`
+      SELECT
+        operation_id AS operationId,
+        provider_key AS providerKey,
+        model_id AS modelId,
+        used_at_ms AS usedAtMs,
+        recorded_at_ms AS recordedAtMs
+      FROM model_recent_operation_v2
+      WHERE operation_id = @operationId
+      LIMIT 1
+    `)
   }
 
   listFavorites(input: ModelPrefsListFavoritesParams = {}): ModelPrefsFavoriteRecord[] {
@@ -409,14 +439,45 @@ export class ModelPreferencesRepo {
     return rows.map(toRecentRecord)
   }
 
-  recordRecent(input: ModelPrefsRecordRecentParams): ModelPrefsRecentRecord {
-    const scope = normalizeScope(input)
+  recordRecentForGenerationOperation(input: Readonly<{
+    operationId: string
+    providerKey: RuntimeProviderId
+    modelId: string
+    usedAtMs: number
+  }>): Readonly<{ applied: boolean; recent: ModelPrefsRecentRecord | null }> {
+    const operationId = String(input.operationId ?? '').trim()
+    if (!operationId || operationId.length > 512) throw new Error('generation recent operationId is invalid')
+    const scope = normalizeScope({ scopeType: 'global', scopeId: '' })
     const ref = normalizeModelRef(input)
     const nowMs = Date.now()
     const usedAtMsRaw = typeof input.usedAtMs === 'number' && Number.isFinite(input.usedAtMs) ? Math.floor(input.usedAtMs) : nowMs
     const usedAtMs = Math.max(0, usedAtMsRaw)
 
     const tx = this.db.transaction(() => {
+      const inserted = this.insertRecentOperationStmt.run({
+        operationId,
+        providerKey: ref.providerKey,
+        modelId: ref.modelId,
+        usedAtMs,
+        recordedAtMs: nowMs,
+      })
+      if (Number(inserted.changes ?? 0) === 0) {
+        const consumed = this.getRecentOperationStmt.get({ operationId }) as Readonly<{
+          providerKey: string
+          modelId: string
+          usedAtMs: number
+        }> | undefined
+        if (!consumed || consumed.providerKey !== ref.providerKey || consumed.modelId !== ref.modelId ||
+            consumed.usedAtMs !== usedAtMs) {
+          throw new Error('MODEL_PREFS_RECENT_OPERATION_IDENTITY_CONFLICT')
+        }
+        const existing = this.getRecentStmt.get({
+          ...scope,
+          providerKey: ref.providerKey,
+          modelId: ref.modelId,
+        }) as any
+        return Object.freeze({ applied: false, recent: existing ? toRecentRecord(existing) : null })
+      }
       this.upsertRecentStmt.run({
         ...scope,
         ...ref,
@@ -436,7 +497,7 @@ export class ModelPreferencesRepo {
       if (!row) {
         throw new Error('Failed to read recent after upsert')
       }
-      return toRecentRecord(row)
+      return Object.freeze({ applied: true, recent: toRecentRecord(row) })
     })
 
     return tx()

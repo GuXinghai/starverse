@@ -34,6 +34,10 @@ import {
   listProviderCatalogSourceDescriptors,
 } from '@/shared/modelCatalog/providerCatalogRegistry'
 import type { ProviderCatalogKnownProviderKey } from '@/shared/modelCatalog/providerCatalogContracts'
+import {
+  catalogProviderKeyForRuntimeProvider,
+  runtimeProviderIdForCatalogProvider,
+} from '@/shared/provider/catalogRuntimeProviderAuthority'
 import { GLOBAL_CATALOG_POLICY_V2_STORE_KEY, providerCatalogPolicyV2StoreKey } from '@/shared/modelCatalog/catalogPolicyResolverV2'
 import {
   resolveCatalogPolicyV2,
@@ -69,7 +73,7 @@ type ProviderFilterOption = Readonly<{
   loading: boolean
   count: number
 }>
-type SyncProviderOption = ProviderFilterOption & Readonly<{ providerId: ProviderCatalogKnownProviderKey }>
+type SyncProviderOption = ProviderFilterOption & Readonly<{ catalogProviderKey: ProviderCatalogKnownProviderKey }>
 type PickerModelItem = CatalogQueryItem & Readonly<{
   providerId: RuntimeProviderId
   providerName: string
@@ -197,7 +201,9 @@ const unsubscribeCatalogRuntimeStore = catalogRuntimeStore.subscribe(() => {
   catalogRuntimeStates.value = catalogRuntimeStore.snapshot()
 })
 const providerSyncSnapshots = ref<Partial<Record<string, ProviderSyncSnapshot>>>({})
-const selectedSyncProviderKey = ref<ProviderCatalogKnownProviderKey>(OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey)
+const OPENROUTER_CATALOG_PROVIDER_KEY = catalogProviderKeyForRuntimeProvider(OPENROUTER_PROVIDER_ID)
+if (OPENROUTER_CATALOG_PROVIDER_KEY === null) throw new Error('OPENROUTER_CATALOG_PROVIDER_AUTHORITY_MISSING')
+const selectedSyncProviderKey = ref<ProviderCatalogKnownProviderKey>(OPENROUTER_CATALOG_PROVIDER_KEY)
 const lastAutoSyncAtMsByScope = new Map<string, number>()
 const lastManualRefreshAtMsByScope = new Map<string, number>()
 const AUTO_SYNC_COOLDOWN_MS = 10_000
@@ -252,12 +258,11 @@ let dialogWasOpen = false
 
 const catalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() => {
   const keys = new Set<ProviderCatalogKnownProviderKey>([
-    OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey,
+    OPENROUTER_CATALOG_PROVIDER_KEY,
   ])
   for (const source of props.providerSources) {
-    if (isProviderCatalogSourceKey(source.providerId)) {
-      keys.add(source.providerId as ProviderCatalogKnownProviderKey)
-    }
+    const providerKey = catalogProviderKeyForRuntimeProvider(source.providerId)
+    if (providerKey !== null) keys.add(providerKey)
   }
   return [...keys]
 })
@@ -277,7 +282,10 @@ const catalogPickerItems = computed(() => items.value
 const providerPickerItems = computed(() => props.providerSources.flatMap((source) => source.items.map((item) => toProviderPickerItem(item))))
 const unfilteredPickerItems = computed(() => {
   const catalogProvidersWithItems = new Set(
-    items.value.map((item) => catalogProviderIdFromItem(item)),
+    items.value.map((item) => {
+      const providerKey = catalogProviderKeyFromItem(item)
+      return providerKey === null ? null : runtimeProviderIdForCatalogProvider(providerKey)
+    }),
   )
   return [
     ...catalogPickerItems.value,
@@ -286,7 +294,8 @@ const unfilteredPickerItems = computed(() => {
 })
 const selectedProviderSet = computed(() => new Set(selectedProviderFilters.value))
 const selectedCatalogProviderKeys = computed<ProviderCatalogKnownProviderKey[]>(() =>
-  catalogProviderKeys.value.filter((providerId) => selectedProviderSet.value.has(providerId))
+  catalogProviderKeys.value.filter((providerKey) =>
+    selectedProviderSet.value.has(runtimeProviderIdForCatalogProvider(providerKey)))
 )
 const pickerItems = computed(() => {
   const providerFilter = selectedProviderSet.value
@@ -457,9 +466,10 @@ const providerOptions = computed<ProviderFilterOption[]>(() => {
     catalogProviderKeys.value.includes(candidate.providerKey)
   )) {
     if (!isProviderCatalogSourceKey(descriptor.providerKey)) continue
-    const providerId = descriptor.providerKey
-    const snapshot = getProviderSyncSnapshot(providerId)
-    const catalogItemCount = items.value.filter((item) => catalogProviderIdFromItem(item) === providerId).length
+    const providerKey = descriptor.providerKey
+    const providerId = runtimeProviderIdForCatalogProvider(providerKey)
+    const snapshot = getProviderSyncSnapshot(providerKey)
+    const catalogItemCount = items.value.filter((item) => catalogProviderKeyFromItem(item) === providerKey).length
     const knownCount = snapshot?.visibleModelCount ?? snapshot?.totalModelCount ?? 0
     options.set(providerId, {
       providerId,
@@ -470,18 +480,21 @@ const providerOptions = computed<ProviderFilterOption[]>(() => {
         fallbackItemCount: catalogItemCount,
         sourceItemCount: 0,
       }),
-      loading: hydratingProviderKeys.value.has(providerId) || snapshot?.status === 'syncing',
+      loading: hydratingProviderKeys.value.has(providerKey) || snapshot?.status === 'syncing',
       count: knownCount > 0 ? knownCount : catalogItemCount,
     })
   }
   for (const source of props.providerSources) {
-    const snapshot = isProviderCatalogSourceKey(source.providerId)
-      ? getProviderSyncSnapshot(source.providerId as ProviderCatalogKnownProviderKey)
+    const catalogProviderKey = catalogProviderKeyForRuntimeProvider(source.providerId)
+    const snapshot = catalogProviderKey !== null
+      ? getProviderSyncSnapshot(catalogProviderKey)
       : null
     const catalogCount = snapshot?.status === 'synced'
       ? snapshot.visibleModelCount ?? snapshot.totalModelCount
       : 0
-    const catalogItemCount = items.value.filter((item) => catalogProviderIdFromItem(item) === source.providerId).length
+    const catalogItemCount = catalogProviderKey === null
+      ? 0
+      : items.value.filter((item) => catalogProviderKeyFromItem(item) === catalogProviderKey).length
     options.set(source.providerId, {
       providerId: source.providerId,
       providerName: source.providerName,
@@ -498,7 +511,10 @@ const providerOptions = computed<ProviderFilterOption[]>(() => {
   return Array.from(options.values())
 })
 const syncProviderOptions = computed<SyncProviderOption[]>(() =>
-  providerOptions.value.filter((provider): provider is SyncProviderOption => isProviderCatalogSourceKey(provider.providerId)),
+  providerOptions.value.flatMap((provider) => {
+    const catalogProviderKey = catalogProviderKeyForRuntimeProvider(provider.providerId)
+    return catalogProviderKey === null ? [] : [{ ...provider, catalogProviderKey }]
+  }),
 )
 const providerFilterIds = computed(() => providerOptions.value.map((provider) => provider.providerId))
 const selectedProviderFilterCount = computed(() =>
@@ -509,7 +525,8 @@ const allProviderFiltersSelected = computed(() =>
 )
 
 function providerNameForId(providerId: RuntimeProviderId): string {
-  if (isProviderCatalogSourceKey(providerId)) return catalogProviderNames[providerId]
+  const catalogProviderKey = catalogProviderKeyForRuntimeProvider(providerId)
+  if (catalogProviderKey !== null) return catalogProviderNames[catalogProviderKey]
   return providerOptions.value.find((option) => option.providerId === providerId)?.providerName ?? providerId
 }
 
@@ -532,14 +549,15 @@ function catalogRuntimeScopeKey(
   return category ? `${providerKey}::${category}` : providerKey
 }
 
-function catalogProviderIdFromItem(item: CatalogQueryItem): RuntimeProviderId | null {
+function catalogProviderKeyFromItem(item: CatalogQueryItem): ProviderCatalogKnownProviderKey | null {
   const providerKey = String(item.providerKey ?? '').trim()
   return isProviderCatalogSourceKey(providerKey) ? providerKey : null
 }
 
 function toCatalogPickerItem(item: CatalogQueryItem): PickerModelItem | null {
-  const providerId = catalogProviderIdFromItem(item)
-  if (!providerId) return null
+  const providerKey = catalogProviderKeyFromItem(item)
+  if (!providerKey) return null
+  const providerId = runtimeProviderIdForCatalogProvider(providerKey)
   return {
     ...item,
     providerId,
@@ -803,7 +821,7 @@ function publishCatalogRuntimeStore() {
 function onProviderCredentialUpdated(event: Event) {
   const providerKey = (event as CustomEvent<{ providerKey?: unknown }>).detail?.providerKey
   if (!isProviderCatalogSourceKey(providerKey)) return
-  const typedProviderKey = providerKey as ProviderCatalogKnownProviderKey
+  const typedProviderKey = providerKey
   CatalogQueryService.invalidateProviderRuntimeCache(typedProviderKey)
   const affectedScopeKeys = Object.keys(catalogRuntimeStore.snapshot()).filter((key) =>
     key === typedProviderKey || key.startsWith(`${typedProviderKey}::`))
@@ -815,9 +833,9 @@ function onProviderCredentialUpdated(event: Event) {
   const nextSnapshots = { ...providerSyncSnapshots.value }
   for (const scopeKey of affectedScopeKeys) delete nextSnapshots[scopeKey]
   providerSyncSnapshots.value = nextSnapshots
-  items.value = items.value.filter((item) => catalogProviderIdFromItem(item) !== typedProviderKey)
+  items.value = items.value.filter((item) => catalogProviderKeyFromItem(item) !== typedProviderKey)
   publishCatalogRuntimeStore()
-  if (!props.open || !selectedProviderSet.value.has(typedProviderKey)) return
+  if (!props.open || !selectedProviderSet.value.has(runtimeProviderIdForCatalogProvider(typedProviderKey))) return
   void fetchPage({ preserveUiState: true, providerKeys: [typedProviderKey] })
 }
 
@@ -850,8 +868,9 @@ function formatProviderOptionStatus(input: Readonly<{
   fallbackItemCount: number
   sourceItemCount: number
 }>): string {
-  if (!isProviderCatalogSourceKey(input.providerId)) return formatCatalogStatusLabel(input.fallbackStatusLabel)
-  const snapshot = providerSyncSnapshots.value[catalogRuntimeScopeKey(input.providerId as ProviderCatalogKnownProviderKey)]
+  const providerKey = catalogProviderKeyForRuntimeProvider(input.providerId)
+  if (providerKey === null) return formatCatalogStatusLabel(input.fallbackStatusLabel)
+  const snapshot = providerSyncSnapshots.value[catalogRuntimeScopeKey(providerKey)]
   if (!snapshot) return formatCatalogStatusLabel(input.fallbackStatusLabel)
   if (snapshot.status !== 'synced') return formatCatalogStatusLabel(snapshot.status)
   const totalCount = snapshot.visibleModelCount ?? snapshot.totalModelCount
@@ -983,7 +1002,7 @@ function toggleProviderFilter(providerId: RuntimeProviderId, checked: boolean) {
 function ensureSelectedSyncProviderKey() {
   const keys = catalogProviderKeys.value
   if (keys.includes(selectedSyncProviderKey.value)) return
-  selectedSyncProviderKey.value = keys[0] ?? (OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey)
+  selectedSyncProviderKey.value = keys[0] ?? OPENROUTER_CATALOG_PROVIDER_KEY
 }
 
 function shouldSyncOnPickerOpen(
@@ -1633,8 +1652,8 @@ async function fetchPage(options: Readonly<{
     const refreshedProviders = new Set(providerKeys)
     items.value = [
       ...items.value.filter((item) => {
-        const providerKey = catalogProviderIdFromItem(item)
-        return providerKey === null || !refreshedProviders.has(providerKey as ProviderCatalogKnownProviderKey)
+        const providerKey = catalogProviderKeyFromItem(item)
+        return providerKey === null || !refreshedProviders.has(providerKey)
       }),
       ...providerKeys.flatMap((providerKey) => {
         const runtimeRequest = runtimeRequests.get(providerKey)
@@ -1906,7 +1925,8 @@ async function runSyncProvider(
         freshnessMs: policy.policy?.freshnessMs,
       })
       setProviderSyncSnapshot(providerKey, snapshot, category)
-      if (policy.policy?.listApplyMode === 'automatic' && props.open && selectedProviderSet.value.has(providerKey)) {
+      if (policy.policy?.listApplyMode === 'automatic' && props.open &&
+          selectedProviderSet.value.has(runtimeProviderIdForCatalogProvider(providerKey))) {
         await fetchPage({ preserveUiState: true, providerKeys: [providerKey] })
       }
     } else {
@@ -2040,8 +2060,9 @@ function onManualRefreshProvider(providerKey: ProviderCatalogKnownProviderKey = 
 }
 
 function onProviderRowRefresh(providerId: RuntimeProviderId) {
-  if (!isProviderCatalogSourceKey(providerId)) return
-  onManualRefreshProvider(providerId)
+  const providerKey = catalogProviderKeyForRuntimeProvider(providerId)
+  if (providerKey === null) return
+  onManualRefreshProvider(providerKey)
 }
 
 function onApplyCatalogUpdate() {
@@ -2380,10 +2401,10 @@ watch(
   selectedCategory,
   () => {
     if (!props.open || skipAutoQuery) return
-    const providerKey = OPENROUTER_PROVIDER_ID as ProviderCatalogKnownProviderKey
+    const providerKey = OPENROUTER_CATALOG_PROVIDER_KEY
     lastAutoSyncAtMsByScope.delete(catalogRuntimeScopeKey(providerKey))
     void fetchPage({ preserveUiState: true, providerKeys: [providerKey] }).then(() => {
-      if (!props.open || !selectedProviderSet.value.has(providerKey)) return
+      if (!props.open || !selectedProviderSet.value.has(runtimeProviderIdForCatalogProvider(providerKey))) return
       return triggerPickerOpenSync()
     })
   },
@@ -2492,7 +2513,7 @@ const selectedModelFilteredOut = computed(() =>
                     <button
                       type="button"
                       class="rounded border border-gray-200 bg-white px-1.5 py-0.5 text-[10px] text-gray-600 shadow-sm hover:bg-gray-50 disabled:opacity-50"
-                      :disabled="props.disabled || provider.loading || !isProviderCatalogSourceKey(provider.providerId)"
+                      :disabled="props.disabled || provider.loading || catalogProviderKeyForRuntimeProvider(provider.providerId) === null"
                       :data-testid="`model-picker-provider-refresh-${provider.providerId}`"
                       @click="onProviderRowRefresh(provider.providerId)"
                     >
@@ -3170,8 +3191,8 @@ const selectedModelFilteredOut = computed(() =>
           >
             <option
               v-for="provider in syncProviderOptions"
-              :key="`sync-provider-${provider.providerId}`"
-              :value="provider.providerId"
+              :key="`sync-provider-${provider.catalogProviderKey}`"
+              :value="provider.catalogProviderKey"
             >
               {{ provider.providerName }}
             </option>

@@ -26,7 +26,6 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
   let readBranch: ReturnType<typeof vi.fn>
   let regenerate: ReturnType<typeof vi.fn>
   let retry: ReturnType<typeof vi.fn>
-  let recordRecent: ReturnType<typeof vi.fn>
   let runtimeAbort: ReturnType<typeof vi.fn>
   let runtimeEventListener: ((value: unknown) => void) | null
 
@@ -159,14 +158,10 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     readBranch = vi.fn(async (branchId = 'b1') => ok(branchView(branchId)))
     regenerate = vi.fn(async () => commitNewAnswer('regenerate'))
     retry = vi.fn(async (command: any) => commitNewAnswer(command.actionKind))
-    recordRecent = vi.fn(async () => null)
 
     ;(globalThis as any).generationV2 = {
       ...originalGenerationV2,
-      modelPreferences: {
-        ...originalGenerationV2.modelPreferences,
-        recordRecent,
-      },
+      modelPreferences: { ...originalGenerationV2.modelPreferences },
       runtime: {
         subscribe: vi.fn(async () => ok(answers
           .filter((answer) => answer.status === 'streaming')
@@ -269,10 +264,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     expect(childAnswer?.answerRootId).toBe('a2')
     expect(chosenAnswerRootId).toBe('a1')
     expect(headMessageId).toBe('a1')
-    await waitFor(() => expect(recordRecent).toHaveBeenCalledWith(expect.objectContaining({
-      providerKey: 'openrouter',
-      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-    })))
+    expect('recordRecent' in (globalThis as any).generationV2.modelPreferences).toBe(false)
   })
 
   it('applies a live reasoning projection to the branch-keyed runtime without a refresh', async () => {
@@ -314,10 +306,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     expect(childAnswer?.answerRootId).toBe('a2')
     expect(chosenAnswerRootId).toBe('a1')
     expect(headMessageId).toBe('a1')
-    await waitFor(() => expect(recordRecent).toHaveBeenCalledWith(expect.objectContaining({
-      providerKey: 'openrouter',
-      modelId: 'historical/model',
-    })))
+    expect('recordRecent' in (globalThis as any).generationV2.modelPreferences).toBe(false)
   })
 
   it('retry replace binds the rendered chosen answer and removes it from visible candidates', async () => {
@@ -336,10 +325,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     expect(answers.map((answer) => answer.answerRootId)).toEqual(['a2'])
     expect(chosenAnswerRootId).toBe('a2')
     expect(headMessageId).toBe('a2')
-    await waitFor(() => expect(recordRecent).toHaveBeenCalledWith(expect.objectContaining({
-      providerKey: 'openrouter',
-      modelId: 'historical/model',
-    })))
+    expect('recordRecent' in (globalThis as any).generationV2.modelPreferences).toBe(false)
   })
 
   it.each(['failed', 'cancelled'] as const)(

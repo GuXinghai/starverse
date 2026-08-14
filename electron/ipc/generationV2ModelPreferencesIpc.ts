@@ -4,7 +4,6 @@ import {
   ModelPrefsAddFavoriteSchema,
   ModelPrefsListFavoritesSchema,
   ModelPrefsListRecentsSchema,
-  ModelPrefsRecordRecentSchema,
   ModelPrefsRemoveFavoriteSchema,
   ModelPrefsReorderFavoritesSchema,
 } from '../../infra/db/validation'
@@ -16,7 +15,6 @@ export const GENERATION_V2_MODEL_PREFERENCES_IPC_CHANNELS = Object.freeze([
   'generation-v2:model-preferences:remove-favorite',
   'generation-v2:model-preferences:reorder-favorites',
   'generation-v2:model-preferences:list-recents',
-  'generation-v2:model-preferences:record-recent',
 ] as const)
 
 export function registerGenerationV2ModelPreferencesIpc(input: Readonly<{
@@ -37,7 +35,5 @@ export function registerGenerationV2ModelPreferencesIpc(input: Readonly<{
     (value) => repo.reorderFavorites(value))
   register(GENERATION_V2_MODEL_PREFERENCES_IPC_CHANNELS[4], (value) => ModelPrefsListRecentsSchema.parse(value ?? {}),
     (value) => repo.listRecents(value))
-  register(GENERATION_V2_MODEL_PREFERENCES_IPC_CHANNELS[5], (value) => ModelPrefsRecordRecentSchema.parse(value),
-    (value) => repo.recordRecent(value))
   return GENERATION_V2_MODEL_PREFERENCES_IPC_CHANNELS
 }

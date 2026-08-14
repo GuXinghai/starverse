@@ -89,6 +89,17 @@ if (/as\s+RuntimeProviderId/u.test(historyProjection)) {
   fail('history/app projection contains an unchecked RuntimeProviderId assertion')
 }
 
+const modelPicker = read('src/ui-app/components/ModelPickerDialog.vue')
+if (/as\s+(?:RuntimeProviderId|ProviderCatalogKnownProviderKey)/u.test(modelPicker)) {
+  fail('Model Picker casts across Runtime/Catalog identity domains')
+}
+for (const authority of ['runtimeProviderIdForCatalogProvider', 'catalogProviderKeyForRuntimeProvider']) {
+  if (!modelPicker.includes(authority)) fail(`Model Picker does not use explicit Catalog/Runtime authority ${authority}`)
+}
+if (/const\s+providerId\s*=\s*descriptor\.providerKey/u.test(modelPicker)) {
+  fail('Model Picker directly assigns a Catalog provider key to a Runtime provider identity')
+}
+
 const catalogAuthority = read('src/next/modelCatalog/providerCatalogAuthorityRegistryV2.ts')
 if (!catalogAuthority.includes('executionProviderId: GenerationExecutionProviderId')) {
   fail('Catalog authority does not expose an explicit Generation execution identity')
@@ -115,6 +126,30 @@ for (const forbidden of ['legacyAlias', 'fallbackSpelling', 'normalizeProvider',
   }
 }
 
+const localProfileConsumer = historyProjection.slice(
+  historyProjection.indexOf('let genericLocalProfileSync'),
+  historyProjection.indexOf('function recordRecentModelsChangedForAcceptedOperation') > 0
+    ? historyProjection.indexOf('function recordRecentModelsChangedForAcceptedOperation')
+    : historyProjection.indexOf('function notifyRecentModelsChangedForAcceptedOperation'),
+)
+for (const runtimeProviderId of ['local_endpoint', 'lm_studio', 'ollama_local']) {
+  if (!localProfileConsumer.includes(`requireLocalProviderRouteDescriptorForRuntimeProvider('${runtimeProviderId}')`)) {
+    fail(`current local profile lookup/create does not consume descriptor for ${runtimeProviderId}`)
+  }
+}
+for (const duplicateLiteral of [
+  "providerId: 'generic_local'",
+  "providerId: 'lmstudio'",
+  "providerId: 'ollama'",
+  "profile.providerId === 'generic_local'",
+  "profile.providerId === 'lmstudio'",
+  "profile.providerId === 'ollama'",
+]) {
+  if (localProfileConsumer.includes(duplicateLiteral)) {
+    fail(`current local profile lookup/create duplicates descriptor mapping: ${duplicateLiteral}`)
+  }
+}
+
 const failureContract = read('src/shared/provider/providerFailureV2.ts')
 if (!failureContract.includes("namespace: 'generation_execution'") ||
     !failureContract.includes("namespace: 'catalog_source'") ||
@@ -136,6 +171,29 @@ for (const forbidden of ['endpointUrl', 'requestProfileId', 'responseProfileId',
 const composer = read('src/ui-app/components/ChatAppComposer.vue')
 if (/recordRecent\s*\(/u.test(composer)) {
   fail('Composer records a recent during selection instead of after accepted operation creation')
+}
+
+const preload = read('electron/preload.ts')
+const modelPrefsService = read('src/next/modelPrefs/modelPrefsService.ts')
+const modelPrefsIpc = read('electron/ipc/generationV2ModelPreferencesIpc.ts')
+for (const [name, source] of [['preload', preload], ['renderer service', modelPrefsService], ['preferences IPC', modelPrefsIpc]]) {
+  if (/recordRecent|record-recent/u.test(source)) {
+    fail(`${name} reintroduces a renderer-owned recent mutation surface`)
+  }
+}
+const recentAuthority = read('electron/services/generationRecentUsageAuthorityV2.ts')
+const recentSchema = read('infra/db/v2/modelPreferencesSchema.sql')
+if (!recentAuthority.includes('runtimeProviderIdForGenerationExecutionProvider') ||
+    !recentAuthority.includes('recordRecentForGenerationOperation') ||
+    !recentSchema.includes('model_recent_operation_v2')) {
+  fail('durable operation-keyed recent authority is incomplete')
+}
+
+for (const absolute of productionFiles) {
+  const source = readFileSync(absolute, 'utf8')
+  if (/(?:providerId|executionProviderId)\s*:\s*['"]gemini['"]/u.test(source)) {
+    fail(`${relative(absolute)} reintroduces gemini in a provider identity position`)
+  }
 }
 
 console.log(`[model-identity-compatibility-purge] PASS files=${productionFiles.length} deleted=${deletedPaths.length}`)

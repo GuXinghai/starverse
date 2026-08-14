@@ -4,7 +4,10 @@ import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2
 import { GenerationExecutionV2Repo, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { GenerationRequestV2Repo } from '../../infra/db/repo/generationRequestV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+// Approved Generation V2 main-process runtime boundary: this registry owns the persisted operation lifecycle.
+// eslint-disable-next-line no-restricted-imports
 import type { GenerationOperationBindingV2 } from '../../src/next/generation-v2/domain/generationOperationBindingV2'
+// eslint-disable-next-line no-restricted-imports
 import type {
   GenerationOperationRuntimeSnapshotV2,
   GenerationStreamEventV2,
@@ -15,6 +18,7 @@ import {
   type CoordinatedGenerationStreamProjectionSinkV2,
   type GenerationStreamProjectionV2,
 } from './generationStreamProjectionV2'
+import { GenerationRecentUsageAuthorityV2 } from './generationRecentUsageAuthorityV2'
 
 type RuntimeEntry = {
   snapshot: GenerationOperationRuntimeSnapshotV2
@@ -89,6 +93,7 @@ export class GenerationOperationRuntimeRegistryV2 {
   readonly #quiescingBranches = new Set<string>()
   readonly #quiescingConversations = new Set<string>()
   readonly #quiescingProjects = new Set<string>()
+  readonly #recentUsage: GenerationRecentUsageAuthorityV2
 
   constructor(
     private readonly db: BetterSqlite3.Database,
@@ -96,6 +101,8 @@ export class GenerationOperationRuntimeRegistryV2 {
   ) {
     this.#execution = new GenerationExecutionV2Repo(db, nowMs)
     this.#reasoning = new AnswerReasoningProjectionV2Repo(db, nowMs)
+    this.#recentUsage = new GenerationRecentUsageAuthorityV2(db)
+    this.#recentUsage.reconcile()
   }
 
   readonly projectionSink: CoordinatedGenerationStreamProjectionSinkV2 = Object.freeze({
@@ -138,11 +145,22 @@ export class GenerationOperationRuntimeRegistryV2 {
       if (!sameBinding(existing.snapshot.binding, binding)) {
         throw new GenerationOperationRuntimeRegistryV2Error('GENERATION_V2_RUNTIME_BINDING_CONFLICT')
       }
+      this.#recordRecentUsage(result.execution)
       return existing.snapshot
     }
+    this.#recordRecentUsage(result.execution)
     const snapshot = this.#hydrate(result.execution, 0)
     this.#entries.set(binding.operationId, { snapshot, abort: null })
     return snapshot
+  }
+
+  #recordRecentUsage(bundle: GenerationExecutionOperationBundleV2): void {
+    try {
+      this.#recentUsage.record(bundle)
+    } catch {
+      // The immutable Generation operation remains authoritative. A replay or
+      // the next startup reconciliation retries the idempotent recent write.
+    }
   }
 
   start(

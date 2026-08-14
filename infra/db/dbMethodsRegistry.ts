@@ -166,7 +166,6 @@ export const DB_METHODS = [
   { name: 'modelPrefs.removeFavorite', renderer: true, worker: true, domain: 'modelPrefs' },
   { name: 'modelPrefs.reorderFavorites', renderer: true, worker: true, domain: 'modelPrefs' },
   { name: 'modelPrefs.listRecents', renderer: true, worker: true, domain: 'modelPrefs' },
-  { name: 'modelPrefs.recordRecent', renderer: true, worker: true, domain: 'modelPrefs' },
   { name: 'settings.getOpenRouterProviderRequireParameters', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.setOpenRouterProviderRequireParameters', renderer: true, worker: true, domain: 'settings' },
   { name: 'settings.getReasoningPrefs', renderer: true, worker: true, domain: 'settings' },

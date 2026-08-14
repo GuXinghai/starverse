@@ -4,6 +4,32 @@ import type { GenerationV2BranchView } from './generationV2WorkspaceClient'
 import { createProviderFailureV2 } from '../../../shared/provider/providerFailureV2'
 
 describe('Generation V2 branch projection', () => {
+  it.each([
+    ['anthropic', 'anthropic-messages-2023-06-01'],
+    ['generic_local', 'generic-local-openai-chat-completions'],
+    ['ollama', 'ollama-chat-v1'],
+    ['lmstudio', 'lmstudio-openresponses'],
+    ['openai_compatible', 'openai_chat_compatible'],
+  ] as const)('preserves non-Runtime execution identity %s as history evidence', (providerId, protocolContractId) => {
+    const view = {
+      branchId: 'branch:1', conversationId: 'conversation:1', projectId: 'project:1', title: 'Conversation',
+      branchName: 'Main', headMessageId: 'answer:history', beforeMessageId: null, hasMoreTurns: false, turns: [{
+        questionId: 'question:1', questionBody: 'answer', questionCreatedAtMs: 1, chosenAnswerRootId: 'answer:history',
+        contextFilter: { questionMode: 'include', answerMode: 'include', effectiveMode: 'include', lockedByQuestionExclude: false },
+        answers: [{
+          answerRootId: 'answer:history', status: 'completed', body: 'done', createdAtMs: 2, updatedAtMs: 3, chosen: true,
+          operationId: 'operation:history', actionKind: 'initial_send', providerId, modelId: 'provider/model',
+          errorCode: null, errorMessage: null, endpointProfileId: 'profile:history', protocolContractId,
+          reasoningDetails: [], attachments: [], images: [],
+        }],
+      }],
+    } satisfies GenerationV2BranchView
+
+    const assistant = projectGenerationV2BranchForExistingUi(view).rendered.messages
+      .find((message) => message.id === 'answer:history')!
+    expect(assistant.meta).toMatchObject({ providerId, modelId: 'provider/model', protocolContractId })
+  })
+
   it('exposes the original terminal error through error_summary for the existing UI', () => {
     const view: GenerationV2BranchView = {
       branchId: 'branch:1', conversationId: 'conversation:1', projectId: 'project:1', title: 'Conversation',

@@ -61,6 +61,9 @@ const byRuntimeProviderId = new Map<LocalRuntimeProviderId, LocalProviderRouteDe
 const byRouteKind = new Map<LocalProviderRouteKind, LocalProviderRouteDescriptor>(
   LOCAL_PROVIDER_ROUTE_DESCRIPTORS.map((descriptor) => [descriptor.routeKind, descriptor]),
 )
+const byExecutionProviderId = new Map<LocalEndpointExecutionProviderId, LocalProviderRouteDescriptor>(
+  LOCAL_PROVIDER_ROUTE_DESCRIPTORS.map((descriptor) => [descriptor.executionProviderId, descriptor]),
+)
 
 export class LocalProviderRouteDescriptorError extends Error {
   constructor(readonly code: 'GENERATION_V2_LOCAL_PROVIDER_ROUTE_DESCRIPTOR_INVALID') {
@@ -85,6 +88,14 @@ export function requireLocalProviderRouteDescriptorForRouteKind(
   routeKind: LocalProviderRouteKind,
 ): LocalProviderRouteDescriptor {
   const descriptor = byRouteKind.get(routeKind)
+  if (!descriptor) throw new LocalProviderRouteDescriptorError('GENERATION_V2_LOCAL_PROVIDER_ROUTE_DESCRIPTOR_INVALID')
+  return descriptor
+}
+
+export function requireLocalProviderRouteDescriptorForExecutionProvider(
+  providerId: LocalEndpointExecutionProviderId,
+): LocalProviderRouteDescriptor {
+  const descriptor = byExecutionProviderId.get(providerId)
   if (!descriptor) throw new LocalProviderRouteDescriptorError('GENERATION_V2_LOCAL_PROVIDER_ROUTE_DESCRIPTOR_INVALID')
   return descriptor
 }

@@ -5,6 +5,7 @@ import {
   decodeLocalEndpointProtocolV2,
   requireLocalProviderRouteDescriptorForRouteKind,
   requireLocalProviderRouteDescriptorForRuntimeProvider,
+  requireLocalProviderRouteDescriptorForExecutionProvider,
 } from './localProviderRouteDescriptor'
 
 describe('LocalProviderRouteDescriptor', () => {
@@ -17,6 +18,7 @@ describe('LocalProviderRouteDescriptor', () => {
     for (const descriptor of LOCAL_PROVIDER_ROUTE_DESCRIPTORS) {
       expect(requireLocalProviderRouteDescriptorForRuntimeProvider(descriptor.runtimeProviderId)).toBe(descriptor)
       expect(requireLocalProviderRouteDescriptorForRouteKind(descriptor.routeKind)).toBe(descriptor)
+      expect(requireLocalProviderRouteDescriptorForExecutionProvider(descriptor.executionProviderId)).toBe(descriptor)
     }
   })
 

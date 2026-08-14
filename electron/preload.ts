@@ -260,7 +260,6 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
     removeFavorite: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:remove-favorite', payload),
     reorderFavorites: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:reorder-favorites', payload),
     listRecents: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:list-recents', payload),
-    recordRecent: (payload: unknown) => ipcRenderer.invoke('generation-v2:model-preferences:record-recent', payload),
   }),
   localProfiles: Object.freeze({
     list: () => ipcRenderer.invoke('generation-v2:local-profile:list'),

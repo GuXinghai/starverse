@@ -1,15 +1,19 @@
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
 import { describe, expect, it } from 'vitest'
+// Approved Generation V2 main-process boundary fixture imports.
+// eslint-disable-next-line no-restricted-imports
 import {
   RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+// eslint-disable-next-line no-restricted-imports
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,
 } from '../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
+// eslint-disable-next-line no-restricted-imports
 import { readReviewedDeepSeekStableChatDefinitionV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { ConversationWorkspaceV2Repo } from '../../infra/db/repo/conversationWorkspaceV2Repo'
@@ -206,6 +210,11 @@ describe('GenerationOperationRuntimeRegistryV2', () => {
       const registry = new GenerationOperationRuntimeRegistryV2(db, () => 10)
       registry.register({ kind: 'created', execution: first })
       registry.register({ kind: 'created', execution: second })
+      registry.register({ kind: 'idempotent_replay', execution: first })
+      expect(db.prepare(`SELECT use_count AS useCount FROM model_recents
+        WHERE scope_type='global' AND scope_id='' AND provider_key='deepseek' AND model_id='deepseek-chat'`)
+        .get()).toEqual({ useCount: 2 })
+      expect(db.prepare('SELECT COUNT(*) AS count FROM model_recent_operation_v2').get()).toEqual({ count: 2 })
       const events: Array<Readonly<{ operationId: string; sequence: number }>> = []
       registry.subscribe((event) => events.push(event))
 
