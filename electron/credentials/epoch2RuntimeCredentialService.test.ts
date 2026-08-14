@@ -69,6 +69,18 @@ function storedRecord(providerKey: ProviderCredentialKey, credential: string, up
   }
 }
 
+function storedPlaintextRecord(providerKey: ProviderCredentialKey, credential: string, updatedAtMs = 10, revision = 1) {
+  return {
+    version: 3,
+    providerKey,
+    backend: 'plaintext',
+    plaintext: credential,
+    credentialScopeId: `credential-scope-v2:${'a'.repeat(64)}`,
+    revision,
+    updatedAtMs,
+  }
+}
+
 function deferred(): Readonly<{ promise: Promise<void>; resolve: () => void }> {
   let resolve!: () => void
   return Object.freeze({ promise: new Promise<void>((next) => { resolve = next }), resolve })
@@ -713,6 +725,57 @@ describe('epoch-2 runtime credential slot/revision authority', () => {
       await expect(service.updateCredential({ providerKey: 'deepseek', credential: 'never-persist', expectedRevision: 0,
         storageMode: 'plaintext' })).rejects.toMatchObject({ code: 'EPOCH2_RUNTIME_CREDENTIAL_PLAINTEXT_UNSUPPORTED' })
       expect(value.store.get('providerCredentials.v1.deepseek')).toBeUndefined()
+      await service.close()
+    } finally { value.lease.release() }
+  })
+
+  it.each(['win32', 'darwin'] as const)(
+    'marks a persisted Linux plaintext credential unavailable and refuses to lease it on %s', async (platform) => {
+    const record = storedPlaintextRecord('deepseek', 'linux-only-plaintext')
+    const value = await fixture(`starverse-runtime-credential-cross-platform-plaintext-${platform}`, { deepseek: record })
+    try {
+      const service = await createEpoch2RuntimeCredentialService({ store: value.store as never,
+        epochDatabase: value.epochDatabase, platform })
+      await expect(service.getStatus('deepseek')).resolves.toMatchObject({
+        configured: true,
+        storageBackend: 'plaintext',
+        availability: 'unavailable',
+        diagnosticCode: 'EPOCH2_RUNTIME_CREDENTIAL_PLAINTEXT_UNSUPPORTED',
+      })
+      const consumeCredential = vi.fn()
+      await expect(service.withCredential({ providerKey: 'deepseek', expectedRevision: record.revision,
+        expectedCredentialScopeId: record.credentialScopeId as never, consume: consumeCredential }))
+        .rejects.toMatchObject({ code: 'EPOCH2_RUNTIME_CREDENTIAL_PLAINTEXT_UNSUPPORTED' })
+      expect(consumeCredential).not.toHaveBeenCalled()
+      const consumeBinding = vi.fn()
+      await expect(service.withCredentialScopeBindingAuthority({ providerKey: 'deepseek', expectedRevision: record.revision,
+        expectedCredentialScopeId: record.credentialScopeId as never, consume: consumeBinding }))
+        .rejects.toMatchObject({ code: 'EPOCH2_RUNTIME_CREDENTIAL_PLAINTEXT_UNSUPPORTED' })
+      expect(consumeBinding).not.toHaveBeenCalled()
+      await expect(service.clearCredential({ providerKey: 'deepseek', expectedRevision: record.revision }))
+        .resolves.toMatchObject({ configured: false })
+      await service.close()
+    } finally { value.lease.release() }
+  })
+
+  it('revalidates Linux plaintext storage permissions before reporting or leasing a persisted credential', async () => {
+    const record = storedPlaintextRecord('deepseek', 'permission-bound-plaintext')
+    const value = await fixture('starverse-runtime-credential-plaintext-permissions', { deepseek: record })
+    try {
+      const missingPath = path.join(value.epochDatabase.layout.epochRoot, 'missing-credential-store')
+      const service = await createEpoch2RuntimeCredentialService({ store: value.store as never,
+        epochDatabase: value.epochDatabase, platform: 'linux',
+        credentialStoragePaths: { directories: [missingPath], files: [] } })
+      await expect(service.getStatus('deepseek')).resolves.toMatchObject({
+        configured: true,
+        availability: 'unavailable',
+        diagnosticCode: 'EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE',
+      })
+      const consume = vi.fn()
+      await expect(service.withCredential({ providerKey: 'deepseek', expectedRevision: record.revision,
+        expectedCredentialScopeId: record.credentialScopeId as never, consume }))
+        .rejects.toMatchObject({ code: 'EPOCH2_RUNTIME_CREDENTIAL_STORAGE_UNAVAILABLE' })
+      expect(consume).not.toHaveBeenCalled()
       await service.close()
     } finally { value.lease.release() }
   })

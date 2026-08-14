@@ -93,6 +93,26 @@ export function createOpenAICompatibleCredentialV2Service(input: Readonly<{
     if (!input.credentialStoragePaths) return
     enforceLinuxCredentialStoragePermissions({ platform: input.platform ?? process.platform, ...input.credentialStoragePaths })
   }
+  function assertPlaintextRecordUsable(record: PersistedRecord): void {
+    if (record.backend !== 'plaintext' || !record.configured) return
+    if ((input.platform ?? process.platform) !== 'linux') {
+      throw new OpenAICompatibleCredentialV2Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_PLAINTEXT_UNSUPPORTED')
+    }
+    try { assertPlaintextStoragePermissions() }
+    catch (error) {
+      if (error instanceof OpenAICompatibleCredentialV2Error) throw error
+      throw new OpenAICompatibleCredentialV2Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_STORAGE_UNAVAILABLE')
+    }
+  }
+  function plaintextRecordDiagnostic(record: PersistedRecord | undefined): OpenAICompatibleCredentialV2Error['code'] | undefined {
+    if (record?.backend !== 'plaintext' || !record.configured) return undefined
+    try { assertPlaintextRecordUsable(record); return undefined }
+    catch (error) {
+      return error instanceof OpenAICompatibleCredentialV2Error
+        ? error.code
+        : 'GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_STORAGE_UNAVAILABLE'
+    }
+  }
   function sessionFor(credentialVersionRef: string, providerInstanceId: string): SessionRecord | undefined {
     const session = sessions.get(credentialVersionRef)
     if (session && session.providerInstanceId !== providerInstanceId) {
@@ -285,6 +305,7 @@ export function createOpenAICompatibleCredentialV2Service(input: Readonly<{
         try { serialized = (await safeStorage.decryptStringAsync(payload)).result }
         catch { throw new OpenAICompatibleCredentialV2Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_DECRYPT_FAILED') }
       } else {
+        assertPlaintextRecordUsable(record)
         serialized = payload.toString('utf8')
       }
       try { return compatibleRegistryCredentialInputSchema.parse(JSON.parse(serialized)) }
@@ -308,7 +329,9 @@ export function createOpenAICompatibleCredentialV2Service(input: Readonly<{
     getStatus: async (providerInstanceId: string, credentialVersionRef: string): Promise<OpenAICompatibleCredentialV2Status> => {
       assertOpenAndNonReentrant(); const providerId = provider(providerInstanceId); const ref = id(credentialVersionRef)
        const current = read(ref, providerId); try {
-         const currentStatus = status(current, sessionFor(ref, providerId), providerId, ref, diagnostics.get(ref))
+         const plaintextDiagnostic = plaintextRecordDiagnostic(current)
+         const currentStatus = status(current, sessionFor(ref, providerId), providerId, ref,
+           plaintextDiagnostic ?? diagnostics.get(ref))
          const tombstone = tombstoneFor(ref, providerId)
          return currentStatus.configured || !tombstone ? currentStatus : Object.freeze({ ...currentStatus, revision: tombstone.revision })
        } finally { current?.payload?.fill(0) }
@@ -343,7 +366,10 @@ export function createOpenAICompatibleCredentialV2Service(input: Readonly<{
         }
         const lease = Object.freeze({ trust: 'openai_compatible_credential_v2_lease' as const, usage: 'provider_transport_only' as const,
           credential, revision: current.revision, credentialScopeId: current.credentialScopeId,
-           assertCurrent: () => { const later = read(ref, providerId); try { if (!active.has(lease) || !later || fingerprint(later) !== expectedFingerprint) throw new OpenAICompatibleCredentialV2Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_DRIFT') } finally { later?.payload?.fill(0) } } })
+           assertCurrent: () => { const later = read(ref, providerId); try {
+             if (later) assertPlaintextRecordUsable(later)
+             if (!active.has(lease) || !later || fingerprint(later) !== expectedFingerprint) throw new OpenAICompatibleCredentialV2Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_DRIFT')
+           } finally { later?.payload?.fill(0) } } })
         active.add(lease); try { return await activeCredentialOperation.run(ref, () => request.consume(lease)) } finally { active.delete(lease) }
        } finally { current.payload?.fill(0) }
     }),
