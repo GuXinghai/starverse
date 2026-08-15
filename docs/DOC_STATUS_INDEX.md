@@ -187,13 +187,13 @@ The inventory above intentionally does not claim that every file in a mixed dire
 | [spec/model-catalog-endpoints-cache-contract.md](spec/model-catalog-endpoints-cache-contract.md) | reference | spec | endpoints 详情功能现行（src/next/modelCatalog/modelEndpointDetailService.ts + test:model-picker:smoke） |
 | [spec/model-catalog-internal-schema.md](spec/model-catalog-internal-schema.md) | reference | spec | 落点 src/shared/modelCatalog/internalSchema.ts 存在 |
 | [spec/model-catalog-model-fields-plan.md](spec/model-catalog-model-fields-plan.md) | historical | implementation-note | 阶段 4 冻结计划；DDL 落点 infra/db/schema.sql 已不存在 |
-| [spec/model-catalog-query-contract.md](spec/model-catalog-query-contract.md) | reference | spec | queryCore 现行（src/next/modelCatalog/catalogQueryService.ts + 测试脚本） |
+| [spec/model-catalog-query-contract.md](spec/model-catalog-query-contract.md) | historical | spec | 2026-02 阶段 4 SQL/FTS5 查询契约设计；当前实现为 Generation V2 快照 + 内存过滤（以 catalogQueryService.ts 类型为准），2026-08-14 审阅后降级 |
 | [spec/model-catalog-schema.md](spec/model-catalog-schema.md) | historical | spec | DDL 落点 infra/db/schema.sql 已不存在（epoch-2 v2/*.sql 取代） |
 | [spec/model-catalog-sync-runner.md](spec/model-catalog-sync-runner.md) | pending-classification | spec | 落点 catalogSyncRunner.ts 不存在（src/shared 与 electron/modelCatalog 均无）且无取代证据 |
 | [spec/model-endpoint-cache.md](spec/model-endpoint-cache.md) | archived | implementation-note | 自述 Deprecated alias，指向 endpoints-cache-contract |
 | [spec/model-preferences-contract.md](spec/model-preferences-contract.md) | reference | spec | 偏好功能现行（src/next/modelPrefs/modelPrefsService.ts、infra/db/repo/modelPreferencesRepo.ts） |
 | [spec/model-preferences-schema.md](spec/model-preferences-schema.md) | historical | spec | DDL 落点 infra/db/schema.sql 已不存在 |
-| [spec/model-preferences-scope.md](spec/model-preferences-scope.md) | reference | spec | scope/key 语义契约；projectRepo/convoRepo 落点存在 |
+| [spec/model-preferences-scope.md](spec/model-preferences-scope.md) | historical | implementation-note | 2026-02 任务卡 3.0 设计（单表方案未采纳、旧路径引用）；scope/key 语义部分仍被 preferences-contract 引用 |
 | [spec/model-selector-stage4-gap-matrix.md](spec/model-selector-stage4-gap-matrix.md) | historical | implementation-note | 阶段 4 差距矩阵（任务过程产物） |
 | [spec/model-selector-ui.md](spec/model-selector-ui.md) | reference | implementation-note | 描述的 ChatAppComposer/ChatLayout 结构现行；ModelPickerDialog 已实现 |
 | [spec/model-tagging-rules.md](spec/model-tagging-rules.md) | reference | spec | 落点 src/shared/modelCatalog/modelTagger.ts 存在 |
@@ -298,8 +298,9 @@ Last sync: 2026-08-14
 
 ### DGR-3 续（2026-08-14）
 
-- 完成 `spec/`、`refactor/`、`ui-refactoring/`、`i18n/`、`notes/`、`requirements/`、`diagnostics/`、`rfc/` 共 8 个 pending 目录的逐文件分类（58 行清单 = 50 个内容文件 + 8 个目录 README）：historical 33、reference 14、active 7（目录 README）、planned 1、archived 1、pending-classification 2；i18n/README 由 pending 改 active，ui-refactoring/README 由 active 改 historical。
+- 完成 `spec/`、`refactor/`、`ui-refactoring/`、`i18n/`、`notes/`、`requirements/`、`diagnostics/`、`rfc/` 共 8 个 pending 目录的逐文件分类（58 行清单 = 50 个内容文件 + 8 个目录 README）：historical 35、reference 12、active 7（目录 README）、planned 1、archived 1、pending-classification 2；i18n/README 由 pending 改 active，ui-refactoring/README 由 active 改 historical。
 - 判定依据：内容性质 + 全仓库引用扫描 + 源码落点存在性 + 首次提交日期；未确定项不猜测。非 md 文件（`diagnostics/latest/results.json`）计入目录计数但不参与生命周期分类。
+- 审阅复核调整：`model-catalog-query-contract` 与 `model-preferences-scope` 正文机制/方案已过时（SQL/FTS5 查询、单表统一建模未采纳、旧 epoch 路径），由 reference 降为 historical（上述 35/12 已含此调整）。
 
 When adding new docs to docs/ or updating existing status:
 1. Update this index

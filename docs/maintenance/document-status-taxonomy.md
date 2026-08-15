@@ -108,7 +108,7 @@ The following directories contain documents that have not yet been classified:
 |-----------|------------|-------------|-----------|
 | `docs/architecture/` | 185 | various | 按主题继续分类（mixed，计数含非 md） |
 
-> 2026-08-14 DGR-3 续：`spec/`、`refactor/`、`ui-refactoring/`、`i18n/`、`notes/`、`requirements/`、`diagnostics/`、`rfc/` 已完成逐文件分类（58 行清单：historical 33、reference 14、active 7、planned 1、archived 1、2 保留 pending-classification），逐文件清单见 [DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md)。
+> 2026-08-14 DGR-3 续：`spec/`、`refactor/`、`ui-refactoring/`、`i18n/`、`notes/`、`requirements/`、`diagnostics/`、`rfc/` 已完成逐文件分类（58 行清单：historical 35、reference 12、active 7、planned 1、archived 1、2 保留 pending-classification），逐文件清单见 [DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md)。
 
 ---
 

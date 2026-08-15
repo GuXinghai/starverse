@@ -1,10 +1,10 @@
 # Model Catalog Query Contract (Phase 1)
 
-Status: reference
+Status: historical
 Document Role: spec
 Last updated: 2026-08-14
 
-> **2026-08-14 修正**: 原 "DB method: `modelCatalog.queryCore`" 已过时——`modelCatalog.queryCore` 不在当前 DB 方法集合（`infra/db/dbMethodsRegistry.test.ts:33` 断言其不存在）。查询契约经 `CatalogQueryService.query` → Generation V2 models API（`getGenerationV2ModelsApi()`）执行；下文 Request Contract 与 filter/sort/page 语义仍为现行契约。
+> **2026-08-14 修正（降级）**: 本文为 2026-02 阶段 4 的查询契约设计记录，描述基于 `models`/`model_tags`/`models_fts` 的 SQL 查询执行机制及兼容字段（`providerKey`、`filter.providers`、`filter.categories`），**已不再代表当前实现**。当前查询契约（`sourceProviderKey` 必填、无上述兼容字段、经 Generation V2 provider `list*` API 取快照后在内存过滤分页）以源码类型为准：`src/next/modelCatalog/catalogQueryService.ts` 的 `CatalogQueryInput`/`CatalogQueryCursor`/`CatalogQueryItem`（含 `snapshotDigest`、`capabilities` 过滤）。本文仅作阶段设计历史参考。
 
 ## Scope
 - Provide a unified catalog query API for UI/debug tooling.
