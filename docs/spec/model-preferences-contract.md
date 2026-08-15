@@ -38,7 +38,7 @@ Last updated: 2026-08-14
 ### 3.2 Recents
 - 唯一性：同一 `(scopeType, scopeId, modelKey)` 只保留一条最近记录。
 - 记录语义：
-  - `recordRecentForGenerationOperation` 由 generation 操作驱动：同一 `operationId` 幂等（重复返回 `applied:false`），新操作 upsert recent（`lastUsedAtMs` 置为操作时间，不再递增 `useCount`）。
+  - `recordRecentForGenerationOperation` 由 generation 操作驱动：同一 `operationId` 重放幂等（重复返回 `applied:false`，不递增计数）；**不同 operation**（即使同一模型）会递增 `useCount`——`upsertRecentStmt` 冲突分支执行 `use_count = use_count + 1`（`infra/db/repo/modelPreferencesRepo.ts`），`modelPreferencesRepo.test.ts` 断言两次不同 operation 后 `useCount === 2`。
   - 不存在时插入新记录。
 - 排序语义：
   - 主排序 `lastUsedAtMs DESC`
@@ -63,11 +63,9 @@ Last updated: 2026-08-14
 - favorites/recents 仅影响“快速选择与展示”，不直接覆盖发送参数优先级。
 
 ## 5. 失败降级策略
-- `dbBridge` 不可用：
-  - `listFavorites/listRecents` 返回空列表；
-  - `toggleFavorite` 返回失败结果；
-  - `recordRecentForGenerationOperation` 返回 `{ applied: false }`/`null`；
-  - 不阻断聊天主流程。
+- renderer bridge（`modelPreferences`，见 `electron/preload.ts`）仅暴露列表与收藏操作：`listFavorites`/`addFavorite`/`removeFavorite`/`reorderFavorites`/`listRecents`；`recordRecentForGenerationOperation` **不在 bridge 上**。
+- recents 写入由主进程 generation runtime 在每次 execution 注册/重放时执行（`generationOperationRuntimeRegistryV2.ts` `#recordRecentUsage`）；写入异常由 runtime 捕获，重放或下次启动 reconciliation 会重试该幂等写入；不阻断聊天主流程。
+- bridge 不可用（`dbBridge` 缺失）时：`listFavorites`/`listRecents` 返回空列表；`toggleFavorite` 返回失败结果；不阻断聊天主流程。
 - 偏好写入失败：
   - 仅影响偏好状态更新，不阻断模型选择与发送。
 - 重排失败：
