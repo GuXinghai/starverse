@@ -1,6 +1,13 @@
 # Model Preferences Scope 与 Key 体系（任务卡 3.0）
 
-> **2026-08-14 修正**: 本文正文中的 `infra/db/schema.sql` 引用为 2026-02 旧 DDL 落点；epoch-2 后 schema 位于 `infra/db/v2/*.sql`。scope/key 语义本身未变。
+> **Status**: historical
+> **Document Role**: implementation-note
+> **Last updated**: 2026-08-14
+>
+> **2026-08-14 修正（降级）**: 本文为 2026-02 任务卡 3.0 的设计记录，已不再代表当前实现，正文仅作历史参考：
+> - §3.3 冻结的"单表统一建模（不拆 favorites/recents 多表）"方案**未被采纳**——阶段 3.1 物理落地采用分表 `model_favorites` + `model_recents`（§4，与当前实现一致）。
+> - 正文中的 `infra/db/schema.sql`、`infra/db/worker.ts`、`infra/db/worker/handlers/*` 为 epoch-2 前旧路径（schema 现位于 `infra/db/v2/*.sql`；Worker 已退役，`infra/db/worker.ts` 与 `worker/handlers/` 均不存在）。
+> - 仍有效的部分：scope 枚举（global/project/conversation）、`scopeId` 规则、`modelKey = providerKey::modelId`、vendor 不进入偏好主键——这些语义被 `docs/spec/model-preferences-contract.md` 引用。
 
 ## 1. 目标
 - 固化收藏（favorite）与最近使用（recent）的 scope 体系与 key 体系。
