@@ -27,6 +27,18 @@ function openAIResponsesSessionConfig() {
   }
 }
 
+function reasoningCapabilityProjection() {
+  return {
+    schemaVersion: 1,
+    binding: {},
+    capabilityRevision: 'capability-v2:test-ui',
+    controls: {
+      'reasoning.effort': { state: 'supported', domain: { kind: 'enum', values: ['low', 'medium', 'high', 'xhigh', 'max'] }, constraints: [], evidenceIds: [] },
+      'reasoning.summary': { state: 'supported', domain: { kind: 'enum', values: ['auto', 'concise', 'detailed'] }, constraints: [], evidenceIds: [] },
+    },
+  } as any
+}
+
 describe('ChatSessionConsole OpenAI Responses chat controls', () => {
   it('exposes explicit experimental OpenAI Responses text chat without endpoint or profile picker UI', async () => {
     const user = userEvent.setup()
@@ -192,6 +204,7 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
         modelCatalog: [],
         webSearchResolved: null,
         generationParamsResolved: null,
+        capabilityProjection: reasoningCapabilityProjection(),
       },
     })
 

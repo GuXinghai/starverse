@@ -20,6 +20,7 @@ describe('Generation V2 branch projection', () => {
           answerRootId: 'answer:history', status: 'completed', body: 'done', createdAtMs: 2, updatedAtMs: 3, chosen: true,
           operationId: 'operation:history', actionKind: 'initial_send', providerId, modelId: 'provider/model',
           errorCode: null, errorMessage: null, endpointProfileId: 'profile:history', protocolContractId,
+          capabilityRevision: 'capability-v2:test',
           reasoningDetails: [], attachments: [], images: [],
         }],
       }],
@@ -41,6 +42,7 @@ describe('Generation V2 branch projection', () => {
           operationId: 'operation:1', actionKind: 'initial_send', providerId: 'google_ai_studio', modelId: 'gemini-3.1-flash-image',
           errorCode: 'GENERATION_V2_GEMINI_INTERACTIONS_STREAM_INVALID_SSE',
           errorMessage: 'Unexpected SSE field: event', endpointProfileId: 'profile:1', protocolContractId: 'gemini-interactions-v1beta',
+          capabilityRevision: 'capability-v2:test',
           reasoningDetails: [], attachments: [], images: [],
         }],
       }],
@@ -77,7 +79,8 @@ describe('Generation V2 branch projection', () => {
         answers: [{ answerRootId: 'answer:2', status: 'failed', body: '', createdAtMs: 2, updatedAtMs: 3, chosen: true,
           operationId: 'operation:2', actionKind: 'initial_send', providerId: 'google_ai_studio', modelId: 'gemini-3.1-flash-image',
           errorCode: 'PROVIDER_RESPONSE_HTTP_ERROR', errorMessage: 'Provider says no.', errorFact: failure,
-          endpointProfileId: 'profile:1', protocolContractId: 'gemini-interactions-v1beta', reasoningDetails: [], attachments: [], images: [] }],
+          endpointProfileId: 'profile:1', protocolContractId: 'gemini-interactions-v1beta', capabilityRevision: 'capability-v2:test',
+          reasoningDetails: [], attachments: [], images: [] }],
       }],
     } satisfies GenerationV2BranchView
     const assistant = projectGenerationV2BranchForExistingUi(view).rendered.messages.find((message) => message.id === 'answer:2')!
@@ -97,6 +100,7 @@ describe('Generation V2 branch projection', () => {
           answerRootId: 'answer:3', status: 'completed', body: 'done', createdAtMs: 2, updatedAtMs: 3, chosen: true,
           operationId: 'operation:3', actionKind: 'initial_send', providerId: 'openai_responses', modelId: 'gpt-5.6-sol',
           errorCode: null, errorMessage: null, endpointProfileId: 'profile:1', protocolContractId: 'openai-responses-v1',
+          capabilityRevision: 'capability-v2:test',
           reasoningDetails: [{ type: 'url_citation', url_citation: { url: 'https://example.com' } }],
           attachments: [], images: [],
         }],

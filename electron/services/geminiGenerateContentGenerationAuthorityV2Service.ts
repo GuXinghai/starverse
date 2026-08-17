@@ -1,12 +1,10 @@
 import { createHash } from 'node:crypto'
 import {
-  assertActiveCatalogOptionalCapabilitiesV2,
   isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2,
   type ActiveCatalogModelAuthorityV2,
 } from './activeCatalogModelAuthorityV2Service'
 import {
-  canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
   RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
@@ -15,6 +13,14 @@ import {
   type RuntimeCapabilityDomainV2,
   type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import {
+  canonicalizeResolvedCapabilityV2,
+  runtimeSnapshotRecordFromResolvedCapabilityV2,
+  validateSemanticIntentAgainstResolvedCapabilityV2,
+  type ResolvedCapabilityV2,
+} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedGeminiGenerateContentDefinitionV2,
@@ -73,6 +79,7 @@ export type VerifiedGeminiGenerateContentRuntimeCapabilityAuthorityV2 = Readonly
   usage: 'snapshot_commit_input_only'
   executionAuthority: 'none'
   bindingAuthority: VerifiedGeminiGenerateContentProviderBindingAuthorityV2
+  resolvedCapability: ResolvedCapabilityV2
   record: PersistedRuntimeCapabilitySnapshotV2
   snapshot: DecodedRuntimeCapabilitySnapshotV2
   assertCurrent(): void
@@ -113,7 +120,7 @@ function unsupported(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
   return Object.freeze({ path, state: 'unsupported', constraints: Object.freeze([]), evidenceIds: Object.freeze([REJECTS]) })
 }
 function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCapabilityFieldV2 {
-  return Object.freeze({ path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
+  return Object.freeze({ path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
 }
 
 function thinkingCapabilityForEvidence(evidence: ActiveCatalogModelAuthorityV2): GeminiThinkingCapability {
@@ -300,8 +307,9 @@ function composeCapability(binding: VerifiedGeminiGenerateContentProviderBinding
   evidence: ActiveCatalogModelAuthorityV2, toolRegistry: ToolRegistryRepositoryFactV2 | null,
   toolsReviewed: boolean, thinking: GeminiThinkingCapability, webReviewed: boolean) {
   const hash = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex')
-  const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
-    schemaVersion: 2, resolvedAt: new Date(Date.now()).toISOString(),
+  const continuation = { kind: 'client_managed_native_replay' as const, artifactKind: GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1,
+    supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [SUPPORTS] }
+  const resolvedCapability = canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(evidence),
     binding: projectDecodedProviderBindingRecordV2(binding.binding),
     evidence: [
@@ -323,8 +331,15 @@ function composeCapability(binding: VerifiedGeminiGenerateContentProviderBinding
         effect: 'requires_confirmation', sourceRef: 'generation-v2-tool-side-effect-confirmation-policy',
         verifiedAt: '2026-07-20T00:00:00.000Z',
         contentDigest: hash(GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2) },
+      credentialRevisionEvidenceV2({ credentialRevision: evidence.credentialRevision,
+        verifiedAt: new Date(evidence.observedAtMs).toISOString() }),
     ],
     fields: fields(evidence, toolsReviewed, thinking, webReviewed),
+    continuation,
+  })
+  const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
+    capability: resolvedCapability,
+    resolvedAt: new Date(Date.now()).toISOString(),
     tools: toolRegistry?.selectedDefinitions.map((tool) => ({
       toolId: tool.toolId, kind: tool.kind,
       state: tool.sideEffectPolicy === 'none' ? 'supported' : 'requires_confirmation',
@@ -332,14 +347,12 @@ function composeCapability(binding: VerifiedGeminiGenerateContentProviderBinding
       evidenceIds: [tool.sideEffectPolicy === 'none' ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2
         : GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2],
     })) ?? [],
-    continuation: { kind: 'client_managed_native_replay', artifactKind: GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1,
-      supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [SUPPORTS] },
   })
   const snapshot = decodeRuntimeCapabilitySnapshotV2(record)
   const authority = Object.freeze({
     trust: 'verified_gemini_generate_content_runtime_capability' as const,
     usage: 'snapshot_commit_input_only' as const, executionAuthority: 'none' as const,
-    bindingAuthority: binding, record, snapshot,
+    bindingAuthority: binding, resolvedCapability, record, snapshot,
     assertCurrent: () => {
       if (!capabilities.has(authority) || !isVerifiedGeminiGenerateContentProviderBindingAuthorityV2(binding)) {
         throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_GENERATION_AUTHORITY_INVALID')
@@ -349,6 +362,17 @@ function composeCapability(binding: VerifiedGeminiGenerateContentProviderBinding
   })
   capabilities.add(authority)
   return authority
+}
+
+/** Command-independent resolver; tools and attachments are not command facts. */
+export function resolveGeminiGenerateContentCapabilityV2(
+  modelEvidence: ActiveCatalogModelAuthorityV2,
+): ResolvedCapabilityV2 {
+  const toolsReviewed = hasReviewedGeminiGenerateContentToolCapabilityV2(modelEvidence.modelId.value)
+  const thinking = thinkingCapabilityForEvidence(modelEvidence)
+  const webReviewed = hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(modelEvidence.modelId.value)
+  const binding = composeBinding(modelEvidence)
+  return composeCapability(binding, modelEvidence, null, toolsReviewed, thinking, webReviewed).resolvedCapability
 }
 
 export function readVerifiedGeminiGenerateContentProviderBindingRecordV2(
@@ -384,7 +408,6 @@ export function withVerifiedGeminiGenerateContentGenerationAuthoritiesV2<T>(inpu
   const thinking = thinkingCapabilityForEvidence(input.modelEvidence)
   const webReviewed = hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(input.modelEvidence.modelId.value)
   input.modelEvidence.assertCurrent()
-  assertActiveCatalogOptionalCapabilitiesV2(input.modelEvidence, input.commandFacts.semanticIntent)
   validateFacts(input.commandFacts, input.modelEvidence, toolRegistry, toolsReviewed, thinking)
   let binding: VerifiedGeminiGenerateContentProviderBindingAuthorityV2 | undefined
   let capability: VerifiedGeminiGenerateContentRuntimeCapabilityAuthorityV2 | undefined
@@ -393,6 +416,11 @@ export function withVerifiedGeminiGenerateContentGenerationAuthoritiesV2<T>(inpu
   try {
     binding = composeBinding(input.modelEvidence)
     capability = composeCapability(binding, input.modelEvidence, toolRegistry, toolsReviewed, thinking, webReviewed)
+    validateSemanticIntentAgainstResolvedCapabilityV2(
+      capability.resolvedCapability,
+      input.commandFacts.semanticIntent,
+    )
+    assertExpectedCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => { if (capability) capabilities.delete(capability); if (binding) bindings.delete(binding) }
     registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
       preCommit: () => { if (!completed) throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_GENERATION_AUTHORITY_INVALID'); capability!.assertCurrent() },

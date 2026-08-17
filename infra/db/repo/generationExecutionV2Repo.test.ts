@@ -62,7 +62,7 @@ function runtimeCapability(binding = providerBinding(), resolvedAt = '2026-07-17
       contentDigest: HASH_A,
     }],
     fields: RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((field) => ({
-      path: field, state: 'unavailable', constraints: [], evidenceIds: [],
+      path: field, state: 'missing', constraints: [], evidenceIds: [],
     })),
     tools: [],
     continuation: { kind: 'none', evidenceIds: ['test.deepseek.supports'] },

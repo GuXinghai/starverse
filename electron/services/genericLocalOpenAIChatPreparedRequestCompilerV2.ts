@@ -4,6 +4,7 @@ import type { LocalEndpointProfileV2 } from '../../infra/db/repo/localEndpointPr
 import { isGenericLocalOpenAIChatRequestHistoryFactForContextV2,
   type GenericLocalOpenAIChatRequestHistoryFactV2 } from '../../infra/db/repo/genericLocalOpenAIChatNativeHistoryV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import { createNoCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { compileGenericLocalOpenAIChatRequestV1 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/chatRequestV1'
 import { createGenericLocalOpenAIChatArtifactV1 } from '../../src/next/generation-v2/providers/generic-local-openai-chat/nativeMessagesV1'
@@ -17,9 +18,12 @@ export function compileGenericLocalOpenAIChatPreparedRequestV2(input: Readonly<{
       !['committed', 'streaming', 'completed', 'failed', 'cancelled'].includes(input.execution.operation.state)) {
     throw new Error('GENERATION_V2_GENERIC_LOCAL_COMPILER_AUTHORITY_INVALID')
   }
-  const { operation, snapshot, capability } = input.execution; const binding = snapshot.providerBinding
+  const { operation, snapshot, capability } = input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  const binding = snapshot.providerBinding
   if (binding.providerId.value !== 'generic_local' || binding.protocolContractId.value !== 'generic-local-openai-chat-completions' ||
       binding.endpointProfileId.value !== input.profile.endpointProfileId || binding.credentialScopeId.value !== input.profile.credentialScopeId ||
+      binding.modelId.value !== input.profile.protocolConfig.modelId ||
       binding.operation !== 'text' || binding.endpointBinding.kind !== 'provider_managed_set' ||
       binding.endpointBinding.endpointSetRevision.value !== input.profile.profileRevision ||
       input.profile.protocolContractId !== 'generic-local-openai-chat-completions') throw new Error('GENERATION_V2_GENERIC_LOCAL_COMPILER_BINDING_INVALID')

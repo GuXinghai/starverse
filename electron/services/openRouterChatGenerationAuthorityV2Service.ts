@@ -1,12 +1,19 @@
 import {
-  canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
   RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
   type PersistedRuntimeCapabilityFieldV2,
   type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { assertActiveCatalogOptionalCapabilitiesV2, isActiveCatalogModelAuthorityV2,
+import {
+  canonicalizeResolvedCapabilityV2,
+  runtimeSnapshotRecordFromResolvedCapabilityV2,
+  validateSemanticIntentAgainstResolvedCapabilityV2,
+  type ResolvedCapabilityV2,
+} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import { listReviewedProviderContractDefinitionsV2 } from '../../src/next/generation-v2/contracts/providerContractRegistryV2'
 import { verifyProviderContractReferenceV2 } from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
@@ -43,6 +50,7 @@ export type VerifiedOpenRouterChatBindingAuthorityV2 = Readonly<{
 export type VerifiedOpenRouterChatCapabilityAuthorityV2 = Readonly<{
   trust: 'verified_openrouter_chat_capability_v2'
   bindingAuthority: VerifiedOpenRouterChatBindingAuthorityV2
+  resolvedCapability: ResolvedCapabilityV2
   snapshot: DecodedRuntimeCapabilitySnapshotV2
   assertCurrent(): void
 }>
@@ -81,7 +89,7 @@ function fail(code: OpenRouterChatGenerationAuthorityV2Error['code']): never {
 function field(
   path: RuntimeCapabilitySemanticPathV2,
   supportedParameters: ReadonlySet<string>,
-  toolsEnabled: boolean,
+  toolsSupported: boolean,
   inputModalities: ReadonlySet<string>,
   supportEvidence: string,
   rejectEvidence: string,
@@ -143,18 +151,18 @@ function field(
     case 'web.userLocation': return supported({ kind: 'approximate_location', maxFieldLength: 256 })
     case 'web.allowedDomains':
     case 'web.excludedDomains': return supported({ kind: 'string_list', maxItems: 100, maxItemLength: 253 })
-    case 'tools.mode': return supported({ kind: 'enum', values: Object.freeze(toolsEnabled ? ['disabled', 'enabled'] : ['disabled']) })
-    case 'tools.allowedToolIds': return toolsEnabled ? supported({ kind: 'identity_list', maxItems: 128 }) : unsupported()
-    case 'tools.toolChoice': return toolsEnabled
+    case 'tools.mode': return supported({ kind: 'enum', values: Object.freeze(toolsSupported ? ['disabled', 'enabled'] : ['disabled']) })
+    case 'tools.allowedToolIds': return toolsSupported ? supported({ kind: 'identity_list', maxItems: 128 }) : unsupported()
+    case 'tools.toolChoice': return toolsSupported
       ? supported({ kind: 'enum', values: Object.freeze(['omitted', 'auto', 'none', 'required', 'named']) }) : unsupported()
-    case 'tools.sideEffectConfirmation': return toolsEnabled
+    case 'tools.sideEffectConfirmation': return toolsSupported
       ? Object.freeze({ path, state: 'requires_confirmation' as const,
           domain: Object.freeze({ kind: 'enum' as const, values: Object.freeze(['required_each_retry']) }),
           constraints: Object.freeze([]), evidenceIds: Object.freeze([supportEvidence]) }) : unsupported()
     case 'image.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled']) })
     case 'providerExtension.kind': return supported({ kind: 'enum', values: Object.freeze(['none', 'openrouter_chat']) })
     case 'providerExtension.verbosity': return byParameter('verbosity', { kind: 'enum', values: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']) })
-    case 'providerExtension.parallelToolCalls': return toolsEnabled && supportedParameters.has('parallel_tool_calls')
+    case 'providerExtension.parallelToolCalls': return toolsSupported && supportedParameters.has('parallel_tool_calls')
       ? supported({ kind: 'boolean' }) : unsupported()
     case 'providerExtension.responseFormat': {
       const types = supportedParameters.has('response_format')
@@ -283,11 +291,110 @@ function validateIntent(
   const byPath = new Map(fields.map((item) => [item.path, item]))
   for (const [path, value] of explicit) {
     const capability = byPath.get(path as RuntimeCapabilitySemanticPathV2)
-    if (!capability || capability.state === 'unsupported' || capability.state === 'unavailable') {
+    if (!capability || capability.state === 'unsupported' || capability.state === 'missing' || capability.state === 'unknown') {
       return fail('GENERATION_V2_OPENROUTER_CHAT_EXPLICIT_FIELD_UNSUPPORTED')
     }
     if (!domainContains(capability, value)) return fail('GENERATION_V2_OPENROUTER_CHAT_FIELD_VALUE_UNSUPPORTED')
   }
+}
+
+function composeOpenRouterChatBinding(
+  modelEvidence: ActiveCatalogModelAuthorityV2,
+): VerifiedOpenRouterChatBindingAuthorityV2 {
+  if (!isActiveCatalogModelAuthorityV2(modelEvidence, 'openrouter')) {
+    return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
+  }
+  modelEvidence.assertCurrent()
+  const profile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
+  const definition = listReviewedProviderContractDefinitionsV2().find((candidate) =>
+    candidate.protocolContractId.value === 'openrouter-chat-completions-v1')
+  if (!definition || definition.providerId.value !== 'openrouter' || !definition.operations.includes('text')) {
+    return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
+  }
+  const descriptor = profile.operations.chat_completions.descriptor
+  const candidate = Object.freeze({
+    credentialScopeId: modelEvidence.credentialScopeId,
+    providerId: readGenerationV2Identity(profile.providerId, 'provider_id'),
+    endpointProfileId: readGenerationV2Identity(profile.endpointProfileId, 'endpoint_profile_id'),
+    endpointBinding: { kind: 'provider_managed_set', endpointSetRevision: profile.endpointSetRevision.value,
+      descriptors: [{ endpointId: descriptor.endpointId.value, descriptorRevision: descriptor.descriptorRevision.value }] },
+    protocolContractId: definition.protocolContractId.value,
+    contractRevision: definition.contractRevision.value,
+    contractDefinitionDigest: readGenerationV2Digest(definition.definitionDigest, 'contract_digest'),
+    registryRevision: definition.registryRevision.value,
+    modelId: modelEvidence.modelId.value,
+    operation: 'text' as const,
+  })
+  const decodedBinding = decodeProviderBindingRecordV2(candidate)
+  verifyProviderContractReferenceV2(candidate)
+  const binding: VerifiedOpenRouterChatBindingAuthorityV2 = Object.freeze({
+    trust: 'verified_openrouter_chat_binding_v2', binding: decodedBinding, evidence: modelEvidence,
+    assertCurrent: () => {
+      if (!bindings.has(binding)) return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
+      modelEvidence.assertCurrent()
+    },
+  })
+  bindings.add(binding)
+  return binding
+}
+
+function resolveOpenRouterChatCapabilityRecord(
+  binding: VerifiedOpenRouterChatBindingAuthorityV2,
+  modelEvidence: ActiveCatalogModelAuthorityV2,
+): ResolvedCapabilityV2 {
+  const profile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
+  const supportedParameters = new Set<string>((modelEvidence.supportedParameters as unknown[])
+    .filter((value): value is string => typeof value === 'string'))
+  const toolsSupported = supportedParameters.has('tools')
+  const supportEvidence = `openrouter.chat.models.${modelEvidence.responseDigest.value}.supports`
+  const rejectEvidence = `openrouter.chat.models.${modelEvidence.responseDigest.value}.rejects`
+  const inputModalities = new Set<string>((modelEvidence.inputModalities as unknown[])
+    .filter((value): value is string => typeof value === 'string'))
+  const fields = Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) =>
+    field(path, supportedParameters, toolsSupported, inputModalities, supportEvidence, rejectEvidence)))
+  return canonicalizeResolvedCapabilityV2({
+    ...projectActiveCatalogSnapshotAuthorityV2(modelEvidence),
+    binding: projectDecodedProviderBindingRecordV2(binding.binding),
+    evidence: [
+      { evidenceId: supportEvidence, kind: 'live_probe', effect: 'supports', sourceRef: profile.operations.chat_completions.modelsUrl,
+        verifiedAt: new Date(modelEvidence.observedAtMs).toISOString(), contentDigest: modelEvidence.responseDigest.value },
+      { evidenceId: rejectEvidence, kind: 'live_probe', effect: 'rejects', sourceRef: profile.operations.chat_completions.modelsUrl,
+        verifiedAt: new Date(modelEvidence.observedAtMs).toISOString(), contentDigest: modelEvidence.responseDigest.value },
+      credentialRevisionEvidenceV2({ credentialRevision: modelEvidence.credentialRevision,
+        verifiedAt: new Date(modelEvidence.observedAtMs).toISOString() }),
+    ],
+    fields,
+    continuation: { kind: 'client_managed_native_replay', artifactKind: OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1,
+      supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [supportEvidence] },
+  })
+}
+
+function composeOpenRouterChatSnapshot(
+  binding: VerifiedOpenRouterChatBindingAuthorityV2,
+  modelEvidence: ActiveCatalogModelAuthorityV2,
+  toolRegistry: ToolRegistryRepositoryFactV2 | null = null,
+): DecodedRuntimeCapabilitySnapshotV2 {
+  const capability = resolveOpenRouterChatCapabilityRecord(binding, modelEvidence)
+  return decodeRuntimeCapabilitySnapshotV2(runtimeSnapshotRecordFromResolvedCapabilityV2({
+    capability,
+    resolvedAt: new Date(Math.max(Date.now(), modelEvidence.observedAtMs)).toISOString(),
+    tools: toolRegistry?.selectedDefinitions.map((tool) => ({
+      toolId: tool.toolId, kind: tool.kind,
+      state: tool.sideEffectPolicy === 'none' ? 'supported' as const : 'requires_confirmation' as const,
+      sideEffectPolicy: tool.sideEffectPolicy, evidenceIds: [
+        tool.sideEffectPolicy === 'none' ? `openrouter.chat.models.${modelEvidence.responseDigest.value}.supports`
+          : `openrouter.chat.models.${modelEvidence.responseDigest.value}.supports`,
+      ],
+    })) ?? [],
+  }))
+}
+
+/** Command-independent OpenRouter Chat capability resolver. */
+export function resolveOpenRouterChatCapabilityV2(
+  modelEvidence: ActiveCatalogModelAuthorityV2,
+): ResolvedCapabilityV2 {
+  const binding = composeOpenRouterChatBinding(modelEvidence)
+  return resolveOpenRouterChatCapabilityRecord(binding, modelEvidence)
 }
 
 export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Readonly<{
@@ -305,73 +412,18 @@ export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Read
       (input.toolRegistry !== null && !isToolRegistryRepositoryFactForContextV2(input.toolRegistry, input.context))) {
     return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
   }
-  input.modelEvidence.assertCurrent()
-  assertActiveCatalogOptionalCapabilitiesV2(input.modelEvidence, input.commandFacts.semanticIntent)
-  const profile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
-  const definition = listReviewedProviderContractDefinitionsV2().find((candidate) =>
-    candidate.protocolContractId.value === 'openrouter-chat-completions-v1')
-  if (!definition || definition.providerId.value !== 'openrouter' || !definition.operations.includes('text')) {
-    return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
-  }
-  const descriptor = profile.operations.chat_completions.descriptor
-  const candidate = Object.freeze({
-    credentialScopeId: input.modelEvidence.credentialScopeId,
-    providerId: readGenerationV2Identity(profile.providerId, 'provider_id'),
-    endpointProfileId: readGenerationV2Identity(profile.endpointProfileId, 'endpoint_profile_id'),
-    endpointBinding: { kind: 'provider_managed_set', endpointSetRevision: profile.endpointSetRevision.value,
-      descriptors: [{ endpointId: descriptor.endpointId.value, descriptorRevision: descriptor.descriptorRevision.value }] },
-    protocolContractId: definition.protocolContractId.value,
-    contractRevision: definition.contractRevision.value,
-    contractDefinitionDigest: readGenerationV2Digest(definition.definitionDigest, 'contract_digest'),
-    registryRevision: definition.registryRevision.value,
-    modelId: input.modelEvidence.modelId.value,
-    operation: 'text' as const,
-  })
-  const decodedBinding = decodeProviderBindingRecordV2(candidate)
-  verifyProviderContractReferenceV2(candidate)
-  const binding: VerifiedOpenRouterChatBindingAuthorityV2 = Object.freeze({
-    trust: 'verified_openrouter_chat_binding_v2', binding: decodedBinding, evidence: input.modelEvidence,
-    assertCurrent: () => {
-      if (!bindings.has(binding)) return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
-      input.modelEvidence.assertCurrent()
-    },
-  })
-  bindings.add(binding)
-  const supportedParameters = new Set<string>((input.modelEvidence.supportedParameters as unknown[])
-    .filter((value): value is string => typeof value === 'string'))
-  const toolsEnabled = supportedParameters.has('tools') && input.commandFacts.semanticIntent.tools.mode === 'enabled'
-  const supportEvidence = `openrouter.chat.models.${input.modelEvidence.responseDigest.value}.supports`
-  const rejectEvidence = `openrouter.chat.models.${input.modelEvidence.responseDigest.value}.rejects`
-  const inputModalities = new Set<string>((input.modelEvidence.inputModalities as unknown[])
-    .filter((value): value is string => typeof value === 'string'))
-  const fields = Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) =>
-    field(path, supportedParameters, toolsEnabled, inputModalities, supportEvidence, rejectEvidence)))
+  const binding = composeOpenRouterChatBinding(input.modelEvidence)
+  const resolvedCapability = resolveOpenRouterChatCapabilityRecord(binding, input.modelEvidence)
+  const snapshot = composeOpenRouterChatSnapshot(binding, input.modelEvidence, input.toolRegistry)
+  const fields = snapshot.fields
   validateIntent(input.commandFacts, fields, input.toolRegistry, input.modelEvidence)
-  const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
-    schemaVersion: 2,
-    ...projectActiveCatalogSnapshotAuthorityV2(input.modelEvidence),
-    resolvedAt: new Date(input.modelEvidence.observedAtMs).toISOString(),
-    binding: projectDecodedProviderBindingRecordV2(decodedBinding),
-    evidence: [
-      { evidenceId: supportEvidence, kind: 'live_probe', effect: 'supports', sourceRef: profile.operations.chat_completions.modelsUrl,
-        verifiedAt: new Date(input.modelEvidence.observedAtMs).toISOString(), contentDigest: input.modelEvidence.responseDigest.value },
-      { evidenceId: rejectEvidence, kind: 'live_probe', effect: 'rejects', sourceRef: profile.operations.chat_completions.modelsUrl,
-        verifiedAt: new Date(input.modelEvidence.observedAtMs).toISOString(), contentDigest: input.modelEvidence.responseDigest.value },
-    ],
-    fields,
-    tools: input.toolRegistry?.selectedDefinitions.map((tool) => ({
-      toolId: tool.toolId,
-      kind: tool.kind,
-      state: tool.sideEffectPolicy === 'none' ? 'supported' : 'requires_confirmation',
-      sideEffectPolicy: tool.sideEffectPolicy,
-      evidenceIds: [supportEvidence],
-    })) ?? [],
-    continuation: { kind: 'client_managed_native_replay', artifactKind: OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1,
-      supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [supportEvidence] },
-  })
-  const snapshot = decodeRuntimeCapabilitySnapshotV2(record)
+  validateSemanticIntentAgainstResolvedCapabilityV2(
+    resolvedCapability,
+    input.commandFacts.semanticIntent,
+  )
+  assertExpectedCapabilityRevisionV2(snapshot.revision.value)
   const capability: VerifiedOpenRouterChatCapabilityAuthorityV2 = Object.freeze({
-    trust: 'verified_openrouter_chat_capability_v2', bindingAuthority: binding, snapshot,
+    trust: 'verified_openrouter_chat_capability_v2', bindingAuthority: binding, resolvedCapability, snapshot,
     assertCurrent: () => {
       if (!capabilities.has(capability)) return fail('GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID')
       binding.assertCurrent()

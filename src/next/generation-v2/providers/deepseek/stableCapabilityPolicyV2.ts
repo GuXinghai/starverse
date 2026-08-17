@@ -215,8 +215,10 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
     unsupported('providerExtension.verbosity'),
     rule('reasoning.effort', 'supported_with_effort_mapping', OFFICIAL_THINKING, {
       wireKey: 'reasoning_effort',
-      domain: Object.freeze({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']) }),
-      mapping: Object.freeze({ low: 'high', medium: 'high', high: 'high', xhigh: 'max', max: 'max' }),
+      // DeepSeek exposes high and max as native public effort values. Other
+      // spellings belong to compatibility codecs, not model capability.
+      domain: Object.freeze({ kind: 'enum', values: Object.freeze(['high', 'max']) }),
+      mapping: Object.freeze({ high: 'high', max: 'max' }),
       rejectionCode: 'DEEPSEEK_REASONING_EFFORT_UNSUPPORTED',
     }),
     rule('reasoning.mode', 'supported_static', OFFICIAL_THINKING, {

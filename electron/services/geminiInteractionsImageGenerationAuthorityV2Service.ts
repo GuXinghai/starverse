@@ -1,6 +1,5 @@
 import { createHash } from 'node:crypto'
 import {
-  canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
   RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
@@ -9,6 +8,14 @@ import {
   type RuntimeCapabilityDomainV2,
   type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import {
+  canonicalizeResolvedCapabilityV2,
+  runtimeSnapshotRecordFromResolvedCapabilityV2,
+  validateSemanticIntentAgainstResolvedCapabilityV2,
+  type ResolvedCapabilityV2,
+} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedGeminiInteractionsDefinitionV2,
@@ -64,6 +71,7 @@ export type VerifiedGeminiInteractionsImageRuntimeCapabilityAuthorityV2 = Readon
   usage: 'snapshot_commit_input_only'
   executionAuthority: 'none'
   bindingAuthority: VerifiedGeminiInteractionsImageProviderBindingAuthorityV2
+  resolvedCapability: ResolvedCapabilityV2
   record: PersistedRuntimeCapabilitySnapshotV2
   snapshot: DecodedRuntimeCapabilitySnapshotV2
   assertCurrent(): void
@@ -167,27 +175,38 @@ function composeBinding(catalogAuthority: ActiveCatalogModelAuthorityV2, modelId
   return authority
 }
 function composeCapability(binding: VerifiedGeminiInteractionsImageProviderBindingAuthorityV2) {
-  const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
-    schemaVersion: 2, resolvedAt: new Date(Date.now()).toISOString(),
+  const resolvedCapability = canonicalizeResolvedCapabilityV2({
     binding: projectDecodedProviderBindingRecordV2(binding.binding),
     evidence: [
       { evidenceId: SUPPORTS, kind: 'official_documentation', effect: 'supports',
         sourceRef: 'https://ai.google.dev/gemini-api/docs/image-generation', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(SUPPORTS) },
       { evidenceId: REJECTS, kind: 'contract_invariant', effect: 'rejects',
         sourceRef: 'generation-v2-gemini-interactions-reviewed-model-matrix', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(REJECTS) },
+      credentialRevisionEvidenceV2({ credentialRevision: binding.credentialRevision,
+        verifiedAt: '2026-07-20T00:00:00.000Z' }),
     ],
     ...projectActiveCatalogSnapshotAuthorityV2(binding.catalogAuthority),
-    fields: fields(binding.imagePolicy), tools: [], continuation: { kind: 'none', evidenceIds: [SUPPORTS] },
+    fields: fields(binding.imagePolicy), continuation: { kind: 'none', evidenceIds: [SUPPORTS] },
   })
+  const record = runtimeSnapshotRecordFromResolvedCapabilityV2({ capability: resolvedCapability,
+    resolvedAt: new Date(Date.now()).toISOString(), tools: [] })
   const snapshot = decodeRuntimeCapabilitySnapshotV2(record)
   const authority = Object.freeze({
     trust: 'verified_gemini_interactions_image_runtime_capability' as const,
     usage: 'snapshot_commit_input_only' as const, executionAuthority: 'none' as const,
-    bindingAuthority: binding, record, snapshot,
+    bindingAuthority: binding, resolvedCapability, record, snapshot,
     assertCurrent: () => { if (!capabilities.has(authority) || !isVerifiedGeminiInteractionsImageProviderBindingAuthorityV2(binding)) invalid(); binding.assertCurrent() },
   })
   capabilities.add(authority)
   return authority
+}
+
+/** Command-independent image capability projection for the same model matrix. */
+export function resolveGeminiInteractionsImageCapabilityV2(
+  modelEvidence: ActiveCatalogModelAuthorityV2,
+  modelId: string,
+): ResolvedCapabilityV2 {
+  return composeCapability(composeBinding(modelEvidence, modelId)).resolvedCapability
 }
 export function isVerifiedGeminiInteractionsImageProviderBindingAuthorityV2(value: unknown): value is VerifiedGeminiInteractionsImageProviderBindingAuthorityV2 {
   return Boolean(value && typeof value === 'object' && bindings.has(value))
@@ -214,6 +233,11 @@ export function withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2<T>(in
   validateFacts(input.commandFacts, input.modelId)
   const binding = composeBinding(input.modelEvidence, input.modelId)
   const capability = composeCapability(binding)
+  validateSemanticIntentAgainstResolvedCapabilityV2(
+    capability.resolvedCapability,
+    input.commandFacts.semanticIntent,
+  )
+  assertExpectedCapabilityRevisionV2(capability.snapshot.revision.value)
   binding.assertCurrent(); capability.assertCurrent()
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
     preCommit: () => { binding.assertCurrent(); capability.assertCurrent(); validateFacts(input.commandFacts, input.modelId) },

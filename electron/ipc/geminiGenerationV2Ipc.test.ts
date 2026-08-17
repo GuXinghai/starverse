@@ -18,7 +18,7 @@ describe('Gemini GenerateContent V2 IPC', () => {
     })).toEqual([...GEMINI_GENERATION_V2_IPC_CHANNELS])
     const command = { operationId: 'operation:1', priorRequestSequence: 1, toolOutputs: [] }
     await handlers.get('generation-v2:gemini:generate-content:continue-tool')?.(
-      { sender: { send: vi.fn() } }, command,
+      { sender: { send: vi.fn() } }, { command, expectedCapabilityRevision: 'capability-v2:test' },
     )
     expect(runtime.continueTool).toHaveBeenCalledWith(command)
     expect(handlers.has('generation-v2:gemini:interactions-image:initial')).toBe(true)

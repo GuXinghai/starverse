@@ -166,6 +166,7 @@ const {
   modelCatalogNotice,
   modelPrefsScopeForUi,
   activeSessionGenerationParamsResolved,
+  activeSessionCapabilityProjection,
   activeSessionWebSearchResolved,
   openRouterImageEndpointSelection,
   openRouterImageEndpointSelectionLoading,
@@ -941,6 +942,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             :isSendPlanLoading="composerSendPlanLoading"
             :historyIncompatibleSummary="historyIncompatibleAttachmentSummary"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
+            :capabilityProjection="activeSessionCapabilityProjection"
             :googleAIStudioModelAvailability="googleAIStudioModelAvailabilityStatus"
             @updateReasoningEnabled="onUpdateReasoningEnabled"
             @updateReasoningEffort="onUpdateReasoningEffortLevel"
@@ -1001,6 +1003,7 @@ function formatRawProviderError(record: RawProviderErrorRecord): string {
             :modelCatalog="modelCatalogForPicker"
             :webSearchResolved="activeSessionWebSearchResolved"
             :generationParamsResolved="activeSessionGenerationParamsResolved"
+            :capabilityProjection="activeSessionCapabilityProjection"
             :openRouterImageEndpointSelection="openRouterImageEndpointSelection"
             :openRouterImageEndpointSelectionLoading="openRouterImageEndpointSelectionLoading"
             :openRouterImageEndpointSelectionError="openRouterImageEndpointSelectionError"

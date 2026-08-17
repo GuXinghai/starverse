@@ -32,6 +32,7 @@ import { registerLMStudioRuntimeManagementV2Ipc } from './lmStudioLocalProviderI
 import { registerOllamaRuntimeManagementV2Ipc } from './ollamaLocalProviderIpc'
 import { registerGenerationV2ModelPreferencesIpc } from './generationV2ModelPreferencesIpc'
 import { registerGenerationOperationRuntimeV2Ipc } from './generationOperationRuntimeV2Ipc'
+import { registerGenerationV2CapabilityIpc } from './generationV2CapabilityIpc'
 
 /**
  * Epoch-2 registration boundary for every reviewed generation runtime.
@@ -52,6 +53,7 @@ export function registerGenerationV2Ipc(input: Readonly<{
     fetchImpl: input.cloudFetch })
   const runtimeRegistry = new GenerationOperationRuntimeRegistryV2(input.epoch2.database)
   return Object.freeze([
+    ...registerGenerationV2CapabilityIpc({ registerInvoke: input.registerInvoke, epoch2: input.epoch2 }),
     ...registerGenerationOperationRuntimeV2Ipc({ registerInvoke: input.registerInvoke, runtimeRegistry }),
     ...registerGenerationV2WorkspaceIpc({ registerInvoke: input.registerInvoke, db: input.epoch2.database,
       runtimeRegistry }),

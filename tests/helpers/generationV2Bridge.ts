@@ -57,6 +57,20 @@ export function createGenerationV2TestBridge() {
     },
   })
   const ok = <T>(value: T) => ({ ok: true as const, value })
+  const credentialStatus = (profileId: string) => ({
+    ok: true as const,
+    status: {
+      configured: true,
+      credentialRevision: 1,
+      credentialScopeId: `credential-scope:${profileId}`,
+      profileId,
+    },
+  })
+  const credentialBridge = (profileId: string) => ({
+    getStatus: vi.fn(async () => credentialStatus(profileId)),
+    update: vi.fn(async () => credentialStatus(profileId)),
+    clear: vi.fn(async () => ({ ok: true as const })),
+  })
   const replaceDraft = (input: any) => {
     draft = {
       ...draft,
@@ -83,6 +97,55 @@ export function createGenerationV2TestBridge() {
     lmStudio: { openResponses: createGenerationV2CommandBridgeMock() },
     genericLocal: { openAIChatCompletions: createGenerationV2CommandBridgeMock() },
     ollama: { chat: createGenerationV2CommandBridgeMock() },
+    capabilities: {
+      resolve: vi.fn(async (request: any) => ({
+        ok: true,
+        value: {
+          resolvedCapability: {
+            schemaVersion: 1,
+            binding: {
+              providerId: request.providerId,
+              credentialScopeId: request.credentialScopeId,
+              endpointProfileId: request.endpointProfileId,
+              protocolContractId: request.protocolId,
+              modelId: request.modelId,
+              operation: request.operation,
+            },
+            evidence: [],
+            fields: [],
+            continuation: { kind: 'unavailable', evidenceIds: [] },
+            evidenceDigest: 'a'.repeat(64),
+            semanticFieldsDigest: 'b'.repeat(64),
+            capabilityRevision: 'capability-v2:test',
+            implementationCeiling: {
+              protocolContractId: request.protocolId,
+              contractRevision: 'contract:test',
+              registryRevision: 'registry:test',
+              semanticPaths: [],
+            },
+          },
+          controlsProjection: {
+            schemaVersion: 1,
+            binding: {
+              providerId: request.providerId,
+              endpointProfileId: request.endpointProfileId,
+              protocolContractId: request.protocolId,
+              modelId: request.modelId,
+              operation: request.operation,
+            },
+            capabilityRevision: 'capability-v2:test',
+            controls: {},
+          },
+        },
+      })),
+    },
+    credentials: {
+      openRouter: credentialBridge('openrouter-first-party-v1'),
+      openAIResponses: credentialBridge('openai-responses-v1'),
+      googleAIStudio: credentialBridge('google-ai-studio-v1'),
+      anthropic: credentialBridge('anthropic-messages-v1'),
+      deepSeek: credentialBridge('deepseek-stable-v1'),
+    },
     localRuntime: {
       lmStudio: {
         probe: vi.fn(async () => ({ ok: false, code: 'GENERATION_V2_TEST_LOCAL_RUNTIME_NOT_CONFIGURED' })),

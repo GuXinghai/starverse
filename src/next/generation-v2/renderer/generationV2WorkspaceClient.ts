@@ -32,7 +32,7 @@ export type GenerationV2BranchView = Readonly<{ branchId: string; conversationId
       body: string; createdAtMs: number; updatedAtMs: number; chosen: boolean; operationId: string; actionKind: string;
       providerId: GenerationExecutionProviderId; modelId: string; errorCode: string|null; errorMessage: string|null;
       errorFact?: ProviderFailureV2 | null;
-      endpointProfileId:string; protocolContractId:string;
+      endpointProfileId:string; protocolContractId:string; capabilityRevision:string;
       reasoningDetails:readonly Readonly<Record<string,unknown>>[];
       attachments:readonly (Readonly<{kind:'managed_file';assetId:string;assetRevisionId:string;assetSha256:string;include:boolean;
         sendAs:'provider_file'|'inline_text'|'image_reference'|'converted_document';conversion:'none'|'pdf'|'plain_text'|'images';
@@ -124,7 +124,7 @@ export async function listGenerationV2OpenRouterModels():Promise<GenerationV2Ope
   return await value.listOpenRouter() as GenerationV2OpenRouterModelCatalogResult
 }
 export async function createGenerationV2LocalProfile(payload:Readonly<{providerId:LocalEndpointExecutionProviderId;
-  protocolContractId:GenerationV2LocalEndpointProfile['protocolContractId'];baseUrl:string;protocolConfig?:Readonly<Record<string,unknown>>}>) {
+  protocolContractId:GenerationV2LocalEndpointProfile['protocolContractId'];baseUrl:string;protocolConfig:Readonly<Record<string,unknown>>}>) {
   const value = window.generationV2?.localProfiles
   if (!value) throw new Error('GENERATION_V2_LOCAL_PROFILE_BRIDGE_UNAVAILABLE')
   return unwrap<GenerationV2LocalEndpointProfile>(await value.create(payload))

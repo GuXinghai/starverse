@@ -30,15 +30,16 @@ import { compileOpenAIChatCompatiblePreparedRequestV2 } from './openAIChatCompat
 import { commitOpenAIChatCompatibleCurrentSnapshotV2, commitOpenAIChatCompatibleRetrySnapshotV2 } from './openAIChatCompatibleSnapshotCommitV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { assertOpenAICompatibleTransportPolicyV2 } from './openAICompatibleNetworkV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 
 type Current = OpenAIChatCompatibleInitialCommandV2 | OpenAIChatCompatibleRegenerateCommandV2 | OpenAIChatCompatibleEditResendCommandV2
 type CredentialService = ReturnType<typeof createOpenAICompatibleCredentialV2Service>
 type CredentialFact = Readonly<{ credentialScopeId: CredentialScopeIdV2; credentialRevision: number }>
 
-function unauthenticatedScope(endpointDigest: string): CredentialScopeIdV2 {
+export function openAICompatibleUnauthenticatedCredentialScopeV2(endpointDigest: string): CredentialScopeIdV2 {
   return `credential-scope-v2:${createHash('sha256').update(`openai-chat-compatible:none:${endpointDigest}`, 'utf8').digest('hex')}` as CredentialScopeIdV2
 }
-function mappedReasoningSources(configuration: ReturnType<OpenAICompatibleV2Repo['getActiveConfiguration']>): readonly ('reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget')[] {
+export function mappedReasoningSources(configuration: ReturnType<OpenAICompatibleV2Repo['getActiveConfiguration']>): readonly ('reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget')[] {
   const permitted = new Set(['reasoning_enabled', 'reasoning_effort', 'reasoning_budget'])
   return Object.freeze(configuration.requestMappings.map((entry) => (entry.payload as { sourceField?: unknown }).sourceField)
     .filter((source): source is 'reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget' => typeof source === 'string' && permitted.has(source)))
@@ -61,7 +62,7 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
 
   async function credentialFact(providerInstanceId: string, endpoint: { auth: unknown; endpointDigest: string }): Promise<CredentialFact> {
     const auth = endpoint.auth as { mode?: unknown; credentialVersionRef?: unknown }
-    if (auth.mode === 'none') return Object.freeze({ credentialScopeId: unauthenticatedScope(endpoint.endpointDigest), credentialRevision: 1 })
+    if (auth.mode === 'none') return Object.freeze({ credentialScopeId: openAICompatibleUnauthenticatedCredentialScopeV2(endpoint.endpointDigest), credentialRevision: 1 })
     if ((auth.mode !== 'bearer' && auth.mode !== 'basic' && auth.mode !== 'custom_headers') || typeof auth.credentialVersionRef !== 'string') {
       throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_INVALID')
     }
@@ -82,6 +83,7 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
     const found = execution.findOperation(command.operationId.value); if (!found) return null
     if (found.operation.actionKind !== action || found.operation.commandFingerprint !== command.requestFingerprint ||
         found.snapshot.providerBinding.protocolContractId.value !== 'openai_chat_compatible') throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
+    assertExpectedCapabilityRevisionV2(found.capability.revision.value)
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const bundle = execution.findOperationInTransaction(context, command.operationId.value)!; const preparedRequest = compile(context, bundle)
       const projection = action === 'initial_send' ? graph.getInitialSendReplayProjectionInTransaction(context, command.operationId.value)
@@ -118,6 +120,7 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
         )
         const raced = execution.findOperationInTransaction(context, command.operationId.value)
         if (raced) { if (raced.operation.commandFingerprint !== command.requestFingerprint) throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
+          assertExpectedCapabilityRevisionV2(raced.capability.revision.value)
           const preparedRequest = compile(context, raced); const projection = action === 'initial_send'
             ? graph.getInitialSendReplayProjectionInTransaction(context, command.operationId.value)
             : graph.getGenerationReplayProjectionInTransaction(context, command.operationId.value)
@@ -129,7 +132,9 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
             const binding = createOpenAIChatCompatibleProviderBindingV2({ provider: currentDetails, endpoint: currentEndpoint,
               credentialScopeId: credential.credentialScopeId, modelId: command.modelId.value })
             const capability = composeOpenAIChatCompatibleBaselineCapabilityV2({ binding, resolvedAt: new Date(pending.createdAtMs).toISOString(),
+              credentialRevision: credential.credentialRevision,
               mappedReasoningSourceFields: mappedReasoningSources(currentConfiguration) })
+            assertExpectedCapabilityRevisionV2(capability.revision.value)
             const persisted = commitOpenAIChatCompatibleCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,
               pending, command, commandFacts: facts, provider: currentDetails, endpoint: currentEndpoint,
               configuration: currentConfiguration, credentialScopeId: credential.credentialScopeId,
@@ -165,6 +170,7 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
         if (!target || target.operation.questionId.value !== command.questionId.value || target.snapshot.providerBinding.protocolContractId.value !== 'openai_chat_compatible') {
           throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_RETRY_TARGET_INVALID')
         }
+        assertExpectedCapabilityRevisionV2(target.capability.revision.value)
         const pending = graph.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: command.actionKind,
           sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
           expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: nowMs() })

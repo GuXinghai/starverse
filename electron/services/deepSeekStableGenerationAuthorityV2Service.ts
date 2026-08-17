@@ -1,11 +1,18 @@
 import {
-  canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
   type DecodedRuntimeCapabilitySnapshotV2,
   type PersistedRuntimeCapabilityFieldV2,
   type PersistedRuntimeCapabilitySnapshotV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
-import { assertActiveCatalogOptionalCapabilitiesV2, isActiveCatalogModelAuthorityV2,
+import {
+  canonicalizeResolvedCapabilityV2,
+  runtimeSnapshotRecordFromResolvedCapabilityV2,
+  validateSemanticIntentAgainstResolvedCapabilityV2,
+  type ResolvedCapabilityV2,
+} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import {
   isReviewedProviderContractDefinitionV2,
@@ -68,6 +75,7 @@ export type VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2 = Readonly<{
   usage: 'snapshot_commit_input_only'
   executionAuthority: 'none'
   bindingAuthority: VerifiedDeepSeekStableProviderBindingAuthorityV2
+  resolvedCapability: ResolvedCapabilityV2
   record: PersistedRuntimeCapabilitySnapshotV2
   snapshot: DecodedRuntimeCapabilitySnapshotV2
   policyDigest: GenerationV2Digest<'evidence_digest'>
@@ -231,7 +239,7 @@ function validateIntentSubset(
         'GENERATION_V2_DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD',
       )
     }
-    if (field.state === 'unavailable') {
+    if (field.state === 'missing' || field.state === 'unknown') {
       throw new DeepSeekStableGenerationAuthorityV2Error(
         'GENERATION_V2_DEEPSEEK_FIELD_CAPABILITY_UNAVAILABLE',
       )
@@ -262,7 +270,7 @@ function validateIntentSubset(
 
 function composeBindingAuthority(input: Readonly<{
   modelEvidence: ActiveCatalogModelAuthorityV2
-  commandFacts: GenerationCommandFactsAuthorityV2
+  commandFacts?: GenerationCommandFactsAuthorityV2
   operation: 'text'
 }>): VerifiedDeepSeekStableProviderBindingAuthorityV2 {
   const profile = readVerifiedDeepSeekStableEndpointProfileV2()
@@ -358,19 +366,19 @@ function buildRuntimeEvidence(
     sourceRef: modelEvidence.modelsResponseRevision,
     verifiedAt: new Date(modelEvidence.observedAtMs).toISOString(),
     contentDigest: readGenerationV2Digest(modelEvidence.modelsResponseDigest, 'evidence_digest'),
+  }), credentialRevisionEvidenceV2({
+    credentialRevision: modelEvidence.credentialRevision,
+    verifiedAt: new Date(modelEvidence.observedAtMs).toISOString(),
   })])
 }
 
 function buildField(
   rule: DeepSeekStableCapabilityRuleV2,
-  toolsEnabled: boolean,
+  _toolsEnabled: boolean,
   toolEvidenceId: string,
 ): PersistedRuntimeCapabilityFieldV2 {
   if (rule.path === 'tools.allowedToolIds' || rule.path === 'tools.sideEffectConfirmation' ||
       rule.path === 'tools.toolChoice') {
-    if (!toolsEnabled) {
-      return Object.freeze({ path: rule.path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
-    }
     if (rule.path === 'tools.allowedToolIds') return Object.freeze({
       path: rule.path, state: 'supported', domain: Object.freeze({ kind: 'identity_list' as const, maxItems: 128 }),
       constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId(toolEvidenceId, 'supports')]),
@@ -390,13 +398,13 @@ function buildField(
     return Object.freeze({
       path: rule.path,
       state: 'supported',
-      domain: Object.freeze({ kind: 'enum', values: Object.freeze(toolsEnabled ? ['disabled', 'enabled'] : ['disabled']) }),
+      domain: Object.freeze({ kind: 'enum', values: Object.freeze(['disabled', 'enabled']) }),
       constraints: Object.freeze([]),
       evidenceIds: Object.freeze([evidenceId(rule.evidenceId!, 'supports')]),
     })
   }
   if (rule.kind === 'unavailable_pending_authority' || rule.kind === 'requires_tool_registry_authority') {
-    return Object.freeze({ path: rule.path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
+    return Object.freeze({ path: rule.path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
   }
   if (rule.kind === 'unsupported') {
     return Object.freeze({
@@ -416,7 +424,7 @@ function buildField(
     })
   }
   if (rule.kind === 'supported_conditional_tool_choice') {
-    return Object.freeze({ path: rule.path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
+    return Object.freeze({ path: rule.path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
   }
   if (!rule.domain || !rule.evidenceId) {
     throw new DeepSeekStableGenerationAuthorityV2Error(
@@ -440,7 +448,7 @@ function buildField(
 function composeCapabilityAuthority(input: Readonly<{
   bindingAuthority: VerifiedDeepSeekStableProviderBindingAuthorityV2
   modelEvidence: ActiveCatalogModelAuthorityV2
-  commandFacts: GenerationCommandFactsAuthorityV2
+  commandFacts?: GenerationCommandFactsAuthorityV2
   policy: VerifiedDeepSeekStableCapabilityPolicyV2
   fields: readonly PersistedRuntimeCapabilityFieldV2[]
   resolvedAt: string
@@ -452,13 +460,20 @@ function composeCapabilityAuthority(input: Readonly<{
     DEEPSEEK_STABLE_OWNER_CAPABILITY_POLICY_EVIDENCE_ID_V2,
     'supports',
   )
-  const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
-    schemaVersion: 2,
+  const continuation = {
+      ...input.policy.continuation,
+      evidenceIds: [continuationSupports],
+    }
+  const resolvedCapability = canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(input.modelEvidence),
-    resolvedAt: input.resolvedAt,
     binding: projectDecodedProviderBindingRecordV2(input.bindingAuthority.binding),
     evidence,
     fields: input.fields,
+    continuation,
+  })
+  const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
+    capability: resolvedCapability,
+    resolvedAt: input.resolvedAt,
     tools: input.toolRegistry?.selectedDefinitions.map((tool) => ({
       toolId: tool.toolId,
       kind: tool.kind,
@@ -467,10 +482,6 @@ function composeCapabilityAuthority(input: Readonly<{
       evidenceIds: [evidenceId(DEEPSEEK_STABLE_OWNER_CAPABILITY_POLICY_EVIDENCE_ID_V2,
         tool.sideEffectPolicy === 'none' ? 'supports' : 'requires_confirmation')],
     })) ?? [],
-    continuation: {
-      ...input.policy.continuation,
-      evidenceIds: [continuationSupports],
-    },
   })
   const snapshot = decodeRuntimeCapabilitySnapshotV2(record)
   if (stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(snapshot.binding)) !==
@@ -487,6 +498,7 @@ function composeCapabilityAuthority(input: Readonly<{
     usage: 'snapshot_commit_input_only',
     executionAuthority: 'none',
     bindingAuthority: input.bindingAuthority,
+    resolvedCapability,
     record,
     snapshot,
     policyDigest: input.policy.policyDigest,
@@ -517,6 +529,28 @@ export function readVerifiedDeepSeekStableProviderBindingRecordV2(
   return projectDecodedProviderBindingRecordV2(authority.binding)
 }
 
+/** Resolve the reviewed DeepSeek capability without importing command facts.
+ * The live /models observation supplies model membership and provenance; the
+ * protocol policy and codec ceiling supply the semantic field domain. */
+export function resolveDeepSeekStableCapabilityV2(
+  modelEvidence: ActiveCatalogModelAuthorityV2,
+): ResolvedCapabilityV2 {
+  const policy = readVerifiedDeepSeekStableCapabilityPolicyV2()
+  const toolEvidenceId = policy.rules.find((rule) => rule.path === 'tools.mode')?.evidenceId
+  if (!toolEvidenceId) {
+    throw new DeepSeekStableGenerationAuthorityV2Error('GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID')
+  }
+  const binding = composeBindingAuthority({ modelEvidence, operation: 'text' })
+  return composeCapabilityAuthority({
+    bindingAuthority: binding,
+    modelEvidence,
+    policy,
+    fields: Object.freeze(policy.rules.map((rule) => buildField(rule, false, toolEvidenceId))),
+    resolvedAt: new Date(Math.max(Date.now(), modelEvidence.observedAtMs)).toISOString(),
+    toolRegistry: null,
+  }).resolvedCapability
+}
+
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
   return Boolean(value && (typeof value === 'object' || typeof value === 'function') &&
     typeof (value as { then?: unknown }).then === 'function')
@@ -535,7 +569,6 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
 }>): T {
   const policy = readVerifiedDeepSeekStableCapabilityPolicyV2()
   requireCompleteBrandedInputs(input.modelEvidence, input.commandFacts, policy)
-  assertActiveCatalogOptionalCapabilitiesV2(input.modelEvidence, input.commandFacts.semanticIntent)
   if (!isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context)) {
     throw new DeepSeekStableGenerationAuthorityV2Error(
       'GENERATION_V2_DEEPSEEK_GENERATION_AUTHORITY_INVALID',
@@ -590,6 +623,11 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
       resolvedAt,
       toolRegistry,
     })
+    validateSemanticIntentAgainstResolvedCapabilityV2(
+      capability.resolvedCapability,
+      input.commandFacts.semanticIntent,
+    )
+    assertExpectedCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => {
       if (capability) capabilityAuthorities.delete(capability)
       if (binding) bindingAuthorities.delete(binding)

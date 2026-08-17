@@ -23,6 +23,7 @@ import { compileLmStudioOpenResponsesPreparedRequestV2 } from './lmStudioOpenRes
 import { commitLmStudioCurrentSnapshotV2, commitLmStudioRetrySnapshotV2 } from './lmStudioPlainTextSnapshotCommitV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { loadGenerationSnapshotToolRegistryAuthorityV2, resolveGenerationToolRegistryAuthorityV2 } from './generationToolRegistryAuthorityV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 
 type CurrentCommand = LmStudioPlainTextInitialCommandV2 | LmStudioPlainTextRegenerateCommandV2 | LmStudioPlainTextEditResendCommandV2
 export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readonly<{
@@ -50,6 +51,7 @@ export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readon
         observed.snapshot.providerBinding.protocolContractId.value !== 'lmstudio-openresponses') {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
     }
+    assertExpectedCapabilityRevisionV2(observed.capability.revision.value)
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
       const bundle = execution.findOperationInTransaction(context, command.operationId.value)
       if (!bundle) throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
@@ -92,8 +94,10 @@ export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readon
         const providerBinding = createLmStudioOpenResponsesProviderBindingV2(profile, command.modelId.value)
         const capability = composeLmStudioOpenResponsesBaselineCapabilityV2({
           binding: providerBinding, resolvedAt: new Date(at).toISOString(),
+          credentialRevision: profile.revisionGeneration,
           selectedTools: toolRegistry?.selectedDefinitions,
         })
+        assertExpectedCapabilityRevisionV2(capability.revision.value)
         const persisted = commitLmStudioCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,
           pending, command, commandFacts: facts, profile, capability, toolRegistry })
         if (command.kind === 'lmstudio_plain_text_initial') {
@@ -129,6 +133,8 @@ export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readon
       const profile = profiles.get(target.snapshot.providerBinding.endpointProfileId.value)
       if (profile.profileRevision !== (target.snapshot.providerBinding.endpointBinding.kind === 'provider_managed_set'
         ? target.snapshot.providerBinding.endpointBinding.endpointSetRevision.value : '')) throw new Error('GENERATION_V2_LMSTUDIO_PROFILE_STALE')
+      if (profile.protocolConfig.modelId !== target.snapshot.providerBinding.modelId.value) throw new Error('GENERATION_V2_LMSTUDIO_PROFILE_MODEL_STALE')
+      assertExpectedCapabilityRevisionV2(target.capability.revision.value)
       const pending = graph.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: command.actionKind,
         sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
         expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: nowMs() })

@@ -35,6 +35,7 @@ import {
   readVerifiedDeepSeekStableEndpointProfileV2,
 } from '../../src/next/generation-v2/providers/deepseek/stableEndpointProfileV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
@@ -79,6 +80,7 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
   const toolRegistry = input.toolRegistry ?? null
   if (!['initial_send', 'edit_resend', 'regenerate_question', 'retry_as_new', 'retry_replace']
         .includes(operation.actionKind) ||

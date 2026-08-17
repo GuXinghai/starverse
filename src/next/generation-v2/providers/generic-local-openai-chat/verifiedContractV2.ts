@@ -14,6 +14,9 @@ export function readGenericLocalOpenAIChatEndpointV2(profile: LocalEndpointProfi
 }
 export function createGenericLocalOpenAIChatProviderBindingV2(profile: LocalEndpointProfileV2, modelId: string): DecodedProviderBindingRecordV2 {
   readGenericLocalOpenAIChatEndpointV2(profile)
+  if (profile.protocolConfig.modelId !== modelId) {
+    throw new Error('GENERATION_V2_GENERIC_LOCAL_PROFILE_MODEL_MISMATCH')
+  }
   return decodeProviderBindingRecordV2({ credentialScopeId: profile.credentialScopeId, providerId: 'generic_local',
     endpointProfileId: profile.endpointProfileId, endpointBinding: { kind: 'provider_managed_set', endpointSetRevision: profile.profileRevision,
       descriptors: [{ endpointId: profile.endpointProfileId, descriptorRevision: profile.profileRevision }] },

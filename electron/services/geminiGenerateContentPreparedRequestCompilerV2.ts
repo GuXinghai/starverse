@@ -30,6 +30,7 @@ import {
   type ToolRegistryRepositoryFactV2,
 } from '../../infra/db/repo/toolRegistryV2Repo'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import {
   hasReviewedGeminiGenerateContentReasoningWebCapabilityV2,
   hasReviewedGeminiGenerateContentToolCapabilityV2,
@@ -69,6 +70,7 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
     throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
   const toolRegistry = input.toolRegistry ?? null
   const binding = snapshot.providerBinding
   const profile = readVerifiedGeminiDeveloperApiEndpointProfileV2()

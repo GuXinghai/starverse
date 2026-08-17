@@ -18,7 +18,9 @@ describe('OpenAI-compatible Generation V2 IPC', () => {
     expect(registerOpenAICompatibleGenerationV2Ipc({ registerInvoke: (channel, handler) => handlers.set(channel, handler as never),
       createRuntime: (issuedSink) => { sink = issuedSink; return runtime as never } })).toEqual([...OPENAI_COMPATIBLE_GENERATION_V2_IPC_CHANNELS])
     const sender = { send: vi.fn() }
-    await expect(handlers.get('generation-v2:openai-compatible:initial')?.({ sender }, { operationId: 'operation:1' })).resolves.toMatchObject({
+    await expect(handlers.get('generation-v2:openai-compatible:initial')?.({ sender }, {
+      command: { operationId: 'operation:1' }, expectedCapabilityRevision: 'capability-v2:test',
+    })).resolves.toMatchObject({
       ok: true, operationId: 'operation:1', answerRootId: 'answer:1', branch: { chosenAnswerRootId: 'answer:1', headMessageId: 'answer:1' },
     })
     expect(runtime.submitInitial).toHaveBeenCalledWith({ operationId: 'operation:1' })
@@ -31,7 +33,13 @@ describe('OpenAI-compatible Generation V2 IPC', () => {
   it('rejects malformed renderer payloads before dispatch', async () => {
     const handlers = new Map<string, (...args: unknown[]) => unknown>(); const runtime = { submitInitial: vi.fn(), retry: vi.fn(), regenerate: vi.fn(), editResend: vi.fn(), abort: vi.fn() }
     registerOpenAICompatibleGenerationV2Ipc({ registerInvoke: (channel, handler) => handlers.set(channel, handler as never), createRuntime: () => runtime as never })
-    await expect(handlers.get('generation-v2:openai-compatible:initial')?.({ sender: { send: vi.fn() } }, { operationId: ' whitespace ' }))
+    await expect(handlers.get('generation-v2:openai-compatible:initial')?.({ sender: { send: vi.fn() } }, {
+      command: { operationId: ' whitespace ' }, expectedCapabilityRevision: 'capability-v2:test',
+    }))
+      .resolves.toEqual({ ok: false, code: 'GENERATION_V2_OPENAI_COMPATIBLE_IPC_INVALID_PAYLOAD' })
+    await expect(handlers.get('generation-v2:openai-compatible:initial')?.({ sender: { send: vi.fn() } }, {
+      command: { operationId: 'operation:1' },
+    }))
       .resolves.toEqual({ ok: false, code: 'GENERATION_V2_OPENAI_COMPATIBLE_IPC_INVALID_PAYLOAD' })
     expect(runtime.submitInitial).not.toHaveBeenCalled()
   })

@@ -11,6 +11,7 @@ import {
 } from '../../infra/db/repo/anthropicNativeHistoryV2Repo'
 import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFactV2 } from '../../infra/db/repo/toolRegistryV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import {
   issuePreparedProviderRequestV2,
   createPreparedAttachmentRequirementsV2,
@@ -132,6 +133,7 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
   }
 
   const { operation, snapshot, capability } = input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
   const tools = snapshot.semanticIntent.tools ?? { mode: 'disabled' as const }
   if (tools.mode === 'enabled') {
     if (!input.toolRegistry || snapshot.toolAuthority.kind !== 'registry' ||

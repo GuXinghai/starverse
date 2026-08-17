@@ -985,6 +985,9 @@ type OpenRouterImageGenerationV2Bridge = GenerationV2TextBridge & Readonly<{
 // Used in Renderer process, expose in `preload.ts`
 interface Window {
   generationV2?: Readonly<{
+    capabilities: Readonly<{
+      resolve: (payload: unknown) => Promise<unknown>
+    }>
     runtime: Readonly<{
       subscribe: () => Promise<unknown>
       snapshot: (operationId?: string | null) => Promise<unknown>
@@ -1121,7 +1124,7 @@ interface Window {
     localProfiles: Readonly<{
       list: () => Promise<unknown>
       create: (payload: Readonly<{ providerId: GenerationV2LocalEndpointExecutionProviderId;
-        protocolContractId: GenerationV2LocalEndpointProtocol; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => Promise<unknown>
+        protocolContractId: GenerationV2LocalEndpointProtocol; baseUrl: string; protocolConfig: Readonly<Record<string, unknown>> }>) => Promise<unknown>
       delete: (endpointProfileId: string) => Promise<unknown>
     }>
     lmStudio: Readonly<{ openResponses: GenerationV2TextBridge }>

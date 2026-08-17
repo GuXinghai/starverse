@@ -55,8 +55,11 @@ function protocolConfig(providerId: string, value: unknown): Readonly<Record<str
   if (!value || typeof value !== 'object' || Array.isArray(value) || Object.getPrototypeOf(value) !== Object.prototype) throw new LocalEndpointProfileV2RepoError('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
   const input = value as Record<string, unknown>
   if (providerId !== 'ollama') {
-    if (Object.keys(input).length !== 0) throw new LocalEndpointProfileV2RepoError('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
-    return Object.freeze({})
+    if (Object.keys(input).length !== 1 || typeof input.modelId !== 'string' ||
+        input.modelId.length === 0 || input.modelId.length > 512 || input.modelId.trim() !== input.modelId) {
+      throw new LocalEndpointProfileV2RepoError('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
+    }
+    return Object.freeze({ modelId: input.modelId })
   }
   if (Object.keys(input).sort().join('\0') !== 'modelId\0thinkingControl\0tools' || typeof input.modelId !== 'string' ||
       input.modelId.length === 0 || input.modelId.length > 512 || input.modelId.trim() !== input.modelId ||
@@ -107,11 +110,11 @@ function decode(row: Row): LocalEndpointProfileV2 {
 export class LocalEndpointProfileV2Repo {
   constructor(private readonly db: BetterSqlite3.Database, private readonly nowMs: () => number = Date.now) {}
   create(input: Readonly<{ endpointProfileId: string; providerId: LocalEndpointExecutionProviderId;
-    protocolContractId: LocalEndpointProtocolV2; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>): LocalEndpointProfileV2 {
+    protocolContractId: LocalEndpointProtocolV2; baseUrl: string; protocolConfig: Readonly<Record<string, unknown>> }>): LocalEndpointProfileV2 {
     GenerationV2Identity.create('endpoint_profile_id', input.endpointProfileId)
     if (!isLocalEndpointProtocolCompatible(input.providerId, input.protocolContractId)) throw new LocalEndpointProfileV2RepoError('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
     const url = baseUrl(input.baseUrl, input.providerId)
-    const config = protocolConfig(input.providerId, input.protocolConfig ?? {})
+    const config = protocolConfig(input.providerId, input.protocolConfig)
     const configJson = stableSerializeProviderRequestV2(config)
     const digest = digestProjection(input.providerId, input.protocolContractId, url, config)
     const at = this.nowMs()

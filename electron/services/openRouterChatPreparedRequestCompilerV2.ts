@@ -14,6 +14,7 @@ import {
   type ToolRegistryRepositoryFactV2,
 } from '../../infra/db/repo/toolRegistryV2Repo'
 import { createSemanticConsumptionLedgerV2, type SemanticConsumptionLedgerEntryV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
   createPreparedAttachmentRequirementsV2,
@@ -58,6 +59,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
     throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
   if (!['initial_send', 'edit_resend', 'regenerate_question', 'retry_as_new', 'retry_replace'].includes(operation.actionKind) ||
       operation.operationId.value !== input.history.operationId.value || operation.targetAnswerId.value !== input.history.answerRootId.value ||
       !Number.isSafeInteger(input.history.requestSequence) || input.history.requestSequence < 1) {

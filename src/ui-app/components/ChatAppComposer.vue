@@ -7,7 +7,6 @@ import type { ChatSessionConfig, ChatSessionConfigAspectRatio, ChatSessionConfig
   ChatSessionConfigReasoningEffort } from '../app/chatSessionConfig'
 import type { ProviderModelPickerSource } from '../app/providerModelPickerViewModel'
 import type { GenerationParamsLayer, ResolvedGenerationParams } from '@/next/generation-params/generationParamTypes'
-import { getDefaultGenerationParamProfile, getSelectableReasoningEfforts } from '@/next/generation-params/generationParamProfiles'
 import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
@@ -18,21 +17,17 @@ import { createProviderModelRouteSelection, type ConversationRouteSelection } fr
 import { catalogModelSelectionCommandV2ForApp } from '@/next/modelCatalog/catalogRuntimeStoreV2'
 import { GOOGLE_AI_STUDIO_PROVIDER_KEY, type GeminiModelAvailabilityResult } from '@/next/provider/gemini/geminiModelSource'
 import {
-  isGeminiThinkingBudgetValid,
-  normalizeGeminiThinkingModelId,
-  resolveGeminiThinkingCapability,
   type GeminiThinkingLevel,
 } from '@/next/provider/gemini/geminiThinkingPolicy'
 import {
-  isKnownGeminiImageGenerationModel,
-  resolveGeminiImageGenerationPolicy,
-} from '@/next/provider/gemini/geminiImageGenerationPolicy'
+  isProjectedGeminiImageModelV2,
+  isProjectedGeminiThinkingBudgetValid,
+  projectGeminiImageGenerationPolicyV2,
+  projectGeminiThinkingCapabilityV2,
+} from '../app/generationV2CapabilityUiProjection'
 import { OPENAI_RESPONSES_PROVIDER_KEY } from '@/next/provider/openai-responses/openAIResponsesModelSource'
 import {
-  OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS,
   formatOpenAIResponsesAutoReasoningLabel,
-  getOpenAIResponsesReasoningEffortOptions,
-  hasExplicitOpenAIResponsesReasoningEffort,
   type OpenAIResponsesReasoningEffortSetting,
   type OpenAIResponsesReasoningSummarySetting,
 } from '@/next/provider/openai-responses/openaiResponsesReasoningPolicy'
@@ -42,7 +37,7 @@ import { formatModelIndicatorName } from './modelIndicatorName'
 import { t, tf } from '@/shared/i18n'
 import { createCompatibleCatalogClient } from '@/next/modelCatalog/compatibleCatalogClient'
 import { createCompatibleProviderRegistryClient, createCompatibleRouteIntent, type CompatibleRoutePickerSource } from '@/next/provider/openai-chat-compatible/ui'
-import { DEEPSEEK_SELECTABLE_REASONING_EFFORTS } from '@/next/provider/deepseek/deepSeekReasoningPolicy'
+import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
 
 const props = defineProps<{
   draft: string
@@ -74,6 +69,7 @@ const props = defineProps<{
   maxRecentModels?: number | string | null
   generationParamsResolved?: ResolvedGenerationParams | null
   googleAIStudioModelAvailability?: Readonly<{ result: GeminiModelAvailabilityResult | null }> | null
+  capabilityProjection?: GenerationControlsProjectionV2 | null
 }>()
 const appIdentity = getCurrentInstance()?.appContext.app ?? null
 type ProviderModelRef = Readonly<{ providerId: RuntimeProviderId; modelId: string }>
@@ -369,29 +365,14 @@ const selectedModelSelection = computed<ProviderModelRef | null>(() => selectedP
 const isGoogleAIStudioSelected = computed(() => selectedProvider.value === GOOGLE_AI_STUDIO_PROVIDER_KEY)
 const isOpenAIResponsesSelected = computed(() => selectedProvider.value === OPENAI_RESPONSES_PROVIDER_KEY)
 const genericReasoningEffortOptions = computed<readonly ChatSessionConfigReasoningEffort[]>(() => {
-  if (!selectedProvider.value) return Object.freeze([])
-  if (selectedProvider.value === 'deepseek') return DEEPSEEK_SELECTABLE_REASONING_EFFORTS
-  const profile = getDefaultGenerationParamProfile(selectedProvider.value, {
-    requestKind: selectedProvider.value === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
-      isKnownGeminiImageGenerationModel(selectedModel.value) ? 'image_generation' : 'text',
-  })
-  return getSelectableReasoningEfforts(profile, selectedModel.value, {
-    geminiThinkingCapability: isGoogleAIStudioSelected.value ? googleThinkingCapability.value : undefined,
-  })
-    .filter((effort): effort is ChatSessionConfigReasoningEffort => effort !== 'none')
+  const field = props.capabilityProjection?.controls['reasoning.effort']
+  if (!field || field.state !== 'supported' || field.domain?.kind !== 'enum') return Object.freeze([])
+  return Object.freeze(field.domain.values.filter((effort): effort is ChatSessionConfigReasoningEffort =>
+    typeof effort === 'string' && effort !== 'none' && effort !== 'auto'))
 })
-const googleImageGenerationPolicy = computed(() => resolveGeminiImageGenerationPolicy(selectedModel.value))
-const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isKnownGeminiImageGenerationModel(selectedModel.value))
-const googleThinkingCapability = computed(() => {
-  const result = props.googleAIStudioModelAvailability?.result
-  const model = result?.ok ? result.models.find((candidate) => normalizeGeminiThinkingModelId(candidate.nativeModelId) === normalizeGeminiThinkingModelId(selectedModel.value)) : undefined
-  return resolveGeminiThinkingCapability({
-    model: selectedModel.value,
-    thinking: model?.providerSpecific?.thinkingRawValue,
-    thinkingOwnProperty: model?.providerSpecific?.thinkingOwnProperty ?? false,
-    supportedGenerationMethods: model?.providerSpecific?.supportedGenerationMethods,
-  })
-})
+const googleImageGenerationPolicy = computed(() => projectGeminiImageGenerationPolicyV2(props.capabilityProjection))
+const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isProjectedGeminiImageModelV2(props.capabilityProjection))
+const googleThinkingCapability = computed(() => projectGeminiThinkingCapabilityV2(props.capabilityProjection, selectedModel.value))
 function customGoogleGenerationParamValue(key: 'thinkingBudget' | 'thinkingLevel' | 'includeThoughts' | 'thoughtSummaryMode'): unknown {
   const setting = resolvedSessionConfig.value.generationParams.detail?.[key]
   if (setting?.mode === 'custom') return setting.value
@@ -415,7 +396,8 @@ const googleThinkingConfig = computed(() => {
   }
 })
 const googleThinkingEnabled = computed(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.kind !== 'legacy_nano_banana'
+  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportsThoughtSummaries ||
+    googleImageGenerationPolicy.value.thinkingLevels.length > 0
   return googleThinkingCapability.value.kind === 'level' || googleThinkingCapability.value.kind === 'budget'
 })
 const googleThinkingLevelSelection = computed(() => {
@@ -432,13 +414,13 @@ const googleThinkingBudgetMode = computed(() => {
   if (setting?.mode !== 'custom' || typeof setting.value !== 'number') return 'default'
   if (setting.value === -1) return 'dynamic'
   if (setting.value === 0 && capability.allowOff) return 'off'
-  return isGeminiThinkingBudgetValid(capability, setting.value) ? 'fixed' : 'default'
+  return isProjectedGeminiThinkingBudgetValid(capability, setting.value) ? 'fixed' : 'default'
 })
 const googleThinkingBudgetInput = computed(() => {
   const capability = googleThinkingCapability.value
   const setting = resolvedSessionConfig.value.generationParams.detail?.thinkingBudget
   if (capability.kind !== 'budget' || setting?.mode !== 'custom' || typeof setting.value !== 'number') return ''
-  return setting.value > 0 && isGeminiThinkingBudgetValid(capability, setting.value) ? String(setting.value) : ''
+  return setting.value > 0 && isProjectedGeminiThinkingBudgetValid(capability, setting.value) ? String(setting.value) : ''
 })
 function googleThinkingLevelLabel(level: GeminiThinkingLevel): string {
   return level === 'high' ? t('chat.console.reasoning.highDynamic') : level
@@ -450,7 +432,7 @@ const googleThinkingActiveLabel = computed(() => {
       const configured = googleThinkingConfig.value.thinkingLevel
       return configured && (policy.thinkingLevels as readonly string[]).includes(configured)
         ? configured
-        : 'defaultThinkingLevel' in policy ? policy.defaultThinkingLevel : policy.thinkingLevels[0]
+        : policy.thinkingLevels[0] ?? null
     }
     return policy.supportsThoughtSummaries ? t('chat.console.reasoning.providerManaged') : null
   }
@@ -472,11 +454,18 @@ const googleThinkingActiveLabel = computed(() => {
   return null
 })
 const openAIResponsesReasoningSupported = computed(() =>
-  isOpenAIResponsesSelected.value && hasExplicitOpenAIResponsesReasoningEffort(selectedModel.value)
+  isOpenAIResponsesSelected.value && genericReasoningEffortOptions.value.length > 0
 )
 const openAIResponsesReasoningOptions = computed<readonly OpenAIResponsesReasoningEffortSetting[]>(() =>
-  getOpenAIResponsesReasoningEffortOptions(selectedModel.value)
+  openAIResponsesReasoningSupported.value ? Object.freeze(['auto', ...genericReasoningEffortOptions.value] as OpenAIResponsesReasoningEffortSetting[]) : Object.freeze([])
 )
+const openAIResponsesReasoningSummaryOptions = computed<readonly OpenAIResponsesReasoningSummarySetting[]>(() => {
+  const field = props.capabilityProjection?.controls['reasoning.summary']
+  if (!openAIResponsesReasoningSupported.value || !field || field.state !== 'supported' || field.domain?.kind !== 'enum') return Object.freeze(['off'] as OpenAIResponsesReasoningSummarySetting[])
+  const values = field.domain.values.filter((value): value is OpenAIResponsesReasoningSummarySetting =>
+    typeof value === 'string' && (value === 'auto' || value === 'concise' || value === 'detailed'))
+  return Object.freeze(['off', ...values] as OpenAIResponsesReasoningSummarySetting[])
+})
 const openAIResponsesReasoningOptionLabels = computed<Record<string, string>>(() => {
   const labels: Record<string, string> = {}
   for (const option of openAIResponsesReasoningOptions.value) {
@@ -520,7 +509,7 @@ const openAIResponsesReasoningSummaryValue = computed<OpenAIResponsesReasoningSu
       ? decision.value
       : null
   const candidate = customValue ?? decisionValue ?? 'off'
-  return (OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS as readonly string[]).includes(candidate)
+  return (openAIResponsesReasoningSummaryOptions.value as readonly string[]).includes(candidate)
     ? candidate as OpenAIResponsesReasoningSummarySetting
     : 'off'
 })
@@ -850,7 +839,7 @@ function onGoogleThinkingToggle() {
 function onGoogleThinkingBudgetInput(event: Event) {
   const raw = Number((event.target as HTMLInputElement).value)
   const capability = googleThinkingCapability.value
-  if (capability.kind !== 'budget' || !Number.isSafeInteger(raw) || raw <= 0 || !isGeminiThinkingBudgetValid(capability, raw)) return
+  if (capability.kind !== 'budget' || !Number.isSafeInteger(raw) || raw <= 0 || !isProjectedGeminiThinkingBudgetValid(capability, raw)) return
   emit('updateGenerationParamsLayer', {
     ...(resolvedSessionConfig.value.generationParams.detail ?? {}),
     thinkingLevel: { mode: 'omit' },
@@ -871,7 +860,7 @@ function onGoogleThinkingBudgetModeInput(event: Event) {
     emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value: 0 } })
   } else if (mode === 'fixed') {
     const existing = current.thinkingBudget
-    const value = existing?.mode === 'custom' && isGeminiThinkingBudgetValid(capability, existing.value) && existing.value > 0
+    const value = existing?.mode === 'custom' && isProjectedGeminiThinkingBudgetValid(capability, existing.value) && existing.value > 0
       ? existing.value : capability.minBudget
     emit('updateGenerationParamsLayer', { ...current, thinkingLevel: { mode: 'omit' }, thinkingBudget: { mode: 'custom', value } })
   }
@@ -985,7 +974,7 @@ function onOpenAIResponsesReasoningSelect(value: string) {
 
 function onOpenAIResponsesReasoningSummarySelect(value: string) {
   if (!openAIResponsesReasoningSupported.value) return
-  if (!(OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS as readonly string[]).includes(value)) return
+  if (!(openAIResponsesReasoningSummaryOptions.value as readonly string[]).includes(value)) return
   const current = resolvedSessionConfig.value.generationParams.detail ?? {}
   emit('updateGenerationParamsLayer', {
     ...current,
@@ -1242,7 +1231,7 @@ onBeforeUnmount(() => {
                   <div class="font-medium text-gray-600">{{ t('chat.generationParams.reasoning.summary') }}</div>
                   <div class="grid grid-cols-2 gap-1">
                     <button
-                      v-for="option in OPENAI_RESPONSES_REASONING_SUMMARY_OPTIONS"
+                      v-for="option in openAIResponsesReasoningSummaryOptions"
                       :key="option"
                       type="button"
                       class="rounded border px-2 py-1 text-left transition-colors hover:bg-gray-50"
@@ -1280,12 +1269,12 @@ onBeforeUnmount(() => {
             </template>
           </ComposerCapabilityChip>
           <ComposerCapabilityChip
-            v-else-if="!(isGoogleImageGenerationModel && googleImageGenerationPolicy.kind === 'legacy_nano_banana')"
+            v-else-if="!(isGoogleImageGenerationModel && !googleImageGenerationPolicy.supportsThoughtSummaries && googleImageGenerationPolicy.thinkingLevels.length === 0)"
             :enabled="googleThinkingEnabled"
             :label="t('composer.capabilities.reasoning')"
             :active-label="googleThinkingActiveLabel"
             kind="reasoning"
-            :disabled="disabled || (isGoogleImageGenerationModel && googleImageGenerationPolicy.kind === 'legacy_nano_banana') || (!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported')"
+            :disabled="disabled || (isGoogleImageGenerationModel && !googleImageGenerationPolicy.supportsThoughtSummaries && googleImageGenerationPolicy.thinkingLevels.length === 0) || (!isGoogleImageGenerationModel && googleThinkingCapability.kind === 'unsupported')"
             data-test-id="google-thinking-chip"
             @toggle="onGoogleThinkingToggle"
           >

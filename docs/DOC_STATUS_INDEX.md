@@ -65,6 +65,7 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [tailwind/TAILWIND_V4_README.md](tailwind/TAILWIND_V4_README.md) | active | entry | Styling | UI/style tasks | Tailwind v4 migration & rules |
 | [archive/README.md](archive/README.md) | archived | archive-index | Catalog | History trace only | 158 files including the archive index; read only for history |
 | [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) | reference | entry | Provider/model identity | Identity audit or closeout tracing | Point-in-time evidence; current source remains authoritative |
+| [analysis/models-dev-capability-resolution/README.md](analysis/models-dev-capability-resolution/README.md) | reference | entry | Model capability resolution | models.dev evidence or capability-authority analysis | Three independent point-in-time reports plus original source; not SSOT |
 
 ### DGR-1 Governance Documents
 
@@ -125,14 +126,14 @@ Examples in archive:
 
 ---
 
-## Directory Inventory (2026-08-14)
+## Directory Inventory (2026-08-17)
 
 Counts include Markdown, JSON, HTML, CSV, and other tracked files under each directory. They are navigation hints, not lifecycle claims for every file.
 
 | Directory | Files | Default interpretation | Entry / SSOT |
 |---|---:|---|---|
 | `adr/` | 6 | reference / decision | `adr/README.md` |
-| `analysis/` | 11 | reference / historical evidence | `analysis/model-provider-identity/README.md` |
+| `analysis/` | 17 | reference / historical evidence | `analysis/model-provider-identity/README.md`; `analysis/models-dev-capability-resolution/README.md` |
 | `architecture/` | 185 | mixed; classify by topic | `architecture/CURRENT_SYSTEM_ARCHITECTURE.md` |
 | `archive/` | 158 | archived | `archive/README.md` |
 | `bugfix/` | 1 | 2026-08-14 已整体归档至 `archive/bugfixes/`；仅重定向 README | `bugfix/README.md` |
@@ -168,6 +169,7 @@ Root-level entries are limited to `AGENT_INDEX.md`, `DOC_STATUS_INDEX.md`, and `
 | [refactor/](refactor/) | reference | implementation-note | Refactor | OpenRouter refactor records |
 | [ui-refactoring/](ui-refactoring/) | historical | implementation-note | Refactor | UI 重构过程记录（2026-08-14 分类；与 AGENT_INDEX "historical only" 一致） |
 | [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) | reference | entry | Provider/model identity | Trace evidence; verify claims against current checkout |
+| [analysis/models-dev-capability-resolution/README.md](analysis/models-dev-capability-resolution/README.md) | reference | entry | Model capability resolution | Trace models.dev and unified-capability evidence; verify claims against current checkout and official sources |
 
 ## Pending Classification Policy
 

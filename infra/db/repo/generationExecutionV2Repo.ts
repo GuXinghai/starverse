@@ -21,6 +21,7 @@ import {
   stableSerializeProviderRequestBoundedV2,
   stableSerializeProviderRequestV2,
 } from '../../../src/next/generation-v2/compiler/stableSerialize'
+import { assertExpectedCapabilityRevisionV2 } from '../../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   createGenerationRequestAttemptOpenStateV2,
   projectGenerationRequestAttemptStateV2,
@@ -620,6 +621,10 @@ export class GenerationExecutionV2Repo {
       throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_INPUT_INVALID')
     }
     this.#assertSnapshotCapability(snapshot)
+    // Common commit gate for every provider and operation. The IPC layer
+    // installs the renderer expectation before dispatch, so coordinator
+    // specific retry/current paths cannot bypass the revision comparison.
+    assertExpectedCapabilityRevisionV2(snapshot.capabilityBinding.capabilityRevision.value)
     const createdAtMs = safeTime(input.createdAtMs)
     const fingerprint = requiredString(input.commandFingerprint)
     if (!/^[0-9a-f]{64}$/u.test(fingerprint)) {

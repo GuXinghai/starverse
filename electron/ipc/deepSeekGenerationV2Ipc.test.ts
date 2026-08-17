@@ -42,7 +42,9 @@ describe('DeepSeek Generation V2 IPC', () => {
     })).toEqual([...DEEPSEEK_GENERATION_V2_IPC_CHANNELS])
 
     const sender = { send: vi.fn() }
-    const result = await handlers.get('generation-v2:deepseek:initial')?.({ sender }, { operationId: 'operation:1' })
+    const result = await handlers.get('generation-v2:deepseek:initial')?.({ sender }, {
+      command: { operationId: 'operation:1' }, expectedCapabilityRevision: 'capability-v2:test',
+    })
     expect(runtime.submitInitial).toHaveBeenCalledWith({ operationId: 'operation:1' })
     expect(result).toEqual({
       ok: true, kind: 'created', operationId: 'operation:1', answerRootId: 'answer:1', actionKind: 'initial_send',
@@ -70,7 +72,13 @@ describe('DeepSeek Generation V2 IPC', () => {
       registerInvoke: (channel, handler) => handlers.set(channel, handler as never),
       createRuntime: () => runtime as never,
     })
-    await expect(handlers.get('generation-v2:deepseek:initial')?.({ sender: { send: vi.fn() } }, { operationId: ' trimmed ' }))
+    await expect(handlers.get('generation-v2:deepseek:initial')?.({ sender: { send: vi.fn() } }, {
+      command: { operationId: ' trimmed ' }, expectedCapabilityRevision: 'capability-v2:test',
+    }))
+      .resolves.toEqual({ ok: false, code: 'GENERATION_V2_DEEPSEEK_IPC_INVALID_PAYLOAD' })
+    await expect(handlers.get('generation-v2:deepseek:initial')?.({ sender: { send: vi.fn() } }, {
+      command: { operationId: 'operation:1' },
+    }))
       .resolves.toEqual({ ok: false, code: 'GENERATION_V2_DEEPSEEK_IPC_INVALID_PAYLOAD' })
     expect(runtime.submitInitial).not.toHaveBeenCalled()
   })

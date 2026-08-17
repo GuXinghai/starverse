@@ -1,8 +1,7 @@
 import { createHash } from 'node:crypto'
-import { assertActiveCatalogOptionalCapabilitiesV2, isActiveCatalogModelAuthorityV2,
+import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import {
-  canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
   RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
@@ -11,6 +10,14 @@ import {
   type RuntimeCapabilityDomainV2,
   type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import {
+  canonicalizeResolvedCapabilityV2,
+  runtimeSnapshotRecordFromResolvedCapabilityV2,
+  validateSemanticIntentAgainstResolvedCapabilityV2,
+  type ResolvedCapabilityV2,
+} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isReviewedProviderContractDefinitionV2,
   readReviewedAnthropicMessagesDefinitionV2,
@@ -63,6 +70,7 @@ export type VerifiedAnthropicRuntimeCapabilityAuthorityV2 = Readonly<{
   usage: 'snapshot_commit_input_only'
   executionAuthority: 'none'
   bindingAuthority: VerifiedAnthropicProviderBindingAuthorityV2
+  resolvedCapability: ResolvedCapabilityV2
   record: PersistedRuntimeCapabilitySnapshotV2
   snapshot: DecodedRuntimeCapabilitySnapshotV2
   modelEvidenceRevision: string
@@ -117,10 +125,10 @@ function unsupported(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
 }
 
 function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCapabilityFieldV2 {
-  return Object.freeze({ path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
+  return Object.freeze({ path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
 }
 
-function fieldsForModel(evidence: ActiveCatalogModelAuthorityV2, toolsEnabled: boolean): readonly PersistedRuntimeCapabilityFieldV2[] {
+function fieldsForModel(evidence: ActiveCatalogModelAuthorityV2, _toolsEnabled: boolean): readonly PersistedRuntimeCapabilityFieldV2[] {
   const rule = resolveAnthropicModelThinkingRuleV1(evidence.modelId.value)
   if (!rule) throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_MODEL_RULE_UNAVAILABLE')
   const reviewedThinkingTypes = rule.thinkingModes
@@ -168,14 +176,12 @@ function fieldsForModel(evidence: ActiveCatalogModelAuthorityV2, toolsEnabled: b
   values.set('attachments[].sendAs', supported('attachments[].sendAs', { kind: 'enum', values: Object.freeze(['provider_file', 'inline_text', 'image_reference', 'converted_document']) }))
   values.set('attachments[].conversion', supported('attachments[].conversion', { kind: 'enum', values: Object.freeze(['none', 'pdf', 'plain_text', 'images']) }))
   values.set('image.mode', supported('image.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
-  values.set('tools.mode', supported('tools.mode', { kind: 'enum', values: Object.freeze(toolsEnabled ? ['disabled', 'enabled'] : ['disabled']) }))
-  if (toolsEnabled) {
-    values.set('tools.allowedToolIds', supported('tools.allowedToolIds', { kind: 'identity_list', maxItems: 128 }))
-    values.set('tools.toolChoice', supported('tools.toolChoice', { kind: 'enum', values: Object.freeze(['omitted', 'auto', 'none', 'required', 'named']) }))
-    values.set('tools.sideEffectConfirmation', Object.freeze({ path: 'tools.sideEffectConfirmation', state: 'requires_confirmation',
-      domain: Object.freeze({ kind: 'enum' as const, values: Object.freeze(['required_each_retry']) }),
-      constraints: Object.freeze([]), evidenceIds: Object.freeze([TOOL_CONFIRMATION]) }))
-  }
+  values.set('tools.mode', supported('tools.mode', { kind: 'enum', values: Object.freeze(['disabled', 'enabled']) }))
+  values.set('tools.allowedToolIds', supported('tools.allowedToolIds', { kind: 'identity_list', maxItems: 128 }))
+  values.set('tools.toolChoice', supported('tools.toolChoice', { kind: 'enum', values: Object.freeze(['omitted', 'auto', 'none', 'required', 'named']) }))
+  values.set('tools.sideEffectConfirmation', Object.freeze({ path: 'tools.sideEffectConfirmation', state: 'requires_confirmation',
+    domain: Object.freeze({ kind: 'enum' as const, values: Object.freeze(['required_each_retry']) }),
+    constraints: Object.freeze([]), evidenceIds: Object.freeze([TOOL_CONFIRMATION]) }))
   values.set('providerExtension.kind', supported('providerExtension.kind', { kind: 'enum', values: Object.freeze(['anthropic_messages']) }))
   values.set('providerExtension.thinkingDisplay', supported('providerExtension.thinkingDisplay', { kind: 'enum', values: Object.freeze(['provider_default', 'summarized', 'omitted']) }))
   const modes = [
@@ -279,28 +285,32 @@ function composeBinding(evidence: ActiveCatalogModelAuthorityV2): VerifiedAnthro
   return authority
 }
 
-function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2, evidence: ActiveCatalogModelAuthorityV2,
+function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2, modelEvidence: ActiveCatalogModelAuthorityV2,
   fields: readonly PersistedRuntimeCapabilityFieldV2[], toolRegistry: ToolRegistryRepositoryFactV2 | null): VerifiedAnthropicRuntimeCapabilityAuthorityV2 {
   binding.assertCurrent()
-  const observedAt = new Date(evidence.observedAtMs).toISOString()
-  const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
-    schemaVersion: 2, resolvedAt: new Date(Date.now()).toISOString(), binding: projectDecodedProviderBindingRecordV2(binding.binding),
-    ...projectActiveCatalogSnapshotAuthorityV2(evidence),
-    evidence: [
-      { evidenceId: SUPPORTS, kind: 'official_documentation', effect: 'supports', sourceRef: 'https://platform.claude.com/docs/en/api/messages/create', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(SUPPORTS) },
-      { evidenceId: REJECTS, kind: 'contract_invariant', effect: 'rejects', sourceRef: 'generation-compiler-v2-anthropic-plain-text-boundary', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(REJECTS) },
-      { evidenceId: TOOL_CONFIRMATION, kind: 'contract_invariant', effect: 'requires_confirmation', sourceRef: 'generation-compiler-v2-tool-side-effect-policy', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(TOOL_CONFIRMATION) },
-      { evidenceId: 'anthropic.models.visibility.supports', kind: 'live_probe', effect: 'supports', sourceRef: evidence.modelResponseRevision, verifiedAt: observedAt, contentDigest: readGenerationV2Digest(evidence.modelResponseDigest, 'evidence_digest') },
-    ],
-    fields, tools: toolRegistry?.selectedDefinitions.map((tool) => ({ toolId: tool.toolId, kind: tool.kind,
+  const observedAt = new Date(modelEvidence.observedAtMs).toISOString()
+  const evidence = [
+      { evidenceId: SUPPORTS, kind: 'official_documentation' as const, effect: 'supports' as const, sourceRef: 'https://platform.claude.com/docs/en/api/messages/create', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(SUPPORTS) },
+      { evidenceId: REJECTS, kind: 'contract_invariant' as const, effect: 'rejects' as const, sourceRef: 'generation-compiler-v2-anthropic-plain-text-boundary', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(REJECTS) },
+      { evidenceId: TOOL_CONFIRMATION, kind: 'contract_invariant' as const, effect: 'requires_confirmation' as const, sourceRef: 'generation-compiler-v2-tool-side-effect-policy', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(TOOL_CONFIRMATION) },
+      { evidenceId: 'anthropic.models.visibility.supports', kind: 'live_probe' as const, effect: 'supports' as const, sourceRef: modelEvidence.modelResponseRevision, verifiedAt: observedAt, contentDigest: readGenerationV2Digest(modelEvidence.modelResponseDigest, 'evidence_digest') },
+      credentialRevisionEvidenceV2({ credentialRevision: modelEvidence.credentialRevision, verifiedAt: observedAt }),
+    ]
+  const continuation = { kind: 'client_managed_native_replay' as const, artifactKind: ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1, supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [SUPPORTS] }
+  const resolvedCapability = canonicalizeResolvedCapabilityV2({
+    ...projectActiveCatalogSnapshotAuthorityV2(modelEvidence),
+    binding: projectDecodedProviderBindingRecordV2(binding.binding), evidence, fields, continuation,
+  })
+  const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
+    capability: resolvedCapability, resolvedAt: new Date(Date.now()).toISOString(),
+    tools: toolRegistry?.selectedDefinitions.map((tool) => ({ toolId: tool.toolId, kind: tool.kind,
       state: tool.sideEffectPolicy === 'none' ? 'supported' : 'requires_confirmation', sideEffectPolicy: tool.sideEffectPolicy,
       evidenceIds: [tool.sideEffectPolicy === 'none' ? SUPPORTS : TOOL_CONFIRMATION] })) ?? [],
-    continuation: { kind: 'client_managed_native_replay', artifactKind: ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1, supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [SUPPORTS] },
   })
   const snapshot = decodeRuntimeCapabilitySnapshotV2(record)
   const authority: VerifiedAnthropicRuntimeCapabilityAuthorityV2 = Object.freeze({
-    trust: 'verified_anthropic_runtime_capability', usage: 'snapshot_commit_input_only', executionAuthority: 'none', bindingAuthority: binding,
-    record, snapshot, modelEvidenceRevision: evidence.modelResponseRevision,
+    trust: 'verified_anthropic_runtime_capability', usage: 'snapshot_commit_input_only', executionAuthority: 'none', bindingAuthority: binding, resolvedCapability,
+    record, snapshot, modelEvidenceRevision: modelEvidence.modelResponseRevision,
     assertCurrent: () => {
       if (!capabilityAuthorities.has(authority) || !isVerifiedAnthropicProviderBindingAuthorityV2(binding)) throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_GENERATION_AUTHORITY_INVALID')
       binding.assertCurrent()
@@ -308,6 +318,18 @@ function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2,
   })
   capabilityAuthorities.add(authority)
   return authority
+}
+
+/**
+ * Command-independent resolver used by the renderer capability projection.
+ * Tool definitions are command facts and are deliberately not an input here;
+ * the same field matrix is reused by the command authority below.
+ */
+export function resolveAnthropicCapabilityV2(
+  evidence: ActiveCatalogModelAuthorityV2,
+): ResolvedCapabilityV2 {
+  const binding = composeBinding(evidence)
+  return composeCapability(binding, evidence, fieldsForModel(evidence, false), null).resolvedCapability
 }
 
 export function readVerifiedAnthropicProviderBindingRecordV2(authority: VerifiedAnthropicProviderBindingAuthorityV2): Readonly<Record<string, unknown>> {
@@ -339,7 +361,6 @@ export function withVerifiedAnthropicGenerationAuthoritiesV2<T>(input: Readonly<
     }
   }
   input.modelEvidence.assertCurrent()
-  assertActiveCatalogOptionalCapabilitiesV2(input.modelEvidence, input.commandFacts.semanticIntent)
   validateFacts(input.commandFacts, input.modelEvidence, input.toolRegistry)
   const fields = fieldsForModel(input.modelEvidence, input.toolRegistry !== undefined && input.toolRegistry !== null)
   let binding: VerifiedAnthropicProviderBindingAuthorityV2 | undefined
@@ -349,6 +370,11 @@ export function withVerifiedAnthropicGenerationAuthoritiesV2<T>(input: Readonly<
   try {
     binding = composeBinding(input.modelEvidence)
     capability = composeCapability(binding, input.modelEvidence, fields, input.toolRegistry ?? null)
+    validateSemanticIntentAgainstResolvedCapabilityV2(
+      capability.resolvedCapability,
+      input.commandFacts.semanticIntent,
+    )
+    assertExpectedCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => { if (capability) capabilityAuthorities.delete(capability); if (binding) bindingAuthorities.delete(binding) }
     registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
       preCommit: () => { if (!completed) throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_GENERATION_AUTHORITY_INVALID'); capability!.assertCurrent(); binding!.assertCurrent() },

@@ -280,7 +280,7 @@ describe('ModelPickerDialog', () => {
     })
 
     const item = await screen.findByTestId('model-picker-item-openai/gpt-4o')
-    expect(within(item).getByText(/能力未知/)).toBeInTheDocument()
+    expect(within(item).queryByText(/能力未知/)).not.toBeInTheDocument()
     expect(within(item).queryByText('推理')).not.toBeInTheDocument()
     expect(within(item).queryByText('工具')).not.toBeInTheDocument()
     expect(within(item).queryByText('视觉')).not.toBeInTheDocument()

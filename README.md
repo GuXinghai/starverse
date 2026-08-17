@@ -149,7 +149,7 @@ Starverse 默认将应用数据放在 Electron `appData` 根下的 `Starverse` �
 - `<appData>/Starverse/workspace/epoch-2/assets`、`plugins`、`runtimes`：受 epoch-2 布局管理的附件、插件和运行时目录。
 - `<appData>/Starverse/workspace/epoch-2/debug/generation-raw.sqlite`：独立的原始请求调试存储（仅在相关调试路径启用时使用）。
 
-OpenAI-compatible Provider 的实例、endpoint、配置 revision 和凭据 revision 由 `starverse.db` 的专用表管理；它们不等同于官方 Provider 的 `config.json` 凭据记录。当前 epoch-2 不打开旧的 `chat.db`；schema digest 不匹配时默认 fail-closed，只有显式设置 `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH=1` 才会执行备份并重建。
+OpenAI-compatible Provider 的实例、endpoint、配置 revision 和凭据 revision 由 `starverse.db` 的专用表管理；它们不等同于官方 Provider 的 `config.json` 凭据记录。当前 epoch-2 不打开旧的 `chat.db`；schema digest 不匹配时会显示确认对话框，确认后先备份数据库再重建；无头或自动化启动可显式设置 `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH=1` 跳过对话框。
 
 主要边界包括：
 

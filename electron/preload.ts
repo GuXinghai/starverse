@@ -77,6 +77,9 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
         ipcRenderer.invoke('generation-v2:smoke-fixture:request-local-file-grant', { fixtureName }),
     }),
   } : {}),
+  capabilities: Object.freeze({
+    resolve: (payload: unknown) => ipcRenderer.invoke('generation-v2:capabilities:resolve', payload),
+  }),
   runtime: Object.freeze({
     subscribe: () => ipcRenderer.invoke('generation-v2:runtime:subscribe'),
     snapshot: (operationId: string | null = null) => ipcRenderer.invoke('generation-v2:runtime:snapshot', operationId),
@@ -264,7 +267,7 @@ contextBridge.exposeInMainWorld('generationV2', Object.freeze({
   localProfiles: Object.freeze({
     list: () => ipcRenderer.invoke('generation-v2:local-profile:list'),
     create: (payload: Readonly<{ providerId: LocalEndpointExecutionProviderId;
-      protocolContractId: LocalEndpointProtocolV2; baseUrl: string; protocolConfig?: Readonly<Record<string, unknown>> }>) => ipcRenderer.invoke('generation-v2:local-profile:create', payload),
+      protocolContractId: LocalEndpointProtocolV2; baseUrl: string; protocolConfig: Readonly<Record<string, unknown>> }>) => ipcRenderer.invoke('generation-v2:local-profile:create', payload),
     delete: (endpointProfileId: string) => ipcRenderer.invoke('generation-v2:local-profile:delete', { endpointProfileId }),
   }),
   lmStudio: Object.freeze({ openResponses: createGenerationV2TextBridge({

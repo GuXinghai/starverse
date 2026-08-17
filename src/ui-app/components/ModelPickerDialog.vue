@@ -563,7 +563,9 @@ function toCatalogPickerItem(item: CatalogQueryItem): PickerModelItem | null {
     providerId,
     providerName: providerNameForId(providerId),
     itemKey: pickerItemKey(providerId, item.modelId),
-    capabilitySummary: structuredCapabilitySummary(item),
+    // Catalog capability fields are evidence only. Final capability controls
+    // are resolved for the selected provider/model projection elsewhere.
+    capabilitySummary: undefined,
     statusLabel: formatCatalogStatusLabel(item.status ?? item.visibility ?? 'catalog'),
     sourceLabel: providerId === OPENROUTER_PROVIDER_ID
       ? t('errors.modelCatalog.sourceOpenRouterCatalog')
@@ -612,46 +614,12 @@ function toProviderPickerItem(item: ProviderModelPickerItem): PickerModelItem {
     status: item.statusLabel,
     visibility: item.selectable ? 'visible' : 'disabled',
     itemKey: pickerItemKey(item.providerId, item.modelId),
-    capabilitySummary: item.capabilitySummary,
+    capabilitySummary: undefined,
     statusLabel: item.statusLabel,
     sourceLabel: item.sourceLabel,
     selectable: item.selectable,
     detailSource: 'provider_source',
   }
-}
-
-function structuredCapabilitySummary(item: CatalogQueryItem): string {
-  if (item.capabilityResolution) {
-    return (['textChat', 'reasoning', 'tools', 'structuredOutputs', 'vision'] as const)
-      .map((key) => {
-        const fact = item.capabilityResolution?.[key]
-        if (!fact) return null
-        const wire = fact.wireImplementation === 'implemented' ? 'wire' : 'no wire'
-        return `${key}: ${fact.modelSupport} · ${fact.resolutionSource} · ${wire}`
-      })
-      .filter((value): value is string => value !== null)
-      .join(' | ')
-  }
-  const capabilityKnown = item.capabilityResolution !== null ||
-    item.capabilities.reasoning || item.capabilities.tools ||
-    item.capabilities.vision || item.capabilities.longContext
-  const labels: string[] = []
-  if (Array.isArray(item.inputModalities) && item.inputModalities.length > 0) {
-    labels.push(`in:${item.inputModalities.join('+')}`)
-  }
-  if (Array.isArray(item.outputModalities) && item.outputModalities.length > 0) {
-    labels.push(`out:${item.outputModalities.join('+')}`)
-  }
-  if (!capabilityKnown) {
-    return labels.length > 0
-      ? `${labels.join(' · ')} · ${t('errors.modelCatalog.capabilityUnknown')}`
-      : t('errors.modelCatalog.capabilityUnknown')
-  }
-  if (item.capabilities.reasoning) labels.push(t('errors.modelCatalog.capabilityReasoning'))
-  if (item.capabilities.tools) labels.push(t('errors.modelCatalog.capabilityTools'))
-  if (item.capabilities.vision) labels.push(t('errors.modelCatalog.capabilityVision'))
-  if (item.capabilities.longContext) labels.push(t('errors.modelCatalog.capabilityLongContext'))
-  return labels.length > 0 ? labels.join(' · ') : t('errors.modelCatalog.capabilityUnknown')
 }
 
 function formatCatalogStatusLabel(value: string | null | undefined): string {
@@ -1234,12 +1202,6 @@ function toggleQuickImageOutputFilter() {
     return
   }
   setOutputModalitiesFilter(['image'])
-}
-
-function hasImageGenerationSignal(item: CatalogQueryItem): boolean {
-  if (selectedOutputModalities.value.includes('image')) return true
-  const imagePrice = String(item.pricing.image ?? '').trim()
-  return imagePrice.length > 0
 }
 
 function buildQueryInput(providerKey: ProviderCatalogKnownProviderKey, cursor: CatalogQueryCursor | null): CatalogQueryInput {
@@ -3030,16 +2992,6 @@ const selectedModelFilteredOut = computed(() =>
                         <span class="rounded border border-gray-200 px-1.5 py-0.5">
                           {{ item.sourceLabel }}
                         </span>
-                        <span v-if="item.capabilitySummary" class="rounded border border-gray-200 px-1.5 py-0.5">
-                          {{ item.capabilitySummary }}
-                        </span>
-                        <span v-if="hasImageGenerationSignal(item)" class="rounded border border-green-200 bg-green-50 px-1.5 py-0.5 text-green-700">
-                          {{ t('errors.modelCatalog.capabilityImageGeneration') }}
-                        </span>
-                        <span v-if="item.capabilities.reasoning" class="rounded border border-gray-200 px-1.5 py-0.5">{{ t('errors.modelCatalog.capabilityReasoning') }}</span>
-                        <span v-if="item.capabilities.tools" class="rounded border border-gray-200 px-1.5 py-0.5">{{ t('errors.modelCatalog.capabilityTools') }}</span>
-                        <span v-if="item.capabilities.vision" class="rounded border border-gray-200 px-1.5 py-0.5">{{ t('errors.modelCatalog.capabilityVision') }}</span>
-                        <span v-if="item.capabilities.longContext" class="rounded border border-gray-200 px-1.5 py-0.5">{{ t('errors.modelCatalog.capabilityLongContext') }}</span>
                       </div>
                     </button>
                     <div :style="{ height: `${bottomPaddingPx}px` }" />
@@ -3143,10 +3095,6 @@ const selectedModelFilteredOut = computed(() =>
                   <div class="rounded border border-gray-200 bg-white px-2 py-1">
                     <div class="text-[10px] uppercase tracking-wide text-gray-400">{{ t('errors.modelCatalog.status') }}</div>
                     <div>{{ activeDetailItem.statusLabel }}</div>
-                  </div>
-                  <div class="rounded border border-gray-200 bg-white px-2 py-1">
-                    <div class="text-[10px] uppercase tracking-wide text-gray-400">{{ t('errors.modelCatalog.capabilities') }}</div>
-                    <div>{{ activeDetailItem.capabilitySummary ?? t('errors.modelCatalog.capabilityUnknown') }}</div>
                   </div>
                   <div class="rounded border border-gray-200 bg-white px-2 py-1">
                     <div class="text-[10px] uppercase tracking-wide text-gray-400">{{ t('errors.modelCatalog.source') }}</div>

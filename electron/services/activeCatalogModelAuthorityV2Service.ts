@@ -8,11 +8,10 @@ import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/c
 // eslint-disable-next-line no-restricted-imports
 import { GenerationV2Digest, GenerationV2Identity, type GenerationV2Identity as Identity } from '../../src/next/generation-v2/domain/identityV2'
 // eslint-disable-next-line no-restricted-imports
-import { resolveModelCapabilitiesV2 } from '../../src/next/modelCatalog/modelCapabilityResolverV2'
-// eslint-disable-next-line no-restricted-imports
 import { ProviderCatalogAuthorityRegistryV2 } from '../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2'
+import { resolveModelCapabilitiesV2 } from '../../src/next/modelCatalog/modelCapabilityResolverV2'
 import type { ProviderCatalogKnownProviderKey } from '../../src/shared/modelCatalog/providerCatalogContracts'
-import { missingProviderBooleanFactV2, type CatalogProviderModelObservationV2 } from '../../src/shared/modelCatalog/providerModelObservationV2'
+import type { CatalogProviderModelObservationV2 } from '../../src/shared/modelCatalog/providerModelObservationV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 
 export class ActiveCatalogModelAuthorityV2Error extends Error {
@@ -62,22 +61,6 @@ export function projectActiveCatalogSnapshotAuthorityV2(value: unknown): Readonl
     : Object.freeze({})
 }
 
-export function assertActiveCatalogOptionalCapabilitiesV2(value: unknown, intent: any): void {
-  if (!isActiveCatalogModelAuthorityV2(value)) return
-  const resolutions = (value as any).resolutions
-  const required = [
-    intent?.reasoning?.mode === 'enabled' ? 'reasoning' : null,
-    intent?.tools?.mode === 'enabled' ? 'tools' : null,
-    Array.isArray(intent?.attachments) && intent.attachments.some((item: any) => item?.include &&
-      (item?.mediaKind === 'image' || item?.kind === 'url_reference')) ? 'vision' : null,
-    intent?.providerExtension?.responseFormat?.type && intent.providerExtension.responseFormat.type !== 'text'
-      ? 'structuredOutputs' : null,
-  ].filter((item): item is string => item !== null)
-  if (required.some((capability) => resolutions?.[capability]?.enabled !== true)) {
-    throw new ActiveCatalogModelAuthorityV2Error('GENERATION_V2_ACTIVE_CATALOG_OBSERVATION_INVALID')
-  }
-}
-
 function object(value: unknown): Readonly<Record<string, unknown>> | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Readonly<Record<string, unknown>> : null
 }
@@ -92,22 +75,6 @@ function positive(value: unknown, fallback: number): number {
 
 function finite(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isFinite(value) ? value : undefined
-}
-
-function missingObservation(providerKey: ProviderCatalogKnownProviderKey, modelId: string, observedAtMs: number): CatalogProviderModelObservationV2 {
-  return Object.freeze({
-    schemaVersion: 2 as const, providerKey, endpointId: 'active-catalog-unlisted', nativeModelId: modelId,
-    observedAtMs, rawProviderRecord: Object.freeze({}),
-    facts: Object.freeze({
-      textChat: missingProviderBooleanFactV2('catalog.unlisted.textChat'),
-      reasoning: missingProviderBooleanFactV2('catalog.unlisted.reasoning'),
-      tools: missingProviderBooleanFactV2('catalog.unlisted.tools'),
-      structuredOutputs: missingProviderBooleanFactV2('catalog.unlisted.structuredOutputs'),
-      vision: missingProviderBooleanFactV2('catalog.unlisted.vision'),
-    }),
-    provenance: Object.freeze({ sourceKind: 'provider_api' as const, sourceLabel: 'active_catalog_unlisted',
-      observedAtMs, parserVersion: 2 as const }),
-  })
 }
 
 function descriptor(profile: Readonly<Record<string, unknown>>, providerKey: ProviderCatalogKnownProviderKey) {
@@ -164,14 +131,15 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
           if (!active) throw new ActiveCatalogModelAuthorityV2Error('GENERATION_V2_ACTIVE_CATALOG_MISSING')
           const item = active.items.find((candidate) => candidate.modelId === request.modelId.value) ?? null
           const suppliedObservation = observationFromCatalogItem(item)
-          const observation = item === null
-            ? missingObservation(request.providerKey, request.modelId.value, active.observedAtMs)
-            : suppliedObservation?.schemaVersion === 2 && suppliedObservation.providerKey === request.providerKey &&
-                suppliedObservation.nativeModelId === request.modelId.value
-              ? suppliedObservation as CatalogProviderModelObservationV2
-              : (() => { throw new ActiveCatalogModelAuthorityV2Error('GENERATION_V2_ACTIVE_CATALOG_OBSERVATION_INVALID') })()
-          const resolutions = resolveModelCapabilitiesV2(observation)
-          if (!resolutions.textChat.enabled) throw new ActiveCatalogModelAuthorityV2Error('GENERATION_V2_ACTIVE_CATALOG_OBSERVATION_INVALID')
+           if (item === null) throw new ActiveCatalogModelAuthorityV2Error('GENERATION_V2_ACTIVE_CATALOG_MISSING')
+           const observation = suppliedObservation?.schemaVersion === 2 && suppliedObservation.providerKey === request.providerKey &&
+               suppliedObservation.nativeModelId === request.modelId.value
+             ? suppliedObservation as CatalogProviderModelObservationV2
+             : (() => { throw new ActiveCatalogModelAuthorityV2Error('GENERATION_V2_ACTIVE_CATALOG_OBSERVATION_INVALID') })()
+           // Catalog capability summaries remain evidence/display metadata only.
+           // They no longer decide whether a Generation V2 semantic intent is legal;
+           // the provider runtime capability resolver owns that decision.
+           const resolutions = resolveModelCapabilitiesV2(observation)
           const raw = observation.rawProviderRecord
           const revision = `catalog-v2:${active.snapshotDigest}:${active.status.authorityRevision}`
           const evidenceDigest = GenerationV2Digest.create('evidence_digest', active.snapshotDigest)

@@ -38,13 +38,13 @@ function binding() {
   })
 }
 
-function bindingRaw(providerTag: string) {
+function bindingRaw(providerTag: string, selectedAt = '2026-07-18T00:00:00.000Z') {
   return {
     credentialScopeId: 'scope:openrouter', providerId: 'openrouter', endpointProfileId: 'openrouter-first-party-v1',
     endpointBinding: { kind: 'pinned', selector: {
       kind: 'openrouter_images_v1', providerTag, providerSlug: descriptor.providerSlug.value,
       descriptorRevision: descriptor.descriptorRevision.value, descriptorDigest: descriptor.descriptorDigest.value,
-      selectedBy: 'user', selectedAt: '2026-07-18T00:00:00.000Z',
+      selectedBy: 'user', selectedAt,
     } },
     protocolContractId: contract.protocolContractId.value, contractRevision: contract.contractRevision.value,
     contractDefinitionDigest: contract.definitionDigest.value, registryRevision: contract.registryRevision.value,
@@ -55,7 +55,7 @@ function bindingRaw(providerTag: string) {
 describe('OpenRouter selected image runtime capability V2', () => {
   it('persists only descriptor-backed expressible fields without widening discrete size or format values', () => {
     const snapshot = composeOpenRouterImageRuntimeCapabilityV2({
-      binding: binding(), descriptor, resolvedAt: '2026-07-18T00:00:01.000Z',
+      binding: binding(), descriptor, resolvedAt: '2026-07-18T00:00:01.000Z', credentialRevision: 1,
     })
     expect(snapshot.fields.find((field) => field.path === 'image.size')?.domain).toEqual({
       kind: 'dimensions_enum', values: [{ width: 1024, height: 1024 }, { width: 1536, height: 1024 }],
@@ -71,7 +71,30 @@ describe('OpenRouter selected image runtime capability V2', () => {
   it('rejects a binding that does not identify the selected descriptor', () => {
     const invalid = decodeProviderBindingRecordV2(bindingRaw('other'))
     expect(() => composeOpenRouterImageRuntimeCapabilityV2({
-      binding: invalid, descriptor, resolvedAt: '2026-07-18T00:00:01.000Z',
+      binding: invalid, descriptor, resolvedAt: '2026-07-18T00:00:01.000Z', credentialRevision: 1,
     })).toThrow(OpenRouterImageRuntimeCapabilityV2Error)
+  })
+
+  it('keeps selectedAt and verifiedAt out of the base revision', () => {
+    const first = composeOpenRouterImageRuntimeCapabilityV2({
+      binding: binding(), descriptor, resolvedAt: '2026-07-18T00:00:01.000Z', credentialRevision: 3,
+    })
+    const second = composeOpenRouterImageRuntimeCapabilityV2({
+      binding: decodeProviderBindingRecordV2(bindingRaw('google-ai-studio', '2026-07-19T00:00:00.000Z')),
+      descriptor, resolvedAt: '2026-07-19T00:00:02.000Z', credentialRevision: 3,
+    })
+    expect(first.fields).toEqual(second.fields)
+    expect(first.revision.value).toBe(second.revision.value)
+  })
+
+  it('changes the base revision when the credential revision changes', () => {
+    const first = composeOpenRouterImageRuntimeCapabilityV2({
+      binding: binding(), descriptor, resolvedAt: '2026-07-18T00:00:01.000Z', credentialRevision: 3,
+    })
+    const second = composeOpenRouterImageRuntimeCapabilityV2({
+      binding: binding(), descriptor, resolvedAt: '2026-07-18T00:00:01.000Z', credentialRevision: 4,
+    })
+    expect(first.fields).toEqual(second.fields)
+    expect(first.revision.value).not.toBe(second.revision.value)
   })
 })

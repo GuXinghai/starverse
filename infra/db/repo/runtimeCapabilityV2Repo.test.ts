@@ -60,7 +60,7 @@ function capabilityJson(resolvedAt = '2026-07-17T12:00:00.000Z'): string {
             constraints: [],
             evidenceIds: ['deepseek.stable.supports'],
           }
-        : { path: field, state: 'unavailable', constraints: [], evidenceIds: [] }),
+        : { path: field, state: 'missing', constraints: [], evidenceIds: [] }),
     tools: [],
     continuation: { kind: 'none', evidenceIds: ['deepseek.stable.supports'] },
   })

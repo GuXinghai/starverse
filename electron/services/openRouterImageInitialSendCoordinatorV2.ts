@@ -13,6 +13,7 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { CredentialScopeIdV2 } from '../../infra/security/credentialScopeV2Primitive'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { createOpenRouterImageDescriptorAuthorityV2Service } from './openRouterImageDescriptorAuthorityV2Service'
 import { commitOpenRouterImageInitialSnapshotV2 } from './openRouterImageInitialSnapshotCommitV2'
 import { compileOpenRouterImagePreparedRequestV2 } from './openRouterImagePreparedRequestCompilerV2'
@@ -23,6 +24,7 @@ import { projectOpenRouterImageIntentCapabilityV2 } from '../../src/next/generat
 import { decideOpenRouterImageSelectionV2 } from '../../src/next/generation-v2/providers/openrouter-images/selectionDecisionV2'
 import { issueOpenRouterImageProviderBindingV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageProviderBindingV2'
 import { composeOpenRouterImageRuntimeCapabilityV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageRuntimeCapabilityV2'
+import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 
 export class OpenRouterImageInitialSendCoordinatorV2Error extends Error {
   constructor(readonly code:
@@ -80,6 +82,8 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
   const bindingRepo = new OpenRouterImageBindingRepo(input.db, nowMs)
   const endpointRepo = new OpenRouterImageEndpointRepo(input.db, nowMs)
   const settingsRepo = new OpenRouterImageSettingsRepo(input.db, nowMs)
+  const modelEvidenceService = createActiveCatalogModelAuthorityV2Service(input)
+  const endpointProfile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
   const descriptorAuthority = createOpenRouterImageDescriptorAuthorityV2Service({
     db: input.db, credentialService: input.credentialService, fetchImpl: input.fetchImpl, nowMs,
   })
@@ -124,7 +128,13 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
         signal: request.signal,
       })
       try {
-        return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+        return await modelEvidenceService.withExactActiveModel({
+          providerKey: 'openrouter', endpointProfile,
+          expectedCredentialRevision: request.expectedCredentialRevision,
+          expectedCredentialScopeId: request.expectedCredentialScopeId,
+          modelId: command.modelId,
+          consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+          modelEvidence.assertCurrent()
           const raced = executionRepo.findOperationInTransaction(context, command.operationId.value)
           if (raced) {
             if (raced.operation.actionKind !== 'initial_send' ||
@@ -202,6 +212,7 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
                   descriptor, decision.candidate.providerTag, decision.candidate.providerSlug,
                 ),
                 resolvedAt: new Date(nowMs()).toISOString(),
+                credentialRevision: request.expectedCredentialRevision,
               })
               const persisted = commitOpenRouterImageInitialSnapshotV2({
                 context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability,
@@ -219,6 +230,7 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
               })
             },
           )
+          }),
         })
       } catch (error) {
         const winner = replay(command)
