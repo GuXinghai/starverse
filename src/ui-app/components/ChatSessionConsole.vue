@@ -33,6 +33,7 @@ import {
   isProjectedGeminiImageModelV2,
   isProjectedGeminiThinkingBudgetValid,
   projectGeminiImageGenerationPolicyV2,
+  projectImageGenerationControlDomainsV2,
   projectGeminiThinkingCapabilityV2,
 } from '../app/generationV2CapabilityUiProjection'
 import type {
@@ -292,6 +293,7 @@ function updateOpenRouterImageFreshness(key: 'refreshAfterMs' | 'hardExpireAfter
   })
 }
 const googleImageGenerationPolicy = computed(() => projectGeminiImageGenerationPolicyV2(props.capabilityProjection))
+const imageGenerationControlDomains = computed(() => projectImageGenerationControlDomainsV2(props.capabilityProjection))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isProjectedGeminiImageModelV2(props.capabilityProjection))
 const googleThinkingCapability = computed(() => projectGeminiThinkingCapabilityV2(props.capabilityProjection, selectedModelIdentity.value))
 function customGenerationParamValue(key: 'thinkingBudget' | 'thinkingLevel' | 'includeThoughts' | 'thoughtSummaryMode'): unknown {
@@ -334,19 +336,16 @@ const googleImageDefaultThinkingLevel = computed(() => {
   return policy.thinkingLevels[0] ?? ''
 })
 const imageGenerationSizeOptions = computed<readonly ChatSessionConfigImageResolution[]>(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportedImageSizes
-  return ['1K', '2K', '4K']
+  return imageGenerationControlDomains.value.resolutions
 })
 const imageGenerationAspectRatioOptions = computed<readonly ChatSessionConfigAspectRatio[]>(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportedAspectRatios
-  return ['16:9', '3:4', '1:1', '4:3']
+  return imageGenerationControlDomains.value.aspectRatios
 })
 const imageGenerationOutputModeOptions = computed(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportedOutputModes
-  return ['auto', 'image_only', 'image_and_text'] as const
+  return imageGenerationControlDomains.value.outputModes
 })
 const showImageGenerationSizeControl = computed(() =>
-  !isGoogleImageGenerationModel.value || googleImageGenerationPolicy.value.imageSizeMode !== 'hidden'
+  imageGenerationSizeOptions.value.length > 0
 )
 const lockImageGenerationSizeControl = computed(() =>
   false
@@ -355,22 +354,18 @@ const effectiveImageGenerationEnabled = computed(() =>
   isGoogleImageGenerationModel.value || props.sessionConfig.imageGeneration.enabled
 )
 const effectiveImageGenerationResolution = computed<ChatSessionConfigImageResolution>(() =>
-  isGoogleImageGenerationModel.value &&
-    (
-      !props.sessionConfig.imageGeneration.enabled ||
-      !(googleImageGenerationPolicy.value.supportedImageSizes as readonly string[]).includes(props.sessionConfig.imageGeneration.resolution)
-    )
-    ? googleImageGenerationPolicy.value.defaultImageSize
+  imageGenerationSizeOptions.value.length > 0 &&
+    !imageGenerationSizeOptions.value.includes(props.sessionConfig.imageGeneration.resolution)
+    ? imageGenerationSizeOptions.value[0]
     : props.sessionConfig.imageGeneration.resolution
 )
 const effectiveImageGenerationAspectRatio = computed(() =>
-  isGoogleImageGenerationModel.value &&
+  imageGenerationAspectRatioOptions.value.length > 0 &&
     (
-      !props.sessionConfig.imageGeneration.enabled ||
       !props.sessionConfig.imageGeneration.aspectRatio ||
-      !(googleImageGenerationPolicy.value.supportedAspectRatios as readonly string[]).includes(props.sessionConfig.imageGeneration.aspectRatio)
+      !imageGenerationAspectRatioOptions.value.includes(props.sessionConfig.imageGeneration.aspectRatio)
     )
-    ? '1:1'
+    ? imageGenerationAspectRatioOptions.value[0]
     : props.sessionConfig.imageGeneration.aspectRatio
 )
 const reasoningPanelDefaultExpanded = computed(() => props.reasoningPanelDefaultExpanded !== false)
@@ -714,7 +709,7 @@ const deepSeekAvailabilitySummary = computed(() => {
 })
 const imageValue = computed<ImageGenerationUserConfig>(() => ({
   enabled: effectiveImageGenerationEnabled.value,
-  outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? (isGoogleImageGenerationModel.value ? googleImageGenerationPolicy.value.defaultOutputMode : 'auto'),
+  outputMode: props.sessionConfig.imageGeneration.detail?.outputMode ?? imageGenerationOutputModeOptions.value[0] ?? 'auto',
   aspectRatio: effectiveImageGenerationAspectRatio.value,
   imageSize: showImageGenerationSizeControl.value ? effectiveImageGenerationResolution.value : '',
 }))
@@ -1047,7 +1042,9 @@ function onOpenAIResponsesReasoningSelect(option: OpenAIResponsesReasoningEffort
   const current = props.sessionConfig.generationParams.detail ?? {}
   emit('updateGenerationParamsLayer', {
     ...current,
-    reasoningEffort: { mode: 'custom', value: option },
+    reasoningEffort: option === 'auto'
+      ? { mode: 'omit' }
+      : { mode: 'custom', value: option },
   })
 }
 

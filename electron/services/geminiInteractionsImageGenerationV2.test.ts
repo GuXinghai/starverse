@@ -127,6 +127,29 @@ function streamResponseWithProviderError(): Response {
 }
 
 describe('Gemini Interactions image generation V2', () => {
+  it('keeps omitted image domain fields omitted on the wire', async () => {
+    const db = database(); let ids = 0
+    try {
+      const configs = new GenerationConfigV2Repo(db)
+      const current = configs.getScope('conversation', 'conversation:1')
+      configs.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: {}, reasoning: { mode: 'disabled' }, web: { mode: 'disabled' },
+        image: { mode: 'generate', format: 'jpeg', stream: true },
+        tools: { mode: 'disabled' }, providerExtension: { kind: 'none' },
+      })
+      const initial = await createGeminiInteractionsImageInitialSendCoordinatorV2({ db,
+        credentialService: credentialService(), nowMs: () => 100,
+        createGraphId: (kind) => `${kind}:${++ids}` }).submit({
+        command: { operationId: 'operation:omitted-image-domain', branchId: 'branch:1', expectedHeadMessageId: null,
+          prompt: 'draw', modelId: 'gemini-3.1-flash-image', commandAttachments: [] },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope,
+      })
+      expect(JSON.parse(initial.preparedRequest!.body.copyUtf8Text()).response_format).toEqual({
+        type: 'image', mime_type: 'image/jpeg',
+      })
+    } finally { db.close() }
+  })
+
   it('commits chosen/head before streaming and keeps a failed retry-as-new current', async () => {
     const db = database(); let ids = 0; let clock = 100
     try {

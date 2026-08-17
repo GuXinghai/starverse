@@ -67,9 +67,9 @@ import { resolveGenerationV2Capabilities } from '@/next/generation-v2/renderer/g
 import type { GenerationCapabilityProviderIdV2, GenerationCapabilityResolutionResultV2 } from '@/next/generation-v2/capability/capabilityResolutionV2'
 import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
 import {
-  isProjectedGeminiImageModelV2,
   projectImageGenerationCapabilityClassV2,
-  projectGeminiImageGenerationPolicyV2,
+  projectImageAttachmentInputSupportV2,
+  projectGenerationEnumValuesV2,
   projectGeminiThinkingCapabilityV2,
 } from './generationV2CapabilityUiProjection'
 import {
@@ -344,7 +344,6 @@ export function useAppChatAppLogic() {
   const imageGenerationState = ref<ImageGenerationUiState>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
   const imageGenerationConvoMode = ref<ConvoImageGenerationMode>('default')
   const globalImageGenerationDefault = ref<ImageGenerationUserConfig>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
-  const imageCapabilityQuerySeq = ref(0)
   const openRouterImageEndpointSelection = ref<OpenRouterImageEndpointSelectionClientStateV2 | null>(null)
   const openRouterImageEndpointSelectionLoading = ref(false)
   const openRouterImageEndpointSelectionError = ref<string | null>(null)
@@ -363,7 +362,6 @@ export function useAppChatAppLogic() {
   const sessionWebSearchSettingsStatus = ref<string | null>(null)
   const projectWebSearchSettingsStatus = ref<string | null>(null)
   const modelCatalogItems = ref<ModelCatalogItem[]>([])
-  const openRouterModelModalitiesById = ref(new Map<string, Readonly<{ input: readonly string[]; output: readonly string[] }>>())
   const modelCatalogListStatus = ref<'unknown' | 'not_synced' | 'syncing' | 'synced' | 'failed'>('unknown')
   const showHiddenModelsInPickers = ref(false)
   const modelCatalogNotice = ref<string | null>(null)
@@ -1727,8 +1725,6 @@ export function useAppChatAppLogic() {
         vendor: item.vendor ?? '', status: 'visible' as const, supportedParameters: [...(item.supportedParameters ?? [])],
         inputModalities: [...(item.inputModalities ?? [])], outputModalities: [...(item.outputModalities ?? [])],
         lastSeenSnapshotId: first?.catalogRevision ?? `catalog:${item.syncedAtMs ?? 0}` })) as ModelCatalogItem[]
-      openRouterModelModalitiesById.value = new Map(items.map((item) => [item.modelId,
-        Object.freeze({ input: item.inputModalities ?? [], output: item.outputModalities ?? [] })]))
       modelCatalogListStatus.value = first?.status === 'syncing' ? 'syncing'
         : first?.status === 'not_synced' ? 'not_synced' : 'synced'
       modelCatalogNotice.value = items.length === 0 ? t('errors.modelCatalog.notSynced') : null
@@ -5720,40 +5716,14 @@ export function useAppChatAppLogic() {
     return 'selected model is not image-capable.'
   })
 
-  async function refreshSelectedModelImageCapability() {
-    const seq = ++imageCapabilityQuerySeq.value
-    const currentSessionConfig = getActiveSessionConfigSnapshot()
-    const selectedProvider = providerModelRoute(currentSessionConfig)?.providerId ?? null
-    const modelId = selectedProvider === OPENROUTER_PROVIDER_ID
-      ? normalizeModelKey(routeModelId(currentSessionConfig))
-      : DEFAULT_OPENROUTER_MODEL_ID
-    if (selectedProvider !== OPENROUTER_PROVIDER_ID || modelId === DEFAULT_OPENROUTER_MODEL_ID) {
-      composerImageInputSupported.value = null
-      composerImageInputSupportReason.value = null
-      return
-    }
-
-    try {
-      const modalities = openRouterModelModalitiesById.value.get(modelId) ?? null
-      if (seq !== imageCapabilityQuerySeq.value) return
-      if (!modalities) {
-        composerImageInputSupported.value = null
-        composerImageInputSupportReason.value = null
-        return
-      }
-      composerImageInputSupported.value = modalities.input.includes('image')
-      composerImageInputSupportReason.value = composerImageInputSupported.value
-        ? null
-        : 'Current model does not support image inputs.'
-    } catch (err) {
-      if (shouldLogDebug()) {
-        console.warn('[ui-app] REFRESH_SELECTED_MODEL_IMAGE_CAPABILITY_FAILED')
-      }
-      if (seq !== imageCapabilityQuerySeq.value) return
-      composerImageInputSupported.value = null
-      composerImageInputSupportReason.value = null
-    }
+  function refreshSelectedModelImageCapability() {
+    composerImageInputSupported.value = projectImageAttachmentInputSupportV2(activeSessionCapabilityProjection.value)
+    composerImageInputSupportReason.value = composerImageInputSupported.value === false
+      ? 'Current model does not support image inputs.'
+      : null
   }
+
+  watch(activeSessionCapabilityProjection, refreshSelectedModelImageCapability, { immediate: true })
 
   const activeRouteIdentity = computed(() => {
     const route = activeSessionConfig.value.routeSelection
@@ -5903,57 +5873,45 @@ export function useAppChatAppLogic() {
       imageSize: sessionConfig.imageGeneration.resolution,
       aspectRatio: sessionConfig.imageGeneration.aspectRatio,
     })
-    const selectedModelId = routeModelId(sessionConfig)
-    const isGeminiImageModel = providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
-      ui.enabled && isProjectedGeminiImageModelV2(activeSessionCapabilityProjection.value)
-    if (!ui.enabled && !isGeminiImageModel) return null
-    if (providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY && ui.enabled && !isGeminiImageModel) return null
+    const binding = activeSessionCapabilityProjection.value?.binding
+    const isImageGenerationOperation = binding?.operation === 'image_generate'
+    if (!ui.enabled && !isImageGenerationOperation) return null
 
-    const aspectRatio = String(ui.aspectRatio ?? '').trim()
-    const imageSize = String(ui.imageSize ?? '').trim()
+    const capabilityClass = projectImageGenerationCapabilityClassV2(activeSessionCapabilityProjection.value)
+    if (!capabilityClass) {
+      if (isImageGenerationOperation) throw new Error('GENERATION_V2_CAPABILITY_PROJECTION_REQUIRED')
+      return null
+    }
+
+    const allowedAspectRatios = projectGenerationEnumValuesV2(activeSessionCapabilityProjection.value, 'image.aspectRatio')
+    const allowedResolutions = projectGenerationEnumValuesV2(activeSessionCapabilityProjection.value, 'image.resolution')
+    const allowedOutputModes = projectGenerationEnumValuesV2(activeSessionCapabilityProjection.value, 'image.outputMode')
+    const requestedAspectRatio = String(ui.aspectRatio ?? '').trim()
+    const requestedResolution = String(ui.imageSize ?? '').trim()
+    const requestedOutputMode = String(ui.outputMode ?? '').trim()
+    const aspectRatio = allowedAspectRatios.includes(requestedAspectRatio)
+      ? requestedAspectRatio : allowedAspectRatios[0]
+    const imageSize = allowedResolutions.includes(requestedResolution)
+      ? requestedResolution as ImageGenerationUserConfig['imageSize']
+      : allowedResolutions[0] as ImageGenerationUserConfig['imageSize'] | undefined
+    const outputMode = allowedOutputModes.includes(requestedOutputMode)
+      ? requestedOutputMode as ImageGenerationUserConfig['outputMode']
+      : allowedOutputModes[0] as ImageGenerationUserConfig['outputMode'] | undefined
 
     if (providerKey === OPENAI_RESPONSES_PROVIDER_KEY || providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY) {
-      if (isGeminiImageModel) {
-        const policy = projectGeminiImageGenerationPolicyV2(activeSessionCapabilityProjection.value)
-        const resolvedAspectRatio = aspectRatio || policy.defaultAspectRatio
-        if (!(policy.supportedAspectRatios as readonly string[]).includes(resolvedAspectRatio)) {
-          throw new Error(`Google AI Studio aspect ratio ${resolvedAspectRatio || '(empty)'} is not supported for ${selectedModelId}. Supported aspect ratios: ${policy.supportedAspectRatios.join(', ')}.`)
-        }
-        let resolvedImageSize: ImageGenerationUserConfig['imageSize'] = ''
-        if (policy.imageSizeMode !== 'hidden') {
-          resolvedImageSize = (imageSize || policy.defaultImageSize) as ImageGenerationUserConfig['imageSize']
-          if (!(policy.supportedImageSizes as readonly string[]).includes(resolvedImageSize)) {
-            throw new Error(`Google AI Studio image size ${resolvedImageSize || '(empty)'} is not supported for ${selectedModelId}. Supported sizes: ${policy.supportedImageSizes.join(', ')}.`)
-          }
-        }
-        const outputMode = ui.outputMode === 'image_only' || ui.outputMode === 'image_and_text'
-          ? ui.outputMode
-          : policy.defaultOutputMode
-        return {
-          outputMode,
-          aspectRatio: resolvedAspectRatio,
-          imageSize: resolvedImageSize,
-        }
-      }
       return {
-        outputMode: ui.outputMode,
-        aspectRatio,
-        imageSize: ui.imageSize,
+        ...(outputMode ? { outputMode } : {}),
+        ...(aspectRatio ? { aspectRatio } : {}),
+        ...(imageSize ? { imageSize } : {}),
       }
     }
 
     if (providerKey !== OPENROUTER_PROVIDER_ID) return null
 
-    const capabilityClass = projectImageGenerationCapabilityClassV2(activeSessionCapabilityProjection.value)
-    if (!capabilityClass) {
-      if (ui.enabled) throw new Error('GENERATION_V2_CAPABILITY_PROJECTION_REQUIRED')
-      return null
-    }
-
     let modalities: OpenRouterOutputModality[] | undefined
-    if (ui.outputMode === 'image_only') {
+    if (outputMode === 'image_only') {
       modalities = ['image']
-    } else if (ui.outputMode === 'image_and_text') {
+    } else if (outputMode === 'image_and_text') {
       modalities = ['image', 'text']
     }
     if (capabilityClass === 'image_only' && modalities?.includes('text')) {
@@ -5961,7 +5919,7 @@ export function useAppChatAppLogic() {
     }
 
     const imageConfigPatch: Record<string, unknown> = {}
-    if (aspectRatio && aspectRatio !== 'auto') imageConfigPatch.aspect_ratio = aspectRatio
+    if (aspectRatio) imageConfigPatch.aspect_ratio = aspectRatio
     if (imageSize) imageConfigPatch.image_size = imageSize
     const imageConfig =
       Object.keys(imageConfigPatch).length > 0
@@ -6316,8 +6274,11 @@ export function useAppChatAppLogic() {
       global: globalGenerationParamsDefaults.value,
     } })
     const imageConfig = resolveImageGenerationConfigForRequest(providerId, sessionConfig)
+    const capabilityBinding = activeSessionCapabilityProjection.value?.binding
     const geminiInteractionsImage = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
-      isGeminiInteractionsImageModelIdV1(normalizeGeminiImageGenerationModelId(routeModelId(sessionConfig))) && imageConfig !== null
+      capabilityBinding?.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+      capabilityBinding.protocolContractId === 'gemini-interactions-v1beta' &&
+      capabilityBinding.operation === 'image_generate' && imageConfig !== null
     const mappedParamKeys = new Set([
       'temperature', 'topP', 'topK', 'minP', 'topA', 'frequencyPenalty', 'presencePenalty',
       'repetitionPenalty', 'seed', 'maxOutputTokens', 'stopSequences', 'reasoningEffort',
@@ -6348,12 +6309,16 @@ export function useAppChatAppLogic() {
     const explicitReasoningDisabled = deepSeekReasoning
       ? !deepSeekReasoning.enabled
       : rawEffort === 'none' || thinkingEnabled === false
-    const effort = rawEffort === 'none' ? undefined : rawEffort
+    const effort = rawEffort === 'none' || rawEffort === 'auto' ? undefined : rawEffort
     const summary = deepSeekReasoning ? undefined : geminiInteractionsImage && params.thoughtSummaryMode === 'auto'
       ? 'auto' : params.reasoningSummary
+    const resolvedReasoningMode = activeSessionCapabilityProjection.value?.controls['reasoning.mode']
+    const openAIResponsesProviderAuto = providerId === OPENAI_RESPONSES_PROVIDER_KEY &&
+      resolvedReasoningMode?.state === 'supported' && resolvedReasoningMode.domain?.kind === 'enum' &&
+      resolvedReasoningMode.domain.values.includes('enabled') && effort === undefined
     const reasoningEnabled = deepSeekReasoning
       ? deepSeekReasoning.enabled
-      : openRouterReasoning?.requestedReasoningMode === 'auto' || thinkingEnabled === true || effort !== undefined || summary !== undefined ||
+      : openAIResponsesProviderAuto || openRouterReasoning?.requestedReasoningMode === 'auto' || thinkingEnabled === true || effort !== undefined || summary !== undefined ||
         params.thinkingLevel !== undefined || params.thinkingBudget !== undefined
     const reasoning = explicitReasoningDisabled || !reasoningEnabled
       ? { mode: 'disabled' as const }
@@ -6391,12 +6356,7 @@ export function useAppChatAppLogic() {
 
     let image: Readonly<Record<string, unknown>> = { mode: 'disabled' }
     if (imageConfig) {
-      if (providerId === OPENROUTER_PROVIDER_ID && imageConfig.modalities?.includes('text')) {
-        throw new Error('OPENROUTER_IMAGES_OUTPUT_MODE_UNSUPPORTED')
-      }
-      if (providerId === OPENAI_RESPONSES_PROVIDER_KEY && imageConfig.outputMode === 'image_only') {
-        throw new Error('OPENAI_RESPONSES_IMAGE_ONLY_OUTPUT_UNSUPPORTED')
-      }
+      const allowedResolutions = projectGenerationEnumValuesV2(activeSessionCapabilityProjection.value, 'image.resolution')
       if (providerId === OPENAI_RESPONSES_PROVIDER_KEY) {
         const ratio = String(imageConfig.aspectRatio ?? '')
         const size = ratio === '3:4' ? { width: 1024, height: 1536 }
@@ -6407,7 +6367,7 @@ export function useAppChatAppLogic() {
         mode: 'generate',
         ...(geminiInteractionsImage ? { outputMode: imageConfig.outputMode } : {}),
         ...(imageConfig.aspectRatio && imageConfig.aspectRatio !== 'auto' ? { aspectRatio: imageConfig.aspectRatio } : {}),
-        ...(['512', '1K', '2K', '4K'].includes(String(imageConfig.imageSize)) ? { resolution: imageConfig.imageSize } : {}),
+        ...(allowedResolutions.includes(String(imageConfig.imageSize)) ? { resolution: imageConfig.imageSize } : {}),
       }
     }
 

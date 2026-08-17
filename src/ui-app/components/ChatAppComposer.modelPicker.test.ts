@@ -378,7 +378,7 @@ describe('ChatAppComposer model picker integration', () => {
           reasoning: { enabled: false, effort: 'medium' as const },
           generationParams: {
             detail: {
-              reasoningEffort: { mode: 'custom' as const, value: 'auto' },
+              reasoningEffort: { mode: 'omit' as const },
             },
           },
         }))
@@ -425,6 +425,14 @@ describe('ChatAppComposer model picker integration', () => {
     expect(updateGenerationParamsLayer).toHaveBeenCalledWith({
       reasoningEffort: { mode: 'custom', value: 'xhigh' },
     })
+
+    await user.click(within(chip).getByTestId('capability-chip-chevron'))
+    await user.click(within(await screen.findByTestId('capability-chip-menu')).getByRole('button', {
+      name: `${t('chat.generationParams.reasoning.auto')} (none)`,
+    }))
+    expect(updateGenerationParamsLayer).toHaveBeenLastCalledWith({
+      reasoningEffort: { mode: 'omit' },
+    })
   })
 
   it('shows max in the quick reasoning control only when the effective capability includes it', async () => {
@@ -467,7 +475,7 @@ describe('ChatAppComposer model picker integration', () => {
           routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'openai_responses' as const, modelId: model.value  },
           generationParams: {
             detail: {
-              reasoningEffort: { mode: 'custom' as const, value: 'auto' },
+              reasoningEffort: { mode: 'omit' as const },
               reasoningSummary: { mode: 'omit' as const },
             },
           },
@@ -508,7 +516,7 @@ describe('ChatAppComposer model picker integration', () => {
     await user.click(within(menu).getByRole('button', { name: t('chat.generationParams.reasoning.detailed') }))
 
     expect(updateGenerationParamsLayer).toHaveBeenCalledWith({
-      reasoningEffort: { mode: 'custom', value: 'auto' },
+      reasoningEffort: { mode: 'omit' },
       reasoningSummary: { mode: 'custom', value: 'detailed' },
     })
   })
@@ -1776,7 +1784,7 @@ describe('ChatAppComposer model picker integration', () => {
     expect(screen.queryByTestId('google-thinking-chip')).not.toBeInTheDocument()
 
     const imageChip = screen.getByTestId('image-chip')
-    expect(within(imageChip).getByTestId('capability-chip-body')).toHaveTextContent('1:1')
+    expect(within(imageChip).getByTestId('capability-chip-body')).toHaveTextContent('4K · 16:9')
 
     await fireEvent.click(within(imageChip).getByTestId('capability-chip-body'))
     expect(view.emitted('updateImageGenerationEnabled')?.[0]).toEqual([true])

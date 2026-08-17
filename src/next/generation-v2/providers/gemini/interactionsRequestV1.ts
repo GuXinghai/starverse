@@ -1,11 +1,6 @@
 import { ImmutablePreparedBodyV2 } from '../../compiler/stableSerialize'
-import {
-  normalizeGeminiImageGenerationModelId,
-  type GeminiImageGenerationAspectRatio,
-  type GeminiImageGenerationImageSize,
-  type GeminiImageGenerationOutputMode,
-} from '../../../provider/gemini/geminiImageGenerationPolicy'
-import { isGeminiInteractionsImageModelIdV1, readGeminiInteractionsImageModelPolicyV1 } from './interactionsImageCapabilityPolicyV1'
+
+type GeminiInteractionsImageSizeV1 = '512' | '1K' | '2K' | '4K'
 
 export const GEMINI_INTERACTIONS_REQUEST_MAX_BYTES_V1 = 20 * 1_024 * 1_024
 
@@ -61,45 +56,43 @@ export function compileGeminiInteractionsRequestV1(inputValue: unknown): Readonl
       typeof input.prompt !== 'string' || input.prompt.length === 0) {
     throw new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_INVALID')
   }
-  if (!isGeminiInteractionsImageModelIdV1(input.model) || normalizeGeminiImageGenerationModelId(input.model) !== input.model) {
-    throw new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_UNSUPPORTED')
+  if (input.model.length < 1 || input.model.length > 512 || input.model.trim() !== input.model) {
+    throw new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_INVALID')
   }
-  const policy = readGeminiInteractionsImageModelPolicyV1(input.model)
   const image = record(input.image)
   if (Object.keys(image).some((key) => !['mimeType', 'aspectRatio', 'imageSize'].includes(key)) ||
       (image.mimeType !== undefined && image.mimeType !== 'image/jpeg') ||
-      typeof image.aspectRatio !== 'string' ||
-      !(policy.supportedAspectRatios as readonly string[]).includes(image.aspectRatio) ||
-      (policy.imageSizeMode === 'hidden' ? image.imageSize !== undefined
-        : typeof image.imageSize !== 'string' || !policy.supportedImageSizes.includes(image.imageSize as GeminiImageGenerationImageSize)) ||
-      !policy.supportedOutputModes.includes(input.outputMode as GeminiImageGenerationOutputMode)) {
+      (image.aspectRatio !== undefined && (typeof image.aspectRatio !== 'string' ||
+        (image.aspectRatio !== 'auto' && !/^[1-9]\d{0,4}:[1-9]\d{0,4}$/u.test(image.aspectRatio)))) ||
+      (image.imageSize !== undefined && (typeof image.imageSize !== 'string' ||
+        !['512', '1K', '2K', '4K'].includes(image.imageSize))) ||
+      (input.outputMode !== 'image_only' && input.outputMode !== 'image_and_text')) {
     throw new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_UNSUPPORTED')
   }
   const imageFormat = Object.freeze({
     type: 'image' as const,
     ...(image.mimeType === undefined ? {} : { mime_type: 'image/jpeg' as const }),
-    ...(image.aspectRatio === 'auto' ? {} : { aspect_ratio: image.aspectRatio as GeminiImageGenerationAspectRatio }),
-    ...(image.imageSize === undefined ? {} : { image_size: image.imageSize as GeminiImageGenerationImageSize }),
+    ...(image.aspectRatio === undefined || image.aspectRatio === 'auto'
+      ? {} : { aspect_ratio: image.aspectRatio as string }),
+    ...(image.imageSize === undefined ? {} : { image_size: image.imageSize as GeminiInteractionsImageSizeV1 }),
   })
   const generation: Readonly<Record<string, unknown>> = input.generation === undefined ? Object.freeze({}) : record(input.generation)
   if (Object.keys(generation).some((key) => !['temperature', 'topP', 'maxOutputTokens', 'stop'].includes(key)) ||
       (generation.temperature !== undefined && (typeof generation.temperature !== 'number' || !Number.isFinite(generation.temperature) || generation.temperature < 0 || generation.temperature > 2)) ||
       (generation.topP !== undefined && (typeof generation.topP !== 'number' || !Number.isFinite(generation.topP) || generation.topP < 0 || generation.topP > 1)) ||
-      (generation.maxOutputTokens !== undefined && (!Number.isSafeInteger(generation.maxOutputTokens) || (generation.maxOutputTokens as number) < 0 || (generation.maxOutputTokens as number) > policy.maxOutputTokens)) ||
-      (generation.stop !== undefined && (!policy.supportsStopSequences || !Array.isArray(generation.stop) ||
+      (generation.maxOutputTokens !== undefined && (!Number.isSafeInteger(generation.maxOutputTokens) || (generation.maxOutputTokens as number) < 0)) ||
+      (generation.stop !== undefined && (!Array.isArray(generation.stop) ||
         generation.stop.some((item: unknown) => typeof item !== 'string' || !item.trim())))) {
     throw new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_UNSUPPORTED')
   }
   const reasoning: Readonly<Record<string, unknown>> = input.reasoning === undefined ? Object.freeze({}) : record(input.reasoning)
   if (Object.keys(reasoning).some((key) => !['thinkingLevel', 'thinkingSummaries'].includes(key)) ||
-      (reasoning.thinkingLevel !== undefined && !(policy.thinkingLevels as readonly unknown[]).includes(reasoning.thinkingLevel)) ||
-      (reasoning.thinkingSummaries !== undefined && (reasoning.thinkingSummaries !== 'auto' || !policy.supportsThoughtSummaries))) {
+      (reasoning.thinkingLevel !== undefined && (typeof reasoning.thinkingLevel !== 'string' || !reasoning.thinkingLevel)) ||
+      (reasoning.thinkingSummaries !== undefined && reasoning.thinkingSummaries !== 'auto')) {
     throw new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_UNSUPPORTED')
   }
   const webTypes = input.webTypes === undefined ? [] : input.webTypes
-  if (!Array.isArray(webTypes) || webTypes.some((type) => type !== 'web' && type !== 'image') ||
-      webTypes.includes('web') && !policy.supportsGoogleSearch ||
-      webTypes.includes('image') && !policy.supportsImageSearch) {
+  if (!Array.isArray(webTypes) || webTypes.some((type) => type !== 'web' && type !== 'image')) {
     throw new GeminiInteractionsRequestV1Error('GENERATION_V2_GEMINI_INTERACTIONS_REQUEST_UNSUPPORTED')
   }
   const generationConfig = Object.freeze({

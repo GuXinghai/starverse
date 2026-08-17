@@ -24,6 +24,7 @@ import {
   isProjectedGeminiThinkingBudgetValid,
   projectGeminiImageGenerationPolicyV2,
   projectGeminiThinkingCapabilityV2,
+  projectImageGenerationControlDomainsV2,
 } from '../app/generationV2CapabilityUiProjection'
 import { OPENAI_RESPONSES_PROVIDER_KEY } from '@/next/provider/openai-responses/openAIResponsesModelSource'
 import {
@@ -371,6 +372,7 @@ const genericReasoningEffortOptions = computed<readonly ChatSessionConfigReasoni
     typeof effort === 'string' && effort !== 'none' && effort !== 'auto'))
 })
 const googleImageGenerationPolicy = computed(() => projectGeminiImageGenerationPolicyV2(props.capabilityProjection))
+const imageGenerationControlDomains = computed(() => projectImageGenerationControlDomainsV2(props.capabilityProjection))
 const isGoogleImageGenerationModel = computed(() => isGoogleAIStudioSelected.value && isProjectedGeminiImageModelV2(props.capabilityProjection))
 const googleThinkingCapability = computed(() => projectGeminiThinkingCapabilityV2(props.capabilityProjection, selectedModel.value))
 function customGoogleGenerationParamValue(key: 'thinkingBudget' | 'thinkingLevel' | 'includeThoughts' | 'thoughtSummaryMode'): unknown {
@@ -519,36 +521,27 @@ const openAIResponsesReasoningActiveLabel = computed(() =>
     : null
 )
 const imageGenerationSizeOptions = computed<readonly ChatSessionConfigImageResolution[]>(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportedImageSizes
-  return ['1K', '2K', '4K']
+  return imageGenerationControlDomains.value.resolutions
 })
 const imageGenerationAspectRatioOptions = computed<readonly ChatSessionConfigAspectRatio[]>(() => {
-  if (isGoogleImageGenerationModel.value) return googleImageGenerationPolicy.value.supportedAspectRatios
-  return ['16:9', '3:4', '1:1', '4:3']
+  return imageGenerationControlDomains.value.aspectRatios
 })
 const showImageGenerationSizeControl = computed(() =>
-  !isGoogleImageGenerationModel.value || googleImageGenerationPolicy.value.imageSizeMode !== 'hidden'
+  imageGenerationSizeOptions.value.length > 0
 )
 const effectiveImageGenerationEnabled = computed(() =>
   isGoogleImageGenerationModel.value || resolvedSessionConfig.value.imageGeneration.enabled
 )
 const effectiveImageGenerationResolution = computed<ChatSessionConfigImageResolution>(() =>
-  isGoogleImageGenerationModel.value &&
-    (
-      !resolvedSessionConfig.value.imageGeneration.enabled ||
-      !(googleImageGenerationPolicy.value.supportedImageSizes as readonly string[]).includes(resolvedSessionConfig.value.imageGeneration.resolution)
-    )
-    ? googleImageGenerationPolicy.value.defaultImageSize
+  imageGenerationSizeOptions.value.length > 0 &&
+    !imageGenerationSizeOptions.value.includes(resolvedSessionConfig.value.imageGeneration.resolution)
+    ? imageGenerationSizeOptions.value[0]
     : resolvedSessionConfig.value.imageGeneration.resolution
 )
 const effectiveImageGenerationAspectRatio = computed(() =>
-  isGoogleImageGenerationModel.value &&
-    (
-      !resolvedSessionConfig.value.imageGeneration.enabled ||
-      !resolvedSessionConfig.value.imageGeneration.aspectRatio ||
-      !(googleImageGenerationPolicy.value.supportedAspectRatios as readonly string[]).includes(resolvedSessionConfig.value.imageGeneration.aspectRatio)
-    )
-    ? '1:1'
+  imageGenerationAspectRatioOptions.value.length > 0 &&
+    !imageGenerationAspectRatioOptions.value.includes(resolvedSessionConfig.value.imageGeneration.aspectRatio)
+    ? imageGenerationAspectRatioOptions.value[0]
     : resolvedSessionConfig.value.imageGeneration.aspectRatio
 )
 const imageChipOptions = computed(() => {
@@ -968,7 +961,9 @@ function onOpenAIResponsesReasoningSelect(value: string) {
   const current = resolvedSessionConfig.value.generationParams.detail ?? {}
   emit('updateGenerationParamsLayer', {
     ...current,
-    reasoningEffort: { mode: 'custom', value: value as OpenAIResponsesReasoningEffortSetting },
+    reasoningEffort: value === 'auto'
+      ? { mode: 'omit' }
+      : { mode: 'custom', value: value as Exclude<OpenAIResponsesReasoningEffortSetting, 'auto'> },
   })
 }
 

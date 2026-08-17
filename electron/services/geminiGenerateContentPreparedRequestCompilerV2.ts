@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-imports -- Main-process compiler composes canonical Generation V2 domain and wire contracts. */
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
 import type { Epoch2AttachmentBlobStoreV2 } from '../data-epoch/epoch2AttachmentBlobStoreV2'
@@ -31,10 +32,7 @@ import {
 } from '../../infra/db/repo/toolRegistryV2Repo'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
-import {
-  hasReviewedGeminiGenerateContentReasoningWebCapabilityV2,
-  hasReviewedGeminiGenerateContentToolCapabilityV2,
-} from '../../src/next/generation-v2/providers/gemini/toolCapabilityPolicyV2'
+/* eslint-enable no-restricted-imports */
 
 export class GeminiGenerateContentPreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:
@@ -96,9 +94,7 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
     reasoningModeField.domain.values.includes('enabled')
   const thinkingControlKind = thinkingLevelField?.state === 'supported' ? 'level'
     : thinkingBudgetField?.state === 'supported' ? 'budget' : 'default-only'
-  if ((toolsEnabled && !hasReviewedGeminiGenerateContentToolCapabilityV2(binding.modelId.value)) ||
-      (intent.reasoning.mode === 'enabled' && !thinkingSupported) ||
-      (intent.web.mode === 'provider_search' && !hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(binding.modelId.value))) {
+  if (intent.reasoning.mode === 'enabled' && !thinkingSupported) {
     throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
   }
   if (toolsEnabled) {

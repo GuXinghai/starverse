@@ -499,6 +499,88 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     expect('recordRecent' in bridge().modelPreferences).toBe(false)
   })
 
+  it('refreshes capability after a stale initial send without automatically resubmitting', async () => {
+    selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL, {
+      rejectCode: 'STALE_CAPABILITY_REVISION',
+    })
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await waitForAppReady()
+    const resolve = bridge().capabilities.resolve as ReturnType<typeof vi.fn>
+    const resolvesBeforeSend = resolve.mock.calls.length
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'stale request')
+    await user.click(sendButton())
+
+    await waitFor(() => expect(initialStubs['openRouter.chat']).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(resolve.mock.calls.length).toBeGreaterThan(resolvesBeforeSend))
+    expect(turns).toEqual([])
+    expect((draftBox() as HTMLTextAreaElement).value).toBe('stale request')
+    expect(initialStubs['openRouter.chat']).toHaveBeenCalledWith(expect.objectContaining({
+      expectedCapabilityRevision: 'capability-v2:test',
+    }))
+  })
+
+  it('maps OpenAI Responses Auto to enabled provider reasoning without an effort value', async () => {
+    globalThis.localStorage?.setItem('starverse.openAIResponsesTextChat.enabled', '1')
+    selectRuntimeProvider('openai_responses', 'gpt-5.4-nano')
+    const resolve = bridge().capabilities.resolve as ReturnType<typeof vi.fn>
+    const baseResolve = resolve.getMockImplementation() as ((request: any) => Promise<any>) | undefined
+    resolve.mockImplementation(async (request: any) => {
+      const result = await baseResolve?.(request)
+      if (!result?.ok || request.providerId !== 'openai_responses') return result
+      return {
+        ...result,
+        value: {
+          ...result.value,
+          controlsProjection: {
+            ...result.value.controlsProjection,
+            controls: {
+              'reasoning.mode': { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: ['disabled', 'enabled'] }, constraints: [], evidenceIds: [] },
+              'reasoning.effort': { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: ['low', 'medium', 'high'] }, constraints: [], evidenceIds: [] },
+            },
+          },
+        },
+      }
+    })
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'provider auto')
+    await user.click(sendButton())
+    await screen.findByText('openai hi')
+
+    const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
+    expect(layer?.reasoning).toEqual({ mode: 'enabled' })
+  })
+
+  it('ignores stale image-generation state after switching to a text-only provider', async () => {
+    globalThis.localStorage?.setItem('starverse.deepSeekTextChat.enabled', '1')
+    selectRuntimeProvider('deepseek', 'deepseek-chat')
+    bridge().workspace.getConfig = vi.fn(async (ownerKind: string, ownerId: string) => ok({
+      ownerKind,
+      ownerId,
+      configRevision: 'config-revision:test',
+      semanticLayer: {
+        schemaVersion: 2,
+        image: { mode: 'generate', outputMode: 'image_only', aspectRatio: '1:1', resolution: '1K' },
+      },
+    }))
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await waitForAppReady()
+
+    await user.click(draftBox())
+    await user.type(draftBox(), 'text after image model')
+    await user.click(sendButton())
+    await screen.findByText('deepseek hi')
+
+    expect(initialStubs.deepSeek).toHaveBeenCalledTimes(1)
+  })
+
   it('uses selected model for next send and persists the conversation route preference', async () => {
     selectRuntimeProvider('openrouter', DEFAULT_OPENROUTER_TEST_MODEL)
     const user = userEvent.setup()

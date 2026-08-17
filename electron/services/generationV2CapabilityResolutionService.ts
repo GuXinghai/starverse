@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-imports -- Main-process capability authority composes canonical Generation V2 resolver contracts. */
 import type BetterSqlite3 from 'better-sqlite3'
 import { LocalEndpointProfileV2Repo, type LocalEndpointProfileV2 } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import { OpenAICompatibleV2Repo } from '../../infra/db/repo/openAICompatibleV2Repo'
@@ -43,6 +44,8 @@ import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/next/gene
 import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
+import { listGenerationImplementationManifestsV2 } from '../../src/next/generation-v2/capability/implementationManifestV2'
+/* eslint-enable no-restricted-imports */
 
 export class GenerationV2CapabilityResolutionServiceError extends Error {
   constructor(readonly code:
@@ -80,19 +83,18 @@ function capabilityResolutionScopeKeyV2(
  * authority; this list prevents a newly production-reachable scope from
  * silently falling through to an unimplemented resolver.
  */
-const PRODUCTION_CAPABILITY_RESOLUTION_SCOPE_KEYS_V2 = Object.freeze([
-  capabilityResolutionScopeKeyV2('openrouter', 'openrouter-chat-completions-v1', 'text'),
-  capabilityResolutionScopeKeyV2('openrouter', 'openrouter-images-v1', 'image_generate'),
-  capabilityResolutionScopeKeyV2('openai_responses', 'openai-responses-v1', 'text'),
-  capabilityResolutionScopeKeyV2('anthropic', 'anthropic-messages-2023-06-01', 'text'),
-  capabilityResolutionScopeKeyV2('deepseek', 'deepseek-stable-chat-v1', 'text'),
-  capabilityResolutionScopeKeyV2('google_ai_studio', 'gemini-generate-content-v1beta', 'text'),
-  capabilityResolutionScopeKeyV2('google_ai_studio', 'gemini-interactions-v1beta', 'image_generate'),
-  capabilityResolutionScopeKeyV2('lmstudio', 'lmstudio-openresponses', 'text'),
-  capabilityResolutionScopeKeyV2('generic_local', 'generic-local-openai-chat-completions', 'text'),
-  capabilityResolutionScopeKeyV2('ollama', 'ollama-chat-v1', 'text'),
-  capabilityResolutionScopeKeyV2('openai_compatible', 'openai_chat_compatible', 'text'),
-] as const)
+const PRODUCTION_CAPABILITY_RESOLUTION_SCOPE_KEYS_V2 = Object.freeze(
+  listGenerationImplementationManifestsV2()
+    // Continuations are bound to the originating answer's immutable runtime
+    // capability snapshot; they must not resolve a new UI capability revision.
+    .filter((manifest) => manifest.operation !== 'tool_continue')
+    .map((manifest) => capabilityResolutionScopeKeyV2(
+      manifest.providerId,
+      manifest.protocolContractId,
+      manifest.operation,
+    ))
+    .sort(),
+)
 
 function assertCapabilityResolutionRegistryCompleteV2(
   registry: ReadonlyMap<string, CapabilityResolverV2>,
