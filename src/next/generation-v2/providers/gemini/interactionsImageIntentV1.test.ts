@@ -23,4 +23,17 @@ describe('Gemini Interactions image intent', () => {
     expect(projectGeminiInteractionsImageIntentV1(intent({ candidateCount: 1 }), 'gemini-3.1-flash-image').issues)
       .toEqual(['generation.candidateCount'])
   })
+
+  it('projects protocol-supported semantics independently of model policy', () => {
+    const value = {
+      ...intent({ maxOutputTokens: 1_000_000, stop: ['done'] }),
+      reasoning: { mode: 'enabled', effort: 'max', summary: 'auto' },
+      web: { mode: 'provider_search', types: ['image'] },
+      image: { mode: 'generate', aspectRatio: '16:9', resolution: '4K' },
+    }
+    const legacy = projectGeminiInteractionsImageIntentV1(value, 'gemini-2.5-flash-image')
+    const future = projectGeminiInteractionsImageIntentV1(value, 'gemini-next-image')
+    expect(legacy.issues).toEqual([])
+    expect(future).toEqual(legacy)
+  })
 })

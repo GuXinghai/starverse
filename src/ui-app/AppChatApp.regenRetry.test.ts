@@ -42,6 +42,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
       errorMessage: answer.status === 'failed' ? 'provider error' : null,
       endpointProfileId: 'openrouter-first-party-v1',
       protocolContractId: 'openrouter-chat-completions-v1',
+      capabilityRevision: 'capability-v2:frozen',
       reasoningDetails: [],
       attachments: [],
       images: [],
@@ -157,7 +158,7 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     const baseTemplate = originalGenerationV2.workspace.getSystemTemplate
     readBranch = vi.fn(async (branchId = 'b1') => ok(branchView(branchId)))
     regenerate = vi.fn(async () => commitNewAnswer('regenerate'))
-    retry = vi.fn(async (command: any) => commitNewAnswer(command.actionKind))
+    retry = vi.fn(async (bound: any) => commitNewAnswer(bound.command.actionKind))
 
     ;(globalThis as any).generationV2 = {
       ...originalGenerationV2,
@@ -254,8 +255,11 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
 
     await waitFor(() => expect(regenerate).toHaveBeenCalledTimes(1))
     expect(regenerate).toHaveBeenCalledWith(expect.objectContaining({
-      sourceBranchId: 'b1', questionId: 'u1', expectedHeadMessageId: 'a1',
-      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      expectedCapabilityRevision: 'capability-v2:test',
+      command: expect.objectContaining({
+        sourceBranchId: 'b1', questionId: 'u1', expectedHeadMessageId: 'a1',
+        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+      }),
     }))
     await screen.findByTestId('msg-wrap-a2')
     await waitFor(() => expect(screen.getByTestId('cand-pos-u1').textContent).toBe('2/2'))
@@ -265,6 +269,22 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     expect(chosenAnswerRootId).toBe('a1')
     expect(headMessageId).toBe('a1')
     expect('recordRecent' in (globalThis as any).generationV2.modelPreferences).toBe(false)
+  })
+
+  it('refreshes capability after stale regenerate without creating or resubmitting an answer', async () => {
+    regenerate.mockResolvedValue({ ok: false, code: 'STALE_CAPABILITY_REVISION' })
+    const resolve = (globalThis as any).generationV2.capabilities.resolve as ReturnType<typeof vi.fn>
+    const user = userEvent.setup()
+    render(AppChatApp)
+    await screen.findByText('A1')
+    const resolvesBeforeAction = resolve.mock.calls.length
+
+    await user.click(screen.getByTestId('regen-q-u1'))
+
+    await waitFor(() => expect(regenerate).toHaveBeenCalledTimes(1))
+    await waitFor(() => expect(resolve.mock.calls.length).toBeGreaterThan(resolvesBeforeAction))
+    expect(childAnswer).toBeNull()
+    expect(answers.map((answer) => answer.answerRootId)).toEqual(['a1'])
   })
 
   it('applies a live reasoning projection to the branch-keyed runtime without a refresh', async () => {
@@ -298,8 +318,11 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     await user.click(screen.getByTestId('retry-new-a-a1'))
 
     await waitFor(() => expect(retry).toHaveBeenCalledWith(expect.objectContaining({
-      actionKind: 'retry_as_new', sourceBranchId: 'b1', questionId: 'u1',
-      sourceAnswerId: 'a1', expectedHeadMessageId: 'a1',
+      expectedCapabilityRevision: 'capability-v2:frozen',
+      command: expect.objectContaining({
+        actionKind: 'retry_as_new', sourceBranchId: 'b1', questionId: 'u1',
+        sourceAnswerId: 'a1', expectedHeadMessageId: 'a1',
+      }),
     })))
     await screen.findByTestId('msg-wrap-a2')
     expect(answers.map((answer) => answer.answerRootId)).toEqual(['a1'])
@@ -317,8 +340,11 @@ describe('ui-app AppChatApp (Generation V2 regenerate + retry)', () => {
     await user.click(screen.getByTestId('retry-a-a1'))
 
     await waitFor(() => expect(retry).toHaveBeenCalledWith(expect.objectContaining({
-      actionKind: 'retry_replace', sourceBranchId: 'b1', questionId: 'u1',
-      sourceAnswerId: 'a1', expectedHeadMessageId: 'a1',
+      expectedCapabilityRevision: 'capability-v2:frozen',
+      command: expect.objectContaining({
+        actionKind: 'retry_replace', sourceBranchId: 'b1', questionId: 'u1',
+        sourceAnswerId: 'a1', expectedHeadMessageId: 'a1',
+      }),
     })))
     await waitFor(() => expect(screen.getByTestId('retry-a-a2')).toBeDisabled())
     expect(screen.queryByTestId('cand-pos-u1')).not.toBeInTheDocument()

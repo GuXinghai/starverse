@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-imports -- Main-process compiler composes canonical Generation V2 domain and wire contracts. */
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import type { LocalEndpointProfileV2 } from '../../infra/db/repo/localEndpointProfileV2Repo'
@@ -9,6 +10,7 @@ import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generati
 import { createNoCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { compileLmStudioOpenResponsesRequestV1 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/responsesRequestV1'
 import { readLmStudioOpenResponsesEndpointV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
+/* eslint-enable no-restricted-imports */
 
 export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
   context: GenerationV2AuthorityTransactionContextV2
@@ -35,8 +37,8 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
   const tools = intent.tools
   const unsupportedGeneration = ['topK', 'minP', 'topA', 'seed', 'stop', 'candidateCount', 'repetitionPenalty'] as const
   if (unsupportedGeneration.some((key) => intent.generation[key] !== undefined) ||
-      (intent.reasoning.mode === 'enabled' && (intent.reasoning.effort !== 'low' ||
-        intent.reasoning.summary !== undefined || intent.reasoning.exclude !== undefined)) ||
+      (intent.reasoning.mode === 'enabled' &&
+        (intent.reasoning.summary !== undefined || intent.reasoning.exclude !== undefined)) ||
       intent.web.mode !== 'disabled' || intent.image.mode !== 'disabled' ||
       intent.attachments.length !== 0 || intent.providerExtension.kind !== 'none') {
     throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_EXPLICIT_FIELD_UNSUPPORTED')

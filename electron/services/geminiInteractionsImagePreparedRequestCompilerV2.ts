@@ -1,3 +1,4 @@
+/* eslint-disable no-restricted-imports -- Main-process compiler composes canonical Generation V2 domain and wire contracts. */
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
@@ -9,7 +10,7 @@ import { compileGeminiInteractionsRequestV1 } from '../../src/next/generation-v2
 import { projectGeminiInteractionsImageIntentV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageIntentV1'
 import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import { readImageAspectRatioV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
-import { isGeminiInteractionsImageModelIdV1, readGeminiInteractionsImageModelPolicyV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
+/* eslint-enable no-restricted-imports */
 
 export class GeminiInteractionsImagePreparedRequestCompilerV2Error extends Error {
   constructor(readonly code: 'GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_AUTHORITY_INVALID' |
@@ -34,7 +35,7 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
   const descriptor = profile.descriptors.interactions
   if (binding.providerId.value !== 'google_ai_studio' || binding.endpointProfileId.value !== profile.endpointProfileId.value ||
       binding.protocolContractId.value !== 'gemini-interactions-v1beta' || binding.operation !== 'image_generate' ||
-      !isGeminiInteractionsImageModelIdV1(binding.modelId.value) || binding.endpointBinding.kind !== 'provider_managed_set' ||
+      binding.endpointBinding.kind !== 'provider_managed_set' ||
       binding.endpointBinding.endpointSetRevision.value !== profile.endpointSetRevision.value ||
       binding.endpointBinding.descriptors.length !== 1 ||
       binding.endpointBinding.descriptors[0].endpointId.value !== descriptor.endpointId.value ||
@@ -50,7 +51,6 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
   if (intent.image.mode !== 'generate') {
     throw new GeminiInteractionsImagePreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_SEMANTIC_REJECTED')
   }
-  const policy = readGeminiInteractionsImageModelPolicyV1(binding.modelId.value)
   const generation = intent.generation
   const compilation = compileGeminiInteractionsRequestV1({
     model: binding.modelId.value,
@@ -58,8 +58,8 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
     outputMode: intent.image.outputMode ?? 'image_only',
     image: {
       ...(intent.image.format === 'jpeg' ? { mimeType: 'image/jpeg' } : {}),
-      aspectRatio: intent.image.aspectRatio === undefined ? policy.defaultAspectRatio : readImageAspectRatioV2(intent.image.aspectRatio),
-      ...(policy.imageSizeMode === 'hidden' ? {} : { imageSize: intent.image.resolution ?? policy.defaultImageSize }),
+      ...(intent.image.aspectRatio === undefined ? {} : { aspectRatio: readImageAspectRatioV2(intent.image.aspectRatio) }),
+      ...(intent.image.resolution === undefined ? {} : { imageSize: intent.image.resolution }),
     },
     generation: {
       ...(generation.temperature === undefined ? {} : { temperature: generation.temperature }),

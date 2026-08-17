@@ -192,7 +192,7 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
           reasoning: { enabled: false, effort: 'medium' as const },
           generationParams: {
             detail: {
-              reasoningEffort: { mode: 'custom' as const, value: 'auto' },
+              reasoningEffort: { mode: 'omit' as const },
             },
           },
         },
@@ -227,11 +227,18 @@ describe('ChatSessionConsole OpenAI Responses chat controls', () => {
       },
     ])
 
-    await user.click(within(summaryControls).getByRole('button', { name: t('chat.generationParams.reasoning.auto') }))
-
+    await user.click(within(controls).getByRole('button', { name: `${t('chat.generationParams.reasoning.auto')} (none)` }))
     expect(view.emitted('updateGenerationParamsLayer')?.[1]).toEqual([
       {
-        reasoningEffort: { mode: 'custom', value: 'auto' },
+        reasoningEffort: { mode: 'omit' },
+      },
+    ])
+
+    await user.click(within(summaryControls).getByRole('button', { name: t('chat.generationParams.reasoning.auto') }))
+
+    expect(view.emitted('updateGenerationParamsLayer')?.[2]).toEqual([
+      {
+        reasoningEffort: { mode: 'omit' },
         reasoningSummary: { mode: 'custom', value: 'auto' },
       },
     ])
