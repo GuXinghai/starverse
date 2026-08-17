@@ -5,7 +5,25 @@ import GenerationParamsSettingsEditor from './GenerationParamsSettingsEditor.vue
 import { openrouterGenerationProfile } from '@/next/generation-params/providerProfiles/openrouterGenerationProfile'
 import { openaiResponsesGenerationProfile } from '@/next/generation-params/providerProfiles/openaiResponsesGenerationProfile'
 import { deepseekGenerationProfile } from '@/next/generation-params/providerProfiles/deepseekGenerationProfile'
-import { t } from '@/shared/i18n'
+
+function capabilityProjection(fields: Readonly<Record<string, Readonly<{ kind: string; values?: readonly string[]; min?: number; max?: number; integer?: boolean; hidden?: boolean }>>> = {}) {
+  const controls = Object.fromEntries(Object.entries(fields).map(([path, domain]) => [path, {
+    visibility: domain.hidden ? 'hidden' : 'visible',
+    state: 'supported',
+    domain: domain.kind === 'enum'
+      ? { kind: 'enum', values: [...(domain.values ?? [])] }
+      : { kind: 'range', min: domain.min ?? 0, max: domain.max ?? 1, integer: domain.integer ?? false },
+    constraints: [], evidenceIds: [],
+  }]))
+  return { schemaVersion: 1, binding: {}, capabilityRevision: 'capability-v2:test-generation-params', controls } as any
+}
+
+const samplingCapabilityProjection = capabilityProjection({
+  'generation.temperature': { kind: 'range', min: 0, max: 2 },
+  'generation.minP': { kind: 'range', min: 0, max: 1, hidden: true },
+  'generation.topA': { kind: 'range', min: 0, max: 1, hidden: true },
+  'generation.repetitionPenalty': { kind: 'range', min: 0, max: 2, hidden: true },
+})
 
 describe('GenerationParamsSettingsEditor', () => {
   it('hides advanced supported params until the advanced control is enabled', async () => {
@@ -17,6 +35,7 @@ describe('GenerationParamsSettingsEditor', () => {
         profile: openrouterGenerationProfile,
         modelId: 'deepseek/deepseek-v4-flash',
         collapsible: false,
+        capabilityProjection: samplingCapabilityProjection,
       },
     })
 
@@ -39,6 +58,7 @@ describe('GenerationParamsSettingsEditor', () => {
         profile: openrouterGenerationProfile,
         modelId: 'deepseek/deepseek-v4-flash',
         collapsible: false,
+        capabilityProjection: samplingCapabilityProjection,
       },
     })
 
@@ -46,7 +66,7 @@ describe('GenerationParamsSettingsEditor', () => {
     expect(screen.getByTestId('generation-param-value-minP')).toHaveValue(0.05)
   })
 
-  it('labels OpenAI Responses provider-auto reasoning effort without making it a wire value', async () => {
+  it('uses the resolved OpenAI Responses effort domain without adding a synthetic wire value', async () => {
     const user = userEvent.setup()
 
     render(GenerationParamsSettingsEditor, {
@@ -55,6 +75,9 @@ describe('GenerationParamsSettingsEditor', () => {
         profile: openaiResponsesGenerationProfile,
         modelId: 'gpt-5.4-nano',
         collapsible: false,
+        capabilityProjection: capabilityProjection({
+          'reasoning.effort': { kind: 'enum', values: ['low', 'medium', 'high', 'xhigh'] },
+        }),
       },
     })
 
@@ -62,10 +85,7 @@ describe('GenerationParamsSettingsEditor', () => {
     await user.selectOptions(mode, 'custom')
 
     const value = screen.getByTestId('generation-param-value-reasoningEffort') as HTMLSelectElement
-    expect(within(value).getByText(`${t('chat.generationParams.reasoning.auto')} (none)`)).toBeInTheDocument()
     expect(Array.from(value.options).map((option) => option.value)).toEqual([
-      'auto',
-      'none',
       'low',
       'medium',
       'high',
@@ -80,6 +100,7 @@ describe('GenerationParamsSettingsEditor', () => {
         profile: openaiResponsesGenerationProfile,
         modelId: 'gpt-4.1-mini',
         collapsible: false,
+        capabilityProjection: capabilityProjection(),
       },
     })
 
@@ -88,7 +109,7 @@ describe('GenerationParamsSettingsEditor', () => {
 
   it('hides DeepSeek reasoning controls when no provider capability is declared', () => {
     render(GenerationParamsSettingsEditor, {
-      props: { modelValue: null, profile: deepseekGenerationProfile, modelId: 'deepseek-v4-flash', collapsible: false },
+        props: { modelValue: null, profile: deepseekGenerationProfile, modelId: 'deepseek-v4-flash', collapsible: false },
     })
     expect(screen.queryByTestId('generation-param-mode-reasoningEffort')).toBeNull()
   })
@@ -102,6 +123,9 @@ describe('GenerationParamsSettingsEditor', () => {
         profile: openaiResponsesGenerationProfile,
         modelId: 'gpt-5.4-nano',
         collapsible: false,
+        capabilityProjection: capabilityProjection({
+          'reasoning.summary': { kind: 'enum', values: ['auto', 'concise', 'detailed'] },
+        }),
       },
     })
 

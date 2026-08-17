@@ -117,12 +117,6 @@ export function createGenerationV2TestBridge() {
             evidenceDigest: 'a'.repeat(64),
             semanticFieldsDigest: 'b'.repeat(64),
             capabilityRevision: 'capability-v2:test',
-            implementationCeiling: {
-              protocolContractId: request.protocolId,
-              contractRevision: 'contract:test',
-              registryRevision: 'registry:test',
-              semanticPaths: [],
-            },
           },
           controlsProjection: {
             schemaVersion: 1,

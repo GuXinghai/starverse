@@ -3,11 +3,11 @@ import type { GenerationV2Identity } from '../../domain/identityV2'
 import type { DecodedOpenRouterImageDescriptorCacheRecordV2 } from './descriptorCacheRecordV2'
 import type { OpenRouterImageDescriptorFreshnessDecisionV2 } from './descriptorFreshnessDecisionV2'
 import {
-  projectOpenRouterImageCandidatesV2,
+  evaluateOpenRouterImageCandidatesV2,
   type OpenRouterImageCandidateCapabilityV2,
   type OpenRouterImageCapabilityIssueV2,
-  type OpenRouterImageIntentCapabilityProjectionV2,
-} from './imageIntentCapabilityProjectionV2'
+  type OpenRouterImageSelectionInputV2,
+} from './imageDescriptorSelectionV2'
 import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../openrouter/verifiedFirstPartyEndpointProfileV2'
 
 export type OpenRouterImageSelectionBindingFactV2 = Readonly<{
@@ -24,7 +24,7 @@ export type OpenRouterImageUsableCacheSelectionDecisionV2 =
   | (DecisionBase & Readonly<{
       kind: 'reuse_binding'
       candidate: OpenRouterImageCandidateCapabilityV2
-      projection: OpenRouterImageIntentCapabilityProjectionV2
+      projection: OpenRouterImageSelectionInputV2
       bindingGeneration: number
       descriptorRowGeneration: number
     }>)
@@ -32,7 +32,7 @@ export type OpenRouterImageUsableCacheSelectionDecisionV2 =
       kind: 'binding_commit_required'
       selectedBy: 'sole_eligible' | 'user'
       candidate: OpenRouterImageCandidateCapabilityV2
-      projection: OpenRouterImageIntentCapabilityProjectionV2
+      projection: OpenRouterImageSelectionInputV2
       expectedBindingGeneration: number | null
       expectedDescriptorRowGeneration: number
     }>)
@@ -40,7 +40,7 @@ export type OpenRouterImageUsableCacheSelectionDecisionV2 =
       kind: 'binding_revalidation_required'
       selectedBy: 'sole_eligible' | 'user'
       candidate: OpenRouterImageCandidateCapabilityV2
-      projection: OpenRouterImageIntentCapabilityProjectionV2
+      projection: OpenRouterImageSelectionInputV2
       expectedBindingGeneration: number
       expectedDescriptorRowGeneration: number
     }>)
@@ -89,7 +89,7 @@ export type OpenRouterImageSelectionDecisionV2 =
 export type OpenRouterImageSelectionDecisionInputV2 = Readonly<{
   descriptorCache: DecodedOpenRouterImageDescriptorCacheRecordV2 | null
   freshness: OpenRouterImageDescriptorFreshnessDecisionV2
-  projection: OpenRouterImageIntentCapabilityProjectionV2
+  projection: OpenRouterImageSelectionInputV2
   binding: OpenRouterImageSelectionBindingFactV2 | null
   requestedProviderTag: GenerationV2Identity<'provider_tag'> | null
 }>
@@ -101,7 +101,7 @@ function frozenCandidates(
 ): readonly OpenRouterImageCandidateCapabilityV2[] {
   if (!input.descriptorCache) return Object.freeze([])
   const bound = input.binding?.record.endpointBinding
-  return projectOpenRouterImageCandidatesV2({
+  return evaluateOpenRouterImageCandidatesV2({
     descriptorSet: input.descriptorCache.descriptorSet,
     projection: input.projection,
     boundProviderTag: bound?.kind === 'pinned' ? bound.selector.providerTag.value : null,

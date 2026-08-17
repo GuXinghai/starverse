@@ -6,9 +6,9 @@ import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/
 import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import { createNoCredentialHeaderPlanV2, createOpenAICompatibleCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { ImmutablePreparedBodyV2, sha256PreparedBytesV2, stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
-import { buildCompatibleChatRequest } from '../../src/shared/provider/openai-chat-compatible/request/buildCompatibleChatRequest'
+import { buildCompatibleChatRequest, type CompatibleRequestFieldSettings } from '../../src/shared/provider/openai-chat-compatible/request/buildCompatibleChatRequest'
+import type { CompatibleJsonValue, CompatibleReasoningControlState } from '../../src/shared/provider/openai-chat-compatible/request/messageTypes'
 import { compatibleAuthDescriptorSchema, compatibleInlinePolicyConfigSchema, compatibleReasoningMappingConfigSchema, compatibleRequestFieldMappingConfigSchema, compatibleRequestProfileConfigSchema, compatibleResponseProfileConfigSchema } from '../../src/shared/provider/openai-chat-compatible/schemas'
-import { projectOpenAIChatCompatibleIntentV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/intentProjectionV2'
 import { readOpenAIChatCompatibleChatEndpointV2 } from '../../src/next/generation-v2/providers/openai-chat-compatible/verifiedContractV2'
 
 export class OpenAIChatCompatiblePreparedRequestCompilerV2Error extends Error {
@@ -88,7 +88,44 @@ export function compileOpenAIChatCompatiblePreparedRequestV2(input: Readonly<{
       reasoningMapping.schemaVersion !== 1 || inlinePolicy.schemaVersion !== 1) {
     return fail('GENERATION_V2_OPENAI_COMPATIBLE_COMPILER_PROVENANCE_INVALID')
   }
-  const semantic = projectOpenAIChatCompatibleIntentV2(snapshot.semanticIntent, requestMappings.map((mapping) => mapping.sourceField))
+  const fields: CompatibleRequestFieldSettings = {}
+  const ledgerEntries = [] as Array<{
+    kind: 'consumed'
+    path: string
+    disposition: 'encoded' | 'accepted_no_wire'
+    nativeField: string | null
+    encodingKind: 'identity' | 'structural' | 'omitted'
+    evidence: string
+  }>
+  const setField = (key: keyof CompatibleRequestFieldSettings, path: string, value: CompatibleJsonValue) => {
+    fields[key] = { state: 'explicit', value } as CompatibleRequestFieldSettings[typeof key]
+    ledgerEntries.push({ kind: 'consumed', path, disposition: 'encoded', nativeField: String(key), encodingKind: 'identity', evidence: 'openai_chat_compatible' })
+  }
+  const generation = snapshot.semanticIntent.generation
+  if (generation.maxOutputTokens !== undefined) setField('max_tokens', 'generation.maxOutputTokens', generation.maxOutputTokens)
+  if (generation.temperature !== undefined) setField('temperature', 'generation.temperature', generation.temperature)
+  if (generation.topP !== undefined) setField('top_p', 'generation.topP', generation.topP)
+  if (generation.stop !== undefined) setField('stop', 'generation.stop', [...generation.stop])
+  if (generation.seed !== undefined) setField('seed', 'generation.seed', generation.seed)
+  if (generation.frequencyPenalty !== undefined) setField('frequency_penalty', 'generation.frequencyPenalty', generation.frequencyPenalty)
+  if (generation.presencePenalty !== undefined) setField('presence_penalty', 'generation.presencePenalty', generation.presencePenalty)
+  const reasoningControls: CompatibleReasoningControlState = snapshot.semanticIntent.reasoning.mode === 'disabled'
+    ? Object.freeze(requestMappings.some((mapping) => mapping.sourceField === 'reasoning_enabled')
+      ? { reasoning_enabled: { state: 'explicit', value: false } }
+      : {})
+    : Object.freeze({
+        reasoning_enabled: { state: 'explicit', value: true },
+        ...(snapshot.semanticIntent.reasoning.effort === undefined ? {} : {
+          reasoning_effort: { state: 'explicit' as const, value: snapshot.semanticIntent.reasoning.effort },
+        }),
+      })
+  ledgerEntries.push(snapshot.semanticIntent.reasoning.mode === 'disabled'
+    ? { kind: 'consumed', path: 'reasoning.mode', disposition: requestMappings.some((mapping) => mapping.sourceField === 'reasoning_enabled') ? 'encoded' : 'accepted_no_wire', nativeField: requestMappings.some((mapping) => mapping.sourceField === 'reasoning_enabled') ? 'reasoning_enabled' : null, encodingKind: requestMappings.some((mapping) => mapping.sourceField === 'reasoning_enabled') ? 'structural' : 'omitted', evidence: 'openai_chat_compatible' }
+    : { kind: 'consumed', path: 'reasoning.mode', disposition: 'encoded', nativeField: 'reasoning_enabled', encodingKind: 'structural', evidence: 'openai_chat_compatible' })
+  if (snapshot.semanticIntent.reasoning.mode === 'enabled' && snapshot.semanticIntent.reasoning.effort !== undefined) {
+    ledgerEntries.push({ kind: 'consumed', path: 'reasoning.effort', disposition: 'encoded', nativeField: 'reasoning_effort', encodingKind: 'identity', evidence: 'openai_chat_compatible' })
+  }
+  const semantic = { fields, reasoningControls, ledgerEntries }
   let built: ReturnType<typeof buildCompatibleChatRequest>
   try {
     built = buildCompatibleChatRequest({ modelId: binding.modelId.value, messages: input.history.replayMessages, stream: true,
@@ -98,7 +135,7 @@ export function compileOpenAIChatCompatiblePreparedRequestV2(input: Readonly<{
   } catch { return fail('GENERATION_V2_OPENAI_COMPATIBLE_COMPILER_CONFIG_INVALID') }
   const mappingEntries = built.diagnostics.map((item) => ({ kind: 'consumed' as const,
     path: `compatible.ownership.${item.path.map(String).join('.')}`, disposition: 'accepted_no_wire' as const,
-    nativeField: null, evidence: `openai_chat_compatible:${item.owner}` }))
+    nativeField: null, encodingKind: 'omitted' as const, evidence: `openai_chat_compatible:${item.owner}` }))
   const ledger = createSemanticConsumptionLedgerV2([...semantic.ledgerEntries, ...mappingEntries])
   const ordinaryHeaders = (input.endpoint.ordinaryHeaders as readonly { name: string; value: string }[]).map(({ name, value }) => ({ name, value }))
   const headersPlan = auth.mode === 'none' ? createNoCredentialHeaderPlanV2(ordinaryHeaders)
@@ -108,5 +145,5 @@ export function compileOpenAIChatCompatiblePreparedRequestV2(input: Readonly<{
     credentialScopeId: binding.credentialScopeId.value, contractId: 'openai_chat_compatible', modelId: binding.modelId.value,
     effectiveEndpointId: input.endpoint.providerInstanceId, endpoint: readOpenAIChatCompatibleChatEndpointV2(input.endpoint),
     headersPlan, body: ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes(built.body, 20 * 1024 * 1024), ledger,
-    capabilityRevision: capability.revision.value, snapshotHash: snapshot.snapshotHash.value })
+    capabilityRevision: capability.revision.value, encoderRevision: capability.encoderRevision, snapshotHash: snapshot.snapshotHash.value })
 }

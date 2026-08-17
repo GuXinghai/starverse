@@ -12,14 +12,12 @@ import {
   type PreparedAttachmentEncodingProofV2,
   type PreparedProviderRequestV2,
 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
 import {
   readVerifiedOpenRouterFirstPartyEndpointProfileV2,
   resolveOpenRouterFirstPartyOperationV2,
 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 import type { CanonicalOpenRouterImageDescriptorSetV2 } from '../../src/next/generation-v2/providers/openrouter-images/canonicalDescriptorV2'
-import { projectOpenRouterImageIntentCapabilityV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageIntentCapabilityProjectionV2'
-import { compileOpenRouterImageRequestV1 } from '../../src/next/generation-v2/providers/openrouter-images/imageRequestV1'
+import { compileOpenRouterImageRequestV1, type OpenRouterImageWireFieldV1 } from '../../src/next/generation-v2/providers/openrouter-images/imageRequestV1'
 
 export class OpenRouterImagePreparedRequestCompilerV2Error extends Error {
   constructor(readonly code:
@@ -54,21 +52,22 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
   const selector = binding.endpointBinding.kind === 'pinned' ? binding.endpointBinding.selector : null
   const profile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
   const operationContract = resolveOpenRouterFirstPartyOperationV2(profile, 'image_generate')
+  const selectedDescriptor = selector === null ? undefined : input.descriptorSet.descriptors.find((descriptor) =>
+    descriptor.providerTag.value === selector.providerTag.value && descriptor.providerSlug.value === selector.providerSlug.value)
   if (binding.providerId.value !== profile.providerId.value ||
       binding.endpointProfileId.value !== profile.endpointProfileId.value ||
       binding.protocolContractId.value !== operationContract.contract.protocolContractId.value ||
       binding.operation !== 'image_generate' || binding.modelId.value !== input.descriptorSet.modelId.value ||
-      !selector || selector.kind !== 'openrouter_images_v1') {
+      !selector || selector.kind !== 'openrouter_images_v1' || !selectedDescriptor ||
+      selectedDescriptor.descriptorRevision.value !== selector.descriptorRevision.value ||
+      selectedDescriptor.descriptorDigest.value !== selector.descriptorDigest.value) {
     throw new OpenRouterImagePreparedRequestCompilerV2Error(
       'GENERATION_V2_OPENROUTER_IMAGE_COMPILER_BINDING_INVALID',
     )
   }
-  const projection = projectOpenRouterImageIntentCapabilityV2(
-    projectGenerationIntentLayerV2(snapshot.semanticIntent),
-  )
   const urlReferences = snapshot.semanticIntent.attachments
     .filter((attachment): attachment is Extract<typeof attachment,{kind:'url_reference'}> => attachment.kind === 'url_reference' && attachment.include)
-  if (projection.issues.length > 0 || snapshot.semanticIntent.attachments.some((attachment) =>
+  if (snapshot.semanticIntent.attachments.some((attachment) =>
     attachment.include && attachment.kind !== 'url_reference')) {
     throw new OpenRouterImagePreparedRequestCompilerV2Error(
       'GENERATION_V2_OPENROUTER_IMAGE_COMPILER_SEMANTIC_REJECTED',
@@ -76,13 +75,53 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
   }
   const attachmentRequirements = createPreparedAttachmentRequirementsV2(snapshot.semanticIntent.attachments)
   const inputReferences = urlReferences.map((attachment) => attachment.originalUrl)
+  const wireFields: OpenRouterImageWireFieldV1[] = []
+  const dispositions: Array<Readonly<{
+    semanticPath: string
+    outcome: 'encoded' | 'accepted_no_wire'
+    wireKey: string | null
+    encodingKind: 'identity' | 'structural' | 'omitted'
+  }>> = []
+  const accept = (semanticPath: string) => dispositions.push(Object.freeze({ semanticPath, outcome: 'accepted_no_wire' as const, wireKey: null, encodingKind: 'omitted' as const }))
+  const encode = (semanticPath: string, wireKey: OpenRouterImageWireFieldV1['wireKey'], value: string | number | boolean, encodingKind: 'identity' | 'structural' = 'identity') => {
+    wireFields.push(Object.freeze({ wireKey, value }))
+    dispositions.push(Object.freeze({ semanticPath, outcome: 'encoded' as const, wireKey, encodingKind }))
+  }
+  const intent = snapshot.semanticIntent
+  if (intent.generation.seed !== undefined) encode('generation.seed', 'seed', intent.generation.seed)
+  if (intent.generation.candidateCount !== undefined) encode('generation.candidateCount', 'n', intent.generation.candidateCount)
+  if (intent.reasoning.mode === 'disabled') accept('reasoning.mode')
+  if (intent.web.mode === 'disabled') accept('web.mode')
+  if (intent.tools.mode === 'disabled') accept('tools.mode')
+  if (intent.providerExtension.kind === 'none') accept('providerExtension.kind')
+  if (intent.image.mode !== 'generate') throw new OpenRouterImagePreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_IMAGE_COMPILER_SEMANTIC_REJECTED')
+  accept('image.mode')
+  if (intent.image.size !== undefined) {
+    if (intent.image.resolution !== undefined || intent.image.aspectRatio !== undefined) throw new OpenRouterImagePreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_IMAGE_COMPILER_SEMANTIC_REJECTED')
+    encode('image.size', 'size', `${intent.image.size.width}x${intent.image.size.height}`, 'structural')
+  }
+  if (intent.image.aspectRatio !== undefined) {
+    const ratio = intent.image.aspectRatio.value
+    if (ratio !== 'auto') encode('image.aspectRatio', 'aspect_ratio', ratio)
+  }
+  if (intent.image.resolution !== undefined) encode('image.resolution', 'resolution', intent.image.resolution)
+  if (intent.image.quality !== undefined) encode('image.quality', 'quality', intent.image.quality)
+  if (intent.image.format !== undefined) encode('image.format', 'output_format', intent.image.format)
+  if (intent.image.background !== undefined) encode('image.background', 'background', intent.image.background)
+  if (intent.image.outputCompression !== undefined) encode('image.outputCompression', 'output_compression', intent.image.outputCompression)
+  if (intent.image.stream !== undefined) {
+    dispositions.push(Object.freeze({ semanticPath: 'image.stream', outcome: 'encoded' as const, wireKey: 'stream', encodingKind: 'identity' as const }))
+  }
+  if (inputReferences.length > 0) encode('attachments', 'input_references', inputReferences.length, 'structural')
+  else accept('attachments')
   const compiled = compileOpenRouterImageRequestV1({
     prompt: input.prompt,
-    intent: projectGenerationIntentLayerV2(snapshot.semanticIntent),
     modelId: binding.modelId.value,
     providerTag: selector.providerTag.value,
     providerSlug: selector.providerSlug.value,
     descriptorSet: input.descriptorSet,
+    wireFields,
+    ...(intent.image.stream === undefined ? {} : { stream: intent.image.stream }),
     inputReferences,
   })
   const attachmentEncodingProofs: PreparedAttachmentEncodingProofV2[] = attachmentRequirements.map((requirement, index) => Object.freeze({
@@ -90,17 +129,13 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     requirement,
     wireFragment: inputReferences[index],
   }))
-  const ledger = createSemanticConsumptionLedgerV2(projection.dispositions.map((disposition) => {
-    if (disposition.outcome === 'rejected') {
-      throw new OpenRouterImagePreparedRequestCompilerV2Error(
-        'GENERATION_V2_OPENROUTER_IMAGE_COMPILER_SEMANTIC_REJECTED',
-      )
-    }
+  const ledger = createSemanticConsumptionLedgerV2(dispositions.map((disposition) => {
     return {
       kind: 'consumed' as const,
       path: disposition.semanticPath,
       disposition: disposition.outcome,
-      nativeField: disposition.wireKey ?? null,
+      nativeField: disposition.wireKey,
+      encodingKind: disposition.encodingKind,
       evidence: operationContract.contract.protocolContractId.value,
     }
   }))
@@ -121,6 +156,7 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     attachmentRequirements,
     attachmentEncodingProofs,
     capabilityRevision: capability.revision.value,
+    encoderRevision: capability.encoderRevision,
     snapshotHash: snapshot.snapshotHash.value,
   })
 }

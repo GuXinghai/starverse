@@ -27,7 +27,7 @@ From strongest to weakest:
 4. Successful versioned live probe for this endpoint/model/operation.
 5. User endpoint override that can only narrow or choose among codec-implemented fields.
 
-Conflicts resolve conservatively: a stronger `unsupported` wins; missing evidence means unavailable. Catalog/model-level unions may discover candidates but never override exact endpoint evidence. A protocol may bind one endpoint only when its documented selector and live routing evidence prove the pin; OpenRouter Images meets that condition through `provider.only:[provider_tag]` plus `allow_fallbacks:false`. Regex is not evidence. Provider failure never causes protocol fallback.
+Conflicts are resolved by the current versioned capability policy. `missing`, `unknown`, and `unsupported` remain distinct; no absent field is silently converted to `unsupported`. Catalog/model-level unions may discover candidates but never create availability or bypass exact binding. User/Cloud rules may later add, remove, or otherwise revise resolved domain values under that policy; they do not create model membership and cannot invent a wire encoder. A protocol may bind one endpoint only when its documented selector and live routing evidence prove the pin; OpenRouter Images meets that condition through `provider.only:[provider_tag]` plus `allow_fallbacks:false`. Regex is not evidence. Provider failure never causes protocol fallback.
 
 ## OpenRouter Images endpoint descriptor freshness
 
@@ -55,12 +55,16 @@ At age `< refreshAfter`, use the selected successful descriptor. At `refreshAfte
 
 ## Target type
 
-The first retained implementation is the strict persisted value codec in
-`src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts`. It is
-deliberately `decoded_unverified` with `executionAuthority:"none"`: canonical
-hashes prove structural integrity only. No resolver, compiler, UI, database or
-transport may consume it until a private evidence resolver has revalidated the
-binding and evidence and issued a separate non-serializable authority.
+The first retained implementation is the strict persisted resolved-capability
+record in `src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts`.
+It is deliberately `decoded_unverified` with `executionAuthority:"none"`:
+canonical hashes prove structural integrity only. The exact protocol encoder
+is checked separately by `EncodingCoverageRegistryV2`; that registry is code
+integrity evidence, not a model capability ceiling and contains no domains,
+constraints, aliases, or value mappings. No resolver, compiler, UI, database
+or transport may consume the record until a private evidence resolver has
+revalidated the binding and evidence and issued a separate non-serializable
+authority.
 
 ```ts
 type PersistedRuntimeCapabilitySnapshotV2 = {
@@ -74,6 +78,7 @@ type PersistedRuntimeCapabilitySnapshotV2 = {
   continuation: PersistedRuntimeContinuationCapabilityV2
   evidenceDigest: string
   semanticFieldsDigest: string
+  encoderRevision: string
   snapshotHash: string
 }
 
@@ -89,6 +94,7 @@ type DecodedRuntimeCapabilitySnapshotV2 = {
   continuation: PersistedRuntimeContinuationCapabilityV2
   evidenceDigest: GenerationV2Digest<"evidence_digest">
   semanticFieldsDigest: GenerationV2Digest<"capability_fields_digest">
+  encoderRevision: string
   revision: GenerationV2Identity<"capability_revision">
   snapshotHash: GenerationV2Digest<"snapshot_hash">
   canonicalJson: string

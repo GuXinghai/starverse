@@ -1177,3 +1177,16 @@ models.dev 等 external capability source 不能自行创建 model binding。
 29. **旧 UI 静态 effort 表、fallback enums、model regex、provider-specific capability branches 必须在迁移完成后删除或失去 authority。**
 
 30. **最终验收标准不是“models.dev 能用了”，而是增加或删除任意一个 evidence source 时，Catalog/UI/Preflight/Runtime/Compiler 无需增加新的 source-specific branch，仍自动得到一致结果。**
+
+---
+
+## 2026-08-17 Generation V2 纯 Wire Adapter 实施修订
+
+本节覆盖本文中与当前 Generation V2 实施边界冲突的旧表述。
+
+1. `ResolvedCapabilityV2` 的 `fields/domain/constraints` 是唯一模型能力与语义值域结论。Runtime Snapshot 只是封闭持久化 envelope，不再反向定义基础 capability vocabulary。
+2. 不再建立或消费 `implementationCeiling`、implementation domain ceiling 或 implementation reject evidence。`EncodingCoverageRegistryV2` 只证明指定 provider/protocol/operation 存在对应 semantic path 的编码覆盖；它不提供、收窄或改写模型能力域。
+3. `encoderRevision` 是独立的 wire implementation provenance，进入 Runtime Snapshot、prepared request provenance、snapshot hash，但不进入 capability revision。编码器升级不能伪装成模型能力变化，也不能绕过 capability validator。
+4. Provider-owned/open enum（reasoning effort、thinking level、quality、verbosity 等）使用 bounded string 表示；具体允许值由 resolved capability domain 决定。Wire adapter 不维护模型 allowlist、alias map、clamp、fallback 或值转换；允许的 scalar/enum 按原值发送。
+5. User/Cloud capability rules 的未来设计可以扩大或收窄 resolved domain，但不能创建 model availability；即使规则扩大域，也必须有对应的 `EncodingCoverageRegistryV2` path coverage，且不改变 wire value。
+6. 本阶段不接入 `models.dev`、User/Cloud rule 传输或热更新。后续接入时它们是 evidence/rule inputs，不得新增第二套最终 capability 表。

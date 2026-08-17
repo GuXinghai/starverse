@@ -53,7 +53,7 @@ function bindingRaw(providerTag: string, selectedAt = '2026-07-18T00:00:00.000Z'
 }
 
 describe('OpenRouter selected image runtime capability V2', () => {
-  it('persists only descriptor-backed expressible fields without widening discrete size or format values', () => {
+  it('persists descriptor-backed expressible fields without a model-specific format allowlist', () => {
     const snapshot = composeOpenRouterImageRuntimeCapabilityV2({
       binding: binding(), descriptor, resolvedAt: '2026-07-18T00:00:01.000Z', credentialRevision: 1,
     })
@@ -61,7 +61,7 @@ describe('OpenRouter selected image runtime capability V2', () => {
       kind: 'dimensions_enum', values: [{ width: 1024, height: 1024 }, { width: 1536, height: 1024 }],
     })
     expect(snapshot.fields.find((field) => field.path === 'image.format')?.domain).toEqual({
-      kind: 'enum', values: ['jpeg', 'png'],
+      kind: 'enum', values: ['jpeg', 'png', 'provider-only-format'],
     })
     expect(snapshot.fields.find((field) => field.path === 'generation.candidateCount')?.domain).toEqual({
       kind: 'range', min: 1, max: 1, integer: true,

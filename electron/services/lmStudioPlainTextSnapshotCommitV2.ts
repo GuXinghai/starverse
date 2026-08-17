@@ -29,8 +29,7 @@ function baseline(
   const intent = facts.semanticIntent
   const unsupportedGeneration = ['topK', 'minP', 'topA', 'seed', 'stop', 'candidateCount', 'repetitionPenalty'] as const
   if (unsupportedGeneration.some((key) => intent.generation[key] !== undefined) ||
-      (intent.reasoning.mode === 'enabled' && (intent.reasoning.effort !== 'low' ||
-        intent.reasoning.summary !== undefined || intent.reasoning.exclude !== undefined)) ||
+      (intent.reasoning.mode === 'enabled' && (intent.reasoning.summary !== undefined || intent.reasoning.exclude !== undefined)) ||
       intent.web.mode !== 'disabled' || intent.image.mode !== 'disabled' ||
       intent.attachments.length !== 0 || intent.providerExtension.kind !== 'none' ||
       facts.attachmentSet.attachments.length !== 0 || facts.attachmentSet.providerFileRequirements.length !== 0) {

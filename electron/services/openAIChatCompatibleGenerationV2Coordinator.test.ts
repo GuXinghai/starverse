@@ -27,8 +27,7 @@ function configuration(input: Readonly<{ nativeReasoningReplay?: boolean; vendor
     config: { ...requestProfile, defaultExtraBody: { vendor_flag: input.vendorFlag ?? true } } },
   requestMappings: [{ id: requestMappingId, version, config: {
     schemaVersion: 1 as const, mappingId: requestMappingId, requestProfileId, requestProfileVersion: version,
-    sourceField: 'reasoning_enabled' as const, targetPath: ['reasoning', 'enabled'], valueKind: 'boolean' as const,
-    valueMapping: { true: true, false: false }, omission: 'required' as const,
+    sourceField: 'reasoning_enabled' as const, targetPath: ['reasoning', 'enabled'], omission: 'required' as const,
   } }],
   reasoningMapping: { id: reasoningMappingId, version, config: selectedReasoningMapping },
   inlinePolicy: { id: inlinePolicyId, version, config: inlinePolicy },

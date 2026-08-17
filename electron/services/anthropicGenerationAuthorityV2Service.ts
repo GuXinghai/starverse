@@ -33,8 +33,6 @@ import {
   type DecodedProviderBindingRecordV2,
 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { readGenerationV2Digest, readGenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
-import { projectAnthropicMessagesIntentV1 } from '../../src/next/generation-v2/providers/anthropic/messagesIntentProjectionV1'
 import {
   resolveAnthropicModelThinkingRuleV1,
 } from '../../src/next/generation-v2/providers/anthropic/modelThinkingRulesV1'
@@ -235,14 +233,6 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: Activ
   }
   if (intent.generation.maxOutputTokens === undefined || intent.generation.maxOutputTokens > evidence.maxTokens) {
     throw new AnthropicGenerationAuthorityV2Error('GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED')
-  }
-  const projection = projectAnthropicMessagesIntentV1(projectGenerationIntentLayerV2(intent), evidence.modelId.value)
-  if (projection.issues.length !== 0 || projection.dispositions.some((entry) => entry.outcome === 'rejected')) {
-    throw new AnthropicGenerationAuthorityV2Error(
-      projection.issues.some((issue) => issue.code === 'ANTHROPIC_MODEL_RULE_UNAVAILABLE')
-        ? 'GENERATION_V2_ANTHROPIC_MODEL_RULE_UNAVAILABLE'
-        : 'GENERATION_V2_ANTHROPIC_INTENT_UNSUPPORTED',
-    )
   }
 }
 

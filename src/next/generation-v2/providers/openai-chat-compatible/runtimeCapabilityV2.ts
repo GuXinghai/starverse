@@ -42,7 +42,7 @@ function resolveOpenAIChatCompatibleCapabilityRecordV2(input: Readonly<{
     if (NO_WIRE_DISABLED.has(path)) return Object.freeze({ path, state: 'supported', domain: Object.freeze({ kind: 'enum', values: Object.freeze([path === 'providerExtension.kind' ? 'none' : 'disabled']) }), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
     if (path === 'reasoning.mode') return Object.freeze({ path, state: 'supported', domain: Object.freeze({ kind: 'enum',
       values: Object.freeze(mapped.has('reasoning_enabled') ? ['disabled', 'enabled'] : ['disabled']) }), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
-    if (path === 'reasoning.effort' && mapped.has('reasoning_effort')) return Object.freeze({ path, state: 'supported', domain: Object.freeze({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high']) }), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
+    if (path === 'reasoning.effort' && mapped.has('reasoning_effort')) return Object.freeze({ path, state: 'supported', domain: Object.freeze({ kind: 'string', maxLength: 128 }), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
     return Object.freeze({ path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) }) as PersistedRuntimeCapabilityFieldV2
   })
   return canonicalizeResolvedCapabilityV2({ binding: projectDecodedProviderBindingRecordV2(input.binding),

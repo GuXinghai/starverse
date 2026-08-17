@@ -23,7 +23,7 @@ export const DEEPSEEK_STABLE_OWNER_CAPABILITY_POLICY_EVIDENCE_ID_V2 =
 export type DeepSeekStableCapabilityRuleKindV2 =
   | 'supported_static'
   | 'supported_when_reasoning_disabled'
-  | 'supported_with_effort_mapping'
+  | 'supported_when_reasoning_enabled'
   | 'supported_conditional_tool_choice'
   | 'accepted_no_wire'
   | 'unavailable_pending_authority'
@@ -37,7 +37,6 @@ export type DeepSeekStableCapabilityRuleV2 = Readonly<{
   domain?: RuntimeCapabilityDomainV2
   wireKey?: string
   evidenceId?: string
-  mapping?: Readonly<Record<string, string>>
   rejectionCode?: string
   toolChoiceMatrix?: Readonly<{
     appliesWhenToolsMode: 'enabled'
@@ -213,12 +212,11 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
     unsupported('providerExtension.thinkingLevel'),
     unsupported('providerExtension.thinkingMode'),
     unsupported('providerExtension.verbosity'),
-    rule('reasoning.effort', 'supported_with_effort_mapping', OFFICIAL_THINKING, {
+    rule('reasoning.effort', 'supported_when_reasoning_enabled', OFFICIAL_THINKING, {
       wireKey: 'reasoning_effort',
       // DeepSeek exposes high and max as native public effort values. Other
-      // spellings belong to compatibility codecs, not model capability.
+      // spellings are not part of the resolved model capability domain.
       domain: Object.freeze({ kind: 'enum', values: Object.freeze(['high', 'max']) }),
-      mapping: Object.freeze({ high: 'high', max: 'max' }),
       rejectionCode: 'DEEPSEEK_REASONING_EFFORT_UNSUPPORTED',
     }),
     rule('reasoning.mode', 'supported_static', OFFICIAL_THINKING, {

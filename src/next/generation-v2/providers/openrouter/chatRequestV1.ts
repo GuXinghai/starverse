@@ -3,6 +3,7 @@ import {
   StableSerializeV2Error,
   stableSerializeProviderRequestBoundedV2,
 } from '../../compiler/stableSerialize'
+import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../../domain/generationIntentV2'
 
 /**
  * OpenRouter Chat Completions V1 wire codec.
@@ -30,7 +31,7 @@ export type OpenRouterChatRequestV1 = Readonly<{
   frequency_penalty?: number
   presence_penalty?: number
   repetition_penalty?: number
-  verbosity?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+  verbosity?: string
   response_format?: OpenRouterChatResponseFormatV1
   parallel_tool_calls?: boolean
   reasoning?: Readonly<Record<string, unknown>>
@@ -57,7 +58,7 @@ export type OpenRouterWebSearchServerToolV1 = Readonly<{
     engine?: 'auto' | 'native' | 'exa' | 'firecrawl' | 'parallel' | 'perplexity'
     max_results?: number
     max_total_results?: number
-    search_context_size?: 'low' | 'medium' | 'high'
+    search_context_size?: string
     max_characters?: number
     user_location?: Readonly<{
       type: 'approximate'
@@ -186,7 +187,7 @@ function compileWebSearchServerTool(value: unknown): OpenRouterWebSearchServerTo
     'userLocation', 'allowedDomains', 'excludedDomains',
   ], [])
   if (input.engine !== undefined && !['auto', 'native', 'exa', 'firecrawl', 'parallel', 'perplexity'].includes(input.engine as string) ||
-      input.searchContextSize !== undefined && !['low', 'medium', 'high'].includes(input.searchContextSize as string)) {
+      input.searchContextSize !== undefined && (typeof input.searchContextSize !== 'string' || input.searchContextSize.length === 0 || input.searchContextSize.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) {
     throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
   }
   const domainList = (raw: unknown): readonly string[] | undefined => {
@@ -209,7 +210,7 @@ function compileWebSearchServerTool(value: unknown): OpenRouterWebSearchServerTo
     ...(input.engine === undefined ? {} : { engine: input.engine as 'auto' | 'native' | 'exa' | 'firecrawl' | 'parallel' | 'perplexity' }),
     ...(input.maxResults === undefined ? {} : { max_results: positiveInteger(input.maxResults, 25) }),
     ...(input.maxTotalResults === undefined ? {} : { max_total_results: positiveInteger(input.maxTotalResults) }),
-    ...(input.searchContextSize === undefined ? {} : { search_context_size: input.searchContextSize as 'low' | 'medium' | 'high' }),
+    ...(input.searchContextSize === undefined ? {} : { search_context_size: input.searchContextSize as string }),
     ...(input.maxCharacters === undefined ? {} : { max_characters: positiveInteger(input.maxCharacters, 100_000) }),
     ...(userLocation === undefined ? {} : { user_location: userLocation }),
     ...(input.allowedDomains === undefined ? {} : { allowed_domains: domainList(input.allowedDomains)! }),
@@ -253,10 +254,10 @@ export function compileOpenRouterChatRequestV1(raw: unknown): OpenRouterChatComp
   }
   const webSearchTool = input.webSearch === undefined ? undefined : compileWebSearchServerTool(input.webSearch)
   const verbosity = input.verbosity === undefined ? undefined : (() => {
-    if (!['low', 'medium', 'high', 'xhigh', 'max'].includes(input.verbosity as string)) {
+    if (typeof input.verbosity !== 'string' || input.verbosity.length === 0 || input.verbosity.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2) {
       throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')
     }
-    return input.verbosity as 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+    return input.verbosity as string
   })()
   if (input.parallelToolCalls !== undefined && typeof input.parallelToolCalls !== 'boolean') {
     throw new OpenRouterChatRequestV1Error('GENERATION_V2_OPENROUTER_CHAT_REQUEST_INVALID_VALUE')

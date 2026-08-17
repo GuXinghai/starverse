@@ -70,10 +70,6 @@ function wireValue(request: AnthropicMessagesNativeRequestV1, key: string): unkn
   return undefined
 }
 
-function capabilityPath(path: string): string {
-  return path.replace(/^attachments\[\d+\]\./u, 'attachments[].')
-}
-
 function appendAttachmentBlocks(
   messages: readonly AnthropicMessagesRequestMessageV1[],
   blocks: readonly AnthropicMessagesUserContentBlockV1[],
@@ -261,13 +257,8 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
   if (compilation.issues.length > 0 || !compilation.nativeRequest || !compilation.preparedBody) {
     throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_SEMANTIC_REJECTED')
   }
-  const fields = new Map(capability.fields.map((field) => [field.path, field]))
   for (const disposition of compilation.dispositions) {
     if (disposition.semanticPath === 'modelId') continue
-    const state = fields.get(capabilityPath(disposition.semanticPath) as typeof capability.fields[number]['path'])?.state
-    if (state !== 'supported' && state !== 'requires_confirmation') {
-      throw new AnthropicMessagesPreparedRequestCompilerV2Error('GENERATION_V2_ANTHROPIC_COMPILER_CAPABILITY_MISMATCH')
-    }
     const expectedWireValue = disposition.semanticPath === 'tools.mode' || disposition.semanticPath === 'tools.allowedToolIds'
       ? allNativeTools
       : disposition.semanticPath === 'tools.toolChoice' ? nativeToolChoice : disposition.value
@@ -283,6 +274,7 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
     path: disposition.semanticPath,
     disposition: disposition.outcome,
     nativeField: disposition.wireKey ?? null,
+    encodingKind: disposition.encodingKind ?? (disposition.wireKey === undefined ? 'omitted' as const : 'identity' as const),
     evidence: disposition.evidence,
   })))
   const endpoint = resolveAnthropicDeveloperApiEndpointV2(contract, {
@@ -308,6 +300,7 @@ export function compileAnthropicMessagesPreparedRequestV2(input: Readonly<{
     attachmentRequirements,
     attachmentEncodingProofs,
     capabilityRevision: capability.revision.value,
+    encoderRevision: capability.encoderRevision,
     snapshotHash: snapshot.snapshotHash.value,
   })
 }

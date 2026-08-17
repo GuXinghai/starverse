@@ -58,6 +58,41 @@ function googleAvailability(modelId: string, thinking = true) {
   } as any
 }
 
+function geminiCapabilityProjection(input: {
+  budget?: { min: number; max: number }
+  levels?: readonly string[]
+  imageSizes?: readonly string[]
+  aspectRatios?: readonly string[]
+  summaries?: readonly string[]
+} = {}) {
+  const missing = { visibility: 'hidden', state: 'missing', constraints: [], evidenceIds: [] }
+  const controls: Record<string, unknown> = {
+    'reasoning.mode': {
+      visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: ['disabled', 'enabled'] }, constraints: [], evidenceIds: [],
+    },
+    'providerExtension.thinkingBudget': input.budget
+      ? { visibility: 'visible', state: 'supported', domain: { kind: 'range', min: input.budget.min, max: input.budget.max, integer: true }, constraints: [], evidenceIds: [] }
+      : missing,
+    'providerExtension.thinkingLevel': input.levels
+      ? { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: [...input.levels] }, constraints: [], evidenceIds: [] }
+      : missing,
+    'reasoning.summary': input.summaries
+      ? { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: [...input.summaries] }, constraints: [], evidenceIds: [] }
+      : missing,
+    'image.mode': input.imageSizes || input.aspectRatios
+      ? { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: ['generate'] }, constraints: [], evidenceIds: [] }
+      : missing,
+    'image.resolution': input.imageSizes
+      ? { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: [...input.imageSizes] }, constraints: [], evidenceIds: [] }
+      : missing,
+    'image.aspectRatio': input.aspectRatios
+      ? { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: [...input.aspectRatios] }, constraints: [], evidenceIds: [] }
+      : missing,
+    'image.outputMode': missing,
+  }
+  return { schemaVersion: 1, binding: {}, capabilityRevision: 'capability-v2:test-gemini', controls } as any
+}
+
 describe('ChatSessionConsole Google AI Studio chat controls', () => {
   it('exposes explicit experimental Google AI Studio text chat without endpoint or profile picker UI', async () => {
     const user = userEvent.setup()
@@ -192,6 +227,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
           },
         },
         googleAIStudioModelAvailability: googleAvailability('gemini-2.5-flash'),
+        capabilityProjection: geminiCapabilityProjection({ budget: { min: 1024, max: 32768 } }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
@@ -234,6 +270,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
           },
         },
         googleAIStudioModelAvailability: googleAvailability('gemini-3.1-pro-preview'),
+        capabilityProjection: geminiCapabilityProjection({ levels: ['medium', 'high'] }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
@@ -265,6 +302,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
           routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-3.6-flash'  },
         },
         googleAIStudioModelAvailability: googleAvailability('gemini-3.6-flash'),
+        capabilityProjection: geminiCapabilityProjection({ levels: ['medium', 'high'] }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
@@ -287,6 +325,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
           routeSelection: { schemaVersion: 1 as const, kind: 'provider_model' as const, providerId: 'google_ai_studio' as const, modelId: 'gemini-2.5-pro'  },
         },
         googleAIStudioModelAvailability: googleAvailability('gemini-2.5-pro'),
+        capabilityProjection: geminiCapabilityProjection({ budget: { min: 1024, max: 32768 } }),
         reasoningDisplayMode: 'inline',
         modelCatalog: [],
         webSearchResolved: null,
@@ -321,6 +360,12 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
           },
         },
         reasoningDisplayMode: 'inline',
+        capabilityProjection: geminiCapabilityProjection({
+          levels: ['minimal', 'high'],
+          imageSizes: ['1K'],
+          aspectRatios: ['1:1', '16:9'],
+          summaries: ['auto'],
+        }),
         modelCatalog: [],
         webSearchResolved: null,
         generationParamsResolved: null,
@@ -363,6 +408,7 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
           },
         },
         reasoningDisplayMode: 'inline',
+        capabilityProjection: geminiCapabilityProjection({ aspectRatios: ['1:1'] }),
         modelCatalog: [],
         webSearchResolved: null,
         generationParamsResolved: null,
@@ -407,6 +453,12 @@ describe('ChatSessionConsole Google AI Studio chat controls', () => {
           },
         },
         reasoningDisplayMode: 'inline',
+        capabilityProjection: geminiCapabilityProjection({
+          levels: ['minimal', 'high'],
+          imageSizes: ['1K', '2K', '4K'],
+          aspectRatios: ['1:1', '16:9'],
+          summaries: ['auto'],
+        }),
         modelCatalog: [],
         webSearchResolved: null,
         generationParamsResolved: null,

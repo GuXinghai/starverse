@@ -23,7 +23,7 @@ import {
   type OpenRouterImageEditResendCommandV2,
   type OpenRouterImageRegenerateCommandV2,
 } from '../../src/next/generation-v2/providers/openrouter-images/imageActionCommandsV2'
-import { projectOpenRouterImageIntentCapabilityV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageIntentCapabilityProjectionV2'
+import { resolveOpenRouterImageSelectionInputV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
 import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { issueOpenRouterImageProviderBindingV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageProviderBindingV2'
 import { composeOpenRouterImageRuntimeCapabilityV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageRuntimeCapabilityV2'
@@ -98,7 +98,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
     const existing = bindingRepo.getBinding({ credentialScopeId: descriptor.credentialScopeId, modelId: descriptor.modelId })
     const decision = decideOpenRouterImageSelectionV2({ descriptorCache: descriptor,
       freshness: { kind: 'use_cached', ageMs: 0, settings: freshness },
-      projection: projectOpenRouterImageIntentCapabilityV2(commandFacts.semanticIntent),
+      projection: resolveOpenRouterImageSelectionInputV2(commandFacts.semanticIntent),
       binding: existing === null ? null : { trust: 'repository_decoded_unverified', bindingGeneration: existing.bindingGeneration,
         sourceDescriptorRowGeneration: existing.sourceDescriptorRowGeneration, sourceEndpointSetRevision: existing.sourceEndpointSetRevision, record: existing.record },
       requestedProviderTag: command.requestedProviderTag })

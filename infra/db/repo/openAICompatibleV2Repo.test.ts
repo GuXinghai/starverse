@@ -21,7 +21,7 @@ function configuration(version = 1) {
     requestMappings: Object.freeze([Object.freeze({ id: 'ocp_request_mapping_12345678', version, config: Object.freeze({
       schemaVersion: 1 as const, mappingId: 'ocp_request_mapping_12345678', requestProfileId: 'ocp_request_profile_12345678',
       requestProfileVersion: version, sourceField: 'reasoning_effort' as const, targetPath: Object.freeze(['reasoning', 'effort']),
-      valueKind: 'string' as const, valueMapping: Object.freeze({ low: 'low', medium: 'medium', high: 'high' }), omission: 'omit_when_unset' as const,
+      omission: 'omit_when_unset' as const,
     }) })]),
     reasoningMapping: Object.freeze({ id: 'ocp_reasoning_mapping_12345678', version, config: reasoningMapping }),
     inlinePolicy: Object.freeze({ id: 'ocp_inline_policy_12345678', version, config: inlinePolicy }),

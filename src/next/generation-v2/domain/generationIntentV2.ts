@@ -2,6 +2,10 @@ import { GenerationV2Digest, GenerationV2Identity } from './identityV2'
 import type { CompatibleJsonValue } from '../../../shared/provider/openai-chat-compatible/request/messageTypes'
 import { compatibleBoundedJsonValueSchema } from '../../../shared/provider/openai-chat-compatible/schemas'
 
+/** Safety ceiling for provider-owned open string values. The actual accepted
+ * domain remains capability-owned and is checked by the resolved validator. */
+export const GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 = 4096 as const
+
 export type SamplingIntentV2 = Readonly<{
   maxOutputTokens?: number
   temperature?: number
@@ -21,8 +25,8 @@ export type ReasoningIntentV2 =
   | Readonly<{ mode: 'disabled' }>
   | Readonly<{
       mode: 'enabled'
-      effort?: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
-      summary?: 'auto' | 'concise' | 'detailed'
+      effort?: string
+      summary?: string
       exclude?: boolean
     }>
 
@@ -34,7 +38,7 @@ export type WebSearchIntentV2 =
       engine?: 'auto' | 'native' | 'exa' | 'firecrawl' | 'parallel' | 'perplexity'
       maxResults?: number
       maxTotalResults?: number
-      searchContextSize?: 'low' | 'medium' | 'high'
+      searchContextSize?: string
       maxCharacters?: number
       userLocation?: Readonly<{
         city?: string
@@ -54,7 +58,7 @@ export type ImageGenerationIntentV2 =
       aspectRatio?: ImageAspectRatioV2
       resolution?: '512' | '1K' | '2K' | '4K'
       size?: Readonly<{ width: number; height: number }>
-      quality?: 'auto' | 'low' | 'medium' | 'high'
+      quality?: string
       format?: 'png' | 'jpeg' | 'webp' | 'svg'
       background?: 'auto' | 'transparent' | 'opaque'
       outputCompression?: number
@@ -127,13 +131,13 @@ export type ProviderSemanticExtensionV2 =
   | Readonly<{ kind: 'none' }>
   | Readonly<{
       kind: 'openrouter_chat'
-      verbosity?: 'low' | 'medium' | 'high' | 'xhigh' | 'max'
+      verbosity?: string
       parallelToolCalls?: boolean
       responseFormat?: OpenRouterResponseFormatIntentV2
     }>
   | Readonly<{
       kind: 'openai_responses'
-      verbosity?: 'low' | 'medium' | 'high'
+      verbosity?: string
       maxToolCalls?: number
       parallelToolCalls?: boolean
       serviceTier?: 'auto' | 'default' | 'flex' | 'priority'
@@ -160,7 +164,7 @@ export type ProviderSemanticExtensionV2 =
   | Readonly<{
       kind: 'gemini_generate_content'
       thinkingMode: 'level'
-      thinkingLevel: 'minimal' | 'low' | 'medium' | 'high'
+      thinkingLevel: string
       includeThoughts: 'provider_default' | 'enabled' | 'disabled'
     }>
   | Readonly<{
@@ -320,6 +324,15 @@ function optionalEnum<T extends string>(object: ClosedInput, key: string, values
   return value as T
 }
 
+function optionalBoundedString(object: ClosedInput, key: string): string | undefined {
+  const value = object[key]
+  if (value === undefined) return undefined
+  if (typeof value !== 'string' || value.length === 0 || value.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 || /[\u0000-\u001f\u007f]/u.test(value)) {
+    throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
+  }
+  return value
+}
+
 function compact<T extends object>(value: T): T {
   for (const key of Object.keys(value)) {
     if ((value as ClosedInput)[key] === undefined) delete (value as { [key: string]: unknown })[key]
@@ -419,8 +432,8 @@ function decodeReasoning(value: unknown): ReasoningIntentV2 {
   if (input.exclude !== undefined && typeof input.exclude !== 'boolean') throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
   return compact({
     mode: 'enabled' as const,
-    effort: optionalEnum(input, 'effort', ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']),
-    summary: optionalEnum(input, 'summary', ['auto', 'concise', 'detailed']),
+    effort: optionalBoundedString(input, 'effort'),
+    summary: optionalBoundedString(input, 'summary'),
     exclude: input.exclude as boolean | undefined,
   })
 }
@@ -479,7 +492,7 @@ function decodeWeb(value: unknown): WebSearchIntentV2 {
     engine: optionalEnum(input, 'engine', ['auto', 'native', 'exa', 'firecrawl', 'parallel', 'perplexity']),
     maxResults,
     maxTotalResults,
-    searchContextSize: optionalEnum(input, 'searchContextSize', ['low', 'medium', 'high']),
+    searchContextSize: optionalBoundedString(input, 'searchContextSize'),
     maxCharacters,
     userLocation,
     allowedDomains: decodeDomains('allowedDomains'),
@@ -514,7 +527,7 @@ function decodeImage(value: unknown): ImageGenerationIntentV2 {
       : ImageAspectRatioV2.create(input.aspectRatio as string),
     resolution: optionalEnum(input, 'resolution', ['512', '1K', '2K', '4K']),
     size,
-    quality: optionalEnum(input, 'quality', ['auto', 'low', 'medium', 'high']),
+    quality: optionalBoundedString(input, 'quality'),
     format: optionalEnum(input, 'format', ['png', 'jpeg', 'webp', 'svg']),
     background: optionalEnum(input, 'background', ['auto', 'transparent', 'opaque']),
     outputCompression,
@@ -636,7 +649,7 @@ function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
     return Object.freeze({ kind: 'none' })
   }
   if (input.kind === 'openrouter_chat') {
-    const verbosity = optionalEnum(input, 'verbosity', ['low', 'medium', 'high', 'xhigh', 'max'])
+    const verbosity = optionalBoundedString(input, 'verbosity')
     if (input.parallelToolCalls !== undefined && typeof input.parallelToolCalls !== 'boolean') {
       throw new GenerationIntentV2Error('GENERATION_V2_INTENT_INVALID_VALUE')
     }
@@ -648,7 +661,7 @@ function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
     }) as ProviderSemanticExtensionV2
   }
   if (input.kind === 'openai_responses') {
-    const verbosity = optionalEnum(input, 'verbosity', ['low', 'medium', 'high'])
+    const verbosity = optionalBoundedString(input, 'verbosity')
     const serviceTier = optionalEnum(input, 'serviceTier', ['auto', 'default', 'flex', 'priority'])
     const reasoningMode = optionalEnum(input, 'reasoningMode', ['standard', 'pro'])
     const reasoningContext = optionalEnum(input, 'reasoningContext', ['auto', 'current_turn', 'all_turns'])
@@ -694,7 +707,7 @@ function decodeProviderExtension(value: unknown): ProviderSemanticExtensionV2 {
     const rawThinkingMode = optionalEnum(input, 'thinkingMode', ['default', 'provider_default', 'level', 'budget'])
     const thinkingMode = rawThinkingMode === 'provider_default' ? 'default' : rawThinkingMode
     const includeThoughts = optionalEnum(input, 'includeThoughts', ['provider_default', 'enabled', 'disabled'])
-    const thinkingLevel = optionalEnum(input, 'thinkingLevel', ['minimal', 'low', 'medium', 'high'])
+    const thinkingLevel = optionalBoundedString(input, 'thinkingLevel')
     const thinkingBudget = input.thinkingBudget === undefined
       ? undefined
       : (() => {

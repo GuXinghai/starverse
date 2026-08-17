@@ -1,4 +1,5 @@
 import { ImmutablePreparedBodyV2, stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
+import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../../domain/generationIntentV2'
 import { buildLmStudioOpenResponsesReplayInputV1, type LmStudioOpenResponsesContinuationArtifactV1 } from './continuationArtifactV1'
 import { decodeLmStudioOpenResponsesReplayItemsV1,
   type LmStudioOpenResponsesClientItemV1, type LmStudioOpenResponsesReplayItemV1 } from './nativeItemsV1'
@@ -18,7 +19,7 @@ export type LmStudioOpenResponsesRequestV1 = Readonly<{
   max_output_tokens?: number
   frequency_penalty?: number
   presence_penalty?: number
-  reasoning?: Readonly<{ effort: 'minimal' | 'low' | 'medium' | 'high' }>
+  reasoning?: Readonly<{ effort: string }>
   tools?: readonly LmStudioOpenResponsesFunctionToolV1[]
   tool_choice?: LmStudioOpenResponsesToolChoiceV1
 }>
@@ -66,7 +67,7 @@ export function compileLmStudioOpenResponsesRequestV1(input: Readonly<{
   replayItems?: readonly LmStudioOpenResponsesReplayItemV1[]
   generation?: Readonly<{ temperature?: number; topP?: number; maxOutputTokens?: number;
     frequencyPenalty?: number; presencePenalty?: number }>
-  reasoningEffort?: 'minimal' | 'low' | 'medium' | 'high'
+  reasoningEffort?: string
   tools?: unknown
   toolChoice?: LmStudioOpenResponsesToolChoiceV1
 }>): LmStudioOpenResponsesRequestCompilationV1 {
@@ -92,6 +93,9 @@ export function compileLmStudioOpenResponsesRequestV1(input: Readonly<{
     ? decodeLmStudioOpenResponsesReplayItemsV1(input.replayItems)
     : buildLmStudioOpenResponsesReplayInputV1({ priorArtifact: input.priorArtifact!, clientItems: input.clientItems! })
   const functionTools = tools(input.tools)
+  if (input.reasoningEffort !== undefined && (typeof input.reasoningEffort !== 'string' || input.reasoningEffort.length === 0 || input.reasoningEffort.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) {
+    return fail('GENERATION_V2_LMSTUDIO_REQUEST_INVALID_VALUE')
+  }
   if (input.toolChoice !== undefined && input.toolChoice !== 'none' && input.toolChoice !== 'required') {
     return fail('GENERATION_V2_LMSTUDIO_REQUEST_UNSUPPORTED_EXPLICIT_FIELD')
   }

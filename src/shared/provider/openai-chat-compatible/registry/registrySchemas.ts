@@ -103,8 +103,6 @@ export const createCompatibleProviderCommandSchema = z.object({
   requestMappings: z.array(z.object({
     sourceField: z.enum(['reasoning_enabled', 'reasoning_effort', 'reasoning_budget']),
     targetPath: compatibleObjectPathSchema,
-    valueKind: z.enum(['boolean', 'number', 'string']),
-    valueMapping: z.record(z.union([z.null(), z.boolean(), z.number().finite(), z.string().max(4096)])),
     omission: z.enum(['omit_when_unset', 'required']),
   }).strict()).max(32).default([]),
 }).strict()
@@ -126,8 +124,6 @@ export const updateCompatibleEndpointCommandSchema = z.object({
 const compatibleRegistryRequestMappingInputSchema = z.object({
   sourceField: z.enum(['reasoning_enabled', 'reasoning_effort', 'reasoning_budget']),
   targetPath: compatibleObjectPathSchema,
-  valueKind: z.enum(['boolean', 'number', 'string']),
-  valueMapping: z.record(z.union([z.null(), z.boolean(), z.number().finite(), z.string().max(4096)])),
   omission: z.enum(['omit_when_unset', 'required']),
 }).strict()
 

@@ -2,8 +2,6 @@ import type { ReasoningEffort, ReasoningPrefs } from '@/next/state/types'
 
 export const DEFAULT_REASONING_PREFS: ReasoningPrefs = { mode: 'auto', effort: 'auto', exclude: false }
 
-const REASONING_EFFORTS: readonly ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh']
-
 export type ReasoningPrefsSource = 'conversation' | 'project' | 'global' | 'default'
 
 export type ResolvedReasoningPrefsLayers = Readonly<{
@@ -22,7 +20,7 @@ export type ReasoningPrefsSavePlan = Readonly<{
 }>
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
-  return typeof value === 'string' && (REASONING_EFFORTS as readonly string[]).includes(value)
+  return typeof value === 'string' && value.length > 0 && value.length <= 128 && !/[\u0000-\u001F\u007F]/u.test(value)
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {

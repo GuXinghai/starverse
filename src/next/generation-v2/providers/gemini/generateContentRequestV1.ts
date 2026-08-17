@@ -1,4 +1,5 @@
 import { ImmutablePreparedBodyV2, stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
+import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../../domain/generationIntentV2'
 import {
   decodeGeminiGenerateContentNativeContentV1,
   type GeminiGenerateContentNativeContentV1,
@@ -28,7 +29,7 @@ export type GeminiGenerateContentRequestV1 = Readonly<{
     responseMimeType?: 'text/plain' | 'application/json'
     thinkingConfig?: Readonly<{
       thinkingBudget?: number
-      thinkingLevel?: 'minimal' | 'low' | 'medium' | 'high'
+      thinkingLevel?: string
       includeThoughts?: boolean
     }>
   }>
@@ -139,7 +140,7 @@ export function compileGeminiGenerateContentRequestV1(inputValue: unknown): Read
     throw new GeminiGenerateContentRequestV1Error('GENERATION_V2_GEMINI_REQUEST_INVALID')
   }
   if (reasoning.thinkingLevel !== undefined &&
-      !['minimal', 'low', 'medium', 'high'].includes(String(reasoning.thinkingLevel))) {
+      (typeof reasoning.thinkingLevel !== 'string' || reasoning.thinkingLevel.length === 0 || reasoning.thinkingLevel.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) {
     throw new GeminiGenerateContentRequestV1Error('GENERATION_V2_GEMINI_REQUEST_INVALID')
   }
   if (reasoning.includeThoughts !== undefined && typeof reasoning.includeThoughts !== 'boolean') {
@@ -183,7 +184,7 @@ export function compileGeminiGenerateContentRequestV1(inputValue: unknown): Read
 
   const thinkingConfig = reasoning.mode === 'enabled' ? Object.freeze({
     ...(reasoning.thinkingBudget === undefined ? {} : { thinkingBudget: integer(reasoning.thinkingBudget, -1) }),
-    ...(reasoning.thinkingLevel === undefined ? {} : { thinkingLevel: reasoning.thinkingLevel as 'minimal' | 'low' | 'medium' | 'high' }),
+    ...(reasoning.thinkingLevel === undefined ? {} : { thinkingLevel: reasoning.thinkingLevel as string }),
     ...(reasoning.includeThoughts === undefined ? {} : { includeThoughts: reasoning.includeThoughts as boolean }),
   }) : null
   const generationConfig = Object.freeze({

@@ -39,6 +39,13 @@ export function normalizeGenerationParamValue(
     return capability.enumValues?.includes(normalized) ? normalized : null
   }
 
+  if (capability.valueType === 'string') {
+    if (typeof raw !== 'string') return null
+    const normalized = raw.trim()
+    if (!normalized || (capability.maxLength !== undefined && normalized.length > capability.maxLength)) return null
+    return normalized
+  }
+
   if (capability.valueType === 'stringArray') {
     if (!Array.isArray(raw)) return null
     if (raw.length > 16) return null

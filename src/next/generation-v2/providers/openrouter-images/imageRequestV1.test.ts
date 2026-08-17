@@ -39,20 +39,18 @@ function binding(set = descriptorSet()) {
   })
 }
 
-function intent(overrides: Record<string, unknown> = {}) {
-  return {
-    schemaVersion: 2,
-    generation: { candidateCount: 1 },
-    image: { mode: 'generate', resolution: '512', aspectRatio: '1:1' },
-    ...overrides,
-  }
-}
+const wireFields = (inputReferences = 0, candidateCount = 1) => [
+  { wireKey: 'n' as const, value: candidateCount },
+  { wireKey: 'resolution' as const, value: '512' },
+  { wireKey: 'aspect_ratio' as const, value: '1:1' },
+  ...(inputReferences === 0 ? [] : [{ wireKey: 'input_references' as const, value: inputReferences }]),
+]
 
 describe('OpenRouter Images V1 exact request compiler', () => {
   it('uses the persisted selected descriptor only and emits the documented exact pin', () => {
     const set = descriptorSet()
     const request = compileOpenRouterImageRequestV1({
-      prompt: 'A single red apple centered on a plain white background.', intent: intent(),
+      prompt: 'A single red apple centered on a plain white background.', wireFields: wireFields(),
       modelId: set.modelId.value, providerTag: 'google-ai-studio', providerSlug: 'google-ai-studio', descriptorSet: set,
     })
     expect(request.preparedBody.copyUtf8Text()).toBe(
@@ -65,12 +63,7 @@ describe('OpenRouter Images V1 exact request compiler', () => {
     const set = descriptorSet()
     const request = compileOpenRouterImageRequestV1({
       prompt: 'edit',
-      intent: intent({
-        attachments: [{
-          kind: 'managed_file', assetId: 'asset:1', assetRevisionId: 'revision:1', assetSha256: 'a'.repeat(64), include: true,
-          sendAs: 'image_reference', conversion: 'none',
-        }],
-      }),
+      wireFields: wireFields(1),
       modelId: set.modelId.value, providerTag: 'google-ai-studio', providerSlug: 'google-ai-studio', descriptorSet: set,
       inputReferences: ['https://example.test/reference.png'],
       providerOptions: { cachedContent: 'cache-key' },
@@ -87,28 +80,12 @@ describe('OpenRouter Images V1 exact request compiler', () => {
   it('rejects descriptor mismatch, unsupported options and data URLs under the HTTP(S)-only reference policy', () => {
     const set = descriptorSet()
     const selected = binding(set)
-    const changed = decodeCanonicalOpenRouterImageDescriptorSetV2({
-      id: 'google/gemini-3.1-flash-image', endpoints: [{
-        provider_name: 'Google AI Studio', provider_tag: 'google-ai-studio', provider_slug: 'google-ai-studio',
-        supported_parameters: { n: { type: 'range', min: 1, max: 1 } },
-        allowed_passthrough_parameters: [], supports_streaming: false,
-      }],
-    })
     expect(() => compileOpenRouterImageRequestV1({
-      prompt: 'x', intent: intent(), modelId: selected.modelId.value,
-      providerTag: selected.endpointBinding.kind === 'pinned' ? selected.endpointBinding.selector.providerTag.value : '',
-      providerSlug: selected.endpointBinding.kind === 'pinned' ? selected.endpointBinding.selector.providerSlug.value : '', descriptorSet: changed,
-    }))
-      .toThrow('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_CAPABILITY_MISMATCH')
-    expect(() => compileOpenRouterImageRequestV1({
-      prompt: 'x', intent: intent(), modelId: selected.modelId.value, providerTag: 'google-ai-studio',
+      prompt: 'x', wireFields: wireFields(), modelId: selected.modelId.value, providerTag: 'google-ai-studio',
       providerSlug: 'google-ai-studio', descriptorSet: set, providerOptions: { unknown: true },
     })).toThrow('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_OPTION_UNSUPPORTED')
     expect(() => compileOpenRouterImageRequestV1({
-      prompt: 'x', intent: intent({ attachments: [{
-        kind: 'managed_file', assetId: 'asset:1', assetRevisionId: 'revision:1', assetSha256: 'a'.repeat(64), include: true,
-        sendAs: 'image_reference', conversion: 'none',
-      }]}), modelId: selected.modelId.value, providerTag: 'google-ai-studio', providerSlug: 'google-ai-studio',
+      prompt: 'x', wireFields: wireFields(1), modelId: selected.modelId.value, providerTag: 'google-ai-studio', providerSlug: 'google-ai-studio',
       descriptorSet: set, inputReferences: ['data:image/png;base64,AAAA'],
     })).toThrow('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_REFERENCE_INVALID')
   })
@@ -126,7 +103,7 @@ describe('OpenRouter Images V1 exact request compiler', () => {
       }],
     })
     expect(() => compileOpenRouterImageRequestV1({
-      prompt: 'two images', intent: intent({ generation: { candidateCount: 2 } }),
+      prompt: 'two images', wireFields: wireFields(0, 2),
       modelId: set.modelId.value, providerTag: 'google-ai-studio', providerSlug: 'google-ai-studio', descriptorSet: set,
     })).toThrow('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_RESULT_CARDINALITY_UNSUPPORTED')
   })

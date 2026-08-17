@@ -44,7 +44,7 @@ import { readVerifiedDeepSeekStableEndpointProfileV2 } from '../../src/next/gene
 import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
-import { listGenerationImplementationManifestsV2 } from '../../src/next/generation-v2/capability/implementationManifestV2'
+import { listEncodingCoverageRegistriesV2 } from '../../src/next/generation-v2/capability/encodingCoverageRegistryV2'
 /* eslint-enable no-restricted-imports */
 
 export class GenerationV2CapabilityResolutionServiceError extends Error {
@@ -84,14 +84,14 @@ function capabilityResolutionScopeKeyV2(
  * silently falling through to an unimplemented resolver.
  */
 const PRODUCTION_CAPABILITY_RESOLUTION_SCOPE_KEYS_V2 = Object.freeze(
-  listGenerationImplementationManifestsV2()
+  listEncodingCoverageRegistriesV2()
     // Continuations are bound to the originating answer's immutable runtime
     // capability snapshot; they must not resolve a new UI capability revision.
-    .filter((manifest) => manifest.operation !== 'tool_continue')
-    .map((manifest) => capabilityResolutionScopeKeyV2(
-      manifest.providerId,
-      manifest.protocolContractId,
-      manifest.operation,
+    .filter((registry) => registry.operation !== 'tool_continue')
+    .map((registry) => capabilityResolutionScopeKeyV2(
+      registry.providerId,
+      registry.protocolContractId,
+      registry.operation,
     ))
     .sort(),
 )

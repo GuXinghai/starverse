@@ -413,7 +413,7 @@ describe('ChatAppComposer model picker integration', () => {
     render(Wrapper)
 
     const chip = screen.getByTestId('reasoning-chip')
-    expect(chip.textContent).toContain(`${t('chat.generationParams.reasoning.auto')} (none)`)
+    expect(chip.textContent).toContain(t('chat.generationParams.reasoning.auto'))
 
     await user.click(within(chip).getByTestId('capability-chip-chevron'))
     const menu = await screen.findByTestId('capability-chip-menu')
@@ -427,9 +427,7 @@ describe('ChatAppComposer model picker integration', () => {
     })
 
     await user.click(within(chip).getByTestId('capability-chip-chevron'))
-    await user.click(within(await screen.findByTestId('capability-chip-menu')).getByRole('button', {
-      name: `${t('chat.generationParams.reasoning.auto')} (none)`,
-    }))
+    await user.click(screen.getAllByTestId('composer-openai-responses-reasoning-effort-option')[0])
     expect(updateGenerationParamsLayer).toHaveBeenLastCalledWith({
       reasoningEffort: { mode: 'omit' },
     })

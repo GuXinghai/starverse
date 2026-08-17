@@ -30,9 +30,7 @@ import {
   projectDecodedProviderBindingRecordV2,
   type DecodedProviderBindingRecordV2,
 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
 import { readGenerationV2Digest, readGenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
-import { projectGeminiInteractionsImageIntentV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageIntentV1'
 import {
   isGenerationCommandFactsAuthorityForContextV2,
   type GenerationCommandFactsAuthorityV2,
@@ -124,10 +122,8 @@ function fields(policy: Exclude<GeminiImageGenerationPolicy, { kind: 'unsupporte
   return Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => values.get(path)!))
 }
 
-function validateFacts(facts: GenerationCommandFactsAuthorityV2, modelId: string): void {
-  const projection = projectGeminiInteractionsImageIntentV1(projectGenerationIntentLayerV2(facts.semanticIntent), modelId)
-  if (projection.issues.length !== 0 ||
-      facts.attachmentSet.attachments.some((attachment) => attachment.intent.include) ||
+function validateFacts(facts: GenerationCommandFactsAuthorityV2): void {
+  if (facts.attachmentSet.attachments.some((attachment) => attachment.intent.include) ||
       facts.attachmentSet.urlReferenceIntents.some((attachment) => attachment.include) ||
       facts.attachmentSet.providerFileRequirements.length !== 0 || facts.attachmentSet.requiresProviderFileAuthority) {
     throw new GeminiInteractionsImageGenerationAuthorityV2Error('GENERATION_V2_GEMINI_INTERACTIONS_INTENT_UNSUPPORTED')
@@ -230,7 +226,7 @@ export function withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2<T>(in
     capability: VerifiedGeminiInteractionsImageRuntimeCapabilityAuthorityV2 }>) => T
 }>): T {
   if (!isGenerationCommandFactsAuthorityForContextV2(input.commandFacts, input.context)) invalid()
-  validateFacts(input.commandFacts, input.modelId)
+  validateFacts(input.commandFacts)
   const binding = composeBinding(input.modelEvidence, input.modelId)
   const capability = composeCapability(binding)
   validateSemanticIntentAgainstResolvedCapabilityV2(
@@ -240,7 +236,7 @@ export function withVerifiedGeminiInteractionsImageGenerationAuthoritiesV2<T>(in
   assertExpectedCapabilityRevisionV2(capability.snapshot.revision.value)
   binding.assertCurrent(); capability.assertCurrent()
   registerGenerationV2AuthorityTransactionParticipantForContextV2(input.context, {
-    preCommit: () => { binding.assertCurrent(); capability.assertCurrent(); validateFacts(input.commandFacts, input.modelId) },
+    preCommit: () => { binding.assertCurrent(); capability.assertCurrent(); validateFacts(input.commandFacts) },
     committed: () => undefined, rolledBack: () => undefined,
   })
   return input.use(Object.freeze({ binding, capability }))

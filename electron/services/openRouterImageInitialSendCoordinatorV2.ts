@@ -20,7 +20,7 @@ import { compileOpenRouterImagePreparedRequestV2 } from './openRouterImagePrepar
 import { decodeOpenRouterImageInitialSendCommandV2, type OpenRouterImageInitialSendCommandV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageInitialSendCommandV2'
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
 import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import { projectOpenRouterImageIntentCapabilityV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageIntentCapabilityProjectionV2'
+import { resolveOpenRouterImageSelectionInputV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
 import { decideOpenRouterImageSelectionV2 } from '../../src/next/generation-v2/providers/openrouter-images/selectionDecisionV2'
 import { issueOpenRouterImageProviderBindingV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageProviderBindingV2'
 import { composeOpenRouterImageRuntimeCapabilityV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageRuntimeCapabilityV2'
@@ -177,7 +177,7 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
               const decision = decideOpenRouterImageSelectionV2({
                 descriptorCache: descriptor,
                 freshness: { kind: 'use_cached', ageMs: 0, settings: freshness },
-                projection: projectOpenRouterImageIntentCapabilityV2(commandFacts.semanticIntent),
+                projection: resolveOpenRouterImageSelectionInputV2(commandFacts.semanticIntent),
                 binding: existingBinding === null ? null : {
                   trust: 'repository_decoded_unverified',
                   bindingGeneration: existingBinding.bindingGeneration,

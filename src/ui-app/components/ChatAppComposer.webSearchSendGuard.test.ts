@@ -7,6 +7,23 @@ import { DEFAULT_OPENROUTER_TEST_MODEL } from '@/next/openrouter/openRouterTestM
 import { installGenerationV2TestBridge } from '../../../tests/helpers/generationV2Bridge'
 import ChatAppComposer from './ChatAppComposer.vue'
 
+function capabilityProjection() {
+  const supportedEnum = (values: readonly string[]) => ({
+    visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: [...values] }, constraints: [], evidenceIds: [],
+  })
+  return {
+    schemaVersion: 1,
+    binding: {},
+    capabilityRevision: 'capability-v2:test-composer',
+    controls: {
+      'reasoning.effort': supportedEnum(['low', 'medium', 'high']),
+      'image.mode': supportedEnum(['generate']),
+      'image.resolution': supportedEnum(['512', '1K', '2K', '4K']),
+      'image.aspectRatio': supportedEnum(['16:9', '3:4', '1:1', '4:3']),
+    },
+  } as any
+}
+
 describe('ChatAppComposer web search send guard', () => {
   type HarnessSessionConfig = {
     routeSelection: { schemaVersion: 1; kind: 'provider_model'; providerId: 'openrouter'; modelId: string }
@@ -61,12 +78,14 @@ describe('ChatAppComposer web search send guard', () => {
         const sessionConfig = ref(createSessionConfig())
         const serializedSessionConfig = computed(() => JSON.stringify(sessionConfig.value))
         const sendCount = ref(0)
+        const projection = capabilityProjection()
         return {
           draft,
           model,
           sessionConfig,
           serializedSessionConfig,
           sendCount,
+          projection,
           disabled: input?.disabled === true,
           onUpdateWebSearchEnabled(value: boolean) {
             sessionConfig.value = {
@@ -108,6 +127,7 @@ describe('ChatAppComposer web search send guard', () => {
             :disabled="disabled"
             :isRunning="false"
             :canSend="!disabled"
+            :capabilityProjection="projection"
             :modelCatalog="[]"
             :modelCatalogNotice="null"
             @updateWebSearchEnabled="onUpdateWebSearchEnabled"

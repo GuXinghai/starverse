@@ -20,7 +20,6 @@ import {
   verifyProviderContractReferenceV2,
 } from '../../src/next/generation-v2/contracts/providerContractReferenceAuthorityV2'
 import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
 import {
   DEEPSEEK_NATIVE_HISTORY_ARTIFACT_KIND_V2,
 } from '../../src/next/generation-v2/providers/deepseek/nativeMessagesV1'
@@ -29,7 +28,6 @@ import {
   type DeepSeekToolChoiceV1,
   type DeepSeekStableChatRequestV1,
 } from '../../src/next/generation-v2/providers/deepseek/chatRequestV1'
-import { projectDeepSeekStableIntentV1 } from '../../src/next/generation-v2/providers/deepseek/chatIntentProjectionV1'
 import {
   isVerifiedDeepSeekStableEndpointProfileV2,
   readVerifiedDeepSeekStableEndpointProfileV2,
@@ -66,6 +64,8 @@ function requestWireValue(request: DeepSeekStableChatRequestV1, wireKey: string)
   if (wireKey === 'stop') return request.stop
   if (wireKey === 'temperature') return request.temperature
   if (wireKey === 'top_p') return request.top_p
+  if (wireKey === 'frequency_penalty') return request.frequency_penalty
+  if (wireKey === 'presence_penalty') return request.presence_penalty
   return undefined
 }
 
@@ -128,25 +128,89 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
   } else if (snapshot.toolAuthority.kind !== 'none' || toolRegistry !== null) {
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_AUTHORITY_INVALID')
   }
-  const projection = projectDeepSeekStableIntentV1(
-    projectGenerationIntentLayerV2(snapshot.semanticIntent),
-    toolsEnabled,
-  )
-  if (projection.issues.length > 0) {
-    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_SEMANTIC_REJECTED')
+  const nativeFields = new Map<string, string | number | boolean | readonly string[]>()
+  const issues: string[] = []
+  const dispositions: Array<Readonly<{
+    semanticPath: string
+    outcome: 'encoded' | 'accepted_no_wire' | 'rejected'
+    wireKey?: string
+    value?: string | number | boolean | readonly string[]
+    encodingKind?: 'identity' | 'structural' | 'omitted'
+    evidence: string
+  }>> = []
+  const encode = (semanticPath: string, wireKey: string, value: string | number | boolean | readonly string[], evidence = 'deepseek-create-chat-completion-verified-2026-07-15', encodingKind: 'identity' | 'structural' = 'identity') => {
+    if (nativeFields.has(wireKey)) throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_LEDGER_MISMATCH')
+    const stableValue = Array.isArray(value) ? Object.freeze([...value]) : value
+    nativeFields.set(wireKey, stableValue)
+    dispositions.push(Object.freeze({ semanticPath, outcome: 'encoded' as const, wireKey, value: stableValue, encodingKind, evidence }))
   }
-  const capabilityFields = new Map<string, typeof capability.fields[number]>(
-    capability.fields.map((field) => [field.path, field]),
-  )
-  if (projection.dispositions.some((disposition) => {
-    const state = capabilityFields.get(disposition.semanticPath)?.state
-    return state !== 'supported' && state !== 'requires_confirmation'
-  })) {
-    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_CAPABILITY_MISMATCH')
+  const accept = (semanticPath: string, evidence = 'starverse-generation-v2-authority-boundary-2026-07-15') => {
+    dispositions.push(Object.freeze({ semanticPath, outcome: 'accepted_no_wire' as const, encodingKind: 'omitted' as const, evidence }))
   }
-  const nativeFields = new Map(projection.nativeSemanticFields.map((field) => [field.wireKey, field.value]))
-  if (nativeFields.size !== projection.nativeSemanticFields.length) {
+  const reject = (semanticPath: string, wireKey?: string) => {
+    issues.push(semanticPath)
+    dispositions.push(Object.freeze({ semanticPath, outcome: 'rejected' as const, ...(wireKey === undefined ? {} : { wireKey }), evidence: 'deepseek-create-chat-completion-verified-2026-07-15' }))
+  }
+  const intent = snapshot.semanticIntent
+  const generation = intent.generation
+  if (generation.maxOutputTokens !== undefined) encode('generation.maxOutputTokens', 'max_tokens', generation.maxOutputTokens)
+  if (generation.stop !== undefined) encode('generation.stop', 'stop', generation.stop)
+  if (generation.temperature !== undefined) encode('generation.temperature', 'temperature', generation.temperature)
+  if (generation.topP !== undefined) encode('generation.topP', 'top_p', generation.topP)
+  if (generation.frequencyPenalty !== undefined) encode('generation.frequencyPenalty', 'frequency_penalty', generation.frequencyPenalty)
+  if (generation.presencePenalty !== undefined) encode('generation.presencePenalty', 'presence_penalty', generation.presencePenalty)
+  for (const key of ['topK', 'minP', 'topA', 'seed', 'candidateCount', 'repetitionPenalty'] as const) {
+    if (generation[key] !== undefined) accept(`generation.${key}`)
+  }
+  encode('reasoning.mode', 'thinking.type', intent.reasoning.mode, 'deepseek-thinking-mode-verified-2026-07-15')
+  if (intent.reasoning.mode === 'enabled') {
+    if (intent.reasoning.effort !== undefined) encode('reasoning.effort', 'reasoning_effort', intent.reasoning.effort, 'deepseek-thinking-mode-verified-2026-07-15')
+    if (intent.reasoning.summary !== undefined) accept('reasoning.summary', 'deepseek-thinking-mode-verified-2026-07-15')
+    if (intent.reasoning.exclude !== undefined) accept('reasoning.exclude', 'deepseek-thinking-mode-verified-2026-07-15')
+  }
+  if (intent.web.mode === 'disabled') accept('web.mode')
+  else { accept('web.mode'); accept('web.types') }
+  if (intent.image.mode === 'disabled') accept('image.mode')
+  else for (const key of ['mode', 'outputMode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream'] as const) {
+    if (key === 'mode' || intent.image[key] !== undefined) accept(`image.${key}`)
+  }
+  if (!toolsEnabled) accept('tools.mode')
+  else if (!isToolRegistryRepositoryFactForContextV2(toolRegistry, input.context)) {
+    reject('tools.mode', 'tools'); reject('tools.allowedToolIds', 'tools'); reject('tools.toolChoice', 'tool_choice'); accept('tools.sideEffectConfirmation')
+  } else {
+    accept('tools.mode')
+    dispositions.push(Object.freeze({ semanticPath: 'tools.allowedToolIds', outcome: 'encoded' as const, wireKey: 'tools', encodingKind: 'structural' as const, evidence: 'deepseek-create-chat-completion-verified-2026-07-15' }))
+    if (intent.tools.mode === 'enabled' && intent.tools.toolChoice.mode === 'omitted') accept('tools.toolChoice', 'deepseek-thinking-mode-verified-2026-07-15')
+    else if (intent.tools.mode === 'enabled') dispositions.push(Object.freeze({ semanticPath: 'tools.toolChoice', outcome: 'encoded' as const, wireKey: 'tool_choice', encodingKind: 'structural' as const, evidence: 'deepseek-thinking-mode-verified-2026-07-15' }))
+    accept('tools.sideEffectConfirmation')
+  }
+  for (const [index, attachment] of intent.attachments.entries()) {
+    const base = `attachments[${index}]`
+    accept(`${base}.assetId`); accept(`${base}.assetRevisionId`); accept(`${base}.assetSha256`)
+    if (attachment.include) { reject(`${base}.include`); reject(`${base}.sendAs`); reject(`${base}.conversion`) }
+    else { accept(`${base}.include`); accept(`${base}.sendAs`); accept(`${base}.conversion`) }
+  }
+  if (intent.providerExtension.kind === 'none') accept('providerExtension.kind')
+  else accept('providerExtension.kind')
+  if (intent.providerExtension.kind === 'openai_responses') {
+    if (intent.providerExtension.maxToolCalls !== undefined) accept('providerExtension.maxToolCalls')
+    if (intent.providerExtension.parallelToolCalls !== undefined) accept('providerExtension.parallelToolCalls')
+    if (intent.providerExtension.serviceTier !== undefined) accept('providerExtension.serviceTier')
+    if (intent.providerExtension.verbosity !== undefined) accept('providerExtension.verbosity')
+  } else if (intent.providerExtension.kind === 'anthropic_messages') {
+    if (intent.providerExtension.manualThinkingBudgetTokens !== undefined) accept('providerExtension.manualThinkingBudgetTokens')
+    accept('providerExtension.thinkingDisplay'); accept('providerExtension.thinkingMode')
+  } else if (intent.providerExtension.kind === 'gemini_generate_content') {
+    accept('providerExtension.thinkingMode')
+    if ('thinkingLevel' in intent.providerExtension && intent.providerExtension.thinkingLevel !== undefined) accept('providerExtension.thinkingLevel')
+    if ('thinkingBudget' in intent.providerExtension && intent.providerExtension.thinkingBudget !== undefined) accept('providerExtension.thinkingBudget')
+    accept('providerExtension.includeThoughts')
+  }
+  if (new Set(dispositions.map((entry) => entry.semanticPath)).size !== dispositions.length) {
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_LEDGER_MISMATCH')
+  }
+  if (issues.length > 0) {
+    throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_SEMANTIC_REJECTED')
   }
   const intentTools = snapshot.semanticIntent.tools
   let compiledToolChoice: DeepSeekToolChoiceV1 | undefined
@@ -177,6 +241,8 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
       ...(nativeFields.has('stop') ? { stop: nativeFields.get('stop') } : {}),
       ...(nativeFields.has('temperature') ? { temperature: nativeFields.get('temperature') } : {}),
       ...(nativeFields.has('top_p') ? { topP: nativeFields.get('top_p') } : {}),
+      ...(nativeFields.has('frequency_penalty') ? { frequencyPenalty: nativeFields.get('frequency_penalty') } : {}),
+      ...(nativeFields.has('presence_penalty') ? { presencePenalty: nativeFields.get('presence_penalty') } : {}),
     },
     ...(toolRegistry === null ? {} : {
       tools: toolRegistry.selectedDefinitions.map((tool) => ({
@@ -190,15 +256,16 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
       ...(compiledToolChoice === undefined ? {} : { toolChoice: compiledToolChoice }),
     }),
   })
-  if (projection.nativeSemanticFields.some((field) =>
-    !equalValue(requestWireValue(compilation.nativeRequest, field.wireKey), field.value))) {
+  if ([...nativeFields.entries()].some(([wireKey, value]) =>
+    !equalValue(requestWireValue(compilation.nativeRequest, wireKey), value))) {
     throw new DeepSeekInitialPreparedRequestCompilerV2Error('GENERATION_V2_DEEPSEEK_COMPILER_LEDGER_MISMATCH')
   }
-  const ledger = createSemanticConsumptionLedgerV2(projection.dispositions.map((disposition) => ({
+  const ledger = createSemanticConsumptionLedgerV2(dispositions.map((disposition) => ({
     kind: 'consumed' as const,
     path: disposition.semanticPath,
     disposition: disposition.outcome,
     nativeField: disposition.wireKey ?? null,
+    encodingKind: disposition.encodingKind ?? (disposition.wireKey === undefined ? 'omitted' as const : 'identity' as const),
     evidence: disposition.evidence,
   })))
   const endpoint = new URL(profile.descriptor.chatPath, profile.descriptor.apiOrigin).toString()
@@ -217,6 +284,7 @@ export function compileDeepSeekPreparedRequestV2(input: Readonly<{
     body: compilation.preparedBody,
     ledger,
     capabilityRevision: capability.revision.value,
+    encoderRevision: capability.encoderRevision,
     snapshotHash: snapshot.snapshotHash.value,
   })
 }

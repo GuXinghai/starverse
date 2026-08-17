@@ -36,9 +36,11 @@ function issue(credentialPlacement: 'bearer_authorization' | 'anthropic_x_api_ke
       path: 'streaming.enabled',
       disposition: 'encoded',
       nativeField: 'stream',
+      encodingKind: 'identity',
       evidence: 'provider contract',
     }]),
     capabilityRevision: 'capability-1',
+    encoderRevision: 'encoder-v2:test',
     snapshotHash: 'a'.repeat(64),
   })
 }
@@ -81,8 +83,8 @@ describe('PreparedProviderRequestV2 closed non-secret header plan', () => {
       modelId: 'model-ordinary', effectiveEndpointId: 'endpoint-ordinary', endpoint: 'https://example.com/v1/chat/completions',
       headersPlan: createOpenAICompatibleCredentialHeaderPlanV2('bearer', [{ name: 'X-Tenant', value: 'public-tenant' }]),
       body: ImmutablePreparedBodyV2.fromNativeRequest({ stream: true }), ledger: createSemanticConsumptionLedgerV2([{
-        kind: 'consumed', path: 'streaming.enabled', disposition: 'encoded', nativeField: 'stream', evidence: 'provider contract',
-      }]), capabilityRevision: 'capability-ordinary', snapshotHash: 'a'.repeat(64),
+        kind: 'consumed', path: 'streaming.enabled', disposition: 'encoded', nativeField: 'stream', encodingKind: 'identity', evidence: 'provider contract',
+      }]), capabilityRevision: 'capability-ordinary', encoderRevision: 'encoder-v2:test', snapshotHash: 'a'.repeat(64),
     })
     expect(request.headersPlan.ordinaryHeaders).toEqual([{ name: 'X-Tenant', value: 'public-tenant' }])
   })
@@ -112,9 +114,9 @@ describe('PreparedProviderRequestV2 attachment encoding proof', () => {
       endpoint: 'https://example.com/v1/responses', headersPlan: createBearerAuthorizationHeaderPlanV2(),
       body: preparedBody, ledger: createSemanticConsumptionLedgerV2([{
         kind: 'consumed', path: 'attachments[].include', disposition: 'encoded',
-        nativeField: 'input[].content[].input_file', evidence: 'test',
+        nativeField: 'input[].content[].input_file', encodingKind: 'structural', evidence: 'test',
       }]), attachmentRequirements: requirements, attachmentEncodingProofs: proofs,
-      capabilityRevision: 'capability-proof', snapshotHash: 'a'.repeat(64),
+      capabilityRevision: 'capability-proof', encoderRevision: 'encoder-v2:test', snapshotHash: 'a'.repeat(64),
     })
 
   it('requires exactly one proof whose fragment occurs in the immutable body', () => {

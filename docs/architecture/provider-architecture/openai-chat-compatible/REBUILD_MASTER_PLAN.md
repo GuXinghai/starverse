@@ -374,3 +374,14 @@ No production compatible send route exists before TP-15. TP-15 is blocked unless
 - No automatic provider/model/URL-based semantic guessing.
 - No script, regex, JSONPath execution, template evaluation, dynamic JavaScript, user code or prototype-chain path access.
 - No production implementation, schema edit, fixture edit, staging or commit in Goal 1.
+
+## Generation V2 Wire Adapter Supersession (2026-08-17)
+
+The Generation V2 implementation supersedes any earlier plan text that treats
+request mappings or codec profiles as model capability authorities. V2 keeps
+only structural wire mapping (`sourceField`, `targetPath`, `omission`) and
+writes the validator-approved source value unchanged. `valueKind`,
+`valueMapping`, alias normalization, clamping, implicit defaults, and old
+configuration decoding are out of scope. The final semantic/domain decision
+belongs to `ResolvedCapabilityV2`; `EncodingCoverageRegistryV2` is code
+coverage provenance only.
