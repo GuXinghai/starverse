@@ -1,5 +1,4 @@
 import {
-  canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
   RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
@@ -7,8 +6,9 @@ import {
   type RuntimeCapabilityDomainV2,
   type RuntimeCapabilitySemanticPathV2,
 } from '../../capability/runtimeCapabilitySnapshotV2'
+import { canonicalizeResolvedCapabilityV2, runtimeSnapshotRecordFromResolvedCapabilityV2, type ResolvedCapabilityV2 } from '../../capability/resolvedCapabilityV2'
+import { credentialRevisionEvidenceV2 } from '../../capability/credentialRevisionEvidenceV2'
 import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../domain/providerBindingV2'
-import { stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
 import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../openrouter/verifiedFirstPartyEndpointProfileV2'
 import type { CanonicalOpenRouterImageDescriptorV2, CanonicalOpenRouterImageParameterV2 } from './canonicalDescriptorV2'
 import { listReviewedProviderContractDefinitionsV2 } from '../../contracts/providerContractRegistryV2'
@@ -94,7 +94,7 @@ function unsupported(path: RuntimeCapabilitySemanticPathV2, evidenceId: string):
   return Object.freeze({ path, state: 'unsupported', constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) })
 }
 function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCapabilityFieldV2 {
-  return Object.freeze({ path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
+  return Object.freeze({ path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
 }
 
 function contractDocumentationUrl(binding: DecodedProviderBindingRecordV2): string {
@@ -110,12 +110,13 @@ function contractDocumentationUrl(binding: DecodedProviderBindingRecordV2): stri
   return sourceRef
 }
 
-/** Produces only exact descriptor-backed capability facts. Attachment URL issuance is intentionally separate. */
-export function composeOpenRouterImageRuntimeCapabilityV2(input: Readonly<{
+/** Produces the independent exact descriptor-backed capability record. */
+function resolveOpenRouterImageCapabilityRecordV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   descriptor: CanonicalOpenRouterImageDescriptorV2
   resolvedAt: string
-}>): DecodedRuntimeCapabilitySnapshotV2 {
+  credentialRevision: number
+}>): ResolvedCapabilityV2 {
   expectedDescriptor(input.binding, input.descriptor)
   if (Number.isNaN(Date.parse(input.resolvedAt)) || new Date(input.resolvedAt).toISOString() !== input.resolvedAt) {
     throw new OpenRouterImageRuntimeCapabilityV2Error('GENERATION_V2_OPENROUTER_IMAGE_CAPABILITY_INVALID')
@@ -145,9 +146,7 @@ export function composeOpenRouterImageRuntimeCapabilityV2(input: Readonly<{
     }
     return unavailable(path)
   }))
-  const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
-    schemaVersion: 2,
-    resolvedAt: input.resolvedAt,
+  return canonicalizeResolvedCapabilityV2({
     binding: projectDecodedProviderBindingRecordV2(input.binding),
     evidence: Object.freeze([
       Object.freeze({ evidenceId: contractEvidenceId, kind: 'official_documentation' as const, effect: 'supports' as const,
@@ -156,15 +155,30 @@ export function composeOpenRouterImageRuntimeCapabilityV2(input: Readonly<{
         sourceRef: input.descriptor.providerTag.value, verifiedAt: input.resolvedAt, contentDigest: input.descriptor.descriptorDigest.value }),
       Object.freeze({ evidenceId: rejectEvidenceId, kind: 'endpoint_descriptor' as const, effect: 'rejects' as const,
         sourceRef: input.descriptor.providerTag.value, verifiedAt: input.resolvedAt, contentDigest: input.descriptor.descriptorDigest.value }),
+      credentialRevisionEvidenceV2({ credentialRevision: input.credentialRevision, verifiedAt: input.resolvedAt }),
     ]),
     fields,
-    tools: Object.freeze([]),
     continuation: Object.freeze({ kind: 'none' as const, evidenceIds: Object.freeze([contractEvidenceId]) }),
   })
-  const snapshot = decodeRuntimeCapabilitySnapshotV2(record)
-  if (stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(snapshot.binding)) !==
-      stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(input.binding))) {
-    throw new OpenRouterImageRuntimeCapabilityV2Error('GENERATION_V2_OPENROUTER_IMAGE_CAPABILITY_INVALID')
-  }
-  return snapshot
+}
+
+/** Runtime Snapshot is a derived command/persistence envelope. */
+export function composeOpenRouterImageRuntimeCapabilityV2(input: Readonly<{
+  binding: DecodedProviderBindingRecordV2
+  descriptor: CanonicalOpenRouterImageDescriptorV2
+  resolvedAt: string
+  credentialRevision: number
+}>): DecodedRuntimeCapabilitySnapshotV2 {
+  const capability = resolveOpenRouterImageCapabilityRecordV2(input)
+  return decodeRuntimeCapabilitySnapshotV2(runtimeSnapshotRecordFromResolvedCapabilityV2({ capability, resolvedAt: input.resolvedAt, tools: [] }))
+}
+
+/** Independent model capability resolver; attachment URL issuance is separate. */
+export function resolveOpenRouterImageCapabilityV2(input: Readonly<{
+  binding: DecodedProviderBindingRecordV2
+  descriptor: CanonicalOpenRouterImageDescriptorV2
+  resolvedAt: string
+  credentialRevision: number
+}>): ResolvedCapabilityV2 {
+  return resolveOpenRouterImageCapabilityRecordV2(input)
 }

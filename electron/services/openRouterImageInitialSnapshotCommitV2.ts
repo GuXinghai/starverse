@@ -44,6 +44,7 @@ import {
   type OpenRouterImageRegenerateCommandV2,
   type OpenRouterImageRetryCommandV2,
 } from '../../src/next/generation-v2/providers/openrouter-images/imageActionCommandsV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 
 export class OpenRouterImageInitialSnapshotCommitV2Error extends Error {
   constructor(readonly code:
@@ -73,6 +74,7 @@ export function commitOpenRouterImageRetrySnapshotV2(input: Readonly<{
       input.target.snapshot.providerBinding.operation !== 'image_generate') {
     return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_INPUT_INVALID')
   }
+  assertExpectedCapabilityRevisionV2(input.target.snapshot.capabilityBinding.capabilityRevision.value)
   const payload = JSON.parse(input.target.snapshot.canonicalJson) as Record<string, unknown>
   delete payload.snapshotHash
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
@@ -112,6 +114,7 @@ export function commitOpenRouterImageCurrentSnapshotV2(input: Readonly<{
     return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_INPUT_INVALID')
   }
   const binding = assertBindingAndCapability(input.binding, input.capability)
+  assertExpectedCapabilityRevisionV2(input.capability.revision.value)
   const persistedCapability = input.capabilityRepo.insertCanonical(input.context, input.capability.canonicalJson, input.pending.createdAtMs)
   if (!isRuntimeCapabilityRepositoryFactV2(persistedCapability.fact)) return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_RESULT_INVALID')
   const snapshot = decodeAssistantAnswerGenerationSnapshotV2(canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2({
@@ -189,6 +192,7 @@ export function commitOpenRouterImageInitialSnapshotV2(input: Readonly<{
     return fail('GENERATION_V2_OPENROUTER_IMAGE_SNAPSHOT_COMMIT_INPUT_INVALID')
   }
   const binding = assertBindingAndCapability(input.binding, input.capability)
+  assertExpectedCapabilityRevisionV2(input.capability.revision.value)
   if (input.commandFacts.attachmentSet.attachments.some((attachment) => attachment.intent.include) ||
       input.commandFacts.attachmentSet.urlReferenceIntents.some((attachment) =>
         attachment.include && attachment.mediaKind !== 'image')) {

@@ -21,6 +21,9 @@ export function createLmStudioOpenResponsesProviderBindingV2(
   modelId: string,
 ): DecodedProviderBindingRecordV2 {
   readLmStudioOpenResponsesEndpointV2(profile)
+  if (profile.protocolConfig.modelId !== modelId) {
+    throw new Error('GENERATION_V2_LMSTUDIO_PROFILE_MODEL_MISMATCH')
+  }
   return decodeProviderBindingRecordV2({ credentialScopeId: profile.credentialScopeId, providerId: 'lmstudio',
     endpointProfileId: profile.endpointProfileId,
     endpointBinding: { kind: 'provider_managed_set', endpointSetRevision: profile.profileRevision,

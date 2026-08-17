@@ -3,6 +3,7 @@ import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/r
 import { isOpenAIChatCompatibleRequestHistoryFactForContextV2, type OpenAIChatCompatibleRequestHistoryFactV2 } from '../../infra/db/repo/openAIChatCompatibleNativeHistoryV2Repo'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import { createNoCredentialHeaderPlanV2, createOpenAICompatibleCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { ImmutablePreparedBodyV2, sha256PreparedBytesV2, stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import { buildCompatibleChatRequest } from '../../src/shared/provider/openai-chat-compatible/request/buildCompatibleChatRequest'
@@ -44,6 +45,7 @@ export function compileOpenAIChatCompatiblePreparedRequestV2(input: Readonly<{
     return fail('GENERATION_V2_OPENAI_COMPATIBLE_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
   const binding = snapshot.providerBinding
   const provenance = snapshot.providerConfiguration
   if (binding.providerId.value !== 'openai_compatible' || binding.protocolContractId.value !== 'openai_chat_compatible' ||

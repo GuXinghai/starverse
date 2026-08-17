@@ -86,6 +86,8 @@ async function status(service: Epoch2RuntimeCredentialService, provider: Provide
     providerId: provider.providerId,
     profileId: provider.profileId,
     apiKeyConfigured: value.configured,
+    credentialRevision: value.revision,
+    ...(value.credentialScopeId ? { credentialScopeId: value.credentialScopeId } : {}),
     ...(value.configured ? { maskedApiKey: '***' as const } : {}),
     credentialAvailability: value.availability,
     sessionOverridesPersistent: value.sessionOverridesPersistent,

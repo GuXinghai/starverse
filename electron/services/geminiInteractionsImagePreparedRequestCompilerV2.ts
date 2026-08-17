@@ -1,6 +1,7 @@
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecutionOperationBundleV2 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import { createGoogleApiKeyHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
 import { readGeminiDeveloperApiContractV2, resolveGeminiDeveloperApiEndpointV2 } from '../../src/next/generation-v2/contracts/geminiDeveloperApiContractV2'
@@ -27,6 +28,7 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
     throw new GeminiInteractionsImagePreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
   const binding = snapshot.providerBinding
   const profile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
   const descriptor = profile.descriptors.interactions

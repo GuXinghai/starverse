@@ -32,7 +32,12 @@ Node 与 Electron 的 ABI 目标互斥：切换环境后需为即将运行的环
 
 ## 数据库 schema 不匹配
 
-schema digest 不匹配时默认 fail-closed（不启动）。如需显式备份并重建：
+schema digest 不匹配时，应用会弹出确认对话框：
+
+- **备份并重置**：先备份当前数据库文件族，再创建当前版本的新数据库；配置和凭据不会被重置。
+- **退出**：不修改数据库并退出应用。
+
+在无头环境或自动化场景中，可以使用显式环境变量跳过对话框并直接执行备份重建：
 
 ```powershell
 $env:SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH=1

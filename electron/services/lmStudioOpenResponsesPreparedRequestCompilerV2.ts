@@ -5,6 +5,7 @@ import { isToolRegistryRepositoryFactForContextV2, type ToolRegistryRepositoryFa
 import { isLmStudioOpenResponsesRequestHistoryFactForContextV2,
   type LmStudioOpenResponsesRequestHistoryFactV2 } from '../../infra/db/repo/lmStudioOpenResponsesNativeHistoryV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import { createNoCredentialHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { compileLmStudioOpenResponsesRequestV1 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/responsesRequestV1'
 import { readLmStudioOpenResponsesEndpointV2 } from '../../src/next/generation-v2/providers/lmstudio-openresponses/verifiedContractV2'
@@ -22,9 +23,11 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
     throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
   const binding = snapshot.providerBinding
   if (binding.providerId.value !== 'lmstudio' || binding.protocolContractId.value !== 'lmstudio-openresponses' ||
       binding.endpointProfileId.value !== input.profile.endpointProfileId || binding.credentialScopeId.value !== input.profile.credentialScopeId ||
+      binding.modelId.value !== input.profile.protocolConfig.modelId ||
       binding.operation !== 'text' || binding.endpointBinding.kind !== 'provider_managed_set' ||
       binding.endpointBinding.endpointSetRevision.value !== input.profile.profileRevision ||
       input.profile.protocolContractId !== 'lmstudio-openresponses') throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_BINDING_INVALID')

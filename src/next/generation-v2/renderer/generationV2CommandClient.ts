@@ -30,10 +30,17 @@ export type GenerationV2Route =
 function root(){const v=window.generationV2;if(!v)throw new Error('GENERATION_V2_BRIDGE_UNAVAILABLE');return v}
 function select(route:GenerationV2Route):Bridge{const v=root();switch(route.kind){case'openrouter_chat':return v.openRouter.chat as Bridge;case'openrouter_images':return v.openRouter.images as Bridge;case'openai_responses':return v.openAIResponses as Bridge;case'anthropic':return v.anthropic as Bridge;case'deepseek':return v.deepSeek as Bridge;case'gemini_generate_content':return v.gemini.generateContent as Bridge;case'gemini_interactions_image':return v.gemini.interactionsImage as Bridge;case'openai_chat_compatible':return v.openAICompatible.commands as Bridge;case'lmstudio_openresponses':return v.lmStudio.openResponses as Bridge;case'generic_local_openai_chat':return v.genericLocal.openAIChatCompletions as Bridge;case'ollama_chat':return v.ollama.chat as Bridge}}
 function accepted(value:unknown):GenerationV2CommandResult{const r=value as GenerationV2CommandResult;if(!r||typeof r!=='object'||typeof r.ok!=='boolean')throw new Error('GENERATION_V2_IPC_RESULT_INVALID');return r}
-export async function submitGenerationV2Initial(route:GenerationV2Route,command:unknown){return accepted(await select(route).initial(command))}
-export async function submitGenerationV2Retry(route:GenerationV2Route,command:unknown){return accepted(await select(route).retry(command))}
-export async function submitGenerationV2Regenerate(route:GenerationV2Route,command:unknown){return accepted(await select(route).regenerate(command))}
-export async function submitGenerationV2EditResend(route:GenerationV2Route,command:unknown){return accepted(await select(route).editResend(command))}
+function capabilityBound(command:unknown, expectedCapabilityRevision:string) {
+  if (typeof expectedCapabilityRevision !== 'string' || expectedCapabilityRevision.length === 0 ||
+      expectedCapabilityRevision.trim() !== expectedCapabilityRevision) {
+    throw new Error('CAPABILITY_REVISION_EXPECTATION_MISSING')
+  }
+  return Object.freeze({ command, expectedCapabilityRevision })
+}
+export async function submitGenerationV2Initial(route:GenerationV2Route,command:unknown,expectedCapabilityRevision:string){return accepted(await select(route).initial(capabilityBound(command,expectedCapabilityRevision)))}
+export async function submitGenerationV2Retry(route:GenerationV2Route,command:unknown,expectedCapabilityRevision:string){return accepted(await select(route).retry(capabilityBound(command,expectedCapabilityRevision)))}
+export async function submitGenerationV2Regenerate(route:GenerationV2Route,command:unknown,expectedCapabilityRevision:string){return accepted(await select(route).regenerate(capabilityBound(command,expectedCapabilityRevision)))}
+export async function submitGenerationV2EditResend(route:GenerationV2Route,command:unknown,expectedCapabilityRevision:string){return accepted(await select(route).editResend(capabilityBound(command,expectedCapabilityRevision)))}
 export async function abortGenerationV2(_route:GenerationV2Route,operationId:string){
   return runtimeBridge().abort(operationId)
 }

@@ -1,5 +1,4 @@
 import {
-  canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
   RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
@@ -8,7 +7,14 @@ import {
   type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import {
-  assertActiveCatalogOptionalCapabilitiesV2,
+  canonicalizeResolvedCapabilityV2,
+  runtimeSnapshotRecordFromResolvedCapabilityV2,
+  validateSemanticIntentAgainstResolvedCapabilityV2,
+  type ResolvedCapabilityV2,
+} from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
+import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
+import {
   isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2,
   type ActiveCatalogModelAuthorityV2,
@@ -70,6 +76,7 @@ export type VerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2 = Readonly<{
   usage: 'snapshot_commit_input_only'
   executionAuthority: 'none'
   bindingAuthority: VerifiedOpenAIResponsesProviderBindingAuthorityV2
+  resolvedCapability: ResolvedCapabilityV2
   record: PersistedRuntimeCapabilitySnapshotV2
   snapshot: DecodedRuntimeCapabilitySnapshotV2
   modelCapabilityDigest: GenerationV2Digest<'evidence_digest'>
@@ -194,7 +201,7 @@ function field(
   path: RuntimeCapabilitySemanticPathV2,
   ids: ReturnType<typeof evidenceIds>,
   maxOutputTokens: number,
-  toolsEnabled: boolean,
+  _toolsEnabled: boolean,
 ): PersistedRuntimeCapabilityFieldV2 {
   const supported = (domain: NonNullable<PersistedRuntimeCapabilityFieldV2['domain']>, model = false) => Object.freeze({
     path, state: 'supported' as const, domain, constraints: Object.freeze([]),
@@ -205,7 +212,7 @@ function field(
     evidenceIds: Object.freeze([model ? ids.modelReject : ids.contractReject]),
   })
   const unavailable = () => Object.freeze({
-    path, state: 'unavailable' as const, constraints: Object.freeze([]), evidenceIds: Object.freeze([]),
+    path, state: 'missing' as const, constraints: Object.freeze([]), evidenceIds: Object.freeze([]),
   })
   switch (path) {
     case 'attachments[].kind': return supported({ kind: 'enum', values: Object.freeze(['managed_file', 'url_reference']) })
@@ -245,18 +252,14 @@ function field(
     case 'reasoning.effort': return supported({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']) }, true)
     case 'reasoning.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'enabled']) }, true)
     case 'reasoning.summary': return supported({ kind: 'enum', values: Object.freeze(['auto', 'concise', 'detailed']) })
-    case 'tools.allowedToolIds': return toolsEnabled
-      ? supported({ kind: 'identity_list', maxItems: 128 }) : unavailable()
-    case 'tools.sideEffectConfirmation': return toolsEnabled ? Object.freeze({
+    case 'tools.allowedToolIds': return supported({ kind: 'identity_list', maxItems: 128 })
+    case 'tools.sideEffectConfirmation': return Object.freeze({
       path, state: 'requires_confirmation',
       domain: Object.freeze({ kind: 'enum' as const, values: Object.freeze(['required_each_retry']) }),
       constraints: Object.freeze([]), evidenceIds: Object.freeze([OPENAI_RESPONSES_TOOL_SIDE_EFFECT_POLICY_EVIDENCE_V2]),
-    }) : unavailable()
-    case 'tools.toolChoice': return toolsEnabled
-      ? supported({ kind: 'enum', values: Object.freeze(['omitted', 'auto', 'none', 'required', 'named']) })
-      : unavailable()
-    case 'tools.mode': return supported({ kind: 'enum', values: Object.freeze(toolsEnabled
-      ? ['disabled', 'enabled'] : ['disabled']) })
+    })
+    case 'tools.toolChoice': return supported({ kind: 'enum', values: Object.freeze(['omitted', 'auto', 'none', 'required', 'named']) })
+    case 'tools.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'enabled']) })
     case 'web.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'provider_search']) }, true)
     case 'web.types': return supported({ kind: 'enum_list', values: Object.freeze(['web']), maxItems: 1 }, true)
     case 'web.searchContextSize': return supported({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high']) })
@@ -330,7 +333,7 @@ function validateIntent(
   for (const [path, value] of explicit) {
     const capability = byPath.get(path as RuntimeCapabilitySemanticPathV2)
     if (!capability || capability.state === 'unsupported') return fail('GENERATION_V2_OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
-    if (capability.state === 'unavailable') return fail('GENERATION_V2_OPENAI_FIELD_CAPABILITY_UNAVAILABLE')
+    if (capability.state === 'missing' || capability.state === 'unknown') return fail('GENERATION_V2_OPENAI_FIELD_CAPABILITY_UNAVAILABLE')
     if (capability.domain?.kind === 'identity_list') {
       if (!Array.isArray(value) || value.length === 0 || value.length > capability.domain.maxItems ||
           value.some((item) => typeof item !== 'string')) return fail('GENERATION_V2_OPENAI_FIELD_VALUE_UNSUPPORTED')
@@ -346,7 +349,7 @@ function validateIntent(
 function composeCapability(input: Readonly<{
   binding: VerifiedOpenAIResponsesProviderBindingAuthorityV2
   modelEvidence: ActiveCatalogModelAuthorityV2
-  commandFacts: GenerationCommandFactsAuthorityV2
+  commandFacts?: GenerationCommandFactsAuthorityV2
   resolvedAt: string
   toolRegistry: ToolRegistryRepositoryFactV2 | null
 }>): VerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2 {
@@ -377,24 +380,28 @@ function composeCapability(input: Readonly<{
       sourceRef: 'docs/architecture/generation-compiler-v2/generation-compiler-v2-final-plan.md',
       verifiedAt, contentDigest: ids.contract.sha256,
     }),
+    credentialRevisionEvidenceV2({ credentialRevision: input.modelEvidence.credentialRevision, verifiedAt }),
   ])
   const fields = Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) =>
-    field(path, ids, input.modelEvidence.modelCapability.capability.maxOutputTokens, input.toolRegistry !== null)))
-  validateIntent(input.commandFacts, fields, input.toolRegistry)
-  const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
-    schemaVersion: 2, resolvedAt: input.resolvedAt,
+    field(path, ids, input.modelEvidence.modelCapability.capability.maxOutputTokens, true)))
+  if (input.commandFacts) validateIntent(input.commandFacts, fields, input.toolRegistry)
+  const continuation = {
+    kind: 'client_managed_native_replay' as const, artifactKind: OPENAI_RESPONSES_ARTIFACT_KIND_V2,
+    supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [ids.contractSupport],
+  }
+  const resolvedCapability = canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(input.modelEvidence),
     binding: projectDecodedProviderBindingRecordV2(input.binding.binding), evidence, fields,
+    continuation,
+  })
+  const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
+    capability: resolvedCapability, resolvedAt: input.resolvedAt,
     tools: input.toolRegistry?.selectedDefinitions.map((tool) => ({
       toolId: tool.toolId, kind: tool.kind,
       state: tool.sideEffectPolicy === 'none' ? 'supported' : 'requires_confirmation',
       sideEffectPolicy: tool.sideEffectPolicy, evidenceIds: [tool.sideEffectPolicy === 'none'
         ? ids.contractSupport : OPENAI_RESPONSES_TOOL_SIDE_EFFECT_POLICY_EVIDENCE_V2],
     })) ?? [],
-    continuation: {
-      kind: 'client_managed_native_replay', artifactKind: OPENAI_RESPONSES_ARTIFACT_KIND_V2,
-      supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [ids.contractSupport],
-    },
   })
   const snapshot = decodeRuntimeCapabilitySnapshotV2(record)
   if (stableSerializeProviderRequestV2(projectDecodedProviderBindingRecordV2(snapshot.binding)) !==
@@ -403,7 +410,7 @@ function composeCapability(input: Readonly<{
   }
   const authority: VerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2 = Object.freeze({
     trust: 'verified_openai_responses_runtime_capability', usage: 'snapshot_commit_input_only', executionAuthority: 'none',
-    bindingAuthority: input.binding, record, snapshot,
+    bindingAuthority: input.binding, resolvedCapability, record, snapshot,
     modelCapabilityDigest: input.modelEvidence.modelCapability.capabilityEvidenceDigest,
     modelEvidenceRevision: input.modelEvidence.modelsResponseRevision,
     assertCurrent: () => {
@@ -415,6 +422,19 @@ function composeCapability(input: Readonly<{
   })
   capabilityAuthorities.add(authority)
   return authority
+}
+
+/** Command-independent capability projection shared by UI and send paths. */
+export function resolveOpenAIResponsesCapabilityV2(
+  modelEvidence: ActiveCatalogModelAuthorityV2,
+): ResolvedCapabilityV2 {
+  const binding = composeBinding(modelEvidence)
+  return composeCapability({
+    binding,
+    modelEvidence,
+    resolvedAt: new Date(Math.max(Date.now(), modelEvidence.observedAtMs)).toISOString(),
+    toolRegistry: null,
+  }).resolvedCapability
 }
 
 function isPromiseLike(value: unknown): value is PromiseLike<unknown> {
@@ -446,7 +466,6 @@ export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Rea
       : 'GENERATION_V2_OPENAI_GENERATION_AUTHORITY_INVALID')
   }
   const resolvedAtMs = Date.now()
-  assertActiveCatalogOptionalCapabilitiesV2(input.modelEvidence, input.commandFacts.semanticIntent)
   if (!Number.isSafeInteger(resolvedAtMs) || resolvedAtMs < input.modelEvidence.observedAtMs) {
     return fail('GENERATION_V2_OPENAI_GENERATION_AUTHORITY_INVALID')
   }
@@ -460,6 +479,11 @@ export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Rea
       binding, modelEvidence: input.modelEvidence, commandFacts: input.commandFacts,
       resolvedAt: new Date(resolvedAtMs).toISOString(), toolRegistry: input.toolRegistry,
     })
+    validateSemanticIntentAgainstResolvedCapabilityV2(
+      capability.resolvedCapability,
+      input.commandFacts.semanticIntent,
+    )
+    assertExpectedCapabilityRevisionV2(capability.snapshot.revision.value)
     const revoke = () => {
       if (capability) capabilityAuthorities.delete(capability)
       if (binding) bindingAuthorities.delete(binding)

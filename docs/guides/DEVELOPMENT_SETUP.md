@@ -82,7 +82,7 @@ git diff --check
 - `<appData>/Starverse/config.json` — 应用配置与官方 Provider 受保护凭据
 - `<appData>/Starverse/workspace/epoch-2/assets`、`plugins`、`runtimes` — 附件、插件与运行时
 
-应用不再打开旧的 `chat.db`；schema digest 不匹配时默认 fail-closed，只有显式设置 `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH=1` 才会备份并重建。
+应用不再打开旧的 `chat.db`；schema digest 不匹配时会显示确认对话框，确认后先备份数据库再重建。无头或自动化启动可显式设置 `SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH=1` 跳过对话框。
 
 ## 常见问题
 

@@ -4,6 +4,7 @@ import {
   type GenerationExecutionOperationBundleV2,
 } from '../../infra/db/repo/generationExecutionV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
   createPreparedAttachmentRequirementsV2,
@@ -48,6 +49,7 @@ export function compileOpenRouterImagePreparedRequestV2(input: Readonly<{
     )
   }
   const { operation, snapshot, capability } = input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
   const binding = snapshot.providerBinding
   const selector = binding.endpointBinding.kind === 'pinned' ? binding.endpointBinding.selector : null
   const profile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()

@@ -258,3 +258,20 @@ export function projectDecodedProviderBindingRecordV2(
     operation: binding.operation,
   })
 }
+
+/**
+ * Binding projection used by command-independent capability revisions.
+ * Selection time is persisted provenance, but it is not a capability fact;
+ * selecting the same endpoint again must not create a new base revision.
+ */
+export function projectProviderBindingForCapabilityRevisionV2(
+  binding: DecodedProviderBindingRecordV2,
+): Readonly<Record<string, unknown>> {
+  const projected = projectDecodedProviderBindingRecordV2(binding)
+  if (binding.endpointBinding.kind !== 'pinned') return projected
+  const endpointBinding = projected.endpointBinding as Readonly<Record<string, unknown>>
+  const selector = endpointBinding.selector as Readonly<Record<string, unknown>>
+  const { selectedAt: _selectedAt, ...stableSelector } = selector
+  return Object.freeze({ ...projected, endpointBinding: Object.freeze({ ...endpointBinding,
+    selector: Object.freeze(stableSelector) }) })
+}

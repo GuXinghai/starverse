@@ -1,5 +1,6 @@
 import {
   sha256PreparedBytesV2,
+  stableSerializeProviderRequestV2,
   stableSerializeProviderRequestBoundedV2,
 } from '../compiler/stableSerialize'
 import {
@@ -11,8 +12,10 @@ import {
 import {
   decodeProviderBindingRecordV2,
   projectDecodedProviderBindingRecordV2,
+  projectProviderBindingForCapabilityRevisionV2,
   type DecodedProviderBindingRecordV2,
 } from '../domain/providerBindingV2'
+import { resolveGenerationImplementationManifestV2 } from './implementationManifestV2'
 import type {
   AttachmentIntentV2,
   ImageGenerationIntentV2,
@@ -131,8 +134,12 @@ export type RuntimeCapabilityFieldStateV2 =
   | 'supported'
   | 'unsupported'
   | 'requires_confirmation'
-  | 'unavailable'
-export type RuntimeCapabilityEvidenceEffectV2 = 'supports' | 'rejects' | 'requires_confirmation'
+  /** The source did not provide a fact for this semantic field. */
+  | 'missing'
+  /** Evidence exists, but it is insufficient to resolve support or rejection. */
+  | 'unknown'
+
+export type RuntimeCapabilityEvidenceEffectV2 = 'supports' | 'rejects' | 'requires_confirmation' | 'unknown'
 export type RuntimeCapabilityScalarV2 = string | number | boolean
 
 export type RuntimeCapabilityDomainV2 =
@@ -298,10 +305,10 @@ const EVIDENCE_KINDS: readonly RuntimeCapabilityEvidenceKindV2[] = [
   'official_documentation', 'live_probe', 'user_narrowing_override',
 ]
 const EVIDENCE_EFFECTS: readonly RuntimeCapabilityEvidenceEffectV2[] = [
-  'supports', 'rejects', 'requires_confirmation',
+  'supports', 'rejects', 'requires_confirmation', 'unknown',
 ]
 const FIELD_STATES: readonly RuntimeCapabilityFieldStateV2[] = [
-  'supported', 'unsupported', 'requires_confirmation', 'unavailable',
+  'supported', 'unsupported', 'requires_confirmation', 'missing', 'unknown',
 ]
 const MAX_EVIDENCE = 256
 const MAX_CONSTRAINTS_PER_FIELD = 32
@@ -567,6 +574,36 @@ const IDENTITY_PATHS = new Set<RuntimeCapabilitySemanticPathV2>([
   'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
 ])
 
+/**
+ * This projection is part of the epoch closed-schema contract.  Keep the
+ * revision alongside the codec grammar and validation tables so a codec
+ * change cannot silently reuse an installed database schema digest.
+ */
+export const RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2 = 'runtime-capability-codec-v2'
+const RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2 = {
+  revision: RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2,
+  schemaVersion: RUNTIME_CAPABILITY_SNAPSHOT_V2_SCHEMA_VERSION,
+  maxUtf8Bytes: RUNTIME_CAPABILITY_SNAPSHOT_V2_MAX_UTF8_BYTES,
+  maxEvidence: MAX_EVIDENCE,
+  maxConstraintsPerField: MAX_CONSTRAINTS_PER_FIELD,
+  maxEnumValues: MAX_ENUM_VALUES,
+  maxToolCapabilities: MAX_TOOL_CAPABILITIES,
+  semanticPaths: RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  fieldStates: FIELD_STATES,
+  evidenceKinds: EVIDENCE_KINDS,
+  evidenceEffects: EVIDENCE_EFFECTS,
+  domainKinds: ['boolean', 'identity', 'enum', 'response_format', 'enum_list', 'range',
+    'string_list', 'identity_list', 'approximate_location', 'dimensions', 'dimensions_enum'],
+  constraintKinds: ['requires_value', 'forbids_value'],
+  enumValuesByPath: Object.entries(ENUM_VALUES_BY_PATH).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0),
+  integerRangePaths: [...INTEGER_RANGE_PATHS].sort(),
+  numberRangePaths: [...NUMBER_RANGE_PATHS].sort(),
+  identityPaths: [...IDENTITY_PATHS].sort(),
+} as const
+export const RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2 = sha256PreparedBytesV2(
+  new TextEncoder().encode(stableSerializeProviderRequestV2(RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2)),
+)
+
 function assertDomainMatchesPath(path: RuntimeCapabilitySemanticPathV2, domain: RuntimeCapabilityDomainV2): void {
   const enumValues = ENUM_VALUES_BY_PATH[path]
   if (enumValues) {
@@ -695,7 +732,7 @@ function decodeField(value: unknown): PersistedRuntimeCapabilityFieldV2 {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
   const state = input.state as RuntimeCapabilityFieldStateV2
-  if ((state === 'unsupported' || state === 'unavailable') !== (input.domain === undefined)) {
+  if ((state === 'unsupported' || state === 'missing' || state === 'unknown') !== (input.domain === undefined)) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
   const domain = input.domain === undefined ? undefined : decodeDomain(input.domain)
@@ -704,7 +741,7 @@ function decodeField(value: unknown): PersistedRuntimeCapabilityFieldV2 {
   if (constraints.length > MAX_CONSTRAINTS_PER_FIELD) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
-  if ((state === 'unsupported' || state === 'unavailable') && constraints.length > 0) {
+  if ((state === 'unsupported' || state === 'missing' || state === 'unknown') && constraints.length > 0) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
   constraints.sort((left, right) => compareCodePoints(serializeBounded(left), serializeBounded(right)))
@@ -719,7 +756,8 @@ function decodeField(value: unknown): PersistedRuntimeCapabilityFieldV2 {
   if (new Set(evidenceIds).size !== evidenceIds.length) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_DUPLICATE_VALUE')
   }
-  if ((state === 'unavailable') !== (evidenceIds.length === 0)) {
+  if ((state === 'missing') !== (evidenceIds.length === 0) ||
+      (state === 'unknown' && evidenceIds.length === 0)) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_EVIDENCE_MISMATCH')
   }
   return Object.freeze({
@@ -752,7 +790,8 @@ function decodeToolCapability(value: unknown): PersistedRuntimeToolCapabilityV2 
   }
   const state = input.state as RuntimeCapabilityFieldStateV2
   const evidenceIds = decodeEvidenceIds(input.evidenceIds)
-  if ((state === 'unavailable') !== (evidenceIds.length === 0) ||
+  if ((state === 'missing') !== (evidenceIds.length === 0) ||
+      (state === 'unknown' && evidenceIds.length === 0) ||
       state === 'requires_confirmation' && input.sideEffectPolicy !== 'confirmation_required_each_execution') {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_EVIDENCE_MISMATCH')
   }
@@ -930,7 +969,7 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
   const continuation = decodeContinuation(input.continuation)
   const evidenceById = new Map(evidence.map((item) => [item.evidenceId, item]))
   const effectForState: Partial<Record<RuntimeCapabilityFieldStateV2, RuntimeCapabilityEvidenceEffectV2>> = {
-    supported: 'supports', unsupported: 'rejects', requires_confirmation: 'requires_confirmation',
+    supported: 'supports', unsupported: 'rejects', requires_confirmation: 'requires_confirmation', unknown: 'unknown',
   }
   for (const field of fields) {
     const expectedEffect = effectForState[field.state]
@@ -968,6 +1007,26 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
 }
 
 function buildRecord(draft: DraftSnapshot): PersistedRuntimeCapabilitySnapshotV2 {
+  const binding = decodeProviderBindingRecordV2(draft.binding)
+  const implementationManifest = resolveGenerationImplementationManifestV2({
+    providerId: binding.providerId.value,
+    protocolContractId: binding.protocolContractId.value,
+    operation: binding.operation,
+  })
+  // Runtime Snapshot remains a persisted command envelope. Its base revision
+  // is nevertheless strictly bound to the independent implementation
+  // manifest, so a codec change invalidates old snapshots even when provider
+  // evidence happens to be unchanged.
+  const implementationCeiling = Object.freeze({
+    providerId: implementationManifest.providerId,
+    protocolContractId: implementationManifest.protocolContractId,
+    contractRevision: implementationManifest.contractRevision,
+    registryRevision: implementationManifest.registryRevision,
+    manifestDigest: implementationManifest.manifestDigest,
+    manifestRevision: implementationManifest.manifestRevision,
+    semanticPaths: implementationManifest.semanticPaths,
+    fieldCeilings: implementationManifest.fieldCeilings,
+  })
   const evidence = draft.evidence.map((item) => Object.freeze({
     ...item,
     entryDigest: hash(item),
@@ -975,10 +1034,25 @@ function buildRecord(draft: DraftSnapshot): PersistedRuntimeCapabilitySnapshotV2
   const evidenceDigest = hash(evidence)
   const semanticFieldsDigest = hash({
     fields: draft.fields,
-    tools: draft.tools,
     continuation: draft.continuation,
   })
-  const revision = `capability-v2:${hash({ binding: draft.binding, evidenceDigest, semanticFieldsDigest })}`
+  // The base capability revision is a content revision, not an observation
+  // timestamp. evidenceDigest intentionally retains the full audit record,
+  // including verifiedAt, while the revision uses only the evidence identity
+  // and content that can change the capability conclusion.
+  const capabilityEvidenceRevision = draft.evidence.map((item) => ({
+    evidenceId: item.evidenceId,
+    kind: item.kind,
+    effect: item.effect,
+    sourceRef: item.sourceRef,
+    contentDigest: item.contentDigest,
+  }))
+  const revision = `capability-v2:${hash({
+    binding: projectProviderBindingForCapabilityRevisionV2(binding),
+    evidence: capabilityEvidenceRevision,
+    semanticFieldsDigest,
+    implementationCeiling,
+  })}`
   const payload = Object.freeze({
     ...draft,
     evidence: Object.freeze(evidence),

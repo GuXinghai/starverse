@@ -11,6 +11,7 @@ import { compileOpenAIResponsesRequestV1 } from '../../src/next/generation-v2/pr
 import { projectOpenAIResponsesIntentV1 } from '../../src/next/generation-v2/providers/openai-responses/responsesIntentProjectionV1'
 import { isVerifiedOpenAIResponsesEndpointProfileV2, readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import {
   createBearerAuthorizationHeaderPlanV2,
   createPreparedAttachmentRequirementsV2,
@@ -42,6 +43,7 @@ export function compileOpenAIResponsesPreparedRequestV2(input: Readonly<{
     throw new OpenAIResponsesPreparedRequestCompilerV2Error('GENERATION_V2_OPENAI_COMPILER_AUTHORITY_INVALID')
   }
   const { operation, snapshot, capability } = input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
   if (!['initial_send', 'retry_as_new', 'retry_replace', 'regenerate_question', 'edit_resend'].includes(operation.actionKind) ||
       operation.operationId.value !== input.history.operationId.value ||
       operation.targetAnswerId.value !== input.history.answerRootId.value ||

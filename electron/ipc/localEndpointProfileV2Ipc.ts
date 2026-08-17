@@ -26,7 +26,7 @@ export function registerLocalEndpointProfileV2Ipc(input: Readonly<{
   input.registerInvoke(LOCAL_ENDPOINT_PROFILE_V2_IPC_CHANNELS[0], safe(() => repo.list()))
   input.registerInvoke(LOCAL_ENDPOINT_PROFILE_V2_IPC_CHANNELS[1], safe((payload) => {
     const value = raw(payload); const keys = Object.keys(value).sort()
-    const expectedKeys = value.providerId === 'ollama' ? ['baseUrl', 'protocolConfig', 'protocolContractId', 'providerId'] : ['baseUrl', 'protocolContractId', 'providerId']
+    const expectedKeys = ['baseUrl', 'protocolConfig', 'protocolContractId', 'providerId']
     if (keys.join('\0') !== expectedKeys.sort().join('\0') || typeof value.baseUrl !== 'string') {
       throw new Error('GENERATION_V2_LOCAL_PROFILE_INPUT_INVALID')
     }
@@ -40,7 +40,7 @@ export function registerLocalEndpointProfileV2Ipc(input: Readonly<{
     }
     return repo.create({ endpointProfileId: `local-profile:${randomUUID()}`, providerId,
       protocolContractId, baseUrl: value.baseUrl,
-      ...(providerId === 'ollama' ? { protocolConfig: value.protocolConfig as Readonly<Record<string, unknown>> } : {}) })
+      protocolConfig: value.protocolConfig as Readonly<Record<string, unknown>> })
   }))
   input.registerInvoke(LOCAL_ENDPOINT_PROFILE_V2_IPC_CHANNELS[2], safe((payload) => {
     const value = raw(payload)

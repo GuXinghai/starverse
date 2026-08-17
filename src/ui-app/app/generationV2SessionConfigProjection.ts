@@ -32,7 +32,7 @@ function omit() {
 
 function projectGenerationParams(
   layer: ReturnType<typeof decodeGenerationConfigLayerV2>,
-  providerId: RuntimeProviderId | null,
+  _providerId: RuntimeProviderId | null,
 ): GenerationParamsLayer {
   const result: Partial<Record<GenerationParamKey, ReturnType<typeof custom> | ReturnType<typeof omit>>> = {}
   for (const [semanticKey, paramKey] of Object.entries(GENERATION_PARAM_FIELDS) as Array<
@@ -42,11 +42,11 @@ function projectGenerationParams(
     result[paramKey] = value === undefined ? omit() : custom(value)
   }
   const reasoning = layer.reasoning
-  result.reasoningEffort = providerId !== 'deepseek' && reasoning?.mode === 'enabled' && reasoning.effort !== undefined
+  result.reasoningEffort = reasoning?.mode === 'enabled' && reasoning.effort !== undefined
     ? custom(reasoning.effort) : omit()
   result.reasoningSummary = reasoning?.mode === 'enabled' && reasoning.summary !== undefined
     ? custom(reasoning.summary) : omit()
-  result.thinkingEnabled = providerId === 'deepseek' || reasoning === undefined
+  result.thinkingEnabled = reasoning === undefined
     ? omit() : custom(reasoning.mode === 'enabled')
   const web = layer.web
   result.googleSearch = web?.mode === 'provider_search' ? custom(web.types.includes('web')) : omit()

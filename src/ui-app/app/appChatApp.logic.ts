@@ -63,6 +63,15 @@ import {
 import { projectGenerationV2BranchForExistingUi } from '@/next/generation-v2/renderer/generationV2BranchProjection'
 import { abortGenerationV2, submitGenerationV2EditResend, submitGenerationV2Initial, submitGenerationV2Regenerate, submitGenerationV2Retry, subscribeGenerationV2Runtime,
   type GenerationV2Route, type GenerationV2RuntimeUpdate } from '@/next/generation-v2/renderer/generationV2CommandClient'
+import { resolveGenerationV2Capabilities } from '@/next/generation-v2/renderer/generationV2CapabilityClient'
+import type { GenerationCapabilityProviderIdV2, GenerationCapabilityResolutionResultV2 } from '@/next/generation-v2/capability/capabilityResolutionV2'
+import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
+import {
+  isProjectedGeminiImageModelV2,
+  projectImageGenerationCapabilityClassV2,
+  projectGeminiImageGenerationPolicyV2,
+  projectGeminiThinkingCapabilityV2,
+} from './generationV2CapabilityUiProjection'
 import {
   isLocalRuntimeProviderId,
   requireLocalProviderRouteDescriptorForRouteKind,
@@ -108,7 +117,7 @@ import {
   registerCatalogModelSelectionCommandV2,
 } from '@/next/modelCatalog/catalogRuntimeStoreV2'
 import type { OpenRouterImageConfig, OpenRouterOutputModality } from '@/next/openrouter/buildRequest'
-import { evaluateImageGenerationModel, type ImageCapabilityClass, type ImageModelFilterReason } from '@/next/openrouter/imageGenerationContract'
+import type { ImageCapabilityClass } from '@/next/openrouter/imageGenerationContract'
 import {
   DEFAULT_IMAGE_GENERATION_USER_CONFIG,
   normalizeImageGenerationUserConfig,
@@ -131,7 +140,6 @@ import {
   DEEPSEEK_OFFICIAL_PROVIDER_KEY,
   type DeepSeekModelAvailabilityResult,
 } from '@/next/provider/deepseek/deepSeekModelSource'
-import { isDeepSeekSelectableReasoningEffort } from '@/next/provider/deepseek/deepSeekReasoningPolicy'
 import {
   OPENROUTER_PROVIDER_ID,
   DEFAULT_OPENROUTER_MODEL_ID,
@@ -148,15 +156,9 @@ import {
   GOOGLE_AI_STUDIO_PROVIDER_KEY,
   type GeminiModelAvailabilityResult,
 } from '@/next/provider/gemini/geminiModelSource'
+import { normalizeGeminiImageGenerationModelId } from '@/next/provider/gemini/geminiImageGenerationPolicy'
 import {
-  isKnownGeminiImageGenerationModel,
-  normalizeGeminiImageGenerationModelId,
-  resolveGeminiImageGenerationPolicy,
-} from '@/next/provider/gemini/geminiImageGenerationPolicy'
-import {
-  isGeminiThinkingBudgetValid,
   normalizeGeminiThinkingModelId,
-  resolveGeminiThinkingCapability,
   type GeminiThinkingCapability,
 } from '@/next/provider/gemini/geminiThinkingPolicy'
 import { isGeminiInteractionsImageModelIdV1 } from '@/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
@@ -241,8 +243,8 @@ import {
   mergeProjectGenerationParamsDefaultsMeta,
   normalizeGenerationParamsLayer,
 } from '@/next/generation-params/generationParamPersistence'
-import { resolveGenerationParamsFromLayers } from '@/next/generation-params/generationParamResolver'
-import { getDefaultGenerationParamProfile, isReasoningEffortExplicitlyUnsupported,
+import { resolveGenerationParamValuesFromLayers, resolveGenerationParamsFromLayers } from '@/next/generation-params/generationParamResolver'
+import { getDefaultGenerationParamProfile,
   unsetGenerationProfile } from '@/next/generation-params/generationParamProfiles'
 import type {
   GenerationParamsLayer,
@@ -342,9 +344,6 @@ export function useAppChatAppLogic() {
   const imageGenerationState = ref<ImageGenerationUiState>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
   const imageGenerationConvoMode = ref<ConvoImageGenerationMode>('default')
   const globalImageGenerationDefault = ref<ImageGenerationUserConfig>(DEFAULT_IMAGE_GENERATION_USER_CONFIG)
-  const selectedModelImageCapabilityClass = ref<ImageCapabilityClass | null>(null)
-  const selectedModelImageCapabilityReason = ref<string | null>(null)
-  const selectedModelImageCapabilityLoading = ref(false)
   const imageCapabilityQuerySeq = ref(0)
   const openRouterImageEndpointSelection = ref<OpenRouterImageEndpointSelectionClientStateV2 | null>(null)
   const openRouterImageEndpointSelectionLoading = ref(false)
@@ -3243,6 +3242,19 @@ export function useAppChatAppLogic() {
   }
 
   const activeSessionConfig = computed(() => getActiveSessionConfigSnapshot())
+  const activeSessionCapabilityProjection = shallowRef<GenerationControlsProjectionV2 | null>(null)
+  function activeReasoningEffortFromCapability(value: unknown): value is ChatSessionConfig['reasoning']['effort'] {
+    const field = activeSessionCapabilityProjection.value?.controls['reasoning.effort']
+    return field?.state === 'supported' && field.domain?.kind === 'enum' &&
+      typeof value === 'string' && value !== 'none' && value !== 'auto' && field.domain.values.includes(value)
+  }
+  function defaultReasoningEffortFromCapability(): ChatSessionConfig['reasoning']['effort'] | null {
+    const field = activeSessionCapabilityProjection.value?.controls['reasoning.effort']
+    if (!field || field.state !== 'supported' || field.domain?.kind !== 'enum') return null
+    const value = field.domain.values.find((candidate): candidate is string =>
+      typeof candidate === 'string' && candidate !== 'none' && candidate !== 'auto')
+    return value as ChatSessionConfig['reasoning']['effort'] | undefined ?? null
+  }
   function providerModelRoute(config: ChatSessionConfig = activeSessionConfig.value): ProviderModelRouteSelection | null {
     return config.routeSelection?.kind === 'provider_model' ? config.routeSelection : null
   }
@@ -3476,13 +3488,13 @@ export function useAppChatAppLogic() {
   async function onUpdateReasoningEnabled(nextEnabled: boolean) {
     if (isDraftInteractionLocked.value) return
     const current = activeSessionConfig.value
-    const isDeepSeek = current.routeSelection?.kind === 'provider_model' &&
-      current.routeSelection.providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
+    const effort = activeReasoningEffortFromCapability(current.reasoning.effort)
+      ? current.reasoning.effort : defaultReasoningEffortFromCapability()
+    if (nextEnabled && !effort) throw new Error('GENERATION_V2_CAPABILITY_UNAVAILABLE')
     await updateActiveConvoSessionConfig({
       reasoning: {
         enabled: nextEnabled,
-        ...(isDeepSeek && nextEnabled && !isDeepSeekSelectableReasoningEffort(current.reasoning.effort)
-          ? { effort: 'high' as const } : {}),
+        ...(nextEnabled && effort ? { effort } : {}),
       },
     })
     hydrateSessionConfigUiFromActiveConvo()
@@ -3490,12 +3502,7 @@ export function useAppChatAppLogic() {
 
   async function onUpdateReasoningEffortLevel(nextEffort: ChatSessionConfig['reasoning']['effort']) {
     if (isDraftInteractionLocked.value) return
-    const current = activeSessionConfig.value
-    const isDeepSeek = current.routeSelection?.kind === 'provider_model' &&
-      current.routeSelection.providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY
-    if (isDeepSeek && !isDeepSeekSelectableReasoningEffort(nextEffort)) {
-      throw new Error('GENERATION_V2_DEEPSEEK_REASONING_EFFORT_UNSUPPORTED')
-    }
+    if (!activeReasoningEffortFromCapability(nextEffort)) throw new Error('GENERATION_V2_CAPABILITY_VALUE_UNSUPPORTED')
     await updateActiveConvoSessionConfig({
       reasoning: {
         enabled: true,
@@ -5372,10 +5379,9 @@ export function useAppChatAppLogic() {
 
   function generationParamProfileForProvider(
     providerId: RuntimeProviderId | null | undefined,
-    modelId?: string | null,
   ): ProviderGenerationParamProfile {
     if (!providerId) return unsetGenerationProfile
-    const requestKind = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(modelId)
+    const requestKind = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && activeSessionConfig.value.imageGeneration.enabled
       ? 'image_generation'
       : 'text'
     return getDefaultGenerationParamProfile(providerId, { requestKind }) ?? unsetGenerationProfile
@@ -5383,19 +5389,7 @@ export function useAppChatAppLogic() {
 
   function geminiThinkingCapabilityForModel(modelId: string | null | undefined): GeminiThinkingCapability {
     const normalized = normalizeGeminiThinkingModelId(modelId)
-    const state = catalogRuntimeSnapshot.value[GOOGLE_AI_STUDIO_PROVIDER_KEY] ??
-      catalogRuntimeStore.read(GOOGLE_AI_STUDIO_PROVIDER_KEY)
-    const model = state.items.find((candidate) => normalizeGeminiThinkingModelId(candidate.modelId) === normalized)
-    const raw = model?.observation?.rawProviderRecord ?? null
-    const thinkingOwnProperty = Boolean(raw && Object.prototype.hasOwnProperty.call(raw, 'thinking'))
-    const supportedGenerationMethods = raw && Array.isArray(raw.supportedGenerationMethods)
-      ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string') : undefined
-    return resolveGeminiThinkingCapability({
-      model: normalized,
-      thinking: thinkingOwnProperty ? raw?.thinking : undefined,
-      thinkingOwnProperty,
-      supportedGenerationMethods,
-    })
+    return projectGeminiThinkingCapabilityV2(activeSessionCapabilityProjection.value, normalized)
   }
 
   const activeSessionGenerationParamsLayer = computed<GenerationParamsLayer | null>(() =>
@@ -5405,7 +5399,6 @@ export function useAppChatAppLogic() {
   const activeSessionGenerationParamsProfile = computed(() =>
     generationParamProfileForProvider(
       executionProviderId(),
-      routeModelId(),
     )
   )
 
@@ -5418,7 +5411,7 @@ export function useAppChatAppLogic() {
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
       geminiThinkingCapability: executionProviderId() === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
-        !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
+        !activeSessionConfig.value.imageGeneration.enabled
         ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
         conversation: getActiveConvoGenerationParamsLayer(),
@@ -5469,7 +5462,7 @@ export function useAppChatAppLogic() {
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
       geminiThinkingCapability: executionProviderId() === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
-        !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
+        !activeSessionConfig.value.imageGeneration.enabled
         ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
         conversation: sessionGenerationParamsDraft.value,
@@ -5484,7 +5477,7 @@ export function useAppChatAppLogic() {
       profile: activeSessionGenerationParamsProfile.value,
       modelId: activeSessionGenerationParamsModelId.value,
       geminiThinkingCapability: executionProviderId() === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
-        !isKnownGeminiImageGenerationModel(activeSessionGenerationParamsModelId.value)
+        !activeSessionConfig.value.imageGeneration.enabled
         ? geminiThinkingCapabilityForModel(activeSessionGenerationParamsModelId.value) : undefined,
       layers: {
         project: projectGenerationParamsDraft.value,
@@ -5712,26 +5705,19 @@ export function useAppChatAppLogic() {
     return normalizeImageGenerationUserConfig(value)
   }
 
-  function mapImageModelFilterReason(reason: ImageModelFilterReason): string {
-    if (reason === 'missing_image_output') return 'selected model output_modalities does not include image.'
-    if (reason === 'missing_text_input') return 'selected model cannot take text input for text-to-image.'
-    if (reason === 'inactive_status') return 'selected model is not active.'
-    if (reason === 'hidden_visibility') return 'selected model is hidden.'
-    if (reason === 'expired_model') return 'selected model is expired.'
-    return 'selected model endpoint is unavailable.'
-  }
-
-  const imageGenerationSupported = computed(() => selectedModelImageCapabilityClass.value !== null)
+  const projectedImageGenerationClass = computed(() =>
+    projectImageGenerationCapabilityClassV2(activeSessionCapabilityProjection.value))
+  const imageGenerationSupported = computed(() => projectedImageGenerationClass.value !== null)
 
   const imageGenerationSupportHint = computed(() => {
-    if (selectedModelImageCapabilityLoading.value) return 'checking model image capability...'
-    if (selectedModelImageCapabilityClass.value === 'text_and_image') {
+    if (activeSessionCapabilityProjection.value === null) return 'checking model image capability...'
+    if (projectedImageGenerationClass.value === 'text_and_image') {
       return 'selected model supports text+image output.'
     }
-    if (selectedModelImageCapabilityClass.value === 'image_only') {
+    if (projectedImageGenerationClass.value === 'image_only') {
       return 'selected model supports image-only output.'
     }
-    return selectedModelImageCapabilityReason.value ?? 'selected model is not image-capable.'
+    return 'selected model is not image-capable.'
   })
 
   async function refreshSelectedModelImageCapability() {
@@ -5741,16 +5727,9 @@ export function useAppChatAppLogic() {
     const modelId = selectedProvider === OPENROUTER_PROVIDER_ID
       ? normalizeModelKey(routeModelId(currentSessionConfig))
       : DEFAULT_OPENROUTER_MODEL_ID
-    selectedModelImageCapabilityLoading.value = true
-
     if (selectedProvider !== OPENROUTER_PROVIDER_ID || modelId === DEFAULT_OPENROUTER_MODEL_ID) {
-      selectedModelImageCapabilityClass.value = null
-      selectedModelImageCapabilityReason.value = selectedProvider === OPENROUTER_PROVIDER_ID
-        ? 'select a concrete model to enable image generation.'
-        : 'OpenRouter catalog image generation checks are unavailable for the selected provider.'
       composerImageInputSupported.value = null
       composerImageInputSupportReason.value = null
-      selectedModelImageCapabilityLoading.value = false
       return
     }
 
@@ -5758,8 +5737,6 @@ export function useAppChatAppLogic() {
       const modalities = openRouterModelModalitiesById.value.get(modelId) ?? null
       if (seq !== imageCapabilityQuerySeq.value) return
       if (!modalities) {
-        selectedModelImageCapabilityClass.value = null
-        selectedModelImageCapabilityReason.value = 'model detail unavailable for image capability detection.'
         composerImageInputSupported.value = null
         composerImageInputSupportReason.value = null
         return
@@ -5768,36 +5745,13 @@ export function useAppChatAppLogic() {
       composerImageInputSupportReason.value = composerImageInputSupported.value
         ? null
         : 'Current model does not support image inputs.'
-      const eligibility = evaluateImageGenerationModel({
-        modelId,
-        inputModalities: modalities.input,
-        outputModalities: modalities.output,
-        status: 'active',
-        visibility: 'visible',
-      })
-      if (eligibility.eligible && eligibility.capabilityClass) {
-        selectedModelImageCapabilityClass.value = eligibility.capabilityClass
-        selectedModelImageCapabilityReason.value = null
-        return
-      }
-      selectedModelImageCapabilityClass.value = null
-      selectedModelImageCapabilityReason.value =
-        eligibility.reasons.length > 0
-          ? mapImageModelFilterReason(eligibility.reasons[0]!)
-          : 'selected model cannot be used for image generation.'
     } catch (err) {
       if (shouldLogDebug()) {
         console.warn('[ui-app] REFRESH_SELECTED_MODEL_IMAGE_CAPABILITY_FAILED')
       }
       if (seq !== imageCapabilityQuerySeq.value) return
-      selectedModelImageCapabilityClass.value = null
-      selectedModelImageCapabilityReason.value = 'failed to detect image capability.'
       composerImageInputSupported.value = null
       composerImageInputSupportReason.value = null
-    } finally {
-      if (seq === imageCapabilityQuerySeq.value) {
-        selectedModelImageCapabilityLoading.value = false
-      }
     }
   }
 
@@ -5950,15 +5904,17 @@ export function useAppChatAppLogic() {
       aspectRatio: sessionConfig.imageGeneration.aspectRatio,
     })
     const selectedModelId = routeModelId(sessionConfig)
-    const isGeminiImageModel = providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(selectedModelId)
+    const isGeminiImageModel = providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
+      ui.enabled && isProjectedGeminiImageModelV2(activeSessionCapabilityProjection.value)
     if (!ui.enabled && !isGeminiImageModel) return null
+    if (providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY && ui.enabled && !isGeminiImageModel) return null
 
     const aspectRatio = String(ui.aspectRatio ?? '').trim()
     const imageSize = String(ui.imageSize ?? '').trim()
 
     if (providerKey === OPENAI_RESPONSES_PROVIDER_KEY || providerKey === GOOGLE_AI_STUDIO_PROVIDER_KEY) {
       if (isGeminiImageModel) {
-        const policy = resolveGeminiImageGenerationPolicy(selectedModelId)
+        const policy = projectGeminiImageGenerationPolicyV2(activeSessionCapabilityProjection.value)
         const resolvedAspectRatio = aspectRatio || policy.defaultAspectRatio
         if (!(policy.supportedAspectRatios as readonly string[]).includes(resolvedAspectRatio)) {
           throw new Error(`Google AI Studio aspect ratio ${resolvedAspectRatio || '(empty)'} is not supported for ${selectedModelId}. Supported aspect ratios: ${policy.supportedAspectRatios.join(', ')}.`)
@@ -5988,8 +5944,11 @@ export function useAppChatAppLogic() {
 
     if (providerKey !== OPENROUTER_PROVIDER_ID) return null
 
-    const capabilityClass = selectedModelImageCapabilityClass.value
-    if (!capabilityClass) return null
+    const capabilityClass = projectImageGenerationCapabilityClassV2(activeSessionCapabilityProjection.value)
+    if (!capabilityClass) {
+      if (ui.enabled) throw new Error('GENERATION_V2_CAPABILITY_PROJECTION_REQUIRED')
+      return null
+    }
 
     let modalities: OpenRouterOutputModality[] | undefined
     if (ui.outputMode === 'image_only') {
@@ -6060,90 +6019,9 @@ export function useAppChatAppLogic() {
     const currentRoute = providerModelRoute(getActiveSessionConfigSnapshot())
     if (currentRoute?.modelId === normalized && currentRoute.providerId === selection.providerId) return
 
-    const current = getActiveSessionConfigSnapshot()
     const routeSelection = createProviderModelRouteSelection({ providerId: selection.providerId, modelId: normalized })
-    const auxiliaryPatch: {
-      imageGeneration?: NonNullable<ChatSessionConfigPatch['imageGeneration']>
-      reasoning?: NonNullable<ChatSessionConfigPatch['reasoning']>
-      generationParams?: NonNullable<ChatSessionConfigPatch['generationParams']>
-    } = {}
-      if (selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(normalized)) {
-        const policy = resolveGeminiImageGenerationPolicy(normalized)
-        const imageSize = policy.imageSizeMode === 'hidden' ? '' : policy.defaultImageSize
-        auxiliaryPatch.imageGeneration = {
-          enabled: true,
-          resolution: policy.defaultImageSize,
-          aspectRatio: policy.defaultAspectRatio,
-          mode: 'custom',
-          detail: normalizeImageGenerationState({
-            ...normalizeImageGenerationState(current.imageGeneration.detail),
-            enabled: true,
-            outputMode: policy.defaultOutputMode,
-            imageSize,
-            aspectRatio: policy.defaultAspectRatio,
-          }),
-        }
-      }
-      const profile = getDefaultGenerationParamProfile(selection.providerId, {
-        requestKind: selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && isKnownGeminiImageGenerationModel(normalized)
-          ? 'image_generation' : 'text',
-      })
-      if (selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !isKnownGeminiImageGenerationModel(normalized)) {
-        const thinkingCapability = geminiThinkingCapabilityForModel(normalized)
-        const detail = { ...(current.generationParams.detail ?? {}) }
-        if (thinkingCapability.kind === 'level') {
-          delete detail.thinkingBudget
-          const level = detail.thinkingLevel
-          if (level?.mode === 'custom' && !(thinkingCapability.levels as readonly string[]).includes(String(level.value))) {
-            detail.thinkingLevel = { mode: 'omit' }
-          }
-        } else if (thinkingCapability.kind === 'budget') {
-          delete detail.thinkingLevel
-          const budget = detail.thinkingBudget
-          if (budget?.mode === 'custom' && !isGeminiThinkingBudgetValid(thinkingCapability, budget.value)) {
-            detail.thinkingBudget = { mode: 'omit' }
-          }
-        } else {
-          delete detail.thinkingBudget
-          delete detail.thinkingLevel
-          delete detail.includeThoughts
-        }
-        if (thinkingCapability.kind !== 'level' && thinkingCapability.kind !== 'budget') {
-          delete detail.thinkingEnabled
-          delete detail.reasoningEffort
-        }
-        auxiliaryPatch.generationParams = { detail: Object.freeze(detail) }
-      }
-      if (selection.providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY) {
-        if (current.reasoning.enabled && !isDeepSeekSelectableReasoningEffort(current.reasoning.effort)) {
-          auxiliaryPatch.reasoning = { enabled: true, effort: 'high' }
-        }
-      }
-      const persistedEffort = current.generationParams.detail?.reasoningEffort
-      const hasExplicitMax = current.reasoning.enabled && current.reasoning.effort === 'max' ||
-        selection.providerId !== DEEPSEEK_OFFICIAL_PROVIDER_KEY &&
-          persistedEffort?.mode === 'custom' && persistedEffort.value === 'max'
-      if (hasExplicitMax && isReasoningEffortExplicitlyUnsupported(profile, normalized, 'max', {
-        geminiThinkingCapability: selection.providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !isKnownGeminiImageGenerationModel(normalized)
-          ? geminiThinkingCapabilityForModel(normalized) : undefined,
-      })) {
-        auxiliaryPatch.reasoning = { enabled: false, effort: 'medium' }
-        auxiliaryPatch.generationParams = { detail: Object.freeze({
-          ...(current.generationParams.detail ?? {}),
-          reasoningEffort: Object.freeze({ mode: 'omit' as const }),
-        }) }
-        requestedReasoningEffort.value = 'auto'
-        requestedReasoningExclude.value = false
-      }
     const updated = await updateActiveConvoSessionConfig({ routeSelection })
     if (!updated) throw new Error('ACTIVE_CONVERSATION_UNAVAILABLE')
-    if (Object.keys(auxiliaryPatch).length > 0) {
-      try {
-        await updateActiveConvoSessionConfig(auxiliaryPatch)
-      } catch {
-        if (shouldLogDebug()) console.warn('[ui-app] MODEL_SELECTION_AUXILIARY_CONFIG_UPDATE_FAILED')
-      }
-    }
   }
 
   async function onUpdateRouteSelection(nextRouteSelection: ConversationRouteSelection) {
@@ -6428,40 +6306,18 @@ export function useAppChatAppLogic() {
     }
   }
 
-  function finiteGenerationNumber(value: unknown): number | undefined {
-    return typeof value === 'number' && Number.isFinite(value) ? value : undefined
-  }
-
   function buildCurrentGenerationV2SemanticLayer(
     providerId: RuntimeProviderId,
     sessionConfig: ChatSessionConfig = activeSessionConfig.value,
   ): Readonly<Record<string, unknown>> {
-    const modelId = routeModelId(sessionConfig) || DEFAULT_OPENROUTER_MODEL_ID
-    const resolved = resolveGenerationParamsFromLayers({
-      profile: generationParamProfileForProvider(providerId, modelId),
-      modelId,
-      geminiThinkingCapability: providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !isGeminiInteractionsImageModelIdV1(normalizeGeminiImageGenerationModelId(modelId))
-        ? geminiThinkingCapabilityForModel(modelId) : undefined,
-      layers: {
-        conversation: sessionConfig.generationParams.detail,
-        project: getActiveProjectGenerationParamsLayer(),
-        global: globalGenerationParamsDefaults.value,
-      },
-    })
-    if (resolved.errors.length > 0) throw new Error(resolved.errors[0]?.message ?? 'GENERATION_V2_CONFIG_INVALID')
-    const params = resolved.requestParams
+    const params = resolveGenerationParamValuesFromLayers({ layers: {
+      conversation: sessionConfig.generationParams.detail,
+      project: getActiveProjectGenerationParamsLayer(),
+      global: globalGenerationParamsDefaults.value,
+    } })
     const imageConfig = resolveImageGenerationConfigForRequest(providerId, sessionConfig)
     const geminiInteractionsImage = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY &&
       isGeminiInteractionsImageModelIdV1(normalizeGeminiImageGenerationModelId(routeModelId(sessionConfig))) && imageConfig !== null
-    const geminiGenerateThinkingCapability = providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !geminiInteractionsImage
-      ? geminiThinkingCapabilityForModel(modelId) : null
-    if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !geminiInteractionsImage) {
-      for (const key of ['thinkingBudget', 'thinkingLevel', 'includeThoughts'] as const) {
-        if (sessionConfig.generationParams.detail?.[key]?.mode === 'custom' && resolved.decisions[key]?.state === 'unsupported') {
-          throw new Error(`GENERATION_V2_GEMINI_THINKING_UNSUPPORTED_${key.toUpperCase()}`)
-        }
-      }
-    }
     const mappedParamKeys = new Set([
       'temperature', 'topP', 'topK', 'minP', 'topA', 'frequencyPenalty', 'presencePenalty',
       'repetitionPenalty', 'seed', 'maxOutputTokens', 'stopSequences', 'reasoningEffort',
@@ -6471,17 +6327,10 @@ export function useAppChatAppLogic() {
     const unmappedParam = Object.keys(params).find((key) => !mappedParamKeys.has(key))
     if (unmappedParam) throw new Error(`GENERATION_V2_EXPLICIT_PARAMETER_UNMAPPED_${unmappedParam.toUpperCase()}`)
     const generationEntries: [string, unknown][] = [
-      ['temperature', finiteGenerationNumber(params.temperature)],
-      ['topP', finiteGenerationNumber(params.topP)],
-      ['topK', finiteGenerationNumber(params.topK)],
-      ['minP', finiteGenerationNumber(params.minP)],
-      ['topA', finiteGenerationNumber(params.topA)],
-      ['frequencyPenalty', finiteGenerationNumber(params.frequencyPenalty)],
-      ['presencePenalty', finiteGenerationNumber(params.presencePenalty)],
-      ['repetitionPenalty', finiteGenerationNumber(params.repetitionPenalty)],
-      ['seed', finiteGenerationNumber(params.seed)],
-      ['maxOutputTokens', finiteGenerationNumber(params.maxOutputTokens)],
-      ['stop', Array.isArray(params.stopSequences) ? [...params.stopSequences] : undefined],
+      ['temperature', params.temperature], ['topP', params.topP], ['topK', params.topK],
+      ['minP', params.minP], ['topA', params.topA], ['frequencyPenalty', params.frequencyPenalty],
+      ['presencePenalty', params.presencePenalty], ['repetitionPenalty', params.repetitionPenalty],
+      ['seed', params.seed], ['maxOutputTokens', params.maxOutputTokens], ['stop', params.stopSequences],
     ]
     const generation = Object.fromEntries(generationEntries.filter((entry) => entry[1] !== undefined))
 
@@ -6492,33 +6341,26 @@ export function useAppChatAppLogic() {
     } : null
     const deepSeekReasoning = providerId === DEEPSEEK_OFFICIAL_PROVIDER_KEY ? sessionConfig.reasoning : null
     const thinkingEnabled = deepSeekReasoning ? deepSeekReasoning.enabled : params.thinkingEnabled
-    const rawEffort = String(deepSeekReasoning
+    const rawEffort = deepSeekReasoning
       ? (deepSeekReasoning.enabled ? deepSeekReasoning.effort : '')
       : openRouterReasoning?.requestedReasoningEffortValue ??
-        (geminiInteractionsImage ? params.thinkingLevel : undefined) ?? params.thinkingLevel ?? params.reasoningEffort ?? '').trim()
+        (geminiInteractionsImage ? params.thinkingLevel : undefined) ?? params.thinkingLevel ?? params.reasoningEffort
     const explicitReasoningDisabled = deepSeekReasoning
       ? !deepSeekReasoning.enabled
       : rawEffort === 'none' || thinkingEnabled === false
-    const effort = rawEffort === 'none' ? '' : rawEffort
-    const summary = String(deepSeekReasoning ? '' : geminiInteractionsImage && params.thoughtSummaryMode === 'auto'
-      ? 'auto' : params.reasoningSummary ?? '').trim()
-    if (effort && !['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort)) {
-      throw new Error('GENERATION_V2_REASONING_EFFORT_UNSUPPORTED')
-    }
-    if (summary && !['auto', 'concise', 'detailed'].includes(summary)) {
-      throw new Error('GENERATION_V2_REASONING_SUMMARY_UNSUPPORTED')
-    }
+    const effort = rawEffort === 'none' ? undefined : rawEffort
+    const summary = deepSeekReasoning ? undefined : geminiInteractionsImage && params.thoughtSummaryMode === 'auto'
+      ? 'auto' : params.reasoningSummary
     const reasoningEnabled = deepSeekReasoning
       ? deepSeekReasoning.enabled
-      : openRouterReasoning?.requestedReasoningMode === 'auto' || thinkingEnabled === true || effort.length > 0 || summary.length > 0 ||
-        geminiGenerateThinkingCapability?.thinkingSupported === 'supported' ||
+      : openRouterReasoning?.requestedReasoningMode === 'auto' || thinkingEnabled === true || effort !== undefined || summary !== undefined ||
         params.thinkingLevel !== undefined || params.thinkingBudget !== undefined
     const reasoning = explicitReasoningDisabled || !reasoningEnabled
       ? { mode: 'disabled' as const }
       : {
           mode: 'enabled' as const,
-          ...(['minimal', 'low', 'medium', 'high', 'xhigh', 'max'].includes(effort) ? { effort } : {}),
-          ...(['auto', 'concise', 'detailed'].includes(summary) ? { summary } : {}),
+          ...(effort !== undefined ? { effort } : {}),
+          ...(summary !== undefined ? { summary } : {}),
           ...(openRouterReasoning?.requestedReasoningExclude ? { exclude: true } : {}),
         }
 
@@ -6573,7 +6415,7 @@ export function useAppChatAppLogic() {
     if (providerId === OPENAI_RESPONSES_PROVIDER_KEY) {
       providerExtension = {
         kind: 'openai_responses',
-        ...(['low', 'medium', 'high'].includes(String(params.verbosity)) ? { verbosity: params.verbosity } : {}),
+        ...(params.verbosity !== undefined ? { verbosity: params.verbosity } : {}),
       }
     } else if (providerId === ANTHROPIC_MESSAGES_PROVIDER_KEY) {
       providerExtension = { kind: 'anthropic_messages', thinkingDisplay: anthropicChatConfig.value.thinkingDisplay,
@@ -6581,10 +6423,10 @@ export function useAppChatAppLogic() {
     } else if (providerId === GOOGLE_AI_STUDIO_PROVIDER_KEY && !geminiInteractionsImage) {
       const includeThoughts = params.includeThoughts === true || params.thoughtSummaryMode === 'auto' ? 'enabled'
         : params.includeThoughts === false || params.thoughtSummaryMode === 'none' ? 'disabled' : 'provider_default'
-      if (typeof params.thinkingBudget === 'number') providerExtension = {
+      if (params.thinkingBudget !== undefined) providerExtension = {
         kind: 'gemini_generate_content', thinkingMode: 'budget', thinkingBudget: params.thinkingBudget, includeThoughts,
       }
-      else if (['minimal', 'low', 'medium', 'high'].includes(String(params.thinkingLevel))) providerExtension = {
+      else if (params.thinkingLevel !== undefined) providerExtension = {
         kind: 'gemini_generate_content', thinkingMode: 'level', thinkingLevel: params.thinkingLevel, includeThoughts,
       }
       else providerExtension = { kind: 'gemini_generate_content', thinkingMode: 'default', includeThoughts }
@@ -6687,7 +6529,7 @@ export function useAppChatAppLogic() {
   }
 
   let genericLocalProfileSync: Promise<string> | null = null
-  function ensureGenerationV2GenericLocalProfileFromSavedSettings(): Promise<string> {
+  function ensureGenerationV2GenericLocalProfileFromSavedSettings(modelId: string): Promise<string> {
     if (genericLocalProfileSync) return genericLocalProfileSync
     const work = (async () => {
       const descriptor = requireLocalProviderRouteDescriptorForRuntimeProvider('local_endpoint')
@@ -6695,13 +6537,15 @@ export function useAppChatAppLogic() {
       const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
         profile.providerId === descriptor.executionProviderId &&
         profile.protocolContractId === descriptor.protocolContractId &&
-        canonicalEndpointBase(profile.baseUrl) === baseUrl)
+        canonicalEndpointBase(profile.baseUrl) === baseUrl &&
+        profile.protocolConfig.modelId === modelId)
       if (matches.length === 1) return matches[0].endpointProfileId
       if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
       const created = await createGenerationV2LocalProfile({
         providerId: descriptor.executionProviderId,
         protocolContractId: descriptor.protocolContractId,
         baseUrl,
+        protocolConfig: { modelId },
       })
       return created.endpointProfileId
     })()
@@ -6715,12 +6559,14 @@ export function useAppChatAppLogic() {
 
   function handleGenerationV2GenericLocalSettingsUpdated(): void {
     if (!window.generationV2) return
-    void ensureGenerationV2GenericLocalProfileFromSavedSettings().catch((error) => {
+    const selection = canonicalSendSelection()
+    if (selection?.routeSelection.kind !== 'provider_model' || selection.providerId !== 'local_endpoint') return
+    void ensureGenerationV2GenericLocalProfileFromSavedSettings(selection.modelId).catch((error) => {
       loadError.value = error instanceof Error ? error.message : 'GENERATION_V2_LOCAL_PROFILE_SYNC_FAILED'
     })
   }
 
-  async function ensureGenerationV2LmStudioProfileFromSavedSettings(): Promise<string> {
+  async function ensureGenerationV2LmStudioProfileFromSavedSettings(modelId: string): Promise<string> {
     if (!lmStudioChatConfig.value.enabled || lmStudioChatConfig.value.chatMode !== 'openai_compatible' ||
         lmStudioChatConfig.value.openAICompatiblePreferredEndpoint !== 'responses') {
       throw new Error('GENERATION_V2_LMSTUDIO_OPENRESPONSES_NOT_SELECTED')
@@ -6729,11 +6575,12 @@ export function useAppChatAppLogic() {
     const baseUrl = canonicalEndpointBase(lmStudioChatConfig.value.endpointUrl.trim())
     const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
       profile.providerId === descriptor.executionProviderId && profile.protocolContractId === descriptor.protocolContractId &&
-      canonicalEndpointBase(profile.baseUrl) === baseUrl)
+      canonicalEndpointBase(profile.baseUrl) === baseUrl && profile.protocolConfig.modelId === modelId)
     if (matches.length === 1) return matches[0].endpointProfileId
     if (matches.length > 1) throw new Error('GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
     return (await createGenerationV2LocalProfile({
       providerId: descriptor.executionProviderId, protocolContractId: descriptor.protocolContractId, baseUrl,
+      protocolConfig: { modelId },
     })).endpointProfileId
   }
 
@@ -6762,7 +6609,9 @@ export function useAppChatAppLogic() {
 
   function handleGenerationV2LmStudioSettingsUpdated(): void {
     if (!window.generationV2) return
-    void ensureGenerationV2LmStudioProfileFromSavedSettings().catch(() => {
+    const selection = canonicalSendSelection()
+    if (selection?.routeSelection.kind !== 'provider_model' || selection.providerId !== 'lm_studio') return
+    void ensureGenerationV2LmStudioProfileFromSavedSettings(selection.modelId).catch(() => {
       if (shouldLogDebug()) console.warn('[ui-app] V2_LM_STUDIO_PROFILE_SYNC_FAILED')
     })
   }
@@ -6827,8 +6676,8 @@ export function useAppChatAppLogic() {
     const baseUrl = canonicalEndpointBase(String(expectation.baseUrl ?? '').trim())
     const matches = (await listGenerationV2LocalProfiles()).filter((profile) =>
       profile.providerId === expectation.providerId && profile.protocolContractId === expectation.protocol &&
-      canonicalEndpointBase(profile.baseUrl) === baseUrl && (route.kind !== 'ollama_chat' ||
-        profile.protocolConfig.modelId === modelId &&
+        canonicalEndpointBase(profile.baseUrl) === baseUrl &&
+        profile.protocolConfig.modelId === modelId && (route.kind !== 'ollama_chat' ||
         profile.protocolConfig.thinkingControl === ollamaChatConfig.value.thinkingControl &&
         profile.protocolConfig.tools === ollamaChatConfig.value.toolsSupported))
     if (route.kind === 'generic_local_openai_chat' && matches.length === 0) {
@@ -6838,6 +6687,166 @@ export function useAppChatAppLogic() {
       ? 'GENERATION_V2_LOCAL_PROFILE_REQUIRED'
       : 'GENERATION_V2_LOCAL_PROFILE_AMBIGUOUS')
     return matches[0].endpointProfileId
+  }
+
+  function capabilityStatus(value: unknown): Readonly<{ credentialRevision: number; credentialScopeId: string; profileId: string }> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('GENERATION_V2_CREDENTIAL_STATUS_INVALID')
+    const envelope = value as { ok?: unknown; status?: unknown; value?: unknown }
+    if (envelope.ok !== true) throw new Error(typeof (value as { code?: unknown }).code === 'string'
+      ? String((value as { code: string }).code) : 'GENERATION_V2_CREDENTIAL_MISSING')
+    const status = envelope.status ?? envelope.value
+    if (!status || typeof status !== 'object' || Array.isArray(status)) throw new Error('GENERATION_V2_CREDENTIAL_STATUS_INVALID')
+    const row = status as { configured?: unknown; credentialRevision?: unknown; credentialScopeId?: unknown; profileId?: unknown }
+    if (row.configured !== true || !Number.isSafeInteger(row.credentialRevision) || (row.credentialRevision as number) < 1 ||
+        typeof row.credentialScopeId !== 'string' || typeof row.profileId !== 'string') {
+      throw new Error('GENERATION_V2_CREDENTIAL_MISSING')
+    }
+    return Object.freeze({ credentialRevision: row.credentialRevision as number,
+      credentialScopeId: row.credentialScopeId, profileId: row.profileId })
+  }
+
+  async function compatibleNoneScope(endpointDigest: string): Promise<string> {
+    const bytes = new TextEncoder().encode(`openai-chat-compatible:none:${endpointDigest}`)
+    const digest = await crypto.subtle.digest('SHA-256', bytes)
+    return `credential-scope-v2:${Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')}`
+  }
+
+  async function resolveGenerationV2CapabilityForSend(
+    route: GenerationV2Route,
+    modelId: string,
+    endpointProfileId: string | null,
+    compatibleIntent: CompatibleRouteIntent | null,
+  ): Promise<GenerationCapabilityResolutionResultV2> {
+    if (route.kind === 'openrouter_images') {
+      // The image capability is descriptor/binding-backed. Ensure the same
+      // endpoint selection path used by the picker has materialized the
+      // current binding before the command-independent resolver reads it.
+      await getOpenRouterImageEndpointSelectionV2(currentOpenRouterImageEndpointSelectionInput())
+    }
+    let providerId: GenerationCapabilityProviderIdV2
+    let protocolId: string
+    let operation: 'text' | 'image_generate' = 'text'
+    let credentialRevision: number
+    let credentialScopeId: string
+    let resolvedEndpointProfileId: string
+    if (route.kind === 'openai_chat_compatible') {
+      if (!compatibleIntent) throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_ROUTE_INVALID')
+      const detailsResponse = await window.generationV2?.openAICompatible.get(compatibleIntent.providerInstanceId)
+      if (!detailsResponse || typeof detailsResponse !== 'object' || (detailsResponse as { ok?: unknown }).ok !== true) {
+        throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_PROVIDER_UNAVAILABLE')
+      }
+      const detailsValue = (detailsResponse as { value?: unknown }).value
+      if (!detailsValue || typeof detailsValue !== 'object') throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_PROVIDER_UNAVAILABLE')
+      const details = (detailsValue as { details?: any }).details
+      const endpoint = details?.endpointRevisions?.[0]
+      if (!endpoint || typeof endpoint.endpointRevisionId !== 'string' || typeof endpoint.endpointDigest !== 'string') {
+        throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_PROVIDER_UNAVAILABLE')
+      }
+      providerId = 'openai_compatible'; protocolId = 'openai_chat_compatible'; resolvedEndpointProfileId = compatibleIntent.providerInstanceId
+      const auth = endpoint.auth as { mode?: unknown; credentialVersionRef?: unknown }
+      if (auth?.mode === 'none') {
+        credentialRevision = 1
+        credentialScopeId = await compatibleNoneScope(endpoint.endpointDigest)
+      } else if ((auth?.mode === 'bearer' || auth?.mode === 'basic' || auth?.mode === 'custom_headers') &&
+          typeof auth.credentialVersionRef === 'string') {
+        const statusResponse = await window.generationV2?.openAICompatible.getCredentialStatus({
+          providerInstanceId: compatibleIntent.providerInstanceId, credentialVersionRef: auth.credentialVersionRef,
+        })
+        const status = statusResponse && typeof statusResponse === 'object' && (statusResponse as { ok?: unknown }).ok === true
+          ? (statusResponse as { value?: unknown }).value : null
+        if (!status || typeof status !== 'object' || (status as { configured?: unknown }).configured !== true ||
+            typeof (status as {credentialScopeId?: unknown}).credentialScopeId !== 'string' ||
+            !Number.isSafeInteger((status as {revision?: unknown}).revision)) {
+          throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_MISSING')
+        }
+        credentialRevision = (status as { revision: number }).revision
+        credentialScopeId = (status as { credentialScopeId: string }).credentialScopeId
+      } else throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_CREDENTIAL_INVALID')
+    } else if (route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat') {
+      if (!endpointProfileId) throw new Error('GENERATION_V2_LOCAL_PROFILE_REQUIRED')
+      const profiles = await listGenerationV2LocalProfiles()
+      const profile = profiles.find((candidate) => candidate.endpointProfileId === endpointProfileId)
+      if (!profile) throw new Error('GENERATION_V2_LOCAL_PROFILE_REQUIRED')
+      providerId = profile.providerId; protocolId = profile.protocolContractId; resolvedEndpointProfileId = profile.endpointProfileId
+      credentialRevision = profile.revisionGeneration; credentialScopeId = profile.credentialScopeId
+    } else {
+      const bridge = window.generationV2?.credentials
+      const statusResponse = route.kind === 'openrouter_chat' || route.kind === 'openrouter_images'
+        ? await bridge?.openRouter.getStatus()
+        : route.kind === 'openai_responses'
+          ? await bridge?.openAIResponses.getStatus()
+          : route.kind === 'anthropic'
+            ? await bridge?.anthropic.getStatus()
+            : route.kind === 'deepseek'
+              ? await bridge?.deepSeek.getStatus()
+              : await bridge?.googleAIStudio.getStatus()
+      const status = capabilityStatus(statusResponse)
+      credentialRevision = status.credentialRevision; credentialScopeId = status.credentialScopeId; resolvedEndpointProfileId = status.profileId
+      if (route.kind === 'openrouter_chat' || route.kind === 'openrouter_images') { providerId = 'openrouter'; protocolId = route.kind === 'openrouter_images' ? 'openrouter-images-v1' : 'openrouter-chat-completions-v1' }
+      else if (route.kind === 'openai_responses') { providerId = 'openai_responses'; protocolId = 'openai-responses-v1' }
+      else if (route.kind === 'anthropic') { providerId = 'anthropic'; protocolId = 'anthropic-messages-2023-06-01' }
+      else if (route.kind === 'deepseek') { providerId = 'deepseek'; protocolId = 'deepseek-stable-chat-v1' }
+      else { providerId = 'google_ai_studio'; protocolId = route.kind === 'gemini_interactions_image' ? 'gemini-interactions-v1beta' : 'gemini-generate-content-v1beta' }
+    }
+    if (route.kind === 'gemini_interactions_image') { operation = 'image_generate'; modelId = normalizeGeminiImageGenerationModelId(modelId) }
+    if (route.kind === 'openrouter_images') operation = 'image_generate'
+    const result = await resolveGenerationV2Capabilities({ providerId, credentialRevision, credentialScopeId,
+      endpointProfileId: resolvedEndpointProfileId, protocolId, modelId, operation })
+    return result
+  }
+
+  let capabilityRefreshSerial = 0
+  async function refreshActiveSessionCapabilityProjection(): Promise<void> {
+    const serial = ++capabilityRefreshSerial
+    const selection = canonicalSendSelection()
+    if (!selection) { activeSessionCapabilityProjection.value = null; return }
+    const route = selection.compatibleIntent ? { kind: 'openai_chat_compatible' } as const
+      : selection.providerId === OPENROUTER_PROVIDER_ID && activeSessionConfig.value.imageGeneration.enabled
+        ? { kind: 'openrouter_images' } as const : generationV2RouteForProvider(selection.providerId, selection.modelId)
+    try {
+      const endpointProfileId = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
+        ? await resolveGenerationV2LocalProfileForSend(route, selection.modelId) : null
+      const result = await resolveGenerationV2CapabilityForSend(route, selection.modelId, endpointProfileId, selection.compatibleIntent)
+      if (serial === capabilityRefreshSerial) activeSessionCapabilityProjection.value = result.controlsProjection
+    } catch {
+      if (serial === capabilityRefreshSerial) activeSessionCapabilityProjection.value = null
+    }
+  }
+  watch(() => {
+    const route = activeSessionConfig.value.routeSelection
+    const imageEnabled = activeSessionConfig.value.imageGeneration.enabled ? 'image' : 'text'
+    return route?.kind === 'provider_model'
+      ? `${route.providerId}:${route.modelId}:${activeConvoId.value}:${imageEnabled}`
+      : route?.kind === 'openai_chat_compatible'
+        ? `${route.providerInstanceId}:${route.modelId}:${activeConvoId.value}:${imageEnabled}` : `none:${activeConvoId.value}:${imageEnabled}`
+  }, () => { void refreshActiveSessionCapabilityProjection() }, { immediate: true })
+
+  function capabilityRevisionForCurrentProjection(input: Readonly<{
+    route: GenerationV2Route
+    providerId: RuntimeProviderId
+    modelId: string
+    endpointProfileId: string | null
+  }>): string {
+    const projection = activeSessionCapabilityProjection.value
+    if (!projection) throw new Error('GENERATION_V2_CAPABILITY_PROJECTION_REQUIRED')
+    const expectedOperation = input.route.kind === 'openrouter_images' || input.route.kind === 'gemini_interactions_image'
+      ? 'image_generate' : 'text'
+    const expectedProviderId = input.route.kind === 'openai_chat_compatible'
+      ? 'openai_compatible'
+      : input.route.kind === 'lmstudio_openresponses'
+        ? 'lmstudio'
+        : input.route.kind === 'generic_local_openai_chat'
+          ? 'generic_local'
+          : input.route.kind === 'ollama_chat'
+            ? 'ollama'
+            : input.providerId
+    const binding = projection.binding
+    if (binding.providerId !== expectedProviderId || binding.modelId !== input.modelId ||
+        binding.operation !== expectedOperation ||
+        input.endpointProfileId !== null && binding.endpointProfileId !== input.endpointProfileId) {
+      throw new Error('GENERATION_V2_CAPABILITY_PROJECTION_STALE')
+    }
+    return projection.capabilityRevision
   }
 
   async function onSendUnlocked() {
@@ -6856,7 +6865,7 @@ export function useAppChatAppLogic() {
       ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId)
     const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
     const route: GenerationV2Route = compatibleIntent ? { kind: 'openai_chat_compatible' }
-      : providerId === OPENROUTER_PROVIDER_ID && resolveImageGenerationConfigForRequest(providerId)
+      : providerId === OPENROUTER_PROVIDER_ID && activeSessionConfig.value.imageGeneration.enabled
         ? { kind: 'openrouter_images' }
         : generationV2RouteForProvider(providerId, modelId)
     if ((route.kind === 'openrouter_images' || route.kind === 'gemini_interactions_image') && !text) {
@@ -6869,6 +6878,8 @@ export function useAppChatAppLogic() {
       ? normalizeGeminiImageGenerationModelId(modelId) : modelId
     const operationId = crypto.randomUUID()
     const sendingFromTemplate = view.conversationId === systemTemplateSnapshot.value?.conversation.id
+    const capabilityRevision = capabilityRevisionForCurrentProjection({ route, providerId,
+      modelId: commandModelId, endpointProfileId: compatibleIntent?.providerInstanceId ?? endpointProfileId })
     const result = await submitGenerationV2Initial(route, route.kind === 'openrouter_images'
       ? { operationId, branchId: view.branchId, expectedHeadMessageId: view.headMessageId,
           prompt: text, modelId: commandModelId, requestedProviderTag: null, commandAttachments }
@@ -6878,8 +6889,11 @@ export function useAppChatAppLogic() {
       : { operationId, branchId: view.branchId, expectedHeadMessageId: view.headMessageId,
           userBody: text, modelId: commandModelId, commandAttachments,
           ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
-          ...(endpointProfileId === null ? {} : { endpointProfileId }) })
-    if (!result.ok) throw new Error(result.code)
+          ...(endpointProfileId === null ? {} : { endpointProfileId }) }, capabilityRevision)
+    if (!result.ok) {
+      if (result.code === 'STALE_CAPABILITY_REVISION') await refreshActiveSessionCapabilityProjection()
+      throw new Error(result.code)
+    }
     if (sendingFromTemplate) {
       systemTemplateSnapshot.value = await getSystemChatTemplate()
       await reloadGenerationV2ConversationAuthorities(systemTemplateSnapshot.value.conversation.id)
@@ -6984,7 +6998,7 @@ export function useAppChatAppLogic() {
       const sourceBranchId = view.branchId
       const nativeProviderId = selection.providerId
       const route: GenerationV2Route = compatibleIntent ? { kind: 'openai_chat_compatible' }
-        : nativeProviderId === OPENROUTER_PROVIDER_ID && resolveImageGenerationConfigForRequest(nativeProviderId)
+        : nativeProviderId === OPENROUTER_PROVIDER_ID && activeSessionConfig.value.imageGeneration.enabled
           ? { kind: 'openrouter_images' } : generationV2RouteForProvider(nativeProviderId, modelId)
       await persistCurrentGenerationV2SemanticLayer(nativeProviderId, view.conversationId)
       const endpointProfileId = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
@@ -6996,13 +7010,20 @@ export function useAppChatAppLogic() {
       const composerDraft = generationV2ComposerDraft.value?.conversationId === view.conversationId
         ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId)
       const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
+      const commandModelId = route.kind === 'gemini_interactions_image'
+        ? normalizeGeminiImageGenerationModelId(modelId) : modelId
+      const capabilityRevision = capabilityRevisionForCurrentProjection({ route, providerId: selection.providerId,
+        modelId: commandModelId, endpointProfileId: compatibleIntent?.providerInstanceId ?? endpointProfileId })
       const result = await submitGenerationV2Regenerate(route, route.kind === 'openrouter_images'
         ? { ...common, requestedProviderTag: null, commandAttachments }
         : route.kind === 'gemini_interactions_image'
           ? { ...common, commandAttachments }
         : { ...common, commandAttachments, ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
-          ...(endpointProfileId === null ? {} : { endpointProfileId }) })
-      if (!result.ok) throw new Error(result.code)
+          ...(endpointProfileId === null ? {} : { endpointProfileId }) }, capabilityRevision)
+      if (!result.ok) {
+        if (result.code === 'STALE_CAPABILITY_REVISION') await refreshActiveSessionCapabilityProjection()
+        throw new Error(result.code)
+      }
       notifyRecentModelsChangedForAcceptedOperation(compatibleIntent === null)
       invalidateMessageCandidateNavigation()
       if (activeConvoId.value === sourceConversationId) await refreshBranchesForActiveConvo()
@@ -7097,7 +7118,7 @@ export function useAppChatAppLogic() {
     if (!selection) { loadError.value = 'GENERATION_V2_MODEL_SELECTION_REQUIRED'; return }
     const { compatibleIntent, providerId: v2ProviderId, modelId: v2ModelId } = selection
     const v2Route: GenerationV2Route = compatibleIntent ? { kind: 'openai_chat_compatible' }
-      : v2ProviderId === OPENROUTER_PROVIDER_ID && resolveImageGenerationConfigForRequest(v2ProviderId)
+      : v2ProviderId === OPENROUTER_PROVIDER_ID && activeSessionConfig.value.imageGeneration.enabled
         ? { kind: 'openrouter_images' } : generationV2RouteForProvider(v2ProviderId, v2ModelId)
     try {
       await flushDraftPersistence({ failOnError: true })
@@ -7115,14 +7136,19 @@ export function useAppChatAppLogic() {
         sourceQuestionId: oldQuestionId, sourceAnswerRootId: sourceTurn.chosenAnswerRootId,
         expectedHeadMessageId: v2View.headMessageId, modelId: v2Route.kind === 'gemini_interactions_image'
           ? normalizeGeminiImageGenerationModelId(v2ModelId) : v2ModelId, commandAttachments }
+      const capabilityRevision = capabilityRevisionForCurrentProjection({ route: v2Route, providerId: v2ProviderId,
+        modelId: common.modelId, endpointProfileId: compatibleIntent?.providerInstanceId ?? endpointProfileId })
       const result = await submitGenerationV2EditResend(v2Route, v2Route.kind === 'openrouter_images'
         ? { ...common, prompt: newText, requestedProviderTag: null }
         : v2Route.kind === 'gemini_interactions_image'
           ? { ...common, prompt: newText }
         : { ...common, userBody: newText,
             ...(compatibleIntent ? { providerInstanceId: compatibleIntent.providerInstanceId } : {}),
-            ...(endpointProfileId === null ? {} : { endpointProfileId }) })
-      if (!result.ok) throw new Error(result.code)
+            ...(endpointProfileId === null ? {} : { endpointProfileId }) }, capabilityRevision)
+      if (!result.ok) {
+        if (result.code === 'STALE_CAPABILITY_REVISION') await refreshActiveSessionCapabilityProjection()
+        throw new Error(result.code)
+      }
       questionEditSession.value = null
       try {
         generationV2ComposerDraft.value = await clearCommittedGenerationV2ComposerDraft({ conversationId: convoId,
@@ -7205,7 +7231,6 @@ export function useAppChatAppLogic() {
         if (!image) return { kind: 'gemini_generate_content' }
         const normalizedModelId = normalizeGeminiImageGenerationModelId(modelId)
         if (isGeminiInteractionsImageModelIdV1(normalizedModelId)) return { kind: 'gemini_interactions_image' }
-        if (isKnownGeminiImageGenerationModel(normalizedModelId)) throw new Error('GENERATION_V2_GEMINI_INTERACTIONS_MODEL_UNVERIFIED')
         return { kind: 'gemini_generate_content' }
       }
       default: throw new Error('GENERATION_V2_PROVIDER_ROUTE_UNAVAILABLE')
@@ -7262,7 +7287,7 @@ export function useAppChatAppLogic() {
         questionId: qid,
         sourceAnswerId: current,
         expectedHeadMessageId: view.headMessageId,
-      })
+      }, answer.capabilityRevision)
       if (!result.ok) throw new Error(result.code)
       notifyRecentModelsChangedForAcceptedOperation(retryDescriptor.recentProviderId !== null)
       invalidateMessageCandidateNavigation()
@@ -7369,16 +7394,19 @@ export function useAppChatAppLogic() {
       await refreshGlobalUserMessageRenderDefault()
       await refreshGlobalImageGenerationDefault()
       await refreshDfcAttachmentDefaults()
-      if (localEndpointChatConfig.value.enabled) {
+      const startupSelection = canonicalSendSelection()
+      if (localEndpointChatConfig.value.enabled && startupSelection?.routeSelection.kind === 'provider_model' &&
+          startupSelection.providerId === 'local_endpoint') {
         try {
-          await ensureGenerationV2GenericLocalProfileFromSavedSettings()
+          await ensureGenerationV2GenericLocalProfileFromSavedSettings(startupSelection.modelId)
         } catch (error) {
           if (shouldLogDebug()) console.warn('[ui-app] V2_GENERIC_LOCAL_PROFILE_SYNC_FAILED')
         }
       }
-      if (lmStudioChatConfig.value.enabled) {
+      if (lmStudioChatConfig.value.enabled && startupSelection?.routeSelection.kind === 'provider_model' &&
+          startupSelection.providerId === 'lm_studio') {
         try {
-          await ensureGenerationV2LmStudioProfileFromSavedSettings()
+          await ensureGenerationV2LmStudioProfileFromSavedSettings(startupSelection.modelId)
         } catch (error) {
           if (shouldLogDebug()) console.warn('[ui-app] V2_LM_STUDIO_PROFILE_SYNC_FAILED')
         }
@@ -7850,6 +7878,7 @@ export function useAppChatAppLogic() {
     modelPrefsScopeForUi,
     activeSessionGenerationParamsLayer,
     activeSessionGenerationParamsResolved,
+    activeSessionCapabilityProjection,
     sessionGenerationParamsQuickSaving,
     sessionWebSearchSettingsSaving,
     activeSessionWebSearchLayer,
@@ -7858,7 +7887,6 @@ export function useAppChatAppLogic() {
     imageGenerationState,
     imageGenerationSupported,
     imageGenerationFollowDefault,
-    selectedModelImageCapabilityClass,
     imageGenerationSupportHint,
     openRouterImageEndpointSelection,
     openRouterImageEndpointSelectionLoading,

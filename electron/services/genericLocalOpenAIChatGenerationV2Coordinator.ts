@@ -20,6 +20,7 @@ import { decodeGenericLocalOpenAIChatEditResendCommandV2, decodeGenericLocalOpen
 import { compileGenericLocalOpenAIChatPreparedRequestV2 } from './genericLocalOpenAIChatPreparedRequestCompilerV2'
 import { commitGenericLocalCurrentSnapshotV2, commitGenericLocalRetrySnapshotV2 } from './genericLocalPlainTextSnapshotCommitV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
+import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 
 type Current = GenericLocalOpenAIChatInitialCommandV2 | GenericLocalOpenAIChatRegenerateCommandV2 | GenericLocalOpenAIChatEditResendCommandV2
 export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Readonly<{ db: BetterSqlite3.Database; nowMs?: () => number;
@@ -39,6 +40,7 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
     const found = execution.findOperation(command.operationId.value); if (!found) return null
     if (found.operation.actionKind !== action || found.operation.commandFingerprint !== command.requestFingerprint ||
         found.snapshot.providerBinding.protocolContractId.value !== 'generic-local-openai-chat-completions') throw new GenerationExecutionV2RepoError('GENERATION_V2_EXECUTION_IDEMPOTENCY_CONFLICT')
+    assertExpectedCapabilityRevisionV2(found.capability.revision.value)
     return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => { const bundle = execution.findOperationInTransaction(context, command.operationId.value)!
       const preparedRequest = compile(context, bundle); const projection = action === 'initial_send'
         ? graph.getInitialSendReplayProjectionInTransaction(context, command.operationId.value)
@@ -68,7 +70,9 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
     return withSynchronousGenerationCommandFactsAuthorityV2(context, config, attachments, pending.conversationId.value,
       projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined, (facts) => {
         const binding = createGenericLocalOpenAIChatProviderBindingV2(profile, command.modelId.value)
-        const capability = composeGenericLocalOpenAIChatBaselineCapabilityV2({ binding, resolvedAt: new Date(at).toISOString() })
+        const capability = composeGenericLocalOpenAIChatBaselineCapabilityV2({ binding, resolvedAt: new Date(at).toISOString(),
+          credentialRevision: profile.revisionGeneration })
+        assertExpectedCapabilityRevisionV2(capability.revision.value)
         const persisted = commitGenericLocalCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,
           pending, command, commandFacts: facts, profile, capability })
         if (command.kind === 'generic_local_openai_chat_initial') graph.commitInitialTurnProjection(context, pending as PendingInitialTurnV2)
@@ -94,6 +98,8 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
       if (!target || target.operation.questionId.value !== command.questionId.value || target.snapshot.providerBinding.protocolContractId.value !== 'generic-local-openai-chat-completions') throw new Error('GENERATION_V2_GENERIC_LOCAL_RETRY_TARGET_INVALID')
       const profile = profiles.get(target.snapshot.providerBinding.endpointProfileId.value)
       if (profile.profileRevision !== (target.snapshot.providerBinding.endpointBinding.kind === 'provider_managed_set' ? target.snapshot.providerBinding.endpointBinding.endpointSetRevision.value : '')) throw new Error('GENERATION_V2_GENERIC_LOCAL_PROFILE_STALE')
+      if (profile.protocolConfig.modelId !== target.snapshot.providerBinding.modelId.value) throw new Error('GENERATION_V2_GENERIC_LOCAL_PROFILE_MODEL_STALE')
+      assertExpectedCapabilityRevisionV2(target.capability.revision.value)
       const pending = graph.beginAnswerAction(context, { operationId: command.operationId.value, actionKind: command.actionKind,
         sourceBranchId: command.sourceBranchId.value, questionId: command.questionId.value, sourceAnswerId: command.sourceAnswerId.value,
         expectedHeadMessageId: command.expectedHeadMessageId.value, answerRootId: createAnswerId(), createdAtMs: nowMs() })

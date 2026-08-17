@@ -65,6 +65,54 @@ function googleAvailability(modelId: string, thinking = true) {
   } as any
 }
 
+function reasoningCapabilityProjection(
+  efforts: readonly string[] = ['low', 'medium', 'high'],
+  summaries: readonly string[] = ['auto', 'concise', 'detailed'],
+) {
+  return {
+    schemaVersion: 1,
+    binding: {},
+    capabilityRevision: 'capability-v2:test-ui',
+    controls: {
+      'reasoning.effort': { state: 'supported', domain: { kind: 'enum', values: efforts }, constraints: [], evidenceIds: [] },
+      'reasoning.summary': { state: 'supported', domain: { kind: 'enum', values: summaries }, constraints: [], evidenceIds: [] },
+    },
+  } as any
+}
+
+function geminiCapabilityProjection(input: Readonly<{
+  budget?: { min: number; max: number }
+  levels?: readonly string[]
+  summaries?: readonly string[]
+  imageSizes?: readonly string[]
+  aspectRatios?: readonly string[]
+  outputModes?: readonly string[]
+}> = {}) {
+  const controls: Record<string, unknown> = {
+    'reasoning.mode': { state: 'supported', domain: { kind: 'enum', values: ['disabled', 'enabled'] }, constraints: [], evidenceIds: [] },
+    'reasoning.summary': input.summaries
+      ? { state: 'supported', domain: { kind: 'enum', values: [...input.summaries] }, constraints: [], evidenceIds: [] }
+      : { state: 'missing', constraints: [], evidenceIds: [] },
+    'providerExtension.thinkingBudget': input.budget
+      ? { state: 'supported', domain: { kind: 'range', ...input.budget, integer: true }, constraints: [], evidenceIds: [] }
+      : { state: 'missing', constraints: [], evidenceIds: [] },
+    'providerExtension.thinkingLevel': input.levels
+      ? { state: 'supported', domain: { kind: 'enum', values: [...input.levels] }, constraints: [], evidenceIds: [] }
+      : { state: 'missing', constraints: [], evidenceIds: [] },
+    'image.mode': { state: input.imageSizes ? 'supported' : 'missing', ...(input.imageSizes ? { domain: { kind: 'enum', values: ['generate'] } } : {}), constraints: [], evidenceIds: [] },
+    'image.resolution': input.imageSizes
+      ? { state: 'supported', domain: { kind: 'enum', values: [...input.imageSizes] }, constraints: [], evidenceIds: [] }
+      : { state: 'missing', constraints: [], evidenceIds: [] },
+    'image.aspectRatio': input.aspectRatios
+      ? { state: 'supported', domain: { kind: 'enum', values: [...input.aspectRatios] }, constraints: [], evidenceIds: [] }
+      : { state: 'missing', constraints: [], evidenceIds: [] },
+    'image.outputMode': input.outputModes
+      ? { state: 'supported', domain: { kind: 'enum', values: [...input.outputModes] }, constraints: [], evidenceIds: [] }
+      : { state: 'missing', constraints: [], evidenceIds: [] },
+  }
+  return { schemaVersion: 1, binding: {}, capabilityRevision: 'capability-v2:test-gemini', controls } as any
+}
+
 type ComposerTestUser = ReturnType<typeof userEvent.setup>
 
 async function openFavoritesStrip(user: ComposerTestUser) {
@@ -334,12 +382,14 @@ describe('ChatAppComposer model picker integration', () => {
             },
           },
         }))
+        const capabilityProjection = reasoningCapabilityProjection(['low', 'medium', 'high', 'xhigh', 'max'])
         return {
           draft,
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
           sessionConfig,
+          capabilityProjection,
           updateGenerationParamsLayer,
         }
       },
@@ -351,6 +401,7 @@ describe('ChatAppComposer model picker integration', () => {
           :disabled="false"
           :isRunning="false"
           :sessionConfig="sessionConfig"
+          :capabilityProjection="capabilityProjection"
           :modelCatalog="[]"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -387,6 +438,7 @@ describe('ChatAppComposer model picker integration', () => {
           routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'deepseek' as const, modelId: 'deepseek-v4-flash'  },
           reasoning: { enabled: true, effort: 'high' as const },
         },
+        capabilityProjection: reasoningCapabilityProjection(['high', 'max']),
         'onUpdateReasoningEffort': updateReasoningEffort,
       },
     })
@@ -420,12 +472,14 @@ describe('ChatAppComposer model picker integration', () => {
             },
           },
         }))
+        const capabilityProjection = reasoningCapabilityProjection(['low', 'medium', 'high', 'xhigh', 'max'])
         return {
           draft,
           model,
           requestedReasoningEffort,
           requestedReasoningExclude,
           sessionConfig,
+          capabilityProjection,
           updateGenerationParamsLayer,
         }
       },
@@ -437,6 +491,7 @@ describe('ChatAppComposer model picker integration', () => {
           :disabled="false"
           :isRunning="false"
           :sessionConfig="sessionConfig"
+          :capabilityProjection="capabilityProjection"
           :modelCatalog="[]"
           :showHiddenModelsInPickers="false"
           :modelCatalogNotice="null"
@@ -1589,6 +1644,7 @@ describe('ChatAppComposer model picker integration', () => {
           } },
         },
         googleAIStudioModelAvailability: googleAvailability('gemini-2.5-flash'),
+        capabilityProjection: geminiCapabilityProjection({ budget: { min: 0, max: 24576 } }),
         modelCatalog: [],
       },
     })
@@ -1623,6 +1679,7 @@ describe('ChatAppComposer model picker integration', () => {
           } },
         },
         googleAIStudioModelAvailability: googleAvailability('gemini-3.1-pro-preview'),
+        capabilityProjection: geminiCapabilityProjection({ levels: ['low', 'medium', 'high'] }),
         modelCatalog: [],
       },
     })
@@ -1655,6 +1712,12 @@ describe('ChatAppComposer model picker integration', () => {
             thoughtSummaryMode: { mode: 'custom', value: 'none' },
           } },
         },
+        capabilityProjection: geminiCapabilityProjection({
+          levels: ['minimal', 'high'],
+          imageSizes: ['512', '1K', '2K', '4K'],
+          aspectRatios: ['1:1', '16:9', '9:16'],
+          outputModes: ['image_only', 'image_and_text'],
+        }),
         modelCatalog: [],
       },
     })
@@ -1700,6 +1763,12 @@ describe('ChatAppComposer model picker integration', () => {
             detail: null,
           },
         },
+        capabilityProjection: geminiCapabilityProjection({
+          summaries: [],
+          imageSizes: ['4K'],
+          aspectRatios: ['1:1', '16:9'],
+          outputModes: ['image_only'],
+        }),
         modelCatalog: [],
       },
     })
@@ -1734,6 +1803,12 @@ describe('ChatAppComposer model picker integration', () => {
             detail: null,
           },
         },
+        capabilityProjection: geminiCapabilityProjection({
+          levels: ['minimal', 'high'],
+          imageSizes: ['512', '1K', '2K', '4K'],
+          aspectRatios: ['1:1', '16:9', '9:16'],
+          outputModes: ['image_only', 'image_and_text'],
+        }),
         modelCatalog: [],
       },
     })
@@ -1752,6 +1827,12 @@ describe('ChatAppComposer model picker integration', () => {
           ...createSessionConfig(),
           routeSelection: { schemaVersion: 1, kind: 'provider_model', providerId: 'google_ai_studio' as const, modelId: 'gemini-3.1-flash-lite-image'  },
         },
+        capabilityProjection: geminiCapabilityProjection({
+          levels: ['minimal', 'high'],
+          imageSizes: ['1K'],
+          aspectRatios: ['1:1', '16:9'],
+          outputModes: ['image_only', 'image_and_text'],
+        }),
         modelCatalog: [],
       },
     })

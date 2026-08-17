@@ -62,7 +62,7 @@ const capability = decodeRuntimeCapabilitySnapshotV2(
     }],
     fields: RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((field) => ({
       path: field,
-      state: 'unavailable',
+      state: 'missing',
       constraints: [],
       evidenceIds: [],
     })),

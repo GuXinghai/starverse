@@ -59,6 +59,7 @@ export type ConversationBranchViewV2 = Readonly<{
       modelId: string
       endpointProfileId: string
       protocolContractId: string
+      capabilityRevision: string
       errorCode: string | null
       errorMessage: string | null
       errorFact: ProviderFailureV2 | null
@@ -461,7 +462,8 @@ export class ConversationReadV2Repo {
             body: string(answer.body), createdAtMs: time(answer.createdAtMs), updatedAtMs: time(answer.updatedAtMs),
             chosen: answerRootId === chosen, operationId: answer.operationId, actionKind: answer.actionKind as 'initial_send' | 'edit_resend' | 'regenerate_question' | 'retry_as_new' | 'retry_replace',
             providerId: decodeGenerationExecutionProviderId(answer.providerId), modelId: answer.modelId, endpointProfileId: answer.endpointProfileId,
-            protocolContractId: answer.protocolContractId, errorCode: answer.errorCode as string | null,
+            protocolContractId: answer.protocolContractId, capabilityRevision: snapshot.capabilityBinding.capabilityRevision.value,
+            errorCode: answer.errorCode as string | null,
             errorMessage: answer.errorMessage as string | null, errorFact, reasoningDetails, attachments, images: Object.freeze(images) })
         })
       if (answers.filter((answer) => answer.chosen).length !== 1) {

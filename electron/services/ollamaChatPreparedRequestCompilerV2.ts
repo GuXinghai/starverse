@@ -3,13 +3,16 @@ import { isGenerationExecutionOperationBundleForContextV2,type GenerationExecuti
 import type { LocalEndpointProfileV2 } from '../../infra/db/repo/localEndpointProfileV2Repo'
 import { isOllamaChatRequestHistoryFactForContextV2,type OllamaChatRequestHistoryFactV2 } from '../../infra/db/repo/ollamaChatNativeHistoryV2Repo'
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
+import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import { createNoCredentialHeaderPlanV2,issuePreparedProviderRequestV2,type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
 import { compileOllamaNativeChatRequestV1 } from '../../src/next/generation-v2/providers/ollama-chat/chatRequestV1'
 import { buildOllamaNativeChatRequestHistoryV1 } from '../../src/next/generation-v2/providers/ollama-chat/nativeMessagesV1'
 import { readOllamaChatEndpointV2,readOllamaThinkingControlV2 } from '../../src/next/generation-v2/providers/ollama-chat/verifiedContractV2'
 export function compileOllamaChatPreparedRequestV2(input:Readonly<{context:GenerationV2AuthorityTransactionContextV2;execution:GenerationExecutionOperationBundleV2;profile:LocalEndpointProfileV2;history:OllamaChatRequestHistoryFactV2}>):PreparedProviderRequestV2{
   if(!isGenerationExecutionOperationBundleForContextV2(input.execution,input.context)||!isOllamaChatRequestHistoryFactForContextV2(input.history,input.context)||!['committed','streaming','completed','failed','cancelled'].includes(input.execution.operation.state))throw new Error('GENERATION_V2_OLLAMA_COMPILER_AUTHORITY_INVALID')
-  const {operation,snapshot,capability}=input.execution,b=snapshot.providerBinding,i=snapshot.semanticIntent,g=i.generation
+  const {operation,snapshot,capability}=input.execution
+  validateGenerationExecutionCapabilityV2(capability, snapshot.semanticIntent)
+  const b=snapshot.providerBinding,i=snapshot.semanticIntent,g=i.generation
   if(b.providerId.value!=='ollama'||b.protocolContractId.value!=='ollama-chat-v1'||b.endpointProfileId.value!==input.profile.endpointProfileId||b.credentialScopeId.value!==input.profile.credentialScopeId||b.operation!=='text'||b.endpointBinding.kind!=='provider_managed_set'||b.endpointBinding.endpointSetRevision.value!==input.profile.profileRevision)throw new Error('GENERATION_V2_OLLAMA_COMPILER_BINDING_INVALID')
   if(g.candidateCount!==undefined||g.frequencyPenalty!==undefined||g.presencePenalty!==undefined||i.web.mode!=='disabled'||i.image.mode!=='disabled'||i.tools.mode!=='disabled'||i.attachments.length||i.providerExtension.kind!=='none')throw new Error('GENERATION_V2_OLLAMA_COMPILER_EXPLICIT_FIELD_UNSUPPORTED')
   const messages=buildOllamaNativeChatRequestHistoryV1(input.history);const compiled=compileOllamaNativeChatRequestV1({model:b.modelId.value,messages,thinkingControl:readOllamaThinkingControlV2(input.profile),reasoning:{mode:i.reasoning.mode,...(i.reasoning.mode==='enabled'&&i.reasoning.effort?{effort:i.reasoning.effort}:{})},generation:{maxOutputTokens:g.maxOutputTokens,temperature:g.temperature,topP:g.topP,topK:g.topK,seed:g.seed,stop:g.stop,repetitionPenalty:g.repetitionPenalty}})

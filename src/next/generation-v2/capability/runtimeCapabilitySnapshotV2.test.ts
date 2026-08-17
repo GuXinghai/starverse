@@ -83,7 +83,7 @@ function draft(): MutableDraft {
           constraints: [],
           evidenceIds: ['contract.openai.responses.v1'],
         }
-      : { path, state: 'unavailable', constraints: [], evidenceIds: [] }),
+      : { path, state: 'missing', constraints: [], evidenceIds: [] }),
     tools: [],
     continuation: {
       kind: 'none',
@@ -190,20 +190,20 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
     }
     expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(unsupportedWithSupportEvidence))
       .toThrow('GENERATION_V2_CAPABILITY_EVIDENCE_MISMATCH')
-    const unavailableWithEvidence = draft()
-    unavailableWithEvidence.fields[index] = {
-      path: 'generation.temperature', state: 'unavailable', constraints: [],
+    const missingWithEvidence = draft()
+    missingWithEvidence.fields[index] = {
+      path: 'generation.temperature', state: 'missing', constraints: [],
       evidenceIds: ['contract.openai.responses.v1'],
     }
-    expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(unavailableWithEvidence))
+    expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(missingWithEvidence))
       .toThrow('GENERATION_V2_CAPABILITY_EVIDENCE_MISMATCH')
-    const validUnavailable = draft()
-    validUnavailable.fields[index] = {
-      path: 'generation.temperature', state: 'unavailable', constraints: [], evidenceIds: [],
+    const validMissing = draft()
+    validMissing.fields[index] = {
+      path: 'generation.temperature', state: 'missing', constraints: [], evidenceIds: [],
     }
-    expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(validUnavailable).fields
+    expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(validMissing).fields
       .find((field) => field.path === 'generation.temperature')?.state)
-      .toBe('unavailable')
+      .toBe('missing')
   })
 
   it('uses closed domains and cross-field constraints without provider wire paths', () => {
@@ -342,7 +342,10 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
     expect(record.revision).not.toBe(baseline.revision)
     const changedToolPolicy = structuredClone(value)
     changedToolPolicy.tools[0].sideEffectPolicy = 'confirmation_required_each_execution'
-    expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(changedToolPolicy).revision).not.toBe(record.revision)
+    const changedToolRecord = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(changedToolPolicy)
+    expect(changedToolRecord.snapshotHash).not.toBe(record.snapshotHash)
+    expect(changedToolRecord.semanticFieldsDigest).toBe(record.semanticFieldsDigest)
+    expect(changedToolRecord.revision).toBe(record.revision)
     const changedReplay = structuredClone(value)
     changedReplay.continuation.supportsBranchReplay = false
     expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(changedReplay).revision).not.toBe(record.revision)

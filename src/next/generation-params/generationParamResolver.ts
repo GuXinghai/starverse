@@ -64,6 +64,23 @@ function resolveRawSetting(
   return { setting: null }
 }
 
+/**
+ * Resolves only layer precedence for Generation V2 semantic construction.
+ * Capability support, value domains and provider-specific legality belong to
+ * the resolved capability validator, so this helper deliberately does not
+ * normalize, reject, or substitute custom values.
+ */
+export function resolveGenerationParamValuesFromLayers(input: Readonly<{
+  layers: GenerationParamsLayers
+}>): Readonly<Partial<Record<GenerationParamKey, unknown>>> {
+  const values: Partial<Record<GenerationParamKey, unknown>> = {}
+  for (const key of GENERATION_PARAM_KEYS) {
+    const { setting } = resolveRawSetting(input.layers, key)
+    if (setting?.mode === 'custom') values[key] = setting.value
+  }
+  return Object.freeze(values)
+}
+
 function decision(
   key: GenerationParamKey,
   state: GenerationParamDecisionState,

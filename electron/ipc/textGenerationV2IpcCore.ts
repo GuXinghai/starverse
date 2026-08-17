@@ -4,6 +4,8 @@ import type { GenerationStreamProjectionSinkV2, GenerationStreamProjectionV2 } f
 import type { GenerationTextCommandResultV2 } from '../services/generationTextCommandResultV2'
 import type { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
 import type { GenerationStreamEventV2 } from '../../src/next/generation-v2/domain/generationStreamEventV2'
+import { decodeCapabilityBoundGenerationCommandV2 } from '../../src/next/generation-v2/domain/capabilityBoundGenerationCommandV2'
+import { runWithExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 
 export type TextGenerationV2IpcRuntime = Readonly<{
   submitInitial: (command: unknown) => Promise<GenerationTextCommandResultV2>
@@ -83,11 +85,16 @@ export function registerTextGenerationV2IpcCore(input: Readonly<{
   const invoke = (dispatch: (command: unknown) => Promise<GenerationTextCommandResultV2>) =>
     async (event: unknown, payload: unknown) => {
       const sender = senderFromEvent(event)
-      const operationId = readOperationId(payload)
+      let bound: ReturnType<typeof decodeCapabilityBoundGenerationCommandV2>
+      try { bound = decodeCapabilityBoundGenerationCommandV2(payload) } catch { return Object.freeze({ ok: false, code: invalid }) }
+      const operationId = readOperationId(bound.command)
       if (!sender || !operationId) return Object.freeze({ ok: false, code: invalid })
       operationSenders.set(operationId, sender)
       try {
-        const result = await dispatch(payload)
+        const result = await runWithExpectedCapabilityRevisionV2(
+          bound.expectedCapabilityRevision,
+          () => dispatch(bound.command),
+        )
         if (input.runtimeRegistry) {
           input.runtimeRegistry.register(result)
         }

@@ -171,11 +171,12 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     const node = getAtPath(bridge(), path)
     const initial = vi.fn(async (command: any) => {
       commandInitialCalls.push({ path, command })
+      const payload = command?.command ?? command
       if (opts.rejectCode) {
         return { ok: false, code: opts.rejectCode }
       }
       const turn = commitTurn({
-        questionBody: String(command?.userBody ?? command?.prompt ?? ''),
+        questionBody: String(payload?.userBody ?? payload?.prompt ?? ''),
         answerBody: opts.answerText ?? 'hi',
         modelId: opts.modelId,
         providerId: opts.providerId,
@@ -440,7 +441,7 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
           protocolContractId: 'generic-local-openai-chat-completions',
           baseUrl: localEndpointProfileBaseUrl,
           endpointProfileId: 'generic-local-http',
-          protocolConfig: {},
+          protocolConfig: { modelId: 'local-model-a' },
         },
         {
           providerId: 'ollama',
@@ -480,11 +481,14 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     await vi.runAllTimersAsync()
 
     expect(initialStubs['openRouter.chat']).toHaveBeenCalledWith(expect.objectContaining({
-      branchId: 'b1',
-      expectedHeadMessageId: null,
-      userBody: 'ping',
-      modelId: DEFAULT_OPENROUTER_TEST_MODEL,
-      commandAttachments: [],
+      expectedCapabilityRevision: 'capability-v2:test',
+      command: expect.objectContaining({
+        branchId: 'b1',
+        expectedHeadMessageId: null,
+        userBody: 'ping',
+        modelId: DEFAULT_OPENROUTER_TEST_MODEL,
+        commandAttachments: [],
+      }),
     }))
     expect((draftBox() as HTMLTextAreaElement).value).toBe('')
     const layer = updateConfigCalls[updateConfigCalls.length - 1]?.semanticLayer
@@ -532,7 +536,7 @@ describe('ui-app AppChatApp (send: Generation V2 command contract)', () => {
     await waitFor(() => {
       expect(screen.getByText('selected model send')).toBeInTheDocument()
       const lastCall = commandInitialCalls.filter((call) => call.path === 'openRouter.chat').pop()
-      expect(lastCall?.command).toMatchObject({ modelId: imageCapableModel })
+      expect(lastCall?.command).toMatchObject({ expectedCapabilityRevision: 'capability-v2:test', command: { modelId: imageCapableModel } })
     })
     await vi.runAllTimersAsync()
     expect('recordRecent' in bridge().modelPreferences).toBe(false)

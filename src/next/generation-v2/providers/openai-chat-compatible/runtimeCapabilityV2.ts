@@ -1,8 +1,10 @@
 import {
-  canonicalizeUnverifiedRuntimeCapabilitySnapshotV2, decodeRuntimeCapabilitySnapshotV2,
+  decodeRuntimeCapabilitySnapshotV2,
   RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2, type DecodedRuntimeCapabilitySnapshotV2,
   type PersistedRuntimeCapabilityFieldV2, type RuntimeCapabilitySemanticPathV2,
 } from '../../capability/runtimeCapabilitySnapshotV2'
+import { canonicalizeResolvedCapabilityV2, runtimeSnapshotRecordFromResolvedCapabilityV2, type ResolvedCapabilityV2 } from '../../capability/resolvedCapabilityV2'
+import { credentialRevisionEvidenceV2 } from '../../capability/credentialRevisionEvidenceV2'
 import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../domain/providerBindingV2'
 import { OPENAI_CHAT_COMPATIBLE_CONTRACT_DIGEST_V2 } from './verifiedContractV2'
 
@@ -23,11 +25,12 @@ const NO_WIRE_DISABLED = new Set<RuntimeCapabilitySemanticPathV2>(['web.mode', '
  * dependent reasoning is advertised only when the frozen request profile has
  * an explicit source-field mapping.
  */
-export function composeOpenAIChatCompatibleBaselineCapabilityV2(input: Readonly<{
+function resolveOpenAIChatCompatibleCapabilityRecordV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   resolvedAt: string
+  credentialRevision: number
   mappedReasoningSourceFields: readonly ('reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget')[]
-}>): DecodedRuntimeCapabilitySnapshotV2 {
+}>): ResolvedCapabilityV2 {
   if (input.binding.providerId.value !== 'openai_compatible' || input.binding.protocolContractId.value !== 'openai_chat_compatible') {
     throw new Error('GENERATION_V2_OPENAI_COMPATIBLE_CAPABILITY_INVALID')
   }
@@ -40,13 +43,33 @@ export function composeOpenAIChatCompatibleBaselineCapabilityV2(input: Readonly<
     if (path === 'reasoning.mode') return Object.freeze({ path, state: 'supported', domain: Object.freeze({ kind: 'enum',
       values: Object.freeze(mapped.has('reasoning_enabled') ? ['disabled', 'enabled'] : ['disabled']) }), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
     if (path === 'reasoning.effort' && mapped.has('reasoning_effort')) return Object.freeze({ path, state: 'supported', domain: Object.freeze({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high']) }), constraints: Object.freeze([]), evidenceIds: Object.freeze([evidenceId]) }) as PersistedRuntimeCapabilityFieldV2
-    return Object.freeze({ path, state: 'unavailable', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) }) as PersistedRuntimeCapabilityFieldV2
+    return Object.freeze({ path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) }) as PersistedRuntimeCapabilityFieldV2
   })
-  return decodeRuntimeCapabilitySnapshotV2(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
-    schemaVersion: 2, resolvedAt: input.resolvedAt, binding: projectDecodedProviderBindingRecordV2(input.binding),
+  return canonicalizeResolvedCapabilityV2({ binding: projectDecodedProviderBindingRecordV2(input.binding),
     evidence: [{ evidenceId, kind: 'contract_invariant', effect: 'supports', sourceRef: 'openai_chat_compatible',
-      verifiedAt: input.resolvedAt, contentDigest: OPENAI_CHAT_COMPATIBLE_CONTRACT_DIGEST_V2 }],
-    fields, tools: [], continuation: { kind: 'client_managed_native_replay', artifactKind: 'openai_chat_compatible_messages',
+      verifiedAt: input.resolvedAt, contentDigest: OPENAI_CHAT_COMPATIBLE_CONTRACT_DIGEST_V2 },
+      credentialRevisionEvidenceV2({ credentialRevision: input.credentialRevision, verifiedAt: input.resolvedAt })],
+    fields, continuation: { kind: 'client_managed_native_replay', artifactKind: 'openai_chat_compatible_messages',
       supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [evidenceId] },
-  }))
+  })
+}
+
+export function composeOpenAIChatCompatibleBaselineCapabilityV2(input: Readonly<{
+  binding: DecodedProviderBindingRecordV2
+  resolvedAt: string
+  credentialRevision: number
+  mappedReasoningSourceFields: readonly ('reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget')[]
+}>): DecodedRuntimeCapabilitySnapshotV2 {
+  const capability = resolveOpenAIChatCompatibleCapabilityRecordV2(input)
+  return decodeRuntimeCapabilitySnapshotV2(runtimeSnapshotRecordFromResolvedCapabilityV2({ capability, resolvedAt: input.resolvedAt, tools: [] }))
+}
+
+/** Independent model capability resolver; the runtime snapshot is only the persistence envelope. */
+export function resolveOpenAIChatCompatibleCapabilityV2(input: Readonly<{
+  binding: DecodedProviderBindingRecordV2
+  resolvedAt: string
+  credentialRevision: number
+  mappedReasoningSourceFields: readonly ('reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget')[]
+}>): ResolvedCapabilityV2 {
+  return resolveOpenAIChatCompatibleCapabilityRecordV2(input)
 }

@@ -94,7 +94,7 @@ const capability = decodeRuntimeCapabilitySnapshotV2(canonicalizeUnverifiedRunti
         : undefined
     return domain
       ? { path: field, state: 'supported' as const, domain, constraints: [], evidenceIds: ['test.anthropic.messages'] }
-      : { path: field, state: 'unavailable' as const, constraints: [], evidenceIds: [] }
+      : { path: field, state: 'missing' as const, constraints: [], evidenceIds: [] }
   }),
   tools: [],
   continuation: {

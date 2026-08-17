@@ -7,6 +7,8 @@ import type { OpenRouterImageActionResultV2 } from '../services/openRouterImageA
 import type { OpenRouterFirstPartyGenerationV2Runtime } from '../services/openRouterFirstPartyGenerationV2Runtime'
 import type { GenerationOperationRuntimeRegistryV2 } from '../services/generationOperationRuntimeRegistryV2'
 import type { GenerationStreamEventV2 } from '../../src/next/generation-v2/domain/generationStreamEventV2'
+import { decodeCapabilityBoundGenerationCommandV2 } from '../../src/next/generation-v2/domain/capabilityBoundGenerationCommandV2'
+import { runWithExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 
 export const OPENROUTER_CHAT_GENERATION_V2_IPC_CHANNELS = Object.freeze([
   'generation-v2:openrouter:chat:initial', 'generation-v2:openrouter:chat:retry',
@@ -86,11 +88,16 @@ export function registerOpenRouterGenerationV2Ipc(input: Readonly<{
   })
   const invoke = (dispatch: (command: unknown) => Promise<Result>) =>
     async (event: unknown, payload: unknown): Promise<Success | Failure> => {
-    const target = sender(event); const id = operationId(payload)
+    const target = sender(event)
+    let bound: ReturnType<typeof decodeCapabilityBoundGenerationCommandV2>
+    try { bound = decodeCapabilityBoundGenerationCommandV2(payload) }
+    catch { return Object.freeze({ ok: false, code: 'GENERATION_V2_OPENROUTER_IPC_INVALID_PAYLOAD' }) }
+    const id = operationId(bound.command)
     if (!target || !id) return Object.freeze({ ok: false, code: 'GENERATION_V2_OPENROUTER_IPC_INVALID_PAYLOAD' })
     senders.set(id, target)
     try {
-      const result = await dispatch(payload)
+      const result = await runWithExpectedCapabilityRevisionV2(bound.expectedCapabilityRevision,
+        () => dispatch(bound.command))
       if (input.runtimeRegistry) {
         input.runtimeRegistry.register(result)
       }

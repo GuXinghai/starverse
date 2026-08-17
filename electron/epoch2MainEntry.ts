@@ -7,6 +7,10 @@ import {
 } from './bootstrap/epoch2ApplicationRuntime'
 import { recoverEpoch2DatabaseSchemaMismatch } from './data-epoch/schemaMismatchRecovery'
 import { formatEpoch2SchemaRecoverySuccess } from './data-epoch/epoch2StartupDiagnostics'
+import {
+  confirmSchemaMismatchRecovery,
+  SCHEMA_MISMATCH_RECOVERY_AUTHORITY,
+} from './data-epoch/schemaMismatchRecoveryPrompt'
 import { acquireEpochRootLease } from './data-epoch/win32EpochRootLease'
 import { requestMainWindowActivation } from './windows/mainWindowActivation'
 
@@ -31,15 +35,6 @@ function startupFailureCode(error: unknown): string {
     : 'EPOCH2_STARTUP_UNCLASSIFIED'
 }
 
-const SCHEMA_MISMATCH_GUIDANCE = [
-  '数据库 schema 与本版本不匹配（检测到 schema 变更）。',
-  '旧数据无法自动迁移。',
-  '如需自动备份旧数据库并重建，请设置环境变量',
-  'SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH=1 后重新启动。',
-].join('\n')
-
-const SCHEMA_RECOVERY_AUTHORITY = 'SV_EPOCH2_RECOVER_ON_SCHEMA_MISMATCH'
-
 async function startup(): Promise<void> {
   const runtime = await bootstrapEpoch2ApplicationRuntime()
   installEpoch2ApplicationRuntime(runtime)
@@ -49,9 +44,8 @@ async function startup(): Promise<void> {
 
 async function startWithSchemaMismatchRecovery(): Promise<void> {
   process.stderr.write(`[epoch2-startup] EPOCH2_DATABASE_SCHEMA_MISMATCH: installed database schema differs ` +
-    `from this build; recovery authority: ${SCHEMA_RECOVERY_AUTHORITY}=1\n`)
-  if (process.env[SCHEMA_RECOVERY_AUTHORITY] !== '1') {
-    dialog.showErrorBox('Starverse startup failed', SCHEMA_MISMATCH_GUIDANCE)
+    `from this build; recovery authority: ${SCHEMA_MISMATCH_RECOVERY_AUTHORITY}=1\n`)
+  if (!await confirmSchemaMismatchRecovery()) {
     app.quit()
     return
   }

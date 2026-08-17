@@ -14,6 +14,7 @@ import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../in
 import type { GenerationV2AuthorityTransactionContextV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { RuntimeCapabilityV2Repo } from '../../infra/db/repo/runtimeCapabilityV2Repo'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
+import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { projectGenerationCommandAttachmentsV2 } from '../../src/next/generation-v2/domain/commandAttachmentsV2'
 import {
   decodeOpenRouterImageEditResendCommandV2,
@@ -31,6 +32,7 @@ import { createOpenRouterImageDescriptorAuthorityV2Service } from './openRouterI
 import { isPendingAnswerActionForContextV2, isPendingEditedTurnForContextV2 } from '../../infra/db/repo/conversationGraphV2Repo'
 import { commitOpenRouterImageCurrentSnapshotV2, commitOpenRouterImageRetrySnapshotV2 } from './openRouterImageInitialSnapshotCommitV2'
 import { compileOpenRouterImagePreparedRequestV2 } from './openRouterImagePreparedRequestCompilerV2'
+import { readVerifiedOpenRouterFirstPartyEndpointProfileV2 } from '../../src/next/generation-v2/providers/openrouter/verifiedFirstPartyEndpointProfileV2'
 
 type CurrentCommand = OpenRouterImageRegenerateCommandV2 | OpenRouterImageEditResendCommandV2
 export type OpenRouterImageActionResultV2 = Readonly<{
@@ -53,6 +55,8 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs); const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const bindingRepo = new OpenRouterImageBindingRepo(input.db, nowMs); const endpointRepo = new OpenRouterImageEndpointRepo(input.db, nowMs)
   const settingsRepo = new OpenRouterImageSettingsRepo(input.db, nowMs)
+  const modelEvidenceService = createActiveCatalogModelAuthorityV2Service(input)
+  const endpointProfile = readVerifiedOpenRouterFirstPartyEndpointProfileV2()
   const descriptorAuthority = createOpenRouterImageDescriptorAuthorityV2Service({ db: input.db, credentialService: input.credentialService,
     fetchImpl: input.fetchImpl, nowMs })
 
@@ -89,7 +93,8 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
   }
   function currentSelection(context: GenerationV2AuthorityTransactionContextV2, command: CurrentCommand,
     descriptor: Awaited<ReturnType<typeof descriptorAuthority.resolve>>, commandFacts: GenerationCommandFactsAuthorityV2,
-    freshness: ReturnType<OpenRouterImageSettingsRepo['readOrRestore']>['settings']['pair']) {
+    freshness: ReturnType<OpenRouterImageSettingsRepo['readOrRestore']>['settings']['pair'],
+    credentialRevision: number) {
     const existing = bindingRepo.getBinding({ credentialScopeId: descriptor.credentialScopeId, modelId: descriptor.modelId })
     const decision = decideOpenRouterImageSelectionV2({ descriptorCache: descriptor,
       freshness: { kind: 'use_cached', ageMs: 0, settings: freshness },
@@ -109,7 +114,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       expectedDescriptorRowGeneration: decision.expectedDescriptorRowGeneration })
     const selected = descriptorCandidate(descriptor, candidate.providerTag, candidate.providerSlug)
     return Object.freeze({ binding, capability: composeOpenRouterImageRuntimeCapabilityV2({ binding: binding.record,
-      descriptor: selected, resolvedAt: new Date(nowMs()).toISOString() }) })
+      descriptor: selected, resolvedAt: new Date(nowMs()).toISOString(), credentialRevision }) })
   }
 
   async function retry(raw: unknown, signal?: AbortSignal): Promise<OpenRouterImageActionResultV2> {
@@ -125,7 +130,12 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
     const descriptor = await descriptorAuthority.resolve({ modelId: targetPreflight.snapshot.providerBinding.modelId.value,
       credentialRevision: status.revision, credentialScopeId: status.credentialScopeId,
       settings: settingsRepo.readOrRestore().settings.pair, signal })
-    try { return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+    try { return await modelEvidenceService.withExactActiveModel({
+      providerKey: 'openrouter', endpointProfile,
+      expectedCredentialRevision: status.revision, expectedCredentialScopeId: status.credentialScopeId,
+      modelId: targetPreflight.snapshot.providerBinding.modelId,
+      consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+      modelEvidence.assertCurrent()
       assertDescriptorCurrent(descriptor)
       const target = executionRepo.findOperationInTransaction(context, targetObserved.operationId as string)
       if (!target || target.operation.targetAnswerId.value !== command.sourceAnswerId.value ||
@@ -140,6 +150,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       return Object.freeze({ kind: 'created' as const, execution: persisted.bundle,
         projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value), preparedRequest,
         request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest) })
+      }),
     }) } catch (error) {
       const winner = replay(command.operationId.value, command.requestFingerprint)
       if (winner) return winner
@@ -153,7 +164,12 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
     const freshness = settingsRepo.readOrRestore().settings.pair
     const descriptor = await descriptorAuthority.resolve({ modelId: command.modelId.value, credentialRevision: status.revision,
       credentialScopeId: status.credentialScopeId, settings: freshness, signal })
-    try { return runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+    try { return await modelEvidenceService.withExactActiveModel({
+      providerKey: 'openrouter', endpointProfile,
+      expectedCredentialRevision: status.revision, expectedCredentialScopeId: status.credentialScopeId,
+      modelId: command.modelId,
+      consume: (modelEvidence) => runGenerationV2AuthorityTransactionOnOwnedConnectionV2(input.db, (context) => {
+      modelEvidence.assertCurrent()
       assertDescriptorCurrent(descriptor)
       const sourceAttachments = projectGenerationCommandAttachmentsV2(command.commandAttachments)
       const pending = command.kind === 'openrouter_image_regenerate'
@@ -167,7 +183,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       const prompt = command.kind === 'openrouter_image_regenerate' ? promptForQuestion(command.questionId.value) : command.prompt
       return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value,
         sourceAttachments, undefined, (commandFacts) => {
-          const selected = currentSelection(context, command, descriptor, commandFacts, freshness)
+          const selected = currentSelection(context, command, descriptor, commandFacts, freshness, status.revision)
           const persisted = commitOpenRouterImageCurrentSnapshotV2({ context, executionRepo, capabilityRepo, pending, command,
             commandFacts, binding: selected.binding, capability: selected.capability })
           if (command.kind === 'openrouter_image_regenerate') {
@@ -183,6 +199,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
             projection: graphRepo.getGenerationReplayProjectionInTransaction(context, command.operationId.value), preparedRequest,
             request: requestRepo.createPrepared(context, persisted.bundle, preparedRequest) })
         })
+      }),
     }) } catch (error) {
       const winner = replay(command.operationId.value, command.requestFingerprint)
       if (winner) return winner

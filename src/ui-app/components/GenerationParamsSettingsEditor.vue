@@ -5,7 +5,6 @@ import {
   GENERATION_PARAM_SPEC_MAP,
   type GenerationParamSpec,
 } from '@/next/generation-params/generationParamCatalog'
-import { getEffectiveGenerationParamCapabilities } from '@/next/generation-params/generationParamProfiles'
 import {
   normalizeGenerationParamsLayer,
   normalizeGenerationParamSetting,
@@ -20,6 +19,8 @@ import type {
   ProviderGenerationParamProfile,
   ResolvedGenerationParams,
 } from '@/next/generation-params/generationParamTypes'
+import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
+import type { RuntimeCapabilitySemanticPathV2 } from '@/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 import { t, tf } from '@/shared/i18n'
 
 const props = withDefaults(defineProps<{
@@ -31,6 +32,7 @@ const props = withDefaults(defineProps<{
   compact?: boolean
   collapsible?: boolean
   defaultCollapsed?: boolean
+  capabilityProjection?: GenerationControlsProjectionV2 | null
 }>(), {
   resolved: null,
   profile: null,
@@ -39,23 +41,42 @@ const props = withDefaults(defineProps<{
   compact: false,
   collapsible: true,
   defaultCollapsed: false,
+  capabilityProjection: null,
 })
 
 const emit = defineEmits<{
   'update:modelValue': [value: GenerationParamsLayer | null]
 }>()
 
-const fallbackEnumValues: Partial<Record<GenerationParamKey, readonly string[]>> = {
-  reasoningEffort: ['auto', 'none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
-  reasoningSummary: ['none', 'auto', 'concise', 'detailed'],
-  thinkingLevel: ['minimal', 'low', 'medium', 'high'],
-  thoughtSummaryMode: ['none', 'auto'],
-  verbosity: ['low', 'medium', 'high', 'xhigh', 'max'],
+const capabilityPathByParam: Partial<Record<GenerationParamKey, RuntimeCapabilitySemanticPathV2>> = {
+  temperature: 'generation.temperature',
+  topP: 'generation.topP',
+  topK: 'generation.topK',
+  minP: 'generation.minP',
+  topA: 'generation.topA',
+  frequencyPenalty: 'generation.frequencyPenalty',
+  presencePenalty: 'generation.presencePenalty',
+  repetitionPenalty: 'generation.repetitionPenalty',
+  seed: 'generation.seed',
+  maxOutputTokens: 'generation.maxOutputTokens',
+  reasoningEffort: 'reasoning.effort',
+  reasoningSummary: 'reasoning.summary',
+  thinkingEnabled: 'reasoning.mode',
+  thinkingBudget: 'providerExtension.thinkingBudget',
+  thinkingLevel: 'providerExtension.thinkingLevel',
+  includeThoughts: 'providerExtension.includeThoughts',
+  thoughtSummaryMode: 'reasoning.summary',
+  stopSequences: 'generation.stop',
+  googleSearch: 'web.types',
+  imageSearch: 'web.types',
+  verbosity: 'providerExtension.verbosity',
 }
 
 const normalizedLayer = computed<GenerationParamsLayer>(() => normalizeGenerationParamsLayer(props.modelValue) ?? {})
 const capabilities = computed<Partial<Record<GenerationParamKey, GenerationParamCapability>>>(() =>
-  props.profile ? getEffectiveGenerationParamCapabilities(props.profile, props.modelId) : {}
+  props.capabilityProjection
+    ? Object.fromEntries(GENERATION_PARAM_SPECS.map((spec) => [spec.key, capabilityFromProjection(spec.key)])) as Partial<Record<GenerationParamKey, GenerationParamCapability>>
+    : {}
 )
 const inputTextByKey = ref<Record<GenerationParamKey, string>>(Object.fromEntries(
   GENERATION_PARAM_SPECS.map((spec) => [spec.key, '']),
@@ -63,10 +84,47 @@ const inputTextByKey = ref<Record<GenerationParamKey, string>>(Object.fromEntrie
 const expanded = ref(!props.defaultCollapsed)
 const showAdvanced = ref(false)
 
+function capabilityFromProjection(key: GenerationParamKey): GenerationParamCapability {
+  const spec = GENERATION_PARAM_SPEC_MAP[key]
+  const path = capabilityPathByParam[key]
+  const field = path ? props.capabilityProjection?.controls[path] : undefined
+  const base = (supported: boolean, extra: Partial<GenerationParamCapability> = {}): GenerationParamCapability => ({
+    supported,
+    valueType: spec.valueType,
+    ui: { visibleByDefault: supported, editable: supported },
+    ...extra,
+  })
+  if (!field || field.state !== 'supported') return base(false, {
+    ui: { visibleByDefault: false, editable: false, warning: tf('chat.generationParams.unsupportedForModel', { param: spec.label }) },
+  })
+  const domain = field.domain
+  if (key === 'thinkingEnabled' || key === 'includeThoughts') {
+    const values = domain?.kind === 'enum' ? domain.values : []
+    return base(values.includes('enabled') && values.includes('disabled'))
+  }
+  if (key === 'googleSearch' || key === 'imageSearch') {
+    const token = key === 'googleSearch' ? 'web' : 'image'
+    const values = domain?.kind === 'enum_list' ? domain.values : []
+    return base(values.includes(token))
+  }
+  if (!domain) return base(true)
+  if (domain.kind === 'enum') return base(true, {
+    enumValues: domain.values.filter((value): value is string => typeof value === 'string'),
+  })
+  if (domain.kind === 'range') return base(true, {
+    range: { min: domain.min, max: domain.max, integer: domain.integer },
+  })
+  if (domain.kind === 'string_list') return base(true)
+  if (domain.kind === 'boolean') return base(true)
+  return base(false, {
+    ui: { visibleByDefault: false, editable: false, warning: tf('chat.generationParams.unsupportedForModel', { param: spec.label }) },
+  })
+}
+
 const visibleSpecs = computed(() => GENERATION_PARAM_SPECS.filter((spec) => {
   const setting = normalizedLayer.value[spec.key]
   const capability = capabilities.value[spec.key]
-  if (!props.profile) return true
+  if (!props.capabilityProjection) return false
   if (setting && setting.mode !== 'inherit') return true
   return capability?.supported === true && (showAdvanced.value || capability.ui?.visibleByDefault !== false)
 }))
@@ -84,20 +142,19 @@ const hasAdvancedSpecs = computed(() => GENERATION_PARAM_SPECS.some((spec) => {
   const setting = normalizedLayer.value[spec.key]
   if (setting && setting.mode !== 'inherit') return false
   const capability = capabilities.value[spec.key]
-  return props.profile !== null
+  return props.capabilityProjection !== null
     && capability?.supported === true
     && capability.ui?.visibleByDefault === false
 }))
 
 function capabilityForSpec(spec: GenerationParamSpec): GenerationParamCapability {
   return capabilities.value[spec.key] ?? {
-    supported: props.profile ? false : true,
+    supported: false,
     valueType: spec.valueType,
-    ...(spec.valueType === 'enum' ? { enumValues: fallbackEnumValues[spec.key] ?? [] } : {}),
     ui: {
-      visibleByDefault: true,
-      editable: !props.profile,
-      ...(props.profile ? { warning: tf('chat.generationParams.unsupportedForModel', { param: spec.label }) } : {}),
+      visibleByDefault: false,
+      editable: false,
+      warning: tf('chat.generationParams.unsupportedForModel', { param: spec.label }),
     },
   }
 }
