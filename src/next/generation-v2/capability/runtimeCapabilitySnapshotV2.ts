@@ -15,7 +15,11 @@ import {
   projectProviderBindingForCapabilityRevisionV2,
   type DecodedProviderBindingRecordV2,
 } from '../domain/providerBindingV2'
-import { resolveGenerationImplementationManifestV2 } from './implementationManifestV2'
+import {
+  assertEncodingCoverageForResolvedFieldsV2,
+  EncodingCoverageRegistryV2Error,
+  resolveEncodingCoverageRegistryV2,
+} from './encodingCoverageRegistryV2'
 import type {
   AttachmentIntentV2,
   ImageGenerationIntentV2,
@@ -25,6 +29,7 @@ import type {
   ToolPolicyIntentV2,
   WebSearchIntentV2,
 } from '../domain/generationIntentV2'
+import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../domain/generationIntentV2'
 
 export const RUNTIME_CAPABILITY_SNAPSHOT_V2_SCHEMA_VERSION = 2 as const
 export const RUNTIME_CAPABILITY_SNAPSHOT_V2_MAX_UTF8_BYTES = 1024 * 1024
@@ -145,6 +150,7 @@ export type RuntimeCapabilityScalarV2 = string | number | boolean
 export type RuntimeCapabilityDomainV2 =
   | Readonly<{ kind: 'boolean' }>
   | Readonly<{ kind: 'identity' }>
+  | Readonly<{ kind: 'string'; maxLength: number }>
   | Readonly<{ kind: 'enum'; values: readonly RuntimeCapabilityScalarV2[] }>
   | Readonly<{ kind: 'response_format'; types: readonly ('text' | 'json_object' | 'json_schema')[] }>
   | Readonly<{ kind: 'enum_list'; values: readonly RuntimeCapabilityScalarV2[]; maxItems: number }>
@@ -243,6 +249,7 @@ export type PersistedRuntimeCapabilitySnapshotV2 = Readonly<{
   continuation: PersistedRuntimeContinuationCapabilityV2
   evidenceDigest: string
   semanticFieldsDigest: string
+  encoderRevision: string
   revision: string
   snapshotHash: string
 }>
@@ -265,6 +272,7 @@ export type DecodedRuntimeCapabilitySnapshotV2 = Readonly<{
   continuation: PersistedRuntimeContinuationCapabilityV2
   evidenceDigest: GenerationV2Digest<'evidence_digest'>
   semanticFieldsDigest: GenerationV2Digest<'capability_fields_digest'>
+  encoderRevision: string
   revision: GenerationV2Identity<'capability_revision'>
   snapshotHash: GenerationV2Digest<'snapshot_hash'>
   canonicalJson: string
@@ -280,6 +288,7 @@ export class RuntimeCapabilitySnapshotV2Error extends Error {
     | 'GENERATION_V2_CAPABILITY_EVIDENCE_MISMATCH'
     | 'GENERATION_V2_CAPABILITY_DIGEST_MISMATCH'
     | 'GENERATION_V2_CAPABILITY_HASH_MISMATCH'
+    | 'GENERATION_V2_ENCODING_COVERAGE_INVALID'
     | 'GENERATION_V2_CAPABILITY_NON_CANONICAL_JSON'
     | 'GENERATION_V2_CAPABILITY_BYTE_LIMIT_EXCEEDED') {
     super(code)
@@ -426,7 +435,7 @@ function decodeScalarSet(value: unknown): readonly RuntimeCapabilityScalarV2[] {
 
 function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
   const discriminator = closedObject(value, [
-    'kind', 'types', 'values', 'min', 'max', 'integer', 'maxItems', 'maxItemLength',
+    'kind', 'types', 'values', 'min', 'max', 'integer', 'maxItems', 'maxItemLength', 'maxLength',
     'maxFieldLength', 'minWidth', 'maxWidth', 'minHeight', 'maxHeight',
   ])
   if (discriminator.kind === 'boolean' || discriminator.kind === 'identity') {
@@ -434,6 +443,14 @@ function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
       throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
     }
     return Object.freeze({ kind: discriminator.kind })
+  }
+  if (discriminator.kind === 'string') {
+    const input = closedObject(value, ['kind', 'maxLength'])
+    if (!Number.isSafeInteger(input.maxLength) || (input.maxLength as number) < 1 ||
+        (input.maxLength as number) > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2) {
+      throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+    }
+    return Object.freeze({ kind: 'string', maxLength: input.maxLength as number })
   }
   if (discriminator.kind === 'enum') {
     const input = closedObject(value, ['kind', 'values'])
@@ -527,51 +544,84 @@ function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
   throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
 }
 
-const ENUM_VALUES_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPathV2, readonly RuntimeCapabilityScalarV2[]>>> = {
-  'attachments[].conversion': ['none', 'pdf', 'plain_text', 'images'],
-  'attachments[].kind': ['managed_file', 'url_reference'],
-  'attachments[].mediaKind': ['image', 'document', 'audio', 'video', 'other'],
-  'attachments[].provenance': ['user_supplied'],
-  'attachments[].sendAs': ['provider_file', 'inline_text', 'image_reference', 'converted_document', 'url_reference'],
-  'image.background': ['auto', 'transparent', 'opaque'],
-  'image.format': ['png', 'jpeg', 'webp', 'svg'],
-  'image.mode': ['disabled', 'generate'],
-  'image.outputMode': ['image_only', 'image_and_text'],
-  'image.quality': ['auto', 'low', 'medium', 'high'],
-  'image.resolution': ['512', '1K', '2K', '4K'],
-  'providerExtension.kind': ['none', 'openrouter_chat', 'anthropic_messages', 'gemini_generate_content', 'openai_responses'],
-  'providerExtension.includeThoughts': ['provider_default', 'enabled', 'disabled'],
-  'providerExtension.thinkingLevel': ['minimal', 'low', 'medium', 'high'],
-  'providerExtension.thinkingMode': ['model_recommended', 'manual', 'adaptive', 'default', 'provider_default', 'level', 'budget'],
-  'providerExtension.serviceTier': ['auto', 'default', 'flex', 'priority'],
-  'providerExtension.reasoningContext': ['auto', 'current_turn', 'all_turns'],
-  'providerExtension.reasoningMode': ['standard', 'pro'],
-  'providerExtension.thinkingDisplay': ['provider_default', 'summarized', 'omitted'],
-  'providerExtension.verbosity': ['low', 'medium', 'high', 'xhigh', 'max'],
-  'reasoning.effort': ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'],
-  'reasoning.mode': ['disabled', 'enabled'],
-  'reasoning.summary': ['auto', 'concise', 'detailed'],
-  'tools.mode': ['disabled', 'enabled'],
-  'tools.sideEffectConfirmation': ['required_each_retry'],
-  'tools.toolChoice': ['omitted', 'auto', 'none', 'required', 'named'],
-  'web.mode': ['disabled', 'provider_search'],
-  'web.engine': ['auto', 'native', 'exa', 'firecrawl', 'parallel', 'perplexity'],
-  'web.searchContextSize': ['low', 'medium', 'high'],
+/**
+ * These are semantic representation kinds, not provider/model capability
+ * values.  In particular, enum members and range bounds are intentionally
+ * absent: those belong to the resolved capability evidence for this exact
+ * binding and must not be reintroduced by the persisted-record decoder.
+ */
+const DOMAIN_KIND_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPathV2, RuntimeCapabilityDomainV2['kind'] | readonly RuntimeCapabilityDomainV2['kind'][]>>> = {
+  'attachments[].conversion': 'enum',
+  'attachments[].kind': 'enum',
+  'attachments[].mediaKind': 'enum',
+  'attachments[].provenance': 'enum',
+  'attachments[].sendAs': 'enum',
+  'attachments[].include': 'boolean',
+  'attachments[].assetId': 'identity',
+  'attachments[].assetRevisionId': 'identity',
+  'attachments[].assetSha256': 'identity',
+  'attachments[].referenceId': 'identity',
+  'attachments[].referenceRevision': 'identity',
+  'attachments[].urlDigest': 'identity',
+  'attachments[].capturedAtMs': 'range',
+  'image.aspectRatio': 'enum',
+  'image.background': 'enum',
+  'image.format': 'enum',
+  'image.mode': 'enum',
+  'image.outputCompression': 'range',
+  'image.outputMode': 'enum',
+  'image.quality': 'enum',
+  'image.resolution': 'enum',
+  'image.size': 'dimensions',
+  'image.stream': 'boolean',
+  'generation.candidateCount': 'range',
+  'generation.frequencyPenalty': 'range',
+  'generation.maxOutputTokens': 'range',
+  'generation.minP': 'range',
+  'generation.presencePenalty': 'range',
+  'generation.repetitionPenalty': 'range',
+  'generation.seed': 'range',
+  'generation.temperature': 'range',
+  'generation.topA': 'range',
+  'generation.topK': 'range',
+  'generation.topP': 'range',
+  'generation.stop': 'string_list',
+  'providerExtension.includeThoughts': 'enum',
+  'providerExtension.kind': 'enum',
+  'providerExtension.manualThinkingBudgetTokens': 'range',
+  'providerExtension.maxToolCalls': 'range',
+  'providerExtension.parallelToolCalls': 'boolean',
+  'providerExtension.reasoningContext': 'enum',
+  'providerExtension.reasoningMode': 'enum',
+  'providerExtension.responseFormat': 'response_format',
+  'providerExtension.serviceTier': 'enum',
+  'providerExtension.thinkingBudget': 'range',
+  'providerExtension.thinkingDisplay': 'enum',
+  'providerExtension.thinkingLevel': 'enum',
+  'providerExtension.thinkingMode': 'enum',
+  'providerExtension.verbosity': 'enum',
+  'reasoning.effort': ['enum', 'string'],
+  'reasoning.exclude': 'boolean',
+  'reasoning.mode': 'enum',
+  'reasoning.summary': ['enum', 'string'],
+  'tools.allowedToolIds': 'identity_list',
+  'tools.mode': 'enum',
+  'tools.sideEffectConfirmation': 'enum',
+  'tools.toolChoice': 'enum',
+  'web.allowedDomains': 'string_list',
+  'web.engine': 'enum',
+  'web.excludedDomains': 'string_list',
+  'web.maxCharacters': 'range',
+  'web.maxResults': 'range',
+  'web.maxTotalResults': 'range',
+  'web.mode': 'enum',
+  'web.searchContextSize': 'enum',
+  'web.types': 'enum_list',
+  'web.userLocation': 'approximate_location',
 }
-const INTEGER_RANGE_PATHS = new Set<RuntimeCapabilitySemanticPathV2>([
-  'generation.candidateCount', 'generation.maxOutputTokens', 'generation.seed', 'generation.topK',
-  'image.outputCompression', 'providerExtension.maxToolCalls', 'providerExtension.manualThinkingBudgetTokens',
-  'providerExtension.thinkingBudget',
-  'web.maxResults', 'web.maxTotalResults', 'web.maxCharacters',
-])
-const NUMBER_RANGE_PATHS = new Set<RuntimeCapabilitySemanticPathV2>([
-  ...INTEGER_RANGE_PATHS,
-  'generation.frequencyPenalty', 'generation.presencePenalty', 'generation.repetitionPenalty',
-  'generation.temperature', 'generation.topP',
-  'generation.minP', 'generation.topA',
-])
 const IDENTITY_PATHS = new Set<RuntimeCapabilitySemanticPathV2>([
   'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
+  'attachments[].referenceId', 'attachments[].referenceRevision', 'attachments[].urlDigest',
 ])
 
 /**
@@ -592,12 +642,10 @@ const RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2 = {
   fieldStates: FIELD_STATES,
   evidenceKinds: EVIDENCE_KINDS,
   evidenceEffects: EVIDENCE_EFFECTS,
-  domainKinds: ['boolean', 'identity', 'enum', 'response_format', 'enum_list', 'range',
+  domainKinds: ['boolean', 'identity', 'string', 'enum', 'response_format', 'enum_list', 'range',
     'string_list', 'identity_list', 'approximate_location', 'dimensions', 'dimensions_enum'],
   constraintKinds: ['requires_value', 'forbids_value'],
-  enumValuesByPath: Object.entries(ENUM_VALUES_BY_PATH).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0),
-  integerRangePaths: [...INTEGER_RANGE_PATHS].sort(),
-  numberRangePaths: [...NUMBER_RANGE_PATHS].sort(),
+  domainKindsByPath: Object.entries(DOMAIN_KIND_BY_PATH).sort(([left], [right]) => left < right ? -1 : left > right ? 1 : 0),
   identityPaths: [...IDENTITY_PATHS].sort(),
 } as const
 export const RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2 = sha256PreparedBytesV2(
@@ -605,50 +653,12 @@ export const RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2 = sha256PreparedBytesV2(
 )
 
 function assertDomainMatchesPath(path: RuntimeCapabilitySemanticPathV2, domain: RuntimeCapabilityDomainV2): void {
-  const enumValues = ENUM_VALUES_BY_PATH[path]
-  if (enumValues) {
-    if (domain.kind !== 'enum' || domain.values.some((value) => !enumValues.includes(value))) {
-      throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
-    }
-    return
-  }
-  if (NUMBER_RANGE_PATHS.has(path)) {
-    if (domain.kind !== 'range' || domain.integer !== INTEGER_RANGE_PATHS.has(path)) {
-      throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
-    }
-    const invalidRange =
-      path === 'generation.maxOutputTokens' && domain.min < 0 ||
-      path === 'generation.candidateCount' && domain.min < 1 ||
-      (path === 'generation.topK' || path === 'generation.seed') && domain.min < 0 ||
-      path === 'providerExtension.manualThinkingBudgetTokens' && domain.min < 1 ||
-      path === 'providerExtension.thinkingBudget' && domain.min < -1 ||
-      path === 'generation.temperature' && domain.min < 0 ||
-      path === 'generation.topP' && (domain.min < 0 || domain.max > 1) ||
-      (path === 'generation.minP' || path === 'generation.topA') && (domain.min < 0 || domain.max > 1) ||
-      path === 'generation.repetitionPenalty' && domain.min <= 0 ||
-      path === 'image.outputCompression' && (domain.min < 0 || domain.max > 100)
-      || path === 'web.maxResults' && (domain.min < 1 || domain.max > 25)
-      || path === 'web.maxTotalResults' && domain.min < 1
-      || path === 'web.maxCharacters' && (domain.min < 1 || domain.max > 100_000)
-    if (invalidRange) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
-    return
-  }
-  const expectedKind: RuntimeCapabilityDomainV2['kind'] =
-    IDENTITY_PATHS.has(path) ? 'identity'
-      : path === 'attachments[].include' || path === 'image.stream' || path === 'providerExtension.parallelToolCalls' || path === 'reasoning.exclude' ? 'boolean'
-        : path === 'generation.stop' ? 'string_list'
-          : path === 'web.allowedDomains' || path === 'web.excludedDomains' ? 'string_list'
-            : path === 'web.userLocation' ? 'approximate_location'
-          : path === 'tools.allowedToolIds' ? 'identity_list'
-            : path === 'web.types' ? 'enum_list'
-              : path === 'image.size' ? 'dimensions'
-              : path === 'image.aspectRatio' || path === 'providerExtension.reasoningMode' || path === 'providerExtension.reasoningContext' ||
-                  path === 'attachments[].kind' || path === 'attachments[].mediaKind' || path === 'attachments[].sendAs' ? 'enum'
-                    : path === 'providerExtension.responseFormat' ? 'response_format'
-                  : (() => { throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE') })()
+  const expectedKind = DOMAIN_KIND_BY_PATH[path]
+  if (!expectedKind) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+  const allowedKinds = Array.isArray(expectedKind) ? expectedKind : [expectedKind]
   if ((path === 'image.size'
     ? domain.kind !== 'dimensions' && domain.kind !== 'dimensions_enum'
-    : domain.kind !== expectedKind) ||
+    : !allowedKinds.includes(domain.kind)) ||
       path === 'web.types' && domain.kind === 'enum_list' &&
         domain.values.some((value) => value !== 'web' && value !== 'image') ||
       path === 'web.userLocation' && domain.kind === 'approximate_location' && domain.maxFieldLength > 4_096 ||
@@ -866,6 +876,7 @@ function domainContainsScalar(domain: RuntimeCapabilityDomainV2 | undefined, val
   if (domain.kind === 'identity') return typeof value === 'string' && (() => {
     try { validateIdentifier(value); return true } catch { return false }
   })()
+  if (domain.kind === 'string') return typeof value === 'string' && value.length <= domain.maxLength
   if (domain.kind === 'enum') return domain.values.some((item) => scalarKey(item) === scalarKey(value))
   if (domain.kind === 'range') {
     return typeof value === 'number' && value >= domain.min && value <= domain.max &&
@@ -916,10 +927,16 @@ function assertEvidenceRefs(
 
 function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
   draft: DraftSnapshot
-  supplied?: Readonly<{ evidenceDigest: string; semanticFieldsDigest: string; revision: string; snapshotHash: string }>
+  supplied?: Readonly<{
+    evidenceDigest: string
+    semanticFieldsDigest: string
+    encoderRevision: string
+    revision: string
+    snapshotHash: string
+  }>
 }> {
   const allowed = ['schemaVersion', 'resolvedAt', 'binding', 'catalogAuthority', 'evidence', 'fields', 'tools', 'continuation']
-  if (fullRecord) allowed.push('evidenceDigest', 'semanticFieldsDigest', 'revision', 'snapshotHash')
+  if (fullRecord) allowed.push('evidenceDigest', 'semanticFieldsDigest', 'encoderRevision', 'revision', 'snapshotHash')
   const input = closedObject(value, allowed)
   if (input.schemaVersion !== 2) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   const resolvedAt = validateTimestamp(requiredString(input, 'resolvedAt'))
@@ -1000,6 +1017,7 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
     supplied: Object.freeze({
       evidenceDigest: requiredString(input, 'evidenceDigest'),
       semanticFieldsDigest: requiredString(input, 'semanticFieldsDigest'),
+      encoderRevision: requiredString(input, 'encoderRevision'),
       revision: requiredString(input, 'revision'),
       snapshotHash: requiredString(input, 'snapshotHash'),
     }),
@@ -1008,25 +1026,24 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
 
 function buildRecord(draft: DraftSnapshot): PersistedRuntimeCapabilitySnapshotV2 {
   const binding = decodeProviderBindingRecordV2(draft.binding)
-  const implementationManifest = resolveGenerationImplementationManifestV2({
+  const encodingCoverage = resolveEncodingCoverageRegistryV2({
     providerId: binding.providerId.value,
     protocolContractId: binding.protocolContractId.value,
     operation: binding.operation,
   })
-  // Runtime Snapshot remains a persisted command envelope. Its base revision
-  // is nevertheless strictly bound to the independent implementation
-  // manifest, so a codec change invalidates old snapshots even when provider
-  // evidence happens to be unchanged.
-  const implementationCeiling = Object.freeze({
-    providerId: implementationManifest.providerId,
-    protocolContractId: implementationManifest.protocolContractId,
-    contractRevision: implementationManifest.contractRevision,
-    registryRevision: implementationManifest.registryRevision,
-    manifestDigest: implementationManifest.manifestDigest,
-    manifestRevision: implementationManifest.manifestRevision,
-    semanticPaths: implementationManifest.semanticPaths,
-    fieldCeilings: implementationManifest.fieldCeilings,
-  })
+  try {
+    assertEncodingCoverageForResolvedFieldsV2({
+      providerId: binding.providerId.value,
+      protocolContractId: binding.protocolContractId.value,
+      operation: binding.operation,
+      fields: draft.fields,
+    })
+  } catch (error) {
+    if (error instanceof EncodingCoverageRegistryV2Error) {
+      throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
+    }
+    throw error
+  }
   const evidence = draft.evidence.map((item) => Object.freeze({
     ...item,
     entryDigest: hash(item),
@@ -1051,13 +1068,13 @@ function buildRecord(draft: DraftSnapshot): PersistedRuntimeCapabilitySnapshotV2
     binding: projectProviderBindingForCapabilityRevisionV2(binding),
     evidence: capabilityEvidenceRevision,
     semanticFieldsDigest,
-    implementationCeiling,
   })}`
   const payload = Object.freeze({
     ...draft,
     evidence: Object.freeze(evidence),
     evidenceDigest,
     semanticFieldsDigest,
+    encoderRevision: encodingCoverage.encoderRevision,
     revision,
   })
   const record = { ...payload, snapshotHash: hash(payload) }
@@ -1074,7 +1091,8 @@ export function decodeRuntimeCapabilitySnapshotV2(value: unknown): DecodedRuntim
   const expected = buildRecord(decodedInput.draft)
   const supplied = decodedInput.supplied!
   if (supplied.evidenceDigest !== expected.evidenceDigest ||
-      supplied.semanticFieldsDigest !== expected.semanticFieldsDigest || supplied.revision !== expected.revision) {
+      supplied.semanticFieldsDigest !== expected.semanticFieldsDigest ||
+      supplied.encoderRevision !== expected.encoderRevision || supplied.revision !== expected.revision) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_DIGEST_MISMATCH')
   }
   if (supplied.snapshotHash !== expected.snapshotHash) {
@@ -1109,6 +1127,7 @@ export function decodeRuntimeCapabilitySnapshotV2(value: unknown): DecodedRuntim
     continuation: expected.continuation,
     evidenceDigest: GenerationV2Digest.create('evidence_digest', expected.evidenceDigest),
     semanticFieldsDigest: GenerationV2Digest.create('capability_fields_digest', expected.semanticFieldsDigest),
+    encoderRevision: expected.encoderRevision,
     revision: GenerationV2Identity.create('capability_revision', expected.revision),
     snapshotHash: GenerationV2Digest.create('snapshot_hash', expected.snapshotHash),
     canonicalJson: serializeBounded(expected),

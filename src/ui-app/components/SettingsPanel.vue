@@ -796,7 +796,6 @@ const globalWebSearchInheritanceHint = computed(() => {
   return t('settings.search.hintGlobal')
 })
 const DEFAULT_REASONING_PREFS: ReasoningPrefs = { mode: 'auto', effort: 'auto', exclude: false }
-const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
 const catalogAutoSyncPolicyOptions: ReadonlyArray<Readonly<{ value: CatalogAutoSyncPolicy; labelKey: string }>> = [
   { value: 'always', labelKey: 'settings.catalog.syncPolicyAlways' },
   { value: 'stale_only', labelKey: 'settings.catalog.syncPolicyStaleOnly' },
@@ -822,7 +821,7 @@ const catalogRetentionOptions: ReadonlyArray<Readonly<{ value: CatalogRetentionM
 ]
 
 function isReasoningEffort(value: unknown): value is ReasoningEffort {
-  return typeof value === 'string' && (REASONING_EFFORTS as string[]).includes(value)
+  return typeof value === 'string' && value.length > 0 && value.length <= 128 && !/[\u0000-\u001F\u007F]/u.test(value)
 }
 
 function normalizeReasoningPrefs(raw: unknown): ReasoningPrefs {

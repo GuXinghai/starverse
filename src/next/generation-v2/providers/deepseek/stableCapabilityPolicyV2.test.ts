@@ -69,9 +69,8 @@ describe('DeepSeek stable family capability policy V2', () => {
       domain: { kind: 'enum', values: ['disabled', 'enabled'] },
     })
     expect(rules.get('reasoning.effort')).toMatchObject({
-      kind: 'supported_with_effort_mapping',
+      kind: 'supported_when_reasoning_enabled',
       domain: { kind: 'enum', values: ['high', 'max'] },
-      mapping: { high: 'high', max: 'max' },
     })
     expect(rules.get('reasoning.summary')).toMatchObject({ kind: 'unsupported' })
     expect(rules.get('web.mode')).toMatchObject({

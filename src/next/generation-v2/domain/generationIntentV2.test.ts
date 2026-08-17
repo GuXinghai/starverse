@@ -60,10 +60,12 @@ describe('GenerationIntentLayerV2 codec', () => {
       },
     })
     for (const providerExtension of [
-      { kind: 'openrouter_chat', verbosity: 'unsupported' },
       { kind: 'openrouter_chat', parallelToolCalls: 'true' },
       { kind: 'openrouter_chat', responseFormat: { type: 'json_schema', jsonSchema: { name: 'answer', schema: [] } } },
     ]) expect(() => decodeGenerationIntentLayerV2({ schemaVersion: 2, providerExtension })).toThrow()
+    expect(decodeGenerationIntentLayerV2({ schemaVersion: 2, providerExtension: {
+      kind: 'openrouter_chat', verbosity: 'provider-native-value',
+    } }).providerExtension).toEqual({ kind: 'openrouter_chat', verbosity: 'provider-native-value' })
   })
 
   it('preserves Anthropic thinking semantics as provider-specific snapshot data', () => {

@@ -45,7 +45,7 @@ const HASH_A = 'a'.repeat(64)
 const HASH_B = 'b'.repeat(64)
 const ledger = createSemanticConsumptionLedgerV2([{
   kind: 'consumed', path: 'generation.temperature', disposition: 'encoded',
-  nativeField: 'temperature', evidence: 'anthropic test compiler',
+  nativeField: 'temperature', encodingKind: 'identity', evidence: 'anthropic test compiler',
 }])
 
 function binding() {
@@ -433,7 +433,7 @@ describe('Anthropic native history V2 repository', () => {
       })
       expect(JSON.parse(prepared.body.copyUtf8Text())).toEqual({
         model: 'claude-sonnet-4-5', messages: [{ role: 'user', content: 'question' }],
-        max_tokens: 2048, stream: true, thinking: { type: 'disabled' },
+        max_tokens: 2048, stream: true,
       })
     } finally { db.close() }
   })
@@ -554,6 +554,7 @@ describe('Anthropic native history V2 repository', () => {
           body: initial.body,
           ledger: initial.ledger,
           capabilityRevision: initial.capabilityRevision,
+          encoderRevision: initial.encoderRevision,
           snapshotHash: initial.snapshotHash,
         })
         expect(requestRepo.createContinuationPrepared(context, execution, continuation, HASH_A).requestSequence).toBe(2)

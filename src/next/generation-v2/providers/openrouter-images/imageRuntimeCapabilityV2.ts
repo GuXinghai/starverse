@@ -65,18 +65,10 @@ function domainFor(path: RuntimeCapabilitySemanticPathV2, parameter: CanonicalOp
       : null
   }
   if (parameter.rule.kind === 'enum') {
-    const allowed: Partial<Record<RuntimeCapabilitySemanticPathV2, readonly (string | number)[]>> = {
-      'image.background': ['auto', 'transparent', 'opaque'],
-      'image.format': ['png', 'jpeg', 'webp', 'svg'],
-      'image.quality': ['auto', 'low', 'medium', 'high'],
-      'image.resolution': ['512', '1K', '2K', '4K'],
-    }
-    const permitted = allowed[path]
     const values = path === 'image.aspectRatio'
       ? parameter.rule.values.filter((value) => typeof value === 'string' &&
           (value === 'auto' || /^[1-9]\d{0,4}:[1-9]\d{0,4}$/u.test(value)))
-      : permitted ? parameter.rule.values.filter((value) => permitted.includes(value))
-        : parameter.rule.values
+      : parameter.rule.values
     return values.length > 0 ? Object.freeze({ kind: 'enum' as const, values: Object.freeze(values) }) : null
   }
   if (parameter.rule.kind === 'range') {

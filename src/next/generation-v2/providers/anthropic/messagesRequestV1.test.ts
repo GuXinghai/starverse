@@ -61,7 +61,7 @@ describe('compileAnthropicMessagesRequestV1', () => {
       intent: intent({ generation: { maxOutputTokens: 100, temperature: 0.2 } }),
       messages: [{ role: 'user', content: 'question' }],
     })
-    expect(result.issues).toContainEqual(expect.objectContaining({ code: 'ANTHROPIC_EXPLICIT_SAMPLING_REJECTED_BY_MODEL' }))
+    expect(result.issues).toContainEqual(expect.objectContaining({ code: 'ANTHROPIC_MANUAL_THINKING_BUDGET_NOT_BELOW_MAX_TOKENS' }))
     expect(result.nativeRequest).toBeUndefined()
     expect(result.preparedBody).toBeUndefined()
   })

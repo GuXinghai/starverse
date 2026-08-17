@@ -69,20 +69,23 @@ describe('DeepSeek stable Chat request V1', () => {
 
   it.each([
     'auto', 'none', 'required', { type: 'function', function: { name: 'weather' } },
-  ])('rejects explicit thinking tool_choice %j before compilation', (toolChoice) => {
-    expect(() => compileDeepSeekStableChatRequestV1({
+  ])('encodes explicit thinking tool_choice %j unchanged', (toolChoice) => {
+    const result = compileDeepSeekStableChatRequestV1({
       model: 'deepseek-v4-pro', priorArtifact: null, clientEntries: [user('x')],
       thinking: { type: 'enabled' }, tools: [functionTool], toolChoice,
-    })).toThrow('DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED')
+    })
+    expect(result.nativeRequest.tool_choice).toEqual(toolChoice)
   })
 
   it.each([
-    ['temperature', 0.5], ['topP', 0.9], ['frequencyPenalty', 0], ['presencePenalty', 0],
-  ])('rejects explicit thinking sampling field %s', (field, value) => {
-    expect(() => compileDeepSeekStableChatRequestV1({
+    ['temperature', 0.5], ['topP', 0.9],
+  ])('encodes explicit thinking sampling field %s unchanged', (field, value) => {
+    const result = compileDeepSeekStableChatRequestV1({
       model: 'deepseek-v4-pro', priorArtifact: null, clientEntries: [user('x')],
       thinking: { type: 'enabled' }, generation: { [field]: value },
-    })).toThrow('DEEPSEEK_THINKING_EXPLICIT_SAMPLING_UNSUPPORTED')
+    })
+    const wireKey = field === 'topP' ? 'top_p' : 'temperature'
+    expect(result.nativeRequest[wireKey]).toBe(value)
   })
 
   it.each([
@@ -97,11 +100,12 @@ describe('DeepSeek stable Chat request V1', () => {
     expect(result.nativeRequest).toMatchObject({ thinking: { type: 'disabled' }, temperature: 0.5, top_p: 0.8 })
   })
 
-  it.each(['frequencyPenalty', 'presencePenalty'])('rejects deprecated stable penalty %s when thinking is disabled', (field) => {
-    expect(() => compileDeepSeekStableChatRequestV1({
+  it.each(['frequencyPenalty', 'presencePenalty'])('encodes provider penalty %s without capability policy', (field) => {
+    const result = compileDeepSeekStableChatRequestV1({
       model: 'deepseek-v4-flash', priorArtifact: null, clientEntries: [user('x')],
       thinking: { type: 'disabled' }, generation: { [field]: 0 },
-    })).toThrow('DEEPSEEK_EXPLICIT_DEPRECATED_PENALTY_UNSUPPORTED')
+    })
+    expect(result.nativeRequest[field === 'frequencyPenalty' ? 'frequency_penalty' : 'presence_penalty']).toBe(0)
   })
 
   it('replays complete provider-native assistant reasoning and tool messages byte-for-byte', () => {

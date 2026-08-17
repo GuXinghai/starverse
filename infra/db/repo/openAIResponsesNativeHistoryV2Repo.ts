@@ -35,7 +35,7 @@ import {
   type DecodedAssistantAnswerGenerationSnapshotV2,
 } from '../../../src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2'
 import { requiresProviderFileBindingV2, type AttachmentIntentV2 } from '../../../src/next/generation-v2/domain/generationIntentV2'
-import { isOpenAIResponsesEncodedAttachmentIntentV1 } from '../../../src/next/generation-v2/providers/openai-responses/responsesIntentProjectionV1'
+import { isOpenAIResponsesEncodedAttachmentV1 } from '../../../src/next/generation-v2/providers/openai-responses/responsesRequestV1'
 import { OpenAIResponsesFileDescriptorV2Repo } from './openAIResponsesFileDescriptorV2Repo'
 import { GenerationContextProjectionV2Repo, type GenerationContextProjectionSnapshotV2 } from './generationContextProjectionV2Repo'
 
@@ -171,7 +171,7 @@ export class OpenAIResponsesNativeHistoryV2Repo {
   ): readonly Extract<OpenAIResponsesClientItemV1, { role: 'user' }>['content'][number][] {
     if (snapshot.providerBinding.providerId.value !== 'openai_responses') invalid()
     if (snapshot.semanticIntent.attachments.some((attachment) => attachment.include &&
-        !isOpenAIResponsesEncodedAttachmentIntentV1(attachment))) invalid()
+        !isOpenAIResponsesEncodedAttachmentV1(attachment))) invalid()
     const bindings = new Map(snapshot.attachmentProviderFileBindings.map((binding) => [
       binding.assetRevisionId.value, binding.providerFileDescriptor,
     ]))

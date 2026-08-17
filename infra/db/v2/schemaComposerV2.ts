@@ -2,7 +2,7 @@ import { createHash } from 'node:crypto'
 import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import BetterSqlite3 from 'better-sqlite3'
-import { GENERATION_IMPLEMENTATION_MANIFEST_SCHEMA_DIGEST_V2 } from '../../../src/next/generation-v2/capability/implementationManifestV2'
+import { ENCODING_COVERAGE_REGISTRY_SCHEMA_DIGEST_V2 } from '../../../src/next/generation-v2/capability/encodingCoverageRegistryV2'
 import { RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2 } from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
 
 const MAX_FRAGMENT_BYTES = 4 * 1024 * 1024
@@ -229,14 +229,14 @@ function digestFragments(fragments: readonly LoadedFragment[]): string {
     hasher.update('\0', 'utf8')
   }
   // The epoch closed schema includes the capability codec grammar and its
-  // independent implementation ceiling.  SQL-only digests would allow a
-  // codec/schema change to reuse a database with an apparently current
-  // manifest.
+  // independent encoder coverage registry. SQL-only digests would allow a
+  // capability/encoder schema change to reuse a database with an apparently
+  // current manifest.
   hasher.update('runtime-capability-codec-schema\0', 'utf8')
   hasher.update(RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2, 'utf8')
   hasher.update('\0', 'utf8')
-  hasher.update('implementation-manifest-schema\0', 'utf8')
-  hasher.update(GENERATION_IMPLEMENTATION_MANIFEST_SCHEMA_DIGEST_V2, 'utf8')
+  hasher.update('encoding-coverage-registry-schema\0', 'utf8')
+  hasher.update(ENCODING_COVERAGE_REGISTRY_SCHEMA_DIGEST_V2, 'utf8')
   hasher.update('\0', 'utf8')
   return hasher.digest('hex')
 }

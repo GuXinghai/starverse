@@ -433,7 +433,7 @@ function buildField(
   }
   const constraints = rule.kind === 'supported_when_reasoning_disabled'
     ? Object.freeze([{ kind: 'requires_value' as const, path: 'reasoning.mode' as const, values: Object.freeze(['disabled']) }])
-    : rule.kind === 'supported_with_effort_mapping'
+    : rule.kind === 'supported_when_reasoning_enabled'
       ? Object.freeze([{ kind: 'requires_value' as const, path: 'reasoning.mode' as const, values: Object.freeze(['enabled']) }])
       : Object.freeze([])
   return Object.freeze({

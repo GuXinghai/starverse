@@ -47,7 +47,6 @@ export type ResolvedCapabilityV2Wire = Readonly<{
   evidenceDigest: string
   semanticFieldsDigest: string
   capabilityRevision: string
-  implementationCeiling: ResolvedCapabilityV2['implementationCeiling']
 }>
 
 export type GenerationCapabilityResolutionResultV2 = Readonly<{
@@ -121,7 +120,6 @@ function wireCapability(capability: ResolvedCapabilityV2): ResolvedCapabilityV2W
     evidenceDigest: capability.evidenceDigest,
     semanticFieldsDigest: capability.semanticFieldsDigest,
     capabilityRevision: capability.capabilityRevision,
-    implementationCeiling: capability.implementationCeiling,
   })
 }
 

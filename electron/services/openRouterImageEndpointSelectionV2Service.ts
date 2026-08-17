@@ -5,9 +5,9 @@ import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2Runtim
 import { GenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
 import { projectDecodedProviderBindingRecordV2 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import {
-  projectOpenRouterImageCandidatesV2,
-  projectOpenRouterImageIntentCapabilityV2,
-} from '../../src/next/generation-v2/providers/openrouter-images/imageIntentCapabilityProjectionV2'
+  evaluateOpenRouterImageCandidatesV2,
+  resolveOpenRouterImageSelectionInputV2,
+} from '../../src/next/generation-v2/providers/openrouter-images/imageDescriptorSelectionV2'
 import { decideOpenRouterImageSelectionV2 } from '../../src/next/generation-v2/providers/openrouter-images/selectionDecisionV2'
 import { issueOpenRouterImageProviderBindingV2 } from '../../src/next/generation-v2/providers/openrouter-images/imageProviderBindingV2'
 import { createOpenRouterImageDescriptorAuthorityV2Service } from './openRouterImageDescriptorAuthorityV2Service'
@@ -89,7 +89,7 @@ export function createOpenRouterImageEndpointSelectionV2Service(input: Readonly<
   async function resolveFacts(payload: unknown) {
     const raw = closedObject(payload, ['modelId', 'semanticIntent'])
     const modelId = GenerationV2Identity.create('model_id', text(raw.modelId))
-    const projection = projectOpenRouterImageIntentCapabilityV2(raw.semanticIntent)
+    const projection = resolveOpenRouterImageSelectionInputV2(raw.semanticIntent)
     const credential = await input.credentialService.getStatus('openrouter')
     if (!credential.configured || !credential.credentialScopeId) {
       throw new OpenRouterImageEndpointSelectionV2ServiceError(
@@ -113,7 +113,7 @@ export function createOpenRouterImageEndpointSelectionV2Service(input: Readonly<
   ): OpenRouterImageEndpointSelectionStateV2 {
     const selector = facts.binding?.record.endpointBinding.kind === 'pinned'
       ? facts.binding.record.endpointBinding.selector : null
-    const candidates = projectOpenRouterImageCandidatesV2({
+    const candidates = evaluateOpenRouterImageCandidatesV2({
       descriptorSet: facts.descriptor.descriptorSet,
       projection: facts.projection,
       boundProviderTag: selector?.providerTag.value ?? null,

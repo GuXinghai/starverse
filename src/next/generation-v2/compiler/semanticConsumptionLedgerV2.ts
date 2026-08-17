@@ -6,6 +6,7 @@ export type SemanticConsumptionLedgerEntryV2 = Readonly<{
   path: string
   disposition: 'encoded' | 'accepted_no_wire'
   nativeField: string | null
+  encodingKind: 'identity' | 'structural' | 'omitted'
   evidence: string
 }>
 
@@ -35,18 +36,22 @@ function entry(value: unknown): SemanticConsumptionLedgerEntryV2 {
     throw new SemanticConsumptionLedgerV2Error('GENERATION_V2_LEDGER_INVALID_SHAPE')
   }
   const descriptors = Object.getOwnPropertyDescriptors(value)
-  const expected = ['kind', 'path', 'disposition', 'nativeField', 'evidence']
+  const expected = ['kind', 'path', 'disposition', 'nativeField', 'encodingKind', 'evidence']
   if (Reflect.ownKeys(value).some((key) => typeof key !== 'string') ||
       Object.keys(descriptors).sort().join('\0') !== [...expected].sort().join('\0') ||
       Object.values(descriptors).some((descriptor) => !descriptor.enumerable ||
         !('value' in descriptor) || descriptor.value === undefined)) {
     throw new SemanticConsumptionLedgerV2Error('GENERATION_V2_LEDGER_INVALID_SHAPE')
   }
-  const input = Object.fromEntries(expected.map((key) => [key, descriptors[key].value]))
+  const input = Object.fromEntries(expected.map((key) => [key, descriptors[key]!.value]))
+  const encodingKind = input.encodingKind
   if (input.kind !== 'consumed' ||
       (input.disposition !== 'encoded' && input.disposition !== 'accepted_no_wire') ||
       typeof input.path !== 'string' || input.path.length === 0 || input.path.trim() !== input.path ||
       typeof input.evidence !== 'string' || input.evidence.length === 0 || input.evidence.trim() !== input.evidence ||
+      !['identity', 'structural', 'omitted'].includes(encodingKind as string) ||
+      encodingKind === 'omitted' && input.nativeField !== null ||
+      encodingKind !== 'omitted' && input.nativeField === null ||
       (input.nativeField !== null && (typeof input.nativeField !== 'string' || input.nativeField.length === 0)) ||
       (input.disposition === 'encoded') !== (input.nativeField !== null)) {
     throw new SemanticConsumptionLedgerV2Error('GENERATION_V2_LEDGER_INVALID_VALUE')
@@ -56,6 +61,7 @@ function entry(value: unknown): SemanticConsumptionLedgerEntryV2 {
     path: input.path,
     disposition: input.disposition,
     nativeField: input.nativeField,
+    encodingKind: encodingKind as 'identity' | 'structural' | 'omitted',
     evidence: input.evidence,
   }) as SemanticConsumptionLedgerEntryV2
 }

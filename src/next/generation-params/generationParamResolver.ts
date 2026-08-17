@@ -1,10 +1,5 @@
 import { GENERATION_PARAM_KEYS } from './generationParamCatalog'
-import { getEffectiveGenerationParamCapabilities } from './generationParamProfiles'
-import {
-  makeGenerationParamError,
-  makeGenerationParamWarning,
-  normalizeGenerationParamValue,
-} from './generationParamValidation'
+import { makeGenerationParamWarning } from './generationParamValidation'
 import type {
   GenerationParamDecision,
   GenerationParamDecisionState,
@@ -90,9 +85,6 @@ function decision(
 }
 
 export function resolveGenerationParamsFromLayers(input: ResolveGenerationParamsInput): ResolvedGenerationParams {
-  const capabilities = getEffectiveGenerationParamCapabilities(input.profile, input.modelId, {
-    geminiThinkingCapability: input.geminiThinkingCapability,
-  })
   const requestParams: ResolvedGenerationParams['requestParams'] = {}
   const decisions: ResolvedGenerationParams['decisions'] = {}
   const warnings: ResolvedGenerationParams['warnings'] = []
@@ -114,63 +106,12 @@ export function resolveGenerationParamsFromLayers(input: ResolveGenerationParams
       continue
     }
 
-    const capability = capabilities[key]
-    if (!capability) {
-      decisions[key] = decision(key, 'unsupported', { source, value: setting.value, reason: 'Provider profile has no capability for this parameter.' })
-      warnings.push(makeGenerationParamWarning('unsupported_param', `${key} is not supported by ${input.profile.profileId}.`, key))
-      continue
-    }
-
-    if (!capability.supported) {
-      decisions[key] = decision(key, 'unsupported', {
-        source,
-        value: setting.value,
-        reason: capability.ui?.warning ?? `${key} is unsupported.`,
-      })
-      warnings.push(makeGenerationParamWarning(
-        'unsupported_param',
-        capability.ui?.warning ?? `${key} cannot be sent for ${input.profile.profileId}.`,
-        key,
-      ))
-      continue
-    }
-
-    const normalized = normalizeGenerationParamValue(key, setting.value, capability)
-    if (normalized === null) {
-      decisions[key] = decision(key, 'rejected', { source, value: setting.value, reason: 'Invalid value for capability.' })
-      errors.push(makeGenerationParamError('invalid_value', `${key} has an invalid value for ${input.profile.profileId}.`, key))
-      continue
-    }
-
-    if (input.profile.providerId === 'openai_responses' && key === 'reasoningEffort' && normalized === 'auto') {
-      decisions[key] = decision(key, 'providerAuto', {
-        source,
-        value: normalized,
-        reason: 'OpenAI Responses provider auto: reasoning.effort is omitted.',
-      })
-      continue
-    }
-
-    const advisoryState = capability.status === 'rejected' || capability.status === 'noEffect'
-      ? capability.status
-      : null
-    const isDeprecated = capability.status === 'deprecated'
-    requestParams[key] = normalized
-    decisions[key] = decision(key, advisoryState ?? (isDeprecated ? 'deprecated' : 'sent'), {
+    const value = setting.value
+    requestParams[key] = value
+    decisions[key] = decision(key, 'sent', {
       source,
-      value: normalized,
-      ...(advisoryState ? { reason: capability.ui?.warning ?? `${key} is ${advisoryState}.` } : {}),
-      ...(isDeprecated ? { reason: capability.ui?.warning ?? `${key} is deprecated.` } : {}),
+      value,
     })
-    if (isDeprecated) {
-      warnings.push(makeGenerationParamWarning('deprecated_param', capability.ui?.warning ?? `${key} is deprecated.`, key))
-    }
-    if (advisoryState === 'rejected') {
-      warnings.push(makeGenerationParamWarning('rejected_param', capability.ui?.warning ?? `${key} may be rejected by ${input.profile.profileId}.`, key))
-    }
-    if (advisoryState === 'noEffect') {
-      warnings.push(makeGenerationParamWarning('no_effect_param', capability.ui?.warning ?? `${key} may have no effect for ${input.profile.profileId}.`, key))
-    }
   }
 
   const sentTemperature = requestParams.temperature !== undefined

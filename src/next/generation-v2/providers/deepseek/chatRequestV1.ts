@@ -3,6 +3,7 @@ import {
   StableSerializeV2Error,
   stableSerializeProviderRequestBoundedV2,
 } from '../../compiler/stableSerialize'
+import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../../domain/generationIntentV2'
 import {
   buildDeepSeekNativeRequestHistoryV2,
   buildDeepSeekProjectedNativeRequestHistoryV2,
@@ -33,11 +34,13 @@ export type DeepSeekStableChatRequestV1 = Readonly<{
   stream: true
   stream_options: Readonly<{ include_usage: true }>
   thinking: Readonly<{ type: DeepSeekThinkingModeV1 }>
-  reasoning_effort?: 'high' | 'max'
+  reasoning_effort?: string
   max_tokens?: number
   stop?: string | readonly string[]
   temperature?: number
   top_p?: number
+  frequency_penalty?: number
+  presence_penalty?: number
   response_format?: Readonly<{ type: 'text' | 'json_object' }>
   tools?: readonly DeepSeekFunctionToolV1[]
   tool_choice?: DeepSeekToolChoiceV1
@@ -55,17 +58,13 @@ export class DeepSeekStableChatRequestV1Error extends Error {
     | 'GENERATION_V2_DEEPSEEK_REQUEST_INVALID_SHAPE'
     | 'GENERATION_V2_DEEPSEEK_REQUEST_UNKNOWN_FIELD'
     | 'GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE'
-    | 'GENERATION_V2_DEEPSEEK_REQUEST_LIMIT_EXCEEDED'
-    | 'DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED'
-    | 'DEEPSEEK_THINKING_EXPLICIT_SAMPLING_UNSUPPORTED'
-    | 'DEEPSEEK_EXPLICIT_DEPRECATED_PENALTY_UNSUPPORTED') {
+    | 'GENERATION_V2_DEEPSEEK_REQUEST_LIMIT_EXCEEDED') {
     super(code)
     this.name = 'DeepSeekStableChatRequestV1Error'
   }
 }
 
 type ClosedObject = Readonly<Record<string, unknown>>
-const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/u
 const TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/u
 
 function closedObject(value: unknown, allowed: readonly string[], required: readonly string[]): ClosedObject {
@@ -117,12 +116,13 @@ function finiteNumber(value: unknown, min: number, max: number): number {
   return value
 }
 
-function decodeThinking(value: unknown): Readonly<{ type: DeepSeekThinkingModeV1; reasoningEffort?: 'high' | 'max' }> {
+function decodeThinking(value: unknown): Readonly<{ type: DeepSeekThinkingModeV1; reasoningEffort?: string }> {
   const input = closedObject(value, ['type', 'reasoningEffort'], ['type'])
   if (input.type !== 'enabled' && input.type !== 'disabled') {
     throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')
   }
-  if (input.reasoningEffort !== undefined && input.reasoningEffort !== 'high' && input.reasoningEffort !== 'max') {
+  if (input.reasoningEffort !== undefined &&
+      (typeof input.reasoningEffort !== 'string' || input.reasoningEffort.length === 0 || input.reasoningEffort.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) {
     throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')
   }
   if (input.type === 'disabled' && input.reasoningEffort !== undefined) {
@@ -245,23 +245,13 @@ export function compileDeepSeekStableChatRequestV1(inputValue: unknown): DeepSee
     ['model', 'priorArtifact', 'clientEntries', 'replayEntries', 'thinking', 'generation', 'tools', 'toolChoice'],
     ['model', 'thinking'],
   )
-  if (typeof input.model !== 'string' || !MODEL_ID_PATTERN.test(input.model)) {
+  if (typeof input.model !== 'string' || input.model.length === 0 || input.model.length > 512) {
     throw new DeepSeekStableChatRequestV1Error('GENERATION_V2_DEEPSEEK_REQUEST_INVALID_VALUE')
   }
   const thinking = decodeThinking(input.thinking)
   const generation = decodeGeneration(input.generation)
   const tools = decodeTools(input.tools)
   const toolChoice = decodeToolChoice(input.toolChoice, new Set(tools?.map((tool) => tool.function.name) ?? []))
-  if (thinking.type === 'enabled' && toolChoice !== undefined) {
-    throw new DeepSeekStableChatRequestV1Error('DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED')
-  }
-  if (thinking.type === 'enabled' && ['temperature', 'topP', 'frequencyPenalty', 'presencePenalty']
-    .some((key) => generation[key] !== undefined)) {
-    throw new DeepSeekStableChatRequestV1Error('DEEPSEEK_THINKING_EXPLICIT_SAMPLING_UNSUPPORTED')
-  }
-  if (generation.frequencyPenalty !== undefined || generation.presencePenalty !== undefined) {
-    throw new DeepSeekStableChatRequestV1Error('DEEPSEEK_EXPLICIT_DEPRECATED_PENALTY_UNSUPPORTED')
-  }
   const messages = input.replayEntries === undefined
     ? (() => {
       if (input.priorArtifact === undefined || input.clientEntries === undefined) {
@@ -290,6 +280,8 @@ export function compileDeepSeekStableChatRequestV1(inputValue: unknown): DeepSee
     ...(generation.stop === undefined ? {} : { stop: generation.stop as string | readonly string[] }),
     ...(generation.temperature === undefined ? {} : { temperature: generation.temperature as number }),
     ...(generation.topP === undefined ? {} : { top_p: generation.topP as number }),
+    ...(generation.frequencyPenalty === undefined ? {} : { frequency_penalty: generation.frequencyPenalty as number }),
+    ...(generation.presencePenalty === undefined ? {} : { presence_penalty: generation.presencePenalty as number }),
     ...(generation.responseFormat === undefined
       ? {}
       : { response_format: Object.freeze({ type: generation.responseFormat as 'text' | 'json_object' }) }),

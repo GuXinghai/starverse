@@ -39,10 +39,13 @@ export class OpenRouterChatPreparedRequestCompilerV2Error extends Error {
 }
 
 function consumed(path: string, nativeField: string, evidence: string): SemanticConsumptionLedgerEntryV2 {
-  return Object.freeze({ kind: 'consumed', path, disposition: 'encoded', nativeField, evidence })
+  return Object.freeze({ kind: 'consumed', path, disposition: 'encoded', nativeField, encodingKind: 'identity', evidence })
+}
+function structural(path: string, nativeField: string, evidence: string): SemanticConsumptionLedgerEntryV2 {
+  return Object.freeze({ kind: 'consumed', path, disposition: 'encoded', nativeField, encodingKind: 'structural', evidence })
 }
 function accepted(path: string, evidence: string): SemanticConsumptionLedgerEntryV2 {
-  return Object.freeze({ kind: 'consumed', path, disposition: 'accepted_no_wire', nativeField: null, evidence })
+  return Object.freeze({ kind: 'consumed', path, disposition: 'accepted_no_wire', nativeField: null, encodingKind: 'omitted', evidence })
 }
 
 export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
@@ -83,7 +86,6 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
   const intent = snapshot.semanticIntent
   if (intent.image.mode !== 'disabled' ||
       intent.providerExtension.kind !== 'none' && intent.providerExtension.kind !== 'openrouter_chat' ||
-      intent.reasoning.mode === 'enabled' && intent.reasoning.summary !== undefined ||
       (intent.tools.mode === 'enabled') !== (input.toolRegistry !== null)) {
     throw new OpenRouterChatPreparedRequestCompilerV2Error('GENERATION_V2_OPENROUTER_CHAT_COMPILER_SEMANTIC_REJECTED')
   }
@@ -206,7 +208,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
       })
   ledger.push(reasoning === undefined
     ? accepted('reasoning.mode', route.contract.protocolContractId.value)
-    : consumed('reasoning.mode', 'reasoning.effort', route.contract.protocolContractId.value))
+    : structural('reasoning.mode', 'reasoning', route.contract.protocolContractId.value))
   if (intent.reasoning.mode === 'enabled' && intent.reasoning.effort !== undefined) ledger.push(consumed('reasoning.effort', 'reasoning.effort', route.contract.protocolContractId.value))
   if (intent.reasoning.mode === 'enabled' && intent.reasoning.exclude !== undefined) ledger.push(consumed('reasoning.exclude', 'reasoning.exclude', route.contract.protocolContractId.value))
   if (intent.web.mode === 'disabled') ledger.push(accepted('web.mode', route.contract.protocolContractId.value))
@@ -312,6 +314,7 @@ export function compileOpenRouterChatPreparedRequestV2(input: Readonly<{
     effectiveEndpointId: descriptor.endpointId.value, endpoint: route.url,
     headersPlan: createBearerAuthorizationHeaderPlanV2(), body: compilation.preparedBody,
     ledger: createSemanticConsumptionLedgerV2(ledger), capabilityRevision: capability.revision.value,
+    encoderRevision: capability.encoderRevision,
     attachmentRequirements, attachmentEncodingProofs,
     snapshotHash: snapshot.snapshotHash.value,
   })

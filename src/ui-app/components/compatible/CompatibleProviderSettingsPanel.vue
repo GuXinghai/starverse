@@ -354,10 +354,8 @@ function applyRequestReasoningPreset() {
   if (requestReasoningPreset.value === "custom") return;
   const mappings = requestReasoningPreset.value === "disabled" ? []
     : requestReasoningPreset.value === "openai_reasoning_effort"
-      ? [{ sourceField: "reasoning_effort", targetPath: ["reasoning_effort"], valueKind: "string",
-          valueMapping: { low: "low", medium: "medium", high: "high" }, omission: "omit_when_unset" }]
-      : [{ sourceField: "reasoning_enabled", targetPath: ["chat_template_kwargs", "enable_thinking"], valueKind: "boolean",
-          valueMapping: { true: true, false: false }, omission: "omit_when_unset" }];
+      ? [{ sourceField: "reasoning_effort", targetPath: ["reasoning_effort"], omission: "omit_when_unset" }]
+      : [{ sourceField: "reasoning_enabled", targetPath: ["chat_template_kwargs", "enable_thinking"], omission: "omit_when_unset" }];
   requestMappingsJson.value = JSON.stringify(mappings, null, 2);
 }
 

@@ -1,9 +1,4 @@
 import { ImmutablePreparedBodyV2 } from '../../compiler/stableSerialize'
-import {
-  projectOpenRouterImageCandidatesV2,
-  projectOpenRouterImageIntentCapabilityV2,
-  type OpenRouterImageIntentCapabilityProjectionV2,
-} from './imageIntentCapabilityProjectionV2'
 import type { CanonicalOpenRouterImageDescriptorV2, CanonicalOpenRouterImageDescriptorSetV2 } from './canonicalDescriptorV2'
 
 const MAX_PROMPT_UTF8_BYTES = 1 * 1024 * 1024
@@ -145,13 +140,10 @@ function requirePinnedDescriptor(input: Readonly<{
   return descriptor
 }
 
-function referenceCount(projection: OpenRouterImageIntentCapabilityProjectionV2): number {
-  const field = projection.wireFields.find((item) => item.wireKey === 'input_references')
-  if (!field) return 0
-  return typeof field.value === 'number' && Number.isSafeInteger(field.value) && field.value >= 0
-    ? field.value
-    : (() => { throw new OpenRouterImageRequestV1Error('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_CAPABILITY_MISMATCH') })()
-}
+export type OpenRouterImageWireFieldV1 = Readonly<{
+  wireKey: 'seed' | 'n' | 'size' | 'aspect_ratio' | 'resolution' | 'quality' | 'output_format' | 'background' | 'output_compression' | 'input_references'
+  value: string | number | boolean
+}>
 
 /**
  * Compiles one already-authorized Images selection. Contract/binding
@@ -162,11 +154,12 @@ function referenceCount(projection: OpenRouterImageIntentCapabilityProjectionV2)
  */
 export function compileOpenRouterImageRequestV1(input: Readonly<{
   prompt: unknown
-  intent: unknown
   modelId: unknown
   providerTag: unknown
   providerSlug: unknown
   descriptorSet: CanonicalOpenRouterImageDescriptorSetV2
+  wireFields: readonly OpenRouterImageWireFieldV1[]
+  stream?: boolean
   inputReferences?: unknown
   providerOptions?: unknown
 }>): OpenRouterImageRequestV1 {
@@ -175,27 +168,17 @@ export function compileOpenRouterImageRequestV1(input: Readonly<{
     modelId: input.modelId, providerTag: input.providerTag,
     providerSlug: input.providerSlug, descriptorSet: input.descriptorSet,
   })
-  const projection = projectOpenRouterImageIntentCapabilityV2(input.intent)
-  const candidates = projectOpenRouterImageCandidatesV2({
-    descriptorSet: input.descriptorSet,
-    projection,
-    boundProviderTag: descriptor.providerTag.value,
-  })
-  const candidate = candidates.find((item) => item.providerTag === descriptor.providerTag.value &&
-    item.providerSlug === descriptor.providerSlug.value &&
-    item.descriptorRevision === descriptor.descriptorRevision.value &&
-    item.descriptorDigest === descriptor.descriptorDigest.value)
-  if (!candidate || !candidate.eligible || projection.issues.length > 0) {
-    throw new OpenRouterImageRequestV1Error('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_CAPABILITY_MISMATCH')
-  }
-  const imageCount = projection.wireFields.find((field) => field.wireKey === 'n')
+  const imageCount = input.wireFields.find((field) => field.wireKey === 'n')
   if (imageCount && imageCount.value !== 1) {
     throw new OpenRouterImageRequestV1Error(
       'GENERATION_V2_OPENROUTER_IMAGE_REQUEST_RESULT_CARDINALITY_UNSUPPORTED',
     )
   }
 
-  const expectedReferences = referenceCount(projection)
+  const expectedReferences = input.wireFields.find((field) => field.wireKey === 'input_references')?.value ?? 0
+  if (typeof expectedReferences !== 'number' || !Number.isSafeInteger(expectedReferences) || expectedReferences < 0) {
+    throw new OpenRouterImageRequestV1Error('GENERATION_V2_OPENROUTER_IMAGE_REQUEST_CAPABILITY_MISMATCH')
+  }
   const inputReferences = readInputReferences(input.inputReferences ?? [], expectedReferences)
   const options = readProviderOptions(input.providerOptions, descriptor)
   const provider = Object.freeze({
@@ -208,15 +191,14 @@ export function compileOpenRouterImageRequestV1(input: Readonly<{
     prompt,
     provider,
   }
-  for (const field of projection.wireFields) {
+  for (const field of input.wireFields) {
     if (field.wireKey === 'input_references') {
       native.input_references = inputReferences
     } else {
       native[field.wireKey] = field.value
     }
   }
-  const streamDisposition = projection.dispositions.find((item) => item.semanticPath === 'image.stream')
-  if (streamDisposition?.outcome === 'encoded') native.stream = streamDisposition.value
+  if (input.stream !== undefined) native.stream = input.stream
   const preparedBody = ImmutablePreparedBodyV2.fromNativeRequestWithMaxBytes(native, MAX_REQUEST_UTF8_BYTES)
   return Object.freeze({
     model: input.modelId as string,

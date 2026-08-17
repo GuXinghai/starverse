@@ -35,14 +35,6 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
       input.profile.protocolContractId !== 'lmstudio-openresponses') throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_BINDING_INVALID')
   const intent = snapshot.semanticIntent
   const tools = intent.tools
-  const unsupportedGeneration = ['topK', 'minP', 'topA', 'seed', 'stop', 'candidateCount', 'repetitionPenalty'] as const
-  if (unsupportedGeneration.some((key) => intent.generation[key] !== undefined) ||
-      (intent.reasoning.mode === 'enabled' &&
-        (intent.reasoning.summary !== undefined || intent.reasoning.exclude !== undefined)) ||
-      intent.web.mode !== 'disabled' || intent.image.mode !== 'disabled' ||
-      intent.attachments.length !== 0 || intent.providerExtension.kind !== 'none') {
-    throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_EXPLICIT_FIELD_UNSUPPORTED')
-  }
   if (tools.mode === 'enabled') {
     if (snapshot.toolAuthority.kind !== 'registry' ||
         !isToolRegistryRepositoryFactForContextV2(input.toolRegistry, input.context) ||
@@ -66,10 +58,7 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
     ? tools.toolChoice.mode as 'none' | 'required'
     : undefined
   const rawReasoningEffort = intent.reasoning.mode === 'enabled' ? intent.reasoning.effort : undefined
-  let reasoningEffort: 'minimal' | 'low' | 'medium' | 'high' | undefined
-  if (rawReasoningEffort === undefined) reasoningEffort = undefined
-  else if (rawReasoningEffort === 'minimal' || rawReasoningEffort === 'low' || rawReasoningEffort === 'medium' || rawReasoningEffort === 'high') reasoningEffort = rawReasoningEffort
-  else throw new Error('GENERATION_V2_LMSTUDIO_COMPILER_EXPLICIT_FIELD_UNSUPPORTED')
+  const reasoningEffort = rawReasoningEffort
   const compiled = compileLmStudioOpenResponsesRequestV1({ model: binding.modelId.value,
     replayItems: input.history.projectedReplayItems,
     generation: {
@@ -86,24 +75,24 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
     ['frequencyPenalty', 'frequency_penalty'], ['presencePenalty', 'presence_penalty'],
   ].filter(([key]) => intent.generation[key as keyof typeof intent.generation] !== undefined).map(([key, nativeField]) => ({
     kind: 'consumed' as const, path: `generation.${key}`, disposition: 'encoded' as const,
-    nativeField, evidence: 'lmstudio-openresponses-compliance-20260714',
+    nativeField, encodingKind: 'identity' as const, evidence: 'lmstudio-openresponses-compliance-20260714',
   }))
   const toolLedger = tools.mode === 'disabled' ? [{ kind: 'consumed' as const, path: 'tools.mode',
-    disposition: 'accepted_no_wire' as const, nativeField: null, evidence: 'lmstudio-openresponses-compliance-20260714' }] : [
-    { kind: 'consumed' as const, path: 'tools.mode', disposition: 'encoded' as const, nativeField: 'tools', evidence: 'lmstudio-openresponses-compliance-20260714' },
-    { kind: 'consumed' as const, path: 'tools.allowedToolIds', disposition: 'encoded' as const, nativeField: 'tools', evidence: 'lmstudio-openresponses-compliance-20260714' },
+    disposition: 'accepted_no_wire' as const, nativeField: null, encodingKind: 'omitted' as const, evidence: 'lmstudio-openresponses-compliance-20260714' }] : [
+    { kind: 'consumed' as const, path: 'tools.mode', disposition: 'encoded' as const, nativeField: 'tools', encodingKind: 'structural' as const, evidence: 'lmstudio-openresponses-compliance-20260714' },
+    { kind: 'consumed' as const, path: 'tools.allowedToolIds', disposition: 'encoded' as const, nativeField: 'tools', encodingKind: 'structural' as const, evidence: 'lmstudio-openresponses-compliance-20260714' },
     { kind: 'consumed' as const, path: 'tools.toolChoice', disposition: tools.toolChoice.mode === 'omitted' ? 'accepted_no_wire' as const : 'encoded' as const,
-      nativeField: tools.toolChoice.mode === 'omitted' ? null : 'tool_choice', evidence: 'lmstudio-openresponses-compliance-20260714' },
-    { kind: 'consumed' as const, path: 'tools.sideEffectConfirmation', disposition: 'accepted_no_wire' as const, nativeField: null, evidence: 'starverse-tool-confirmation-v2' },
+      nativeField: tools.toolChoice.mode === 'omitted' ? null : 'tool_choice', encodingKind: tools.toolChoice.mode === 'omitted' ? 'omitted' as const : 'structural' as const, evidence: 'lmstudio-openresponses-compliance-20260714' },
+    { kind: 'consumed' as const, path: 'tools.sideEffectConfirmation', disposition: 'accepted_no_wire' as const, nativeField: null, encodingKind: 'omitted' as const, evidence: 'starverse-tool-confirmation-v2' },
   ]
   const ledger = createSemanticConsumptionLedgerV2([
     ...generationLedger,
-    { kind: 'consumed', path: 'reasoning.mode', disposition: intent.reasoning.mode === 'enabled' ? 'encoded' : 'accepted_no_wire', nativeField: intent.reasoning.mode === 'enabled' ? 'reasoning' : null, evidence: 'lmstudio-openresponses-compliance-20260714' },
-    ...(intent.reasoning.mode === 'enabled' ? [{ kind: 'consumed' as const, path: 'reasoning.effort', disposition: 'encoded' as const, nativeField: 'reasoning.effort', evidence: 'lmstudio-openresponses-compliance-20260714' }] : []),
-    { kind: 'consumed', path: 'web.mode', disposition: 'accepted_no_wire', nativeField: null, evidence: 'lmstudio-openresponses' },
-    { kind: 'consumed', path: 'image.mode', disposition: 'accepted_no_wire', nativeField: null, evidence: 'lmstudio-openresponses' },
+    { kind: 'consumed', path: 'reasoning.mode', disposition: intent.reasoning.mode === 'enabled' ? 'encoded' : 'accepted_no_wire', nativeField: intent.reasoning.mode === 'enabled' ? 'reasoning' : null, encodingKind: intent.reasoning.mode === 'enabled' ? 'structural' : 'omitted', evidence: 'lmstudio-openresponses-compliance-20260714' },
+    ...(intent.reasoning.mode === 'enabled' ? [{ kind: 'consumed' as const, path: 'reasoning.effort', disposition: 'encoded' as const, nativeField: 'reasoning.effort', encodingKind: 'identity' as const, evidence: 'lmstudio-openresponses-compliance-20260714' }] : []),
+    { kind: 'consumed', path: 'web.mode', disposition: 'accepted_no_wire', nativeField: null, encodingKind: 'omitted', evidence: 'lmstudio-openresponses' },
+    { kind: 'consumed', path: 'image.mode', disposition: 'accepted_no_wire', nativeField: null, encodingKind: 'omitted', evidence: 'lmstudio-openresponses' },
     ...toolLedger,
-    { kind: 'consumed', path: 'providerExtension.kind', disposition: 'accepted_no_wire', nativeField: null, evidence: 'lmstudio-openresponses' },
+    { kind: 'consumed', path: 'providerExtension.kind', disposition: 'accepted_no_wire', nativeField: null, encodingKind: 'omitted', evidence: 'lmstudio-openresponses' },
   ])
   return issuePreparedProviderRequestV2({ operationId: operation.operationId.value,
     answerRootId: operation.targetAnswerId.value, requestSequence: input.history.requestSequence, providerId: 'lmstudio',
@@ -111,5 +100,5 @@ export function compileLmStudioOpenResponsesPreparedRequestV2(input: Readonly<{
     contractId: 'lmstudio-openresponses', modelId: binding.modelId.value,
     effectiveEndpointId: input.profile.endpointProfileId, endpoint: readLmStudioOpenResponsesEndpointV2(input.profile),
     headersPlan: createNoCredentialHeaderPlanV2(), body: compiled.preparedBody, ledger,
-    capabilityRevision: capability.revision.value, snapshotHash: snapshot.snapshotHash.value })
+    capabilityRevision: capability.revision.value, encoderRevision: capability.encoderRevision, snapshotHash: snapshot.snapshotHash.value })
 }

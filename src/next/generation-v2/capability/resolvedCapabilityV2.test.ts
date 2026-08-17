@@ -11,6 +11,7 @@ import {
   resolvedCapabilityFromRecordV2,
   validateSemanticIntentAgainstResolvedCapabilityV2,
 } from './resolvedCapabilityV2'
+import { resolveEncodingCoverageRegistryV2 } from './encodingCoverageRegistryV2'
 
 const digest = 'a'.repeat(64)
 
@@ -143,35 +144,49 @@ describe('ResolvedCapabilityV2', () => {
     )).toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
   })
 
-  it('uses the independent implementation manifest as a hard ceiling', () => {
+  it('rejects supported semantic paths without registered encoder coverage', () => {
     const value = draft()
     const evidenceId = 'capability.test.supports'
     const field = value.fields.find((candidate) => candidate.path === 'generation.topK')!
     field.state = 'supported'
     field.domain = { kind: 'range', min: 1, max: 100, integer: true }
     field.evidenceIds = [evidenceId]
-    const capability = canonicalizeResolvedCapabilityV2(value)
-    const resolvedField = capability.fields.find((candidate) => candidate.path === 'generation.topK')!
-    expect(resolvedField.state).toBe('unsupported')
-    expect(resolvedField.domain).toBeUndefined()
-    expect(resolvedField.evidenceIds).toHaveLength(1)
-    expect(capability.implementationCeiling.semanticPaths).not.toContain('generation.topK')
-    expect(capability.implementationCeiling.manifestRevision).toMatch(/^implementation-manifest-v2:[0-9a-f]{64}$/u)
+    expect(() => canonicalizeResolvedCapabilityV2(value))
+      .toThrow('GENERATION_V2_ENCODING_COVERAGE_INVALID')
+    expect(resolveEncodingCoverageRegistryV2({
+      providerId: 'deepseek', protocolContractId: 'deepseek-stable-chat-v1', operation: 'text',
+    }).semanticPaths).not.toContain('generation.topK')
   })
 
-  it('fails closed when an allowed field widens its domain or deletes a manifest constraint', () => {
+  it('keeps capability domains and constraints owned by resolved facts', () => {
     const widened = draft()
     const effort = widened.fields.find((candidate) => candidate.path === 'reasoning.effort')!
     effort.domain = { kind: 'enum', values: ['high', 'low', 'max'] }
     const widenedCapability = canonicalizeResolvedCapabilityV2(widened)
-    expect(widenedCapability.fields.find((candidate) => candidate.path === 'reasoning.effort')?.state)
-      .toBe('unsupported')
+    expect(widenedCapability.fields.find((candidate) => candidate.path === 'reasoning.effort')?.domain)
+      .toEqual({ kind: 'enum', values: ['high', 'low', 'max'] })
 
     const deletedConstraint = draft()
     const deleted = deletedConstraint.fields.find((candidate) => candidate.path === 'reasoning.effort')!
     deleted.constraints = []
     const deletedConstraintCapability = canonicalizeResolvedCapabilityV2(deletedConstraint)
-    expect(deletedConstraintCapability.fields.find((candidate) => candidate.path === 'reasoning.effort')?.state)
-      .toBe('unsupported')
+    expect(deletedConstraintCapability.fields.find((candidate) => candidate.path === 'reasoning.effort')?.constraints)
+      .toEqual([])
+  })
+
+  it('validates arbitrary provider-owned strings against the resolved domain', () => {
+    const value = draft()
+    const effort = value.fields.find((candidate) => candidate.path === 'reasoning.effort')!
+    effort.domain = { kind: 'string', maxLength: 256 }
+    const capability = canonicalizeResolvedCapabilityV2(value)
+    const accepted = 'x'.repeat(129)
+    expect(() => validateSemanticIntentAgainstResolvedCapabilityV2(
+      capability,
+      decodeGenerationIntentLayerV2({ schemaVersion: 2, reasoning: { mode: 'enabled', effort: accepted } }),
+    )).not.toThrow()
+    expect(() => validateSemanticIntentAgainstResolvedCapabilityV2(
+      capability,
+      decodeGenerationIntentLayerV2({ schemaVersion: 2, reasoning: { mode: 'enabled', effort: 'x'.repeat(257) } }),
+    )).toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
   })
 })

@@ -70,7 +70,7 @@ function projectWeb(layer: ReturnType<typeof decodeGenerationConfigLayerV2>): Ch
   const web = layer.web
   const detail: SearchSettingsLayer = Object.freeze({
     searchMode: web.types.includes('web') ? 'enable' : 'disable',
-    searchDepth: web.maxResults !== undefined ? 'custom' : web.searchContextSize ?? 'default',
+    searchDepth: web.maxResults !== undefined ? 'custom' : (web.searchContextSize ?? 'default') as SearchSettingsLayer['searchDepth'],
     ...(web.maxResults === undefined ? {} : { maxResults: web.maxResults }),
     ...(web.engine === undefined || !['auto', 'native', 'exa'].includes(web.engine)
       ? {} : { searchEngine: web.engine as 'auto' | 'native' | 'exa' }),

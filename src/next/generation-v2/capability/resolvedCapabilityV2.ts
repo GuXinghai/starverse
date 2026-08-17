@@ -1,6 +1,7 @@
 import type {
   GenerationIntentLayerV2,
 } from '../domain/generationIntentV2'
+import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../domain/generationIntentV2'
 import { projectGenerationIntentLayerV2 } from '../domain/generationIntentProjectionV2'
 import {
   decodeProviderBindingRecordV2,
@@ -28,10 +29,9 @@ import {
   type RuntimeCapabilitySemanticPathV2,
 } from './runtimeCapabilitySnapshotV2'
 import {
-  applyGenerationImplementationCeilingV2,
-  resolveGenerationImplementationManifestV2,
-  type GenerationImplementationFieldCeilingV2,
-} from './implementationManifestV2'
+  assertEncodingCoverageForResolvedFieldsV2,
+  EncodingCoverageRegistryV2Error,
+} from './encodingCoverageRegistryV2'
 
 /**
  * The command-independent capability conclusion for one exact provider/model
@@ -48,16 +48,6 @@ export type ResolvedCapabilityV2 = Readonly<{
   evidenceDigest: string
   semanticFieldsDigest: string
   capabilityRevision: string
-  implementationCeiling: Readonly<{
-    providerId: string
-    protocolContractId: string
-    contractRevision: string
-    registryRevision: string
-    manifestDigest: string
-    manifestRevision: string
-    semanticPaths: readonly RuntimeCapabilitySemanticPathV2[]
-    fieldCeilings: readonly GenerationImplementationFieldCeilingV2[]
-  }>
 }>
 
 export type ResolvedCapabilityDraftV2 = Readonly<{
@@ -87,7 +77,8 @@ export class ResolvedCapabilityV2Error extends Error {
     | 'GENERATION_V2_RESOLVED_CAPABILITY_FIELD_UNSUPPORTED'
     | 'GENERATION_V2_RESOLVED_CAPABILITY_FIELD_UNAVAILABLE'
     | 'GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED'
-    | 'GENERATION_V2_RESOLVED_CAPABILITY_STALE') {
+    | 'GENERATION_V2_RESOLVED_CAPABILITY_STALE'
+    | 'GENERATION_V2_ENCODING_COVERAGE_INVALID') {
     super(code)
     this.name = 'ResolvedCapabilityV2Error'
   }
@@ -203,6 +194,13 @@ function domain(value: unknown): RuntimeCapabilityDomainV2 {
     case 'identity':
       exactKeys(value, ['kind'])
       return Object.freeze({ kind: value.kind })
+    case 'string':
+      exactKeys(value, ['kind', 'maxLength'])
+      if (!Number.isSafeInteger(value.maxLength) || (value.maxLength as number) < 1 ||
+          (value.maxLength as number) > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2) {
+        throw new ResolvedCapabilityV2Error('GENERATION_V2_RESOLVED_CAPABILITY_INVALID')
+      }
+      return Object.freeze({ kind: 'string', maxLength: value.maxLength as number })
     case 'enum':
       exactKeys(value, ['kind', 'values'])
       return Object.freeze({ kind: 'enum', values: scalarValues(value.values) })
@@ -435,27 +433,21 @@ export function canonicalizeResolvedCapabilityV2(value: unknown): ResolvedCapabi
     }
     const binding = decodeProviderBindingRecordV2(input.binding)
     const revisionBinding = projectProviderBindingForCapabilityRevisionV2(binding)
-    const implementationManifest = resolveGenerationImplementationManifestV2({
-      providerId: binding.providerId.value,
-      protocolContractId: binding.protocolContractId.value,
-      operation: binding.operation,
-    })
-    const initialFields = canonicalFields(input.fields as readonly PersistedRuntimeCapabilityFieldV2[])
-    const implementationVerifiedAt = input.evidence.find((item) =>
-      item && typeof item === 'object' && !Array.isArray(item) &&
-      typeof (item as Record<string, unknown>).verifiedAt === 'string') as Record<string, unknown> | undefined
-    const implementation = applyGenerationImplementationCeilingV2(initialFields, implementationManifest,
-      typeof implementationVerifiedAt?.verifiedAt === 'string'
-        ? implementationVerifiedAt.verifiedAt
-        : '1970-01-01T00:00:00.000Z')
-    const evidenceInput = implementation.rejectEvidence === undefined
-      ? input.evidence as readonly Readonly<Record<string, unknown>>[]
-      : Object.freeze([
-          ...(input.evidence as readonly Readonly<Record<string, unknown>>[]),
-          implementation.rejectEvidence,
-        ])
-    const evidence = canonicalEvidence(evidenceInput)
-    const fields = canonicalFields(implementation.fields)
+    const evidence = canonicalEvidence(input.evidence as readonly Readonly<Record<string, unknown>>[])
+    const fields = canonicalFields(input.fields as readonly PersistedRuntimeCapabilityFieldV2[])
+    try {
+      assertEncodingCoverageForResolvedFieldsV2({
+        providerId: binding.providerId.value,
+        protocolContractId: binding.protocolContractId.value,
+        operation: binding.operation,
+        fields,
+      })
+    } catch (error) {
+      if (error instanceof EncodingCoverageRegistryV2Error) {
+        throw new ResolvedCapabilityV2Error('GENERATION_V2_ENCODING_COVERAGE_INVALID')
+      }
+      throw error
+    }
     const continuation = canonicalContinuation(input.continuation)
     const catalogAuthority = canonicalCatalogAuthority(input.catalogAuthority)
     const evidenceById = new Map(evidence.map((item) => [item.evidenceId, item]))
@@ -486,21 +478,10 @@ export function canonicalizeResolvedCapabilityV2(value: unknown): ResolvedCapabi
       contentDigest: item.contentDigest.value, entryDigest: item.entryDigest.value,
     })))
     const semanticFieldsDigest = hash({ fields, continuation })
-    const implementationCeiling = Object.freeze({
-      providerId: implementationManifest.providerId,
-      protocolContractId: implementationManifest.protocolContractId,
-      contractRevision: implementationManifest.contractRevision,
-      registryRevision: implementationManifest.registryRevision,
-      manifestDigest: implementationManifest.manifestDigest,
-      manifestRevision: implementationManifest.manifestRevision,
-      semanticPaths: implementationManifest.semanticPaths,
-      fieldCeilings: implementationManifest.fieldCeilings,
-    })
     const capabilityRevision = `capability-v2:${hash({
       binding: revisionBinding,
       evidence: evidenceForDigest,
       semanticFieldsDigest,
-      implementationCeiling,
     })}`
     return Object.freeze({
       schemaVersion: 1,
@@ -512,7 +493,6 @@ export function canonicalizeResolvedCapabilityV2(value: unknown): ResolvedCapabi
       evidenceDigest,
       semanticFieldsDigest,
       capabilityRevision,
-      implementationCeiling,
     })
   } catch (error) {
     if (error instanceof ResolvedCapabilityV2Error) throw error
@@ -622,6 +602,7 @@ function contains(domain: RuntimeCapabilityDomainV2 | undefined, value: unknown)
   if (domain.kind === 'boolean') return typeof value === 'boolean'
   if (domain.kind === 'identity') return typeof value === 'string' || Boolean(value && typeof value === 'object' &&
     typeof (value as { value?: unknown }).value === 'string')
+  if (domain.kind === 'string') return typeof value === 'string' && value.length <= domain.maxLength
   if (domain.kind === 'enum') return scalar(value) !== undefined && domain.values.includes(value as RuntimeCapabilityScalarV2)
   if (domain.kind === 'response_format') return Boolean(value && typeof value === 'object' &&
     domain.types.includes((value as { type?: unknown }).type as never))

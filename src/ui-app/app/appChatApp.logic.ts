@@ -157,10 +157,6 @@ import {
   type GeminiModelAvailabilityResult,
 } from '@/next/provider/gemini/geminiModelSource'
 import { normalizeGeminiImageGenerationModelId } from '@/next/provider/gemini/geminiImageGenerationPolicy'
-import {
-  normalizeGeminiThinkingModelId,
-  type GeminiThinkingCapability,
-} from '@/next/provider/gemini/geminiThinkingPolicy'
 import { isGeminiInteractionsImageModelIdV1 } from '@/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
 import {
   ANTHROPIC_MESSAGES_ENDPOINT_ID,
@@ -3120,10 +3116,8 @@ export function useAppChatAppLogic() {
   }
 
   const DEFAULT_REASONING_PREFS: ReasoningPrefs = { mode: 'auto', effort: 'auto', exclude: false }
-  const REASONING_EFFORTS: ReasoningEffort[] = ['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max']
-
   function isReasoningEffort(value: unknown): value is ReasoningEffort {
-    return typeof value === 'string' && (REASONING_EFFORTS as string[]).includes(value)
+    return typeof value === 'string' && value.length > 0 && value.length <= 128 && !/[\u0000-\u001F\u007F]/u.test(value)
   }
 
   function normalizeReasoningPrefs(raw: unknown): ReasoningPrefs | null {
@@ -5383,9 +5377,8 @@ export function useAppChatAppLogic() {
     return getDefaultGenerationParamProfile(providerId, { requestKind }) ?? unsetGenerationProfile
   }
 
-  function geminiThinkingCapabilityForModel(modelId: string | null | undefined): GeminiThinkingCapability {
-    const normalized = normalizeGeminiThinkingModelId(modelId)
-    return projectGeminiThinkingCapabilityV2(activeSessionCapabilityProjection.value, normalized)
+  function geminiThinkingCapabilityForModel(_modelId: string | null | undefined) {
+    return projectGeminiThinkingCapabilityV2(activeSessionCapabilityProjection.value, '')
   }
 
   const activeSessionGenerationParamsLayer = computed<GenerationParamsLayer | null>(() =>

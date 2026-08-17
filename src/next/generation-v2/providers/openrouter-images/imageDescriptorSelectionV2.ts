@@ -30,7 +30,7 @@ export type OpenRouterImageIntentDispositionV2 = Readonly<{
   code?: OpenRouterImageCapabilityIssueV2['code']
 }>
 
-export type OpenRouterImageIntentCapabilityProjectionV2 = Readonly<{
+export type OpenRouterImageSelectionInputV2 = Readonly<{
   intent: GenerationIntentLayerV2
   wireFields: readonly Readonly<{
     semanticPath: string
@@ -111,9 +111,9 @@ function compareCodePoints(left: string, right: string): number {
   return a.length - b.length
 }
 
-export function projectOpenRouterImageIntentCapabilityV2(
+export function resolveOpenRouterImageSelectionInputV2(
   rawIntent: unknown,
-): OpenRouterImageIntentCapabilityProjectionV2 {
+): OpenRouterImageSelectionInputV2 {
   const intent = decodeGenerationIntentLayerV2(rawIntent)
   const fields: Array<{ semanticPath: string; wireKey: string; value: string | number }> = []
   const dispositions: OpenRouterImageIntentDispositionV2[] = []
@@ -252,7 +252,7 @@ function supports(rule: CanonicalOpenRouterImageParameterRuleV2, value: string |
 
 function evaluateDescriptor(
   descriptor: CanonicalOpenRouterImageDescriptorV2,
-  projection: OpenRouterImageIntentCapabilityProjectionV2,
+  projection: OpenRouterImageSelectionInputV2,
 ): OpenRouterImageCandidateCapabilityV2 {
   const issues = [...projection.issues]
   if (projection.stream && !descriptor.supportsStreaming) {
@@ -277,9 +277,9 @@ function evaluateDescriptor(
   })
 }
 
-export function projectOpenRouterImageCandidatesV2(input: Readonly<{
+export function evaluateOpenRouterImageCandidatesV2(input: Readonly<{
   descriptorSet: CanonicalOpenRouterImageDescriptorSetV2
-  projection: OpenRouterImageIntentCapabilityProjectionV2
+  projection: OpenRouterImageSelectionInputV2
   boundProviderTag: string | null
 }>): readonly OpenRouterImageCandidateCapabilityV2[] {
   const candidates = input.descriptorSet.descriptors.map((descriptor) => evaluateDescriptor(descriptor, input.projection))

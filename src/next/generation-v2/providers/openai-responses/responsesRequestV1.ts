@@ -8,11 +8,17 @@ import {
   type OpenAIResponsesContinuationArtifactV2,
 } from './continuationArtifactV2'
 import { decodeOpenAIResponsesReplayItemsV1, type OpenAIResponsesReplayItemV1 } from './nativeItemsV1'
+import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2, requiresProviderFileBindingV2, type AttachmentIntentV2 } from '../../domain/generationIntentV2'
 
 export const OPENAI_RESPONSES_REQUEST_MAX_BYTES_V1 = 28 * 1_024 * 1_024
 
-type ReasoningEffort = 'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'
-type ReasoningSummary = 'auto' | 'concise' | 'detailed'
+export function isOpenAIResponsesEncodedAttachmentV1(attachment: AttachmentIntentV2): boolean {
+  return requiresProviderFileBindingV2(attachment) ||
+    (attachment.kind === 'url_reference' && attachment.include && attachment.mediaKind === 'image')
+}
+
+type ReasoningEffort = string
+type ReasoningSummary = string
 type ReasoningMode = 'standard' | 'pro'
 type ReasoningContext = 'auto' | 'current_turn' | 'all_turns'
 type FunctionTool = Readonly<{
@@ -24,14 +30,14 @@ type FunctionTool = Readonly<{
 }>
 type WebSearchTool = Readonly<{
   type: 'web_search'
-  search_context_size?: 'low' | 'medium' | 'high'
+  search_context_size?: string
   filters?: Readonly<{ allowed_domains: readonly string[] }>
 }>
 type ImageGenerationTool = Readonly<{
   type: 'image_generation'
   action?: 'auto' | 'generate' | 'edit'
   size?: 'auto' | '1024x1024' | '1024x1536' | '1536x1024'
-  quality?: 'auto' | 'low' | 'medium' | 'high'
+  quality?: string
   output_format?: 'png' | 'jpeg' | 'webp'
   background?: 'auto' | 'transparent' | 'opaque'
   partial_images?: number
@@ -51,7 +57,7 @@ export type OpenAIResponsesRequestV1 = Readonly<{
   temperature?: number
   top_p?: number
   max_output_tokens?: number
-  text?: Readonly<{ verbosity: 'low' | 'medium' | 'high' }>
+  text?: Readonly<{ verbosity: string }>
   tools?: readonly OpenAIResponsesToolV1[]
   tool_choice?: OpenAIResponsesToolChoiceV1
   max_tool_calls?: number
@@ -79,7 +85,6 @@ export class OpenAIResponsesRequestV1Error extends Error {
 }
 
 type ClosedObject = Readonly<Record<string, unknown>>
-const MODEL_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._:-]{0,255}$/u
 const TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,64}$/u
 
 function fail(code: OpenAIResponsesRequestV1Error['code']): never {
@@ -148,18 +153,23 @@ function deepFreeze(value: unknown): unknown {
 function decodeReasoning(value: unknown): OpenAIResponsesRequestV1['reasoning'] {
   if (value === undefined) return undefined
   const input = closedObject(value, ['effort', 'summary', 'mode', 'context'], [])
-  const efforts = new Set(['none', 'minimal', 'low', 'medium', 'high', 'xhigh', 'max'])
-  const summaries = new Set(['auto', 'concise', 'detailed'])
   const modes = new Set(['standard', 'pro'])
   const contexts = new Set(['auto', 'current_turn', 'all_turns'])
-  if (input.effort !== undefined && !efforts.has(input.effort as string)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
-  if (input.summary !== undefined && !summaries.has(input.summary as string)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+  const openString = (value: unknown): string | undefined => {
+    if (value === undefined) return undefined
+    if (typeof value !== 'string' || value.length === 0 || value.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 || /[\u0000-\u001f\u007f]/u.test(value)) {
+      return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
+    }
+    return value
+  }
+  const effort = openString(input.effort)
+  const summary = openString(input.summary)
   if (input.mode !== undefined && !modes.has(input.mode as string)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   if (input.context !== undefined && !contexts.has(input.context as string)) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   if (Object.keys(input).length === 0) return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   return Object.freeze({
-    ...(input.effort === undefined ? {} : { effort: input.effort as ReasoningEffort }),
-    ...(input.summary === undefined ? {} : { summary: input.summary as ReasoningSummary }),
+    ...(effort === undefined ? {} : { effort: effort as ReasoningEffort }),
+    ...(summary === undefined ? {} : { summary: summary as ReasoningSummary }),
     ...(input.mode === undefined ? {} : { mode: input.mode as ReasoningMode }),
     ...(input.context === undefined ? {} : { context: input.context as ReasoningContext }),
   })
@@ -177,7 +187,7 @@ function decodeGeneration(value: unknown): Readonly<{
   temperature?: number
   topP?: number
   maxOutputTokens?: number
-  verbosity?: 'low' | 'medium' | 'high'
+  verbosity?: string
 }> {
   if (value === undefined) return Object.freeze({})
   const input = closedObject(value, ['temperature', 'topP', 'maxOutputTokens', 'verbosity'], [])
@@ -186,7 +196,7 @@ function decodeGeneration(value: unknown): Readonly<{
   if (input.maxOutputTokens !== undefined && (!Number.isSafeInteger(input.maxOutputTokens) || (input.maxOutputTokens as number) < 1)) {
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   }
-  if (input.verbosity !== undefined && input.verbosity !== 'low' && input.verbosity !== 'medium' && input.verbosity !== 'high') {
+  if (input.verbosity !== undefined && (typeof input.verbosity !== 'string' || input.verbosity.length === 0 || input.verbosity.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) {
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   }
   return Object.freeze({
@@ -215,7 +225,7 @@ function decodeTool(value: unknown, names: Set<string>): OpenAIResponsesToolV1 {
   }
   if (discriminator.type === 'web_search') {
     const input = closedObject(value, ['type', 'searchContextSize', 'allowedDomains'], ['type'])
-    if (input.searchContextSize !== undefined && input.searchContextSize !== 'low' && input.searchContextSize !== 'medium' && input.searchContextSize !== 'high') {
+    if (input.searchContextSize !== undefined && (typeof input.searchContextSize !== 'string' || input.searchContextSize.length === 0 || input.searchContextSize.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) {
       return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
     }
     const allowedDomains = input.allowedDomains === undefined ? undefined : denseArray(input.allowedDomains, 100, false)
@@ -233,12 +243,11 @@ function decodeTool(value: unknown, names: Set<string>): OpenAIResponsesToolV1 {
     const input = closedObject(value, ['type', 'action', 'size', 'quality', 'outputFormat', 'background', 'partialImages'], ['type'])
     const actions = new Set(['auto', 'generate', 'edit'])
     const sizes = new Set(['auto', '1024x1024', '1024x1536', '1536x1024'])
-    const qualities = new Set(['auto', 'low', 'medium', 'high'])
     const formats = new Set(['png', 'jpeg', 'webp'])
     const backgrounds = new Set(['auto', 'transparent', 'opaque'])
     if ((input.action !== undefined && !actions.has(input.action as string)) ||
         (input.size !== undefined && !sizes.has(input.size as string)) ||
-        (input.quality !== undefined && !qualities.has(input.quality as string)) ||
+        (input.quality !== undefined && (typeof input.quality !== 'string' || input.quality.length === 0 || input.quality.length > GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2)) ||
         (input.outputFormat !== undefined && !formats.has(input.outputFormat as string)) ||
         (input.background !== undefined && !backgrounds.has(input.background as string)) ||
         (input.partialImages !== undefined && (!Number.isSafeInteger(input.partialImages) ||
@@ -270,7 +279,7 @@ export function compileOpenAIResponsesRequestV1(value: unknown): OpenAIResponses
     'model', 'priorArtifact', 'clientItems', 'replayItems', 'instructions', 'reasoning', 'generation', 'tools', 'toolChoice',
     'maxToolCalls', 'parallelToolCalls', 'serviceTier',
   ], ['model'])
-  if (typeof input.model !== 'string' || !MODEL_PATTERN.test(input.model) ||
+  if (typeof input.model !== 'string' || input.model.length === 0 || input.model.length > 512 ||
       (input.instructions !== undefined && (typeof input.instructions !== 'string' || input.instructions.length === 0))) {
     return fail('GENERATION_V2_OPENAI_REQUEST_INVALID_VALUE')
   }

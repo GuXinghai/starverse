@@ -4,17 +4,21 @@ import {
   stableSerializeProviderRequestBoundedV2,
 } from '../../compiler/stableSerialize'
 import type { ResolvedGenerationIntentV2 } from '../../domain/resolvedGenerationIntentV2'
-import { projectGenerationIntentLayerV2 } from '../../domain/generationIntentProjectionV2'
 import {
   ANTHROPIC_NATIVE_HISTORY_MAX_BLOCKS_V1,
   type AnthropicNativeContentBlockV1,
   type PlainJsonV1,
 } from './nativeContentBlocksV1'
-import {
-  projectAnthropicMessagesIntentV1,
-  type AnthropicMessagesIntentDispositionV1,
-  type AnthropicMessagesIntentProjectionIssueV1,
-} from './messagesIntentProjectionV1'
+type AnthropicMessagesIntentDispositionV1 = Readonly<{
+  semanticPath: string
+  outcome: 'encoded' | 'accepted_no_wire' | 'rejected'
+  wireKey?: string
+  value?: unknown
+  code?: string
+  evidence: string
+  encodingKind?: 'identity' | 'structural' | 'omitted'
+}>
+type AnthropicMessagesEncodingIssueV1 = Readonly<{ semanticPath: string; code: string; wireKey?: string }>
 
 export const ANTHROPIC_MESSAGES_REQUEST_MAX_BYTES_V1 = 20 * 1_024 * 1_024
 export type AnthropicMessagesCacheControlV1 = Readonly<{
@@ -100,7 +104,7 @@ export type AnthropicMessagesNativeRequestV1 = Readonly<{
     budget_tokens?: number
     display?: 'summarized' | 'omitted'
   }>
-  output_config?: Readonly<{ effort: 'low' | 'medium' | 'high' | 'xhigh' | 'max' }>
+  output_config?: Readonly<{ effort: string }>
   tools?: readonly AnthropicMessagesToolDefinitionV1[]
   tool_choice?: AnthropicMessagesToolChoiceV1
 }>
@@ -109,9 +113,19 @@ export type AnthropicMessagesRequestCompilationV1 = Readonly<{
   classification: 'anthropic_messages_request_compilation_non_executable'
   executionAuthority: 'none'
   dispositions: readonly AnthropicMessagesIntentDispositionV1[]
-  issues: readonly AnthropicMessagesIntentProjectionIssueV1[]
+  issues: readonly AnthropicMessagesEncodingIssueV1[]
   nativeRequest?: AnthropicMessagesNativeRequestV1
   preparedBody?: ImmutablePreparedBodyV2
+}>
+
+type EncodedAnthropicMessagesIntentV1 = Readonly<{
+  request: {
+    maxTokens?: number; temperature?: number; topP?: number; topK?: number; stopSequences?: readonly string[]
+    thinking?: Readonly<{ type: 'disabled' | 'enabled' | 'adaptive'; budgetTokens?: number; display?: 'summarized' | 'omitted' }>
+    effort?: string
+  }
+  dispositions: readonly AnthropicMessagesIntentDispositionV1[]
+  issues: readonly AnthropicMessagesEncodingIssueV1[]
 }>
 
 export class AnthropicMessagesRequestV1Error extends Error {
@@ -375,6 +389,97 @@ function decodeMessages(value: unknown): readonly AnthropicMessagesRequestMessag
   }))
 }
 
+function encodeAnthropicMessagesIntentV1(intent: ResolvedGenerationIntentV2, modelId: string): EncodedAnthropicMessagesIntentV1 {
+  const request: EncodedAnthropicMessagesIntentV1['request'] = {}
+  const dispositions: AnthropicMessagesIntentDispositionV1[] = []
+  const issues: AnthropicMessagesEncodingIssueV1[] = []
+  const contract = 'anthropic-standard-messages-contract-verified-2026-07-18'
+  const accepted = (semanticPath: string) => dispositions.push(Object.freeze({ semanticPath, outcome: 'accepted_no_wire' as const, encodingKind: 'omitted' as const, evidence: contract }))
+  const encoded = (semanticPath: string, wireKey: string, value?: unknown, encodingKind: 'identity' | 'structural' = 'identity') => dispositions.push(Object.freeze({ semanticPath, outcome: 'encoded' as const, wireKey, ...(value === undefined ? {} : { value }), encodingKind, evidence: contract }))
+  const rejected = (semanticPath: string, code: string, wireKey?: string) => {
+    const issue = Object.freeze({ semanticPath, code, ...(wireKey === undefined ? {} : { wireKey }) })
+    issues.push(issue)
+    dispositions.push(Object.freeze({ semanticPath, outcome: 'rejected' as const, ...(wireKey === undefined ? {} : { wireKey }), code, encodingKind: 'omitted' as const, evidence: contract }))
+  }
+  encoded('modelId', 'model', modelId)
+  const generation = intent.generation
+  if (generation.maxOutputTokens === undefined) rejected('generation.maxOutputTokens', 'ANTHROPIC_MAX_OUTPUT_TOKENS_REQUIRED', 'max_tokens')
+  else { request.maxTokens = generation.maxOutputTokens; encoded('generation.maxOutputTokens', 'max_tokens', generation.maxOutputTokens) }
+  if (generation.temperature !== undefined) { request.temperature = generation.temperature; encoded('generation.temperature', 'temperature', generation.temperature) }
+  if (generation.topP !== undefined) { request.topP = generation.topP; encoded('generation.topP', 'top_p', generation.topP) }
+  if (generation.topK !== undefined) { request.topK = generation.topK; encoded('generation.topK', 'top_k', generation.topK) }
+  if (generation.stop !== undefined) { request.stopSequences = Object.freeze([...generation.stop]); encoded('generation.stop', 'stop_sequences', request.stopSequences, 'structural') }
+  for (const key of ['minP', 'topA', 'seed', 'candidateCount', 'frequencyPenalty', 'presencePenalty', 'repetitionPenalty'] as const) {
+    if (generation[key] !== undefined) rejected(`generation.${key}`, 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
+  }
+  if (intent.providerExtension.kind === 'none' || intent.providerExtension.kind !== 'anthropic_messages') {
+    rejected('providerExtension.kind', 'ANTHROPIC_PROVIDER_EXTENSION_UNSUPPORTED')
+  } else if (intent.reasoning.mode === 'disabled') {
+    accepted('providerExtension.kind'); accepted('providerExtension.thinkingDisplay'); accepted('providerExtension.thinkingMode')
+    if (intent.providerExtension.manualThinkingBudgetTokens !== undefined) accepted('providerExtension.manualThinkingBudgetTokens')
+  } else {
+    accepted('providerExtension.kind')
+    const display = intent.providerExtension.thinkingDisplay === 'provider_default' ? undefined : intent.providerExtension.thinkingDisplay
+    if (intent.providerExtension.thinkingMode === 'model_recommended') accepted('providerExtension.thinkingMode')
+    else {
+      request.thinking = intent.providerExtension.thinkingMode === 'manual'
+        ? { type: 'enabled', ...(intent.providerExtension.manualThinkingBudgetTokens === undefined ? {} : { budgetTokens: intent.providerExtension.manualThinkingBudgetTokens }), ...(display === undefined ? {} : { display }) }
+        : { type: 'adaptive', ...(display === undefined ? {} : { display }) }
+      encoded('providerExtension.thinkingMode', 'thinking.type', request.thinking?.type, 'structural')
+      if (intent.providerExtension.thinkingMode === 'manual') {
+        if (intent.providerExtension.manualThinkingBudgetTokens === undefined) rejected('providerExtension.manualThinkingBudgetTokens', 'ANTHROPIC_MANUAL_THINKING_BUDGET_REQUIRED')
+        else if (intent.providerExtension.manualThinkingBudgetTokens < 1_024 ||
+            (request.maxTokens !== undefined && intent.providerExtension.manualThinkingBudgetTokens >= request.maxTokens)) {
+          rejected('providerExtension.manualThinkingBudgetTokens', intent.providerExtension.manualThinkingBudgetTokens < 1_024
+            ? 'ANTHROPIC_MANUAL_THINKING_BUDGET_BELOW_MINIMUM' : 'ANTHROPIC_MANUAL_THINKING_BUDGET_NOT_BELOW_MAX_TOKENS', 'thinking.budget_tokens')
+          delete request.thinking
+        } else encoded('providerExtension.manualThinkingBudgetTokens', 'thinking.budget_tokens', intent.providerExtension.manualThinkingBudgetTokens)
+      }
+    }
+    if (intent.providerExtension.thinkingDisplay === 'provider_default') accepted('providerExtension.thinkingDisplay')
+    else encoded('providerExtension.thinkingDisplay', 'thinking.display', intent.providerExtension.thinkingDisplay)
+  }
+  if (!dispositions.some((entry) => entry.semanticPath === 'reasoning.mode')) {
+    accepted('reasoning.mode')
+  }
+  if (intent.reasoning.mode === 'enabled') {
+    if (intent.reasoning.effort !== undefined) { request.effort = intent.reasoning.effort; encoded('reasoning.effort', 'output_config.effort', request.effort) }
+    if (intent.reasoning.summary !== undefined) rejected('reasoning.summary', 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
+    if (intent.reasoning.exclude !== undefined) rejected('reasoning.exclude', 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
+  }
+  if (intent.web.mode === 'disabled') accepted('web.mode')
+  else if (intent.web.types.length !== 1 || intent.web.types[0] !== 'web') { rejected('web.mode', 'ANTHROPIC_WEB_SEARCH_TYPE_UNSUPPORTED', 'tools'); rejected('web.types', 'ANTHROPIC_WEB_SEARCH_TYPE_UNSUPPORTED', 'tools') }
+  else {
+    encoded('web.mode', 'tools', { mode: 'provider_search' }, 'structural'); encoded('web.types', 'tools', intent.web.types, 'structural')
+    if (intent.web.maxResults !== undefined) encoded('web.maxResults', 'tools', intent.web.maxResults, 'structural')
+    if (intent.web.allowedDomains !== undefined) encoded('web.allowedDomains', 'tools', intent.web.allowedDomains, 'structural')
+    if (intent.web.excludedDomains !== undefined) encoded('web.excludedDomains', 'tools', intent.web.excludedDomains, 'structural')
+    if (intent.web.userLocation !== undefined) encoded('web.userLocation', 'tools', intent.web.userLocation, 'structural')
+  }
+  for (const key of ['engine', 'maxTotalResults', 'searchContextSize', 'maxCharacters'] as const) {
+    if ((intent.web as unknown as Record<string, unknown>)[key] !== undefined) rejected(`web.${key}`, 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD', 'tools')
+  }
+  if (intent.image.mode === 'disabled') accepted('image.mode')
+  else for (const key of ['mode', 'outputMode', 'aspectRatio', 'resolution', 'size', 'quality', 'format', 'background', 'outputCompression', 'stream'] as const) {
+    if (key === 'mode' || intent.image[key] !== undefined) rejected(`image.${key}`, 'ANTHROPIC_UNSUPPORTED_EXPLICIT_FIELD')
+  }
+  if (intent.tools.mode === 'disabled') accepted('tools.mode')
+  else {
+    encoded('tools.mode', 'tools', true, 'structural'); encoded('tools.allowedToolIds', 'tools', intent.tools.allowedToolIds.map((tool) => tool.value), 'structural')
+    encoded('tools.toolChoice', 'tool_choice', intent.tools.toolChoice.mode === 'named' ? { mode: 'named', toolId: intent.tools.toolChoice.toolId.value } : { mode: intent.tools.toolChoice.mode }, 'structural')
+    accepted('tools.sideEffectConfirmation')
+  }
+  for (const [index, attachment] of intent.attachments.entries()) {
+    const base = `attachments[${index}]`; accepted(`${base}.assetId`); accepted(`${base}.assetRevisionId`); accepted(`${base}.assetSha256`)
+    if (attachment.include) { encoded(`${base}.include`, 'messages[].content', true, 'structural'); encoded(`${base}.sendAs`, 'messages[].content', attachment.sendAs, 'structural'); encoded(`${base}.conversion`, 'messages[].content', attachment.conversion, 'structural') }
+    else { accepted(`${base}.include`); accepted(`${base}.sendAs`); accepted(`${base}.conversion`) }
+  }
+  dispositions.sort((left, right) => left.semanticPath < right.semanticPath ? -1 : left.semanticPath > right.semanticPath ? 1 : 0)
+  issues.sort((left, right) => left.semanticPath < right.semanticPath ? -1 : left.semanticPath > right.semanticPath ? 1 : 0)
+  if (new Set(dispositions.map((entry) => entry.semanticPath)).size !== dispositions.length) throw new Error('GENERATION_V2_ANTHROPIC_MESSAGES_DUPLICATE_SEMANTIC_PATH')
+  return Object.freeze({ request: Object.freeze(request), dispositions: Object.freeze(dispositions), issues: Object.freeze(issues) })
+}
+
 export function compileAnthropicMessagesRequestV1(value: unknown): AnthropicMessagesRequestCompilationV1 {
   const input = closedObject(value, ['modelId', 'intent', 'messages', 'system', 'tools', 'toolChoice'], ['modelId', 'intent', 'messages'])
   if (typeof input.modelId !== 'string' || input.modelId.length === 0) {
@@ -388,7 +493,7 @@ export function compileAnthropicMessagesRequestV1(value: unknown): AnthropicMess
   }
   if (input.toolChoice !== undefined && tools === undefined) return fail('GENERATION_V2_ANTHROPIC_MESSAGES_REQUEST_INVALID_VALUE')
   const toolChoice = input.toolChoice === undefined ? undefined : decodeToolChoice(input.toolChoice, new Set(tools!.map((tool) => tool.name)))
-  const projection = projectAnthropicMessagesIntentV1(projectGenerationIntentLayerV2(input.intent as ResolvedGenerationIntentV2), input.modelId)
+  const projection = encodeAnthropicMessagesIntentV1(input.intent as ResolvedGenerationIntentV2, input.modelId)
   const base = {
     classification: 'anthropic_messages_request_compilation_non_executable' as const,
     executionAuthority: 'none' as const,

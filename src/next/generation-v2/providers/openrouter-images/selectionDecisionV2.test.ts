@@ -8,7 +8,7 @@ import {
 } from './canonicalDescriptorV2'
 import { decodeOpenRouterImageDescriptorCacheRecordV2 } from './descriptorCacheRecordV2'
 import { decideOpenRouterImageDescriptorFreshnessV2 } from './descriptorFreshnessDecisionV2'
-import { projectOpenRouterImageIntentCapabilityV2 } from './imageIntentCapabilityProjectionV2'
+import { resolveOpenRouterImageSelectionInputV2 } from './imageDescriptorSelectionV2'
 import {
   decideOpenRouterImageSelectionV2,
   type OpenRouterImageSelectionBindingFactV2,
@@ -49,7 +49,7 @@ function descriptorCache(tags: readonly string[] = ['z-provider', 'a-provider'])
 }
 
 function projection(overrides: Record<string, unknown> = {}) {
-  return projectOpenRouterImageIntentCapabilityV2({
+  return resolveOpenRouterImageSelectionInputV2({
     schemaVersion: 2,
     generation: { candidateCount: 1 },
     image: { mode: 'generate' },

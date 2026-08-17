@@ -28,23 +28,19 @@ export function compileGenericLocalOpenAIChatPreparedRequestV2(input: Readonly<{
       binding.endpointBinding.endpointSetRevision.value !== input.profile.profileRevision ||
       input.profile.protocolContractId !== 'generic-local-openai-chat-completions') throw new Error('GENERATION_V2_GENERIC_LOCAL_COMPILER_BINDING_INVALID')
   const intent = snapshot.semanticIntent; const generation = intent.generation
-  if (generation.topK !== undefined || generation.seed !== undefined || generation.candidateCount !== undefined ||
-      generation.frequencyPenalty !== undefined || generation.presencePenalty !== undefined || generation.repetitionPenalty !== undefined ||
-      intent.reasoning.mode !== 'disabled' || intent.web.mode !== 'disabled' || intent.image.mode !== 'disabled' ||
-      intent.tools.mode !== 'disabled' || intent.attachments.length !== 0 || intent.providerExtension.kind !== 'none') throw new Error('GENERATION_V2_GENERIC_LOCAL_COMPILER_EXPLICIT_FIELD_UNSUPPORTED')
   const messages = createGenericLocalOpenAIChatArtifactV1(input.history.replayMessages).messages
   const compiled = compileGenericLocalOpenAIChatRequestV1({ model: binding.modelId.value, messages,
     generation: { maxTokens: generation.maxOutputTokens, temperature: generation.temperature, topP: generation.topP, stop: generation.stop } })
   const entries = [
-    { kind: 'consumed' as const, path: 'reasoning.mode', disposition: 'accepted_no_wire' as const, nativeField: null, evidence: 'generic-local-openai-chat' },
-    { kind: 'consumed' as const, path: 'web.mode', disposition: 'accepted_no_wire' as const, nativeField: null, evidence: 'generic-local-openai-chat' },
-    { kind: 'consumed' as const, path: 'image.mode', disposition: 'accepted_no_wire' as const, nativeField: null, evidence: 'generic-local-openai-chat' },
-    { kind: 'consumed' as const, path: 'tools.mode', disposition: 'accepted_no_wire' as const, nativeField: null, evidence: 'generic-local-openai-chat' },
-    { kind: 'consumed' as const, path: 'providerExtension.kind', disposition: 'accepted_no_wire' as const, nativeField: null, evidence: 'generic-local-openai-chat' },
-    ...(generation.maxOutputTokens === undefined ? [] : [{ kind: 'consumed' as const, path: 'generation.maxOutputTokens', disposition: 'encoded' as const, nativeField: 'max_tokens', evidence: 'generic-local-openai-chat' }]),
-    ...(generation.temperature === undefined ? [] : [{ kind: 'consumed' as const, path: 'generation.temperature', disposition: 'encoded' as const, nativeField: 'temperature', evidence: 'generic-local-openai-chat' }]),
-    ...(generation.topP === undefined ? [] : [{ kind: 'consumed' as const, path: 'generation.topP', disposition: 'encoded' as const, nativeField: 'top_p', evidence: 'generic-local-openai-chat' }]),
-    ...(generation.stop === undefined ? [] : [{ kind: 'consumed' as const, path: 'generation.stop', disposition: 'encoded' as const, nativeField: 'stop', evidence: 'generic-local-openai-chat' }]),
+    { kind: 'consumed' as const, path: 'reasoning.mode', disposition: 'accepted_no_wire' as const, nativeField: null, encodingKind: 'omitted' as const, evidence: 'generic-local-openai-chat' },
+    { kind: 'consumed' as const, path: 'web.mode', disposition: 'accepted_no_wire' as const, nativeField: null, encodingKind: 'omitted' as const, evidence: 'generic-local-openai-chat' },
+    { kind: 'consumed' as const, path: 'image.mode', disposition: 'accepted_no_wire' as const, nativeField: null, encodingKind: 'omitted' as const, evidence: 'generic-local-openai-chat' },
+    { kind: 'consumed' as const, path: 'tools.mode', disposition: 'accepted_no_wire' as const, nativeField: null, encodingKind: 'omitted' as const, evidence: 'generic-local-openai-chat' },
+    { kind: 'consumed' as const, path: 'providerExtension.kind', disposition: 'accepted_no_wire' as const, nativeField: null, encodingKind: 'omitted' as const, evidence: 'generic-local-openai-chat' },
+    ...(generation.maxOutputTokens === undefined ? [] : [{ kind: 'consumed' as const, path: 'generation.maxOutputTokens', disposition: 'encoded' as const, nativeField: 'max_tokens', encodingKind: 'identity' as const, evidence: 'generic-local-openai-chat' }]),
+    ...(generation.temperature === undefined ? [] : [{ kind: 'consumed' as const, path: 'generation.temperature', disposition: 'encoded' as const, nativeField: 'temperature', encodingKind: 'identity' as const, evidence: 'generic-local-openai-chat' }]),
+    ...(generation.topP === undefined ? [] : [{ kind: 'consumed' as const, path: 'generation.topP', disposition: 'encoded' as const, nativeField: 'top_p', encodingKind: 'identity' as const, evidence: 'generic-local-openai-chat' }]),
+    ...(generation.stop === undefined ? [] : [{ kind: 'consumed' as const, path: 'generation.stop', disposition: 'encoded' as const, nativeField: 'stop', encodingKind: 'identity' as const, evidence: 'generic-local-openai-chat' }]),
   ]
   return issuePreparedProviderRequestV2({ operationId: operation.operationId.value, answerRootId: operation.targetAnswerId.value,
     requestSequence: 1, providerId: 'generic_local', endpointProfileId: input.profile.endpointProfileId,
@@ -52,5 +48,5 @@ export function compileGenericLocalOpenAIChatPreparedRequestV2(input: Readonly<{
     modelId: binding.modelId.value, effectiveEndpointId: input.profile.endpointProfileId,
     endpoint: readGenericLocalOpenAIChatEndpointV2(input.profile), headersPlan: createNoCredentialHeaderPlanV2(),
     body: compiled.preparedBody, ledger: createSemanticConsumptionLedgerV2(entries),
-    capabilityRevision: capability.revision.value, snapshotHash: snapshot.snapshotHash.value })
+    capabilityRevision: capability.revision.value, encoderRevision: capability.encoderRevision, snapshotHash: snapshot.snapshotHash.value })
 }

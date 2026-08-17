@@ -143,14 +143,6 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
           const raw = observation.rawProviderRecord
           const revision = `catalog-v2:${active.snapshotDigest}:${active.status.authorityRevision}`
           const evidenceDigest = GenerationV2Digest.create('evidence_digest', active.snapshotDigest)
-          const anthropicCapabilities = request.providerKey === 'anthropic_messages' ? object(raw.capabilities) : null
-          const anthropicThinking = object(anthropicCapabilities?.thinking)
-          const anthropicThinkingTypes = object(anthropicThinking?.types)
-          const supportedThinkingTypes = ['enabled', 'adaptive'].filter((kind) =>
-            object(anthropicThinkingTypes?.[kind])?.supported === true)
-          const anthropicEffort = object(anthropicCapabilities?.effort)
-          const supportedEfforts = ['low', 'medium', 'high', 'max', 'xhigh'].filter((effort) =>
-            object(anthropicEffort?.[effort])?.supported === true)
           const geminiMethods = Array.isArray(raw.supportedGenerationMethods)
             ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string') : []
           const geminiThinkingOwn = Object.prototype.hasOwnProperty.call(raw, 'thinking')
@@ -204,8 +196,6 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
             maxInputTokens: positive(raw.max_input_tokens ?? raw.maxInputTokens, 1),
             maxTokens: positive(raw.max_tokens ?? raw.maxOutputTokens, 1_000_000),
             capabilities: Object.freeze({}),
-            supportedThinkingTypes: Object.freeze(supportedThinkingTypes),
-            supportedEfforts: Object.freeze(supportedEfforts),
             model: geminiModel,
             modelCapability: openAIModelCapability,
             supportedParameters: Object.freeze(Array.isArray(item?.supportedParameters)

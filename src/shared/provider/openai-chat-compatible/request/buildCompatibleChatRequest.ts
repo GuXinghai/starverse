@@ -161,10 +161,7 @@ export function buildCompatibleChatRequest(input: Readonly<{
       ? control.value
       : (profile.defaults as Record<string, unknown>)[mapping.sourceField]
     if (sourceValue === undefined) throw new Error('compatible_request_mapping_default_missing')
-    if (typeof sourceValue !== mapping.valueKind) throw new Error('compatible_request_mapping_invalid')
-    const mapped = mapping.valueMapping[String(sourceValue)]
-    if (mapped === undefined) throw new Error('compatible_request_mapping_invalid')
-    setCompatibleJsonPath(body, path, compatibleBoundedJsonValueSchema.parse(mapped) as CompatibleJsonValue)
+    setCompatibleJsonPath(body, path, compatibleBoundedJsonValueSchema.parse(sourceValue) as CompatibleJsonValue)
     diagnostics.push(owned(path, 'mapping', control.state))
   }
 

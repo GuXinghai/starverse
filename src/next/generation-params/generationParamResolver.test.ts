@@ -82,7 +82,7 @@ describe('generationParamResolver', () => {
     expect(resolved.decisions.temperature).toMatchObject({ state: 'inheritedToAbsent' })
   })
 
-  it('records unsupported provider params as warnings without blocking send', () => {
+  it('preserves a custom value for capability validation at the Generation V2 boundary', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: openaiResponsesGenerationProfile,
       layers: {
@@ -90,15 +90,13 @@ describe('generationParamResolver', () => {
       },
     })
 
-    expect(resolved.requestParams.minP).toBeUndefined()
-    expect(resolved.decisions.minP).toMatchObject({ state: 'unsupported' })
+    expect(resolved.requestParams.minP).toBe(0.1)
+    expect(resolved.decisions.minP).toMatchObject({ state: 'sent', value: 0.1 })
     expect(resolved.errors).toEqual([])
-    expect(resolved.warnings).toEqual([
-      expect.objectContaining({ code: 'unsupported_param', key: 'minP' }),
-    ])
+    expect(resolved.warnings).toEqual([])
   })
 
-  it('treats OpenAI Responses reasoningEffort auto as provider auto without sending effort', () => {
+  it('preserves OpenAI Responses reasoningEffort auto as a raw value', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: openaiResponsesGenerationProfile,
       modelId: 'gpt-5.4-nano',
@@ -109,9 +107,9 @@ describe('generationParamResolver', () => {
     })
 
     expect(resolved.errors).toEqual([])
-    expect(resolved.requestParams.reasoningEffort).toBeUndefined()
+    expect(resolved.requestParams.reasoningEffort).toBe('auto')
     expect(resolved.decisions.reasoningEffort).toMatchObject({
-      state: 'providerAuto',
+      state: 'sent',
       source: 'conversation',
       value: 'auto',
     })
@@ -135,7 +133,7 @@ describe('generationParamResolver', () => {
     })
   })
 
-  it('does not send OpenAI Responses reasoning summary for non-reasoning models', () => {
+  it('does not derive OpenAI Responses reasoning support from model identity', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: openaiResponsesGenerationProfile,
       modelId: 'gpt-4.1-mini',
@@ -145,14 +143,12 @@ describe('generationParamResolver', () => {
     })
 
     expect(resolved.errors).toEqual([])
-    expect(resolved.requestParams.reasoningSummary).toBeUndefined()
-    expect(resolved.decisions.reasoningSummary).toMatchObject({ state: 'unsupported' })
-    expect(resolved.warnings).toEqual([
-      expect.objectContaining({ code: 'unsupported_param', key: 'reasoningSummary' }),
-    ])
+    expect(resolved.requestParams.reasoningSummary).toBe('auto')
+    expect(resolved.decisions.reasoningSummary).toMatchObject({ state: 'sent', value: 'auto' })
+    expect(resolved.warnings).toEqual([])
   })
 
-  it('does not send unsupported OpenAI Responses reasoning effort for non-reasoning models', () => {
+  it('does not derive OpenAI Responses reasoning effort support from model identity', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: openaiResponsesGenerationProfile,
       modelId: 'gpt-4.1-mini',
@@ -162,14 +158,12 @@ describe('generationParamResolver', () => {
     })
 
     expect(resolved.errors).toEqual([])
-    expect(resolved.requestParams.reasoningEffort).toBeUndefined()
-    expect(resolved.decisions.reasoningEffort).toMatchObject({ state: 'unsupported' })
-    expect(resolved.warnings).toEqual([
-      expect.objectContaining({ code: 'unsupported_param', key: 'reasoningEffort' }),
-    ])
+    expect(resolved.requestParams.reasoningEffort).toBe('high')
+    expect(resolved.decisions.reasoningEffort).toMatchObject({ state: 'sent', value: 'high' })
+    expect(resolved.warnings).toEqual([])
   })
 
-  it('warns but sends deprecated Gemini 3 sampling params', () => {
+  it('does not derive Gemini sampling policy from model identity', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: geminiGenerationProfile,
       modelId: 'gemini-3-pro-preview',
@@ -180,13 +174,11 @@ describe('generationParamResolver', () => {
 
     expect(resolved.errors).toEqual([])
     expect(resolved.requestParams.topP).toBe(0.85)
-    expect(resolved.decisions.topP).toMatchObject({ state: 'deprecated' })
-    expect(resolved.warnings).toEqual([
-      expect.objectContaining({ code: 'deprecated_param', key: 'topP' }),
-    ])
+    expect(resolved.decisions.topP).toMatchObject({ state: 'sent' })
+    expect(resolved.warnings).toEqual([])
   })
 
-  it('reports invalid values using provider capability ranges', () => {
+  it('leaves value validation to the resolved capability validator', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: openrouterGenerationProfile,
       layers: {
@@ -194,14 +186,12 @@ describe('generationParamResolver', () => {
       },
     })
 
-    expect(resolved.requestParams.temperature).toBeUndefined()
-    expect(resolved.decisions.temperature).toMatchObject({ state: 'rejected' })
-    expect(resolved.errors).toEqual([
-      expect.objectContaining({ code: 'invalid_value', key: 'temperature' }),
-    ])
+    expect(resolved.requestParams.temperature).toBe(99)
+    expect(resolved.decisions.temperature).toMatchObject({ state: 'sent', value: 99 })
+    expect(resolved.errors).toEqual([])
   })
 
-  it('records rejected provider params as warnings without blocking send', () => {
+  it('does not derive Anthropic sampling policy from model identity', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: anthropicGenerationProfile,
       modelId: 'claude-sonnet-5-20260601',
@@ -212,13 +202,11 @@ describe('generationParamResolver', () => {
 
     expect(resolved.errors).toEqual([])
     expect(resolved.requestParams.temperature).toBe(0.2)
-    expect(resolved.decisions.temperature).toMatchObject({ state: 'rejected', value: 0.2 })
-    expect(resolved.warnings).toEqual([
-      expect.objectContaining({ code: 'rejected_param', key: 'temperature' }),
-    ])
+    expect(resolved.decisions.temperature).toMatchObject({ state: 'sent', value: 0.2 })
+    expect(resolved.warnings).toEqual([])
   })
 
-  it('records no-effect provider params as warnings without blocking send', () => {
+  it('does not derive DeepSeek no-effect policy from model identity', () => {
     const resolved = resolveGenerationParamsFromLayers({
       profile: deepseekGenerationProfile,
       modelId: 'deepseek-v4-flash',
@@ -229,10 +217,8 @@ describe('generationParamResolver', () => {
 
     expect(resolved.errors).toEqual([])
     expect(resolved.requestParams.topP).toBe(0.8)
-    expect(resolved.decisions.topP).toMatchObject({ state: 'noEffect', value: 0.8 })
-    expect(resolved.warnings).toEqual([
-      expect.objectContaining({ code: 'no_effect_param', key: 'topP' }),
-    ])
+    expect(resolved.decisions.topP).toMatchObject({ state: 'sent', value: 0.8 })
+    expect(resolved.warnings).toEqual([])
   })
 
   it('warns when temperature and topP are both custom', () => {

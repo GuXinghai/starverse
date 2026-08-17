@@ -24,8 +24,6 @@ const mapping = (overrides: Partial<CompatibleRequestFieldMappingConfig> = {}): 
   requestProfileVersion: 1,
   sourceField: 'reasoning_effort',
   targetPath: ['reasoning', 'effort'],
-  valueKind: 'string',
-  valueMapping: { low: 'low', high: 'high' },
   omission: 'omit_when_unset',
   ...overrides,
 })

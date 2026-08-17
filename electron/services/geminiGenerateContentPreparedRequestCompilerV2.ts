@@ -47,10 +47,10 @@ export class GeminiGenerateContentPreparedRequestCompilerV2Error extends Error {
 const evidence = 'gemini-generate-content-v1beta'
 const GEMINI_INLINE_DATA_MAX_BYTES_V2 = 4 * 1024 * 1024
 function consumed(path: string, nativeField: string): SemanticConsumptionLedgerEntryV2 {
-  return Object.freeze({ kind: 'consumed', path, disposition: 'encoded', nativeField, evidence })
+  return Object.freeze({ kind: 'consumed', path, disposition: 'encoded', nativeField, encodingKind: 'structural', evidence })
 }
 function accepted(path: string): SemanticConsumptionLedgerEntryV2 {
-  return Object.freeze({ kind: 'consumed', path, disposition: 'accepted_no_wire', nativeField: null, evidence })
+  return Object.freeze({ kind: 'consumed', path, disposition: 'accepted_no_wire', nativeField: null, encodingKind: 'omitted', evidence })
 }
 
 export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
@@ -87,16 +87,6 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
   }
   const intent = snapshot.semanticIntent
   const toolsEnabled = intent.tools.mode === 'enabled'
-  const reasoningModeField = capability.fields.find((field) => field.path === 'reasoning.mode')
-  const thinkingLevelField = capability.fields.find((field) => field.path === 'providerExtension.thinkingLevel')
-  const thinkingBudgetField = capability.fields.find((field) => field.path === 'providerExtension.thinkingBudget')
-  const thinkingSupported = reasoningModeField?.state === 'supported' && reasoningModeField.domain?.kind === 'enum' &&
-    reasoningModeField.domain.values.includes('enabled')
-  const thinkingControlKind = thinkingLevelField?.state === 'supported' ? 'level'
-    : thinkingBudgetField?.state === 'supported' ? 'budget' : 'default-only'
-  if (intent.reasoning.mode === 'enabled' && !thinkingSupported) {
-    throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
-  }
   if (toolsEnabled) {
     if (snapshot.toolAuthority.kind !== 'registry' ||
         !isToolRegistryRepositoryFactForContextV2(toolRegistry, input.context) ||
@@ -118,17 +108,8 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
         if (intent.reasoning.summary !== undefined || intent.reasoning.exclude !== undefined ||
             extension.kind !== 'gemini_generate_content' ||
             extension.thinkingMode === 'default' && intent.reasoning.effort !== undefined ||
-            thinkingControlKind === 'default-only' && extension.thinkingMode !== 'default' ||
-            thinkingControlKind === 'level' && extension.thinkingMode !== 'default' &&
-              (extension.thinkingMode !== 'level' || intent.reasoning.effort === undefined ||
-                extension.thinkingLevel !== intent.reasoning.effort ||
-                thinkingLevelField?.domain?.kind !== 'enum' || !thinkingLevelField.domain.values.includes(extension.thinkingLevel)) ||
-            thinkingControlKind === 'budget' && extension.thinkingMode !== 'default' &&
-              (extension.thinkingMode !== 'budget' || thinkingBudget === null ||
-                thinkingBudgetField?.domain?.kind !== 'range' || thinkingBudget < thinkingBudgetField.domain.min ||
-                thinkingBudget > thinkingBudgetField.domain.max ||
-                thinkingBudget === 0 && thinkingBudgetField.constraints.some((constraint) =>
-                  constraint.kind === 'forbids_value' && constraint.values.includes(0)))) {
+            extension.thinkingMode === 'level' && intent.reasoning.effort === undefined ||
+            extension.thinkingMode === 'budget' && thinkingBudget === null) {
           throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
         }
         return Object.freeze({ mode: 'enabled' as const,
@@ -144,10 +125,7 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
       (webSearch && (intent.web.types.length !== 1 || intent.web.types[0] !== 'web' ||
         intent.web.engine !== undefined || intent.web.maxResults !== undefined || intent.web.maxTotalResults !== undefined ||
         intent.web.searchContextSize !== undefined || intent.web.maxCharacters !== undefined ||
-        intent.web.userLocation !== undefined || intent.web.allowedDomains !== undefined || intent.web.excludedDomains !== undefined)) ||
-      intent.generation.candidateCount !== undefined || intent.generation.seed !== undefined ||
-      intent.generation.frequencyPenalty !== undefined || intent.generation.presencePenalty !== undefined ||
-      intent.generation.repetitionPenalty !== undefined) {
+        intent.web.userLocation !== undefined || intent.web.allowedDomains !== undefined || intent.web.excludedDomains !== undefined))) {
     throw new GeminiGenerateContentPreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_COMPILER_SEMANTIC_REJECTED')
   }
   const ledger: SemanticConsumptionLedgerEntryV2[] = [
@@ -278,6 +256,7 @@ export function compileGeminiGenerateContentPreparedRequestV2(input: Readonly<{
     attachmentRequirements,
     attachmentEncodingProofs,
     capabilityRevision: capability.revision.value,
+    encoderRevision: capability.encoderRevision,
     snapshotHash: snapshot.snapshotHash.value,
   })
 }

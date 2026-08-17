@@ -98,7 +98,7 @@ export type WireProtocol =
   | 'anthropic-messages'
   | 'deepseek-chat'
 
-export type GenerationParamValueType = 'number' | 'integer' | 'boolean' | 'enum' | 'stringArray'
+export type GenerationParamValueType = 'number' | 'integer' | 'boolean' | 'enum' | 'string' | 'stringArray'
 
 export type GenerationParamCapabilityStatus =
   | 'stable'
@@ -121,6 +121,7 @@ export type GenerationParamCapability = Readonly<{
     integer?: boolean
   }>
   enumValues?: readonly string[]
+  maxLength?: number
   specialValues?: readonly number[]
   status?: GenerationParamCapabilityStatus
   ui?: Readonly<{
@@ -133,22 +134,10 @@ export type GenerationParamCapability = Readonly<{
   conflictGroup?: 'temperatureOrTopP'
 }>
 
-export type ModelGenerationParamOverride = Readonly<{
-  match: Readonly<{
-    providerId?: GenerationProviderId
-    modelIdPattern?: string
-    exactModelIds?: readonly string[]
-  }>
-  params?: Partial<Record<GenerationParamKey, GenerationParamCapability>>
-  notes?: string
-}>
-
 export type ProviderGenerationParamProfile = Readonly<{
   providerId: GenerationProviderId
   profileId: string
   wireProtocol: WireProtocol
-  params: Partial<Record<GenerationParamKey, GenerationParamCapability>>
-  modelOverrides?: readonly ModelGenerationParamOverride[]
 }>
 
 export type ResolveGenerationParamsInput = Readonly<{
@@ -156,11 +145,4 @@ export type ResolveGenerationParamsInput = Readonly<{
   modelId?: string | null
   geminiThinkingCapability?: GeminiThinkingCapability
   layers: GenerationParamsLayers
-}>
-
-export type MapGenerationParamsInput = Readonly<{
-  profile: ProviderGenerationParamProfile
-  modelId?: string | null
-  geminiThinkingCapability?: GeminiThinkingCapability
-  requestParams: Partial<Record<GenerationParamKey, GenerationParamValue>>
 }>

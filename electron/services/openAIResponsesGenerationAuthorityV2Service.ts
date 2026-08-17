@@ -35,7 +35,7 @@ import {
 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import { requiresProviderFileBindingV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
-import { isOpenAIResponsesEncodedAttachmentIntentV1 } from '../../src/next/generation-v2/providers/openai-responses/responsesIntentProjectionV1'
+import { isOpenAIResponsesEncodedAttachmentV1 } from '../../src/next/generation-v2/providers/openai-responses/responsesRequestV1'
 import {
   readGenerationV2Digest,
   readGenerationV2Identity,
@@ -292,7 +292,7 @@ function validateIntent(
   toolRegistry: ToolRegistryRepositoryFactV2 | null,
 ): void {
   const intent = commandFacts.semanticIntent
-  if (intent.attachments.some((attachment) => attachment.include && !isOpenAIResponsesEncodedAttachmentIntentV1(attachment)) ||
+  if (intent.attachments.some((attachment) => attachment.include && !isOpenAIResponsesEncodedAttachmentV1(attachment)) ||
       commandFacts.attachmentSet.attachments.length !== intent.attachments.length ||
       commandFacts.attachmentSet.requiresProviderFileAuthority !==
         intent.attachments.some(requiresProviderFileBindingV2)) {

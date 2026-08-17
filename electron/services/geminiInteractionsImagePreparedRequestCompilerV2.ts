@@ -4,10 +4,8 @@ import { isGenerationExecutionOperationBundleForContextV2, type GenerationExecut
 import { createSemanticConsumptionLedgerV2 } from '../../src/next/generation-v2/compiler/semanticConsumptionLedgerV2'
 import { validateGenerationExecutionCapabilityV2 } from '../../src/next/generation-v2/compiler/semanticCapabilityValidatorV2'
 import { createGoogleApiKeyHeaderPlanV2, issuePreparedProviderRequestV2, type PreparedProviderRequestV2 } from '../../src/next/generation-v2/compiler/preparedProviderRequestV2'
-import { projectGenerationIntentLayerV2 } from '../../src/next/generation-v2/domain/generationIntentProjectionV2'
 import { readGeminiDeveloperApiContractV2, resolveGeminiDeveloperApiEndpointV2 } from '../../src/next/generation-v2/contracts/geminiDeveloperApiContractV2'
 import { compileGeminiInteractionsRequestV1 } from '../../src/next/generation-v2/providers/gemini/interactionsRequestV1'
-import { projectGeminiInteractionsImageIntentV1 } from '../../src/next/generation-v2/providers/gemini/interactionsImageIntentV1'
 import { readVerifiedGeminiDeveloperApiEndpointProfileV2 } from '../../src/next/generation-v2/providers/gemini/verifiedEndpointProfileV2'
 import { readImageAspectRatioV2 } from '../../src/next/generation-v2/domain/generationIntentV2'
 /* eslint-enable no-restricted-imports */
@@ -43,8 +41,7 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
       capability.continuation.kind !== 'none') {
     throw new GeminiInteractionsImagePreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_BINDING_INVALID')
   }
-  const projection = projectGeminiInteractionsImageIntentV1(projectGenerationIntentLayerV2(snapshot.semanticIntent), binding.modelId.value)
-  if (projection.issues.length !== 0 || snapshot.semanticIntent.attachments.some((attachment) => attachment.include)) {
+  if (snapshot.semanticIntent.attachments.some((attachment) => attachment.include)) {
     throw new GeminiInteractionsImagePreparedRequestCompilerV2Error('GENERATION_V2_GEMINI_INTERACTIONS_COMPILER_SEMANTIC_REJECTED')
   }
   const intent = snapshot.semanticIntent
@@ -76,9 +73,43 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
   const endpoint = resolveGeminiDeveloperApiEndpointV2(readGeminiDeveloperApiContractV2(), {
     surfaceId: 'gemini-interactions-v1beta',
   })
-  const ledger = createSemanticConsumptionLedgerV2(projection.dispositions.map((entry) => Object.freeze({
+  const dispositions: Array<Readonly<{ path: string; nativeField: string | null; disposition: 'encoded' | 'accepted_no_wire'; encodingKind: 'identity' | 'structural' | 'omitted' }>> = []
+  const accept = (path: string) => dispositions.push(Object.freeze({ path, disposition: 'accepted_no_wire' as const, nativeField: null, encodingKind: 'omitted' as const }))
+  const encode = (path: string, nativeField: string, encodingKind: 'identity' | 'structural' = 'identity') => dispositions.push(Object.freeze({ path, disposition: 'encoded' as const, nativeField, encodingKind }))
+  const addIf = (value: unknown, path: string, nativeField: string, encodingKind: 'identity' | 'structural' = 'identity') => { if (value !== undefined) encode(path, nativeField, encodingKind) }
+  addIf(generation.temperature, 'generation.temperature', 'generation_config.temperature')
+  addIf(generation.topP, 'generation.topP', 'generation_config.top_p')
+  addIf(generation.maxOutputTokens, 'generation.maxOutputTokens', 'generation_config.max_output_tokens')
+  addIf(generation.stop, 'generation.stop', 'generation_config.stop_sequences', 'structural')
+  if (intent.reasoning.mode === 'disabled') accept('reasoning.mode')
+  else {
+    encode('reasoning.mode', 'generation_config', 'structural')
+    addIf(intent.reasoning.effort, 'reasoning.effort', 'generation_config.thinking_level')
+    addIf(intent.reasoning.summary, 'reasoning.summary', 'generation_config.thinking_summaries', 'structural')
+  }
+  if (intent.web.mode === 'disabled') accept('web.mode')
+  else { encode('web.mode', 'tools', 'structural'); encode('web.types', 'tools', 'structural') }
+  if (intent.tools.mode === 'disabled') accept('tools.mode')
+  if (intent.providerExtension.kind === 'none') accept('providerExtension.kind')
+  if (intent.image.mode === 'generate') {
+    encode('image.mode', 'response_format.type', 'structural')
+    addIf(intent.image.outputMode, 'image.outputMode', 'response_format', 'structural')
+    if (intent.image.aspectRatio !== undefined && readImageAspectRatioV2(intent.image.aspectRatio) !== 'auto') encode('image.aspectRatio', 'response_format.aspect_ratio')
+    addIf(intent.image.resolution, 'image.resolution', 'response_format.image_size')
+    addIf(intent.image.format, 'image.format', 'response_format.mime_type', 'structural')
+    if (intent.image.stream === true) accept('image.stream')
+  }
+  for (const [index, attachment] of intent.attachments.entries()) {
+    const path = attachment.kind === 'managed_file'
+      ? `attachments.${attachment.assetId.value}@${attachment.assetRevisionId.value}`
+      : `attachments.${attachment.referenceId.value}@${attachment.referenceRevision.value}`
+    accept(path)
+    void index
+  }
+  const ledger = createSemanticConsumptionLedgerV2(dispositions.map((entry) => Object.freeze({
     kind: 'consumed' as const, path: entry.path, disposition: entry.disposition,
-    nativeField: entry.nativeField, evidence: 'gemini-interactions-v1beta',
+    nativeField: entry.nativeField, encodingKind: entry.encodingKind,
+    evidence: 'gemini-interactions-v1beta',
   })))
   return issuePreparedProviderRequestV2({
     operationId: operation.operationId.value, answerRootId: operation.targetAnswerId.value,
@@ -86,6 +117,6 @@ export function compileGeminiInteractionsImagePreparedRequestV2(input: Readonly<
     credentialScopeId: binding.credentialScopeId.value, contractId: binding.protocolContractId.value,
     modelId: binding.modelId.value, effectiveEndpointId: descriptor.endpointId.value, endpoint: endpoint.url,
     headersPlan: createGoogleApiKeyHeaderPlanV2(), body: compilation.preparedBody, ledger,
-    capabilityRevision: capability.revision.value, snapshotHash: snapshot.snapshotHash.value,
+    capabilityRevision: capability.revision.value, encoderRevision: capability.encoderRevision, snapshotHash: snapshot.snapshotHash.value,
   })
 }

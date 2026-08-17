@@ -75,11 +75,11 @@ function draft(): MutableDraft {
       verifiedAt: '2026-07-15T07:00:00.000Z',
       contentDigest: evidenceContentDigest,
     }],
-    fields: [...RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2].reverse().map((path) => path === 'generation.temperature'
+    fields: [...RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2].reverse().map((path) => path === 'generation.maxOutputTokens'
       ? {
           path,
           state: 'supported',
-          domain: { kind: 'range', min: 0, max: 2, integer: false },
+          domain: { kind: 'range', min: 1, max: 100000, integer: true },
           constraints: [],
           evidenceIds: ['contract.openai.responses.v1'],
         }
@@ -140,6 +140,17 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
     })
   })
 
+  it('accepts capability-owned open string domains within the shared safety ceiling', () => {
+    const value = draft()
+    const effort = value.fields.find((field) => field.path === 'reasoning.effort')!
+    effort.state = 'supported'
+    effort.domain = { kind: 'string', maxLength: 256 }
+    effort.evidenceIds = ['contract.openai.responses.v1']
+    const decoded = decodeRuntimeCapabilitySnapshotV2(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value))
+    expect(decoded.fields.find((field) => field.path === 'reasoning.effort')?.domain)
+      .toEqual({ kind: 'string', maxLength: 256 })
+  })
+
   it('makes provider binding, evidence, fields and resolution time part of immutable identity', () => {
     const baseline = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(draft())
     expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
@@ -153,10 +164,10 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
     expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(changedEvidence).evidenceDigest)
       .not.toBe(baseline.evidenceDigest)
     const changedField = draft()
-    const temperatureIndex = changedField.fields.findIndex((field) => field.path === 'generation.temperature')
-    changedField.fields[temperatureIndex] = {
-      ...changedField.fields[temperatureIndex],
-      domain: { kind: 'range', min: 0, max: 1, integer: false },
+    const maxTokensIndex = changedField.fields.findIndex((field) => field.path === 'generation.maxOutputTokens')
+    changedField.fields[maxTokensIndex] = {
+      ...changedField.fields[maxTokensIndex],
+      domain: { kind: 'range', min: 2, max: 100000, integer: true },
     }
     expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(changedField).semanticFieldsDigest)
       .not.toBe(baseline.semanticFieldsDigest)
@@ -179,37 +190,37 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
 
   it('requires evidence for every claim and permits evidence-free unavailable fields only', () => {
     const missingReference = draft()
-    const index = missingReference.fields.findIndex((field) => field.path === 'generation.temperature')
+    const index = missingReference.fields.findIndex((field) => field.path === 'generation.maxOutputTokens')
     missingReference.fields[index] = { ...missingReference.fields[index], evidenceIds: ['missing'] }
     expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(missingReference))
       .toThrow('GENERATION_V2_CAPABILITY_EVIDENCE_MISMATCH')
     const unsupportedWithSupportEvidence = draft()
     unsupportedWithSupportEvidence.fields[index] = {
-      path: 'generation.temperature', state: 'unsupported', constraints: [],
+      path: 'generation.maxOutputTokens', state: 'unsupported', constraints: [],
       evidenceIds: ['contract.openai.responses.v1'],
     }
     expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(unsupportedWithSupportEvidence))
       .toThrow('GENERATION_V2_CAPABILITY_EVIDENCE_MISMATCH')
     const missingWithEvidence = draft()
     missingWithEvidence.fields[index] = {
-      path: 'generation.temperature', state: 'missing', constraints: [],
+      path: 'generation.maxOutputTokens', state: 'missing', constraints: [],
       evidenceIds: ['contract.openai.responses.v1'],
     }
     expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(missingWithEvidence))
       .toThrow('GENERATION_V2_CAPABILITY_EVIDENCE_MISMATCH')
     const validMissing = draft()
     validMissing.fields[index] = {
-      path: 'generation.temperature', state: 'missing', constraints: [], evidenceIds: [],
+      path: 'generation.maxOutputTokens', state: 'missing', constraints: [], evidenceIds: [],
     }
     expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(validMissing).fields
-      .find((field) => field.path === 'generation.temperature')?.state)
+      .find((field) => field.path === 'generation.maxOutputTokens')?.state)
       .toBe('missing')
   })
 
-  it('uses closed domains and cross-field constraints without provider wire paths', () => {
+  it('preserves capability-owned domains and cross-field constraints without provider wire paths', () => {
     const value = draft()
-    const temperature = value.fields.find((field) => field.path === 'generation.temperature')!
-    Object.assign(temperature, {
+    const maxTokens = value.fields.find((field) => field.path === 'generation.maxOutputTokens')!
+    Object.assign(maxTokens, {
       constraints: [{ kind: 'requires_value', path: 'reasoning.mode', values: ['enabled'] }],
     })
     const reasoningMode = value.fields.find((field) => field.path === 'reasoning.mode')!
@@ -219,8 +230,8 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
       evidenceIds: ['contract.openai.responses.v1'],
     })
     const record = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value)
-    const decodedField = record.fields.find((field) => field.path === 'generation.temperature')!
-    expect(decodedField.domain).toEqual({ kind: 'range', min: 0, max: 2, integer: false })
+    const decodedField = record.fields.find((field) => field.path === 'generation.maxOutputTokens')!
+    expect(decodedField.domain).toEqual({ kind: 'range', min: 1, max: 100000, integer: true })
     expect(decodedField.constraints).toEqual([
       { kind: 'requires_value', path: 'reasoning.mode', values: ['enabled'] },
     ])
@@ -231,10 +242,10 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
     })).toThrow('GENERATION_V2_CAPABILITY_INVALID_SHAPE')
   })
 
-  it('requires a positive integer capability domain for a manual thinking budget', () => {
+  it('rejects malformed capability ranges without imposing provider bounds', () => {
     const invalid = draft()
     Object.assign(invalid.fields.find((field) => field.path === 'providerExtension.manualThinkingBudgetTokens')!, {
-      state: 'supported', domain: { kind: 'range', min: 0, max: 4096, integer: true },
+      state: 'supported', domain: { kind: 'range', min: 4096, max: 0, integer: true },
       evidenceIds: ['contract.openai.responses.v1'],
     })
     expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(invalid))
@@ -355,27 +366,23 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
     })).toThrow('GENERATION_V2_CAPABILITY_EVIDENCE_MISMATCH')
   })
 
-  it('keeps provider domains inside the base semantic value domains', () => {
-    const invalidCases: Array<[RuntimeCapabilitySemanticPathV2, Record<string, unknown>]> = [
-      ['generation.maxOutputTokens', { kind: 'range', min: -1, max: 10, integer: true }],
-      ['generation.topK', { kind: 'range', min: -1, max: 10, integer: true }],
-      ['generation.candidateCount', { kind: 'range', min: 0, max: 10, integer: true }],
-      ['generation.temperature', { kind: 'range', min: -0.1, max: 1, integer: false }],
-      ['generation.topP', { kind: 'range', min: 0, max: 1.1, integer: false }],
-      ['generation.repetitionPenalty', { kind: 'range', min: 0, max: 2, integer: false }],
-      ['image.outputCompression', { kind: 'range', min: 0, max: 101, integer: true }],
-      ['image.aspectRatio', { kind: 'enum', values: [true] }],
-      ['image.aspectRatio', { kind: 'enum', values: ['wide'] }],
+  it('allows provider-owned enum members and range bounds to come from capability evidence', () => {
+    const acceptedCases: Array<[RuntimeCapabilitySemanticPathV2, Record<string, unknown>]> = [
+      ['reasoning.effort', { kind: 'enum', values: ['medium', 'provider-custom'] }],
+      ['providerExtension.verbosity', { kind: 'enum', values: ['experimental-level'] }],
+      ['image.quality', { kind: 'enum', values: ['studio-quality'] }],
+      ['reasoning.summary', { kind: 'enum', values: ['provider-summary'] }],
+      ['generation.maxOutputTokens', { kind: 'range', min: -1, max: 10, integer: false }],
     ]
-    for (const [path, domain] of invalidCases) {
+    for (const [path, domain] of acceptedCases) {
       const value = draft()
       const index = value.fields.findIndex((field) => field.path === path)
       value.fields[index] = {
         path, state: 'supported', domain, constraints: [],
         evidenceIds: ['contract.openai.responses.v1'],
       }
-      expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value), path)
-        .toThrow('GENERATION_V2_CAPABILITY_INVALID_VALUE')
+      expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(value), path)
+        .toBeTruthy()
     }
   })
 

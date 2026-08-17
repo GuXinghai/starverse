@@ -631,7 +631,6 @@ type CompatibleRequestFieldMapping = {
     | 'reasoning_budget'
 
   targetPath: string
-  valueMapping: Record<string, unknown>
   omitWhenUnset: boolean
 }
 ```
@@ -642,10 +641,6 @@ type CompatibleRequestFieldMapping = {
 {
   "uiControl": "reasoning_enabled",
   "targetPath": "/chat_template_kwargs/enable_thinking",
-  "valueMapping": {
-    "on": true,
-    "off": false
-  },
   "omitWhenUnset": true
 }
 ```
@@ -656,6 +651,8 @@ type CompatibleRequestFieldMapping = {
 * 响应 mapping 属于 response profile；
 * 两者不能互相自动推导；
 * target path 使用受限对象路径 DSL；
+* source value 在通过公共 capability validator 后原样写入 wire；
+* request mapping 不包含 `valueKind`/`valueMapping`，不做 alias、类型转换、截断或隐式默认；
 * 不允许覆盖 Starverse-owned 核心字段；
 * 不允许脚本；
 * 不允许函数；
@@ -2221,3 +2218,14 @@ Starverse 现有代理模型及双 transport 架构必须保留。代理路由�
 两条轴必须独立持久化、显示和诊断。两种安全策略与四种代理路由均不得静默切换、fallback 或降级。历史 route 固定 endpoint revision 中的安全策略；代理路由选择按实际发送时明确选定的现有网络配置执行，不得由安全策略重写。
 
 本决策修订此前“所有 compatible 请求都必须具备 connect-time lease”这一全局要求：connect-time lease 是 `strict_ssrf` 的强制条件；`compatibility_first` 的正式契约是保留既有代理/transport 行为并执行首次请求前及每次重定向后的地址检查。
+
+## Generation V2 纯 Wire Adapter 修订（2026-08-17）
+
+对于 Generation V2，本文件中任何把 request codec、request mapping 或 projection 作为模型 capability/domain authority 的旧表述均被以下边界取代：
+
+- `ResolvedCapabilityV2` 决定 exact provider instance、model、operation 下的 semantic support 与 domain；
+- compatible request mapping 只描述 `sourceField / targetPath / omission`，不包含 `valueKind`、`valueMapping`、alias、clamp 或隐式默认转换；
+- mapping 读取的 source value 必须由公共 semantic validator 先验证，并按原值写入目标路径；
+- `EncodingCoverageRegistryV2` 只证明 wire encoder 对 semantic path 的代码覆盖，不提供任何模型值域；
+- provider-owned/open enum 可以由 capability domain 表达为 bounded string，codec 不得把 `medium` 升为 `high` 或把 alias 归一化；
+- 旧 compatible configuration 不进入 V2 decoder；epoch-2 closed-schema replacement 负责原子切换，不提供迁移 adapter、dual read 或 dual write。

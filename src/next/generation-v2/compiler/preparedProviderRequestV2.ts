@@ -52,6 +52,7 @@ export type PreparedProviderRequestV2 = Readonly<{
   bodyByteLength: number
   ledger: SemanticConsumptionLedgerV2
   capabilityRevision: string
+  encoderRevision: string
   snapshotHash: string
 }>
 
@@ -141,6 +142,7 @@ export function issuePreparedProviderRequestV2(input: Readonly<{
   attachmentRequirements?: readonly PreparedAttachmentRequirementV2[]
   attachmentEncodingProofs?: readonly PreparedAttachmentEncodingProofV2[]
   capabilityRevision: string
+  encoderRevision: string
   snapshotHash: string
 }>): PreparedProviderRequestV2 {
   if (!isImmutablePreparedBodyV2(input.body)) {
@@ -182,6 +184,7 @@ export function issuePreparedProviderRequestV2(input: Readonly<{
     bodyByteLength: input.body.byteLength,
     ledger: input.ledger,
     capabilityRevision: identifier(input.capabilityRevision),
+    encoderRevision: identifier(input.encoderRevision),
     snapshotHash: input.snapshotHash,
   })
   preparedRequests.add(request)

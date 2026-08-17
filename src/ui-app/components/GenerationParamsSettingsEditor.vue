@@ -91,7 +91,7 @@ function capabilityFromProjection(key: GenerationParamKey): GenerationParamCapab
   const base = (supported: boolean, extra: Partial<GenerationParamCapability> = {}): GenerationParamCapability => ({
     supported,
     valueType: spec.valueType,
-    ui: { visibleByDefault: supported, editable: supported },
+    ui: { visibleByDefault: supported && field?.visibility !== 'hidden', editable: supported && field?.visibility !== 'hidden' },
     ...extra,
   })
   if (!field || field.state !== 'supported') return base(false, {
@@ -110,6 +110,10 @@ function capabilityFromProjection(key: GenerationParamKey): GenerationParamCapab
   if (!domain) return base(true)
   if (domain.kind === 'enum') return base(true, {
     enumValues: domain.values.filter((value): value is string => typeof value === 'string'),
+  })
+  if (domain.kind === 'string') return base(true, {
+    valueType: 'string',
+    maxLength: domain.maxLength,
   })
   if (domain.kind === 'range') return base(true, {
     range: { min: domain.min, max: domain.max, integer: domain.integer },
@@ -203,6 +207,7 @@ function parseInputValue(spec: GenerationParamSpec, raw: string): string | numbe
   const trimmed = raw.trim()
   if (capability.valueType === 'boolean') return trimmed === 'true'
   if (capability.valueType === 'enum') return normalizeGenerationParamValue(spec.key, trimmed, capability)
+  if (capability.valueType === 'string') return normalizeGenerationParamValue(spec.key, trimmed, capability)
   if (capability.valueType === 'stringArray') {
     const values = raw
       .split(/\r?\n|,/)
@@ -225,6 +230,7 @@ function validationHint(spec: GenerationParamSpec): string {
   const capability = capabilityForSpec(spec)
   const range = capability.range
   if (capability.valueType === 'enum') return (capability.enumValues ?? []).join(', ')
+  if (capability.valueType === 'string') return `string (max ${capability.maxLength ?? 0})`
   if (capability.valueType === 'boolean') return 'true / false'
   if (capability.valueType === 'stringArray') return 'one sequence per line or comma-separated'
   const minText = range?.min !== undefined ? String(range.min) : '-inf'
@@ -275,6 +281,8 @@ function onModeChange(spec: GenerationParamSpec, nextModeRaw: string) {
     ? false
     : capability.valueType === 'enum'
       ? (capability.enumValues?.[0] ?? '')
+      : capability.valueType === 'string'
+        ? ''
       : capability.valueType === 'stringArray'
         ? []
         : (capability.range?.min ?? 0)
@@ -445,6 +453,21 @@ watch(
             :data-testid="`generation-param-value-${spec.key}`"
             @input="onValueInput(spec, $event)"
             @blur="onValueCommit(spec)"
+          />
+          <input
+            v-else-if="capabilityForSpec(spec).valueType === 'string'"
+            type="text"
+            class="min-w-0 w-full rounded border border-gray-200 bg-white px-2 py-1 text-[11px] text-gray-700 shadow-sm disabled:bg-gray-100"
+            :disabled="props.disabled || modeForKey(spec.key) !== 'custom'"
+            :value="inputTextByKey[spec.key]"
+            :maxlength="capabilityForSpec(spec).maxLength"
+            :placeholder="modeForKey(spec.key) === 'inherit' ? inheritedValueHint(spec) : undefined"
+            :title="hasInputError(spec) ? validationHint(spec) : inheritedValueHint(spec)"
+            :aria-invalid="hasInputError(spec) ? 'true' : 'false'"
+            :data-testid="`generation-param-value-${spec.key}`"
+            @input="onValueInput(spec, $event)"
+            @blur="onValueCommit(spec)"
+            @keydown.enter.prevent="onValueCommit(spec)"
           />
           <input
             v-else

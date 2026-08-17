@@ -757,8 +757,6 @@ type CompatibleRegistryCredentialInput =
 type CompatibleRegistryRequestMappingInput = Readonly<{
   sourceField: 'reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget'
   targetPath: readonly (string | number)[]
-  valueKind: 'boolean' | 'number' | 'string'
-  valueMapping: Readonly<Record<string, null | boolean | number | string>>
   omission: 'omit_when_unset' | 'required'
 }>
 
