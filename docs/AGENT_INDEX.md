@@ -4,7 +4,7 @@
 
 **Status**: active
 **Document Role**: entry
-**Last updated**: 2026-08-14
+**Last updated**: 2026-08-17
 **Governance**: DGR-1 dual-dimension status model
 
 ---

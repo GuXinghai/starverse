@@ -1,5 +1,7 @@
 # Local runtime workdirs and Vite watcher boundaries
 
+**Last updated**: 2026-06-06
+
 This policy applies to local directories used for external runtime workdirs, managed engine packages, plugin or runtime extraction, downloaded tools, model or runtime binaries, diagnostic profiles, CPU profiles, netlogs, and large local artifacts.
 
 ## Core Rules

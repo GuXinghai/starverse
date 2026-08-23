@@ -2,7 +2,7 @@
 
 > **Status**: active
 > **Document Role**: guide
-> **Last updated**: 2026-08-14
+> **Last updated**: 2026-08-17
 >
 > 2026-08-14 重写：原指南基于 2025-12 的旧基线（Node 18、`data.db`、Worker 线程、`dev:vite`/`typecheck` 等脚本）；已按 [README](../../README.md) 与 `package.json` 的现行事实重写。
 

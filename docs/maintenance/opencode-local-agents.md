@@ -1,5 +1,7 @@
 # OpenCode Local Agents
 
+**Last updated**: 2026-05-08
+
 The live OpenCode configuration under .opencode/ is intentionally local-only and remains untracked in Git.
 
 The tracked files in docs/maintenance/opencode-agent-templates/ are sanitized templates. They exist so the local OpenCode setup can be recovered without committing private model preferences, provider credentials, API keys, tokens, account-specific paths, or .env content.

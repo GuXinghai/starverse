@@ -1,5 +1,7 @@
 # Privacy Scan Gate
 
+**Last updated**: 2026-05-21
+
 `npm run gate:privacy` scans `electron`, `src`, `infra`, and `docs` for privacy-sensitive strings:
 
 - `contentToken`

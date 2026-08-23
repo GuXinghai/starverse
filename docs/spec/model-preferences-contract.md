@@ -2,7 +2,7 @@
 
 Status: reference
 Document Role: spec
-Last updated: 2026-08-14
+Last updated: 2026-08-15
 
 > **2026-08-14 修正**: 本文档冻结于 2026-02-17（阶段 3）。现行实现将 recents 写入改为 generation 操作驱动：`recordRecent` 已更名为 `recordRecentForGenerationOperation`（`infra/db/repo/modelPreferencesRepo.ts`，以 `operationId` 幂等；`src/ui-app/AppChatApp.send.test.ts:495` 断言不存在 `recordRecent`）；DDL 落点由 `infra/db/schema.sql` 迁至 `infra/db/v2/*.sql`。收藏语义、scope 语义与容量策略未变。
 

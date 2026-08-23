@@ -1,5 +1,7 @@
 # Codex Project Subagents (Starverse)
 
+**Last updated**: 2026-05-09
+
 This document defines the stable, auditable project-scoped Codex subagent setup under `.codex/agents/`.
 
 ## Scope
