@@ -1,9 +1,8 @@
 ---
 description: Starverse documentation consistency checker for phase claims, owner decisions, non-goals, acceptance matrices, and closeout language.
 mode: subagent
-model: deepseek/deepseek-v4-flash
-reasoningEffort: medium
-temperature: 0.1
+model: opencode-go/ox-alpha-free
+reasoningEffort: max
 steps: 36
 permission:
   read: allow
