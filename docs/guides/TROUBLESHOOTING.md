@@ -2,7 +2,7 @@
 
 > **Status**: active
 > **Document Role**: guide
-> **Last updated**: 2026-08-14
+> **Last updated**: 2026-08-17
 >
 > 2026-08-14 重写：原指南停留在 `chat.db`/“完全离线”时代；已按 epoch-2 布局与现行工具链重写。
 
