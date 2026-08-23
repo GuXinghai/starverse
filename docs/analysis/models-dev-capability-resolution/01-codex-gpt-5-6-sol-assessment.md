@@ -98,7 +98,7 @@ models.dev 自己也采用 provider model + `base_model` 继承，并允许 prov
 
 - 每次发送前的联网请求。
 
-具体来说，应把当前 [modelCapabilityResolverV2.ts](D:/Starverse/src/next/modelCatalog/modelCapabilityResolverV2.ts:15) 从“provider observation + 简单 supplement”升级为接受完整 evidence bundle 的纯 resolver：
+具体来说，应把当前 [modelCapabilityResolverV2.ts](../../../src/next/modelCatalog/modelCapabilityResolverV2.ts:15) 从“provider observation + 简单 supplement”升级为接受完整 evidence bundle 的纯 resolver：
 
 ```text
 
@@ -126,7 +126,7 @@ live provider observation
 
 - category
 
-见 [modelCatalogV2Repo.ts](D:/Starverse/infra/db/repo/modelCatalogV2Repo.ts:11)。这已经非常接近所需的 capability identity。
+见 [modelCatalogV2Repo.ts](../../../infra/db/repo/modelCatalogV2Repo.ts:11)。这已经非常接近所需的 capability identity。
 
 Runtime capability snapshot 不应重新决定模型能力；它只能从上述记录出发，叠加工具注册表、附件、确认状态等 command-specific 条件做单调收窄。
 
@@ -158,25 +158,25 @@ Runtime capability snapshot 不应重新决定模型能力；它只能从上述�
 
 关键代码包括：
 
-- DeepSeek observation：[deepSeekModelSource.ts](D:/Starverse/src/next/provider/deepseek/deepSeekModelSource.ts:254)
+- DeepSeek observation：[deepSeekModelSource.ts](../../../src/next/provider/deepseek/deepSeekModelSource.ts:254)
 
-- 当前 resolver：[modelCapabilityResolverV2.ts](D:/Starverse/src/next/modelCatalog/modelCapabilityResolverV2.ts:23)
+- 当前 resolver：[modelCapabilityResolverV2.ts](../../../src/next/modelCatalog/modelCapabilityResolverV2.ts:23)
 
-- 当前 supplement/wire 表：[providerCatalogAuthorityRegistryV2.ts](D:/Starverse/src/next/modelCatalog/providerCatalogAuthorityRegistryV2.ts:66)
+- 当前 supplement/wire 表：[providerCatalogAuthorityRegistryV2.ts](../../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2.ts:66)
 
-- catalog fallback：[catalogQueryService.ts](D:/Starverse/src/next/modelCatalog/catalogQueryService.ts:404)
+- catalog fallback：[catalogQueryService.ts](../../../src/next/modelCatalog/catalogQueryService.ts:404)
 
-- Composer 静态 DeepSeek 选项：[ChatAppComposer.vue](D:/Starverse/src/ui-app/components/ChatAppComposer.vue:373)
+- Composer 静态 DeepSeek 选项：[ChatAppComposer.vue](../../../src/ui-app/components/ChatAppComposer.vue:373)
 
-- Console 的另一套 `low/medium/high`：[ChatSessionConsole.vue](D:/Starverse/src/ui-app/components/ChatSessionConsole.vue:2271)
+- Console 的另一套 `low/medium/high`：[ChatSessionConsole.vue](../../../src/ui-app/components/ChatSessionConsole.vue:2271)
 
-- active preflight：[activeCatalogModelAuthorityV2Service.ts](D:/Starverse/electron/services/activeCatalogModelAuthorityV2Service.ts:65)
+- active preflight：[activeCatalogModelAuthorityV2Service.ts](../../../electron/services/activeCatalogModelAuthorityV2Service.ts:65)
 
-- runtime policy：[stableCapabilityPolicyV2.ts](D:/Starverse/src/next/generation-v2/providers/deepseek/stableCapabilityPolicyV2.ts:216)
+- runtime policy：[stableCapabilityPolicyV2.ts](../../../src/next/generation-v2/providers/deepseek/stableCapabilityPolicyV2.ts:216)
 
-- compiler projection：[chatIntentProjectionV1.ts](D:/Starverse/src/next/generation-v2/providers/deepseek/chatIntentProjectionV1.ts:178)
+- compiler projection：[generationIntentProjectionV2.ts](../../../src/next/generation-v2/domain/generationIntentProjectionV2.ts)
 
-- wire codec：[chatRequestV1.ts](D:/Starverse/src/next/generation-v2/providers/deepseek/chatRequestV1.ts:36)
+- wire codec：[chatRequestV1.ts](../../../src/next/generation-v2/providers/deepseek/chatRequestV1.ts:36)
 
 ### 5. 哪些 capability hardcode 应删除或收敛？
 
@@ -258,7 +258,7 @@ assert intent ⊆ resolved snapshot
 
 ```
 
-`RuntimeCapabilitySnapshotV2` 已经有 evidence digest、semantic fields digest、revision、snapshot hash 和 catalog authority 六元组，可以直接复用。[runtimeCapabilitySnapshotV2.ts](D:/Starverse/src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts:219)
+`RuntimeCapabilitySnapshotV2` 已经有 evidence digest、semantic fields digest、revision、snapshot hash 和 catalog authority 六元组，可以直接复用。[runtimeCapabilitySnapshotV2.ts](../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2.ts:219)
 
 建议扩展它的 evidence kind，加入 `trusted_external_catalog`；同时显式增加 `unknown`，避免当前 `unavailable` 混合“无法证明”和“明确不可用”。
 
@@ -302,7 +302,7 @@ assert intent ⊆ resolved snapshot
 
 Reviewed deny/narrow 应当总能收窄；reviewed add 默认只允许填补 `missing/unknown`，不得覆盖 live explicit false。若将来确实需要覆盖 provider 的明确 negative，应该设计单独的高权限例外类型，而不是普通规则。
 
-另有一个当前代码风险：如果 active catalog 找不到模型，[withExactActiveModel](D:/Starverse/electron/services/activeCatalogModelAuthorityV2Service.ts:163) 会合成 missing observation，而不是直接判定模型不存在；因为 `textChat` 有 supplement，纯文本请求仍可能通过。这个行为与“live provider 决定 availability”并不完全一致，建议 Owner 明确冻结并倾向改成严格 membership；离线时可以使用 provider catalog 的 LKG，但不能使用 models.dev 代替 availability。
+另有一个当前代码风险：如果 active catalog 找不到模型，[withExactActiveModel](../../../electron/services/activeCatalogModelAuthorityV2Service.ts:163) 会合成 missing observation，而不是直接判定模型不存在；因为 `textChat` 有 supplement，纯文本请求仍可能通过。这个行为与“live provider 决定 availability”并不完全一致，建议 Owner 明确冻结并倾向改成严格 membership；离线时可以使用 provider catalog 的 LKG，但不能使用 models.dev 代替 availability。
 
 ### 9. Reviewed capability rules 设计
 
@@ -468,13 +468,13 @@ Starverse 已经具备：
 
 - catalog immutable snapshot 和 `authorityRevision`
 
-- sync 失败保留 active LKG：[modelCatalogV2Repo.test.ts](D:/Starverse/infra/db/repo/modelCatalogV2Repo.test.ts:58)
+- sync 失败保留 active LKG：[modelCatalogV2Repo.test.ts](../../../infra/db/repo/modelCatalogV2Repo.test.ts:58)
 
 - renderer stale request/revision 拒绝
 
 - active catalog precommit 重验
 
-- immutable runtime capability snapshot：[runtimeCapabilityV2Repo.ts](D:/Starverse/infra/db/repo/runtimeCapabilityV2Repo.ts:98)
+- immutable runtime capability snapshot：[runtimeCapabilityV2Repo.ts](../../../infra/db/repo/runtimeCapabilityV2Repo.ts:98)
 
 UI 打开期间发生更新时：
 

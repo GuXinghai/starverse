@@ -25,8 +25,7 @@
 - [PATH_FIX.md](PATH_FIX.md) - 路径问题修复
 
 ### 修复总结
-- [RECENT_FIXES.md](RECENT_FIXES.md) - 近期修复汇总
-- [RECENT_FIXES_SUMMARY_NOV.md](RECENT_FIXES_SUMMARY_NOV.md) - 11月修复总结
+- [RECENT_FIXES_2025_11.md](RECENT_FIXES_2025_11.md) - 近期修复汇总
 
 ## 📊 统计信息
 

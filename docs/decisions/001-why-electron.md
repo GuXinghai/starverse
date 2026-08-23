@@ -157,7 +157,7 @@ Starverse 需要开发一个跨平台的桌面应用，用于AI对话管理，�
 - [Electron安全最佳实践](https://www.electronjs.org/docs/latest/tutorial/security)
 - [VS Code为什么选择Electron](https://code.visualstudio.com/blogs/2016/11/14/electron-1.4.6)
 - [Tauri vs Electron对比](https://tauri.app/v1/references/benchmarks/)
-- [项目架构总览](../architecture/overview.md)
+- [项目架构总览](../architecture/OVERVIEW.md)
 
 ---
 
