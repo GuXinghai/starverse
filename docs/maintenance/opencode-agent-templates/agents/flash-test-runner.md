@@ -1,7 +1,8 @@
 ---
 description: Fast Starverse test execution and failure triage agent. Use for running targeted tests, type checks, and build-adjacent verification, then returning concise failure analysis without modifying files.
 mode: subagent
-temperature: 0.1
+model: opencode-go/ox-alpha-free
+reasoningEffort: max
 steps: 32
 permission:
   read: allow

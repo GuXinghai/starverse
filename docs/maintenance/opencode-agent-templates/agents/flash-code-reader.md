@@ -1,7 +1,8 @@
 ---
 description: Fast read-only Starverse code exploration agent. Use for locating files, mapping architecture, tracing symbols, reading docs, and returning high-signal findings without modifying the repository.
 mode: subagent
-temperature: 0.1
+model: opencode-go/ox-alpha-free
+reasoningEffort: max
 steps: 24
 permission:
   read: allow

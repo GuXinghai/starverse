@@ -1,9 +1,8 @@
 ---
 description: MiMo-V2.5 Starverse test execution and failure triage agent. Use for running targeted tests, type checks, and build-adjacent verification, then returning concise failure analysis without modifying files.
 mode: subagent
-model: xiaomi-token-plan-cn/mimo-v2.5
-reasoningEffort: medium
-temperature: 0.1
+model: opencode-go/ox-alpha-free
+reasoningEffort: max
 steps: 32
 permission:
   read: allow

@@ -1,9 +1,8 @@
 ---
 description: Starverse P0/P1 risk reviewer for security, DB migration, plugin registry, signature/hash verification, path logging, and external runtime boundaries.
 mode: subagent
-model: deepseek/deepseek-v4-flash
-reasoningEffort: high
-temperature: 0.2
+model: opencode-go/ox-alpha-free
+reasoningEffort: max
 steps: 48
 permission:
   read: allow
