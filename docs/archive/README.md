@@ -19,7 +19,7 @@
 | [debug/](debug/) | 6 | 已结束的 Debug 调查 |
 | [documentation/](documentation/) | 13 | 文档治理过程记录（含 2026-08-14 DGR-3 批次） |
 | [migrations/](migrations/) | 8 | 已完成的迁移记录（含 2026-08-14 DGR-3 批次） |
-| [optimizations/](optimizations/) | 11 | 已完成的性能优化记录（含 2026-08-14 DGR-3 批次） |
+| [optimizations/](optimizations/) | 10 | 已完成的性能优化记录（含 2026-08-14 DGR-3 批次） |
 | [refactoring/](refactoring/) | 10 | 已完成的非 UI 重构记录（含 2026-08-14 DGR-3 批次） |
 | [testing/](testing/) | 10 | 历史测试验证记录（含 2026-08-14 DGR-3 批次） |
 | [ui-implementations/](ui-implementations/) | 12 | 已完成的 UI 实现记录（含 2026-08-14 DGR-3 批次） |

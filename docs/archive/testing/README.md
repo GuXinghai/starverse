@@ -7,12 +7,6 @@
 ### DOM 清理验证
 - [DOM_CLEANUP_VERIFICATION.md](DOM_CLEANUP_VERIFICATION.md) - DOM 清理验证
 
-### 消息重复测试
-- [MESSAGE_DUPLICATION_TEST_RESULTS.md](MESSAGE_DUPLICATION_TEST_RESULTS.md) - 消息重复测试结果
-
-### 推理显示修复验证
-- [REASONING_DISPLAY_FIX_VERIFICATION.md](REASONING_DISPLAY_FIX_VERIFICATION.md) - 推理显示修复验证
-
 ## 📊 测试统计
 
 ### 测试类型
@@ -26,8 +20,8 @@
 ## 🔗 相关文档
 
 - [../bugfixes/](../bugfixes/) - 对应的 Bug 修复记录
-- [../../BRANCH_DELETE_TEST_GUIDE.md](../../BRANCH_DELETE_TEST_GUIDE.md) - 分支删除测试指南（活跃）
-- [../../REASONING_TESTING_STRATEGY.md](../../REASONING_TESTING_STRATEGY.md) - 推理系统测试策略（活跃）
+- [BRANCH_DELETE_TEST_GUIDE.md](BRANCH_DELETE_TEST_GUIDE.md) - 分支删除测试指南
+- [REASONING_TESTING_STRATEGY.md](REASONING_TESTING_STRATEGY.md) - 推理系统测试策略
 
 ## 📊 归档信息
 

@@ -175,7 +175,7 @@ useAppStore                  - 全局配置
 - [Composition API RFC](https://github.com/vuejs/rfcs/blob/master/active-rfcs/0013-composition-api.md)
 - [Pinia官方文档](https://pinia.vuejs.org/)
 - [为什么Vue 3更适合TypeScript](https://vuejs.org/guide/typescript/overview.html)
-- [项目状态管理架构](../architecture/overview.md#状态管理)
+- [项目状态管理架构](../architecture/OVERVIEW.md#状态管理)
 
 ---
 

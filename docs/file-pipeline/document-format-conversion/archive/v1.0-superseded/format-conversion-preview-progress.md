@@ -1244,8 +1244,8 @@
   - 原测试对 `modelPrefs.recordRecent` 写死断言 `openrouter/auto`，而稳定基线实际会从会话 meta 选中 `openai/gpt-4o`。
   - 附件重放失败并非 UI 挂载问题；在基线稳定后，失败已下沉到 `streamOpenRouterChatAsEvents()` 入参断言。
 - 本轮修改文件：
-  - [D:\Starverse\src\ui-app\AppChatApp.regenRetry.test.ts](D:\Starverse\src\ui-app\AppChatApp.regenRetry.test.ts)
-  - [D:\Starverse\docs\file-pipeline\format-conversion-preview-progress.md](D:\Starverse\docs\file-pipeline\format-conversion-preview-progress.md)
+  - [src/ui-app/AppChatApp.regenRetry.test.ts](../../../../../src/ui-app/AppChatApp.regenRetry.test.ts)
+  - [format-conversion-preview-progress.md](format-conversion-preview-progress.md)
 - 基线测试恢复情况：
   - `regenerate creates a new answer root, updates < i/n >, and streams into the new assistant`：已恢复通过。
   - `retry replace hides old candidate (branch-local), selects new candidate, updates < i/n >, and streams`：已恢复通过。

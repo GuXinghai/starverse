@@ -23,15 +23,9 @@
 - [ERROR_DISPLAY_IMPLEMENTATION.md](ERROR_DISPLAY_IMPLEMENTATION.md) - 错误显示实现
 
 ### 聊天功能按钮
-- [NEW_CHAT_BUTTON_IMPLEMENTATION.md](NEW_CHAT_BUTTON_IMPLEMENTATION.md) - 新建聊天按钮实现
-
-### 滑块组件
 - [QUANTILE_SLIDER_TEST_GUIDE.md](QUANTILE_SLIDER_TEST_GUIDE.md) - 分位数滑块测试指南
 
 ### 侧边栏
-- [SIDEBAR_IMPROVEMENTS.md](SIDEBAR_IMPROVEMENTS.md) - 侧边栏改进
-
-### 图片查看
 - [SYSTEM_IMAGE_OPENER.md](SYSTEM_IMAGE_OPENER.md) - 系统图片查看器
 
 ## 📊 实现统计
@@ -47,7 +41,6 @@
 ## 🔗 相关文档
 
 - [../completed-features/](../completed-features/) - 功能实现记录
-- [../../components-dev/](../../components-dev/) - 组件开发规范（如存在）
 
 ## 📊 归档信息
 
