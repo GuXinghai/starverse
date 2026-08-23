@@ -15,7 +15,8 @@ This directory preserves three independent investigations of using models.dev as
 2. [DeepSeek V4 Flash assessment](02-deepseek-v4-flash-assessment.md) — broad code-path map, external-source investigation, and incremental official-API notes.
 3. [DeepSeek V4 Pro assessment](03-deepseek-v4-pro-assessment.md) — independent architecture evaluation, migration plan, and frozen-decision candidates.
 4. [Updated architecture recommendations](04-updated-architecture-recommendations.md) — cross-report synthesis, revised implementation sequence, invariants, and 30 candidate decisions for Owner review.
-5. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
+5. [Raw model capability evidence draft](05-raw-model-capability-evidence-and-discussion.md) — raw fact draft (事实底稿) preserving original model/capability fields, sources, evidence, and discussion conclusions; not a design or rule document.
+6. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
 
 ## Status and authority
 
