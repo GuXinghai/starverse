@@ -4,7 +4,7 @@
 
 **Status**: active
 **Document Role**: maintenance
-**Last updated**: 2026-08-14
+**Last updated**: 2026-08-23
 **Owner**: DGR-2
 
 ---
@@ -20,7 +20,7 @@
 
 ## 2026-08-14 Navigation Refresh
 
-No document paths were moved or renamed in this refresh. The navigation indexes were synchronized with the current checkout, and `docs/guides/DOCUMENT_REORGANIZATION_PLAN.md` was marked as a historical process record. Existing redirects remain authoritative for the earlier DGR-1/DGR-2 moves.
+In this refresh, `docs/guides/DOCUMENT_REORGANIZATION_PLAN.md` was moved to `docs/archive/documentation/DOCUMENT_REORGANIZATION_PLAN.md` and marked as a historical process record (see the DGR-3 table below). Existing redirects remain authoritative for the earlier DGR-1/DGR-2 moves.
 
 ## DGR-1 Redirect Map
 
@@ -208,11 +208,6 @@ to verify no stale references remain.
 
 ---
 
-## Related Documents
-
-- [document-governance.md](document-governance.md) — Governance rules
-- [document-status-taxonomy.md](document-status-taxonomy.md) — Status model
-- [DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) — Current status index
 ## 2026-08-14 DGR-3 Batch Archive (Owner-approved)
 
 | Old Path | New Path | Action Type | Status | Notes |
@@ -299,3 +294,11 @@ to verify no stale references remain.
 | `docs\bugfix\VUE_PROXY_CLONE_FIX.md` | `docs\archive\bugfixes\VUE_PROXY_CLONE_FIX.md` | move | completed | 2026-08-14 DGR-3 |
 | `docs\guides\GENERATION_MIGRATION_GUIDE.md` | `docs\archive\migrations\GENERATION_MIGRATION_GUIDE.md` | move | completed | 2026-08-14 DGR-3 |
 | `docs\guides\REASONING_TESTING_STRATEGY.md` | `docs\archive\testing\REASONING_TESTING_STRATEGY.md` | move | completed | 2026-08-14 DGR-3 |
+
+---
+
+## Related Documents
+
+- [document-governance.md](document-governance.md) — Governance rules
+- [document-status-taxonomy.md](document-status-taxonomy.md) — Status model
+- [DOC_STATUS_INDEX.md](../DOC_STATUS_INDEX.md) — Current status index
