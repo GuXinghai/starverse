@@ -4,7 +4,7 @@
 
 **Status**: active
 **Document Role**: entry
-**Last updated**: 2026-08-14
+**Last updated**: 2026-08-23
 **Governance**: DGR-1 dual-dimension status model
 
 ---
@@ -65,7 +65,7 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [tailwind/TAILWIND_V4_README.md](tailwind/TAILWIND_V4_README.md) | active | entry | Styling | UI/style tasks | Tailwind v4 migration & rules |
 | [archive/README.md](archive/README.md) | archived | archive-index | Catalog | History trace only | 158 files including the archive index; read only for history |
 | [analysis/model-provider-identity/README.md](analysis/model-provider-identity/README.md) | reference | entry | Provider/model identity | Identity audit or closeout tracing | Point-in-time evidence; current source remains authoritative |
-| [analysis/models-dev-capability-resolution/README.md](analysis/models-dev-capability-resolution/README.md) | reference | entry | Model capability resolution | models.dev evidence or capability-authority analysis | Three independent point-in-time reports plus original source; not SSOT |
+| [analysis/models-dev-capability-resolution/README.md](analysis/models-dev-capability-resolution/README.md) | reference | entry | Model capability resolution | models.dev evidence or capability-authority analysis | Three independent point-in-time reports plus raw fact draft and original source; not SSOT |
 
 ### DGR-1 Governance Documents
 
@@ -86,6 +86,7 @@ Starverse uses a **dual-dimension status model**. See [document-status-taxonomy.
 | [file-pipeline/phase-1-domain-model.md](file-pipeline/phase-1-domain-model.md) | historical | closeout | Design | Phase 1 process record |
 | [file-pipeline/phase-2-persistence-and-storage.md](file-pipeline/phase-2-persistence-and-storage.md) | historical | closeout | Design | Phase 2 process record |
 | [file-pipeline/phase-3-ingestion-and-import.md](file-pipeline/phase-3-ingestion-and-import.md) | historical | closeout | Design | Phase 3 process record |
+| [file-pipeline/phase-4-message-attachment-semantics.md](file-pipeline/phase-4-message-attachment-semantics.md) | historical | closeout | Design | Phase 4 process record |
 | [file-pipeline/phase-5-send-eligibility-and-planning.md](file-pipeline/phase-5-send-eligibility-and-planning.md) | historical | closeout | Design | Phase 5 process record |
 | [file-pipeline/phase-6-openrouter-request-adapter.md](file-pipeline/phase-6-openrouter-request-adapter.md) | historical | closeout | Design | Phase 6 process record |
 | [file-pipeline/phase-7-derived-tasks-and-embeddings.md](file-pipeline/phase-7-derived-tasks-and-embeddings.md) | historical | closeout | Design | Phase 7 process record |
@@ -133,7 +134,7 @@ Counts include Markdown, JSON, HTML, CSV, and other tracked files under each dir
 | Directory | Files | Default interpretation | Entry / SSOT |
 |---|---:|---|---|
 | `adr/` | 6 | reference / decision | `adr/README.md` |
-| `analysis/` | 17 | reference / historical evidence | `analysis/model-provider-identity/README.md`; `analysis/models-dev-capability-resolution/README.md` |
+| `analysis/` | 18 | reference / historical evidence | `analysis/model-provider-identity/README.md`; `analysis/models-dev-capability-resolution/README.md` |
 | `architecture/` | 185 | mixed; classify by topic | `architecture/CURRENT_SYSTEM_ARCHITECTURE.md` |
 | `archive/` | 158 | archived | `archive/README.md` |
 | `bugfix/` | 1 | 2026-08-14 已整体归档至 `archive/bugfixes/`；仅重定向 README | `bugfix/README.md` |
@@ -296,7 +297,19 @@ The inventory above intentionally does not claim that every file in a mixed dire
 
 ## Sync Notes
 
-Last sync: 2026-08-14
+Last sync: 2026-08-23
+
+### 2026-08-23 文档健康检查修复
+
+- 修复 `decisions/001-003` 指向 `architecture/overview.md` 的大小写断链（→ `OVERVIEW.md`）。
+- 修复 `archive/` 5 处 `../../` 指向 docs/ 根不存在文件的断链（optimizations/testing/refactoring/ui-implementations README）；删除 0 字节空文件 `archive/optimizations/INCREMENTAL_SERIALIZATION_GUIDE.md` 及其索引链接；清理 archive 各 README 文档列表中指向已不存在文件的死条目（14 处移除、1 处改指 `RECENT_FIXES_2025_11.md`）。
+- `analysis/models-dev-capability-resolution/01-codex-gpt-5-6-sol-assessment.md` 的 Windows 绝对路径链接改为相对路径；compiler projection 引用 `chatIntentProjectionV1.ts`（2026-08-17 收敛重构删除）改为现行 `generation-v2/domain/generationIntentProjectionV2.ts`。
+- `file-pipeline/document-format-conversion/archive/v1.0-superseded/format-conversion-preview-progress.md` 的 2 处 `D:\Starverse\...` 绝对路径链接改为相对路径。
+- 游离草稿 `05-raw-model-capability-evidence-and-discussion.md` 移入 `analysis/models-dev-capability-resolution/`（作为 bundle 第 5 项），删除原空目录。
+- File Pipeline 表补录 `phase-4-message-attachment-semantics.md`（historical / closeout）。
+- `maintenance/document-redirect-map.md` 2026-08-14 Navigation Refresh 段落修正：DOCUMENT_REORGANIZATION_PLAN 实为 move 至 archive/documentation/。
+- 同步 AGENT_INDEX、guides/DEVELOPMENT_SETUP、guides/TROUBLESHOOTING、spec/model-preferences-contract、maintenance/document-status-taxonomy 的头部日期；为 v1.2 DFC SSOT 与 4 个 maintenance 策略文档补时间戳。
+- 核验补充（2026-08-23）：`archive/README.md` optimizations 计数 11→10；`maintenance/document-redirect-map.md` DGR-3 表移到 Related Documents 之前；`archive/documentation/DOCUMENT_CLEANUP_AUDIT.md` 模板示例中 `../architecture/overview.md` 改为 `../../architecture/OVERVIEW.md`。核验确认：file-pipeline 计数 166 无偏差；redirect map 4 行无 `docs\` 前缀的 Old Path 实为仓库根目录散落文档（git 历史证实），保留原样。
 
 ### DGR-3 续（2026-08-14）
 
