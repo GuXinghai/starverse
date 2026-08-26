@@ -1,6 +1,6 @@
 import MarkdownIt from 'markdown-it'
 import katex from 'katex'
-import { highlightSync, isHighlighterReady, requestHighlighter } from './shikiLoader'
+import { highlightSync, isLangLoadable, requestHighlighter } from './shikiLoader'
 import { sanitizeHtml } from './sanitizer'
 import type { FinalSnapshot } from './types'
 
@@ -72,7 +72,7 @@ export async function renderFinal(text: string): Promise<FinalSnapshot> {
             }
 
             html = html.replace(block.placeholder, renderCodeFallback(block.code))
-            if (!isHighlighterReady()) highlightPending = true
+            if (isLangLoadable(block.lang)) highlightPending = true
         }
     }
 

@@ -23,7 +23,7 @@ Starverse 是一个本地优先的 AI 对话桌面客户端。它使用 Electron
 | OpenRouter | OpenRouter API | 远程模型目录、凭据管理和流式聊天 |
 | OpenAI | Responses API | 官方 Responses 协议与推理参数 |
 | Google | Google AI Studio / Gemini API | 官方 Gemini 文本与多模态请求路径 |
-| Anthropic | Messages API | 官方 Anthropic Messages 协议 |
+| Anthropic | Messages API | 官方 Anthropic Messages 协议（不再维护，逐步移除，见下文声明） |
 | DeepSeek | DeepSeek API | 官方 DeepSeek 文本聊天路径 |
 | OpenAI-compatible | Chat Completions-compatible | 用户定义 Provider、endpoint、认证、模型与解析配置 |
 | LM Studio | 本地服务 | loopback 探测、模型管理和聊天 |
@@ -33,6 +33,18 @@ Starverse 是一个本地优先的 AI 对话桌面客户端。它使用 Electron
 可用模型取决于用户凭据、本地运行时和远端目录，仓库不承诺固定的模型数量。
 
 表中的 Google 指 Google AI Studio Provider；Gemini 是其 API/模型家族称呼，不是另一个独立 Provider。
+
+## Claude/Anthropic 原生支持停止声明
+
+**决定（2026-08-23）**：作为秉持开源、开放、共享、共有理念的项目，本项目不支持任何封闭的、歧视性的供应商及其协议。因此本项目不再维护 Claude（Anthropic）的原生供应，并将在后续提交中逐步移除任何与 Claude 生态相关的代码、配置和文档引用。
+
+**原因**：Anthropic 对正常用户进行无差别封禁，中国大陆用户即使合规使用也会被无理由限制、拒绝访问或封禁账号；其对中国用户充满了歧视与不公正待遇。这样的供应商及其封闭协议与项目理念背道而驰，本项目不会继续维护其原生接入。
+
+**后续安排**：
+
+- 现有 Anthropic Messages Provider 代码冻结，不再新增功能或修复问题。
+- 逐步清理 Anthropic/Claude 相关代码、测试、配置、i18n 文案与文档。
+- 需要 Claude 模型的用户可通过 OpenAI Chat Completions-compatible 网关或 OpenRouter 等代理渠道自行接入；本项目不对此类第三方渠道做任何可用性保证。
 
 ## 快速开始
 

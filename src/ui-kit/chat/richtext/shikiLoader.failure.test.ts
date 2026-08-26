@@ -1,16 +1,16 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 afterEach(() => {
-    vi.doUnmock('shiki')
+    vi.doUnmock('shiki/core')
     vi.resetModules()
 })
 
 describe('Shiki load failure', () => {
     it('keeps the final renderer fallback visible when the dynamic import fails', async () => {
         vi.resetModules()
-        vi.doMock('shiki', () => {
-            throw new Error('shiki unavailable')
-        })
+        vi.doMock('shiki/core', () => ({
+            createHighlighterCore: () => Promise.reject(new Error('shiki unavailable')),
+        }))
 
         const { renderFinal } = await import('./finalRenderer')
         const snapshot = await renderFinal('```typescript\nconst stillVisible = true\n```')
