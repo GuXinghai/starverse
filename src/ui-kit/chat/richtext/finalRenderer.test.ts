@@ -1,4 +1,4 @@
-import { afterEach, describe, it, expect } from 'vitest'
+import { afterEach, describe, it, expect, vi } from 'vitest'
 import { renderFinal, renderBlockSync } from './finalRenderer'
 import { disposeHighlighter, getHighlighter } from './shikiLoader'
 
@@ -144,6 +144,22 @@ describe('finalRenderer', () => {
             expect(result.highlightPending).toBe(false)
             expect(result.html).toContain('rt-pre-fallback')
             expect(result.html).toContain('const x = 1;')
+        })
+
+        it('upgrades a lazy-loaded language block after its chunk loads', async () => {
+            await getHighlighter()
+            const text = '```rust\nlet x = 1;\n```'
+            const initial = await renderFinal(text)
+
+            expect(initial.highlightPending).toBe(true)
+            expect(initial.html).toContain('rt-pre-fallback')
+            expect(initial.html).toContain('let x = 1;')
+
+            await vi.waitFor(async () => {
+                const upgraded = await renderFinal(text)
+                expect(upgraded.highlightPending).toBe(false)
+                expect(upgraded.html).toContain('shiki')
+            }, { timeout: 10000 })
         })
 
         it('renders code blocks without language', async () => {
