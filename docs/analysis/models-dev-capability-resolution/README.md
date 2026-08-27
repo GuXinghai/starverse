@@ -2,7 +2,7 @@
 
 - **Lifecycle Status**: reference
 - **Document Role**: entry
-- **Last updated**: 2026-08-17
+- **Last updated**: 2026-08-28
 - **Authority**: Evidence bundle only; it does not replace current source code, Owner decisions, Generation V2 authority, reviewed contracts, or current provider documentation.
 
 ---
@@ -16,7 +16,9 @@ This directory preserves three independent investigations of using models.dev as
 3. [DeepSeek V4 Pro assessment](03-deepseek-v4-pro-assessment.md) — independent architecture evaluation, migration plan, and frozen-decision candidates.
 4. [Updated architecture recommendations](04-updated-architecture-recommendations.md) — cross-report synthesis, revised implementation sequence, invariants, and 30 candidate decisions for Owner review.
 5. [Raw model capability evidence draft](05-raw-model-capability-evidence-and-discussion.md) — raw fact draft (事实底稿) preserving original model/capability fields, sources, evidence, and discussion conclusions; not a design or rule document.
-6. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
+6. [Owner-frozen model-facts architecture](06-owner-frozen-model-facts-architecture.md) — authoritative Owner decision for the model-facts boundary and the following source-ingestion Goals.
+7. [Model-facts authority boundary implementation](07-model-facts-authority-boundary-implementation.md) — first post-decision authority-boundary partial closeout, intentional residuals, and next-Goal checklist.
+8. [Original Word compilation](source/starverse-models-dev-capability-assessments.docx) — renamed, unmodified source evidence.
 
 ## Status and authority
 
@@ -26,6 +28,7 @@ This directory preserves three independent investigations of using models.dev as
 - The reports' file/line references describe their respective checkout baselines and can drift as the repository changes.
 - For current implementation facts, inspect the current checkout. For approved architecture, follow the current Generation V2 authority and Owner-frozen decisions.
 - models.dev data in these reports is treated as potential evidence, never as model availability or final capability authority.
+- Current implementation status and remaining TODOs are tracked in item 7; do not revive the deleted Catalog capability resolver while implementing source ingestion.
 
 ## Import fidelity
 
