@@ -7,7 +7,6 @@ import type { ProviderFailureV2 } from '../../shared/provider/providerFailureV2'
 import type {
   CatalogProviderModelObservationV2,
 } from '../../shared/modelCatalog/providerModelObservationV2'
-import { resolveModelCapabilitiesV2, type ResolvedModelCapabilitiesV2 } from './modelCapabilityResolverV2'
 
 type GenerationV2ModelsApi = Readonly<{
   listOpenRouter?: (options?: unknown) => Promise<unknown>
@@ -32,14 +31,6 @@ export type CatalogQueryNumberRange = Readonly<{
   min?: number
   max?: number
 }>
-export type CatalogQueryCapabilitiesFilter = Readonly<{
-  reasoning?: boolean
-  tools?: boolean
-  structuredOutputs?: boolean
-  vision?: boolean
-  longContext?: boolean
-}>
-
 export type CatalogQueryCursor = Readonly<{
   sortBy: CatalogQuerySortBy
   sortOrder: CatalogQuerySortOrder
@@ -84,7 +75,6 @@ export type CatalogQueryInput = Readonly<{
     inputModalities?: CatalogQueryModality[]
     outputModalities?: CatalogQueryModality[]
     supportedParameters?: string[]
-    capabilities?: CatalogQueryCapabilitiesFilter
   }>
   sort?: Readonly<{
     by?: CatalogQuerySortBy
@@ -117,7 +107,8 @@ export type CatalogQueryItem = Readonly<{
     inputCacheRead?: string | null
     inputCacheWrite?: string | null
   }>
-  capabilities: Readonly<{
+  /** Raw source hint only; catalog queries no longer populate or filter by it. */
+  capabilities?: Readonly<{
     reasoning: boolean
     tools: boolean
     structuredOutputs: boolean
@@ -125,7 +116,6 @@ export type CatalogQueryItem = Readonly<{
     longContext: boolean
   }>
   observation?: CatalogProviderModelObservationV2 | null
-  capabilityResolution?: ResolvedModelCapabilitiesV2 | null
   family?: string | null
   status?: string | null
   visibility?: string | null
@@ -219,16 +209,6 @@ function normalizeSingleCategory(input: unknown): OpenRouterModelCategory | unde
   return value as OpenRouterModelCategory
 }
 
-function normalizeBooleanCapabilityFilters(input: unknown): CatalogQueryCapabilitiesFilter | undefined {
-  if (!input || typeof input !== 'object') return undefined
-  const raw = input as Record<string, unknown>
-  const out: Partial<Record<keyof CatalogQueryCapabilitiesFilter, boolean>> = {}
-  for (const key of ['reasoning', 'tools', 'structuredOutputs', 'vision', 'longContext']) {
-    if (typeof raw[key] === 'boolean') out[key as keyof CatalogQueryCapabilitiesFilter] = raw[key]
-  }
-  return Object.keys(out).length > 0 ? out : undefined
-}
-
 function normalizeDirectStringArray(input: unknown): string[] {
   if (!Array.isArray(input)) return []
   return input.map((value) => String(value ?? '').trim()).filter(Boolean)
@@ -259,7 +239,6 @@ function summarizeFilter(input: CatalogQueryInput['filter']): Record<string, unk
     inputModalitiesCount: inputModalities?.length ?? 0,
     outputModalitiesCount: outputModalities?.length ?? 0,
     supportedParametersCount: supportedParameters?.length ?? 0,
-    capabilityFilterCount: Object.keys(normalizeBooleanCapabilityFilters(input?.capabilities) ?? {}).length,
     hasContextLengthRange: !!normalizeNumberRange(input?.contextLength),
     hasMaxOutputTokensRange: !!normalizeNumberRange(input?.maxOutputTokens),
     hasPerRequestLimits: typeof input?.hasPerRequestLimits === 'boolean',
@@ -361,9 +340,7 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
   if (modelKey !== `${providerKey}::${modelId}`) return null
   const numberOrNull = (value: unknown): number | null => typeof value === 'number' && Number.isFinite(value) ? value : null
   const pricing = readRecord(row.pricing)
-  const capabilities = readRecord(row.capabilities)
   const observation = readCatalogObservation(row.raw)
-  const capabilityResolution = observation ? resolveModelCapabilitiesV2(observation) : null
   const raw = readRecord(row.raw)
   return {
     providerKey, modelId, modelKey,
@@ -401,15 +378,7 @@ function normalizeItem(input: unknown): CatalogQueryItem | null {
       inputCacheRead: typeof pricing?.inputCacheRead === 'string' ? pricing.inputCacheRead : null,
       inputCacheWrite: typeof pricing?.inputCacheWrite === 'string' ? pricing.inputCacheWrite : null,
     },
-    capabilities: {
-      reasoning: capabilityResolution?.reasoning.enabled ?? (capabilities?.reasoning === true || row.capReasoning === 1),
-      tools: capabilityResolution?.tools.enabled ?? (capabilities?.tools === true || row.capTools === 1),
-      structuredOutputs: capabilityResolution?.structuredOutputs.enabled ?? (capabilities?.structuredOutputs === true || row.capStructuredOutputs === 1),
-      vision: capabilityResolution?.vision.enabled ?? (capabilities?.vision === true || row.capVision === 1),
-      longContext: capabilities?.longContext === true || row.capLongContext === 1,
-    },
     observation,
-    capabilityResolution,
     firstSeenAtMs: numberOrNull(row.firstSeenAtMs), lastSeenAtMs: numberOrNull(row.lastSeenAtMs), syncedAtMs: numberOrNull(row.syncedAtMs),
     raw: raw ? { rawJson: typeof raw.rawJson === 'string' ? raw.rawJson : null,
       inputModalitiesJson: typeof raw.inputModalitiesJson === 'string' ? raw.inputModalitiesJson : null,
@@ -532,7 +501,6 @@ async function queryGenerationV2Catalog(input: Readonly<{
   searchText: string | undefined
   includeDescriptionInSearch: boolean
   vendors: string[] | undefined
-  capabilities: CatalogQueryCapabilitiesFilter | undefined
   contextLength: CatalogQueryNumberRange | undefined
   maxOutputTokens: CatalogQueryNumberRange | undefined
   modalities: string[] | undefined
@@ -617,7 +585,7 @@ async function queryGenerationV2Catalog(input: Readonly<{
       if (!matchesArchitecture(item, input.architectureModalities)) return false
       if (input.tokenizers?.length && (!item.tokenizer || !input.tokenizers.map((value) => value.toLocaleLowerCase()).includes(item.tokenizer.toLocaleLowerCase()))) return false
       if (input.instructTypes?.length && (!item.instructType || !input.instructTypes.map((value) => value.toLocaleLowerCase()).includes(item.instructType.toLocaleLowerCase()))) return false
-      return !input.capabilities || Object.entries(input.capabilities).every(([key, expected]) => item.capabilities[key as keyof CatalogQueryCapabilitiesFilter] === expected)
+      return true
     })
     .sort((a, b) => compareCatalogItems(a, b, input.sortBy, input.sortOrder))
   const start = input.cursor ? Math.max(0, all.findIndex((item) => item.modelKey === input.cursor?.modelKey) + 1) : 0
@@ -797,7 +765,6 @@ export class CatalogQueryService {
         searchText: typeof input.searchText === 'string' ? input.searchText : undefined,
         includeDescriptionInSearch: input.includeDescriptionInSearch === true,
         vendors: normalizeStringArray(input.filter?.vendors),
-        capabilities: normalizeBooleanCapabilityFilters(input.filter?.capabilities),
         contextLength: normalizeNumberRange(input.filter?.contextLength),
         maxOutputTokens: normalizeNumberRange(input.filter?.maxOutputTokens),
         modalities: normalizeStringArray(input.filter?.modalities),

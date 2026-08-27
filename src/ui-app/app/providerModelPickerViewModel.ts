@@ -16,8 +16,6 @@ export type ProviderModelPickerItem = Readonly<{
   displayName: string
   description: string | null
   vendor: string | null
-  capabilitySummary: string
-  capabilityResolution?: CatalogQueryItem['capabilityResolution']
   observation?: CatalogQueryItem['observation']
   statusKind: ProviderModelPickerStatusKind
   statusLabel: string

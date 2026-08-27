@@ -126,20 +126,17 @@ function localBindingCapability(
   const capability = profile.providerId === 'lmstudio'
     ? resolveLmStudioOpenResponsesCapabilityV2({
       binding: createLmStudioOpenResponsesProviderBindingV2(profile, request.modelId), resolvedAt: at,
-      credentialRevision: request.credentialRevision,
     })
       : profile.providerId === 'generic_local'
       ? resolveGenericLocalOpenAIChatCapabilityV2({
         binding: createGenericLocalOpenAIChatProviderBindingV2(profile, request.modelId), resolvedAt: at,
-        credentialRevision: request.credentialRevision,
       })
       : profile.providerId === 'ollama'
         ? resolveOllamaChatCapabilityV2({
         binding: createOllamaChatProviderBindingV2(profile, request.modelId), profile, resolvedAt: at,
-        credentialRevision: request.credentialRevision,
         })
         : (() => { throw new GenerationV2CapabilityResolutionServiceError('GENERATION_V2_CAPABILITY_RESOLUTION_UNSUPPORTED_SCOPE') })()
-  assertCapabilityResolutionScopeV2(request, capability.binding)
+  assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
   return projectGenerationCapabilityResolutionV2(capability)
 }
 
@@ -171,7 +168,7 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       return activeCatalog.withExactActiveModel({ providerKey: 'openrouter', endpointProfile: profile, ...common,
         consume: (evidence) => {
           const capability = resolveOpenRouterChatCapabilityV2(evidence)
-          assertCapabilityResolutionScopeV2(request, capability.binding)
+          assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
           return projectGenerationCapabilityResolutionV2(capability)
         } })
     }
@@ -180,7 +177,7 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       return activeCatalog.withExactActiveModel({ providerKey: 'openai_responses', endpointProfile: profile, ...common,
         consume: (evidence) => {
           const capability = resolveOpenAIResponsesCapabilityV2(evidence)
-          assertCapabilityResolutionScopeV2(request, capability.binding)
+          assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
           return projectGenerationCapabilityResolutionV2(capability)
         } })
     }
@@ -189,7 +186,7 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       return activeCatalog.withExactActiveModel({ providerKey: 'anthropic_messages', endpointProfile: profile, ...common,
         consume: (evidence) => {
           const capability = resolveAnthropicCapabilityV2(evidence)
-          assertCapabilityResolutionScopeV2(request, capability.binding)
+          assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
           return projectGenerationCapabilityResolutionV2(capability)
         } })
     }
@@ -198,7 +195,7 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
       return activeCatalog.withExactActiveModel({ providerKey: 'deepseek', endpointProfile: profile, ...common,
         consume: (evidence) => {
           const capability = resolveDeepSeekStableCapabilityV2(evidence)
-          assertCapabilityResolutionScopeV2(request, capability.binding)
+          assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
           return projectGenerationCapabilityResolutionV2(capability)
         } })
     }
@@ -208,14 +205,14 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
         return activeCatalog.withExactActiveModel({ providerKey: 'google_ai_studio', endpointProfile: profile, ...common,
           consume: (evidence) => {
             const capability = resolveGeminiGenerateContentCapabilityV2(evidence)
-            assertCapabilityResolutionScopeV2(request, capability.binding)
+            assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
             return projectGenerationCapabilityResolutionV2(capability)
           } })
       }
       return activeCatalog.withExactActiveModel({ providerKey: 'google_ai_studio', endpointProfile: profile, ...common,
         consume: (evidence) => {
           const capability = resolveGeminiInteractionsImageCapabilityV2(evidence, request.modelId)
-          assertCapabilityResolutionScopeV2(request, capability.binding)
+          assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
           return projectGenerationCapabilityResolutionV2(capability)
         } })
     }
@@ -259,10 +256,9 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
     const configuration = compatible.getConfigurationForEndpointRevision(provider.providerInstanceId, endpoint.endpointRevisionId)
     const capability = resolveOpenAIChatCompatibleCapabilityV2({
       binding, resolvedAt: resolvedAt(Math.max(Date.now(), endpoint.createdAtMs)),
-      credentialRevision,
       mappedReasoningSourceFields: mappedReasoningSources(configuration),
     })
-    assertCapabilityResolutionScopeV2(request, capability.binding)
+    assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
     return projectGenerationCapabilityResolutionV2(capability)
   }
 
@@ -295,9 +291,8 @@ export function createGenerationV2CapabilityResolutionService(input: Readonly<{
     if (!selected) throw new GenerationV2CapabilityResolutionServiceError('GENERATION_V2_CAPABILITY_RESOLUTION_STALE')
     const capability = resolveOpenRouterImageCapabilityV2({
       binding: binding.record, descriptor: selected, resolvedAt: resolvedAt(Math.max(Date.now(), descriptor.fetchedAtMs)),
-      credentialRevision: request.credentialRevision,
     })
-    assertCapabilityResolutionScopeV2(request, capability.binding)
+    assertCapabilityResolutionScopeV2(request, capability.executionContext.binding)
     return projectGenerationCapabilityResolutionV2(capability)
   }
 

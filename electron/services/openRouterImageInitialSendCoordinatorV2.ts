@@ -212,7 +212,6 @@ export function createOpenRouterImageInitialSendCoordinatorV2(input: Readonly<{
                   descriptor, decision.candidate.providerTag, decision.candidate.providerSlug,
                 ),
                 resolvedAt: new Date(nowMs()).toISOString(),
-                credentialRevision: request.expectedCredentialRevision,
               })
               const persisted = commitOpenRouterImageInitialSnapshotV2({
                 context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability,

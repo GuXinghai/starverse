@@ -1,17 +1,17 @@
 import {
   decodeRuntimeCapabilitySnapshotV2,
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
-  type PersistedRuntimeCapabilityFieldV2,
-  type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
+} from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
 import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
@@ -58,8 +58,6 @@ export type VerifiedOpenRouterChatCapabilityAuthorityV2 = Readonly<{
 export class OpenRouterChatGenerationAuthorityV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_OPENROUTER_CHAT_AUTHORITY_INVALID'
-    | 'GENERATION_V2_OPENROUTER_CHAT_EXPLICIT_FIELD_UNSUPPORTED'
-    | 'GENERATION_V2_OPENROUTER_CHAT_FIELD_VALUE_UNSUPPORTED'
     | 'GENERATION_V2_OPENROUTER_CHAT_TOOL_AUTHORITY_REQUIRED'
     | 'GENERATION_V2_OPENROUTER_CHAT_ATTACHMENT_UNAVAILABLE') {
     super(code)
@@ -174,65 +172,40 @@ function field(
   }
 }
 
-function domainContains(fieldValue: PersistedRuntimeCapabilityFieldV2, value: unknown): boolean {
-  const domain = fieldValue.domain
-  if (!domain) return false
-  if (domain.kind === 'response_format') {
-    return Boolean(value && typeof value === 'object' && !Array.isArray(value) &&
-      typeof (value as Record<string, unknown>).type === 'string' &&
-      domain.types.includes((value as Record<string, unknown>).type as 'text' | 'json_object' | 'json_schema'))
-  }
-  if (domain.kind === 'enum') return domain.values.includes(value as never)
-  if (domain.kind === 'range') return typeof value === 'number' && value >= domain.min && value <= domain.max && (!domain.integer || Number.isSafeInteger(value))
-  if (domain.kind === 'string_list') return Array.isArray(value) && value.length <= domain.maxItems && value.every((item) => typeof item === 'string' && item.length <= domain.maxItemLength)
-  if (domain.kind === 'approximate_location') return Boolean(value && typeof value === 'object' && !Array.isArray(value) &&
-    Object.keys(value).length > 0 && Object.keys(value).every((key) => ['city', 'region', 'country', 'timezone'].includes(key)) &&
-    Object.values(value).every((item) => typeof item === 'string' && item.length > 0 && item.length <= domain.maxFieldLength))
-  if (domain.kind === 'enum_list') return Array.isArray(value) && value.length <= domain.maxItems && value.every((item) => domain.values.includes(item as never))
-  if (domain.kind === 'identity_list') return Array.isArray(value) && value.length > 0 && value.length <= domain.maxItems
-  return true
-}
-
 /**
- * The DFC projection can only offer a representation that the selected
- * OpenRouter Chat model can actually encode. Keep this check adjacent to the
- * command authority rather than trusting renderer option state.
+ * Runtime attachment facts must match the selected semantic representation.
+ * Model support is checked separately against the frozen model facts.
  */
 export function isOpenRouterChatAttachmentAdmissibleV2(input: Readonly<{
   attachment: ManagedFileAttachmentIntentV2
   revision: AttachmentAssetRevisionRepositoryFactV2
-  inputModalities: ReadonlySet<string>
 }>): boolean {
-  const { attachment, revision, inputModalities } = input
+  const { attachment, revision } = input
   return attachment.sendAs === 'image_reference' && attachment.conversion === 'none' &&
-    revision.assetKind === 'image' && revision.blob.mime.startsWith('image/') && inputModalities.has('image') ||
+    revision.assetKind === 'image' && revision.blob.mime.startsWith('image/') ||
     attachment.sendAs === 'inline_text' && attachment.conversion === 'plain_text' &&
     revision.revisionKind === 'derived' && revision.conversionKind === 'plain_text' &&
     revision.assetKind === 'file' && revision.blob.mime.startsWith('text/') ||
     attachment.sendAs === 'provider_file' && attachment.conversion === 'none' &&
-    revision.revisionKind === 'source' && revision.blob.mime === 'application/pdf' && inputModalities.has('file') ||
+    revision.revisionKind === 'source' && revision.blob.mime === 'application/pdf' ||
     attachment.sendAs === 'converted_document' && attachment.conversion === 'pdf' &&
     revision.revisionKind === 'derived' && revision.conversionKind === 'pdf' &&
-    revision.blob.mime === 'application/pdf' && inputModalities.has('file')
+    revision.blob.mime === 'application/pdf'
 }
 
 function validateIntent(
   facts: GenerationCommandFactsAuthorityV2,
-  fields: readonly PersistedRuntimeCapabilityFieldV2[],
   toolRegistry: ToolRegistryRepositoryFactV2 | null,
-  modelEvidence: ActiveCatalogModelAuthorityV2,
 ): void {
   const intent = facts.semanticIntent
   if (intent.attachments.length !== facts.attachmentSet.attachments.length) return fail('GENERATION_V2_OPENROUTER_CHAT_ATTACHMENT_UNAVAILABLE')
-  const inputModalities = new Set<string>((modelEvidence.inputModalities as unknown[])
-    .filter((value): value is string => typeof value === 'string'))
   for (let index = 0; index < intent.attachments.length; index += 1) {
     const attachment = intent.attachments[index]
     if (attachment.kind !== 'managed_file') return fail('GENERATION_V2_OPENROUTER_CHAT_ATTACHMENT_UNAVAILABLE')
     const resolved = facts.attachmentSet.attachments[index]
     if (resolved.intent !== attachment) return fail('GENERATION_V2_OPENROUTER_CHAT_ATTACHMENT_UNAVAILABLE')
     if (!attachment.include) continue
-    if (!isOpenRouterChatAttachmentAdmissibleV2({ attachment, revision: resolved.revision, inputModalities })) {
+    if (!isOpenRouterChatAttachmentAdmissibleV2({ attachment, revision: resolved.revision })) {
       return fail('GENERATION_V2_OPENROUTER_CHAT_ATTACHMENT_UNAVAILABLE')
     }
   }
@@ -240,61 +213,6 @@ function validateIntent(
   if (toolRegistry && stableSerializeProviderRequestV2(toolRegistry.selectedDefinitions.map((tool) => tool.toolId)) !==
       stableSerializeProviderRequestV2(intent.tools.mode === 'enabled' ? intent.tools.allowedToolIds.map((tool) => tool.value) : [])) {
     return fail('GENERATION_V2_OPENROUTER_CHAT_TOOL_AUTHORITY_REQUIRED')
-  }
-  if (intent.image.mode !== 'disabled' ||
-      intent.providerExtension.kind !== 'none' && intent.providerExtension.kind !== 'openrouter_chat') {
-    return fail('GENERATION_V2_OPENROUTER_CHAT_EXPLICIT_FIELD_UNSUPPORTED')
-  }
-  const explicit = new Map<string, unknown>([
-    ...intent.attachments.flatMap((attachment) => [
-      ['attachments[].kind', attachment.kind] as const,
-      ...(attachment.kind === 'managed_file' ? [
-        ['attachments[].assetId', attachment.assetId.value] as const,
-        ['attachments[].assetRevisionId', attachment.assetRevisionId.value] as const,
-        ['attachments[].assetSha256', attachment.assetSha256.value] as const,
-      ] : [
-        ['attachments[].referenceId', attachment.referenceId.value] as const,
-        ['attachments[].referenceRevision', attachment.referenceRevision.value] as const,
-        ['attachments[].urlDigest', attachment.urlDigest.value] as const,
-        ['attachments[].mediaKind', attachment.mediaKind] as const,
-        ['attachments[].originalUrl', attachment.originalUrl] as const,
-      ]),
-      ['attachments[].include', attachment.include] as const,
-      ['attachments[].conversion', attachment.conversion] as const,
-      ['attachments[].sendAs', attachment.sendAs] as const,
-    ]),
-    ...Object.entries(intent.generation).map(([key, value]) => [`generation.${key}`, value] as const),
-    ['reasoning.mode', intent.reasoning.mode],
-    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.effort !== undefined ? [['reasoning.effort', intent.reasoning.effort] as const] : []),
-    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.exclude !== undefined ? [['reasoning.exclude', intent.reasoning.exclude] as const] : []),
-    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.summary !== undefined ? [['reasoning.summary', intent.reasoning.summary] as const] : []),
-    ['web.mode', intent.web.mode],
-    ...(intent.web.mode === 'provider_search' ? [
-      ['web.types', intent.web.types] as const,
-      ...Object.entries(intent.web)
-        .filter(([key, value]) => key !== 'mode' && key !== 'types' && value !== undefined)
-        .map(([key, value]) => [`web.${key}`, value] as const),
-    ] : []),
-    ['tools.mode', intent.tools.mode],
-    ...(intent.tools.mode === 'enabled' ? [
-      ['tools.allowedToolIds', intent.tools.allowedToolIds.map((tool) => tool.value)] as const,
-      ['tools.toolChoice', intent.tools.toolChoice.mode] as const,
-      ['tools.sideEffectConfirmation', intent.tools.sideEffectConfirmation] as const,
-    ] : []),
-    ['image.mode', intent.image.mode], ['providerExtension.kind', intent.providerExtension.kind],
-    ...(intent.providerExtension.kind === 'openrouter_chat' ? [
-      ...(intent.providerExtension.verbosity === undefined ? [] : [['providerExtension.verbosity', intent.providerExtension.verbosity] as const]),
-      ...(intent.providerExtension.parallelToolCalls === undefined ? [] : [['providerExtension.parallelToolCalls', intent.providerExtension.parallelToolCalls] as const]),
-      ...(intent.providerExtension.responseFormat === undefined ? [] : [['providerExtension.responseFormat', intent.providerExtension.responseFormat] as const]),
-    ] : []),
-  ])
-  const byPath = new Map(fields.map((item) => [item.path, item]))
-  for (const [path, value] of explicit) {
-    const capability = byPath.get(path as RuntimeCapabilitySemanticPathV2)
-    if (!capability || capability.state === 'unsupported' || capability.state === 'missing' || capability.state === 'unknown') {
-      return fail('GENERATION_V2_OPENROUTER_CHAT_EXPLICIT_FIELD_UNSUPPORTED')
-    }
-    if (!domainContains(capability, value)) return fail('GENERATION_V2_OPENROUTER_CHAT_FIELD_VALUE_UNSUPPORTED')
   }
 }
 
@@ -360,8 +278,6 @@ function resolveOpenRouterChatCapabilityRecord(
         verifiedAt: new Date(modelEvidence.observedAtMs).toISOString(), contentDigest: modelEvidence.responseDigest.value },
       { evidenceId: rejectEvidence, kind: 'live_probe', effect: 'rejects', sourceRef: profile.operations.chat_completions.modelsUrl,
         verifiedAt: new Date(modelEvidence.observedAtMs).toISOString(), contentDigest: modelEvidence.responseDigest.value },
-      credentialRevisionEvidenceV2({ credentialRevision: modelEvidence.credentialRevision,
-        verifiedAt: new Date(modelEvidence.observedAtMs).toISOString() }),
     ],
     fields,
     continuation: { kind: 'client_managed_native_replay', artifactKind: OPENROUTER_NATIVE_HISTORY_ARTIFACT_KIND_V1,
@@ -415,8 +331,7 @@ export function withVerifiedOpenRouterChatGenerationAuthoritiesV2<T>(input: Read
   const binding = composeOpenRouterChatBinding(input.modelEvidence)
   const resolvedCapability = resolveOpenRouterChatCapabilityRecord(binding, input.modelEvidence)
   const snapshot = composeOpenRouterChatSnapshot(binding, input.modelEvidence, input.toolRegistry)
-  const fields = snapshot.fields
-  validateIntent(input.commandFacts, fields, input.toolRegistry, input.modelEvidence)
+  validateIntent(input.commandFacts, input.toolRegistry)
   validateSemanticIntentAgainstResolvedCapabilityV2(
     resolvedCapability,
     input.commandFacts.semanticIntent,

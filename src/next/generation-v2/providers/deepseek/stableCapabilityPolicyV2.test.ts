@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../capability/modelCapabilitySchemaV2'
 import {
   isVerifiedDeepSeekStableCapabilityPolicyV2,
   readVerifiedDeepSeekStableCapabilityPolicyV2,

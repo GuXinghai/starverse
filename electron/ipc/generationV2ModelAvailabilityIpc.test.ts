@@ -4,10 +4,6 @@ import BetterSqlite3 from 'better-sqlite3'
 import { applyGenerationV2SchemaForTest } from '../../infra/db/v2/testSchemaV2'
 import { GENERATION_V2_MODEL_AVAILABILITY_IPC_CHANNELS, GENERATION_V2_MODEL_CATALOG_AUTHORITY_IPC_CHANNELS,
   registerGenerationV2ModelAvailabilityIpc } from './generationV2ModelAvailabilityIpc'
-// Approved main-process Catalog boundary fixture import.
-// eslint-disable-next-line no-restricted-imports
-import { resolveModelCapabilitiesV2 } from '../../src/next/modelCatalog/modelCapabilityResolverV2'
-import type { CatalogProviderModelObservationV2 } from '../../src/shared/modelCatalog/providerModelObservationV2'
 
 type Handler = (event: unknown, payload: unknown) => Promise<unknown>
 
@@ -237,27 +233,15 @@ describe('generationV2ModelAvailabilityIpc', () => {
         'gemini-3.1-flash-image', 'gemini-3.1-flash-image-preview',
         'gemini-3-pro-image', 'gemini-3-pro-image-preview',
       ]))
-      const expectedFamily = new Map([
-        ['gemini-2.5-flash-image', 'gemini-2.5-flash-image'],
-        ['gemini-3.1-flash-lite-image', 'gemini-3.1-flash-lite-image'],
-        ['gemini-3.1-flash-image', 'gemini-3.1-flash-image'],
-        ['gemini-3.1-flash-image-preview', 'gemini-3.1-flash-image'],
-        ['gemini-3-pro-image', 'gemini-3-pro-image'],
-        ['gemini-3-pro-image-preview', 'gemini-3-pro-image'],
-      ])
-      for (const [id, family] of expectedFamily) {
+      const expectedIds = [
+        'gemini-2.5-flash-image', 'gemini-3.1-flash-lite-image', 'gemini-3.1-flash-image',
+        'gemini-3.1-flash-image-preview', 'gemini-3-pro-image', 'gemini-3-pro-image-preview',
+      ]
+      for (const id of expectedIds) {
         expect(byId.get(id)).toMatchObject({ providerKey: 'google_ai_studio', modelId: id })
         const payload = byId.get(id).raw.buckets[0].payload
         expect(payload.observation.rawProviderRecord.name).toBe(`models/${id}`)
         expect(payload.providerSpecific?.imageGenerationPolicy).toBeUndefined()
-        const resolved = resolveModelCapabilitiesV2(payload.observation as CatalogProviderModelObservationV2)
-        expect(resolved.providerSpecific).toMatchObject({
-          kind: 'gemini_image_generation', source: 'verified_contract',
-          protocolContractId: 'gemini-interactions-v1beta', policy: { modelFamily: family },
-        })
-        expect(resolved.providerSpecific?.kind === 'gemini_image_generation' &&
-          resolved.providerSpecific.policy.supportedOutputModes)
-          .toEqual(expect.arrayContaining(['image_only', 'image_and_text']))
       }
     } finally { db.close() }
   })

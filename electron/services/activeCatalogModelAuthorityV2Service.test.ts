@@ -43,10 +43,10 @@ describe('ActiveCatalogModelAuthorityV2Service', () => {
       endpointProfile: readVerifiedOpenAIResponsesEndpointProfileV2(), expectedCredentialRevision: 1,
       expectedCredentialScopeId: credentialScopeId, modelId: GenerationV2Identity.create('model_id', 'gpt-test'),
       consume: (authority) => ({ catalog: readActiveCatalogSnapshotAuthorityV2(authority),
-        model: authority.modelId.value, textChat: authority.resolutions.textChat.effective }) })
+        model: authority.modelId.value }) })
     current = false
 
-    expect(result).toMatchObject({ model: 'gpt-test', textChat: { state: 'supported', source: 'verified_contract' },
+    expect(result).toMatchObject({ model: 'gpt-test',
       catalog: { catalogDigest: '1'.repeat(64), authorityRevision: 2 } })
     db.close()
   })

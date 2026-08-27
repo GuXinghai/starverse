@@ -78,7 +78,6 @@ type PickerModelItem = CatalogQueryItem & Readonly<{
   providerId: RuntimeProviderId
   providerName: string
   itemKey: string
-  capabilitySummary?: string
   statusLabel?: string
   sourceLabel?: string
   selectable: boolean
@@ -107,7 +106,6 @@ const props = withDefaults(
     endpointDetailFn?: EndpointDetailFn
     modelDetailFn?: ModelDetailFn
     selectionCommand?: CatalogModelSelectionCommandV2
-    forceOutputImageOnly?: boolean
   }>(),
   {
     disabled: false,
@@ -122,7 +120,6 @@ const props = withDefaults(
     endpointDetailFn: undefined,
     modelDetailFn: undefined,
     selectionCommand: undefined,
-    forceOutputImageOnly: false,
     routeSelection: null,
   },
 )
@@ -563,9 +560,6 @@ function toCatalogPickerItem(item: CatalogQueryItem): PickerModelItem | null {
     providerId,
     providerName: providerNameForId(providerId),
     itemKey: pickerItemKey(providerId, item.modelId),
-    // Catalog capability fields are evidence only. Final capability controls
-    // are resolved for the selected provider/model projection elsewhere.
-    capabilitySummary: undefined,
     statusLabel: formatCatalogStatusLabel(item.status ?? item.visibility ?? 'catalog'),
     sourceLabel: providerId === OPENROUTER_PROVIDER_ID
       ? t('errors.modelCatalog.sourceOpenRouterCatalog')
@@ -576,16 +570,6 @@ function toCatalogPickerItem(item: CatalogQueryItem): PickerModelItem | null {
 }
 
 function toProviderPickerItem(item: ProviderModelPickerItem): PickerModelItem {
-  const structured = item as ProviderModelPickerItem & Readonly<{
-    capabilities?: Partial<CatalogQueryItem['capabilities']>
-    capabilityResolution?: Readonly<Record<string, Readonly<{ modelSupport?: string; enabled?: boolean }>>>
-  }>
-  const resolvedCapability = (key: keyof CatalogQueryItem['capabilities']): boolean => {
-    const direct = structured.capabilities?.[key]
-    if (typeof direct === 'boolean') return direct
-    const resolution = structured.capabilityResolution?.[key]
-    return resolution?.modelSupport === 'supported' || resolution?.enabled === true
-  }
   return {
     providerKey: item.providerId,
     providerId: item.providerId,
@@ -600,21 +584,12 @@ function toProviderPickerItem(item: ProviderModelPickerItem): PickerModelItem {
     maxOutputTokens: null,
     createdAtSec: null,
     pricing: { prompt: null, completion: null, request: null, image: null },
-    capabilities: {
-      reasoning: resolvedCapability('reasoning'),
-      tools: resolvedCapability('tools'),
-      structuredOutputs: resolvedCapability('structuredOutputs'),
-      vision: resolvedCapability('vision'),
-      longContext: resolvedCapability('longContext'),
-    },
-    observation: structured.observation ?? null,
-    capabilityResolution: structured.capabilityResolution ?? null,
+    observation: item.observation ?? null,
     inputModalities: [...item.inputModalities],
     outputModalities: [...item.outputModalities],
     status: item.statusLabel,
     visibility: item.selectable ? 'visible' : 'disabled',
     itemKey: pickerItemKey(item.providerId, item.modelId),
-    capabilitySummary: undefined,
     statusLabel: item.statusLabel,
     sourceLabel: item.sourceLabel,
     selectable: item.selectable,
@@ -1726,9 +1701,6 @@ function openDialogState() {
     stateReconciliationNotice.value = null
     ensureProviderFiltersInitialized()
   }
-  if (props.forceOutputImageOnly === true) {
-    setOutputModalitiesFilter(['image'])
-  }
   activeModelKey.value = restoreSnapshot?.activeModelKey
     ?? (selectedProvider.value && selectedModelIdentity.value ? pickerItemKey(selectedProvider.value, selectedModelIdentity.value) : '')
   modelDetail.value = null
@@ -2184,20 +2156,6 @@ watch(
     restoreFocusAfterClose()
   },
   { immediate: true },
-)
-
-watch(
-  () => [props.open, props.forceOutputImageOnly] as const,
-  ([open, forceOutputImageOnly]) => {
-    if (!open || forceOutputImageOnly !== true) return
-    const hasOnlyImage =
-      selectedOutputModalities.value.length === 1 &&
-      selectedOutputModalities.value[0] === 'image'
-    if (!hasOnlyImage) {
-      setOutputModalitiesFilter(['image'])
-    }
-  },
-  { flush: 'post' },
 )
 
 watch(

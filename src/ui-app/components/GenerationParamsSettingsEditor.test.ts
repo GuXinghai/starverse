@@ -18,6 +18,17 @@ function capabilityProjection(fields: Readonly<Record<string, Readonly<{ kind: s
   return { schemaVersion: 1, binding: {}, capabilityRevision: 'capability-v2:test-generation-params', controls } as any
 }
 
+function unknownCapabilityProjection(path: string) {
+  return {
+    schemaVersion: 2,
+    binding: {},
+    capabilityRevision: 'capability-v2:test-unknown-generation-param',
+    controls: {
+      [path]: { visibility: 'visible', state: 'unknown', constraints: [], evidenceIds: [] },
+    },
+  } as any
+}
+
 const samplingCapabilityProjection = capabilityProjection({
   'generation.temperature': { kind: 'range', min: 0, max: 2 },
   'generation.minP': { kind: 'range', min: 0, max: 1, hidden: true },
@@ -105,6 +116,23 @@ describe('GenerationParamsSettingsEditor', () => {
     })
 
     expect(screen.queryByTestId('generation-param-mode-reasoningEffort')).toBeNull()
+  })
+
+  it('keeps an unknown provider-owned enum editable without inventing an allowed-value list', () => {
+    render(GenerationParamsSettingsEditor, {
+      props: {
+        modelValue: { reasoningEffort: { mode: 'custom', value: 'provider-native-level' } },
+        profile: openaiResponsesGenerationProfile,
+        modelId: 'future-openai-model',
+        collapsible: false,
+        capabilityProjection: unknownCapabilityProjection('reasoning.effort'),
+      },
+    })
+
+    const value = screen.getByTestId('generation-param-value-reasoningEffort')
+    expect(value.tagName).toBe('INPUT')
+    expect(value).toBeEnabled()
+    expect(value).toHaveValue('provider-native-level')
   })
 
   it('hides DeepSeek reasoning controls when no provider capability is declared', () => {

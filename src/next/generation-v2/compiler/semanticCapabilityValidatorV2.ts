@@ -16,6 +16,6 @@ export function validateGenerationExecutionCapabilityV2(
   intent: GenerationIntentLayerV2,
 ): void {
   const resolved = resolvedCapabilityFromRuntimeSnapshotV2(capability)
-  assertExpectedCapabilityRevisionV2(resolved.capabilityRevision)
+  assertExpectedCapabilityRevisionV2(resolved.modelFacts.capabilityRevision)
   validateSemanticIntentAgainstResolvedCapabilityV2(resolved, intent)
 }

@@ -132,7 +132,6 @@ export function createOpenAIChatCompatibleGenerationV2Coordinator(input: Readonl
             const binding = createOpenAIChatCompatibleProviderBindingV2({ provider: currentDetails, endpoint: currentEndpoint,
               credentialScopeId: credential.credentialScopeId, modelId: command.modelId.value })
             const capability = composeOpenAIChatCompatibleBaselineCapabilityV2({ binding, resolvedAt: new Date(pending.createdAtMs).toISOString(),
-              credentialRevision: credential.credentialRevision,
               mappedReasoningSourceFields: mappedReasoningSources(currentConfiguration) })
             assertExpectedCapabilityRevisionV2(capability.revision.value)
             const persisted = commitOpenAIChatCompatibleCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,

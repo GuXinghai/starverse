@@ -35,13 +35,6 @@ export type ModelCatalogModelDetail = Readonly<{
   tokenizer: string | null
   instructType: string | null
   supportedParameters: string[]
-  capabilities: Readonly<{
-    reasoning: boolean
-    tools: boolean
-    structuredOutputs: boolean
-    vision: boolean
-    longContext: boolean
-  }>
   pricing: Readonly<{
     prompt: string | null
     completion: string | null
@@ -155,24 +148,6 @@ function parsePricing(row: Record<string, unknown>): ModelCatalogModelDetail['pr
   }
 }
 
-function parseCapabilities(row: Record<string, unknown>): ModelCatalogModelDetail['capabilities'] {
-  const direct = row.capabilities && typeof row.capabilities === 'object' ? row.capabilities as Record<string, unknown> : null
-  const parsedJson = parseJsonValue(typeof row.capabilitiesJson === 'string' ? row.capabilitiesJson : null)
-  const parsedObject = parsedJson && typeof parsedJson === 'object' ? (parsedJson as Record<string, unknown>) : null
-  const fromJsonOrFlag = (jsonKey: string, flagValue: unknown): boolean => {
-    if (direct && typeof direct[jsonKey] === 'boolean') return direct[jsonKey] as boolean
-    if (parsedObject && typeof parsedObject[jsonKey] === 'boolean') return parsedObject[jsonKey] as boolean
-    return flagValue === 1
-  }
-  return {
-    reasoning: fromJsonOrFlag('reasoning', row.capReasoning),
-    tools: fromJsonOrFlag('tools', row.capTools),
-    structuredOutputs: fromJsonOrFlag('structuredOutputs', row.capStructuredOutputs),
-    vision: fromJsonOrFlag('vision', row.capVision),
-    longContext: fromJsonOrFlag('longContext', row.capLongContext),
-  }
-}
-
 function normalizeDetailRow(
   row: unknown
 ): ModelCatalogModelDetail | null {
@@ -205,7 +180,6 @@ function normalizeDetailRow(
     tokenizer: typeof raw.tokenizer === 'string' ? raw.tokenizer : null,
     instructType: typeof raw.instructType === 'string' ? raw.instructType : null,
     supportedParameters: parseStringArray(raw.supportedParameters ?? (typeof raw.supportedParametersJson === 'string' ? raw.supportedParametersJson : null)),
-    capabilities: parseCapabilities(raw),
     pricing: parsePricing(raw),
     createdAtSec: parseNumberOrNull(raw.createdAtSec),
     expirationDate: typeof raw.expirationDate === 'string' ? raw.expirationDate : null,

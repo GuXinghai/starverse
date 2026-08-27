@@ -1,9 +1,9 @@
 import { createHash } from 'node:crypto'
 import {
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
-  type RuntimeCapabilityDomainV2,
-  type RuntimeCapabilitySemanticPathV2,
-} from '../../capability/runtimeCapabilitySnapshotV2'
+  MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  type ModelCapabilityDomainV2 as RuntimeCapabilityDomainV2,
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
+} from '../../capability/modelCapabilitySchemaV2'
 import { stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
 import {
   isDeepSeekStableApiContractV2,

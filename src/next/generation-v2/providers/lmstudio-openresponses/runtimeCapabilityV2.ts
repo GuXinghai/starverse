@@ -1,17 +1,17 @@
 import {
   decodeRuntimeCapabilitySnapshotV2,
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
-  type PersistedRuntimeCapabilityFieldV2,
-  type RuntimeCapabilityDomainV2,
-  type RuntimeCapabilitySemanticPathV2,
 } from '../../capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
+  type ModelCapabilityDomainV2 as RuntimeCapabilityDomainV2,
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
+} from '../../capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../capability/resolvedCapabilityV2'
-import { credentialRevisionEvidenceV2 } from '../../capability/credentialRevisionEvidenceV2'
 import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../domain/providerBindingV2'
 import type { ToolDefinitionV2 } from '../../tools/toolRegistryV2'
 import { LMSTUDIO_OPENRESPONSES_COMPLIANCE_EVIDENCE_SHA256_V2 } from './verifiedContractV2'
@@ -32,7 +32,6 @@ function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
 function resolveLmStudioOpenResponsesCapabilityRecordV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   resolvedAt: string
-  credentialRevision: number
 }>): ResolvedCapabilityV2 {
   if (input.binding.providerId.value !== 'lmstudio' || input.binding.protocolContractId.value !== 'lmstudio-openresponses' ||
       input.binding.operation !== 'text' || Number.isNaN(Date.parse(input.resolvedAt)) || new Date(input.resolvedAt).toISOString() !== input.resolvedAt) {
@@ -68,8 +67,7 @@ function resolveLmStudioOpenResponsesCapabilityRecordV2(input: Readonly<{
       contentDigest: LMSTUDIO_OPENRESPONSES_COMPLIANCE_EVIDENCE_SHA256_V2 },
     { evidenceId: confirmationEvidenceId, kind: 'contract_invariant', effect: 'requires_confirmation',
       sourceRef: 'generation-compiler-v2-tool-side-effect-policy', verifiedAt: input.resolvedAt,
-      contentDigest: LMSTUDIO_OPENRESPONSES_COMPLIANCE_EVIDENCE_SHA256_V2 },
-    credentialRevisionEvidenceV2({ credentialRevision: input.credentialRevision, verifiedAt: input.resolvedAt })],
+      contentDigest: LMSTUDIO_OPENRESPONSES_COMPLIANCE_EVIDENCE_SHA256_V2 }],
     fields: RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => fields.get(path)!),
     continuation: { kind: 'client_managed_native_replay', artifactKind: 'lmstudio_openresponses_native_items',
       supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [evidenceId] },
@@ -80,7 +78,6 @@ function resolveLmStudioOpenResponsesCapabilityRecordV2(input: Readonly<{
 export function composeLmStudioOpenResponsesBaselineCapabilityV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   resolvedAt: string
-  credentialRevision: number
   selectedTools?: readonly ToolDefinitionV2[]
 }>): DecodedRuntimeCapabilitySnapshotV2 {
   const capability = resolveLmStudioOpenResponsesCapabilityRecordV2(input)
@@ -101,7 +98,6 @@ export function composeLmStudioOpenResponsesBaselineCapabilityV2(input: Readonly
 export function resolveLmStudioOpenResponsesCapabilityV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   resolvedAt: string
-  credentialRevision: number
   selectedTools?: readonly ToolDefinitionV2[]
 }>): ResolvedCapabilityV2 {
   return resolveLmStudioOpenResponsesCapabilityRecordV2(input)

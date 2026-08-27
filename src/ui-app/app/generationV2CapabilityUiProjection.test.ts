@@ -9,7 +9,7 @@ function projection(
   controls: GenerationControlsProjectionV2['controls'],
 ): GenerationControlsProjectionV2 {
   return {
-    schemaVersion: 1,
+    schemaVersion: 2,
     binding: {},
     capabilityRevision: 'capability-v2:test',
     controls,
@@ -38,6 +38,10 @@ describe('Generation V2 capability UI projection', () => {
     } as unknown as GenerationControlsProjectionV2['controls'])
 
     expect(projectImageAttachmentInputSupportV2(value)).toBe(true)
+    expect(projectImageAttachmentInputSupportV2(projection({
+      'attachments[].include': { visibility: 'visible', state: 'unknown', constraints: [], evidenceIds: [] },
+      'attachments[].sendAs': { visibility: 'visible', state: 'unknown', constraints: [], evidenceIds: [] },
+    } as unknown as GenerationControlsProjectionV2['controls']))).toBe(true)
     expect(projectImageAttachmentInputSupportV2(projection({} as GenerationControlsProjectionV2['controls']))).toBe(false)
     expect(projectImageAttachmentInputSupportV2(null)).toBeNull()
   })

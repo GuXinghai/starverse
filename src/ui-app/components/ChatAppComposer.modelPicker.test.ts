@@ -296,7 +296,6 @@ describe('ChatAppComposer model picker integration', () => {
                 displayName: 'GPT-4.1 mini',
                 description: 'curated OpenAI model',
                 vendor: 'OpenAI Responses',
-                capabilitySummary: 'text · image input',
                 statusKind: 'ready' as const,
                 statusLabel: 'available',
                 sourceLabel: 'provider availability',

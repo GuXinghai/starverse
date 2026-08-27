@@ -3265,7 +3265,6 @@ export function useAppChatAppLogic() {
     const state = catalogRuntimeSnapshot.value[providerKey] ?? catalogRuntimeStore.read(providerKey)
     return state.items.map((item) => {
       const raw = item.observation?.rawProviderRecord ?? {}
-      const resolution = item.capabilityResolution
       const supportedGenerationMethods = Array.isArray(raw.supportedGenerationMethods)
         ? raw.supportedGenerationMethods.filter((value): value is string => typeof value === 'string') : undefined
       return Object.freeze({
@@ -3278,7 +3277,6 @@ export function useAppChatAppLogic() {
         confidence: 'provider_reported',
         observedAtMs: item.observation?.observedAtMs ?? item.syncedAtMs ?? 0,
         observation: item.observation ?? undefined,
-        resolvedCapabilities: resolution ?? undefined,
         providerSpecific: Object.freeze({
           thinkingOwnProperty: Object.prototype.hasOwnProperty.call(raw, 'thinking'),
           thinkingRawValue: raw.thinking,
@@ -3375,19 +3373,6 @@ export function useAppChatAppLogic() {
         displayName: item.displayName,
         description: item.description,
         vendor: item.vendor,
-        capabilitySummary: item.capabilityResolution
-          ? [
-              ...Object.entries(item.capabilityResolution).flatMap(([key, fact]) =>
-                fact && typeof fact === 'object' && 'modelSupport' in fact
-                  ? [`${key}: ${fact.modelSupport} · ${fact.resolutionSource} · ${fact.wireImplementation}`]
-                  : [],
-              ),
-              ...(item.capabilityResolution.providerSpecific?.kind === 'gemini_image_generation'
-                ? ['imageGeneration: supported · verified_contract · implemented']
-                : []),
-            ].join(' | ')
-          : 'capability unknown',
-        capabilityResolution: item.capabilityResolution,
         observation: item.observation,
         statusKind: 'ready' as const,
         statusLabel: item.status ?? 'available',

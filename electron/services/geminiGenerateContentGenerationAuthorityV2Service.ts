@@ -6,20 +6,20 @@ import {
 } from './activeCatalogModelAuthorityV2Service'
 import {
   decodeRuntimeCapabilitySnapshotV2,
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
-  type PersistedRuntimeCapabilityFieldV2,
   type PersistedRuntimeCapabilitySnapshotV2,
-  type RuntimeCapabilityDomainV2,
-  type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
+  type ModelCapabilityDomainV2 as RuntimeCapabilityDomainV2,
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
+} from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
 import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isReviewedProviderContractDefinitionV2,
@@ -89,7 +89,6 @@ export class GeminiGenerateContentGenerationAuthorityV2Error extends Error {
   constructor(readonly code:
     | 'GENERATION_V2_GEMINI_GENERATION_AUTHORITY_INVALID'
     | 'GENERATION_V2_GEMINI_INTENT_UNSUPPORTED'
-    | 'GENERATION_V2_GEMINI_FIELD_CAPABILITY_UNAVAILABLE'
     | 'GENERATION_V2_GEMINI_TOOL_REGISTRY_AUTHORITY_REQUIRED') {
     super(code)
     this.name = 'GeminiGenerateContentGenerationAuthorityV2Error'
@@ -331,8 +330,6 @@ function composeCapability(binding: VerifiedGeminiGenerateContentProviderBinding
         effect: 'requires_confirmation', sourceRef: 'generation-v2-tool-side-effect-confirmation-policy',
         verifiedAt: '2026-07-20T00:00:00.000Z',
         contentDigest: hash(GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2) },
-      credentialRevisionEvidenceV2({ credentialRevision: evidence.credentialRevision,
-        verifiedAt: new Date(evidence.observedAtMs).toISOString() }),
     ],
     fields: fields(evidence, toolsReviewed, thinking, webReviewed),
     continuation,

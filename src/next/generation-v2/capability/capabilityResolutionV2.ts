@@ -13,6 +13,7 @@ import {
   type GenerationControlsProjectionV2,
   type ResolvedCapabilityV2,
 } from './resolvedCapabilityV2'
+import { projectCanonicalModelFactsV2 } from './canonicalModelFactsV2'
 
 export type GenerationCapabilityProviderIdV2 =
   | 'openrouter'
@@ -38,15 +39,28 @@ export type GenerationCapabilityResolutionRequestV2 = Readonly<{
 
 /** Plain IPC-safe form of the command-independent resolved capability. */
 export type ResolvedCapabilityV2Wire = Readonly<{
-  schemaVersion: 1
-  binding: Readonly<Record<string, unknown>>
-  catalogAuthority?: Readonly<Record<string, unknown>>
-  evidence: readonly Readonly<Record<string, unknown>>[]
-  fields: ResolvedCapabilityV2['fields']
-  continuation: ResolvedCapabilityV2['continuation']
-  evidenceDigest: string
-  semanticFieldsDigest: string
-  capabilityRevision: string
+  schemaVersion: 2
+  modelFacts: Readonly<{
+    schemaVersion: 1
+    identity: ResolvedCapabilityV2['modelFacts']['identity']
+    evidence: readonly Readonly<Record<string, unknown>>[]
+    fields: ResolvedCapabilityV2['modelFacts']['fields']
+    evidenceDigest: string
+    semanticFieldsDigest: string
+    capabilityRevision: string
+  }>
+  executionContext: Readonly<{
+    binding: Readonly<Record<string, unknown>>
+    catalogAuthority?: Readonly<Record<string, unknown>>
+    continuation: ResolvedCapabilityV2['executionContext']['continuation']
+    encodingCoverage: Readonly<{
+      providerId: string
+      protocolContractId: string
+      operation: string
+      semanticPaths: readonly string[]
+      encoderRevision: string
+    }>
+  }>
 }>
 
 export type GenerationCapabilityResolutionResultV2 = Readonly<{
@@ -100,26 +114,20 @@ export function decodeGenerationCapabilityResolutionRequestV2(
 }
 
 function wireCapability(capability: ResolvedCapabilityV2): ResolvedCapabilityV2Wire {
-  const binding = projectDecodedProviderBindingRecordV2(capability.binding)
-  const evidence = capability.evidence.map((item) => Object.freeze({
-    evidenceId: item.evidenceId,
-    kind: item.kind,
-    effect: item.effect,
-    sourceRef: item.sourceRef,
-    verifiedAt: item.verifiedAt,
-    contentDigest: item.contentDigest.value,
-    entryDigest: item.entryDigest.value,
-  }))
+  const facts = capability.modelFacts
+  const execution = capability.executionContext
+  const binding = projectDecodedProviderBindingRecordV2(execution.binding)
   return Object.freeze({
-    schemaVersion: 1,
-    binding,
-    ...(capability.catalogAuthority ? { catalogAuthority: capability.catalogAuthority } : {}),
-    evidence: Object.freeze(evidence),
-    fields: capability.fields,
-    continuation: capability.continuation,
-    evidenceDigest: capability.evidenceDigest,
-    semanticFieldsDigest: capability.semanticFieldsDigest,
-    capabilityRevision: capability.capabilityRevision,
+    schemaVersion: 2,
+    modelFacts: projectCanonicalModelFactsV2(facts),
+    executionContext: Object.freeze({ binding,
+      ...(execution.catalogAuthority ? { catalogAuthority: execution.catalogAuthority } : {}),
+      continuation: execution.continuation,
+      encodingCoverage: Object.freeze({ providerId: execution.encodingCoverage.providerId,
+        protocolContractId: execution.encodingCoverage.protocolContractId,
+        operation: execution.encodingCoverage.operation,
+        semanticPaths: execution.encodingCoverage.semanticPaths,
+        encoderRevision: execution.encodingCoverage.encoderRevision }) }),
   })
 }
 

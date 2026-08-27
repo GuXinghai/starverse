@@ -104,10 +104,6 @@ describe('CatalogQueryService.query', () => {
         inputModalities: ['text', 'image'],
         outputModalities: ['text'],
         supportedParameters: ['reasoning', 'tools'],
-        capabilities: {
-          reasoning: true,
-          vision: true,
-        },
       },
       sort: {
         by: 'name',
@@ -128,13 +124,6 @@ describe('CatalogQueryService.query', () => {
       modelId: 'openai/gpt-4o',
       displayName: 'GPT-4o',
       vendor: 'openai',
-      capabilities: {
-        reasoning: true,
-        tools: true,
-        structuredOutputs: true,
-        vision: true,
-        longContext: true,
-      },
       pricing: {
         prompt: '0.000005',
       },

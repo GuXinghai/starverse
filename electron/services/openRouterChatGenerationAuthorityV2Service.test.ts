@@ -19,30 +19,29 @@ function revision(overrides: Record<string, unknown> = {}) {
 
 describe('isOpenRouterChatAttachmentAdmissibleV2', () => {
   it('accepts only a verified plain-text derived revision for inline text', () => {
-    expect(isOpenRouterChatAttachmentAdmissibleV2({ attachment: attachment(), revision: revision(), inputModalities: new Set() })).toBe(true)
+    expect(isOpenRouterChatAttachmentAdmissibleV2({ attachment: attachment(), revision: revision() })).toBe(true)
     expect(isOpenRouterChatAttachmentAdmissibleV2({
-      attachment: attachment(), revision: revision({ revisionKind: 'source', conversionKind: 'none' }), inputModalities: new Set(),
+      attachment: attachment(), revision: revision({ revisionKind: 'source', conversionKind: 'none' }),
     })).toBe(false)
   })
 
-  it('requires a file-capable model and PDF provenance for a converted document', () => {
+  it('checks PDF provenance without independently deciding model support', () => {
     const convertedPdf = attachment({ sendAs: 'converted_document', conversion: 'pdf' })
     const pdfRevision = revision({ conversionKind: 'pdf', blob: { mime: 'application/pdf' } })
-    expect(isOpenRouterChatAttachmentAdmissibleV2({ attachment: convertedPdf, revision: pdfRevision, inputModalities: new Set(['file']) })).toBe(true)
-    expect(isOpenRouterChatAttachmentAdmissibleV2({ attachment: convertedPdf, revision: pdfRevision, inputModalities: new Set() })).toBe(false)
+    expect(isOpenRouterChatAttachmentAdmissibleV2({ attachment: convertedPdf, revision: pdfRevision })).toBe(true)
     expect(isOpenRouterChatAttachmentAdmissibleV2({
-      attachment: convertedPdf, revision: revision({ conversionKind: 'plain_text', blob: { mime: 'application/pdf' } }), inputModalities: new Set(['file']),
+      attachment: convertedPdf, revision: revision({ conversionKind: 'plain_text', blob: { mime: 'application/pdf' } }),
     })).toBe(false)
   })
 
   it('does not permit cross-mode PDF or text substitution', () => {
     expect(isOpenRouterChatAttachmentAdmissibleV2({
       attachment: attachment({ sendAs: 'provider_file', conversion: 'none' }),
-      revision: revision({ blob: { mime: 'application/pdf' } }), inputModalities: new Set(['file']),
+      revision: revision({ blob: { mime: 'application/pdf' } }),
     })).toBe(false)
     expect(isOpenRouterChatAttachmentAdmissibleV2({
       attachment: attachment({ sendAs: 'inline_text', conversion: 'plain_text' }),
-      revision: revision({ conversionKind: 'pdf', blob: { mime: 'application/pdf' } }), inputModalities: new Set(),
+      revision: revision({ conversionKind: 'pdf', blob: { mime: 'application/pdf' } }),
     })).toBe(false)
   })
 })
