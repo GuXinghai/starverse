@@ -4,10 +4,10 @@ import { describe, expect, it } from 'vitest'
 // Approved Generation V2 main-process boundary fixture imports.
 // eslint-disable-next-line no-restricted-imports
 import {
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
 // eslint-disable-next-line no-restricted-imports
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,

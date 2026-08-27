@@ -12,15 +12,15 @@ const profile: LocalEndpointProfileV2 = Object.freeze({
 })
 
 describe('Ollama Chat capability revision', () => {
-  it('changes only the base revision when the local profile credential revision changes', () => {
+  it('keeps observation time out of the base revision', () => {
     const binding = createOllamaChatProviderBindingV2(profile, 'llama3.2')
     const first = composeOllamaChatCapabilityV2({
-      binding, profile, resolvedAt: '2026-07-20T00:00:00.000Z', credentialRevision: 1,
+      binding, profile, resolvedAt: '2026-07-20T00:00:00.000Z',
     })
     const second = composeOllamaChatCapabilityV2({
-      binding, profile, resolvedAt: '2026-07-20T00:00:00.000Z', credentialRevision: 2,
+      binding, profile, resolvedAt: '2026-07-21T00:00:00.000Z',
     })
     expect(first.fields).toEqual(second.fields)
-    expect(first.revision.value).not.toBe(second.revision.value)
+    expect(first.revision.value).toBe(second.revision.value)
   })
 })

@@ -92,13 +92,6 @@ describe('modelDetailService', () => {
       displayName: 'GPT-4o',
       inputModalities: ['text', 'image'],
       supportedParameters: ['temperature', 'tools', 'reasoning'],
-      capabilities: {
-        reasoning: true,
-        tools: true,
-        structuredOutputs: true,
-        vision: true,
-        longContext: true,
-      },
       pricing: {
         prompt: '0.00003',
         completion: '0.00006',

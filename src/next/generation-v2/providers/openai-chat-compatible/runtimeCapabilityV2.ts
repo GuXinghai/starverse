@@ -1,10 +1,12 @@
 import {
   decodeRuntimeCapabilitySnapshotV2,
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2, type DecodedRuntimeCapabilitySnapshotV2,
-  type PersistedRuntimeCapabilityFieldV2, type RuntimeCapabilitySemanticPathV2,
+  type DecodedRuntimeCapabilitySnapshotV2,
 } from '../../capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
+} from '../../capability/modelCapabilitySchemaV2'
 import { canonicalizeResolvedCapabilityV2, runtimeSnapshotRecordFromResolvedCapabilityV2, type ResolvedCapabilityV2 } from '../../capability/resolvedCapabilityV2'
-import { credentialRevisionEvidenceV2 } from '../../capability/credentialRevisionEvidenceV2'
 import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../domain/providerBindingV2'
 import { OPENAI_CHAT_COMPATIBLE_CONTRACT_DIGEST_V2 } from './verifiedContractV2'
 
@@ -28,7 +30,6 @@ const NO_WIRE_DISABLED = new Set<RuntimeCapabilitySemanticPathV2>(['web.mode', '
 function resolveOpenAIChatCompatibleCapabilityRecordV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   resolvedAt: string
-  credentialRevision: number
   mappedReasoningSourceFields: readonly ('reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget')[]
 }>): ResolvedCapabilityV2 {
   if (input.binding.providerId.value !== 'openai_compatible' || input.binding.protocolContractId.value !== 'openai_chat_compatible') {
@@ -47,8 +48,7 @@ function resolveOpenAIChatCompatibleCapabilityRecordV2(input: Readonly<{
   })
   return canonicalizeResolvedCapabilityV2({ binding: projectDecodedProviderBindingRecordV2(input.binding),
     evidence: [{ evidenceId, kind: 'contract_invariant', effect: 'supports', sourceRef: 'openai_chat_compatible',
-      verifiedAt: input.resolvedAt, contentDigest: OPENAI_CHAT_COMPATIBLE_CONTRACT_DIGEST_V2 },
-      credentialRevisionEvidenceV2({ credentialRevision: input.credentialRevision, verifiedAt: input.resolvedAt })],
+      verifiedAt: input.resolvedAt, contentDigest: OPENAI_CHAT_COMPATIBLE_CONTRACT_DIGEST_V2 }],
     fields, continuation: { kind: 'client_managed_native_replay', artifactKind: 'openai_chat_compatible_messages',
       supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [evidenceId] },
   })
@@ -57,7 +57,6 @@ function resolveOpenAIChatCompatibleCapabilityRecordV2(input: Readonly<{
 export function composeOpenAIChatCompatibleBaselineCapabilityV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   resolvedAt: string
-  credentialRevision: number
   mappedReasoningSourceFields: readonly ('reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget')[]
 }>): DecodedRuntimeCapabilitySnapshotV2 {
   const capability = resolveOpenAIChatCompatibleCapabilityRecordV2(input)
@@ -68,7 +67,6 @@ export function composeOpenAIChatCompatibleBaselineCapabilityV2(input: Readonly<
 export function resolveOpenAIChatCompatibleCapabilityV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   resolvedAt: string
-  credentialRevision: number
   mappedReasoningSourceFields: readonly ('reasoning_enabled' | 'reasoning_effort' | 'reasoning_budget')[]
 }>): ResolvedCapabilityV2 {
   return resolveOpenAIChatCompatibleCapabilityRecordV2(input)

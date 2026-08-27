@@ -94,7 +94,6 @@ export function createLmStudioOpenResponsesGenerationV2Coordinator(input: Readon
         const providerBinding = createLmStudioOpenResponsesProviderBindingV2(profile, command.modelId.value)
         const capability = composeLmStudioOpenResponsesBaselineCapabilityV2({
           binding: providerBinding, resolvedAt: new Date(at).toISOString(),
-          credentialRevision: profile.revisionGeneration,
           selectedTools: toolRegistry?.selectedDefinitions,
         })
         assertExpectedCapabilityRevisionV2(capability.revision.value)

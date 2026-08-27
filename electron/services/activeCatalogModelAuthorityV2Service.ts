@@ -9,7 +9,6 @@ import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/c
 import { GenerationV2Digest, GenerationV2Identity, type GenerationV2Identity as Identity } from '../../src/next/generation-v2/domain/identityV2'
 // eslint-disable-next-line no-restricted-imports
 import { ProviderCatalogAuthorityRegistryV2 } from '../../src/next/modelCatalog/providerCatalogAuthorityRegistryV2'
-import { resolveModelCapabilitiesV2 } from '../../src/next/modelCatalog/modelCapabilityResolverV2'
 import type { ProviderCatalogKnownProviderKey } from '../../src/shared/modelCatalog/providerCatalogContracts'
 import type { CatalogProviderModelObservationV2 } from '../../src/shared/modelCatalog/providerModelObservationV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
@@ -42,15 +41,13 @@ export function isActiveCatalogModelAuthorityV2(
 
 export function readActiveCatalogSnapshotAuthorityV2(value: unknown): Readonly<{
   scopeId: string; catalogDigest: string; authorityRevision: number; observationDigest: string
-  contractRevision: string; resolutionDigest: string
 }> {
   if (!isActiveCatalogModelAuthorityV2(value)) {
     throw new ActiveCatalogModelAuthorityV2Error('GENERATION_V2_ACTIVE_CATALOG_INPUT_INVALID')
   }
   const authority = value as any
   return Object.freeze({ scopeId: authority.catalogScopeId, catalogDigest: authority.catalogDigest.value,
-    authorityRevision: authority.catalogAuthorityRevision, observationDigest: authority.observationDigest.value,
-    contractRevision: authority.contractRevision.value, resolutionDigest: authority.resolutionDigest.value })
+    authorityRevision: authority.catalogAuthorityRevision, observationDigest: authority.observationDigest.value })
 }
 
 export function projectActiveCatalogSnapshotAuthorityV2(value: unknown): Readonly<{
@@ -136,10 +133,6 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
                suppliedObservation.nativeModelId === request.modelId.value
              ? suppliedObservation as CatalogProviderModelObservationV2
              : (() => { throw new ActiveCatalogModelAuthorityV2Error('GENERATION_V2_ACTIVE_CATALOG_OBSERVATION_INVALID') })()
-           // Catalog capability summaries remain evidence/display metadata only.
-           // They no longer decide whether a Generation V2 semantic intent is legal;
-           // the provider runtime capability resolver owns that decision.
-           const resolutions = resolveModelCapabilitiesV2(observation)
           const raw = observation.rawProviderRecord
           const revision = `catalog-v2:${active.snapshotDigest}:${active.status.authorityRevision}`
           const evidenceDigest = GenerationV2Digest.create('evidence_digest', active.snapshotDigest)
@@ -163,9 +156,8 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
             ...(finite(raw.topP) !== undefined ? { topP: finite(raw.topP) } : {}),
             ...(finite(raw.topK) !== undefined ? { topK: finite(raw.topK) } : {}),
           })
-          const resolutionHash = digest(resolutions)
           const openAIModelCapability = Object.freeze({
-            capabilityEvidenceDigest: GenerationV2Digest.create('evidence_digest', resolutionHash),
+            capabilityEvidenceDigest: GenerationV2Digest.create('evidence_digest', digest(observation)),
             capability: Object.freeze({ family: request.modelId.value,
               maxOutputTokens: positive(raw.max_output_tokens ?? raw.maxOutputTokens, 1_000_000) }),
           })
@@ -176,9 +168,7 @@ export function createActiveCatalogModelAuthorityV2Service(input: Readonly<{
             catalogProviderKey: request.providerKey, catalogScopeId: active.status.scopeId,
             catalogDigest: evidenceDigest, catalogAuthorityRevision: active.status.authorityRevision,
             catalogAdapterRevision: active.adapterRevision, observation,
-            observationDigest: GenerationV2Digest.create('evidence_digest', digest(observation)), resolutions,
-            resolutionDigest: GenerationV2Digest.create('evidence_digest', resolutionHash),
-            contractRevision: registry.reviewedContract.contractRevision,
+            observationDigest: GenerationV2Digest.create('evidence_digest', digest(observation)),
             providerId: GenerationV2Identity.create('provider_id', registry.executionProviderId),
             credentialScopeId: request.providerKey === 'openrouter' ? request.expectedCredentialScopeId :
               GenerationV2Identity.create('credential_scope_id', request.expectedCredentialScopeId),

@@ -11,10 +11,10 @@ vi.mock('../../../electron/credentials/epoch2RuntimeCredentialService', () => ({
     Boolean(value && typeof value === 'object' && transportMocks.leases.has(value)),
 }))
 import {
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotV2,
 } from '../../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 } from '../../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeUnverifiedAssistantAnswerGenerationSnapshotV2,
   decodeAssistantAnswerGenerationSnapshotV2,

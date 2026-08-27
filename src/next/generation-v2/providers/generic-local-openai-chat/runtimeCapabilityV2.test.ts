@@ -12,15 +12,15 @@ const profile: LocalEndpointProfileV2 = Object.freeze({
 })
 
 describe('Generic Local OpenAI Chat capability revision', () => {
-  it('changes only the base revision when the local profile credential revision changes', () => {
+  it('keeps observation time out of the base revision', () => {
     const binding = createGenericLocalOpenAIChatProviderBindingV2(profile, 'local-model')
     const first = composeGenericLocalOpenAIChatBaselineCapabilityV2({
-      binding, resolvedAt: '2026-07-20T00:00:00.000Z', credentialRevision: 1,
+      binding, resolvedAt: '2026-07-20T00:00:00.000Z',
     })
     const second = composeGenericLocalOpenAIChatBaselineCapabilityV2({
-      binding, resolvedAt: '2026-07-20T00:00:00.000Z', credentialRevision: 2,
+      binding, resolvedAt: '2026-07-21T00:00:00.000Z',
     })
     expect(first.fields).toEqual(second.fields)
-    expect(first.revision.value).not.toBe(second.revision.value)
+    expect(first.revision.value).toBe(second.revision.value)
   })
 })

@@ -20,7 +20,7 @@ import type {
   ResolvedGenerationParams,
 } from '@/next/generation-params/generationParamTypes'
 import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
-import type { RuntimeCapabilitySemanticPathV2 } from '@/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import type { ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from '@/next/generation-v2/capability/modelCapabilitySchemaV2'
 import { t, tf } from '@/shared/i18n'
 
 const props = withDefaults(defineProps<{
@@ -94,9 +94,14 @@ function capabilityFromProjection(key: GenerationParamKey): GenerationParamCapab
     ui: { visibleByDefault: supported && field?.visibility !== 'hidden', editable: supported && field?.visibility !== 'hidden' },
     ...extra,
   })
-  if (!field || field.state !== 'supported') return base(false, {
+  if (!field || field.state === 'missing' || field.state === 'unsupported') return base(false, {
     ui: { visibleByDefault: false, editable: false, warning: tf('chat.generationParams.unsupportedForModel', { param: spec.label }) },
   })
+  if (field.state === 'unknown') {
+    return base(true, spec.valueType === 'enum'
+      ? { valueType: 'string', maxLength: 128 }
+      : {})
+  }
   const domain = field.domain
   if (key === 'thinkingEnabled' || key === 'includeThoughts') {
     const values = domain?.kind === 'enum' ? domain.values : []

@@ -263,7 +263,6 @@ describe('ModelPickerDialog', () => {
           createdAtSec: 1700000123,
           pricing: { prompt: '0.1', completion: '0.2', request: '0', image: '0' },
           capabilities: { reasoning: false, tools: false, structuredOutputs: false, vision: false, longContext: false },
-          capabilityResolution: null,
           observation: null,
         },
       ])
@@ -317,7 +316,6 @@ describe('ModelPickerDialog', () => {
                 displayName: 'GPT-4.1 mini',
                 description: 'curated OpenAI model',
                 vendor: 'OpenAI Responses',
-                capabilitySummary: 'text · image input',
                 statusKind: 'ready',
                 statusLabel: 'available',
                 sourceLabel: 'provider availability',

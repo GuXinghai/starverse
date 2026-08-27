@@ -4,9 +4,9 @@ import {
   type ProviderContractOperationV2,
 } from '../contracts/providerContractRegistryV2'
 import type {
-  PersistedRuntimeCapabilityFieldV2,
-  RuntimeCapabilitySemanticPathV2,
-} from './runtimeCapabilitySnapshotV2'
+  PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
+  ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
+} from './modelCapabilitySchemaV2'
 
 /**
  * Protocol coverage is a code-integrity fact, not a model capability ceiling.

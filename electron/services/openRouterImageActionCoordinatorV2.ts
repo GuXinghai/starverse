@@ -93,8 +93,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
   }
   function currentSelection(context: GenerationV2AuthorityTransactionContextV2, command: CurrentCommand,
     descriptor: Awaited<ReturnType<typeof descriptorAuthority.resolve>>, commandFacts: GenerationCommandFactsAuthorityV2,
-    freshness: ReturnType<OpenRouterImageSettingsRepo['readOrRestore']>['settings']['pair'],
-    credentialRevision: number) {
+    freshness: ReturnType<OpenRouterImageSettingsRepo['readOrRestore']>['settings']['pair']) {
     const existing = bindingRepo.getBinding({ credentialScopeId: descriptor.credentialScopeId, modelId: descriptor.modelId })
     const decision = decideOpenRouterImageSelectionV2({ descriptorCache: descriptor,
       freshness: { kind: 'use_cached', ageMs: 0, settings: freshness },
@@ -114,7 +113,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       expectedDescriptorRowGeneration: decision.expectedDescriptorRowGeneration })
     const selected = descriptorCandidate(descriptor, candidate.providerTag, candidate.providerSlug)
     return Object.freeze({ binding, capability: composeOpenRouterImageRuntimeCapabilityV2({ binding: binding.record,
-      descriptor: selected, resolvedAt: new Date(nowMs()).toISOString(), credentialRevision }) })
+      descriptor: selected, resolvedAt: new Date(nowMs()).toISOString() }) })
   }
 
   async function retry(raw: unknown, signal?: AbortSignal): Promise<OpenRouterImageActionResultV2> {
@@ -183,7 +182,7 @@ export function createOpenRouterImageActionCoordinatorV2(input: Readonly<{
       const prompt = command.kind === 'openrouter_image_regenerate' ? promptForQuestion(command.questionId.value) : command.prompt
       return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value,
         sourceAttachments, undefined, (commandFacts) => {
-          const selected = currentSelection(context, command, descriptor, commandFacts, freshness, status.revision)
+          const selected = currentSelection(context, command, descriptor, commandFacts, freshness)
           const persisted = commitOpenRouterImageCurrentSnapshotV2({ context, executionRepo, capabilityRepo, pending, command,
             commandFacts, binding: selected.binding, capability: selected.capability })
           if (command.kind === 'openrouter_image_regenerate') {

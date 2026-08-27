@@ -1,20 +1,20 @@
 import { createHash } from 'node:crypto'
 import {
   decodeRuntimeCapabilitySnapshotV2,
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
-  type PersistedRuntimeCapabilityFieldV2,
   type PersistedRuntimeCapabilitySnapshotV2,
-  type RuntimeCapabilityDomainV2,
-  type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
+  type ModelCapabilityDomainV2 as RuntimeCapabilityDomainV2,
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
+} from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
 import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isReviewedProviderContractDefinitionV2,
@@ -46,7 +46,8 @@ import {
 import {
   isGeminiInteractionsImageModelIdV1,
 } from '../../src/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
-import type { GeminiImageGenerationPolicy } from '../../src/next/provider/gemini/geminiImageGenerationPolicy'
+import { resolveGeminiImageGenerationPolicy,
+  type GeminiImageGenerationPolicy } from '../../src/next/provider/gemini/geminiImageGenerationPolicy'
 import {
   isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2,
@@ -133,13 +134,12 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2): void {
 function composeBinding(catalogAuthority: ActiveCatalogModelAuthorityV2, modelId: string) {
   const profile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
   const definition = readReviewedGeminiInteractionsDefinitionV2()
-  const providerSpecific = catalogAuthority.resolutions?.providerSpecific
+  const imagePolicy = resolveGeminiImageGenerationPolicy(modelId)
   if (!isVerifiedGeminiDeveloperApiEndpointProfileV2(profile) || !isReviewedProviderContractDefinitionV2(definition) ||
       definition.protocolContractId.value !== 'gemini-interactions-v1beta' || definition.providerId.value !== 'google_ai_studio' ||
       !isActiveCatalogModelAuthorityV2(catalogAuthority, 'google_ai_studio') ||
       catalogAuthority.modelId?.value !== modelId || !isGeminiInteractionsImageModelIdV1(modelId) ||
-      providerSpecific?.kind !== 'gemini_image_generation' || providerSpecific.protocolContractId !== 'gemini-interactions-v1beta' ||
-      providerSpecific.policy.kind === 'unsupported') invalid()
+      imagePolicy.kind === 'unsupported') invalid()
   catalogAuthority.assertCurrent()
   const descriptor = profile.descriptors.interactions
   const candidate = Object.freeze({
@@ -163,7 +163,7 @@ function composeBinding(catalogAuthority: ActiveCatalogModelAuthorityV2, modelId
   const authority = Object.freeze({
     trust: 'verified_gemini_interactions_image_provider_binding' as const,
     usage: 'runtime_capability_and_snapshot_input_only' as const, executionAuthority: 'none' as const,
-    binding, contractReference, catalogAuthority, imagePolicy: providerSpecific.policy,
+    binding, contractReference, catalogAuthority, imagePolicy,
     credentialRevision: catalogAuthority.credentialRevision,
     assertCurrent: () => { if (!bindings.has(authority)) invalid(); catalogAuthority.assertCurrent() },
   })
@@ -178,8 +178,6 @@ function composeCapability(binding: VerifiedGeminiInteractionsImageProviderBindi
         sourceRef: 'https://ai.google.dev/gemini-api/docs/image-generation', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(SUPPORTS) },
       { evidenceId: REJECTS, kind: 'contract_invariant', effect: 'rejects',
         sourceRef: 'generation-v2-gemini-interactions-reviewed-model-matrix', verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(REJECTS) },
-      credentialRevisionEvidenceV2({ credentialRevision: binding.credentialRevision,
-        verifiedAt: '2026-07-20T00:00:00.000Z' }),
     ],
     ...projectActiveCatalogSnapshotAuthorityV2(binding.catalogAuthority),
     fields: fields(binding.imagePolicy), continuation: { kind: 'none', evidenceIds: [SUPPORTS] },

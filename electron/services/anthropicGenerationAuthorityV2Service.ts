@@ -3,20 +3,20 @@ import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
 import {
   decodeRuntimeCapabilitySnapshotV2,
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
-  type PersistedRuntimeCapabilityFieldV2,
   type PersistedRuntimeCapabilitySnapshotV2,
-  type RuntimeCapabilityDomainV2,
-  type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
+  type ModelCapabilityDomainV2 as RuntimeCapabilityDomainV2,
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
+} from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
 import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isReviewedProviderContractDefinitionV2,
@@ -284,7 +284,6 @@ function composeCapability(binding: VerifiedAnthropicProviderBindingAuthorityV2,
       { evidenceId: REJECTS, kind: 'contract_invariant' as const, effect: 'rejects' as const, sourceRef: 'generation-compiler-v2-anthropic-plain-text-boundary', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(REJECTS) },
       { evidenceId: TOOL_CONFIRMATION, kind: 'contract_invariant' as const, effect: 'requires_confirmation' as const, sourceRef: 'generation-compiler-v2-tool-side-effect-policy', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: evidenceDigest(TOOL_CONFIRMATION) },
       { evidenceId: 'anthropic.models.visibility.supports', kind: 'live_probe' as const, effect: 'supports' as const, sourceRef: modelEvidence.modelResponseRevision, verifiedAt: observedAt, contentDigest: readGenerationV2Digest(modelEvidence.modelResponseDigest, 'evidence_digest') },
-      credentialRevisionEvidenceV2({ credentialRevision: modelEvidence.credentialRevision, verifiedAt: observedAt }),
     ]
   const continuation = { kind: 'client_managed_native_replay' as const, artifactKind: ANTHROPIC_NATIVE_HISTORY_ARTIFACT_KIND_V1, supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [SUPPORTS] }
   const resolvedCapability = canonicalizeResolvedCapabilityV2({

@@ -68,12 +68,21 @@ describe('Generation V2 capability resolution scope', () => {
       modelId: 'ocp_model_12345678', operation: 'text',
     })
 
-    expect(result.resolvedCapability.binding).toMatchObject({
+    expect(result.resolvedCapability.executionContext.binding).toMatchObject({
       providerId: 'openai_compatible', endpointProfileId: provider.providerInstanceId,
       endpointBinding: {
         kind: 'provider_managed_set', endpointSetRevision: endpoint.endpointRevisionId,
         descriptors: [{ endpointId: provider.providerInstanceId, descriptorRevision: endpoint.endpointRevisionId }],
       },
     })
+    expect(result.resolvedCapability.modelFacts.identity).toEqual({
+      providerId: 'openai_compatible',
+      endpointProfileId: provider.providerInstanceId,
+      nativeModelId: 'ocp_model_12345678',
+    })
+    expect(result.resolvedCapability.modelFacts.capabilityRevision)
+      .toBe(result.controlsProjection.capabilityRevision)
+    expect(result.resolvedCapability.modelFacts).not.toHaveProperty('operation')
+    expect(result.resolvedCapability.modelFacts).not.toHaveProperty('encodingCoverage')
   })
 })

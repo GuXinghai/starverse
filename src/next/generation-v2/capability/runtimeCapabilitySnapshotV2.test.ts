@@ -1,12 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import {
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   RUNTIME_CAPABILITY_SNAPSHOT_V2_MAX_UTF8_BYTES,
   canonicalizeUnverifiedRuntimeCapabilitySnapshotV2,
   decodeRuntimeCapabilitySnapshotJsonV2,
   decodeRuntimeCapabilitySnapshotV2,
-  type RuntimeCapabilitySemanticPathV2,
 } from './runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2 } from './modelCapabilitySchemaV2'
 
 const contractDigest = 'a'.repeat(64)
 const registryDigest = 'b'.repeat(64)
@@ -349,8 +349,8 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
     expect(record.tools[0].toolId).toBe('tool:web-search')
     expect(record.continuation.kind).toBe('client_managed_native_replay')
     expect(record.snapshotHash).not.toBe(baseline.snapshotHash)
-    expect(record.semanticFieldsDigest).not.toBe(baseline.semanticFieldsDigest)
-    expect(record.revision).not.toBe(baseline.revision)
+    expect(record.semanticFieldsDigest).toBe(baseline.semanticFieldsDigest)
+    expect(record.revision).toBe(baseline.revision)
     const changedToolPolicy = structuredClone(value)
     changedToolPolicy.tools[0].sideEffectPolicy = 'confirmation_required_each_execution'
     const changedToolRecord = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(changedToolPolicy)
@@ -359,7 +359,9 @@ describe('RuntimeCapabilitySnapshotV2 structural codec', () => {
     expect(changedToolRecord.revision).toBe(record.revision)
     const changedReplay = structuredClone(value)
     changedReplay.continuation.supportsBranchReplay = false
-    expect(canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(changedReplay).revision).not.toBe(record.revision)
+    const changedReplayRecord = canonicalizeUnverifiedRuntimeCapabilitySnapshotV2(changedReplay)
+    expect(changedReplayRecord.revision).toBe(record.revision)
+    expect(changedReplayRecord.snapshotHash).not.toBe(record.snapshotHash)
     expect(() => canonicalizeUnverifiedRuntimeCapabilitySnapshotV2({
       ...draft(), continuation: { kind: 'client_managed_native_replay', artifactKind: 'x',
         supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [] },

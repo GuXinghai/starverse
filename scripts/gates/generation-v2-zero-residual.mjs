@@ -11,6 +11,8 @@ const requiredFiles = [
   'electron/ipc/generationV2IpcRegistration.ts',
   'electron/debug/rawGenerationRequestStore.ts',
   'src/next/generation-v2/domain/assistantAnswerGenerationSnapshotV2.ts',
+  'src/next/generation-v2/capability/canonicalModelFactsV2.ts',
+  'src/next/generation-v2/capability/modelCapabilitySchemaV2.ts',
 ]
 for (const file of requiredFiles) if (!existsSync(path.resolve(root, file))) fail(`required V2 file is missing: ${file}`)
 
@@ -32,6 +34,9 @@ const deletedLegacyFiles = [
   'scripts/build-db-worker.cjs',
   'scripts/clear-all-data.js',
   'scripts/clear-all-data-standalone.cjs',
+  'src/next/generation-v2/capability/credentialRevisionEvidenceV2.ts',
+  'src/next/generation-v2/providers/openai-responses/modelCapabilityManifestV2.ts',
+  'src/next/modelCatalog/modelCapabilityResolverV2.ts',
 ]
 for (const file of deletedLegacyFiles) if (existsSync(path.resolve(root, file))) fail(`deleted legacy file remains: ${file}`)
 
@@ -60,6 +65,29 @@ const appLogic = read('src/ui-app/app/appChatApp.logic.ts')
 for (const token of ['startStreamingForAssistantTurn', 'openRouterLiveStream', 'buildContextForBranchInternalMessages',
   'window.compatibleChat', 'openAIResponsesModels as', 'googleAIStudioModels as']) {
   if (appLogic.includes(token)) fail(`renderer orchestration still contains legacy token ${token}`)
+}
+
+const catalogQuery = read('src/next/modelCatalog/catalogQueryService.ts')
+for (const token of ['resolveModelCapabilitiesV2', 'normalizeBooleanCapabilityFilters', 'item.capabilities']) {
+  if (catalogQuery.includes(token)) fail(`catalog query still makes an independent capability decision via ${token}`)
+}
+const modelPicker = read('src/ui-app/components/ModelPickerDialog.vue')
+for (const token of ['item.capabilities.reasoning', 'item.capabilities.tools', 'item.capabilities.structuredOutputs',
+  'item.capabilities.vision', 'item.capabilities.longContext', 'forceOutputImageOnly']) {
+  if (modelPicker.includes(token)) fail(`model picker still consumes raw catalog capability hint ${token}`)
+}
+const generationParamsEditor = read('src/ui-app/components/GenerationParamsSettingsEditor.vue')
+if (generationParamsEditor.includes("field.state !== 'supported'")) {
+  fail('generation params editor collapses unknown capability into unsupported')
+}
+for (const file of [
+  'electron/services/deepSeekStableGenerationAuthorityV2Service.ts',
+  'electron/services/openAIResponsesGenerationAuthorityV2Service.ts',
+  'electron/services/openRouterChatGenerationAuthorityV2Service.ts',
+]) {
+  if (read(file).includes('function domainContains')) {
+    fail(`${file} retains an independent semantic-domain validator`)
+  }
 }
 
 const runnerFiles = [

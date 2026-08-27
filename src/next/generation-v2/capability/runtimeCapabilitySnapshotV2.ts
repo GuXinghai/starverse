@@ -12,7 +12,6 @@ import {
 import {
   decodeProviderBindingRecordV2,
   projectDecodedProviderBindingRecordV2,
-  projectProviderBindingForCapabilityRevisionV2,
   type DecodedProviderBindingRecordV2,
 } from '../domain/providerBindingV2'
 import {
@@ -20,188 +19,37 @@ import {
   EncodingCoverageRegistryV2Error,
   resolveEncodingCoverageRegistryV2,
 } from './encodingCoverageRegistryV2'
-import type {
-  AttachmentIntentV2,
-  ImageGenerationIntentV2,
-  ProviderSemanticExtensionV2,
-  ReasoningIntentV2,
-  SamplingIntentV2,
-  ToolPolicyIntentV2,
-  WebSearchIntentV2,
-} from '../domain/generationIntentV2'
 import { GENERATION_INTENT_OPEN_STRING_MAX_LENGTH_V2 } from '../domain/generationIntentV2'
+import { canonicalizeModelFactsV2, projectCanonicalModelIdentityV2 } from './canonicalModelFactsV2'
+import {
+  MODEL_CAPABILITY_SEMANTIC_PATHS_V2,
+  MODEL_CAPABILITY_DOMAIN_KINDS_BY_PATH_V2,
+  MODEL_CAPABILITY_IDENTITY_PATHS_V2,
+  isModelCapabilityDomainCompatibleWithPathV2,
+  type ModelCapabilityDomainV2,
+  type ModelCapabilityConstraintV2,
+  type ModelCapabilityEvidenceEffectV2,
+  type ModelCapabilityEvidenceKindV2,
+  type ModelCapabilityFieldStateV2,
+  type ModelCapabilityScalarV2,
+  type ModelCapabilitySemanticPathV2,
+  type PersistedModelCapabilityEvidenceV2,
+  type PersistedModelCapabilityFieldV2,
+} from './modelCapabilitySchemaV2'
 
 export const RUNTIME_CAPABILITY_SNAPSHOT_V2_SCHEMA_VERSION = 2 as const
 export const RUNTIME_CAPABILITY_SNAPSHOT_V2_MAX_UTF8_BYTES = 1024 * 1024
 
-type ProviderExtensionSemanticFieldV2 = ProviderSemanticExtensionV2 extends infer Extension
-  ? Extension extends Readonly<{ kind: string }>
-    ? Exclude<Extract<keyof Extension, string>, 'kind'>
-    : never
-  : never
-
-type AttachmentSemanticFieldV2 = AttachmentIntentV2 extends infer Attachment
-  ? Attachment extends Readonly<Record<string, unknown>>
-    ? Extract<keyof Attachment, string>
-    : never
-  : never
-
-type RuntimeCapabilityRequiredSemanticPathV2 =
-  | `generation.${Extract<keyof SamplingIntentV2, string>}`
-  | `reasoning.${Extract<keyof Extract<ReasoningIntentV2, { mode: 'enabled' }>, string>}`
-  | `web.${Extract<keyof Extract<WebSearchIntentV2, { mode: 'provider_search' }>, string>}`
-  | `image.${Extract<keyof Extract<ImageGenerationIntentV2, { mode: 'generate' }>, string>}`
-  | `tools.${Extract<keyof Extract<ToolPolicyIntentV2, { mode: 'enabled' }>, string>}`
-  | `attachments[].${AttachmentSemanticFieldV2}`
-  | 'providerExtension.kind'
-  | 'providerExtension.responseFormat'
-  | `providerExtension.${ProviderExtensionSemanticFieldV2}`
-
-export const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 = Object.freeze([
-  'attachments[].assetId',
-  'attachments[].assetRevisionId',
-  'attachments[].assetSha256',
-  'attachments[].capturedAtMs',
-  'attachments[].conversion',
-  'attachments[].declaredMediaType',
-  'attachments[].include',
-  'attachments[].kind',
-  'attachments[].mediaKind',
-  'attachments[].originalUrl',
-  'attachments[].provenance',
-  'attachments[].referenceId',
-  'attachments[].referenceRevision',
-  'attachments[].sendAs',
-  'attachments[].urlDigest',
-  'generation.candidateCount',
-  'generation.frequencyPenalty',
-  'generation.maxOutputTokens',
-  'generation.minP',
-  'generation.presencePenalty',
-  'generation.repetitionPenalty',
-  'generation.seed',
-  'generation.stop',
-  'generation.temperature',
-  'generation.topA',
-  'generation.topK',
-  'generation.topP',
-  'image.aspectRatio',
-  'image.background',
-  'image.format',
-  'image.mode',
-  'image.outputCompression',
-  'image.outputMode',
-  'image.quality',
-  'image.resolution',
-  'image.size',
-  'image.stream',
-  'providerExtension.includeThoughts',
-  'providerExtension.kind',
-  'providerExtension.manualThinkingBudgetTokens',
-  'providerExtension.maxToolCalls',
-  'providerExtension.parallelToolCalls',
-  'providerExtension.reasoningContext',
-  'providerExtension.reasoningMode',
-  'providerExtension.responseFormat',
-  'providerExtension.serviceTier',
-  'providerExtension.thinkingBudget',
-  'providerExtension.thinkingDisplay',
-  'providerExtension.thinkingLevel',
-  'providerExtension.thinkingMode',
-  'providerExtension.verbosity',
-  'reasoning.effort',
-  'reasoning.exclude',
-  'reasoning.mode',
-  'reasoning.summary',
-  'tools.allowedToolIds',
-  'tools.mode',
-  'tools.sideEffectConfirmation',
-  'tools.toolChoice',
-  'web.allowedDomains',
-  'web.engine',
-  'web.excludedDomains',
-  'web.maxCharacters',
-  'web.maxResults',
-  'web.maxTotalResults',
-  'web.mode',
-  'web.searchContextSize',
-  'web.types',
-  'web.userLocation',
-] as const satisfies readonly RuntimeCapabilityRequiredSemanticPathV2[])
-
-export const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2_COMPLETE:
-  Exclude<RuntimeCapabilityRequiredSemanticPathV2, typeof RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2[number]> extends never
-    ? true
-    : false = true
-
-export type RuntimeCapabilitySemanticPathV2 = typeof RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2[number]
-export type RuntimeCapabilityFieldStateV2 =
-  | 'supported'
-  | 'unsupported'
-  | 'requires_confirmation'
-  /** The source did not provide a fact for this semantic field. */
-  | 'missing'
-  /** Evidence exists, but it is insufficient to resolve support or rejection. */
-  | 'unknown'
-
-export type RuntimeCapabilityEvidenceEffectV2 = 'supports' | 'rejects' | 'requires_confirmation' | 'unknown'
-export type RuntimeCapabilityScalarV2 = string | number | boolean
-
-export type RuntimeCapabilityDomainV2 =
-  | Readonly<{ kind: 'boolean' }>
-  | Readonly<{ kind: 'identity' }>
-  | Readonly<{ kind: 'string'; maxLength: number }>
-  | Readonly<{ kind: 'enum'; values: readonly RuntimeCapabilityScalarV2[] }>
-  | Readonly<{ kind: 'response_format'; types: readonly ('text' | 'json_object' | 'json_schema')[] }>
-  | Readonly<{ kind: 'enum_list'; values: readonly RuntimeCapabilityScalarV2[]; maxItems: number }>
-  | Readonly<{ kind: 'range'; min: number; max: number; integer: boolean }>
-  | Readonly<{ kind: 'string_list'; maxItems: number; maxItemLength: number }>
-  | Readonly<{ kind: 'identity_list'; maxItems: number }>
-  | Readonly<{ kind: 'approximate_location'; maxFieldLength: number }>
-  | Readonly<{
-      kind: 'dimensions'
-      minWidth: number
-      maxWidth: number
-      minHeight: number
-      maxHeight: number
-    }>
-  | Readonly<{
-      /** Exact supported pairs; unlike a range this never advertises a Cartesian product. */
-      kind: 'dimensions_enum'
-      values: readonly Readonly<{ width: number; height: number }>[]
-    }>
-
-export type RuntimeCapabilityConstraintV2 = Readonly<{
-  kind: 'requires_value' | 'forbids_value'
-  path: RuntimeCapabilitySemanticPathV2
-  values: readonly RuntimeCapabilityScalarV2[]
-}>
-
-export type RuntimeCapabilityEvidenceKindV2 =
-  | 'contract_invariant'
-  | 'endpoint_descriptor'
-  | 'signed_provider_record'
-  | 'official_documentation'
-  | 'live_probe'
-  | 'user_narrowing_override'
-
-export type PersistedRuntimeCapabilityEvidenceV2 = Readonly<{
-  evidenceId: string
-  kind: RuntimeCapabilityEvidenceKindV2
-  effect: RuntimeCapabilityEvidenceEffectV2
-  sourceRef: string
-  verifiedAt: string
-  contentDigest: string
-  entryDigest: string
-}>
-
-export type PersistedRuntimeCapabilityFieldV2 = Readonly<{
-  path: RuntimeCapabilitySemanticPathV2
-  state: RuntimeCapabilityFieldStateV2
-  domain?: RuntimeCapabilityDomainV2
-  constraints: readonly RuntimeCapabilityConstraintV2[]
-  evidenceIds: readonly string[]
-}>
+const RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2 = MODEL_CAPABILITY_SEMANTIC_PATHS_V2
+type RuntimeCapabilitySemanticPathV2 = ModelCapabilitySemanticPathV2
+type RuntimeCapabilityFieldStateV2 = ModelCapabilityFieldStateV2
+type RuntimeCapabilityEvidenceEffectV2 = ModelCapabilityEvidenceEffectV2
+type RuntimeCapabilityScalarV2 = ModelCapabilityScalarV2
+type RuntimeCapabilityDomainV2 = ModelCapabilityDomainV2
+type RuntimeCapabilityConstraintV2 = ModelCapabilityConstraintV2
+type RuntimeCapabilityEvidenceKindV2 = ModelCapabilityEvidenceKindV2
+type PersistedRuntimeCapabilityEvidenceV2 = PersistedModelCapabilityEvidenceV2
+type PersistedRuntimeCapabilityFieldV2 = PersistedModelCapabilityFieldV2
 
 export type PersistedRuntimeToolCapabilityV2 = Readonly<{
   toolId: string
@@ -234,8 +82,6 @@ export type PersistedRuntimeCatalogAuthorityV2 = Readonly<{
   catalogDigest: string
   authorityRevision: number
   observationDigest: string
-  contractRevision: string
-  resolutionDigest: string
 }>
 
 export type PersistedRuntimeCapabilitySnapshotV2 = Readonly<{
@@ -311,7 +157,7 @@ type DraftSnapshot = Readonly<{
 
 const EVIDENCE_KINDS: readonly RuntimeCapabilityEvidenceKindV2[] = [
   'contract_invariant', 'endpoint_descriptor', 'signed_provider_record',
-  'official_documentation', 'live_probe', 'user_narrowing_override',
+  'official_documentation', 'live_probe', 'capability_rule',
 ]
 const EVIDENCE_EFFECTS: readonly RuntimeCapabilityEvidenceEffectV2[] = [
   'supports', 'rejects', 'requires_confirmation', 'unknown',
@@ -550,86 +396,15 @@ function decodeDomain(value: unknown): RuntimeCapabilityDomainV2 {
  * absent: those belong to the resolved capability evidence for this exact
  * binding and must not be reintroduced by the persisted-record decoder.
  */
-const DOMAIN_KIND_BY_PATH: Readonly<Partial<Record<RuntimeCapabilitySemanticPathV2, RuntimeCapabilityDomainV2['kind'] | readonly RuntimeCapabilityDomainV2['kind'][]>>> = {
-  'attachments[].conversion': 'enum',
-  'attachments[].kind': 'enum',
-  'attachments[].mediaKind': 'enum',
-  'attachments[].provenance': 'enum',
-  'attachments[].sendAs': 'enum',
-  'attachments[].include': 'boolean',
-  'attachments[].assetId': 'identity',
-  'attachments[].assetRevisionId': 'identity',
-  'attachments[].assetSha256': 'identity',
-  'attachments[].referenceId': 'identity',
-  'attachments[].referenceRevision': 'identity',
-  'attachments[].urlDigest': 'identity',
-  'attachments[].capturedAtMs': 'range',
-  'image.aspectRatio': 'enum',
-  'image.background': 'enum',
-  'image.format': 'enum',
-  'image.mode': 'enum',
-  'image.outputCompression': 'range',
-  'image.outputMode': 'enum',
-  'image.quality': 'enum',
-  'image.resolution': 'enum',
-  'image.size': 'dimensions',
-  'image.stream': 'boolean',
-  'generation.candidateCount': 'range',
-  'generation.frequencyPenalty': 'range',
-  'generation.maxOutputTokens': 'range',
-  'generation.minP': 'range',
-  'generation.presencePenalty': 'range',
-  'generation.repetitionPenalty': 'range',
-  'generation.seed': 'range',
-  'generation.temperature': 'range',
-  'generation.topA': 'range',
-  'generation.topK': 'range',
-  'generation.topP': 'range',
-  'generation.stop': 'string_list',
-  'providerExtension.includeThoughts': 'enum',
-  'providerExtension.kind': 'enum',
-  'providerExtension.manualThinkingBudgetTokens': 'range',
-  'providerExtension.maxToolCalls': 'range',
-  'providerExtension.parallelToolCalls': 'boolean',
-  'providerExtension.reasoningContext': 'enum',
-  'providerExtension.reasoningMode': 'enum',
-  'providerExtension.responseFormat': 'response_format',
-  'providerExtension.serviceTier': 'enum',
-  'providerExtension.thinkingBudget': 'range',
-  'providerExtension.thinkingDisplay': 'enum',
-  'providerExtension.thinkingLevel': 'enum',
-  'providerExtension.thinkingMode': 'enum',
-  'providerExtension.verbosity': 'enum',
-  'reasoning.effort': ['enum', 'string'],
-  'reasoning.exclude': 'boolean',
-  'reasoning.mode': 'enum',
-  'reasoning.summary': ['enum', 'string'],
-  'tools.allowedToolIds': 'identity_list',
-  'tools.mode': 'enum',
-  'tools.sideEffectConfirmation': 'enum',
-  'tools.toolChoice': 'enum',
-  'web.allowedDomains': 'string_list',
-  'web.engine': 'enum',
-  'web.excludedDomains': 'string_list',
-  'web.maxCharacters': 'range',
-  'web.maxResults': 'range',
-  'web.maxTotalResults': 'range',
-  'web.mode': 'enum',
-  'web.searchContextSize': 'enum',
-  'web.types': 'enum_list',
-  'web.userLocation': 'approximate_location',
-}
-const IDENTITY_PATHS = new Set<RuntimeCapabilitySemanticPathV2>([
-  'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
-  'attachments[].referenceId', 'attachments[].referenceRevision', 'attachments[].urlDigest',
-])
+const DOMAIN_KIND_BY_PATH = MODEL_CAPABILITY_DOMAIN_KINDS_BY_PATH_V2
+const IDENTITY_PATHS = new Set<RuntimeCapabilitySemanticPathV2>(MODEL_CAPABILITY_IDENTITY_PATHS_V2)
 
 /**
  * This projection is part of the epoch closed-schema contract.  Keep the
  * revision alongside the codec grammar and validation tables so a codec
  * change cannot silently reuse an installed database schema digest.
  */
-export const RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2 = 'runtime-capability-codec-v2'
+export const RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2 = 'runtime-capability-codec-v3-canonical-model-facts'
 const RUNTIME_CAPABILITY_CODEC_SCHEMA_PROJECTION_V2 = {
   revision: RUNTIME_CAPABILITY_CODEC_SCHEMA_REVISION_V2,
   schemaVersion: RUNTIME_CAPABILITY_SNAPSHOT_V2_SCHEMA_VERSION,
@@ -653,20 +428,7 @@ export const RUNTIME_CAPABILITY_CODEC_SCHEMA_DIGEST_V2 = sha256PreparedBytesV2(
 )
 
 function assertDomainMatchesPath(path: RuntimeCapabilitySemanticPathV2, domain: RuntimeCapabilityDomainV2): void {
-  const expectedKind = DOMAIN_KIND_BY_PATH[path]
-  if (!expectedKind) throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
-  const allowedKinds = Array.isArray(expectedKind) ? expectedKind : [expectedKind]
-  if ((path === 'image.size'
-    ? domain.kind !== 'dimensions' && domain.kind !== 'dimensions_enum'
-    : !allowedKinds.includes(domain.kind)) ||
-      path === 'web.types' && domain.kind === 'enum_list' &&
-        domain.values.some((value) => value !== 'web' && value !== 'image') ||
-      path === 'web.userLocation' && domain.kind === 'approximate_location' && domain.maxFieldLength > 4_096 ||
-      path === 'providerExtension.responseFormat' && domain.kind === 'response_format' &&
-        domain.types.some((value) => value !== 'text' && value !== 'json_object' && value !== 'json_schema') ||
-      path === 'image.aspectRatio' && domain.kind === 'enum' &&
-        domain.values.some((value) => typeof value !== 'string' ||
-          (value !== 'auto' && !/^[1-9]\d{0,4}:[1-9]\d{0,4}$/u.test(value)))) {
+  if (!isModelCapabilityDomainCompatibleWithPathV2(path, domain)) {
     throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
   }
 }
@@ -714,9 +476,6 @@ function decodeEvidence(value: unknown, includesEntryDigest: boolean): DraftEvid
   }
   const kind = input.kind as RuntimeCapabilityEvidenceKindV2
   const effect = input.effect as RuntimeCapabilityEvidenceEffectV2
-  if (kind === 'user_narrowing_override' && effect === 'supports') {
-    throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
-  }
   const projection: DraftEvidence & { entryDigest?: string } = {
     evidenceId: validateIdentifier(requiredString(input, 'evidenceId')),
     kind,
@@ -944,18 +703,16 @@ function decodeDraft(value: unknown, fullRecord: boolean): Readonly<{
   const binding = decodeProviderBindingRecordV2(input.binding)
   let catalogAuthority: PersistedRuntimeCatalogAuthorityV2 | undefined
   if (input.catalogAuthority !== undefined) {
-    const value = closedObject(input.catalogAuthority, ['scopeId', 'catalogDigest', 'authorityRevision',
-      'observationDigest', 'contractRevision', 'resolutionDigest'])
-    const scopeId = requiredString(value, 'scopeId'); const contractRevision = requiredString(value, 'contractRevision')
+    const value = closedObject(input.catalogAuthority, ['scopeId', 'catalogDigest', 'authorityRevision', 'observationDigest'])
+    const scopeId = requiredString(value, 'scopeId')
     const catalogDigest = requiredString(value, 'catalogDigest'); const observationDigest = requiredString(value, 'observationDigest')
-    const resolutionDigest = requiredString(value, 'resolutionDigest'); const authorityRevision = value.authorityRevision
+    const authorityRevision = value.authorityRevision
     if (!Number.isSafeInteger(authorityRevision) || (authorityRevision as number) < 0 || scopeId.length > 512 ||
-        contractRevision.length > 512 || !/^[0-9a-f]{64}$/u.test(catalogDigest) ||
-        !/^[0-9a-f]{64}$/u.test(observationDigest) || !/^[0-9a-f]{64}$/u.test(resolutionDigest)) {
+        !/^[0-9a-f]{64}$/u.test(catalogDigest) || !/^[0-9a-f]{64}$/u.test(observationDigest)) {
       throw new RuntimeCapabilitySnapshotV2Error('GENERATION_V2_CAPABILITY_INVALID_VALUE')
     }
     catalogAuthority = Object.freeze({ scopeId, catalogDigest, authorityRevision: authorityRevision as number,
-      observationDigest, contractRevision, resolutionDigest })
+      observationDigest })
   }
   if (binding.endpointBinding.kind === 'pinned' &&
       Date.parse(binding.endpointBinding.selector.selectedAt) > resolvedAtMs) {
@@ -1044,31 +801,23 @@ function buildRecord(draft: DraftSnapshot): PersistedRuntimeCapabilitySnapshotV2
     }
     throw error
   }
-  const evidence = draft.evidence.map((item) => Object.freeze({
-    ...item,
-    entryDigest: hash(item),
-  }))
-  const evidenceDigest = hash(evidence)
-  const semanticFieldsDigest = hash({
+  const modelFacts = canonicalizeModelFactsV2({
+    identity: projectCanonicalModelIdentityV2(binding),
+    evidence: draft.evidence,
     fields: draft.fields,
-    continuation: draft.continuation,
   })
-  // The base capability revision is a content revision, not an observation
-  // timestamp. evidenceDigest intentionally retains the full audit record,
-  // including verifiedAt, while the revision uses only the evidence identity
-  // and content that can change the capability conclusion.
-  const capabilityEvidenceRevision = draft.evidence.map((item) => ({
+  const evidence = modelFacts.evidence.map((item) => Object.freeze({
     evidenceId: item.evidenceId,
     kind: item.kind,
     effect: item.effect,
     sourceRef: item.sourceRef,
-    contentDigest: item.contentDigest,
+    verifiedAt: item.verifiedAt,
+    contentDigest: item.contentDigest.value,
+    entryDigest: item.entryDigest.value,
   }))
-  const revision = `capability-v2:${hash({
-    binding: projectProviderBindingForCapabilityRevisionV2(binding),
-    evidence: capabilityEvidenceRevision,
-    semanticFieldsDigest,
-  })}`
+  const evidenceDigest = modelFacts.evidenceDigest
+  const semanticFieldsDigest = modelFacts.semanticFieldsDigest
+  const revision = modelFacts.capabilityRevision
   const payload = Object.freeze({
     ...draft,
     evidence: Object.freeze(evidence),

@@ -1,16 +1,15 @@
 import {
   decodeRuntimeCapabilitySnapshotV2,
   type DecodedRuntimeCapabilitySnapshotV2,
-  type PersistedRuntimeCapabilityFieldV2,
   type PersistedRuntimeCapabilitySnapshotV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import type { PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2 } from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
 import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import { isActiveCatalogModelAuthorityV2,
   projectActiveCatalogSnapshotAuthorityV2, type ActiveCatalogModelAuthorityV2 } from './activeCatalogModelAuthorityV2Service'
@@ -89,12 +88,8 @@ export class DeepSeekStableGenerationAuthorityV2Error extends Error {
     | 'GENERATION_V2_DEEPSEEK_OPERATION_AUTHORITY_REQUIRED'
     | 'GENERATION_V2_DEEPSEEK_TOOL_REGISTRY_AUTHORITY_REQUIRED'
     | 'GENERATION_V2_DEEPSEEK_ATTACHMENT_CAPABILITY_UNAVAILABLE'
-    | 'GENERATION_V2_DEEPSEEK_FIELD_CAPABILITY_UNAVAILABLE'
     | 'GENERATION_V2_DEEPSEEK_FIELD_VALUE_UNSUPPORTED'
-    | 'GENERATION_V2_DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD'
-    | 'DEEPSEEK_THINKING_EXPLICIT_SAMPLING_UNSUPPORTED'
-    | 'DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED'
-    | 'DEEPSEEK_REASONING_EFFORT_UNSUPPORTED') {
+    | 'DEEPSEEK_THINKING_EXPLICIT_TOOL_CHOICE_UNVERIFIED') {
     super(code)
     this.name = 'DeepSeekStableGenerationAuthorityV2Error'
   }
@@ -145,7 +140,6 @@ function requireCompleteBrandedInputs(
 
 function validateIntentSubset(
   commandFacts: GenerationCommandFactsAuthorityV2,
-  fields: readonly PersistedRuntimeCapabilityFieldV2[],
   toolRegistry: ToolRegistryRepositoryFactV2 | null,
 ): void {
   const intent = commandFacts.semanticIntent
@@ -180,91 +174,6 @@ function validateIntentSubset(
     throw new DeepSeekStableGenerationAuthorityV2Error(
       'GENERATION_V2_DEEPSEEK_ATTACHMENT_CAPABILITY_UNAVAILABLE',
     )
-  }
-  if (intent.web.mode !== 'disabled' || intent.image.mode !== 'disabled' ||
-      intent.providerExtension.kind !== 'none') {
-    throw new DeepSeekStableGenerationAuthorityV2Error(
-      'GENERATION_V2_DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD',
-    )
-  }
-  const explicit = new Map<string, unknown>([
-    ...Object.entries(intent.generation).map(([key, value]) => [`generation.${key}`, value] as const),
-    ['reasoning.mode', intent.reasoning.mode],
-    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.effort !== undefined
-      ? [['reasoning.effort', intent.reasoning.effort] as const]
-      : []),
-    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.summary !== undefined
-      ? [['reasoning.summary', intent.reasoning.summary] as const]
-      : []),
-    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.exclude !== undefined
-      ? [['reasoning.exclude', intent.reasoning.exclude] as const]
-      : []),
-    ['web.mode', intent.web.mode],
-    ['image.mode', intent.image.mode],
-    ['tools.mode', intent.tools.mode],
-    ...(intent.tools.mode === 'enabled' ? [
-      ['tools.allowedToolIds', intent.tools.allowedToolIds] as const,
-      ['tools.toolChoice', intent.tools.toolChoice.mode] as const,
-      ['tools.sideEffectConfirmation', intent.tools.sideEffectConfirmation] as const,
-    ] : []),
-    ['providerExtension.kind', intent.providerExtension.kind],
-  ])
-  const fieldsByPath = new Map(fields.map((field) => [field.path, field]))
-  const domainContains = (domain: PersistedRuntimeCapabilityFieldV2['domain'], value: unknown): boolean => {
-    if (!domain) return false
-    if (domain.kind === 'enum') return domain.values.includes(value as never)
-    if (domain.kind === 'range') {
-      return typeof value === 'number' && value >= domain.min && value <= domain.max &&
-        (!domain.integer || Number.isSafeInteger(value))
-    }
-    if (domain.kind === 'boolean') return typeof value === 'boolean'
-    if (domain.kind === 'identity') {
-      return Boolean(value && typeof value === 'object' &&
-        typeof (value as { value?: unknown }).value === 'string')
-    }
-    if (domain.kind === 'identity_list') {
-      return Array.isArray(value) && value.length > 0 && value.length <= domain.maxItems && value.every((item) =>
-        item && typeof item === 'object' && typeof (item as { value?: unknown }).value === 'string')
-    }
-    if (domain.kind === 'string_list') {
-      return Array.isArray(value) && value.length <= domain.maxItems && value.every((item) =>
-        typeof item === 'string' && item.length <= domain.maxItemLength)
-    }
-    return false
-  }
-  for (const [path, value] of explicit) {
-    const field = fieldsByPath.get(path as DeepSeekStableCapabilityRuleV2['path'])
-    if (!field || field.state === 'unsupported') {
-      throw new DeepSeekStableGenerationAuthorityV2Error(
-        'GENERATION_V2_DEEPSEEK_UNSUPPORTED_EXPLICIT_FIELD',
-      )
-    }
-    if (field.state === 'missing' || field.state === 'unknown') {
-      throw new DeepSeekStableGenerationAuthorityV2Error(
-        'GENERATION_V2_DEEPSEEK_FIELD_CAPABILITY_UNAVAILABLE',
-      )
-    }
-    if (!domainContains(field.domain, value)) {
-      if (path === 'reasoning.effort') {
-        throw new DeepSeekStableGenerationAuthorityV2Error('DEEPSEEK_REASONING_EFFORT_UNSUPPORTED')
-      }
-      throw new DeepSeekStableGenerationAuthorityV2Error('GENERATION_V2_DEEPSEEK_FIELD_VALUE_UNSUPPORTED')
-    }
-    for (const constraint of field.constraints) {
-      const target = explicit.get(constraint.path)
-      const matched = constraint.values.includes(target as never)
-      if ((constraint.kind === 'requires_value' && !matched) ||
-          (constraint.kind === 'forbids_value' && matched)) {
-        if (path === 'generation.temperature' || path === 'generation.topP') {
-          throw new DeepSeekStableGenerationAuthorityV2Error(
-            'DEEPSEEK_THINKING_EXPLICIT_SAMPLING_UNSUPPORTED',
-          )
-        }
-        throw new DeepSeekStableGenerationAuthorityV2Error(
-          'GENERATION_V2_DEEPSEEK_FIELD_VALUE_UNSUPPORTED',
-        )
-      }
-    }
   }
 }
 
@@ -366,9 +275,6 @@ function buildRuntimeEvidence(
     sourceRef: modelEvidence.modelsResponseRevision,
     verifiedAt: new Date(modelEvidence.observedAtMs).toISOString(),
     contentDigest: readGenerationV2Digest(modelEvidence.modelsResponseDigest, 'evidence_digest'),
-  }), credentialRevisionEvidenceV2({
-    credentialRevision: modelEvidence.credentialRevision,
-    verifiedAt: new Date(modelEvidence.observedAtMs).toISOString(),
   })])
 }
 
@@ -603,7 +509,7 @@ export function withVerifiedDeepSeekStableGenerationAuthoritiesV2<T>(input: Read
     )
   }
   const fields = Object.freeze(policy.rules.map((rule) => buildField(rule, toolRegistry !== null, toolEvidenceId)))
-  validateIntentSubset(input.commandFacts, fields, toolRegistry)
+  validateIntentSubset(input.commandFacts, toolRegistry)
   let binding: VerifiedDeepSeekStableProviderBindingAuthorityV2 | undefined
   let capability: VerifiedDeepSeekStableRuntimeCapabilityAuthorityV2 | undefined
   let lifecycleRegistered = false

@@ -1,13 +1,13 @@
 import {
   decodeRuntimeCapabilitySnapshotV2,
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
-  type PersistedRuntimeCapabilityFieldV2,
-  type RuntimeCapabilityDomainV2,
-  type RuntimeCapabilitySemanticPathV2,
 } from '../../capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
+  type ModelCapabilityDomainV2 as RuntimeCapabilityDomainV2,
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
+} from '../../capability/modelCapabilitySchemaV2'
 import { canonicalizeResolvedCapabilityV2, runtimeSnapshotRecordFromResolvedCapabilityV2, type ResolvedCapabilityV2 } from '../../capability/resolvedCapabilityV2'
-import { credentialRevisionEvidenceV2 } from '../../capability/credentialRevisionEvidenceV2'
 import { projectDecodedProviderBindingRecordV2, type DecodedProviderBindingRecordV2 } from '../../domain/providerBindingV2'
 import { OPENROUTER_FIRST_PARTY_ENDPOINT_PROFILE_ID_V2 } from '../openrouter/verifiedFirstPartyEndpointProfileV2'
 import type { CanonicalOpenRouterImageDescriptorV2, CanonicalOpenRouterImageParameterV2 } from './canonicalDescriptorV2'
@@ -107,7 +107,6 @@ function resolveOpenRouterImageCapabilityRecordV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   descriptor: CanonicalOpenRouterImageDescriptorV2
   resolvedAt: string
-  credentialRevision: number
 }>): ResolvedCapabilityV2 {
   expectedDescriptor(input.binding, input.descriptor)
   if (Number.isNaN(Date.parse(input.resolvedAt)) || new Date(input.resolvedAt).toISOString() !== input.resolvedAt) {
@@ -147,7 +146,6 @@ function resolveOpenRouterImageCapabilityRecordV2(input: Readonly<{
         sourceRef: input.descriptor.providerTag.value, verifiedAt: input.resolvedAt, contentDigest: input.descriptor.descriptorDigest.value }),
       Object.freeze({ evidenceId: rejectEvidenceId, kind: 'endpoint_descriptor' as const, effect: 'rejects' as const,
         sourceRef: input.descriptor.providerTag.value, verifiedAt: input.resolvedAt, contentDigest: input.descriptor.descriptorDigest.value }),
-      credentialRevisionEvidenceV2({ credentialRevision: input.credentialRevision, verifiedAt: input.resolvedAt }),
     ]),
     fields,
     continuation: Object.freeze({ kind: 'none' as const, evidenceIds: Object.freeze([contractEvidenceId]) }),
@@ -159,7 +157,6 @@ export function composeOpenRouterImageRuntimeCapabilityV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   descriptor: CanonicalOpenRouterImageDescriptorV2
   resolvedAt: string
-  credentialRevision: number
 }>): DecodedRuntimeCapabilitySnapshotV2 {
   const capability = resolveOpenRouterImageCapabilityRecordV2(input)
   return decodeRuntimeCapabilitySnapshotV2(runtimeSnapshotRecordFromResolvedCapabilityV2({ capability, resolvedAt: input.resolvedAt, tools: [] }))
@@ -170,7 +167,6 @@ export function resolveOpenRouterImageCapabilityV2(input: Readonly<{
   binding: DecodedProviderBindingRecordV2
   descriptor: CanonicalOpenRouterImageDescriptorV2
   resolvedAt: string
-  credentialRevision: number
 }>): ResolvedCapabilityV2 {
   return resolveOpenRouterImageCapabilityRecordV2(input)
 }

@@ -1,18 +1,18 @@
 import {
   decodeRuntimeCapabilitySnapshotV2,
-  RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
   type DecodedRuntimeCapabilitySnapshotV2,
-  type PersistedRuntimeCapabilityFieldV2,
   type PersistedRuntimeCapabilitySnapshotV2,
-  type RuntimeCapabilitySemanticPathV2,
 } from '../../src/next/generation-v2/capability/runtimeCapabilitySnapshotV2'
+import { MODEL_CAPABILITY_SEMANTIC_PATHS_V2 as RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2,
+  type PersistedModelCapabilityFieldV2 as PersistedRuntimeCapabilityFieldV2,
+  type ModelCapabilitySemanticPathV2 as RuntimeCapabilitySemanticPathV2,
+} from '../../src/next/generation-v2/capability/modelCapabilitySchemaV2'
 import {
   canonicalizeResolvedCapabilityV2,
   runtimeSnapshotRecordFromResolvedCapabilityV2,
   validateSemanticIntentAgainstResolvedCapabilityV2,
   type ResolvedCapabilityV2,
 } from '../../src/next/generation-v2/capability/resolvedCapabilityV2'
-import { credentialRevisionEvidenceV2 } from '../../src/next/generation-v2/capability/credentialRevisionEvidenceV2'
 import { assertExpectedCapabilityRevisionV2 } from '../../src/next/generation-v2/capability/capabilityRevisionExpectationV2'
 import {
   isActiveCatalogModelAuthorityV2,
@@ -89,11 +89,7 @@ export class OpenAIResponsesGenerationAuthorityV2Error extends Error {
     | 'GENERATION_V2_OPENAI_GENERATION_AUTHORITY_INVALID'
     | 'GENERATION_V2_OPENAI_OPERATION_AUTHORITY_REQUIRED'
     | 'GENERATION_V2_OPENAI_ATTACHMENT_CAPABILITY_UNAVAILABLE'
-    | 'GENERATION_V2_OPENAI_TOOL_CAPABILITY_UNAVAILABLE'
-    | 'GENERATION_V2_OPENAI_FIELD_CAPABILITY_UNAVAILABLE'
-    | 'GENERATION_V2_OPENAI_UNSUPPORTED_EXPLICIT_FIELD'
-    | 'GENERATION_V2_OPENAI_FIELD_VALUE_UNSUPPORTED'
-    | 'GENERATION_V2_OPENAI_PROVIDER_EXTENSION_REQUIRED') {
+    | 'GENERATION_V2_OPENAI_TOOL_CAPABILITY_UNAVAILABLE') {
     super(code)
     this.name = 'OpenAIResponsesGenerationAuthorityV2Error'
   }
@@ -102,6 +98,14 @@ export class OpenAIResponsesGenerationAuthorityV2Error extends Error {
 const bindingAuthorities = new WeakSet<object>()
 const capabilityAuthorities = new WeakSet<object>()
 const OPENAI_RESPONSES_TOOL_SIDE_EFFECT_POLICY_EVIDENCE_V2 = 'openai.responses.owner.tool_side_effect_confirmation.v1'
+export const OPENAI_RESPONSES_IMAGE_SIZE_DOMAIN_V2 = Object.freeze({
+  kind: 'dimensions_enum' as const,
+  values: Object.freeze([
+    Object.freeze({ width: 1024, height: 1024 }),
+    Object.freeze({ width: 1024, height: 1536 }),
+    Object.freeze({ width: 1536, height: 1024 }),
+  ]),
+})
 
 export function isVerifiedOpenAIResponsesProviderBindingAuthorityV2(
   value: unknown,
@@ -237,7 +241,7 @@ function field(
     case 'image.background': return supported({ kind: 'enum', values: Object.freeze(['auto', 'transparent', 'opaque']) }, true)
     case 'image.format': return supported({ kind: 'enum', values: Object.freeze(['png', 'jpeg', 'webp']) }, true)
     case 'image.quality': return supported({ kind: 'enum', values: Object.freeze(['auto', 'low', 'medium', 'high']) }, true)
-    case 'image.size': return supported({ kind: 'dimensions', minWidth: 1024, maxWidth: 1536, minHeight: 1024, maxHeight: 1536 }, true)
+    case 'image.size': return supported(OPENAI_RESPONSES_IMAGE_SIZE_DOMAIN_V2, true)
     case 'image.aspectRatio':
     case 'image.outputCompression':
     case 'image.resolution':
@@ -268,27 +272,8 @@ function field(
   }
 }
 
-function domainContains(field: PersistedRuntimeCapabilityFieldV2, value: unknown): boolean {
-  const domain = field.domain
-  if (!domain) return false
-  if (domain.kind === 'enum') return domain.values.includes(value as never)
-  if (domain.kind === 'range') return typeof value === 'number' && value >= domain.min && value <= domain.max &&
-    (!domain.integer || Number.isSafeInteger(value))
-  if (domain.kind === 'boolean') return typeof value === 'boolean'
-  if (domain.kind === 'enum_list') return Array.isArray(value) && value.length <= domain.maxItems &&
-    value.every((entry) => domain.values.includes(entry as never))
-  if (domain.kind === 'string_list') return Array.isArray(value) && value.length <= domain.maxItems &&
-    value.every((entry) => typeof entry === 'string' && entry.length > 0 && entry.length <= domain.maxItemLength)
-  if (domain.kind === 'dimensions') return Boolean(value && typeof value === 'object' &&
-    Number.isSafeInteger((value as { width?: unknown }).width) && Number.isSafeInteger((value as { height?: unknown }).height) &&
-    (value as { width: number }).width >= domain.minWidth && (value as { width: number }).width <= domain.maxWidth &&
-    (value as { height: number }).height >= domain.minHeight && (value as { height: number }).height <= domain.maxHeight)
-  return true
-}
-
 function validateIntent(
   commandFacts: GenerationCommandFactsAuthorityV2,
-  fields: readonly PersistedRuntimeCapabilityFieldV2[],
   toolRegistry: ToolRegistryRepositoryFactV2 | null,
 ): void {
   const intent = commandFacts.semanticIntent
@@ -300,49 +285,6 @@ function validateIntent(
   }
   if (intent.tools.mode === 'disabled' ? toolRegistry !== null : toolRegistry === null) {
     return fail('GENERATION_V2_OPENAI_TOOL_CAPABILITY_UNAVAILABLE')
-  }
-  const explicit = new Map<string, unknown>([
-    ...Object.entries(intent.generation).map(([key, value]) => [`generation.${key}`, value] as const),
-    ['reasoning.mode', intent.reasoning.mode],
-    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.effort !== undefined ? [['reasoning.effort', intent.reasoning.effort] as const] : []),
-    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.summary !== undefined ? [['reasoning.summary', intent.reasoning.summary] as const] : []),
-    ...(intent.reasoning.mode === 'enabled' && intent.reasoning.exclude !== undefined ? [['reasoning.exclude', intent.reasoning.exclude] as const] : []),
-    ['web.mode', intent.web.mode],
-    ...(intent.web.mode === 'provider_search' ? [
-      ['web.types', intent.web.types] as const,
-      ...Object.entries(intent.web)
-        .filter(([key, value]) => key !== 'mode' && key !== 'types' && value !== undefined)
-        .map(([key, value]) => [`web.${key}`, value] as const),
-    ] : []),
-    ['image.mode', intent.image.mode],
-    ...(intent.image.mode === 'generate' ? Object.entries(intent.image)
-      .filter(([key, value]) => key !== 'mode' && value !== undefined)
-      .map(([key, value]) => [`image.${key}`, value] as const) : []),
-    ['tools.mode', intent.tools.mode],
-    ...(intent.tools.mode === 'enabled' ? [
-      ['tools.allowedToolIds', intent.tools.allowedToolIds.map((tool) => tool.value)] as const,
-      ['tools.sideEffectConfirmation', intent.tools.sideEffectConfirmation] as const,
-      ['tools.toolChoice', intent.tools.toolChoice.mode] as const,
-    ] : []),
-    ['providerExtension.kind', intent.providerExtension.kind],
-    ...(intent.providerExtension.kind === 'openai_responses' ? Object.entries(intent.providerExtension)
-      .filter(([key, value]) => key !== 'kind' && value !== undefined)
-      .map(([key, value]) => [`providerExtension.${key}`, value] as const) : []),
-  ])
-  const byPath = new Map(fields.map((value) => [value.path, value]))
-  for (const [path, value] of explicit) {
-    const capability = byPath.get(path as RuntimeCapabilitySemanticPathV2)
-    if (!capability || capability.state === 'unsupported') return fail('GENERATION_V2_OPENAI_UNSUPPORTED_EXPLICIT_FIELD')
-    if (capability.state === 'missing' || capability.state === 'unknown') return fail('GENERATION_V2_OPENAI_FIELD_CAPABILITY_UNAVAILABLE')
-    if (capability.domain?.kind === 'identity_list') {
-      if (!Array.isArray(value) || value.length === 0 || value.length > capability.domain.maxItems ||
-          value.some((item) => typeof item !== 'string')) return fail('GENERATION_V2_OPENAI_FIELD_VALUE_UNSUPPORTED')
-    } else if (!domainContains(capability, value)) return fail('GENERATION_V2_OPENAI_FIELD_VALUE_UNSUPPORTED')
-  }
-  if (intent.image.mode === 'generate' && intent.image.size &&
-      ![[1024, 1024], [1024, 1536], [1536, 1024]].some(([width, height]) =>
-        intent.image.mode === 'generate' && intent.image.size?.width === width && intent.image.size.height === height)) {
-    return fail('GENERATION_V2_OPENAI_FIELD_VALUE_UNSUPPORTED')
   }
 }
 
@@ -380,11 +322,10 @@ function composeCapability(input: Readonly<{
       sourceRef: 'docs/architecture/generation-compiler-v2/generation-compiler-v2-final-plan.md',
       verifiedAt, contentDigest: ids.contract.sha256,
     }),
-    credentialRevisionEvidenceV2({ credentialRevision: input.modelEvidence.credentialRevision, verifiedAt }),
   ])
   const fields = Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) =>
     field(path, ids, input.modelEvidence.modelCapability.capability.maxOutputTokens, true)))
-  if (input.commandFacts) validateIntent(input.commandFacts, fields, input.toolRegistry)
+  if (input.commandFacts) validateIntent(input.commandFacts, input.toolRegistry)
   const continuation = {
     kind: 'client_managed_native_replay' as const, artifactKind: OPENAI_RESPONSES_ARTIFACT_KIND_V2,
     supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [ids.contractSupport],

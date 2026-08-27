@@ -70,8 +70,7 @@ export function createGenericLocalOpenAIChatGenerationV2Coordinator(input: Reado
     return withSynchronousGenerationCommandFactsAuthorityV2(context, config, attachments, pending.conversationId.value,
       projectGenerationCommandAttachmentsV2(command.commandAttachments), undefined, (facts) => {
         const binding = createGenericLocalOpenAIChatProviderBindingV2(profile, command.modelId.value)
-        const capability = composeGenericLocalOpenAIChatBaselineCapabilityV2({ binding, resolvedAt: new Date(at).toISOString(),
-          credentialRevision: profile.revisionGeneration })
+        const capability = composeGenericLocalOpenAIChatBaselineCapabilityV2({ binding, resolvedAt: new Date(at).toISOString() })
         assertExpectedCapabilityRevisionV2(capability.revision.value)
         const persisted = commitGenericLocalCurrentSnapshotV2({ context, executionRepo: execution, capabilityRepo: capabilities,
           pending, command, commandFacts: facts, profile, capability })
