@@ -1,5 +1,9 @@
 # Starverse 模型原始事实源调查最终评估报告
 
+- **Lifecycle Status**: reference
+- **Document Role**: evidence-report
+- **Last updated**: 2026-08-26
+
 生成日期：2026-08-26  
 专题：`models-dev-capability-resolution`  
 范围：DeepSeek、OpenAI、Google AI Studio、OpenRouter、LM Studio、Ollama，以及 Generic Local OpenAI Chat 的模型发现边界。

@@ -1,5 +1,9 @@
 # models.dev 模型能力事实底稿
 
+- **Lifecycle Status**: reference
+- **Document Role**: source-evidence
+- **Last updated**: 2026-08-26
+
 > 本文是当前专题的事实底稿，不是 Starverse 最终能力模型设计，也不是 User/Cloud/Reviewed rule 规则文件。
 >
 > 本轮目标是保留原始模型与模型能力字段、来源、证据和讨论结论，避免后续上下文压缩后丢失。Starverse 后续如何把这些事实翻译为 UI 控件、请求构建、模型目录展示和发送前校验，另行讨论。

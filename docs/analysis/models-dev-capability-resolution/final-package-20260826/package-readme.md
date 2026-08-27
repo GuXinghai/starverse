@@ -1,5 +1,9 @@
 # models.dev capability resolution 调查交付包
 
+- **Lifecycle Status**: reference
+- **Document Role**: package-entry
+- **Last updated**: 2026-08-26
+
 生成日期：2026-08-26  
 用途：保存本轮 provider API、models.dev 和本地模型发现的原始字段、来源信息、比较摘要与最终评估。
 
@@ -28,4 +32,3 @@
 3. 同名但语义或类型不同的字段不强行合并；
 4. requested model 与 provider response model 分开记录；
 5. 本轮没有接入 models.dev 生产代码，没有添加规则，也没有把烟测写入规则。
-
