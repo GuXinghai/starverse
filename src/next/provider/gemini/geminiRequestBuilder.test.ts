@@ -286,9 +286,9 @@ describe('buildGeminiImageGenerationInteractionRequest', () => {
     })
   })
 
-  it('does not write aspect_ratio for auto or image_size for legacy Nano Banana', () => {
+  it('preserves the exact native model identity and omits explicitly absent image fields', () => {
     const req = buildGeminiImageGenerationInteractionRequest({
-      model: 'publishers/google/models/gemini-2.5-flash-image',
+      model: 'gemini-2.5-flash-image',
       messages: [
         { role: 'user', parts: [{ text: 'First' }] },
         { role: 'model', parts: [{ text: 'Second' }] },
@@ -299,7 +299,6 @@ describe('buildGeminiImageGenerationInteractionRequest', () => {
         imageGeneration: {
           outputMode: 'image_only',
           aspectRatio: 'auto',
-          imageSize: '4K',
         },
       }),
     })
@@ -384,18 +383,22 @@ describe('buildGeminiImageGenerationInteractionRequest', () => {
     ])
   })
 
-  it('rejects illegal model-specific image sizes without fallback', () => {
-    expect(() => buildGeminiImageGenerationInteractionRequest({
+  it('encodes image size mechanically after capability authorization', () => {
+    const req = buildGeminiImageGenerationInteractionRequest({
       model: 'gemini-3.1-flash-lite-image',
       messages: baseMessages,
       config: baseConfig({
         imageGeneration: { imageSize: '4K' },
       }),
-    })).toThrow('Supported sizes: 1K')
+    })
+    expect(req.response_format).toEqual([
+      { type: 'text' },
+      { type: 'image', image_size: '4K' },
+    ])
   })
 
-  it('rejects unsupported tools before fetch', () => {
-    expect(() => buildGeminiImageGenerationInteractionRequest({
+  it('encodes requested tools mechanically after capability authorization', () => {
+    const req = buildGeminiImageGenerationInteractionRequest({
       model: 'gemini-3-pro-image',
       messages: baseMessages,
       config: baseConfig({
@@ -406,7 +409,8 @@ describe('buildGeminiImageGenerationInteractionRequest', () => {
           },
         },
       }),
-    })).toThrow('does not support Image Search')
+    })
+    expect(req.tools).toEqual([{ image_search: {} }])
   })
 
   it('rejects Gemini image generation temperature above 2 before fetch', () => {

@@ -37,12 +37,6 @@ import {
 } from '../../src/next/generation-v2/domain/providerBindingV2'
 import { readGenerationV2Digest, readGenerationV2Identity } from '../../src/next/generation-v2/domain/identityV2'
 import { GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1 } from '../../src/next/generation-v2/providers/gemini/generateContentNativeHistoryV1'
-import {
-  GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2,
-  GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2,
-  hasReviewedGeminiGenerateContentReasoningWebCapabilityV2,
-  hasReviewedGeminiGenerateContentToolCapabilityV2,
-} from '../../src/next/generation-v2/providers/gemini/toolCapabilityPolicyV2'
 import { stableSerializeProviderRequestV2 } from '../../src/next/generation-v2/compiler/stableSerialize'
 import {
   isVerifiedGeminiDeveloperApiEndpointProfileV2,
@@ -61,7 +55,11 @@ import {
   isToolRegistryRepositoryFactForContextV2,
   type ToolRegistryRepositoryFactV2,
 } from '../../infra/db/repo/toolRegistryV2Repo'
-import { resolveGeminiThinkingCapability, type GeminiThinkingCapability } from '../../src/next/provider/gemini/geminiThinkingPolicy'
+import {
+  applyCapabilityRuleProjectionV2,
+  assertCapabilityRuleProjectionIdentityV2,
+  type CapabilityRuleProjectionV2,
+} from '../../src/next/generation-v2/capability-rules/capabilityRuleV2'
 
 export type VerifiedGeminiGenerateContentProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_gemini_generate_content_provider_binding'
@@ -99,6 +97,8 @@ const bindings = new WeakSet<object>()
 const capabilities = new WeakSet<object>()
 const SUPPORTS = 'gemini.generate-content.v1beta.official.supports'
 const REJECTS = 'gemini.generate-content.v1beta.owner-boundary.rejects'
+const GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 = 'gemini.generate-content.tool-registry.supports'
+const GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2 = 'gemini.generate-content.tool-confirmation.requires'
 
 export function isVerifiedGeminiGenerateContentProviderBindingAuthorityV2(
   value: unknown,
@@ -122,18 +122,7 @@ function unavailable(path: RuntimeCapabilitySemanticPathV2): PersistedRuntimeCap
   return Object.freeze({ path, state: 'missing', constraints: Object.freeze([]), evidenceIds: Object.freeze([]) })
 }
 
-function thinkingCapabilityForEvidence(evidence: ActiveCatalogModelAuthorityV2): GeminiThinkingCapability {
-  const model = evidence.model
-  return resolveGeminiThinkingCapability({
-    model: evidence.modelId.value,
-    thinking: model.thinkingRawValue,
-    thinkingOwnProperty: model.thinkingOwnProperty,
-    supportedGenerationMethods: model.supportedGenerationMethods,
-  })
-}
-
-function fields(evidence: ActiveCatalogModelAuthorityV2,
-  toolsReviewed: boolean, thinking: GeminiThinkingCapability, webReviewed: boolean): readonly PersistedRuntimeCapabilityFieldV2[] {
+function baseFields(evidence: ActiveCatalogModelAuthorityV2): readonly PersistedRuntimeCapabilityFieldV2[] {
   const values = new Map<RuntimeCapabilitySemanticPathV2, PersistedRuntimeCapabilityFieldV2>()
   for (const path of RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2) values.set(path, unavailable(path))
   values.set('generation.maxOutputTokens', supported('generation.maxOutputTokens', {
@@ -149,63 +138,41 @@ function fields(evidence: ActiveCatalogModelAuthorityV2,
     kind: 'range', min: 1, max: Math.max(1, evidence.model.topK), integer: true,
   }))
   values.set('generation.stop', supported('generation.stop', { kind: 'string_list', maxItems: 5, maxItemLength: 65_536 }))
-  const thinkingSupported = thinking.thinkingSupported === 'supported'
-  values.set('reasoning.mode', supported('reasoning.mode', {
-    kind: 'enum', values: Object.freeze(thinkingSupported ? ['disabled', 'enabled'] : ['disabled']),
-  }, thinkingSupported ? SUPPORTS : REJECTS))
-  if (thinking.kind === 'level') values.set('reasoning.effort', supported('reasoning.effort', {
-    kind: 'enum', values: Object.freeze([...thinking.levels]),
-  }, SUPPORTS))
-  values.set('web.mode', supported('web.mode', {
-    kind: 'enum', values: Object.freeze(webReviewed ? ['disabled', 'provider_search'] : ['disabled']),
-  }, webReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
+  values.set('reasoning.mode', supported('reasoning.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
+  values.set('web.mode', supported('web.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
   values.set('image.mode', supported('image.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
-  values.set('tools.mode', supported('tools.mode', {
-    kind: 'enum', values: Object.freeze(toolsReviewed ? ['disabled', 'enabled'] : ['disabled']),
-  }, toolsReviewed ? GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2 : SUPPORTS))
+  values.set('tools.mode', supported('tools.mode', { kind: 'enum', values: Object.freeze(['disabled']) }))
+  values.set('tools.allowedToolIds', supported('tools.allowedToolIds', { kind: 'identity_list', maxItems: 128 }))
+  values.set('tools.toolChoice', supported('tools.toolChoice', {
+    kind: 'enum', values: Object.freeze(['omitted', 'auto', 'none', 'required', 'named']),
+  }))
+  values.set('tools.sideEffectConfirmation', Object.freeze({ path: 'tools.sideEffectConfirmation',
+    state: 'requires_confirmation', domain: Object.freeze({ kind: 'enum', values: Object.freeze(['required_each_retry']) }),
+    constraints: Object.freeze([]), evidenceIds: Object.freeze([GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2]) }))
   values.set('providerExtension.kind', supported('providerExtension.kind', { kind: 'enum', values: Object.freeze(['gemini_generate_content']) }))
   values.set('providerExtension.thinkingMode', supported('providerExtension.thinkingMode', {
-    kind: 'enum', values: Object.freeze(thinking.kind === 'level' ? ['default', 'level'] :
-      thinking.kind === 'budget' ? ['default', 'budget'] : ['default']),
-  }, thinkingSupported ? SUPPORTS : REJECTS))
-  if (thinking.kind === 'level') values.set('providerExtension.thinkingLevel', supported('providerExtension.thinkingLevel', {
-    kind: 'enum', values: Object.freeze([...thinking.levels]),
-  }, SUPPORTS))
-  if (thinking.kind === 'budget') values.set('providerExtension.thinkingBudget', supported('providerExtension.thinkingBudget', {
-    kind: 'range', min: -1, max: thinking.maxBudget, integer: true,
-  }, SUPPORTS))
-  if (thinking.kind === 'budget' && !thinking.allowOff) {
-    const field = values.get('providerExtension.thinkingBudget')!
-    values.set('providerExtension.thinkingBudget', Object.freeze({
-      ...field,
-      constraints: Object.freeze([Object.freeze({ kind: 'forbids_value' as const,
-        path: 'providerExtension.thinkingBudget' as const, values: Object.freeze([0]) })]),
-    }))
-  }
+    kind: 'enum', values: Object.freeze(['default']),
+  }))
   values.set('providerExtension.includeThoughts', supported('providerExtension.includeThoughts', {
-    kind: 'enum', values: Object.freeze(thinkingSupported ? ['provider_default', 'enabled', 'disabled'] : ['provider_default']),
-  }, thinkingSupported ? SUPPORTS : REJECTS))
+    kind: 'enum', values: Object.freeze(['provider_default']),
+  }))
   for (const path of ['generation.seed', 'generation.frequencyPenalty', 'generation.presencePenalty',
     'generation.repetitionPenalty', 'reasoning.exclude', 'reasoning.summary',
     ] as const) values.set(path, unsupported(path))
-  if (thinking.kind !== 'level') values.set('providerExtension.thinkingLevel', unsupported('providerExtension.thinkingLevel'))
-  if (thinking.kind !== 'budget') values.set('providerExtension.thinkingBudget', unsupported('providerExtension.thinkingBudget'))
-  if (thinking.kind !== 'level') values.set('reasoning.effort', unsupported('reasoning.effort'))
   return Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) => values.get(path)!))
 }
 
 function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: ActiveCatalogModelAuthorityV2,
-  toolRegistry: ToolRegistryRepositoryFactV2 | null, toolsReviewed: boolean, thinking: GeminiThinkingCapability): void {
+  toolRegistry: ToolRegistryRepositoryFactV2 | null): void {
   const intent = facts.semanticIntent
   const tools = intent.tools
-  const webReviewed = hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(evidence.modelId.value)
   if ((tools.mode === 'enabled') !== (toolRegistry !== null)) {
     throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_TOOL_REGISTRY_AUTHORITY_REQUIRED')
   }
   if (tools.mode === 'enabled') {
     const toolChoice = tools.toolChoice
     const namedToolId = toolChoice.mode === 'named' ? toolChoice.toolId.value : null
-    if (!toolsReviewed || stableSerializeProviderRequestV2(toolRegistry!.selectedDefinitions.map((tool) => tool.toolId)) !==
+    if (stableSerializeProviderRequestV2(toolRegistry!.selectedDefinitions.map((tool) => tool.toolId)) !==
         stableSerializeProviderRequestV2(tools.allowedToolIds.map((toolId) => toolId.value)) ||
         (namedToolId !== null && !tools.allowedToolIds.some((toolId) => toolId.value === namedToolId))) {
       throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_INTENT_UNSUPPORTED')
@@ -215,22 +182,14 @@ function validateFacts(facts: GenerationCommandFactsAuthorityV2, evidence: Activ
   const validReasoning = intent.reasoning.mode === 'disabled'
     ? extension.kind === 'gemini_generate_content' && extension.thinkingMode === 'default' &&
       extension.includeThoughts === 'provider_default'
-    : thinking.thinkingSupported === 'supported' &&
-      intent.reasoning.summary === undefined && intent.reasoning.exclude === undefined &&
+    : intent.reasoning.summary === undefined && intent.reasoning.exclude === undefined &&
       extension.kind === 'gemini_generate_content' &&
-      (thinking.kind === 'level'
-        ? extension.thinkingMode === 'default' && intent.reasoning.effort === undefined ||
-          extension.thinkingMode === 'level' && intent.reasoning.effort !== undefined &&
-            (thinking.levels as readonly string[]).includes(intent.reasoning.effort) && extension.thinkingLevel === intent.reasoning.effort
-        : thinking.kind === 'budget'
-          ? extension.thinkingMode === 'default' && intent.reasoning.effort === undefined ||
-            extension.thinkingMode === 'budget' && intent.reasoning.effort === undefined &&
-              (extension.thinkingBudget === -1 ||
-                extension.thinkingBudget === 0 && thinking.allowOff ||
-                Number.isSafeInteger(extension.thinkingBudget) && extension.thinkingBudget >= thinking.minBudget &&
-                  extension.thinkingBudget <= thinking.maxBudget)
-          : intent.reasoning.effort === undefined && extension.thinkingMode === 'default')
-  const validWeb = intent.web.mode === 'disabled' || (webReviewed &&
+      (extension.thinkingMode === 'default' && intent.reasoning.effort === undefined ||
+        extension.thinkingMode === 'level' && intent.reasoning.effort !== undefined &&
+          extension.thinkingLevel === intent.reasoning.effort ||
+        extension.thinkingMode === 'budget' && intent.reasoning.effort === undefined &&
+          Number.isSafeInteger(extension.thinkingBudget))
+  const validWeb = intent.web.mode === 'disabled' || (
     intent.web.types.length === 1 && intent.web.types[0] === 'web' && intent.web.engine === undefined &&
     intent.web.maxResults === undefined && intent.web.maxTotalResults === undefined &&
     intent.web.searchContextSize === undefined && intent.web.maxCharacters === undefined &&
@@ -303,35 +262,31 @@ function composeBinding(evidence: ActiveCatalogModelAuthorityV2): VerifiedGemini
 }
 
 function composeCapability(binding: VerifiedGeminiGenerateContentProviderBindingAuthorityV2,
-  evidence: ActiveCatalogModelAuthorityV2, toolRegistry: ToolRegistryRepositoryFactV2 | null,
-  toolsReviewed: boolean, thinking: GeminiThinkingCapability, webReviewed: boolean) {
+  evidence: ActiveCatalogModelAuthorityV2, capabilityRules: CapabilityRuleProjectionV2,
+  toolRegistry: ToolRegistryRepositoryFactV2 | null) {
   const hash = (value: string) => createHash('sha256').update(value, 'utf8').digest('hex')
   const continuation = { kind: 'client_managed_native_replay' as const, artifactKind: GEMINI_GENERATE_CONTENT_NATIVE_HISTORY_KIND_V1,
     supportsBranchReplay: true, supportsRestartReplay: true, evidenceIds: [SUPPORTS] }
+  const baseEvidence = [
+      { evidenceId: SUPPORTS, kind: 'official_documentation' as const, effect: 'supports' as const,
+        sourceRef: 'https://ai.google.dev/api/generate-content', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: hash(SUPPORTS) },
+      { evidenceId: REJECTS, kind: 'contract_invariant' as const, effect: 'rejects' as const,
+        sourceRef: 'generation-compiler-v2-gemini-baseline-boundary', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: hash(REJECTS) },
+      { evidenceId: 'gemini.models.visibility.supports', kind: 'live_probe' as const, effect: 'supports' as const,
+        sourceRef: evidence.modelsResponseRevision, verifiedAt: new Date(evidence.observedAtMs).toISOString(),
+        contentDigest: evidence.modelsResponseDigest.value },
+      { evidenceId: GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2, kind: 'contract_invariant' as const,
+        effect: 'requires_confirmation' as const, sourceRef: 'generation-v2-tool-side-effect-confirmation-policy',
+        verifiedAt: '2026-07-20T00:00:00.000Z', contentDigest: hash(GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2) },
+    ]
+  assertCapabilityRuleProjectionIdentityV2(capabilityRules, { providerId: binding.binding.providerId.value,
+    endpointProfileId: binding.binding.endpointProfileId.value, nativeModelId: binding.binding.modelId.value })
+  const merged = applyCapabilityRuleProjectionV2({ baseEvidence, baseFields: baseFields(evidence), projection: capabilityRules })
   const resolvedCapability = canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(evidence),
     binding: projectDecodedProviderBindingRecordV2(binding.binding),
-    evidence: [
-      { evidenceId: SUPPORTS, kind: 'official_documentation', effect: 'supports',
-        sourceRef: 'https://ai.google.dev/api/generate-content', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: hash(SUPPORTS) },
-      { evidenceId: REJECTS, kind: 'contract_invariant', effect: 'rejects',
-        sourceRef: 'generation-compiler-v2-gemini-baseline-boundary', verifiedAt: '2026-07-18T00:00:00.000Z', contentDigest: hash(REJECTS) },
-      { evidenceId: 'gemini.models.visibility.supports', kind: 'live_probe', effect: 'supports',
-        sourceRef: evidence.modelsResponseRevision, verifiedAt: new Date(evidence.observedAtMs).toISOString(),
-        contentDigest: evidence.modelsResponseDigest.value },
-      { evidenceId: GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2, kind: 'contract_invariant',
-        effect: toolsReviewed ? 'supports' : 'rejects',
-        sourceRef: toolsReviewed
-          ? 'https://ai.google.dev/gemini-api/docs/models/gemini-3.1-flash-lite'
-          : 'gemini-reviewed-model-tool-capability-v2-fail-closed',
-        verifiedAt: '2026-07-20T00:00:00.000Z',
-        contentDigest: hash(`${GEMINI_GENERATE_CONTENT_TOOL_CAPABILITY_EVIDENCE_ID_V2}:${evidence.modelId.value}:${toolsReviewed}`) },
-      { evidenceId: GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2, kind: 'contract_invariant',
-        effect: 'requires_confirmation', sourceRef: 'generation-v2-tool-side-effect-confirmation-policy',
-        verifiedAt: '2026-07-20T00:00:00.000Z',
-        contentDigest: hash(GEMINI_GENERATE_CONTENT_TOOL_CONFIRMATION_EVIDENCE_ID_V2) },
-    ],
-    fields: fields(evidence, toolsReviewed, thinking, webReviewed),
+    evidence: merged.evidence,
+    fields: merged.fields,
     continuation,
   })
   const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
@@ -364,12 +319,10 @@ function composeCapability(binding: VerifiedGeminiGenerateContentProviderBinding
 /** Command-independent resolver; tools and attachments are not command facts. */
 export function resolveGeminiGenerateContentCapabilityV2(
   modelEvidence: ActiveCatalogModelAuthorityV2,
+  capabilityRules: CapabilityRuleProjectionV2,
 ): ResolvedCapabilityV2 {
-  const toolsReviewed = hasReviewedGeminiGenerateContentToolCapabilityV2(modelEvidence.modelId.value)
-  const thinking = thinkingCapabilityForEvidence(modelEvidence)
-  const webReviewed = hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(modelEvidence.modelId.value)
   const binding = composeBinding(modelEvidence)
-  return composeCapability(binding, modelEvidence, null, toolsReviewed, thinking, webReviewed).resolvedCapability
+  return composeCapability(binding, modelEvidence, capabilityRules, null).resolvedCapability
 }
 
 export function readVerifiedGeminiGenerateContentProviderBindingRecordV2(
@@ -387,6 +340,7 @@ export function withVerifiedGeminiGenerateContentGenerationAuthoritiesV2<T>(inpu
   modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   toolRegistry?: ToolRegistryRepositoryFactV2 | null
+  capabilityRules: CapabilityRuleProjectionV2
   use: (authorities: Readonly<{ binding: VerifiedGeminiGenerateContentProviderBindingAuthorityV2
     capability: VerifiedGeminiGenerateContentRuntimeCapabilityAuthorityV2 }>) => T
 }>): T {
@@ -401,18 +355,15 @@ export function withVerifiedGeminiGenerateContentGenerationAuthoritiesV2<T>(inpu
       (input.commandFacts.semanticIntent.tools.mode === 'disabled' && toolRegistry !== null)) {
     throw new GeminiGenerateContentGenerationAuthorityV2Error('GENERATION_V2_GEMINI_TOOL_REGISTRY_AUTHORITY_REQUIRED')
   }
-  const toolsReviewed = hasReviewedGeminiGenerateContentToolCapabilityV2(input.modelEvidence.modelId.value)
-  const thinking = thinkingCapabilityForEvidence(input.modelEvidence)
-  const webReviewed = hasReviewedGeminiGenerateContentReasoningWebCapabilityV2(input.modelEvidence.modelId.value)
   input.modelEvidence.assertCurrent()
-  validateFacts(input.commandFacts, input.modelEvidence, toolRegistry, toolsReviewed, thinking)
+  validateFacts(input.commandFacts, input.modelEvidence, toolRegistry)
   let binding: VerifiedGeminiGenerateContentProviderBindingAuthorityV2 | undefined
   let capability: VerifiedGeminiGenerateContentRuntimeCapabilityAuthorityV2 | undefined
   let registered = false
   let completed = false
   try {
     binding = composeBinding(input.modelEvidence)
-    capability = composeCapability(binding, input.modelEvidence, toolRegistry, toolsReviewed, thinking, webReviewed)
+    capability = composeCapability(binding, input.modelEvidence, input.capabilityRules, toolRegistry)
     validateSemanticIntentAgainstResolvedCapabilityV2(
       capability.resolvedCapability,
       input.commandFacts.semanticIntent,

@@ -119,6 +119,7 @@
     "gate:docs": "node scripts/gates/docs-index.mjs",
     "gate:network-egress": "node scripts/gates/network-egress-gate.mjs",
     "gate:generation-v2-zero-residual": "node scripts/gates/generation-v2-zero-residual.mjs",
+    "gate:generation-v2-capability-rule-authority": "node scripts/gates/generation-v2-capability-rule-authority.mjs",
     "gate:model-identity-purge": "node scripts/gates/model-identity-compatibility-purge.mjs",
     "gate:no-legacy-compatible": "npm run gate:generation-v2-zero-residual",
     "verify:artifact-katex-css": "npx vite build && npm run gate:tc20",

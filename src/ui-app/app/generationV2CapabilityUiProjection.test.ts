@@ -1,48 +1,28 @@
 import { describe, expect, it } from 'vitest'
 import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
-import {
-  projectImageAttachmentInputSupportV2,
-  projectImageGenerationControlDomainsV2,
-} from './generationV2CapabilityUiProjection'
+import { projectGeminiThinkingCapabilityV2 } from './generationV2CapabilityUiProjection'
 
-function projection(
-  controls: GenerationControlsProjectionV2['controls'],
-): GenerationControlsProjectionV2 {
-  return {
-    schemaVersion: 2,
-    binding: {},
-    capabilityRevision: 'capability-v2:test',
-    controls,
-  }
+function projection(path: string, control: Readonly<Record<string, unknown>>): GenerationControlsProjectionV2 {
+  return { schemaVersion: 2, binding: {}, capabilityRevision: 'capability-revision:test',
+    controls: { [path]: control } } as unknown as GenerationControlsProjectionV2
 }
 
 describe('Generation V2 capability UI projection', () => {
-  it('preserves resolved image domains without a renderer allowlist', () => {
-    const value = projection({
-      'image.resolution': { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: ['8K'] }, constraints: [], evidenceIds: [] },
-      'image.aspectRatio': { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: ['21:9'] }, constraints: [], evidenceIds: [] },
-      'image.outputMode': { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: ['provider_native'] }, constraints: [], evidenceIds: [] },
-    } as unknown as GenerationControlsProjectionV2['controls'])
-
-    expect(projectImageGenerationControlDomainsV2(value)).toEqual({
-      resolutions: ['8K'],
-      aspectRatios: ['21:9'],
-      outputModes: ['provider_native'],
-    })
+  it('uses the canonical rule default instead of enum ordering', () => {
+    const result = projectGeminiThinkingCapabilityV2(projection('providerExtension.thinkingLevel', {
+      visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: ['high', 'low', 'medium'] },
+      defaultValue: 'medium', constraints: [], evidenceIds: ['rule'],
+    }), 'gemini-exact')
+    expect(result).toMatchObject({ kind: 'level', defaultLevel: 'medium' })
   })
 
-  it('derives image attachment acceptance only from resolved attachment fields', () => {
-    const value = projection({
-      'attachments[].include': { visibility: 'visible', state: 'supported', constraints: [], evidenceIds: [] },
-      'attachments[].sendAs': { visibility: 'visible', state: 'supported', domain: { kind: 'enum', values: ['inline_text', 'image_reference'] }, constraints: [], evidenceIds: [] },
-    } as unknown as GenerationControlsProjectionV2['controls'])
-
-    expect(projectImageAttachmentInputSupportV2(value)).toBe(true)
-    expect(projectImageAttachmentInputSupportV2(projection({
-      'attachments[].include': { visibility: 'visible', state: 'unknown', constraints: [], evidenceIds: [] },
-      'attachments[].sendAs': { visibility: 'visible', state: 'unknown', constraints: [], evidenceIds: [] },
-    } as unknown as GenerationControlsProjectionV2['controls']))).toBe(true)
-    expect(projectImageAttachmentInputSupportV2(projection({} as GenerationControlsProjectionV2['controls']))).toBe(false)
-    expect(projectImageAttachmentInputSupportV2(null)).toBeNull()
+  it('does not infer off from a range that explicitly excludes zero', () => {
+    const result = projectGeminiThinkingCapabilityV2(projection('providerExtension.thinkingBudget', {
+      visibility: 'visible', state: 'supported',
+      domain: { kind: 'range', min: -1, max: 32768, integer: true, excludedValues: [0] },
+      defaultValue: -1, constraints: [], evidenceIds: ['rule'],
+    }), 'gemini-exact')
+    expect(result).toMatchObject({ kind: 'budget', allowDynamic: true, allowOff: false,
+      defaultBudgetMode: 'dynamic' })
   })
 })

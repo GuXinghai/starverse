@@ -6,6 +6,7 @@ import { AnswerReasoningProjectionV2Repo } from '../../infra/db/repo/answerReaso
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { runGenerationV2AuthorityTransactionOnOwnedConnectionV2 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
 import { ModelCatalogV2Repo } from '../../infra/db/repo/modelCatalogV2Repo'
+import { installBuiltInCapabilityRulesV2 } from '../../infra/db/repo/installBuiltInCapabilityRulesV2'
 
 vi.mock('electron', () => ({ session: { defaultSession: { fetch: vi.fn() } } }))
 
@@ -14,9 +15,10 @@ import { createGeminiInteractionsImageActionCoordinatorV2 } from './geminiIntera
 import { createGeminiInteractionsImageStreamRunnerV2 } from './geminiInteractionsImageStreamRunnerV2'
 
 const scope = `credential-scope-v2:${'a'.repeat(64)}` as never
-function database() {
+function database(modelId = 'gemini-3.1-flash-image') {
   const db = new BetterSqlite3(':memory:')
   applyGenerationV2SchemaForTest(db, process.cwd())
+  installBuiltInCapabilityRulesV2(db, () => 1)
   const graph = new ConversationGraphV2Repo(db)
   runGenerationV2AuthorityTransactionOnOwnedConnectionV2(db, (context) => {
     graph.createProject(context, { projectId: 'project:1', name: 'Project', createdAtMs: 1 })
@@ -34,8 +36,8 @@ function database() {
   const catalogScope = Object.freeze({ providerKey: 'google_ai_studio', credentialScopeId: scope,
     endpointProfileId: 'gemini-developer-api-v1beta', operationContractId: 'gemini-models-v1beta', category: '' })
   const observation = Object.freeze({ schemaVersion: 2 as const, providerKey: 'google_ai_studio' as const,
-    endpointId: 'google-ai-studio-official', nativeModelId: 'gemini-3.1-flash-image', observedAtMs: 10,
-    rawProviderRecord: Object.freeze({ name: 'models/gemini-3.1-flash-image',
+    endpointId: 'google-ai-studio-official', nativeModelId: modelId, observedAtMs: 10,
+    rawProviderRecord: Object.freeze({ name: `models/${modelId}`,
       supportedGenerationMethods: Object.freeze(['generateContent']), thinking: true }),
     facts: Object.freeze({
       textChat: Object.freeze({ providerPath: 'supportedGenerationMethods', ownProperty: true,
@@ -52,8 +54,8 @@ function database() {
   catalog.beginSync(catalogScope, 'attempt:image')
   catalog.commitSync({ scope: catalogScope, attemptId: 'attempt:image', responseDigest: 'a'.repeat(64),
     observedAtMs: 10, applyMode: 'automatic', items: [{ providerKey: 'google_ai_studio',
-      nativeModelId: 'gemini-3.1-flash-image', modelId: 'gemini-3.1-flash-image',
-      modelKey: 'google_ai_studio::gemini-3.1-flash-image', displayName: 'Gemini 3.1 Flash Image', raw: { schemaVersion: 1,
+      nativeModelId: modelId, modelId,
+      modelKey: `google_ai_studio::${modelId}`, displayName: 'Gemini Image', raw: { schemaVersion: 1,
         buckets: [{ source: 'models', fetchedAtMs: 10, baseUrl: 'https://generativelanguage.googleapis.com/v1beta',
           payload: { observation } }] } }] })
   return db
@@ -127,6 +129,58 @@ function streamResponseWithProviderError(): Response {
 }
 
 describe('Gemini Interactions image generation V2', () => {
+  it('keeps an unknown exact image model unresolved instead of inheriting a family capability', async () => {
+    const db = database('gemini-3.1-flash-image-future')
+    try {
+      const coordinator = createGeminiInteractionsImageInitialSendCoordinatorV2({ db,
+        credentialService: credentialService(), nowMs: () => 100,
+        createGraphId: (kind) => `${kind}:unknown` })
+      await expect(coordinator.submit({ command: { operationId: 'operation:unknown-image', branchId: 'branch:1',
+        expectedHeadMessageId: null, prompt: 'draw', modelId: 'gemini-3.1-flash-image-future', commandAttachments: [] },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope }))
+        .rejects.toThrow('GENERATION_V2_RESOLVED_CAPABILITY_FIELD_UNSUPPORTED')
+    } finally { db.close() }
+  })
+
+  it('rejects an image resolution outside the exact model capability before preparing a request', async () => {
+    const db = database('gemini-3.1-flash-lite-image')
+    try {
+      const configs = new GenerationConfigV2Repo(db)
+      const current = configs.getScope('conversation', 'conversation:1')
+      configs.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: {}, reasoning: { mode: 'disabled' }, web: { mode: 'disabled' },
+        image: { mode: 'generate', aspectRatio: '1:1', resolution: '4K', format: 'jpeg', stream: true },
+        tools: { mode: 'disabled' }, providerExtension: { kind: 'none' },
+      })
+      const coordinator = createGeminiInteractionsImageInitialSendCoordinatorV2({ db,
+        credentialService: credentialService(), nowMs: () => 100, createGraphId: (kind) => `${kind}:resolution` })
+      await expect(coordinator.submit({ command: { operationId: 'operation:bad-resolution', branchId: 'branch:1',
+        expectedHeadMessageId: null, prompt: 'draw', modelId: 'gemini-3.1-flash-lite-image', commandAttachments: [] },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope }))
+        .rejects.toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
+    } finally { db.close() }
+  })
+
+  it('rejects image search when the exact model has no evidenced search capability', async () => {
+    const db = database('gemini-3-pro-image')
+    try {
+      const configs = new GenerationConfigV2Repo(db)
+      const current = configs.getScope('conversation', 'conversation:1')
+      configs.compareAndSetScope('conversation', 'conversation:1', current.configRevision.value, {
+        schemaVersion: 2, generation: {}, reasoning: { mode: 'disabled' },
+        web: { mode: 'provider_search', types: ['image'] },
+        image: { mode: 'generate', aspectRatio: '1:1', resolution: '1K', format: 'jpeg', stream: true },
+        tools: { mode: 'disabled' }, providerExtension: { kind: 'none' },
+      })
+      const coordinator = createGeminiInteractionsImageInitialSendCoordinatorV2({ db,
+        credentialService: credentialService(), nowMs: () => 100, createGraphId: (kind) => `${kind}:search` })
+      await expect(coordinator.submit({ command: { operationId: 'operation:unsupported-search', branchId: 'branch:1',
+        expectedHeadMessageId: null, prompt: 'draw', modelId: 'gemini-3-pro-image', commandAttachments: [] },
+        expectedCredentialRevision: 1, expectedCredentialScopeId: scope }))
+        .rejects.toThrow('GENERATION_V2_RESOLVED_CAPABILITY_VALUE_UNSUPPORTED')
+    } finally { db.close() }
+  })
+
   it('keeps omitted image domain fields omitted on the wire', async () => {
     const db = database(); let ids = 0
     try {

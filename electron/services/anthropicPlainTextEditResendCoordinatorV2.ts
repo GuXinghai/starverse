@@ -17,6 +17,7 @@ import { decodeAnthropicPlainTextEditResendCommandV2, type AnthropicPlainTextEdi
 import { readVerifiedAnthropicEndpointProfileV2 } from '../../src/next/generation-v2/providers/anthropic/verifiedEndpointProfileV2'
 import type { Epoch2RuntimeCredentialService } from '../credentials/epoch2RuntimeCredentialService'
 import { withVerifiedAnthropicGenerationAuthoritiesV2 } from './anthropicGenerationAuthorityV2Service'
+import { CapabilityRuleV2Repo } from '../../infra/db/repo/capabilityRuleV2Repo'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { compileAnthropicMessagesPreparedRequestV2 } from './anthropicMessagesPreparedRequestCompilerV2'
 import { preflightAnthropicMessagesAttachmentDescriptorsV2 } from './anthropicMessagesAttachmentPreflightV2'
@@ -45,6 +46,7 @@ export function createAnthropicPlainTextEditResendCoordinatorV2(input: Readonly<
   const descriptorRepo = new AnthropicMessagesFileDescriptorV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
+  const capabilityRuleRepo = new CapabilityRuleV2Repo(input.db)
   const modelEvidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedAnthropicEndpointProfileV2()
 
@@ -106,7 +108,9 @@ export function createAnthropicPlainTextEditResendCoordinatorV2(input: Readonly<
             })
             return withSynchronousGenerationCommandFactsAuthorityV2(context, configRepo, attachmentRepo, pending.conversationId.value, command.commandAttachments, undefined, (commandFacts) => {
               const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
-              return withVerifiedAnthropicGenerationAuthoritiesV2({ context, modelEvidence, commandFacts, toolRegistry, operation: 'text', use: ({ binding, capability }) => {
+              return withVerifiedAnthropicGenerationAuthoritiesV2({ context, modelEvidence, commandFacts, toolRegistry, operation: 'text',
+                capabilityRules: capabilityRuleRepo.resolveForIdentity({ providerId: modelEvidence.providerId.value,
+                  endpointProfileId: modelEvidence.endpointProfileId.value, nativeModelId: modelEvidence.modelId.value }), use: ({ binding, capability }) => {
                 const persisted = commitVerifiedAnthropicPlainTextEditResendSnapshotV2({ context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability, toolRegistry, attachmentDescriptors })
                 graphRepo.commitEditedTurnProjection(context, pending)
                 const history = historyRepo.loadRequestHistory(context, command.operationId.value)

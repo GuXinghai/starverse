@@ -64,7 +64,8 @@ const OPENROUTER_CHAT_PATHS = Object.freeze([
 ] as RuntimeCapabilitySemanticPathV2[])
 
 const OPENAI_RESPONSES_PATHS = Object.freeze([
-  'attachments[].kind', 'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
+  'attachments[].kind', 'attachments[].mediaKind',
+  'attachments[].assetId', 'attachments[].assetRevisionId', 'attachments[].assetSha256',
   'attachments[].include', 'attachments[].sendAs', 'attachments[].conversion',
   'generation.maxOutputTokens', 'image.mode', 'image.background', 'image.format', 'image.quality', 'image.size',
   'providerExtension.kind', 'providerExtension.maxToolCalls', 'providerExtension.parallelToolCalls',

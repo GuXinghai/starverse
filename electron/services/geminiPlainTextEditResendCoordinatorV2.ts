@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
+import { CapabilityRuleV2Repo } from '../../infra/db/repo/capabilityRuleV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
 import { GenerationExecutionV2Repo, GenerationExecutionV2RepoError } from '../../infra/db/repo/generationExecutionV2Repo'
@@ -42,6 +43,7 @@ export function createGeminiPlainTextEditResendCoordinatorV2(input: Readonly<{
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
+  const capabilityRuleRepo = new CapabilityRuleV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
   const evidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
@@ -98,6 +100,8 @@ export function createGeminiPlainTextEditResendCoordinatorV2(input: Readonly<{
               const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
               return withVerifiedGeminiGenerateContentGenerationAuthoritiesV2({
                 context, modelEvidence, commandFacts, toolRegistry,
+                capabilityRules: capabilityRuleRepo.resolveForIdentity({ providerId: modelEvidence.providerId.value,
+                  endpointProfileId: modelEvidence.endpointProfileId.value, nativeModelId: modelEvidence.modelId.value }),
                 use: ({ binding, capability }) => {
                   const persisted = commitVerifiedGeminiPlainTextEditResendSnapshotV2({ context, executionRepo,
                     capabilityRepo, pending, command, commandFacts, binding, capability, toolRegistry })

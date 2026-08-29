@@ -212,16 +212,9 @@ function createPolicy(): VerifiedDeepSeekStableCapabilityPolicyV2 {
     unsupported('providerExtension.thinkingLevel'),
     unsupported('providerExtension.thinkingMode'),
     unsupported('providerExtension.verbosity'),
-    rule('reasoning.effort', 'supported_when_reasoning_enabled', OFFICIAL_THINKING, {
-      wireKey: 'reasoning_effort',
-      // DeepSeek exposes high and max as native public effort values. Other
-      // spellings are not part of the resolved model capability domain.
-      domain: Object.freeze({ kind: 'enum', values: Object.freeze(['high', 'max']) }),
-      rejectionCode: 'DEEPSEEK_REASONING_EFFORT_UNSUPPORTED',
-    }),
-    rule('reasoning.mode', 'supported_static', OFFICIAL_THINKING, {
-      wireKey: 'thinking.type',
-      domain: Object.freeze({ kind: 'enum', values: Object.freeze(['disabled', 'enabled']) }),
+    unavailable('reasoning.effort'),
+    rule('reasoning.mode', 'accepted_no_wire', STARVERSE_POLICY, {
+      domain: Object.freeze({ kind: 'enum', values: Object.freeze(['disabled']) }),
     }),
     unsupported('reasoning.summary'),
     unsupported('reasoning.exclude'),

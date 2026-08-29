@@ -149,7 +149,7 @@ export function projectCanonicalModelIdentityV2(
 function canonicalSourceRef(kind: ModelCapabilityEvidenceKindV2, value: unknown): string {
   const result = requiredString(value)
   if (result.length > 2048 || result.trim() !== result || /[\u0000-\u001f\u007f]/u.test(result)) invalid()
-  if (kind === 'official_documentation') {
+  if (kind === 'official_documentation' || kind === 'capability_rule' && result.startsWith('https://')) {
     let url: URL
     try { url = new URL(result) } catch { return invalid() }
     if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash) invalid()
@@ -203,11 +203,21 @@ function domain(value: unknown): ModelCapabilityDomainV2 {
       if (!Number.isSafeInteger(value.maxItems) || (value.maxItems as number) < 1) invalid()
       return Object.freeze({ kind: 'enum_list', values: scalarValues(value.values), maxItems: value.maxItems as number })
     case 'range':
-      exactKeys(value, ['kind', 'min', 'max', 'integer'])
+      exactKeys(value, value.excludedValues === undefined
+        ? ['kind', 'min', 'max', 'integer']
+        : ['kind', 'min', 'max', 'integer', 'excludedValues'])
       if (typeof value.min !== 'number' || !Number.isFinite(value.min) || typeof value.max !== 'number' ||
           !Number.isFinite(value.max) || value.min > value.max || typeof value.integer !== 'boolean' ||
           value.integer && (!Number.isSafeInteger(value.min) || !Number.isSafeInteger(value.max))) invalid()
-      return Object.freeze({ kind: 'range', min: value.min, max: value.max, integer: value.integer })
+      if (value.excludedValues !== undefined && (!Array.isArray(value.excludedValues) ||
+          value.excludedValues.some((item) => typeof item !== 'number' || !Number.isFinite(item) ||
+            item < (value.min as number) || item > (value.max as number) ||
+            value.integer === true && !Number.isSafeInteger(item)) ||
+          new Set(value.excludedValues).size !== value.excludedValues.length)) invalid()
+      return Object.freeze({ kind: 'range', min: value.min, max: value.max, integer: value.integer,
+        ...(value.excludedValues === undefined ? {} : {
+          excludedValues: Object.freeze([...(value.excludedValues as number[])].sort((left, right) => left - right)),
+        }) })
     case 'string_list':
       exactKeys(value, ['kind', 'maxItems', 'maxItemLength'])
       if (!Number.isSafeInteger(value.maxItems) || (value.maxItems as number) < 1 ||
@@ -255,6 +265,20 @@ function evidenceIds(value: unknown): readonly string[] {
   return Object.freeze(ids)
 }
 
+function defaultValueFitsDomain(
+  value: ModelCapabilityScalarV2,
+  candidate: ModelCapabilityDomainV2,
+): boolean {
+  if (candidate.kind === 'boolean') return typeof value === 'boolean'
+  if (candidate.kind === 'identity' || candidate.kind === 'string') {
+    return typeof value === 'string' && (candidate.kind !== 'string' || value.length <= candidate.maxLength)
+  }
+  if (candidate.kind === 'enum') return candidate.values.includes(value)
+  if (candidate.kind === 'range') return typeof value === 'number' && value >= candidate.min && value <= candidate.max &&
+    (!candidate.integer || Number.isSafeInteger(value)) && !candidate.excludedValues?.includes(value)
+  return false
+}
+
 const EVIDENCE_KINDS = Object.freeze([
   'contract_invariant', 'endpoint_descriptor', 'signed_provider_record',
   'official_documentation', 'live_probe', 'capability_rule',
@@ -281,19 +305,22 @@ function canonicalEvidence(input: readonly Readonly<Record<string, unknown>>[]):
   return Object.freeze(evidence)
 }
 
-function canonicalFields(input: readonly PersistedModelCapabilityFieldV2[]): readonly PersistedModelCapabilityFieldV2[] {
-  const fields = input.map((value) => {
+export function canonicalizeModelCapabilityFieldV2(value: unknown): PersistedModelCapabilityFieldV2 {
+  try {
     if (!plainObject(value)) return invalid()
-    exactKeys(value, value.domain === undefined
-      ? ['path', 'state', 'constraints', 'evidenceIds']
-      : ['path', 'state', 'domain', 'constraints', 'evidenceIds'])
+    const fieldKeys = ['path', 'state', 'constraints', 'evidenceIds']
+    if (value.domain !== undefined) fieldKeys.push('domain')
+    if (value.defaultValue !== undefined) fieldKeys.push('defaultValue')
+    exactKeys(value, fieldKeys)
     if (!MODEL_CAPABILITY_SEMANTIC_PATHS_V2.includes(value.path as ModelCapabilitySemanticPathV2) ||
         !FIELD_STATES.includes(value.state as typeof FIELD_STATES[number])) invalid()
     const state = value.state as ModelCapabilityFieldStateV2
     const fieldDomain = value.domain === undefined ? undefined : domain(value.domain)
+    const fieldDefault = value.defaultValue === undefined ? undefined : scalar(value.defaultValue)
     if ((state === 'unsupported' || state === 'missing' || state === 'unknown') !== (fieldDomain === undefined) ||
         !Array.isArray(value.constraints) || !Array.isArray(value.evidenceIds) ||
-        (state === 'unsupported' || state === 'missing' || state === 'unknown') && value.constraints.length > 0) invalid()
+        (state === 'unsupported' || state === 'missing' || state === 'unknown') && value.constraints.length > 0 ||
+        fieldDefault !== undefined && (!fieldDomain || !defaultValueFitsDomain(fieldDefault, fieldDomain))) invalid()
     if (fieldDomain && !isModelCapabilityDomainCompatibleWithPathV2(
       value.path as ModelCapabilitySemanticPathV2,
       fieldDomain,
@@ -310,8 +337,15 @@ function canonicalFields(input: readonly PersistedModelCapabilityFieldV2[]): rea
     constraints.sort((left, right) => hash(left).localeCompare(hash(right), 'en'))
     return Object.freeze({ path: value.path as ModelCapabilitySemanticPathV2, state,
       ...(fieldDomain === undefined ? {} : { domain: fieldDomain }),
+      ...(fieldDefault === undefined ? {} : { defaultValue: fieldDefault }),
       constraints: Object.freeze(constraints), evidenceIds: evidenceIds(value.evidenceIds) })
-  })
+  } catch {
+    return invalid()
+  }
+}
+
+function canonicalFields(input: readonly PersistedModelCapabilityFieldV2[]): readonly PersistedModelCapabilityFieldV2[] {
+  const fields = input.map(canonicalizeModelCapabilityFieldV2)
   fields.sort((left, right) => left.path.localeCompare(right.path, 'en'))
   if (fields.length !== MODEL_CAPABILITY_SEMANTIC_PATHS_V2.length ||
       fields.some((field, index) => field.path !== MODEL_CAPABILITY_SEMANTIC_PATHS_V2[index])) invalid()

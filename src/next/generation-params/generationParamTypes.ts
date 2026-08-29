@@ -1,5 +1,5 @@
 import type { RuntimeProviderId } from '../provider/runtimeProviderId'
-import type { GeminiThinkingCapability } from '../provider/gemini/geminiThinkingPolicy'
+import type { GeminiThinkingCapability } from '../provider/gemini/geminiThinkingControl'
 
 export type GenerationProviderId = RuntimeProviderId | 'unset'
 

@@ -28,7 +28,7 @@ import type {
 } from '@/next/provider/gemini/geminiModelSource'
 import {
   type GeminiThinkingLevel,
-} from '@/next/provider/gemini/geminiThinkingPolicy'
+} from '@/next/provider/gemini/geminiThinkingControl'
 import {
   isProjectedGeminiImageModelV2,
   isProjectedGeminiThinkingBudgetValid,

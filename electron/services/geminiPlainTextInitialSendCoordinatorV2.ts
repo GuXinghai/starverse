@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto'
 import type BetterSqlite3 from 'better-sqlite3'
 import { AttachmentAssetV2Repo } from '../../infra/db/repo/attachmentAssetV2Repo'
+import { CapabilityRuleV2Repo } from '../../infra/db/repo/capabilityRuleV2Repo'
 import { ConversationGraphV2Repo } from '../../infra/db/repo/conversationGraphV2Repo'
 import { GenerationConfigV2Repo } from '../../infra/db/repo/generationConfigV2Repo'
 import { withSynchronousGenerationCommandFactsAuthorityV2 } from '../../infra/db/repo/generationCommandFactsAuthorityV2'
@@ -43,6 +44,7 @@ export function createGeminiPlainTextInitialSendCoordinatorV2(input: Readonly<{
   const configRepo = new GenerationConfigV2Repo(input.db)
   const attachmentRepo = new AttachmentAssetV2Repo(input.db, nowMs)
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
+  const capabilityRuleRepo = new CapabilityRuleV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
   const evidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
   const endpointProfile = readVerifiedGeminiDeveloperApiEndpointProfileV2()
@@ -113,6 +115,8 @@ export function createGeminiPlainTextInitialSendCoordinatorV2(input: Readonly<{
                 const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
                 return withVerifiedGeminiGenerateContentGenerationAuthoritiesV2({
                   context, modelEvidence, commandFacts, toolRegistry,
+                  capabilityRules: capabilityRuleRepo.resolveForIdentity({ providerId: modelEvidence.providerId.value,
+                    endpointProfileId: modelEvidence.endpointProfileId.value, nativeModelId: modelEvidence.modelId.value }),
                   use: ({ binding, capability }) => {
                     const persisted = commitVerifiedGeminiPlainTextInitialSnapshotV2({
                       context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability, toolRegistry,

@@ -1,7 +1,6 @@
 import { createHash } from 'node:crypto'
 import { stableSerializeProviderRequestBoundedV2, stableSerializeProviderRequestV2 } from '../../compiler/stableSerialize'
 import type { GeminiInteractionsImageResultV1, GeminiInteractionsReasoningDetailV1, GeminiInteractionsSearchEvidenceV1 } from './interactionsStreamV1'
-import { isGeminiInteractionsImageModelIdV1 } from './interactionsImageCapabilityPolicyV1'
 
 export const GEMINI_INTERACTIONS_IMAGE_TERMINAL_ARTIFACT_KIND_V2 = 'gemini_interactions_image_terminal_v2' as const
 export const GEMINI_INTERACTIONS_IMAGE_TERMINAL_ARTIFACT_CODEC_VERSION_V2 = 2 as const
@@ -54,7 +53,7 @@ function validateSearchEvidence(value: GeminiInteractionsSearchEvidenceV1): void
 export function createGeminiInteractionsImageTerminalArtifactV2(
   result: GeminiInteractionsImageResultV1,
 ): GeminiInteractionsImageTerminalArtifactV2 {
-  if (!result || !isGeminiInteractionsImageModelIdV1(result.model) || typeof result.interactionId !== 'string' ||
+  if (!result || typeof result.model !== 'string' || result.model.length < 1 || typeof result.interactionId !== 'string' ||
       result.interactionId.length < 1 || result.bytes.byteLength < 1 || typeof result.mime !== 'string' || typeof result.text !== 'string' ||
       !Array.isArray(result.reasoningDetails) || !Array.isArray(result.events)) invalid()
   let usage: Readonly<Record<string, unknown>>

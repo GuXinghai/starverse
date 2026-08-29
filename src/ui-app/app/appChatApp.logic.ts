@@ -64,6 +64,7 @@ import { projectGenerationV2BranchForExistingUi } from '@/next/generation-v2/ren
 import { abortGenerationV2, submitGenerationV2EditResend, submitGenerationV2Initial, submitGenerationV2Regenerate, submitGenerationV2Retry, subscribeGenerationV2Runtime,
   type GenerationV2Route, type GenerationV2RuntimeUpdate } from '@/next/generation-v2/renderer/generationV2CommandClient'
 import { resolveGenerationV2Capabilities } from '@/next/generation-v2/renderer/generationV2CapabilityClient'
+import { selectGeminiGenerationV2RouteV2 } from './generationV2RouteSelection'
 import type { GenerationCapabilityProviderIdV2, GenerationCapabilityResolutionResultV2 } from '@/next/generation-v2/capability/capabilityResolutionV2'
 import type { GenerationControlsProjectionV2 } from '@/next/generation-v2/capability/resolvedCapabilityV2'
 import {
@@ -156,8 +157,6 @@ import {
   GOOGLE_AI_STUDIO_PROVIDER_KEY,
   type GeminiModelAvailabilityResult,
 } from '@/next/provider/gemini/geminiModelSource'
-import { normalizeGeminiImageGenerationModelId } from '@/next/provider/gemini/geminiImageGenerationPolicy'
-import { isGeminiInteractionsImageModelIdV1 } from '@/next/generation-v2/providers/gemini/interactionsImageCapabilityPolicyV1'
 import {
   ANTHROPIC_MESSAGES_ENDPOINT_ID,
   ANTHROPIC_MESSAGES_PROFILE_ID,
@@ -6726,7 +6725,7 @@ export function useAppChatAppLogic() {
       else if (route.kind === 'deepseek') { providerId = 'deepseek'; protocolId = 'deepseek-stable-chat-v1' }
       else { providerId = 'google_ai_studio'; protocolId = route.kind === 'gemini_interactions_image' ? 'gemini-interactions-v1beta' : 'gemini-generate-content-v1beta' }
     }
-    if (route.kind === 'gemini_interactions_image') { operation = 'image_generate'; modelId = normalizeGeminiImageGenerationModelId(modelId) }
+    if (route.kind === 'gemini_interactions_image') operation = 'image_generate'
     if (route.kind === 'openrouter_images') operation = 'image_generate'
     const result = await resolveGenerationV2Capabilities({ providerId, credentialRevision, credentialScopeId,
       endpointProfileId: resolvedEndpointProfileId, protocolId, modelId, operation })
@@ -6812,8 +6811,7 @@ export function useAppChatAppLogic() {
     await persistCurrentGenerationV2SemanticLayer(providerId, view.conversationId)
     const endpointProfileId = route.kind === 'lmstudio_openresponses' || route.kind === 'generic_local_openai_chat' || route.kind === 'ollama_chat'
       ? await resolveGenerationV2LocalProfileForSend(route, modelId) : null
-    const commandModelId = route.kind === 'gemini_interactions_image'
-      ? normalizeGeminiImageGenerationModelId(modelId) : modelId
+    const commandModelId = modelId
     const operationId = crypto.randomUUID()
     const sendingFromTemplate = view.conversationId === systemTemplateSnapshot.value?.conversation.id
     const capabilityRevision = capabilityRevisionForCurrentProjection({ route, providerId,
@@ -6943,13 +6941,11 @@ export function useAppChatAppLogic() {
         ? await resolveGenerationV2LocalProfileForSend(route, modelId) : null
       const operationId = crypto.randomUUID()
       const common = { operationId, clientActionId: operationId, sourceBranchId: branch.id, questionId: qid,
-        sourceAnswerId: chosen, expectedHeadMessageId: view.headMessageId, modelId: route.kind === 'gemini_interactions_image'
-          ? normalizeGeminiImageGenerationModelId(modelId) : modelId }
+        sourceAnswerId: chosen, expectedHeadMessageId: view.headMessageId, modelId }
       const composerDraft = generationV2ComposerDraft.value?.conversationId === view.conversationId
         ? generationV2ComposerDraft.value : await getGenerationV2ComposerDraft(view.conversationId)
       const commandAttachments = projectGenerationV2ComposerAttachments(composerDraft)
-      const commandModelId = route.kind === 'gemini_interactions_image'
-        ? normalizeGeminiImageGenerationModelId(modelId) : modelId
+      const commandModelId = modelId
       const capabilityRevision = capabilityRevisionForCurrentProjection({ route, providerId: selection.providerId,
         modelId: commandModelId, endpointProfileId: compatibleIntent?.providerInstanceId ?? endpointProfileId })
       const result = await submitGenerationV2Regenerate(route, route.kind === 'openrouter_images'
@@ -7072,8 +7068,7 @@ export function useAppChatAppLogic() {
       const sourceBranchId = v2View.branchId
       const common = { operationId, clientActionId: operationId, sourceBranchId: v2View.branchId,
         sourceQuestionId: oldQuestionId, sourceAnswerRootId: sourceTurn.chosenAnswerRootId,
-        expectedHeadMessageId: v2View.headMessageId, modelId: v2Route.kind === 'gemini_interactions_image'
-          ? normalizeGeminiImageGenerationModelId(v2ModelId) : v2ModelId, commandAttachments }
+        expectedHeadMessageId: v2View.headMessageId, modelId: v2ModelId, commandAttachments }
       const capabilityRevision = capabilityRevisionForCurrentProjection({ route: v2Route, providerId: v2ProviderId,
         modelId: common.modelId, endpointProfileId: compatibleIntent?.providerInstanceId ?? endpointProfileId })
       const result = await submitGenerationV2EditResend(v2Route, v2Route.kind === 'openrouter_images'
@@ -7155,7 +7150,7 @@ export function useAppChatAppLogic() {
     return true
   }
 
-  function generationV2RouteForProvider(providerId: RuntimeProviderId, modelId?: string): GenerationV2Route {
+  function generationV2RouteForProvider(providerId: RuntimeProviderId, _modelId?: string): GenerationV2Route {
     if (isLocalRuntimeProviderId(providerId)) {
       return { kind: requireLocalProviderRouteDescriptorForRuntimeProvider(providerId).routeKind }
     }
@@ -7166,10 +7161,7 @@ export function useAppChatAppLogic() {
       case 'deepseek': return { kind: 'deepseek' }
       case 'google_ai_studio': {
         const image = resolveImageGenerationConfigForRequest(GOOGLE_AI_STUDIO_PROVIDER_KEY)
-        if (!image) return { kind: 'gemini_generate_content' }
-        const normalizedModelId = normalizeGeminiImageGenerationModelId(modelId)
-        if (isGeminiInteractionsImageModelIdV1(normalizedModelId)) return { kind: 'gemini_interactions_image' }
-        return { kind: 'gemini_generate_content' }
+        return selectGeminiGenerationV2RouteV2(Boolean(image))
       }
       default: throw new Error('GENERATION_V2_PROVIDER_ROUTE_UNAVAILABLE')
     }

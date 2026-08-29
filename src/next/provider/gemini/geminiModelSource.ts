@@ -8,8 +8,6 @@ import {
   providerNetworkFailureMessage,
   type NetworkErrorEnvelope,
 } from '../../../shared/network/networkErrorEnvelope'
-import { resolveGeminiThinkingCapability } from './geminiThinkingPolicy'
-import type { GeminiImageGenerationPolicy } from './geminiImageGenerationPolicy'
 import type { JsonValue } from '../../../shared/modelCatalog/internalSchema'
 import {
   missingProviderBooleanFactV2,
@@ -46,7 +44,6 @@ export type GeminiProviderSpecificModelAvailability = Readonly<{
   inputTokenLimit?: number
   outputTokenLimit?: number
   nextPageToken?: string
-  imageGenerationPolicy?: GeminiImageGenerationPolicy
 }>
 
 export type GeminiProviderModelAvailability = ProviderModelAvailabilityEnvelope<
@@ -258,12 +255,7 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): GeminiPr
 
   const supportedGenerationMethods = asStringArray(record.supportedGenerationMethods)
   const textChat = supportedGenerationMethods.includes('generateContent') || supportedGenerationMethods.includes('streamGenerateContent')
-  const thinkingCapability = resolveGeminiThinkingCapability({
-    model: nativeModelId,
-    thinking: record.thinking,
-    thinkingOwnProperty: Object.prototype.hasOwnProperty.call(record, 'thinking'),
-    supportedGenerationMethods,
-  })
+  const thinkingOwnProperty = Object.prototype.hasOwnProperty.call(record, 'thinking')
   const methodsOwnProperty = Object.prototype.hasOwnProperty.call(record, 'supportedGenerationMethods')
   const observation: CatalogProviderModelObservationV2 = {
     schemaVersion: 2,
@@ -312,9 +304,9 @@ function modelFromApiRecord(record: ModelRecord, observedAtMs: number): GeminiPr
       ...(supportedGenerationMethods.length > 0 ? { supportedGenerationMethods } : {}),
       ...(asPositiveInteger(record.inputTokenLimit) ? { inputTokenLimit: asPositiveInteger(record.inputTokenLimit) } : {}),
       ...(asPositiveInteger(record.outputTokenLimit) ? { outputTokenLimit: asPositiveInteger(record.outputTokenLimit) } : {}),
-      thinkingOwnProperty: thinkingCapability.thinkingOwnProperty,
-      ...(thinkingCapability.thinkingOwnProperty ? { thinkingRawValue: thinkingCapability.thinkingRawValue as JsonValue } : {}),
-      thinkingRawType: thinkingCapability.thinkingRawType,
+      thinkingOwnProperty,
+      ...(thinkingOwnProperty ? { thinkingRawValue: record.thinking as JsonValue } : {}),
+      thinkingRawType: typeof record.thinking,
     },
   }
 }

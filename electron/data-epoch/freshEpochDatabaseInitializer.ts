@@ -9,6 +9,7 @@ import {
   GenerationV2SchemaComposerError,
   type GenerationV2SchemaBundle,
 } from '../../infra/db/v2/schemaComposerV2'
+import { installBuiltInCapabilityRulesV2 } from '../../infra/db/repo/installBuiltInCapabilityRulesV2'
 import {
   createEpoch2RootManifest,
   type Epoch2WorkspaceLayout,
@@ -313,6 +314,8 @@ async function initializeOrVerifyFreshEpoch2DatabaseCore(
         }
         const bundle = installGenerationV2SchemaInActiveTransaction(db, schemaRoot)
         emitDatabaseInitializationMilestone('schema_installed')
+        installBuiltInCapabilityRulesV2(db)
+        emitDatabaseInitializationMilestone('builtin_capability_rules_installed')
         if (initiallyEmpty && crashSmoke?.stage === 'after_schema') {
           crashForSmoke(crashSmoke.stage, crashSmoke.markerPath)
         }

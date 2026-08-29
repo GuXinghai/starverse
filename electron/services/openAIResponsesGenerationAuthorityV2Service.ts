@@ -59,6 +59,11 @@ import {
   registerGenerationV2AuthorityTransactionParticipantForContextV2,
   type GenerationV2AuthorityTransactionContextV2,
 } from '../../infra/db/repo/generationV2AuthorityTransactionInternal'
+import {
+  applyCapabilityRuleProjectionV2,
+  assertCapabilityRuleProjectionIdentityV2,
+  type CapabilityRuleProjectionV2,
+} from '../../src/next/generation-v2/capability-rules/capabilityRuleV2'
 
 export type VerifiedOpenAIResponsesProviderBindingAuthorityV2 = Readonly<{
   trust: 'verified_openai_responses_provider_binding'
@@ -98,14 +103,6 @@ export class OpenAIResponsesGenerationAuthorityV2Error extends Error {
 const bindingAuthorities = new WeakSet<object>()
 const capabilityAuthorities = new WeakSet<object>()
 const OPENAI_RESPONSES_TOOL_SIDE_EFFECT_POLICY_EVIDENCE_V2 = 'openai.responses.owner.tool_side_effect_confirmation.v1'
-export const OPENAI_RESPONSES_IMAGE_SIZE_DOMAIN_V2 = Object.freeze({
-  kind: 'dimensions_enum' as const,
-  values: Object.freeze([
-    Object.freeze({ width: 1024, height: 1024 }),
-    Object.freeze({ width: 1024, height: 1536 }),
-    Object.freeze({ width: 1536, height: 1024 }),
-  ]),
-})
 
 export function isVerifiedOpenAIResponsesProviderBindingAuthorityV2(
   value: unknown,
@@ -135,12 +132,10 @@ function fail(code: OpenAIResponsesGenerationAuthorityV2Error['code']): never {
 
 function evidenceIds(definition: ReturnType<typeof readReviewedOpenAIResponsesDefinitionV2>) {
   const contract = definition.evidence.localArtifacts.find((value) => value.id === 'openai-responses-api-contract-20260715')
-  const model = definition.evidence.localArtifacts.find((value) => value.id === 'openai-responses-gpt-5.6-capabilities-20260717')
-  if (!contract || !model) return fail('GENERATION_V2_OPENAI_GENERATION_AUTHORITY_INVALID')
+  if (!contract) return fail('GENERATION_V2_OPENAI_GENERATION_AUTHORITY_INVALID')
   return Object.freeze({
     contractSupport: `${contract.id}.supports`, contractReject: `${contract.id}.rejects`,
-    modelSupport: `${model.id}.supports`, modelReject: `${model.id}.rejects`,
-    contract, model,
+    contract,
   })
 }
 
@@ -205,15 +200,15 @@ function field(
   path: RuntimeCapabilitySemanticPathV2,
   ids: ReturnType<typeof evidenceIds>,
   maxOutputTokens: number,
-  _toolsEnabled: boolean,
+  liveSupportEvidenceId: string,
 ): PersistedRuntimeCapabilityFieldV2 {
-  const supported = (domain: NonNullable<PersistedRuntimeCapabilityFieldV2['domain']>, model = false) => Object.freeze({
+  const supported = (domain: NonNullable<PersistedRuntimeCapabilityFieldV2['domain']>, evidenceId: string = ids.contractSupport) => Object.freeze({
     path, state: 'supported' as const, domain, constraints: Object.freeze([]),
-    evidenceIds: Object.freeze([model ? ids.modelSupport : ids.contractSupport]),
+    evidenceIds: Object.freeze([evidenceId]),
   })
-  const unsupported = (model = false) => Object.freeze({
+  const unsupported = () => Object.freeze({
     path, state: 'unsupported' as const, constraints: Object.freeze([]),
-    evidenceIds: Object.freeze([model ? ids.modelReject : ids.contractReject]),
+    evidenceIds: Object.freeze([ids.contractReject]),
   })
   const unavailable = () => Object.freeze({
     path, state: 'missing' as const, constraints: Object.freeze([]), evidenceIds: Object.freeze([]),
@@ -234,28 +229,28 @@ function field(
     case 'attachments[].conversion': return supported({ kind: 'enum', values: Object.freeze(['none']) })
     case 'attachments[].include': return supported({ kind: 'boolean' })
     case 'attachments[].sendAs': return supported({ kind: 'enum', values: Object.freeze(['provider_file', 'url_reference']) })
-    case 'generation.maxOutputTokens': return supported({ kind: 'range', min: 1, max: maxOutputTokens, integer: true }, true)
+    case 'generation.maxOutputTokens': return supported({ kind: 'range', min: 1, max: maxOutputTokens, integer: true }, liveSupportEvidenceId)
     case 'generation.temperature':
     case 'generation.topP': return unavailable()
-    case 'image.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'generate']) }, true)
-    case 'image.background': return supported({ kind: 'enum', values: Object.freeze(['auto', 'transparent', 'opaque']) }, true)
-    case 'image.format': return supported({ kind: 'enum', values: Object.freeze(['png', 'jpeg', 'webp']) }, true)
-    case 'image.quality': return supported({ kind: 'enum', values: Object.freeze(['auto', 'low', 'medium', 'high']) }, true)
-    case 'image.size': return supported(OPENAI_RESPONSES_IMAGE_SIZE_DOMAIN_V2, true)
+    case 'image.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'generate']) })
+    case 'image.background': return supported({ kind: 'enum', values: Object.freeze(['auto', 'transparent', 'opaque']) })
+    case 'image.format': return supported({ kind: 'enum', values: Object.freeze(['png', 'jpeg', 'webp']) })
+    case 'image.quality': return supported({ kind: 'enum', values: Object.freeze(['auto', 'low', 'medium', 'high']) })
+    case 'image.size': return unavailable()
     case 'image.aspectRatio':
     case 'image.outputCompression':
     case 'image.resolution':
-    case 'image.stream': return unsupported(true)
+    case 'image.stream': return unsupported()
     case 'providerExtension.kind': return supported({ kind: 'enum', values: Object.freeze(['none', 'openai_responses']) })
     case 'providerExtension.maxToolCalls': return supported({ kind: 'range', min: 1, max: Number.MAX_SAFE_INTEGER, integer: true })
     case 'providerExtension.parallelToolCalls': return supported({ kind: 'boolean' })
-    case 'providerExtension.reasoningContext': return supported({ kind: 'enum', values: Object.freeze(['auto', 'current_turn', 'all_turns']) })
-    case 'providerExtension.reasoningMode': return supported({ kind: 'enum', values: Object.freeze(['standard', 'pro']) })
+    case 'providerExtension.reasoningContext':
+    case 'providerExtension.reasoningMode': return unavailable()
     case 'providerExtension.serviceTier': return supported({ kind: 'enum', values: Object.freeze(['auto', 'default', 'flex', 'priority']) })
-    case 'providerExtension.verbosity': return supported({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high']) }, true)
-    case 'reasoning.effort': return supported({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high', 'xhigh', 'max']) }, true)
-    case 'reasoning.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'enabled']) }, true)
-    case 'reasoning.summary': return supported({ kind: 'enum', values: Object.freeze(['auto', 'concise', 'detailed']) })
+    case 'providerExtension.verbosity':
+    case 'reasoning.effort':
+    case 'reasoning.summary': return unavailable()
+    case 'reasoning.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled']) })
     case 'tools.allowedToolIds': return supported({ kind: 'identity_list', maxItems: 128 })
     case 'tools.sideEffectConfirmation': return Object.freeze({
       path, state: 'requires_confirmation',
@@ -264,10 +259,10 @@ function field(
     })
     case 'tools.toolChoice': return supported({ kind: 'enum', values: Object.freeze(['omitted', 'auto', 'none', 'required', 'named']) })
     case 'tools.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'enabled']) })
-    case 'web.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled', 'provider_search']) }, true)
-    case 'web.types': return supported({ kind: 'enum_list', values: Object.freeze(['web']), maxItems: 1 }, true)
-    case 'web.searchContextSize': return supported({ kind: 'enum', values: Object.freeze(['low', 'medium', 'high']) })
-    case 'web.allowedDomains': return supported({ kind: 'string_list', maxItems: 100, maxItemLength: 253 })
+    case 'web.mode': return supported({ kind: 'enum', values: Object.freeze(['disabled']) })
+    case 'web.types':
+    case 'web.searchContextSize':
+    case 'web.allowedDomains': return unavailable()
     default: return unsupported()
   }
 }
@@ -288,29 +283,47 @@ function validateIntent(
   }
 }
 
+/**
+ * `disabled` means the caller omits the optional OpenAI reasoning object. That
+ * is an API-contract authorization, not a model fact. Capability Rules only
+ * prove the model-side `enabled` state; this projection combines both facts
+ * for the final UI/preflight domain without adding `disabled` to the rule.
+ */
+function projectOpenAIResponsesReasoningModeAuthorizationV2(
+  input: ReturnType<typeof applyCapabilityRuleProjectionV2>,
+  ids: ReturnType<typeof evidenceIds>,
+): ReturnType<typeof applyCapabilityRuleProjectionV2> {
+  const mode = input.fields.find((item) => item.path === 'reasoning.mode')
+  if (mode?.state !== 'supported' || mode.domain?.kind !== 'enum' ||
+      !mode.domain.values.includes('enabled')) return input
+  const authorizedMode = Object.freeze({ ...mode,
+    domain: Object.freeze({ kind: 'enum' as const, values: Object.freeze(['disabled', 'enabled']) }),
+    evidenceIds: Object.freeze([...new Set([ids.contractSupport, ...mode.evidenceIds])].sort()),
+  })
+  return Object.freeze({ evidence: input.evidence,
+    fields: Object.freeze(input.fields.map((item) => item.path === 'reasoning.mode' ? authorizedMode : item)) })
+}
+
 function composeCapability(input: Readonly<{
   binding: VerifiedOpenAIResponsesProviderBindingAuthorityV2
   modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts?: GenerationCommandFactsAuthorityV2
   resolvedAt: string
   toolRegistry: ToolRegistryRepositoryFactV2 | null
+  capabilityRules: CapabilityRuleProjectionV2
 }>): VerifiedOpenAIResponsesRuntimeCapabilityAuthorityV2 {
   input.binding.assertCurrent()
   const definition = readReviewedOpenAIResponsesDefinitionV2()
   const ids = evidenceIds(definition)
   const verifiedAt = `${definition.evidence.verifiedAt}T00:00:00.000Z`
-  const evidence = Object.freeze([
+  const visibilityEvidenceId = `openai.responses.models.visibility.${input.modelEvidence.modelsResponseDigest.value}`
+  const baseEvidence = Object.freeze([
     ...([ids.contractSupport, ids.contractReject] as const).map((evidenceId, index) => Object.freeze({
       evidenceId, kind: 'official_documentation' as const, effect: index === 0 ? 'supports' as const : 'rejects' as const,
       sourceRef: definition.evidence.provenanceUrls[0], verifiedAt, contentDigest: ids.contract.sha256,
     })),
-    ...([ids.modelSupport, ids.modelReject] as const).map((evidenceId, index) => Object.freeze({
-      evidenceId, kind: 'official_documentation' as const, effect: index === 0 ? 'supports' as const : 'rejects' as const,
-      sourceRef: `https://developers.openai.com/api/docs/models/${input.modelEvidence.modelCapability.capability.family}`,
-      verifiedAt, contentDigest: ids.model.sha256,
-    })),
     Object.freeze({
-      evidenceId: `openai.responses.models.visibility.${input.modelEvidence.modelsResponseDigest.value}`,
+      evidenceId: visibilityEvidenceId,
       kind: 'live_probe' as const, effect: 'supports' as const,
       sourceRef: input.modelEvidence.modelsResponseRevision,
       verifiedAt: new Date(input.modelEvidence.observedAtMs).toISOString(),
@@ -323,8 +336,16 @@ function composeCapability(input: Readonly<{
       verifiedAt, contentDigest: ids.contract.sha256,
     }),
   ])
-  const fields = Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) =>
-    field(path, ids, input.modelEvidence.modelCapability.capability.maxOutputTokens, true)))
+  assertCapabilityRuleProjectionIdentityV2(input.capabilityRules, {
+    providerId: input.binding.binding.providerId.value,
+    endpointProfileId: input.binding.binding.endpointProfileId.value,
+    nativeModelId: input.binding.binding.modelId.value,
+  })
+  const ruleResolved = applyCapabilityRuleProjectionV2({ baseEvidence,
+    baseFields: Object.freeze(RUNTIME_CAPABILITY_SEMANTIC_PATHS_V2.map((path) =>
+      field(path, ids, input.modelEvidence.modelCapability.capability.maxOutputTokens, visibilityEvidenceId))),
+    projection: input.capabilityRules })
+  const merged = projectOpenAIResponsesReasoningModeAuthorizationV2(ruleResolved, ids)
   if (input.commandFacts) validateIntent(input.commandFacts, input.toolRegistry)
   const continuation = {
     kind: 'client_managed_native_replay' as const, artifactKind: OPENAI_RESPONSES_ARTIFACT_KIND_V2,
@@ -332,7 +353,7 @@ function composeCapability(input: Readonly<{
   }
   const resolvedCapability = canonicalizeResolvedCapabilityV2({
     ...projectActiveCatalogSnapshotAuthorityV2(input.modelEvidence),
-    binding: projectDecodedProviderBindingRecordV2(input.binding.binding), evidence, fields,
+    binding: projectDecodedProviderBindingRecordV2(input.binding.binding), evidence: merged.evidence, fields: merged.fields,
     continuation,
   })
   const record = runtimeSnapshotRecordFromResolvedCapabilityV2({
@@ -368,13 +389,14 @@ function composeCapability(input: Readonly<{
 /** Command-independent capability projection shared by UI and send paths. */
 export function resolveOpenAIResponsesCapabilityV2(
   modelEvidence: ActiveCatalogModelAuthorityV2,
+  capabilityRules: CapabilityRuleProjectionV2,
 ): ResolvedCapabilityV2 {
   const binding = composeBinding(modelEvidence)
   return composeCapability({
     binding,
     modelEvidence,
     resolvedAt: new Date(Math.max(Date.now(), modelEvidence.observedAtMs)).toISOString(),
-    toolRegistry: null,
+    toolRegistry: null, capabilityRules,
   }).resolvedCapability
 }
 
@@ -388,6 +410,7 @@ export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Rea
   modelEvidence: ActiveCatalogModelAuthorityV2
   commandFacts: GenerationCommandFactsAuthorityV2
   toolRegistry: ToolRegistryRepositoryFactV2 | null
+  capabilityRules: CapabilityRuleProjectionV2
   operation: 'text'
   use: (authorities: Readonly<{
     binding: VerifiedOpenAIResponsesProviderBindingAuthorityV2
@@ -419,6 +442,7 @@ export function withVerifiedOpenAIResponsesGenerationAuthoritiesV2<T>(input: Rea
     capability = composeCapability({
       binding, modelEvidence: input.modelEvidence, commandFacts: input.commandFacts,
       resolvedAt: new Date(resolvedAtMs).toISOString(), toolRegistry: input.toolRegistry,
+      capabilityRules: input.capabilityRules,
     })
     validateSemanticIntentAgainstResolvedCapabilityV2(
       capability.resolvedCapability,

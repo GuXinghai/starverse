@@ -34,7 +34,7 @@ const MANIFEST_TABLE_SQL = `
     schema_digest TEXT NOT NULL CHECK (
       length(schema_digest) = 64 AND schema_digest NOT GLOB '*[^0-9a-f]*'
     ),
-    fragment_count INTEGER NOT NULL CHECK (fragment_count = 17),
+    fragment_count INTEGER NOT NULL CHECK (fragment_count = 18),
     object_projection_digest TEXT NOT NULL CHECK (
       length(object_projection_digest) = 64
       AND object_projection_digest NOT GLOB '*[^0-9a-f]*'
@@ -59,6 +59,7 @@ const FRAGMENTS = Object.freeze([
   Object.freeze({ id: 'model_catalog_v2', fileName: 'modelCatalogSchemaV2.sql' }),
   Object.freeze({ id: 'dfc_attachment_v1', fileName: 'dfcAttachmentSchema.sql' }),
   Object.freeze({ id: 'conversation_route_preference_v1', fileName: 'conversationRoutePreferenceSchema.sql' }),
+  Object.freeze({ id: 'capability_rule_v2', fileName: 'capabilityRuleSchema.sql' }),
 ] as const)
 
 export class GenerationV2SchemaComposerError extends Error {

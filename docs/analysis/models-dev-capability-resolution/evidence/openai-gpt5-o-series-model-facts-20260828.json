@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "verifiedAt": "2026-08-28T00:00:00.000Z",
+  "providerId": "openai_responses",
+  "endpointProfileId": "openai-api-v1",
+  "providerArchiveSourceRef": "archive.openai.models.20260804",
+  "providerArchiveModelCount": 124,
+  "method": "OpenAI official model catalog and exact model pages inspected in rendered Chrome; page-listed snapshots were intersected with the preserved Provider Native model list.",
+  "effortFacts": [
+    {"pageModelId":"gpt-5","nativeModelIds":["gpt-5","gpt-5-2025-08-07"],"values":["minimal","low","medium","high"],"defaultState":"missing"},
+    {"pageModelId":"gpt-5-pro","nativeModelIds":["gpt-5-pro","gpt-5-pro-2025-10-06"],"values":["high"],"default":"high"},
+    {"pageModelId":"gpt-5.1","nativeModelIds":["gpt-5.1","gpt-5.1-2025-11-13"],"values":["none","low","medium","high"],"default":"none"},
+    {"pageModelId":"gpt-5.2","nativeModelIds":["gpt-5.2","gpt-5.2-2025-12-11"],"values":["none","low","medium","high","xhigh"],"default":"none"},
+    {"pageModelId":"gpt-5.2-pro","nativeModelIds":["gpt-5.2-pro","gpt-5.2-pro-2025-12-11"],"values":["medium","high","xhigh"],"defaultState":"missing"},
+    {"pageModelId":"gpt-5.2-codex","nativeModelIds":["gpt-5.2-codex"],"values":["low","medium","high","xhigh"],"defaultState":"missing"},
+    {"pageModelId":"gpt-5.3-codex","nativeModelIds":["gpt-5.3-codex"],"values":["low","medium","high","xhigh"],"defaultState":"missing"},
+    {"pageModelId":"gpt-5.4","nativeModelIds":["gpt-5.4","gpt-5.4-2026-03-05"],"values":["none","low","medium","high","xhigh"],"default":"none"},
+    {"pageModelId":"gpt-5.4-pro","nativeModelIds":["gpt-5.4-pro","gpt-5.4-pro-2026-03-05"],"values":["medium","high","xhigh"],"default":"medium"},
+    {"pageModelId":"gpt-5.4-mini","nativeModelIds":["gpt-5.4-mini","gpt-5.4-mini-2026-03-17"],"values":["none","low","medium","high","xhigh"],"default":"none"},
+    {"pageModelId":"gpt-5.4-nano","nativeModelIds":["gpt-5.4-nano","gpt-5.4-nano-2026-03-17"],"values":["none","low","medium","high","xhigh"],"default":"none"},
+    {"pageModelId":"gpt-5.5","nativeModelIds":["gpt-5.5","gpt-5.5-2026-04-23"],"values":["none","low","medium","high","xhigh"],"default":"medium"},
+    {"pageModelId":"gpt-5.5-pro","nativeModelIds":["gpt-5.5-pro","gpt-5.5-pro-2026-04-23"],"values":["medium","high","xhigh"],"default":"high"},
+    {"pageModelId":"gpt-5.6-sol","nativeModelIds":["gpt-5.6-sol"],"values":["none","low","medium","high","xhigh","max"],"default":"medium"},
+    {"pageModelId":"gpt-5.6-terra","nativeModelIds":["gpt-5.6-terra"],"values":["none","low","medium","high","xhigh","max"],"default":"medium"},
+    {"pageModelId":"gpt-5.6-luna","nativeModelIds":["gpt-5.6-luna"],"values":["none","low","medium","high","xhigh","max"],"default":"medium"}
+  ],
+  "reasoningOnlyFacts": [
+    {"pageModelId":"o1","nativeModelIds":["o1","o1-2024-12-17"],"identityEvidence":"provider_archive"},
+    {"pageModelId":"o1-pro","nativeModelIds":["o1-pro","o1-pro-2025-03-19"],"identityEvidence":"provider_archive"},
+    {"pageModelId":"o3","nativeModelIds":["o3","o3-2025-04-16"],"identityEvidence":"provider_archive"},
+    {"pageModelId":"o3-mini","nativeModelIds":["o3-mini","o3-mini-2025-01-31"],"identityEvidence":"provider_archive"},
+    {"pageModelId":"o4-mini","nativeModelIds":["o4-mini","o4-mini-2025-04-16"],"identityEvidence":"provider_archive"},
+    {"pageModelId":"o3-pro","nativeModelIds":["o3-pro"],"identityEvidence":"official_exact_model_doc","providerArchivePresent":false,"modelsDevPresent":true,"availabilityCreated":false}
+  ],
+  "unresolved": {
+    "reason": "The current exact o-series model pages establish reasoning support but do not enumerate a model-specific reasoning effort domain. The generic Responses API enum is API-contract evidence and was not projected into model facts.",
+    "nativeModelIds": ["o1","o1-2024-12-17","o1-pro","o1-pro-2025-03-19","o3","o3-2025-04-16","o3-mini","o3-mini-2025-01-31","o3-pro","o4-mini","o4-mini-2025-04-16"]
+  },
+  "provenanceUrlPattern": "https://developers.openai.com/api/docs/models/{pageModelId}"
+}

@@ -22,6 +22,7 @@ import { projectOpenAIResponsesCommandAttachmentsV2 } from '../../src/next/gener
 import { readVerifiedOpenAIResponsesEndpointProfileV2 } from '../../src/next/generation-v2/providers/openai-responses/verifiedEndpointProfileV2'
 import { createActiveCatalogModelAuthorityV2Service } from './activeCatalogModelAuthorityV2Service'
 import { withVerifiedOpenAIResponsesGenerationAuthoritiesV2 } from './openAIResponsesGenerationAuthorityV2Service'
+import { CapabilityRuleV2Repo } from '../../infra/db/repo/capabilityRuleV2Repo'
 import { compileOpenAIResponsesPreparedRequestV2 } from './openAIResponsesPreparedRequestCompilerV2'
 import { issueGenerationTextCommandResultV2, type GenerationTextCommandResultV2 } from './generationTextCommandResultV2'
 import { commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2 } from './openAIResponsesPlainTextSnapshotCommitV2'
@@ -53,6 +54,7 @@ export function createOpenAIResponsesPlainTextEditResendCoordinatorV2(input: Rea
   const capabilityRepo = new RuntimeCapabilityV2Repo(input.db)
   const toolRegistryRepo = new ToolRegistryV2Repo(input.db, nowMs)
   const modelEvidenceService = createActiveCatalogModelAuthorityV2Service({ db: input.db, credentialService: input.credentialService })
+  const capabilityRuleRepo = new CapabilityRuleV2Repo(input.db)
   const endpointProfile = readVerifiedOpenAIResponsesEndpointProfileV2()
 
   function replay(command: OpenAIResponsesPlainTextEditResendCommandV2): GenerationTextCommandResultV2 | null {
@@ -136,6 +138,8 @@ export function createOpenAIResponsesPlainTextEditResendCoordinatorV2(input: Rea
                 const toolRegistry = resolveGenerationToolRegistryAuthorityV2(context, toolRegistryRepo, commandFacts)
                 return withVerifiedOpenAIResponsesGenerationAuthoritiesV2({
                 context, modelEvidence, commandFacts, toolRegistry, operation: 'text',
+                capabilityRules: capabilityRuleRepo.resolveForIdentity({ providerId: modelEvidence.providerId.value,
+                  endpointProfileId: modelEvidence.endpointProfileId.value, nativeModelId: modelEvidence.modelId.value }),
                 use: ({ binding, capability }) => {
                   const persisted = commitVerifiedOpenAIResponsesPlainTextEditResendSnapshotV2({
                     context, executionRepo, capabilityRepo, pending, command, commandFacts, binding, capability,

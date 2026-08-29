@@ -1,5 +1,4 @@
 import { stableSerializeProviderRequestBoundedV2 } from '../../compiler/stableSerialize'
-import { isGeminiInteractionsImageModelIdV1 } from './interactionsImageCapabilityPolicyV1'
 
 const MAX_STREAM_BYTES = 48 * 1024 * 1024
 const MAX_FRAME_BYTES = 24 * 1024 * 1024
@@ -142,7 +141,7 @@ function readInteraction(value: unknown, terminal: boolean): Readonly<Record<str
   boundedString(interaction.id, 4096)
   const expectedStatus = terminal ? 'completed' : 'in_progress'
   if (interaction.status !== expectedStatus || (interaction.model !== undefined &&
-      (typeof interaction.model !== 'string' || !isGeminiInteractionsImageModelIdV1(interaction.model)))) {
+      (typeof interaction.model !== 'string' || interaction.model.length < 1))) {
     return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
   }
   if (interaction.steps !== undefined && !Array.isArray(interaction.steps)) {
@@ -437,8 +436,8 @@ export class GeminiInteractionsImageResultAssemblerV1 {
   #providerError: Readonly<Record<string, unknown>> | null = null
   #finished = false
 
-  constructor(expectedModel = 'gemini-3.1-flash-image') {
-    if (!isGeminiInteractionsImageModelIdV1(expectedModel)) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
+  constructor(expectedModel: string) {
+    if (typeof expectedModel !== 'string' || expectedModel.length < 1) return fail('GENERATION_V2_GEMINI_INTERACTIONS_STREAM_TERMINAL_INVALID')
     this.#expectedModel = expectedModel
   }
 

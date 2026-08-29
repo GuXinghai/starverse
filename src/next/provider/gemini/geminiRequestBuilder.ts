@@ -8,13 +8,7 @@
  */
 
 import type { ProviderStreamConfig } from '@/next/provider/providerTypes'
-import type { GeminiThinkingLevel } from '@/next/provider/gemini/geminiThinkingPolicy'
-import {
-  normalizeGeminiImageGenerationModelId,
-  resolveGeminiImageGenerationPolicy,
-  validateGeminiImageGenerationAspectRatio,
-  validateGeminiImageGenerationImageSize,
-} from '@/next/provider/gemini/geminiImageGenerationPolicy'
+import type { GeminiThinkingLevel } from '@/next/provider/gemini/geminiThinkingControl'
 import { asProviderGenerationParamsRecord } from '@/next/provider/providerGenerationParams'
 
 // ---------------------------------------------------------------------------
@@ -160,42 +154,21 @@ export function buildGeminiRequest(input: GeminiRequestInput): GeminiRequest {
 export function buildGeminiImageGenerationInteractionRequest(input: GeminiRequestInput): GeminiInteractionRequest {
   const { messages, config } = input
   const imageGeneration = config.imageGeneration
-  const policy = resolveGeminiImageGenerationPolicy(input.model)
-  if (policy.kind === 'unsupported') {
-    throw new Error(`Google AI Studio image generation is not supported for ${input.model}.`)
-  }
 
   const imageEntry: Record<string, unknown> = {
     type: 'image',
   }
 
-  const requestedAspectRatio = typeof imageGeneration?.aspectRatio === 'string' && imageGeneration.aspectRatio.trim()
-    ? imageGeneration.aspectRatio.trim()
-    : policy.defaultAspectRatio
+  const requestedAspectRatio = typeof imageGeneration?.aspectRatio === 'string'
+    ? imageGeneration.aspectRatio.trim() : ''
   const aspectRatio = requestedAspectRatio === 'auto' ? '' : requestedAspectRatio
-  const aspectRatioValidation = validateGeminiImageGenerationAspectRatio({
-    model: input.model,
-    aspectRatio: requestedAspectRatio,
-  })
-  if (!aspectRatioValidation.ok) {
-    throw new Error(`Google AI Studio aspect ratio ${requestedAspectRatio || '(empty)'} is not supported for ${input.model}. Supported aspect ratios: ${aspectRatioValidation.supportedAspectRatios.join(', ')}.`)
-  }
-
-  const requestedImageSize = typeof imageGeneration?.imageSize === 'string' && imageGeneration.imageSize.trim()
-    ? imageGeneration.imageSize.trim()
-    : policy.defaultImageSize
-  const imageSizeValidation = validateGeminiImageGenerationImageSize({
-    model: input.model,
-    imageSize: policy.imageSizeMode === 'hidden' ? undefined : requestedImageSize,
-  })
-  if (!imageSizeValidation.ok) {
-    throw new Error(`Google AI Studio image size ${requestedImageSize || '(empty)'} is not supported for ${input.model}. Supported sizes: ${imageSizeValidation.supportedImageSizes.join(', ')}.`)
-  }
+  const requestedImageSize = typeof imageGeneration?.imageSize === 'string'
+    ? imageGeneration.imageSize.trim() : ''
   if (aspectRatio) imageEntry.aspect_ratio = aspectRatio
-  if (policy.imageSizeMode !== 'hidden') imageEntry.image_size = requestedImageSize
+  if (requestedImageSize) imageEntry.image_size = requestedImageSize
 
-  const generationConfig = buildGeminiInteractionGenerationConfig(input, policy)
-  const tools = buildGeminiInteractionTools(input, policy)
+  const generationConfig = buildGeminiInteractionGenerationConfig(input)
+  const tools = buildGeminiInteractionTools(input)
   const outputMode = imageGeneration?.outputMode === 'image_only' ? 'image_only' : 'image_and_text'
   const responseFormat = outputMode === 'image_only'
     ? imageEntry as GeminiInteractionImageResponseFormat
@@ -205,7 +178,7 @@ export function buildGeminiImageGenerationInteractionRequest(input: GeminiReques
       ] as const
 
   return {
-    model: `models/${normalizeGeminiImageGenerationModelId(input.model)}`,
+    model: `models/${input.model}`,
     input: flattenGeminiPrompt(messages),
     stream: true,
     response_format: responseFormat,
@@ -216,7 +189,6 @@ export function buildGeminiImageGenerationInteractionRequest(input: GeminiReques
 
 function buildGeminiInteractionGenerationConfig(
   input: GeminiRequestInput,
-  policy: ReturnType<typeof resolveGeminiImageGenerationPolicy>,
 ): GeminiInteractionRequest['generation_config'] | undefined {
   const generationParams = asProviderGenerationParamsRecord(input.config.generationParams)
   const rawGenerationConfig = generationParams?.generation_config
@@ -229,13 +201,12 @@ function buildGeminiInteractionGenerationConfig(
       if (key === 'thinking_summaries' && value === 'none') continue
       if (key === 'thinking_summaries') {
         if (value !== 'auto') throw new Error('Google AI Studio image generation thinking_summaries must be auto or none.')
-        if (!policy.supportsThoughtSummaries) throw new Error(`Google AI Studio ${input.model} does not support thought summaries.`)
         out.thinking_summaries = 'auto'
         continue
       }
       if (key === 'thinking_level') {
-        if (typeof value !== 'string' || !(policy.thinkingLevels as readonly string[]).includes(value)) {
-          throw new Error(`Google AI Studio thinking level ${String(value)} is not supported for ${input.model}.`)
+        if (typeof value !== 'string' || value.length < 1 || value.length > 128) {
+          throw new Error('Google AI Studio image generation thinking_level must be a bounded string.')
         }
         out.thinking_level = value
         continue
@@ -255,14 +226,13 @@ function buildGeminiInteractionGenerationConfig(
         continue
       }
       if (key === 'max_output_tokens') {
-        if (typeof value !== 'number' || !Number.isInteger(value) || value < 0 || value > policy.maxOutputTokens) {
-          throw new Error(`Google AI Studio image generation max_output_tokens must be between 0 and ${policy.maxOutputTokens}.`)
+        if (typeof value !== 'number' || !Number.isSafeInteger(value) || value < 0) {
+          throw new Error('Google AI Studio image generation max_output_tokens must be a non-negative integer.')
         }
         out.max_output_tokens = value
         continue
       }
       if (key === 'stop_sequences') {
-        if (!policy.supportsStopSequences) throw new Error(`Google AI Studio ${input.model} does not support stop sequences.`)
         if (!Array.isArray(value) || value.some((item) => typeof item !== 'string' || !item.trim())) {
           throw new Error('Google AI Studio image generation stop_sequences must be a string array.')
         }
@@ -282,7 +252,6 @@ function buildGeminiInteractionGenerationConfig(
 
 function buildGeminiInteractionTools(
   input: GeminiRequestInput,
-  policy: ReturnType<typeof resolveGeminiImageGenerationPolicy>,
 ): ReadonlyArray<Readonly<Record<string, unknown>>> {
   const generationParams = asProviderGenerationParamsRecord(input.config.generationParams)
   const rawTools = generationParams?.tools
@@ -298,12 +267,10 @@ function buildGeminiInteractionTools(
       throw new Error(`Google AI Studio image generation tools.${key} must be boolean.`)
     }
     if (key === 'google_search') {
-      if (enabled && !policy.supportsGoogleSearch) throw new Error(`Google AI Studio ${input.model} does not support Google Search grounding.`)
       if (enabled) tools.push({ google_search: {} })
       continue
     }
     if (key === 'image_search') {
-      if (enabled && !policy.supportsImageSearch) throw new Error(`Google AI Studio ${input.model} does not support Image Search grounding.`)
       if (enabled) tools.push({ image_search: {} })
       continue
     }
